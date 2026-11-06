@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { SessionGroup } from '../model/session'
 import { machineHeads, type RemoteMachine } from '../model/machines'
@@ -18,10 +19,10 @@ function show(heads: SidebarProps['machineHeads'], groups: SessionGroup[], more:
     <Sidebar
       groups={groups} machineHeads={heads} focusedId={null} tracks={new Map()} mode="docked" online sessionCount={0}
       startFolderLabel="~" canStart portalContainer={null} onToggleRail={none} canExpand tabOf={new Map()} tabPanes={new Map()}
-      openIds={new Set()} paneOf={new Map()} trayStyle="stacked" leadMode="focused" side="left" width={280} onResize={none}
-      onResizeEnd={none} onNewSession={none} onNewSessionIn={none} onNewWorktree={none} onNewAgent={none} canNewAgent
+      openIds={new Set()} paneOf={new Map()} trayStyle="stacked" side="left" width={280} onResize={none}
+      onResizeEnd={none} onNewSession={none} onNewSessionWith={none} defaultAgent="claude" onNewSessionIn={none} onNewTerminal={none} onNewTerminalIn={none} onLocalOnly={none} onNewSessionOn={none} onNewWorktree={none} onInspectProject={none}
       {...more} onShowSession={none} onEndSession={none}
-      onEndProject={none} onSetName={none} onRenameSession={none} onPinSession={none} onOpenSettings={none} onOpenUsage={none} updateSlot={null} railUpdateSlot={null} overview={{ open: false, needs: 0, onToggle: none }}
+      onEndProject={none} onSetName={none} onRenameSession={none} onPinSession={none} onOpenSettings={none} updateSlot={null} railUpdateSlot={null}
     />,
   )
 }
@@ -42,6 +43,22 @@ describe('the sidebar with machines', () => {
     expect(within(here).queryByText('svc')).toBeNull()
     expect(within(there).getByText('svc')).toBeTruthy()
     expect(within(there).getByText(/connected/)).toBeTruthy()
+  })
+
+  it('opens a terminal on the machine whose header + is pressed, and not on one that is not connected', () => {
+    const onNewSessionOn = vi.fn()
+    show(machineHeads(new Map([machine(1, 'build', 'connected'), machine(2, 'lost', 'unreachable')])), [], { onNewSessionOn })
+    expect(screen.queryByRole('button', { name: 'New terminal on this computer' })).toBeNull()
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'New terminal on lost' }).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'New terminal on build' }))
+    expect(onNewSessionOn).toHaveBeenCalledWith(1, 'build')
+  })
+
+  it('tells a connected machine with nothing running where to start, and a machine that is down why it cannot', () => {
+    show(machineHeads(new Map([machine(1, 'build', 'connected'), machine(2, 'lost', 'unreachable')])), [])
+    expect(screen.getByText('No sessions. Use + to open a terminal here.')).toBeTruthy()
+    expect(screen.getAllByText('No sessions. Use + to open a terminal here.')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'New terminal on lost' }).getAttribute('title')).toBe('lost is unreachable · can’t open a terminal')
   })
 
   it('tells a machine that is down by its word, with the fix under it', () => {
@@ -65,40 +82,41 @@ describe('the sidebar with machines', () => {
   })
 })
 
-describe('the sidebar entries for a new agent on a branch', () => {
-  const repo = (): SessionGroup => ({ ...group('/code/app', 'app', null), kind: 'repo' })
-
-  it('opens the dialog from the button at the top, with no project chosen', () => {
-    const onNewAgent = vi.fn()
-    show([], [repo()], { onNewAgent })
-    fireEvent.click(screen.getByRole('button', { name: 'New agent on a branch' }))
-    expect(onNewAgent).toHaveBeenCalledWith(null)
-  })
-
-  it('disables the button while no project can take one', () => {
-    show([], [group('a', 'notes', null)], { canNewAgent: false })
-    expect(screen.getByRole('button', { name: 'New agent on a branch' })).toBeDisabled()
-  })
-
-  it('opens it on a project from the project menu', async () => {
-    const onNewAgent = vi.fn()
-    show([], [repo()], { onNewAgent })
-    fireEvent.contextMenu(screen.getByRole('button', { name: /app/ }))
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'New agent on a branch…' }))
-    expect(onNewAgent).toHaveBeenCalledWith('/code/app')
-  })
-
-  it('offers nothing in the menu of a folder that is not a repository, or of another machine', async () => {
-    show([], [group('/code/notes', 'notes', null)])
-    fireEvent.contextMenu(screen.getByRole('button', { name: /notes/ }))
-    await screen.findByRole('menu')
-    expect(screen.queryByRole('menuitem', { name: 'New agent on a branch…' })).toBeNull()
-  })
-
-  it('offers nothing in the menu of a repository on another machine', async () => {
-    show(machineHeads(new Map([machine(1, 'build', 'connected')])), [{ ...repo(), machineName: 'build' }])
+describe('the sidebar after New agent on a branch was removed', () => {
+  it('has no such button at the top, in the rail, or in a project menu', async () => {
+    show([], [{ ...group('/code/app', 'app', null), kind: 'repo' }])
+    expect(screen.queryByRole('button', { name: 'New agent on a branch' })).toBeNull()
     fireEvent.contextMenu(screen.getByRole('button', { name: /app/ }))
     await screen.findByRole('menu')
-    expect(screen.queryByRole('menuitem', { name: 'New agent on a branch…' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: /New agent on a branch/ })).toBeNull()
+  })
+})
+
+describe('the project menu\'s Inspect project', () => {
+  it('is offered, and turned off for a project with no terminal on this computer to inspect', async () => {
+    show([], [{ ...group('/code/app', 'app', null), kind: 'repo' }])
+    fireEvent.contextMenu(screen.getByRole('button', { name: /app/ }))
+    await screen.findByRole('menu')
+    expect(screen.getByRole('menuitem', { name: 'Inspect project' }).getAttribute('aria-disabled')).toBe('true')
+  })
+})
+
+describe('the machine menu in the sidebar header', () => {
+  it('shows all machines by default and narrows the list to the machine picked', async () => {
+    const user = userEvent.setup()
+    show(machineHeads(new Map([machine(1, 'build', 'connected')])), [group('a', 'app', null), group('b', 'svc', 'build')])
+    expect(screen.getByText('app')).toBeTruthy()
+    expect(screen.getByText('svc')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Show sessions on: all machines' }))
+    await user.click(await screen.findByRole('menuitem', { name: /^build/ }))
+    expect(screen.queryByText('app')).toBeNull()
+    expect(screen.getByText('svc')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Show sessions on: build' })).toBeTruthy()
+  })
+
+  it('keeps the plain Projects title while this computer is the only machine', () => {
+    show([], [group('a', 'app', null)])
+    expect(screen.getByText('Projects')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^Show sessions on/ })).toBeNull()
   })
 })

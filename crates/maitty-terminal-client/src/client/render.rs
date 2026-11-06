@@ -232,6 +232,10 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
             let fd = (**fd).clone();
             super::screen::draw_finder(app, f, area, &t, &fd);
         }
+        Mode::NewSession(ns) => {
+            let ns = (**ns).clone();
+            super::screen::draw_session_popup(app, f, area, &t, &ns);
+        }
         Mode::ScreenPane(np) => {
             let np = np.clone();
             super::screen::draw_new_pane(app, f, area, &t, &np);

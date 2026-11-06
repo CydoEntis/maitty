@@ -1,4 +1,4 @@
-//! Sending a pasted image, or any file, to another machine (ADR 0049, 0055). The window cannot
+//! Sending a pasted image, or any file, to another machine (ADR 0007, 0055). The window cannot
 //! put a picture or a file on a remote machine, so it goes over the same hardened ssh line the
 //! installer uses, as a file the far side keeps, and the path it prints is typed into the pane.
 //! Nothing here runs ssh; `Machine::paste_argv` builds the line and the caller runs it with the
@@ -10,7 +10,7 @@ use maitty_shared::hidden::{is_invisible, sanitize};
 /// The most bytes of one pasted image that are sent. A screenshot is a few megabytes.
 pub const MAX_PASTE_BYTES: u64 = 25 * 1024 * 1024;
 
-/// The most bytes of one file that is sent (ADR 0055).
+/// The most bytes of one file that is sent (ADR 0007).
 pub const MAX_SEND_BYTES: u64 = 100 * 1024 * 1024;
 
 /// The most characters of the original name kept in a sent file's name.

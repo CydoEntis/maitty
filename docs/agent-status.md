@@ -125,6 +125,47 @@ integrations. A known executable alone does not guarantee native lifecycle suppo
 The pin is Herdr commit `143bf5fd4781d164260c63fe28e7dc08054ad32f`; its license and
 notices are in `vendor/herdr-detection/`.
 
+What each agent sends at turn end (measured 2026-11-06 on Linux with a one-word turn, no tools,
+in a scratch folder, the payload dumped by a stand-in script):
+
+| Agent | Version | Last assistant message | Field |
+| --- | --- | --- | --- |
+| Claude Code | 2.1.319 | yes | `Stop` hook stdin: `last_assistant_message` (also `transcript_path`, `background_tasks`, `stop_hook_active`) |
+| Codex | 0.166.0 | yes | `notify` argument: `last-assistant-message` (also `thread-id`, `turn-id`, `input-messages`, `client`). The Windows `Stop` hook check above saw `last_assistant_message`; the Linux `Stop` hook was not re-run because it needs a trusted hook |
+| Gemini CLI | not installed | not measured | |
+| OpenCode | not installed | not measured | |
+
+The screen fallback (`daemon/last_lines.rs`) was not run against a live Claude or Codex screen:
+that needs a pane inside a running daemon, and Claude and Codex already send the message, so
+the fallback is not used for them. Its readability on a real screen stays unmeasured.
+
+Permission-prompt lifetime (ticket 31, `NEEDS_SETTLES`), measured 2026-11-06 on Linux with
+interactive Claude Code 2.1.319 in a PTY (`scripts/measure-permission-prompt.py MODE TURNS`;
+one "create x.txt" turn each, 24 real turns). The time is from the `PermissionRequest` hook to
+the `PostToolUse` hook, which includes the hook's own process start (about 50 ms) and the write:
+
+| Case | n | min | median | p95 | max |
+| --- | --- | --- | --- | --- | --- |
+| Approved at once by a `PermissionRequest` hook | 8 | 111 ms | 147 ms | 179 ms | 179 ms |
+| Auto permission mode (`--permission-mode auto`) | 8 | no `PermissionRequest` event and no prompt on screen | | | |
+| Waits for a person (answered after 3.0 s on purpose) | 7 | 3164 ms | 3187 ms | 3215 ms | 3215 ms |
+
+So a prompt that settles itself is gone within about 180 ms, 120 ms under 300 ms, and the
+agent never reports one in auto mode. The person row only shows the harness's chosen wait plus
+about 165 ms; a real wait is unbounded. `NEEDS_SETTLES` stays 300 ms (the margin is about 1.7x
+the slowest sample). Not measured: Codex (the turn budget was spent on Claude), a slow hook
+(one that does network work holds the prompt as long as it runs), and an allowlist (the agent
+asks nothing, so there is nothing to time). The prompt text itself was never seen on the PTY
+for the auto-approved cases, and is drawn in pieces for the person case, so the hooks are the
+only timing source here.
+
+**Sounds.** A window rings at most once per `ANY_AGAIN_AFTER` (4 s), whichever kind it was: a
+needs-you (two notes) followed by a finish inside that spell is held back, so a burst never
+reads as three dings. The same agent saying the same thing again within `SAME_AGAIN_AFTER`
+(120 s) stays quiet too. The card and toast still say what happened; only the sound waits. The
+spell is kept per window: a daemon with no window open rings for itself, and two windows on one
+daemon each keep their own. `maitty test-alert` plays both sounds.
+
 Not yet verified, so Maitty does not claim exact Herdr parity:
 
 - every identity against real process entry points, including npm and native
@@ -161,6 +202,22 @@ A working agent with no output and no hook report for 10 minutes is marked quiet
 (`quiet_since` on the wire): it may be stuck. Quiet never changes its status, which
 stays working. An agent waiting on helpers it reported, or asking to start helpers,
 is never quiet. Any output or hook report clears it.
+
+A working agent that is busy but going nowhere is marked repeating (`repeats` on the wire, the
+number of calls the repeat has reached): its last tool calls are one call five times in a row, or
+two calls taking turns for eight calls. The daemon sees each call only as the fingerprint a
+tool-start hook reports (`call`, see [API_PATTERNS](API_PATTERNS.md)), so only Claude, Qwen, Codex
+and Gemini can be marked, and a call made inside a subagent does not count. A different call, a new
+prompt, the agent leaving work or exiting clears it, and a report with no call leaves the run alone.
+Like quiet it never changes the status, rings, or enters the Inbox, and it is not saved with the
+session. A change is one `daemon.log` line (`pane 4 (claude): repeating 6x`, or `cleared`) and
+never says what the calls were.
+
+A finished turn stays **done** until a window reports it looked: the terminal app sends
+`MarkSeen` when its window is focused and the pane is in front, and the desktop app when you
+view the session. The daemon never reads "seen" from which pane is active, since a window in
+the background is not looking. The daemon tells one window about an alert (the one a person
+used last), and that window rings or notifies; with no window attached the daemon rings.
 
 Questions ring after remaining blocked for 300 ms, except in the pane you are
 looking at (focused pane, focused window); the needs-you mark appears immediately.

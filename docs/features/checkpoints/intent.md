@@ -24,7 +24,7 @@ why popover, a new evidence sheet, the Inbox, Settings, and the row menu. The de
 
 ## Decisions
 
-- The daemon runs the check, never the client (ADR-0001). Maitty observed the result; an agent's
+- The daemon runs the check, never the client (ADR 0001). Maitty observed the result; an agent's
   claim never counts. The check's process does not inherit `MAITTY_PANE_TOKEN`.
 - Checks never stop an agent working. They change what Maitty says about it.
 - The command comes from the user's own config. A command supplied by a repo is a later,

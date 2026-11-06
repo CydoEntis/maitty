@@ -146,6 +146,7 @@ impl App {
                 self.remember_changes(machine, &s);
                 self.remotes.entry(machine).or_default().snap = s;
                 self.screen_sync();
+                self.mark_looked_pane_seen();
             }
             ServerMsg::State(s) => {
                 self.sync_terms(machine, &s);
@@ -184,6 +185,7 @@ impl App {
                     self.splash = false;
                 }
                 self.screen_sync();
+                self.mark_looked_pane_seen();
                 self.auto_open_secret();
                 self.check_view_sync();
                 self.maybe_restart_daemon(last_session_closed);
@@ -271,6 +273,7 @@ impl App {
             ServerMsg::Error(e) => {
                 // The output a failure waited for may be what failed; a later reply is not its.
                 self.screen.failure_ask = None;
+                self.session_popup_failed();
                 self.notify(e, true);
             }
             ServerMsg::Notice(n) if machine != MachineId::LOCAL => self.notify(n, false),
@@ -307,6 +310,9 @@ impl App {
             }
             ServerMsg::Reply(Reply::Text(text)) if self.check_asked_of(machine) => {
                 self.check_output_arrived(text)
+            }
+            ServerMsg::Reply(Reply::Folders { tag, listing }) => {
+                self.session_popup_listing(machine, tag, listing);
             }
             ServerMsg::Welcome { .. } | ServerMsg::Reply(_) => {}
         }
@@ -403,9 +409,9 @@ impl App {
             && crate::alert::should_alert(
                 &status,
                 self.alerted.get(&term).map(|(s, at)| (s, *at)),
-                self.last_alert
-                    .filter(|(previous, _)| *previous == kind)
-                    .map(|(_, at)| at),
+                // Any sound starts the quiet spell, whichever kind it was: a "needs you" and a
+                // "finished" a moment apart would be three notes, which reads as noise.
+                self.last_alert.map(|(_, at)| at),
                 now,
             )
         {

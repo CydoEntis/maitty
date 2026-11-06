@@ -1,4 +1,4 @@
-//! A chat session started on a branch (ADR 0054): checked before anything is made, started in its
+//! A chat session started on a branch (ADR 0003): checked before anything is made, started in its
 //! own worktree, and owned by the daemon like any other structured conversation.
 
 use super::*;

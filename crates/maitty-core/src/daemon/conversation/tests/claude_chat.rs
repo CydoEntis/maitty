@@ -1,4 +1,4 @@
-//! A Claude chat session through the daemon (ADR 0054), with the scripted fake `claude`: it is
+//! A Claude chat session through the daemon (ADR 0003), with the scripted fake `claude`: it is
 //! created, owned by the daemon, takes a message, and shows the reply in its history.
 
 use super::*;
@@ -58,7 +58,7 @@ async fn a_claude_chat_is_created_sent_a_message_and_read_back_through_the_daemo
         .await;
         assert!(matches!(sent, ServerMsg::Reply(Reply::ConversationSent(_))), "{sent:?}");
 
-        // A send for a generation that is not current changes nothing (ADR 0036).
+        // A send for a generation that is not current changes nothing (ADR 0006).
         let stale = exchange(
             &mut session,
             422,

@@ -23,7 +23,7 @@ use maitty_machines::link::Timing;
 use maitty_machines::machine_config::Grant;
 use maitty_machines::machine_ids::MachineIds;
 use maitty_machines::{MachineDef, MachineId, Outgoing};
-use maitty_shared::protocol::{ClientMsg, Command, Snapshot};
+use maitty_shared::protocol::{ClientMsg, Command, FolderListing, Query, Snapshot, Status, TermId};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -43,7 +43,10 @@ const MACHINE_REMOVED_EVENT: &str = "machine-removed";
 const MACHINE_NOTICE_EVENT: &str = "machine-notice";
 /// Carries text an opted-in machine asks to be copied: `{machine, text}`.
 const MACHINE_CLIPBOARD_EVENT: &str = "machine-clipboard";
+/// Carries a daemon's decision to alert for a pane: `{machine, term, status}` (`blocked` or `done`).
+const SESSION_ATTENTION_EVENT: &str = "session-attention";
 const MACHINE_ERROR_EVENT: &str = "machine-error";
+const FOLDER_LISTING_EVENT: &str = "folder-listing";
 
 /// The longest folder path sent to another machine.
 const MOST_FOLDER_BYTES: usize = 4096;
@@ -251,6 +254,22 @@ impl Wire {
         )
     }
 
+    /// Ask a machine's daemon (this computer's when none is named) for the folders inside `path`.
+    /// The answer comes back as a `folder-listing` event carrying `tag`.
+    pub fn list_folders(&self, machine: Option<u16>, path: &str, tag: u64) -> Result<(), String> {
+        let path = path.trim();
+        if path.is_empty() || path.len() > MOST_FOLDER_BYTES || path.chars().any(char::is_control) {
+            return Err("Type a folder, such as ~ or /srv/app".to_string());
+        }
+        self.send(
+            machine_of(machine),
+            ClientMsg::Query(Query::ListFolders {
+                path: path.to_string(),
+                tag,
+            }),
+        )
+    }
+
     /// Ask the daemon of `term`'s machine (this computer when none is named) to do `command`.
     /// The machine's line takes it without waiting; its answer is taken, if it comes, by the hub.
     /// Refused, naming the machine, when the machine has no line.
@@ -291,9 +310,26 @@ pub fn watch_terminal_output(
     }
 }
 
-/// `machine` is left out for this computer's own panes.
+/// The folders inside `path` on a machine (this computer when `machine` is left out). Nothing is
+/// returned here: the answer arrives as a `folder-listing` event with the same `tag`.
 #[tauri::command]
-pub async fn terminal_input(
+pub fn list_folders(
+    wire: tauri::State<'_, Wire>,
+    machine: Option<u16>,
+    path: String,
+    tag: u64,
+) -> Result<(), String> {
+    wire.list_folders(machine, &path, tag)
+}
+
+/// `machine` is left out for this computer's own panes.
+///
+/// Not `async` on purpose: Tauri runs a plain command on the main thread, one request at a time in
+/// the order they arrive, so keys the window sends without waiting for each reply still reach the
+/// pane in the order they were typed. An `async` command runs on any worker and could swap two.
+/// The body only queues the bytes (`Wire::command` does not wait), so the main thread is not held.
+#[tauri::command]
+pub fn terminal_input(
     wire: tauri::State<'_, Wire>,
     machine: Option<u16>,
     term: u32,
@@ -406,8 +442,20 @@ pub enum Reaction {
     Notice { machine: MachineId, text: String },
     /// Text an opted-in machine asks to be copied.
     Clipboard { machine: MachineId, text: String },
+    /// A daemon decided a pane needs a person, and told this window.
+    Attention {
+        machine: MachineId,
+        term: TermId,
+        status: Status,
+    },
     /// A machine was taken out of the list.
     Removed { machine: MachineId },
+    /// A machine's answer about a folder, for the window that asked.
+    Folders {
+        machine: MachineId,
+        tag: u64,
+        listing: FolderListing,
+    },
     /// A machine's whole snapshot, or none when this computer's line ended.
     Sessions {
         machine: MachineId,
@@ -487,6 +535,8 @@ fn reactions(handle: &HubHandle, outs: Vec<Out>) -> Vec<Reaction> {
             Out::Error { machine, text } => Some(Reaction::Error { machine, text }),
             Out::Notice { machine, text } => Some(Reaction::Notice { machine, text }),
             Out::Clipboard { machine, text } => Some(Reaction::Clipboard { machine, text }),
+            Out::Attention { machine, term, status } => Some(Reaction::Attention { machine, term, status }),
+            Out::Folders { machine, tag, listing } => Some(Reaction::Folders { machine, tag, listing }),
             Out::Sessions { machine, snapshot } => Some(Reaction::Sessions { machine, snapshot }),
             Out::WantReplay { machine, term } => {
                 let _ = handle.send(Outgoing {
@@ -506,9 +556,23 @@ fn apply(app: &AppHandle, handle: &HubHandle, update: Update) {
 }
 
 #[derive(Clone, Serialize)]
+struct AttentionPayload {
+    machine: u16,
+    term: TermId,
+    status: &'static str,
+}
+
+#[derive(Clone, Serialize)]
 struct MachineError {
     machine: u16,
     text: String,
+}
+
+#[derive(Clone, Serialize)]
+struct FolderAnswer {
+    machine: u16,
+    tag: u64,
+    listing: FolderListing,
 }
 
 #[derive(Clone, Serialize)]
@@ -535,12 +599,37 @@ fn perform(app: &AppHandle, reactions: Vec<Reaction>) {
                     },
                 );
             }
+            Reaction::Attention { machine, term, status } => {
+                let status = match status {
+                    Status::Blocked => "blocked",
+                    Status::Done => "done",
+                    _ => continue,
+                };
+                let _ = app.emit(
+                    SESSION_ATTENTION_EVENT,
+                    AttentionPayload {
+                        machine: machine.0,
+                        term,
+                        status,
+                    },
+                );
+            }
             Reaction::Clipboard { machine, text } => {
                 let _ = app.emit(
                     MACHINE_CLIPBOARD_EVENT,
                     MachineError {
                         machine: machine.0,
                         text,
+                    },
+                );
+            }
+            Reaction::Folders { machine, tag, listing } => {
+                let _ = app.emit(
+                    FOLDER_LISTING_EVENT,
+                    FolderAnswer {
+                        machine: machine.0,
+                        tag,
+                        listing,
                     },
                 );
             }
@@ -560,6 +649,15 @@ fn perform(app: &AppHandle, reactions: Vec<Reaction>) {
                 );
             }
             Reaction::Frame(frame) => {
+                // The window's own socket first: the channel waits for the host's main loop and
+                // the web view's next event, which is what held a pane a step behind (ticket 35).
+                let frame = match app.state::<crate::output_socket::OutputSocket>().send(frame) {
+                    Ok(()) => {
+                        crate::performance::count_terminal_frame_sent();
+                        continue;
+                    }
+                    Err(frame) => frame,
+                };
                 let channel = app
                     .state::<TerminalOutput>()
                     .0
@@ -570,6 +668,7 @@ fn perform(app: &AppHandle, reactions: Vec<Reaction>) {
                 // opens from the history.
                 if let Some(channel) = channel {
                     let _ = channel.send(Response::new(frame));
+                    crate::performance::count_terminal_frame_sent();
                 }
             }
             Reaction::Sessions { machine, snapshot } if machine == MachineId::LOCAL => {

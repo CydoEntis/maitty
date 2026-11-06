@@ -2,10 +2,15 @@ export type SessionStatus = 'working' | 'needs-you' | 'done' | 'idle' | 'recover
 
 export type TurnKind = 'Working' | 'NeedsYou' | 'Done' | 'Idle' | 'Prompt' | 'CommandStarted' | 'CommandFinished'
 
+/** The question a permission prompt asks, from the agent's own hook. */
+export type PermissionAsk = { tool: string; detail: string; answerable: boolean; choices?: readonly string[] }
+
 /** What the daemon reports about a terminal session beyond its status. */
 export type TerminalDetails = {
   /** What a stopped agent is asking, off its screen: the exact command and its choices. */
   asking: string
+  /** The permission prompt the agent's hook says it is stopped on; null when it said none. */
+  ask?: PermissionAsk | null
   /** An agent that was mid-turn when the daemon restarted; offered a resume, never resumed on its own. */
   interrupted: { agent: string; resume: string } | null
   /** The latest turn events, oldest first; `at` is unix seconds. */
@@ -61,7 +66,7 @@ export type Conversation = {
    * one (a conversation whose native terminal is this pane). The chat view reads and writes
    * through it; without it the session has no chat.
    */
-  chat?: { conversation: number; generation: number; /** Follows an agent the user started in the terminal (ADR 0052): the chat reads, it does not write. */ readOnly?: boolean }
+  chat?: { conversation: number; generation: number; /** Follows an agent the user started in the terminal (ADR 0003): the chat reads, it does not write. */ readOnly?: boolean }
 }
 
 export type Message = {

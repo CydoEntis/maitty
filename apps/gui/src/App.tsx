@@ -171,7 +171,7 @@ import './App.css'
 
 const OTHER_FOLDERS = 'Other folders'
 
-/** The sidebar group a terminal session belongs to (ADR 0046). */
+/** The sidebar group a terminal session belongs to. */
 function sessionGroup(
   conversation: Conversation,
   groupBy: 'repo' | 'folder',
@@ -266,7 +266,7 @@ function PreviewApp() {
     readSettingsPreferences,
   )
   const conversations = useMemo(() => {
-    // The desktop app is a terminal multiplexer: chat sessions are not shown (ADR 0046).
+    // The desktop app is a terminal multiplexer: chat sessions are not shown.
     const current = desktop
       ? (sessionsQuery.data ?? []).filter((item) => item.kind === 'terminal')
       : previewSessions
@@ -465,7 +465,7 @@ function PreviewApp() {
     if (terminalConversationId !== null)
       setTerminalConversationId(conversationId)
   }
-  // The desktop app shows only terminal sessions (ADR 0046). The browser preview, which has no
+  // The desktop app shows only terminal sessions. The browser preview, which has no
   // daemon, still flips between its chat and terminal views.
   const showTerminal = Boolean(
     selected && (desktop ? true : terminalConversationId === selected.id),

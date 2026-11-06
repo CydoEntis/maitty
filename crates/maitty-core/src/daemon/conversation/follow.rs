@@ -1,4 +1,4 @@
-//! A read-only conversation for an agent a user started in a pane (ADR 0052).
+//! A read-only conversation for an agent a user started in a pane (ADR 0003).
 //!
 //! The pane stays an ordinary pane. The daemon follows the transcript its own status hooks named
 //! (Claude's `<session>.jsonl`, Codex's `rollout-…-<session>.jsonl`), turns it into the same
@@ -47,6 +47,8 @@ pub(in crate::daemon) struct Followed {
     last_read: Option<Instant>,
     /// Why the file could not be read, in words that carry no file content.
     error: Option<String>,
+    /// The mode and model the file last said.
+    meta: crate::conversation::SessionMeta,
 }
 
 impl Followed {
@@ -74,6 +76,7 @@ impl Followed {
             in_flight: false,
             last_read: None,
             error: None,
+            meta: crate::conversation::SessionMeta::default(),
         }
     }
 
@@ -310,6 +313,17 @@ impl Daemon {
         };
         follower.in_flight = false;
         match done.result {
+            // Nothing has been read yet and there is no file: the agent has not been given its first
+            // prompt, which is where it writes it. That is an empty chat, not a fault.
+            Err(ReadFailure::NotFound) if follower.offset.is_none() => {
+                follower.error = None;
+                if follower.parser.is_none() {
+                    follower.parser = Some(Transcript::new(
+                        format_of(follower.provider),
+                        &follower.session,
+                    ));
+                }
+            }
             Err(failure) => {
                 // The parser went with the failed read, so what was read cannot be continued:
                 // start over, once, and say why.
@@ -340,6 +354,7 @@ impl Daemon {
                     follower.history = history;
                 }
                 follower.offset = Some(chunk.offset);
+                follower.meta = chunk.parser.meta().clone();
                 follower.parser = Some(chunk.parser);
                 apply_notes(follower, chunk.notes, chunk.start_missing);
             }
@@ -359,7 +374,7 @@ impl Daemon {
             .iter()
             .find(|f| f.id == id)
             .ok_or_else(|| anyhow::anyhow!("No such conversation"))?;
-        // Only the app that owns the pane may read what its agent did (ADR 0045).
+        // Only the app that owns the pane may read what its agent did (ADR 0004).
         anyhow::ensure!(
             self.shown_to(follower.term, self.surface_of(client)),
             "No such conversation"
@@ -387,6 +402,7 @@ impl Daemon {
                     answered_approvals: Vec::new(),
                     cancelling: false,
                     queued: Vec::new(),
+                    meta: (follower.meta != crate::conversation::SessionMeta::default()).then(|| follower.meta.clone()),
                 },
             )),
         );
@@ -430,6 +446,23 @@ fn apply_notes(follower: &mut Followed, notes: Vec<Note>, start_missing: bool) {
 
 /// Reads the lines a followed file gained since `offset` (everything, or the end of a long file,
 /// when `None`). Runs on a blocking thread.
+/// The file to read: the hook's path when it is this session's, else (Codex only) the file found by
+/// the session id. Claude's file is known only from its hook, so a wrong hint stays an error; Codex's
+/// is findable, so a hint that is not this session's file, or not written yet, is no reason to give up.
+fn resolve_path(
+    provider: Provider,
+    session: &str,
+    hint: Option<&Path>,
+    home: &Path,
+    find: impl FnOnce() -> Option<PathBuf>,
+) -> Result<PathBuf, ReadFailure> {
+    match hint.map(|path| checked_path(path, provider, session, home)) {
+        Some(Ok(path)) => Ok(path),
+        Some(Err(failure)) if provider != Provider::Codex => Err(failure),
+        _ => checked_path(&find().ok_or(ReadFailure::NotFound)?, provider, session, home),
+    }
+}
+
 fn read_new(
     provider: Provider,
     session: &str,
@@ -438,11 +471,7 @@ fn read_new(
     mut parser: Transcript,
     home: &Path,
 ) -> Result<Chunk, ReadFailure> {
-    let path = match hint {
-        Some(path) => path.to_path_buf(),
-        None => find_by_session(provider, session).ok_or(ReadFailure::NotFound)?,
-    };
-    let path = checked_path(&path, provider, session, home)?;
+    let path = resolve_path(provider, session, hint, home, || find_by_session(provider, session))?;
     let mut file = std::fs::File::open(&path).map_err(|_| ReadFailure::Io)?;
     let len = file.metadata().map_err(|_| ReadFailure::Io)?.len();
     let mut restarted = false;

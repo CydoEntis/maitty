@@ -5,8 +5,9 @@ that made it the right call when it was made. Examples include the choice of
 framework, persistence engine, auth model, architecture style, or module
 boundary.
 
-Don't write ADRs for ordinary implementation details. Those belong in code,
-tests, and commit messages.
+Don't write ADRs for ordinary implementation details, and not for how the UI looks or which
+key does what. Those belong in code, tests, `docs/DESIGN.md`, `docs/shortcuts.md`, and commit
+messages.
 
 ## How to add one
 
@@ -17,59 +18,19 @@ tests, and commit messages.
 4. Update the project-specific section of the doc that owns the topic, with a
    one-line summary and a link.
 
-Never rewrite an accepted ADR to change its decision. Write a new ADR that
-supersedes it, and set the old one's status to `Superseded by NNNN`.
+To change a decision, edit its ADR in the same change and say why in the commit message. Git
+holds the history; an ADR states only what is true now.
 
 ## Index
 
-| # | Title | Status |
-| --- | --- | --- |
-| [0001](0001-daemon-owns-sessions.md) | Run sessions in a daemon, with a thin client | Accepted |
-| [0002](0002-portable-pty-and-vt100.md) | Use portable-pty (ConPTY) and vt100 for terminals | Accepted |
-| [0003](0003-msgpack-over-local-sockets.md) | Msgpack frames over local sockets, versioned | Accepted, amended 2026-10-24 |
-| [0004](0004-one-layout.md) | One UI layout: the hydra layout | Superseded by 0007 |
-| [0005](0005-herdr-compatible-keys.md) | Leader-key bindings follow herdr where they overlap | Superseded by 0006 |
-| [0006](0006-floating-design-keys.md) | Leader keys follow the floating design's key map | Superseded by 0009 |
-| [0007](0007-floating-and-tiled-styles.md) | One layout, drawn floating or tiled | Superseded by 0012 |
-| [0008](0008-rename-to-seshi.md) | The app is called Seshi | Accepted |
-| [0009](0009-leader-keys-after-the-cut.md) | Leader keys: a shell is one key, and only kept features have keys | Accepted |
-| [0010](0010-optional-desktop-client.md) | Offer an optional desktop client over the shared session engine | Superseded by 0011 |
-| [0011](0011-keep-seshi-terminal-first.md) | Keep Seshi terminal-first | Accepted |
-| [0012](0012-flat-rendering-style.md) | Add a flat rendering style | Accepted |
-| [0013](0013-v7-frame.md) | Draw the v7 frame: tabs in the pane title, no margin | Proposed, tabs in the title superseded by 0028 |
-| [0014](0014-v8-cleanup.md) | Bring over the v8 cleanup, keeping what the user already decided | Accepted, its no-footer rule amended by 0024 |
-| [0015](0015-four-named-layouts-and-grid.md) | Four named layouts, one setting, and the Grid style | Accepted, amended 2026-10-24, superseded in part by 0027 |
-| [0016](0016-sticky-shortcut-mode.md) | The leader opens a shortcut mode that stays until you leave it | Accepted, amended by 0021, 0023 and 0025 |
-| [0017](0017-keys-other-apps-use.md) | Default shortcuts: one key each, no Shift, keys other apps use | Accepted, amended by 0022 |
-| [0018](0018-rename-to-vibecasso.md) | The app is called Vibecasso | Accepted |
-| [0019](0019-the-name-lives-in-one-place.md) | The app's name lives in one place | Accepted |
-| [0020](0020-rename-to-maitty.md) | The app is called Maitty | Accepted |
-| [0021](0021-one-line-rows-one-rounding-sticky-mode.md) | One-line session rows, one rounding setting, shortcut mode that stays | Accepted, amended by 0023 and 0025 |
-| [0022](0022-question-mark-all-keys-c-changes.md) | `?` lists all keys, `c` opens Changes, copy mode has no key | Accepted |
-| [0023](0023-the-mode-is-always-shown.md) | The mode is always shown, the window is framed in shortcut mode, dead keys say so | Accepted, amended by 0024 |
-| [0024](0024-the-mode-lives-in-a-bottom-bar.md) | The mode lives in a bar along the bottom, with key suggestions | Accepted |
-| [0025](0025-a-new-pane-ends-shortcut-mode.md) | Starting a pane ends shortcut mode | Accepted |
-| [0026](0026-hairline-a-fifth-look.md) | Hairline, a fifth look with no boxes | Superseded by 0039 |
-| [0027](0027-two-looks-and-tabs-in-the-sidebar.md) | Two looks, pane colours, and a session's tabs in the sidebar | Accepted, amended by 0028, 0030 and 0039 |
-| [0028](0028-tab-rows-and-popups-drawn-like-panes.md) | A tab row in both looks, and every popup drawn like a pane | Accepted, amended by 0030 and 0035 |
-| [0029](0029-alt-letters-and-closing-without-asking.md) | Alt+letter shortcuts, and every close asks first | Accepted |
-| [0030](0030-panes-titled-like-an-editor.md) | Panes titled like an editor's, and toasts drawn to suit each look | Accepted, amended by 0031 |
-| [0031](0031-tabs-name-a-project-and-splits-have-no-title.md) | The tab row lists the project's tabs, and a split has no title | Accepted, tab row amended by 0032 |
-| [0032](0032-a-session-owns-its-tabs.md) | A session owns its tabs, and picking it shows it | Accepted |
-| [0033](0033-the-collapsed-sidebar-is-a-column.md) | The collapsed sidebar is a narrow column, not a strip of chips | Accepted |
-| [0034](0034-the-sidebar-never-reorders-itself.md) | The sidebar never reorders itself, and has no SSH group | Accepted |
-| [0035](0035-the-tab-row-sits-outside-the-pane-boxes.md) | The tab row sits over the pane boxes, not inside them | Accepted, amended by 0038 |
-| [0038](0038-tabs-sit-on-the-pane-border.md) | Floating's tabs sit on the first pane's top border | Proposed |
-| [0039](0039-floating-is-the-only-look.md) | Floating is the only look, with simpler settings | Accepted |
-| [0044](0044-chat-and-terminal-are-separate-sessions.md) | Chat and terminal are separate sessions, chosen when one starts | Accepted |
-| [0045](0045-each-session-belongs-to-one-app.md) | Each session belongs to one app: the terminal app or the desktop app | Accepted, supersedes 0044 |
-| [0046](0046-desktop-app-is-a-terminal-multiplexer.md) | The desktop app is a terminal multiplexer: plain shells, no chat | Accepted, supersedes 0044's chat kind |
-| [0047](0047-multiple-machines.md) | One terminal app, several machines | Accepted, amended by 0048 |
-| [0048](0048-machines-in-the-desktop-app.md) | Machines in the desktop app, through one shared crate | Accepted |
-| [0049](0049-image-paste-to-another-machine.md) | A pasted image reaches another machine as a file sent over its own ssh line | Proposed |
-| [0050](0050-local-and-remote-sidebar-with-session-cards.md) | A Local and Remote sidebar of session cards, with real pills as an option | Accepted |
-| [0051](0051-the-daemon-keeps-provider-reported-usage.md) | The daemon keeps provider-reported usage per session per day, never estimated | Accepted |
-| [0052](0052-an-agent-in-a-pane-gets-a-read-only-conversation.md) | An agent in a pane gets a read-only conversation that follows its own transcript | Accepted |
-| [0053](0053-chat-attachments-are-files-named-in-the-message.md) | A chat attachment is a file in a private cache, named by path in the message text | Proposed |
-| [0054](0054-a-chat-session-is-a-daemon-owned-conversation-started-from-the-desktop.md) | A chat session is a daemon-owned structured conversation started from the desktop | Proposed |
-| [0055](0055-send-files-to-another-machine.md) | Any file can be sent to another machine, over the same ssh line as an image | Proposed |
+| # | Decision |
+| --- | --- |
+| [0001](0001-the-daemon-owns-every-session.md) | The daemon owns every session and conversation, and only one daemon runs |
+| [0002](0002-terminal-substrate-and-wire-protocol.md) | portable-pty and vt100; msgpack over local sockets, versioned |
+| [0003](0003-status-and-conversation-trust.md) | Status comes only from the owning runtime, and one writer decides it |
+| [0004](0004-client-split-and-desktop-host.md) | Clients are views: TUI, CLI and an optional desktop app |
+| [0005](0005-provider-adapters-and-permissions.md) | Provider adapters sit behind the daemon; Maitty never widens permissions |
+| [0006](0006-secrets-never-enter-chat.md) | Secrets never enter chat |
+| [0007](0007-multiple-machines.md) | One connection per machine, held by the client |
+| [0008](0008-windows-first-and-one-product-name.md) | Windows is first-class; the product name lives in one place |
+| [0009](0009-usage-is-provider-reported-never-estimated.md) | Usage is what the provider reported, never estimated |

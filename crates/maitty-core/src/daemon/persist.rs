@@ -80,7 +80,7 @@ pub struct SavedPane {
     /// The pane that started it, by its id when this was saved (a key of some tab's `panes`).
     #[serde(default)]
     pub started_by: Option<TermId>,
-    /// The app that started it: only that app may use it after a restart (ADR 0045).
+    /// The app that started it: only that app may use it after a restart (ADR 0004).
     #[serde(default)]
     pub owner: crate::protocol::Surface,
     /// The session whose tab it is in, by its id when this was saved; none: its own.
@@ -128,8 +128,77 @@ pub fn load() -> Option<Saved> {
         Ok(saved) => Some(saved),
         Err(e) => {
             tracing::warn!("ignoring unreadable session file: {e}");
+            keep_unusable_now(&path());
             None
         }
+    }
+}
+
+/// How many copies of a session file the daemon could not use are kept.
+const KEPT_UNUSABLE: usize = 3;
+
+/// Copy a session file the daemon could not use aside. The daemon then starts empty and its next
+/// save would replace the file, losing whatever the person had open.
+pub(crate) fn keep_unusable_now(path: &Path) {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    match keep_unusable(path, stamp) {
+        Ok(kept) => tracing::warn!("kept the session file it could not use at {}", kept.display()),
+        Err(e) => tracing::warn!("could not keep the unusable session file: {e:#}"),
+    }
+}
+
+fn keep_unusable(path: &Path, stamp: u64) -> Result<PathBuf> {
+    use anyhow::Context as _;
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .context("session file name")?;
+    let prefix = format!("{name}.unusable-");
+    let kept = path.with_file_name(format!("{prefix}{stamp:020}"));
+    std::fs::copy(path, &kept).context("copying the unusable session file")?;
+    let dir = path.parent().context("session directory")?;
+    let mut copies: Vec<PathBuf> = std::fs::read_dir(dir)
+        .context("listing kept session files")?
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with(&prefix))
+        })
+        .collect();
+    copies.sort();
+    let surplus = copies.len().saturating_sub(KEPT_UNUSABLE);
+    for old in copies.into_iter().take(surplus) {
+        let _ = std::fs::remove_file(old);
+    }
+    Ok(kept)
+}
+
+#[cfg(test)]
+mod keep_unusable_tests {
+    use super::*;
+
+    #[test]
+    fn an_unusable_session_file_is_copied_aside_and_only_the_newest_copies_stay() {
+        let dir = std::env::temp_dir().join(format!("keep-unusable-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("session-test.json");
+        std::fs::write(&file, "the person's layout").unwrap();
+        let kept: Vec<PathBuf> = (1..=4).map(|n| keep_unusable(&file, n).unwrap()).collect();
+        let left = |p: &PathBuf| p.exists();
+        let contents = std::fs::read_to_string(&kept[3]).unwrap();
+        let original = std::fs::read_to_string(&file).unwrap();
+        let remaining: Vec<bool> = kept.iter().map(left).collect();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(contents, "the person's layout", "the copy holds the original");
+        assert_eq!(original, "the person's layout", "the original is untouched");
+        assert_eq!(
+            remaining,
+            [false, true, true, true],
+            "the oldest copy is dropped"
+        );
     }
 }
 

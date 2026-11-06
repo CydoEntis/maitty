@@ -1,6 +1,6 @@
 /**
  * Where a chat session's terminal would be. The agent of a chat session speaks to the daemon over
- * pipes, so it has no terminal to show (ADR 0054); the chat above covers this, and this says why
+ * pipes, so it has no terminal to show (ADR 0003); the chat above covers this, and this says why
  * for anyone who reads the pane without it (a screen reader, or the instant before the chat draws).
  */
 export function NoTerminalNote() {

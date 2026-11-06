@@ -226,7 +226,7 @@ pub struct Ui {
     pub focus_border: String,
     /// How round the shapes are: `full` (pills), `corners` (rounded boxes, square chips) or `off`.
     pub rounded: Rounding,
-    /// Floating: each pane's border in its own colour, by its place in the tab (ADR 0027).
+    /// Floating: each pane's border in its own colour, by its place in the tab.
     pub pane_colors: bool,
     /// Leave a cell of border between tab chips.
     pub tab_gap: bool,

@@ -12,6 +12,83 @@ change it, and an agent does not.
 desktop app (`apps/gui/RELEASE-HOLD` holds it out), so the terminal fixes in #275 and #276 ship.
 Phase 1 follows.
 
+**v0.65.1 is out (2026-11-05)**, without the desktop app: the updater still offers 0.64.0. Phase 1
+is next. What is left of phase 2: ticket 26 (draft #281), ten passes in a row on `windows-latest`
+for 28 and 29, and ticket 27.
+
+**Resume here (rewritten 2026-11-06, afternoon). Read this block first; the two below it are older.**
+- **State.** `dev` holds everything from the day's sessions (the integration branch `test/integration` was fast-forwarded
+  into it; nothing is ahead of it). v0.65.1 is still the last release and the desktop app is still held out by
+  `apps/gui/RELEASE-HOLD`. **The owner plans to lift the hold and do a full release at home.** The release script needs
+  `dev`'s head to have passed CI, so merge first, then wait for one green run, then `scripts/release.sh X.Y.Z`.
+- **Merge before releasing:** pull requests #281 (`fix/hub-test-shell-isolation`) and #271
+  (`ci/time-tests-not-the-build`), the two aimed at Windows test hangs. Leave `fix/desktop-upgrade-path` alone: its fix is
+  already in `dev` from `fix/desktop-upgrade-path-v2`, and the rest is older docs. `debug/windows-hang-probe` was deleted.
+  `main` stays behind until the owner says.
+- **Not checked anywhere but Linux:** the desktop app on macOS and Windows (the release workflow builds those installers,
+  CI does not). Typing lag is fixed on WebKitGTK by drawing the terminal with the DOM renderer; Windows and macOS were not
+  re-measured on this build.
+- **Built today, hand-checked by the owner:** the mode and model chip, live working status, agent chevron menu, calm
+  Inspect error screens, spinners that keep turning when unfocused, Inspect project, the status bar machine.
+  **Built, tests pass, not looked at on screen:** the activity bar and Inspect drawer (v19 section 9), four-way splits
+  (desktop menu; terminal menu has Split left and Split up), folding quiet shell splits into "+N panes", the tab hover
+  card's clickable rows, the machine filter in the sidebar header, the narrow pane header, the terminal app folding its
+  sidebar when panes would be under 20 columns, and the fix that keeps a new split off the sidebar until it is placed
+  (desktop and terminal; the owner reported the jump twice, so check both).
+- **Decided 2026-11-06:** Brain dump is out; the extensions store and panels are later; project defaults are on hold; a
+  shell gets no Terminal/Chat switch. See [FEATURES](FEATURES.md).
+- **v19 left, if wanted (the owner starts this at home):** close with Undo (needs the daemon to delay the kill),
+  the "service is down" card (needs a real start-service command), the shared TUI config card and TUI import, the
+  Performance page's live strip, the 900 to 1099px rail rule, and dragging the line between stacked panes.
+- **Open, not fixed:** Stop in the chat can lag a moment behind the agent winding down (not reproduced from code);
+  several old daemons from earlier test servers still run and ring on their own (list them with
+  `ps -eo pid,args | grep "maitty.* daemon"`, stop them with `maitty kill-server` and that socket); Codex chat user
+  messages and its mode chip were parked by the owner; "Start a Claude chat" with Full access is now reachable only by
+  Ctrl+Shift+E on a shell.
+
+**Older note (rewritten 2026-11-05, night).**
+- **One branch holds all of the night's work: `integration/overnight`** (nothing pushed, `dev` untouched). It
+  passed the whole gate as merged: clippy, 2347 Rust tests, 1354 frontend tests, `pnpm build`,
+  `scripts/check-gui-deps.sh`, and the Linux and Windows target checks. The same work is also on its own
+  branches: `fix/desktop-upgrade-path` (tickets 37, 38, 36), `fix/desktop-terminal-lag` (35, 40),
+  `chore/remove-v18-removals` (48, 49), `feat/new-session-pick-machine`, `feat/chat-first-sessions` (52, 53, and
+  the designer's D.9), `feat/tui-new-session` (the terminal app's New Session popup).
+- **Ticket 35 is fixed on Windows, not yet checked on Linux.** Terminal output now goes over a loopback WebSocket
+  (ADR 0057, Proposed). On the owner's Windows machine 71 of 72 frames came over the socket, none lost, and typing
+  felt better. The original lag was on Linux (WebKitGTK): run *How to run measurement 2 again* in
+  [PERFORMANCE](PERFORMANCE.md) on a build of the branch, and read the report line "of which over the local socket".
+- **Chat and terminal are one session** (ADR 0056, Proposed): a new session runs the default agent in a terminal and
+  opens as chat or terminal; the chat's composer types into the terminal while the agent is idle. **Not yet tried
+  with a real Claude or Codex.** First things to check: the message arrives intact (multi-line), Stop (Esc) works,
+  the composer turns off while a permission prompt is showing, the switch never restarts the agent.
+- **Built on `feat/gui-layout-pass`, not yet looked at in a window:** ticket 50 (sidebar sessions keep their place,
+  compact tree rows), the small-window rules (39: sidebar drawer under 1100px, Panels menu and stacked panes under
+  900px), the title bar colour, and the terminal and its panel as one surface. Ticket 54 is cancelled. Check each
+  against the prototype in a real window; the tab bar height was left at the prototype's 56px (40px in Tiled).
+- **Not done:** the terminal app's tickets 31, 33 and 30, the Windows test failures 26 to 29, and the screen-by-screen
+  review table of ticket 39.
+- **The TUI popup lacks:** the ASCII fallback for ambiguous-width glyphs, selecting the new card by hand, and a
+  status-bar flash (a toast is used). Remote image paste (ticket 19) is merged but was not tried against `kingdom`.
+
+**Older note (written 2026-11-05, evening).**
+- **State.** v0.65.1 is released from `dev`. The desktop app is held out of releases by
+  `apps/gui/RELEASE-HOLD`; its last good version is 0.64.0.
+- **The design to build from** is the revised v18 handoff the owner supplied this evening:
+  `docs/features/chat-gui/design-handoff/v18/` (read `README.md` section D first; D.6 to D.9 are
+  new). Its screens are in `.maitty/references/`. Build each screen whole from it, and put a
+  screenshot of the build beside the design's before calling the screen done.
+- **Next, in order.** Phase 1 (tickets 35, 40, 36, 37, 38), then tickets 48, 49 and 50 from the
+  revised handoff, then the rest of phase 4. Ticket 51 (terminal app) is small and can go at any
+  point once the owner has answered its question.
+- **Ticket 35 starts with step 1** of *The fix, in order* in [PERFORMANCE](PERFORMANCE.md): count
+  frames at the host's `channel.send` and at the window's `countOutput`. The owner saw the lag on
+  Windows too, so it can be measured there.
+- **Where to work.** The owner's remote Linux dev box has no graphical session: build and test
+  there, but look at the desktop window on the Windows machine (0.65.0 is installed there) or the
+  Linux work machine. On the dev box `cargo` is in `~/.cargo/bin`; `node`, `pnpm` and the Tauri
+  Linux packages are in the `devbox` container. A fresh worktree needs `pnpm bundle:daemon:dev` in
+  `apps/gui` before `cargo build`.
+
 **How to work**
 - One ticket, one branch from `dev`, one pull request into `dev`. Read `AGENTS.md` and the docs the
   ticket touches before planning it.
@@ -45,7 +122,7 @@ Phase 1 follows.
 | 7 | 24 | Pull requests stop waiting on macOS runners. Done in #279 |
 | 8 | 25 | Linux package install gets a limit and a retry. Done in #279 |
 | 9 | 23 | One command for a release. Done in #279 |
-| 10 | 26, 28, 29 | The three intermittent Windows test failures, one pull request each. Name the cause from a Windows run; no retries |
+| 10 | 26, 28, 29 | The three intermittent Windows test failures, one pull request each. Name the cause from a Windows run; no retries. 28 fixed in #280 and 29 in #282; 26 is the draft #281 |
 | 11 | 27 | A build cache for the release workflow. **owner**: a decision first, and it may not be worth doing |
 
 **Phase 3. The terminal app.**
@@ -56,14 +133,26 @@ Phase 1 follows.
 | 13 | 33 | A click on a project row moves the keys into the sidebar | nothing |
 | 14 | 30 | What Codex, Gemini and OpenCode send as their last message (spike) | nothing |
 | 15 | 32, 34 | Rename a machine; choose the alert sounds | **owner**: these are features, built when the owner asks |
+| any | 51 | Updating moves into the Menu | **owner**: a mark on the Menu button when an update is out, or not |
 
 **Phase 4. The desktop app's design.** Only after phase 1: a layout cannot be judged in a window that lags.
 
 | Order | Ticket | What | Needs |
 | --- | --- | --- | --- |
 | 16 | 39 | Review every screen with the owner: keep, change or cut. Agree the smallest window. Put the reference designs in `.maitty/references/` | **owner**, throughout |
-| 17 | from 39 | The cuts and changes it produces, cuts first. The list so far is under *Design changes the owner asked for* | **owner** marks each screen first |
+| 17 | 48, 49, 50 | What the revised handoff changed, cuts first: the removals (D.6), usage in Settings (D.7), sidebar sessions keep their place (D.8) | nothing: the handoff says what |
+| 17a | from 39 | The other cuts and changes. The list so far is under *Design changes the owner asked for* | **owner** where the handoff is silent |
 | 18 | ADR | Chat on any session reverses ADR 0052 | **owner** |
+
+**Phase 5. Borrowed from a read of GG Coder.** Added by the owner on 2026-11-06; it follows phase 4.
+Ideas only, written fresh: that project is AGPL-3.0 and Maitty is MIT, so nothing is copied from it.
+
+| Order | Ticket | What | Needs |
+| --- | --- | --- | --- |
+| 19 | P5-1, P5-2 | A stopped or killed daemon leaves no provider processes behind. Ownership has to be right, so this is first here | nothing |
+| 20 | P5-9, P5-10 | The built desktop package is launched on every push to `dev` | nothing |
+| 21 | P5-6, P5-7, P5-8 | A working agent that repeats itself says so on its row | nothing |
+| 22 | P5-3, P5-4, P5-5 | Chat: tables, no flashing while a reply streams, following the newest message | P5-3 sends screenshots to the **owner** |
 
 **When to stop and ask instead of pressing on**
 - The lag in ticket 35 does not show on the machine in use. It was measured on Hyprland, NVIDIA
@@ -498,7 +587,8 @@ is the test of a workflow change; say in the pull request what could not be run 
 ## 23. One command for a release (chore, `tooling`)
 
 **Done 2026-11-05** (#279): `scripts/release.sh`. Run against a copy of the repository with a
-stand-in remote; the first real release is its end to end proof.
+stand-in remote, then used for v0.65.1: 8 minutes 26 seconds from the tag to the last install
+check, with the desktop app held out.
 
 The bump pull request (#272) and the release pull request (#273) each waited on a full CI run to
 change three version strings. The release rule in `AGENTS.md` asks only for: set the version,
@@ -630,6 +720,18 @@ next, which fits a suggestion and not a misrouted frame.
 - The test passes ten runs in a row on `windows-latest`.
 - No retry is added (ticket 21's rule: fix the cause, don't retry).
 
+**Cause seen on CI, not fixed (draft #281, 2026-11-05).** Under `pwsh` 7 on `windows-latest` a
+shell in one sandbox recalls a line typed in another sandbox's shell: #281's own test failed with
+the second sandbox's pane showing `echo TYPED_IN_FIRST`. So the shared history is real there.
+Setting `USERPROFILE` for each sandbox moves the history file for Windows PowerShell 5.1 but not
+for `pwsh` 7. Attempt (branch `fix/windows-shared-history`): on Windows with `pwsh`, `Sandbox`
+writes a `config.toml` whose shell starts with `Set-PSReadLineOption -HistorySaveStyle
+SaveNothing -PredictionSource None` and `shell_integration = false` (integration would add a second
+`-Command`). Linux/macOS unchanged. CI evidence: see the draft PR; until ten Windows passes are
+recorded this stays unverified. Earlier idea: another lever (the test shells naming their own `HistorySavePath`, or saving
+no history), tried on `windows-latest`. #281's first commit, the assertion that prints the pane,
+is good by itself.
+
 ## 27. A build cache for the release workflow (spike, `tooling`)
 
 `release.yml` has no build cache, and its slowest build took 17 minutes (`build GUI windows-x64`,
@@ -697,7 +799,7 @@ nothing in the window stopped it. The app's own loop lets go of the connection i
 key press, so there a daemon's message cannot arrive late; a supervisor's event queued before it
 was stopped can (read from the code, not seen happening).
 
-**Fix.** The window remembers the ids it has forgotten and drops what arrives under one, from the
+**Fix (#280, in v0.65.1).** The window remembers the ids it has forgotten and drops what arrives under one, from the
 daemon or the supervisor. Two tests hand it the late message on purpose and fail without the fix.
 
 **Acceptance** as ticket 26: the cause named with evidence from a Windows run, ten passes in a row,
@@ -714,7 +816,14 @@ panicked at crates\maitty-core\src\daemon\logic_tests.rs:1018:14:
 a pane there
 ```
 
-The third run of the same commit passed. Not looked into.
+The third run of the same commit passed.
+
+**Cause, seen on Windows 11 with the temp folder under an 8.3 name; fixed in #282.** A race in the
+test, not in the daemon. The test found a pane by comparing its folder with the fixture path as
+text. A pane's shell reports its folder by its real long name at its first prompt, so with a temp
+folder spelled like `RUNNER~1` the pane stopped matching once that prompt was handled. The fixture
+now names its root canonically. That CI's temp folder is spelled that way is inferred. Still to
+see: ten passes in a row on `windows-latest`.
 
 **Acceptance** as ticket 26.
 
@@ -744,8 +853,11 @@ are kept under its name, so a rename has to move both.
 ## 33. A click on a project row moves the keys into the sidebar (change, `client`)
 
 #275 made a click on a session row open it and leave the keys in its pane, as a click on a tab row
-does. A click on a project row still folds it and gives the sidebar the keys
+does. A click on a project row folded it and gave the sidebar the keys
 (`ScreenHit::ToggleProj` in `screen/behaviour.rs`). The owner has not said which they want.
+**Built (2026-11-06, simplest reading):** the click only folds, so the three kinds of row agree;
+the keyboard still reaches a project row through the sidebar. Revert is one line if the owner
+wants the old behaviour.
 
 ## 34. Choose the alert sounds (feature, `client`)
 
@@ -840,6 +952,10 @@ window's `onmessage`, and it ends when the window gets an event. The figures, th
 and how to run the measurement again are in [PERFORMANCE](PERFORMANCE.md), *Input latency*. Start
 there, at *The fix, in order*.
 
+**Seen on Windows too (2026-11-05, evening).** The owner ran the 0.65.0 desktop app on Windows 11
+(WebView2): a subtle lag, not as bad as on Linux, after a shorter look, so not certain. If it holds,
+the cause is not Linux only, and step 1 of the fix can be run on Windows.
+
 ## 40. Replayed output makes the pane answer old queries as typed input (bug, `client`)
 
 After the desktop window opened, a shell's input line held `11;rgb:0505/0d0d/1515` and `1;2c`
@@ -906,6 +1022,13 @@ The owner's verdict on the v0.65.0 desktop app: the design is wrong in places, i
 smaller screens, the remote machines section is not the design, and there are elements that should
 not be there. Fixing these one complaint at a time is how it drifted, so review it whole first.
 
+**Source of truth (owner, 2026-11-05, evening).** The owner's view is that the app was built from
+parts of the v18 handoff and does not match it as a whole. The owner supplied a revised v18 the
+same evening and confirmed it is the design to build from. It is in
+`docs/features/chat-gui/design-handoff/v18/` (the README and the prototype changed; D.6 to D.9 of
+the README are new), with its screens in `.maitty/references/`. That settles step 1 below. A
+screen counts as done only when a screenshot of the build sits beside the design's.
+
 **What**
 1. Agree the source of truth with the owner before anything else. `.maitty/references/` is empty,
    so the candidates are `docs/DESIGN.md`, the v17 and v18 handoffs under `docs/features/`, and for
@@ -926,6 +1049,11 @@ not be there. Fixing these one complaint at a time is how it drifted, so review 
 **Notes**
 - Do this after ticket 35. A layout cannot be judged in a window that runs a step behind.
 
+**State (small windows).** Built: the sidebar is a drawer under 1100px, with a **Sessions** button that carries an
+amber mark when something needs you; under 900px panes stack, tabs shrink to 96px and Repository and Inbox fold into one
+**Panels** menu; the window cannot go under 720px wide. The review table and the owner's keep/change/cut marks are
+still to do.
+
 ## Design changes the owner asked for on 2026-11-05 (to ticket)
 
 - **Small screens.** The app does not work at smaller window sizes.
@@ -940,3 +1068,467 @@ not be there. Fixing these one complaint at a time is how it drifted, so review 
 - **The block cursor hides the letter under it.** May be ticket 35 (the letter not drawn yet);
   check again once 35 is fixed.
 - **Claude Code is slow to start** in a pane. May be 35 or 36; check again once both are fixed.
+
+Added the same evening, from the 0.65.0 desktop app on Windows:
+
+- **The tab bar is too tall:** too much padding around the tabs.
+- **The title bar needs a colour of its own,** apart from the app's ground.
+- **Usage moves into Settings.** Its icon in the sidebar footer goes.
+- **The terminal and its panel are one surface.** The terminal's ground is a different colour from
+  the panel around it and reads as a box inside a card.
+- **Chat is the same session drawn another way.** Switching a pane between terminal and chat is
+  seamless: the same data, from the same daemon, the same Claude or Codex subscription. Only how
+  it is drawn changes. This is *Chat on any session* above, stated in full. Seen: chat on a
+  `claude` typed into a shell showed "Reading… Reconnecting to the daemon. What is shown may be out
+  of date.", then "Reading the conversation…" and a read-only composer.
+
+Where the revised handoff stands on this list, from its README:
+- **In it:** Overview and New agent on a branch are removed (D.6, ticket 48); usage is in Settings
+  (D.7, ticket 49).
+- **The tab bar:** section 3.3 gives a 36px tab in a pill tray. Compare the build with that
+  before changing anything; the build may be off the design.
+- **Not found in its new sections:** the title bar's colour, the terminal and its panel as one
+  surface, chat on any session, small windows, the remote machines section. Look in the prototype
+  (`Maitty Desktop v18.dc.html`) and the older sections; where they are silent, ask the owner.
+
+## Added 2026-11-05 (evening): found while fixing the intermittent Windows tests
+
+Each was seen or read during tickets 26, 28 and 29 and left alone as outside them.
+
+## 41. The desktop hub lets a removed machine come back (bug, `client`)
+
+The shape ticket 28 fixed in the terminal app is also in `apps/gui/src-tauri/src/hub.rs`:
+`on_link_event` takes a `Line` or a `State` with no check after `Command::Remove`. Read from the
+code, not tested. Dropping a stopped machine's events in `Links::next` (`maitty-machines`) would
+cover both apps.
+
+## 42. Other test sandboxes share the real profile's shell history (chore, `tooling`, `windows`)
+
+`apps/tui/tests/fake_ssh.rs`, `remote_status_tests.rs` and the in-process daemon tests set up their
+own environment, so their shells can read each other's history and write test lines into the
+developer's real PowerShell history. Do with ticket 26, once it has a lever that works.
+
+## 43. `tests/fake_ssh.rs` can leave a daemon running (bug, `tooling`, `windows`)
+
+Seen once: a left-over daemon (`fakessh-<pid>-<n>`) held `target\debug\maitty.exe` open, and 40
+desktop tests then failed with `building the maitty binary failed`.
+
+## 44. Intermittent hub test failures under load (bug, `client`, `windows`)
+
+With other test runs on the same machine: `end_to_end.rs:294`, `one dial for the line, one to
+redial at once`, left 1, right 2 (2 of 25 runs), and once each
+`killing_the_ssh_process_shows_reconnecting_then_connected_and_the_pane_comes_again` (the same
+message) and `a_different_daemon_at_a_known_name_is_turned_away_and_says_nothing_that_counts`
+(`retry dials a parked machine: Elapsed(())`). Each passed alone. Guess, not confirmed: the shim
+writes its `--calls` line after it starts the proxy, so the reconnect can be seen first.
+
+## 45. Intermittent conversation test failure under load (bug, `daemon`, `windows`)
+
+Once in a heavily loaded full run:
+`daemon::conversation::tests::user_input_requests_use_exact_ids_and_validated_ephemeral_answers`,
+`conversation\tests.rs:880`, `provider process tree survived disposal`. Passed 3 of 3 alone.
+
+## 46. `same_path` compares paths as text (bug, `daemon`, `windows`)
+
+Read from the code while fixing ticket 29, not exercised: a made worktree recorded under an 8.3
+spelling would never be removed automatically once its pane reports the long name
+(`cleanup_worktrees`), and `runs_in` would miss such a pane.
+
+## 47. The gate's cross-checks cannot build the desktop crate on Windows (chore, `docs`)
+
+On a Windows host `cargo check --target x86_64-unknown-linux-gnu` and
+`--target aarch64-apple-darwin` both fail as written, in the desktop crate's system dependencies
+(`libdbus-sys`, `objc2-exception-helper`). With `--workspace --exclude maitty-gui` both pass.
+[ENVIRONMENT](ENVIRONMENT.md) says so for the macOS target only. **owner**: whether the gate in
+`AGENTS.md` names the excluded form.
+
+## Housekeeping from 2026-11-05, evening (not tickets)
+
+- `docs/COMMIT-STANDARDS.md`, *Project-specific: tooling*, still says there is no release tooling.
+  `scripts/release.sh` is that tooling now. **owner** to change the line.
+
+## Added 2026-11-05 (evening): from the revised v18 handoff and the owner
+
+Tickets 48 to 50 are the new sections of
+`docs/features/chat-gui/design-handoff/v18/README.md`. The handoff is the specification; these
+entries only say what to do and how to tell it is done.
+
+## 48. Remove what the revised v18 removes (chore, `client`)
+
+README D.6. Out of the desktop app, with their shortcuts, rail buttons and command palette
+entries:
+- the Overview screen (Ctrl/Cmd+J, jump to the next session needing you, stays);
+- New agent on a branch (sessions still show their branch under the name);
+- the session side panel (Checklist, Agents, Changes, Files, Artifacts) and its toggle. Changes,
+  Files, Branches, History and References stay in the activity bar;
+- step details in sidebar rows: the current checklist item, the progress bar, the sub-step line;
+- project colours (also ticket 9).
+
+**Acceptance:** nothing in `apps/gui/src` still refers to Overview, New agent on a branch or the
+session panel; `pnpm test`, `pnpm lint` and `pnpm build` pass; `docs/DESIGN.md` and `docs/UI.md`
+no longer describe them; screenshots beside the design's. Do this first: it makes the rest fit.
+
+## 49. Usage and cost moves into Settings (feature, `client`)
+
+README D.7. Settings, Workspace, **Usage & cost**, above Notifications, as one Settings card with
+the contents of C.7 unchanged. Ctrl/Cmd+Shift+U and the command palette open Settings on that
+page. Remove the bar-chart button in the sidebar footer (expanded and rail) and the full-screen
+usage view.
+
+## 50. Sidebar sessions keep their place (feature, `client`) — built
+
+README D.8. Sessions in a project always show in creation order; status, pin and focus never
+reorder them. The focused session is the full card in its own position, and clicking a compact
+row grows it into the card in place. Remove the Settings option "Main row shows". The "N more"
+cap applies only to rows after the card.
+
+**Built** on `feat/gui-layout-pass`. Sessions render in creation order; the focused one (else the last one picked in
+the project, else the first) is the full card in its own place; the ones before it are always compact tree rows
+(26px, a guide line and elbow, the state mark, the program, where, a state word) and the ones after it follow the
+"Other sessions in a project" style, **Tree** by default (Names, Icons and Stacked stay, as the prototype keeps them).
+"Main row shows" is removed. Not checked in a window.
+
+## 51. Updating moves into the Menu (change, `client`; terminal app)
+
+Owner idea, 2026-11-05. Today the terminal app offers an update in three places: the button in
+the sidebar footer, the banner at the top of Settings, and the Version row under it. Put it in
+one: the Menu gets an entry that reads **Check for updates**, or **Update to X.Y.Z** when one is
+out. Remove the sidebar button and the Settings banner. Settings keeps the switch for checking
+and shows the version as plain information.
+
+**owner:** with the sidebar button gone nothing says an update is out until the Menu is opened.
+Either a small mark on the Menu button when one is out, or nothing. Not answered yet.
+
+## Added 2026-11-05 (night): chat first, from the owner
+
+The owner's model: chat is the default, a default agent (Claude or Codex) is chosen once, every chat is
+its own session, a session can switch between terminal and chat, and a plain shell is terminal only.
+
+## 52. New sessions are the default agent; a plain shell is New terminal (feature, `client`) — built
+
+Settings › General › Chat view gains **Default agent** and **New sessions open as** (Chat by default).
+The sidebar +, Ctrl/Cmd+T, a project's **New session here**, the tab bar's + and the welcome's **Start a
+session** start that agent as a chat (or typed into a new shell when Terminal is chosen). **New terminal**
+(a sidebar button, a project's **New terminal here**, the palette) starts a plain shell. Another machine's
+new session stays a shell, because chats are this computer's.
+
+## 53. Switch one agent session between terminal and chat (feature, `daemon`, `client`) — **owner**
+
+**Built in the window** (see [ADR 0056](adr/0056-an-agent-session-is-one-terminal-session-with-a-chat-view.md)): a new
+session is the agent in a terminal, opened as chat or terminal, and the chat's composer types into the terminal
+while the agent is idle. **Still to do:** show a permission prompt's question in the chat, a daemon-side typing
+gate, attachments, and the owner's acceptance of the ADR. Verify in a real window with Claude and with Codex.
+
+## 54. Line comments on a diff are gone with the session panel (decision, `client`) — cancelled
+
+**Dropped** by the owner, 2026-11-06. The panel's Changes diff let you comment on a line and send it to the
+agent; the panel was removed (README D.6) and the comment is not coming back in the Inspect panel. The leftover
+code that drew such a comment as a bubble in the chat is removed.
+
+## 55. Per-project defaults for a new session (feature, `client`)
+
+The v18 prototype's project defaults (folder inside the project, a command to run, a preset) decide what
+"New session here" opens. Not built; the default agent is global.
+
+## Resume here: chat PTY completion
+
+Branch `feat/chat-pty-completion` (from `origin/feat/overnight-2`).
+
+**Done (gap 1, a permission prompt in the chat):** the agent's `PermissionRequest` hook carries `PermissionAsk { tool, detail, answerable }` (tool name plus command/path/url only, never file content) to `TermInfo.ask`; the daemon cleans and masks it (`daemon/permission_ask.rs`), keeps it while the pane is Blocked, and sets `answerable` only for `claude`. The chat shows it as a card (`PermissionAskCard`): Approve once sends `1`, Deny sends Esc, and the composer points at the card. A Claude "Allow once" from the notice card or the Inbox also sends `1`. Tests: `PermissionAsk.test.tsx`, `App.handoff.test.tsx`, and the daemon, CLI, protocol and remote_policy tests. Not seen in a real window yet.
+
+**Not started:** gap 2 (`Command::ChatInput { term, input: ChatInput }` with `Message`/`Answer`/`Interrupt`, a daemon gate in a new `daemon/chat_input.rs`, a human-only arm in `may_command`, `PROTOCOL_VERSION` 73 -> 74, the `ids.rs` expected-bytes test, an API_PATTERNS "Protocol 74" paragraph, hub `PaneCommand`, an e2e test in `apps/gui/src-tauri/src/hub/tests/end_to_end.rs`). Design: Message only when Idle/Done with a hook session; refuse control characters (an Esc could end the bracketed paste early); Answer only with a pending answerable ask, then clear the ask; Interrupt always. Gap 3 (attachments) is not started.
+
+**Real key sequences (Claude Code 2.1.319, interactive, a Write permission prompt, driven in a PTY):** `1` allows once (file written, PostToolUse fired); Enter allows (default is Yes); Esc refuses (no file, no PostToolUse); `y` and `n` do nothing; `3` did nothing for that prompt. The `PermissionRequest` payload carries `tool_name`, `tool_input` and `permission_suggestions`; the following `Notification` only says "Claude needs your permission". Codex 0.166: could not reach an approval prompt in a PTY, so Codex shows the question and "Answer in the terminal."
+
+**Unverified:** Codex's `PermissionRequest` payload shape and answer keys; Claude prompts with a different number of options (only `1` was tested, on a Write prompt); `n` and "this session" from the Inbox for Claude (still sent as `n` and `a`); a real window end to end.
+
+## 52. No way to start a session on another machine from the terminal app (bug, `client`, `ssh`)
+
+Found by the owner on 2026-11-05, right after updating a machine from the sidebar. A machine with
+no sessions is one line in the sidebar, and its right-click menu has Reconnect, Update…, Edit… and
+Remove: nothing starts a session there. The guide says adding a machine lets you "create the first
+session from this computer", but the only way is the command line:
+`maitty new --on <machine> <folder> -- claude`.
+
+**What**
+- **New session…** on a machine's right-click menu and in the Machines dialog, asking for the
+  folder on that machine and what to run, as New does for this computer.
+- Check whether New can aim at a machine once it has sessions, and make the two agree.
+- The guide's *Machines* section says how.
+
+**Acceptance:** from a machine with no sessions, a session is started in a chosen folder without
+leaving the app, with a test on the scripted-ssh fixtures.
+
+## Added 2026-11-06: phase 5, borrowed from a read of GG Coder
+
+From a comparison with https://github.com/KenKaiii/gg-framework. Ideas only: its code is AGPL-3.0
+and is not copied. ADRs are named by title as well as number, because the ADR folder is being
+renumbered. A ticket that says `Blocked by N` is not started until ticket N is merged.
+
+## P5-1. Stopping the daemon leaves provider processes running on Linux and macOS (bug, `daemon`) — built, merged to test/integration, PR #289
+
+A structured conversation's provider (Codex app-server, Claude stream-json) runs in its own process
+group and is stopped only by `OwnedChild::stop` or its `Drop`
+(`crates/maitty-core/src/daemon/conversation/process.rs`). `KillServer` stops the panes and
+then calls `std::process::exit(0)` without stopping conversations (the `KillServer` arm in `daemon/commands.rs`),
+so no destructor runs. The first line of `daemon/contain.rs` promises "Every process the daemon starts goes when
+the daemon goes, however it goes". On Windows the job object keeps that promise; elsewhere only
+panes are covered. A provider left behind is a second writer for a conversation that restore marks
+recovery-required.
+
+**Reproduction:** a daemon with a conversation on the fake provider
+(`conversation/fixtures/fake_provider.rs`, which starts a child that parks with no stdin) is sent
+`KillServer`. The two pids in the fixture's `pids` file are still running. Expected: neither is.
+
+**What**
+- `KillServer` stops every conversation's process tree before the daemon exits.
+- Not the parent-death signal a check uses (`PR_SET_PDEATHSIG` in `daemon/check.rs`): it is tied to
+  the thread that started the process, and a provider is started from a `spawn_blocking` thread
+  (`OwnedChild::spawn`) that ends after about ten idle seconds, which would kill a healthy
+  provider. A provider that outlives a daemon that died is ticket P5-2's.
+
+**Acceptance**
+- A new test fails before the fix and passes after it, unedited: a stand-in daemon (the test binary
+  re-run, as `a_check_dies_with_the_daemon_that_started_it` does in `daemon/check.rs`) is sent
+  `KillServer`, and the fake provider and its child are gone within 5 s.
+- `docs/SECURITY.md` says what happens to a provider when the daemon goes, per platform, beside its
+  lines for checks ("If the daemon dies, a check dies with it").
+- The gate passes.
+
+**Not this ticket:** a daemon that dies without `KillServer` (SIGKILL, a crash) on Linux and macOS:
+ticket 54. Windows is already covered by its job object.
+
+## P5-2. A new daemon stops the provider processes an old one left (bug, `daemon`) — built, merged to test/integration (branch fix/sweep-orphaned-providers)
+
+Blocked by P5-1
+
+After a SIGKILL or a crash nothing in the dead daemon can run. A provider's children keep its
+process group, and on macOS the provider itself survives. Nothing on disk records them: the saved
+conversation holds no pid (`Conversation` in `crates/maitty-shared/src/conversation.rs`), and restore only
+marks the record recovery-required (`restore_startup` in `daemon/restore.rs`).
+
+**What** (Linux and macOS; Windows does nothing here)
+- When a provider starts, the daemon records its process group and the group leader's start time
+  in a file in the data folder, named for the socket as the pid file is (`<socket id>.providers`),
+  written atomically (`write_atomic`). The entry goes when the provider is stopped and reaped.
+- At start, once this daemon holds the socket and before restore, it kills every recorded group
+  that still has members, then empties the file. A group is skipped when a process with the
+  group's id is alive with a start time other than the recorded one: that pid was reused.
+- Each kill is one info line in `daemon.log`: the group and how many processes.
+
+**Acceptance**
+- A test on Linux and macOS: a stand-in daemon starts the fake provider and is killed with SIGKILL;
+  a second start on the same data folder leaves neither the provider nor its child running, and
+  the file empty.
+- A test with a recorded group whose id now belongs to an unrelated live process: nothing is
+  killed.
+- A clean stop leaves no entry. The saved session gains no pid.
+- `docs/DATABASE.md` lists the file. The gate passes.
+
+**Watch out:** a single-instance lock for the daemon is coming on branch `lucky-hare` (`ipc.rs`,
+`daemon/mod.rs`). The sweep runs only after this daemon is the one daemon for its socket, or it
+would kill a live daemon's providers.
+
+## P5-3. A table in a chat message is drawn as a table (feature, `client`) — built, merged to test/integration, PR #291
+
+The chat's markdown reader has no tables (the list of what is supported at the top of `apps/gui/src/features/chat/markdown.ts`), so an
+agent's table shows as lines of pipes.
+
+**What**
+- `parseMarkdown` gains a `table` block: a header row, a delimiter row (`|---|`, with `:` for
+  alignment) and body rows. A pipe line with no delimiter row under it stays a paragraph. Cells
+  hold inline markdown through `parseInline`; an escaped pipe is a pipe.
+- `components/Markdown.tsx` draws a real table (`<table>`, `<th scope="col">`) as a hairline grid,
+  the look the owner chose on 2026-11-06: existing tokens only (`border-line2`, `text-fg`,
+  `text-dim`), no shadow. A table wider than the message scrolls sideways inside its own named,
+  focusable region; the message itself never scrolls sideways.
+- A message that starts with a table: `components/ChatItems.tsx` draws the first paragraph (`lead`) with
+  `InlineMarkdown`, which would show the pipes. It is drawn as a table there too.
+
+**Acceptance**
+- `markdown.test.ts`: a table parses to header, alignments and rows; a pipe line with no delimiter
+  row stays a paragraph; cells with code, bold and a link parse; a `<script>` in a cell is text; a
+  cell over `INLINE_PARSE_LIMIT` is plain text.
+- A component test: a wide table sits in a named scroll region that Tab reaches.
+- Screenshots in a dark and a light theme, at 1440 px and at the 720 px minimum width, go to the
+  owner in the pull request.
+- `docs/DESIGN.md` describes the chat table. `pnpm test`, `pnpm lint`, `pnpm build` and the gate pass.
+
+**Not this ticket:** sorting, copying a table, resizing columns, tables in the terminal app's
+markdown preview.
+
+## P5-4. Half-arrived markdown does not flash while a reply streams (feature, `client`) — built, merged to test/integration, PR #292
+
+Blocked by P5-3
+
+The parser reads every state of a streaming reply as a finished document. An opened `**` shows as
+two asterisks until its closer arrives, then the text jumps to bold; with ticket P5-3 a table's
+header shows as a line of pipes until its delimiter row arrives.
+
+**What**, only for a message whose status is `running` (the `agent` row in `chatRows.ts`)
+- In the paragraph still being written, an unclosed `**`, `*`, `_`, backtick or `[label](` is
+  read as if it closed at the end of the text, so the text shows in its final form.
+- A table is not drawn until its delimiter row is complete for every header column.
+- A last line that is so far only a marker (`-`, `1.`, `#`, `>`) is held back until it has text.
+- Nothing is changed inside an open code fence.
+- A completed message is parsed as today: a mark that never closed shows as it was written.
+- One pure function in `markdown.ts`: the text and whether it is still streaming in, the text to
+  parse out.
+
+**Acceptance**
+- `markdown.test.ts`: each case above in its streaming and its completed form; for a message whose
+  marks all close, no prefix of it shows a raw mark that the whole message shows as formatting;
+  text inside an open fence is untouched.
+- A chat test: a running row is parsed as streaming and a completed row is not.
+- `pnpm test`, `pnpm lint`, `pnpm build` and the gate pass.
+
+**Not this ticket:** fading words in, pacing the text, parsing only the last block, folding long
+code. Nothing has measured a need for them.
+
+## P5-5. The chat stops following the newest message as soon as the reader scrolls up (change, `client`) — built, merged to test/integration, PR #290
+
+`VirtualList` follows the newest row while the view is within 48 px of the bottom
+(`isAtBottom` in `components/windowing.ts`, `onScroll` in `components/VirtualList.tsx`). While a reply streams, a
+reader who scrolls up a little is pulled back down by the next growth (the layout effect on `layout.total`),
+and a wheel move can be undone by growth that lands before its scroll event. No decision made it
+this way; it is how the list was first written.
+
+**What**
+- Any move up by the reader (wheel, keys, dragging the bar, touch) stops following at once, however
+  small. A wheel-up stops it before its scroll event arrives.
+- Following starts again only when the reader moves down to within `FOLLOW_THRESHOLD_PX` of the
+  bottom, or uses **Jump to the latest message**. The button shows whenever the list is not
+  following.
+- A scroll the list caused itself (its own write to `scrollTop`, a measured row, a resized pane)
+  never changes following.
+- The rule is a pure function in `windowing.ts`.
+
+**Acceptance**
+- `windowing.test.ts`: up by 1 px inside the threshold stops following; down to within the
+  threshold resumes it; a scroll the list caused changes nothing; a link to a row (`scrollTarget`)
+  still stops following.
+- A `VirtualList` test: while not following, a growing last row does not move `scrollTop`, and the
+  button is shown.
+- `pnpm test`, `pnpm lint`, `pnpm build` and the gate pass.
+
+**Not this ticket:** keeping the view still when rows above it are measured; a count of new
+messages on the button.
+
+## P5-6. `maitty hook` reports a fingerprint of each tool call (feature, `daemon`) — built, merged to test/integration (branch feat/hook-call-fingerprint)
+
+Intent: [a working agent that repeats itself says so](features/repeating-agent/intent.md).
+
+The daemon knows that a tool ran, not which: `ClientMsg::Hook` carries the event name only
+(`ClientMsg::Hook` in `crates/maitty-shared/src/protocol.rs`), though the agent gives `maitty hook` the tool's
+name and input on stdin.
+
+**What**
+- `ClientMsg::Hook` gains `#[serde(default)] call: Option<String>`: 16 hex characters, the first
+  8 bytes of SHA-256 over the tool's name and its input as `serde_json` writes it (`sha2` is
+  already a dependency). `hook_message` (`crates/maitty-terminal-client/src/cli.rs`)
+  fills it for a tool-start event read from stdin: `PreToolUse` (Claude, Qwen, Codex) and
+  `BeforeTool` (Gemini). It is `None` for every other event and agent.
+- The tool's name and input are not sent, kept or logged.
+- The daemon checks the value where it first uses it, in P5-7 (16 hex characters, else dropped).
+- No `PROTOCOL_VERSION` bump: a test decodes a hook from before the field, as the existing
+  "a hook from before the field" test in `protocol.rs` does.
+
+**Acceptance**
+- Tests: the same name and input give the same fingerprint; another input gives another; an event
+  with no tool gives none; a hook without the field decodes. (The daemon's check of the value is
+  P5-7's, with its test.)
+- `docs/API_PATTERNS.md` lists the field; `docs/SECURITY.md` says the report carries a fingerprint
+  and never the input. The gate passes.
+
+**Not this ticket:** new hook events for any agent (Codex would ask for its hooks to be trusted
+again); Kimi, Mastracode, Kilo, OpenCode, Pi and OMP, whose hooks pass no tool input.
+
+## P5-7. The daemon marks a working agent that repeats itself (feature, `daemon`) — built, merged to test/integration (branch feat/repeating-mark)
+
+Blocked by P5-6
+
+**What**
+- Per pane, in memory only, the daemon keeps the fingerprints of the current turn's tool calls. A
+  new prompt, leaving working, or the agent exiting clears them.
+- An agent is repeating when its newest call has the same fingerprint as the four before it (five
+  in a row), or its last eight calls are two fingerprints taking turns. `TermInfo` gains
+  `#[serde(default)] repeats: Option<u32>`: how many calls the run has reached, growing while it
+  goes on; `None` otherwise. A different call clears it.
+- It never changes status, never rings, never enters the Inbox and is not saved with the session.
+  `quiet_since` in `daemon/status.rs` is the model.
+- Each change is one info line in `daemon.log` with the pane, the agent and the count, and nothing
+  about the call.
+- From another machine the count is clamped as its other numbers are
+  (`clamp_term` in `crates/maitty-machines/src/remote_snapshot.rs`).
+- No `PROTOCOL_VERSION` bump: a test decodes a pane from before the field.
+
+**Acceptance**
+- `daemon/logic_tests.rs`, beside the quiet tests (`silent_working_agent` to `going_quiet_rings_no_alert`): four the same is nothing; five is
+  5 and a sixth is 6; a different call clears it; eight calls of two taking turns is 8; a new
+  prompt clears it; status stays working; nothing rings.
+- A decode test for the old shape and a clamp test for a remote snapshot. The gate passes.
+
+**Not this ticket:** failed calls in a row (Later); stopping or nudging the agent.
+
+## P5-8. The terminal app, `ls`, `maitty_list` and `wait` say when an agent is repeating itself (feature, `client`) — built, merged to test/integration (branch feat/repeating-display)
+
+Blocked by P5-7
+
+**What:** everywhere quiet is shown, except the Inbox.
+- The sidebar row's second line reads `repeating 6x` in the muted colour, beside `N agents`
+  (`status_words` in `crates/maitty-terminal-client/src/client/screen/side.rs`).
+- `ls` reads `claude: working · repeating 6x` (`agent_tag` in `cli.rs`); `ls --json` has
+  `repeats` while working (`pane_json`); `maitty_list` shows it on the row
+  (where `cli/mcp.rs` adds `quiet_since`); `wait` and `maitty_wait` say `still working, but repeating itself
+  (6x)` when they time out (it can be two calls taking turns, so not "the same call") (the `Waited::TimedOut` messages in `cli.rs` and `cli/mcp.rs`).
+- Nothing in the Inbox, no popup, no sound, nothing in the desktop app.
+
+**Acceptance**
+- A drawn-frame test like `a_quiet_agent_says_how_long_on_its_row` (`side.rs`), at 80x24.
+- CLI and MCP tests beside the quiet ones (`ls_says_how_long_a_working_agent_has_been_quiet` in `cli.rs`, and its
+  twin in `cli/mcp.rs`); a hostile count from another machine beside the hostile `quiet_since` in
+  `machine_group_tests.rs`.
+- `docs/agent-status.md`, `docs/UI.md` (card row 2 and the working row of the status table),
+  `docs/API_PATTERNS.md` and `docs/guide.md` describe it where they describe quiet. The gate passes.
+
+## P5-9. The built Linux package is launched on every push to `dev` (chore, `tooling`)
+
+CI builds the desktop installers on each push to `dev` and never starts one
+(the four `desktop package` jobs in `.github/workflows/ci.yml`). A package that builds but cannot start, or cannot find its
+bundled daemon, is only found by hand: the package checks of 2026-10-29 recorded in `docs/ROADMAP.md`
+(phase 37) were all manual.
+
+**What**
+- `scripts/smoke-desktop-linux.sh <deb>` unpacks the `.deb` with `dpkg-deb -x` (nothing is
+  installed), starts the app under `xvfb-run` and `dbus-run-session` with `MAITTY_DATA_DIR`,
+  `MAITTY_CONFIG`, `MAITTY_SOCKET` and `XDG_RUNTIME_DIR` set to fresh temporary values, and waits
+  15 s. It passes when the app is still running and `<data folder>/<socket id>.pid` names a live
+  process started as `maitty-gui-daemon… daemon`. Pass or fail, it stops both and removes the
+  temporary folders; on a failure it prints `daemon.log`.
+- The `desktop package (Linux)` job runs it after the build, in a step with `timeout-minutes: 3`.
+
+**Acceptance**
+- The step is green on a push to `dev`; the pull request links the run.
+- Shown red once: with the bundled daemon removed from the unpacked tree the script exits non-zero.
+  The pull request quotes that run.
+- The script leaves no process behind, and checks that it did not.
+- Pull request checks are unchanged: the package jobs run on a push only (the comment at the top
+  of `ci.yml`).
+- `docs/TESTING.md` says what the smoke proves (the package starts and finds its daemon) and what
+  it does not (nobody looks at the window). The gate passes.
+
+**Not this ticket:** the rpm, AppImage, Arch and macOS packages; clicking anything; the
+**Key to echo** figure.
+
+## P5-10. The built Windows package is launched on every push to `dev` (chore, `tooling`, `windows`)
+
+Blocked by P5-9
+
+The same rule on Windows. `scripts/smoke-desktop-windows.ps1 <msi>` unpacks the MSI with
+`msiexec /a` (an admin image, nothing installed, as was done by hand on 2026-10-29), starts the
+exe with the same isolated variables, applies the same pass rule and stops both. The
+`desktop package (Windows)` job runs it as one command, so the script's exit code is the step's
+(a PowerShell step of several lines reports only its last line).
+
+**Acceptance:** as ticket P5-9, on `windows-latest`: green on a push to `dev`, shown red once with
+the bundled daemon removed, no process left behind, `docs/TESTING.md` updated. The gate passes.

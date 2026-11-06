@@ -1,4 +1,4 @@
-//! Hairline (ADR 0026): the workspace with no boxes. A sidebar of one-line sessions beside a
+//! Hairline: the workspace with no boxes. A sidebar of one-line sessions beside a
 //! `│`, each pane a title row over a `─` rule whose colour is its state, `│` / `─` between
 //! panes, the session's tabs in a row over the panes, and a rule over the mode bar. Always square, whatever `ui.rounded` says.
 //!

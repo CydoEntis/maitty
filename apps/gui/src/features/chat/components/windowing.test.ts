@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildLayout, isAtBottom, visibleRange } from './windowing'
+import { buildLayout, followAfterScroll, FOLLOW_THRESHOLD_PX, isAtBottom, visibleRange, type FollowState } from './windowing'
 
 const keys = (count: number) => Array.from({ length: count }, (_, index) => `row-${String(index)}`)
 
@@ -47,5 +47,46 @@ describe('following the newest row', () => {
     expect(isAtBottom(1_000, 600, 1_600)).toBe(true)
     expect(isAtBottom(980, 600, 1_600)).toBe(true)
     expect(isAtBottom(500, 600, 1_600)).toBe(false)
+  })
+})
+
+describe('whether the list follows its newest row after a scroll', () => {
+  const viewport = 600
+  const total = 2_000
+  const bottom = total - viewport
+  const following: FollowState = { following: true, top: bottom, total }
+  const reading: FollowState = { following: false, top: 500, total }
+  const at = (scrollTop: number, atTotal = total) => ({ scrollTop, viewport, total: atTotal })
+
+  it('stops as soon as the reader moves up, however little and however near the bottom', () => {
+    expect(followAfterScroll(following, at(bottom - 1), false).following).toBe(false)
+    expect(bottom - 1).toBeGreaterThan(bottom - FOLLOW_THRESHOLD_PX)
+  })
+
+  it('starts again only when the reader moves down to within the threshold of the bottom', () => {
+    expect(followAfterScroll(reading, at(bottom - FOLLOW_THRESHOLD_PX), false).following).toBe(true)
+    expect(followAfterScroll(reading, at(bottom - FOLLOW_THRESHOLD_PX - 1), false).following).toBe(false)
+    expect(followAfterScroll(reading, at(900), false).following).toBe(false)
+  })
+
+  it('does not start again when the reader stays where they are inside the threshold', () => {
+    const nearBottom: FollowState = { following: false, top: bottom - 10, total }
+    expect(followAfterScroll(nearBottom, at(bottom - 10), false).following).toBe(false)
+  })
+
+  it('ignores a scroll the list caused itself', () => {
+    expect(followAfterScroll(following, at(100), true).following).toBe(true)
+    expect(followAfterScroll(reading, at(bottom), true).following).toBe(false)
+  })
+
+  it('ignores the browser pulling the view in after the list got shorter', () => {
+    const clamped = followAfterScroll(following, at(1_100, 1_700), false)
+    expect(clamped.following).toBe(true)
+    expect(clamped.top).toBe(1_100)
+    expect(clamped.total).toBe(1_700)
+  })
+
+  it('remembers where the view is, so the next move has a direction', () => {
+    expect(followAfterScroll(reading, at(400), false).top).toBe(400)
   })
 })

@@ -2,9 +2,20 @@
 //! web view's own processes and the daemons are using. Settings › Performance and the overlay
 //! ask for a sample once a second while they are shown; nothing is sampled otherwise.
 use serde::Serialize;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
-use sysinfo::{Pid, Process, ProcessRefreshKind, ProcessesToUpdate, System};
+use sysinfo::{Pid, Process, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 use tauri::Manager;
+
+/// Terminal frames the host has handed to the window's channel since it started. Read next to the
+/// window's own count of frames received: a gap that stays open while nothing is typed means the
+/// frames are lost, or held, between the two (ticket 35).
+static TERMINAL_FRAMES_SENT: AtomicU64 = AtomicU64::new(0);
+
+/// One terminal frame was handed to the window's channel.
+pub fn count_terminal_frame_sent() {
+    TERMINAL_FRAMES_SENT.fetch_add(1, Ordering::Relaxed);
+}
 
 /// The process table, kept between samples: a CPU share is the work done since the last refresh,
 /// so the first sample of a process reads as 0.
@@ -31,36 +42,30 @@ pub struct ProcessSample {
     pub webview: Vec<ProcessLoad>,
     /// Every daemon of this product on the machine, whoever started it.
     pub daemons: Vec<ProcessLoad>,
+    /// Terminal frames sent to the window since the host started; never reset.
+    pub terminal_frames_sent: u64,
 }
 
 #[tauri::command]
 pub fn performance_sample(app: tauri::AppHandle) -> Result<ProcessSample, String> {
-    let product = app.package_info().name.to_ascii_lowercase();
     let stats = app.state::<ProcessStats>();
     let mut system = stats
         .0
         .lock()
         .map_err(|_| "The process table is unavailable".to_string())?;
     let system = system.get_or_insert_with(System::new);
-    system.refresh_processes_specifics(
-        ProcessesToUpdate::All,
-        true,
-        ProcessRefreshKind::nothing().without_tasks(),
-    );
+    system.refresh_processes_specifics(ProcessesToUpdate::All, true, identity_refresh());
     let host_pid = Pid::from_u32(std::process::id());
     let mut interesting: Vec<Pid> = vec![host_pid];
     for (pid, process) in system.processes() {
-        if process.parent() == Some(host_pid) || is_daemon(process, &product) {
+        if process.parent() == Some(host_pid) || is_daemon(process) {
             interesting.push(*pid);
         }
     }
     system.refresh_processes_specifics(
         ProcessesToUpdate::Some(&interesting),
         true,
-        ProcessRefreshKind::nothing()
-            .without_tasks()
-            .with_cpu()
-            .with_memory(),
+        identity_refresh().with_cpu().with_memory(),
     );
     let host = system
         .process(host_pid)
@@ -72,7 +77,7 @@ pub fn performance_sample(app: tauri::AppHandle) -> Result<ProcessSample, String
         if *pid == host_pid {
             continue;
         }
-        if is_daemon(process, &product) {
+        if is_daemon(process) {
             daemons.push(load_of(process));
         } else if process.parent() == Some(host_pid) {
             webview.push(load_of(process));
@@ -87,18 +92,28 @@ pub fn performance_sample(app: tauri::AppHandle) -> Result<ProcessSample, String
         host,
         webview,
         daemons,
+        terminal_frames_sent: TERMINAL_FRAMES_SENT.load(Ordering::Relaxed),
     })
 }
 
-/// A daemon is this product's executable started with the fixed `daemon` argument, which is how
-/// the host, the CLI and the TUI all start one.
-fn is_daemon(process: &Process, product: &str) -> bool {
-    let name = process.name().to_string_lossy().to_ascii_lowercase();
-    name.starts_with(product)
-        && process
-            .cmd()
-            .get(1)
-            .is_some_and(|argument| argument.to_string_lossy() == "daemon")
+/// What it takes to tell a process by its command line. `nothing()` leaves the command line
+/// unread, so every process looked like it had none and no daemon was ever found (ticket 38).
+fn identity_refresh() -> ProcessRefreshKind {
+    ProcessRefreshKind::nothing()
+        .without_tasks()
+        .with_cmd(UpdateKind::OnlyIfNotSet)
+}
+
+/// A daemon is this product's executable, or the copy the desktop app bundles, started with the
+/// fixed `daemon` argument, which is how the host, the CLI and the TUI all start one.
+fn is_daemon(process: &Process) -> bool {
+    let cmd = process.cmd();
+    cmd.first().is_some_and(|program| {
+        maitty_desktop_client::is_daemon_invocation(
+            program.as_encoded_bytes(),
+            cmd.get(1).map(|argument| argument.as_encoded_bytes()),
+        )
+    })
 }
 
 fn load_of(process: &Process) -> ProcessLoad {
@@ -136,7 +151,16 @@ mod tests {
     fn the_test_runner_is_not_a_daemon() {
         let (system, pid) = system_with_self();
         let process = system.process(pid).expect("this process is in the table");
-        assert!(!is_daemon(process, ""));
+        assert!(!is_daemon(process));
+    }
+
+    #[test]
+    fn a_refresh_reads_the_command_line_a_daemon_is_told_by() {
+        let mut system = System::new();
+        let pid = Pid::from_u32(std::process::id());
+        system.refresh_processes_specifics(ProcessesToUpdate::Some(&[pid]), true, identity_refresh());
+        let process = system.process(pid).expect("this process is in the table");
+        assert!(!process.cmd().is_empty());
     }
 
     #[test]

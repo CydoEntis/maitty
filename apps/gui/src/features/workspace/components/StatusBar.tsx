@@ -19,8 +19,12 @@ const THEME_MODES: readonly { id: ThemeMode; label: string }[] = [
 ]
 const COMMON_THEMES = 6
 
+/** The machine the focused pane runs on: shown only while more than one machine is configured, so the common case stays quiet. */
+export type FocusMachine = { name: string; word: string; tone: 'ok' | 'quiet' | 'warn' | 'bad' }
+
 type Props = {
   online: boolean
+  machine: FocusMachine | null
   themeMode: ThemeMode
   /** Whether the theme in use is a light one: the quick list shows the themes of that kind. */
   lightInUse: boolean
@@ -50,6 +54,13 @@ export const StatusBar = memo(function StatusBar(props: Props) {
         <span className="mx-sb-item is-offline" role="status">
           <span className="mx-daemon-dot is-offline" aria-hidden="true" />
           Reconnecting to maittyd…
+        </span>
+      )}
+      {props.machine !== null && (
+        <span className="mx-sb-item mx-sb-machine" role="status" aria-label={`Focused pane runs on ${props.machine.name}, ${props.machine.word}`}>
+          <span className={`mx-sb-machine-dot is-${props.machine.tone}`} aria-hidden="true" />
+          <strong>{props.machine.name}</strong>
+          <span className="mx-sb-machine-word">{props.machine.word}</span>
         </span>
       )}
       <span className="mx-spacer" />

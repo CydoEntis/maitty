@@ -4,6 +4,7 @@ mod attachment;
 mod image_paste;
 pub mod hub;
 mod machines;
+mod output_socket;
 mod performance;
 mod project_files;
 pub mod routing;
@@ -246,28 +247,6 @@ async fn new_worktree_session(
     maitty_desktop_client::new_worktree_session(term, branch, base, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
-}
-
-#[tauri::command]
-async fn new_branch_agent(
-    app: tauri::AppHandle,
-    wire: tauri::State<'_, terminal_stream::Wire>,
-    machine: Option<u16>,
-    project: PathBuf,
-    branch: String,
-    agent: String,
-    prompt: String,
-) -> Result<serde_json::Value, String> {
-    wire.require_local(machine, "A new agent on a branch")?;
-    maitty_desktop_client::new_branch_agent(
-        project,
-        branch,
-        agent,
-        prompt,
-        daemon_executable(&app)?,
-    )
-    .await
-    .map_err(|error| format!("{error:#}"))
 }
 
 #[tauri::command]
@@ -539,7 +518,7 @@ async fn end_conversation(
         .map_err(|error| format!("{error:#}"))
 }
 
-/// A chat session (ADR 0054): a structured Claude or Codex conversation the daemon owns, in `cwd` or,
+/// A chat session (ADR 0003): a structured Claude or Codex conversation the daemon owns, in `cwd` or,
 /// with `branch`, in a new worktree of the project at `cwd`. The session asks before a tool use the
 /// provider does not allow by itself, unless `full_access` is true (the provider's skip-permissions mode).
 #[tauri::command]
@@ -627,6 +606,11 @@ pub fn run() {
         .manage(add_machine::AddProbe::default())
         .manage(file_send::Transfers::default())
         .setup(|app| {
+            // The development server's origin is let in only by a debug build.
+            let dev_origin = cfg!(debug_assertions)
+                .then(|| app.config().build.dev_url.as_ref().map(|url| url.origin().ascii_serialization()))
+                .flatten();
+            app.manage(output_socket::OutputSocket::start(dev_origin));
             terminal_stream::start(
                 app.handle().clone(),
                 app.state::<machines::Machines>().0.machines.clone(),
@@ -658,6 +642,8 @@ pub fn run() {
             default_session_folder,
             terminal_stream::terminal_history,
             terminal_stream::watch_terminal_output,
+            terminal_stream::list_folders,
+            output_socket::open_terminal_socket,
             terminal_screen,
             terminal_replay,
             send_terminal_input,
@@ -670,7 +656,6 @@ pub fn run() {
             search_panes,
             usage_report,
             new_worktree_session,
-            new_branch_agent,
             restore_snapshot,
             start_terminal_session,
             start_shell_session,

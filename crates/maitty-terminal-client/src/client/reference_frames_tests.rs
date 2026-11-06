@@ -28,11 +28,11 @@
 //! - the C2 Inbox's footnote is an annotation, not a screen line;
 //! - a failure's buttons end in Send to agent, which the reference predates: under 100 columns
 //!   it takes the evidence sheet's Open session, and the Inbox has no room for it;
-//! - the sidebar's column is not compared: it is the Local and Remote cards of the sidebar handoff
-//!   (ADR 0050), tested in `screen::side`;
+//! - the sidebar's column is not compared: it is the Local and Remote cards of the sidebar handoff,
+//!   tested in `screen::side`;
 //! - pill caps (`ui.rounded = full`, a Nerd Font option, off by default) are off, so buttons have
 //!   square ends;
-//! - the mode bar along the bottom (ADR 0024) is not the reference's: `reference_fixture::cells` draws
+//! - the mode bar along the bottom is not the reference's: `reference_fixture::cells` draws
 //!   a row taller and leaves out that row, the bar's.
 
 use super::reference_fixture::{Layout, Stage, cells, frame, world};
@@ -67,7 +67,7 @@ fn blocks(file: &str) -> Vec<Block> {
     for line in file.lines() {
         if let Some(head) = line.strip_prefix("===== ") {
             let parts: Vec<&str> = head.split(" | ").collect();
-            // The reference's Flat frames are of a look the app no longer has (ADR 0027).
+            // The reference's Flat frames are of a look the app no longer has.
             let layout = match parts[0] {
                 "floating" => Some(Layout::Floating),
                 "tiled" => Some(Layout::Tiled),
@@ -516,7 +516,7 @@ fn app_sidebar(
             rows.insert(rows.len() - 1, vec![' '; inner_w]);
         }
     }
-    // Sessions are one line now, each with its agent's mark (ADR 0021).
+    // Sessions are one line now, each with its agent's mark.
     let n = rows.len();
     let foot_row = rows.pop().expect("the foot");
     let mut rows = super::reference_fixture::as_one_line_rows(rows, ascii, ANY);
@@ -805,7 +805,7 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
         }
     }
     // The reference drew the tabs in the pane's top border; the app gives them a row of their
-    // own over the panes (ADR 0028), so the pane column's top rows, down to the box's top now,
+    // own over the panes, so the pane column's top rows, down to the box's top now,
     // are the app's (`frame_tests` holds the tab row and the title).
     if let Some(p) = g.pane {
         let top = 1;

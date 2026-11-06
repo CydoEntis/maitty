@@ -71,6 +71,8 @@ export function machineChip(state: MachineState): MachineChip {
 /** One machine's header in the sidebar. `name` is null for this computer. */
 export type MachineHead = {
   key: string
+  /** The number the host gave the machine this run; what a command for it takes. */
+  machine: number
   name: string | null
   label: string
   chip: MachineChip | null
@@ -109,8 +111,8 @@ export function machineHeads(machines: ReadonlyMap<number, RemoteMachine>): Mach
   if (machines.size === 0) return []
   const others = [...machines.entries()]
     .sort(([a], [b]) => a - b)
-    .map(([id, machine]): MachineHead => ({ key: `machine-${String(id)}`, name: machine.state.name, label: machine.state.name, chip: machineChip(machine.state), why: machine.state.why, down: isDown(machine.state), downSince: machine.state.since ?? null, grants: { clipboard: machine.state.clipboard === true, notices: machine.state.notices === true }, updateCommand: updateCommandOf(machine.state) }))
-  return [{ key: 'machine-0', name: null, label: THIS_COMPUTER, chip: null, why: null, down: false, downSince: null, grants: { clipboard: false, notices: false }, updateCommand: null }, ...others]
+    .map(([id, machine]): MachineHead => ({ key: `machine-${String(id)}`, machine: id, name: machine.state.name, label: machine.state.name, chip: machineChip(machine.state), why: machine.state.why, down: isDown(machine.state), downSince: machine.state.since ?? null, grants: { clipboard: machine.state.clipboard === true, notices: machine.state.notices === true }, updateCommand: updateCommandOf(machine.state) }))
+  return [{ key: 'machine-0', machine: LOCAL_MACHINE, name: null, label: THIS_COMPUTER, chip: null, why: null, down: false, downSince: null, grants: { clipboard: false, notices: false }, updateCommand: null }, ...others]
 }
 
 /**

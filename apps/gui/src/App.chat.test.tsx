@@ -47,6 +47,7 @@ vi.mock('@/api/machines', async (importOriginal) => ({
   listenMachineError: () => Promise.resolve(() => undefined),
   listenMachineRemoved: () => Promise.resolve(() => undefined),
   listenMachineNotice: () => Promise.resolve(() => undefined),
+  listenAttention: () => Promise.resolve(() => undefined),
   listenMachineClipboard: () => Promise.resolve(() => undefined),
 }))
 
@@ -151,15 +152,17 @@ describe('the Terminal | Chat view of a pane', () => {
     daemon.loadConversations.mockResolvedValue([term(3)])
     renderDesktopApp()
     const pane = await screen.findByRole('region', { name: /^Terminal 1/ })
+    // A plain shell has no chat, so its pane has no Terminal | Chat switch; the shortcut still shows why.
+    expect(within(pane).queryByRole('radiogroup', { name: 'Pane view' })).not.toBeInTheDocument()
 
-    await user.click(within(pane).getByRole('radio', { name: /^Chat view/ }))
+    await user.keyboard('{Control>}{Shift>}e{/Shift}{/Control}')
     expect(within(pane).getByRole('heading', { name: 'Chat view is for agent sessions' })).toBeInTheDocument()
 
     await user.click(within(pane).getByRole('button', { name: 'Start claude here' }))
     expect(daemon.sendTerminalInput).toHaveBeenCalledWith({ id: 't3', generation: 0 }, 'claude\r')
     expect(within(pane).queryByRole('region', { name: 'Chat' })).not.toBeInTheDocument()
 
-    await user.click(within(pane).getByRole('radio', { name: /^Chat view/ }))
+    await user.keyboard('{Control>}{Shift>}e{/Shift}{/Control}')
     await user.click(within(pane).getByRole('button', { name: 'Back to terminal' }))
     expect(within(pane).queryByRole('region', { name: 'Chat' })).not.toBeInTheDocument()
   })
@@ -170,7 +173,7 @@ describe('the Terminal | Chat view of a pane', () => {
     renderDesktopApp()
     const pane = await screen.findByRole('region', { name: /^Terminal 1/ })
 
-    await user.click(within(pane).getByRole('radio', { name: /^Chat view/ }))
+    await user.keyboard('{Control>}{Shift>}e{/Shift}{/Control}')
     expect(within(pane).getByText(/gemini has no event stream/)).toBeInTheDocument()
     expect(within(pane).queryByRole('button', { name: /Start claude here/ })).not.toBeInTheDocument()
   })

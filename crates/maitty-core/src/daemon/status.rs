@@ -53,6 +53,8 @@ static CHOICES: std::sync::LazyLock<regex::Regex> =
 static CODEX_QUEUED_QUESTION: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
     regex::Regex::new(crate::config::CODEX_QUEUED_QUESTION_PATTERN).unwrap()
 });
+/// What an agent's conversation file is called before it exists (Claude's `<session>.jsonl`).
+const TRANSCRIPT_EXTENSION: &str = "jsonl";
 const CODEX_QUESTION_WHY: &str = "screen: Codex has an unanswered question";
 /// Why a turn that ended without a turn-end report is read as cancelled; nothing was finished,
 /// so nothing is checked.
@@ -110,6 +112,8 @@ impl Daemon {
             model,
             name,
             background,
+            ask,
+            call,
             ..
         } = msg
         else {
@@ -143,6 +147,13 @@ impl Daemon {
                     t.subagent_hooks_seen = false;
                 }
                 t.session = Some(id.clone());
+            }
+            // A new prompt starts a new turn: five of one call means in one turn.
+            if matches!(event.as_str(), "UserPromptSubmit" | "BeforeAgent") {
+                t.call_run.clear();
+            }
+            if let Some(call) = call.as_deref().and_then(super::repeats::parse_call) {
+                t.call_run.push(call);
             }
             if let Some(sa) = subagent {
                 if agent == "codex" && matches!(event.as_str(), "SubagentStart" | "SubagentStop") {
@@ -255,10 +266,20 @@ impl Daemon {
                     }
                 }
             }
+            // The prompt a permission hook reports is the question, until the agent moves on. A
+            // subagent's news (`Same`) and the ping that follows the prompt leave it alone.
+            if event == "PermissionRequest" {
+                t.ask = ask.and_then(|ask| super::permission_ask::clean_ask(ask, &agent));
+            } else if status != HookStatus::Same && !event.starts_with("Notification:") {
+                t.ask = None;
+            }
             if let Some(s) = said {
                 t.said = s;
             }
-            if let Some(tr) = transcript.filter(|p| p.is_file()) {
+            // Kept before the file exists: a new session's hook names it at SessionStart, and the agent
+            // writes it only at the first prompt. Waiting for the file left a chat-first session with no
+            // chat to type its first message in. A read checks the path itself (`follow::checked_path`).
+            if let Some(tr) = transcript.filter(|p| p.is_file() || p.extension().is_some_and(|ext| ext == TRANSCRIPT_EXTENSION)) {
                 t.transcript = Some(tr);
             }
             if let Some(p) = prompt.filter(|p| !p.trim().is_empty()) {
@@ -327,7 +348,6 @@ impl Daemon {
             t.last_hook_at = Some(Instant::now());
             self.dirty = true;
         }
-        let focused = self.focused_term() == Some(term) && self.has_viewer();
         if matches!(status, HookStatus::Done | HookStatus::Idle)
             && let Some(dest) = self
                 .terms
@@ -365,8 +385,7 @@ impl Daemon {
             HookStatus::Same => {
                 // A subagent finished: if the turn was waiting on it, it's done now.
                 if t.subagents.is_empty() && t.done_held.take().is_some() {
-                    let s = if focused { Status::Idle } else { Status::Done };
-                    self.set_status(term, s, "hook: its last subagent finished");
+                    self.set_status(term, Status::Done, "hook: its last subagent finished");
                 }
                 self.dirty = true;
                 return;
@@ -393,7 +412,7 @@ impl Daemon {
                 return;
             }
             // After a restart, a session that was done and unseen comes back done.
-            HookStatus::Idle if std::mem::take(&mut t.restore_unseen) && !focused => Status::Done,
+            HookStatus::Idle if std::mem::take(&mut t.restore_unseen) => Status::Done,
             HookStatus::Gone => {
                 t.hooked = false;
                 t.lifecycle_hooks = false;
@@ -419,7 +438,6 @@ impl Daemon {
             HookStatus::Working => Status::Working,
             HookStatus::Blocked => Status::Blocked,
             HookStatus::Idle => Status::Idle,
-            HookStatus::Done if focused => Status::Idle,
             HookStatus::Done => Status::Done,
         };
         t.hooked = true;
@@ -603,7 +621,28 @@ impl Daemon {
         }
     }
 
-    /// Tell attached clients `term` needs attention, and queue the desktop alert for it.
+    /// Tell one window that `term` needs attention: the one a person used last, else the newest
+    /// that can hear it. Every window hearing it would make each play its own sound.
+    pub(super) fn tell_attention(&self, term: TermId, status: Status) {
+        let hears = |c: &Client| {
+            c.attach && !c.rejected && c.structured.is_none() && self.shown_to(term, c.surface)
+        };
+        let used = self
+            .last_used
+            .filter(|id| self.clients.get(id).is_some_and(hears));
+        let newest = || {
+            self.clients
+                .iter()
+                .filter(|(_, c)| hears(c))
+                .map(|(id, _)| *id)
+                .max()
+        };
+        if let Some(id) = used.or_else(newest) {
+            self.send(id, ServerMsg::Attention { term, status });
+        }
+    }
+
+    /// Tell a window `term` needs attention, and queue the desktop alert for it.
     pub(super) fn announce(&mut self, term: TermId, status: Status) {
         if status == Status::Done && self.terms.get(&term).is_some_and(|t| t.awaiting_background) {
             return;
@@ -630,7 +669,7 @@ impl Daemon {
         // Every sound a window plays starts here or in `check_settled`: log it, so a sound
         // nobody expected can be traced.
         tracing::info!("pane {term}: windows told {status:?} (they may play its sound)");
-        self.broadcast(|c| c.attach, ServerMsg::Attention { term, status });
+        self.tell_attention(term, status);
         if (status != Status::Done || !self.is_helper(term))
             && let Some(t) = self.terms.get_mut(&term)
             && let Some(delay) = crate::alert::settle_delay(status)
@@ -804,7 +843,6 @@ impl Daemon {
                 }
             }
         }
-        let focused = self.has_viewer().then(|| self.focused_term()).flatten();
         let window = Duration::from_millis(self.cfg.detection.working_window_ms);
         let grace = Duration::from_millis(self.cfg.detection.echo_grace_ms);
         let rows = self.cfg.detection.pattern_rows;
@@ -867,8 +905,6 @@ impl Daemon {
                     t.id,
                     if working {
                         Status::Working
-                    } else if Some(t.id) == focused {
-                        Status::Idle
                     } else {
                         Status::Done
                     },
@@ -890,10 +926,8 @@ impl Daemon {
                 && (t.status == Status::Working || has_active_children)
                 && (!t.hooked || t.last_output.elapsed() >= SCREEN_DONE_QUIET)
             {
-                let status = if t.status == Status::Working && Some(t.id) != focused {
+                let status = if t.status == Status::Working {
                     Status::Done
-                } else if t.status == Status::Working {
-                    Status::Idle
                 } else {
                     t.status
                 };
@@ -921,9 +955,6 @@ impl Daemon {
                 {
                     changes.push((t.id, t.status, format!("screen: matched `{pattern}`")));
                 }
-                if t.status == Status::Done && Some(t.id) == focused {
-                    changes.push((t.id, Status::Idle, "you're looking at it".to_string()));
-                }
                 // Subagents went quiet for good (one died without reporting): don't hold "done"
                 // forever.
                 if t.done_held
@@ -933,11 +964,7 @@ impl Daemon {
                 {
                     changes.push((
                         t.id,
-                        if Some(t.id) == focused {
-                            Status::Idle
-                        } else {
-                            Status::Done
-                        },
+                        Status::Done,
                         "subagents went quiet".to_string(),
                     ));
                 }
@@ -982,11 +1009,7 @@ impl Daemon {
                     if !asking {
                         changes.push((
                             t.id,
-                            if Some(t.id) == focused {
-                                Status::Idle
-                            } else {
-                                Status::Done
-                            },
+                            Status::Done,
                             "screen: the question settled itself".to_string(),
                         ));
                     }
@@ -1044,7 +1067,6 @@ impl Daemon {
                 let status = if status == Status::Idle && !signal.visible_idle && still_going {
                     Status::Working
                 } else if status == Status::Idle
-                    && Some(t.id) != focused
                     && matches!(t.status, Status::Working | Status::Done)
                 {
                     Status::Done
@@ -1058,8 +1080,6 @@ impl Daemon {
                 (Status::Working, why)
             } else if still_going {
                 (Status::Working, "screen: still printing".to_string())
-            } else if Some(t.id) == focused {
-                (Status::Idle, "screen: quiet, and you're on it".to_string())
             } else if matches!(t.status, Status::Working | Status::Done) {
                 (Status::Done, "screen: went quiet after working".to_string())
             } else {
@@ -1132,10 +1152,21 @@ impl Daemon {
             }
             self.set_status(id, s, &why);
         }
-        for t in self.terms.values_mut() {
+        for (id, t) in &mut self.terms {
             let quiet = quiet_since(t, term::unix_now());
             if quiet.is_some() != t.quiet_since.is_some() {
                 t.quiet_since = quiet;
+                self.dirty = true;
+            }
+            let repeats = repeat_count(t);
+            if repeats != t.repeats {
+                // The pane and the count only, never what the calls were.
+                tracing::info!(
+                    "pane {id} ({}): repeating {}",
+                    t.agent.as_deref().unwrap_or("agent"),
+                    repeats.map_or_else(|| "cleared".to_string(), |n| format!("{n}x"))
+                );
+                t.repeats = repeats;
                 self.dirty = true;
             }
         }
@@ -1157,6 +1188,16 @@ pub(super) fn queued_as_typed(text: &str, bracketed: bool) -> String {
     } else {
         text.replace(['\r', '\n'], " ")
     }
+}
+
+/// How many calls a working agent's repeat has reached. Only a working agent has a turn's
+/// calls: leaving work, or the agent going, forgets them.
+fn repeat_count(t: &mut term::Term) -> Option<u32> {
+    if t.status != Status::Working || t.agent.is_none() {
+        t.call_run.clear();
+        return None;
+    }
+    t.call_run.repeats()
 }
 
 /// When a working agent went silent, if it has been silent past `QUIET_AFTER`. Never while

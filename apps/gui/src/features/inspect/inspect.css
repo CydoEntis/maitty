@@ -1,14 +1,37 @@
-/* The Inspect panel: a card docked at the right of the window, same material as the other cards. */
-/* A drawer over the content, like the Inbox: the terminals keep their size and the panel slides in from the right. */
-.mx-inspect { position: absolute; top: var(--edge); right: calc(var(--edge) + var(--session-panel-w, 0px)); bottom: var(--edge); z-index: 50; width: clamp(340px, 40%, 560px); display: flex; flex-direction: column; border-radius: var(--r14); background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 160px), var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh); overflow: hidden; animation: v8insp .32s var(--ease-out); }
-.mx-app.is-narrow .mx-inspect { left: 8px; width: auto; }
-.mx-inspect-head { flex: none; height: 48px; display: flex; align-items: center; gap: 10px; padding: 0 10px 0 16px; border-bottom: 1px solid var(--pane-line); }
-.mx-inspect-head strong { font-size: 15px; font-weight: 600; }
-.mx-inspect-sub { min-width: 0; font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-inspect-tabs { flex: none; display: flex; gap: 2px; padding: 6px 10px; border-bottom: 1px solid var(--pane-line); overflow-x: auto; }
-.mx-inspect-tabs button { height: 28px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
-.mx-inspect-tabs button:hover { color: var(--fg); background: rgba(255, 255, 255, .05); }
-.mx-inspect-tabs button.is-current { color: var(--fg); background: rgba(255, 255, 255, .09); }
+/* The repository drawer (v19 §9): over the panes from beside the activity bar, over a scrim, never pushing them. */
+.mx-inspect-scrim { position: absolute; inset: 0; z-index: 49; background: rgba(3, 5, 8, .32); animation: mx-inspect-fade .36s var(--ease-out); }
+.mx-inspect-scrim.is-leaving { animation: mx-inspect-fade-out .22s cubic-bezier(.4, 0, 1, 1) forwards; }
+.mx-inspect { position: absolute; top: 12px; right: calc(var(--edge) + 48px + var(--pg)); bottom: 12px; z-index: 50; max-width: calc(100% - 24px); display: flex; flex-direction: column; border-radius: var(--r16); background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 160px), var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh); overflow: visible; animation: mx-inspect-in .36s cubic-bezier(.16, 1, .3, 1); }
+.mx-app[data-side="right"] .mx-inspect { right: auto; left: calc(var(--edge) + 48px + var(--pg)); animation-name: mx-inspect-in-left; }
+.mx-app.is-narrow .mx-inspect { left: 12px; right: 12px; width: auto !important; }
+.mx-inspect.is-leaving { animation: mx-inspect-out .22s cubic-bezier(.4, 0, 1, 1) forwards; }
+.mx-app[data-side="right"] .mx-inspect.is-leaving { animation-name: mx-inspect-out-left; }
+.mx-inspect-grip { position: absolute; top: 0; bottom: 0; left: -4px; width: 8px; cursor: col-resize; z-index: 2; }
+.mx-inspect-grip::after { content: ""; position: absolute; top: 8px; bottom: 8px; left: 3px; width: 2px; border-radius: 2px; background: transparent; transition: background .15s; }
+.mx-inspect-grip:hover::after, .mx-inspect-grip:focus-visible::after { background: var(--accent); }
+.mx-app.is-narrow .mx-inspect-grip { display: none; }
+.mx-inspect-head { flex: none; height: 48px; display: flex; align-items: center; gap: 10px; padding: 0 10px 0 18px; }
+.mx-inspect-head strong { font-size: 14px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mx-inspect-branch { min-width: 0; font-family: var(--mono); font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mx-inspect-tabs { flex: none; display: flex; gap: 0; height: 38px; padding: 0 8px; border-bottom: 1px solid var(--pane-line); overflow-x: auto; }
+.mx-inspect-tabs button { position: relative; display: flex; align-items: center; gap: 6px; padding: 0 12px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.mx-inspect-tabs button:hover { color: var(--fg); }
+.mx-inspect-tabs button.is-current { color: var(--fg); font-weight: 500; }
+.mx-inspect-tabs button::after { content: ""; position: absolute; left: 6px; right: 6px; bottom: 0; height: 2px; border-radius: 2px; background: var(--accent); transform: scaleX(0); transform-origin: right; transition: transform .28s cubic-bezier(.2, .8, .2, 1); }
+.mx-inspect-tabs.is-forward button::after { transform-origin: right; }
+.mx-inspect-tabs.is-back button::after { transform-origin: left; }
+.mx-inspect-tabs button.is-current::after { transform: scaleX(1); transform-origin: left; }
+.mx-inspect-tabs.is-back button.is-current::after { transform-origin: right; }
+.mx-inspect-count { min-width: 16px; height: 16px; padding: 0 5px; border-radius: 999px; font-size: 10.5px; line-height: 16px; text-align: center; color: var(--muted); background: rgba(255, 255, 255, .06); font-variant-numeric: tabular-nums; }
+.mx-inspect-tabs button.is-current .mx-inspect-count { color: var(--accent); background: var(--accent-soft); }
+@keyframes mx-inspect-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mx-inspect-fade-out { to { opacity: 0; } }
+@keyframes mx-inspect-in { from { opacity: 0; transform: translateX(36px); } to { opacity: 1; transform: none; } }
+@keyframes mx-inspect-in-left { from { opacity: 0; transform: translateX(-36px); } to { opacity: 1; transform: none; } }
+@keyframes mx-inspect-out { to { opacity: 0; transform: translateX(36px); } }
+@keyframes mx-inspect-out-left { to { opacity: 0; transform: translateX(-36px); } }
+:root[data-motion="reduced"] .mx-inspect, :root[data-motion="reduced"] .mx-inspect-scrim, .mx-app[data-motion="reduced"] .mx-inspect, .mx-app[data-motion="reduced"] .mx-inspect-scrim { animation: none; }
+@media (prefers-reduced-motion: reduce) { .mx-inspect, .mx-inspect-scrim { animation: none; } }
 .mx-inspect-scroll { flex: 1; min-height: 0; overflow: auto; padding: 10px; }
 .mx-inspect-body, .mx-inspect-split { display: flex; flex-direction: column; gap: 10px; }
 .mx-inspect-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -46,4 +69,23 @@ button.mx-inspect-row:hover, .mx-inspect-pick:hover { background: rgba(255, 255,
 .mx-inspect .is-add { color: var(--ok); }
 .mx-inspect .is-remove { color: var(--danger); }
 
-.mx-app[data-side="right"] .mx-inspect { right: auto; left: calc(var(--edge) + var(--session-panel-w, 0px)); animation-name: v14inspL; }
+.mx-app[data-side="right"] .mx-inspect { right: auto; left: var(--edge); animation-name: v14inspL; }
+
+/* A failed tab: one calm, centred screen. Amber is a wait, red needs you, the accent is not an error. */
+.mx-inspect-fail { --tone: var(--warn); display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 320px; margin: 0 auto; padding: 32px 28px; text-align: center; }
+.mx-inspect-fail.is-stop { --tone: var(--danger); }
+.mx-inspect-fail.is-calm { --tone: var(--accent); }
+.mx-inspect-fail-halo { display: grid; place-items: center; width: 76px; height: 76px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--tone) 15%, transparent), transparent 70%); }
+.mx-inspect-fail-tile { width: 52px; height: 52px; border-radius: 15px; background: color-mix(in srgb, var(--tone) 12%, var(--raise)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone) 33%, transparent), 0 8px 20px rgba(0, 0, 0, .25); }
+.mx-inspect-fail-tile.is-retrying { box-shadow: inset 0 0 0 2px var(--accent); animation: mx-inspect-fail-spin .9s linear infinite; }
+.mx-inspect-fail-title { margin: 0; font-size: 16px; font-weight: 600; color: var(--fg); text-wrap: balance; }
+.mx-inspect-fail-body { margin: 0; font-size: 13px; line-height: 1.6; color: var(--fg2); }
+.mx-inspect-fail-pill { display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 999px; font-size: 11.5px; color: var(--ok); background: color-mix(in srgb, var(--ok) 11%, transparent); }
+.mx-inspect-fail-auto { margin: 0; font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.mx-inspect-fail-more { font-size: 11.5px; color: var(--dim); }
+.mx-inspect-fail-more:hover { color: var(--fg2); }
+.mx-inspect-fail-details { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line2); background: var(--term); text-align: left; }
+.mx-inspect-fail-details pre { margin: 0; max-width: 100%; font-family: var(--mono); font-size: 11.5px; color: var(--fg2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.mx-inspect-fail-details button { font-size: 11.5px; color: var(--accent); }
+@keyframes mx-inspect-fail-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .mx-inspect-fail-tile.is-retrying { animation: none; } }

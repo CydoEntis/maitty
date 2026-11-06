@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 72;
+pub const PROTOCOL_VERSION: u32 = 73;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -61,7 +61,7 @@ pub struct ConversationSummary {
     #[serde(default)]
     pub archived: bool,
     /// The main checkout of the repository the conversation works in, so a chat session sits with its
-    /// project in a list (ADR 0054). Absent outside git.
+    /// project in a list (ADR 0003). Absent outside git.
     #[serde(default)]
     pub root: Option<PathBuf>,
     /// The branch checked out there.
@@ -70,7 +70,7 @@ pub struct ConversationSummary {
 }
 
 /// Which app a client is. A terminal session belongs to the app that started it, and only
-/// that app may list, type into or resize it (ADR 0045). Clients that don't say are terminal
+/// that app may list, type into or resize it (ADR 0004). Clients that don't say are terminal
 /// clients, which is what the terminal app has always been.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -145,6 +145,14 @@ pub enum ClientMsg {
         /// Ids of the background tasks (shells, helpers) still running when a turn stopped.
         #[serde(default)]
         background: Vec<String>,
+        /// The question a permission prompt asks, from the hook's own payload (a
+        /// `PermissionRequest`). The daemon cleans it and decides `answerable` itself.
+        #[serde(default)]
+        ask: Option<PermissionAsk>,
+        /// A fingerprint of the tool call that is starting (16 hex characters, from the tool's
+        /// name and input), so the daemon can tell the same call repeating. Never the call itself.
+        #[serde(default)]
+        call: Option<String>,
     },
     /// What an agent in a pane has used (from Claude's status line), with the pane's secret.
     Usage {
@@ -154,6 +162,25 @@ pub enum ClientMsg {
         limits: Vec<Limit>,
     },
     Query(Query),
+}
+
+/// The question an agent's permission prompt asks, as the agent's own hook reported it (never read
+/// off the screen, ADR 0003). Only the tool and a one-line subject (the command, the file or the
+/// address) are carried: not the content a tool would write, which can hold secrets.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PermissionAsk {
+    /// The tool that wants to run: "Bash", "Write", "WebFetch".
+    pub tool: String,
+    /// What it would run or touch, on one line, with secret-shaped text masked.
+    pub detail: String,
+    /// The daemon knows the key that answers this agent's prompt, so the chat view offers Approve and Deny.
+    /// Set by the daemon; a hook cannot claim it.
+    #[serde(default)]
+    pub answerable: bool,
+    /// The choices of a one-question multiple-choice prompt, in the order the agent numbers them, so
+    /// the chat view can offer one button each. Empty for any other prompt.
+    #[serde(default)]
+    pub choices: Vec<String>,
 }
 
 /// What an agent's session has used.
@@ -189,7 +216,7 @@ pub enum Command {
     ConversationStart {
         target: crate::conversation::StartTarget,
         /// Start in a new checkout of the project at the target's folder, on this branch (a chat
-        /// session on a branch, ADR 0054). Only a new conversation takes one. A peer that
+        /// session on a branch, ADR 0003). Only a new conversation takes one. A peer that
         /// predates it would start in the main checkout instead, which is why the protocol
         /// version was raised with it.
         #[serde(default)]
@@ -580,6 +607,13 @@ pub enum Query {
     UsageReport {
         period: crate::usage_report::UsagePeriod,
     },
+    /// The folders inside `path` on this daemon's computer, for a client choosing where to start a
+    /// session (human clients only). `path` is absolute or starts with `~`. The answer echoes
+    /// `tag`, so a client typing a path can tell which of its questions this answers.
+    ListFolders {
+        path: String,
+        tag: u64,
+    },
     List,
     /// Plain-text screen contents of a terminal (the visible screen).
     Read {
@@ -766,6 +800,46 @@ pub enum Reply {
     },
     Search(Vec<SearchHit>),
     UsageReport(crate::usage_report::UsageReport),
+    Folders {
+        tag: u64,
+        listing: FolderListing,
+    },
+}
+
+/// The most folders one listing carries; a folder with more says so in `truncated`.
+pub const FOLDERS_MAX: usize = 1000;
+
+/// What `Query::ListFolders` found: the folders directly inside a folder.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FolderListing {
+    /// The folder, absolute with `/` separators.
+    pub path: String,
+    /// False when there is no such folder or it cannot be read; `entries` is then empty.
+    pub exists: bool,
+    pub entries: Vec<FolderEntry>,
+    pub truncated: bool,
+}
+
+impl FolderListing {
+    /// A listing of a folder that is not there.
+    pub fn missing(path: &str) -> FolderListing {
+        FolderListing {
+            path: path.to_string(),
+            exists: false,
+            entries: Vec::new(),
+            truncated: false,
+        }
+    }
+}
+
+/// One folder inside a listed folder.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FolderEntry {
+    pub name: String,
+    /// The branch it is on when it is a git checkout (a short commit for a detached HEAD).
+    pub git: Option<String>,
+    /// Whether it holds a folder worth browsing into (hidden ones do not count).
+    pub has_children: bool,
 }
 
 /// One line of a pane's output that matched a search.
@@ -1119,6 +1193,10 @@ pub struct TermInfo {
     /// that it may be stuck. Its status stays working.
     #[serde(default)]
     pub quiet_since: Option<u64>,
+    /// Working, and the agent's last calls are one call over and over or two taking turns: how
+    /// many calls the repeat has reached. Its status stays working; nothing rings.
+    #[serde(default)]
+    pub repeats: Option<u32>,
     /// The process running in it (0: not known).
     #[serde(default)]
     pub pid: u32,
@@ -1149,6 +1227,10 @@ pub struct TermInfo {
     /// marks (OSC 133) said happened, not what the screen looked like.
     #[serde(default)]
     pub timeline: Vec<TurnEvent>,
+    /// The permission prompt the pane is stopped on, from its agent's own hook; `None` unless the
+    /// pane needs you and the agent said what it asks.
+    #[serde(default)]
+    pub ask: Option<PermissionAsk>,
 }
 
 /// An agent that was working when the daemon restarted.
@@ -1483,6 +1565,13 @@ mod tests {
                 model: Some("opus".into()),
                 name: Some("api work".into()),
                 background: vec!["b1".into()],
+                ask: Some(PermissionAsk {
+                    tool: "Bash".into(),
+                    detail: "cargo test".into(),
+                    answerable: true,
+                    choices: vec![],
+                }),
+                call: Some("00112233445566ff".into()),
             },
             ClientMsg::Query(Query::List),
             ClientMsg::Query(Query::Read { term: 3 }),
@@ -1647,6 +1736,19 @@ mod tests {
             },
             ServerMsg::Reply(Reply::Ok),
             ServerMsg::Reply(Reply::Text("screen".into())),
+            ServerMsg::Reply(Reply::Folders {
+                tag: 7,
+                listing: FolderListing {
+                    path: "/home/me/code".into(),
+                    exists: true,
+                    entries: vec![FolderEntry {
+                        name: "maitty".into(),
+                        git: Some("dev".into()),
+                        has_children: true,
+                    }],
+                    truncated: false,
+                },
+            }),
             ServerMsg::Reply(Reply::TerminalReplay(vec![27, b'[', b'H'])),
             ServerMsg::Error("nope".into()),
             ServerMsg::Notice("saved".into()),
@@ -1687,7 +1789,7 @@ mod tests {
             summary.execution,
             crate::conversation::ExecutionKind::Structured
         );
-        // `root` and `branch` (a chat session's project, ADR 0054) are defaulted too.
+        // `root` and `branch` (a chat session's project, ADR 0003) are defaulted too.
         assert_eq!((summary.root, summary.branch), (None, None));
     }
 
@@ -1853,7 +1955,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 72);
+        assert_eq!(PROTOCOL_VERSION, 73);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -2029,6 +2131,33 @@ mod tests {
     }
 
     #[test]
+    fn a_pane_from_before_the_permission_question_reads_with_none_and_one_with_it_round_trips() {
+        let mut term = pane_from(serde_json::json!({}));
+        assert_eq!(term.ask, None, "an older peer sends none");
+        term.ask = Some(PermissionAsk {
+            tool: "Bash".into(),
+            detail: "cargo test".into(),
+            answerable: true,
+            choices: vec!["A".into(), "B".into()],
+        });
+        round_trips(&ServerMsg::State(Snapshot {
+            terms: [(3, term)].into(),
+            ..Default::default()
+        }));
+    }
+
+    #[test]
+    fn a_pane_from_before_the_repeat_count_reads_with_none_and_one_with_it_round_trips() {
+        let mut term = pane_from(serde_json::json!({}));
+        assert_eq!(term.repeats, None, "an older peer sends none");
+        term.repeats = Some(6);
+        round_trips(&ServerMsg::State(Snapshot {
+            terms: [(3, term)].into(),
+            ..Default::default()
+        }));
+    }
+
+    #[test]
     fn a_hook_report_reads_across_the_background_field() {
         let old = serde_json::json!({ "Hook": {
             "term": 3, "agent": "claude", "status": "Done", "session": null, "cwd": null, "prompt": null,
@@ -2038,12 +2167,17 @@ mod tests {
         let msg: ClientMsg =
             decode(&rmp_serde::to_vec_named(&old).unwrap()).expect("a hook from before the field");
         let ClientMsg::Hook {
-            event, background, ..
+            event,
+            background,
+            ask,
+            call,
+            ..
         } = msg
         else {
             panic!("expected a hook report")
         };
-        assert_eq!((event.as_str(), background.len()), ("Stop", 0));
+        assert_eq!((event.as_str(), background.len(), ask), ("Stop", 0, None));
+        assert_eq!(call, None, "an older peer sends no call fingerprint");
 
         #[derive(Deserialize)]
         enum OldClientMsg {
@@ -2071,6 +2205,8 @@ mod tests {
             model: None,
             name: None,
             background: vec!["b1".into()],
+            ask: None,
+            call: None,
         };
         let OldClientMsg::Hook {
             term,
@@ -2198,5 +2334,12 @@ mod tests {
         ]
         .map(CheckState::label);
         assert_eq!(got, ["pending", "needs_approval", "stale", "never"]);
+    }
+
+    #[test]
+    fn a_permission_ask_from_before_choices_existed_still_reads() {
+        let ask: PermissionAsk =
+            serde_json::from_value(serde_json::json!({"tool": "Bash", "detail": "ls", "answerable": true})).unwrap();
+        assert!(ask.choices.is_empty(), "an older peer sends no choices");
     }
 }

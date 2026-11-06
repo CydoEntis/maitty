@@ -147,6 +147,8 @@ impl Tree {
             .filter(|&id| id > 1)
             .ok_or_else(|| io::Error::other("provider has no safe process-group identity"))?;
         self.group = Some(group);
+        // Written down so a daemon that dies before it can stop this group leaves a trail.
+        crate::daemon::provider_groups::record(group);
         Ok(())
     }
 
@@ -162,6 +164,7 @@ impl Tree {
             }
         }
         self.group = None;
+        crate::daemon::provider_groups::forget(group);
         Ok(())
     }
 }

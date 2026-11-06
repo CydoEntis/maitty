@@ -3,7 +3,7 @@ import { listen } from '@tauri-apps/api/event'
 import { z } from 'zod'
 
 /**
- * Sending files dropped on a pane of another machine (ADR 0055). The host checks the paths and the
+ * Sending files dropped on a pane of another machine (ADR 0007). The host checks the paths and the
  * machine, sends the files one after another over the machine's own ssh line, and tells the window
  * how it goes. `transfer` is an id this window makes up, so the events of a send are known before
  * the host has answered.

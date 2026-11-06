@@ -33,6 +33,10 @@ pub enum MachineStep {
         target: String,
         error: Option<String>,
     },
+    /// Asking before one of your machines is taken off the list.
+    Remove {
+        name: String,
+    },
     /// ssh is being asked, without a prompt, whether the machine can be reached.
     Checking {
         target: String,
@@ -296,6 +300,7 @@ impl App {
             MachineStep::Edit { name, target, .. } => {
                 self.machines_edit_key(&mut v, name, target, k)
             }
+            MachineStep::Remove { name } => self.machines_remove_key(&mut v, &name, k),
             MachineStep::Checking { .. } => {
                 if k.code == KeyCode::Esc {
                     self.machines_cancel_probe(&mut v);
@@ -352,12 +357,23 @@ impl App {
                 };
             }
             KeyCode::Char('x') | KeyCode::Delete => {
-                v.notice = Some(self.machines_remove(&name));
-                let left = self.cfg.machines.len();
-                v.machine_sel = (left > 0).then(|| sel.min(left - 1));
+                v.notice = None;
+                v.step = MachineStep::Remove { name };
             }
             _ => {}
         }
+    }
+
+    /// Enter takes the machine off the list; any other key leaves it where it was.
+    fn machines_remove_key(&mut self, v: &mut MachinesView, name: &str, k: &KeyEvent) {
+        let sel = v.machine_sel.unwrap_or(0);
+        v.step = MachineStep::Browse;
+        if k.code != KeyCode::Enter {
+            return;
+        }
+        v.notice = Some(self.machines_remove(name));
+        let left = self.cfg.machines.len();
+        v.machine_sel = (left > 0).then(|| sel.min(left - 1));
     }
 
     fn machines_browse_key(&mut self, v: &mut MachinesView, k: &KeyEvent) {
@@ -570,6 +586,7 @@ pub(in crate::client) fn draw_machines(
             );
             draw_name(buf, inner, &ask, target, error.as_deref(), t)
         }
+        MachineStep::Remove { name } => draw_remove(buf, inner, name, t),
         MachineStep::Checking { target } => {
             let who = parse_target(target).unwrap_or_default();
             let steps = checklist(&who, None);
@@ -900,6 +917,26 @@ fn draw_name(
     }
 }
 
+fn draw_remove(buf: &mut Buffer, inner: Rect, name: &str, t: &Theme) {
+    let c = Style::default().bg(t.card);
+    let ask = format!("Remove {} from this list?", sanitize(name, false));
+    let said = "Its sessions keep running on it, and you can add it again.";
+    put(
+        buf,
+        inner.x,
+        inner.y,
+        &[seg(ask, c.fg(t.strong).add_modifier(Modifier::BOLD))],
+        inner.right(),
+    );
+    put(
+        buf,
+        inner.x,
+        inner.y + 2,
+        &[seg(said.to_string(), c.fg(t.muted))],
+        inner.right(),
+    );
+}
+
 /// The steps connecting takes, in order. `how` is None while ssh is being asked.
 fn checklist(who: &Parsed, how: Option<&Outcome>) -> Vec<Step> {
     let host = sanitize(&who.host, false);
@@ -1026,6 +1063,7 @@ fn bar_keys(v: &MachinesView) -> Vec<(&'static str, &'static str)> {
         MachineStep::Edit { .. } => {
             vec![("", "type where it is"), ("Enter", "save"), ("Esc", "back")]
         }
+        MachineStep::Remove { .. } => vec![("Enter", "remove"), ("Esc", "keep it")],
         MachineStep::Checking { .. } => vec![("Esc", "cancel")],
         MachineStep::Added { .. } => vec![("Enter", "done"), ("Esc", "close")],
     }

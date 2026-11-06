@@ -50,10 +50,20 @@ pub(in crate::daemon) struct Transcript {
     /// The turn was announced by the provider (Codex `task_started`), so a user message inside it
     /// does not start another one.
     explicit_turn: bool,
+    /// The last user message of the open turn, so one Codex writes twice (as an event and as a response
+    /// item) is shown once. A new turn, and any agent message, clears it: the same words later are new.
+    last_user_text: Option<String>,
+    /// The mode and model the file last said (Claude: `permissionMode` on a line, the model of an assistant message).
+    meta: crate::conversation::SessionMeta,
     tools: HashMap<String, PendingTool>,
 }
 
 impl Transcript {
+    /// What the file has said about the agent's mode and model so far.
+    pub fn meta(&self) -> &crate::conversation::SessionMeta {
+        &self.meta
+    }
+
     pub fn new(format: Format, thread: &str) -> Self {
         Self {
             format,
@@ -61,6 +71,8 @@ impl Transcript {
             turns: 0,
             open_turn: None,
             explicit_turn: false,
+            last_user_text: None,
+            meta: crate::conversation::SessionMeta::default(),
             tools: HashMap::new(),
         }
     }
@@ -86,6 +98,7 @@ impl Transcript {
 
     fn begin_turn(&mut self, id: Option<&str>, at_ms: Option<u64>, notes: &mut Vec<Note>) {
         self.close_turn("completed", at_ms, notes);
+        self.last_user_text = None;
         self.turns += 1;
         let id = id.map_or_else(|| format!("turn-{}", self.turns), str::to_owned);
         let mut turn = json!({ "id": id, "status": "inProgress" });
@@ -117,12 +130,13 @@ impl Transcript {
     }
 
     fn user_message(&mut self, id: &str, text: &str, at_ms: Option<u64>, notes: &mut Vec<Note>) {
-        if text.trim().is_empty() {
+        if text.trim().is_empty() || self.last_user_text.as_deref() == Some(text.trim()) {
             return;
         }
         if self.open_turn.is_none() || !self.explicit_turn {
             self.begin_turn(None, at_ms, notes);
         }
+        self.last_user_text = Some(text.trim().to_owned());
         let turn = self.turn_id(at_ms, notes);
         let item = json!({
             "id": id,
@@ -136,6 +150,7 @@ impl Transcript {
         if text.trim().is_empty() {
             return;
         }
+        self.last_user_text = None;
         let turn = self.turn_id(at_ms, notes);
         let item = json!({ "id": id, "type": "agentMessage", "text": bounded_text(text) });
         notes.push(self.note("item/completed", item_params(&turn, item, at_ms)));
@@ -156,6 +171,7 @@ impl Transcript {
         if line.get("isSidechain").and_then(Value::as_bool) == Some(true) {
             return;
         }
+        self.note_claude_setup(line);
         let at_ms = line
             .get("timestamp")
             .and_then(Value::as_str)
@@ -197,6 +213,22 @@ impl Transcript {
                 self.close_turn("completed", at_ms, notes);
             }
             _ => {}
+        }
+    }
+
+    /// The permission mode and the model, when this line says them. A placeholder model name (Claude
+    /// writes `<synthetic>` for a message it made itself) is not a model.
+    fn note_claude_setup(&mut self, line: &Value) {
+        if let Some(mode) = line.get("permissionMode").and_then(Value::as_str) {
+            self.meta.mode = Some(mode.to_owned());
+        }
+        if line.get("type").and_then(Value::as_str) == Some("assistant")
+            && let Some(model) = line
+                .pointer("/message/model")
+                .and_then(Value::as_str)
+                .filter(|model| !model.starts_with('<'))
+        {
+            self.meta.model = Some(model.to_owned());
         }
     }
 
@@ -322,8 +354,16 @@ impl Transcript {
                 }
             }
             (Some("response_item"), Some("message")) => {
-                if payload.get("role").and_then(Value::as_str) == Some("assistant") {
-                    self.agent_message(&format!("o{offset}"), &codex_text(payload), at_ms, notes);
+                match payload.get("role").and_then(Value::as_str) {
+                    Some("assistant") => {
+                        self.agent_message(&format!("o{offset}"), &codex_text(payload), at_ms, notes);
+                    }
+                    // Codex 0.156 writes the person's words only here. What it injects as a user message
+                    // (the project's instructions, the environment) is not the person's.
+                    Some("user") if !is_codex_context(payload) => {
+                        self.user_message(&format!("o{offset}"), &codex_text(payload), at_ms, notes);
+                    }
+                    _ => {}
                 }
             }
             (Some("response_item"), Some("function_call" | "local_shell_call")) => {
@@ -511,6 +551,19 @@ fn is_claude_chrome(text: &str) -> bool {
     ]
     .iter()
     .any(|tag| text.starts_with(tag))
+}
+
+/// What opens a user-role message that Codex adds itself, not the person.
+const CODEX_CONTEXT_PREFIXES: [&str; 3] = ["# AGENTS.md instructions", "<environment_context>", "<user_instructions>"];
+
+/// Whether a user-role response item is context Codex injected, which no chat should show as said.
+fn is_codex_context(payload: &Value) -> bool {
+    payload.get("content").and_then(Value::as_array).is_some_and(|parts| {
+        parts.iter().filter_map(|part| part.get("text").and_then(Value::as_str)).any(|text| {
+            let text = text.trim_start();
+            CODEX_CONTEXT_PREFIXES.iter().any(|prefix| text.starts_with(prefix))
+        })
+    })
 }
 
 fn codex_text(payload: &Value) -> String {

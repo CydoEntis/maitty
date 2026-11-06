@@ -2,7 +2,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core'
 import { z } from 'zod'
 
 /**
- * What agents reported using, from the daemon's usage store (ADR 0051). Everything here is what
+ * What agents reported using, from the daemon's usage store (ADR 0009). Everything here is what
  * Claude Code or Codex said; nothing is estimated. A figure nobody reported is `null`, which the
  * page shows as a dash. Only this computer's daemon is asked.
  */

@@ -62,3 +62,19 @@ describe('the chat of a ready session', () => {
     expect(screen.getByText('chat session, terminal: true')).toBeInTheDocument()
   })
 })
+
+describe('the chat of a session whose agent has not reported in yet', () => {
+  const starting = { kind: 'no-events', agent: 'claude' } as const
+
+  it('is the chat with its message box at once, not a card that says there is nothing', () => {
+    render(<ChatPane availability={starting} process="claude" online sessionId="s1" onBackToTerminal={noop} onStartAgent={noop} />)
+    expect(screen.getByText('Starting claude…')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Message claude' })).toBeEnabled()
+    expect(screen.queryByText('Chat view is for agent sessions')).not.toBeInTheDocument()
+  })
+
+  it('keeps the old card for a pane that gave the chat no session to hold a message for', () => {
+    render(<ChatPane availability={starting} process="claude" online onBackToTerminal={noop} onStartAgent={noop} />)
+    expect(screen.getByText('Chat view is for agent sessions')).toBeInTheDocument()
+  })
+})

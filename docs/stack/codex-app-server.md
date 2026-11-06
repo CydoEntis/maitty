@@ -194,8 +194,7 @@ requested profile and can grant only that profile for the current turn; no
 session-wide grant is offered.
 Cancellation uses the exact acknowledged active turn ID on the owning runtime;
 the interrupt acknowledgement is not turn completion. A structured chat stays a
-chat: there is no transfer to the native Codex terminal and back
-([ADR 0044](../adr/0044-chat-and-terminal-are-separate-sessions.md)).
+chat: there is no transfer to the native Codex terminal and back.
 
 Exact identity note: the binding's generic `session_id` field means Codex
 `Thread.id`, the exact native UUID accepted as RPC `threadId` and native resume

@@ -36,7 +36,7 @@ protocol, the client prompt, the status line and sidebar, and the `maitty` CLI.
 - Only the user can answer a secret prompt. Like `AnswerHelpers`, the answer is refused from
   inside a pane.
 - A secret is held in the daemon's memory only, expires after 24 hours, and a ref works once.
-  Nothing at rest ([ADR-0036](../../adr/0036-secrets-never-enter-chat.md)).
+  Nothing at rest ([ADR 0006](../../adr/0006-secrets-never-enter-chat.md)).
 - A secret's value never appears in the state snapshot, logs, tool results or pane output.
 - `gh` and every other slow call run in `spawn_bg`, never on the UI thread (non-negotiable 6).
 - Wire changes bump `PROTOCOL_VERSION` (non-negotiable 2); both platforms build

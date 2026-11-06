@@ -525,8 +525,12 @@ pub enum Waited {
     Turn(Status, String, Option<Box<CheckInfo>>),
     /// The regex matched this line.
     Matched(String),
-    /// Out of time; `quiet` when the session was working but silent, since then (unix seconds).
-    TimedOut { quiet: Option<u64> },
+    /// Out of time; `quiet` when the session was working but silent, since then (unix seconds);
+    /// `repeats` when it was working and repeating itself, how many calls the repeat had reached.
+    TimedOut {
+        quiet: Option<u64>,
+        repeats: Option<u32>,
+    },
 }
 
 /// `<app> wait` exits with this when the turn ended but its check failed (2: timed out;
@@ -652,10 +656,11 @@ pub fn checks_note(p: &TermInfo) -> Option<String> {
 fn agent_tag(p: &TermInfo) -> Option<String> {
     let agent = p.agent.as_deref()?;
     let quiet = quiet_note(p).map(|n| format!(" · {n}")).unwrap_or_default();
+    let repeating = repeat_note(p).map(|n| format!(" · {n}")).unwrap_or_default();
     let note = checks_note(p)
         .map(|n| format!(" · {n}"))
         .unwrap_or_default();
-    Some(format!("{agent}: {}{quiet}{note}", p.status.label()))
+    Some(format!("{agent}: {}{quiet}{repeating}{note}", p.status.label()))
 }
 
 /// `quiet 12m` for a working agent that has gone silent: it may be stuck.
@@ -663,6 +668,24 @@ pub fn quiet_note(p: &TermInfo) -> Option<String> {
     p.quiet_since
         .filter(|_| p.status == Status::Working)
         .map(|at| format!("quiet {}", quiet_for(at)))
+}
+
+/// `repeating 6x` for a working agent whose last tool calls are one call over and over, or two
+/// taking turns: it may be going nowhere. Its status stays working.
+pub fn repeat_note(p: &TermInfo) -> Option<String> {
+    p.repeats
+        .filter(|_| p.status == Status::Working)
+        .map(|n| format!("repeating {n}x"))
+}
+
+/// What a wait that ran out of time says about an agent still working, when something looks
+/// wrong with it. Silence is the stronger sign, so a quiet agent says that first.
+pub fn still_working_note(quiet: Option<u64>, repeats: Option<u32>) -> Option<String> {
+    match (quiet, repeats) {
+        (Some(at), _) => Some(format!("still working, but quiet for {}", quiet_for(at))),
+        (None, Some(n)) => Some(format!("still working, but repeating itself ({n}x)")),
+        (None, None) => None,
+    }
 }
 
 /// How long since `at` (unix seconds), shortest unit: `45s`, `12m`, `3h`, `2d`.
@@ -688,6 +711,9 @@ fn pane_json(p: &TermInfo) -> Value {
     });
     if let Some(at) = p.quiet_since.filter(|_| p.status == Status::Working) {
         v["quiet_since"] = json!(at);
+    }
+    if let Some(n) = p.repeats.filter(|_| p.status == Status::Working) {
+        v["repeats"] = json!(n);
     }
     if let Some(pr) = &p.pr {
         v["pr"] = pr_json(pr);
@@ -739,6 +765,7 @@ pub fn wait_on(
     let start = std::time::Instant::now();
     let mut seen_working = !just_sent;
     let mut quiet = None;
+    let mut repeats = None;
     loop {
         if let Some(re) = &re {
             if let Reply::Text(screen) =
@@ -755,6 +782,7 @@ pub fn wait_on(
                 .ok_or_else(|| anyhow!("pane {term} is gone"))?;
             seen_working |= t.status == Status::Working;
             quiet = t.quiet_since.filter(|_| t.status == Status::Working);
+            repeats = t.repeats.filter(|_| t.status == Status::Working);
             if let Some(done) = turn_over(
                 t.status,
                 &t.said,
@@ -766,7 +794,7 @@ pub fn wait_on(
             }
         }
         if start.elapsed() >= timeout {
-            return Ok(Waited::TimedOut { quiet });
+            return Ok(Waited::TimedOut { quiet, repeats });
         }
         std::thread::sleep(Duration::from_millis(400));
     }
@@ -826,12 +854,9 @@ fn wait_print(
                 std::process::exit(code);
             }
         }
-        Waited::TimedOut { quiet } => {
-            match quiet {
-                Some(at) => eprintln!(
-                    "timed out waiting on pane {term}: still working, but quiet for {}",
-                    quiet_for(at)
-                ),
+        Waited::TimedOut { quiet, repeats } => {
+            match still_working_note(quiet, repeats) {
+                Some(note) => eprintln!("timed out waiting on pane {term}: {note}"),
                 None => eprintln!("timed out waiting on pane {term}"),
             }
             std::process::exit(2);
@@ -2198,6 +2223,10 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
     } else {
         Vec::new()
     };
+    let call = call_fingerprint(&origin.agent, &event, payload_json).filter(|_| parent_facts);
+    let ask = (event == "PermissionRequest" && parent_facts)
+        .then(|| permission_ask(payload_json))
+        .flatten();
     let said = field(&["last_assistant_message", "last-assistant-message"])
         .or_else(|| transcript.as_deref().and_then(last_assistant_text))
         .map(|s| s.trim().chars().take(2000).collect::<String>())
@@ -2226,7 +2255,122 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
         model,
         name,
         background,
+        ask,
+        call,
     }
+}
+
+/// The agents whose tool hooks pass the tool's name and input, and the event each fires as a tool starts.
+fn tool_start_event(agent: &str) -> Option<&'static str> {
+    match agent {
+        "claude" | "qwen" | "codex" => Some("PreToolUse"),
+        "gemini" => Some("BeforeTool"),
+        _ => None,
+    }
+}
+
+/// How many bytes of the digest make a call's fingerprint: enough that two different calls in a
+/// turn never share one, short enough to be a field and not a record.
+const CALL_FINGERPRINT_BYTES: usize = 8;
+
+/// A fingerprint of the tool call a hook reports starting, from the tool's name and its input; `None`
+/// for anything else. The input is needed, not just the name: without it two different calls of one
+/// tool would look the same. The tool's name and input are never sent on (they can hold secrets).
+fn call_fingerprint(agent: &str, event: &str, payload: &Value) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    if tool_start_event(agent) != Some(event) {
+        return None;
+    }
+    let tool = payload.get("tool_name")?.as_str()?;
+    let input = payload.get("tool_input")?;
+    let mut digest = Sha256::new();
+    digest.update(tool.as_bytes());
+    // A name and an input can never run into each other: a tool name holds no NUL.
+    digest.update([0]);
+    digest.update(serde_json::to_string(input).ok()?.as_bytes());
+    let hash = digest.finalize();
+    Some(hash.iter().take(CALL_FINGERPRINT_BYTES).map(|byte| format!("{byte:02x}")).collect())
+}
+
+/// The payload fields that name what a tool would run or touch, in the order they are tried. The
+/// content a tool would write is never among them: it can hold secrets.
+const ASK_SUBJECT_FIELDS: &[&str] = &["command", "file_path", "path", "url", "pattern", "query"];
+
+/// The tool Claude uses to put a multiple-choice question to the person, not to ask leave to act.
+const QUESTION_TOOL: &str = "AskUserQuestion";
+
+/// The most choices a prompt offers as buttons. Claude's menu holds four, and the number keys that
+/// pick them stop at nine, so this stays well inside what one key can name.
+const MAX_QUESTION_CHOICES: usize = 4;
+
+/// The choices of a prompt that is one question with one answer: the labels, in the order the menu
+/// numbers them. A prompt with several questions or with several answers is answered in the
+/// terminal, since one key cannot answer it.
+fn single_question_choices(input: Option<&Value>) -> Option<(String, Vec<String>)> {
+    let questions = input?.get("questions")?.as_array()?;
+    let [only] = questions.as_slice() else { return None };
+    if only.get("multiSelect").and_then(Value::as_bool) == Some(true) {
+        return None;
+    }
+    let question = one_line(only.get("question")?.as_str()?, 2000);
+    let labels: Vec<String> = only
+        .get("options")?
+        .as_array()?
+        .iter()
+        .filter_map(|option| option.get("label")?.as_str().map(|label| one_line(label, 200)))
+        .collect();
+    (!question.is_empty() && (2..=MAX_QUESTION_CHOICES).contains(&labels.len())).then_some((question, labels))
+}
+
+/// A question Claude asks with its choices, on one line: `Which? 1 Fast · 2 Safe`. A tool input
+/// without a question gives an empty subject, like any tool with no subject field.
+fn question_subject(input: Option<&Value>) -> String {
+    let questions = input.and_then(|input| input.get("questions")).and_then(Value::as_array);
+    let parts: Vec<String> = questions
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let question = entry.get("question")?.as_str()?.trim();
+            let choices: Vec<String> = entry
+                .get("options")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .enumerate()
+                .filter_map(|(index, option)| Some(format!("{} {}", index + 1, option.get("label")?.as_str()?.trim())))
+                .collect();
+            Some(if choices.is_empty() { question.to_string() } else { format!("{question} {}", choices.join(" · ")) })
+        })
+        .collect();
+    one_line(&parts.join(" / "), 2000)
+}
+
+/// What a `PermissionRequest` hook says is being asked: the tool and a one-line subject.
+fn permission_ask(payload: &Value) -> Option<PermissionAsk> {
+    let tool = payload.get("tool_name")?.as_str()?.trim();
+    if tool.is_empty() {
+        return None;
+    }
+    let input = payload.get("tool_input");
+    let single = if tool == QUESTION_TOOL { single_question_choices(input) } else { None };
+    let choices = single.as_ref().map(|(_, labels)| labels.clone()).unwrap_or_default();
+    let detail = if let Some((question, _)) = single {
+        question
+    } else if tool == QUESTION_TOOL {
+        question_subject(input)
+    } else {
+        ASK_SUBJECT_FIELDS
+            .iter()
+            .find_map(|key| input?.get(*key)?.as_str().filter(|text| !text.trim().is_empty()))
+            .map(|text| one_line(text, 2000))
+            .unwrap_or_default()
+    };
+    Some(PermissionAsk {
+        tool: tool.to_string(),
+        detail,
+        answerable: false,
+        choices,
+    })
 }
 
 /// Task states Claude might report for background work that is over. Its docs don't list the
@@ -2324,7 +2468,8 @@ fn is_ours(group: &Value) -> bool {
 }
 
 fn app_hook_names() -> Vec<&'static str> {
-    std::iter::once(crate::brand::APP_COMMAND)
+    [crate::brand::APP_COMMAND, BUNDLED_DAEMON]
+        .into_iter()
         .chain(crate::brand::previous())
         .collect()
 }
@@ -2465,11 +2610,60 @@ fn back_up_once(path: &std::path::Path, ext: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-/// This the app, as hook commands name it.
+/// The daemon the desktop app bundles: the same program under another name.
+const BUNDLED_DAEMON: &str = concat!(env!("APP_COMMAND"), "-gui-daemon");
+
+/// This the app, as hook commands name it. The desktop app's daemon can run from a folder that
+/// does not outlive it (an AppImage's temporary mount), and Claude Code's settings are global, so
+/// hooks naming that path break every session once the app closes. They name a copy at a fixed
+/// path instead.
 fn this_exe() -> Result<String> {
-    Ok(std::env::current_exe()?
-        .to_string_lossy()
-        .replace('\\', "/"))
+    let running = std::env::current_exe()?;
+    let program = if is_bundled_daemon(&running) {
+        keep_copy(&running, &crate::config::data_dir())?
+    } else {
+        running
+    };
+    Ok(program.to_string_lossy().replace('\\', "/"))
+}
+
+/// Whether `exe` is the daemon the desktop app bundles, including its development name with the
+/// target triple after it.
+fn is_bundled_daemon(exe: &std::path::Path) -> bool {
+    exe.file_stem()
+        .is_some_and(|stem| stem.to_string_lossy().starts_with(BUNDLED_DAEMON))
+}
+
+/// `running` copied into `folder` under the bundled daemon's plain name, unless the copy there is
+/// already this build. The copy is written beside the target and renamed over it, so a hook that
+/// starts during the update runs the old file or the new one, never half of one.
+fn keep_copy(running: &std::path::Path, folder: &std::path::Path) -> Result<PathBuf> {
+    let name = if cfg!(windows) {
+        format!("{BUNDLED_DAEMON}.exe")
+    } else {
+        BUNDLED_DAEMON.to_string()
+    };
+    let target = folder.join(&name);
+    if copy_is_current(running, &target) {
+        return Ok(target);
+    }
+    std::fs::create_dir_all(folder)
+        .with_context(|| format!("creating {}", folder.display()))?;
+    let partial = folder.join(format!("{name}.partial"));
+    std::fs::copy(running, &partial)
+        .with_context(|| format!("copying {} to {}", running.display(), partial.display()))?;
+    std::fs::rename(&partial, &target)
+        .with_context(|| format!("replacing {}", target.display()))?;
+    Ok(target)
+}
+
+/// The copy has the running file's size and is not older than it.
+fn copy_is_current(running: &std::path::Path, copy: &std::path::Path) -> bool {
+    let (Ok(running), Ok(copy)) = (std::fs::metadata(running), std::fs::metadata(copy)) else {
+        return false;
+    };
+    running.len() == copy.len()
+        && matches!((running.modified(), copy.modified()), (Ok(made), Ok(kept)) if kept >= made)
 }
 
 /// Context, cost and plan limits from the JSON Claude Code hands its status line.
@@ -2778,8 +2972,10 @@ pub fn refresh_claude_hooks() {
     // A side server (<APP>_SOCKET) or a build in a source checkout mustn't take your
     // hooks from the copy of the app you use.
     let side = std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).is_ok_and(|s| s != "default");
-    let dev_build =
-        this_exe().is_ok_and(|e| e.contains("/target/debug/") || e.contains("/target/release/"));
+    let dev_build = std::env::current_exe().is_ok_and(|exe| {
+        let exe = exe.to_string_lossy().replace('\\', "/");
+        exe.contains("/target/debug/") || exe.contains("/target/release/")
+    });
     if side || dev_build {
         return;
     }
@@ -3221,6 +3417,70 @@ pub fn allow(dir: Option<std::path::PathBuf>) -> Result<()> {
 }
 
 #[cfg(test)]
+mod bundled_daemon_tests {
+    use super::{BUNDLED_DAEMON, app_hook_names, is_bundled_daemon, keep_copy};
+    use std::path::Path;
+
+    fn scratch(label: &str) -> std::path::PathBuf {
+        let folder = std::env::temp_dir().join(format!(
+            "{}-bundled-{label}-{}",
+            env!("APP_COMMAND"),
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).unwrap();
+        folder
+    }
+
+    #[test]
+    fn the_bundled_daemon_is_told_by_its_name_with_or_without_a_target_triple() {
+        for name in [
+            BUNDLED_DAEMON.to_string(),
+            format!("{BUNDLED_DAEMON}.exe"),
+            format!("{BUNDLED_DAEMON}-x86_64-unknown-linux-gnu"),
+        ] {
+            assert!(
+                is_bundled_daemon(&Path::new("/tmp/.mount_X/usr/bin").join(&name)),
+                "{name}"
+            );
+        }
+        let terminal_app = Path::new("/home/me/.local/bin").join(env!("APP_COMMAND"));
+        assert!(!is_bundled_daemon(&terminal_app));
+    }
+
+    #[test]
+    fn an_old_hook_naming_the_bundled_daemon_is_one_of_ours() {
+        assert!(app_hook_names().contains(&BUNDLED_DAEMON));
+        let dead = format!("\"/tmp/.mount_Gone/usr/bin/{BUNDLED_DAEMON}\" hook claude");
+        assert!(maitty_provider_claude::runs_our_hook(&dead, &app_hook_names()));
+    }
+
+    #[test]
+    fn the_copy_is_made_once_and_replaced_when_the_build_changes() {
+        let from = scratch("from");
+        let to = scratch("to");
+        let running = from.join(format!("{BUNDLED_DAEMON}-x86_64-unknown-linux-gnu"));
+        std::fs::write(&running, b"build one").unwrap();
+
+        let first = keep_copy(&running, &to).unwrap();
+        assert_eq!(std::fs::read(&first).unwrap(), b"build one");
+        assert_eq!(first.file_stem().unwrap().to_string_lossy(), BUNDLED_DAEMON);
+
+        let modified = std::fs::metadata(&first).unwrap().modified().unwrap();
+        assert_eq!(keep_copy(&running, &to).unwrap(), first);
+        assert_eq!(
+            std::fs::metadata(&first).unwrap().modified().unwrap(),
+            modified
+        );
+
+        std::fs::write(&running, b"build two, longer").unwrap();
+        assert_eq!(keep_copy(&running, &to).unwrap(), first);
+        assert_eq!(std::fs::read(&first).unwrap(), b"build two, longer");
+        assert!(!to.join(format!("{BUNDLED_DAEMON}.partial")).exists());
+    }
+}
+
+#[cfg(test)]
 mod tests {
     fn check(state: CheckState) -> CheckInfo {
         CheckInfo {
@@ -3568,6 +3828,52 @@ mod tests {
             "only a working agent is quiet"
         );
         assert!(pane_json(&p).get("quiet_since").is_none());
+    }
+
+    #[test]
+    fn ls_says_a_working_agent_is_repeating_itself() {
+        let mut p = pane("Working", Some("claude"), None);
+        p.repeats = Some(6);
+        assert_eq!(
+            agent_tag(&p).as_deref(),
+            Some("claude: working · repeating 6x")
+        );
+        assert_eq!(pane_json(&p)["repeats"], json!(6));
+        p.status = Status::Done;
+        assert_eq!(
+            agent_tag(&p).as_deref(),
+            Some("claude: done"),
+            "only a working agent repeats"
+        );
+        assert!(pane_json(&p).get("repeats").is_none());
+        let mut plain = pane("Working", Some("claude"), None);
+        assert!(pane_json(&plain).get("repeats").is_none(), "not repeating, no key");
+        plain.repeats = None;
+        assert_eq!(agent_tag(&plain).as_deref(), Some("claude: working"));
+    }
+
+    #[test]
+    fn a_wait_that_times_out_on_a_working_agent_says_why_it_looks_stuck() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let twelve_minutes_ago = now - 12 * 60;
+        assert_eq!(still_working_note(None, None), None);
+        assert_eq!(
+            still_working_note(Some(twelve_minutes_ago), None).as_deref(),
+            Some("still working, but quiet for 12m")
+        );
+        assert_eq!(
+            still_working_note(None, Some(6)).as_deref(),
+            Some("still working, but repeating itself (6x)")
+        );
+        // Silence is the stronger sign: a quiet agent says so first.
+        assert!(
+            still_working_note(Some(twelve_minutes_ago), Some(6))
+                .unwrap()
+                .starts_with("still working, but quiet for")
+        );
     }
 
     #[test]
@@ -4219,6 +4525,142 @@ mod tests {
             panic!("expected hook")
         };
         assert_eq!(event, "question.asked");
+    }
+
+    /// The `call` a hook reports, for an agent and a payload.
+    fn call_of(agent: &str, payload: serde_json::Value) -> Option<String> {
+        let origin = super::HookOrigin {
+            term: 7,
+            agent: agent.into(),
+            pid: 10,
+            token: String::new(),
+        };
+        let ClientMsg::Hook { call, .. } = super::hook_message(origin, &payload, HookStatus::Working) else {
+            panic!("expected hook")
+        };
+        call
+    }
+
+    fn pre_tool(tool: &str, input: serde_json::Value) -> serde_json::Value {
+        json!({ "hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": input })
+    }
+
+    #[test]
+    fn a_tool_start_reports_a_fingerprint_of_the_call_and_never_the_call() {
+        let input = json!({ "command": "echo SECRET-VALUE-123" });
+        let call = call_of("claude", pre_tool("Bash", input)).expect("a fingerprint");
+
+        assert_eq!(call.len(), 16);
+        assert!(call.chars().all(|c| c.is_ascii_hexdigit()), "{call}");
+        assert!(!call.contains("SECRET") && !call.contains("echo"));
+    }
+
+    #[test]
+    fn the_same_call_has_the_same_fingerprint_and_another_call_has_another() {
+        let ls = call_of("claude", pre_tool("Bash", json!({ "command": "ls" })));
+
+        assert_eq!(ls, call_of("claude", pre_tool("Bash", json!({ "command": "ls" }))));
+        assert_ne!(ls, call_of("claude", pre_tool("Bash", json!({ "command": "ls -l" }))));
+        assert_ne!(ls, call_of("claude", pre_tool("Read", json!({ "command": "ls" }))));
+        // Key order in the agent's JSON does not make a different call.
+        assert_eq!(
+            call_of("claude", pre_tool("Edit", json!({ "a": 1, "b": 2 }))),
+            call_of("claude", pre_tool("Edit", json!({ "b": 2, "a": 1 })))
+        );
+    }
+
+    #[test]
+    fn claude_qwen_codex_and_gemini_tool_starts_report_one() {
+        let input = json!({ "command": "ls" });
+        for agent in ["claude", "qwen", "codex"] {
+            assert!(call_of(agent, pre_tool("Bash", input.clone())).is_some(), "{agent}");
+        }
+        let gemini = json!({ "hook_event_name": "BeforeTool", "tool_name": "run_shell_command", "tool_input": input });
+        assert!(call_of("gemini", gemini).is_some());
+    }
+
+    #[test]
+    fn nothing_else_reports_one() {
+        let input = json!({ "command": "ls" });
+        for event in ["PostToolUse", "UserPromptSubmit", "Stop", "Notification", "AfterTool"] {
+            let payload = json!({ "hook_event_name": event, "tool_name": "Bash", "tool_input": input });
+            assert_eq!(call_of("claude", payload), None, "{event}");
+        }
+        // Without the tool's input, two different calls would look the same, so there is no fingerprint.
+        assert_eq!(call_of("claude", json!({ "hook_event_name": "PreToolUse", "tool_name": "Bash" })), None);
+        assert_eq!(call_of("claude", json!({ "hook_event_name": "PreToolUse", "tool_input": input })), None);
+        // An agent that passes no payload, and one whose hooks are not tool hooks.
+        assert_eq!(call_of("kimi", json!({})), None);
+        assert_eq!(call_of("opencode", pre_tool("Bash", input.clone())), None);
+        // A call made inside a subagent is not the session's own.
+        let inner = json!({ "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": input, "agent_id": "agent-1" });
+        assert_eq!(call_of("claude", inner), None);
+    }
+
+    #[test]
+    fn a_permission_request_reports_the_tool_and_its_subject_but_never_what_it_would_write() {
+        use crate::protocol::HookStatus as H;
+        let report = |payload: serde_json::Value| {
+            let origin = super::HookOrigin {
+                term: 7,
+                agent: "claude".into(),
+                pid: 10,
+                token: String::new(),
+            };
+            let ClientMsg::Hook { ask, .. } = super::hook_message(origin, &payload, H::Blocked)
+            else {
+                panic!("expected hook")
+            };
+            ask
+        };
+        let bash = report(json!({
+            "hook_event_name": "PermissionRequest",
+            "tool_name": "Bash",
+            "tool_input": {"command": "cargo   test\n  --all", "description": "run the tests"},
+        }))
+        .expect("a Bash request");
+        assert_eq!((bash.tool.as_str(), bash.detail.as_str()), ("Bash", "cargo test --all"));
+        assert!(!bash.answerable, "only the daemon says a prompt can be answered");
+
+        // The payload Claude 2.1.319 sent for a Write: the content is not carried.
+        let write = report(json!({
+            "hook_event_name": "PermissionRequest",
+            "tool_name": "Write",
+            "tool_input": {"file_path": "/work/x.txt", "content": "API_KEY=hunter2"},
+            "permission_suggestions": [{"type": "setMode", "mode": "acceptEdits", "destination": "session"}],
+        }))
+        .expect("a Write request");
+        assert_eq!((write.tool.as_str(), write.detail.as_str()), ("Write", "/work/x.txt"));
+        assert!(!format!("{write:?}").contains("hunter2"));
+
+        // A question Claude puts to the person shows its text and numbered choices.
+        let question = report(json!({
+            "hook_event_name": "PermissionRequest",
+            "tool_name": "AskUserQuestion",
+            "tool_input": {"questions": [{"question": "Which database?", "header": "DB", "multiSelect": false,
+                "options": [{"label": "SQLite", "description": "file"}, {"label": "Postgres", "description": "server"}]}]},
+        }))
+        .expect("a question");
+        assert_eq!(question.detail, "Which database?");
+        assert_eq!(question.choices, ["SQLite", "Postgres"]);
+        // Several questions, or several answers, cannot be answered with one key: numbered in the line.
+        let many = report(json!({
+            "hook_event_name": "PermissionRequest",
+            "tool_name": "AskUserQuestion",
+            "tool_input": {"questions": [
+                {"question": "Which?", "multiSelect": true, "options": [{"label": "A"}, {"label": "B"}]},
+            ]},
+        }))
+        .expect("a multi-select question");
+        assert_eq!((many.detail.as_str(), many.choices.len()), ("Which? 1 A · 2 B", 0));
+
+        // A tool with no subject field is still a question; one with no tool is not reported.
+        let bare = report(json!({"hook_event_name": "PermissionRequest", "tool_name": "ExitPlanMode"}))
+            .expect("a request with no input");
+        assert_eq!(bare.detail, "");
+        assert!(report(json!({"hook_event_name": "PermissionRequest"})).is_none());
+        // Only a permission request carries one.
+        assert!(report(json!({"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "ls"}})).is_none());
     }
 
     #[test]

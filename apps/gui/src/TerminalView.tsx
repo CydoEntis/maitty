@@ -14,7 +14,7 @@ import { appendToScreen, cachedScreen, replaceScreen, screenKey } from '@/featur
 import { isWindowActive, useWindowActive } from '@/lib/window-activity'
 import { hasWebgl2 } from '@/lib/gpu'
 import { oscColor } from '@/lib/osc-color'
-import { beginFlush, forgetRenderer, reportRenderer } from '@/lib/perf-meter'
+import { beginFlush, countKeyReply, forgetRenderer, reportRenderer } from '@/lib/perf-meter'
 import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, fontStackFor, type TerminalFontWeight } from '@/lib/terminalFont'
 import '@xterm/xterm/css/xterm.css'
 
@@ -92,6 +92,8 @@ export type TerminalLook = {
   seeThrough?: boolean
   /** xterm's own cursor blink, for the focused pane only. Off unless asked for. */
   cursorBlink?: boolean
+  /** Draw with the DOM renderer even where WebGL 2 exists (Settings › Performance). Read when the view opens. */
+  plainDrawing?: boolean
   screenReader?: boolean
   theme?: ITheme
   /** xterm's own floor for the contrast of any foreground a program picks; 1 leaves colours as asked. */
@@ -174,7 +176,6 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
   // Each machine numbers its own panes: the stream and its history are kept by machine and pane.
   const machine = conversation.machine ?? 0
   const binding: TerminalBinding = useMemo(() => ({ id: conversation.id, generation: conversation.generation }), [conversation.id, conversation.generation])
-  const inputQueue = useRef(Promise.resolve())
   const terminalHost = useRef<HTMLDivElement>(null)
   const terminal = useRef<XtermTerminal | null>(null)
   const inputFailedRef = useRef(false)
@@ -203,7 +204,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
   const [loadError, setLoadError] = useState(false)
   const [inputFailed, setInputFailed] = useState(false)
   const [resizeError, setResizeError] = useState('')
-  const [transparent, setTransparent] = useState(() => hasWebgl2() && (look.seeThrough ?? false))
+  const [transparent, setTransparent] = useState(() => hasWebgl2() && !(look.plainDrawing ?? false) && (look.seeThrough ?? false))
 
   const send = useCallback((data: string | Uint8Array) => {
     if (!data || inputDisabledRef.current) return
@@ -214,11 +215,13 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
       setInputFailed(false)
     }
     onInputRef.current?.(data)
-    inputQueue.current = inputQueue.current.then(async () => {
-      // Anything typed behind a key that failed is dropped with it, never sent out of order.
-      if (inputFailedRef.current) return
-      // The daemon echoes what was typed through the stream, so there is nothing to write here.
-      await sendTerminalInput(binding, data)
+    // A key goes out at once and is not held for the one before it to be answered: a reply can take
+    // as long as the web view's next event, and each letter waited for it. The host takes keys in the
+    // order they arrive (`terminal_input` is not async), so nothing is reordered. The daemon echoes
+    // what was typed through the stream, so there is nothing to write here.
+    const sentAt = performance.now()
+    sendTerminalInput(binding, data).then(() => {
+      countKeyReply(performance.now() - sentAt)
     }).catch(() => {
       inputFailedRef.current = true
       inputFailedAt.current = Date.now()
@@ -243,6 +246,10 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     let frame = 0
     let flushWait = 0
     let queued: Uint8Array[] = []
+    // xterm answers every query it parses, and a replay or history is full of old ones. While a
+    // write that carries one is being parsed, what xterm sends back is not input (ticket 40).
+    let queuedReplay = false
+    let replayWrites = 0
     let replayWait = 0
     let lastFlushAt = 0
     const screen = screenKey(machine, term, binding.generation)
@@ -260,7 +267,14 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         offset += chunk.length
       }
       queued = []
-      emulator.write(bytes, beginFlush())
+      const replaying = queuedReplay
+      queuedReplay = false
+      if (replaying) replayWrites += 1
+      const flushed = beginFlush()
+      emulator.write(bytes, () => {
+        flushed()
+        if (replaying) replayWrites -= 1
+      })
       lastFlushAt = performance.now()
     }
     // Output is written once per animation frame, so a burst repaints once instead of per chunk, and
@@ -288,6 +302,12 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
       if (frame === 0 && flushWait === 0) frame = requestAnimationFrame(flushOnFrame)
     }
 
+    // A screen that replaces what the pane shows: history, a replay, the kept screen.
+    const enqueueReplay = (...parts: Uint8Array[]) => {
+      queuedReplay = true
+      enqueue(...parts)
+    }
+
     async function mountTerminal() {
       try {
         const [{ Terminal: TerminalEmulator }, { FitAddon }, { SearchAddon }] = await Promise.all([
@@ -297,7 +317,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         ])
         if (!isMounted) return
 
-        const wantsWebgl = hasWebgl2()
+        const wantsWebgl = hasWebgl2() && !(lookRef.current.plainDrawing ?? false)
         const startRenderer: Renderer = wantsWebgl ? 'webgl' : 'dom'
         const startSeeThrough = seeThroughOf(lookRef.current, startRenderer)
         emulator = new TerminalEmulator({
@@ -347,6 +367,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         // anything but a query falls through to xterm.
         const answerColorQuery = (slot: 'foreground' | 'background') => (data: string) => {
           if (data !== OSC_QUERY) return false
+          if (replayWrites > 0) return true
           const color = oscColor((lookRef.current.theme ?? DEFAULT_THEME)[slot] ?? '')
           if (color === null) return false
           send(`\x1b]${String(slot === 'background' ? OSC_BACKGROUND : OSC_FOREGROUND)};${color}\x1b\\`)
@@ -433,7 +454,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         const kept = cachedScreen(screen)
         if (kept) {
           fit.fit()
-          enqueue(kept.bytes)
+          enqueueReplay(kept.bytes)
           lastSeq = kept.seq
           shown = kept.seq
         }
@@ -450,7 +471,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
             // reset travels with the replay: one write for the frame.
             queued = []
             replaceScreen(screen, chunk.seq, chunk.bytes)
-            enqueue(RESET_SCREEN, chunk.bytes)
+            enqueueReplay(RESET_SCREEN, chunk.bytes)
             setConnecting(false)
             return
           }
@@ -482,7 +503,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
           fetched = true
           // A fetched replay has no sequence number: it is only a screen to start from.
           replaceScreen(screen, lastSeq, replay)
-          enqueue(...(shown === null ? [replay] : [RESET_SCREEN, replay]))
+          enqueueReplay(...(shown === null ? [replay] : [RESET_SCREEN, replay]))
         }
         if (!stillMounted()) return
         if (history) {
@@ -490,7 +511,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
           if (history.seq !== shown) {
             // Drop an older screen still waiting; the history replaces it in the same write.
             if (shown !== null) queued = []
-            enqueue(...(shown === null ? [history.bytes] : [RESET_SCREEN, history.bytes]))
+            enqueueReplay(...(shown === null ? [history.bytes] : [RESET_SCREEN, history.bytes]))
           }
           lastSeq = history.seq
           replaceScreen(screen, history.seq, history.bytes)
@@ -501,7 +522,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
           // pane would stay blank, so after a while the replay is fetched directly.
           replayWait = window.setTimeout(() => {
             loadTerminalReplay(binding).then(
-              (bytes) => { if (stillMounted()) { replaceScreen(screen, lastSeq, bytes); enqueue(RESET_SCREEN, bytes); setConnecting(false) } },
+              (bytes) => { if (stillMounted()) { replaceScreen(screen, lastSeq, bytes); enqueueReplay(RESET_SCREEN, bytes); setConnecting(false) } },
               () => { if (stillMounted()) { setLoadError(true); setConnecting(false) } },
             )
           }, REPLAY_WAIT_MS)
@@ -526,8 +547,9 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
           if (event.type === 'keydown') send(NEW_LINE_KEYS)
           return false
         })
-        const inputSubscription = terminalInstance.onData(send)
+        const inputSubscription = terminalInstance.onData((data) => { if (replayWrites === 0) send(data) })
         const binarySubscription = terminalInstance.onBinary((data) => {
+          if (replayWrites > 0) return
           send(Uint8Array.from(data, (character) => character.charCodeAt(0)))
         })
         disposeInput = () => { inputSubscription.dispose() }

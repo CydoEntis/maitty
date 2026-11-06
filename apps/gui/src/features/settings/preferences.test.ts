@@ -26,11 +26,20 @@ const DEFAULTS: SettingsPreferences = {
   scrollback: 10000, scrollSpeed: 1,
   effectWorking: true,
   effectNeedsYou: true,
-  effectDone: true, effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all', animations: 'auto', density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, monthlyBudget: null, iconSize: 'medium', trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, newSessionView: 'chat', chatFullAccessDefault: false, perfOverlay: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass',
+  defaultAgent: 'claude', newSessionView: 'chat',
+  effectDone: true, effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all', animations: 'auto', density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, monthlyBudget: null, iconSize: 'medium', trayStyle: 'tree', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, chatFullAccessDefault: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass',
 }
 
 describe('settings preferences', () => {
   beforeEach(() => { localStorage.clear() })
+
+  it('opens a new session as a chat with Claude until told otherwise, and ignores a value it does not know', () => {
+    expect(readSettingsPreferences()).toMatchObject({ defaultAgent: 'claude', newSessionView: 'chat' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ defaultAgent: 'codex', newSessionView: 'terminal' }))
+    expect(readSettingsPreferences()).toMatchObject({ defaultAgent: 'codex', newSessionView: 'terminal' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ defaultAgent: 'gemini', newSessionView: 'sideways' }))
+    expect(readSettingsPreferences()).toMatchObject({ defaultAgent: 'claude', newSessionView: 'chat' })
+  })
 
   it('starts with a flat ground and a steady cursor, and keeps a stored choice', () => {
     expect(readSettingsPreferences()).toMatchObject({ backgroundGlow: false, cursorBlink: false })
@@ -55,6 +64,14 @@ describe('settings preferences', () => {
     writeSettingsPreferences(saved)
 
     expect(readSettingsPreferences()).toEqual(saved)
+  })
+
+  it('keeps the choice to draw terminals without the GPU, and ignores a value that is not a switch', () => {
+    writeSettingsPreferences({ ...DEFAULTS, terminalPlainDrawing: true })
+    expect(readSettingsPreferences().terminalPlainDrawing).toBe(true)
+
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ terminalPlainDrawing: 'yes' }))
+    expect(readSettingsPreferences().terminalPlainDrawing).toBe(false)
   })
 
   it('falls back safely when saved preferences are malformed', () => {
@@ -121,11 +138,11 @@ describe('settings preferences', () => {
   })
 
   it('starts new agent sessions as chats with full access off, and ignores nonsense', () => {
-    expect(readSettingsPreferences()).toMatchObject({ newSessionView: 'chat', chatFullAccessDefault: false })
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ newSessionView: 'terminal', chatFullAccessDefault: true }))
-    expect(readSettingsPreferences()).toMatchObject({ newSessionView: 'terminal', chatFullAccessDefault: true })
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ newSessionView: 'sideways', chatFullAccessDefault: 'yes' }))
-    expect(readSettingsPreferences()).toMatchObject({ newSessionView: 'chat', chatFullAccessDefault: false })
+    expect(readSettingsPreferences()).toMatchObject({ chatFullAccessDefault: false })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ chatFullAccessDefault: true }))
+    expect(readSettingsPreferences()).toMatchObject({ chatFullAccessDefault: true })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ chatFullAccessDefault: 'yes' }))
+    expect(readSettingsPreferences()).toMatchObject({ chatFullAccessDefault: false })
   })
 
   it('opens agent sessions in the terminal unless a view was chosen, and ignores nonsense', () => {
@@ -150,10 +167,10 @@ describe('settings preferences', () => {
     expect(readSettingsPreferences()).toMatchObject({ density: 'spacious', sidebarTextSize: 17, tabTextSize: 13.5, sidebarWidth: 200 })
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ density: 'huge', sidebarWidth: 9999 }))
     expect(readSettingsPreferences()).toMatchObject({ density: 'comfortable', sidebarWidth: 420 })
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ trayStyle: 'stacked', leadMode: 'attention' }))
-    expect(readSettingsPreferences()).toMatchObject({ trayStyle: 'stacked', leadMode: 'attention' })
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ trayStyle: 'wide', leadMode: 'random' }))
-    expect(readSettingsPreferences()).toMatchObject({ trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ trayStyle: 'stacked' }))
+    expect(readSettingsPreferences()).toMatchObject({ trayStyle: 'stacked' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ trayStyle: 'wide' }))
+    expect(readSettingsPreferences()).toMatchObject({ trayStyle: 'tree', iconColor: 'color' })
   })
 
   it('keeps a valid terminal font and falls back to the defaults for nonsense', () => {

@@ -95,7 +95,10 @@ impl App {
         match ev {
             Event::Key(k) if k.kind != KeyEventKind::Release => self.on_key(k),
             Event::Paste(s) => self.on_paste(s),
-            Event::FocusGained => self.window_focused = true,
+            Event::FocusGained => {
+                self.window_focused = true;
+                self.mark_looked_pane_seen();
+            }
             Event::FocusLost => self.window_focused = false,
             Event::Mouse(m) => self.on_mouse(m),
             _ => {}
@@ -178,6 +181,7 @@ impl App {
                     _ => {}
                 }
             }
+            Mode::NewSession(_) => self.session_popup_paste(&s),
             Mode::Finder(fd) => {
                 fd.q.push_str(s.lines().next().unwrap_or("").trim());
                 fd.sel = 0;
@@ -214,7 +218,7 @@ impl App {
         self.keep_shortcut_mode();
     }
 
-    /// Shortcut mode stays until you leave it (ADR 0016, ADR 0021): an action that opened a
+    /// Shortcut mode stays until you leave it: an action that opened a
     /// popup hands it the keys, and when the popup closes the mode is back.
     pub(super) fn keep_shortcut_mode(&mut self) {
         match self.mode {
@@ -230,7 +234,7 @@ impl App {
         }
     }
 
-    /// Going into a pane ends shortcut mode (ADR 0025): you go there to type, and a letter
+    /// Going into a pane ends shortcut mode: you go there to type, and a letter
     /// meant for the new shell or agent must not run an action instead. An open side panel is
     /// set aside, as a click into a pane does, so the next key reaches the pane, not the panel.
     pub(super) fn leave_shortcut_mode(&mut self) {
@@ -239,7 +243,7 @@ impl App {
         self.view_set_aside = self.view_kind();
     }
 
-    /// A key that does nothing in shortcut mode says why, in a toast (ADR 0023): someone who
+    /// A key that does nothing in shortcut mode says why, in a toast: someone who
     /// thinks they are typing sees where their keys went. Once per `DEAD_KEY_HINT_EVERY`, and
     /// never over a toast still showing, so mashing keys doesn't keep it up or hide news.
     fn hint_dead_key(&mut self) {
@@ -372,6 +376,7 @@ impl App {
                 }
             }
             Mode::Finder(fd) => self.on_finder_key(*fd, &k),
+            Mode::NewSession(ns) => self.on_session_popup_key(*ns, &k),
             Mode::ScreenPane(np) => self.on_hy_pane_key(np, &k),
             Mode::ScreenSettings(_) => self.screen_settings_key(&k),
             Mode::Themes { query, sel, saving } => self.on_theme_key(query, sel, saving, &k),

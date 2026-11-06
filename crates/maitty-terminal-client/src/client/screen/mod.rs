@@ -45,6 +45,8 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 pub(super) struct Saved {
     /// Project keys in the order they were first seen; a project's colour is its index.
     pub order: Vec<String>,
+    /// Paths a session was last started in from the New Session popup, newest first, as typed.
+    pub recent_paths: Vec<String>,
     /// Folded sidebar rows ("p:<project key>").
     pub closed: Vec<String>,
     /// Sessions in the order you dragged them to (within a group; what needs you still
@@ -211,6 +213,9 @@ pub(super) struct Screen {
     pub fresh: HashSet<String>,
     /// A session about to open beside this one: pair them when it appears.
     pub pending_split: Option<(ClientTerm, Instant)>,
+    /// The sessions there were when that split began: a new one the daemon lists before the client has placed it beside the
+    /// other is kept off the sidebar until it is, so its row neither shows nor moves.
+    pub split_known: HashSet<ClientTerm>,
     /// The focus last time the state came in.
     pub last_focus: Option<ClientTerm>,
     /// Modal frames drawn this frame, flattened onto the workspace ground afterward.
@@ -517,6 +522,8 @@ pub(super) struct Session {
     pub since: u64,
     /// Working with no output or report since then (unix seconds): it may be stuck.
     pub quiet_since: Option<u64>,
+    /// Working, and its last calls repeat: how many calls the repeat has reached.
+    pub repeats: Option<u32>,
     /// You marked this quiet spell seen in the Inbox.
     pub quiet_seen: bool,
     pub question: Option<String>,
@@ -931,6 +938,9 @@ impl App {
                     continue;
                 };
                 let term = ClientTerm::on(m.id, *id);
+                if self.screen.pending_split.is_some() && !self.screen.split_known.contains(&term) {
+                    continue;
+                }
                 let key = t
                     .conversation_id
                     .map(SessionKey::Conversation)
@@ -1021,6 +1031,7 @@ impl App {
                     status: t.status,
                     since: t.since,
                     quiet_since: t.quiet_since,
+                    repeats: t.repeats,
                     quiet_seen: t
                         .quiet_since
                         .is_some_and(|at| self.screen.quiet_seen.get(&term) == Some(&at)),
@@ -1112,6 +1123,7 @@ impl App {
                 status: c.status,
                 since: now_secs(),
                 quiet_since: None,
+                repeats: None,
                 quiet_seen: false,
                 question: None,
                 is_agent: true,
@@ -1585,6 +1597,12 @@ pub(super) enum ScreenHit {
     /// Inside an overlay's panel: nothing.
     Noop,
     FinderPick(usize),
+    /// A row of the New Session popup, and one of its machine chips.
+    NsRow(usize),
+    NsChip(usize),
+    /// A ` + ` chip on this computer's title or an online machine's badge, or a connected machine
+    /// with nothing running: opens the popup on that machine's home folder.
+    NsMachine(MachineId),
     NpProj(usize),
     NpRun(usize),
     NpBeside(usize),
@@ -1636,6 +1654,8 @@ pub(super) enum ScreenHit {
     Restart,
     /// The sidebar's Remote half, empty: open the Machines dialog to add one.
     AddMachine,
+    /// A click on the Local (`false`) or Remote (`true`) title: fold or unfold that half.
+    ToggleRegion(bool),
     NewShell,
     /// A row of the worktree clean-up list (tick or untick it), and its Remove button.
     TidyRow(usize),
@@ -1742,6 +1762,11 @@ pub(in crate::client) mod machines;
 #[cfg(test)]
 mod machines_tests;
 mod newsession;
+pub(in crate::client) mod quick_new;
+mod session_popup;
+mod session_popup_ui;
+pub(in crate::client) use session_popup::NewSession;
+pub(in crate::client) use session_popup_ui::draw_session_popup;
 mod popover;
 mod popups;
 mod rail;

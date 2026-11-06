@@ -371,7 +371,9 @@ keys nobody pressed. Ticket 40.
    If the host's count rises while the window's stays at 0, the frames are lost between the two,
    and step 2 is the fix. If the host's count does not rise, the host is not sending while the
    window is idle: follow that in `terminal_stream.rs` before anything else.
-2. **Carry terminal output on a socket the web view reads itself**, not on a Tauri channel. The
+2. **Carry terminal output on a socket the web view reads itself**, not on a Tauri channel. **Built, not yet
+   measured in a real window** ([ADR 0004](adr/0004-client-split-and-desktop-host.md)); run
+   *How to run measurement 2 again* on a build from the branch before calling it fixed. The
    host listens on `127.0.0.1` on a port it picks, the window connects with a one-time token the
    host hands it through a command, and frames keep the header they have now. A WebSocket is read
    by the web process's own network stack and does not wait for the host's main loop or for
@@ -380,6 +382,27 @@ keys nobody pressed. Ticket 40.
 3. **Stop answering queries in replayed output** (ticket 40): while a view writes history or a
    replay, what xterm sends through `onData` is dropped; only live output may be answered.
 4. **Then the probe and the budgets below**, so the next release is measured.
+
+**Keys no longer wait for replies (2026-11-06).** With step 2 built, a release build on the owner's
+machine received 420 of 421 output frames over the local socket, at 62 fps and 0% CPU, and typing was
+still a step behind. The input path was the other half: `TerminalView` sent each key only after the
+previous key's `invoke` had been answered, and an answer is delivered by the same host-to-window
+path that stalled output. A letter therefore waited for the next event. Keys now go out at once;
+`terminal_input` is a plain (non-`async`) Tauri command, which runs on the main thread in arrival
+order, so nothing is reordered. Settings › Performance reports **key replies from the host** (median
+and worst of the last 100 keys): a large worst figure with typing now fast confirms the cause, and a
+small one with typing still late points elsewhere (xterm's render or the web view presenting it).
+
+**Cause found for the late letters and the cursor over the last one (2026-11-06).** A report from the
+owner's machine (Hyprland, NVIDIA RTX 4060, WebKitGTK 2.52) with the keys already going out at once
+read: key replies median 1 ms and worst 40 ms, 63 fps, no slow frames, 124 of 125 output frames over
+the local socket. Typing was still late. Switching the terminals to xterm's DOM renderer
+(Settings › Performance › **Draw terminals without the GPU**) fixed it, in a shell and in a Claude
+session. So the delay was in the WebGL renderer presenting its canvas on this web view, not in the
+keys, the daemon, the host or the output socket. On Linux the setting now starts on; macOS and
+Windows keep WebGL (`prefersPlainDrawing` in `lib/gpu.ts`). Not yet checked: CPU with the DOM
+renderer while an agent streams a long answer (the figures above for a streaming session were
+measured with WebGL). Copy the report during one and compare.
 
 ### How to run measurement 2 again
 

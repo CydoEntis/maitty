@@ -9,7 +9,7 @@ use crate::streams::{SEQ_BYTES, Streams};
 use crate::terminal_stream::{Reaction, Wire, flush, react};
 use maitty_desktop_client::PaneCommand;
 use maitty_machines::Machine;
-use maitty_shared::protocol::{ClientMsg, Command, Snapshot, TermId};
+use maitty_shared::protocol::{ClientMsg, Command, FolderListing, Snapshot, TermId};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -33,6 +33,7 @@ struct Host {
     states: Vec<(u16, &'static str)>,
     frames: Vec<Frame>,
     sessions: BTreeMap<u16, Option<Snapshot>>,
+    folders: Vec<(u16, u64, FolderListing)>,
 }
 
 impl Host {
@@ -52,6 +53,7 @@ impl Host {
             states: Vec::new(),
             frames: Vec::new(),
             sessions: BTreeMap::new(),
+            folders: Vec::new(),
         }
     }
 
@@ -75,10 +77,12 @@ impl Host {
                 Reaction::Error { .. }
                 | Reaction::Removed { .. }
                 | Reaction::Notice { .. }
+                | Reaction::Attention { .. }
                 | Reaction::Clipboard { .. } => {}
                 Reaction::Sessions { machine, snapshot } => {
                     self.sessions.insert(machine.0, snapshot.map(|s| *s));
                 }
+                Reaction::Folders { machine, tag, listing } => self.folders.push((machine.0, tag, listing)),
             }
         }
     }
@@ -235,7 +239,7 @@ async fn three_machines_snapshots_typing_and_a_replay_after_one_reconnects() {
             assert_eq!(
                 occurrences(&text, other),
                 0,
-                "{other} reached machine {}",
+                "{other} reached machine {}; its pane read: {text:?}",
                 machine.0
             );
         }
@@ -325,4 +329,46 @@ async fn three_machines_snapshots_typing_and_a_replay_after_one_reconnects() {
         })
     })
     .await;
+}
+
+#[tokio::test]
+async fn each_machine_lists_the_folders_inside_a_folder_and_the_answer_names_the_question() {
+    let (mut here, mut alpha, mut beta) = (Sandbox::new(), Sandbox::new(), Sandbox::new());
+    for sandbox in [&mut here, &mut alpha, &mut beta] {
+        sandbox.start_daemon();
+    }
+    let mut host = Host::new(&here, &alpha, &beta);
+    host.until("every machine connected", |h| {
+        [HERE, ALPHA, BETA].iter().all(|m| h.kinds(*m).last() == Some(&"connected"))
+    })
+    .await;
+
+    // Each sandbox has a `data` folder; ask each machine about its own, by tag.
+    let ask = |host: &Host, machine: MachineId, sandbox: &Sandbox, tag: u64| {
+        let machine = (machine != HERE).then_some(machine.0);
+        host.wire
+            .list_folders(machine, &sandbox.dir.to_string_lossy(), tag)
+            .expect("the machine takes the question");
+    };
+    ask(&host, HERE, &here, 1);
+    ask(&host, ALPHA, &alpha, 2);
+    ask(&host, BETA, &beta, 3);
+    host.until("all three answered", |h| h.folders.len() >= 3).await;
+
+    for (machine, tag, sandbox) in [(HERE, 1, &here), (ALPHA, 2, &alpha), (BETA, 3, &beta)] {
+        let (_, _, listing) = host
+            .folders
+            .iter()
+            .find(|(m, t, _)| *m == machine.0 && *t == tag)
+            .unwrap_or_else(|| panic!("no answer from machine {}", machine.0));
+        assert!(listing.exists, "{listing:?}");
+        assert!(listing.entries.iter().any(|e| e.name == "data"), "{listing:?}");
+        assert_eq!(listing.path, sandbox.dir.to_string_lossy().replace('\\', "/"));
+    }
+
+    // A folder that is not there is an answer too, not an error.
+    let missing = here.dir.join("nope");
+    host.wire.list_folders(None, &missing.to_string_lossy(), 4).unwrap();
+    host.until("the missing folder answered", |h| h.folders.iter().any(|(_, t, _)| *t == 4)).await;
+    assert!(!host.folders.iter().find(|(_, t, _)| *t == 4).unwrap().2.exists);
 }

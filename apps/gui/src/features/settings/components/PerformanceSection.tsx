@@ -62,6 +62,9 @@ export function PerformanceSection({ preferences, update, appVersion }: Performa
         <Row label="Drawing" detail="A pane drawn by WebGL costs little; one drawn by the DOM rebuilds every changed row.">
           <Value>{sample === null ? PENDING : `${gpu} · ${String(sample.renderers.webgl)} WebGL, ${String(sample.renderers.dom)} DOM`}</Value>
         </Row>
+        <Row label="Draw terminals without the GPU" detail="Use this if typed letters show late or the cursor covers the last one. It applies to terminals opened after you change it: restart the app, or reopen the pane.">
+          <Switch label="Draw terminals without the GPU" checked={preferences.terminalPlainDrawing} onChange={(value) => { update('terminalPlainDrawing', value) }} />
+        </Row>
         <Row label="Animations" detail="What the status effects are allowed to do, and why. Change it in Settings › Appearance › Motion.">
           <Value>{animations}</Value>
         </Row>

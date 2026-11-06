@@ -82,7 +82,7 @@ export function agentsSummary(agents: readonly SubagentEvent[]): string {
   return `${String(agents.length)} ${noun}, ${working === 0 ? 'all done' : `${String(working)} working`}`
 }
 
-/** The session panel's heading for the same list: "Agents · 2 working" or "Agents · all done". */
+/** The heading for the same list: "Agents · 2 working" or "Agents · all done". */
 export function agentsHeading(agents: readonly SubagentEvent[]): string {
   const working = agents.filter((agent) => agent.status === 'running').length
   return `Agents · ${working === 0 ? 'all done' : `${String(working)} working`}`

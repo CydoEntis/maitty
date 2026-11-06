@@ -1,6 +1,0 @@
-While this file exists, a release leaves the desktop app out: .github/workflows/release.yml
-builds no desktop installers and keeps telling the desktop updater about the last release that
-had them.
-
-Held because the desktop app shows typing and output one step late (docs/PERFORMANCE.md,
-"Input latency"). Delete this file in the change that makes the desktop app fit to release.

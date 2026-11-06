@@ -36,3 +36,14 @@ export function noticesFor(before: ReadonlyMap<string, SessionStatus> | null, se
   }
   return notices
 }
+
+/**
+ * The notice for a pane a daemon said needs a person (it asks, or it finished). The daemon decides
+ * that once per event; this only words it. Null when that kind of notice is switched off.
+ */
+export function noticeForAttention(session: SessionView, status: 'blocked' | 'done', switches: NotifySwitches): Notice | null {
+  const kind = status === 'blocked' ? 'needs' : 'done'
+  if (!switches[WANTED[kind]]) return null
+  const title = TITLES[kind]?.(nameFor(session))
+  return title ? { sessionId: session.id, title, body: `${session.process} in ${session.cwdLabel}` } : null
+}

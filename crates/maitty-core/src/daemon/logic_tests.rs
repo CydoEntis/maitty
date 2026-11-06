@@ -58,6 +58,8 @@ fn report(term: TermId, token: &str, pid: u32, status: HookStatus, event: &str) 
         model: None,
         name: None,
         background: Vec::new(),
+        ask: None,
+        call: None,
     }
 }
 
@@ -2861,6 +2863,24 @@ fn a_popup_floats_in_no_workspace_and_goes_when_done() {
 }
 
 #[test]
+fn a_hook_that_names_a_transcript_not_written_yet_still_gives_the_pane_its_path() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let secret = d.terms[&t].token.clone();
+    let not_yet = std::env::temp_dir().join("session-before-its-first-prompt.jsonl");
+    let _ = std::fs::remove_file(&not_yet);
+    let mut start = report(t, &secret, 0, HookStatus::Idle, "SessionStart");
+    if let ClientMsg::Hook { transcript, .. } = &mut start {
+        *transcript = Some(not_yet.clone());
+    }
+
+    d.apply_hook(start, Some(true), Vec::new());
+
+    // Its chat can then exist from the start, instead of only after a first prompt.
+    assert_eq!(d.terms[&t].transcript.as_deref(), Some(not_yet.as_path()));
+}
+
+#[test]
 fn an_agent_stays_in_the_folder_it_started_in() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
@@ -2907,6 +2927,8 @@ fn an_agent_stays_in_the_folder_it_started_in() {
             model,
             name,
             background,
+            ask: None,
+            call: None,
         },
         _ => unreachable!(),
     };
@@ -4849,6 +4871,53 @@ fn heard(rx: &mut mpsc::Receiver<ServerMsg>) -> Vec<ServerMsg> {
     std::iter::from_fn(|| rx.try_recv().ok()).collect()
 }
 
+fn viewer_as(d: &mut Daemon, id: u64) -> mpsc::Receiver<ServerMsg> {
+    let (tx, mut rx) = mpsc::channel(64);
+    d.handle(Ev::Connected(
+        id,
+        tx,
+        true,
+        crate::protocol::Surface::Terminal,
+        true,
+    ));
+    while rx.try_recv().is_ok() {}
+    rx
+}
+
+fn told_attention(rx: &mut mpsc::Receiver<ServerMsg>) -> bool {
+    heard(rx)
+        .iter()
+        .any(|m| matches!(m, ServerMsg::Attention { .. }))
+}
+
+#[test]
+fn only_the_window_a_person_used_last_is_told_a_pane_needs_it() {
+    let (mut d, _rx) = daemon();
+    let t = working_agent(&mut d);
+    let mut first = viewer_as(&mut d, 40);
+    let mut second = viewer_as(&mut d, 41);
+    let typed = |d: &mut Daemon, id| {
+        d.handle(Ev::Msg(
+            id,
+            ClientMsg::Input {
+                term: t,
+                data: b"x".to_vec(),
+            },
+        ))
+    };
+    typed(&mut d, 40);
+    heard(&mut first);
+    heard(&mut second);
+    d.announce(t, Status::Blocked);
+    let told_first = (told_attention(&mut first), told_attention(&mut second));
+    typed(&mut d, 41);
+    d.announce(t, Status::Blocked);
+    let told_second = (told_attention(&mut first), told_attention(&mut second));
+    close(&mut d, &[t]);
+    assert_eq!(told_first, (true, false), "the window used last hears it");
+    assert_eq!(told_second, (false, true), "and it follows the person");
+}
+
 #[test]
 fn a_finished_alert_waits_for_the_check_and_rings_once_it_passes() {
     let (mut d, _rx) = daemon();
@@ -6660,6 +6729,154 @@ fn going_quiet_rings_no_alert() {
     );
 }
 
+const CALL_A: &str = "00000000000000aa";
+const CALL_B: &str = "00000000000000bb";
+
+/// A working agent, as the first prompt of a turn leaves it.
+fn agent_at_work(d: &mut Daemon) -> TermId {
+    let id = pane(d);
+    d.hook(id, "claude".into(), HookStatus::Working, "UserPromptSubmit", &[]);
+    id
+}
+
+/// The agent's hook reporting a tool call starting, with that call's fingerprint.
+fn tool_start(d: &mut Daemon, id: TermId, call: &str) {
+    let mut msg = report(id, "", 0, HookStatus::Working, "PreToolUse");
+    if let ClientMsg::Hook { call: c, .. } = &mut msg {
+        *c = Some(call.into());
+    }
+    d.apply_hook(msg, Some(true), Vec::new());
+}
+
+fn repeating(d: &mut Daemon, id: TermId) -> Option<u32> {
+    d.update_statuses();
+    d.terms[&id].repeats
+}
+
+#[test]
+fn a_call_made_five_times_running_marks_the_agent_repeating_and_it_grows() {
+    let (mut d, _rx) = daemon();
+    let id = agent_at_work(&mut d);
+    let mut seen = Vec::new();
+    for _ in 0..6 {
+        tool_start(&mut d, id, CALL_A);
+        seen.push(repeating(&mut d, id));
+    }
+    let (status, wire) = (d.terms[&id].status, d.snapshot().terms[&id].repeats);
+    close(&mut d, &[id]);
+    assert_eq!(seen, [None, None, None, None, Some(5), Some(6)]);
+    assert_eq!(status, Status::Working, "repeating never changes the status");
+    assert_eq!(wire, Some(6), "clients see it");
+}
+
+#[test]
+fn a_different_call_clears_the_mark() {
+    let (mut d, _rx) = daemon();
+    let id = agent_at_work(&mut d);
+    for _ in 0..5 {
+        tool_start(&mut d, id, CALL_A);
+    }
+    assert_eq!(repeating(&mut d, id), Some(5));
+    tool_start(&mut d, id, CALL_B);
+    let after = repeating(&mut d, id);
+    close(&mut d, &[id]);
+    assert_eq!(after, None);
+}
+
+#[test]
+fn two_calls_taking_turns_for_eight_calls_mark_the_agent_repeating() {
+    let (mut d, _rx) = daemon();
+    let id = agent_at_work(&mut d);
+    let mut seen = Vec::new();
+    for turn in 0..8 {
+        tool_start(&mut d, id, if turn % 2 == 0 { CALL_A } else { CALL_B });
+        seen.push(repeating(&mut d, id));
+    }
+    close(&mut d, &[id]);
+    assert_eq!(seen[6], None, "seven calls taking turns is not yet");
+    assert_eq!(seen[7], Some(8));
+}
+
+#[test]
+fn a_new_prompt_clears_the_mark_and_the_count_starts_again() {
+    let (mut d, _rx) = daemon();
+    let id = agent_at_work(&mut d);
+    for _ in 0..5 {
+        tool_start(&mut d, id, CALL_A);
+    }
+    assert_eq!(repeating(&mut d, id), Some(5));
+    d.apply_hook(report(id, "", 0, HookStatus::Working, "UserPromptSubmit"), Some(true), Vec::new());
+    let cleared = repeating(&mut d, id);
+    for _ in 0..4 {
+        tool_start(&mut d, id, CALL_A);
+    }
+    let four_more = repeating(&mut d, id);
+    close(&mut d, &[id]);
+    assert_eq!((cleared, four_more), (None, None), "five in a row means in one turn");
+}
+
+#[test]
+fn leaving_working_clears_the_mark_and_what_led_to_it() {
+    let (mut d, _rx) = daemon();
+    let id = agent_at_work(&mut d);
+    for _ in 0..5 {
+        tool_start(&mut d, id, CALL_A);
+    }
+    assert_eq!(repeating(&mut d, id), Some(5));
+    d.hook(id, "claude".into(), HookStatus::Done, "Stop", &[]);
+    let done = repeating(&mut d, id);
+    d.hook(id, "claude".into(), HookStatus::Working, "PreToolUse", &[]);
+    tool_start(&mut d, id, CALL_A);
+    let back = repeating(&mut d, id);
+    close(&mut d, &[id]);
+    assert_eq!((done, back), (None, None), "the sixth call of an old turn is not the first of a new one");
+}
+
+#[test]
+fn only_a_tool_start_counts_and_a_report_without_a_call_leaves_the_run_alone() {
+    let (mut d, _rx) = daemon();
+    let id = agent_at_work(&mut d);
+    for _ in 0..3 {
+        tool_start(&mut d, id, CALL_A);
+    }
+    d.apply_hook(report(id, "", 0, HookStatus::Working, "PostToolUse"), Some(true), Vec::new());
+    for _ in 0..2 {
+        tool_start(&mut d, id, CALL_A);
+    }
+    let marked = repeating(&mut d, id);
+    close(&mut d, &[id]);
+    assert_eq!(marked, Some(5));
+}
+
+#[test]
+fn a_fingerprint_that_is_not_sixteen_hex_characters_is_dropped() {
+    let (mut d, _rx) = daemon();
+    let id = agent_at_work(&mut d);
+    for bad in ["zzzzzzzzzzzzzzzz", "00000000000000a", "00000000000000aaa", ""] {
+        for _ in 0..6 {
+            tool_start(&mut d, id, bad);
+        }
+    }
+    let marked = repeating(&mut d, id);
+    close(&mut d, &[id]);
+    assert_eq!(marked, None);
+}
+
+#[test]
+fn a_repeating_agent_is_shown_and_never_rung() {
+    let (mut d, _rx) = daemon();
+    let id = agent_at_work(&mut d);
+    d.terms.get_mut(&id).unwrap().alert_due = None;
+    for _ in 0..8 {
+        tool_start(&mut d, id, CALL_A);
+    }
+    d.update_statuses();
+    let (marked, due, alerted) = (d.terms[&id].repeats, d.terms[&id].alert_due, d.terms[&id].alerted);
+    close(&mut d, &[id]);
+    assert_eq!(marked, Some(8));
+    assert_eq!((due, alerted.map(|a| a.0)), (None, None));
+}
+
 #[test]
 fn with_output_off_nothing_is_saved_and_what_was_saved_goes() {
     let _one_at_a_time = SAVED_OUTPUT
@@ -6739,6 +6956,77 @@ fn restored_claude_pane(d: &mut Daemon) -> TermId {
         conversation_operations: Vec::new(),
     });
     d.workspaces[0].tabs[0].focus
+}
+
+#[test]
+fn restore_gives_no_shell_to_a_layout_slot_whose_pane_was_not_saved() {
+    let (mut d, _rx) = daemon();
+    let dir = std::env::temp_dir();
+    // Pane 2 was closed (or lost) before the save: the layout still names it, the panes map doesn't.
+    let tab = persist::SavedTab {
+        name: String::new(),
+        layout: crate::layout::Node::Split {
+            horizontal: true,
+            ratio: 0.5,
+            a: Box::new(crate::layout::Node::Leaf(1)),
+            b: Box::new(crate::layout::Node::Leaf(2)),
+        },
+        focus: 1,
+        panes: [(
+            1,
+            persist::SavedPane {
+                cwd: Some(dir.clone()),
+                ..Default::default()
+            },
+        )]
+        .into(),
+    };
+    d.restore(persist::Saved {
+        workspaces: vec![persist::SavedWs {
+            name: "w".into(),
+            cwd: dir,
+            worktree: false,
+            color: None,
+            group: None,
+            tabs: vec![tab],
+            active_tab: 0,
+        }],
+        active: 0,
+        made_worktrees: Vec::new(),
+        conversations: Vec::new(),
+        pending_starts: Vec::new(),
+        conversation_operations: Vec::new(),
+    });
+    let panes = d.terms.len();
+    let leaves = d.workspaces[0].tabs[0].layout.leaves().len();
+    let ids: Vec<TermId> = d.terms.keys().copied().collect();
+    close(&mut d, &ids);
+    assert_eq!(panes, 1, "only the saved pane comes back, not a bare shell");
+    assert_eq!(leaves, 1, "the layout shrinks to the pane that exists");
+}
+
+#[test]
+fn a_finish_on_the_active_pane_stays_done_until_a_window_says_it_looked() {
+    let (mut d, _rx) = daemon();
+    let id = restored_claude_pane(&mut d);
+    let mut window = viewer(&mut d);
+    d.hook(id, "claude".into(), HookStatus::Working, "UserPromptSubmit", &[]);
+    d.hook(id, "claude".into(), HookStatus::Done, "Stop", &[]);
+    let after_finish = d.terms[&id].status;
+    let told = told_attention(&mut window);
+    d.message(
+        40,
+        ClientMsg::Command(crate::protocol::Command::MarkSeen { term: id }),
+    );
+    let after_look = d.terms[&id].status;
+    close(&mut d, &[id]);
+    assert_eq!(
+        after_finish,
+        Status::Done,
+        "the active pane is not proof anyone is looking: a window in the background is not"
+    );
+    assert!(told, "so the finish is announced");
+    assert_eq!(after_look, Status::Idle, "a window that looked clears it");
 }
 
 #[test]
@@ -7376,5 +7664,67 @@ fn a_desktop_replay_is_the_end_of_the_ring_and_then_the_screen() {
     assert!(tail.starts_with(b"6789[0m[2J[H"), "{tail:?}");
     assert_eq!(term.replay_tail(usize::MAX), full);
     assert!(full.len() > tail.len());
+    close(&mut d, &[t]);
+}
+
+fn permission_report(term: TermId, status: HookStatus, event: &str, agent: &str, tool: &str, detail: &str) -> ClientMsg {
+    let mut msg = report(term, "", 0, status, event);
+    if let ClientMsg::Hook { agent: a, ask, .. } = &mut msg {
+        *a = agent.into();
+        *ask = (!tool.is_empty()).then(|| PermissionAsk {
+            tool: tool.into(),
+            detail: detail.into(),
+            // A hook cannot claim it; the daemon decides.
+            answerable: true,
+            choices: Vec::new(),
+        });
+    }
+    msg
+}
+
+#[test]
+fn a_permission_hook_reports_what_it_asks_until_the_agent_moves_on() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let asking = |d: &Daemon| d.terms[&t].ask_now();
+
+    d.apply_hook(permission_report(t, HookStatus::Blocked, "PermissionRequest", "claude", "Bash", "cargo test"), None, vec![]);
+    let ask = asking(&d).expect("the question the hook reported");
+    assert_eq!((ask.tool.as_str(), ask.detail.as_str(), ask.answerable), ("Bash", "cargo test", true));
+    assert_eq!(d.terms[&t].status, Status::Blocked);
+
+    // The ping Claude sends right after, and a helper's news, leave the question as it was.
+    d.apply_hook(permission_report(t, HookStatus::Blocked, "Notification:permission_prompt", "claude", "", ""), None, vec![]);
+    d.apply_hook(permission_report(t, HookStatus::Same, "SubagentStop", "claude", "", ""), None, vec![]);
+    assert!(asking(&d).is_some());
+
+    // The tool ran, so the question is over.
+    d.apply_hook(permission_report(t, HookStatus::Working, "PostToolUse", "claude", "", ""), None, vec![]);
+    assert!(asking(&d).is_none());
+
+    // A question that is not a permission prompt does not inherit an old one.
+    d.apply_hook(permission_report(t, HookStatus::Blocked, "PermissionRequest", "claude", "Write", "/tmp/x"), None, vec![]);
+    d.apply_hook(permission_report(t, HookStatus::Blocked, "PreToolUse", "claude", "", ""), None, vec![]);
+    assert!(asking(&d).is_none(), "an AskUserQuestion is another question");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn only_the_agents_whose_key_is_known_can_be_answered_from_the_chat() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.apply_hook(permission_report(t, HookStatus::Blocked, "PermissionRequest", "codex", "shell", "ls"), None, vec![]);
+    let ask = d.terms[&t].ask_now().expect("shown");
+    assert!(!ask.answerable, "Codex's keys are not verified, so the chat says to answer in the terminal");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_pane_reports_its_question_only_while_it_needs_you() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.apply_hook(permission_report(t, HookStatus::Blocked, "PermissionRequest", "claude", "Bash", "ls"), None, vec![]);
+    d.terms.get_mut(&t).unwrap().status = Status::Idle;
+    assert!(d.terms[&t].ask_now().is_none(), "a question left over from before is not shown");
     close(&mut d, &[t]);
 }

@@ -1,6 +1,6 @@
 //! This computer's machines, as the window knows them: names only. The list is read from
 //! `config.local.toml` once, when the app starts, through `maitty-machines` (the terminal app
-//! reads it the same way and shares it, ADR 0048); a hand edit applies on the next start. A bad
+//! reads it the same way and shares it, ADR 0007); a hand edit applies on the next start. A bad
 //! entry leaves no machines and an error the window shows, and never stops the app.
 
 use maitty_machines::local_machines::MachineList;

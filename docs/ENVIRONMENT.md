@@ -81,6 +81,14 @@ On Arch Linux, including Omarchy, install the packages listed in
 `pnpm desktop:build`. Build on the target Linux host because the desktop shell
 links to its installed WebKitGTK.
 
+The dev server and the window use port 1420 (`server.port` in `vite.config.ts`, `devUrl` in
+`tauri.conf.json`) with `strictPort`: if something else holds 1420, `pnpm desktop:dev` stops with
+an error instead of letting the window load that other server. To try a build without touching
+the sessions of a running daemon, give it its own server, as for any nested test:
+`MAITTY_DATA_DIR=/tmp/maitty-try-data MAITTY_SOCKET=try pnpm desktop:dev`. On NVIDIA under
+Wayland, WebKitGTK can die with `Error 71 (Protocol error) dispatching to Wayland display`; start
+with `WEBKIT_DISABLE_DMABUF_RENDERER=1` (verified on Hyprland, RTX 4060, WebKitGTK 2.52.6).
+
 Two things to know when building on Windows while a desktop daemon is running:
 
 - `cargo build` fails with "Access is denied" if a `maitty-gui-daemon.exe` that
@@ -217,7 +225,7 @@ through `.profile` or `.zprofile` would otherwise be missing. The client never r
   `gh`), every pane's `PATH` and the environment handed to conversation providers use it. The
   agent launchers stay first on a plain shell pane's `PATH`; the resolved PATH replaces only the
   inherited part after them. `[env]` in `config.toml` still overrides a pane's `PATH`.
-- Windows keeps today's behaviour; the Windows remote is out of v1 (ADR 0047).
+- Windows keeps today's behaviour; the Windows remote is out of v1 (ADR 0007).
 
 ## Project-specific: variables
 
@@ -257,7 +265,7 @@ release archives and installers are published through the GitHub release workflo
 
 The daemon keeps `usage-<socket>.json` in the data folder beside `session-<socket>.json`: 90 days
 of provider-reported usage per session per day ([DATABASE](DATABASE.md#project-specific-usage-store),
-[ADR 0051](adr/0051-the-daemon-keeps-provider-reported-usage.md)). It adds no setting or variable.
+[ADR 0009](adr/0009-usage-is-provider-reported-never-estimated.md)). It adds no setting or variable.
 Deleting the file starts the history over; nothing else depends on it.
 
 ## Project-specific: structured history retention foundation

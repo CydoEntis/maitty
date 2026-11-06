@@ -5,7 +5,7 @@
  * only when it is an http(s) address. Images are never loaded; they show as their alt text.
  *
  * Supported: paragraphs, `#` headings, fenced code, bullet and numbered lists, `>` quotes, rules,
- * and inline code, bold, italic and links. Anything else reads as the plain text it is.
+ * tables, and inline code, bold, italic and links. Anything else reads as the plain text it is.
  */
 
 export type Inline =
@@ -23,6 +23,10 @@ export type Block =
   | { readonly kind: 'list'; readonly ordered: boolean; readonly items: readonly (readonly Inline[])[] }
   | { readonly kind: 'quote'; readonly inlines: readonly Inline[] }
   | { readonly kind: 'rule' }
+  /** Every row has one cell per header cell; `align` is each column's, `null` when the column has none. */
+  | { readonly kind: 'table'; readonly align: readonly TableAlign[]; readonly header: readonly (readonly Inline[])[]; readonly rows: readonly (readonly (readonly Inline[])[])[] }
+
+export type TableAlign = 'left' | 'center' | 'right' | null
 
 /** Inline parsing rescans for closers, so a paragraph longer than this is shown as plain text, never as a quadratic scan. */
 export const INLINE_PARSE_LIMIT = 6000
@@ -164,6 +168,44 @@ const BULLET = /^\s{0,3}[-*+]\s+(.*)$/
 const NUMBERED = /^\s{0,3}\d{1,9}[.)]\s+(.*)$/
 const QUOTE = /^\s{0,3}>\s?(.*)$/
 const RULE = /^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/
+const DELIMITER_CELL = /^:?-+:?$/
+/** A table's header line and the delimiter row under it. */
+const TABLE_HEAD_LINES = 2
+
+/** The cells of one table row: the outer pipes dropped, `\|` kept as a pipe. */
+function tableCells(line: string): string[] {
+  const body = line.trim().replace(/^\|/, '').replace(/(?<!\\)\|$/, '')
+  const cells: string[] = []
+  let current = ''
+  for (let i = 0; i < body.length; i += 1) {
+    const char = body.charAt(i)
+    if (char === '\\' && body.charAt(i + 1) === '|') {
+      current += '|'
+      i += 1
+    } else if (char === '|') {
+      cells.push(current.trim())
+      current = ''
+    } else {
+      current += char
+    }
+  }
+  cells.push(current.trim())
+  return cells
+}
+
+/** A header line with the delimiter row under it (`| --- | :-: |`), as wide as the header, makes a table. */
+export function startsTable(header: string, delimiter: string | undefined): boolean {
+  if (delimiter === undefined || !header.includes('|') || !delimiter.includes('|')) return false
+  const marks = tableCells(delimiter)
+  return marks.length === tableCells(header).length && marks.every((mark) => DELIMITER_CELL.test(mark))
+}
+
+function alignOf(mark: string): TableAlign {
+  const left = mark.startsWith(':')
+  const right = mark.endsWith(':')
+  if (left && right) return 'center'
+  return right ? 'right' : left ? 'left' : null
+}
 
 /** The blocks of a message. Never throws; any text is a valid document. */
 export function parseMarkdown(source: string): readonly Block[] {
@@ -193,6 +235,21 @@ export function parseMarkdown(source: string): readonly Block[] {
     }
     if (line.trim() === '') {
       endParagraph()
+      continue
+    }
+    if (startsTable(line, lines[i + 1])) {
+      endParagraph()
+      const header = tableCells(line)
+      const align = tableCells(lines[i + 1] ?? '').map(alignOf)
+      const rows: (readonly Inline[])[][] = []
+      i += TABLE_HEAD_LINES
+      while (i < lines.length && (lines[i] ?? '').trim() !== '' && (lines[i] ?? '').includes('|')) {
+        const cells = tableCells(lines[i] ?? '')
+        rows.push(header.map((_, column) => [...parseInline(cells[column] ?? '')]))
+        i += 1
+      }
+      i -= 1
+      blocks.push({ kind: 'table', align, header: header.map((cell) => parseInline(cell)), rows })
       continue
     }
     const heading = HEADING.exec(line)
@@ -245,3 +302,96 @@ export function parseMarkdown(source: string): readonly Block[] {
   endParagraph()
   return blocks
 }
+
+const MARKER_ONLY = /^\s{0,3}(?:[-*+]|\d{1,9}[.)]|#{1,6}|>)\s*$/
+const PARTIAL_DELIMITER = /^\s*\|?[\s|:-]*$/
+/** Between marks that would otherwise touch (`*` then `**` is `***`, which the reader pairs wrongly). */
+const ZERO_WIDTH_SPACE = '\u200b'
+const LINK_TARGET_OPEN = /\]\([^)\s]*$/
+
+function fenceIsOpen(lines: readonly string[]): boolean {
+  let marker: string | null = null
+  for (const line of lines) {
+    if (marker === null) marker = FENCE.exec(line)?.[1] ?? null
+    else if (new RegExp(`^\\s{0,3}${marker.charAt(0)}{${String(marker.length)},}\\s*$`).test(line)) marker = null
+  }
+  return marker !== null
+}
+
+/** The lines, less a last line (or a header and its half-typed delimiter row) that a table or list is still arriving in. */
+function withoutPartialBlock(lines: readonly string[]): readonly string[] {
+  const last = lines.at(-1) ?? ''
+  if (MARKER_ONLY.test(last)) return lines.slice(0, -1)
+  let start = lines.length - 1
+  while (start > 0 && (lines[start - 1] ?? '').trim() !== '') start -= 1
+  const block = lines.slice(start)
+  const inTable = block.some((line, at) => startsTable(line, block[at + 1]))
+  if (inTable) return lines
+  const above = block.at(-TABLE_HEAD_LINES)
+  if (PARTIAL_DELIMITER.test(last) && /[|-]/.test(last) && above?.includes('|') === true) return lines.slice(0, -TABLE_HEAD_LINES)
+  if (last.trimStart().startsWith('|')) return lines.slice(0, -1)
+  return lines
+}
+
+/** The marks left open at the end of a paragraph, outermost first. */
+function openMarks(paragraph: string): string[] {
+  const open: string[] = []
+  // A list marker at the start of a line is not emphasis.
+  const text = paragraph.replace(/^(\s{0,3})[-*+](?=\s)/gm, '$1 ')
+  let i = 0
+  while (i < text.length) {
+    const char = text.charAt(i)
+    if (char === '\\') {
+      i += ESCAPE_LENGTH
+    } else if (char === '`') {
+      let ticks = 1
+      while (text.charAt(i + ticks) === '`') ticks += 1
+      const fence = '`'.repeat(ticks)
+      const end = text.indexOf(fence, i + ticks)
+      if (end === -1) {
+        open.push(fence)
+        break
+      }
+      i = end + ticks
+    } else if (char === '*' || (char === '_' && !isWordChar(text[i - 1]))) {
+      const mark = text.charAt(i + 1) === char ? char + char : char
+      const next = text.charAt(i + mark.length)
+      // A mark followed by a space cannot open emphasis (`2 * 3`); one with nothing after it yet is waiting for its text.
+      if (open.at(-1) === mark) open.pop()
+      else if (next === '' || !/\s/.test(next)) open.push(mark)
+      i += mark.length
+    } else {
+      i += 1
+    }
+  }
+  return open
+}
+
+/**
+ * The text of a reply that is still arriving, made ready to read as markdown: the reader takes every
+ * state of it as a finished document, so an opened `**` would show as two asterisks until its
+ * closer came and then jump to bold. Here an opened bold, italic or code span, or a link whose
+ * address is still arriving, reads as if it closed at the end; a mark with nothing after it yet is
+ * left out; a table is held back until its delimiter row is complete for every header column; and a
+ * last line that is only a list, quote or heading marker is held back. Inside an open code fence
+ * nothing changes. A finished reply is never passed through this.
+ */
+export function streamingText(text: string): string {
+  const lines = text.split('\n')
+  if (fenceIsOpen(lines)) return text
+  const held = withoutPartialBlock(lines).join('\n')
+  const paragraphAt = held.lastIndexOf('\n\n') + 1
+  const head = held.slice(0, paragraphAt)
+  let tail = held.slice(paragraphAt)
+  const open = openMarks(tail)
+  for (let top = open.at(-1); top !== undefined && tail.trimEnd().endsWith(top); top = open.at(-1)) {
+    tail = tail.trimEnd().slice(0, -top.length)
+    open.pop()
+  }
+  if (LINK_TARGET_OPEN.test(tail)) tail += ')'
+  if (open.length === 0) return head + tail
+  const body = tail.trimEnd()
+  const apart = /[*_`]$/.test(body) ? ZERO_WIDTH_SPACE : ''
+  return head + body + apart + open.reverse().join(ZERO_WIDTH_SPACE)
+}
+

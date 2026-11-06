@@ -1,7 +1,6 @@
 import { useEffect, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react'
-import { ContextMenu as ContextMenuPrimitive } from 'radix-ui'
-import { PanelRight } from 'lucide-react'
-import { MAX_PANES, type PaneSlot } from '../model/layout'
+import { ContextMenu as ContextMenuPrimitive, DropdownMenu } from 'radix-ui'
+import { MAX_PANES, type PaneSlot, type SplitDirection } from '../model/layout'
 import type { SessionView } from '../model/session'
 import { AppIcon, Icon } from './glyphs'
 import { SESSION_DRAG_TYPE } from './dragSession'
@@ -31,14 +30,11 @@ export type PaneCardProps = {
   onViewChange?: (view: PaneView) => void
   /** The chat that covers the terminal while `view` is `chat`. */
   chat?: ReactNode
-  /** Present when the pane has the session panel's toggle (next to the view switch). */
-  onTogglePanel?: () => void
-  panelOpen?: boolean
   online: boolean
   /** Where portalled menus mount, so they read the theme's colours. */
   portalContainer: HTMLElement | null
   onFocus: (paneId: string) => void
-  onSplit: (paneId: string, direction: 'right' | 'down') => void
+  onSplit: (paneId: string, direction: SplitDirection) => void
   onToggleMaximize: (paneId: string) => void
   onClose: (paneId: string) => void
   /** Starts a new shell in an ended pane's folder, in its place. */
@@ -93,7 +89,7 @@ export function PaneCard(props: PaneCardProps) {
     <ContextMenuPrimitive.Root>
       <ContextMenuPrimitive.Trigger asChild>
     <section
-      className={`mx-pane${focused ? ' is-focused' : ''}${props.broadcast ? ' is-broadcast' : ''}${props.dropTarget ? ' is-drop-target' : ''}`}
+      className={`mx-pane${view === 'chat' ? '' : ' is-terminal'}${focused ? ' is-focused' : ''}${props.broadcast ? ' is-broadcast' : ''}${props.dropTarget ? ' is-drop-target' : ''}`}
       aria-label={`Terminal ${String(props.index + 1)}: ${session.cwdLabel}${focused ? ', focused' : ''}`}
       data-session-id={session.id}
       data-pane={pane.id}
@@ -129,13 +125,21 @@ export function PaneCard(props: PaneCardProps) {
         {session.repoName && <span className="mx-pill mx-repo-pill" title={session.repoRoot ?? undefined}><Icon name="branch" />{session.repoName}</span>}
         <span className="mx-pane-controls">
           {props.onViewChange && <PaneViewSwitch view={view} onChange={props.onViewChange} />}
-          {props.onTogglePanel && (
-            <button type="button" className={`mx-pane-control${props.panelOpen ? ' is-on' : ''}`} aria-label={tip(props.panelOpen ? 'Hide session panel' : 'Show session panel', 'session-panel')} aria-pressed={props.panelOpen === true} onMouseDown={stop} onClick={props.onTogglePanel}><PanelRight className="size-3.5" aria-hidden="true" /></button>
-          )}
-          <button type="button" className={`mx-pane-control${props.broadcast ? ' is-on' : ''}`} aria-label={props.broadcast ? 'Stop broadcasting' : 'Broadcast typing to this tab'} aria-pressed={props.broadcast} title={tip('Broadcast to idle panes in this tab', 'broadcast')} disabled={!multi} onMouseDown={stop} onClick={props.onToggleBroadcast}><Icon name="broadcast" /></button>
-          <button type="button" className="mx-pane-control" aria-label={tip('Split right', 'split-right')} title={tip('Split right', 'split-right')} disabled={full} onMouseDown={stop} onClick={() => { props.onSplit(pane.id, 'right') }}><Icon name="splitRight" /></button>
-          <button type="button" className="mx-pane-control" aria-label={tip('Split down', 'split-down')} title={tip('Split down', 'split-down')} disabled={full} onMouseDown={stop} onClick={() => { props.onSplit(pane.id, 'down') }}><Icon name="splitDown" /></button>
-          <button type="button" className="mx-pane-control" aria-label={maximized ? 'Restore layout' : 'Maximize pane'} title={maximized ? 'Restore layout' : 'Maximize pane'} disabled={!multi && !maximized} onMouseDown={stop} onClick={() => { props.onToggleMaximize(pane.id) }}>{maximized ? <Icon name="restore" /> : <Icon name="maximize" />}</button>
+          <button type="button" className={`mx-pane-control is-foldable${props.broadcast ? ' is-on' : ''}`} aria-label={props.broadcast ? 'Stop broadcasting' : 'Broadcast typing to this tab'} aria-pressed={props.broadcast} title={tip('Broadcast to idle panes in this tab', 'broadcast')} disabled={!multi} onMouseDown={stop} onClick={props.onToggleBroadcast}><Icon name="broadcast" /></button>
+          <button type="button" className="mx-pane-control is-foldable" aria-label={tip('Split right', 'split-right')} title={tip('Split right', 'split-right')} disabled={full} onMouseDown={stop} onClick={() => { props.onSplit(pane.id, 'right') }}><Icon name="splitRight" /></button>
+          <button type="button" className="mx-pane-control is-foldable" aria-label={tip('Split down', 'split-down')} title={tip('Split down', 'split-down')} disabled={full} onMouseDown={stop} onClick={() => { props.onSplit(pane.id, 'down') }}><Icon name="splitDown" /></button>
+          <button type="button" className="mx-pane-control is-foldable" aria-label={maximized ? 'Restore layout' : 'Maximize pane'} title={maximized ? 'Restore layout' : 'Maximize pane'} disabled={!multi && !maximized} onMouseDown={stop} onClick={() => { props.onToggleMaximize(pane.id) }}>{maximized ? <Icon name="restore" /> : <Icon name="maximize" />}</button>
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger className="mx-pane-control mx-pane-more" aria-label="More pane actions" title="More pane actions" onMouseDown={stop}>⋯</DropdownMenu.Trigger>
+            <DropdownMenu.Portal container={props.portalContainer}>
+              <DropdownMenu.Content className="mx-menu mx-pane-more-menu" sideOffset={6} align="end" onCloseAutoFocus={keepFocus}>
+                <DropdownMenu.Item className="mx-menu-item" disabled={!multi} onSelect={props.onToggleBroadcast}>{props.broadcast ? 'Stop broadcasting' : 'Broadcast to this tab'}<span className="mx-menu-hint">{shortcutText('broadcast')}</span></DropdownMenu.Item>
+                <DropdownMenu.Item className="mx-menu-item" disabled={full} onSelect={() => { props.onSplit(pane.id, 'right') }}>Split right<span className="mx-menu-hint">{shortcutText('split-right')}</span></DropdownMenu.Item>
+                <DropdownMenu.Item className="mx-menu-item" disabled={full} onSelect={() => { props.onSplit(pane.id, 'down') }}>Split down<span className="mx-menu-hint">{shortcutText('split-down')}</span></DropdownMenu.Item>
+                <DropdownMenu.Item className="mx-menu-item" disabled={!multi && !maximized} onSelect={() => { props.onToggleMaximize(pane.id) }}>{maximized ? 'Restore layout' : 'Maximize pane'}</DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
           <button type="button" className={`mx-pane-control is-close${closing.armed ? ' is-armed' : ''}`} aria-label={closeLabel} title={closeLabel} onMouseDown={stop} onBlur={closing.disarm} onClick={() => { if (closing.press()) props.onClose(pane.id) }}><Icon name="close" /></button>
         </span>
       </div>
@@ -163,8 +167,17 @@ export function PaneCard(props: PaneCardProps) {
       </ContextMenuPrimitive.Trigger>
       <ContextMenuPrimitive.Portal container={props.portalContainer}>
         <ContextMenuPrimitive.Content className="mx-menu" onCloseAutoFocus={keepFocus}>
-          <ContextMenuPrimitive.Item className="mx-menu-item" disabled={full} onSelect={() => { props.onSplit(pane.id, 'right') }}>Split right<span className="mx-menu-hint">{shortcutText('split-right')}</span></ContextMenuPrimitive.Item>
-          <ContextMenuPrimitive.Item className="mx-menu-item" disabled={full} onSelect={() => { props.onSplit(pane.id, 'down') }}>Split down<span className="mx-menu-hint">{shortcutText('split-down')}</span></ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Sub>
+            <ContextMenuPrimitive.SubTrigger className="mx-menu-item" disabled={full}>Split<span className="mx-menu-hint">›</span></ContextMenuPrimitive.SubTrigger>
+            <ContextMenuPrimitive.Portal container={props.portalContainer}>
+              <ContextMenuPrimitive.SubContent className="mx-menu" sideOffset={6}>
+                <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { props.onSplit(pane.id, 'up') }}>Split up</ContextMenuPrimitive.Item>
+                <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { props.onSplit(pane.id, 'down') }}>Split down<span className="mx-menu-hint">{shortcutText('split-down')}</span></ContextMenuPrimitive.Item>
+                <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { props.onSplit(pane.id, 'left') }}>Split left</ContextMenuPrimitive.Item>
+                <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { props.onSplit(pane.id, 'right') }}>Split right<span className="mx-menu-hint">{shortcutText('split-right')}</span></ContextMenuPrimitive.Item>
+              </ContextMenuPrimitive.SubContent>
+            </ContextMenuPrimitive.Portal>
+          </ContextMenuPrimitive.Sub>
           <ContextMenuPrimitive.Item className="mx-menu-item" disabled={!multi && !maximized} onSelect={() => { props.onToggleMaximize(pane.id) }}>{maximized ? 'Restore layout' : 'Maximize pane'}</ContextMenuPrimitive.Item>
           <ContextMenuPrimitive.Separator className="mx-menu-sep" />
           <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { props.onRenameSession(session.id) }}>Rename…</ContextMenuPrimitive.Item>

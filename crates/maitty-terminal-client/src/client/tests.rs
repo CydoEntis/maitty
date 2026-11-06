@@ -106,6 +106,7 @@ mod design_tests {
             why_screen_at: 0,
             why_process_at: 0,
             quiet_since: None,
+            repeats: None,
             pid: 0,
             name: String::new(),
             label: String::new(),
@@ -152,6 +153,7 @@ mod design_tests {
             checks: Vec::new(),
             asking: String::new(),
             interrupted: None,
+            ask: None,
             timeline: Vec::new(),
         }
     }
@@ -792,10 +794,10 @@ mod screen_tests {
         )));
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = terminal.backend().buffer();
-        assert_ne!(
-            buf[(x + 2, active_y)].symbol(),
-            "▎",
-            "while the keyboard browses, only its row has a bar"
+        assert!(
+            !(buf[(x + 2, active_y)].symbol() == "▎"
+                && buf[(x + 2, active_y)].fg == app.theme.accent),
+            "while the keyboard browses, only its row has an accent bar"
         );
         assert_eq!(
             (buf[(x + 2, hover_y)].symbol(), buf[(x + 2, hover_y)].fg),
@@ -1099,7 +1101,7 @@ mod screen_tests {
             "no logo"
         );
         // The grid: no margin, the sidebar and first pane start at the top edge, and the tab
-        // chips sit on the pane's top border (ADR 0038).
+        // chips sit on the pane's top border.
         assert!(
             lines[0].starts_with("┌─"),
             "the sidebar card from the very corner: {}",
@@ -1594,8 +1596,8 @@ mod screen_tests {
         show(&o);
         app.on_key(key(KeyCode::Enter));
         assert!(
-            !app.splash && matches!(app.mode, Mode::Normal),
-            "Enter picks the selected one (New session: an agent, straight away)"
+            !app.splash && matches!(app.mode, Mode::NewSession(_)),
+            "Enter picks the selected one (New session: the popup that starts one anywhere)"
         );
         app.mode = Mode::Normal;
 
@@ -1640,8 +1642,8 @@ mod screen_tests {
         show(&o);
         for item in [
             "Rename pane",
-            "Split side by side",
-            "Split stacked",
+            "Split right",
+            "Split down",
             "Send right-clicks to pane",
             "Close pane",
         ] {
@@ -2691,7 +2693,7 @@ mod screen_tests {
         for row in [own, two, three] {
             assert_eq!(
                 buf[(side.x + 3, y(row))].symbol(),
-                "▏",
+                "▎",
                 "one line down the left of the session and its tabs: {}",
                 rows[row]
             );
@@ -2705,7 +2707,7 @@ mod screen_tests {
         for row in [two, three] {
             assert_eq!(
                 buf[(side.x + 2, y(row))].symbol(),
-                "▏",
+                "▎",
                 "and the project's line outside it: {}",
                 rows[row]
             );
@@ -2716,7 +2718,7 @@ mod screen_tests {
             .expect("the project's row");
         assert_ne!(
             buf[(side.x + 2, y(project))].symbol(),
-            "▏",
+            "▎",
             "the lines start under the project row"
         );
     }
@@ -3085,7 +3087,7 @@ mod screen_tests {
         );
         for (label, key) in [
             ("Close pane", "Alt + x"),
-            ("Split stacked", "Alt + d"),
+            ("Split down", "Alt + d"),
             ("Go to tab 1–9", "Alt + 1–9"),
         ] {
             assert!(
@@ -3188,8 +3190,8 @@ mod screen_tests {
                     let title: String = (card.x..card.right())
                         .map(|x| buf[(x, card.y)].symbol())
                         .collect();
-                    // The tabs have their own row over the panes (ADR 0028).
-                    // Floating's tabs sit on the top border (ADR 0038): a row of one cell's height.
+                    // The tabs have their own row over the panes.
+                    // Floating's tabs sit on the top border: a row of one cell's height.
                     let row = Rect {
                         height: 1,
                         ..screen::grid(&app, buf.area).panes
@@ -3384,6 +3386,69 @@ mod screen_tests {
             0,
             "starting a new chooser does not retain a prior location"
         );
+    }
+
+    #[test]
+    fn a_split_s_new_session_stays_off_the_sidebar_until_it_is_placed() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.screen.tabs.clear();
+        app.screen_place(ClientTerm::local(1), None);
+        let rows = |app: &App| app.screen_model().iter().flat_map(|p| p.sessions()).count();
+        let before = rows(&app);
+
+        app.begin_split(ClientTerm::local(1));
+        app.snap.terms.insert(4, app.snap.terms[&3].clone());
+        let fresh = app.snap.terms.get_mut(&4).unwrap();
+        fresh.id = 4;
+        // Its own session, not the copy of another's conversation (which the sidebar leaves out).
+        fresh.conversation_id = None;
+        app.snap.workspaces[0].tabs.push(TabInfo {
+            id: 99,
+            name: String::new(),
+            layout: crate::layout::Node::Leaf(4),
+            focus: 4,
+        });
+        *app.screen.model_cache.borrow_mut() = None;
+        assert_eq!(rows(&app), before, "the new session is not a row while the split waits for it");
+
+        // Without the hold it would be a row of its own for a moment, which is the jump.
+        let pending = app.screen.pending_split.take();
+        *app.screen.model_cache.borrow_mut() = None;
+        assert_eq!(rows(&app), before + 1, "that is what the hold keeps off the sidebar");
+        app.screen.pending_split = pending;
+
+        app.screen_place(ClientTerm::local(4), Some(ClientTerm::local(1)));
+        assert!(app.screen.pending_split.is_none(), "placing it ends the wait");
+    }
+
+    #[test]
+    fn splitting_left_or_up_puts_the_new_pane_before_the_one_split() {
+        for (dir, horizontal) in [
+            (crate::layout::Dir::Left, true),
+            (crate::layout::Dir::Up, false),
+        ] {
+            let (_, mut app) = super::design_tests::render_with(160, 45);
+            app.screen.tabs.clear();
+            app.screen_place(ClientTerm::local(1), None);
+            app.menu_do(menu::Act::Split(ClientTerm::local(1), dir));
+            app.snap.terms.insert(4, app.snap.terms[&3].clone());
+            app.snap.terms.get_mut(&4).unwrap().id = 4;
+            app.screen_place(ClientTerm::local(4), Some(ClientTerm::local(1)));
+            let layout = &app.screen.tabs[app.screen.tab].layout;
+            let crate::layout::Node::Split {
+                horizontal: got,
+                a,
+                ..
+            } = layout
+            else {
+                panic!("a split expected for {dir:?}");
+            };
+            assert_eq!(*got, horizontal, "{dir:?} runs the way its name says");
+            assert!(
+                matches!(**a, crate::layout::Node::Leaf(4)),
+                "{dir:?}: the new pane is first"
+            );
+        }
     }
 
     #[test]
@@ -3939,9 +4004,23 @@ mod screen_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let key = |c: KeyCode| KeyEvent::new(c, KeyModifiers::NONE);
         draw(&mut app, 160, 45);
-        // Clicking a project puts the keys in the sidebar, on that project.
+        // Clicking a project folds it and leaves the keys where they were.
+        app.mode = Mode::Normal;
+        let mode_before = std::mem::discriminant(&app.mode);
         app.on_hy_hit(screen::ScreenHit::ToggleProj(0), false);
+        assert!(
+            app.screen.saved.closed.iter().any(|k| k.starts_with("p:")),
+            "the click folded it"
+        );
+        assert_eq!(
+            std::mem::discriminant(&app.mode),
+            mode_before,
+            "the click did not move the keys"
+        );
         app.on_hy_hit(screen::ScreenHit::ToggleProj(0), false);
+        // The sidebar's own keys start from the project row.
+        let proj = app.screen.proj_keys[0].clone();
+        app.screen_side_set(screen::SideItem::Proj(proj));
         assert!(
             matches!(app.mode, Mode::Side) && app.screen.cursor_proj.is_some(),
             "on the project row"
@@ -3970,7 +4049,7 @@ mod screen_tests {
         app.on_key(key(KeyCode::Down));
         assert_eq!(app.screen.cursor, Some(first));
         draw(&mut app, 160, 45);
-        // No bare letter acts from the sidebar (ADR 0014): x is typing, it doesn't ask to close.
+        // No bare letter acts from the sidebar: x is typing, it doesn't ask to close.
         app.on_key(key(KeyCode::Char('x')));
         assert!(!matches!(&app.mode, Mode::Confirm(_)), "x closes nothing");
         app.screen_side_set(screen::SideItem::Sess(first));
@@ -4630,7 +4709,7 @@ mod screen_tests {
     }
 
     #[test]
-    fn the_new_chip_and_leader_n_open_a_plain_shell_where_you_are() {
+    fn the_new_chip_starts_a_session_at_once_and_leader_n_a_plain_shell_where_you_are() {
         for cursor in [None, Some(2)] {
             for by_mouse in [false, true] {
                 let (_, mut app) = super::design_tests::render_with(100, 30);
@@ -4647,9 +4726,26 @@ mod screen_tests {
                 if by_mouse {
                     assert!(screen.contains("+ New"), "a visible new chip");
                     click_new_chip(&mut app);
-                } else {
-                    leader(&mut app, 'n');
+                    assert!(
+                        !matches!(app.mode, Mode::NewSession(_)),
+                        "the chip starts at once, with no popup: {:?}",
+                        app.mode
+                    );
+                    let commands = sent(&mut rx);
+                    assert!(
+                        matches!(
+                            commands.as_slice(),
+                            [Command::NewWorkspace {
+                                cwd: Some(_),
+                                name: None,
+                                ..
+                            }]
+                        ),
+                        "one session in the selected project's folder: {commands:?}"
+                    );
+                    continue;
                 }
+                leader(&mut app, 'n');
                 assert!(
                     matches!(app.mode, Mode::Normal | Mode::Prefix { .. }),
                     "new opens no form: {:?}",
@@ -4743,8 +4839,8 @@ mod screen_tests {
         );
         assert_eq!(
             app.keymap.prefixed.get(&key("o")),
-            None,
-            "the options dialog is gone, so `o` is free"
+            Some(&Action::PickSession),
+            "`o` opens the full picker (the options dialog it once named is gone)"
         );
         let (_, mut app) = super::design_tests::render_with(100, 30);
         let (tx, mut rx) = mpsc::unbounded_channel();
@@ -4845,7 +4941,7 @@ mod screen_tests {
 
         assert!(
             !matches!(&app.mode, Mode::Confirm(_)),
-            "x does not even ask to close session {term:?} (ADR 0014)"
+            "x does not even ask to close session {term:?}"
         );
     }
 
@@ -6689,7 +6785,7 @@ second line
             assert!(o.contains(line), "the row's line at {w}x{h}");
             assert!(o.contains("● you"), "it needs you: its card says so");
         }
-        // Bare letters and digits do not answer from the sidebar (ADR 0014).
+        // Bare letters and digits do not answer from the sidebar.
         app.screen_side_set(screen::SideItem::Sess(ClientSession::local(
             SessionKey::Pane(2),
         )));
@@ -6936,7 +7032,7 @@ second line
         app.on_key(KeyEvent::new(KeyCode::Char('m'), KeyModifiers::NONE));
         assert!(
             !matches!(app.mode, Mode::Actions { .. }),
-            "a bare m does not open the menu from the sidebar (ADR 0014)"
+            "a bare m does not open the menu from the sidebar"
         );
         app.act(Action::Menu);
         assert!(
@@ -7028,6 +7124,49 @@ second line
                 "{theme}: idle is a quiet mark"
             );
         }
+    }
+
+    #[test]
+    fn a_finish_right_after_a_needs_you_does_not_ring_a_second_time() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let others: Vec<TermId> = app
+            .snap
+            .terms
+            .keys()
+            .copied()
+            .filter(|t| *t != 1)
+            .take(2)
+            .collect();
+        let [asking, finishing] = others[..] else {
+            panic!("two sessions besides the one you are on")
+        };
+        let said = |app: &mut App, term: TermId, status: Status| {
+            app.snap.terms.get_mut(&term).unwrap().status = status;
+            app.on_server(crate::protocol::ServerMsg::Attention { term, status });
+            app.settling.get_mut(&ClientTerm::local(term)).unwrap().1 =
+                Instant::now() - Duration::from_millis(1);
+            app.settle_alerts();
+        };
+        said(&mut app, asking, Status::Blocked);
+        assert!(app.alerted.contains_key(&ClientTerm::local(asking)), "it rings");
+
+        said(&mut app, finishing, Status::Done);
+
+        assert!(
+            !app.alerted.contains_key(&ClientTerm::local(finishing)),
+            "a second sound inside the quiet spell is held back"
+        );
+        assert!(
+            app.notice
+                .as_ref()
+                .is_some_and(|(m, ..)| m.ends_with("finished")),
+            "the card still says it finished"
+        );
+        assert_eq!(
+            app.last_alert.map(|(kind, _)| kind),
+            Some(crate::alert::Kind::Needs),
+            "the last thing heard is still the needs-you"
+        );
     }
 
     #[test]
@@ -7685,8 +7824,8 @@ second line
         show(&o);
         assert!(
             o.contains(" matches")
-                && o.contains("Split side by side")
-                && o.contains("Split stacked")
+                && o.contains("Split right")
+                && o.contains("Split down")
                 && o.contains("Panes")
                 && !o.contains("Settings"),
             "typing narrows it, each with its group"
@@ -9065,12 +9204,12 @@ second line
         (
             "sidebar",
             true,
-            "SIDEBAR  · ↑↓ move · Enter open · shortcut mode waits · Esc back",
+            "SIDEBAR  · ↑↓ move · Enter open · n new in shop-api · shortcut mode waits · Esc back",
         ),
         (
             "sidebar",
             false,
-            "SIDEBAR  · ↑↓ move · Enter open · Esc back",
+            "SIDEBAR  · ↑↓ move · Enter open · n new in shop-api · Esc back",
         ),
         (
             "settings",
@@ -11545,7 +11684,7 @@ mod check_row_tests {
                 for line in [y, y + 1] {
                     let cell = &buf[(bar_x, line)];
                     assert_eq!(
-                        cell.symbol() == EDGE_BAR,
+                        cell.symbol() == EDGE_BAR && cell.fg == app.theme.accent,
                         picked,
                         "{} {:?} line {line}: {:?}",
                         label(layout, w, h),
@@ -13436,6 +13575,29 @@ mod check_settings_tests {
         (app, rx)
     }
 
+    #[test]
+    fn a_done_pane_is_marked_seen_only_while_a_focused_window_shows_it() {
+        use crate::protocol::{ClientMsg, Command, Status};
+        let (mut app, mut rx) = app_with_channel();
+        let front = app.focused().expect("a pane is in front");
+        app.snap.terms.get_mut(&front.term).unwrap().status = Status::Done;
+        let mut marked = |app: &mut App| {
+            app.mark_looked_pane_seen();
+            std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).any(|m| {
+                matches!(m, ClientMsg::Command(Command::MarkSeen { term }) if term == front.term)
+            })
+        };
+        app.window_focused = false;
+        let away = marked(&mut app);
+        app.window_focused = true;
+        let looking = marked(&mut app);
+        app.snap.terms.get_mut(&front.term).unwrap().status = Status::Working;
+        let working = marked(&mut app);
+        assert!(!away, "a window in the background is not looking");
+        assert!(looking, "a focused window showing a done pane has seen it");
+        assert!(!working, "only a done pane is marked");
+    }
+
     fn draft(app: &App) -> Option<&crate::client::screen::check_settings::CheckDraft> {
         app.screen.check_page.as_ref()
     }
@@ -13826,7 +13988,7 @@ mod check_wiring_tests {
 
     #[test]
     fn the_sidebar_keys_act_on_the_rows_check_and_say_why_when_they_cant() {
-        // No bare letter acts from the sidebar (ADR 0014): r, O and u are typing, so they
+        // No bare letter acts from the sidebar: r, O and u are typing, so they
         // re-run, override and undo nothing.
         for (state, key) in [
             (CheckState::Failed, KeyCode::Char('r')),

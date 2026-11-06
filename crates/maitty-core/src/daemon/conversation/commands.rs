@@ -2246,6 +2246,8 @@ impl Daemon {
                 history: page,
                 error: state.and_then(|s| s.error.clone()),
                 checks: state.map_or_else(Vec::new, |s| s.checks.infos()),
+                // A structured conversation chose its own mode and model; only a followed pane reads them from a file.
+                meta: None,
                 approvals: state.map_or_else(Vec::new, |s| s.approvals.values().cloned().collect()),
                 answered_approvals: state.map_or_else(Vec::new, |s| {
                     s.answered_approvals.iter().cloned().collect()

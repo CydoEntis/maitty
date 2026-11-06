@@ -162,6 +162,17 @@ files and served only by `Query::CheckOutput` under the read grant; it is never 
 never in the state snapshot. It may contain secrets the command printed, like any pane's
 output.
 
+A structured conversation's provider (Codex app-server, Claude) is a process the daemon owns,
+started in its own process group (a job object on Windows). `kill-server` stops every provider's
+process tree before the daemon exits and waits up to five seconds for each to be stopped. If the
+daemon dies without that, a provider dies with it on Windows (the job closes). On Linux and macOS
+it and the processes it started keep running until the next daemon starts: the parent-death signal
+that ends a check cannot be used, because a provider is started from a thread that does not live as
+long as the daemon. Each provider's process group is recorded in `<socket id>.providers`, and a
+daemon that holds the socket stops every recorded group that still has processes before it restores
+anything. A group whose leader's start time differs from the recorded one is left alone, so an id
+that has been given to another process is never signalled; ids 0 and 1 and negatives never are.
+
 An agent can start helpers only if you say so. Who is asking is proven the way status reports are
 (the pane's `MAITTY_PANE_TOKEN` on the connection); the answer is `AnswerHelpers`, which the daemon
 refuses from any pane and accepts only for a request it holds. "Always in this project" is kept in
@@ -179,7 +190,7 @@ asking in chat. Only you answer (`AnswerSecret`, refused from any pane). The dae
 you type in memory only (a delivered file is `0600` in a `0700` folder on unix; on Windows it
 sits in your own app data, which only you and administrators can read, and is removed within a
 day or when the daemon starts), and gives the agent a single-use reference that runs out after 24 hours
-and works only for the pane that asked ([ADR-0036](adr/0036-secrets-never-enter-chat.md)). The
+and works only for the pane that asked ([ADR 0006](adr/0006-secrets-never-enter-chat.md)). The
 value is never in the snapshot or a log line (`SecretText` prints as `<hidden>`), and the label
 and reason an agent supplies are checked for control and hidden characters before you read them.
 A project may name several check commands. Each one runs under the same rules, one after
@@ -297,7 +308,7 @@ cannot become an option or a second command whichever shell reads the line. The 
 `config.local.toml` (never the synced file), validates the entry with `validate_machines` first, and
 changes nothing else; removing a machine does not touch the machine, only this computer's records of it.
 
-Pasting an image into a pane of another machine (`client/remote_image.rs`, ADR 0049) is the same kind of
+Pasting an image into a pane of another machine (`client/remote_image.rs`, ADR 0007) is the same kind of
 line: a fixed script (`maitty_core::remote_install::PASTE_SCRIPT`) run as `sh -c '<script>' sh <name> <bytes>`, the image
 on stdin, over the hardened ssh line (`BatchMode`, no agent forwarding, the host after `--`). The file's name
 is chosen by this computer from letters, digits, `.`, `_` and `-` and checked twice (before the line is
@@ -319,7 +330,7 @@ are created `create_new` and mode 600 in an owner-only folder of the app's cache
 extension from the checked type, never from the webview. The image is the raw body of a command, not a logged
 event, and is never written to a log. What the far side prints is checked as for any file.
 
-A chat attachment (`attachment.rs`, ticket 20, ADR 0053) is a path from a drop or the file picker, so it is a string
+A chat attachment (`attachment.rs`, ticket 20) is a path from a drop or the file picker, so it is a string
 from outside: the host follows it only to a regular file (not a folder, device or pipe), refuses an empty file, caps an
 image (by its first bytes, not its name) at 25 MB and any other file at 100 MB while copying (so a file that grows is
 cut off and removed), and copies it `create_new`, mode 600, into an owner-only `attachments` folder of the app's
@@ -328,9 +339,9 @@ invisible characters become `_`), so the path the agent is told never needs quot
 on disk. A zip is never unpacked. Nothing but `attach-` files of that folder is swept (after a week).
 `attachments_exist` answers only for files directly inside the attachments or paste folder, so the window cannot use it
 to probe the disk. The message stores the path and name, never the bytes; sending a file to the agent is the person's
-own act and is not scanned (secrets stay out of chat, ADR 0036).
+own act and is not scanned (secrets stay out of chat, ADR 0006).
 
-Sending any file to another machine (`client/send_file.rs`, ADR 0055) is the same line and the same script;
+Sending any file to another machine (`client/send_file.rs`, ADR 0007) is the same line and the same script;
 only the name, the cap and the trigger differ. A file is read from this computer only when the person
 names it in the send prompt (a terminal cannot tell a drop from a paste, so a paste of text never
 uploads a file, even when the text is a path); it must be a regular file, at most 100 MB, checked before ssh
@@ -408,14 +419,14 @@ that is not this one (`remote_policy.rs`, `remote_snapshot.rs` in `maitty-machin
 | `Notice` | gated by `notices` | a toast, cleaned and led by `[machine]`; it does not touch this computer's undo hint |
 | `Raise` | gated by `notices` | brings the window to the front, the same "may get my attention" grant as a toast (there is no separate `raise` setting) |
 | `Error`, `Reply` | answer, cleaned | applied only while this window has a command or query out to that machine that nothing has answered yet (client-side bookkeeping, see API_PATTERNS "client routing"; the wire is unchanged); otherwise ignored. An error's toast leads with `[machine]`; reply text is cleaned and cut to 256 KiB. A `Worktrees` reply never fills this computer's picker, and a check's output is taken only when the open sheet or the failure waiting for it is on that machine |
-| `AskRemoveWorktree` | ignore | names a folder on this computer's disk to delete; remote worktree management is out of scope (ADR 0047) |
+| `AskRemoveWorktree` | ignore | names a folder on this computer's disk to delete; remote worktree management is out of scope (ADR 0007) |
 | `AutoWorkspace` | ignore | announces a workspace and arms this computer's undo |
 
 The opt-ins are read from the machine's `[[machines]]` entry by name; a machine no entry names
 has all of them off. `AskRemoveWorktree` from this computer's own daemon still shows its path
 as the daemon sent it; the folder is removed by that daemon when you answer.
 
-**The desktop app and other machines** ([ADR 0048](adr/0048-machines-in-the-desktop-app.md)). The web view
+**The desktop app and other machines** ([ADR 0007](adr/0007-multiple-machines.md)). The web view
 never connects to a machine and never starts `ssh`: the Rust host holds every connection, runs the same
 `remote_policy` and `remote_snapshot` checks as the terminal app on everything that arrives (`hub.rs`,
 before anything is kept or shown), and hands the web view cleaned data only. The Tauri capabilities did not
@@ -528,9 +539,14 @@ the folder's name and the agent's session id. It holds no prompts, output, paths
 file is private to the user (0600 in a 0700 folder on Unix). `Query::UsageReport` is for human
 clients only: an agent pane or a structured runtime cannot read what other sessions cost.
 
+A hook report never carries what a tool was asked to do. A tool-start report carries `call`, a
+fingerprint (the first 8 bytes of SHA-256 over the tool's name and input, as 16 hex characters),
+which cannot be turned back into the input and is never logged. The name and input stay in the
+agent.
+
 ## Project-specific: followed transcripts
 
-The daemon reads an agent's own transcript for a pane it follows ([ADR 0052](adr/0052-an-agent-in-a-pane-gets-a-read-only-conversation.md)).
+The daemon reads an agent's own transcript for a pane it follows ([ADR 0003](adr/0003-status-and-conversation-trust.md)).
 The path comes from a hook report, so it is input, not trust:
 
 - It is read only if its real path (links followed) is a regular `.jsonl` file inside the user's home folder
@@ -545,13 +561,13 @@ The path comes from a hook report, so it is input, not trust:
 
 ## Project-specific: chat sessions started from the desktop
 
-A chat session is a Claude or Codex run the daemon starts itself ([ADR 0054](adr/0054-a-chat-session-is-a-daemon-owned-conversation-started-from-the-desktop.md)).
+A chat session is a Claude or Codex run the daemon starts itself ([ADR 0003](adr/0003-status-and-conversation-trust.md)).
 The agent runs with the user's permissions, so the window's start path is narrow:
 
 - **Posture.** `start_chat_session` takes one optional boolean, `full_access`, and no other permission argument. By
   default the daemon starts the provider with workspace write and approval on request (Claude `--permission-mode
   default` with the stdio permission prompt; Codex `workspace-write`, `on-request`). With `full_access` it starts
-  the provider's own skip-permissions mode (ADR 0043: Claude `bypassPermissions` with
+  the provider's own skip-permissions mode (ADR 0005: Claude `bypassPermissions` with
   `--allow-dangerously-skip-permissions`; Codex `danger-full-access` with approval `never`). It is the user's
   explicit choice per chat (a labelled checkbox with a warning; the Settings default is off), is never selected
   silently, and is fixed for the session: Maitty never widens a running session, and a chat started with it shows
@@ -679,3 +695,23 @@ wrecking ordinary text: prose, git hashes, UUIDs and plain base64 are not touche
 sensitive anyway: it still reaches any client with a read grant and the private cache. A person who
 approves a command reads the masked text, so a command's masked part cannot be checked from the chat.
 The functions never log or return what a pattern matched.
+
+## Project-specific: terminal output socket
+
+The desktop host listens on `127.0.0.1` (a port the system picks) and sends terminal output to its own
+window as WebSocket messages ([ADR 0004](adr/0004-client-split-and-desktop-host.md)). Output
+is what the panes show, so the rules are those of a credential:
+
+- **Loopback only.** The listener binds the loopback address and nothing else.
+- **A one-time token.** The window asks the host for a 256-bit random token (`open_terminal_socket`),
+  valid for 60 seconds and one use, sends it as the first message, and gets nothing until the host
+  says `ready`. At most 8 tokens are outstanding. The comparison does not stop at the first
+  difference. The token is never in the address and never logged.
+- **Origin allow-list.** The upgrade is refused unless the `Origin` header is the app's own
+  (`tauri://localhost`, `http://tauri.localhost`, `https://tauri.localhost`), plus the dev server's
+  origin in a debug build. A web page in the user's browser cannot connect.
+- **Bounded.** At most 4 connections may be waiting to prove a token, each has 5 seconds, and at most
+  4,096 frames wait for a window that has stopped reading, after which the socket is dropped and the
+  channel takes over.
+- **One window.** A new connection replaces the old one.
+- **CSP.** `connect-src` allows `ws://127.0.0.1:*` and no other socket.

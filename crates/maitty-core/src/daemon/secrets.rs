@@ -3,7 +3,7 @@
 //! A request is made only by a pane proving it is that pane (its secret), and only you answer
 //! it: `AnswerSecret` is refused from inside a pane. What you type is held here, in memory,
 //! and the agent gets a reference. A reference works once, for the pane that asked, and runs
-//! out after a day; a restart forgets every one (ADR-0036). The value is never in the
+//! out after a day; a restart forgets every one (ADR 0006). The value is never in the
 //! snapshot, a log line or a reply to the request.
 
 use super::{ClientId, Daemon, term};

@@ -6,7 +6,7 @@ import type { SettingsPreferences } from '../preferences'
 import { machineHeads, type RemoteMachine } from '@/features/workspace/model/machines'
 import { DesktopSettings, type DesktopSettingsSection, type MachinesInfo } from './DesktopSettings'
 
-const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, terminalFontFamily: '', terminalFontWeight: 400, terminalFontWeightBold: 700, startFolder: '', groupBy: 'repo', themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper', cursorStyle: 'block', scrollback: 10000, scrollSpeed: 1, effectWorking: true, effectNeedsYou: true, effectDone: true, effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all', animations: 'auto', density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, monthlyBudget: null, iconSize: 'medium', trayStyle: 'names', leadMode: 'focused', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, newSessionView: 'chat', chatFullAccessDefault: false, perfOverlay: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass' }
+const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, terminalFontFamily: '', terminalFontWeight: 400, terminalFontWeightBold: 700, startFolder: '', groupBy: 'repo', themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper', cursorStyle: 'block', scrollback: 10000, scrollSpeed: 1, effectWorking: true, effectNeedsYou: true, effectDone: true, effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all', animations: 'auto', density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, monthlyBudget: null, iconSize: 'medium', trayStyle: 'names', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, defaultAgent: 'claude', newSessionView: 'chat', chatFullAccessDefault: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass' }
 
 function info(overrides: Partial<MachinesInfo> = {}): MachinesInfo {
   return { known: true, list: [], onRetry: vi.fn(), onRemove: vi.fn(), onGrant: vi.fn(), onCopyCommand: vi.fn(), add: { windows: false, loadHosts: () => Promise.resolve([]), onAdd: vi.fn(), onCancel: vi.fn() }, ...overrides }
@@ -17,7 +17,7 @@ function renderSettings(section: DesktopSettingsSection, overrides: Partial<Para
   const onSection = vi.fn()
   const onPreviewTheme = vi.fn()
   const onShowWelcome = vi.fn()
-  render(<QueryClientProvider client={new QueryClient()}><DesktopSettings section={section} onSection={onSection} preferences={PREFS} onChange={onChange} systemReducedMotion={false} systemDark onPreviewTheme={onPreviewTheme} onShowWelcome={onShowWelcome} platform="linux" daemon={{ online: true, sessionCount: 3 }} machines={info()} appVersion="0.64.0" validateFolder={() => Promise.resolve(true)} onClose={vi.fn()} {...overrides} /></QueryClientProvider>)
+  render(<QueryClientProvider client={new QueryClient()}><DesktopSettings usage={{ budget: null, onBudget: vi.fn(), sessionForTerm: () => null, onOpenSession: vi.fn() }} section={section} onSection={onSection} preferences={PREFS} onChange={onChange} systemReducedMotion={false} systemDark onPreviewTheme={onPreviewTheme} onShowWelcome={onShowWelcome} platform="linux" daemon={{ online: true, sessionCount: 3 }} machines={info()} appVersion="0.64.0" validateFolder={() => Promise.resolve(true)} onClose={vi.fn()} {...overrides} /></QueryClientProvider>)
   return { onChange, onSection, onPreviewTheme, onShowWelcome }
 }
 
@@ -25,7 +25,7 @@ describe('desktop settings', () => {
   it('groups the sections the way the design does', () => {
     renderSettings('general')
     const nav = screen.getByRole('navigation', { name: 'Settings sections' })
-    expect(nav).toHaveTextContent('ESSENTIALSGeneralGTERMINALText & cursorTAppearanceAWORKSPACENotificationsNMachinesMHotkeys?ADVANCEDDaemonDPerformanceP')
+    expect(nav).toHaveTextContent('ESSENTIALSGeneralGTERMINALText & cursorTAppearanceAWORKSPACEUsage & costUNotificationsNMachinesMHotkeys?ADVANCEDDaemonDPerformanceP')
     expect(within(nav).getByRole('button', { name: /General/ })).toHaveAttribute('aria-current', 'page')
   })
 
@@ -75,14 +75,25 @@ describe('desktop settings', () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ chatViewDefault: { claude: 'chat', codex: 'terminal' } }))
   })
 
-  it('chooses what new agent sessions start as and whether chats get full access', async () => {
+  it('chooses the default agent and what a new session opens as', async () => {
     const user = userEvent.setup()
     const { onChange } = renderSettings('general')
 
-    const start = screen.getByRole('radiogroup', { name: 'New agent sessions start as' })
-    expect(within(start).getByRole('radio', { name: 'Chat' })).toBeChecked()
-    await user.click(within(start).getByRole('radio', { name: 'Terminal' }))
+    const agent = screen.getByRole('radiogroup', { name: 'Default agent' })
+    expect(within(agent).getByRole('radio', { name: 'Claude' })).toBeChecked()
+    await user.click(within(agent).getByRole('radio', { name: 'Codex' }))
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ defaultAgent: 'codex' }))
+
+    const view = screen.getByRole('radiogroup', { name: 'New sessions open as' })
+    expect(within(view).getByRole('radio', { name: 'Chat' })).toBeChecked()
+    await user.click(within(view).getByRole('radio', { name: 'Terminal' }))
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ newSessionView: 'terminal' }))
+  })
+
+  it('chooses whether new chats get full access', async () => {
+    const user = userEvent.setup()
+    const { onChange } = renderSettings('general')
+
     await user.click(screen.getByRole('switch', { name: 'Full access in new chats' }))
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ chatFullAccessDefault: true }))
   })
@@ -385,6 +396,13 @@ describe('performance section', () => {
     expect(screen.getByRole('button', { name: 'Copy report' })).toBeInTheDocument()
     await user.click(screen.getByRole('switch', { name: 'Show the performance overlay' }))
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ perfOverlay: true }))
+  })
+
+  it('turns terminal drawing without the GPU on, for a web view that shows typed text late', async () => {
+    const user = userEvent.setup()
+    const { onChange } = renderSettings('performance')
+    await user.click(screen.getByRole('switch', { name: 'Draw terminals without the GPU' }))
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ terminalPlainDrawing: true }))
   })
 })
 

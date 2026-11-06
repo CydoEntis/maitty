@@ -406,22 +406,26 @@ impl Daemon {
     pub(super) fn restore_startup(&mut self, saved: persist::Saved) {
         // Recovery changes must differ from the snapshot actually on disk until saved.
         self.last_saved = serde_json::to_string(&saved).unwrap_or_default();
-        self.restore(saved);
+        if !self.restore(saved) && !self.session_path.as_os_str().is_empty() {
+            persist::keep_unusable_now(&self.session_path);
+        }
     }
 
-    pub(super) fn restore(&mut self, mut saved: persist::Saved) {
+    /// Whether the saved session was accepted. A refused one leaves the daemon empty, so the
+    /// caller keeps the file before the next save replaces it.
+    pub(super) fn restore(&mut self, mut saved: persist::Saved) -> bool {
         if let Err(e) = crate::conversation::validate_metadata(
             &saved.conversations,
             &saved.pending_starts,
             &saved.conversation_operations,
         ) {
             tracing::warn!("refusing invalid conversation registry: {e:?}");
-            return;
+            return false;
         }
         for record in &mut saved.conversations {
             if let Err(e) = record.recover() {
                 tracing::warn!("refusing conversation recovery: {e:?}");
-                return;
+                return false;
             }
         }
         self.conversations = std::mem::take(&mut saved.conversations);
@@ -440,7 +444,12 @@ impl Daemon {
             for st in sw.tabs {
                 let mut map = HashMap::new();
                 for old in st.layout.leaves() {
-                    let mut pane = st.panes.get(&old).cloned().unwrap_or_default();
+                    // A slot with no saved pane is one that was lost before the save; giving it a
+                    // default shell is how a restart grew extra shells.
+                    let Some(mut pane) = st.panes.get(&old).cloned() else {
+                        tracing::warn!("restore: layout slot {old} has no saved pane; skipped");
+                        continue;
+                    };
                     // Linked runtimes require explicit recovery; legacy resume may choose --last.
                     if pane.conversation_id.is_some() {
                         continue;
@@ -567,6 +576,7 @@ impl Daemon {
             "restored {} workspaces, {restored} panes",
             self.workspaces.len()
         );
+        true
     }
 
     /// The command that resumes an agent's conversation, if its kind supports it.

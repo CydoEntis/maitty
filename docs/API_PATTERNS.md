@@ -293,6 +293,12 @@ subcommand in `cli.rs` when scripts should reach it.
 
 ## Project-specific: agent turns and background shells
 
+A `Hook` report's `call` is a fingerprint of the tool call that is starting: 16 hex characters, the
+first 8 bytes of SHA-256 over the tool's name and its input. Only a tool-start event from the
+session's own agent carries one (`PreToolUse` for Claude, Qwen and Codex, `BeforeTool` for Gemini),
+and only when the payload has both the name and the input. Nothing else does, and the name and the
+input are never sent.
+
 Honor a trusted turn-finished hook even when its transcript lists a background
 shell or dev server. Background commands do not turn `Done` back into `Working`.
 A Claude Stop that lists running background work new since its last stop stays `Done`
@@ -371,6 +377,10 @@ the notice `<place>: approve check: <command>` once a turn; it is never a finish
 A working agent the daemon marks quiet (`TermInfo::quiet_since`) reads `[claude: working · quiet
 12m]` in `maitty ls`; `ls --json` and `maitty_list` add `quiet_since` (unix seconds) only then. A
 `maitty wait` or `maitty_wait` that times out on one says `still working, but quiet for 12m`.
+A working agent the daemon marks repeating (`TermInfo::repeats`, the calls the repeat has reached)
+reads `[claude: working · repeating 6x]` in `maitty ls`; `ls --json` and `maitty_list` add `repeats`
+only then; and a wait that times out on one says `still working, but repeating itself (6x)`. A quiet
+agent says so first. The count is a hint, never a status: nothing waits on it or rings for it.
 
 `maitty ls`, `maitty ls --json` and MCP `maitty_list` report a check next to the status, never in
 place of it: `status` keeps its value (`done`) and `TermInfo::reported_check` decides whether a
@@ -461,7 +471,7 @@ background storage lock. Attachments never submit independent cache revisions.
 See [stack/claude-code-cli.md](stack/claude-code-cli.md) for the Claude CLI
 process boundary and event/approval handling rules.
 
-**An agent in a pane has a read-only conversation** ([ADR 0052](adr/0052-an-agent-in-a-pane-gets-a-read-only-conversation.md)),
+**An agent in a pane has a read-only conversation** ([ADR 0003](adr/0003-status-and-conversation-trust.md)),
 with no protocol change. For an owned desktop pane whose hook-verified agent is `claude` or `codex` and
 whose hook gave a session id (and, for Claude, its transcript path), the snapshot's `conversations` holds
 a `ConversationSummary` with `execution: Native`, `native_term: <pane>`, the pane's `status` and no
@@ -469,7 +479,7 @@ checks; `Query::ConversationRead` serves its history. The id is the daemon's, st
 the agent, and its `generation` rises when the pane's session id changes. It is in memory only (never in
 the session file or history cache). `ConversationSend`, `Approve`, `AnswerInput`, `Cancel` and `End` on it
 fail with a "read-only" error; `Rename` and `Archive` fail as for an unknown id (the pane is named and
-closed as a pane). A client the pane does not belong to (ADR 0045) gets "No such conversation". The
+closed as a pane). A client the pane does not belong to (ADR 0004) gets "No such conversation". The
 history is the provider's own transcript projected through the same entries a structured runtime
 produces (`conversation/follow_transcript.rs`); nothing read from the file sets any status.
 
@@ -491,7 +501,7 @@ the version was raised to 71; tests assert an older peer cannot read them and th
 still decodes.
 
 Protocol 72 adds `branch: Option<String>` (`#[serde(default)]`) to `Command::ConversationStart`, for a
-chat session on a branch ([ADR 0054](adr/0054-a-chat-session-is-a-daemon-owned-conversation-started-from-the-desktop.md)).
+chat session on a branch ([ADR 0003](adr/0003-status-and-conversation-trust.md)).
 The daemon, before anything is made, refuses a `branch` beside anything but a new conversation
 (`StartTarget::Create`), checks the name with the branch agent's rules (`branch_agent::branch_problem`),
 and requires the target's folder to be a project the app shows and a git repository
@@ -501,12 +511,24 @@ is the usual `ConversationStarted`. The field is defaulted, so the old shape dec
 peer that predates it would drop the field and start in the main checkout, so the version was raised
 to 72 and the two refuse to talk. The window's Tauri command `start_chat_session` asks for
 workspace write with approval on request, or, with its optional `full_access` flag, for `Sandbox::FullAccess`
-with `ApprovalPolicy::Never` (ADR 0043 and 0054). It adds no wire field: the choice rides in the existing
+with `ApprovalPolicy::Never` ([ADR 0005](adr/0005-provider-adapters-and-permissions.md)). It adds no wire field: the choice rides in the existing
 `LaunchSettings`, so the protocol version is unchanged. It is local-only.
+
+Protocol 73 adds `Query::ListFolders { path, tag }` and `Reply::Folders { tag, listing }`: the folders
+directly inside `path` on the daemon's computer (`FolderListing`, `FolderEntry` in
+`crates/maitty-shared/src/protocol.rs`), for a client choosing where to start a session (the terminal
+app's New Session popup, the desktop app's folder dialog). `path` is absolute or starts with `~`
+(the daemon's home folder), at most 4,096 bytes; anything else answers `exists: false`. Only folder
+names are listed, never file names or contents. Each entry carries the git branch when it is a
+checkout (read from `.git/HEAD`, no git run) and whether it holds a folder worth browsing into
+(hidden folders do not count). At most 1,000 entries, with `truncated` set past that. Human
+clients only; the reads run off the event loop. A listing from another machine is cleaned the way a
+snapshot is (`remote_policy::vet`): control characters out, names that are paths dropped, the count
+cut, and it is passed on only while a request to that machine is waiting.
 
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store
-([ADR 0051](adr/0051-the-daemon-keeps-provider-reported-usage.md)): totals, one entry per
+([ADR 0009](adr/0009-usage-is-provider-reported-never-estimated.md)): totals, one entry per
 session and one per day with usage, as `UsageReport` in `crates/maitty-shared/src/usage_report.rs`
 (camelCase when it reaches the desktop app as JSON). Human clients only. A figure no provider
 reported is `null`, never zero. `Usage` also gains the defaulted `tokens_in` and `tokens_out`
@@ -549,7 +571,7 @@ Protocol 67 adds, for the desktop app's Inspect panel, find, quick-look links an
 
 `NewWorktree` also carries `agent` and `prompt` (`Option<String>`, `#[serde(default)]`; added without
 a `PROTOCOL_VERSION` bump, and a test decodes the old shape): the desktop app's "New agent on a
-branch" (`new_branch_agent`). When either is set the daemon, before anything is made, refuses
+branch", which the revised v18 removed from the window; the daemon keeps accepting them. When either is set the daemon, before anything is made, refuses
 a `cmd` beside them, checks `branch` (`[A-Za-z0-9_./-]+` plus git's ref rules, at most 200
 characters; `daemon/branch_agent.rs`), requires `from` to be a project the app shows (a repository some
 workspace or pane is in), requires the agent to be a configured preset or built-in agent, and bounds the
@@ -560,8 +582,7 @@ usual one (`create_trusted_worktree`, the repo's setup hook, the `[worktree] dir
 its last session closes). Local projects only: the window refuses another machine's project.
 
 Protocol 65 removes the handoff between chat and terminal
-(`ConversationHandoffToNative`, `ConversationHandoffToChat`; see
-[ADR 0044](adr/0044-chat-and-terminal-are-separate-sessions.md)): a session is a chat
+(`ConversationHandoffToNative`, `ConversationHandoffToChat`): a session is a chat
 or a terminal session from the moment it starts. It adds the human-only
 `ConversationRename` and `ConversationArchive` commands, and `title` and `archived` on
 `ConversationSummary` and the saved conversation record (both defaulted, so older files
@@ -788,7 +809,7 @@ Every message the window sends is an `Outgoing { machine, msg }`; `client/routin
    the `ClientSession` / `Proj.machine`, or the focus machine for a workspace or tab id read from
    the active workspace (`active_ws`, `active_tab`).
 3. A new session, pane, tab or workspace goes to `target_machine()`: the machine of the session
-   selected in the sidebar, else the focused one (ADR 0047); this computer when neither is anywhere else.
+   selected in the sidebar, else the focused one (ADR 0007); this computer when neither is anywhere else.
    A project's own "new" (its row, a recipe, "+ New") goes to `Proj.machine`.
 4. Things with no owning machine (settings, themes, reload config, kill server, UI state) and
    anything that acts on this computer's disk stay local.

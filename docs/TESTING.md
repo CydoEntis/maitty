@@ -199,7 +199,7 @@ chmod mktemp cat dirname tr cut` on `PATH` (any Linux or macOS host; Git for Win
 print `skipped:` and pass when there is none. The rest of the machine-update logic (the `uname` parser,
 version compare, the decision table, the exit-code table, archive listing checks, checksums, asset names)
 is pure and runs everywhere. The one unix-only assertion (the `0755` mode) is `#[cfg(unix)]`.
-`client/remote_image_tests.rs` sends a pasted image the same way (ADR 0049): the real paste script
+`client/remote_image_tests.rs` sends a pasted image the same way (ADR 0007): the real paste script
 runs in the fake home, and the tests check that the file arrives whole and private, that two pastes are two
 files, that an image over 25 MB never starts ssh, that a machine reached by a custom transport is told it
 needs ssh, and that a failed login says so and keeps nothing. The script itself is also run directly

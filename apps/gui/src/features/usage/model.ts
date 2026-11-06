@@ -2,7 +2,7 @@ import type { DayUsage, SessionUsage, UsageFigures, UsagePeriod } from '@/api/us
 import { validBudget } from '@/features/settings/preferences'
 import { formatTokens } from '@/features/workspace/model/usage'
 
-/** What a figure nobody reported looks like. A made-up zero would read as a fact (ADR 0051). */
+/** What a figure nobody reported looks like. A made-up zero would read as a fact (ADR 0009). */
 export const DASH = '—'
 
 const SECS_PER_MINUTE = 60

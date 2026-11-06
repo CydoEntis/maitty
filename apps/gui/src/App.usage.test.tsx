@@ -43,6 +43,7 @@ vi.mock('@/api/machines', async (importOriginal) => ({
   listenMachineError: () => Promise.resolve(() => undefined),
   listenMachineRemoved: () => Promise.resolve(() => undefined),
   listenMachineNotice: () => Promise.resolve(() => undefined),
+  listenAttention: () => Promise.resolve(() => undefined),
   listenMachineClipboard: () => Promise.resolve(() => undefined),
 }))
 
@@ -95,39 +96,40 @@ describe('usage and cost in the desktop app', () => {
     usage.loadUsageReport.mockResolvedValue(report())
   })
 
-  it('opens and closes with Ctrl+Shift+U, and Esc closes it too', async () => {
+  const openUsage = async (user: ReturnType<typeof userEvent.setup>) => {
+    await screen.findByRole('button', { name: 'Settings' })
+    await user.keyboard('{Control>}{Shift>}u{/Shift}{/Control}')
+    return screen.findByRole('region', { name: 'Usage and cost' })
+  }
+
+  it('opens Settings on Usage & cost with Ctrl+Shift+U, and Esc closes Settings', async () => {
     const user = userEvent.setup()
     renderDesktopApp()
-    await screen.findByRole('button', { name: 'Usage and cost' })
 
-    await user.keyboard('{Control>}{Shift>}u{/Shift}{/Control}')
-    expect(await screen.findByRole('heading', { name: 'Usage and cost' })).toBeInTheDocument()
+    await openUsage(user)
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Usage & cost', level: 2 })).toBeInTheDocument()
     expect(usage.loadUsageReport).toHaveBeenCalledWith('week')
 
-    await user.keyboard('{Control>}{Shift>}u{/Shift}{/Control}')
-    await waitFor(() => { expect(screen.queryByRole('heading', { name: 'Usage and cost' })).not.toBeInTheDocument() })
-
-    await user.keyboard('{Control>}{Shift>}u{/Shift}{/Control}')
-    await screen.findByRole('heading', { name: 'Usage and cost' })
     await user.keyboard('{Escape}')
-    await waitFor(() => { expect(screen.queryByRole('heading', { name: 'Usage and cost' })).not.toBeInTheDocument() })
+    await waitFor(() => { expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument() })
   })
 
-  it('opens from the sidebar footer icon, whose tooltip names the keys', async () => {
+  it('has no usage button in the sidebar footer: Settings holds it, one key away', async () => {
     const user = userEvent.setup()
     renderDesktopApp()
-    const icon = await screen.findByRole('button', { name: 'Usage and cost' })
-    expect(icon).toHaveAttribute('title', 'Usage and cost (Ctrl+Shift+U)')
+    await screen.findByRole('button', { name: 'Settings' })
+    expect(screen.queryByRole('button', { name: 'Usage and cost' })).not.toBeInTheDocument()
 
-    await user.click(icon)
-    expect(await screen.findByRole('heading', { name: 'Usage and cost' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Settings' }))
+    await user.click(within(screen.getByRole('navigation', { name: 'Settings sections' })).getByRole('button', { name: /Usage & cost/ }))
+    expect(await screen.findByRole('region', { name: 'Usage and cost' })).toBeInTheDocument()
   })
 
   it('opens the pane of an open session from its row, and leaves a closed session alone', async () => {
     const user = userEvent.setup()
     renderDesktopApp()
-    await user.click(await screen.findByRole('button', { name: 'Usage and cost' }))
-    const page = await screen.findByRole('region', { name: 'Usage and cost' })
+    const page = await openUsage(user)
     const table = await within(page).findByRole('table', { name: /Sessions in this period/ })
 
     const closed = within(table).getAllByRole('row').find((row) => row.textContent.includes('api'))
@@ -143,7 +145,7 @@ describe('usage and cost in the desktop app', () => {
   it('keeps a monthly budget with the other preferences', async () => {
     const user = userEvent.setup()
     renderDesktopApp()
-    await user.click(await screen.findByRole('button', { name: 'Usage and cost' }))
+    await openUsage(user)
     await user.click(await screen.findByRole('button', { name: 'Set a monthly budget' }))
     await user.type(screen.getByRole('textbox', { name: /Monthly budget/ }), '40')
     await user.click(screen.getByRole('button', { name: 'Save' }))

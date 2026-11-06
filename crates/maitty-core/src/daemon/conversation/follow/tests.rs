@@ -251,7 +251,10 @@ fn a_codex_rollout_is_matched_by_the_end_of_its_name() {
     };
 
     assert!(codex(&good).is_ok());
-    assert!(matches!(codex(&wrong), Err(ReadFailure::Refused(_))));
+    // Another session's file is never read. A Codex hint that is not this session's is not trusted:
+    // the file is looked for by the session id instead (`resolve_path`), and a file named for another
+    // session is not what that finds either.
+    assert!(codex(&wrong).is_err());
 }
 
 // ---- the daemon ----
@@ -391,6 +394,109 @@ async fn a_hooked_claude_pane_gets_a_read_only_conversation_the_desktop_can_link
         ]
     );
     assert!(read.approvals.is_empty() && read.error.is_none());
+}
+
+#[tokio::test]
+async fn a_session_with_no_transcript_file_yet_is_followed_empty_and_without_an_error() {
+    let mut world = World::new();
+    // A session that has not been given its first prompt: the agent has not written the file.
+    std::fs::remove_file(&world.path).unwrap();
+
+    world.follow().await;
+
+    let read = world.read_all(61).unwrap();
+    assert!(read.history.entries.is_empty());
+    assert!(
+        read.error.is_none(),
+        "nothing written yet is not a fault: {:?}",
+        read.error
+    );
+    assert!(!matches!(
+        read.history.completeness,
+        Completeness::Incomplete(_)
+    ));
+
+    // The first prompt writes the file, and the chat then shows it.
+    std::fs::write(
+        &world.path,
+        format!("{}{}", claude_prompt("hello"), claude_reply("hi")),
+    )
+    .unwrap();
+    world.follow().await;
+    let read = world.read_all(61).unwrap();
+    let said: Vec<_> = read
+        .history
+        .entries
+        .iter()
+        .filter_map(|e| match &e.content {
+            Content::Message { role, text } => Some((role.clone(), text.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        said,
+        [
+            (Role::User, "hello".to_string()),
+            (Role::Assistant, "hi".to_string())
+        ]
+    );
+    assert!(read.error.is_none());
+}
+
+#[test]
+fn a_codex_hint_that_is_not_this_sessions_file_falls_back_to_finding_it_by_its_session_id() {
+    let home = Home::new();
+    let dir = home.dir.path();
+    let other = dir.join("rollout-2026-11-06T09-00-00-99999999-aaaa-bbbb-cccc-dddddddddddd.jsonl");
+    let mine = dir.join(format!("rollout-2026-11-06T11-17-51-{SESSION}.jsonl"));
+    std::fs::write(&other, "{}\n").unwrap();
+    std::fs::write(&mine, "{}\n").unwrap();
+
+    let found = resolve_path(Provider::Codex, SESSION, Some(&other), dir, || Some(mine.clone()));
+
+    assert_eq!(found.ok(), Some(std::fs::canonicalize(&mine).unwrap()));
+    // A hint for a file not written yet is not a reason to give up either.
+    let missing = dir.join("rollout-not-yet.jsonl");
+    let found = resolve_path(Provider::Codex, SESSION, Some(&missing), dir, || Some(mine.clone()));
+    assert_eq!(found.ok(), Some(std::fs::canonicalize(&mine).unwrap()));
+}
+
+#[test]
+fn a_claude_hint_that_is_not_this_sessions_file_stays_an_error() {
+    let home = Home::new();
+    let dir = home.dir.path();
+    let other = dir.join("99999999-aaaa-bbbb-cccc-dddddddddddd.jsonl");
+    std::fs::write(&other, "{}\n").unwrap();
+
+    let found = resolve_path(Provider::Claude, SESSION, Some(&other), dir, || None);
+
+    assert!(matches!(found, Err(ReadFailure::Refused(_))));
+}
+
+#[tokio::test]
+async fn the_conversation_of_a_followed_claude_pane_reports_its_mode_and_model() {
+    let mut world = World::new();
+    let prompt = json!({ "type": "user", "uuid": "u-1", "isSidechain": false, "permissionMode": "acceptEdits",
+        "timestamp": "2026-11-06T10:00:00.000Z", "message": { "role": "user", "content": "go" } });
+    let reply = json!({ "type": "assistant", "uuid": "a-1", "isSidechain": false,
+        "timestamp": "2026-11-06T10:00:01.000Z",
+        "message": { "role": "assistant", "model": "claude-opus-5-1", "content": [{ "type": "text", "text": "ok" }] } });
+    std::fs::write(&world.path, format!("{prompt}\n{reply}\n")).unwrap();
+
+    world.follow().await;
+
+    let meta = world.read_all(61).unwrap().meta.expect("the file said its setup");
+    assert_eq!(meta.mode.as_deref(), Some("acceptEdits"));
+    assert_eq!(meta.model.as_deref(), Some("claude-opus-5-1"));
+}
+
+#[tokio::test]
+async fn a_followed_pane_whose_file_says_nothing_of_its_setup_reports_none() {
+    let mut world = World::new();
+
+    world.follow().await;
+
+    assert!(world.read_all(61).unwrap().meta.is_none());
 }
 
 #[tokio::test]

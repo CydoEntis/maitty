@@ -10,7 +10,7 @@
 #   <APP>_NO_INTEGRATE set to 1 to leave your agents' config alone (no `<app> integrate`)
 set -eu
 
-# The app's command and where it is released: the only place this script names it (ADR 0019).
+# The app's command and where it is released: the only place this script names it (ADR 0008).
 APP="maitty"
 REPO="CydoEntis/maitty"
 

@@ -314,12 +314,20 @@ impl App {
         let mut items = vec![
             ("Rename pane".to_string(), Act::RenamePane(term)),
             (
-                "Split side by side".to_string(),
+                "Split right".to_string(),
                 Act::Split(term, crate::layout::Dir::Right),
             ),
             (
-                "Split stacked".to_string(),
+                "Split down".to_string(),
                 Act::Split(term, crate::layout::Dir::Down),
+            ),
+            (
+                "Split left".to_string(),
+                Act::Split(term, crate::layout::Dir::Left),
+            ),
+            (
+                "Split up".to_string(),
+                Act::Split(term, crate::layout::Dir::Up),
             ),
         ];
         use crate::layout::Dir;
@@ -686,6 +694,24 @@ impl App {
                 Some(c) => Some(c),
                 None => return,
             },
+            Act::RemoveMachine(name) => Some(Confirm {
+                title: "Remove machine".into(),
+                sub: String::new(),
+                what: name.clone(),
+                detail: self
+                    .cfg
+                    .machines
+                    .iter()
+                    .find(|m| m.name == *name)
+                    .map(|m| m.target.clone())
+                    .unwrap_or_default(),
+                note: "It's taken off this list. Its sessions keep running on it, and you can add it again.".into(),
+                list: Vec::new(),
+                yes: "Remove".into(),
+                key: '\n',
+                danger: true,
+                act: a.clone(),
+            }),
             Act::CloseProject(pi) => model.get(*pi).map(|p| {
                 let n = p.sessions().count();
                 Confirm {
@@ -774,7 +800,7 @@ impl App {
                 if self.focused() != Some(t) {
                     self.cmd_on(t.machine, Command::FocusPane { term: t.term });
                 }
-                self.screen.pending_split = Some((t, std::time::Instant::now()));
+                self.begin_split(t);
                 self.leave_shortcut_mode();
                 self.cmd_on(
                     t.machine,

@@ -487,7 +487,7 @@ describe('terminal sessions shown beside chats', () => {
 
     const sessions = await loadConversations()
 
-    // A followed agent's chat only shows what it did (ADR 0052), so the link says it cannot send.
+    // A followed agent's chat only shows what it did (ADR 0003), so the link says it cannot send.
     expect(sessions.find((session) => session.id === 't5')?.chat).toEqual({ conversation: 40, generation: 3, readOnly: true })
     expect(sessions.find((session) => session.id === 't6')?.chat).toBeUndefined()
   })

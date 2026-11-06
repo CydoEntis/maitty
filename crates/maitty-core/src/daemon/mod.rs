@@ -13,13 +13,18 @@ mod check_stale;
 mod commands;
 mod contain;
 mod conversation;
+mod folders;
 mod git;
 mod helpers;
 mod identity;
 mod last_lines;
 mod pane_terminal;
+mod permission_ask;
 mod persist;
 mod pr;
+#[cfg(unix)]
+mod provider_groups;
+mod repeats;
 mod repo;
 mod restore;
 mod scan;
@@ -105,7 +110,7 @@ pub enum Ev {
         token: u64,
         result: Result<conversation::transport::Launch, String>,
     },
-    /// A background read of a followed pane's transcript finished (ADR 0052).
+    /// A background read of a followed pane's transcript finished (ADR 0003).
     FollowRead(Box<conversation::follow::Done>),
     ConversationStorage {
         id: crate::conversation::ConversationId,
@@ -150,7 +155,7 @@ pub enum Ev {
         set_up: bool,
         result: Result<(PathBuf, String), String>,
     },
-    /// The worktree a chat session on a branch starts in is made (or failed): start it, ADR 0054.
+    /// The worktree a chat session on a branch starts in is made (or failed): start it, ADR 0003.
     ChatWorktreeCreated {
         client: ClientId,
         settings: crate::conversation::LaunchSettings,
@@ -199,6 +204,11 @@ pub enum Ev {
     SearchReady {
         client: ClientId,
         hits: Vec<crate::protocol::SearchHit>,
+    },
+    FoldersReady {
+        client: ClientId,
+        tag: u64,
+        listing: crate::protocol::FolderListing,
     },
     RepoReady {
         client: ClientId,
@@ -330,6 +340,9 @@ struct Daemon {
     active_ws: Option<WsId>,
     next_id: u32,
     clients: HashMap<ClientId, Client>,
+    /// The client a person last typed or acted in: the one told when a pane needs them, so several
+    /// open windows do not each ring for one event.
+    last_used: Option<ClientId>,
     tx: mpsc::Sender<Ev>,
     /// To the hook thread (see `hook_thread`).
     hook_jobs: std::sync::mpsc::Sender<HookJob>,
@@ -406,7 +419,7 @@ struct Daemon {
     spent: Vec<(u64, f64, String, String)>,
     /// Turns agents finished over the last day: (when, agent, folder, seconds working).
     turns: Vec<(u64, String, String, u64)>,
-    /// Provider-reported usage per session per day, kept on disk (ADR 0051).
+    /// Provider-reported usage per session per day, kept on disk (ADR 0009).
     usage_store: usage_store::UsageStore,
     codex_busy: bool,
     last_codex: Instant,
@@ -437,7 +450,9 @@ pub fn run(on_start: impl FnOnce()) -> Result<()> {
         .enable_all()
         .build()?;
     rt.block_on(async move {
-        // Refuse to start a second daemon on the same socket.
+        // The lock is what stops two racing starts; the connect check still catches a running
+        // daemon of an older version, which does not take the lock.
+        let _daemon_lock = ipc::lock_daemon()?;
         if ipc::connect().await.is_ok() {
             anyhow::bail!(
                 concat!(
@@ -452,6 +467,15 @@ pub fn run(on_start: impl FnOnce()) -> Result<()> {
         tracing::info!("daemon listening on {}", ipc::socket_id());
         // Lets `<app> kill-server` from another version stop it (it can't talk to this one).
         let _ = std::fs::write(ipc::pid_file(), std::process::id().to_string());
+        // A previous daemon that was killed could not stop its providers: this one holds the socket
+        // now, so what that daemon left is stopped before anything is restored.
+        #[cfg(unix)]
+        {
+            provider_groups::enable(ipc::providers_file());
+            if let Err(error) = tokio::task::spawn_blocking(provider_groups::sweep_previous).await {
+                tracing::warn!("sweeping providers a previous daemon left: {error}");
+            }
+        }
         let (tx, rx) = mpsc::channel::<Ev>(4096);
 
         let accept_tx = tx.clone();
@@ -987,6 +1011,7 @@ impl Daemon {
             active_ws: None,
             next_id: 1,
             clients: HashMap::new(),
+            last_used: None,
             hook_jobs,
             tx,
             scan,
@@ -1904,6 +1929,11 @@ impl Daemon {
             Ev::SearchReady { client, hits } => {
                 self.send(client, ServerMsg::Reply(Reply::Search(hits)));
             }
+            Ev::FoldersReady {
+                client,
+                tag,
+                listing,
+            } => self.send(client, ServerMsg::Reply(Reply::Folders { tag, listing })),
             Ev::RepoReady {
                 client,
                 tag,
@@ -2083,6 +2113,9 @@ impl Daemon {
                 ServerMsg::Error("Structured runtime identity is stale or revoked".into()),
             );
             return;
+        }
+        if matches!(msg, ClientMsg::Input { .. } | ClientMsg::Command(_)) {
+            self.last_used = Some(client);
         }
         if self
             .clients
@@ -2420,6 +2453,29 @@ impl Daemon {
                     Query::UsageReport { period } => {
                         ServerMsg::Reply(Reply::UsageReport(self.usage_report(period)))
                     }
+                    Query::ListFolders { .. }
+                        if self.clients.get(&client).is_some_and(|client| {
+                            client.from.is_some() || client.structured.is_some()
+                        }) =>
+                    {
+                        ServerMsg::Error("Only a human client can list folders".into())
+                    }
+                    Query::ListFolders { path, tag } => {
+                        if path.len() > folders::PATH_MAX_BYTES {
+                            self.send(
+                                client,
+                                ServerMsg::Error("That path is too long to list".into()),
+                            );
+                            return;
+                        }
+                        let home = directories::BaseDirs::new().map(|dirs| dirs.home_dir().to_path_buf());
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let listing = folders::list(&path, home.as_deref());
+                            let _ = tx.blocking_send(Ev::FoldersReady { client, tag, listing });
+                        });
+                        return;
+                    }
                     Query::PaneSearch { query } => {
                         let query = query.trim().to_string();
                         if query.is_empty() || query.chars().count() > search::MAX_QUERY_CHARS {
@@ -2577,7 +2633,7 @@ impl Daemon {
     }
 
     /// The state one app is shown: its own terminal sessions, the workspaces made of them, and
-    /// its own native conversation terminals (ADR 0045).
+    /// its own native conversation terminals (ADR 0004).
     fn snapshot_for(&self, surface: Surface) -> Snapshot {
         let mut snap = self.snapshot();
         snap.terms.retain(|id, _| self.shown_to(*id, surface));
@@ -2660,6 +2716,7 @@ impl Daemon {
                         why_screen_at: t.last_screen.as_ref().map(|h| h.1).unwrap_or(0),
                         why_process_at: t.last_process,
                         quiet_since: t.quiet_since,
+                        repeats: t.repeats,
                         pid: t.pid.unwrap_or(0),
                         asleep: t.asleep,
                         win32_input: t.win32_input,
@@ -2672,6 +2729,7 @@ impl Daemon {
                             String::new()
                         },
                         interrupted: t.interrupted.clone().filter(|_| t.agent.is_none()),
+                        ask: t.ask_now(),
                         timeline: t.timeline.iter().cloned().collect(),
                         subagents: t.subagents.iter().map(|(_, k)| k.clone()).collect(),
                         started_by: t.started_by,

@@ -196,19 +196,43 @@ fn stop_mismatched_daemon() -> Result<()> {
 fn is_app_daemon(pid: u32) -> bool {
     #[cfg(target_os = "linux")]
     {
-        let Ok(command_line) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
-            return false;
-        };
-        let args = command_line.split(|byte| *byte == 0).collect::<Vec<_>>();
-        args.first()
-            .is_some_and(|program| program.ends_with(APP_COMMAND.as_bytes()))
-            && args.get(1).is_some_and(|arg| *arg == b"daemon")
+        std::fs::read(format!("/proc/{pid}/cmdline"))
+            .is_ok_and(|command_line| is_daemon_command_line(&command_line))
     }
     #[cfg(not(target_os = "linux"))]
     {
         let _ = pid;
         true
     }
+}
+
+/// Whether a process's NUL-separated command line is this product's daemon: the terminal app's
+/// program, or the copy the desktop app bundles (named with `-gui-daemon`, and with the target
+/// triple when it runs from a development build), started with `daemon`.
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+fn is_daemon_command_line(command_line: &[u8]) -> bool {
+    let mut args = command_line.split(|byte| *byte == 0);
+    let program = args.next().unwrap_or_default();
+    is_daemon_invocation(program, args.next())
+}
+
+const EXE_SUFFIX: &[u8] = b".exe";
+
+/// Whether a program (a path or a bare name) started with this first argument is this product's
+/// daemon. One rule for stopping a daemon and for listing them.
+pub fn is_daemon_invocation(program: &[u8], first_argument: Option<&[u8]>) -> bool {
+    let file = program
+        .rsplit(|byte| matches!(byte, b'/' | b'\\'))
+        .next()
+        .unwrap_or_default();
+    // Windows names the program with its extension.
+    let name = match file.len().checked_sub(EXE_SUFFIX.len()) {
+        Some(stem) if file[stem..].eq_ignore_ascii_case(EXE_SUFFIX) => &file[..stem],
+        _ => file,
+    };
+    let bundled = format!("{APP_COMMAND}-gui-daemon");
+    (name == APP_COMMAND.as_bytes() || name.starts_with(bundled.as_bytes()))
+        && first_argument == Some(b"daemon".as_slice())
 }
 
 /// Stop only the exact older local daemon the user confirmed replacing.
@@ -480,7 +504,7 @@ pub async fn pane_terminal_resize(
 }
 
 /// A live stream of the terminal panes this app owns: each pane's replay, then its output as
-/// it happens. Pushed by the daemon, so the window never polls (ADR 0045).
+/// it happens. Pushed by the daemon, so the window never polls (ADR 0004).
 pub struct TerminalStream {
     reader: ipc::Reader,
 }
@@ -529,7 +553,7 @@ pub async fn open_terminal_stream(
     Ok((TerminalStream { reader }, TerminalInput { writer }))
 }
 
-/// Start a plain shell in a folder. The user types what they want to run in it (ADR 0046).
+/// Start a plain shell in a folder. The user types what they want to run in it.
 pub async fn start_shell_session(cwd: PathBuf, daemon_executable: PathBuf) -> Result<Value> {
     let cwd = cwd.canonicalize().context("resolving the start folder")?;
     if !cwd.is_dir() {
@@ -669,49 +693,6 @@ pub async fn new_worktree_session(
             from: None,
             agent: None,
             prompt: None,
-        }),
-        daemon_executable,
-    )
-    .await?;
-    match reply {
-        Reply::Ok => Ok(Value::Null),
-        _ => bail!("daemon returned an unexpected worktree reply"),
-    }
-}
-
-/// A new branch in its own worktree of `project` (a folder of a project the app shows), with
-/// `agent` started in it and `prompt` as its first prompt. The daemon checks every part and
-/// opens the session as a new workspace of the project.
-pub async fn new_branch_agent(
-    project: PathBuf,
-    branch: String,
-    agent: String,
-    prompt: String,
-    daemon_executable: PathBuf,
-) -> Result<Value> {
-    let snapshot = match request(ClientMsg::Query(Query::List), daemon_executable.clone()).await? {
-        Reply::List(snapshot) => snapshot,
-        _ => bail!("daemon returned an unexpected session list reply"),
-    };
-    // Any workspace will do as the anchor: `from` names the repository, and the daemon opens the
-    // new session as a workspace of its own.
-    let ws = snapshot
-        .workspaces
-        .iter()
-        .find(|workspace| workspace.cwd == project)
-        .or_else(|| snapshot.workspaces.first())
-        .map(|workspace| workspace.id)
-        .context("no session is open to start from")?;
-    let reply = request(
-        ClientMsg::Command(Command::NewWorktree {
-            ws,
-            branch,
-            base: None,
-            cmd: None,
-            split: None,
-            from: Some(project),
-            agent: Some(agent),
-            prompt: Some(prompt),
         }),
         daemon_executable,
     )
@@ -1046,7 +1027,7 @@ impl Permissions {
 }
 
 /// The posture of a chat session: it asks before a tool use the provider does not allow by itself,
-/// unless the caller asks for the provider's own skip-permissions mode (ADR 0043, ADR 0054).
+/// unless the caller asks for the provider's own skip-permissions mode (ADR 0005, ADR 0003).
 fn chat_session_permissions(full_access: bool) -> Permissions {
     if full_access {
         Permissions::FullAccess
@@ -1055,7 +1036,7 @@ fn chat_session_permissions(full_access: bool) -> Permissions {
     }
 }
 
-/// Start a chat session: a structured conversation the daemon owns (ADR 0054). With `full_access` the
+/// Start a chat session: a structured conversation the daemon owns (ADR 0003). With `full_access` the
 /// provider runs unsandboxed and without approvals; there is no other posture to choose. With a
 /// `branch` the daemon makes a worktree for it from the project at `cwd` and starts there.
 pub async fn start_chat_session(
@@ -1381,9 +1362,34 @@ async fn receive_reply(reader: &mut ipc::Reader) -> Result<Reply> {
 #[cfg(test)]
 mod restart_confirmation_tests {
     use super::{
-        Activity, can_restart_mismatched_daemon, validate_restart_activity,
-        validate_restart_confirmation,
+        Activity, can_restart_mismatched_daemon, is_daemon_command_line,
+        validate_restart_activity, validate_restart_confirmation,
     };
+
+    #[test]
+    fn the_daemon_to_restart_may_be_the_terminal_apps_or_the_one_the_desktop_app_bundles() {
+        let command = env!("MAITTY_APP_COMMAND");
+        let line = |program: &str, args: &str| format!("{program}\0{args}\0").into_bytes();
+        for program in [
+            format!("/home/me/.local/bin/{command}"),
+            command.to_string(),
+            format!("/tmp/.mount_AppXyZ/usr/bin/{command}-gui-daemon"),
+            format!("/repo/target/debug/{command}-gui-daemon-x86_64-unknown-linux-gnu"),
+            format!(r"C:\Users\me\AppData\Local\Maitty\{command}.exe"),
+            format!(r"C:\Program Files\Maitty\{command}-gui-daemon.EXE"),
+        ] {
+            assert!(is_daemon_command_line(&line(&program, "daemon")), "{program}");
+        }
+        for (program, args) in [
+            (format!("/usr/bin/not{command}"), "daemon"),
+            (format!("/usr/bin/{command}"), "mcp"),
+            (format!("/usr/bin/{command}"), ""),
+            ("/usr/bin/bash".to_string(), "daemon"),
+        ] {
+            assert!(!is_daemon_command_line(&line(&program, args)), "{program} {args}");
+        }
+        assert!(!is_daemon_command_line(b""));
+    }
 
     #[test]
     fn accepts_only_the_confirmed_older_protocol() {

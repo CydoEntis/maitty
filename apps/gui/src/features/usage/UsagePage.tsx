@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState, type SyntheticEvent, type ReactNode } from 'react'
+import { useState, type SyntheticEvent, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { loadUsageReport, type UsagePeriod, type UsageReport } from '@/api/usage'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useReducedMotion } from '@/features/workspace/components/motion'
-import { Icon } from '@/features/workspace/components/glyphs'
 import {
   budgetRing, dayBars, DASH, PERCENT, formatCost, formatTokenCount, formatWorking, parseBudget, PERIOD_CHOICES, shortDay, totalTokens, windowLabel,
   type DayBar, type Ring, type RingTone,
@@ -32,15 +31,11 @@ type PageProps = {
   onBudget: (budget: number | null) => void
   sessionForTerm: (term: number) => OpenSession | null
   onOpenSession: (id: string) => void
-  onClose: () => void
 }
 
-/** Ctrl/Cmd+Shift+U (v18 C.7): what agents reported using, by session, from the daemon's usage store (ADR 0051). */
-export function UsagePage({ budget, onBudget, sessionForTerm, onOpenSession, onClose }: PageProps) {
+/** Settings › Usage & cost (v18 D.7): what agents reported using, by session, from the daemon's usage store (ADR 0009). */
+export function UsagePage({ budget, onBudget, sessionForTerm, onOpenSession }: PageProps) {
   const [period, setPeriod] = useState<UsagePeriod>('week')
-  const heading = useRef<HTMLHeadingElement>(null)
-  // The keyboard lands on the page, not on the pane underneath it.
-  useEffect(() => { heading.current?.focus() }, [])
 
   const query = useQuery({
     queryKey: ['usage', period],
@@ -53,12 +48,9 @@ export function UsagePage({ budget, onBudget, sessionForTerm, onOpenSession, onC
   const report = query.data
 
   return (
-    <section aria-label="Usage and cost" className="absolute inset-0 z-40 flex min-h-0 flex-col gap-4 overflow-y-auto bg-[var(--main)] p-5 text-fg">
+    <section aria-label="Usage and cost" className="flex min-h-0 flex-col gap-4 text-fg">
       <header className="flex flex-wrap items-center gap-3">
-        <h1 ref={heading} tabIndex={-1} className="text-[15px] font-semibold outline-none">Usage and cost</h1>
-        <span className="flex-1" />
         <PeriodSwitch period={period} onChange={setPeriod} />
-        <button type="button" className="mx-icon-button size-7 rounded-lg text-dim hover:bg-hover hover:text-fg" aria-label="Close" title="Close (Esc)" onClick={onClose}><Icon name="close" size={12} /></button>
       </header>
       {report === undefined
         ? query.isError

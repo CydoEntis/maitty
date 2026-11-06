@@ -6,7 +6,7 @@ in Settings › Keys or under `[keys.prefix]` in your config.
 ## Default shortcuts
 
 Press `Ctrl+Space` for shortcut mode, then the key. Only `?` needs Shift, and each key does
-one thing (ADR 0017, 0022).
+one thing.
 
 ### Sessions
 
@@ -14,6 +14,7 @@ one thing (ADR 0017, 0022).
 |---|---|
 | `n` | New shell where you are |
 | `s` | New session, started straight away with your default agent |
+| `o` | New session anywhere: the picker with nothing typed (open projects and folders on every machine) |
 | `Enter` | Message the agent |
 | `k` | Stop the agent |
 | `i` | Inbox: what needs you, then every session |
@@ -23,13 +24,15 @@ one thing (ADR 0017, 0022).
 | Key | Action |
 |---|---|
 | `←` `↓` `↑` `→` | Move to the pane that way (left past the edge: the sidebar) |
-| `v` | Split stacked (new pane underneath) |
-| `h` | Split side by side (new pane beside) |
+| `v` | Split down (new pane underneath) |
+| `h` | Split right (new pane beside) |
 | `x` | Close what has the keys: the side panel (Files, Changes, Branch, a check) when it has them, else the focused pane, after asking |
 | `Ctrl`+arrows | Resize the pane |
 | `Alt`+arrows | Swap the pane with the one that way |
 | `PgUp` / `PgDn` | Scroll half a pane |
 | `z` | Collapse the sidebar (again brings it back) |
+
+The pane's right-click menu also has **Split left** and **Split up**, which put the new pane before the one you split; they have no leader key.
 
 ### Tabs
 
@@ -77,7 +80,7 @@ history, open the worktree picker, rename a session, send `Ctrl+Space` itself to
 The leader is `Ctrl+Space`. Press it and you are in **shortcut mode**: each key runs its
 action, and the mode stays for the next, so a run of actions is one key each. `Esc`, the
 leader again or a click go back to **input mode**, where keys type into the pane. So does
-an action that starts a pane for you to type into (ADR 0025): `n` a shell, `s` a session,
+an action that starts a pane for you to type into: `n` a shell, `s` a session,
 `t` a tab, `v` / `h` a split, and `o` once its dialog starts the session; the next key goes
 to the new pane. An action that opens a popup or sheet hands it the keys, and closing it
 returns to shortcut mode; `Enter` (message the agent) is one of those. The bar along the bottom always says which mode you are in: `TYPING · Ctrl+Space for
@@ -102,8 +105,7 @@ reference; it is not a second palette:
   need no leader, and the commands that only search finds.
 
 Keys are drawn as keycaps; `Ctrl+Space` is two caps joined by a dim `+`. On Windows,
-Caps Lock does not change shortcut meaning, and no default but `?` needs Shift (ADR 0017,
-0022). The
+Caps Lock does not change shortcut meaning, and no default but `?` needs Shift. The
 [README](../README.md#shortcuts) lists the defaults.
 
 Mouse entry: **Menu** has a chip (`≡`) in the collapsed column; with the sessions hidden
@@ -128,8 +130,7 @@ or another program follow that program's own help.
 | Esc | Close; no command runs while reading |
 
 Every key is a leader key: there is no letter that acts by itself in the sidebar.
-The defaults are one key each, none but `?` needing Shift, chosen from what other apps use
-(ADR 0017, 0022): `v` / `h` split stacked / side by side, `c` Changes, `i` Inbox, `y` why, `k` stop
+The defaults are one key each, none but `?` needing Shift, chosen from what other apps use: `v` / `h` split stacked / side by side, `c` Changes, `i` Inbox, `y` why, `k` stop
 the agent, `Enter` message it, `p` find a file, `g` worktrees, `b`
 Branch, `a` references, `l` what happened, `w` machines, `?` all keys, `Ctrl+W` close tab, `Ctrl+V` paste an image, `d` send a file to the pane's machine,
 `Ctrl`+arrows resize, `Alt`+arrows swap panes, `1`–`9` go to a tab. Your own `[keys.prefix]` entries still load.
@@ -155,13 +156,15 @@ worktree in a git project.
 
 ## Sidebar keyboard focus
 
-The sidebar takes navigation only. No letter acts from it: every action is the leader (`Ctrl+Space`) and its key, such as `n` new shell, `s` new session, `x` close, `m` Menu, `Enter` message the agent, `y` why, `k` stop the agent. Any other key leaves the sidebar and types into the pane. The row's right-click menu runs its items by letter while it is open.
+The sidebar takes navigation, and `n` / `N` to start a session. No other letter acts from it: every action is the leader (`Ctrl+Space`) and its key, such as `n` new shell, `s` new session, `x` close, `m` Menu, `Enter` message the agent, `y` why, `k` stop the agent. Any other key leaves the sidebar and types into the pane. The row's right-click menu runs its items by letter while it is open.
 
 | Keys | Action |
 | --- | --- |
 | Up / k, Down / j, Home, End | Browse rows, first row, last row; active session stays selected |
 | Right, Left | Expand project or enter session; fold project or go to session's project |
 | Enter | Toggle project or open selected session; opening a sleeping session wakes it. On a session whose check failed, could not run, was overridden, went stale or is never run for its repo, open its evidence sheet instead; on one whose repo command waits for approval, open the approval |
+| `n` | New session at once in the selected row's project (the bar shows where: `n new in maitty`); on nothing or a machine with no project, the picker on that machine; on a machine that is down, reconnect it |
+| `N` | New session picker, nothing typed |
 | Esc | Return keyboard focus to the active pane |
 
 ## Text prompts and worktree picker
@@ -174,16 +177,12 @@ The sidebar takes navigation only. No letter acts from it: every action is the l
 | Enter, Esc | Open the selected result / submit prompt, or cancel |
 | y / Y / Enter in close-group or remove-worktree prompt | Confirm; f / F forces worktree removal when offered; other keys cancel |
 
-## New session (`o`)
+## New session picker
 
-`s` starts a session at once with no dialog (Settings › Sessions sets the agent and where); `o`
-opens this dialog. `n` and the `+ new` chip start a plain shell, not a session.
-
-| Keys | Action |
-| --- | --- |
-| Down / Tab, Up / Shift+Tab | Next or previous row (Agent, Where, Project) |
-| Left, Right | Pick the row's option; on Project, the previous or next project |
-| Enter, Esc | Start, or cancel |
+`s` starts a session at once (Settings › Sessions sets the agent and where). `o` opens the picker with
+nothing typed; in the sidebar `N` does the same and `n` starts at once where the sidebar is selected.
+The picker's keys are in [UI](UI.md#project-specific-new-session-popup). Leader `n` is still a plain
+shell where you are.
 
 ## A session wants to start helpers
 

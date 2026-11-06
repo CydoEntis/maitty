@@ -6,7 +6,7 @@ import { useRepoQuery } from './useRepoQuery'
 export function ReferencesTab({ term }: { term: number }) {
   const query = useRepoQuery(term, ['references'], () => repoReferences(term))
   if (query.isPending) return <p className="mx-inspect-note">Loading…</p>
-  if (query.isError) return <RepoError error={query.error} />
+  if (query.isError) return <RepoError error={query.error} tab="references" onRetry={() => { void query.refetch() }} retrying={query.isFetching} />
   // When the list was read, so the ages stay the same until it is read again.
   const now = query.dataUpdatedAt / MS_PER_SECOND
   return (

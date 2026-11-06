@@ -100,6 +100,8 @@ const PASTE_MAX_WAIT: Duration = Duration::from_secs(1);
 /// The most characters of the copied text a toast previews.
 const COPY_PREVIEW_CHARS: usize = 72;
 const NOTICE_FOR: Duration = Duration::from_secs(5);
+/// How long the mode bar's flash line stays.
+pub(in crate::client) const BAR_FLASH_FOR: Duration = Duration::from_millis(2500);
 /// What a toast says beyond its title: a detail row and an optional preview row.
 #[derive(Debug, Clone, PartialEq)]
 struct NoticeCard {
@@ -122,7 +124,7 @@ pub struct Options {
 #[derive(Debug, Clone, PartialEq)]
 enum Mode {
     Normal,
-    /// Shortcut mode (ADR 0016): each key runs its leader action and the mode stays.
+    /// Shortcut mode: each key runs its leader action and the mode stays.
     /// `acted`: a shortcut has run, so the key map no longer opens on a pause.
     Prefix {
         since: Instant,
@@ -143,6 +145,8 @@ enum Mode {
     },
     /// The app layout: open a folder as a project.
     Finder(Box<screen::Finder>),
+    /// The New Session popup: start a session on any project or folder of any machine.
+    NewSession(Box<screen::NewSession>),
     /// The app layout: new pane (project, worktree, what to run).
     ScreenPane(screen::NewPaneHy),
     /// The app layout: the settings overlay.
@@ -286,7 +290,7 @@ fn cursor_code(program: Option<u8>, ui: &crate::config::Ui) -> u8 {
     }
 }
 
-/// Say once that the config file named a retired look (ADR 0027), and write what stands for it
+/// Say once that the config file named a retired look, and write what stands for it
 /// into the file, so it is not said again.
 fn settle_retired_layout(app: &mut App) {
     let Some(r) = app.cfg.ui.retired_layout.take() else {
@@ -433,7 +437,7 @@ enum PromptKind {
     ConfirmRemoveWorktree(WsId),
     /// A file to copy into the project's references: (project root, folder a relative path starts from).
     AddReference(PathBuf, PathBuf),
-    /// A file on this computer to send to the machine this pane is on (ADR 0055).
+    /// A file on this computer to send to the machine this pane is on (ADR 0007).
     SendFile(ClientTerm),
 }
 
@@ -508,12 +512,14 @@ pub struct App {
     notice_restart: bool,
     /// The toast is a hint about keys, not news: it is marked `i`, not ✓.
     notice_hint: bool,
-    /// The file being sent to another machine, if any (ADR 0055).
+    /// The file being sent to another machine, if any (ADR 0007).
     sending: Option<send_file::Sending>,
     /// The toast's second and third rows, when the notice has them.
     notice_card: Option<NoticeCard>,
     /// The selection just copied, glowing for a moment after copy mode closed.
     copy_flash: Option<copy::Flash>,
+    /// A line the mode bar shows in place of its hint for `BAR_FLASH_FOR` (`+ name started`).
+    bar_flash: Option<(String, Instant)>,
     /// What happened lately, newest last: (unix secs, pane, kind, text). Kinds: '!' needs
     /// you, '✓' finished, 'i' a message, 'x' an error.
     pub(super) history: std::collections::VecDeque<(u64, Option<ClientTerm>, char, String)>,
@@ -555,6 +561,10 @@ pub struct App {
     sidebar: bool,
     /// With the full sidebar off: the sessions are hidden completely, not shown as the top strip.
     side_hidden: bool,
+    /// No sidebar key was pressed yet, so a narrow window may fold the sessions into the strip by itself (`screen::draw`).
+    side_auto: bool,
+    /// The sessions were folded into the strip by the rule above, not by a key, so they come back when there is room.
+    side_folded: bool,
     /// The last alert per agent (its status, when) and for any agent: the same news again
     /// soon doesn't ring twice.
     alerted: HashMap<ClientTerm, (Status, Instant)>,
@@ -787,6 +797,8 @@ impl App {
             theme: cfg.theme(),
             sidebar: cfg.ui.sidebar,
             side_hidden: false,
+            side_auto: true,
+            side_folded: false,
             alerted: HashMap::new(),
             last_alert: None,
             settling: HashMap::new(),
@@ -802,6 +814,7 @@ impl App {
             sending: None,
             notice_card: None,
             copy_flash: None,
+            bar_flash: None,
             history: Default::default(),
             right_down: None,
             snap: Snapshot::default(),
@@ -964,6 +977,10 @@ impl App {
                         self.dirty = true;
                     }
                     self.expire_unseen_logins();
+                    if self.bar_flash.as_ref().is_some_and(|(_, at)| at.elapsed() >= BAR_FLASH_FOR) {
+                        self.bar_flash = None;
+                        self.dirty = true;
+                    }
                     if self.copy_flash.as_ref().is_some_and(|f| !f.live()) {
                         self.copy_flash = None;
                         self.dirty = true;
@@ -1994,6 +2011,24 @@ impl App {
             .max()
     }
 
+    /// Tell the daemon the pane in front has been looked at, so its "done" clears. The daemon does
+    /// not guess this from which pane is active: a window in the background is not looking.
+    pub(super) fn mark_looked_pane_seen(&mut self) {
+        if !self.window_focused {
+            return;
+        }
+        let Some(front) = self.focused() else {
+            return;
+        };
+        let done = self
+            .snap_of(front.machine)
+            .and_then(|snap| snap.terms.get(&front.term))
+            .is_some_and(|t| t.status == Status::Done);
+        if done {
+            self.cmd_on(front.machine, Command::MarkSeen { term: front.term });
+        }
+    }
+
     /// Programs that asked (mode 1004) hear when their pane or the window gains or loses
     /// focus: `ESC [ I` / `ESC [ O`.
     fn report_focus(&mut self) {
@@ -2093,3 +2128,7 @@ mod mcp_machine_tests;
 mod remote_status_tests;
 #[cfg(test)]
 mod routing_tests;
+#[cfg(test)]
+mod quick_new_tests;
+#[cfg(test)]
+mod session_popup_tests;

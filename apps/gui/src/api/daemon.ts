@@ -43,6 +43,8 @@ const TerminalSessionSchema = z.object({
   popup: z.boolean().default(false),
   remote: z.string().nullable().default(null),
   asking: z.string().default(''),
+  // The agent's own hook said what its permission prompt asks (not read off the screen).
+  ask: z.object({ tool: z.string(), detail: z.string(), answerable: z.boolean().default(false), choices: z.array(z.string()).default([]) }).nullable().default(null),
   interrupted: z.object({ agent: z.string(), resume: z.string() }).nullable().default(null),
   timeline: z.array(z.object({
     at: z.number().int().nonnegative(),
@@ -263,6 +265,7 @@ const ProcessSampleSchema = z.object({
   host: ProcessLoadSchema,
   webview: z.array(ProcessLoadSchema),
   daemons: z.array(ProcessLoadSchema),
+  terminal_frames_sent: z.number().int().nonnegative(),
 })
 
 export type ProcessLoad = z.infer<typeof ProcessLoadSchema>
@@ -328,7 +331,7 @@ export function conversationsFromSnapshot(raw: unknown, machine?: SnapshotMachin
     })
     : []
   // A terminal session has a chat when the daemon holds a conversation whose native terminal is that pane.
-  // The daemon only follows an agent the user started there, so that chat is read-only (ADR 0052).
+  // The daemon only follows an agent the user started there, so that chat is read-only (ADR 0003).
   const chatOf = new Map(summaries.flatMap((summary) => (summary.native_term === null ? [] : [[summary.native_term, { conversation: summary.id, generation: summary.generation, ...(summary.execution === 'Native' ? { readOnly: true } : {}) }] as const])))
   const listed = Object.values(snapshot.terms)
     .flatMap((term) => {
@@ -392,8 +395,8 @@ function readTerminal(raw: unknown, machine: number): TerminalSession | null {
 export { terminalOf, terminalSessionId }
 
 // A terminal this app can show as a session: a shell (with or without an agent running in it) in
-// a pane of its own, not a chat's terminal, a popup, or another machine's (ADR 0046). The daemon
-// already leaves out panes another app owns (ADR 0045).
+// a pane of its own, not a chat's terminal, a popup, or another machine's. The daemon
+// already leaves out panes another app owns (ADR 0004).
 function isTerminalSession(term: TerminalSession): boolean {
   return term.conversation_id === null && !term.popup && term.remote === null
 }
@@ -526,6 +529,8 @@ const ChatPageSchema = z.object({
   // Approvals a person already answered; the chat projection validates each one. Absent from an older daemon.
   answered_approvals: z.array(z.unknown()).default([]),
   queued: z.array(QueuedMessageSchema).default([]),
+  // How the agent is set up, from its own file (Claude: permission mode and model); absent from an older daemon.
+  meta: z.object({ mode: z.string().nullable().default(null), model: z.string().nullable().default(null) }).nullable().default(null),
 })
 export type HistoryCursor = z.infer<typeof HistoryCursorSchema>
 export type ChatPage = z.infer<typeof ChatPageSchema>
@@ -586,8 +591,7 @@ export async function loadConversationFile(
 
 /**
  * The same three project questions for a session's chat link (the daemon conversation a pane is
- * linked to), which is what the session panel holds; `loadConversation*` above take a whole
- * `Conversation`, which the panel does not have.
+ * linked to); `loadConversation*` above take a whole `Conversation`, which a chat link is not.
  */
 export type ConversationTarget = { conversation: number; generation: number }
 
@@ -800,7 +804,7 @@ export async function archiveConversationOnDaemon(conversation: Pick<Conversatio
 /**
  * Closing a chat session in the window ends it, as closing a terminal session ends its program: the
  * agent is stopped first (its record stays, so the history can be read) and then the session is put
- * away (ADR 0054). If the agent cannot be stopped nothing is put away, so a session the user believes
+ * away (ADR 0003). If the agent cannot be stopped nothing is put away, so a session the user believes
  * ended is never left running out of sight.
  */
 export async function closeChatSession(conversation: Conversation): Promise<void> {
@@ -824,9 +828,9 @@ export async function createConversation(
 
 /**
  * Starts a chat session: a Claude or Codex conversation the daemon owns, in `folder` or, with a
- * `branch`, in a new checkout of the project at `folder` (ADR 0054). It always asks before a tool
+ * `branch`, in a new checkout of the project at `folder` (ADR 0003). It always asks before a tool
  * use the provider does not allow by itself, unless `fullAccess` asks for the provider's own
- * skip-permissions mode (no sandbox, no prompts; ADR 0043 and 0054).
+ * skip-permissions mode (no sandbox, no prompts; ADR 0005 and 0054).
  */
 export async function startChatSession(folder: string, agent: 'claude' | 'codex', branch: string | null = null, fullAccess = false): Promise<{ id: number; generation: number }> {
   return invokeParsed('start_chat_session', CreatedConversationSchema, {
@@ -837,7 +841,7 @@ export async function startChatSession(folder: string, agent: 'claude' | 'codex'
   })
 }
 
-/** Starts a plain shell in a folder; the user types what to run (ADR 0046). */
+/** Starts a plain shell in a folder; the user types what to run. */
 export async function startShellSession(folder: string): Promise<void> {
   await invokeParsed('start_shell_session', NullSchema, { cwd: folder })
 }
@@ -894,7 +898,7 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
     agent: term.agent,
     process: term.process,
     summary: term.summary,
-    details: { asking: term.asking, interrupted: term.interrupted, timeline: term.timeline, usage: term.usage },
+    details: { asking: term.asking, ask: term.ask, interrupted: term.interrupted, timeline: term.timeline, usage: term.usage },
     ...(chat ? { chat } : {}),
   }
 }
@@ -913,7 +917,7 @@ function toConversation(summary: ConversationSummary, workspaces: WorkspaceSumma
           : 'idle'
   const project = cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? 'Project'
   // A chat session is a conversation the daemon started itself: it has no terminal, and the window writes to it
-  // (ADR 0054). A followed pane's conversation is read-only and belongs to that pane, so it is not one.
+  // (ADR 0003). A followed pane's conversation is read-only and belongs to that pane, so it is not one.
   const chatSession = summary.execution === 'Structured' && summary.native_term === null
   const root = summary.root
 

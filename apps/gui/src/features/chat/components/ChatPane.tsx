@@ -2,21 +2,32 @@ import { useState } from 'react'
 import { MessageSquare } from 'lucide-react'
 import { CHAT_AGENTS, noChatReason, type ChatAgent, type ChatAvailability } from '@/features/workspace/model/chatView'
 import { Button } from '@/components/ui/button'
-import { FULL_ACCESS_LABEL, FULL_ACCESS_WARNING } from '@/features/worktrees/newAgent'
+import type { PermissionAsk } from '@/data/preview'
+import type { SessionStatus } from '@/features/workspace/model/session'
+import { FULL_ACCESS_LABEL, FULL_ACCESS_WARNING } from '../fullAccess'
 import { ChatSession } from './ChatSession'
+import { StartingChat } from './StartingChat'
 
 export type ChatPaneProps = {
   availability: ChatAvailability
   /** The session's folder, so file names read relative to it. */
   root?: string | null
-  /** Shows a file's diff in the session panel. */
+  /** Shows a file's diff in the Changes panel. */
   onOpenDiff?: ((file: string) => void) | null
+  /** Types into the terminal the agent runs in, so a chat that follows it can talk to it (ADR 0003). */
+  typeInto?: ((text: string) => Promise<void>) | undefined
+  /** The permission prompt the agent's hook says the pane is stopped on. */
+  ask?: PermissionAsk | null
+  /** The session's id, so what is typed before its agent is ready is kept for it. */
+  sessionId?: string
+  /** The pane's live status, from the sidebar's source. */
+  paneStatus?: SessionStatus
   /** What runs in the pane: the agent, or the shell's own name. */
   process: string
   /** The computer is connected to the daemon; starting an agent types into the shell. */
   online: boolean
   onBackToTerminal: () => void
-  /** False for a chat session (ADR 0054): the agent has no terminal, so nothing here points to one. */
+  /** False for a chat session (ADR 0003): the agent has no terminal, so nothing here points to one. */
   hasTerminal?: boolean
   /** Types the agent's command into the shell (a shell tab only). */
   onStartAgent: (agent: ChatAgent) => void
@@ -34,7 +45,11 @@ export function ChatPane(props: ChatPaneProps) {
   const { availability } = props
   return (
     <section className="mx-chat-layer mx-chat-in" aria-label="Chat">
-      {availability.kind === 'ready' ? <ChatSession key={availability.link.conversation} link={availability.link} agent={availability.agent} online={props.online} hasTerminal={props.hasTerminal ?? true} root={props.root ?? null} onOpenDiff={props.onOpenDiff ?? null} /> : <NoChat {...props} availability={availability} />}
+      {availability.kind === 'ready'
+        ? <ChatSession key={availability.link.conversation} link={availability.link} agent={availability.agent} online={props.online} hasTerminal={props.hasTerminal ?? true} root={props.root ?? null} onOpenDiff={props.onOpenDiff ?? null} typeInto={props.typeInto} ask={props.ask ?? null} {...(props.sessionId === undefined ? {} : { sessionId: props.sessionId })} {...(props.paneStatus === undefined ? {} : { paneStatus: props.paneStatus })} />
+        : availability.kind === 'no-events' && props.sessionId !== undefined
+          ? <StartingChat agent={availability.agent} sessionId={props.sessionId} onBackToTerminal={props.onBackToTerminal} />
+          : <NoChat {...props} availability={availability} />}
     </section>
   )
 }

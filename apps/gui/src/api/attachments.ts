@@ -2,7 +2,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core'
 import { z } from 'zod'
 
 /**
- * Chat attachments (ticket 20, ADR 0053). The host copies a file the person picked or dropped into a
+ * Chat attachments (ticket 20). The host copies a file the person picked or dropped into a
  * private folder of its cache, after checking it is a regular file within the caps, and answers with
  * the copy's path and cleaned name. A pasted image is kept by `api/imagePaste`. The message names the
  * copy by path; nothing here reads the file's bytes into the window.

@@ -45,7 +45,7 @@ pub const INSTALL_SCRIPT: &str = concat!(
 /// banner, a message of the day) is never taken for it.
 pub const PASTE_MARKER: &str = concat!(env!("APP_COMMAND"), "-paste");
 
-/// Keeps a pasted image or a sent file (ADR 0049, 0055) on the far side. `$1` is the file's name (letters, digits, `.`, `_`
+/// Keeps a pasted image or a sent file (ADR 0007, 0055) on the far side. `$1` is the file's name (letters, digits, `.`, `_`
 /// and `-`, not starting with a dot), `$2` the byte count expected on stdin. The file goes in
 /// the app's folder in the far side's cache, which must belong to the user running the script
 /// (a folder someone else owns is refused), readable by its owner alone, and is written beside

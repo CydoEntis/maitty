@@ -4,12 +4,32 @@ import { errorMessage } from '@/lib/error-message'
 import type { ChatLink } from '@/features/workspace/model/chatView'
 import { hasPendingApproval, type ChatFeed } from './chatFeed'
 import { buildAttachmentMessage } from './attachmentMessage'
+import { selectChatEvents } from './projection'
+import { countUserMessages } from './workPhase'
 import { peekComposer, updateComposer, useComposerState, type DraftAttachment } from './composerStore'
 import { revokePreviews, useAttachmentIntake, type AttachmentIntake } from './useAttachmentIntake'
 import { reserveOperation, STALE_OPERATION } from './sendOperation'
 
 export const PENDING_APPROVAL_NOTE = 'Answer the request above first'
 export const READ_ONLY_NOTE = 'Read-only: talk to the agent in the terminal'
+/** Why a chat that types into the agent's terminal is off while the agent is busy or asking. */
+export const TYPING_BUSY_NOTE = 'The agent is working. Stop it to send something else'
+export const TYPING_ASKING_NOTE = 'The agent is asking something in the terminal. Answer it there first'
+/** Sent to the terminal around a message, so a multi-line message is one paste and not several Enters. */
+export const PASTE_START = '\x1b[200~'
+export const PASTE_END = '\x1b[201~'
+/** The key that interrupts the agent's turn. */
+export const INTERRUPT_KEY = '\x1b'
+
+/** How long a message just sent stays on screen before the history shows it; past this it is dropped rather than left as a claim. */
+const ECHO_MAX_MS = 20_000
+/** How long a message just sent claims the agent is thinking; after this the status itself has to say it. */
+const ECHO_THINKING_MS = 4_000
+/** A second read soon after a send, because a quiet chat is read only every few seconds. */
+const FOLLOW_UP_REFRESH_MS = 700
+
+/** What was just sent into the terminal, and how many times those words were already in the history. */
+export type SentEcho = { readonly text: string; readonly baseline: number; readonly quiet: boolean }
 
 /** A message the daemon holds until the running turn ends. `id` is its operation number. */
 export type QueuedItem = { readonly id: number; readonly text: string }
@@ -21,6 +41,16 @@ type Input = {
   online: boolean
   /** Reads the conversation again now. */
   refresh: () => void
+  /**
+   * Types into the terminal the agent runs in (ADR 0003). When given, a chat that only follows the
+   * agent (ADR 0003) has a working composer while the agent is idle: the message is pasted into the
+   * agent's own prompt, so the chat and the terminal are one session.
+   */
+  typeInto?: (text: string) => Promise<void>
+  /** The chat shows the prompt the agent is stopped on with buttons that answer it, so the composer points there. */
+  answersPrompt?: boolean
+  /** The pane itself says its agent is working, which is known before the conversation's next read says so. */
+  paneWorking?: boolean
 }
 
 export type ChatComposer = {
@@ -30,7 +60,7 @@ export type ChatComposer = {
   attachments: readonly DraftAttachment[]
   /** Adding and removing them. */
   attach: AttachmentIntake
-  /** The chat only follows an agent running in the terminal (ADR 0052): there is nothing to attach to. */
+  /** The chat only follows an agent running in the terminal (ADR 0003): there is nothing to attach to. */
   readOnly: boolean
   /** What the daemon holds for the running turn, oldest first. */
   queue: readonly QueuedItem[]
@@ -45,6 +75,10 @@ export type ChatComposer = {
   disabledReason: string | null
   /** The last send that failed, or `null`. Cleared by the next send. */
   error: string | null
+  /** Sends this text now, as `submit` would send the draft; true when it went. For a message held while the agent started. */
+  sendText: (text: string) => Promise<boolean>
+  /** The message just sent, until the history shows it; null otherwise. */
+  echo: SentEcho | null
 }
 
 /**
@@ -54,18 +88,28 @@ export type ChatComposer = {
  * not this window stays open; what it holds comes back with every read (`feed.queued`) and is shown
  * until it is sent. While an approval waits, nothing is sent.
  */
-export function useChatComposer({ link, feed, online, refresh }: Input): ChatComposer {
+export function useChatComposer({ link, feed, online, refresh, typeInto, answersPrompt = false, paneWorking = false }: Input): ChatComposer {
   const { draft, attachments } = useComposerState(link.conversation)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [echo, setEcho] = useState<SentEcho | null>(null)
   // A send that failed is tried again with the same operation number, so the daemon can tell it is the same message.
   const retry = useRef<{ text: string; operation: number } | null>(null)
 
   const readOnly = link.readOnly === true
-  // A read-only chat cannot interrupt or queue, so it never offers Stop or "queue" wording.
-  const running = feed.status === 'Working' && !readOnly
+  // A chat that follows a terminal agent talks to it by typing, when it has a terminal to type in.
+  const typeText = readOnly ? typeInto : undefined
+  const typing = typeText !== undefined
+  // Without that it cannot interrupt or queue, so it never offers Stop or "queue" wording.
+  const busy = feed.status === 'Working' || paneWorking
+  const running = busy && (!readOnly || typing)
   const awaitingAnswer = hasPendingApproval(feed)
-  const disabledReason = readOnly ? READ_ONLY_NOTE : !online ? 'The daemon is offline' : awaitingAnswer ? PENDING_APPROVAL_NOTE : null
+  // Typed text answers a prompt the agent is showing, and the chat cannot tell the difference, so
+  // it types only while the agent is known to be waiting for a message.
+  const waitingForMessage = feed.status === 'Idle' || feed.status === 'Done'
+  const disabledReason = typing
+    ? (!online ? 'The daemon is offline' : busy ? TYPING_BUSY_NOTE : awaitingAnswer || feed.status === 'Blocked' ? (answersPrompt ? PENDING_APPROVAL_NOTE : TYPING_ASKING_NOTE) :!waitingForMessage ? 'Waiting for the agent to be ready' : null)
+    : readOnly ? READ_ONLY_NOTE : !online ? 'The daemon is offline' : awaitingAnswer ? PENDING_APPROVAL_NOTE : null
   const conversation = link.conversation
   const attach = useAttachmentIntake({ conversation, blocked: disabledReason, machine: link.machine ?? null })
   const queue = useMemo<readonly QueuedItem[]>(() => feed.queued.map((message) => ({ id: message.operation, text: message.text })), [feed.queued])
@@ -75,10 +119,29 @@ export function useChatComposer({ link, feed, online, refresh }: Input): ChatCom
   }, [conversation])
 
   const send = useCallback(async (text: string): Promise<boolean> => {
-    const operation = retry.current?.text === text ? retry.current.operation : reserveOperation(conversation, feed)
-    retry.current = { text, operation }
     setSending(true)
     setError(null)
+    if (typeText !== undefined) {
+      try {
+        // One paste, then Enter: the agent takes a multi-line message as one message.
+        await typeText(`${PASTE_START}${text}${PASTE_END}\r`)
+        // Drawn at once: the history only has it when the agent next writes its file.
+        setEcho({ text, baseline: countUserMessages(selectChatEvents(feed.projection), text), quiet: false })
+        // The "thinking" line it brings is only a stand-in until the agent's own status says so: it stops after a few seconds, the message stays.
+        window.setTimeout(() => { setEcho((current) => (current?.text === text ? { ...current, quiet: true } : current)) }, ECHO_THINKING_MS)
+        window.setTimeout(() => { setEcho((current) => (current?.text === text ? null : current)) }, ECHO_MAX_MS)
+        refresh()
+        window.setTimeout(refresh, FOLLOW_UP_REFRESH_MS)
+        return true
+      } catch (failure) {
+        setError(errorMessage(failure, 'Could not type into the terminal'))
+        return false
+      } finally {
+        setSending(false)
+      }
+    }
+    const operation = retry.current?.text === text ? retry.current.operation : reserveOperation(conversation, feed)
+    retry.current = { text, operation }
     try {
       await submitMessage({ id: String(conversation), generation: link.generation }, operation, text)
       retry.current = null
@@ -96,11 +159,11 @@ export function useChatComposer({ link, feed, online, refresh }: Input): ChatCom
     } finally {
       setSending(false)
     }
-  }, [conversation, link.generation, feed, refresh])
+  }, [conversation, link.generation, feed, refresh, typeText])
 
   const submit = useCallback(() => {
     const text = draft.trim()
-    // A message may be only attachments; the block naming them is then the whole text (ADR 0053).
+    // A message may be only attachments; the block naming them is then the whole text.
     if ((text === '' && attachments.length === 0) || disabledReason !== null || sending) return
     const files = attachments
     updateComposer(conversation, (state) => ({ ...state, draft: '', attachments: [] }))
@@ -131,10 +194,14 @@ export function useChatComposer({ link, feed, online, refresh }: Input): ChatCom
 
   const stop = useCallback(() => {
     if (!running || feed.cancelling) return
+    if (typeText !== undefined) {
+      typeText(INTERRUPT_KEY).catch((failure: unknown) => { setError(errorMessage(failure, 'Could not interrupt the agent')) })
+      return
+    }
     cancelTurn({ id: String(conversation), generation: link.generation })
       .then(refresh)
       .catch((failure: unknown) => { setError(errorMessage(failure, 'Could not interrupt the turn')) })
-  }, [running, feed.cancelling, conversation, link.generation, refresh])
+  }, [running, feed.cancelling, conversation, link.generation, refresh, typeText])
 
-  return { draft, setDraft, attachments, attach, readOnly, queue, removeQueued, submit, stop, running, sending, disabledReason, error }
+  return { draft, setDraft, attachments, attach, readOnly, queue, removeQueued, submit, stop, running, sending, disabledReason, error, sendText: send, echo }
 }

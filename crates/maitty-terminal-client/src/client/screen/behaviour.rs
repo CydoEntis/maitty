@@ -15,8 +15,21 @@ const NEW_TAB_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 impl App {
     /// Where a session that just got the focus shows: beside the one it was opened from, in
     /// a new tab, in the tab that already shows it, or in place of the one you were on.
+    /// A session is about to open beside `f`: pair them when it appears, and keep it off the sidebar until then.
+    pub(in crate::client) fn begin_split(&mut self, f: ClientTerm) {
+        self.screen.pending_split = Some((f, Instant::now()));
+        self.screen.split_known = self
+            .machines()
+            .iter()
+            .flat_map(|m| m.snap.terms.keys().map(move |id| ClientTerm::on(m.id, *id)))
+            .collect();
+        *self.screen.model_cache.borrow_mut() = None;
+    }
+
     pub(in crate::client) fn screen_place(&mut self, f: ClientTerm, prev: Option<ClientTerm>) {
         use crate::layout::{Dir, Node};
+        // Whatever was held off the sidebar for a split is placed now, or never will be.
+        *self.screen.model_cache.borrow_mut() = None;
         let beside = match self.screen.pending_split {
             Some((p, _)) if p == f => None,
             Some((p, at)) => {
@@ -333,7 +346,7 @@ impl App {
         beside: bool,
     ) {
         if beside && let Some(f) = self.focused() {
-            self.screen.pending_split = Some((f, Instant::now()));
+            self.begin_split(f);
         }
         self.screen.cursor = None;
         self.mode = Mode::Normal;
@@ -387,7 +400,7 @@ impl App {
             return;
         };
         if beside && let Some(f) = self.focused() {
-            self.screen.pending_split = Some((f, Instant::now()));
+            self.begin_split(f);
         }
         self.leave_shortcut_mode();
         self.notify(format!("new worktree {branch} in {}", proj.name), false);
@@ -617,6 +630,17 @@ impl App {
         }
     }
 
+    /// Fold or unfold the Local or the Remote half of the sidebar, remembered like a folded project.
+    pub(in crate::client) fn toggle_region(&mut self, remote: bool) {
+        let key = super::side::region_key(remote);
+        if super::side::region_folded(self, remote) {
+            self.screen.saved.closed.retain(|c| c != key);
+        } else {
+            self.screen.saved.closed.push(key.to_string());
+        }
+        self.screen.save();
+    }
+
     pub(in crate::client) fn screen_fold(&mut self, key: &str, open: Option<bool>) {
         let k = format!("p:{key}");
         let is_open = !self.screen.saved.closed.contains(&k);
@@ -638,6 +662,7 @@ impl App {
         match a {
             Action::Settings => self.screen_settings(),
             Action::StartSession => self.screen_start_session(None),
+            Action::PickSession => self.screen_open_session_popup(""),
             // A plain shell in the project's own folder (the repo itself, not a worktree).
             Action::ShellHere => {
                 let dir = self
@@ -739,12 +764,14 @@ impl App {
             Action::CloseTab => self.close_tab(self.screen.tab),
             // z: the sessions move into the top strip, or back into the sidebar.
             Action::ToggleSidebar => {
+                self.side_auto = false;
                 self.sidebar = !self.sidebar;
                 self.side_hidden = false;
                 self.screen.follow = true;
             }
             // Z: no sessions at all; the same key brings the sidebar back.
             Action::HideSidebar => {
+                self.side_auto = false;
                 self.side_hidden = self.sidebar || !self.side_hidden;
                 self.sidebar = !self.side_hidden;
                 self.screen.follow = true;
@@ -848,6 +875,7 @@ impl App {
     /// type goes to the pane you're on.
     /// Full, then the narrow column, then hidden, then full again.
     pub(in crate::client) fn cycle_sidebar(&mut self) {
+        self.side_auto = false;
         if self.side_hidden {
             (self.side_hidden, self.sidebar) = (false, true);
         } else if self.sidebar {
@@ -901,6 +929,10 @@ impl App {
         match spec.code {
             // [: full, then the narrow column, then hidden, then full again.
             KeyCode::Char('[') if plain => self.cycle_sidebar(),
+            // New session: at once where the sidebar is (`quick_target`); `N` is the popup that
+            // starts one on any project, folder or machine.
+            KeyCode::Char('n') if plain => self.quick_new(),
+            KeyCode::Char('N') if plain => self.screen_open_session_popup(""),
             KeyCode::Up | KeyCode::Char('k') if !k.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.screen_side_move(-1)
             }
@@ -981,7 +1013,7 @@ impl App {
                 }
             }
             // Nothing else acts from the sidebar: an action is the leader and its key, or a key
-            // with no leader (ADR 0014, ADR 0029).
+            // with no leader.
             // Anything else is typing: leave the sidebar and hand the key over.
             _ => {
                 if let Some(key) = self.screen.cursor
@@ -1823,7 +1855,7 @@ impl App {
         self.splash = false;
         self.screen.splash_sel = 0;
         match c {
-            'n' => self.act(Action::StartSession),
+            'n' => self.screen_open_session_popup(""),
             'o' => self.screen_open_finder(),
             ',' => self.screen_settings(),
             '?' => self.open_keymap(None),
@@ -1837,9 +1869,9 @@ impl App {
         match h {
             ScreenHit::ToggleProj(i) => {
                 if let Some(key) = self.screen.proj_keys.get(i).cloned() {
+                    // Only folds: the keys stay where they were, as after a click on a session
+                    // or a tab row.
                     self.screen_fold(&key, None);
-                    // The keys follow you into the sidebar.
-                    self.screen_side_set(SideItem::Proj(key));
                 }
             }
             // Opens it, as a click on one of its tabs does: the keys go to its pane. A session
@@ -1858,6 +1890,7 @@ impl App {
                 self.ask_restart();
             }
             ScreenHit::AddMachine => self.open_machines(),
+            ScreenHit::ToggleRegion(remote) => self.toggle_region(remote),
             ScreenHit::TidyRow(i) => self.tidy_click(i),
             ScreenHit::TidyGo => {
                 if let Mode::Tidy(v) = std::mem::replace(&mut self.mode, Mode::Normal) {
@@ -1932,7 +1965,7 @@ impl App {
             ScreenHit::ExpandSidebar | ScreenHit::CollapseSidebar => {
                 self.act(Action::ToggleSidebar)
             }
-            ScreenHit::NewShell => self.act(Action::ShellHere),
+            ScreenHit::NewShell => self.quick_new(),
             ScreenHit::Actions => self.act(Action::Menu),
             ScreenHit::ActionRow(i) => self.actions_run(i),
             ScreenHit::Leader => self.open_keymap(None),
@@ -1985,6 +2018,9 @@ impl App {
                 self.dismiss_notice();
             }
             ScreenHit::SettingsBody => {}
+            ScreenHit::NsMachine(machine) => self.screen_open_scoped(machine),
+            ScreenHit::NsRow(i) => self.session_popup_row_click(i),
+            ScreenHit::NsChip(i) => self.session_popup_chip_click(i),
             ScreenHit::FinderPick(i) => {
                 if let Mode::Finder(fd) = &self.mode {
                     let mut fd = (**fd).clone();

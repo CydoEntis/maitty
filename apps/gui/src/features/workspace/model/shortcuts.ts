@@ -20,6 +20,7 @@ export function isMacPlatform(userAgent: string): boolean {
 
 export type ShortcutAction =
   | 'new-session'
+  | 'new-terminal'
   | 'split-right'
   | 'split-down'
   | 'focus-previous'
@@ -42,8 +43,6 @@ export type ShortcutAction =
   | 'shortcuts'
   | 'text-larger'
   | 'text-smaller'
-  | 'overview'
-  | 'session-panel'
   | 'usage'
   | 'performance'
   | 'chat-toggle'
@@ -89,6 +88,7 @@ const ctrlShift = (key: string, ...more: Modifier[]): Combo => ({ mods: ['ctrl',
  */
 export const BINDINGS: readonly Binding[] = [
   { action: 'new-session', label: 'New session', group: 'Sessions', mac: [cmd('T')], other: [ctrlShift('T')], available: true },
+  { action: 'new-terminal', label: 'New terminal', group: 'Sessions', mac: [cmd('T', 'shift')], other: [ctrlShift('T', 'alt')], available: true },
   // Ctrl+Shift+N stays "new worktree" until brain dump (v18 C.6), which takes this key, is built.
   { action: 'new-worktree', label: 'New worktree', group: 'Sessions', mac: [cmd('N', 'shift')], other: [ctrlShift('N')], available: true },
   { action: 'split-right', label: 'Split right', group: 'Panes', mac: [cmd('D')], other: [ctrlShift('D')], available: true },
@@ -108,9 +108,7 @@ export const BINDINGS: readonly Binding[] = [
   { action: 'jump-needs', label: 'Jump to the next session that needs you', group: 'Find & jump', mac: [cmd('J')], other: [], available: true },
   { action: 'inspect', label: 'Inspect the repository', group: 'Find & jump', mac: [cmd('I')], other: [ctrlShift('I')], available: true },
   { action: 'find', label: 'Find in the pane or every session', group: 'Find & jump', mac: [cmd('F')], other: [ctrlShift('F')], available: true },
-  { action: 'overview', label: 'Overview', group: 'Find & jump', mac: [cmd('0')], other: [{ mods: ['ctrl'], key: '0' }], available: true },
   { action: 'toggle-sidebar', label: 'Collapse sidebar', group: 'Window', mac: [cmd('B')], other: [ctrlShift('B')], available: true },
-  { action: 'session-panel', label: 'Session panel', group: 'Window', mac: [cmd('\\')], other: [{ mods: ['ctrl'], key: '\\' }], available: true },
   { action: 'chat-toggle', label: 'Terminal or chat', group: 'Window', mac: [cmd('E', 'shift')], other: [ctrlShift('E')], available: true },
   { action: 'usage', label: 'Usage and cost', group: 'Window', mac: [cmd('U', 'shift')], other: [ctrlShift('U')], available: true },
   { action: 'performance', label: 'Performance', group: 'Window', mac: [cmd('P', 'shift')], other: [ctrlShift('P')], available: true },

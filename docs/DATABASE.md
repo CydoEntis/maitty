@@ -126,10 +126,19 @@ per user and never synced, written atomically; unknown fields are ignored and a 
 not parse is kept as `.bak` and starts empty. Neither has a version: a new field is added with a
 default.
 
+`<socket id>.providers` (Linux and macOS) holds `{"groups": [{"group": pid, "started": unix seconds}]}`:
+the process group of each structured provider the daemon has running and when its leader started,
+written atomically. A group is added when its provider starts and struck when it is stopped. A
+daemon that dies without stopping its providers leaves its entries, and the next daemon to hold the
+socket stops every recorded group that still has processes, then empties the file; a group whose
+leader's start time no longer matches (the id belongs to another process) is left alone. A file that
+does not parse is an empty record. It holds no pid of anything but a provider and is never in the
+saved session.
+
 ## Project-specific: usage store
 
 `daemon/usage_store.rs` keeps provider-reported usage per session per day in
-`usage-<socket>.json` in the data folder ([ADR 0051](adr/0051-the-daemon-keeps-provider-reported-usage.md)).
+`usage-<socket>.json` in the data folder ([ADR 0009](adr/0009-usage-is-provider-reported-never-estimated.md)).
 It is a small versioned JSON file (`version`, `rows`, `cursors`), not a database. A row is
 (UTC day, session) with agent, folder name, input and output tokens, cost, turns and seconds
 working; a cursor is the last running total seen for a session, so only the growth is added and a

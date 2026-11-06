@@ -18,11 +18,16 @@ export function sessionNoticeFor(session: SessionView, project: Project, handler
   const kind = session.status
   if (kind !== 'needs' && kind !== 'done' && kind !== 'error') return null
   const where = `${session.process} in ${displayName(session)}`
+  // Claude reports what it asks through its own hooks, so its screen is never read for the card: a question
+  // is not a permission prompt, and the screen text of one is the banner and whatever else is drawn around it.
+  const hooked = session.process === 'claude'
+  const asked = session.ask !== null ? [session.ask.tool, session.ask.detail].filter((part) => part !== '').join(' · ') : hooked ? '' : session.asking
   const body =
     kind === 'needs'
-      ? session.asking === '' ? `${where} needs you` : `${where}: ${truncatePrompt(session.asking)}`
+      ? asked === '' ? `${where} needs you` : `${where}: ${truncatePrompt(asked)}`
       : kind === 'done' ? `${where} finished` : `${where} exited with an error`
-  const allow = kind === 'needs' && session.asking !== '' ? handlers.allow : null
+  const answerable = hooked ? session.ask?.answerable === true : session.asking !== ''
+  const allow = kind === 'needs' && answerable ? handlers.allow : null
   return {
     kind,
     title: `${LABEL[kind]} · ${project?.name ?? displayName(session)}`,

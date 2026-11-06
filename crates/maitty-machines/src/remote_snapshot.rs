@@ -22,6 +22,8 @@ pub const NODES_MAX: usize = 250_000;
 /// Largest pane width or height taken from a remote daemon. A terminal's grid is allocated
 /// from it.
 pub const PANE_DIM_MAX: u16 = 1000;
+/// Largest repeat count taken from a remote daemon. It is drawn as digits on a row.
+pub const REPEATS_MAX: u32 = 99_999;
 /// Highest workspace colour index taken from a remote daemon. It names a place in a palette
 /// this window does not hold, so it is held to a range any palette covers.
 pub const WORKSPACE_COLOR_MAX: u8 = 15;
@@ -115,6 +117,7 @@ fn clamp_term(t: &mut TermInfo) {
     t.cols = t.cols.clamp(1, PANE_DIM_MAX);
     t.rows = t.rows.clamp(1, PANE_DIM_MAX);
     t.cpu = t.cpu.clamp(0.0, 100.0);
+    t.repeats = t.repeats.map(|n| n.min(REPEATS_MAX));
 }
 
 fn clamp_numbers(snap: &mut Snapshot) {

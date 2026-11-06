@@ -1,4 +1,4 @@
-//! A secret handed to an agent as a file (ADR-0036): the path is all the agent gets in chat.
+//! A secret handed to an agent as a file (ADR 0006): the path is all the agent gets in chat.
 //!
 //! The folder is the owner's alone on unix (`0700`, files `0600`). On Windows the folder sits in
 //! the user's own app data, which only they and administrators can read; there is no stricter

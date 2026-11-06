@@ -26,7 +26,7 @@ function renderPanel(view: InspectView, extra: { agentWorking?: boolean } = {}) 
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
-      <InspectPanel term={5} title="maitty" view={view} agentWorking={extra.agentWorking ?? false} timeline={[]} lookAt={null} onView={vi.fn()} onClose={vi.fn()} onNotice={onNotice} />
+      <InspectPanel term={5} project="maitty" branch="main" changedFiles={2} view={view} agentWorking={extra.agentWorking ?? false} timeline={[]} lookAt={null} onView={vi.fn()} onClose={vi.fn()} onNotice={onNotice} />
     </QueryClientProvider>,
   )
   return { onNotice }
@@ -68,7 +68,30 @@ describe('Inspect panel', () => {
   it('shows what the daemon said when it fails with a plain string, not a generic message', async () => {
     vi.mocked(invoke).mockReset().mockRejectedValue('git diff: fatal: bad object HEAD')
     renderPanel('changes')
-    expect(await screen.findByRole('alert')).toHaveTextContent('git diff: fatal: bad object HEAD')
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Maitty couldn’t load your changes')
+    // The daemon's own words are kept for support, behind one link, and not in the headline.
+    expect(alert).not.toHaveTextContent('bad object HEAD')
+    fireEvent.click(screen.getByRole('button', { name: 'Show details for support' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('git diff: fatal: bad object HEAD')
+  })
+
+  it('says a busy git is not an error and tries again by itself', async () => {
+    vi.mocked(invoke).mockReset().mockRejectedValue("fatal: Unable to create '/code/app/.git/index.lock': File exists. Another git process seems to be running")
+    renderPanel('changes')
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Git is finishing something')
+    expect(alert).toHaveTextContent('Nothing in your project was changed')
+    expect(alert).toHaveTextContent('Trying again automatically in 3s')
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy()
+  })
+
+  it('asks for permission rather than retrying when a folder cannot be read', async () => {
+    vi.mocked(invoke).mockReset().mockRejectedValue('read /code/app: Permission denied (os error 13)')
+    renderPanel('files')
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Maitty can’t read this folder')
+    expect(alert).not.toHaveTextContent('Trying again automatically')
   })
 
   it.each(['files', 'changes', 'branches', 'history', 'references'] as const)(
@@ -77,7 +100,7 @@ describe('Inspect panel', () => {
       vi.mocked(invoke).mockReset().mockRejectedValue('git rev-parse --show-toplevel: fatal: not a git repository (or any of the parent directories): .git')
       renderPanel(view)
       const note = await screen.findByRole('status')
-      expect(note).toHaveTextContent('This folder is not a git repository.')
+      expect(note).toHaveTextContent('This folder isn’t a git project yet')
       expect(note).toHaveTextContent('git init')
       expect(screen.queryByRole('alert')).toBeNull()
     },

@@ -4,16 +4,11 @@
  * the place it sits above the others, and reports whether it is open to `topmostOpen`.
  */
 export const ESC_LADDER = [
-  'comment-composer',
-  'new-agent',
   'whats-new',
-  'overview',
   'palette',
   'inbox',
   'settings',
-  'session-panel',
   'drawer',
-  'usage',
   'focus-mode',
 ] as const
 

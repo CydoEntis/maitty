@@ -220,6 +220,8 @@ pub enum Action {
     Files,
     /// A new session straight away with the defaults in Settings › Sessions (`n`, `+`).
     StartSession,
+    /// The New Session picker with nothing typed: open projects and folders on every machine.
+    PickSession,
     /// The selected worktree's changes (review and ship).
     Changes,
     /// Interrupt the selected worktree's agent (Ctrl+C).
@@ -235,7 +237,7 @@ pub enum Action {
     /// Save the clipboard's image to a file and paste its path (agents attach it).
     PasteImage,
     /// Send a file from this computer to the machine the pane is on, and paste its path there;
-    /// pressed again while a file is being sent, stop it (ADR 0055).
+    /// pressed again while a file is being sent, stop it (ADR 0007).
     SendFile,
     /// Find a file (0) or search the code (1).
     Find(u8),
@@ -290,8 +292,8 @@ impl Action {
             Down => "down",
         };
         match self {
-            Action::SplitRight => "Split side by side".into(),
-            Action::SplitDown => "Split stacked".into(),
+            Action::SplitRight => "Split right".into(),
+            Action::SplitDown => "Split down".into(),
             Action::SplitLeft => "Split left".into(),
             Action::SplitUp => "Split up".into(),
             Action::Spawn(d, c) => format!("Run `{c}` {}", dir(d)),
@@ -325,6 +327,7 @@ impl Action {
             Action::BrowseTree => "Focus the sidebar".into(),
             Action::Files => "Files".into(),
             Action::StartSession => "New session".into(),
+            Action::PickSession => "New session anywhere".into(),
             Action::Changes => "Changes".into(),
             Action::StopAgent => "Stop agent".into(),
             Action::Message => "Message this session".into(),
@@ -409,6 +412,7 @@ impl Action {
             Action::BrowseTree => "browse-tree".into(),
             Action::Files => "files".into(),
             Action::StartSession => "start-session".into(),
+            Action::PickSession => "pick-session".into(),
             Action::Jump => "jump".into(),
             Action::NewSession => "new-beside".into(),
             Action::CloseSplit => "close-split".into(),
@@ -511,6 +515,7 @@ impl FromStr for Action {
             // The options dialog these named is gone; a saved binding stays loadable and does nothing.
             "new-pane" | "new" => Action::None,
             "start-session" => Action::StartSession,
+            "pick-session" => Action::PickSession,
             "jump" => Action::Jump,
             "new-session" | "new-beside" => Action::NewSession,
             "close-split" => Action::CloseSplit,
@@ -555,14 +560,15 @@ impl FromStr for Action {
     }
 }
 
-/// Bindings in shortcut mode (after the leader), ADR 0017: one key each, none needing Shift
-/// but `?` for all keys (ADR 0022), chosen from what other apps use. Copy mode, hide sidebar,
+/// Bindings in shortcut mode (after the leader): one key each, none needing Shift
+/// but `?` for all keys, chosen from what other apps use. Copy mode, hide sidebar,
 /// prompt jumps, new worktree, rename workspace and send-prefix have no default key; search
 /// commands finds them.
 pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     // Sessions
     ("n", "shell-here"),
     ("s", "start-session"),
+    ("o", "pick-session"),
     ("enter", "message"),
     ("k", "stop-agent"),
     ("i", "jump"),
@@ -923,7 +929,7 @@ mod tests {
     /// Characters a US keyboard types only with Shift.
     const SHIFTED: &str = "~!@#$%^&*()_+{}|:\"<>?";
 
-    /// The one default that needs Shift, at the user's request (ADR 0022).
+    /// The one default that needs Shift, at the user's request.
     const SHIFTED_ALLOWED: &[(&str, &str)] = &[("?", "help")];
 
     #[test]

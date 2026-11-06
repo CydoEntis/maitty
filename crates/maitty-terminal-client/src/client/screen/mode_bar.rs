@@ -1,8 +1,9 @@
-//! The mode bar along the bottom of the screen (ADR 0024): which mode the keys are in, always in
+//! The mode bar along the bottom of the screen: which mode the keys are in, always in
 //! view: in shortcut mode what the keys do, read from the keymap so a rebinding shows, and when
 //! something else has the keys, what it is and how to use and leave it.
 
 use super::*;
+use crate::client::BAR_FLASH_FOR;
 use crate::keys::{Action, KeySpec};
 
 /// What shortcut mode suggests after its tag, left to right; a narrow bar drops them from the
@@ -356,6 +357,16 @@ fn keys_holder(app: &App) -> Option<Holder> {
             &[("", "type a path"), ("Tab", "complete"), ("Enter", "open")],
             ("Esc", "close"),
         ),
+        Mode::NewSession(_) => holder(
+            "NEW SESSION",
+            &[
+                ("", "type search all · ~/ · host:~/"),
+                ("Tab", "complete"),
+                ("↑↓", "move"),
+                ("Enter", "start"),
+            ],
+            ("Esc", "close"),
+        ),
         Mode::ScreenPane(_) => holder(
             "NEW PANE",
             &[("↑↓", "rows"), ("←→", "choose"), ("Enter", "start")],
@@ -596,6 +607,11 @@ fn view_holder(app: &App) -> Option<Holder> {
 
 /// One hint after a `·`: its key bold, what it does plain, both quiet on the screen's ground.
 fn hint_piece((key, words): Hint, t: &Theme) -> Piece {
+    live_hint_piece(key, words, t)
+}
+
+/// A hint whose words are worked out as the bar is drawn (the sidebar's `n`).
+fn live_hint_piece(key: &str, words: &str, t: &Theme) -> Piece {
     let quiet = Style::default().fg(t.muted).bg(t.bg);
     let mut segs = vec![seg("· ", quiet)];
     if !key.is_empty() {
@@ -639,6 +655,10 @@ fn holding(app: &App, h: &Holder, t: &Theme) -> (Piece, Vec<Piece>, Vec<Piece>) 
         hit: None,
     };
     let mut middle: Vec<Piece> = h.hints.iter().map(|&hint| hint_piece(hint, t)).collect();
+    // The sidebar says what `n` will do now, so nobody has to guess where it starts.
+    if matches!(app.mode, Mode::Side) {
+        middle.push(live_hint_piece("n", &app.quick_hint(), t));
+    }
     if shortcut_waits(app) {
         middle.push(hint_piece(("", "shortcut mode waits"), t));
     }
@@ -820,6 +840,22 @@ pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rec
         (tag, hint, Vec::new())
     };
     let calm = ground == t.bg;
+    // A line that just happened (`+ name started`) takes the hint's place for a moment, but never
+    // the suggestions of shortcut mode or what a holder says.
+    if holder.is_none()
+        && !armed(app)
+        && let Some((text, at)) = &app.bar_flash
+        && at.elapsed() < BAR_FLASH_FOR
+    {
+        middle = vec![Piece {
+            segs: vec![seg(
+                text.clone(),
+                Style::default().fg(t.done).bg(ground).add_modifier(Modifier::BOLD),
+            )],
+            gap: GAP,
+            hit: None,
+        }];
+    }
     if calm
         && holder.is_none()
         && let Some(p) = layout_piece(app, t)

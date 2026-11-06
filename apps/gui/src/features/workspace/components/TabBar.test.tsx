@@ -22,7 +22,7 @@ afterEach(() => {
 })
 
 function renderBar(count: number, activeTabId = 'tab-0') {
-  const props = { tabs: makeTabs(count), activeTabId, sessions: new Map(), canStart: true, portalContainer: null, onSelect: vi.fn(), onClose: vi.fn(), onCloseOthers: vi.fn(), onRenameSession: vi.fn(), newTabLabel: 'New session in maitty', onNewTab: vi.fn(), inboxCount: 0, inboxNeeds: false, onOpenInbox: vi.fn(), inspect: null, onToggleInspect: vi.fn() }
+  const props = { tabs: makeTabs(count), activeTabId, sessions: new Map(), canStart: true, portalContainer: null, onSelect: vi.fn(), onClose: vi.fn(), onCloseOthers: vi.fn(), onFocusPane: vi.fn(), onClosePane: vi.fn(), onRenameSession: vi.fn(), newTabLabel: 'New session in maitty', onNewTab: vi.fn(), inboxCount: 0, inboxNeeds: false, onOpenInbox: vi.fn(), inspect: null, onToggleInspect: vi.fn() }
   const view = render(<TabBar {...props} />)
   const list = screen.getByRole('tablist', { name: 'Tabs' })
   Object.defineProperty(list, 'scrollLeft', { configurable: true, writable: true, value: 0 })
@@ -150,5 +150,55 @@ describe('all tabs menu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'All tabs' }))
     fireEvent.mouseDown(document.body)
     expect(screen.queryByRole('menu', { name: 'All tabs' })).not.toBeInTheDocument()
+  })
+})
+
+describe('tab bar in a small window', () => {
+  const base = { tabs: makeTabs(1), activeTabId: 'tab-0', sessions: new Map(), canStart: true, portalContainer: null, onSelect: vi.fn(), onClose: vi.fn(), onCloseOthers: vi.fn(), onFocusPane: vi.fn(), onClosePane: vi.fn(), onRenameSession: vi.fn(), newTabLabel: 'New tab', onNewTab: vi.fn(), inboxCount: 2, inboxNeeds: true, onOpenInbox: vi.fn(), inspect: { open: false, additions: 0, deletions: 0 }, onToggleInspect: vi.fn() }
+
+  it('leaves Repository and Inbox to the activity bar in a wide window, with no Panels menu either', () => {
+    render(<TabBar {...base} />)
+
+    expect(screen.queryByRole('button', { name: 'Repository' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Inbox, 2/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Panels/ })).not.toBeInTheDocument()
+  })
+
+  it('folds them into one Panels menu that carries the inbox count and the needs-you mark', () => {
+    const onOpenInbox = vi.fn()
+    const onToggleInspect = vi.fn()
+    render(<TabBar {...base} foldPanels onOpenInbox={onOpenInbox} onToggleInspect={onToggleInspect} />)
+
+    expect(screen.queryByRole('button', { name: 'Repository' })).not.toBeInTheDocument()
+    const panels = screen.getByRole('button', { name: 'Panels, inbox 2, something needs you' })
+    fireEvent.click(panels)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Repository' }))
+    expect(onToggleInspect).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('menu', { name: 'Panels' })).not.toBeInTheDocument()
+
+    fireEvent.click(panels)
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Inbox/ }))
+    expect(onOpenInbox).toHaveBeenCalledOnce()
+  })
+
+  it('closes the Panels menu with Escape', () => {
+    render(<TabBar {...base} foldPanels />)
+
+    fireEvent.click(screen.getByRole('button', { name: /^Panels/ }))
+    expect(screen.getByRole('menu', { name: 'Panels' })).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByRole('menu', { name: 'Panels' })).not.toBeInTheDocument()
+  })
+
+  it('marks the Sessions button when something needs you', () => {
+    render(<TabBar {...base} onOpenSessions={vi.fn()} />)
+
+    expect(screen.getByRole('button', { name: 'Sessions, something needs you' })).toBeInTheDocument()
+  })
+
+  it('has a plain Sessions button when nothing does', () => {
+    render(<TabBar {...base} inboxNeeds={false} onOpenSessions={vi.fn()} />)
+
+    expect(screen.getByRole('button', { name: 'Sessions' })).toBeInTheDocument()
   })
 })

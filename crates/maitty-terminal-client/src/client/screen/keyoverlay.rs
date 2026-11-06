@@ -56,6 +56,7 @@ pub(in crate::client) fn key_groups() -> Vec<(&'static str, Vec<KeyRow>)> {
             vec![
                 r("New shell here", vec![A::ShellHere], true),
                 r("New session", vec![A::StartSession], true),
+                r("New session anywhere", vec![A::PickSession], true),
                 r("Message this session", vec![A::Message], true),
                 r("Menu", vec![A::Menu], true),
                 r("Inbox", vec![A::Jump], true),
@@ -67,8 +68,8 @@ pub(in crate::client) fn key_groups() -> Vec<(&'static str, Vec<KeyRow>)> {
         (
             "PANES",
             vec![
-                r("Split side by side", vec![A::SplitRight], true),
-                r("Split stacked", vec![A::SplitDown], true),
+                r("Split right", vec![A::SplitRight], true),
+                r("Split down", vec![A::SplitDown], true),
                 r("Close pane", vec![A::ClosePane], true),
                 r(
                     "Move focus",
@@ -448,6 +449,9 @@ struct Section {
 }
 
 /// The map (`all` false: the short one) or All keys, group by group.
+/// The sidebar's own new-session keys (`Mode::Side` reads them); not in the keymap.
+const SIDEBAR_KEYS: [(&str, &str); 2] = [("n", "New here"), ("N", "Pick anywhere")];
+
 fn grid_sections(app: &App, all: bool) -> Vec<Section> {
     let leader = leader_entries(app);
     let core: Vec<&str> = key_groups()
@@ -496,6 +500,20 @@ fn grid_sections(app: &App, all: bool) -> Vec<Section> {
                 rows: direct,
             });
         }
+        out.push(Section {
+            title: "IN THE SIDEBAR".into(),
+            dim: true,
+            note: "press directly",
+            slots: (2, 1),
+            rows: SIDEBAR_KEYS
+                .iter()
+                .map(|&(keys, label)| GridRow {
+                    keys: keys.into(),
+                    label: label.into(),
+                    act: None,
+                })
+                .collect(),
+        });
         let only: Vec<GridRow> = search_only_entries(app, &leader)
             .into_iter()
             .map(|e| GridRow {

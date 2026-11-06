@@ -75,7 +75,7 @@ and your configured custom ones; rows click and the wheel scrolls.
 │   ⣻ Growth Tests           12m  │
 │   ✓ Confirm Modal           1h  │
 │                                │
-├─ REMOTE 1 ────────────── + Add ┤
+├─ REMOTE 1 ─────────────── m add ┤
 │                                │
 │  ⇄ kingdom                  ●  │
 │ ▾  maitty         ⎇ fixes/fir ✓│
@@ -84,7 +84,7 @@ and your configured custom ones; rows click and the wheel scrolls.
 ```
 
 - The top half, **Local**, is this computer. The bottom half, **Remote**, is every other
-  machine, each under its own header; `+ Add` opens
+  machine, each under its own header; `m add` opens
   the Machines dialog. Each half scrolls on its own.
 - A project is its name with its branch and a `✓` (or `✕` if a check failed) on the right, or
   `no git` outside a repo. Click it to fold it; a folded project says how many sessions it hides
@@ -93,7 +93,7 @@ and your configured custom ones; rows click and the wheel scrolls.
   worth a look), then at the right `● you` when it needs you, else the agent's mark (`✻` Claude,
   `◆` Codex, `✦` Gemini, `◇` OpenCode, else its first letter) and the age. Second: what it is doing,
   or what it asks (`asks: …`, in amber), a check result (`failed: test · exit 1`), helpers asked
-  for, a quiet spell or a message waiting. Every new claude / codex gets its own worktree (named
+  for, a quiet spell, a repeat (`repeating 6x`: the same call over and over) or a message waiting. Every new claude / codex gets its own worktree (named
   for you), so agents never edit the same files.
 - A session with other tabs lists them with a thin line beside them (`○ shell  2`); click one to show it. Each tab shows its own state; the session's row shows only its own tab's.
 - One card is selected: a neutral tint with a **▎** bar at its left edge (lime while the sidebar

@@ -13,7 +13,7 @@ and Codex.
 
 - The daemon owns structured conversations: `ConversationSend`, `ConversationRead`
   (ordered history with a cursor), approvals with ids, turn boundaries. See
-  [spec.md](spec.md) and ADR 0036.
+  [spec.md](spec.md) and ADR 0006.
 - The Claude adapter (`crates/adapters/maitty-provider-claude`) projects every
   tool call with its complete input JSON; the Codex adapter projects app-server
   items (`item/`, `turn/`). So edits, commands, to-do lists and helper agents are
@@ -93,7 +93,7 @@ check for the view). Acceptance criteria are the bullets.
    This session (a) / No (n)**, answered through the daemon's approval id. After an
    answer the card reads "You answered: …" and the buttons are gone in every view.
    - Keys y / a / n work while the card is focused.
-8. **CV-8 Checklist and session panel (§C.2).** **Done** (`features/panel/`, sidebar progress row for sessions this window has read: `Ctrl/Cmd+\` toggle, docked 320px or overlay under 1100px, checklist card, Agents card, empty states). The docked panel (right by
+8. **CV-8 Checklist and session panel (§C.2).** **Removed by the revised v18 (D.6, ticket 48); the text below is history.** Was done (`features/panel/`, sidebar progress row for sessions this window has read: `Ctrl/Cmd+\` toggle, docked 320px or overlay under 1100px, checklist card, Agents card, empty states). The docked panel (right by
    default, overlay under 1100px, `Ctrl/Cmd+\`), its header, the "Nothing to
    track yet" state, and the checklist card. Claude's `TodoWrite` and Codex's plan items feed a
    side panel: items with done / current / pending marks, "2 of 5" with a progress
@@ -106,10 +106,7 @@ check for the view). Acceptance criteria are the bullets.
     with the spinner under the last item; sidebar rows in *working* get a slow
     shimmer (CSS only, off under reduce motion). Token counts come from the
     provider's usage events when present, else hidden.
-11. **CV-11 Line comments (§C.2 Changes).** **Done** except the structured send: the daemon takes text, so the comment is one formatted message (see UI.md); no staged/unstaged groups or ahead/behind (not in the daemon's diff). The panel's Changes segment for
-    this agent's worktree, the diff view, the per-line composer, the count
-    marker, the comment bubble in chat, delivered as a structured comment
-    `{file, line, text}` or queued while a step runs.
+11. **CV-11 Line comments (§C.2 Changes).** **Dropped** (owner decision, 2026-11-06): the session panel is gone (v18 D.6) and diff line comments are not coming back. Nothing in the app sends or draws them.
 12. **CV-12 Files and Artifacts segments (§C.2).** **Done** (touched files with kind; artifacts are created documents, reports, data and pictures by extension, previewed as text through `conversation_file`; pictures are not previewable).
 13. **CV-13 Claude parity check.** Confirm the Claude adapter delivers approvals
     with ids and turn boundaries the way Codex's does (the roadmap did Codex
@@ -152,9 +149,9 @@ check for the view). Acceptance criteria are the bullets.
 ## What is still missing (client and daemon)
 
 - **A composer, approvals and a queue for a pane's chat.** A Claude or Codex agent the user typed in a shell pane has a
-  **read-only** daemon conversation that follows the agent's own transcript (G23, [ADR 0052](../../adr/0052-an-agent-in-a-pane-gets-a-read-only-conversation.md)):
+  **read-only** daemon conversation that follows the agent's own transcript (G23, [ADR 0003](../../adr/0003-status-and-conversation-trust.md)):
   sending, answering approvals and cancelling stay in the terminal. The composer, approvals, queue and Stop live in
-  **chat sessions** instead (G25, [ADR 0054](../../adr/0054-a-chat-session-is-a-daemon-owned-conversation-started-from-the-desktop.md)):
+  **chat sessions** instead (G25, [ADR 0003](../../adr/0003-status-and-conversation-trust.md)):
   Claude or Codex started from the desktop as a structured conversation the daemon owns, chosen with **Session: Chat**
   in New agent on a branch or **Start a Claude chat** on a shell's empty chat card (Terminal is the default). Done:
   start (in a folder or a new branch worktree), list, composer, Stop, daemon queue, approvals by id, user-input form,

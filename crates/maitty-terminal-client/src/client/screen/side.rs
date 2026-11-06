@@ -1,5 +1,5 @@
 //! The sidebar card: projects, their sessions in one to three lines each, and the lines they
-//! are drawn from. Its cards are held to the sidebar handoff (ADR 0050).
+//! are drawn from. Its cards are held to the sidebar handoff.
 
 use super::check;
 use super::glyphs::Kind as State;
@@ -350,14 +350,93 @@ struct Window {
 /// A sidebar shorter than this many list rows is not split: it keeps only the Local half.
 const SPLIT_MIN_ROWS: usize = 4;
 
+/// Where a folded Local or Remote half is kept in `Saved::closed`.
+pub(in crate::client) fn region_key(remote: bool) -> &'static str {
+    if remote { "r:remote" } else { "r:local" }
+}
+
+/// Whether the Local (`false`) or the Remote (`true`) half is folded to its title.
+pub(in crate::client) fn region_folded(app: &App, remote: bool) -> bool {
+    app.screen
+        .saved
+        .closed
+        .iter()
+        .any(|c| c == region_key(remote))
+}
+
 /// The rows of the Local and the Remote half of a list `rows` tall: the Remote title takes one
-/// row and the rest is shared evenly, Local keeping any odd one.
-fn halve(rows: usize) -> (usize, usize) {
+/// row and the rest is shared evenly, Local keeping any odd one. A folded half keeps only its
+/// title and gives its rows to the other.
+fn halve(rows: usize, folded: (bool, bool)) -> (usize, usize) {
     if rows < SPLIT_MIN_ROWS {
         return (rows, 0);
     }
-    let remote = (rows - 1) / 2;
-    (rows - 1 - remote, remote)
+    let body = rows - 1;
+    match folded {
+        (false, false) => {
+            let remote = body / 2;
+            (body - remote, remote)
+        }
+        (true, false) => (0, body),
+        (false, true) => (body, 0),
+        (true, true) => (0, 0),
+    }
+}
+
+/// Columns the chip at the right of a title takes (Local's collapse chip, Remote's `+ Add`),
+/// so a long title gives way to it instead of running under it.
+const LOCAL_CHIP_COLS: usize = 6;
+const REMOTE_CHIP_COLS: usize = 10;
+
+/// A half's title: a fold arrow, the name, and while folded how many sessions in it need you,
+/// so folding never hides one. In `room` columns it is the words when they fit, else the mark
+/// and the number, else the name cut to fit.
+fn region_label(app: &App, model: &[Proj], name: &str, remote: bool, room: usize) -> String {
+    let ascii = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons)
+        .needs
+        .is_ascii();
+    let folded = region_folded(app, remote);
+    let arrow = match (folded, ascii) {
+        (true, false) => "▸",
+        (false, false) => "▾",
+        (true, true) => ">",
+        (false, true) => "v",
+    };
+    let needs = if folded {
+        model
+            .iter()
+            .filter(|p| (p.machine != MachineId::LOCAL) == remote)
+            .flat_map(Proj::sessions)
+            .filter(|s| !s.down && check::needs_you(s))
+            .count()
+    } else {
+        0
+    };
+    let plain = format!("{arrow} {name}");
+    if needs == 0 {
+        return truncate(&plain, room);
+    }
+    let words = format!("{plain} · {needs} need you");
+    if words.chars().count() <= room {
+        return words;
+    }
+    let mark = check::marks(app).needs;
+    truncate(&format!("{plain} {mark}{needs}"), room)
+}
+
+/// A title's click area: its text and the one cell either side.
+fn title_hit(app: &mut App, (x, y): (u16, u16), label: &str, remote: bool) {
+    let width = label.chars().count() as u16 + 2;
+    hit(
+        app,
+        Rect {
+            x,
+            y,
+            width,
+            height: 1,
+        },
+        ScreenHit::ToggleRegion(remote),
+    );
 }
 
 /// The sidebar card: Local on top, Remote below it, each with its title and counts, projects
@@ -382,7 +461,14 @@ pub(in crate::client) fn draw_side(
     let cols = Cols::of(r, look.round_rows);
     let screen_w = buf.area.width;
     let (local_lines, remote_lines) = card_lines(app, model, t);
-    let lines: Vec<Line> = local_lines.iter().chain(&remote_lines).cloned().collect();
+    let folded = (region_folded(app, false), region_folded(app, true));
+    // What a folded half holds is not on screen, so the keyboard does not walk into it.
+    let lines: Vec<Line> = local_lines
+        .iter()
+        .filter(|_| !folded.0)
+        .chain(remote_lines.iter().filter(|_| !folded.1))
+        .cloned()
+        .collect();
     let focus = open_row(app).map(|term| app.session_key(term));
     let top = r.y + 2;
     // The foot is lifted a row off the bottom (Cards: it sits above the border), a divider over it.
@@ -397,7 +483,7 @@ pub(in crate::client) fn draw_side(
         .saturating_sub(1 + u16::from(release.is_some()))
         .saturating_sub(top) as usize;
     note_rows(app, model, &lines);
-    let (local_rows, remote_rows) = halve(list_h);
+    let (local_rows, remote_rows) = halve(list_h, folded);
     let local_scroll = region_scroll(app, model, &local_lines, focus, local_rows, false);
     let remote_scroll = region_scroll(app, model, &remote_lines, focus, remote_rows, true);
     app.screen.follow = false;
@@ -407,15 +493,37 @@ pub(in crate::client) fn draw_side(
         .host()
         .map(|h| format!(" ⇄ {h}"))
         .unwrap_or_default();
-    draw_title(
+    let title_room = |chip: usize| {
+        let row = r.width.saturating_sub(4) as usize;
+        row - chip.min(row)
+    };
+    let local_title = region_label(
+        app,
+        model,
+        &format!("LOCAL{host}"),
+        false,
+        title_room(LOCAL_CHIP_COLS),
+    );
+    let title_end = draw_title(
         app,
         buf,
         (r.x + 2, r.y),
-        &format!("LOCAL{host}"),
+        &local_title,
         Color::Reset,
         t,
         focused_side,
     );
+    // The scoped ` + ` chip sits a cell after the title: x = sidebar.x + 10 for ` LOCAL `.
+    draw_new_chip(
+        app,
+        buf,
+        (title_end + 1, r.y),
+        r.right().saturating_sub(BORDER_RIGHT_KEEP),
+        MachineId::LOCAL,
+        Color::Reset,
+        t,
+    );
+    title_hit(app, (r.x + 2, r.y), &local_title, false);
     draw_collapse_chip(app, buf, r, t);
 
     let pass = Pass {
@@ -440,10 +548,10 @@ pub(in crate::client) fn draw_side(
         },
     );
     app.screen.remote_rect = Rect::default();
-    if remote_rows > 0 {
+    if list_h >= SPLIT_MIN_ROWS {
         let head_y = top + local_rows as u16;
         // The Remote title sits on a rule that joins the card's sides, as Local's sits on the
-        // top border: `├ REMOTE 2 ───── + Add ┤`.
+        // top border: `├ REMOTE 2 ───── m add ┤`.
         let rule = Style::default()
             .fg(if focused_side { t.accent } else { t.line })
             .bg(pb);
@@ -457,18 +565,26 @@ pub(in crate::client) fn draw_side(
             )],
             r.right(),
         );
-        draw_title(
+        let remote_title = region_label(
             app,
-            buf,
-            (r.x + 2, head_y),
+            model,
             &match app.remotes.len() {
                 0 => "REMOTE".to_string(),
                 n => format!("REMOTE {n}"),
             },
+            true,
+            title_room(REMOTE_CHIP_COLS),
+        );
+        draw_title(
+            app,
+            buf,
+            (r.x + 2, head_y),
+            &remote_title,
             pb,
             t,
             focused_side,
         );
+        title_hit(app, (r.x + 2, head_y), &remote_title, true);
         draw_add_chip(app, buf, (r.right().saturating_sub(2), head_y), pb, t);
         let remote_top = head_y + 1;
         app.screen.remote_rect = Rect {
@@ -477,9 +593,10 @@ pub(in crate::client) fn draw_side(
             width: r.width,
             height: remote_rows as u16 + 1,
         };
-        if remote_lines.is_empty() {
+        // Folded, the half is its rule alone: no rows, and not even the "no remote machines" note.
+        if !folded.1 && remote_lines.is_empty() {
             draw_no_machines(buf, &pass, t, remote_top);
-        } else {
+        } else if !folded.1 {
             draw_rows(
                 app,
                 buf,
@@ -512,7 +629,7 @@ pub(in crate::client) fn draw_side(
     }
 }
 
-/// What the Remote half says while no other machine is known; the `+ Add` chip on its rule is
+/// What the Remote half says while no other machine is known; the `m add` chip on its rule is
 /// the way to add one.
 fn draw_no_machines(buf: &mut Buffer, pass: &Pass, t: &Theme, top: u16) {
     let st = Style::default().bg(pass.pb);
@@ -543,7 +660,7 @@ fn draw_rails(
 ) {
     // The line hugs the left of its cell, as the selection's `▎` bar does, so a selected card's
     // bar sits where the line was instead of beside it.
-    let (vertical, horizontal) = if ascii { ("|", "-") } else { ("▏", "─") };
+    let (vertical, horizontal) = if ascii { ("|", "-") } else { ("▎", "─") };
     // Rows `from..to` of `lines` that are on screen, drawn at column `x` as `symbol` in `colour`.
     let mut draw = |from: usize, to: usize, (x0, x1): (u16, u16), symbol: &str, colour: Color| {
         for j in from.max(scroll)..to.min(scroll + rows) {
@@ -935,7 +1052,7 @@ fn draw_title(
     outer: Color,
     t: &Theme,
     lit: bool,
-) {
+) -> u16 {
     let (chip_bg, ink) = if lit {
         (t.accent, t.acc_ink)
     } else {
@@ -951,15 +1068,56 @@ fn draw_title(
     if Look::of(&app.cfg.ui).caps {
         title = round_ends(title, outer);
     }
-    put(buf, at.0, at.1, &title, buf.area.right());
+    put(buf, at.0, at.1, &title, buf.area.right())
 }
 
-/// The Remote rule's `+ Add` chip, ending at `end`: a click opens the Machines dialog.
+/// The room kept free at the right of the top border for the collapse chip.
+const BORDER_RIGHT_KEEP: u16 = 8;
+
+/// A ` + ` chip at `x` that opens the picker already browsing `machine`: orange on the chip
+/// ground. Left out when it would run into `limit`.
+fn draw_new_chip(
+    app: &mut App,
+    buf: &mut Buffer,
+    (x, y): (u16, u16),
+    limit: u16,
+    machine: MachineId,
+    ground: Color,
+    t: &Theme,
+) {
+    let mut segs = vec![seg(
+        " + ",
+        Style::default()
+            .fg(t.accent)
+            .bg(t.btn)
+            .add_modifier(Modifier::BOLD),
+    )];
+    if Look::of(&app.cfg.ui).caps {
+        segs = round_ends(segs, ground);
+    }
+    let w = segs_width(&segs);
+    if x + w > limit {
+        return;
+    }
+    put(buf, x, y, &segs, limit);
+    hit(
+        app,
+        Rect {
+            x,
+            y,
+            width: w,
+            height: 1,
+        },
+        ScreenHit::NsMachine(machine),
+    );
+}
+
+/// The Remote rule's `m add` chip, ending at `end`: a click opens the Machines dialog.
 fn draw_add_chip(app: &mut App, buf: &mut Buffer, (end, y): (u16, u16), ground: Color, t: &Theme) {
     let chip = Style::default().bg(t.btn);
     let mut segs = vec![
-        seg(" + ", chip.fg(t.accent).add_modifier(Modifier::BOLD)),
-        seg("Add ", chip.fg(t.text)),
+        seg(" m ", chip.fg(t.accent).add_modifier(Modifier::BOLD)),
+        seg("add ", chip.fg(t.text)),
     ];
     if Look::of(&app.cfg.ui).caps {
         segs = round_ends(segs, ground);
@@ -1270,8 +1428,8 @@ fn status_words(app: &App, s: &Session, t: &Theme) -> Vec<Seg> {
         return muted(&format!("⏸ resumes in {}", until(at)));
     }
     match s.status {
-        // The spinner and the name's colour already say working: only its helpers and a quiet
-        // spell are left to say.
+        // The spinner and the name's colour already say working: only its helpers, a quiet
+        // spell and a repeat are left to say.
         Status::Working => {
             let mut words: Vec<Seg> = Vec::new();
             // Only an agent that reports helpers has a count (Codex reports none).
@@ -1287,6 +1445,13 @@ fn status_words(app: &App, s: &Session, t: &Theme) -> Vec<Seg> {
                 let sep = if words.is_empty() { "" } else { " · " };
                 words.push(seg(
                     format!("{sep}quiet {}", age(at)),
+                    Style::default().fg(t.muted),
+                ));
+            }
+            if let Some(n) = s.repeats {
+                let sep = if words.is_empty() { "" } else { " · " };
+                words.push(seg(
+                    format!("{sep}repeating {n}x"),
                     Style::default().fg(t.muted),
                 ));
             }
@@ -1492,14 +1657,18 @@ fn draw_machine_row(
     } else {
         vec![badge]
     };
-    put(buf, cols.x, y, &badge, cols.end());
-    put(
-        buf,
-        cols.end().saturating_sub(rw + 1),
-        y,
-        &right,
-        cols.end(),
-    );
+    let badge_end = put(buf, cols.x, y, &badge, cols.end());
+    let dot_x = cols.end().saturating_sub(rw + 1);
+    put(buf, dot_x, y, &right, cols.end());
+    // An online machine offers a session of its own right after its badge; a machine that is
+    // down has `r reconnect` instead.
+    if app
+        .remotes
+        .get(&machine)
+        .is_some_and(|r| r.state.is_connected())
+    {
+        draw_new_chip(app, buf, (badge_end + 1, y), dot_x, machine, pb, t);
+    }
 }
 
 /// The second row of a machine item: how its connection stands, or that it has nothing running.
@@ -1514,7 +1683,26 @@ fn draw_machine_state(
 ) {
     let forms = machine_group::state_forms(app, machine);
     machine_group::draw_note(buf, (cols.x + 2, cols.end()), y, (&forms, t.muted), pb);
-    hit(app, cols.row(y), ScreenHit::MachineRow(machine));
+    // A machine that is up and has nothing running offers a session of its own right here.
+    let can_start = machine != MachineId::LOCAL
+        && app
+            .remotes
+            .get(&machine)
+            .is_some_and(|r| r.state.is_connected());
+    if can_start {
+        let word = "⏎ new";
+        let at = cols.end().saturating_sub(word.chars().count() as u16 + 1);
+        put(
+            buf,
+            at,
+            y,
+            &[seg(word, Style::default().fg(t.accent).bg(pb))],
+            cols.end(),
+        );
+        hit(app, cols.row(y), ScreenHit::NsMachine(machine));
+    } else {
+        hit(app, cols.row(y), ScreenHit::MachineRow(machine));
+    }
 }
 
 /// A folder's header: its fold arrow and name, and right-aligned what it is (branch, its
@@ -2014,13 +2202,48 @@ mod v8_tests {
     }
 
     #[test]
+    fn a_repeating_agent_says_how_many_calls_on_its_row() {
+        let mut app = world(Stage::None);
+        let before = side_rows(&mut app, Layout::Floating, 160, 45);
+        assert!(!before.iter().any(|r| r.contains("repeating")), "{before:#?}");
+        app.snap.terms.get_mut(&2).unwrap().repeats = Some(6);
+        let rows = side_rows(&mut app, Layout::Floating, 160, 45);
+        assert!(
+            has(&rows, "repeating 6x") && !has(&rows, "working"),
+            "the repeat, not the state: {rows:#?}"
+        );
+        let narrow = side_rows(&mut app, Layout::Floating, 80, 24);
+        assert!(has(&narrow, "repeating 6x"), "at 80x24: {narrow:#?}");
+    }
+
+    #[test]
+    fn a_repeating_agent_with_helpers_or_a_quiet_spell_keeps_both_words() {
+        let mut app = world(Stage::None);
+        let t = app.snap.terms.get_mut(&2).unwrap();
+        t.repeats = Some(9);
+        t.quiet_since = Some(crate::client::screen::now_secs() - 12 * 60);
+        let rows = side_rows(&mut app, Layout::Floating, 160, 45);
+        assert!(has(&rows, "quiet 12m · repeating 9x"), "{rows:#?}");
+    }
+
+    #[test]
+    fn only_a_working_agent_shows_a_repeat() {
+        let mut app = world(Stage::None);
+        let t = app.snap.terms.get_mut(&2).unwrap();
+        t.repeats = Some(6);
+        t.status = Status::Done;
+        let rows = side_rows(&mut app, Layout::Floating, 160, 45);
+        assert!(!has(&rows, "repeating"), "{rows:#?}");
+    }
+
+    #[test]
     fn only_the_selected_row_has_a_bar_and_it_is_the_accent() {
         let mut app = world(Stage::Failed);
         let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
         let side = app.screen.side_rect;
         let bars: Vec<(u16, Color)> = (side.y..side.bottom())
             .flat_map(|y| (side.x..side.right()).map(move |x| (x, y)))
-            .filter(|&p| buf[p].symbol() == "▎")
+            .filter(|&p| buf[p].symbol() == "▎" && buf[p].fg == app.theme.accent)
             .map(|(_, y)| (y, buf[(side.x + 2, y)].fg))
             .collect();
         let open = app.screen.row_y[&app.focused().expect("an open session")];

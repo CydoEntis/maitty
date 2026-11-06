@@ -1,4 +1,4 @@
-//! The named hosts in `~/.ssh/config`, for choosing a machine to add (ADR 0047): the parser
+//! The named hosts in `~/.ssh/config`, for choosing a machine to add (ADR 0007): the parser
 //! lives in `maitty-machines`. This is where the terminal app reads it off its UI thread.
 
 use super::{App, Bg};

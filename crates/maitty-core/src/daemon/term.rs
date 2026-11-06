@@ -4,7 +4,7 @@
 use super::Ev;
 use crate::config::Config;
 use crate::protocol::{
-    Interrupted, Status, SubagentActivity, Surface, TermId, TurnEvent, TurnKind,
+    Interrupted, PermissionAsk, Status, SubagentActivity, Surface, TermId, TurnEvent, TurnKind,
 };
 use anyhow::{Context, Result};
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
@@ -127,7 +127,7 @@ pub struct Term {
     pub remote: Option<String>,
     /// A floating pane (`<app> popup`), in no workspace.
     pub popup: bool,
-    /// The app that started it. Only that app may list, type into or resize it (ADR 0045).
+    /// The app that started it. Only that app may list, type into or resize it (ADR 0004).
     pub owner: Surface,
     pub agent: Option<String>,
     pub status: Status,
@@ -139,6 +139,9 @@ pub struct Term {
     pub timeline: VecDeque<TurnEvent>,
     /// An agent that was mid-turn when the daemon restarted; see `TermInfo::interrupted`.
     pub interrupted: Option<Interrupted>,
+    /// The permission prompt the agent's own hook said it is stopped on, cleaned; kept only
+    /// while the pane needs you (`Term::ask_now`). In memory only.
+    pub ask: Option<PermissionAsk>,
     /// The last hook it reported (its event) and the last thing the screen showed that
     /// changed its status, each with when (unix seconds): the evidence "why" lays out.
     pub last_hook: Option<(String, u64)>,
@@ -210,6 +213,10 @@ pub struct Term {
     pub screen_blocked_from: Option<Status>,
     /// Working with no output and no hook report since then (unix seconds): may be stuck.
     pub quiet_since: Option<u64>,
+    /// The tail of this turn's tool calls, as fingerprints; never saved.
+    pub call_run: super::repeats::CallRun,
+    /// How many calls a repeat has reached (`CallRun::repeats`), while the agent works.
+    pub repeats: Option<u32>,
     /// When it last started needing you (cleared when it stops).
     pub blocked_at: Option<Instant>,
     /// Processes known to run inside this pane (trusted to report its status).
@@ -814,6 +821,7 @@ impl Term {
             status_why: String::new(),
             timeline: VecDeque::new(),
             interrupted: None,
+            ask: None,
             last_hook: None,
             last_hook_at: None,
             hooked_process_seen: false,
@@ -858,6 +866,8 @@ impl Term {
             ended_activity: None,
             screen_blocked_from: None,
             quiet_since: None,
+            call_run: super::repeats::CallRun::default(),
+            repeats: None,
             blocked_at: None,
             trusted: std::collections::HashSet::new(),
             token,

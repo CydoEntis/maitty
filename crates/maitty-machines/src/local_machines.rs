@@ -1,5 +1,5 @@
 //! Reading this computer's machine list: the `[[machines]]` entries of `config.local.toml`, as
-//! the terminal app's loader reads them. Both apps use it, so there is one list (ADR 0048).
+//! the terminal app's loader reads them. Both apps use it, so there is one list (ADR 0007).
 //! Hand edits apply when the app starts.
 
 use crate::brand::{APP_COMMAND, APP_ENV};

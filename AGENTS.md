@@ -1,252 +1,98 @@
 # AGENTS.md
 
-This file is the operating contract for AI coding agents and human contributors
-in this repository. Read it in full before you plan or edit anything. It tells
-you which docs to read, how they fit together, how to keep them current, and how
-to report back.
-
-A nested `AGENTS.md` in a subdirectory may add narrower rules for that
-directory. When rules conflict, the closest file wins.
+The operating contract for AI coding agents and human contributors. Read it before you plan or
+edit anything. A nested `AGENTS.md` may add narrower rules for its directory; the closest file wins.
 
 ## Documentation map
 
-Read this file first. Then read the docs that match the change you are making.
-Load them when the work touches their area, not all of them up front.
+Read the docs that match your change when the work touches their area, not all up front. Each
+rule lives in exactly one doc; if two disagree, the doc that owns the topic wins. Report the
+conflict.
 
 | Doc | Read before | Owns |
 | --- | --- | --- |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | adding modules, moving code, crossing layers, picking a pattern | layers, dependency direction, where code lives, pattern catalog |
-| [`docs/CODE-STANDARDS.md`](docs/CODE-STANDARDS.md) | writing or reviewing any code | naming, functions, types, errors, **comments**, prohibited shortcuts |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | adding modules, crossing layers | layers, dependency direction, where code lives |
+| [`docs/CODE-STANDARDS.md`](docs/CODE-STANDARDS.md) | writing or reviewing code | naming, types, errors, **comments**, prohibited shortcuts |
 | [`docs/TESTING.md`](docs/TESTING.md) | writing tests or fixing bugs | test levels, determinism, what to assert |
-| [`docs/API_PATTERNS.md`](docs/API_PATTERNS.md) | touching endpoints, services, IPC, or client data flow | request flow, validation, response and error shapes |
-| [`docs/DATABASE.md`](docs/DATABASE.md) | touching schema, queries, or migrations | persistence rules, migrations, data safety |
-| [`docs/SECURITY.md`](docs/SECURITY.md) | handling input, auth, secrets, permissions, or adding a dependency | threat checklist, auth rules, secrets, supply chain |
-| [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) | adding config or env vars, changing setup | config loading, `.env.example`, local setup, environments |
-| [`docs/UI.md`](docs/UI.md) | building or changing any user interface | component structure, UI state, async states, accessibility |
-| [`docs/DESIGN.md`](docs/DESIGN.md) | changing how the app looks | the current visual language: themes, layouts, chips, sidebar, panels, splash |
-| [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) | changing animations, timers, terminal rendering, polling, or the daemon's output path | the measured causes of GUI lag, the ranked plan, how to re-measure |
-| [`docs/COMMIT-STANDARDS.md`](docs/COMMIT-STANDARDS.md) | committing, branching, opening a PR | message format, commit workflow, git safety |
-| the Plane project (see *Planning*) | starting, finishing, or scoping work | what is in, out, and in what order |
-| [`docs/stack/`](docs/stack/) | touching a technology that has a stack doc | the rules for each technology used in this project |
-| [`docs/adr/`](docs/adr/) | changing a recorded decision | decisions that are expensive to reverse |
-
-Each rule lives in exactly one doc. If two docs seem to disagree, the doc that
-**owns** the topic in the table above wins. Report the conflict so it can be
-fixed.
+| [`docs/API_PATTERNS.md`](docs/API_PATTERNS.md) | touching IPC, services, client data flow | request flow, validation, response and error shapes |
+| [`docs/DATABASE.md`](docs/DATABASE.md) | touching persistence or migrations | persistence rules, data safety |
+| [`docs/SECURITY.md`](docs/SECURITY.md) | input, secrets, permissions, new dependencies | threat checklist, supply chain |
+| [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) | adding config or env vars | config loading, local setup |
+| [`docs/UI.md`](docs/UI.md) | changing any interface | component structure, UI state, accessibility |
+| [`docs/DESIGN.md`](docs/DESIGN.md) | changing how the app looks | the current visual language |
+| [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) | animations, timers, rendering, polling, output path | measured causes of lag, how to re-measure |
+| [`docs/COMMIT-STANDARDS.md`](docs/COMMIT-STANDARDS.md) | committing, branching, opening a PR | message format, git safety |
+| [`docs/stack/`](docs/stack/) | touching a technology with a stack doc | per-technology rules |
+| [`docs/adr/`](docs/adr/README.md) | changing a recorded decision | the nine decisions that are expensive to reverse |
+| the Plane project (see *Planning*) | starting, finishing, scoping work | what is in, out, and in what order |
 
 ## How the docs are structured
 
-Rules come in three layers:
-
-- **Generic base.** These are rules that hold for any well-built project. Treat
-  them as defaults.
-- **Stack docs** in `docs/stack/`. Each one holds the rules for one technology
-  or kind of app this project uses, such as React, Supabase, or a browser game.
-  See *Stack packs* below.
-- **Project-specific sections**, headed `## Project-specific: …`. This is where
-  a project records its own choices, layout, and exceptions.
-
-An unfilled project-specific section contains an HTML comment that starts with
-`<!-- FILL:` at the beginning of a line. The comment says what goes there and
-gives an example. A section can be partly filled: settled facts first, then a
-narrower `FILL` marker for what is still open.
-
-A doc that doesn't apply to this project yet opens with the line
-`> **Not applicable:** <reason>`, right under its title. Its rules take effect
-once the need arrives.
-
-How to interpret them:
-
-1. A filled project-specific section overrides the stack docs, and the stack
-   docs override the generic base on the same topic.
-2. An unfilled `FILL` section means the project has not decided. Follow the
-   generic base. Do not invent a project rule to fill the gap.
-3. If a task needs a decision that a `FILL` section would hold, such as which
-   database, which test runner, or which error shape, ask the user. Record the
-   answer in that section, following the next section, *Maintaining these docs*.
-4. Run `grep -rnE "^<!-- FILL:" AGENTS.md CLAUDE.md docs/` to list every open decision.
-
-Precedence, from highest to lowest:
-
-1. The user's explicit instruction for the current task.
-2. The nearest nested `AGENTS.md`.
-3. Project-specific sections.
-4. Stack docs in `docs/stack/`.
-5. The generic base.
-
-If following an instruction would break a non-negotiable rule, stop and say so
-before you act.
+Rules come in three layers: the generic base, stack docs in `docs/stack/`, and
+`## Project-specific: …` sections. Precedence, highest first: the user's instruction for the
+task, the nearest nested `AGENTS.md`, project-specific sections, stack docs, the generic base.
+An unfilled section holds a `<!-- FILL: … -->` comment: the project has not decided, so follow
+the generic base and ask the user before inventing a rule (`grep -rnE "^<!-- FILL:" AGENTS.md CLAUDE.md docs/`
+lists them). If following an instruction would break a non-negotiable, stop and say so.
 
 ## Maintaining these docs
 
-The docs are part of the codebase. Keep them true.
+The docs are part of the codebase. In the same change, update the doc that owns the topic when
+you add or move a module, change a public contract, add a dependency, establish a convention, or
+find a doc wrong. Write rules and current contracts, not history. Link to a rule; never copy it.
+Add an ADR for a decision that is expensive to reverse, not for how something looks.
 
-**Update a doc in the same change when you:**
+Ask the user first before changing or removing a rule in the generic base or a filled
+project-specific section, or filling a `FILL` section with a decision the code does not show. Never
+loosen a rule so a change passes, delete a `Project-specific` heading, or let this file and
+`CLAUDE.md` drift apart.
 
-- add, move, or remove a module, layer, or top-level directory;
-- change a public contract (API shape, error codes, schema, config, CLI flags);
-- add a significant dependency or replace a tool (see *Stack packs*);
-- start, finish, or split planned work (see *Planning*);
-- establish a convention that the next contributor has to follow;
-- discover that a doc is wrong about the code.
-
-**How to edit:**
-
-- Edit the doc that owns the topic. Link to it from elsewhere; never copy a rule
-  into a second doc.
-- When you fill a `FILL` section, delete the marker. If the section does not
-  apply to this project, replace the marker with one line saying so and why, for
-  example `Not applicable: no persistent storage.`
-- Write rules and current contracts, not history. "Migrations are append-only"
-  belongs in a doc. "In March we changed X because Y" belongs in an ADR or a
-  commit message.
-- Keep entries short and imperative. If one entity or endpoint needs a
-  paragraph, it should probably live in code as types or tests.
-- Add an ADR in `docs/adr/` for any decision that is expensive to reverse. That
-  includes choosing a database, an auth model, an architecture style, or a major
-  framework.
-
-**What needs the user's approval first:**
-
-- Changing or removing a rule in the generic base or in a filled project-specific
-  section. Propose the change and your reason, then wait. Once the user approves
-  a change to a generic-base or stack-doc section, add
-  `<!-- local: <reason> -->` under that section's heading. `/starter update`
-  then asks before it replaces the section.
-- Filling a `FILL` section with a decision the code does not already show.
-  Filling one from facts in the repo, such as which test runner `package.json`
-  already uses, is fine; say so in your handoff.
-
-**Never:**
-
-- loosen a rule so that your change passes;
-- delete a `Project-specific` heading, which leaves nowhere to record the
-  decision later;
-- let this file and `CLAUDE.md` drift apart. `CLAUDE.md` imports this file and
-  adds only tool-specific notes.
-
-## Stack packs
-
-Technology-specific rules come from **packs**: reusable docs shipped with the
-`starter` skill (`/starter` in Claude Code, `$starter` in Codex). A project
-copies the packs it uses into `docs/stack/`. `docs/stack/README.md` records the
-starter version, the preset, and each applied pack.
-
-**When a task brings in a technology the project doesn't cover yet** (a new
-database, a renderer, a payments SDK, a realtime server):
-
-1. Stop before you write code that depends on it.
-2. Tell the user, and suggest `/starter add <tech>`. That command applies a
-   matching pack, or writes a project-local stack doc when no pack exists.
-3. If the skill isn't available, do the same by hand. Ask the user for the key
-   decisions, write `docs/stack/<tech>.md` in the pack format (a `Use for`,
-   `Requires`, `Fills` header, then rules, then its own `Project-specific`
-   section), record expensive choices as an ADR, add it to
-   `docs/stack/README.md`, and point the relevant `Project-specific` sections
-   at it.
-
-**When a technology is removed**, delete its stack doc, restore the `FILL`
-markers or `Not applicable` notes it answered, and update
-`docs/stack/README.md`.
-
-A project that turns out not to need a doc, such as a static game with no
-database, marks it `Not applicable: <reason>` rather than keeping rules that
-don't apply. When the need arrives, fill it in again.
+A technology with no stack doc yet: stop before writing code that depends on it, and suggest
+`/starter add <tech>` (or write `docs/stack/<tech>.md` by hand and record it in `docs/stack/README.md`).
 
 ## Planning
 
-Scope and order live in **Plane**, not in a repo file. Where the Plane project
-is and how to reach it is recorded in *Project-specific: planning (Plane)*.
-Agents read and close tickets with the `plan-pull` skill.
+Scope and order live in **Plane**, not a repo file (see *Project-specific: planning*).
 
-- Work only on the ticket you were given (`MAITTY-N`). Don't start the next one
-  because it looks close or convenient.
-- Claim a ticket before working on it (`plan-pull start`). If it is already
-  started or done, stop and say so.
-- Respect "blocked by" links. Don't start a ticket whose blockers are not Done.
-- Mark a ticket Done only after its acceptance criteria are met **and** the
-  verification gate has passed in the real worktree. Partial, unverified, or
-  throwaway-branch work is not done. The `done` comment names the commands you
-  ran and their results.
-- Record follow-ups that surface mid-task as new Backlog tickets with a label.
-  Don't silently widen the current ticket.
-- Reordering, adding, or cutting planned work is the user's decision. Propose
-  it; don't make it.
-- Decisions that are expensive to reverse go in `docs/adr/`, not in a ticket.
+- Work only on the ticket you were given (`MAITTY-N`), claim it first (`plan-pull start`), and
+  respect "blocked by" links.
+- Mark a ticket Done only after its acceptance criteria are met and the verification gate passed
+  in the real worktree; the `done` comment names the commands and results.
+- File follow-ups as new Backlog tickets. Reordering, adding or cutting planned work is the
+  user's decision; propose it.
+- A bug fix needs no ticket or plan to start.
 
 ## Workflow
 
-### Before changing code
-
-1. Read this file and the docs that apply to the task.
-2. Inspect the relevant code, scripts, and `git status`. Find the existing
-   pattern before you create a new one.
-3. Keep user-authored and unrelated changes. Never discard or reformat them.
-4. Identify the smallest coherent change that delivers the requested outcome.
-5. If the requirements conflict with the docs, or the change is destructive,
-   stop and ask.
-
-### While changing code
-
-- Deliver one vertical slice or one concern per change.
-- Don't refactor code the task doesn't need, add speculative abstractions, or
-  add configuration points with no current consumer.
-- Prefer boring, explicit code over clever indirection.
-- Reuse existing dependencies before adding one. Justify every new dependency.
-- Never hand-edit generated files.
-- Don't reformat untouched code.
-
-### Before declaring done
-
-Run the verification gate in the next section. If a command does not exist or
-cannot run, say so exactly. Never report a check as passing unless it ran and
-passed in this worktree.
-
-### Handoff
-
-Report:
-
-1. the outcome, in plain language;
-2. the important files changed;
-3. the verification commands you ran and their actual results;
-4. docs you updated, and any `FILL` sections you filled or found missing;
-5. new dependencies, migrations, permissions, or config;
-6. known limitations and the logical next step.
-
-Don't narrate every edit. Separate verified facts from proposals.
+1. **Before changing code:** read this file and the docs your change touches; inspect the code and
+   `git status`; find the existing pattern first; keep user-authored and unrelated changes; stop and
+   ask if the request conflicts with the docs or is destructive.
+2. **While changing code:** one concern per change; no speculative abstractions; reuse existing
+   dependencies; never hand-edit generated files; never reformat code you did not change.
+3. **Before declaring done:** run the verification gate. Never report a check as passing unless it
+   ran and passed in this worktree.
+4. **Handoff:** the outcome in plain language; important files changed; the commands you ran and
+   their real results; docs updated; new dependencies, migrations or config; known limits and the
+   next step. Separate verified facts from proposals.
 
 ## Non-negotiables
 
-These apply in every project built from this starter:
-
-1. Follow the [core principles](docs/CODE-STANDARDS.md#core-principles), in
-   their priority order: readability over cleverness, KISS, YAGNI, separation of
-   concerns, DRY for knowledge, small pure functions, explicit over implicit.
-   Named constants replace magic values.
-2. Dependencies point inward. Domain logic never imports frameworks, I/O, or UI.
-   See [ARCHITECTURE](docs/ARCHITECTURE.md).
-3. Validate all external input at the boundary where it enters. Run the
+1. Follow the [core principles](docs/CODE-STANDARDS.md#core-principles): readability over
+   cleverness, KISS, YAGNI, separation of concerns, DRY for knowledge, small pure functions,
+   explicit over implicit. Named constants replace magic values.
+2. Dependencies point inward. Domain logic never imports frameworks, I/O or UI.
+3. Validate all external input at the boundary. Run the
    [security checklist](docs/SECURITY.md#per-change-checklist) on every change.
-4. No secrets in source, fixtures, logs, snapshots, or command output.
-5. Never swallow an error. Every `catch` handles the error, rethrows it with
-   context, or converts it into a typed result.
-6. Never weaken a type, lint rule, or test to make a change pass.
-7. Comments explain *why*, not *what*. See
-   [CODE-STANDARDS § Comments](docs/CODE-STANDARDS.md#comments).
-8. Commits follow [COMMIT-STANDARDS](docs/COMMIT-STANDARDS.md) and carry no AI
-   or tool attribution.
-9. Never run destructive git commands, rewrite history, commit, push, or change
-   remote resources unless asked.
+4. No secrets in source, fixtures, logs, snapshots or command output.
+5. Never swallow an error: handle it, rethrow it with context, or convert it to a typed result.
+6. Never weaken a type, lint rule or test to make a change pass.
+7. Comments explain *why*, not *what* ([CODE-STANDARDS](docs/CODE-STANDARDS.md#comments)).
+8. Commits follow [COMMIT-STANDARDS](docs/COMMIT-STANDARDS.md) and carry no AI or tool attribution.
+9. Never run destructive git commands, rewrite history, commit, push, or change remote resources
+   unless asked.
 
-## Communicating with the user
-
-- State your assumptions early, especially when you are working from an
-  unfilled `FILL` section.
-- When blocked, say what is blocking you. Never change the requirement to route
-  around a blocker.
-- When the docs and the user's request disagree, name the rule and ask which to
-  follow. Don't pick one silently.
-- Offer to record any decision the user makes that the docs lack.
+State assumptions early; when blocked, say what blocks you and never change the requirement to
+route around it; when the docs and the request disagree, name the rule and ask.
 
 ## Project-specific: mission
 
@@ -261,23 +107,23 @@ has to be right, and sessions survive the UI closing.
 
 1. **The daemon owns every session.** The client is a view; closing, crashing or
    detaching the client must never kill a pane. Anything that touches PTYs or
-   process lifetime lives in `crates/maitty-core/src/daemon/`.
+   process lifetime lives in `crates/maitty-core/src/daemon/`. Only one daemon runs per socket
+   (ADR 0001).
 2. **Bump `PROTOCOL_VERSION`** (`crates/maitty-shared/src/protocol.rs`) when a
-   message shape changes
-   incompatibly: a field removed, renamed or retyped, or a new enum variant. An
+   message shape changes incompatibly: a field removed, renamed or retyped, or a new enum variant. An
    added `#[serde(default)]` field needs no bump when a test decodes the old
    shape. A client and daemon that can't read each other must refuse to talk, not
-   misparse. See [API_PATTERNS](docs/API_PATTERNS.md#project-specific-api-style).
+   misparse. See [API_PATTERNS](docs/API_PATTERNS.md#project-specific-api-style) and ADR 0002.
 3. **Windows is a first-class target.** Every change builds and behaves on
    Windows (ConPTY, named pipes, PowerShell) as well as Linux and macOS; the
-   cross-checks in the gate are not optional.
+   cross-checks in the gate are not optional (ADR 0008).
 4. **Preserve the TUI alongside the optional chat GUI.** Both clients use the
    daemon's sessions. Keep native agent terminal interfaces and terminal-only
-   installation supported. See ADR 0036 and the chat GUI spec.
-5. **Trust status only from the owning runtime.** Pane reports need its process
-   tree or `MAITTY_PANE_TOKEN`; structured provider events need the daemon-owned
-   connection and current conversation generation. See ADR 0036. Unverified or
-   superseded sources cannot change status.
+   installation supported (ADR 0004).
+5. **Trust status only from the owning runtime, and let one writer decide it.** Pane reports need
+   its process tree or `MAITTY_PANE_TOKEN`; structured provider events need the daemon-owned
+   connection and current conversation generation. Clients display status; they never derive it.
+   Unverified or superseded sources cannot change status (ADR 0003).
 6. **No blocking work on the UI thread.** Git, file walks, network and process
    spawns go through background tasks (`spawn_bg`) and report back as messages.
 
@@ -300,7 +146,7 @@ runs a nested server with `MAITTY_SOCKET=<name> maitty`.
 
 ## Project-specific: workflow and tooling
 
-- **Plan:** Plane, project `MAITTY` (see *Project-specific: planning (Plane)*). `docs/ROADMAP.md` is the legacy plan doc: it still holds the shipped-feature list and the declined list until ticket MAITTY-16 migrates them. Don't add new planned work to it. The current design is [`docs/DESIGN.md`](docs/DESIGN.md).
+- **Plan:** Plane, project `MAITTY` (see *Project-specific: planning (Plane)*). The shipped, declined and deferred feature lists are in [`docs/FEATURES.md`](docs/FEATURES.md). `docs/ROADMAP.md` is the legacy phase history, to be removed once the sessions editing it have landed; don't add new planned work to either. The current design is [`docs/DESIGN.md`](docs/DESIGN.md).
 - **Branches:** work lands on `dev` at https://github.com/CydoEntis/maitty; one
   commit per logical change, pushed after the gate passes.
 - **Install locally:** `cargo install --path apps/tui` (stop a running `maitty` first on

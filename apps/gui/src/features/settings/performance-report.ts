@@ -67,6 +67,10 @@ export function buildPerformanceReport(environment: PerformanceEnvironment, samp
       `  frames/s ${String(sample.framesPerSecond)}${sample.visible ? '' : ' (window hidden)'}; slow frames ${String(sample.slowFrames)}; worst frame ${String(sample.worstFrameMs)} ms`,
       `  terminal renderers: ${String(sample.renderers.webgl)} WebGL, ${String(sample.renderers.dom)} DOM`,
       `  output ${formatRate(sample.outputBytesPerSecond)} in ${String(sample.outputFramesPerSecond)} frames/s; ${String(sample.flushesPerSecond)} xterm writes/s, ${String(sample.writeLatencyMs)} ms each`,
+      `  output frames received since the window opened: ${String(sample.outputFramesTotal)}, of which over the local socket: ${String(sample.socketFramesTotal)}`,
+      sample.keyReplies.count === 0
+        ? '  key replies from the host: no keys typed yet'
+        : `  key replies from the host (last ${String(sample.keyReplies.count)} keys): median ${String(sample.keyReplies.medianMs)} ms, worst ${String(sample.keyReplies.worstMs)} ms`,
       `  animations running ${String(sample.animations)}; DOM nodes ${String(sample.domNodes)}`,
     )
   }
@@ -76,6 +80,7 @@ export function buildPerformanceReport(environment: PerformanceEnvironment, samp
   } else {
     lines.push(
       `Processes (cpu is percent of one core; ${String(processes.cores)} cores)`,
+      `terminal frames the host sent to the window since it started: ${String(processes.terminal_frames_sent)}`,
       'host',
       loadLine(processes.host),
       processes.webview.length === 0 ? 'web view: not a child process here' : 'web view',

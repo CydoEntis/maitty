@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -43,6 +43,7 @@ vi.mock('@/api/machines', async (importOriginal) => ({
   listenMachineError: () => Promise.resolve(() => undefined),
   listenMachineRemoved: () => Promise.resolve(() => undefined),
   listenMachineNotice: () => Promise.resolve(() => undefined),
+  listenAttention: () => Promise.resolve(() => undefined),
   listenMachineClipboard: () => Promise.resolve(() => undefined),
 }))
 
@@ -96,9 +97,9 @@ describe('a pane of another machine and the features that need its files', () =>
     daemon.suggestProjectFolders.mockResolvedValue([])
   })
 
-  it('says Inspect is local-only, from the shortcut and the disabled Repository button', async () => {
+  it('says Inspect is local-only, from the shortcut and the disabled Files button of the activity bar', async () => {
     const user = await openRemotePane()
-    const button = screen.getByRole('button', { name: 'Repository' })
+    const button = within(screen.getByRole('toolbar', { name: 'Panels' })).getByRole('button', { name: 'Files' })
     expect(button).toHaveAttribute('aria-disabled', 'true')
     expect(button).toHaveAttribute('title', REFUSAL('Inspect'))
     await user.click(button)

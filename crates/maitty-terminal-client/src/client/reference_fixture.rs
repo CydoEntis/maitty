@@ -45,7 +45,7 @@ pub(super) const STAGES: [Stage; 10] = [
 ];
 
 /// The reference's boxed frames: Floating, and Tiled (Floating with no gaps). Its Flat frames
-/// are of a look the app no longer has (ADR 0027).
+/// are of a look the app no longer has.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Layout {
     Floating,
@@ -148,6 +148,7 @@ pub(super) fn term(
         why_screen_at: 0,
         why_process_at: 0,
         quiet_since: None,
+        repeats: None,
         pid: 0,
         asleep: false,
         win32_input: false,
@@ -156,6 +157,7 @@ pub(super) fn term(
         checks: Vec::new(),
         asking: String::new(),
         interrupted: None,
+        ask: None,
         timeline: Vec::new(),
     }
 }
@@ -514,7 +516,7 @@ pub(super) fn world(stage: Stage) -> App {
 }
 
 /// The world drawn in `layout` at `w`×`h`, every cell with its colours. The reference has no mode
-/// bar (ADR 0024), which takes the bottom row: the world is drawn a row taller and that row, the
+/// bar, which takes the bottom row: the world is drawn a row taller and that row, the
 /// bar's and nothing else, is left out, so the screen above it is laid out as at `w`×`h`.
 pub(super) fn cells(
     app: &mut App,
@@ -594,7 +596,7 @@ fn without_new_tab_chip(row: &str) -> String {
     )
 }
 
-/// The sidebar as the reference frames draw it, from what the app draws (ADR 0014). `rows` is the
+/// The sidebar as the reference frames draw it, from what the app draws. `rows` is the
 /// whole screen; the sidebar's rectangle and its rows' places come from `app`. What the app changes
 /// on purpose, put back:
 /// - the foot sits a row higher in Flat and has a divider above it; its `new` and `menu` chips

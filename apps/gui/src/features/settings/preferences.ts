@@ -1,10 +1,11 @@
 import { isSpinnerStyle, type SpinnerStyle } from '@/lib/spinner-clock'
+import { prefersPlainDrawing } from '@/lib/gpu'
 import type { EffectStyle } from '@/lib/animation-level'
 import type { AnimationMode } from '@/lib/animation-auto'
 import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, isFontFamily, isFontWeight, type TerminalFontWeight } from '@/lib/terminalFont'
 import { readThemePreference, type ThemePreference } from '@/data/themePreference'
 import { THEMES, type ThemeMode } from '@/features/workspace/theme/themes'
-import { DEFAULT_CHAT_VIEWS, type ChatViewDefaults, type PaneView } from '@/features/workspace/model/chatView'
+import { DEFAULT_CHAT_VIEWS, type ChatAgent, type ChatViewDefaults, type PaneView } from '@/features/workspace/model/chatView'
 
 export type ToastPosition = 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right'
 export type CursorStyle = 'block' | 'bar' | 'underline'
@@ -16,15 +17,13 @@ export type IconSize = 'small' | 'medium' | 'large'
 /** Which working rows and tabs show the working effect: every one, only the one you are in, or none. */
 export type WorkingScope = 'all' | 'selected' | 'off'
 /** How a project's other sessions sit under its main row in the sidebar. */
-export type TrayStyle = 'names' | 'icons' | 'stacked'
+export type TrayStyle = 'tree' | 'names' | 'icons' | 'stacked'
 /** Which side of the window the sidebar sits on. */
 export type SidebarSide = 'left' | 'right'
 /** The window style: Flat is solid panels, Tiled is edge-to-edge panes with square corners, Glass is floating frosted cards with sweeps. */
 export type StyleChoice = 'flat' | 'tiled' | 'glass'
 /** App and folder icons keep their colours, or drop to neutral gray tiles. Independent of the style. */
 export type IconColor = 'color' | 'grayscale'
-/** Which session leads a project: the one you are in, or the one that most needs you. */
-export type LeadMode = 'focused' | 'attention'
 
 const SCROLLBACK_SHORT = 5000
 const SCROLLBACK_DEFAULT = 10000
@@ -58,7 +57,7 @@ export type SettingsPreferences = {
   terminalFontFamily: string
   terminalFontWeight: TerminalFontWeight
   terminalFontWeightBold: TerminalFontWeight
-  /** Where a new session starts. Empty: your home folder (ADR 0046). */
+  /** Where a new session starts. Empty: your home folder. */
   startFolder: string
   /** How the sidebar groups sessions: by git repository, or by the folder they are in. */
   groupBy: 'repo' | 'folder'
@@ -94,12 +93,13 @@ export type SettingsPreferences = {
   sidebarSide: SidebarSide
   iconSize: IconSize
   trayStyle: TrayStyle
-  leadMode: LeadMode
   style: StyleChoice
   iconColor: IconColor
   /** Which view a Claude or Codex session opens in. Terminal until you change it. */
   chatViewDefault: ChatViewDefaults
-  /** What a NEW agent session starts as: a chat session or a terminal session. Chat until you change it. */
+  /** The agent a new session starts. */
+  defaultAgent: ChatAgent
+  /** What a new session opens as: a chat with the default agent, or that agent typed into a new shell. */
   newSessionView: PaneView
   /** A new chat starts with the agent's full-access mode (no sandbox, no permission prompts). Off until you turn it on. */
   chatFullAccessDefault: boolean
@@ -107,6 +107,8 @@ export type SettingsPreferences = {
   statusBar: boolean
   /** A small readout of frames and process load over the window, for finding what lags. */
   perfOverlay: boolean
+  /** Draw terminals with xterm's DOM renderer instead of WebGL; for a web view that shows typed text late. */
+  terminalPlainDrawing: boolean
   /** The card shows behind a pane's text (Glass with WebGL); programs' own backgrounds show as boxes. */
   terminalSeeThrough: boolean
   /** Glass paints two faint tints of the theme over the window ground. Off is a flat ground; the software path is always flat. */
@@ -192,14 +194,15 @@ function defaults(): SettingsPreferences {
     sidebarWidth: SIDEBAR_WIDTH_DEFAULT,
     sidebarSide: 'left',
     iconSize: 'medium',
-    trayStyle: 'stacked',
-    leadMode: 'focused',
+    trayStyle: 'tree',
     iconColor: 'color',
     chatViewDefault: DEFAULT_CHAT_VIEWS,
+    defaultAgent: 'claude',
     newSessionView: 'chat',
     chatFullAccessDefault: false,
     statusBar: true,
     perfOverlay: false,
+    terminalPlainDrawing: prefersPlainDrawing(),
     terminalSeeThrough: false,
     backgroundGlow: false,
     cursorBlink: false,
@@ -271,13 +274,15 @@ export function readSettingsPreferences(): SettingsPreferences {
       sidebarWidth: clampNumber(preferences.sidebarWidth, SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX, fallback.sidebarWidth),
       sidebarSide: preferences.sidebarSide === 'left' || preferences.sidebarSide === 'right' ? preferences.sidebarSide : fallback.sidebarSide,
       iconSize: preferences.iconSize === 'small' || preferences.iconSize === 'medium' || preferences.iconSize === 'large' ? preferences.iconSize : fallback.iconSize,
-      trayStyle: preferences.trayStyle === 'names' || preferences.trayStyle === 'icons' || preferences.trayStyle === 'stacked' ? preferences.trayStyle : fallback.trayStyle,
+      trayStyle: preferences.trayStyle === 'tree' || preferences.trayStyle === 'names' || preferences.trayStyle === 'icons' || preferences.trayStyle === 'stacked' ? preferences.trayStyle : fallback.trayStyle,
       style: styleOf(preferences.style) ?? fallback.style,
       chatViewDefault: chatViewDefault(preferences.chatViewDefault, fallback.chatViewDefault),
+      defaultAgent: preferences.defaultAgent === 'claude' || preferences.defaultAgent === 'codex' ? preferences.defaultAgent : fallback.defaultAgent,
       newSessionView: paneView(preferences.newSessionView, fallback.newSessionView),
       chatFullAccessDefault: bool(preferences.chatFullAccessDefault, fallback.chatFullAccessDefault),
       statusBar: bool(preferences.statusBar, fallback.statusBar),
       perfOverlay: bool(preferences.perfOverlay, fallback.perfOverlay),
+      terminalPlainDrawing: bool(preferences.terminalPlainDrawing, fallback.terminalPlainDrawing),
       terminalSeeThrough: bool(preferences.terminalSeeThrough, fallback.terminalSeeThrough),
       backgroundGlow: bool(preferences.backgroundGlow, fallback.backgroundGlow),
       cursorBlink: bool(preferences.cursorBlink, fallback.cursorBlink),
@@ -285,7 +290,6 @@ export function readSettingsPreferences(): SettingsPreferences {
       restartWhenIdle: bool(preferences.restartWhenIdle, fallback.restartWhenIdle),
       monthlyBudget: validBudget(preferences.monthlyBudget),
       iconColor: preferences.iconColor === 'color' || preferences.iconColor === 'grayscale' ? preferences.iconColor : fallback.iconColor,
-      leadMode: preferences.leadMode === 'focused' || preferences.leadMode === 'attention' ? preferences.leadMode : fallback.leadMode,
     }
   } catch {
     console.warn('Ignoring invalid Maitty settings')

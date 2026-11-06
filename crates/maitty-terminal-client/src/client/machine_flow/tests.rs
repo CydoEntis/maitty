@@ -781,6 +781,11 @@ fn removing_forgets_the_machine_here_and_leaves_its_sessions_and_the_saved_layou
             "reconnect, then remove last"
         );
         h.app.menu_pick(remove);
+        let Mode::Confirm(ask) = &h.app.mode else {
+            panic!("Remove asks before it removes")
+        };
+        let act = ask.act.clone();
+        h.app.confirm_done(Some(act));
         h.pump().await;
 
         let kept = h.local_config().unwrap_or_default();
@@ -843,6 +848,35 @@ fn window_with_box() -> (Harness, MachineId) {
     h.app.on_machine_server(id, ServerMsg::State(state));
     assert_eq!(h.app.remotes[&id].snap.terms.len(), 1, "its pane is known");
     (h, id)
+}
+
+#[test]
+fn removing_a_machine_from_its_menu_asks_first_and_removes_only_on_yes() {
+    let (mut h, _id) = window_with_box();
+
+    h.app
+        .menu_act(crate::client::menu::Act::RemoveMachine("box".into()));
+
+    let Mode::Confirm(ask) = &h.app.mode else {
+        panic!("a menu's Remove asks before it removes");
+    };
+    assert_eq!(
+        (ask.title.as_str(), ask.what.as_str()),
+        ("Remove machine", "box")
+    );
+    assert!(ask.note.contains("sessions keep running"), "{}", ask.note);
+    assert_eq!(h.app.cfg.machines.len(), 1, "nothing is removed by asking");
+
+    let act = ask.act.clone();
+    h.app.confirm_done(None);
+    assert_eq!(
+        h.app.cfg.machines.len(),
+        1,
+        "No leaves the machine in the list"
+    );
+
+    h.app.confirm_done(Some(act));
+    assert!(h.app.cfg.machines.is_empty(), "Yes removes it");
 }
 
 #[test]
@@ -1039,8 +1073,22 @@ fn the_dialog_lists_your_machines_and_its_keys_update_and_remove_the_chosen_one(
         assert_ne!(new_id, old_id, "the old connection was let go");
         assert!(!h.app.remotes.contains_key(&old_id));
 
-        // `x` removes it from the config; with none left the keys are back in the input.
+        // `x` asks first; Esc keeps the machine where it was.
         h.type_text("x");
+        assert_eq!(h.view().step, MachineStep::Remove { name: "box".into() });
+        assert_eq!(h.app.cfg.machines.len(), 1, "asking removes nothing");
+        h.key(KeyCode::Esc);
+        assert_eq!(h.view().step, MachineStep::Browse);
+        assert_eq!(
+            h.view().machine_sel,
+            Some(0),
+            "the keys are still on the machine"
+        );
+        assert_eq!(h.app.cfg.machines.len(), 1, "Esc keeps it");
+
+        // Enter on the question removes it from the config; with none left the keys are back in the input.
+        h.type_text("x");
+        h.key(KeyCode::Enter);
         assert!(h.notice().starts_with("Removes box from this list."));
         assert_eq!(h.view().machine_sel, None);
         assert!(machine_entries(&h.local_config().unwrap()).is_empty());

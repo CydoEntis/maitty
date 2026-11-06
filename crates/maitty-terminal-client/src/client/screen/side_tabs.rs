@@ -1,5 +1,5 @@
 //! A session's tabs under its sidebar row, one line each with its own state, so a tab you are
-//! not on still says it works or needs you (ADR 0027). Both sidebars draw them.
+//! not on still says it works or needs you. Both sidebars draw them.
 
 use super::check;
 use super::glyphs::{self, Kind as State};

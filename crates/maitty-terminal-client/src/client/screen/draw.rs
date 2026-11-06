@@ -77,7 +77,7 @@ pub(in crate::client) fn framed(app: &App, area: Rect) -> Rect {
     }
 }
 
-/// The mode bar's row (ADR 0024): the bottom row inside the padding.
+/// The mode bar's row: the bottom row inside the padding.
 pub(in crate::client) fn mode_bar_row(app: &App, area: Rect) -> Rect {
     let r = padded(app, area);
     Rect {
@@ -154,7 +154,7 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
             },
         )
     };
-    // The tabs have a row of their own over the panes in both looks (ADR 0028): Hairline's
+    // The tabs have a row of their own over the panes in both looks: Hairline's
     // over a rule across the whole column, Floating's chips right over the boxes only, the side
     // sheet being a card of its own.
     let tab_rows = if look.hairline {
@@ -327,6 +327,19 @@ fn draw_grip(buf: &mut Buffer, x: u16, (top, bottom): (u16, u16), lit: bool, t: 
     }
 }
 
+/// The least a pane's share of the width may come to before the sessions fold into the narrow column by
+/// themselves (until a sidebar key is pressed): a full sidebar would leave the panes too little room to read.
+const PANE_COMFORT_COLS: u16 = 20;
+
+/// Whether a full sidebar leaves `panes` panes a readable share of a screen `width` wide. One pane always fits.
+fn sidebar_fits(width: u16, panes: usize) -> bool {
+    if panes < 2 {
+        return true;
+    }
+    let share = usize::from(width.saturating_sub(side_w(width))) / panes;
+    share >= usize::from(PANE_COMFORT_COLS)
+}
+
 /// The sessions are collapsed into the narrow column (`z`), not hidden (`Z`).
 pub(in crate::client) fn strip_on(app: &App) -> bool {
     !app.sidebar && !app.side_hidden
@@ -334,6 +347,16 @@ pub(in crate::client) fn strip_on(app: &App) -> bool {
 
 /// Draw the main screen; returns the pane area.
 pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Theme) -> Rect {
+    // The Hairline look draws nothing boxed, and the strip is a box, so it keeps the sidebar it was given.
+    if app.side_auto && !app.side_hidden && !Look::of(&app.cfg.ui).hairline {
+        let panes = app.screen.tabs.get(app.screen.tab).map_or(1, |tab| tab.layout.leaves().len());
+        let fits = sidebar_fits(area.width, panes);
+        if app.sidebar && !fits {
+            (app.sidebar, app.side_folded) = (false, true);
+        } else if app.side_folded && fits {
+            (app.sidebar, app.side_folded) = (true, false);
+        }
+    }
     // How far the sidebar and the sheet are in this frame (they slide when they change).
     popover::refresh_receipts(app);
     let on = app.motion_on();
@@ -447,7 +470,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
 }
 
 /// What a tab's ✕ does: close the tab, or a session's only tab's only pane. Panes have no ✕
-/// of their own (ADR 0030), so every tab has one. Each asks first.
+/// of their own, so every tab has one. Each asks first.
 pub(in crate::client) fn tab_close(app: &App, tab: usize, tabs: usize) -> Option<ScreenHit> {
     if tabs > 1 {
         return Some(ScreenHit::CloseTab(tab));
@@ -923,7 +946,7 @@ pub(in crate::client) fn armed(app: &App) -> bool {
     matches!(app.mode, Mode::Prefix { .. } | Mode::KeyMap(_))
 }
 
-/// Shortcut mode is held while a popup or view it opened has the keys (ADR 0021). Normal with
+/// Shortcut mode is held while a popup or view it opened has the keys. Normal with
 /// no view is the moment before it comes back, when keys still reach the pane.
 pub(in crate::client) fn shortcut_waits(app: &App) -> bool {
     app.shortcut_held && !armed(app) && (app.mode != Mode::Normal || app.view_has_keys())
@@ -1202,7 +1225,7 @@ fn grid_color(app: &App, term: ClientTerm, t: &Theme) -> Color {
 }
 
 /// A pane as a card, or Hairline's zone. A split pane's title is its number, state glyph (it
-/// opens why) and name; a lone pane has none (ADR 0030). The terminal sits inside, 3 columns
+/// opens why) and name; a lone pane has none. The terminal sits inside, 3 columns
 /// and 2 rows in.
 /// Unfocused cards fade; one that needs you keeps its amber.
 pub(in crate::client) fn draw_session(
@@ -1688,7 +1711,7 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     // Floating: framed like a pane (a box on the plain ground, round corners whatever
     // `ui.rounded` says, no fill of its own), its border and a kind chip on the top border in the
     // notice's colour. Hairline, which has no boxes: a solid block in `card2` (its `card` is the
-    // ground), its left edge a heavy rule (ADR 0028).
+    // ground), its left edge a heavy rule.
     let bg = if look.hairline { t.card2 } else { t.bg };
     let bar = Style::default().fg(ink(colour, bg)).bg(bg);
     // A box's outline keeps the ground behind it, as a modal's does: a border cell on the
@@ -1882,5 +1905,18 @@ mod tests {
             toast_rect(Rect::new(0, 0, 80, 24), 40, 4, 0.0),
             Some(Rect::new(38, 15, 40, 4))
         );
+    }
+}
+
+#[cfg(test)]
+mod sidebar_fit_tests {
+    use super::sidebar_fits;
+
+    #[test]
+    fn many_panes_in_a_small_window_fold_the_sessions_and_a_few_or_a_wide_window_do_not() {
+        assert!(!sidebar_fits(80, 6), "six panes in 80 columns would each get about 9");
+        assert!(sidebar_fits(80, 1), "one pane always fits");
+        assert!(sidebar_fits(80, 2), "two panes get 27 each");
+        assert!(sidebar_fits(200, 6), "a wide window keeps the sidebar");
     }
 }

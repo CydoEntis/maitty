@@ -3,7 +3,7 @@ import { listen } from '@tauri-apps/api/event'
 import { z } from 'zod'
 
 /**
- * Machines, as the window knows them (ADR 0048): a name, and a number the host gave it for this
+ * Machines, as the window knows them (ADR 0007): a name, and a number the host gave it for this
  * run. The number is what the host's commands take; the name is what the window shows and what a
  * saved layout keeps, because the number changes whenever the machine list does. This computer is
  * machine 0 and has no name in a session's id.
@@ -217,6 +217,21 @@ export function listenMachineNotice(onNotice: (text: string) => void): Promise<(
   return listen<unknown>('machine-notice', (event) => {
     const notice = MachineErrorSchema.safeParse(event.payload)
     if (notice.success) onNotice(notice.data.text)
+  })
+}
+
+const AttentionSchema = z.object({
+  machine: z.number().int().positive(),
+  term: z.number().int().nonnegative(),
+  status: z.enum(['blocked', 'done']),
+})
+export type Attention = z.infer<typeof AttentionSchema>
+
+/** Calls back each time a daemon decides a pane needs a person: it asks, or it finished. The daemon says it once per event. */
+export function listenAttention(onAttention: (attention: Attention) => void): Promise<() => void> {
+  return listen<unknown>('session-attention', (event) => {
+    const attention = AttentionSchema.safeParse(event.payload)
+    if (attention.success) onAttention(attention.data)
   })
 }
 

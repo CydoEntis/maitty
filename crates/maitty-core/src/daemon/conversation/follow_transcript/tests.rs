@@ -250,6 +250,132 @@ fn codex(timestamp: &str, kind: &str, mut payload: serde_json::Value) -> String 
 }
 
 #[test]
+fn a_claude_transcript_says_its_permission_mode_and_the_model_answering() {
+    let mut transcript = Transcript::new(Format::Claude, SESSION);
+    let feed = |transcript: &mut Transcript, value: serde_json::Value| {
+        transcript.feed(0, &line(value));
+    };
+
+    feed(&mut transcript, json!({ "type": "user", "uuid": "u1", "permissionMode": "auto", "isSidechain": false,
+        "timestamp": "2026-11-06T10:00:00.000Z", "message": { "role": "user", "content": "hi" } }));
+    assert_eq!(transcript.meta().mode.as_deref(), Some("auto"));
+    assert_eq!(transcript.meta().model, None, "no assistant message yet: no model said");
+
+    feed(&mut transcript, json!({ "type": "assistant", "uuid": "a1", "isSidechain": false,
+        "timestamp": "2026-11-06T10:00:01.000Z",
+        "message": { "role": "assistant", "model": "claude-sonnet-5-5", "content": [{ "type": "text", "text": "hello" }] } }));
+    assert_eq!(transcript.meta().model.as_deref(), Some("claude-sonnet-5-5"));
+
+    // A message Claude made itself names a placeholder, which is not a model, and a helper's lines are not this session's.
+    feed(&mut transcript, json!({ "type": "assistant", "uuid": "a2", "isSidechain": false,
+        "timestamp": "2026-11-06T10:00:02.000Z",
+        "message": { "role": "assistant", "model": "<synthetic>", "content": [{ "type": "text", "text": "x" }] } }));
+    feed(&mut transcript, json!({ "type": "user", "uuid": "u2", "permissionMode": "plan", "isSidechain": true,
+        "timestamp": "2026-11-06T10:00:03.000Z", "message": { "role": "user", "content": "helper" } }));
+    assert_eq!(transcript.meta().model.as_deref(), Some("claude-sonnet-5-5"));
+    assert_eq!(transcript.meta().mode.as_deref(), Some("auto"));
+
+    // The mode changes when the person changes it: the latest word stands.
+    feed(&mut transcript, json!({ "type": "user", "uuid": "u3", "permissionMode": "plan", "isSidechain": false,
+        "timestamp": "2026-11-06T10:01:00.000Z", "message": { "role": "user", "content": "again" } }));
+    assert_eq!(transcript.meta().mode.as_deref(), Some("plan"));
+}
+
+/// Codex 0.156 writes the person's words as a user-role response item, with no `user_message` event.
+#[test]
+fn a_codex_user_message_written_only_as_a_response_item_is_shown_and_its_injected_context_is_not() {
+    let at = "2026-11-06T11:17:51.000Z";
+    let lines = vec![
+        line(json!({ "timestamp": at, "type": "session_meta", "payload": { "id": SESSION } })),
+        codex(
+            at,
+            "response_item:message",
+            json!({ "role": "developer", "content": [{ "type": "input_text", "text": "<permissions instructions>" }] }),
+        ),
+        codex(
+            at,
+            "response_item:message",
+            json!({ "role": "user", "content": [
+                { "type": "input_text", "text": "# AGENTS.md instructions for /w" },
+                { "type": "input_text", "text": "<environment_context><cwd>/w</cwd></environment_context>" },
+            ] }),
+        ),
+        codex(at, "event_msg:task_started", json!({ "turn_id": "turn-a" })),
+        codex(
+            at,
+            "response_item:message",
+            json!({ "role": "user", "content": [{ "type": "input_text", "text": "Hey" }] }),
+        ),
+        codex(at, "event_msg:item_completed", json!({ "item": { "type": "UserMessage", "content": [] } })),
+        codex(
+            at,
+            "response_item:message",
+            json!({ "role": "assistant", "content": [{ "type": "output_text", "text": "Hey! What can I help you with?" }] }),
+        ),
+        codex(at, "event_msg:task_complete", json!({ "turn_id": "turn-a" })),
+        codex(at, "event_msg:task_started", json!({ "turn_id": "turn-b" })),
+        codex(
+            at,
+            "response_item:message",
+            json!({ "role": "user", "content": [{ "type": "input_text", "text": "Hey" }] }),
+        ),
+        codex(
+            at,
+            "response_item:message",
+            json!({ "role": "assistant", "content": [{ "type": "output_text", "text": "Again." }] }),
+        ),
+        codex(at, "event_msg:task_complete", json!({ "turn_id": "turn-b" })),
+    ];
+
+    let history = history_of(Format::Codex, &lines);
+
+    let said: Vec<_> = history
+        .entries
+        .iter()
+        .filter(|e| matches!(e.content, Content::Message { .. }))
+        .map(|e| {
+            let (role, text) = message(e);
+            (role.clone(), text.to_string())
+        })
+        .collect();
+    assert_eq!(
+        said,
+        [
+            (Role::User, "Hey".to_string()),
+            (Role::Assistant, "Hey! What can I help you with?".to_string()),
+            // The same words in a later turn are a new message, not a repeat.
+            (Role::User, "Hey".to_string()),
+            (Role::Assistant, "Again.".to_string()),
+        ]
+    );
+}
+
+/// An older Codex wrote both the event and the response item for one message: shown once.
+#[test]
+fn a_codex_user_message_written_as_an_event_and_a_response_item_is_shown_once() {
+    let at = "2026-11-04T10:00:00.000Z";
+    let lines = vec![
+        codex(at, "event_msg:task_started", json!({ "turn_id": "turn-a" })),
+        codex(at, "event_msg:user_message", json!({ "message": "list files" })),
+        codex(
+            at,
+            "response_item:message",
+            json!({ "role": "user", "content": [{ "type": "input_text", "text": "list files" }] }),
+        ),
+        codex(at, "event_msg:task_complete", json!({ "turn_id": "turn-a" })),
+    ];
+
+    let history = history_of(Format::Codex, &lines);
+
+    let users = history
+        .entries
+        .iter()
+        .filter(|e| matches!(&e.content, Content::Message { role, .. } if *role == Role::User))
+        .count();
+    assert_eq!(users, 1);
+}
+
+#[test]
 fn a_codex_turn_becomes_messages_commands_a_patch_and_a_finished_turn() {
     let at = "2026-11-04T10:00:00.000Z";
     let lines = vec![

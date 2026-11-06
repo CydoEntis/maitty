@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type WheelEvent } from 'react'
 import { ArrowDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { buildLayout, isAtBottom, visibleRange } from './windowing'
+import { buildLayout, followAfterScroll, visibleRange, type FollowState } from './windowing'
 
 type Props<T> = {
   items: readonly T[]
@@ -25,15 +25,18 @@ const DEFAULT_OVERSCAN = 6
  * A scrolling list that draws only the rows near the view, so a conversation of thousands of items
  * costs what a screenful costs. Rows are placed with `transform` (no layout work per scroll), their
  * heights are measured as they are drawn, and the list follows its newest row until the reader
- * scrolls away; then it offers a way back to it.
+ * moves up; then it offers a way back to it.
  */
 export function VirtualList<T>({ items, getKey, estimate, renderItem, label, overscan = DEFAULT_OVERSCAN, scrollTarget = null }: Props<T>) {
   const scroller = useRef<HTMLDivElement>(null)
-  const following = useRef(true)
+  // Whether the list follows its newest row, and where it was last seen (`followAfterScroll`).
+  const follow = useRef<FollowState>({ following: true, top: 0, total: 0 })
+  // Where the list itself last put the view, so the scroll event that write causes is not read as the reader's.
+  const wrote = useRef<number | null>(null)
   const [heights, setHeights] = useState<ReadonlyMap<string, number>>(new Map())
   const [scrollTop, setScrollTop] = useState(0)
   const [viewport, setViewport] = useState(FALLBACK_VIEWPORT_PX)
-  const [atBottom, setAtBottom] = useState(true)
+  const [following, setFollowing] = useState(true)
 
   const keys = useMemo(() => items.map(getKey), [items, getKey])
   const layout = useMemo(() => buildLayout(keys, heights, estimate), [keys, heights, estimate])
@@ -97,13 +100,24 @@ export function VirtualList<T>({ items, getKey, estimate, renderItem, label, ove
     return () => { watch.disconnect() }
   }, [])
 
-  // Keep the newest row in view while the reader is at the bottom.
+  // The list moves the view itself: remember what it wrote and where the view is.
+  const place = useCallback((element: HTMLDivElement, top: number, total: number) => {
+    element.scrollTop = top
+    wrote.current = element.scrollTop
+    follow.current = { ...follow.current, top: element.scrollTop, total }
+    setScrollTop(element.scrollTop)
+  }, [])
+
+  // Keep the newest row in view while the list follows it.
   useLayoutEffect(() => {
     const element = scroller.current
-    if (!element || !following.current) return
-    element.scrollTop = layout.total
-    setScrollTop(element.scrollTop)
-  }, [layout.total])
+    if (!element) return
+    if (!follow.current.following) {
+      follow.current = { ...follow.current, total: layout.total }
+      return
+    }
+    place(element, layout.total, layout.total)
+  }, [layout.total, place])
 
   // A link to a row (an approval's step) moves the view there and stops following the newest row.
   const handled = useRef<number | null>(null)
@@ -113,34 +127,40 @@ export function VirtualList<T>({ items, getKey, estimate, renderItem, label, ove
     const at = keys.indexOf(scrollTarget.key)
     if (at === -1) return
     handled.current = scrollTarget.nonce
-    following.current = false
-    element.scrollTop = layout.offsets[at] ?? 0
-    setScrollTop(element.scrollTop)
-    setAtBottom(false)
-  }, [scrollTarget, keys, layout])
+    follow.current = { ...follow.current, following: false }
+    place(element, layout.offsets[at] ?? 0, layout.total)
+    setFollowing(false)
+  }, [scrollTarget, keys, layout, place])
 
   const onScroll = () => {
     const element = scroller.current
     if (!element) return
     setScrollTop(element.scrollTop)
-    const bottom = isAtBottom(element.scrollTop, element.clientHeight || FALLBACK_VIEWPORT_PX, layout.total)
-    following.current = bottom
-    setAtBottom(bottom)
+    const causedByList = wrote.current === element.scrollTop
+    wrote.current = null
+    follow.current = followAfterScroll(follow.current, { scrollTop: element.scrollTop, viewport: element.clientHeight || FALLBACK_VIEWPORT_PX, total: layout.total }, causedByList)
+    setFollowing(follow.current.following)
+  }
+
+  // A wheel move up arrives before the scroll it causes, and a streaming commit in between would undo it.
+  const onWheel = (event: WheelEvent) => {
+    if (event.deltaY >= 0 || !follow.current.following) return
+    follow.current = { ...follow.current, following: false }
+    setFollowing(false)
   }
 
   const jumpToLatest = () => {
     const element = scroller.current
     if (!element) return
-    following.current = true
-    element.scrollTop = layout.total
-    setScrollTop(element.scrollTop)
-    setAtBottom(true)
+    follow.current = { ...follow.current, following: true }
+    place(element, layout.total, layout.total)
+    setFollowing(true)
   }
 
   const drawn = items.slice(range.start, range.end)
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      <div ref={scroller} role="region" aria-label={label} tabIndex={0} className="min-h-0 flex-1 overflow-y-auto overscroll-contain" onScroll={onScroll}>
+      <div ref={scroller} role="region" aria-label={label} tabIndex={0} className="min-h-0 flex-1 overflow-y-auto overscroll-contain" onScroll={onScroll} onWheel={onWheel}>
         <div className="relative" style={{ height: layout.total }}>
           {drawn.map((item, index) => {
             const at = range.start + index
@@ -153,7 +173,7 @@ export function VirtualList<T>({ items, getKey, estimate, renderItem, label, ove
           })}
         </div>
       </div>
-      {!atBottom && (
+      {!following && (
         <Button type="button" variant="outline" size="icon" className="absolute right-4 bottom-3 size-8 rounded-full bg-raise" aria-label="Jump to the latest message" onClick={jumpToLatest}>
           <ArrowDown className="size-4" aria-hidden="true" />
         </Button>
