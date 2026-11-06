@@ -84,7 +84,7 @@ export function noChatReason(availability: Exclude<ChatAvailability, { kind: 're
     case 'remote':
       return `Chat view is local-only in v1: this session runs on ${availability.machineName}, so its conversation is not read from this computer. The terminal works as usual.`
     case 'no-events':
-      return `Chat view is for agent sessions. The daemon has no conversation for this ${availability.agent} session, so there is no event stream to show. The terminal works as usual.`
+      return `Waiting for this ${availability.agent} session to report in. The chat fills in once its first prompt is sent. If it stays empty, ${availability.agent}'s status hooks may be from another version: run "maitty integrate ${availability.agent}". The terminal works as usual.`
   }
 }
 

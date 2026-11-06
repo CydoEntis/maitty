@@ -137,6 +137,8 @@ describe('the chat history', () => {
     daemon.failure = new Error('maittyd is not running')
     await settle(IDLE_POLL_MS)
     expect(screen.getByText(/Reconnecting to the daemon/)).toBeInTheDocument()
+    // The reason is on screen, so a window that cannot read its chat says why instead of only waiting.
+    expect(screen.getByText(/maittyd is not running/)).toBeInTheDocument()
     expect(screen.getByText('message 1')).toBeInTheDocument()
 
     daemon.failure = null
@@ -144,6 +146,7 @@ describe('the chat history', () => {
     await settle(IDLE_POLL_MS)
 
     expect(screen.queryByText(/Reconnecting to the daemon/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/maittyd is not running/)).not.toBeInTheDocument()
     expect(screen.getAllByText('message 0')).toHaveLength(1)
     expect(screen.getAllByText('sent while it was down')).toHaveLength(1)
     // The warning names the failure, never the conversation's text.

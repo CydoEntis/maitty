@@ -27,7 +27,7 @@ const DEFAULTS: SettingsPreferences = {
   effectWorking: true,
   effectNeedsYou: true,
   defaultAgent: 'claude', newSessionView: 'chat',
-  effectDone: true, effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all', animations: 'auto', density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, monthlyBudget: null, iconSize: 'medium', trayStyle: 'tree', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, chatFullAccessDefault: false, perfOverlay: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass',
+  effectDone: true, effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all', animations: 'auto', density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, monthlyBudget: null, iconSize: 'medium', trayStyle: 'tree', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, chatFullAccessDefault: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass',
 }
 
 describe('settings preferences', () => {
@@ -64,6 +64,14 @@ describe('settings preferences', () => {
     writeSettingsPreferences(saved)
 
     expect(readSettingsPreferences()).toEqual(saved)
+  })
+
+  it('keeps the choice to draw terminals without the GPU, and ignores a value that is not a switch', () => {
+    writeSettingsPreferences({ ...DEFAULTS, terminalPlainDrawing: true })
+    expect(readSettingsPreferences().terminalPlainDrawing).toBe(true)
+
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ terminalPlainDrawing: 'yes' }))
+    expect(readSettingsPreferences().terminalPlainDrawing).toBe(false)
   })
 
   it('falls back safely when saved preferences are malformed', () => {

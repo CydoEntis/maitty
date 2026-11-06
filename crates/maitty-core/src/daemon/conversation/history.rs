@@ -65,13 +65,15 @@ impl PartialEq for Track {
 impl Eq for Track {}
 
 /// A number no earlier history of this daemon, or of an earlier run of it, had. Never 0, which a
-/// cursor from a client that predates epochs carries.
+/// cursor from a client that predates epochs carries. It must stay below 2^53: the desktop app
+/// reads it as a web page number, which holds nothing larger exactly, and the cursor returns to
+/// the daemon as it came. Microseconds since 1970 are about 1.8e15, which fits until the year 2255.
 fn fresh_epoch() -> u64 {
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let start = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_or(1, |elapsed| elapsed.as_nanos() as u64 | 1);
+        .map_or(1, |elapsed| elapsed.as_micros() as u64 | 1);
     // The first call seeds from the clock, so a restarted daemon does not reuse the old numbers.
     let _ = NEXT.compare_exchange(0, start, Ordering::Relaxed, Ordering::Relaxed);
     NEXT.fetch_add(1, Ordering::Relaxed).max(1)

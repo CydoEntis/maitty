@@ -1,4 +1,5 @@
 import { isSpinnerStyle, type SpinnerStyle } from '@/lib/spinner-clock'
+import { prefersPlainDrawing } from '@/lib/gpu'
 import type { EffectStyle } from '@/lib/animation-level'
 import type { AnimationMode } from '@/lib/animation-auto'
 import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, isFontFamily, isFontWeight, type TerminalFontWeight } from '@/lib/terminalFont'
@@ -106,6 +107,8 @@ export type SettingsPreferences = {
   statusBar: boolean
   /** A small readout of frames and process load over the window, for finding what lags. */
   perfOverlay: boolean
+  /** Draw terminals with xterm's DOM renderer instead of WebGL; for a web view that shows typed text late. */
+  terminalPlainDrawing: boolean
   /** The card shows behind a pane's text (Glass with WebGL); programs' own backgrounds show as boxes. */
   terminalSeeThrough: boolean
   /** Glass paints two faint tints of the theme over the window ground. Off is a flat ground; the software path is always flat. */
@@ -199,6 +202,7 @@ function defaults(): SettingsPreferences {
     chatFullAccessDefault: false,
     statusBar: true,
     perfOverlay: false,
+    terminalPlainDrawing: prefersPlainDrawing(),
     terminalSeeThrough: false,
     backgroundGlow: false,
     cursorBlink: false,
@@ -278,6 +282,7 @@ export function readSettingsPreferences(): SettingsPreferences {
       chatFullAccessDefault: bool(preferences.chatFullAccessDefault, fallback.chatFullAccessDefault),
       statusBar: bool(preferences.statusBar, fallback.statusBar),
       perfOverlay: bool(preferences.perfOverlay, fallback.perfOverlay),
+      terminalPlainDrawing: bool(preferences.terminalPlainDrawing, fallback.terminalPlainDrawing),
       terminalSeeThrough: bool(preferences.terminalSeeThrough, fallback.terminalSeeThrough),
       backgroundGlow: bool(preferences.backgroundGlow, fallback.backgroundGlow),
       cursorBlink: bool(preferences.cursorBlink, fallback.cursorBlink),

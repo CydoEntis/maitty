@@ -50,6 +50,9 @@ function announcement(feed: ChatFeed, agent: ChatAgent): string {
 
 const rowKey = (row: ChatRow) => row.key
 
+const ERROR_WORDS_MAX = 140
+const truncateError = (reason: string) => (reason.length > ERROR_WORDS_MAX ? `${reason.slice(0, ERROR_WORDS_MAX)}…` : reason)
+
 type Props = {
   link: ChatLink
   agent: ChatAgent
@@ -69,7 +72,7 @@ type Props = {
 
 /** The chat of one session: its history as a virtualised list, the daemon's status, and the composer under it. */
 export function ChatSession({ link, agent, online, hasTerminal = true, root = null, onOpenDiff = null, typeInto, ask = null }: Props) {
-  const { feed, events, offline, refresh, recordAnswer } = useChatFeed({ conversation: link.conversation, generation: link.generation, provider: agent })
+  const { feed, events, offline, readError, refresh, recordAnswer } = useChatFeed({ conversation: link.conversation, generation: link.generation, provider: agent })
   const working = feed.status === 'Working'
   const rows = useMemo(() => buildRows(events, working, root), [events, working, root])
   const workingSince = working ? runningTurnStartedAt(feed) : null
@@ -114,7 +117,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-8 shrink-0 items-center gap-2 border-b border-line2 px-4 text-[12px] text-fg2">
         <span className="font-semibold text-fg">{feed.status === null ? 'Reading…' : STATUS_WORD[feed.status]}</span>
-        {offline && <span role="status" className="text-[var(--warn)]">Reconnecting to the daemon. What is shown may be out of date.</span>}
+        {offline && <span role="status" className="text-[var(--warn)]">Reconnecting to the daemon. What is shown may be out of date.{readError !== null && ` (${truncateError(readError)})`}</span>}
         {!offline && incomplete !== null && <span className="text-dim">History is incomplete: {incomplete}.</span>}
         {feed.error !== null && <span className="text-[var(--danger)]">{feed.error}</span>}
         {fullAccess && <span className="rounded border border-[var(--danger-line)] px-1.5 text-[11px] font-semibold text-[var(--danger)]" title="No sandbox and no approval prompts. End the session and start a new one to change this.">Full access</span>}
