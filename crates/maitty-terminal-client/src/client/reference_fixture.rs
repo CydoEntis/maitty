@@ -148,6 +148,7 @@ pub(super) fn term(
         why_screen_at: 0,
         why_process_at: 0,
         quiet_since: None,
+        repeats: None,
         pid: 0,
         asleep: false,
         win32_input: false,

@@ -6711,6 +6711,154 @@ fn going_quiet_rings_no_alert() {
     );
 }
 
+const CALL_A: &str = "00000000000000aa";
+const CALL_B: &str = "00000000000000bb";
+
+/// A working agent, as the first prompt of a turn leaves it.
+fn agent_at_work(d: &mut Daemon) -> TermId {
+    let id = pane(d);
+    d.hook(id, "claude".into(), HookStatus::Working, "UserPromptSubmit", &[]);
+    id
+}
+
+/// The agent's hook reporting a tool call starting, with that call's fingerprint.
+fn tool_start(d: &mut Daemon, id: TermId, call: &str) {
+    let mut msg = report(id, "", 0, HookStatus::Working, "PreToolUse");
+    if let ClientMsg::Hook { call: c, .. } = &mut msg {
+        *c = Some(call.into());
+    }
+    d.apply_hook(msg, Some(true), Vec::new());
+}
+
+fn repeating(d: &mut Daemon, id: TermId) -> Option<u32> {
+    d.update_statuses();
+    d.terms[&id].repeats
+}
+
+#[test]
+fn a_call_made_five_times_running_marks_the_agent_repeating_and_it_grows() {
+    let (mut d, _rx) = daemon();
+    let id = agent_at_work(&mut d);
+    let mut seen = Vec::new();
+    for _ in 0..6 {
+        tool_start(&mut d, id, CALL_A);
+        seen.push(repeating(&mut d, id));
+    }
+    let (status, wire) = (d.terms[&id].status, d.snapshot().terms[&id].repeats);
+    close(&mut d, &[id]);
+    assert_eq!(seen, [None, None, None, None, Some(5), Some(6)]);
+    assert_eq!(status, Status::Working, "repeating never changes the status");
+    assert_eq!(wire, Some(6), "clients see it");
+}
+
+#[test]
+fn a_different_call_clears_the_mark() {
+    let (mut d, _rx) = daemon();
+    let id = agent_at_work(&mut d);
+    for _ in 0..5 {
+        tool_start(&mut d, id, CALL_A);
+    }
+    assert_eq!(repeating(&mut d, id), Some(5));
+    tool_start(&mut d, id, CALL_B);
+    let after = repeating(&mut d, id);
+    close(&mut d, &[id]);
+    assert_eq!(after, None);
+}
+
+#[test]
+fn two_calls_taking_turns_for_eight_calls_mark_the_agent_repeating() {
+    let (mut d, _rx) = daemon();
+    let id = agent_at_work(&mut d);
+    let mut seen = Vec::new();
+    for turn in 0..8 {
+        tool_start(&mut d, id, if turn % 2 == 0 { CALL_A } else { CALL_B });
+        seen.push(repeating(&mut d, id));
+    }
+    close(&mut d, &[id]);
+    assert_eq!(seen[6], None, "seven calls taking turns is not yet");
+    assert_eq!(seen[7], Some(8));
+}
+
+#[test]
+fn a_new_prompt_clears_the_mark_and_the_count_starts_again() {
+    let (mut d, _rx) = daemon();
+    let id = agent_at_work(&mut d);
+    for _ in 0..5 {
+        tool_start(&mut d, id, CALL_A);
+    }
+    assert_eq!(repeating(&mut d, id), Some(5));
+    d.apply_hook(report(id, "", 0, HookStatus::Working, "UserPromptSubmit"), Some(true), Vec::new());
+    let cleared = repeating(&mut d, id);
+    for _ in 0..4 {
+        tool_start(&mut d, id, CALL_A);
+    }
+    let four_more = repeating(&mut d, id);
+    close(&mut d, &[id]);
+    assert_eq!((cleared, four_more), (None, None), "five in a row means in one turn");
+}
+
+#[test]
+fn leaving_working_clears_the_mark_and_what_led_to_it() {
+    let (mut d, _rx) = daemon();
+    let id = agent_at_work(&mut d);
+    for _ in 0..5 {
+        tool_start(&mut d, id, CALL_A);
+    }
+    assert_eq!(repeating(&mut d, id), Some(5));
+    d.hook(id, "claude".into(), HookStatus::Done, "Stop", &[]);
+    let done = repeating(&mut d, id);
+    d.hook(id, "claude".into(), HookStatus::Working, "PreToolUse", &[]);
+    tool_start(&mut d, id, CALL_A);
+    let back = repeating(&mut d, id);
+    close(&mut d, &[id]);
+    assert_eq!((done, back), (None, None), "the sixth call of an old turn is not the first of a new one");
+}
+
+#[test]
+fn only_a_tool_start_counts_and_a_report_without_a_call_leaves_the_run_alone() {
+    let (mut d, _rx) = daemon();
+    let id = agent_at_work(&mut d);
+    for _ in 0..3 {
+        tool_start(&mut d, id, CALL_A);
+    }
+    d.apply_hook(report(id, "", 0, HookStatus::Working, "PostToolUse"), Some(true), Vec::new());
+    for _ in 0..2 {
+        tool_start(&mut d, id, CALL_A);
+    }
+    let marked = repeating(&mut d, id);
+    close(&mut d, &[id]);
+    assert_eq!(marked, Some(5));
+}
+
+#[test]
+fn a_fingerprint_that_is_not_sixteen_hex_characters_is_dropped() {
+    let (mut d, _rx) = daemon();
+    let id = agent_at_work(&mut d);
+    for bad in ["zzzzzzzzzzzzzzzz", "00000000000000a", "00000000000000aaa", ""] {
+        for _ in 0..6 {
+            tool_start(&mut d, id, bad);
+        }
+    }
+    let marked = repeating(&mut d, id);
+    close(&mut d, &[id]);
+    assert_eq!(marked, None);
+}
+
+#[test]
+fn a_repeating_agent_is_shown_and_never_rung() {
+    let (mut d, _rx) = daemon();
+    let id = agent_at_work(&mut d);
+    d.terms.get_mut(&id).unwrap().alert_due = None;
+    for _ in 0..8 {
+        tool_start(&mut d, id, CALL_A);
+    }
+    d.update_statuses();
+    let (marked, due, alerted) = (d.terms[&id].repeats, d.terms[&id].alert_due, d.terms[&id].alerted);
+    close(&mut d, &[id]);
+    assert_eq!(marked, Some(8));
+    assert_eq!((due, alerted.map(|a| a.0)), (None, None));
+}
+
 #[test]
 fn with_output_off_nothing_is_saved_and_what_was_saved_goes() {
     let _one_at_a_time = SAVED_OUTPUT

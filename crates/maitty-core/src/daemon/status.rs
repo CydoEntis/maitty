@@ -111,6 +111,7 @@ impl Daemon {
             name,
             background,
             ask,
+            call,
             ..
         } = msg
         else {
@@ -144,6 +145,13 @@ impl Daemon {
                     t.subagent_hooks_seen = false;
                 }
                 t.session = Some(id.clone());
+            }
+            // A new prompt starts a new turn: five of one call means in one turn.
+            if matches!(event.as_str(), "UserPromptSubmit" | "BeforeAgent") {
+                t.call_run.clear();
+            }
+            if let Some(call) = call.as_deref().and_then(super::repeats::parse_call) {
+                t.call_run.push(call);
             }
             if let Some(sa) = subagent {
                 if agent == "codex" && matches!(event.as_str(), "SubagentStart" | "SubagentStop") {
@@ -1139,10 +1147,21 @@ impl Daemon {
             }
             self.set_status(id, s, &why);
         }
-        for t in self.terms.values_mut() {
+        for (id, t) in &mut self.terms {
             let quiet = quiet_since(t, term::unix_now());
             if quiet.is_some() != t.quiet_since.is_some() {
                 t.quiet_since = quiet;
+                self.dirty = true;
+            }
+            let repeats = repeat_count(t);
+            if repeats != t.repeats {
+                // The pane and the count only, never what the calls were.
+                tracing::info!(
+                    "pane {id} ({}): repeating {}",
+                    t.agent.as_deref().unwrap_or("agent"),
+                    repeats.map_or_else(|| "cleared".to_string(), |n| format!("{n}x"))
+                );
+                t.repeats = repeats;
                 self.dirty = true;
             }
         }
@@ -1164,6 +1183,16 @@ pub(super) fn queued_as_typed(text: &str, bracketed: bool) -> String {
     } else {
         text.replace(['\r', '\n'], " ")
     }
+}
+
+/// How many calls a working agent's repeat has reached. Only a working agent has a turn's
+/// calls: leaving work, or the agent going, forgets them.
+fn repeat_count(t: &mut term::Term) -> Option<u32> {
+    if t.status != Status::Working || t.agent.is_none() {
+        t.call_run.clear();
+        return None;
+    }
+    t.call_run.repeats()
 }
 
 /// When a working agent went silent, if it has been silent past `QUIET_AFTER`. Never while
