@@ -1335,6 +1335,7 @@ conversation continuity are planned in phases 34–37:
 - Claude Code's own fork list showing forks that are not running (seen 2026-10-28): the `main / fork …` block with token counts is drawn by Claude inside the pane; Maitty only shows it. Not fixed, the user's call. Not checked: whether the sidebar's `N agents` count can stay stuck after a missed subagent stop (`crates/maitty-core/src/daemon/status.rs`); look there first if it is reported.
 - Fleet work declined 2026-10-24 (the fleet was removed in phase 19): the phase 9 live fleet check, the designed team view, pause the fleet, stop all, cost per fleet.
 - Maitty writing Codex hook trust hashes itself — declined 2026-11-01: it would bypass Codex's own review of hook commands. You trust Maitty's hooks once in Codex's `/hooks`; a pane without trusted hooks keeps the screen guess.
+- A typed activity kind (reading, editing, running, searching) on a working session's row — declined 2026-11-06: the revised v18 handoff takes step details off rows (README D.6), and the terminal app's rows are one-line status (ADR 0014, the v8 cleanup; ADR 0021, one-line rows).
 
 ## Later
 
@@ -1345,6 +1346,7 @@ conversation continuity are planned in phases 34–37:
 - Checkpoint kinds beyond the first (`commits`, `approval`, `review`) and a project-defined checkpoint list — deferred 2026-10-22 until Phase 15's verify check has been used in real work. `approval` and `review` sit close to the workflow runner cut on 2026-10-18; each needs the user's explicit re-approval before any ticket.
 - Threads between agents, take over and hand back — deferred 2026-10-11: waiting on a design for it. Comes back when the prototype is in.
 - Live GUI-to-native-TUI Codex transfer and platform acceptance — deferred until the standalone Codex/Claude GUI is usable and packaged; see [ADR 0038](adr/0038-standalone-gui-first.md). Existing TUI support remains required.
+- Phase 5 follow-ups, deferred 2026-11-06: failed calls in a row as a second signal for the repeating mark (needs new hook events for Claude and Qwen, a look at what Codex reports, and Codex's hooks trusted again; comes back once repeats-only has been used in real work); the repeating mark in the desktop app (comes back when the desktop app shows quiet); a launch smoke for the rpm, AppImage, Arch and macOS packages (comes back once tickets 61 and 62 have run for a while).
 
 ## Decisions
 
