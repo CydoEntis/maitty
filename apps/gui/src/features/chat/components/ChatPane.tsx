@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { MessageSquare } from 'lucide-react'
-import { CHAT_AGENTS, NO_EVENTS_HINT_AFTER_MS, noChatReason, noEventsHint, type ChatAgent, type ChatAvailability } from '@/features/workspace/model/chatView'
+import { CHAT_AGENTS, noChatReason, type ChatAgent, type ChatAvailability } from '@/features/workspace/model/chatView'
 import { Button } from '@/components/ui/button'
 import type { PermissionAsk } from '@/data/preview'
 import { FULL_ACCESS_LABEL, FULL_ACCESS_WARNING } from '../fullAccess'
 import { ChatSession } from './ChatSession'
+import { StartingChat } from './StartingChat'
 
 export type ChatPaneProps = {
   availability: ChatAvailability
@@ -16,6 +17,8 @@ export type ChatPaneProps = {
   typeInto?: ((text: string) => Promise<void>) | undefined
   /** The permission prompt the agent's hook says the pane is stopped on. */
   ask?: PermissionAsk | null
+  /** The session's id, so what is typed before its agent is ready is kept for it. */
+  sessionId?: string
   /** What runs in the pane: the agent, or the shell's own name. */
   process: string
   /** The computer is connected to the daemon; starting an agent types into the shell. */
@@ -39,7 +42,11 @@ export function ChatPane(props: ChatPaneProps) {
   const { availability } = props
   return (
     <section className="mx-chat-layer mx-chat-in" aria-label="Chat">
-      {availability.kind === 'ready' ? <ChatSession key={availability.link.conversation} link={availability.link} agent={availability.agent} online={props.online} hasTerminal={props.hasTerminal ?? true} root={props.root ?? null} onOpenDiff={props.onOpenDiff ?? null} typeInto={props.typeInto} ask={props.ask ?? null} /> : <NoChat {...props} availability={availability} />}
+      {availability.kind === 'ready'
+        ? <ChatSession key={availability.link.conversation} link={availability.link} agent={availability.agent} online={props.online} hasTerminal={props.hasTerminal ?? true} root={props.root ?? null} onOpenDiff={props.onOpenDiff ?? null} typeInto={props.typeInto} ask={props.ask ?? null} {...(props.sessionId === undefined ? {} : { sessionId: props.sessionId })} />
+        : availability.kind === 'no-events' && props.sessionId !== undefined
+          ? <StartingChat agent={availability.agent} sessionId={props.sessionId} onBackToTerminal={props.onBackToTerminal} />
+          : <NoChat {...props} availability={availability} />}
     </section>
   )
 }
@@ -49,24 +56,15 @@ type NoChatProps = ChatPaneProps & { availability: Exclude<ChatAvailability, { k
 /** A session that has no chat: why, what runs here, and the way back (v18 B.3, shell tabs). */
 function NoChat({ availability, process, online, onBackToTerminal, onStartAgent, onStartChat, defaultFullAccess = false }: NoChatProps) {
   const [fullAccess, setFullAccess] = useState(defaultFullAccess)
-  // A session that has just started has no conversation yet; only one that stays empty is worth a hint.
-  const [late, setLate] = useState(false)
-  const starting = availability.kind === 'no-events'
-  useEffect(() => {
-    if (!starting) return undefined
-    const timer = window.setTimeout(() => { setLate(true) }, NO_EVENTS_HINT_AFTER_MS)
-    return () => { window.clearTimeout(timer) }
-  }, [starting])
   return (
     <div className="flex flex-1 items-center justify-center overflow-y-auto p-6">
       <div className="flex w-full max-w-[420px] flex-col items-center gap-3 text-center">
         <span className="flex size-10 items-center justify-center rounded-xl border border-line2 bg-raise text-dim" aria-hidden="true">
           <MessageSquare className="size-5" />
         </span>
-        <h2 className="m-0 text-[15px] font-semibold text-fg">{availability.kind === 'no-events' ? `Starting ${availability.agent}…` : 'Chat view is for agent sessions'}</h2>
+        <h2 className="m-0 text-[15px] font-semibold text-fg">Chat view is for agent sessions</h2>
         <p className="m-0 text-[13px] leading-relaxed text-fg2">{noChatReason(availability)}</p>
-        {availability.kind === 'no-events' && late && <p role="note" className="m-0 text-[12px] leading-relaxed text-[var(--warn)]">{noEventsHint(availability.agent)}</p>}
-        {availability.kind !== 'no-events' && <p className="m-0 font-mono text-[12px] text-dim">Running here: {process}</p>}
+        <p className="m-0 font-mono text-[12px] text-dim">Running here: {process}</p>
         <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
           {availability.kind === 'shell' && CHAT_AGENTS.map((agent) => (
             <Button key={agent} type="button" variant="outline" size="sm" disabled={!online} onClick={() => { onStartAgent(agent) }}>

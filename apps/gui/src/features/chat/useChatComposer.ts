@@ -61,6 +61,8 @@ export type ChatComposer = {
   disabledReason: string | null
   /** The last send that failed, or `null`. Cleared by the next send. */
   error: string | null
+  /** Sends this text now, as `submit` would send the draft; true when it went. For a message held while the agent started. */
+  sendText: (text: string) => Promise<boolean>
 }
 
 /**
@@ -177,5 +179,5 @@ export function useChatComposer({ link, feed, online, refresh, typeInto, answers
       .catch((failure: unknown) => { setError(errorMessage(failure, 'Could not interrupt the turn')) })
   }, [running, feed.cancelling, conversation, link.generation, refresh, typeText])
 
-  return { draft, setDraft, attachments, attach, readOnly, queue, removeQueued, submit, stop, running, sending, disabledReason, error }
+  return { draft, setDraft, attachments, attach, readOnly, queue, removeQueued, submit, stop, running, sending, disabledReason, error, sendText: send }
 }

@@ -1772,6 +1772,7 @@ export function DesktopApp() {
                                   onOpenDiff={showChanges}
                                   {...(chatOnly ? {} : { typeInto: (text: string) => sendTerminalInput({ id: session.id, generation: session.conversation.generation ?? 0 }, text) })}
                                   ask={session.ask}
+                                  sessionId={session.id}
                                   process={session.process}
                                   online={online}
                                   onBackToTerminal={() => { paneViews.choose(session.id, 'terminal') }}

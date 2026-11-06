@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { answerUserInput, approveRequest } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
@@ -11,10 +11,14 @@ import { useChatComposer } from '../useChatComposer'
 import type { ApprovalDecision } from '../chatEvents'
 import type { PermissionAsk } from '@/data/preview'
 import { ANSWER_KEYS, type AskChoice } from '../permissionAsk'
+import { releaseFirstMessage, takeCarriedDraft, useHeldFirstMessage } from '../firstMessage'
 import { Composer } from './Composer'
 import { ChatItem } from './ChatItems'
 import { PermissionAskCard } from './PermissionAskCard'
 import { VirtualList } from './VirtualList'
+
+/** The id of a held first message in the composer's list of waiting messages; real ones carry operation numbers. */
+const HELD_MESSAGE_ID = -1
 
 /** A row not yet measured is drawn as if it were this tall, which a message or a card usually is. */
 const ESTIMATED_ROW_PX = 72
@@ -68,10 +72,12 @@ type Props = {
   typeInto?: ((text: string) => Promise<void>) | undefined
   /** The permission prompt the agent's hook says its terminal is stopped on, for a chat that follows it. */
   ask?: PermissionAsk | null
+  /** The session's id: a message typed while its agent was starting is held under it, and goes out from here. */
+  sessionId?: string
 }
 
 /** The chat of one session: its history as a virtualised list, the daemon's status, and the composer under it. */
-export function ChatSession({ link, agent, online, hasTerminal = true, root = null, onOpenDiff = null, typeInto, ask = null }: Props) {
+export function ChatSession({ link, agent, online, hasTerminal = true, root = null, onOpenDiff = null, typeInto, ask = null, sessionId }: Props) {
   const { feed, events, offline, readError, refresh, recordAnswer } = useChatFeed({ conversation: link.conversation, generation: link.generation, provider: agent })
   const working = feed.status === 'Working'
   const rows = useMemo(() => buildRows(events, working, root), [events, working, root])
@@ -82,6 +88,21 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   const answersPrompt = stoppedOnPrompt && typeInto !== undefined && ask?.answerable === true
   const answerPrompt = typeInto === undefined ? undefined : (choice: AskChoice) => typeInto(ANSWER_KEYS[choice]).then(refresh)
   const composer = useChatComposer({ link, feed, online, refresh, answersPrompt, ...(typeInto ? { typeInto } : {}) })
+  const { sendText, setDraft: setComposerDraft, disabledReason, sending } = composer
+  // A draft typed while the agent started comes over once, and a message sent then goes out as soon as the agent takes input.
+  const held = useHeldFirstMessage(sessionId)
+  useEffect(() => {
+    if (sessionId === undefined) return
+    const carried = takeCarriedDraft(sessionId)
+    if (carried !== null) setComposerDraft(carried)
+  }, [sessionId, setComposerDraft])
+  useEffect(() => {
+    if (sessionId === undefined || held === null || disabledReason !== null || sending) return
+    releaseFirstMessage(sessionId)
+    void sendText(held).then((delivered) => { if (!delivered) setComposerDraft(held) })
+  }, [sessionId, held, disabledReason, sending, sendText, setComposerDraft])
+  // The held message shows as waiting until it goes, like a message queued behind a running turn.
+  const shownComposer = useMemo(() => (held === null ? composer : { ...composer, queue: [...composer.queue, { id: HELD_MESSAGE_ID, text: held }], removeQueued: (id: number) => { if (id === HELD_MESSAGE_ID) { if (sessionId !== undefined) releaseFirstMessage(sessionId) } else composer.removeQueued(id) } }), [composer, held, sessionId])
   // The daemon does not report how a session was started, so the window remembers the sessions it started with full access.
   const fullAccess = useMemo(() => readConversationPermissions()[String(link.conversation)] === 'full-access', [link.conversation])
 
@@ -133,7 +154,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
         <p className="m-0 flex flex-1 items-center justify-center px-6 text-center text-[13px] text-dim">Reading the conversation…</p>
       )}
       {stoppedOnPrompt && <PermissionAskCard agent={agent} ask={ask} online={online} answer={answerPrompt} />}
-      <Composer agent={agent} composer={composer} />
+      <Composer agent={agent} composer={shownComposer} />
     </div>
   )
 }

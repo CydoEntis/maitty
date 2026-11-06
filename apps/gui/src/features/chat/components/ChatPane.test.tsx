@@ -1,7 +1,6 @@
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { NO_EVENTS_HINT_AFTER_MS } from '@/features/workspace/model/chatView'
 import { ChatPane } from './ChatPane'
 
 vi.mock('./ChatSession', () => ({
@@ -64,26 +63,18 @@ describe('the chat of a ready session', () => {
   })
 })
 
-describe('the chat of a session that has just started', () => {
+describe('the chat of a session whose agent has not reported in yet', () => {
   const starting = { kind: 'no-events', agent: 'claude' } as const
 
-  it('says it is starting, in a few quiet words, and keeps the hooks hint back at first', () => {
-    render(<ChatPane availability={starting} process="claude" online onBackToTerminal={noop} onStartAgent={noop} />)
-    expect(screen.getByRole('heading', { name: 'Starting claude…' })).toBeInTheDocument()
-    expect(screen.queryByRole('note')).not.toBeInTheDocument()
-    expect(screen.queryByText(/maitty integrate/)).not.toBeInTheDocument()
+  it('is the chat with its message box at once, not a card that says there is nothing', () => {
+    render(<ChatPane availability={starting} process="claude" online sessionId="s1" onBackToTerminal={noop} onStartAgent={noop} />)
+    expect(screen.getByText('Starting claude…')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Message claude' })).toBeEnabled()
+    expect(screen.queryByText('Chat view is for agent sessions')).not.toBeInTheDocument()
   })
 
-  it('suggests the hooks only when it is still empty after a while', () => {
-    vi.useFakeTimers()
-    try {
-      render(<ChatPane availability={starting} process="claude" online onBackToTerminal={noop} onStartAgent={noop} />)
-      act(() => { vi.advanceTimersByTime(NO_EVENTS_HINT_AFTER_MS - 1) })
-      expect(screen.queryByRole('note')).not.toBeInTheDocument()
-      act(() => { vi.advanceTimersByTime(1) })
-      expect(screen.getByRole('note')).toHaveTextContent('maitty integrate claude')
-    } finally {
-      vi.useRealTimers()
-    }
+  it('keeps the old card for a pane that gave the chat no session to hold a message for', () => {
+    render(<ChatPane availability={starting} process="claude" online onBackToTerminal={noop} onStartAgent={noop} />)
+    expect(screen.getByText('Chat view is for agent sessions')).toBeInTheDocument()
   })
 })
