@@ -149,6 +149,10 @@ pub enum ClientMsg {
         /// `PermissionRequest`). The daemon cleans it and decides `answerable` itself.
         #[serde(default)]
         ask: Option<PermissionAsk>,
+        /// A fingerprint of the tool call that is starting (16 hex characters, from the tool's
+        /// name and input), so the daemon can tell the same call repeating. Never the call itself.
+        #[serde(default)]
+        call: Option<String>,
     },
     /// What an agent in a pane has used (from Claude's status line), with the pane's secret.
     Usage {
@@ -1558,6 +1562,7 @@ mod tests {
                     detail: "cargo test".into(),
                     answerable: true,
                 }),
+                call: Some("00112233445566ff".into()),
             },
             ClientMsg::Query(Query::List),
             ClientMsg::Query(Query::Read { term: 3 }),
@@ -2144,12 +2149,14 @@ mod tests {
             event,
             background,
             ask,
+            call,
             ..
         } = msg
         else {
             panic!("expected a hook report")
         };
         assert_eq!((event.as_str(), background.len(), ask), ("Stop", 0, None));
+        assert_eq!(call, None, "an older peer sends no call fingerprint");
 
         #[derive(Deserialize)]
         enum OldClientMsg {
@@ -2178,6 +2185,7 @@ mod tests {
             name: None,
             background: vec!["b1".into()],
             ask: None,
+            call: None,
         };
         let OldClientMsg::Hook {
             term,

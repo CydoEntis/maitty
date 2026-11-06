@@ -59,6 +59,7 @@ fn report(term: TermId, token: &str, pid: u32, status: HookStatus, event: &str) 
         name: None,
         background: Vec::new(),
         ask: None,
+        call: None,
     }
 }
 
@@ -2909,6 +2910,7 @@ fn an_agent_stays_in_the_folder_it_started_in() {
             name,
             background,
             ask: None,
+            call: None,
         },
         _ => unreachable!(),
     };

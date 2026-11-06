@@ -293,6 +293,12 @@ subcommand in `cli.rs` when scripts should reach it.
 
 ## Project-specific: agent turns and background shells
 
+A `Hook` report's `call` is a fingerprint of the tool call that is starting: 16 hex characters, the
+first 8 bytes of SHA-256 over the tool's name and its input. Only a tool-start event from the
+session's own agent carries one (`PreToolUse` for Claude, Qwen and Codex, `BeforeTool` for Gemini),
+and only when the payload has both the name and the input. Nothing else does, and the name and the
+input are never sent.
+
 Honor a trusted turn-finished hook even when its transcript lists a background
 shell or dev server. Background commands do not turn `Done` back into `Working`.
 A Claude Stop that lists running background work new since its last stop stays `Done`

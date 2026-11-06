@@ -2198,6 +2198,7 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
     } else {
         Vec::new()
     };
+    let call = call_fingerprint(&origin.agent, &event, payload_json).filter(|_| parent_facts);
     let ask = (event == "PermissionRequest" && parent_facts)
         .then(|| permission_ask(payload_json))
         .flatten();
@@ -2230,7 +2231,40 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
         name,
         background,
         ask,
+        call,
     }
+}
+
+/// The agents whose tool hooks pass the tool's name and input, and the event each fires as a tool starts.
+fn tool_start_event(agent: &str) -> Option<&'static str> {
+    match agent {
+        "claude" | "qwen" | "codex" => Some("PreToolUse"),
+        "gemini" => Some("BeforeTool"),
+        _ => None,
+    }
+}
+
+/// How many bytes of the digest make a call's fingerprint: enough that two different calls in a
+/// turn never share one, short enough to be a field and not a record.
+const CALL_FINGERPRINT_BYTES: usize = 8;
+
+/// A fingerprint of the tool call a hook reports starting, from the tool's name and its input; `None`
+/// for anything else. The input is needed, not just the name: without it two different calls of one
+/// tool would look the same. The tool's name and input are never sent on (they can hold secrets).
+fn call_fingerprint(agent: &str, event: &str, payload: &Value) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    if tool_start_event(agent) != Some(event) {
+        return None;
+    }
+    let tool = payload.get("tool_name")?.as_str()?;
+    let input = payload.get("tool_input")?;
+    let mut digest = Sha256::new();
+    digest.update(tool.as_bytes());
+    // A name and an input can never run into each other: a tool name holds no NUL.
+    digest.update([0]);
+    digest.update(serde_json::to_string(input).ok()?.as_bytes());
+    let hash = digest.finalize();
+    Some(hash.iter().take(CALL_FINGERPRINT_BYTES).map(|byte| format!("{byte:02x}")).collect())
 }
 
 /// The payload fields that name what a tool would run or touch, in the order they are tried. The
@@ -4362,6 +4396,76 @@ mod tests {
             panic!("expected hook")
         };
         assert_eq!(event, "question.asked");
+    }
+
+    /// The `call` a hook reports, for an agent and a payload.
+    fn call_of(agent: &str, payload: serde_json::Value) -> Option<String> {
+        let origin = super::HookOrigin {
+            term: 7,
+            agent: agent.into(),
+            pid: 10,
+            token: String::new(),
+        };
+        let ClientMsg::Hook { call, .. } = super::hook_message(origin, &payload, HookStatus::Working) else {
+            panic!("expected hook")
+        };
+        call
+    }
+
+    fn pre_tool(tool: &str, input: serde_json::Value) -> serde_json::Value {
+        json!({ "hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": input })
+    }
+
+    #[test]
+    fn a_tool_start_reports_a_fingerprint_of_the_call_and_never_the_call() {
+        let input = json!({ "command": "echo SECRET-VALUE-123" });
+        let call = call_of("claude", pre_tool("Bash", input)).expect("a fingerprint");
+
+        assert_eq!(call.len(), 16);
+        assert!(call.chars().all(|c| c.is_ascii_hexdigit()), "{call}");
+        assert!(!call.contains("SECRET") && !call.contains("echo"));
+    }
+
+    #[test]
+    fn the_same_call_has_the_same_fingerprint_and_another_call_has_another() {
+        let ls = call_of("claude", pre_tool("Bash", json!({ "command": "ls" })));
+
+        assert_eq!(ls, call_of("claude", pre_tool("Bash", json!({ "command": "ls" }))));
+        assert_ne!(ls, call_of("claude", pre_tool("Bash", json!({ "command": "ls -l" }))));
+        assert_ne!(ls, call_of("claude", pre_tool("Read", json!({ "command": "ls" }))));
+        // Key order in the agent's JSON does not make a different call.
+        assert_eq!(
+            call_of("claude", pre_tool("Edit", json!({ "a": 1, "b": 2 }))),
+            call_of("claude", pre_tool("Edit", json!({ "b": 2, "a": 1 })))
+        );
+    }
+
+    #[test]
+    fn claude_qwen_codex_and_gemini_tool_starts_report_one() {
+        let input = json!({ "command": "ls" });
+        for agent in ["claude", "qwen", "codex"] {
+            assert!(call_of(agent, pre_tool("Bash", input.clone())).is_some(), "{agent}");
+        }
+        let gemini = json!({ "hook_event_name": "BeforeTool", "tool_name": "run_shell_command", "tool_input": input });
+        assert!(call_of("gemini", gemini).is_some());
+    }
+
+    #[test]
+    fn nothing_else_reports_one() {
+        let input = json!({ "command": "ls" });
+        for event in ["PostToolUse", "UserPromptSubmit", "Stop", "Notification", "AfterTool"] {
+            let payload = json!({ "hook_event_name": event, "tool_name": "Bash", "tool_input": input });
+            assert_eq!(call_of("claude", payload), None, "{event}");
+        }
+        // Without the tool's input, two different calls would look the same, so there is no fingerprint.
+        assert_eq!(call_of("claude", json!({ "hook_event_name": "PreToolUse", "tool_name": "Bash" })), None);
+        assert_eq!(call_of("claude", json!({ "hook_event_name": "PreToolUse", "tool_input": input })), None);
+        // An agent that passes no payload, and one whose hooks are not tool hooks.
+        assert_eq!(call_of("kimi", json!({})), None);
+        assert_eq!(call_of("opencode", pre_tool("Bash", input.clone())), None);
+        // A call made inside a subagent is not the session's own.
+        let inner = json!({ "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": input, "agent_id": "agent-1" });
+        assert_eq!(call_of("claude", inner), None);
     }
 
     #[test]
