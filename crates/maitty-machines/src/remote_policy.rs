@@ -247,6 +247,35 @@ mod tests {
     }
 
     #[test]
+    fn the_question_another_machines_agent_asks_is_cleaned_before_it_is_shown() {
+        use maitty_shared::protocol::TermInfo;
+        let pane: TermInfo = serde_json::from_value(serde_json::json!({
+            "id": 3, "cols": 80, "rows": 24, "title": "", "process": "", "agent": "claude",
+            "status": "Blocked", "cwd": "/code", "summary": "", "name": "", "model": "", "said": "",
+            "branch": null, "linked": false, "subagents": [], "root": null, "top": null,
+            "since": 0, "asleep": false, "win32_input": false,
+            "ask": {
+                "tool": "Ba\u{1b}sh",
+                "detail": "rm -rf /\u{1b}]0;title\u{7}\nnext line\u{202e}",
+                "answerable": true,
+            },
+        }))
+        .expect("a pane");
+        let Some(ServerMsg::TermsChanged { changed, .. }) = vet(
+            &nothing_on(),
+            false,
+            "box",
+            ServerMsg::TermsChanged { changed: vec![pane], removed: Vec::new() },
+        ) else {
+            panic!("a pane delta is applied");
+        };
+        let ask = changed[0].ask.as_ref().expect("the question is kept");
+        assert_eq!(ask.tool, "Bash");
+        assert!(!ask.detail.contains(['\u{1b}', '\u{7}', '\n', '\u{202e}']), "{:?}", ask.detail);
+        assert!(ask.answerable, "the key is still that machine's daemon's to check");
+    }
+
+    #[test]
     fn a_folder_listing_nobody_asked_for_is_dropped() {
         use maitty_shared::protocol::FolderListing;
         let reply = ServerMsg::Reply(Reply::Folders {

@@ -110,6 +110,7 @@ impl Daemon {
             model,
             name,
             background,
+            ask,
             ..
         } = msg
         else {
@@ -254,6 +255,13 @@ impl Daemon {
                         self.dirty = true;
                     }
                 }
+            }
+            // The prompt a permission hook reports is the question, until the agent moves on. A
+            // subagent's news (`Same`) and the ping that follows the prompt leave it alone.
+            if event == "PermissionRequest" {
+                t.ask = ask.and_then(|ask| super::permission_ask::clean_ask(ask, &agent));
+            } else if status != HookStatus::Same && !event.starts_with("Notification:") {
+                t.ask = None;
             }
             if let Some(s) = said {
                 t.said = s;

@@ -4,7 +4,7 @@
 use super::Ev;
 use crate::config::Config;
 use crate::protocol::{
-    Interrupted, Status, SubagentActivity, Surface, TermId, TurnEvent, TurnKind,
+    Interrupted, PermissionAsk, Status, SubagentActivity, Surface, TermId, TurnEvent, TurnKind,
 };
 use anyhow::{Context, Result};
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
@@ -139,6 +139,9 @@ pub struct Term {
     pub timeline: VecDeque<TurnEvent>,
     /// An agent that was mid-turn when the daemon restarted; see `TermInfo::interrupted`.
     pub interrupted: Option<Interrupted>,
+    /// The permission prompt the agent's own hook said it is stopped on, cleaned; kept only
+    /// while the pane needs you (`Term::ask_now`). In memory only.
+    pub ask: Option<PermissionAsk>,
     /// The last hook it reported (its event) and the last thing the screen showed that
     /// changed its status, each with when (unix seconds): the evidence "why" lays out.
     pub last_hook: Option<(String, u64)>,
@@ -814,6 +817,7 @@ impl Term {
             status_why: String::new(),
             timeline: VecDeque::new(),
             interrupted: None,
+            ask: None,
             last_hook: None,
             last_hook_at: None,
             hooked_process_seen: false,

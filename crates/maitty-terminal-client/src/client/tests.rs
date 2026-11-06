@@ -152,6 +152,7 @@ mod design_tests {
             checks: Vec::new(),
             asking: String::new(),
             interrupted: None,
+            ask: None,
             timeline: Vec::new(),
         }
     }

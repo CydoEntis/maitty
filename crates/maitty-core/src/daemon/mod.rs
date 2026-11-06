@@ -19,6 +19,7 @@ mod helpers;
 mod identity;
 mod last_lines;
 mod pane_terminal;
+mod permission_ask;
 mod persist;
 mod pr;
 mod repo;
@@ -2715,6 +2716,7 @@ impl Daemon {
                             String::new()
                         },
                         interrupted: t.interrupted.clone().filter(|_| t.agent.is_none()),
+                        ask: t.ask_now(),
                         timeline: t.timeline.iter().cloned().collect(),
                         subagents: t.subagents.iter().map(|(_, k)| k.clone()).collect(),
                         started_by: t.started_by,

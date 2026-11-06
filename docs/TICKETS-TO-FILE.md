@@ -1189,3 +1189,19 @@ code that drew such a comment as a bubble in the chat is removed.
 
 The v18 prototype's project defaults (folder inside the project, a command to run, a preset) decide what
 "New session here" opens. Not built; the default agent is global.
+
+## Resume here: chat PTY completion
+
+Branch `feat/chat-pty-completion` (from `origin/feat/overnight-2`). Stopped by the owner mid-way; nothing here passed the full gate.
+
+**Done (commit `8a1fa7f7`, daemon side of gap 1):** `PermissionAsk { tool, detail, answerable }` on `ClientMsg::Hook.ask` and `TermInfo.ask` (both `#[serde(default)]`, no version bump); the CLI hook builds it from a `PermissionRequest` payload (tool name plus command/path/url only, never file content); the daemon cleans and masks it (`daemon/permission_ask.rs`), keeps it while the pane is Blocked, clears it on later events, and sets `answerable` only for `claude`. Tests passed in the devbox: new daemon, CLI, protocol and remote_policy tests (run by name, not the whole suite).
+
+**Half-done (uncommitted at the time of this note, TS side of gap 1):** `apps/gui/src/api/daemon.ts` (zod `ask`), `data/preview.ts`, `features/workspace/model/session.ts` (`ask`), new `features/chat/permissionAsk.ts` and `components/PermissionAskCard.tsx`. NOT yet wired: pass `session.ask` through `DesktopApp.tsx` -> `ChatPane` -> `ChatSession` (render the card when `feed.status === 'Blocked'`, answer with `typeInto(ANSWER_KEYS[choice])` only when `ask.answerable`), no frontend tests, `pnpm lint/test/build` never run, and the `ask` field on the Rust `TermInfo` literals in tests was fixed but the full `cargo test` has not been run.
+
+**Not started:** gap 2 (`Command::ChatInput { term, input: ChatInput }` with `Message`/`Answer`/`Interrupt`, daemon gate in a new `daemon/chat_input.rs`, human-only arm in `may_command`, `PROTOCOL_VERSION` 73 -> 74, `ids.rs` expected-bytes test, API_PATTERNS "Protocol 74" paragraph, hub `PaneCommand`, e2e test in `apps/gui/src-tauri/src/hub/tests/end_to_end.rs`). A draft of the daemon gate and its unit tests was written then set aside; it is not in the repo. Design: Message only when Idle/Done with a hook session; refuse control characters (an Esc could end the bracketed paste early); Answer only with a pending answerable ask, then clear the ask; Interrupt always. Gap 3 (attachments), the ADR 0056 consequences edit and the `docs/UI.md` edit are not started.
+
+**Real key sequences (Claude Code 2.1.319, interactive, a Write permission prompt, driven in a PTY):** `1` allows once (file written, PostToolUse fired); Enter allows (default is Yes); Esc refuses (no file, no PostToolUse); `y` and `n` do nothing; `3` did nothing for that prompt. Hook payload for the prompt: `PermissionRequest` carries `tool_name`, `tool_input`, `permission_suggestions`; the following `Notification` only says "Claude needs your permission" with `notification_type: permission_prompt`. Side finding: the existing notice card's "Allow once" types `y` (`DesktopApp.tsx` `answerSession(..., 'y')`), which does nothing in Claude; it should send `1`. Codex 0.166: could not reach an approval prompt in a PTY (not verified), so Codex shows the question and "Answer in the terminal".
+
+**Unverified:** Codex's `PermissionRequest` payload shape and answer keys; behaviour with Claude prompts that have different option counts (only `1` was tested, on a Write prompt); a real window end to end.
+
+**First command to resume:** `git fetch origin && git checkout feat/chat-pty-completion && git log --oneline -3`, then wire the card as above and run `distrobox enter devbox -- bash -c 'cd apps/gui && pnpm lint && pnpm test --run'`.
