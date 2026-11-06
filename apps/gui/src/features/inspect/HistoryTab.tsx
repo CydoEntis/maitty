@@ -54,7 +54,7 @@ export function HistoryTab({ term, agentWorking, onNotice }: Props) {
   }
 
   if (log.isPending || snapshots.isPending) return <p className="mx-inspect-note">Loading…</p>
-  if (log.isError) return <RepoError error={log.error} />
+  if (log.isError) return <RepoError error={log.error} tab="history" onRetry={() => { void log.refetch() }} retrying={log.isFetching} />
 
   return (
     <div className="mx-inspect-body">

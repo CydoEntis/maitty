@@ -38,7 +38,7 @@ export function FilesTab({ term, lookAt }: { term: number; lookAt: LookAt | null
           ))}
         </nav>
         {tree.isPending && <p className="mx-inspect-note">Loading…</p>}
-        {tree.isError && <RepoError error={tree.error} />}
+        {tree.isError && <RepoError error={tree.error} tab="files" onRetry={() => { void tree.refetch() }} retrying={tree.isFetching} />}
         <ul className="mx-inspect-list" aria-label="Files">
           {tree.data?.map((entry) => {
             const path = joinPath(folder, entry.name)

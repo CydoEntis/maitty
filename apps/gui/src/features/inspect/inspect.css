@@ -47,3 +47,22 @@ button.mx-inspect-row:hover, .mx-inspect-pick:hover { background: rgba(255, 255,
 .mx-inspect .is-remove { color: var(--danger); }
 
 .mx-app[data-side="right"] .mx-inspect { right: auto; left: var(--edge); animation-name: v14inspL; }
+
+/* A failed tab: one calm, centred screen. Amber is a wait, red needs you, the accent is not an error. */
+.mx-inspect-fail { --tone: var(--warn); display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 320px; margin: 0 auto; padding: 32px 28px; text-align: center; }
+.mx-inspect-fail.is-stop { --tone: var(--danger); }
+.mx-inspect-fail.is-calm { --tone: var(--accent); }
+.mx-inspect-fail-halo { display: grid; place-items: center; width: 76px; height: 76px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--tone) 15%, transparent), transparent 70%); }
+.mx-inspect-fail-tile { width: 52px; height: 52px; border-radius: 15px; background: color-mix(in srgb, var(--tone) 12%, var(--raise)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone) 33%, transparent), 0 8px 20px rgba(0, 0, 0, .25); }
+.mx-inspect-fail-tile.is-retrying { box-shadow: inset 0 0 0 2px var(--accent); animation: mx-inspect-fail-spin .9s linear infinite; }
+.mx-inspect-fail-title { margin: 0; font-size: 16px; font-weight: 600; color: var(--fg); text-wrap: balance; }
+.mx-inspect-fail-body { margin: 0; font-size: 13px; line-height: 1.6; color: var(--fg2); }
+.mx-inspect-fail-pill { display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 999px; font-size: 11.5px; color: var(--ok); background: color-mix(in srgb, var(--ok) 11%, transparent); }
+.mx-inspect-fail-auto { margin: 0; font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.mx-inspect-fail-more { font-size: 11.5px; color: var(--dim); }
+.mx-inspect-fail-more:hover { color: var(--fg2); }
+.mx-inspect-fail-details { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line2); background: var(--term); text-align: left; }
+.mx-inspect-fail-details pre { margin: 0; max-width: 100%; font-family: var(--mono); font-size: 11.5px; color: var(--fg2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.mx-inspect-fail-details button { font-size: 11.5px; color: var(--accent); }
+@keyframes mx-inspect-fail-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .mx-inspect-fail-tile.is-retrying { animation: none; } }

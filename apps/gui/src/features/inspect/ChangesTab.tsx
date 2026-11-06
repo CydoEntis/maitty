@@ -10,7 +10,7 @@ export function ChangesTab({ term }: { term: number }) {
   const query = useRepoQuery(term, ['diff'], () => repoDiff(term), CHANGES_REFRESH_MS)
   const [picked, setPicked] = useState<string | null>(null)
   if (query.isPending) return <p className="mx-inspect-note">Loading…</p>
-  if (query.isError) return <RepoError error={query.error} />
+  if (query.isError) return <RepoError error={query.error} tab="changes" onRetry={() => { void query.refetch() }} retrying={query.isFetching} />
   const { files } = query.data
   const selected = files.find((file) => file.path === picked) ?? files[0]
   if (!selected) return <p className="mx-inspect-note">No changes. The working tree matches the last commit.</p>

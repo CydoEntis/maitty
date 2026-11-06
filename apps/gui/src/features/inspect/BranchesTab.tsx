@@ -6,7 +6,7 @@ export function BranchesTab({ term }: { term: number }) {
   const status = useRepoQuery(term, ['status'], () => repoStatus(term))
   const branches = useRepoQuery(term, ['branches'], () => repoBranches(term))
   if (branches.isPending || status.isPending) return <p className="mx-inspect-note">Loading…</p>
-  if (branches.isError) return <RepoError error={branches.error} />
+  if (branches.isError) return <RepoError error={branches.error} tab="branches" onRetry={() => { void branches.refetch() }} retrying={branches.isFetching} />
   const here = status.data?.branch
   return (
     <div className="mx-inspect-body">
