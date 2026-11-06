@@ -5,6 +5,8 @@ import { FAKE_CONVERSATION, FakeDaemonHistory } from '../fakeDaemonHistory'
 import { forgetComposers } from '../composerStore'
 import { forgetFirstMessages } from '../firstMessage'
 import { ACTIVE_POLL_MS, forgetChatFeeds, IDLE_POLL_MS } from '../useChatFeed'
+import type { SessionStatus } from '@/features/workspace/model/session'
+import { TYPING_BUSY_NOTE } from '../useChatComposer'
 import { ChatSession } from './ChatSession'
 
 const fake = vi.hoisted(() => ({ current: null as null | { read: (cursor: never) => Promise<unknown> } }))
@@ -43,8 +45,9 @@ function open(status: 'Idle' | 'Working' = 'Idle') {
   fake.current = daemon
   const typeInto = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
   const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) })
-  render(<ChatSession link={LINK} agent="claude" online typeInto={typeInto} />)
-  return { daemon, typeInto, user }
+  const element = (paneStatus?: SessionStatus) => <ChatSession link={LINK} agent="claude" online typeInto={typeInto} {...(paneStatus === undefined ? {} : { paneStatus })} />
+  const view = render(element())
+  return { daemon, typeInto, user, setPaneStatus: (paneStatus: SessionStatus) => { view.rerender(element(paneStatus)) } }
 }
 
 describe('how the chat feels while it waits', () => {
@@ -102,6 +105,27 @@ describe('how the chat feels while it waits', () => {
     await settle(700)
 
     expect(screen.getByText('the answer')).toBeInTheDocument()
+  })
+
+  it('shows the agent working as soon as the pane says so, before the conversation has been read again', async () => {
+    const { daemon, setPaneStatus } = open('Idle')
+    await settle()
+    expect(screen.queryByText(/claude is thinking/)).not.toBeInTheDocument()
+
+    // A turn started in the terminal: the pane's status is live, the chat's own read is still "idle".
+    setPaneStatus('working')
+    await settle()
+
+    expect(screen.getByText(/claude is thinking/)).toBeInTheDocument()
+    expect(screen.getByText('Working')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Message claude' })).toHaveAttribute('placeholder', TYPING_BUSY_NOTE)
+
+    // And the chat read the conversation at that moment, not at its next idle poll.
+    daemon.upsert(daemon.message('t1', 'u3', 'User', 'asked in the terminal'))
+    setPaneStatus('idle')
+    await settle(700)
+    expect(screen.getByText('asked in the terminal')).toBeInTheDocument()
+    expect(screen.queryByText(/claude is thinking/)).not.toBeInTheDocument()
   })
 
   it('drops a message the history never showed, rather than leaving it standing as sent', async () => {

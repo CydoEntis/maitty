@@ -1773,6 +1773,7 @@ export function DesktopApp() {
                                   {...(chatOnly ? {} : { typeInto: (text: string) => sendTerminalInput({ id: session.id, generation: session.conversation.generation ?? 0 }, text) })}
                                   ask={session.ask}
                                   sessionId={session.id}
+                                  paneStatus={session.status}
                                   process={session.process}
                                   online={online}
                                   onBackToTerminal={() => { paneViews.choose(session.id, 'terminal') }}

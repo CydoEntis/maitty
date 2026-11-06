@@ -4,6 +4,7 @@ import { answerUserInput, approveRequest } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
 import { readConversationPermissions } from '@/data/conversationPermissions'
 import type { ChatAgent, ChatLink } from '@/features/workspace/model/chatView'
+import type { SessionStatus } from '@/features/workspace/model/session'
 import { hasPendingApproval, runningTurnStartedAt, type ChatFeed } from '../chatFeed'
 import { buildRows, type ChatRow } from '../chatRows'
 import { useChatFeed } from '../useChatFeed'
@@ -50,9 +51,9 @@ function incompleteReason(completeness: ChatFeed['completeness']): string | null
 }
 
 /** What a screen reader hears when the conversation changes state: one short line per change, never the text. */
-function announcement(feed: ChatFeed, agent: ChatAgent): string {
+function announcement(feed: ChatFeed, agent: ChatAgent, working: boolean): string {
   if (hasPendingApproval(feed) || feed.status === 'Blocked') return `${agent} is waiting for your answer`
-  if (feed.status === 'Working') return `${agent} is working`
+  if (working) return `${agent} is working`
   if (feed.status === 'Done') return `${agent} finished`
   return ''
 }
@@ -77,22 +78,28 @@ type Props = {
   typeInto?: ((text: string) => Promise<void>) | undefined
   /** The permission prompt the agent's hook says its terminal is stopped on, for a chat that follows it. */
   ask?: PermissionAsk | null
+  /** The pane's own status, live in the sidebar: the chat shows working at once and reads then, instead of at its next poll. */
+  paneStatus?: SessionStatus
   /** The session's id: a message typed while its agent was starting is held under it, and goes out from here. */
   sessionId?: string
 }
 
 /** The chat of one session: its history as a virtualised list, the daemon's status, and the composer under it. */
-export function ChatSession({ link, agent, online, hasTerminal = true, root = null, onOpenDiff = null, typeInto, ask = null, sessionId }: Props) {
+export function ChatSession({ link, agent, online, hasTerminal = true, root = null, onOpenDiff = null, typeInto, ask = null, sessionId, paneStatus }: Props) {
   const { feed, events, offline, readError, refresh, recordAnswer } = useChatFeed({ conversation: link.conversation, generation: link.generation, provider: agent })
-  const working = feed.status === 'Working'
+  const paneWorking = paneStatus === 'working'
+  const working = feed.status === 'Working' || paneWorking
   const workingSince = working ? runningTurnStartedAt(feed) : null
   const incomplete = incompleteReason(feed.completeness)
   const wasWorking = useRef(false)
   useEffect(() => {
+    const changed = wasWorking.current !== working
     const ended = wasWorking.current && !working
     wasWorking.current = working
-    if (!ended) return undefined
+    if (!changed) return undefined
+    // Read as the turn starts (its first words) and as it ends (its last), not at the next poll.
     refresh()
+    if (!ended) return undefined
     const timer = window.setTimeout(refresh, END_OF_TURN_READ_MS)
     return () => { window.clearTimeout(timer) }
   }, [working, refresh])
@@ -100,7 +107,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   const stoppedOnPrompt = link.readOnly === true && feed.status === 'Blocked'
   const answersPrompt = stoppedOnPrompt && typeInto !== undefined && ask?.answerable === true
   const answerPrompt = typeInto === undefined ? undefined : (choice: AskChoice) => typeInto(ANSWER_KEYS[choice]).then(refresh)
-  const composer = useChatComposer({ link, feed, online, refresh, answersPrompt, ...(typeInto ? { typeInto } : {}) })
+  const composer = useChatComposer({ link, feed, online, refresh, answersPrompt, paneWorking, ...(typeInto ? { typeInto } : {}) })
   const { sendText, setDraft: setComposerDraft, disabledReason, sending, echo } = composer
   // A message just sent shows at once, with the agent taken to be at work on it, until the history has it.
   const echoText = echo !== null && countUserMessages(events, echo.text) <= echo.baseline ? echo.text : null
@@ -154,7 +161,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-8 shrink-0 items-center gap-2 border-b border-line2 px-4 text-[12px] text-fg2">
-        <span className="font-semibold text-fg">{feed.status === null ? 'Reading…' : STATUS_WORD[feed.status]}</span>
+        <span className="font-semibold text-fg">{working ? STATUS_WORD.Working : feed.status === null ? 'Reading…' : STATUS_WORD[feed.status]}</span>
         {offline && <span role="status" className="text-[var(--warn)]">Reconnecting to the daemon. What is shown may be out of date.{readError !== null && ` (${truncateError(readError)})`}</span>}
         {!offline && incomplete !== null && <span className="text-dim">History is incomplete: {incomplete}.</span>}
         {feed.error !== null && <span className="text-[var(--danger)]">{feed.error}</span>}
@@ -162,7 +169,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
         {!hasTerminal && <span className="ml-auto text-dim">Chat session &middot; no terminal</span>}
       </div>
       {/* Politely announces a change of state only; the log itself is not a live region, so streaming text never floods a screen reader. */}
-      <div role="status" aria-live="polite" className="sr-only">{announcement(feed, agent)}</div>
+      <div role="status" aria-live="polite" className="sr-only">{announcement(feed, agent, working)}</div>
       {feed.loaded && rows.length === 0 ? (
         <p className="m-0 flex flex-1 items-center justify-center px-6 text-center text-[13px] text-dim">{hasTerminal ? 'No messages yet. Send one below, or type in the terminal.' : 'No messages yet. Send one below.'}</p>
       ) : feed.loaded ? (

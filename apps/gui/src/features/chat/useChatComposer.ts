@@ -49,6 +49,8 @@ type Input = {
   typeInto?: (text: string) => Promise<void>
   /** The chat shows the prompt the agent is stopped on with buttons that answer it, so the composer points there. */
   answersPrompt?: boolean
+  /** The pane itself says its agent is working, which is known before the conversation's next read says so. */
+  paneWorking?: boolean
 }
 
 export type ChatComposer = {
@@ -86,7 +88,7 @@ export type ChatComposer = {
  * not this window stays open; what it holds comes back with every read (`feed.queued`) and is shown
  * until it is sent. While an approval waits, nothing is sent.
  */
-export function useChatComposer({ link, feed, online, refresh, typeInto, answersPrompt = false }: Input): ChatComposer {
+export function useChatComposer({ link, feed, online, refresh, typeInto, answersPrompt = false, paneWorking = false }: Input): ChatComposer {
   const { draft, attachments } = useComposerState(link.conversation)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -99,13 +101,14 @@ export function useChatComposer({ link, feed, online, refresh, typeInto, answers
   const typeText = readOnly ? typeInto : undefined
   const typing = typeText !== undefined
   // Without that it cannot interrupt or queue, so it never offers Stop or "queue" wording.
-  const running = feed.status === 'Working' && (!readOnly || typing)
+  const busy = feed.status === 'Working' || paneWorking
+  const running = busy && (!readOnly || typing)
   const awaitingAnswer = hasPendingApproval(feed)
   // Typed text answers a prompt the agent is showing, and the chat cannot tell the difference, so
   // it types only while the agent is known to be waiting for a message.
   const waitingForMessage = feed.status === 'Idle' || feed.status === 'Done'
   const disabledReason = typing
-    ? (!online ? 'The daemon is offline' : feed.status === 'Working' ? TYPING_BUSY_NOTE : awaitingAnswer || feed.status === 'Blocked' ? (answersPrompt ? PENDING_APPROVAL_NOTE : TYPING_ASKING_NOTE) :!waitingForMessage ? 'Waiting for the agent to be ready' : null)
+    ? (!online ? 'The daemon is offline' : busy ? TYPING_BUSY_NOTE : awaitingAnswer || feed.status === 'Blocked' ? (answersPrompt ? PENDING_APPROVAL_NOTE : TYPING_ASKING_NOTE) :!waitingForMessage ? 'Waiting for the agent to be ready' : null)
     : readOnly ? READ_ONLY_NOTE : !online ? 'The daemon is offline' : awaitingAnswer ? PENDING_APPROVAL_NOTE : null
   const conversation = link.conversation
   const attach = useAttachmentIntake({ conversation, blocked: disabledReason, machine: link.machine ?? null })
