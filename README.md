@@ -17,7 +17,7 @@ natively on Windows, macOS and Linux.
 
 - **Status you can trust.** Every session shows whether its agent is working, needs you,
   has finished or is idle, from the agent's own hooks where available and from its process
-  and screen otherwise. An agent that has gone silent for ten minutes is flagged as quiet.
+  and screen otherwise. An agent that has gone silent for ten minutes is flagged as quiet, and one calling the same tool over and over as repeating.
 - **One line per session.** Each row shows the agent's state, which agent it is and the
   lines it has changed but not committed (`+40 −3`). Click the numbers to see the diff.
 - **Nothing is lost.** A background service owns every session, so closing the window

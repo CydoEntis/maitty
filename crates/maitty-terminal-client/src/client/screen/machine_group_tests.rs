@@ -228,6 +228,7 @@ fn a_hostile_machine_renders_without_a_control_character_and_a_wild_colour_does_
         t.since = u64::MAX;
         t.resume_at = Some(u64::MAX);
         t.quiet_since = Some(u64::MAX);
+        t.repeats = Some(u32::MAX);
         t.usage.context = Some(1e30);
         t.cols = u16::MAX;
         t.rows = 0;
@@ -275,6 +276,7 @@ fn a_snapshot_with_wild_numbers_draws_without_a_panic_even_when_it_was_never_cle
         t.mem = u64::MAX;
         t.pid = u32::MAX;
         t.usage.context = Some(f32::MAX);
+        t.repeats = Some(u32::MAX);
     }
     let mut app = two_machines(ConnectionState::Connected);
     app.remotes.get_mut(&THERE).unwrap().snap = snap;
