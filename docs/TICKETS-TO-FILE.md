@@ -1167,21 +1167,21 @@ recovery-required.
 
 **What**
 - `KillServer` stops every conversation's process tree before the daemon exits.
-- On Linux a provider is started so that it is killed when the daemon dies, the way a check is
-  (`PR_SET_PDEATHSIG` in `daemon/check.rs`).
+- Not the parent-death signal a check uses (`PR_SET_PDEATHSIG` in `daemon/check.rs`): it is tied to
+  the thread that started the process, and a provider is started from a `spawn_blocking` thread
+  (`OwnedChild::spawn`) that ends after about ten idle seconds, which would kill a healthy
+  provider. A provider that outlives a daemon that died is ticket 54's.
 
 **Acceptance**
 - A new test fails before the fix and passes after it, unedited: a stand-in daemon (the test binary
   re-run, as `a_check_dies_with_the_daemon_that_started_it` does in `daemon/check.rs`) is sent
   `KillServer`, and the fake provider and its child are gone within 5 s.
-- A Linux test of the same shape: the stand-in daemon is killed with SIGKILL and the provider's own
-  pid is gone within 10 s.
 - `docs/SECURITY.md` says what happens to a provider when the daemon goes, per platform, beside its
   lines for checks ("If the daemon dies, a check dies with it").
 - The gate passes.
 
-**Not this ticket:** a provider's child processes after a SIGKILL, and macOS after a SIGKILL
-(ticket 54). Windows is already covered.
+**Not this ticket:** a daemon that dies without `KillServer` (SIGKILL, a crash) on Linux and macOS:
+ticket 54. Windows is already covered by its job object.
 
 ## 54. A new daemon stops the provider processes an old one left (bug, `daemon`)
 
