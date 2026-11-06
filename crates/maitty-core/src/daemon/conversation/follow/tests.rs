@@ -474,6 +474,32 @@ fn a_claude_hint_that_is_not_this_sessions_file_stays_an_error() {
 }
 
 #[tokio::test]
+async fn the_conversation_of_a_followed_claude_pane_reports_its_mode_and_model() {
+    let mut world = World::new();
+    let prompt = json!({ "type": "user", "uuid": "u-1", "isSidechain": false, "permissionMode": "acceptEdits",
+        "timestamp": "2026-11-06T10:00:00.000Z", "message": { "role": "user", "content": "go" } });
+    let reply = json!({ "type": "assistant", "uuid": "a-1", "isSidechain": false,
+        "timestamp": "2026-11-06T10:00:01.000Z",
+        "message": { "role": "assistant", "model": "claude-opus-5-1", "content": [{ "type": "text", "text": "ok" }] } });
+    std::fs::write(&world.path, format!("{prompt}\n{reply}\n")).unwrap();
+
+    world.follow().await;
+
+    let meta = world.read_all(61).unwrap().meta.expect("the file said its setup");
+    assert_eq!(meta.mode.as_deref(), Some("acceptEdits"));
+    assert_eq!(meta.model.as_deref(), Some("claude-opus-5-1"));
+}
+
+#[tokio::test]
+async fn a_followed_pane_whose_file_says_nothing_of_its_setup_reports_none() {
+    let mut world = World::new();
+
+    world.follow().await;
+
+    assert!(world.read_all(61).unwrap().meta.is_none());
+}
+
+#[tokio::test]
 async fn commands_that_would_drive_the_agent_are_refused_with_a_reason() {
     let mut world = World::new();
     world.follow().await;

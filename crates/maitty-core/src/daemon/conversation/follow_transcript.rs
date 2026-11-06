@@ -53,10 +53,17 @@ pub(in crate::daemon) struct Transcript {
     /// The last user message of the open turn, so one Codex writes twice (as an event and as a response
     /// item) is shown once. A new turn, and any agent message, clears it: the same words later are new.
     last_user_text: Option<String>,
+    /// The mode and model the file last said (Claude: `permissionMode` on a line, the model of an assistant message).
+    meta: crate::conversation::SessionMeta,
     tools: HashMap<String, PendingTool>,
 }
 
 impl Transcript {
+    /// What the file has said about the agent's mode and model so far.
+    pub fn meta(&self) -> &crate::conversation::SessionMeta {
+        &self.meta
+    }
+
     pub fn new(format: Format, thread: &str) -> Self {
         Self {
             format,
@@ -65,6 +72,7 @@ impl Transcript {
             open_turn: None,
             explicit_turn: false,
             last_user_text: None,
+            meta: crate::conversation::SessionMeta::default(),
             tools: HashMap::new(),
         }
     }
@@ -163,6 +171,7 @@ impl Transcript {
         if line.get("isSidechain").and_then(Value::as_bool) == Some(true) {
             return;
         }
+        self.note_claude_setup(line);
         let at_ms = line
             .get("timestamp")
             .and_then(Value::as_str)
@@ -204,6 +213,22 @@ impl Transcript {
                 self.close_turn("completed", at_ms, notes);
             }
             _ => {}
+        }
+    }
+
+    /// The permission mode and the model, when this line says them. A placeholder model name (Claude
+    /// writes `<synthetic>` for a message it made itself) is not a model.
+    fn note_claude_setup(&mut self, line: &Value) {
+        if let Some(mode) = line.get("permissionMode").and_then(Value::as_str) {
+            self.meta.mode = Some(mode.to_owned());
+        }
+        if line.get("type").and_then(Value::as_str) == Some("assistant")
+            && let Some(model) = line
+                .pointer("/message/model")
+                .and_then(Value::as_str)
+                .filter(|model| !model.starts_with('<'))
+        {
+            self.meta.model = Some(model.to_owned());
         }
     }
 

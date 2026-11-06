@@ -47,6 +47,8 @@ pub(in crate::daemon) struct Followed {
     last_read: Option<Instant>,
     /// Why the file could not be read, in words that carry no file content.
     error: Option<String>,
+    /// The mode and model the file last said.
+    meta: crate::conversation::SessionMeta,
 }
 
 impl Followed {
@@ -74,6 +76,7 @@ impl Followed {
             in_flight: false,
             last_read: None,
             error: None,
+            meta: crate::conversation::SessionMeta::default(),
         }
     }
 
@@ -351,6 +354,7 @@ impl Daemon {
                     follower.history = history;
                 }
                 follower.offset = Some(chunk.offset);
+                follower.meta = chunk.parser.meta().clone();
                 follower.parser = Some(chunk.parser);
                 apply_notes(follower, chunk.notes, chunk.start_missing);
             }
@@ -398,6 +402,7 @@ impl Daemon {
                     answered_approvals: Vec::new(),
                     cancelling: false,
                     queued: Vec::new(),
+                    meta: (follower.meta != crate::conversation::SessionMeta::default()).then(|| follower.meta.clone()),
                 },
             )),
         );

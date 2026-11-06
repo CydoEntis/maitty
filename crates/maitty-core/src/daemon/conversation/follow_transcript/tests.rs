@@ -249,6 +249,38 @@ fn codex(timestamp: &str, kind: &str, mut payload: serde_json::Value) -> String 
     line(json!({ "timestamp": timestamp, "type": outer, "payload": payload }))
 }
 
+#[test]
+fn a_claude_transcript_says_its_permission_mode_and_the_model_answering() {
+    let mut transcript = Transcript::new(Format::Claude, SESSION);
+    let feed = |transcript: &mut Transcript, value: serde_json::Value| {
+        transcript.feed(0, &line(value));
+    };
+
+    feed(&mut transcript, json!({ "type": "user", "uuid": "u1", "permissionMode": "auto", "isSidechain": false,
+        "timestamp": "2026-11-06T10:00:00.000Z", "message": { "role": "user", "content": "hi" } }));
+    assert_eq!(transcript.meta().mode.as_deref(), Some("auto"));
+    assert_eq!(transcript.meta().model, None, "no assistant message yet: no model said");
+
+    feed(&mut transcript, json!({ "type": "assistant", "uuid": "a1", "isSidechain": false,
+        "timestamp": "2026-11-06T10:00:01.000Z",
+        "message": { "role": "assistant", "model": "claude-sonnet-5-5", "content": [{ "type": "text", "text": "hello" }] } }));
+    assert_eq!(transcript.meta().model.as_deref(), Some("claude-sonnet-5-5"));
+
+    // A message Claude made itself names a placeholder, which is not a model, and a helper's lines are not this session's.
+    feed(&mut transcript, json!({ "type": "assistant", "uuid": "a2", "isSidechain": false,
+        "timestamp": "2026-11-06T10:00:02.000Z",
+        "message": { "role": "assistant", "model": "<synthetic>", "content": [{ "type": "text", "text": "x" }] } }));
+    feed(&mut transcript, json!({ "type": "user", "uuid": "u2", "permissionMode": "plan", "isSidechain": true,
+        "timestamp": "2026-11-06T10:00:03.000Z", "message": { "role": "user", "content": "helper" } }));
+    assert_eq!(transcript.meta().model.as_deref(), Some("claude-sonnet-5-5"));
+    assert_eq!(transcript.meta().mode.as_deref(), Some("auto"));
+
+    // The mode changes when the person changes it: the latest word stands.
+    feed(&mut transcript, json!({ "type": "user", "uuid": "u3", "permissionMode": "plan", "isSidechain": false,
+        "timestamp": "2026-11-06T10:01:00.000Z", "message": { "role": "user", "content": "again" } }));
+    assert_eq!(transcript.meta().mode.as_deref(), Some("plan"));
+}
+
 /// Codex 0.156 writes the person's words as a user-role response item, with no `user_message` event.
 #[test]
 fn a_codex_user_message_written_only_as_a_response_item_is_shown_and_its_injected_context_is_not() {

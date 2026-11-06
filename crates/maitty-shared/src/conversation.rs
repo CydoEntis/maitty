@@ -75,6 +75,16 @@ pub struct Operation {
     pub digest: String,
 }
 
+/// How a conversation's agent is set up, as its own file says: for Claude, the permission mode and the model
+/// answering. `None` for a field the file has not said (yet); never guessed.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionMeta {
+    #[serde(default)]
+    pub mode: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReadResult {
     pub conversation: ConversationId,
@@ -95,6 +105,9 @@ pub struct ReadResult {
     /// each when the turn ends; the window may close and they are still delivered.
     #[serde(default)]
     pub queued: Vec<QueuedMessage>,
+    /// The agent's mode and model from its own file, for a conversation that follows an agent in a pane.
+    #[serde(default)]
+    pub meta: Option<SessionMeta>,
 }
 
 /// A message waiting for the running turn to end.
