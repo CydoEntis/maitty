@@ -35,6 +35,8 @@ type Input = {
    * agent's own prompt, so the chat and the terminal are one session.
    */
   typeInto?: (text: string) => Promise<void>
+  /** The chat shows the prompt the agent is stopped on with buttons that answer it, so the composer points there. */
+  answersPrompt?: boolean
 }
 
 export type ChatComposer = {
@@ -68,7 +70,7 @@ export type ChatComposer = {
  * not this window stays open; what it holds comes back with every read (`feed.queued`) and is shown
  * until it is sent. While an approval waits, nothing is sent.
  */
-export function useChatComposer({ link, feed, online, refresh, typeInto }: Input): ChatComposer {
+export function useChatComposer({ link, feed, online, refresh, typeInto, answersPrompt = false }: Input): ChatComposer {
   const { draft, attachments } = useComposerState(link.conversation)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -86,7 +88,7 @@ export function useChatComposer({ link, feed, online, refresh, typeInto }: Input
   // it types only while the agent is known to be waiting for a message.
   const waitingForMessage = feed.status === 'Idle' || feed.status === 'Done'
   const disabledReason = typing
-    ? (!online ? 'The daemon is offline' : feed.status === 'Working' ? TYPING_BUSY_NOTE : awaitingAnswer || feed.status === 'Blocked' ? TYPING_ASKING_NOTE : !waitingForMessage ? 'Waiting for the agent to be ready' : null)
+    ? (!online ? 'The daemon is offline' : feed.status === 'Working' ? TYPING_BUSY_NOTE : awaitingAnswer || feed.status === 'Blocked' ? (answersPrompt ? PENDING_APPROVAL_NOTE : TYPING_ASKING_NOTE) :!waitingForMessage ? 'Waiting for the agent to be ready' : null)
     : readOnly ? READ_ONLY_NOTE : !online ? 'The daemon is offline' : awaitingAnswer ? PENDING_APPROVAL_NOTE : null
   const conversation = link.conversation
   const attach = useAttachmentIntake({ conversation, blocked: disabledReason, machine: link.machine ?? null })

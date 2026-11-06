@@ -789,8 +789,11 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   ([ADR 0056](adr/0056-an-agent-session-is-one-terminal-session-with-a-chat-view.md), v18 B.3). The chat reads the
   agent's own transcript (ADR 0052), and its composer **types into the agent's terminal** as one bracketed paste and
   Enter, only while the pane's trusted status says the agent is idle or done; while it works the composer is off and
-  **Stop** sends Esc, and while it asks something in the terminal the composer says to answer it there, because typed
-  text would answer that prompt. Attachments are off for it. **New terminal** (the sidebar button, Ctrl/Cmd+Shift+T,
+  **Stop** sends Esc, and while it asks something in the terminal the chat shows a card, built from the agent's own
+  `PermissionRequest` hook and never the screen: "<agent> wants to use <tool>" and one line of what it acts on. For
+  Claude the card has **Approve once** (sends `1`) and **Deny** (sends Esc); for an agent whose answer keys are not
+  verified (Codex) it says "Answer in the terminal." and sends nothing. The composer stays off while the card shows,
+  because typed text would answer that prompt. Attachments are off for it. **New terminal** (the sidebar button, Ctrl/Cmd+Shift+T,
   a project's **New terminal here**, the palette) is a plain shell with no chat view. A chat session of ADR 0054, with
   no terminal, still starts from a shell's empty chat card (**Start a Claude chat** / **Start a Codex chat**) and
   stops the agent when closed (`closeChatSession`: end, then put away; if the stop fails it stays open).
