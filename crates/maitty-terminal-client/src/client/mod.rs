@@ -2005,6 +2005,24 @@ impl App {
             .max()
     }
 
+    /// Tell the daemon the pane in front has been looked at, so its "done" clears. The daemon does
+    /// not guess this from which pane is active: a window in the background is not looking.
+    pub(super) fn mark_looked_pane_seen(&mut self) {
+        if !self.window_focused {
+            return;
+        }
+        let Some(front) = self.focused() else {
+            return;
+        };
+        let done = self
+            .snap_of(front.machine)
+            .and_then(|snap| snap.terms.get(&front.term))
+            .is_some_and(|t| t.status == Status::Done);
+        if done {
+            self.cmd_on(front.machine, Command::MarkSeen { term: front.term });
+        }
+    }
+
     /// Programs that asked (mode 1004) hear when their pane or the window gains or loses
     /// focus: `ESC [ I` / `ESC [ O`.
     fn report_focus(&mut self) {

@@ -146,6 +146,7 @@ impl App {
                 self.remember_changes(machine, &s);
                 self.remotes.entry(machine).or_default().snap = s;
                 self.screen_sync();
+                self.mark_looked_pane_seen();
             }
             ServerMsg::State(s) => {
                 self.sync_terms(machine, &s);
@@ -184,6 +185,7 @@ impl App {
                     self.splash = false;
                 }
                 self.screen_sync();
+                self.mark_looked_pane_seen();
                 self.auto_open_secret();
                 self.check_view_sync();
                 self.maybe_restart_daemon(last_session_closed);

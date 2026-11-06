@@ -196,6 +196,12 @@ A working agent with no output and no hook report for 10 minutes is marked quiet
 stays working. An agent waiting on helpers it reported, or asking to start helpers,
 is never quiet. Any output or hook report clears it.
 
+A finished turn stays **done** until a window reports it looked: the terminal app sends
+`MarkSeen` when its window is focused and the pane is in front, and the desktop app when you
+view the session. The daemon never reads "seen" from which pane is active, since a window in
+the background is not looking. The daemon tells one window about an alert (the one a person
+used last), and that window rings or notifies; with no window attached the daemon rings.
+
 Questions ring after remaining blocked for 300 ms, except in the pane you are
 looking at (focused pane, focused window); the needs-you mark appears immediately.
 Completions are quiet and remain visible as status/notice changes. A queued

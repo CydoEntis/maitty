@@ -327,7 +327,6 @@ impl Daemon {
             t.last_hook_at = Some(Instant::now());
             self.dirty = true;
         }
-        let focused = self.focused_term() == Some(term) && self.has_viewer();
         if matches!(status, HookStatus::Done | HookStatus::Idle)
             && let Some(dest) = self
                 .terms
@@ -365,8 +364,7 @@ impl Daemon {
             HookStatus::Same => {
                 // A subagent finished: if the turn was waiting on it, it's done now.
                 if t.subagents.is_empty() && t.done_held.take().is_some() {
-                    let s = if focused { Status::Idle } else { Status::Done };
-                    self.set_status(term, s, "hook: its last subagent finished");
+                    self.set_status(term, Status::Done, "hook: its last subagent finished");
                 }
                 self.dirty = true;
                 return;
@@ -393,7 +391,7 @@ impl Daemon {
                 return;
             }
             // After a restart, a session that was done and unseen comes back done.
-            HookStatus::Idle if std::mem::take(&mut t.restore_unseen) && !focused => Status::Done,
+            HookStatus::Idle if std::mem::take(&mut t.restore_unseen) => Status::Done,
             HookStatus::Gone => {
                 t.hooked = false;
                 t.lifecycle_hooks = false;
@@ -419,7 +417,6 @@ impl Daemon {
             HookStatus::Working => Status::Working,
             HookStatus::Blocked => Status::Blocked,
             HookStatus::Idle => Status::Idle,
-            HookStatus::Done if focused => Status::Idle,
             HookStatus::Done => Status::Done,
         };
         t.hooked = true;
@@ -825,7 +822,6 @@ impl Daemon {
                 }
             }
         }
-        let focused = self.has_viewer().then(|| self.focused_term()).flatten();
         let window = Duration::from_millis(self.cfg.detection.working_window_ms);
         let grace = Duration::from_millis(self.cfg.detection.echo_grace_ms);
         let rows = self.cfg.detection.pattern_rows;
@@ -888,8 +884,6 @@ impl Daemon {
                     t.id,
                     if working {
                         Status::Working
-                    } else if Some(t.id) == focused {
-                        Status::Idle
                     } else {
                         Status::Done
                     },
@@ -911,10 +905,8 @@ impl Daemon {
                 && (t.status == Status::Working || has_active_children)
                 && (!t.hooked || t.last_output.elapsed() >= SCREEN_DONE_QUIET)
             {
-                let status = if t.status == Status::Working && Some(t.id) != focused {
+                let status = if t.status == Status::Working {
                     Status::Done
-                } else if t.status == Status::Working {
-                    Status::Idle
                 } else {
                     t.status
                 };
@@ -942,9 +934,6 @@ impl Daemon {
                 {
                     changes.push((t.id, t.status, format!("screen: matched `{pattern}`")));
                 }
-                if t.status == Status::Done && Some(t.id) == focused {
-                    changes.push((t.id, Status::Idle, "you're looking at it".to_string()));
-                }
                 // Subagents went quiet for good (one died without reporting): don't hold "done"
                 // forever.
                 if t.done_held
@@ -954,11 +943,7 @@ impl Daemon {
                 {
                     changes.push((
                         t.id,
-                        if Some(t.id) == focused {
-                            Status::Idle
-                        } else {
-                            Status::Done
-                        },
+                        Status::Done,
                         "subagents went quiet".to_string(),
                     ));
                 }
@@ -1003,11 +988,7 @@ impl Daemon {
                     if !asking {
                         changes.push((
                             t.id,
-                            if Some(t.id) == focused {
-                                Status::Idle
-                            } else {
-                                Status::Done
-                            },
+                            Status::Done,
                             "screen: the question settled itself".to_string(),
                         ));
                     }
@@ -1065,7 +1046,6 @@ impl Daemon {
                 let status = if status == Status::Idle && !signal.visible_idle && still_going {
                     Status::Working
                 } else if status == Status::Idle
-                    && Some(t.id) != focused
                     && matches!(t.status, Status::Working | Status::Done)
                 {
                     Status::Done
@@ -1079,8 +1059,6 @@ impl Daemon {
                 (Status::Working, why)
             } else if still_going {
                 (Status::Working, "screen: still printing".to_string())
-            } else if Some(t.id) == focused {
-                (Status::Idle, "screen: quiet, and you're on it".to_string())
             } else if matches!(t.status, Status::Working | Status::Done) {
                 (Status::Done, "screen: went quiet after working".to_string())
             } else {

@@ -6836,6 +6836,30 @@ fn restore_gives_no_shell_to_a_layout_slot_whose_pane_was_not_saved() {
 }
 
 #[test]
+fn a_finish_on_the_active_pane_stays_done_until_a_window_says_it_looked() {
+    let (mut d, _rx) = daemon();
+    let id = restored_claude_pane(&mut d);
+    let mut window = viewer(&mut d);
+    d.hook(id, "claude".into(), HookStatus::Working, "UserPromptSubmit", &[]);
+    d.hook(id, "claude".into(), HookStatus::Done, "Stop", &[]);
+    let after_finish = d.terms[&id].status;
+    let told = told_attention(&mut window);
+    d.message(
+        40,
+        ClientMsg::Command(crate::protocol::Command::MarkSeen { term: id }),
+    );
+    let after_look = d.terms[&id].status;
+    close(&mut d, &[id]);
+    assert_eq!(
+        after_finish,
+        Status::Done,
+        "the active pane is not proof anyone is looking: a window in the background is not"
+    );
+    assert!(told, "so the finish is announced");
+    assert_eq!(after_look, Status::Idle, "a window that looked clears it");
+}
+
+#[test]
 fn an_agent_that_quits_stays_saved_until_the_server_outlives_the_hold() {
     let (mut d, _rx) = daemon();
     let id = restored_claude_pane(&mut d);

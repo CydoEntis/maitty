@@ -13467,6 +13467,29 @@ mod check_settings_tests {
         (app, rx)
     }
 
+    #[test]
+    fn a_done_pane_is_marked_seen_only_while_a_focused_window_shows_it() {
+        use crate::protocol::{ClientMsg, Command, Status};
+        let (mut app, mut rx) = app_with_channel();
+        let front = app.focused().expect("a pane is in front");
+        app.snap.terms.get_mut(&front.term).unwrap().status = Status::Done;
+        let mut marked = |app: &mut App| {
+            app.mark_looked_pane_seen();
+            std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).any(|m| {
+                matches!(m, ClientMsg::Command(Command::MarkSeen { term }) if term == front.term)
+            })
+        };
+        app.window_focused = false;
+        let away = marked(&mut app);
+        app.window_focused = true;
+        let looking = marked(&mut app);
+        app.snap.terms.get_mut(&front.term).unwrap().status = Status::Working;
+        let working = marked(&mut app);
+        assert!(!away, "a window in the background is not looking");
+        assert!(looking, "a focused window showing a done pane has seen it");
+        assert!(!working, "only a done pane is marked");
+    }
+
     fn draft(app: &App) -> Option<&crate::client::screen::check_settings::CheckDraft> {
         app.screen.check_page.as_ref()
     }

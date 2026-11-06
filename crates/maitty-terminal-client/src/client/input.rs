@@ -95,7 +95,10 @@ impl App {
         match ev {
             Event::Key(k) if k.kind != KeyEventKind::Release => self.on_key(k),
             Event::Paste(s) => self.on_paste(s),
-            Event::FocusGained => self.window_focused = true,
+            Event::FocusGained => {
+                self.window_focused = true;
+                self.mark_looked_pane_seen();
+            }
             Event::FocusLost => self.window_focused = false,
             Event::Mouse(m) => self.on_mouse(m),
             _ => {}
