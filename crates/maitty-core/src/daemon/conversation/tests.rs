@@ -3587,6 +3587,160 @@ async fn kill_server_stops_every_provider_before_the_daemon_exits() {
     }
 }
 
+/// The stand-in daemon for the provider-group tests: this test binary run again, with this set to
+/// a scratch folder. The daemon has to be a process of its own, since the test ends it.
+#[cfg(unix)]
+const GROUPS_STAND_IN_ENV: &str = concat!(env!("APP_ENV"), "_TEST_PROVIDER_GROUPS_STAND_IN");
+
+/// Not a test unless the parent started it: a daemon that keeps the provider-groups record and has
+/// one live provider, which it then either stops cleanly (`mode` says `clean`) or waits to be killed.
+#[cfg(unix)]
+#[tokio::test]
+async fn provider_groups_stand_in_daemon() {
+    let Ok(root) = std::env::var(GROUPS_STAND_IN_ENV) else {
+        return;
+    };
+    let root = PathBuf::from(root);
+    let record = root.join("providers");
+    crate::daemon::provider_groups::enable(record.clone());
+    let clean = std::fs::read_to_string(root.join("mode")).is_ok_and(|mode| mode == "clean");
+    let fixture = Fixture::new().await;
+    let (mut d, mut rx) = daemon(fixture.record.clone());
+    d.start_conversation(fixture.launch("normal")).unwrap();
+    let ready = next(&mut rx).await;
+    assert!(matches!(ready.payload, Payload::Ready));
+    d.handle(Ev::Conversation(ready));
+    let notification = next(&mut rx).await;
+    d.handle(Ev::Conversation(notification));
+    let pids = fixture.pids().await;
+    assert_eq!(pids.len(), 2, "the provider and the child it started");
+    let listed: Vec<String> = pids.iter().map(u32::to_string).collect();
+    let while_running = crate::daemon::provider_groups::Groups::at(record.clone()).entries().len();
+    std::fs::write(root.join("fixture"), fixture.directory.path().as_os_str().as_encoded_bytes()).unwrap();
+    std::fs::write(root.join("entries_while_running"), while_running.to_string()).unwrap();
+    std::fs::write(root.join("pids"), listed.join(" ")).unwrap();
+    if clean {
+        d.dispose_conversation(fixture.record.id).unwrap();
+        let terminated = next(&mut rx).await;
+        assert!(matches!(terminated.payload, Payload::Terminated { reaped: true, .. }));
+        d.handle(Ev::Conversation(terminated));
+        stopped(pids).await;
+        return;
+    }
+    // Wait to be killed; the parent ends this process without letting it clean up.
+    tokio::time::sleep(Duration::from_secs(120)).await;
+    panic!("the stand-in daemon was never killed");
+}
+
+/// Runs the stand-in daemon in `root` and waits for its provider to be up.
+#[cfg(unix)]
+fn start_groups_stand_in(root: &Path, mode: &str) -> (std::process::Child, Vec<u32>) {
+    std::fs::create_dir_all(root).unwrap();
+    std::fs::write(root.join("mode"), mode).unwrap();
+    let child = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "daemon::conversation::tests::provider_groups_stand_in_daemon",
+            "--nocapture",
+        ])
+        .env(GROUPS_STAND_IN_ENV, root)
+        .env(concat!(env!("APP_ENV"), "_DATA_DIR"), root.join("data"))
+        .env(concat!(env!("APP_ENV"), "_CONFIG"), root.join("config.toml"))
+        .env(concat!(env!("APP_ENV"), "_SOCKET"), format!("groups-{}-{mode}", std::process::id()))
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("start the stand-in daemon");
+    let until = std::time::Instant::now() + Duration::from_secs(60);
+    while !root.join("pids").exists() && std::time::Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let pids = std::fs::read_to_string(root.join("pids"))
+        .expect("the stand-in daemon had a live provider")
+        .split_whitespace()
+        .map(|pid| pid.parse().unwrap())
+        .collect();
+    (child, pids)
+}
+
+#[cfg(unix)]
+fn running(pids: &[u32]) -> bool {
+    let mut system = sysinfo::System::new();
+    system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+    pids.iter().any(|pid| {
+        system
+            .process(sysinfo::Pid::from_u32(*pid))
+            .is_some_and(|p| p.status() != sysinfo::ProcessStatus::Zombie)
+    })
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_provider_a_killed_daemon_left_is_stopped_by_the_next_start() {
+    if std::env::var(GROUPS_STAND_IN_ENV).is_ok() {
+        return;
+    }
+    let scratch = crate::daemon::persist::scratch_dir();
+    let root = scratch.path().to_owned();
+    let (mut daemon, pids) = start_groups_stand_in(&root, "kill");
+    let record = crate::daemon::provider_groups::Groups::at(root.join("providers"));
+    let recorded = record.entries().len();
+    daemon.kill().unwrap();
+    daemon.wait().unwrap();
+    // Nothing in the dead daemon stopped them: this is what the sweep is for.
+    let left_running = running(&pids);
+
+    let swept = tokio::task::spawn_blocking({
+        let root = root.clone();
+        move || crate::daemon::provider_groups::Groups::at(root.join("providers")).sweep()
+    })
+    .await
+    .unwrap();
+
+    let outcome = AssertUnwindSafe(stopped(pids.clone())).catch_unwind().await;
+    if outcome.is_err() {
+        for pid in &pids {
+            // SAFETY: stops processes this test started so a failure leaves nothing behind.
+            unsafe { libc::kill(*pid as libc::pid_t, libc::SIGKILL) };
+        }
+    }
+    let fixture_dir = std::fs::read_to_string(root.join("fixture")).ok().map(PathBuf::from);
+    if let Some(dir) = fixture_dir {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+    assert_eq!(recorded, 1, "the running daemon recorded the provider's group");
+    assert!(left_running, "a killed daemon leaves its provider tree running");
+    assert!(
+        matches!(swept.as_slice(), [crate::daemon::provider_groups::Swept::Killed { processes, .. }] if *processes >= 1),
+        "{swept:?}"
+    );
+    assert!(record.entries().is_empty(), "the record is empty after the sweep");
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_provider_stopped_cleanly_leaves_no_entry_in_the_record() {
+    if std::env::var(GROUPS_STAND_IN_ENV).is_ok() {
+        return;
+    }
+    let scratch = crate::daemon::persist::scratch_dir();
+    let root = scratch.path().to_owned();
+    let (mut daemon, pids) = start_groups_stand_in(&root, "clean");
+    let status = tokio::task::spawn_blocking(move || daemon.wait().unwrap()).await.unwrap();
+    let while_running = std::fs::read_to_string(root.join("entries_while_running")).unwrap();
+    let left = crate::daemon::provider_groups::Groups::at(root.join("providers")).entries();
+    if let Ok(dir) = std::fs::read_to_string(root.join("fixture")) {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+    assert!(status.success(), "the stand-in daemon stopped its provider and exited: {status:?}");
+    assert_eq!(while_running, "1", "the group was recorded while the provider ran");
+    assert!(left.is_empty(), "a clean stop strikes the group: {left:?}");
+    assert!(!running(&pids));
+}
+
 mod queue;
 mod branch_chat;
 mod claude_chat;

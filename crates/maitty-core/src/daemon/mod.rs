@@ -22,6 +22,8 @@ mod pane_terminal;
 mod permission_ask;
 mod persist;
 mod pr;
+#[cfg(unix)]
+mod provider_groups;
 mod repeats;
 mod repo;
 mod restore;
@@ -465,6 +467,15 @@ pub fn run(on_start: impl FnOnce()) -> Result<()> {
         tracing::info!("daemon listening on {}", ipc::socket_id());
         // Lets `<app> kill-server` from another version stop it (it can't talk to this one).
         let _ = std::fs::write(ipc::pid_file(), std::process::id().to_string());
+        // A previous daemon that was killed could not stop its providers: this one holds the socket
+        // now, so what that daemon left is stopped before anything is restored.
+        #[cfg(unix)]
+        {
+            provider_groups::enable(ipc::providers_file());
+            if let Err(error) = tokio::task::spawn_blocking(provider_groups::sweep_previous).await {
+                tracing::warn!("sweeping providers a previous daemon left: {error}");
+            }
+        }
         let (tx, rx) = mpsc::channel::<Ev>(4096);
 
         let accept_tx = tx.clone();

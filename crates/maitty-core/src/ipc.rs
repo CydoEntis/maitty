@@ -85,6 +85,12 @@ pub fn pid_file() -> std::path::PathBuf {
     crate::config::data_dir().join(format!("{}.pid", socket_id()))
 }
 
+/// The process groups of the providers this daemon started (`daemon/provider_groups.rs`).
+#[cfg(unix)]
+pub fn providers_file() -> std::path::PathBuf {
+    crate::config::data_dir().join(format!("{}.providers", socket_id()))
+}
+
 /// Server identity. `<APP>_SOCKET` picks a separate server (like `tmux -L`).
 pub fn socket_id() -> String {
     let label = std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).ok();
