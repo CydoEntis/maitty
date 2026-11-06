@@ -393,6 +393,17 @@ order, so nothing is reordered. Settings › Performance reports **key replies f
 and worst of the last 100 keys): a large worst figure with typing now fast confirms the cause, and a
 small one with typing still late points elsewhere (xterm's render or the web view presenting it).
 
+**Cause found for the late letters and the cursor over the last one (2026-11-06).** A report from the
+owner's machine (Hyprland, NVIDIA RTX 4060, WebKitGTK 2.52) with the keys already going out at once
+read: key replies median 1 ms and worst 40 ms, 63 fps, no slow frames, 124 of 125 output frames over
+the local socket. Typing was still late. Switching the terminals to xterm's DOM renderer
+(Settings › Performance › **Draw terminals without the GPU**) fixed it, in a shell and in a Claude
+session. So the delay was in the WebGL renderer presenting its canvas on this web view, not in the
+keys, the daemon, the host or the output socket. On Linux the setting now starts on; macOS and
+Windows keep WebGL (`prefersPlainDrawing` in `lib/gpu.ts`). Not yet checked: CPU with the DOM
+renderer while an agent streams a long answer (the figures above for a streaming session were
+measured with WebGL). Copy the report during one and compare.
+
 ### How to run measurement 2 again
 
 ```sh

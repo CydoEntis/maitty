@@ -1,4 +1,5 @@
 import { isSpinnerStyle, type SpinnerStyle } from '@/lib/spinner-clock'
+import { prefersPlainDrawing } from '@/lib/gpu'
 import type { EffectStyle } from '@/lib/animation-level'
 import type { AnimationMode } from '@/lib/animation-auto'
 import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, isFontFamily, isFontWeight, type TerminalFontWeight } from '@/lib/terminalFont'
@@ -201,7 +202,7 @@ function defaults(): SettingsPreferences {
     chatFullAccessDefault: false,
     statusBar: true,
     perfOverlay: false,
-    terminalPlainDrawing: false,
+    terminalPlainDrawing: prefersPlainDrawing(),
     terminalSeeThrough: false,
     backgroundGlow: false,
     cursorBlink: false,
