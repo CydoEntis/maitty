@@ -84,6 +84,7 @@ import { rememberConversationPermissions } from '@/data/conversationPermissions'
 import { reserveOperation } from '@/features/chat/sendOperation'
 import { usePaneViews } from './usePaneViews'
 import { chatAvailability, chatSourceOf, effectiveView, type ChatAgent, type PaneView } from './model/chatView'
+import { listFolders } from '@/api/folders'
 import { RemoteSessionDialog } from './components/RemoteSessionDialog'
 import { RenameDialog } from './components/RenameDialog'
 import { Sidebar } from './components/Sidebar'
@@ -854,6 +855,14 @@ export function DesktopApp() {
     setSettingsSection(null)
     setRemoteStart({ machine, name })
   }, [])
+
+  // What the folder dialog asks the machine, and the folders its sessions are in.
+  const remoteMachine = remoteStart?.machine ?? LOCAL_MACHINE
+  const listOnRemote = useCallback((path: string) => listFolders(remoteMachine, path), [remoteMachine])
+  const recentOnRemote = useMemo(() => {
+    const folders = (machines.get(remoteMachine)?.conversations ?? []).flatMap((item) => (item.kind === 'terminal' && item.cwd ? [item.cwd] : []))
+    return [...new Set(folders)].reverse()
+  }, [machines, remoteMachine])
 
   const startOnMachine = useCallback(async (target: { machine: number; name: string }, folder: string) => {
     const known = new Set((machinesRef.current.get(target.machine)?.conversations ?? []).map((item) => item.id))
@@ -1875,7 +1884,13 @@ export function DesktopApp() {
               />
             )}
             {remoteStart !== null && (
-              <RemoteSessionDialog machineName={remoteStart.name} onStart={(folder) => startOnMachine(remoteStart, folder)} onCancel={() => { setRemoteStart(null) }} />
+              <RemoteSessionDialog
+                machineName={remoteStart.name}
+                list={listOnRemote}
+                recent={recentOnRemote}
+                onStart={(folder) => startOnMachine(remoteStart, folder)}
+                onCancel={() => { setRemoteStart(null) }}
+              />
             )}
             {renameId !== null && sessionMap.get(renameId) && (
               <RenameDialog session={sessionMap.get(renameId) as SessionView} onSave={(name) => { saveName(renameId, name) }} onCancel={() => { setRenameId(null) }} />

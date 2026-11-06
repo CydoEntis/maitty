@@ -116,7 +116,12 @@ saved layout survives a restart; this computer's stay `t12`). **Settings › Mac
 adds machines (the behaviour is the terminal app's [Machines dialog](#project-specific-machines-dialog),
 with the host list read off the UI thread, the look at the machine ended by a 12 s limit or Cancel, and a
 login that needs a person run in a session named `ssh <name>`); **New session** on a pane of another machine
-asks for a folder on that machine. To choose the machine, press the **+** on its sidebar header (disabled
+opens the **folder dialog** for it: a mono field starting at the machine's `~` with **Up** and **Home**, a live
+check against the machine (`N items` when the folder is there, `Folder not found on <machine>` with a red ring when
+it is not), the matching subfolders and that machine's recent folders as suggestions (↑ ↓ highlight, Enter picks,
+Tab completes), and **Open terminal ↵**, which stays disabled until the machine says the folder exists. The
+listing is `Query::ListFolders` ([API_PATTERNS](API_PATTERNS.md)); a machine that does not answer in 8 seconds is
+reported in place of the count. To choose the machine, press the **+** on its sidebar header (disabled
 while its line is not connected) or run `New session on <name>` in ⌘K; both open the same folder dialog. A screen reader is told when a machine goes down (`build disconnected: unreachable`) and when it is back, once each and not for every retry, through a polite live region; every state is a word as well as a shape and a colour, nothing about machines animates, and the Machines page works with the keyboard alone (Tab, Enter, Esc ends a look in progress without closing Settings). Features that read a pane's files (Inspect, worktreesFeatures that read a pane's files (Inspect, worktrees, opening a file from the output, dropping files, the screen text) are for this computer's panes only: each says `<Feature> is local-only in v1: the files are on <machine>, not on this computer.` and the Repository button shows disabled with that text.
 
 A terminal UI (ratatui). Colours come only from the theme (`theme.rs`): semantic

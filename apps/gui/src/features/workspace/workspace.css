@@ -644,6 +644,15 @@
 
 /* Naming a session. */
 .mx-rename { width: 100%; max-width: 420px; padding: 20px; border-radius: 16px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); backdrop-filter: var(--blur-pop); display: flex; flex-direction: column; gap: 10px; animation: v8pane .3s var(--ease-out); }
+.mx-folder-dialog { max-width: 480px; }
+.mx-folder-row { display: flex; gap: 8px; align-items: center; }
+.mx-folder-row input { flex: 1; min-width: 0; height: 38px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--pane-line); background: var(--well, var(--raise)); color: var(--fg); font-family: var(--mono, monospace); font-size: 13px; }
+.mx-folder-row input.is-missing { border-color: var(--danger-line, var(--danger)); box-shadow: 0 0 0 3px var(--danger-soft, transparent); }
+.mx-folder-bad { color: var(--danger) !important; }
+.mx-folder-suggestions { list-style: none; margin: 0; padding: 4px; max-height: 210px; overflow-y: auto; border-radius: 9px; border: 1px solid var(--pane-line); display: flex; flex-direction: column; gap: 1px; }
+.mx-folder-suggestions li { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 8px; border-radius: 6px; font-family: var(--mono, monospace); font-size: 12.5px; color: var(--fg2); cursor: pointer; }
+.mx-folder-suggestions li.is-on, .mx-folder-suggestions li:hover { background: var(--raise); color: var(--fg); }
+.mx-folder-suggestions li small { margin-left: auto; color: var(--dim); font-family: inherit; }
 .mx-rename h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--fg); }
 .mx-rename p { margin: 0; font-size: 12.5px; color: var(--muted); }
 .mx-rename input { height: 38px; padding: 0 12px; border-radius: 10px; background: var(--well); border: 1px solid var(--pane-line); color: var(--fg); font-size: 14px; outline: none; }
