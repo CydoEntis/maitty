@@ -115,9 +115,10 @@ mod tests {
 
     #[test]
     fn a_tilde_is_the_home_folder_and_a_relative_path_is_nothing() {
-        let home = Path::new("/home/me");
-        assert_eq!(resolve("~", Some(home)), Some(PathBuf::from("/home/me")));
-        assert_eq!(resolve("~/code/x", Some(home)), Some(PathBuf::from("/home/me/code/x")));
+        // A path with no drive letter is not absolute on Windows, so the fake home needs one there.
+        let home = Path::new(if cfg!(windows) { r"C:\Users\me" } else { "/home/me" });
+        assert_eq!(resolve("~", Some(home)), Some(home.to_path_buf()));
+        assert_eq!(resolve("~/code/x", Some(home)), Some(home.join("code").join("x")));
         assert_eq!(resolve("~other/x", Some(home)), None);
         assert_eq!(resolve("code/x", Some(home)), None);
         assert_eq!(resolve("~/x", None), None);
