@@ -871,6 +871,14 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
     elements. There is no HTML anywhere (no `dangerouslySetInnerHTML`), raw tags are text, images are never loaded
     (their alt text shows), and a link is kept only for an `http(s)` address. The app has no route that opens an
     address outside the window, so a link is a button that copies its address; it never navigates the webview.
+    A table (a header line, a `| --- |` delimiter row of the same width, then rows, with `:` for alignment) is a
+    real `<table>` drawn as a hairline grid in existing tokens, inside its own named, focusable, sideways-scrolling
+    region, so a wide table never widens the message; cells hold inline markdown, and a right-aligned column stays on
+    one line.
+    A reply still arriving (`running`) is read in its finished form (`streamingText`): an opened bold, italic or code
+    span, or a link whose address is still arriving, reads as if it closed; a mark with nothing after it yet and a
+    last line that is only a list, quote or heading marker are left out; a table waits for its delimiter row; an open
+    code fence is untouched. A finished reply is read as written.
     Supported: paragraphs, headings, fenced code, lists, quotes, rules, inline code, bold, italic.
   - *Rows* are memoised on their events (`ChatItem`), and the virtual list measures heights, so a card that expands
     resizes its own row only.

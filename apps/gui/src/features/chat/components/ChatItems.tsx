@@ -2,7 +2,7 @@ import { memo, type ReactNode } from 'react'
 import { Spinner, AppIcon } from '@/features/workspace/components/glyphs'
 import { ElapsedSince } from '@/features/workspace/components/times'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
-import { dividerText, splitLead, type ChatRow } from '../chatRows'
+import { dividerText, splitLead, streamingParagraphs, type ChatRow } from '../chatRows'
 import { parseAttachmentMessage } from '../attachmentMessage'
 import { AgentsCard } from './AgentsCard'
 import { SentAttachments } from './Attachments'
@@ -87,7 +87,8 @@ export const ChatItem = memo(function ChatItem({ row, agent, workingSince, appro
       )
     }
     case 'agent': {
-      const { lead, rest } = splitLead(row.paragraphs)
+      // A reply still arriving is read in its finished form, so a half-typed mark does not flash; a finished one is read as written.
+      const { lead, rest } = splitLead(row.status === 'running' ? streamingParagraphs(row.paragraphs) : row.paragraphs)
       const empty = lead === '' && rest.length === 0
       return (
         <div className={`${COLUMN} flex gap-3 py-[7px]`}>

@@ -1,6 +1,6 @@
 import { memo, type ReactNode } from 'react'
 import { toast } from 'sonner'
-import { parseMarkdown, parseInline, type Block, type Inline } from '../markdown'
+import { parseMarkdown, parseInline, type Block, type Inline, type TableAlign } from '../markdown'
 
 /**
  * Renders the agent's markdown as React elements (never as HTML; see `markdown.ts`). A link is
@@ -41,6 +41,9 @@ function Inlines({ nodes }: { nodes: readonly Inline[] }): ReactNode {
   })
 }
 
+const ALIGN: Record<'left' | 'center' | 'right', string> = { left: 'text-left', center: 'text-center', right: 'text-right whitespace-nowrap' }
+const alignClass = (align: TableAlign | undefined) => ALIGN[align ?? 'left']
+
 const HEADING_SIZE = ['text-[17px]', 'text-[16px]', 'text-[15px]', 'text-[14px]', 'text-[14px]', 'text-[14px]'] as const
 
 function BlockView({ block }: { block: Block }) {
@@ -67,6 +70,30 @@ function BlockView({ block }: { block: Block }) {
       return <blockquote className="m-0 border-l-2 border-line2 pl-3 whitespace-pre-wrap text-dim"><Inlines nodes={block.inlines} /></blockquote>
     case 'rule':
       return <hr className="m-0 border-0 border-t border-line2" />
+    case 'table':
+      // A table wider than the message scrolls inside its own region, which the keyboard can reach; the message never scrolls sideways.
+      return (
+        <div role="region" aria-label="Table" tabIndex={0} className="max-w-full overflow-x-auto">
+          <table className="w-full border-collapse text-[13px] leading-[1.5]">
+            <thead>
+              <tr>
+                {block.header.map((cell, column) => (
+                  <th key={column} scope="col" className={`border border-line2 bg-raise px-3 py-1.5 align-top font-semibold text-fg ${alignClass(block.align[column])}`}><Inlines nodes={cell} /></th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {block.rows.map((row, at) => (
+                <tr key={at}>
+                  {row.map((cell, column) => (
+                    <td key={column} className={`border border-line2 px-3 py-1.5 align-top text-fg2 ${alignClass(block.align[column])}`}><Inlines nodes={cell} /></td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )
   }
 }
 

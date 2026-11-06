@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { TurnEvent } from './chatEvents'
 import { approvalEvent, commandEvent, messageEvent } from './eventFixtures'
-import { buildRows, dividerText, formatDuration, paragraphsOf, splitLead } from './chatRows'
+import { buildRows, dividerText, formatDuration, paragraphsOf, splitLead, streamingParagraphs } from './chatRows'
 
 const message = messageEvent
 const command = (id: string, turnId = 't1') => ({ ...commandEvent(id), turnId })
@@ -50,6 +50,9 @@ describe('paragraphs and the lead sentence', () => {
     expect(splitLead(['I fixed it. The test passes now.', 'Details follow.'])).toEqual({ lead: 'I fixed it.', rest: ['The test passes now.', 'Details follow.'] })
     expect(splitLead(['No full stop here'])).toEqual({ lead: 'No full stop here', rest: [] })
     expect(splitLead([])).toEqual({ lead: '', rest: [] })
+    // A table with no outer pipes is not a sentence either.
+    const table = 'a | b\n--- | ---\n1 | 2'
+    expect(splitLead([table, 'After.'])).toEqual({ lead: '', rest: [table, 'After.'] })
   })
 })
 
@@ -67,3 +70,16 @@ describe('turn dividers', () => {
     expect([0, 7_000, 72_000, 3_900_000].map(formatDuration)).toEqual(['0s', '7s', '1m 12s', '1h 5m'])
   })
 })
+
+describe('the paragraphs of a reply that is still arriving', () => {
+  it('repairs only the last paragraph', () => {
+    expect(streamingParagraphs(['One **done**.', 'Two **no'])).toEqual(['One **done**.', 'Two **no**'])
+  })
+
+  it('drops a last paragraph that is only a partial table or marker', () => {
+    expect(streamingParagraphs(['Intro.', '| a | b |\n|---'])).toEqual(['Intro.'])
+    expect(streamingParagraphs(['Intro.', '-'])).toEqual(['Intro.'])
+    expect(streamingParagraphs([])).toEqual([])
+  })
+})
+

@@ -407,7 +407,7 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   shows the command, a `Running · m:ss` pill or the elapsed time and an `exit N` pill (green at 0, red otherwise),
   and the last 3 output lines. An edit block folds past 12 diff lines. Consecutive helper agents are one card
   ("3 agents, 2 working"). The approval card is amber (`--warn-soft`, `--warn-line`); once answered it reads "You
-  answered: ...". Agent text is rendered as markdown (headings, lists, code, bold, italic, links as copy buttons).
+  answered: ...". Agent text is rendered as markdown (headings, lists, code, tables as a hairline grid that scrolls sideways on its own, bold, italic, links as copy buttons).
 - **Composer.** A well (`--raise`, hairline, radius 14, accent ring on focus) under the list: a growing text box, Stop
   while a turn runs, and a round send button. Footer hint "Same session as the terminal · switching views never
   restarts claude"; while a turn runs it reads "Enter queues it · Esc interrupts claude" and queued messages show as
