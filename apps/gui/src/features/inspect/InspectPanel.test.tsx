@@ -26,7 +26,7 @@ function renderPanel(view: InspectView, extra: { agentWorking?: boolean } = {}) 
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
-      <InspectPanel term={5} title="maitty" view={view} agentWorking={extra.agentWorking ?? false} timeline={[]} lookAt={null} onView={vi.fn()} onClose={vi.fn()} onNotice={onNotice} />
+      <InspectPanel term={5} project="maitty" branch="main" changedFiles={2} view={view} agentWorking={extra.agentWorking ?? false} timeline={[]} lookAt={null} onView={vi.fn()} onClose={vi.fn()} onNotice={onNotice} />
     </QueryClientProvider>,
   )
   return { onNotice }
