@@ -52,7 +52,7 @@ import { advanceLoginWatch, LOGIN_CHECK_MS, startLoginWatch, type LoginWatch } f
 import { announcementFor, idsOfMachinesNotHeard, machineHeads, remoteStartRefusal, remoteTargetOf, remoteTerminals, type RemoteMachine } from './model/machines'
 import { HoverTips } from './components/HoverTips'
 import { ShortcutOverlay } from '@/features/shortcuts/ShortcutOverlay'
-import { StatusBar } from './components/StatusBar'
+import { StatusBar, type FocusMachine } from './components/StatusBar'
 import { WelcomeDialog } from '@/features/welcome/WelcomeDialog'
 import { isFirstRun, markWelcomed } from '@/features/welcome/welcomed'
 import { repoDiff, repoLocate } from '@/features/inspect/api'
@@ -532,6 +532,15 @@ export function DesktopApp() {
     return numbers
   }, [layout.tabs])
   const heads = useMemo(() => machineHeads(machines), [machines])
+  // The machine of the pane in front, named in the status bar once there is more than one machine to tell apart.
+  const focusedMachine = focusedSession?.machine
+  const focusMachine = useMemo<FocusMachine | null>(() => {
+    if (heads.length === 0 || focusedMachine === undefined) return null
+    if (focusedMachine === LOCAL_MACHINE) return { name: 'This computer', word: 'local', tone: 'ok' }
+    const head = heads.find((candidate) => candidate.machine === focusedMachine)
+    if (head === undefined) return null
+    return { name: head.name ?? head.label, word: head.chip?.word ?? 'unknown', tone: head.chip?.tone ?? 'quiet' }
+  }, [heads, focusedMachine])
   const retryNamed = useCallback((name: string) => {
     retryMachine(name).catch((error: unknown) => { toast.error(errorMessage(error, `Could not retry ${name}`)) })
   }, [])
@@ -1907,6 +1916,7 @@ export function DesktopApp() {
                 {!focusMode && preferences.statusBar && (
                   <StatusBar
                     online={online}
+                    machine={focusMachine}
                     themeMode={preferences.themeMode}
                     lightInUse={theme.light}
                     activeTheme={theme.name}
