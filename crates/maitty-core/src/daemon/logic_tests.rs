@@ -58,6 +58,7 @@ fn report(term: TermId, token: &str, pid: u32, status: HookStatus, event: &str) 
         model: None,
         name: None,
         background: Vec::new(),
+        ask: None,
     }
 }
 
@@ -2907,6 +2908,7 @@ fn an_agent_stays_in_the_folder_it_started_in() {
             model,
             name,
             background,
+            ask: None,
         },
         _ => unreachable!(),
     };
@@ -7376,5 +7378,66 @@ fn a_desktop_replay_is_the_end_of_the_ring_and_then_the_screen() {
     assert!(tail.starts_with(b"6789[0m[2J[H"), "{tail:?}");
     assert_eq!(term.replay_tail(usize::MAX), full);
     assert!(full.len() > tail.len());
+    close(&mut d, &[t]);
+}
+
+fn permission_report(term: TermId, status: HookStatus, event: &str, agent: &str, tool: &str, detail: &str) -> ClientMsg {
+    let mut msg = report(term, "", 0, status, event);
+    if let ClientMsg::Hook { agent: a, ask, .. } = &mut msg {
+        *a = agent.into();
+        *ask = (!tool.is_empty()).then(|| PermissionAsk {
+            tool: tool.into(),
+            detail: detail.into(),
+            // A hook cannot claim it; the daemon decides.
+            answerable: true,
+        });
+    }
+    msg
+}
+
+#[test]
+fn a_permission_hook_reports_what_it_asks_until_the_agent_moves_on() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let asking = |d: &Daemon| d.terms[&t].ask_now();
+
+    d.apply_hook(permission_report(t, HookStatus::Blocked, "PermissionRequest", "claude", "Bash", "cargo test"), None, vec![]);
+    let ask = asking(&d).expect("the question the hook reported");
+    assert_eq!((ask.tool.as_str(), ask.detail.as_str(), ask.answerable), ("Bash", "cargo test", true));
+    assert_eq!(d.terms[&t].status, Status::Blocked);
+
+    // The ping Claude sends right after, and a helper's news, leave the question as it was.
+    d.apply_hook(permission_report(t, HookStatus::Blocked, "Notification:permission_prompt", "claude", "", ""), None, vec![]);
+    d.apply_hook(permission_report(t, HookStatus::Same, "SubagentStop", "claude", "", ""), None, vec![]);
+    assert!(asking(&d).is_some());
+
+    // The tool ran, so the question is over.
+    d.apply_hook(permission_report(t, HookStatus::Working, "PostToolUse", "claude", "", ""), None, vec![]);
+    assert!(asking(&d).is_none());
+
+    // A question that is not a permission prompt does not inherit an old one.
+    d.apply_hook(permission_report(t, HookStatus::Blocked, "PermissionRequest", "claude", "Write", "/tmp/x"), None, vec![]);
+    d.apply_hook(permission_report(t, HookStatus::Blocked, "PreToolUse", "claude", "", ""), None, vec![]);
+    assert!(asking(&d).is_none(), "an AskUserQuestion is another question");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn only_the_agents_whose_key_is_known_can_be_answered_from_the_chat() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.apply_hook(permission_report(t, HookStatus::Blocked, "PermissionRequest", "codex", "shell", "ls"), None, vec![]);
+    let ask = d.terms[&t].ask_now().expect("shown");
+    assert!(!ask.answerable, "Codex's keys are not verified, so the chat says to answer in the terminal");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_pane_reports_its_question_only_while_it_needs_you() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.apply_hook(permission_report(t, HookStatus::Blocked, "PermissionRequest", "claude", "Bash", "ls"), None, vec![]);
+    d.terms.get_mut(&t).unwrap().status = Status::Idle;
+    assert!(d.terms[&t].ask_now().is_none(), "a question left over from before is not shown");
     close(&mut d, &[t]);
 }

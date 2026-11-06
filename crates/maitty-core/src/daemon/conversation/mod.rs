@@ -14,6 +14,12 @@ mod redact;
 mod runtime;
 pub(super) mod transport;
 
+/// `text` with token- and key-shaped strings masked, for text that leaves the daemon outside a
+/// conversation's history (a permission prompt's subject).
+pub(in crate::daemon) fn mask_secrets(text: &str) -> String {
+    redact::redact_text(text).into_owned()
+}
+
 pub(in crate::daemon) use runtime::Owner;
 use runtime::Payload;
 pub(super) use runtime::{Event, Registry};

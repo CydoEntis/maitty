@@ -145,6 +145,10 @@ pub enum ClientMsg {
         /// Ids of the background tasks (shells, helpers) still running when a turn stopped.
         #[serde(default)]
         background: Vec<String>,
+        /// The question a permission prompt asks, from the hook's own payload (a
+        /// `PermissionRequest`). The daemon cleans it and decides `answerable` itself.
+        #[serde(default)]
+        ask: Option<PermissionAsk>,
     },
     /// What an agent in a pane has used (from Claude's status line), with the pane's secret.
     Usage {
@@ -154,6 +158,21 @@ pub enum ClientMsg {
         limits: Vec<Limit>,
     },
     Query(Query),
+}
+
+/// The question an agent's permission prompt asks, as the agent's own hook reported it (never read
+/// off the screen, ADR 0036). Only the tool and a one-line subject (the command, the file or the
+/// address) are carried: not the content a tool would write, which can hold secrets.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PermissionAsk {
+    /// The tool that wants to run: "Bash", "Write", "WebFetch".
+    pub tool: String,
+    /// What it would run or touch, on one line, with secret-shaped text masked.
+    pub detail: String,
+    /// The daemon knows the key that answers this agent's prompt, so the chat view offers Approve and Deny.
+    /// Set by the daemon; a hook cannot claim it.
+    #[serde(default)]
+    pub answerable: bool,
 }
 
 /// What an agent's session has used.
@@ -1196,6 +1215,10 @@ pub struct TermInfo {
     /// marks (OSC 133) said happened, not what the screen looked like.
     #[serde(default)]
     pub timeline: Vec<TurnEvent>,
+    /// The permission prompt the pane is stopped on, from its agent's own hook; `None` unless the
+    /// pane needs you and the agent said what it asks.
+    #[serde(default)]
+    pub ask: Option<PermissionAsk>,
 }
 
 /// An agent that was working when the daemon restarted.
@@ -1530,6 +1553,11 @@ mod tests {
                 model: Some("opus".into()),
                 name: Some("api work".into()),
                 background: vec!["b1".into()],
+                ask: Some(PermissionAsk {
+                    tool: "Bash".into(),
+                    detail: "cargo test".into(),
+                    answerable: true,
+                }),
             },
             ClientMsg::Query(Query::List),
             ClientMsg::Query(Query::Read { term: 3 }),
@@ -2089,6 +2117,21 @@ mod tests {
     }
 
     #[test]
+    fn a_pane_from_before_the_permission_question_reads_with_none_and_one_with_it_round_trips() {
+        let mut term = pane_from(serde_json::json!({}));
+        assert_eq!(term.ask, None, "an older peer sends none");
+        term.ask = Some(PermissionAsk {
+            tool: "Bash".into(),
+            detail: "cargo test".into(),
+            answerable: true,
+        });
+        round_trips(&ServerMsg::State(Snapshot {
+            terms: [(3, term)].into(),
+            ..Default::default()
+        }));
+    }
+
+    #[test]
     fn a_hook_report_reads_across_the_background_field() {
         let old = serde_json::json!({ "Hook": {
             "term": 3, "agent": "claude", "status": "Done", "session": null, "cwd": null, "prompt": null,
@@ -2098,12 +2141,15 @@ mod tests {
         let msg: ClientMsg =
             decode(&rmp_serde::to_vec_named(&old).unwrap()).expect("a hook from before the field");
         let ClientMsg::Hook {
-            event, background, ..
+            event,
+            background,
+            ask,
+            ..
         } = msg
         else {
             panic!("expected a hook report")
         };
-        assert_eq!((event.as_str(), background.len()), ("Stop", 0));
+        assert_eq!((event.as_str(), background.len(), ask), ("Stop", 0, None));
 
         #[derive(Deserialize)]
         enum OldClientMsg {
@@ -2131,6 +2177,7 @@ mod tests {
             model: None,
             name: None,
             background: vec!["b1".into()],
+            ask: None,
         };
         let OldClientMsg::Hook {
             term,

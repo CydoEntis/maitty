@@ -2198,6 +2198,9 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
     } else {
         Vec::new()
     };
+    let ask = (event == "PermissionRequest" && parent_facts)
+        .then(|| permission_ask(payload_json))
+        .flatten();
     let said = field(&["last_assistant_message", "last-assistant-message"])
         .or_else(|| transcript.as_deref().and_then(last_assistant_text))
         .map(|s| s.trim().chars().take(2000).collect::<String>())
@@ -2226,7 +2229,31 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
         model,
         name,
         background,
+        ask,
     }
+}
+
+/// The payload fields that name what a tool would run or touch, in the order they are tried. The
+/// content a tool would write is never among them: it can hold secrets.
+const ASK_SUBJECT_FIELDS: &[&str] = &["command", "file_path", "path", "url", "pattern", "query"];
+
+/// What a `PermissionRequest` hook says is being asked: the tool and a one-line subject.
+fn permission_ask(payload: &Value) -> Option<PermissionAsk> {
+    let tool = payload.get("tool_name")?.as_str()?.trim();
+    if tool.is_empty() {
+        return None;
+    }
+    let input = payload.get("tool_input");
+    let detail = ASK_SUBJECT_FIELDS
+        .iter()
+        .find_map(|key| input?.get(*key)?.as_str().filter(|text| !text.trim().is_empty()))
+        .map(|text| one_line(text, 2000))
+        .unwrap_or_default();
+    Some(PermissionAsk {
+        tool: tool.to_string(),
+        detail,
+        answerable: false,
+    })
 }
 
 /// Task states Claude might report for background work that is over. Its docs don't list the
@@ -4335,6 +4362,51 @@ mod tests {
             panic!("expected hook")
         };
         assert_eq!(event, "question.asked");
+    }
+
+    #[test]
+    fn a_permission_request_reports_the_tool_and_its_subject_but_never_what_it_would_write() {
+        use crate::protocol::HookStatus as H;
+        let report = |payload: serde_json::Value| {
+            let origin = super::HookOrigin {
+                term: 7,
+                agent: "claude".into(),
+                pid: 10,
+                token: String::new(),
+            };
+            let ClientMsg::Hook { ask, .. } = super::hook_message(origin, &payload, H::Blocked)
+            else {
+                panic!("expected hook")
+            };
+            ask
+        };
+        let bash = report(json!({
+            "hook_event_name": "PermissionRequest",
+            "tool_name": "Bash",
+            "tool_input": {"command": "cargo   test\n  --all", "description": "run the tests"},
+        }))
+        .expect("a Bash request");
+        assert_eq!((bash.tool.as_str(), bash.detail.as_str()), ("Bash", "cargo test --all"));
+        assert!(!bash.answerable, "only the daemon says a prompt can be answered");
+
+        // The payload Claude 2.1.319 sent for a Write: the content is not carried.
+        let write = report(json!({
+            "hook_event_name": "PermissionRequest",
+            "tool_name": "Write",
+            "tool_input": {"file_path": "/work/x.txt", "content": "API_KEY=hunter2"},
+            "permission_suggestions": [{"type": "setMode", "mode": "acceptEdits", "destination": "session"}],
+        }))
+        .expect("a Write request");
+        assert_eq!((write.tool.as_str(), write.detail.as_str()), ("Write", "/work/x.txt"));
+        assert!(!format!("{write:?}").contains("hunter2"));
+
+        // A tool with no subject field is still a question; one with no tool is not reported.
+        let bare = report(json!({"hook_event_name": "PermissionRequest", "tool_name": "ExitPlanMode"}))
+            .expect("a request with no input");
+        assert_eq!(bare.detail, "");
+        assert!(report(json!({"hook_event_name": "PermissionRequest"})).is_none());
+        // Only a permission request carries one.
+        assert!(report(json!({"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "ls"}})).is_none());
     }
 
     #[test]
