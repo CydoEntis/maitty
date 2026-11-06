@@ -15,6 +15,8 @@ type Props = {
   online: boolean
   /** Sends the answer to the agent's prompt; absent where the window cannot answer. */
   answer: ((choice: AskChoice) => Promise<void>) | undefined
+  /** Picks the numbered choice of a question the agent asks; absent where the window cannot type for the agent. */
+  pick?: ((index: number) => Promise<void>) | undefined
 }
 
 /**
@@ -22,15 +24,24 @@ type Props = {
  * own hook, never the screen. The buttons exist only where the daemon knows the key that answers
  * this agent; otherwise the card says to answer in the terminal rather than guess.
  */
-export function PermissionAskCard({ agent, ask, online, answer }: Props) {
+export function PermissionAskCard({ agent, ask, online, answer, pick }: Props) {
   const [busy, setBusy] = useState(false)
   const canAnswer = ask !== null && ask.answerable && online && answer !== undefined
-  const send = (choice: AskChoice) => {
-    if (answer === undefined || busy) return
+  const choices = ask?.choices ?? []
+  const canPick = choices.length > 0 && online && pick !== undefined
+  const run = (action: Promise<void>) => {
     setBusy(true)
-    answer(choice)
+    action
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not send your answer')) })
       .finally(() => { setBusy(false) })
+  }
+  const send = (choice: AskChoice) => {
+    if (answer === undefined || busy) return
+    run(answer(choice))
+  }
+  const choose = (index: number) => {
+    if (pick === undefined || busy) return
+    run(pick(index))
   }
   return (
     <section aria-label={`${agent} needs your permission`} className="mx-4 mb-2 shrink-0 rounded-md border border-[var(--warn)] px-3 py-2.5 text-[13px]">
@@ -40,7 +51,16 @@ export function PermissionAskCard({ agent, ask, online, answer }: Props) {
       {ask !== null && ask.detail !== '' && (
         <pre className="m-0 mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[12px] text-fg2 [overflow-wrap:anywhere]">{ask.detail}</pre>
       )}
-      {canAnswer ? (
+      {canPick ? (
+        <>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {choices.map((choice, index) => (
+              <Button key={`${String(index)}-${choice}`} size="sm" variant="outline" disabled={busy} onClick={() => { choose(index) }}>{choice}</Button>
+            ))}
+          </div>
+          <p className="m-0 mt-1 text-dim">Or type your own answer in the terminal.</p>
+        </>
+      ) : canAnswer ? (
         <div className="mt-2 flex gap-2">
           <Button size="sm" disabled={busy} onClick={() => { send('approve') }}>Approve once</Button>
           <Button size="sm" variant="outline" disabled={busy} onClick={() => { send('deny') }}>Deny</Button>

@@ -44,7 +44,7 @@ const TerminalSessionSchema = z.object({
   remote: z.string().nullable().default(null),
   asking: z.string().default(''),
   // The agent's own hook said what its permission prompt asks (not read off the screen).
-  ask: z.object({ tool: z.string(), detail: z.string(), answerable: z.boolean().default(false) }).nullable().default(null),
+  ask: z.object({ tool: z.string(), detail: z.string(), answerable: z.boolean().default(false), choices: z.array(z.string()).default([]) }).nullable().default(null),
   interrupted: z.object({ agent: z.string(), resume: z.string() }).nullable().default(null),
   timeline: z.array(z.object({
     at: z.number().int().nonnegative(),

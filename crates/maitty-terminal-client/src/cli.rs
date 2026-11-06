@@ -2299,6 +2299,29 @@ const ASK_SUBJECT_FIELDS: &[&str] = &["command", "file_path", "path", "url", "pa
 /// The tool Claude uses to put a multiple-choice question to the person, not to ask leave to act.
 const QUESTION_TOOL: &str = "AskUserQuestion";
 
+/// The most choices a prompt offers as buttons. Claude's menu holds four, and the number keys that
+/// pick them stop at nine, so this stays well inside what one key can name.
+const MAX_QUESTION_CHOICES: usize = 4;
+
+/// The choices of a prompt that is one question with one answer: the labels, in the order the menu
+/// numbers them. A prompt with several questions or with several answers is answered in the
+/// terminal, since one key cannot answer it.
+fn single_question_choices(input: Option<&Value>) -> Option<(String, Vec<String>)> {
+    let questions = input?.get("questions")?.as_array()?;
+    let [only] = questions.as_slice() else { return None };
+    if only.get("multiSelect").and_then(Value::as_bool) == Some(true) {
+        return None;
+    }
+    let question = one_line(only.get("question")?.as_str()?, 2000);
+    let labels: Vec<String> = only
+        .get("options")?
+        .as_array()?
+        .iter()
+        .filter_map(|option| option.get("label")?.as_str().map(|label| one_line(label, 200)))
+        .collect();
+    (!question.is_empty() && (2..=MAX_QUESTION_CHOICES).contains(&labels.len())).then_some((question, labels))
+}
+
 /// A question Claude asks with its choices, on one line: `Which? 1 Fast · 2 Safe`. A tool input
 /// without a question gives an empty subject, like any tool with no subject field.
 fn question_subject(input: Option<&Value>) -> String {
@@ -2329,7 +2352,11 @@ fn permission_ask(payload: &Value) -> Option<PermissionAsk> {
         return None;
     }
     let input = payload.get("tool_input");
-    let detail = if tool == QUESTION_TOOL {
+    let single = if tool == QUESTION_TOOL { single_question_choices(input) } else { None };
+    let choices = single.as_ref().map(|(_, labels)| labels.clone()).unwrap_or_default();
+    let detail = if let Some((question, _)) = single {
+        question
+    } else if tool == QUESTION_TOOL {
         question_subject(input)
     } else {
         ASK_SUBJECT_FIELDS
@@ -2342,6 +2369,7 @@ fn permission_ask(payload: &Value) -> Option<PermissionAsk> {
         tool: tool.to_string(),
         detail,
         answerable: false,
+        choices,
     })
 }
 
@@ -4613,7 +4641,18 @@ mod tests {
                 "options": [{"label": "SQLite", "description": "file"}, {"label": "Postgres", "description": "server"}]}]},
         }))
         .expect("a question");
-        assert_eq!(question.detail, "Which database? 1 SQLite · 2 Postgres");
+        assert_eq!(question.detail, "Which database?");
+        assert_eq!(question.choices, ["SQLite", "Postgres"]);
+        // Several questions, or several answers, cannot be answered with one key: numbered in the line.
+        let many = report(json!({
+            "hook_event_name": "PermissionRequest",
+            "tool_name": "AskUserQuestion",
+            "tool_input": {"questions": [
+                {"question": "Which?", "multiSelect": true, "options": [{"label": "A"}, {"label": "B"}]},
+            ]},
+        }))
+        .expect("a multi-select question");
+        assert_eq!((many.detail.as_str(), many.choices.len()), ("Which? 1 A · 2 B", 0));
 
         // A tool with no subject field is still a question; one with no tool is not reported.
         let bare = report(json!({"hook_event_name": "PermissionRequest", "tool_name": "ExitPlanMode"}))

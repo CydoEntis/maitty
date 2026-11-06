@@ -177,6 +177,10 @@ pub struct PermissionAsk {
     /// Set by the daemon; a hook cannot claim it.
     #[serde(default)]
     pub answerable: bool,
+    /// The choices of a one-question multiple-choice prompt, in the order the agent numbers them, so
+    /// the chat view can offer one button each. Empty for any other prompt.
+    #[serde(default)]
+    pub choices: Vec<String>,
 }
 
 /// What an agent's session has used.
@@ -1565,6 +1569,7 @@ mod tests {
                     tool: "Bash".into(),
                     detail: "cargo test".into(),
                     answerable: true,
+                    choices: vec![],
                 }),
                 call: Some("00112233445566ff".into()),
             },
@@ -2133,6 +2138,7 @@ mod tests {
             tool: "Bash".into(),
             detail: "cargo test".into(),
             answerable: true,
+            choices: vec!["A".into(), "B".into()],
         });
         round_trips(&ServerMsg::State(Snapshot {
             terms: [(3, term)].into(),
@@ -2328,5 +2334,12 @@ mod tests {
         ]
         .map(CheckState::label);
         assert_eq!(got, ["pending", "needs_approval", "stale", "never"]);
+    }
+
+    #[test]
+    fn a_permission_ask_from_before_choices_existed_still_reads() {
+        let ask: PermissionAsk =
+            serde_json::from_value(serde_json::json!({"tool": "Bash", "detail": "ls", "answerable": true})).unwrap();
+        assert!(ask.choices.is_empty(), "an older peer sends no choices");
     }
 }

@@ -7676,6 +7676,7 @@ fn permission_report(term: TermId, status: HookStatus, event: &str, agent: &str,
             detail: detail.into(),
             // A hook cannot claim it; the daemon decides.
             answerable: true,
+            choices: Vec::new(),
         });
     }
     msg

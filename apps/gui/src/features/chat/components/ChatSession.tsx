@@ -13,7 +13,7 @@ import { countUserMessages } from '../workPhase'
 import { BYPASS_MODE, modeLabel, modelLabel } from '../chatMeta'
 import type { ApprovalDecision } from '../chatEvents'
 import type { PermissionAsk } from '@/data/preview'
-import { ANSWER_KEYS, type AskChoice } from '../permissionAsk'
+import { ANSWER_KEYS, choiceKey, type AskChoice } from '../permissionAsk'
 import { releaseFirstMessage, takeCarriedDraft, useHeldFirstMessage } from '../firstMessage'
 import { Composer } from './Composer'
 import { ChatItem } from './ChatItems'
@@ -106,8 +106,9 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   }, [working, refresh])
   // The transcript has no entry for a terminal agent's prompt until it is answered, so the chat shows it from the hook's report.
   const stoppedOnPrompt = link.readOnly === true && feed.status === 'Blocked'
-  const answersPrompt = stoppedOnPrompt && typeInto !== undefined && ask?.answerable === true
+  const answersPrompt = stoppedOnPrompt && typeInto !== undefined && (ask?.answerable === true || (ask?.choices?.length ?? 0) > 0)
   const answerPrompt = typeInto === undefined ? undefined : (choice: AskChoice) => typeInto(ANSWER_KEYS[choice]).then(refresh)
+  const pickChoice = typeInto === undefined ? undefined : (index: number) => typeInto(choiceKey(index)).then(refresh)
   const composer = useChatComposer({ link, feed, online, refresh, answersPrompt, paneWorking, ...(typeInto ? { typeInto } : {}) })
   const { sendText, setDraft: setComposerDraft, disabledReason, sending, echo } = composer
   // A message just sent shows at once, with the agent taken to be at work on it, until the history has it.
@@ -186,7 +187,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
       ) : (
         <ChatSkeleton />
       )}
-      {stoppedOnPrompt && <PermissionAskCard agent={agent} ask={ask} online={online} answer={answerPrompt} />}
+      {stoppedOnPrompt && <PermissionAskCard agent={agent} ask={ask} online={online} answer={answerPrompt} pick={pickChoice} />}
       <Composer agent={agent} composer={shownComposer} />
     </div>
   )

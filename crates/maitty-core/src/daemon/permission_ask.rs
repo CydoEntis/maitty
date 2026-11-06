@@ -11,6 +11,9 @@ use maitty_shared::hidden;
 /// Longest tool name and subject kept for a permission prompt, in characters.
 const MAX_ASK_TOOL_CHARS: usize = 64;
 pub(super) const MAX_ASK_DETAIL_CHARS: usize = 300;
+/// Most choices and longest choice kept for a question prompt; the menu itself holds four.
+const MAX_ASK_CHOICES: usize = 4;
+const MAX_ASK_CHOICE_CHARS: usize = 80;
 
 /// The tool Claude asks a multiple-choice question with. Its menu is not the allow-or-refuse menu,
 /// so the key that allows a tool there would pick the first choice for the person.
@@ -37,10 +40,25 @@ pub(super) fn clean_ask(ask: PermissionAsk, agent: &str) -> Option<PermissionAsk
     let detail = mask_secrets(&hidden::sanitize(&ask.detail, false));
     let detail = detail.trim().chars().take(MAX_ASK_DETAIL_CHARS).collect();
     let answerable = knows_answer_keys(agent) && tool != QUESTION_TOOL;
+    // Only a question has choices, and only for an agent whose number keys are known.
+    let choices = if tool == QUESTION_TOOL && knows_answer_keys(agent) {
+        ask.choices
+            .iter()
+            .take(MAX_ASK_CHOICES)
+            .map(|choice| {
+                let clean = mask_secrets(&hidden::sanitize(choice, false));
+                clean.trim().chars().take(MAX_ASK_CHOICE_CHARS).collect::<String>()
+            })
+            .filter(|choice| !choice.is_empty())
+            .collect()
+    } else {
+        Vec::new()
+    };
     Some(PermissionAsk {
         tool,
         detail,
         answerable,
+        choices,
     })
 }
 
@@ -61,6 +79,7 @@ mod tests {
             tool: tool.into(),
             detail: detail.into(),
             answerable: true,
+            choices: Vec::new(),
         }
     }
 
@@ -76,6 +95,11 @@ mod tests {
         assert!(clean_ask(ask("  ", "x"), "claude").is_none());
         let question = clean_ask(ask("AskUserQuestion", "Which? 1 A · 2 B"), "claude").unwrap();
         assert!(!question.answerable, "the allow key would pick the first choice of a question");
+        let mut asked = ask("AskUserQuestion", "Which?");
+        asked.choices = vec!["A".into(), " B\u{1b}".into(), "".into()];
+        let cleaned = clean_ask(asked.clone(), "claude").unwrap();
+        assert_eq!(cleaned.choices, ["A", "B"], "cleaned, and an empty one dropped");
+        assert!(clean_ask(asked, "codex").unwrap().choices.is_empty(), "no keys known, no buttons");
     }
 
     #[test]
