@@ -1116,3 +1116,32 @@ and shows the version as plain information.
 
 **owner:** with the sidebar button gone nothing says an update is out until the Menu is opened.
 Either a small mark on the Menu button when one is out, or nothing. Not answered yet.
+
+## Added 2026-11-05 (night): chat first, from the owner
+
+The owner's model: chat is the default, a default agent (Claude or Codex) is chosen once, every chat is
+its own session, a session can switch between terminal and chat, and a plain shell is terminal only.
+
+## 52. New sessions are the default agent; a plain shell is New terminal (feature, `client`) — built
+
+Settings › General › Chat view gains **Default agent** and **New sessions open as** (Chat by default).
+The sidebar +, Ctrl/Cmd+T, a project's **New session here**, the tab bar's + and the welcome's **Start a
+session** start that agent as a chat (or typed into a new shell when Terminal is chosen). **New terminal**
+(a sidebar button, a project's **New terminal here**, the palette) starts a plain shell. Another machine's
+new session stays a shell, because chats are this computer's.
+
+## 53. Switch one agent session between terminal and chat (feature, `daemon`, `client`) — **owner**
+
+Needs [ADR 0056](adr/0056-an-agent-session-is-one-terminal-session-with-a-chat-view.md) accepted. Until then
+a chat session started by a new session has no terminal view (ADR 0054). Open points are in the ADR.
+
+## 54. Line comments on a diff are gone with the session panel (decision, `client`)
+
+The panel's Changes diff let you comment on a line and send it to the agent. The panel was removed
+(README D.6), so nothing writes those comments now; a comment already in a chat still draws as a bubble.
+**owner:** bring it back in the Inspect panel's Changes tab, or leave it out.
+
+## 55. Per-project defaults for a new session (feature, `client`)
+
+The v18 prototype's project defaults (folder inside the project, a command to run, a preset) decide what
+"New session here" opens. Not built; the default agent is global.

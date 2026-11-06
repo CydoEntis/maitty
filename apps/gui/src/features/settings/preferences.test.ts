@@ -26,11 +26,20 @@ const DEFAULTS: SettingsPreferences = {
   scrollback: 10000, scrollSpeed: 1,
   effectWorking: true,
   effectNeedsYou: true,
+  defaultAgent: 'claude', newSessionView: 'chat',
   effectDone: true, effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all', animations: 'auto', density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, monthlyBudget: null, iconSize: 'medium', trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, chatFullAccessDefault: false, perfOverlay: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass',
 }
 
 describe('settings preferences', () => {
   beforeEach(() => { localStorage.clear() })
+
+  it('opens a new session as a chat with Claude until told otherwise, and ignores a value it does not know', () => {
+    expect(readSettingsPreferences()).toMatchObject({ defaultAgent: 'claude', newSessionView: 'chat' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ defaultAgent: 'codex', newSessionView: 'terminal' }))
+    expect(readSettingsPreferences()).toMatchObject({ defaultAgent: 'codex', newSessionView: 'terminal' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ defaultAgent: 'gemini', newSessionView: 'sideways' }))
+    expect(readSettingsPreferences()).toMatchObject({ defaultAgent: 'claude', newSessionView: 'chat' })
+  })
 
   it('starts with a flat ground and a steady cursor, and keeps a stored choice', () => {
     expect(readSettingsPreferences()).toMatchObject({ backgroundGlow: false, cursorBlink: false })

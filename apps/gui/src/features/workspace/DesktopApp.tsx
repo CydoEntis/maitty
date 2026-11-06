@@ -776,6 +776,13 @@ export function DesktopApp() {
     }
   }, [queryClient])
 
+  // A chat session in `path`, opened in a new tab. Chats are this computer's: another machine's shell asks first.
+  const startChat = useCallback((path: string, agent: ChatAgent, fullAccess: boolean) =>
+    startChatSession(path, agent, null, fullAccess).then((started) => {
+      if (fullAccess) rememberConversationPermissions(String(started.id), 'full-access')
+      return openStartedChat(started, '')
+    }).then(() => { flash(`${agent} chat started`) }), [openStartedChat, flash])
+
   // "Start a Claude chat" on a shell's empty chat card: a chat session in that shell's folder.
   const startChatHere = useCallback((from: SessionView, agent: ChatAgent, fullAccess: boolean) => {
     const refusal = remoteStartRefusal(from.machine !== LOCAL_MACHINE, from.machineName, 'A chat session')
@@ -785,15 +792,10 @@ export function DesktopApp() {
     }
     if (!online || starting) return
     setStarting(true)
-    startChatSession(from.cwd, agent, null, fullAccess)
-      .then((started) => {
-        if (fullAccess) rememberConversationPermissions(String(started.id), 'full-access')
-        return openStartedChat(started, '')
-      })
-      .then(() => { flash(`${agent} chat started`) })
+    startChat(from.cwd, agent, fullAccess)
       .catch((error: unknown) => { toast.error(errorMessage(error, `Could not start a ${agent} chat`)) })
       .finally(() => { setStarting(false) })
-  }, [online, starting, openStartedChat, flash])
+  }, [online, starting, startChat])
 
   const runStart = useCallback((folder: () => Promise<string>, place: (sessionId: string) => void) => {
     if (!online || starting) return
@@ -805,10 +807,40 @@ export function DesktopApp() {
       .finally(() => { setStarting(false) })
   }, [online, starting, startShell])
 
+  // A new session is the default agent: a chat, or the agent typed into a new shell, as Settings says.
+  // A plain shell is `runStart` and is only ever a terminal.
+  const startAgentSession = useCallback((folder: () => Promise<string>) => {
+    const agent = preferences.defaultAgent
+    if (preferences.newSessionView === 'terminal') {
+      runStart(folder, (id) => {
+        setLayout((current) => openInNewTab(current, id, makeId))
+        void sendTerminalInput({ id, generation: 0 }, `${agent}\r`).catch((error: unknown) => { toast.error(errorMessage(error, `Could not start ${agent}`)) })
+      })
+      return
+    }
+    if (!online || starting) return
+    setStarting(true)
+    void folder()
+      .then((path) => startChat(path, agent, preferences.chatFullAccessDefault))
+      .catch((error: unknown) => { toast.error(errorMessage(error, `Could not start a ${agent} chat`)) })
+      .finally(() => { setStarting(false) })
+  }, [preferences.defaultAgent, preferences.newSessionView, preferences.chatFullAccessDefault, online, starting, runStart, startChat])
+
   const newSession = useCallback(() => {
     setSettingsSection(null)
     // A new session goes where the focused one is: on another machine the folder is typed there,
     // because the folder picker and the start folder are this computer's.
+    const remote = remoteTargetOf(focusedSession)
+    if (remote !== null) {
+      setRemoteStart(remote)
+      return
+    }
+    startAgentSession(async () => resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())))
+  }, [startAgentSession, preferences.startFolder, home, focusedSession])
+
+  // A plain shell in the start folder: terminal view only, whatever the default agent is.
+  const newTerminal = useCallback(() => {
+    setSettingsSection(null)
     const remote = remoteTargetOf(focusedSession)
     if (remote !== null) {
       setRemoteStart(remote)
@@ -847,6 +879,10 @@ export function DesktopApp() {
   })()
   const startIn = useCallback((folder: string) => {
     setSettingsSection(null)
+    startAgentSession(() => Promise.resolve(folder))
+  }, [startAgentSession])
+  const startTerminalIn = useCallback((folder: string) => {
+    setSettingsSection(null)
     runStart(() => Promise.resolve(folder), (id) => { setLayout((current) => openInNewTab(current, id, makeId)) })
   }, [runStart])
   const activeGroup = groups.find((group) => group.key === activeGroupKey)
@@ -864,8 +900,8 @@ export function DesktopApp() {
       return
     }
     setSettingsSection(null)
-    runStart(() => Promise.resolve(activeGroupKey), (id) => { setLayout((current) => openInNewTab(current, id, makeId)) })
-  }, [activeGroupKey, remoteGroup, newSession, runStart])
+    startAgentSession(() => Promise.resolve(activeGroupKey))
+  }, [activeGroupKey, remoteGroup, newSession, startAgentSession])
 
   const split = useCallback((paneId: string | null, direction: SplitDirection) => {
     const tab = activeTab(layout)
@@ -1464,6 +1500,7 @@ export function DesktopApp() {
     const items: PaletteItem[] = [
       action('new-here', activeGroupKey ? `New session in ${projectName ?? 'this project'}` : 'New session', newProjectSession, keys('new-session')),
       action('new-start', 'New session in the start folder', newSession),
+      action('new-terminal', 'New terminal (a plain shell)', newTerminal),
       ...heads.filter((head) => head.name !== null && head.chip?.tone === 'ok' && online).map((head) => action(`new-on-${head.key}`, `New session on ${head.label}`, () => { newSessionOn(head.machine, head.label) })),
       action('sidebar-side', preferences.sidebarSide === 'left' ? 'Move sidebar to the right' : 'Move sidebar to the left', () => { setPreferences((current) => ({ ...current, sidebarSide: current.sidebarSide === 'left' ? 'right' : 'left' })) }),
       action('split-right', 'Split right', () => { split(null, 'right') }, keys('split-right')),
@@ -1500,7 +1537,7 @@ export function DesktopApp() {
     }
     for (const candidate of THEMES) items.push({ id: `theme-${candidate.name}`, label: candidate.name, detail: candidate.family, kind: 'Theme', needsQuery: true, run: () => { setPreferences((current) => ({ ...current, themeMode: candidate.light ? 'light' : 'dark', ...(candidate.light ? { lightTheme: candidate.name } : { darkTheme: candidate.name }) })) } })
     return items
-  }, [paletteOpen, platform, layout, activeGroupKey, projectName, newProjectSession, newSession, split, runShortcut, startAgent, sessions, projectOf, groups, focusedId, focusedSession, showSessionById, preferences.sidebarSide, inspectRefusal, heads, online, newSessionOn])
+  }, [paletteOpen, platform, layout, activeGroupKey, projectName, newProjectSession, newSession, newTerminal, split, runShortcut, startAgent, sessions, projectOf, groups, focusedId, focusedSession, showSessionById, preferences.sidebarSide, inspectRefusal, heads, online, newSessionOn])
 
   const restartOffer: RestartOffer | null = mismatch
     ? {
@@ -1556,6 +1593,8 @@ export function DesktopApp() {
       }}
       onNewSession={() => { afterPick(); newSession() }}
       onNewSessionIn={(folder) => { afterPick(); startIn(folder) }}
+      onNewTerminal={() => { afterPick(); newTerminal() }}
+      onNewTerminalIn={(folder) => { afterPick(); startTerminalIn(folder) }}
       onNewSessionOn={(machine, name) => { afterPick(); newSessionOn(machine, name) }}
       onNewWorktree={(groupKey) => {
         const group = groups.find((candidate) => candidate.key === groupKey)

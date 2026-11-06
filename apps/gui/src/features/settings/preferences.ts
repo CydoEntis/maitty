@@ -4,7 +4,7 @@ import type { AnimationMode } from '@/lib/animation-auto'
 import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, isFontFamily, isFontWeight, type TerminalFontWeight } from '@/lib/terminalFont'
 import { readThemePreference, type ThemePreference } from '@/data/themePreference'
 import { THEMES, type ThemeMode } from '@/features/workspace/theme/themes'
-import { DEFAULT_CHAT_VIEWS, type ChatViewDefaults, type PaneView } from '@/features/workspace/model/chatView'
+import { DEFAULT_CHAT_VIEWS, type ChatAgent, type ChatViewDefaults, type PaneView } from '@/features/workspace/model/chatView'
 
 export type ToastPosition = 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right'
 export type CursorStyle = 'block' | 'bar' | 'underline'
@@ -99,6 +99,10 @@ export type SettingsPreferences = {
   iconColor: IconColor
   /** Which view a Claude or Codex session opens in. Terminal until you change it. */
   chatViewDefault: ChatViewDefaults
+  /** The agent a new session starts. */
+  defaultAgent: ChatAgent
+  /** What a new session opens as: a chat with the default agent, or that agent typed into a new shell. */
+  newSessionView: PaneView
   /** A new chat starts with the agent's full-access mode (no sandbox, no permission prompts). Off until you turn it on. */
   chatFullAccessDefault: boolean
   /** The bottom line of the window: daemon, branch, counts and the focused session. */
@@ -194,6 +198,8 @@ function defaults(): SettingsPreferences {
     leadMode: 'focused',
     iconColor: 'color',
     chatViewDefault: DEFAULT_CHAT_VIEWS,
+    defaultAgent: 'claude',
+    newSessionView: 'chat',
     chatFullAccessDefault: false,
     statusBar: true,
     perfOverlay: false,
@@ -271,6 +277,8 @@ export function readSettingsPreferences(): SettingsPreferences {
       trayStyle: preferences.trayStyle === 'names' || preferences.trayStyle === 'icons' || preferences.trayStyle === 'stacked' ? preferences.trayStyle : fallback.trayStyle,
       style: styleOf(preferences.style) ?? fallback.style,
       chatViewDefault: chatViewDefault(preferences.chatViewDefault, fallback.chatViewDefault),
+      defaultAgent: preferences.defaultAgent === 'claude' || preferences.defaultAgent === 'codex' ? preferences.defaultAgent : fallback.defaultAgent,
+      newSessionView: paneView(preferences.newSessionView, fallback.newSessionView),
       chatFullAccessDefault: bool(preferences.chatFullAccessDefault, fallback.chatFullAccessDefault),
       statusBar: bool(preferences.statusBar, fallback.statusBar),
       perfOverlay: bool(preferences.perfOverlay, fallback.perfOverlay),

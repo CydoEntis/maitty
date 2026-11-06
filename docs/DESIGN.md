@@ -434,7 +434,7 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   `Sending image`, **Cancel**), ending as `Sent the image to <machine>`. For a pane of this computer there is
   no progress: a short `Saving the image…` toast becomes `Pasted the image`.
 - **Project menu.** Right-clicking a project, in the
-  sidebar or the rail, offers New session here, Collapse or Expand, and Copy path.
+  sidebar or the rail, offers New session here, New terminal here, Collapse or Expand, and Copy path.
 - **Inspect (⌘I).** A card docked at the right of the window (over the panes under 900px) that
   reads the focused pane's repository and never changes it: **Files** (folders and a text
   preview), **Changes** (the working tree's diff, one file at a time), **Branches** (the current

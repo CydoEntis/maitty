@@ -13,6 +13,7 @@ const daemon = vi.hoisted(() => ({
   listenSessionsChanged: vi.fn(() => Promise.resolve(() => {})),
   defaultSessionFolder: vi.fn<() => Promise<string>>(),
   startShellSession: vi.fn<(folder: string) => Promise<void>>(),
+  startChatSession: vi.fn<(folder: string, agent: string, branch: string | null, fullAccess: boolean) => Promise<{ id: number; generation: number }>>(),
   archiveConversationOnDaemon: vi.fn<(conversation: { id: string }, archived: boolean) => Promise<void>>(),
   renameConversationOnDaemon: vi.fn<(conversation: { id: string }, title: string) => Promise<void>>(),
   markSeenOnDaemon: vi.fn<(conversation: { id: string }) => Promise<void>>(),
@@ -126,8 +127,38 @@ describe('desktop terminal multiplexer', () => {
     expect(within(dialog).getByRole('textbox', { name: 'Start folder' })).toHaveValue('')
   })
 
-  it('starts a plain shell in the home folder with Ctrl+T and opens it in a new tab', async () => {
+  it('starts a plain shell in the home folder from New terminal and opens it in a new tab', async () => {
     const user = userEvent.setup()
+    renderDesktopApp()
+    await screen.findByRole('heading', { name: 'No sessions running' })
+    daemon.loadConversations.mockResolvedValue([term(5, HOME)])
+
+    await user.click(screen.getByRole('button', { name: 'New terminal' }))
+
+    await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalledWith(HOME) })
+    expect(daemon.startChatSession).not.toHaveBeenCalled()
+    const tab = await screen.findByRole('tab', { selected: true })
+    expect(tab).toHaveTextContent('~')
+    expect(tab).not.toHaveTextContent('shell')
+    expect(screen.getByRole('region', { name: 'Shell in ~' })).toHaveTextContent('Pane 5')
+    expect(screen.getByRole('region', { name: /^Terminal 1: ~/ })).toBeInTheDocument()
+  })
+
+  it('starts the default agent as a chat in the home folder with Ctrl+T', async () => {
+    const user = userEvent.setup()
+    daemon.startChatSession.mockResolvedValue({ id: 44, generation: 1 })
+    renderDesktopApp()
+    await screen.findByRole('heading', { name: 'No sessions running' })
+
+    await user.keyboard('{Control>}{Shift>}t{/Shift}{/Control}')
+
+    await waitFor(() => { expect(daemon.startChatSession).toHaveBeenCalledWith(HOME, 'claude', null, false) })
+    expect(daemon.startShellSession).not.toHaveBeenCalled()
+  })
+
+  it('starts the chosen agent in a terminal when new sessions are set to open as one', async () => {
+    const user = userEvent.setup()
+    window.localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ defaultAgent: 'codex', newSessionView: 'terminal' }))
     renderDesktopApp()
     await screen.findByRole('heading', { name: 'No sessions running' })
     daemon.loadConversations.mockResolvedValue([term(5, HOME)])
@@ -135,11 +166,8 @@ describe('desktop terminal multiplexer', () => {
     await user.keyboard('{Control>}{Shift>}t{/Shift}{/Control}')
 
     await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalledWith(HOME) })
-    const tab = await screen.findByRole('tab', { selected: true })
-    expect(tab).toHaveTextContent('~')
-    expect(tab).not.toHaveTextContent('shell')
-    expect(screen.getByRole('region', { name: 'Shell in ~' })).toHaveTextContent('Pane 5')
-    expect(screen.getByRole('region', { name: /^Terminal 1: ~/ })).toBeInTheDocument()
+    await waitFor(() => { expect(daemon.sendTerminalInput).toHaveBeenCalledWith({ id: 't5', generation: 0 }, 'codex\r') })
+    expect(daemon.startChatSession).not.toHaveBeenCalled()
   })
 
   it('applies the saved density, text sizes and sidebar width, and a drag of the edge changes and saves the width', async () => {
@@ -718,7 +746,7 @@ describe('desktop terminal multiplexer', () => {
     renderDesktopApp()
     await screen.findByRole('heading', { name: 'No sessions running' })
 
-    await user.click(screen.getByRole('button', { name: 'New session' }))
+    await user.click(screen.getByRole('button', { name: 'New terminal' }))
 
     await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalledWith(`${HOME}/code`) })
   })
@@ -1099,6 +1127,7 @@ describe('desktop terminal multiplexer', () => {
   it('moves between a project\'s tabs with Ctrl+Tab and Ctrl+Shift+Tab', async () => {
     const user = userEvent.setup()
     const root = `${HOME}/code/maitty`
+    window.localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ newSessionView: 'terminal' }))
     daemon.loadConversations.mockResolvedValue([inRepo(2, root, `${root}/a`)])
     renderDesktopApp()
     await screen.findByRole('tab', { selected: true })
@@ -1336,9 +1365,12 @@ describe('desktop sidebar projects', () => {
     daemon.loadConversations.mockResolvedValue([at(2)])
     renderDesktopApp()
 
+    daemon.startChatSession.mockResolvedValue({ id: 44, generation: 1 })
+
     await user.click(await screen.findByRole('button', { name: 'New session in maitty' }))
 
-    await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalledWith(root) })
+    await waitFor(() => { expect(daemon.startChatSession).toHaveBeenCalledWith(root, 'claude', null, false) })
+    expect(daemon.startShellSession).not.toHaveBeenCalled()
   })
 })
 
@@ -1493,9 +1525,10 @@ describe('desktop overlays and tab tools', () => {
     expect(within(set).getAllByRole('listitem')).toHaveLength(6)
     expect(set).toHaveTextContent('New session')
 
+    daemon.startChatSession.mockResolvedValue({ id: 44, generation: 1 })
     await user.click(within(set).getByRole('button', { name: 'Start a session' }))
     expect(screen.queryByRole('dialog', { name: "You're set" })).not.toBeInTheDocument()
-    expect(daemon.startShellSession).toHaveBeenCalled()
+    expect(daemon.startChatSession).toHaveBeenCalled()
 
     app.unmount()
     renderDesktopApp({ firstRun: true })
@@ -1671,7 +1704,7 @@ describe('desktop overlays and tab tools', () => {
     expect(daemon.archiveConversationOnDaemon).not.toHaveBeenCalled()
   })
 
-  it('opens a menu on a project header with a new session in its folder', async () => {
+  it('opens a menu on a project header with a new session and a new terminal in its folder', async () => {
     const user = userEvent.setup()
     daemon.loadConversations.mockResolvedValue([at(2)])
     renderDesktopApp()
@@ -1679,8 +1712,12 @@ describe('desktop overlays and tab tools', () => {
 
     fireEvent.contextMenu(await within(nav).findByRole('button', { name: /^maitty/, expanded: true }))
     expect(await screen.findByText('maitty', { selector: '.mx-menu-caps' })).toBeInTheDocument()
+    daemon.startChatSession.mockResolvedValue({ id: 44, generation: 1 })
     await user.click(screen.getByRole('menuitem', { name: 'New session here' }))
+    await waitFor(() => { expect(daemon.startChatSession).toHaveBeenCalledWith(root, 'claude', null, false) })
 
+    fireEvent.contextMenu(await within(nav).findByRole('button', { name: /^maitty/, expanded: true }))
+    await user.click(await screen.findByRole('menuitem', { name: 'New terminal here' }))
     await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalledWith(root) })
   })
 

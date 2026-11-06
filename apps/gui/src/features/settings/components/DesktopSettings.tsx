@@ -357,6 +357,12 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
         </Row>
       </Card>
       <Card title="Chat view" color="var(--accent)" iconPath={<path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-7l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" />}>
+        <Row label="Default agent" detail="The agent a new session starts. A plain terminal is always one click away.">
+          <Segmented label="Default agent" value={preferences.defaultAgent} options={AGENT_OPTIONS} onChange={(value) => { update('defaultAgent', value) }} />
+        </Row>
+        <Row label="New sessions open as" detail="A chat with the default agent, or that agent running in a terminal. A terminal session can still switch to its chat.">
+          <Segmented label="New sessions open as" value={preferences.newSessionView} options={VIEW_OPTIONS} onChange={(value) => { update('newSessionView', value) }} />
+        </Row>
         <Row label="Full access in new chats" detail="Start new chats with the agent's skip-permissions mode: no sandbox and no approval prompts, so the agent can change files and run commands without asking. Each chat can still turn it off or on when it starts.">
           <Switch label="Full access in new chats" checked={preferences.chatFullAccessDefault} onChange={(value) => { update('chatFullAccessDefault', value) }} />
         </Row>
@@ -675,6 +681,9 @@ function UsageSection({ usage }: { usage: UsageInfo }) {
     </Card>
   )
 }
+
+const AGENT_OPTIONS = [['claude', 'Claude'], ['codex', 'Codex']] as const
+const VIEW_OPTIONS = [['chat', 'Chat'], ['terminal', 'Terminal']] as const
 
 function NotificationsSection({ preferences, update, onTestNotice }: { preferences: SettingsPreferences; update: Update; onTestNotice: (() => void) | undefined }) {
   return (

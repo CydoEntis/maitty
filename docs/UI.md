@@ -720,7 +720,13 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   (`NoTerminalNote`), and nothing that needs a pane number (find, restart, paste, broadcast, typed answers, the
   worktree menu, Inspect) is offered for it. Its composer is on (send, queue with Remove, Stop, attachments); an
   approval is answered by request id (y / a / n) and a user-input request by a form (`UserInputForm`), so neither
-  points to a terminal. It starts from a shell's empty chat card (**Start a Claude chat** / **Start a Codex chat**). Closing it stops
+  points to a terminal. A new session (the sidebar +, Ctrl/Cmd+T, a project's **New session here**, the tab bar's +) starts one with the
+  default agent from Settings › General › Chat view (**Default agent**, Claude or Codex, and **New sessions open
+  as**, Chat by default); it can also start from a shell's empty chat card (**Start a Claude chat** / **Start a
+  Codex chat**). With **New sessions open as: Terminal** a new session is the default agent typed into a new shell.
+  A plain shell is **New terminal** (the sidebar button, a project's **New terminal here**, the palette): terminal
+  view only. Switching one agent session between its terminal and its chat is not built; it is
+  [ADR 0056](adr/0056-an-agent-session-is-one-terminal-session-with-a-chat-view.md). Closing it stops
   the agent (`closeChatSession`: end, then put away); if the stop fails it stays open. The read-only chat that
   follows an agent typed in a shell keeps its pane, its switch and its disabled composer.
 - **Switching changes the window, not the session.** The choice is per session (`usePaneViews`), the terminal stays
