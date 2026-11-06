@@ -136,6 +136,11 @@ import './workspace.css'
 const SESSION_REFRESH_MS = 15_000
 /** How long a new session on another machine is waited for, and how often its list is looked at. */
 const REMOTE_START_WAIT_MS = 8000
+/** How long a session started as an agent is taken to be it while the daemon has not said so; a command that never starts one stops claiming it. */
+const EXPECTED_AGENT_MS = 30_000
+function omitKey<T>(record: Record<string, T>, key: string): Record<string, T> {
+  return Object.fromEntries(Object.entries(record).filter(([name]) => name !== key))
+}
 const REMOTE_START_POLL_MS = 250
 const MIN_TABS_FOR_NUMBERS = 2
 /** A tab's hover card lists its panes only when it has more than one. */
@@ -400,12 +405,17 @@ export function DesktopApp() {
       for (const stop of stops) stop()
     }
   }, [])
+  // Sessions started as a known agent, until the daemon says so itself (see `startAgentSession`).
+  const [expectedAgents, setExpectedAgents] = useState<Record<string, ChatAgent>>({})
   const everySession = useMemo(() => {
     // Terminal sessions, and the chat sessions the daemon owns that are not put away (ADR 0003).
     const terminals = (sessionsQuery.data ?? []).filter((item) => item.kind === 'terminal' || isListedChatSession(item))
     const here = online ? terminals : markConversationsDisconnected(terminals)
-    return [...here, ...remoteTerminals(machines)].map((conversation) => toSessionView(conversation, home))
-  }, [sessionsQuery.data, online, home, machines])
+    return [...here, ...remoteTerminals(machines)].map((conversation) => {
+      const expected = expectedAgents[conversation.id]
+      return toSessionView(expected !== undefined && !conversation.agent ? { ...conversation, agent: expected } : conversation, home)
+    })
+  }, [sessionsQuery.data, online, home, machines, expectedAgents])
   const sessions = everySession
   const sessionMap = useMemo(() => new Map(sessions.map((session) => [session.id, session])), [sessions])
   // A session the daemon stops listing keeps its pane, shown as ended, so a refresh that misses one
@@ -815,6 +825,10 @@ export function DesktopApp() {
   const startAgentSession = useCallback((folder: () => Promise<string>, agent: ChatAgent = preferences.defaultAgent) => {
     const view = preferences.newSessionView
     runStart(folder, (id) => {
+      // The daemon learns which agent runs from the agent's own hook, a moment after the command is typed; until then the
+      // session is known to be this agent, so it never shows as a shell.
+      setExpectedAgents((current) => ({ ...current, [id]: agent }))
+      window.setTimeout(() => { setExpectedAgents((current) => omitKey(current, id)) }, EXPECTED_AGENT_MS)
       setLayout((current) => openInNewTab(current, id, makeId))
       if (view === 'chat') paneViews.choose(id, 'chat')
       void sendTerminalInput({ id, generation: 0 }, `${agent}\r`).catch((error: unknown) => { toast.error(errorMessage(error, `Could not start ${agent}`)) })
