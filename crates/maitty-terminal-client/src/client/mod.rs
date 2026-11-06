@@ -143,6 +143,8 @@ enum Mode {
     },
     /// The app layout: open a folder as a project.
     Finder(Box<screen::Finder>),
+    /// The New Session popup: start a session on any project or folder of any machine.
+    NewSession(Box<screen::NewSession>),
     /// The app layout: new pane (project, worktree, what to run).
     ScreenPane(screen::NewPaneHy),
     /// The app layout: the settings overlay.
@@ -2093,3 +2095,5 @@ mod mcp_machine_tests;
 mod remote_status_tests;
 #[cfg(test)]
 mod routing_tests;
+#[cfg(test)]
+mod session_popup_tests;

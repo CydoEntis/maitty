@@ -1514,7 +1514,26 @@ fn draw_machine_state(
 ) {
     let forms = machine_group::state_forms(app, machine);
     machine_group::draw_note(buf, (cols.x + 2, cols.end()), y, (&forms, t.muted), pb);
-    hit(app, cols.row(y), ScreenHit::MachineRow(machine));
+    // A machine that is up and has nothing running offers a session of its own right here.
+    let can_start = machine != MachineId::LOCAL
+        && app
+            .remotes
+            .get(&machine)
+            .is_some_and(|r| r.state.is_connected());
+    if can_start {
+        let word = "⏎ new";
+        let at = cols.end().saturating_sub(word.chars().count() as u16 + 1);
+        put(
+            buf,
+            at,
+            y,
+            &[seg(word, Style::default().fg(t.accent).bg(pb))],
+            cols.end(),
+        );
+        hit(app, cols.row(y), ScreenHit::NsMachine(machine));
+    } else {
+        hit(app, cols.row(y), ScreenHit::MachineRow(machine));
+    }
 }
 
 /// A folder's header: its fold arrow and name, and right-aligned what it is (branch, its

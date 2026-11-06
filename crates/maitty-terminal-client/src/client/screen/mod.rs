@@ -45,6 +45,8 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 pub(super) struct Saved {
     /// Project keys in the order they were first seen; a project's colour is its index.
     pub order: Vec<String>,
+    /// Paths a session was last started in from the New Session popup, newest first, as typed.
+    pub recent_paths: Vec<String>,
     /// Folded sidebar rows ("p:<project key>").
     pub closed: Vec<String>,
     /// Sessions in the order you dragged them to (within a group; what needs you still
@@ -1585,6 +1587,11 @@ pub(super) enum ScreenHit {
     /// Inside an overlay's panel: nothing.
     Noop,
     FinderPick(usize),
+    /// A row of the New Session popup, and one of its machine chips.
+    NsRow(usize),
+    NsChip(usize),
+    /// A connected machine with nothing running: opens the popup on its home folder.
+    NsMachine(MachineId),
     NpProj(usize),
     NpRun(usize),
     NpBeside(usize),
@@ -1742,6 +1749,10 @@ pub(in crate::client) mod machines;
 #[cfg(test)]
 mod machines_tests;
 mod newsession;
+mod session_popup;
+mod session_popup_ui;
+pub(in crate::client) use session_popup::NewSession;
+pub(in crate::client) use session_popup_ui::draw_session_popup;
 mod popover;
 mod popups;
 mod rail;
