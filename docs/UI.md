@@ -186,7 +186,7 @@ The leader is `Ctrl+Space` by default. Inbox (`i`), Changes (`c`), Files (`f`), 
 
 **Send a file** (`client/send_file.rs`, ADR 0055). In a pane on another machine the leader key `d` opens the prompt `Send a file to this machine: its path` (mode bar `SEND FILE`; a paste or a drop puts its first line in the box, a drop's quotes come off). Enter starts the upload in `spawn_bg`; a toast reads `sending <file> to <machine>… <n>%` and is refreshed once a second from the byte count, without adding to the notification history. `d` again, or a click on the toast's close mark, stops it (`stopping the send to <machine>…`, then `stopped sending the file to <machine>`); Esc only dismisses the toast and does not stop it, because Esc also belongs to the program in the pane. One file is sent at a time. On success the far-side path is typed into the pane like a local paste, and the toast says `sent <file> to <machine>`; every failure is an error toast (not a file, over 100 MB, no ssh to the machine, a login that needs a prompt, the machine could not keep it). On a local pane the key says there is nothing to send.
 
-The sidebar's **+ new** chip, a project row's **+**, the empty project row's new action and leader + `n` are one action (`Action::ShellHere`): a plain shell where you are, whose tab opens with focus. You type your agent in it (see *Agent launchers* below). Leader + `s` starts an agent session straight away with the defaults in Settings › Sessions (`Action::StartSession`, Menu › Session). **Menu** is in the sidebar footer. Every row of the key overlay and the Menu is clickable and wheel-scrollable. Include configured commands and retain existing confirmations.
+The sidebar's **+ New** chip and `n` start a session at once (see *New Session popup*). A project row's **+**, the empty project row's new action and leader + `n` are one action (`Action::ShellHere`): a plain shell where you are, whose tab opens with focus. You type your agent in it (see *Agent launchers* below). Leader + `s` starts an agent session straight away with the defaults in Settings › Sessions (`Action::StartSession`, Menu › Session). **Menu** is in the sidebar footer. Every row of the key overlay and the Menu is clickable and wheel-scrollable. Include configured commands and retain existing confirmations.
 
 When an update is available, show **Update <version>** at the right end of the mode bar and open the existing confirmation flow when clicked. Do not show the control when Maitty is current. Keep status icons and pane status tags clickable to open the evidence explanation. Terminal bells do not add sidebar indicators or history entries.
 
@@ -598,10 +598,34 @@ Code: `client/screen/machine_group.rs` (header, notes, grey), `side.rs` (`Line::
 
 ## Project-specific: New Session popup
 
-One popup starts the default agent anywhere: on an open project, in any folder, on any machine
-(`client/screen/session_popup.rs` is the model, `session_popup_ui.rs` the keys and drawing). It opens
-from `n` in the sidebar, the `+ New` chip, the rail's `+` and the splash's New session, with an empty
-query. Leader `n` (a plain shell where you are) and leader `s` (the default agent at once) are unchanged.
+Three ways to start the default agent, fastest first; all end in `App::create_session`
+(`client/screen/quick_new.rs`):
+
+1. **`n`**, instant. In the sidebar, `n` and the `+ New` chip start a session with no popup in the row
+   the sidebar has selected, even when the keys are in a pane (`App::quick_target`): a session, tab or
+   project header starts in that project's own checkout on its machine; no selection asks for a folder
+   on this computer (the picker, scoped); a project whose machine is down reconnects that machine
+   instead. (`quick_target_of` also maps an online machine with no sessions to the scoped picker; the
+   sidebar cannot select a machine row yet, so only the down case is reached.) The sidebar's mode line
+   shows what `n` will do right now: `n new in maitty`, `n new in maitty · kingdom`, `n new on kingdom…`,
+   `n reconnect pi-garage`.
+2. **A scoped picker**: the ` + ` chip on the LOCAL title (a cell after it, `x = sidebar.x + 10`) or after
+   an online remote's badge (orange on `btn`; none on a machine that is down) opens the picker with the
+   query `~/` or `kingdom:~/`, which is path mode on that machine: the title reads `NEW SESSION ON KINGDOM`
+   (`ON LOCAL`). Clearing the query goes back to the full picker. The REMOTE rule's chip is ` m add `.
+3. **The full picker**: `N` in the sidebar, leader `o` (works from a terminal pane), and the splash's New
+   session open it with nothing typed.
+
+Leader `n` (a plain shell where you are) and leader `s` (the default agent at once, in a worktree if
+Settings › Sessions says so) are unchanged. The leader is the existing shortcut mode (`Ctrl+Space`, sticky,
+configurable as `keys.prefix`), not a one-key leader: its `n`, `l` and `1`-`9` already mean shell, history
+and tabs, so the prototype's `Ctrl+Space n / l / 1-9` is not built. Open question for the owner: bind
+`Ctrl+Space l` / `1-9` to scoped pickers, or leave the chips and `N` as the only scoped routes.
+
+`n` reuses the project's checkout; it makes no worktree. Open question: should two agents in one checkout
+get a worktree each (`../<project>-worktrees/<name>`, branch `<name>` off the current branch, `⎇ <name>` on
+the card)? The UI would not change.
+
 Every row is a path you can type, written as scp writes it: `~/code/maitty` is this computer and
 `kingdom:~/maitty` is the machine named kingdom.
 
@@ -625,10 +649,11 @@ Every row is a path you can type, written as scp writes it: `~/code/maitty` is t
   repo or leaf folder it starts a session there; on a folder that only holds folders it opens it (the
   same as Tab); on an online machine chip it browses that machine's home folder; on an offline one it
   reconnects. A click selects a row, and a click on the selected row is Enter. Esc closes.
-- **Starting** closes the popup, starts the default agent in that folder on that machine (a worktree
-  is not made: another machine has none), remembers the path, and toasts `+ <folder> started`.
-- **After starting**, the mode bar's hint is replaced for `BAR_FLASH_FOR` (2.4 s) by `+ <folder> started`
-  in the accent (`App::bar_flash`); shortcut mode's suggestions and a holder's hints are never replaced. The
+- **Starting** (`create_session`) closes the popup, starts the default agent in that folder on that machine
+  (a worktree is not made: another machine has none), remembers the path, and toasts the line below.
+- **After starting**, the mode bar's hint is replaced for `BAR_FLASH_FOR` (2.5 s) by
+  `+ <agent> · <folder> on <machine|local>` in green (`App::bar_flash`; the daemon names the session
+  later, so the agent stands in for its name); shortcut mode's suggestions and a holder's hints are never replaced. The
   toast stays as well. The sidebar's project cursor is cleared and `follow` is set, so the new session, which the
   daemon focuses, is the open card and is scrolled into view when the focus arrives. A card is not
   selected by the keyboard cursor: the popup returns the keys to the panes.
@@ -637,6 +662,14 @@ Every row is a path you can type, written as scp writes it: `~/code/maitty` is t
   `[ui] glyphs` is `ascii`. The setting's choices are `dots` and `unicode`, and a saved `ascii` is rewritten to
   `dots` on load, so the variable is the way in. The shared panel frame, its title and close mark, and the
   sidebar are not covered.
+
+- **Help.** All keys (`?`) lists leader `o` (New session anywhere) in SESSIONS and an IN THE SIDEBAR box with
+  `n` New here and `N` Pick anywhere (`SIDEBAR_KEYS` in `keyoverlay.rs`).
+- **The mode line's fit.** The bar already drops whole pieces and never cuts one (`mode_bar.rs` `fit`): hints go
+  from the right, then Update, then the way out, and the mode tag stays. It has no CPU or pty readout.
+- **Not verified on Windows terminals.** `Ctrl+Space` reaches the app as NUL; crossterm may report it as
+  `Char(' ')` with Control, or as `@` / `2` (the key reader folds those to Space). Some Windows terminals
+  swallow it; `keys.prefix` can be rebound.
 
 ## Project-specific: Machines dialog
 

@@ -77,9 +77,10 @@ accent fill. See UI › *UI conventions*.
 
 Two halves in one card ([ADR 0050](adr/0050-local-and-remote-sidebar-with-session-cards.md)). The
 top is `LOCAL`, a title chip on the card's border: this computer's sessions. The bottom half
-starts at a rule that joins the sides (`├ REMOTE 2 ──── + Add ┤`) and holds the other machines;
-`+ Add` opens the Add Machine dialog. Each half scrolls on its own, and with no other machine Remote
-says `no remote machines`; the `+ Add` chip is the one way to add. There are no folder rows and no machine headers.
+starts at a rule that joins the sides (`├ REMOTE 2 ──── m add ┤`) and holds the other machines;
+`m add` opens the Add Machine dialog. Each half scrolls on its own, and with no other machine Remote
+says `no remote machines`; the `m add` chip is the one way to add. A ` + ` chip (orange on `btn`) a cell after the LOCAL title and after each online
+machine's badge opens the New Session picker on that machine; a machine that is down has none. There are no folder rows and no machine headers.
 
 Inside a half, projects are rows that fold: `▾` open or `▸` closed, the
 name in `strong` bold, and at the right `⎇ branch` in `muted` and a `✓` in `done`, or a `✕` in `err`
@@ -104,7 +105,7 @@ one line of how it stands: `no sessions yet`, `connecting…`, `reconnecting…`
 Machines dialog on that machine and a right-click its menu. The foot holds **+ New** and **Menu**. Collapsed, the sessions become a narrow
 column; hidden, the panes take everything. See UI › *sidebar check result* and *collapsed sidebar*.
 
-The **Add Machine dialog** (leader `w`, or `+ Add`) is a standard modal: one input typed like scp on
+The **Add Machine dialog** (leader `w`, or `m add`) is a standard modal: one input typed like scp on
 `card2` with a parse line under it, the hosts of `~/.ssh/config` to complete it from, and a
 dim line for Windows; after Enter a checklist of the steps connecting takes. Its behaviour is in [UI](UI.md#project-specific-machines-dialog).
 
@@ -174,7 +175,7 @@ Typing: a quiet ` TYPING ` chip and the leader key. Shortcut mode: the whole row
 ` SHORTCUT ` chip and the next keys you can press; starting a pane ends it
 ([ADR 0025](adr/0025-a-new-pane-ends-shortcut-mode.md)). When something other than the panes
 has the keys, the bar stays on `bg`, never sky: a calm chip (`strong` bold on `btn`) names the
-holder, then its keys and the way out (`SIDEBAR · ↑↓ move · Enter open · Esc back`), with
+holder, then its keys and the way out (`SIDEBAR · ↑↓ move · Enter open · n new in maitty · Esc back`, the `n` hint computed from what `n` would do), with
 `· shortcut mode waits` while the mode is held. Under a popup the bar is words only and takes
 no click. **Update** or **Restart** sits at its right end when waiting, unless the sidebar shows it at its foot. See UI › *the frame*
 (Mode bar).
