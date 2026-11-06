@@ -106,6 +106,7 @@ mod design_tests {
             why_screen_at: 0,
             why_process_at: 0,
             quiet_since: None,
+            repeats: None,
             pid: 0,
             name: String::new(),
             label: String::new(),

@@ -1189,6 +1189,10 @@ pub struct TermInfo {
     /// that it may be stuck. Its status stays working.
     #[serde(default)]
     pub quiet_since: Option<u64>,
+    /// Working, and the agent's last calls are one call over and over or two taking turns: how
+    /// many calls the repeat has reached. Its status stays working; nothing rings.
+    #[serde(default)]
+    pub repeats: Option<u32>,
     /// The process running in it (0: not known).
     #[serde(default)]
     pub pid: u32,
@@ -2130,6 +2134,17 @@ mod tests {
             detail: "cargo test".into(),
             answerable: true,
         });
+        round_trips(&ServerMsg::State(Snapshot {
+            terms: [(3, term)].into(),
+            ..Default::default()
+        }));
+    }
+
+    #[test]
+    fn a_pane_from_before_the_repeat_count_reads_with_none_and_one_with_it_round_trips() {
+        let mut term = pane_from(serde_json::json!({}));
+        assert_eq!(term.repeats, None, "an older peer sends none");
+        term.repeats = Some(6);
         round_trips(&ServerMsg::State(Snapshot {
             terms: [(3, term)].into(),
             ..Default::default()

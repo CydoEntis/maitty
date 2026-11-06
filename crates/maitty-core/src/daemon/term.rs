@@ -213,6 +213,10 @@ pub struct Term {
     pub screen_blocked_from: Option<Status>,
     /// Working with no output and no hook report since then (unix seconds): may be stuck.
     pub quiet_since: Option<u64>,
+    /// The tail of this turn's tool calls, as fingerprints; never saved.
+    pub call_run: super::repeats::CallRun,
+    /// How many calls a repeat has reached (`CallRun::repeats`), while the agent works.
+    pub repeats: Option<u32>,
     /// When it last started needing you (cleared when it stops).
     pub blocked_at: Option<Instant>,
     /// Processes known to run inside this pane (trusted to report its status).
@@ -862,6 +866,8 @@ impl Term {
             ended_activity: None,
             screen_blocked_from: None,
             quiet_since: None,
+            call_run: super::repeats::CallRun::default(),
+            repeats: None,
             blocked_at: None,
             trusted: std::collections::HashSet::new(),
             token,

@@ -199,6 +199,18 @@ mod tests {
     }
 
     #[test]
+    fn a_repeat_count_is_held_to_a_range() {
+        let mut snap = rich();
+        let id = *snap.terms.keys().next().unwrap();
+        snap.terms.get_mut(&id).unwrap().repeats = Some(u32::MAX);
+        let safe = sanitize_snapshot(snap).unwrap();
+        assert_eq!(safe.terms[&id].repeats, Some(REPEATS_MAX));
+        let mut modest = rich();
+        modest.terms.get_mut(&id).unwrap().repeats = Some(7);
+        assert_eq!(sanitize_snapshot(modest).unwrap().terms[&id].repeats, Some(7));
+    }
+
+    #[test]
     fn a_workspace_colour_past_any_palette_is_held_to_a_range() {
         let mut snap = rich();
         snap.workspaces[0].color = u8::MAX;

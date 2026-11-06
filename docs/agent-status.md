@@ -203,6 +203,16 @@ A working agent with no output and no hook report for 10 minutes is marked quiet
 stays working. An agent waiting on helpers it reported, or asking to start helpers,
 is never quiet. Any output or hook report clears it.
 
+A working agent that is busy but going nowhere is marked repeating (`repeats` on the wire, the
+number of calls the repeat has reached): its last tool calls are one call five times in a row, or
+two calls taking turns for eight calls. The daemon sees each call only as the fingerprint a
+tool-start hook reports (`call`, see [API_PATTERNS](API_PATTERNS.md)), so only Claude, Qwen, Codex
+and Gemini can be marked, and a call made inside a subagent does not count. A different call, a new
+prompt, the agent leaving work or exiting clears it, and a report with no call leaves the run alone.
+Like quiet it never changes the status, rings, or enters the Inbox, and it is not saved with the
+session. A change is one `daemon.log` line (`pane 4 (claude): repeating 6x`, or `cleared`) and
+never says what the calls were.
+
 A finished turn stays **done** until a window reports it looked: the terminal app sends
 `MarkSeen` when its window is focused and the pane is in front, and the desktop app when you
 view the session. The daemon never reads "seen" from which pane is active, since a window in
