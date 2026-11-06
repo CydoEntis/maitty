@@ -1,3 +1,4 @@
+import { splitNote } from '../model/splitFold'
 import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { displayName, iconSaysProcess, STATUS_WORD, type SessionGroup, type SessionStatus, type SessionView } from '../model/session'
@@ -39,6 +40,8 @@ export type StackProps = {
   online: boolean
   /** The pane (counting from 1) each session has in its tab; absent for a session no tab shows. */
   paneOf: ReadonlyMap<string, number>
+  /** How many quiet shell splits are folded into each session's row (see `foldSplits`). */
+  splitsOf: ReadonlyMap<string, number>
   portalContainer: HTMLElement | null
   /** Opens a session's popover beside its row or tray item. */
   hover: RailHover
@@ -85,7 +88,7 @@ export function SessionStack(props: StackProps) {
   const stacked = props.trayStyle === 'stacked'
   const tree = props.trayStyle === 'tree'
   const itemActions = (session: SessionView): SessionMenuActions => ({ online: props.online, portalContainer: props.portalContainer, onShow: () => { props.onShowSession(session.id) }, onRename: () => { props.onRenameSession(session.id) }, onPin: (pinned) => { props.onPinSession(session.id, pinned) }, onEnd: () => { props.onEndSession(session.id) } })
-  const treeRow = (session: SessionView, lastOfTree: boolean) => <TreeRow key={session.id} hover={props.hover} session={session} track={tracks.get(session.id)} selected={session.id === props.focusedId} pane={props.paneOf.get(session.id)} last={lastOfTree} actions={itemActions(session)} />
+  const treeRow = (session: SessionView, lastOfTree: boolean) => <TreeRow key={session.id} hover={props.hover} session={session} track={tracks.get(session.id)} selected={session.id === props.focusedId} pane={props.paneOf.get(session.id)} splits={props.splitsOf.get(session.id)} last={lastOfTree} actions={itemActions(session)} />
   const moreButton = (
     <button type="button" className={`mx-tray-more${plan.hiddenNeeds ? ' is-needs' : ''}${menuAnchor ? ' is-open' : ''}`} aria-haspopup="menu" aria-expanded={menuAnchor !== null} aria-label={moreLabel} title={moreLabel} onClick={(event) => { setMenuAnchor(menuAnchor ? null : event.currentTarget.getBoundingClientRect()) }}>
       {stacked || tree ? `${String(plan.hidden)} more` : `+${String(plan.hidden)}`}
@@ -100,6 +103,7 @@ export function SessionStack(props: StackProps) {
         track={tracks.get(card.id)}
         selected={card.id === props.focusedId}
         online={props.online}
+        splits={props.splitsOf.get(card.id)}
         swapped={swapped}
         portalContainer={props.portalContainer}
         hover={props.hover}
@@ -116,7 +120,7 @@ export function SessionStack(props: StackProps) {
       )}
       {hasAfter && !tree && (
         <div role="group" aria-label={trayLabel} className={`mx-tray is-${props.trayStyle}${plan.hidden > 0 ? ' has-more' : ''}`} style={stacked ? undefined : { gridTemplateColumns: trayColumns(props.trayStyle, plan.shown.length, plan.hidden > 0) }}>
-          {plan.shown.map((session) => <TrayItem key={session.id} hover={props.hover} session={session} style={props.trayStyle} track={tracks.get(session.id)} selected={session.id === props.focusedId} pane={props.paneOf.get(session.id)} actions={itemActions(session)} />)}
+          {plan.shown.map((session) => <TrayItem key={session.id} hover={props.hover} session={session} style={props.trayStyle} track={tracks.get(session.id)} selected={session.id === props.focusedId} pane={props.paneOf.get(session.id)} splits={props.splitsOf.get(session.id)} actions={itemActions(session)} />)}
           {plan.hidden > 0 && moreButton}
         </div>
       )}
@@ -131,7 +135,7 @@ function trayColumns(style: TrayStyle, shown: number, more: boolean): string {
   return more ? `${columns} 30px` : columns
 }
 
-type TreeRowProps = { session: SessionView; track: SessionTrack | undefined; selected: boolean; pane: number | undefined; last: boolean; actions: SessionMenuActions; hover: RailHover }
+type TreeRowProps = { session: SessionView; track: SessionTrack | undefined; selected: boolean; pane: number | undefined; splits: number | undefined; last: boolean; actions: SessionMenuActions; hover: RailHover }
 
 /** The state as one small mark: a spinner, the needs-you square, a check, a bang, a quiet dot or a dashed square. */
 function TreeMark({ status }: { status: SessionStatus }) {
@@ -146,7 +150,7 @@ function TreeMark({ status }: { status: SessionStatus }) {
 }
 
 /** A compact tree row: guide line and elbow, the state, the program, where it is and a state word. */
-function TreeRow({ session, track, selected, pane, last, actions, hover }: TreeRowProps) {
+function TreeRow({ session, track, selected, pane, splits, last, actions, hover }: TreeRowProps) {
   const menu = useSessionMenu(session, actions)
   const unread = Boolean(track?.unread) && !selected
   const where = pane === undefined ? 'detached' : `pane ${String(pane)}`
@@ -159,6 +163,7 @@ function TreeRow({ session, track, selected, pane, last, actions, hover }: TreeR
         <span className="mx-tree-mark"><TreeMark status={session.status} /></span>
         <span className="mx-tree-proc">{session.process.split(/\s+/)[0]}</span>
         <span className="mx-tree-where">{displayName(session)}</span>
+        {splits !== undefined && <span className="mx-split-count" title="Quiet shell panes folded into this row">{splitNote(splits)}</span>}
         {unread && <span className="mx-tree-unread" aria-label="Unread" />}
         <span className={`mx-tree-word is-${session.status}`}>{stateWord(session, track)}</span>
       </button>
@@ -167,10 +172,10 @@ function TreeRow({ session, track, selected, pane, last, actions, hover }: TreeR
   )
 }
 
-type TrayItemProps = { session: SessionView; style: TrayStyle; track: SessionTrack | undefined; selected: boolean; pane: number | undefined; actions: SessionMenuActions; hover: RailHover }
+type TrayItemProps = { session: SessionView; style: TrayStyle; track: SessionTrack | undefined; selected: boolean; pane: number | undefined; splits: number | undefined; actions: SessionMenuActions; hover: RailHover }
 
 /** One of a project's other sessions: its icon with the state on it, and the process for the named styles. */
-function TrayItem({ session, style, track, selected, pane, actions, hover }: TrayItemProps) {
+function TrayItem({ session, style, track, selected, pane, splits, actions, hover }: TrayItemProps) {
   const menu = useSessionMenu(session, actions)
   const unread = Boolean(track?.unread) && !selected
   const where = pane === undefined ? 'detached' : `pane ${String(pane)}`
@@ -189,6 +194,7 @@ function TrayItem({ session, style, track, selected, pane, actions, hover }: Tra
         </span>
         {leadLabel && <span className="mx-tray-proc">{leadLabel}</span>}
         {style === 'stacked' && <span className="mx-tray-where">{displayName(session)}</span>}
+        {splits !== undefined && style !== 'icons' && <span className="mx-split-count" title="Quiet shell panes folded into this row">{splitNote(splits)}</span>}
         {style === 'stacked' && word && <span className={`mx-tray-word is-${session.status}`}>{word}</span>}
       </button>
       {menu.element}

@@ -17,6 +17,7 @@ import { hoverHandlers, useRailHover, type RailHover } from './railHover'
 import { LOCAL_MACHINE } from '@/api/machines'
 import type { MachineHead } from '../model/machines'
 import { isChatSession } from '../model/chatSession'
+import { foldSplits } from '../model/splitFold'
 import { WorktreeMenu } from '@/features/worktrees/WorktreeMenu'
 import { useTipWithKeys } from '@/features/shortcuts/platform'
 
@@ -133,7 +134,10 @@ function Expanded(props: GroupProps) {
   // Which machine's sessions the list shows; every machine until one is picked in the header's menu.
   const [machineFilter, setMachineFilter] = useState<number | null>(null)
   const shownHeads = machineFilter === null ? heads : heads.filter((head) => head.machine === machineFilter)
-  const renderGroup = (group: SessionGroup) => {
+  const renderGroup = (listed: SessionGroup) => {
+    // Quiet shell splits fold into their tab's first row, which says how many (see foldSplits).
+    const { visible, folded, leadOf } = foldSplits(listed.sessions, props.tabPanes)
+    const group = folded.size === 0 ? listed : { ...listed, sessions: visible }
     const open = isOpen(group)
     return (
       <div key={group.key} className={`mx-group${open ? ' is-open' : ''}${group.containsFocused ? ' has-focused' : ''}`}>
@@ -153,12 +157,13 @@ function Expanded(props: GroupProps) {
             <span className="mx-group-guide" aria-hidden="true" />
             <SessionStack
               group={group}
-              focusedId={props.focusedId}
+              focusedId={props.focusedId === null ? null : leadOf.get(props.focusedId) ?? props.focusedId}
               remembered={props.remembered.get(group.key)}
               trayStyle={props.trayStyle}
               tracks={props.tracks}
               online={online}
               paneOf={props.paneOf}
+              splitsOf={folded}
               portalContainer={props.portalContainer}
               hover={hover}
               onShowSession={props.onShowSession}

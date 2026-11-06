@@ -448,6 +448,10 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
 - **A pasted image.** The same toast, titled `Sending the image to <machine>` (a progress bar named
   `Sending image`, **Cancel**), ending as `Sent the image to <machine>`. For a pane of this computer there is
   no progress: a short `Saving the image…` toast becomes `Pasted the image`.
+- **Splits in the sidebar.** A tab's second and later panes that are only quiet shells (a shell, idle) fold into the
+  row of the tab's first pane, which reads "+2 panes". A split that runs an agent, is working or needs you keeps
+  its own row, and so does every session that is not a split (a shell opened with +, New terminal or Ctrl+Shift+T).
+  Focusing a folded split highlights its tab's row (`model/splitFold.ts`). The terminal app is unchanged.
 - **Project menu.** Right-clicking a project, in the
   sidebar or the rail, offers New session here, New terminal here, Collapse or Expand, Inspect project (the
   repository drawer on that project's terminal on this computer) and Copy path. Project defaults (Start in, Run

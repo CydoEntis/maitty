@@ -1,3 +1,4 @@
+import { splitNote } from '../model/splitFold'
 import { useState } from 'react'
 import { displayName, MAX_SESSION_NAME_LENGTH, statusText, STATUS_WORD, type SessionView } from '../model/session'
 import { branchLineOf } from '../model/branchLine'
@@ -18,6 +19,8 @@ export type SessionRowProps = {
   track: SessionTrack | undefined
   selected: boolean
   online: boolean
+  /** How many quiet shell splits of this session's tab are folded into the row. */
+  splits?: number | undefined
   /** This row just took over as its project's main row. */
   swapped: boolean
   /** Where portalled menus mount, so they read the theme's colours. */
@@ -62,6 +65,7 @@ export function SessionRow(props: SessionRowProps) {
                 : <span className="mx-row-title"><span className="mx-row-proc">{session.process}</span> · {displayName(session)}</span>}
               {session.pinned && <span className="mx-row-pin" role="img" aria-label="Pinned" title="Pinned to the top"><Icon name="pin" size={11} /></span>}
               {unread && <span className="mx-unread" aria-label="Unread" />}
+              {props.splits !== undefined && <span className="mx-split-count" title="Quiet shell panes folded into this row">{splitNote(props.splits)}</span>}
               {status === 'working' && <Spinner />}
               {changedAt !== null && <span className="mx-row-meta"><Ago at={changedAt} /></span>}
             </span>

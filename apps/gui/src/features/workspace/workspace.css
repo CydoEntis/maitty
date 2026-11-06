@@ -1314,3 +1314,6 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
   .mx-usage-pill, .mx-repo-pill { display: none; }
 }
 @container panehead (max-width: 420px) { .mx-pane-cwd { display: none; } }
+
+/* "+2 panes" on a row: quiet shell splits of its tab, folded into it. */
+.mx-split-count { flex: none; padding: 0 6px; border-radius: 999px; font-size: 10.5px; line-height: 16px; color: var(--muted); background: rgba(255, 255, 255, .06); font-variant-numeric: tabular-nums; }
