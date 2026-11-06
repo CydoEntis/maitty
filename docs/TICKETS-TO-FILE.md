@@ -114,6 +114,16 @@ for 28 and 29, and ticket 27.
 | 17a | from 39 | The other cuts and changes. The list so far is under *Design changes the owner asked for* | **owner** where the handoff is silent |
 | 18 | ADR | Chat on any session reverses ADR 0052 | **owner** |
 
+**Phase 5. Borrowed from a read of GG Coder.** Added by the owner on 2026-11-06; it follows phase 4.
+Ideas only, written fresh: that project is AGPL-3.0 and Maitty is MIT, so nothing is copied from it.
+
+| Order | Ticket | What | Needs |
+| --- | --- | --- | --- |
+| 19 | P5-1, P5-2 | A stopped or killed daemon leaves no provider processes behind. Ownership has to be right, so this is first here | nothing |
+| 20 | P5-9, P5-10 | The built desktop package is launched on every push to `dev` | nothing |
+| 21 | P5-6, P5-7, P5-8 | A working agent that repeats itself says so on its row | nothing |
+| 22 | P5-3, P5-4, P5-5 | Chat: tables, no flashing while a reply streams, following the newest message | P5-3 sends screenshots to the **owner** |
+
 **When to stop and ask instead of pressing on**
 - The lag in ticket 35 does not show on the machine in use. It was measured on Hyprland, NVIDIA
   and WebKitGTK; a machine without it changes the fix.
@@ -1206,3 +1216,278 @@ session from this computer", but the only way is the command line:
 
 **Acceptance:** from a machine with no sessions, a session is started in a chosen folder without
 leaving the app, with a test on the scripted-ssh fixtures.
+
+## Added 2026-11-06: phase 5, borrowed from a read of GG Coder
+
+From a comparison with https://github.com/KenKaiii/gg-framework. Ideas only: its code is AGPL-3.0
+and is not copied. ADRs are named by title as well as number, because the ADR folder is being
+renumbered. A ticket that says `Blocked by N` is not started until ticket N is merged.
+
+## P5-1. Stopping the daemon leaves provider processes running on Linux and macOS (bug, `daemon`)
+
+A structured conversation's provider (Codex app-server, Claude stream-json) runs in its own process
+group and is stopped only by `OwnedChild::stop` or its `Drop`
+(`crates/maitty-core/src/daemon/conversation/process.rs`). `KillServer` stops the panes and
+then calls `std::process::exit(0)` without stopping conversations (the `KillServer` arm in `daemon/commands.rs`),
+so no destructor runs. The first line of `daemon/contain.rs` promises "Every process the daemon starts goes when
+the daemon goes, however it goes". On Windows the job object keeps that promise; elsewhere only
+panes are covered. A provider left behind is a second writer for a conversation that restore marks
+recovery-required.
+
+**Reproduction:** a daemon with a conversation on the fake provider
+(`conversation/fixtures/fake_provider.rs`, which starts a child that parks with no stdin) is sent
+`KillServer`. The two pids in the fixture's `pids` file are still running. Expected: neither is.
+
+**What**
+- `KillServer` stops every conversation's process tree before the daemon exits.
+- Not the parent-death signal a check uses (`PR_SET_PDEATHSIG` in `daemon/check.rs`): it is tied to
+  the thread that started the process, and a provider is started from a `spawn_blocking` thread
+  (`OwnedChild::spawn`) that ends after about ten idle seconds, which would kill a healthy
+  provider. A provider that outlives a daemon that died is ticket P5-2's.
+
+**Acceptance**
+- A new test fails before the fix and passes after it, unedited: a stand-in daemon (the test binary
+  re-run, as `a_check_dies_with_the_daemon_that_started_it` does in `daemon/check.rs`) is sent
+  `KillServer`, and the fake provider and its child are gone within 5 s.
+- `docs/SECURITY.md` says what happens to a provider when the daemon goes, per platform, beside its
+  lines for checks ("If the daemon dies, a check dies with it").
+- The gate passes.
+
+**Not this ticket:** a daemon that dies without `KillServer` (SIGKILL, a crash) on Linux and macOS:
+ticket 54. Windows is already covered by its job object.
+
+## P5-2. A new daemon stops the provider processes an old one left (bug, `daemon`)
+
+Blocked by P5-1
+
+After a SIGKILL or a crash nothing in the dead daemon can run. A provider's children keep its
+process group, and on macOS the provider itself survives. Nothing on disk records them: the saved
+conversation holds no pid (`Conversation` in `crates/maitty-shared/src/conversation.rs`), and restore only
+marks the record recovery-required (`restore_startup` in `daemon/restore.rs`).
+
+**What** (Linux and macOS; Windows does nothing here)
+- When a provider starts, the daemon records its process group and the group leader's start time
+  in a file in the data folder, named for the socket as the pid file is (`<socket id>.providers`),
+  written atomically (`write_atomic`). The entry goes when the provider is stopped and reaped.
+- At start, once this daemon holds the socket and before restore, it kills every recorded group
+  that still has members, then empties the file. A group is skipped when a process with the
+  group's id is alive with a start time other than the recorded one: that pid was reused.
+- Each kill is one info line in `daemon.log`: the group and how many processes.
+
+**Acceptance**
+- A test on Linux and macOS: a stand-in daemon starts the fake provider and is killed with SIGKILL;
+  a second start on the same data folder leaves neither the provider nor its child running, and
+  the file empty.
+- A test with a recorded group whose id now belongs to an unrelated live process: nothing is
+  killed.
+- A clean stop leaves no entry. The saved session gains no pid.
+- `docs/DATABASE.md` lists the file. The gate passes.
+
+**Watch out:** a single-instance lock for the daemon is coming on branch `lucky-hare` (`ipc.rs`,
+`daemon/mod.rs`). The sweep runs only after this daemon is the one daemon for its socket, or it
+would kill a live daemon's providers.
+
+## P5-3. A table in a chat message is drawn as a table (feature, `client`)
+
+The chat's markdown reader has no tables (the list of what is supported at the top of `apps/gui/src/features/chat/markdown.ts`), so an
+agent's table shows as lines of pipes.
+
+**What**
+- `parseMarkdown` gains a `table` block: a header row, a delimiter row (`|---|`, with `:` for
+  alignment) and body rows. A pipe line with no delimiter row under it stays a paragraph. Cells
+  hold inline markdown through `parseInline`; an escaped pipe is a pipe.
+- `components/Markdown.tsx` draws a real table (`<table>`, `<th scope="col">`) as a hairline grid,
+  the look the owner chose on 2026-11-06: existing tokens only (`border-line2`, `text-fg`,
+  `text-dim`), no shadow. A table wider than the message scrolls sideways inside its own named,
+  focusable region; the message itself never scrolls sideways.
+- A message that starts with a table: `components/ChatItems.tsx` draws the first paragraph (`lead`) with
+  `InlineMarkdown`, which would show the pipes. It is drawn as a table there too.
+
+**Acceptance**
+- `markdown.test.ts`: a table parses to header, alignments and rows; a pipe line with no delimiter
+  row stays a paragraph; cells with code, bold and a link parse; a `<script>` in a cell is text; a
+  cell over `INLINE_PARSE_LIMIT` is plain text.
+- A component test: a wide table sits in a named scroll region that Tab reaches.
+- Screenshots in a dark and a light theme, at 1440 px and at the 720 px minimum width, go to the
+  owner in the pull request.
+- `docs/DESIGN.md` describes the chat table. `pnpm test`, `pnpm lint`, `pnpm build` and the gate pass.
+
+**Not this ticket:** sorting, copying a table, resizing columns, tables in the terminal app's
+markdown preview.
+
+## P5-4. Half-arrived markdown does not flash while a reply streams (feature, `client`)
+
+Blocked by P5-3
+
+The parser reads every state of a streaming reply as a finished document. An opened `**` shows as
+two asterisks until its closer arrives, then the text jumps to bold; with ticket P5-3 a table's
+header shows as a line of pipes until its delimiter row arrives.
+
+**What**, only for a message whose status is `running` (the `agent` row in `chatRows.ts`)
+- In the paragraph still being written, an unclosed `**`, `*`, `_`, backtick or `[label](` is
+  read as if it closed at the end of the text, so the text shows in its final form.
+- A table is not drawn until its delimiter row is complete for every header column.
+- A last line that is so far only a marker (`-`, `1.`, `#`, `>`) is held back until it has text.
+- Nothing is changed inside an open code fence.
+- A completed message is parsed as today: a mark that never closed shows as it was written.
+- One pure function in `markdown.ts`: the text and whether it is still streaming in, the text to
+  parse out.
+
+**Acceptance**
+- `markdown.test.ts`: each case above in its streaming and its completed form; for a message whose
+  marks all close, no prefix of it shows a raw mark that the whole message shows as formatting;
+  text inside an open fence is untouched.
+- A chat test: a running row is parsed as streaming and a completed row is not.
+- `pnpm test`, `pnpm lint`, `pnpm build` and the gate pass.
+
+**Not this ticket:** fading words in, pacing the text, parsing only the last block, folding long
+code. Nothing has measured a need for them.
+
+## P5-5. The chat stops following the newest message as soon as the reader scrolls up (change, `client`)
+
+`VirtualList` follows the newest row while the view is within 48 px of the bottom
+(`isAtBottom` in `components/windowing.ts`, `onScroll` in `components/VirtualList.tsx`). While a reply streams, a
+reader who scrolls up a little is pulled back down by the next growth (the layout effect on `layout.total`),
+and a wheel move can be undone by growth that lands before its scroll event. No decision made it
+this way; it is how the list was first written.
+
+**What**
+- Any move up by the reader (wheel, keys, dragging the bar, touch) stops following at once, however
+  small. A wheel-up stops it before its scroll event arrives.
+- Following starts again only when the reader moves down to within `FOLLOW_THRESHOLD_PX` of the
+  bottom, or uses **Jump to the latest message**. The button shows whenever the list is not
+  following.
+- A scroll the list caused itself (its own write to `scrollTop`, a measured row, a resized pane)
+  never changes following.
+- The rule is a pure function in `windowing.ts`.
+
+**Acceptance**
+- `windowing.test.ts`: up by 1 px inside the threshold stops following; down to within the
+  threshold resumes it; a scroll the list caused changes nothing; a link to a row (`scrollTarget`)
+  still stops following.
+- A `VirtualList` test: while not following, a growing last row does not move `scrollTop`, and the
+  button is shown.
+- `pnpm test`, `pnpm lint`, `pnpm build` and the gate pass.
+
+**Not this ticket:** keeping the view still when rows above it are measured; a count of new
+messages on the button.
+
+## P5-6. `maitty hook` reports a fingerprint of each tool call (feature, `daemon`)
+
+Intent: [a working agent that repeats itself says so](features/repeating-agent/intent.md).
+
+The daemon knows that a tool ran, not which: `ClientMsg::Hook` carries the event name only
+(`ClientMsg::Hook` in `crates/maitty-shared/src/protocol.rs`), though the agent gives `maitty hook` the tool's
+name and input on stdin.
+
+**What**
+- `ClientMsg::Hook` gains `#[serde(default)] call: Option<String>`: 16 hex characters, the first
+  8 bytes of SHA-256 over the tool's name and its input as `serde_json` writes it (`sha2` is
+  already a dependency). `hook_message` (`crates/maitty-terminal-client/src/cli.rs`)
+  fills it for a tool-start event read from stdin: `PreToolUse` (Claude, Qwen, Codex) and
+  `BeforeTool` (Gemini). It is `None` for every other event and agent.
+- The tool's name and input are not sent, kept or logged.
+- The daemon checks the value at the boundary (16 hex characters, else dropped) and does nothing
+  more with it yet.
+- No `PROTOCOL_VERSION` bump: a test decodes a hook from before the field, as the existing
+  "a hook from before the field" test in `protocol.rs` does.
+
+**Acceptance**
+- Tests: the same name and input give the same fingerprint; another input gives another; an event
+  with no tool gives none; a hook without the field decodes; a value that is not 16 hex characters
+  is dropped.
+- `docs/API_PATTERNS.md` lists the field; `docs/SECURITY.md` says the report carries a fingerprint
+  and never the input. The gate passes.
+
+**Not this ticket:** new hook events for any agent (Codex would ask for its hooks to be trusted
+again); Kimi, Mastracode, Kilo, OpenCode, Pi and OMP, whose hooks pass no tool input.
+
+## P5-7. The daemon marks a working agent that repeats itself (feature, `daemon`)
+
+Blocked by P5-6
+
+**What**
+- Per pane, in memory only, the daemon keeps the fingerprints of the current turn's tool calls. A
+  new prompt, leaving working, or the agent exiting clears them.
+- An agent is repeating when its newest call has the same fingerprint as the four before it (five
+  in a row), or its last eight calls are two fingerprints taking turns. `TermInfo` gains
+  `#[serde(default)] repeats: Option<u32>`: how many calls the run has reached, growing while it
+  goes on; `None` otherwise. A different call clears it.
+- It never changes status, never rings, never enters the Inbox and is not saved with the session.
+  `quiet_since` in `daemon/status.rs` is the model.
+- Each change is one info line in `daemon.log` with the pane, the agent and the count, and nothing
+  about the call.
+- From another machine the count is clamped as its other numbers are
+  (`clamp_term` in `crates/maitty-machines/src/remote_snapshot.rs`).
+- No `PROTOCOL_VERSION` bump: a test decodes a pane from before the field.
+
+**Acceptance**
+- `daemon/logic_tests.rs`, beside the quiet tests (`silent_working_agent` to `going_quiet_rings_no_alert`): four the same is nothing; five is
+  5 and a sixth is 6; a different call clears it; eight calls of two taking turns is 8; a new
+  prompt clears it; status stays working; nothing rings.
+- A decode test for the old shape and a clamp test for a remote snapshot. The gate passes.
+
+**Not this ticket:** failed calls in a row (Later); stopping or nudging the agent.
+
+## P5-8. The terminal app, `ls`, `maitty_list` and `wait` say when an agent is repeating itself (feature, `client`)
+
+Blocked by P5-7
+
+**What:** everywhere quiet is shown, except the Inbox.
+- The sidebar row's second line reads `repeating 6x` in the muted colour, beside `N agents`
+  (`status_words` in `crates/maitty-terminal-client/src/client/screen/side.rs`).
+- `ls` reads `claude: working · repeating 6x` (`agent_tag` in `cli.rs`); `ls --json` has
+  `repeats` while working (`pane_json`); `maitty_list` shows it on the row
+  (where `cli/mcp.rs` adds `quiet_since`); `wait` and `maitty_wait` say `still working, but repeating the same call
+  (6x)` when they time out (the `Waited::TimedOut` messages in `cli.rs` and `cli/mcp.rs`).
+- Nothing in the Inbox, no popup, no sound, nothing in the desktop app.
+
+**Acceptance**
+- A drawn-frame test like `a_quiet_agent_says_how_long_on_its_row` (`side.rs`), at 80x24.
+- CLI and MCP tests beside the quiet ones (`ls_says_how_long_a_working_agent_has_been_quiet` in `cli.rs`, and its
+  twin in `cli/mcp.rs`); a hostile count from another machine beside the hostile `quiet_since` in
+  `machine_group_tests.rs`.
+- `docs/agent-status.md`, `docs/UI.md` (card row 2 and the working row of the status table),
+  `docs/API_PATTERNS.md` and `docs/guide.md` describe it where they describe quiet. The gate passes.
+
+## P5-9. The built Linux package is launched on every push to `dev` (chore, `tooling`)
+
+CI builds the desktop installers on each push to `dev` and never starts one
+(the four `desktop package` jobs in `.github/workflows/ci.yml`). A package that builds but cannot start, or cannot find its
+bundled daemon, is only found by hand: the package checks of 2026-10-29 recorded in `docs/ROADMAP.md`
+(phase 37) were all manual.
+
+**What**
+- `scripts/smoke-desktop-linux.sh <deb>` unpacks the `.deb` with `dpkg-deb -x` (nothing is
+  installed), starts the app under `xvfb-run` and `dbus-run-session` with `MAITTY_DATA_DIR`,
+  `MAITTY_CONFIG`, `MAITTY_SOCKET` and `XDG_RUNTIME_DIR` set to fresh temporary values, and waits
+  15 s. It passes when the app is still running and `<data folder>/<socket id>.pid` names a live
+  process started as `maitty-gui-daemon… daemon`. Pass or fail, it stops both and removes the
+  temporary folders; on a failure it prints `daemon.log`.
+- The `desktop package (Linux)` job runs it after the build, in a step with `timeout-minutes: 3`.
+
+**Acceptance**
+- The step is green on a push to `dev`; the pull request links the run.
+- Shown red once: with the bundled daemon removed from the unpacked tree the script exits non-zero.
+  The pull request quotes that run.
+- The script leaves no process behind, and checks that it did not.
+- Pull request checks are unchanged: the package jobs run on a push only (the comment at the top
+  of `ci.yml`).
+- `docs/TESTING.md` says what the smoke proves (the package starts and finds its daemon) and what
+  it does not (nobody looks at the window). The gate passes.
+
+**Not this ticket:** the rpm, AppImage, Arch and macOS packages; clicking anything; the
+**Key to echo** figure.
+
+## P5-10. The built Windows package is launched on every push to `dev` (chore, `tooling`, `windows`)
+
+Blocked by P5-9
+
+The same rule on Windows. `scripts/smoke-desktop-windows.ps1 <msi>` unpacks the MSI with
+`msiexec /a` (an admin image, nothing installed, as was done by hand on 2026-10-29), starts the
+exe with the same isolated variables, applies the same pass rule and stops both. The
+`desktop package (Windows)` job runs it as one command, so the script's exit code is the step's
+(a PowerShell step of several lines reports only its last line).
+
+**Acceptance:** as ticket P5-9, on `windows-latest`: green on a push to `dev`, shown red once with
+the bundled daemon removed, no process left behind, `docs/TESTING.md` updated. The gate passes.
