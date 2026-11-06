@@ -162,6 +162,13 @@ files and served only by `Query::CheckOutput` under the read grant; it is never 
 never in the state snapshot. It may contain secrets the command printed, like any pane's
 output.
 
+A structured conversation's provider (Codex app-server, Claude) is a process the daemon owns,
+started in its own process group (a job object on Windows). `kill-server` stops every provider's
+process tree before the daemon exits and waits up to five seconds for each to be stopped. If the
+daemon dies without that, a provider dies with it on Windows (the job closes). On Linux and macOS
+it and the processes it started keep running: the parent-death signal that ends a check cannot
+be used, because a provider is started from a thread that does not live as long as the daemon.
+
 An agent can start helpers only if you say so. Who is asking is proven the way status reports are
 (the pane's `MAITTY_PANE_TOKEN` on the connection); the answer is `AnswerHelpers`, which the daemon
 refuses from any pane and accepts only for a request it holds. "Always in this project" is kept in
