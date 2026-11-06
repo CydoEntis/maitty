@@ -156,11 +156,11 @@ describe('all tabs menu', () => {
 describe('tab bar in a small window', () => {
   const base = { tabs: makeTabs(1), activeTabId: 'tab-0', sessions: new Map(), canStart: true, portalContainer: null, onSelect: vi.fn(), onClose: vi.fn(), onCloseOthers: vi.fn(), onRenameSession: vi.fn(), newTabLabel: 'New tab', onNewTab: vi.fn(), inboxCount: 2, inboxNeeds: true, onOpenInbox: vi.fn(), inspect: { open: false, additions: 0, deletions: 0 }, onToggleInspect: vi.fn() }
 
-  it('keeps Repository and Inbox as their own buttons in a wide window', () => {
+  it('leaves Repository and Inbox to the activity bar in a wide window, with no Panels menu either', () => {
     render(<TabBar {...base} />)
 
-    expect(screen.getByRole('button', { name: 'Repository' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Inbox, 2/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Repository' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Inbox, 2/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Panels/ })).not.toBeInTheDocument()
   })
 

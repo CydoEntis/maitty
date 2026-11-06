@@ -1,14 +1,37 @@
-/* The Inspect panel: a card docked at the right of the window, same material as the other cards. */
-/* A drawer over the content, like the Inbox: the terminals keep their size and the panel slides in from the right. */
-.mx-inspect { position: absolute; top: var(--edge); right: var(--edge); bottom: var(--edge); z-index: 50; width: clamp(340px, 40%, 560px); display: flex; flex-direction: column; border-radius: var(--r14); background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 160px), var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh); overflow: hidden; animation: v8insp .32s var(--ease-out); }
-.mx-app.is-narrow .mx-inspect { left: 8px; width: auto; }
-.mx-inspect-head { flex: none; height: 48px; display: flex; align-items: center; gap: 10px; padding: 0 10px 0 16px; border-bottom: 1px solid var(--pane-line); }
-.mx-inspect-head strong { font-size: 15px; font-weight: 600; }
-.mx-inspect-sub { min-width: 0; font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-inspect-tabs { flex: none; display: flex; gap: 2px; padding: 6px 10px; border-bottom: 1px solid var(--pane-line); overflow-x: auto; }
-.mx-inspect-tabs button { height: 28px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
-.mx-inspect-tabs button:hover { color: var(--fg); background: rgba(255, 255, 255, .05); }
-.mx-inspect-tabs button.is-current { color: var(--fg); background: rgba(255, 255, 255, .09); }
+/* The repository drawer (v19 §9): over the panes from beside the activity bar, over a scrim, never pushing them. */
+.mx-inspect-scrim { position: absolute; inset: 0; z-index: 49; background: rgba(3, 5, 8, .32); animation: mx-inspect-fade .36s var(--ease-out); }
+.mx-inspect-scrim.is-leaving { animation: mx-inspect-fade-out .22s cubic-bezier(.4, 0, 1, 1) forwards; }
+.mx-inspect { position: absolute; top: 12px; right: calc(var(--edge) + 48px + var(--pg)); bottom: 12px; z-index: 50; max-width: calc(100% - 24px); display: flex; flex-direction: column; border-radius: var(--r16); background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 160px), var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh); overflow: visible; animation: mx-inspect-in .36s cubic-bezier(.16, 1, .3, 1); }
+.mx-app[data-side="right"] .mx-inspect { right: auto; left: calc(var(--edge) + 48px + var(--pg)); animation-name: mx-inspect-in-left; }
+.mx-app.is-narrow .mx-inspect { left: 12px; right: 12px; width: auto !important; }
+.mx-inspect.is-leaving { animation: mx-inspect-out .22s cubic-bezier(.4, 0, 1, 1) forwards; }
+.mx-app[data-side="right"] .mx-inspect.is-leaving { animation-name: mx-inspect-out-left; }
+.mx-inspect-grip { position: absolute; top: 0; bottom: 0; left: -4px; width: 8px; cursor: col-resize; z-index: 2; }
+.mx-inspect-grip::after { content: ""; position: absolute; top: 8px; bottom: 8px; left: 3px; width: 2px; border-radius: 2px; background: transparent; transition: background .15s; }
+.mx-inspect-grip:hover::after, .mx-inspect-grip:focus-visible::after { background: var(--accent); }
+.mx-app.is-narrow .mx-inspect-grip { display: none; }
+.mx-inspect-head { flex: none; height: 48px; display: flex; align-items: center; gap: 10px; padding: 0 10px 0 18px; }
+.mx-inspect-head strong { font-size: 14px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mx-inspect-branch { min-width: 0; font-family: var(--mono); font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mx-inspect-tabs { flex: none; display: flex; gap: 0; height: 38px; padding: 0 8px; border-bottom: 1px solid var(--pane-line); overflow-x: auto; }
+.mx-inspect-tabs button { position: relative; display: flex; align-items: center; gap: 6px; padding: 0 12px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.mx-inspect-tabs button:hover { color: var(--fg); }
+.mx-inspect-tabs button.is-current { color: var(--fg); font-weight: 500; }
+.mx-inspect-tabs button::after { content: ""; position: absolute; left: 6px; right: 6px; bottom: 0; height: 2px; border-radius: 2px; background: var(--accent); transform: scaleX(0); transform-origin: right; transition: transform .28s cubic-bezier(.2, .8, .2, 1); }
+.mx-inspect-tabs.is-forward button::after { transform-origin: right; }
+.mx-inspect-tabs.is-back button::after { transform-origin: left; }
+.mx-inspect-tabs button.is-current::after { transform: scaleX(1); transform-origin: left; }
+.mx-inspect-tabs.is-back button.is-current::after { transform-origin: right; }
+.mx-inspect-count { min-width: 16px; height: 16px; padding: 0 5px; border-radius: 999px; font-size: 10.5px; line-height: 16px; text-align: center; color: var(--muted); background: rgba(255, 255, 255, .06); font-variant-numeric: tabular-nums; }
+.mx-inspect-tabs button.is-current .mx-inspect-count { color: var(--accent); background: var(--accent-soft); }
+@keyframes mx-inspect-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mx-inspect-fade-out { to { opacity: 0; } }
+@keyframes mx-inspect-in { from { opacity: 0; transform: translateX(36px); } to { opacity: 1; transform: none; } }
+@keyframes mx-inspect-in-left { from { opacity: 0; transform: translateX(-36px); } to { opacity: 1; transform: none; } }
+@keyframes mx-inspect-out { to { opacity: 0; transform: translateX(36px); } }
+@keyframes mx-inspect-out-left { to { opacity: 0; transform: translateX(-36px); } }
+:root[data-motion="reduced"] .mx-inspect, :root[data-motion="reduced"] .mx-inspect-scrim, .mx-app[data-motion="reduced"] .mx-inspect, .mx-app[data-motion="reduced"] .mx-inspect-scrim { animation: none; }
+@media (prefers-reduced-motion: reduce) { .mx-inspect, .mx-inspect-scrim { animation: none; } }
 .mx-inspect-scroll { flex: 1; min-height: 0; overflow: auto; padding: 10px; }
 .mx-inspect-body, .mx-inspect-split { display: flex; flex-direction: column; gap: 10px; }
 .mx-inspect-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }

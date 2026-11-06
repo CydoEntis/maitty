@@ -42,6 +42,7 @@ import { TerminalView } from '@/TerminalView'
 import { EffectsContext, ReducedMotionContext } from './components/motion'
 import { ColumnHandle } from './components/ColumnHandle'
 import { CommandPalette } from './components/CommandPalette'
+import { ActivityBar } from './components/ActivityBar'
 import { InboxPanel, type Answer, type InboxEntry } from './components/InboxPanel'
 import { InspectPanel, type InspectView } from '@/features/inspect/InspectPanel'
 import { runsProgram } from './components/useArmed'
@@ -1399,7 +1400,7 @@ export function DesktopApp() {
     queryKey: ['repo', inspectTerm, 'diff-stat'],
     queryFn: async () => {
       const diff = await repoDiff(inspectTerm ?? 0)
-      return { additions: diff.additions, deletions: diff.deletions }
+      return { additions: diff.additions, deletions: diff.deletions, files: diff.total_files }
     },
     enabled: inspectTerm !== null,
     // The counts come from a full diff, so they are read slowly unless Inspect is open, and not
@@ -1408,6 +1409,24 @@ export function DesktopApp() {
     refetchOnWindowFocus: false,
     retry: false,
   })
+  // The activity bar opens one drawer at a time: a repository view, or the Inbox.
+  const openRepoView = useCallback((view: InspectView) => {
+    if (inspectRefusal !== null) {
+      toast.message(inspectRefusal)
+      return
+    }
+    setInboxOpen(false)
+    if (inspectOpen && inspectView === view) {
+      setInspectOpen(false)
+      return
+    }
+    setInspectView(view)
+    setInspectOpen(true)
+  }, [inspectRefusal, inspectOpen, inspectView])
+  const toggleInboxDrawer = useCallback(() => {
+    setInspectOpen(false)
+    setInboxOpen((open) => !open)
+  }, [])
   const inspect = useMemo(() => {
     if (inspectTerm !== null) return { open: inspectOpen, additions: diffStat.data?.additions ?? 0, deletions: diffStat.data?.deletions ?? 0 }
     return inspectRefusal === null ? null : { open: false, additions: 0, deletions: 0, refusal: inspectRefusal }
@@ -1908,11 +1927,26 @@ export function DesktopApp() {
                 )}
               </main>
             </div>
+            {!focusMode && !narrow && (
+              <ActivityBar
+                openView={inspectOpen && inspectView !== 'timeline' ? inspectView : null}
+                inboxOpen={inboxOpen}
+                inboxCount={inboxEntries.length}
+                inboxNeeds={needsCount > 0}
+                changedFiles={diffStat.data?.files ?? 0}
+                refusal={inspectRefusal ?? undefined}
+                onInbox={toggleInboxDrawer}
+                onView={openRepoView}
+              />
+            )}
+
             {inspectOpen && !focusMode && inspectTerm !== null && focusedSession && (
               <InspectPanel
                 key={inspectTerm}
                 term={inspectTerm}
-                title={`${displayName(focusedSession)} · ${focusedSession.cwdLabel}`}
+                project={projectOf.get(focusedSession.id)?.name ?? displayName(focusedSession)}
+                branch={focusedSession.branch}
+                changedFiles={diffStat.data?.files ?? 0}
                 view={inspectView}
                 agentWorking={focusedSession.status === 'working'}
                 timeline={focusedSession.timeline}

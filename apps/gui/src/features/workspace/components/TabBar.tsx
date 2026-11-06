@@ -140,20 +140,7 @@ export const TabBar = memo(function TabBar(props: TabBarProps) {
       <button type="button" className="mx-icon-button mx-new-tab" aria-label={props.newTabLabel} title={props.newTabLabel} disabled={!props.canStart} onClick={props.onNewTab}><Icon name="plus" /></button>
       {edges.over && <AllTabs tabs={tabs} activeTabId={activeTabId} sessions={props.sessions} onSelect={props.onSelect} />}
       <span className="mx-spacer" />
-      {props.foldPanels ? <PanelsMenu {...props} /> : <>
-      {props.inspect && (
-        <button type="button" className={`mx-inbox-button${props.inspect.open ? ' is-open' : ''}`} aria-pressed={props.inspect.open} aria-disabled={props.inspect.refusal !== undefined} aria-label="Repository" title={props.inspect.refusal ?? tip('Repository', 'inspect')} onClick={props.onToggleInspect}>
-          <Icon name="repo" />
-          {(props.inspect.additions > 0 || props.inspect.deletions > 0) && (
-            <span className="mx-inspect-stat"><span className="is-add">+{props.inspect.additions}</span> <span className="is-remove">−{props.inspect.deletions}</span></span>
-          )}
-        </button>
-      )}
-      <button type="button" className="mx-inbox-button" aria-label={`Inbox, ${String(props.inboxCount)}${props.inboxNeeds ? ', something needs you' : ''}`} title={tip('Inbox', 'inbox')} onClick={props.onOpenInbox}>
-        <Icon name="inbox" />
-        {props.inboxCount > 0 && <span key={props.inboxCount} className={`mx-inbox-count${props.inboxNeeds ? ' is-needs' : ''}`}>{props.inboxCount}</span>}
-      </button>
-      </>}
+      {props.foldPanels && <PanelsMenu {...props} />}
     </div>
   )
 })

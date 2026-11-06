@@ -1254,3 +1254,20 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 /* The terminal stays mounted and keeps its size while the chat covers it; hidden, it is not reached by Tab or a screen reader. */
 .mx-pane-body.is-chat > :not(.mx-chat-layer) { visibility: hidden; }
 .mx-chat-layer { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; min-height: 0; background: var(--pane); font-family: "Geist Variable", system-ui, sans-serif; line-height: normal; cursor: default; }
+
+/* The activity bar (v19 §9): a 48px card on the side opposite the sessions sidebar. The window's row-reverse
+   for a right-hand sidebar puts it on the far left without a rule of its own. */
+.mx-activity { flex: none; align-self: stretch; width: 48px; margin: var(--sbm-activity, var(--pg) var(--pg) var(--pg) 0); display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; border-radius: var(--r14); background: var(--card, var(--pane)); border: 1px solid var(--pane-line); box-shadow: var(--sh); }
+.mx-app[data-side="right"] .mx-activity { margin: var(--pg) 0 var(--pg) var(--pg); }
+.mx-activity-button { position: relative; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 9px; color: var(--muted); transition: background .15s, color .15s, transform .12s; }
+.mx-activity-button:hover { background: var(--raise); color: var(--fg); }
+.mx-activity-button:active { transform: scale(.9); }
+.mx-activity-button[aria-pressed="true"] { background: var(--raise); color: var(--fg); }
+.mx-activity-button[aria-pressed="true"]::before { content: ""; position: absolute; top: 9px; bottom: 9px; right: -6px; width: 2px; border-radius: 2px; background: var(--accent); }
+.mx-app[data-side="right"] .mx-activity-button[aria-pressed="true"]::before { right: auto; left: -6px; }
+.mx-activity-button[aria-disabled="true"] { opacity: .45; }
+.mx-activity-badge { position: absolute; top: 1px; right: 0; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px; font-size: 9.5px; font-weight: 700; line-height: 15px; text-align: center; color: var(--fg2); background: var(--raise); box-shadow: 0 0 0 2px var(--card, var(--pane)); font-variant-numeric: tabular-nums; }
+.mx-activity-badge.is-needs { color: #1a1206; background: var(--warn); }
+.mx-activity-rule { width: 22px; height: 1px; margin: 4px 0; background: var(--pane-line); }
+:root[data-finish="tiled"] .mx-activity, :root[data-finish="flat"] .mx-activity { border-radius: 0; }
+@media (prefers-reduced-motion: reduce) { .mx-activity-button { transition: none; } }
