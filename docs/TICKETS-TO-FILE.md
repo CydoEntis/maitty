@@ -16,7 +16,29 @@ Phase 1 follows.
 is next. What is left of phase 2: ticket 26 (draft #281), ten passes in a row on `windows-latest`
 for 28 and 29, and ticket 27.
 
-**Resume here (written 2026-11-05, evening).**
+**Resume here (rewritten 2026-11-05, night). Read this block first; the one below it is older.**
+- **One branch holds all of the night's work: `integration/overnight`** (nothing pushed, `dev` untouched). It
+  passed the whole gate as merged: clippy, 2347 Rust tests, 1354 frontend tests, `pnpm build`,
+  `scripts/check-gui-deps.sh`, and the Linux and Windows target checks. The same work is also on its own
+  branches: `fix/desktop-upgrade-path` (tickets 37, 38, 36), `fix/desktop-terminal-lag` (35, 40),
+  `chore/remove-v18-removals` (48, 49), `feat/new-session-pick-machine`, `feat/chat-first-sessions` (52, 53, and
+  the designer's D.9), `feat/tui-new-session` (the terminal app's New Session popup).
+- **Ticket 35 is fixed on Windows, not yet checked on Linux.** Terminal output now goes over a loopback WebSocket
+  (ADR 0057, Proposed). On the owner's Windows machine 71 of 72 frames came over the socket, none lost, and typing
+  felt better. The original lag was on Linux (WebKitGTK): run *How to run measurement 2 again* in
+  [PERFORMANCE](PERFORMANCE.md) on a build of the branch, and read the report line "of which over the local socket".
+- **Chat and terminal are one session** (ADR 0056, Proposed): a new session runs the default agent in a terminal and
+  opens as chat or terminal; the chat's composer types into the terminal while the agent is idle. **Not yet tried
+  with a real Claude or Codex.** First things to check: the message arrives intact (multi-line), Stop (Esc) works,
+  the composer turns off while a permission prompt is showing, the switch never restarts the agent.
+- **Not done:** ticket 50 (sidebar sessions keep their place; the compact row's look is not in the README, look in
+  `Maitty Desktop v18.dc.html` or ask the owner), the small-window work (39), the title bar colour, the tab bar
+  height, the terminal and its panel as one surface, the terminal app's tickets 31, 33 and 30, the Windows test
+  failures 26 to 29, and the diff line comments the session panel's removal dropped (54).
+- **The TUI popup lacks:** the ASCII fallback for ambiguous-width glyphs, selecting the new card by hand, and a
+  status-bar flash (a toast is used). Remote image paste (ticket 19) is merged but was not tried against `kingdom`.
+
+**Older note (written 2026-11-05, evening).**
 - **State.** v0.65.1 is released from `dev`. The desktop app is held out of releases by
   `apps/gui/RELEASE-HOLD`; its last good version is 0.64.0.
 - **The design to build from** is the revised v18 handoff the owner supplied this evening:
