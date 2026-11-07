@@ -156,13 +156,15 @@ palette takes literal colours). Don't widen the exemptions to pass a change.
 
 Rules for `apps/gui/` (the look is in [DESIGN](DESIGN.md#desktop-app)).
 
-1. The window is at least 720px wide. Under 1100px the sidebar is a drawer; under
-   900px panes stack, tabs shrink and Repository and Inbox share a Panels menu.
-   The widths are constants in `features/workspace/model/windowSize.ts`; change
+1. The window is at least 720px wide. Under 1100px the sidebar is the 60px rail and
+   expanding it opens the full sidebar as an overlay; under 800px panes stack in one
+   column. The widths are constants in `features/workspace/model/windowSize.ts`; change
    them there and in DESIGN, nowhere else.
-2. Sessions in a project render in creation order. Nothing (status, pin, focus,
-   a click) reorders them. The card is chosen by `chooseCard` and the rows around
-   it by `planStack` in `model/stack.ts`; the cap applies only to rows after the card.
+2. The sidebar is one flat list: sessions render in creation order (`inCreationOrder` in
+   `model/session.ts`, by the daemon's pane number). Nothing (status, pin, focus, a click,
+   the filter) reorders them. There are no project, folder or machine groups; the folder
+   and the machine are badges on the row. Split layouts are this window's own state
+   (`model/layout.ts`), up to four panes; a session closes with a 6 second Undo.
 3. A new surface that sits on the terminal's ground uses `--term`, not `--main`,
    so a terminal pane reads as one surface.
 
@@ -821,7 +823,7 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   worktree menu, Inspect) is offered for it. Its composer is on (send, queue with Remove, Stop, attachments); an
   approval is answered by request id (y / a / n) and a user-input request by a form (`UserInputForm`), so neither
   points to a terminal.
-  **A new session** (the sidebar +, Ctrl/Cmd+T, a project's **New session here**, the tab bar's +) starts the default
+  **A new session** (the sidebar +, Ctrl/Cmd+T) starts the default
   agent (Settings › General › Chat view › **Default agent**, Claude or Codex) in a new shell the daemon owns and types
   the agent's command into it, and opens the pane in the view **New sessions open as** names (Chat by default). It is
   one session either way: **the switch between Terminal and Chat never restarts the agent**

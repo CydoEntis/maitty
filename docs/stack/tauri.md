@@ -102,9 +102,9 @@ command for another machine's pane goes down that machine's line through the hub
 a connection; this computer's commands are unchanged.
 
 In the web view (`api/machines.ts`, `features/workspace/model/machines.ts`): a session of another machine
-has an id `<name>/t<pane>`, is listed after this computer's, is led by the machine's name in the
-sidebar and tabs, and forms projects of its own. The saved layout is `maitty.gui.layout.v2` (v1 is read
-as it is and left in place). Until the machine has listed its sessions, a layout's panes for it are kept.
+has an id `<name>/t<pane>` and is a row of the one flat list, marked with a server icon and its machine's name. The saved
+layout is `maitty.gui.layout.v3`; a v2 or v1 tab layout is dropped once, with a notice. Until the machine has listed its
+sessions, a layout's panes for it are kept.
 
 The glue's per-update logic is `terminal_stream::react` (no window involved), so the host's behaviour
 is tested end to end against real daemons (`hub/tests/end_to_end.rs`).
