@@ -202,3 +202,43 @@ fn only_a_folder_inside_the_apps_downloads_folder_can_be_opened() {
     assert!(!inside_pulls(&app.join("..").join(".."), downloads), "no climbing out");
     assert!(!inside_pulls(&downloads.join("other").join("build"), downloads));
 }
+
+#[test]
+fn a_folder_is_pulled_through_the_same_command_and_the_window_is_told_where_it_is() {
+    if !has_sh() {
+        eprintln!("skipped: no POSIX sh with the get script's tools on this host");
+        return;
+    }
+    let root = folder("remote-folder");
+    let home = root.join("home");
+    for file in ["app/README.md", "app/src/lib.rs"] {
+        let path = home.join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, format!("contents of {file}")).unwrap();
+    }
+    let mut job = plan_for("~/app").unwrap();
+    job.folder = root.join("Downloads").join("app").join("build");
+    job.machine = Machine::ssh(
+        "build",
+        vec![
+            fake_ssh().to_string_lossy().into_owned(),
+            "--mode=remote-sh".into(),
+            format!("--home={}", home.display()),
+        ],
+        "maitty",
+    );
+
+    let events = events_of(&job, &Arc::new(AtomicBool::new(false)));
+
+    let ends: Vec<_> = events.iter().filter(|e| is_end(e)).collect();
+    assert_eq!(ends.len(), 1, "{events:?}");
+    let GetEvent::Done { path, file, .. } = ends[0] else {
+        panic!("expected done, got {:?}", ends[0]);
+    };
+    assert_eq!(file, "app");
+    assert_eq!(
+        std::fs::read_to_string(Path::new(path).join("src").join("lib.rs")).unwrap(),
+        "contents of app/src/lib.rs"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

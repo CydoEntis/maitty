@@ -8,7 +8,7 @@
 
 use crate::file_send::{Ending, Transfers, target};
 use maitty_machines::ssh_run::Watch;
-use maitty_machines::{MAX_GET_BYTES, Machine, MachineDef, get_file, local_name};
+use maitty_machines::{MAX_GET_BYTES, Machine, MachineDef, get_path, local_name};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -128,7 +128,7 @@ pub fn run(job: &Job, cancel: &Arc<AtomicBool>, emit: &(dyn Fn(GetEvent) + Sync)
                 });
             }
         });
-        let outcome = match get_file(&job.machine, &job.name, &job.remote_path, &job.folder, &watch) {
+        let outcome = match get_path(&job.machine, &job.name, &job.remote_path, &job.folder, &watch) {
             Ok(path) => GetEvent::Done {
                 transfer: transfer.to_owned(),
                 file: file.clone(),

@@ -127,6 +127,27 @@ describe('browsing a machine in the Get a file dialog', () => {
     expect(browse.list).toHaveBeenLastCalledWith('/srv/app/src')
   })
 
+  it('gets the whole folder it is showing, and a folder in the list still just opens', async () => {
+    const user = userEvent.setup()
+    const { onGet, browse } = browsing()
+    await user.click(await screen.findByRole('option', { name: 'src, folder' }))
+    await screen.findByRole('option', { name: 'main.rs' })
+    expect(onGet).not.toHaveBeenCalled()
+    expect(browse.list).toHaveBeenLastCalledWith('/srv/app/src')
+    await user.click(screen.getByRole('button', { name: 'Get this folder, /srv/app/src' }))
+    expect(onGet).toHaveBeenCalledWith('/srv/app/src')
+  })
+
+  it('cannot get the folder while a search is showing matches, or before the folder has loaded', async () => {
+    const user = userEvent.setup()
+    browsing()
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: /Get this folder/ }).disabled).toBe(true)
+    await screen.findByRole('option', { name: 'README.md' })
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: /Get this folder/ }).disabled).toBe(false)
+    await user.type(screen.getByRole('textbox', { name: 'Search in /srv/app' }), 'm')
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: /Get this folder/ }).disabled).toBe(true)
+  })
+
   it('says so when nothing matches', async () => {
     const user = userEvent.setup()
     browsing()

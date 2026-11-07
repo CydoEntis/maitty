@@ -200,7 +200,7 @@ still has them loads, and they are ignored.
   ssh to that machine (not a custom transport) and a login that works without a prompt.
 - **Files to another machine:** in a pane on another machine, `Ctrl+A`, then `d`, asks for a
   file's path (type it, or drop the file on the terminal: the path is pasted into the box). The
-  file (up to 100 MB; one file, not a folder) goes to that machine over ssh the same way as an image,
+  file (up to 100 MB; a folder is sent too, up to 1 GB, see *Sending a file or a folder to a machine*) goes to that machine over ssh the same way as an image,
   into the same private folder (`~/.cache/maitty/pastes`), and its path there is typed into the pane.
   The name there is `paste-<time>-<id>-<your file's name>`, so two files never overwrite each other.
   A toast shows the percentage; `Ctrl+A`, `d` again (or the toast's close mark) stops it.
@@ -712,10 +712,10 @@ folder there, starting at `~`, because the folder picker is this computer's; a f
 opens in the machine's home folder. Files, Changes, worktrees and the other features that read a pane's files
 are for this computer's sessions only.
 
-**Dropping files on a session of another machine** sends them there: drag up to 10 files from your file
-manager onto the pane. Each goes over ssh (not a custom transport) into `~/.cache/maitty/pastes` on that
-machine (private, cleared after a week), and its path there is typed into the pane. Only files are sent, up
-to 100 MB each; a folder is refused. A toast shows the file, how far it has got, and a **Cancel** button; if a
+**Dropping files or folders on a session of another machine** sends them there: drag up to 10 files or folders from
+your file manager onto the pane. Each goes over ssh (not a custom transport) into `~/.cache/maitty/pastes` on that
+machine (private, cleared after a week), and its path there is typed into the pane. A file is sent up to
+100 MB, a folder (as one archive) up to 1 GB. A toast shows the file or folder, how far it has got, and a **Cancel** button; if a
 file fails, the ones after it are not tried. The machine has to be `connected`. A file stays on the machine for
 a week, readable by you only, so do not send a secret you would not leave there. Dropping on a session of this
 computer types the file's path, as before.

@@ -193,6 +193,7 @@ export function GetFileDialog({ session, onGet, onCancel, browse }: { session: S
             <div className="mx-getfile-where">
               <button type="button" className="mx-text-button" onClick={goUp} disabled={listing.state !== 'ready' || searching} aria-label="Go up one folder">Up</button>
               <code title={shownFolder}>{shownFolder}</code>
+              <button type="button" className="mx-text-button" disabled={listing.state !== 'ready' || searching} onClick={() => { onGet(shownFolder) }} aria-label={`Get this folder, ${shownFolder}`}>Get this folder</button>
             </div>
             <input
               ref={search}
@@ -227,7 +228,7 @@ export function GetFileDialog({ session, onGet, onCancel, browse }: { session: S
             {notices.map((notice) => <p key={notice} role="status">{notice}</p>)}
           </>
         )}
-        <p>{browse === undefined ? `Type the file's path on ${machine}.` : 'Or type a path.'} It is saved in Downloads, in the maitty folder, up to 1 GB. A folder can&apos;t be fetched yet.</p>
+        <p>{browse === undefined ? `Type the file's path on ${machine}.` : 'Or type a path.'} It is saved in Downloads, in the maitty folder, up to 1 GB. A folder comes as a folder.</p>
         <input ref={pathBox} aria-label={`Path on ${machine}`} value={typed} maxLength={MOST_PATH_CHARS} spellCheck={false} onChange={(event) => { setTyped(event.target.value) }} />
         <div className="mx-rename-actions">
           <button type="button" className="mx-text-button" onClick={onCancel}>Cancel</button>

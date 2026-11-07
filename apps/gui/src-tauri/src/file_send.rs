@@ -6,7 +6,7 @@
 //! far-side paths into the pane itself, from the events.
 
 use maitty_machines::remote_paste::MAX_SEND_BYTES;
-use maitty_machines::remote_send::{send_file, send_image, shown};
+use maitty_machines::remote_send::{send_image, send_path, shown};
 use maitty_machines::ssh_run::Watch;
 use maitty_machines::{Machine, MachineDef};
 use serde::Serialize;
@@ -179,8 +179,8 @@ pub fn plan(
     })
 }
 
-/// A path the person dropped, if it names a regular file that may be sent. A symlink is followed
-/// because the person named it.
+/// A path the person dropped, if it names a regular file or a folder that may be sent. A symlink
+/// is followed because the person named it. A folder's size is checked when it is archived.
 fn checked_file(path: &str) -> Result<PathBuf, String> {
     let file = PathBuf::from(path);
     if path.is_empty() || path.contains('\0') || !file.is_absolute() {
@@ -188,9 +188,12 @@ fn checked_file(path: &str) -> Result<PathBuf, String> {
     }
     let meta =
         std::fs::metadata(&file).map_err(|e| format!("could not read {}: {e}", shown(&file)))?;
+    if meta.is_dir() {
+        return Ok(file);
+    }
     if !meta.is_file() {
         return Err(format!(
-            "{} is not a file; only files can be sent",
+            "{} is not a file or a folder; only those can be sent",
             shown(&file)
         ));
     }
@@ -261,7 +264,7 @@ fn send_all(
         watch.sent.store(0, Ordering::Relaxed);
         watch.total.store(0, Ordering::Relaxed);
         let sent = match job.kind {
-            SendKind::Files => send_file(&job.machine, &job.name, path, watch),
+            SendKind::Files => send_path(&job.machine, &job.name, path, watch),
             SendKind::Image { extension } => {
                 send_image(&job.machine, &job.name, path, extension, watch)
             }
