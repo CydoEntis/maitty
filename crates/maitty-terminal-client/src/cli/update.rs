@@ -8,6 +8,29 @@ use crate::version::{newer_than, parse as version};
 use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// The steps of an install, in order. The download tools report no byte count, so progress is
+/// which step it is on, not a percentage.
+pub const STEPS: [&str; 4] = [
+    "Downloading",
+    "Checking the download",
+    "Unpacking",
+    "Installing",
+];
+
+/// The step an install is on, counting from 1; 0 when none runs. Read by the Updates box
+/// (UI thread) while the install runs on a background thread.
+static STEP: AtomicUsize = AtomicUsize::new(0);
+
+/// The step the running install is on (1-based), or 0 when none is running.
+pub fn step() -> usize {
+    STEP.load(Ordering::Relaxed)
+}
+
+fn at_step(n: usize) {
+    STEP.store(n, Ordering::Relaxed);
+}
 
 const REPO: &str = concat!("CydoEntis/", env!("APP_COMMAND"));
 
@@ -280,6 +303,7 @@ pub fn install_latest() -> Result<(String, PathBuf)> {
     ));
     std::fs::create_dir_all(&tmp)?;
     let result = install(&tag, target, &asset, &tmp, false);
+    at_step(0);
     let _ = std::fs::remove_dir_all(&tmp);
     Ok((tag.trim_start_matches('v').to_string(), result?))
 }
@@ -313,13 +337,16 @@ fn install(tag: &str, target: &str, asset: &str, tmp: &Path, say: bool) -> Resul
             tag.trim_start_matches('v')
         );
     }
+    at_step(1);
     let archive = download(tag, asset, tmp)?;
     let sums = std::fs::read_to_string(download(tag, "sha256sums.txt", tmp)?)?;
+    at_step(2);
     let expected =
         expected_checksum(&sums, asset).with_context(|| format!("no checksum for {asset}"))?;
     if sha256_hex(&archive)? != expected {
         bail!("checksum mismatch for {asset}; nothing was changed");
     }
+    at_step(3);
     crate::proc::run(
         system_tool("tar")
             .arg("-xf")
@@ -338,6 +365,7 @@ fn install(tag: &str, target: &str, asset: &str, tmp: &Path, say: bool) -> Resul
         bail!("the download had no {name}");
     }
     let exe = std::env::current_exe().context(concat!("finding this ", env!("APP_COMMAND")))?;
+    at_step(4);
     replace_exe(&new, &exe)?;
     Ok(exe)
 }
