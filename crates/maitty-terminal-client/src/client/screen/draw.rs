@@ -157,17 +157,18 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
         // A tool slides in from the panes' right edge, inside their box (its top and bottom
         // lines and its chips stay in view): the panes keep the whole column.
         Some(kind) if overlaid(app, kind) => {
+            let pane = focused_box(app, col);
             let full = wanted_w(app, kind, area.width)
-                .min(drawer_cap(kind, col))
-                .clamp(SHEET_MIN, overlay_widest(col).max(SHEET_MIN));
-            let inner = col.width.saturating_sub(1);
+                .min(drawer_cap(kind, pane))
+                .clamp(SHEET_MIN, overlay_widest(pane).max(SHEET_MIN));
+            let inner = pane.width.saturating_sub(2);
             let w = ((full as f32 * app.sheet_frac.clamp(0.0, 1.0)).round() as u16).min(inner);
             (
                 Rect {
-                    x: col.right().saturating_sub(1 + w),
-                    y: col.y + 1,
+                    x: pane.right().saturating_sub(1 + w),
+                    y: pane.y + 1,
                     width: w,
-                    height: col.height.saturating_sub(2),
+                    height: pane.height.saturating_sub(2),
                 },
                 col,
             )

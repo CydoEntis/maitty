@@ -156,7 +156,7 @@ fn where_piece(app: &App, t: &Theme) -> Option<Piece> {
     }
     let term = app.focused()?;
     let info = app.term_info(term)?;
-    let name = session_name(app, &app.screen_model(), term);
+    let name = pane_title(app, &app.screen_model(), term);
     Some(Piece {
         segs: vec![seg(format!("{name} · {}", tilde(&info.cwd)), base.fg(t.strong))],
         gap: 1,
@@ -205,8 +205,8 @@ fn keys_holder(app: &App) -> Option<Holder> {
                 ("Esc", "close"),
             ),
             KeyView::All => holder(
-                "KEY MAP",
-                &[("", "type to search"), ("↑↓", "scroll")],
+                "KEYS HELP",
+                &[("", "type to search")],
                 ("Esc", "close"),
             ),
             KeyView::Map => None,

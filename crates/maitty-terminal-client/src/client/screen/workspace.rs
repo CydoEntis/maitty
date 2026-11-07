@@ -105,6 +105,30 @@ pub(in crate::client) fn draw_main(
     draw_pane_drag(app, f.buffer_mut(), model, t);
 }
 
+/// The box of the focused pane in the pane column `area`: its share of a split, or the whole
+/// column. The side panel slides in inside it.
+pub(in crate::client) fn focused_box(app: &App, area: Rect) -> Rect {
+    let Some(focus) = app.focused() else {
+        return area;
+    };
+    app.screen
+        .tabs
+        .get(app.screen.tab)
+        .filter(|tab| {
+            tab.layout.contains(focus.term)
+                && tab.layout.leaves().len() > 1
+                && app.screen.zoom != Some(app.screen.tab)
+        })
+        .and_then(|tab| {
+            tab.layout
+                .rects(area)
+                .into_iter()
+                .find(|(id, _)| *id == focus.term)
+                .map(|(_, r)| apart(r, area))
+        })
+        .unwrap_or(area)
+}
+
 /// A pane's share of a view, less the column or row that keeps it apart from the next box.
 fn apart(r: Rect, area: Rect) -> Rect {
     Rect {
