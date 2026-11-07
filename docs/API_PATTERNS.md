@@ -185,9 +185,13 @@ the pane's process tree or `MAITTY_PANE_TOKEN`.
 
 ## Project-specific: feature/module structure
 
-Saved role profiles and sequenced planner/worker/reviewer workflows are not part
-of Maitty's interface, and neither is a fleet commander (`maitty brief`, `[team]`): old
-config keys for them are read and ignored. Sessions, ordinary agent launches, helpers, and
+Sequenced planner/worker/reviewer workflows are not part of Maitty's interface, and
+neither is a fleet commander (`maitty brief`, `[team]`): old config keys for them are read and
+ignored. Crews are different: a crew is one shared chat of people and crewmates, each a saved role
+profile bound to an ongoing session, and a captain crewmate that delegates by messaging. The agents
+decide who does what; Maitty never starts or orders stages itself. The design is in
+[ADR 0010](adr/0010-crews-are-daemon-owned-and-local-first.md) and
+[`features/crews/plan.md`](features/crews/plan.md). Sessions, ordinary agent launches, helpers, and
 MCP session controls remain supported. The wire protocol version is `PROTOCOL_VERSION` in `crates/maitty-shared/src/protocol.rs`.
 Conversation tool-history entries carry a bounded provider-supplied `label` for
 display; `#[serde(default)]` keeps older cached entries readable without a

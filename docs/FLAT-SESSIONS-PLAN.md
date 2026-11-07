@@ -137,8 +137,11 @@ The owner replaced both specs after the first wave landed (`dev` 8f52406e). The 
 - The **tab bar returns**: one tab per session of the selected fleet; a session's panes (up to 4) live
   in its tab.
 - Desktop only: a **Crewmates** mode (Captain, crewmates with chats, crews with invites). The spec itself
-  says multi-user crews need a sync service that is not designed. **Decision: not built.** The mode
-  switch shows Fleets only; crewmates and crews wait for a design of that backend.
+  says multi-user crews need a sync service that is not designed. **Decision (revised 2026-11-06):**
+  local crews are built first, as one shared chat of people and crewmates that is not a fleet
+  ([ADR 0010](adr/0010-crews-are-daemon-owned-and-local-first.md), `features/crews/plan.md`). Inviting
+  teammates (the sync service) is not built and waits for its own design. Until the local mode lands,
+  the mode switch shows Fleets only.
 
 **What the daemon needs:** a fleet is what the daemon already calls a workspace (name, colour, tabs), and
 there is one daemon per machine (ADR 0007), so a workspace on a machine's daemon is a fleet on that
@@ -159,6 +162,6 @@ view), the tab bar, and the local layout store (its sessions now group into flee
 | Topic | Desktop v31 and `TUI_SPEC_v31.md` | TUI v27 | Call |
 | --- | --- | --- | --- |
 | Ctrl+T in the TUI | Opens the New session dialog; Ctrl+Shift+T makes a shell | Makes a shell at once, no dialog | v27 is the TUI's own handoff: Ctrl+T makes a shell; the dialog stays in the Menu as "Session..." |
-| Sidebar mode switch in the TUI | `[Fleets or Crewmates]` | Not present | Not built (see above) |
+| Sidebar mode switch in the TUI | `[Fleets or Crewmates]` | Not present | Built after the local crews work (see above) |
 | Diff counts on rows | Not shown | Not shown | The data stays in the protocol; rows do not show it |
 | Status marks | A shape for every state | One glyph, colour only | Each app follows its own handoff |
