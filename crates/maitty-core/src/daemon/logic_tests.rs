@@ -7481,6 +7481,28 @@ fn the_timeline_records_status_changes_and_the_shells_prompt_marks() {
 }
 
 #[test]
+fn a_failed_command_sets_the_exit_mark_and_the_next_one_clears_it() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let feed = |d: &mut Daemon, bytes: &[u8]| {
+        let pane = d.terms.get_mut(&t).unwrap();
+        pane.output(bytes);
+        pane.take_marks();
+        d.snapshot().terms[&t].exit
+    };
+    assert_eq!(d.snapshot().terms[&t].exit, None, "a running pane has none");
+    let failed = feed(&mut d, b"\x1b]133;C\x07\x1b]133;D;137\x07").expect("a failure");
+    assert_eq!(failed.code, Some(137));
+    assert_eq!(feed(&mut d, b"\x1b]133;C\x07"), None, "a new command clears it");
+    assert_eq!(feed(&mut d, b"\x1b]133;D;0\x07"), None, "a clean exit is not a problem");
+    assert_eq!(feed(&mut d, b"\x1b]133;D\x07"), None, "no code, no claim");
+    feed(&mut d, b"\x1b]133;D;1\x07");
+    d.set_status(t, Status::Working, "hook: UserPromptSubmit");
+    assert_eq!(d.snapshot().terms[&t].exit, None, "the agent working again clears it");
+    close(&mut d, &[t]);
+}
+
+#[test]
 fn a_blocked_pane_reports_what_it_is_asking_and_a_working_one_does_not() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);

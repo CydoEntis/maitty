@@ -2767,6 +2767,7 @@ impl Daemon {
                         },
                         interrupted: t.interrupted.clone().filter(|_| t.agent.is_none()),
                         ask: t.ask_now(),
+                        exit: t.exit,
                         timeline: t.timeline.iter().cloned().collect(),
                         subagents: t.subagents.iter().map(|(_, k)| k.clone()).collect(),
                         started_by: t.started_by,

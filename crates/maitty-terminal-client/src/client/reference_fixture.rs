@@ -159,6 +159,7 @@ pub(super) fn term(
         checks: Vec::new(),
         asking: String::new(),
         interrupted: None,
+        exit: None,
         ask: None,
         timeline: Vec::new(),
     }

@@ -4,7 +4,7 @@
 use super::Ev;
 use crate::config::Config;
 use crate::protocol::{
-    Interrupted, PermissionAsk, Status, SubagentActivity, Surface, TermId, TurnEvent, TurnKind,
+    ExitInfo, Interrupted, PermissionAsk, Status, SubagentActivity, Surface, TermId, TurnEvent, TurnKind,
 };
 use anyhow::{Context, Result};
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
@@ -139,6 +139,8 @@ pub struct Term {
     pub timeline: VecDeque<TurnEvent>,
     /// An agent that was mid-turn when the daemon restarted; see `TermInfo::interrupted`.
     pub interrupted: Option<Interrupted>,
+    /// The last command's failure; see `ExitInfo`. In memory only.
+    pub exit: Option<ExitInfo>,
     /// The permission prompt the agent's own hook said it is stopped on, cleaned; kept only
     /// while the pane needs you (`Term::ask_now`). In memory only.
     pub ask: Option<PermissionAsk>,
@@ -821,6 +823,7 @@ impl Term {
             status_why: String::new(),
             timeline: VecDeque::new(),
             interrupted: None,
+            exit: None,
             ask: None,
             last_hook: None,
             last_hook_at: None,
@@ -1041,13 +1044,33 @@ impl Term {
         });
     }
 
+    /// Keep a failed command's exit code (the shell's `D;<code>` mark). A zero exit, or a mark
+    /// without a readable code, leaves nothing: the only evidence is the shell's own report.
+    fn record_exit(&mut self, rest: &str) {
+        self.exit = rest
+            .trim()
+            .parse::<i32>()
+            .ok()
+            .filter(|code| *code != 0)
+            .map(|code| ExitInfo {
+                code: Some(code),
+                at: unix_now(),
+            });
+    }
+
     /// Move the shell's prompt marks (OSC 133) onto the timeline.
     pub fn take_marks(&mut self) {
         for (mark, rest) in std::mem::take(&mut self.parser.callbacks_mut().marks) {
             match mark {
                 b'A' => self.note(TurnKind::Prompt, ""),
-                b'C' => self.note(TurnKind::CommandStarted, ""),
-                _ => self.note(TurnKind::CommandFinished, &rest),
+                b'C' => {
+                    self.exit = None;
+                    self.note(TurnKind::CommandStarted, "");
+                }
+                _ => {
+                    self.record_exit(&rest);
+                    self.note(TurnKind::CommandFinished, &rest);
+                }
             }
         }
     }

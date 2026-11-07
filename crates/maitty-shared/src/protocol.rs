@@ -1237,6 +1237,25 @@ pub struct TermInfo {
     /// pane needs you and the agent said what it asks.
     #[serde(default)]
     pub ask: Option<PermissionAsk>,
+    /// How the last command in the pane ended, when it ended in failure. See [`ExitInfo`].
+    #[serde(default)]
+    pub exit: Option<ExitInfo>,
+}
+
+/// A command in a pane that ended in failure, as the shell reported it (OSC 133 D), never read
+/// off the screen. Set only for a non-zero exit, so `Some` means "show the red exited-with-error
+/// mark" and `None` means nothing failed: a running pane, a clean exit (code 0, which reads as
+/// Done, not as a problem) or a shell that reported no code. It is cleared as soon as the next
+/// command starts or the agent works again, and it is not kept across a daemon restart (the
+/// restored pane is a fresh shell). A signal kill reaches the shell as a code above 128
+/// (130 for Ctrl+C, 137 for SIGKILL), so it counts as an error too. Clients display it; only
+/// the daemon sets it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExitInfo {
+    /// The exit code the shell reported; `None` if a failure carried no code.
+    pub code: Option<i32>,
+    /// When it ended (unix seconds).
+    pub at: u64,
 }
 
 /// An agent that was working when the daemon restarted.
@@ -2154,6 +2173,20 @@ mod tests {
             detail: "cargo test".into(),
             answerable: true,
             choices: vec!["A".into(), "B".into()],
+        });
+        round_trips(&ServerMsg::State(Snapshot {
+            terms: [(3, term)].into(),
+            ..Default::default()
+        }));
+    }
+
+    #[test]
+    fn a_pane_from_before_the_exit_mark_reads_with_none_and_one_with_it_round_trips() {
+        let mut term = pane_from(serde_json::json!({}));
+        assert_eq!(term.exit, None, "an older peer sends none");
+        term.exit = Some(ExitInfo {
+            code: Some(137),
+            at: 9,
         });
         round_trips(&ServerMsg::State(Snapshot {
             terms: [(3, term)].into(),

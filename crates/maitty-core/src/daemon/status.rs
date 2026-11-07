@@ -556,6 +556,9 @@ impl Daemon {
             .flatten();
         t.blocked_at = (new == Status::Blocked).then(Instant::now);
         t.status = new;
+        if new == Status::Working {
+            t.exit = None;
+        }
         if let Some(kind) = match new {
             Status::Working => Some(TurnKind::Working),
             Status::Blocked => Some(TurnKind::NeedsYou),
