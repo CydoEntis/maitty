@@ -44,7 +44,7 @@ function show(sessions: SessionView[], more: Partial<SidebarProps> = {}) {
       side="left" width={264} onResize={none} onResizeEnd={none} inboxCount={0} inboxNeeds={false} onOpenInbox={none}
       onNewAgentChat={none} onNewShell={none} onAddMachine={none} onSelectFleet={none} onAddFleet={none} onRenameFleet={none} onRecolorFleet={none} onMoveShip={none} viewOf={() => 'terminal'}
       onShowSession={none} onEndSession={none} onSetName={none} onRenameSession={none} onPinSession={none}
-      onSplitSession={none} onCopyPath={none} onOpenSettings={none} updateSlot={null} railUpdateSlot={null}
+      onSplitSession={none} onCopyPath={none} onGetFile={none} onOpenSettings={none} updateSlot={null} railUpdateSlot={null}
       {...more}
     />,
   )
@@ -270,6 +270,20 @@ describe('the row menu', () => {
     fireEvent.contextMenu(rowAt(0))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Open in split down' }))
     expect(onSplitSession).toHaveBeenCalledWith('t1', 'down')
+  })
+
+  it('offers no Get a file on a ship of this computer', () => {
+    show([ship(1, MAIN)], { onGetFile: vi.fn() })
+    fireEvent.contextMenu(rowAt(0))
+    expect(screen.queryByRole('menuitem', { name: /Get a file/ })).toBeNull()
+  })
+
+  it('offers Get a file on a ship of another machine, and asks for that ship', () => {
+    const onGetFile = vi.fn()
+    show([ship(2, DEVBOX_FLEET, { machine: 4, machineName: 'devbox' })], { fleets: [MAIN, DEVBOX_FLEET], machines: [LOCAL_HEAD, DEVBOX], selectedFleet: DEVBOX_FLEET.key, onGetFile })
+    fireEvent.contextMenu(rowAt(0))
+    fireEvent.click(screen.getByRole('menuitem', { name: /Get a file/ }))
+    expect(onGetFile).toHaveBeenCalledWith('t2')
   })
 
   it('renames in place with F2: Enter saves, and Esc cancels', async () => {

@@ -1,13 +1,13 @@
 const FULL = 100
 
 /** How far a file being sent to another machine has got; a bar with no fill until its size is known. */
-export function SendProgress({ file, percent }: { file: string; percent: number | null }) {
+export function SendProgress({ file, percent, verb = 'Sending' }: { file: string; percent: number | null; verb?: string }) {
   const shown = percent === null ? 0 : Math.min(FULL, Math.max(0, percent))
   return (
     <div className="flex items-center gap-2">
       <div
         role="progressbar"
-        aria-label={`Sending ${file}`}
+        aria-label={`${verb} ${file}`}
         aria-valuemin={0}
         aria-valuemax={FULL}
         aria-valuenow={percent === null ? undefined : shown}

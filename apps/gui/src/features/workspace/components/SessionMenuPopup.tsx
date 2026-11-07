@@ -19,6 +19,9 @@ export function SessionMenuPopup({ session, actions, at, onClose }: Props) {
       <button type="button" role="menuitem" className="mx-menu-item" onClick={run(() => { actions.onSplit('right') })}><Icon name="splitRight" size={13} />Open in split right</button>
       <button type="button" role="menuitem" className="mx-menu-item" onClick={run(() => { actions.onSplit('down') })}><Icon name="splitDown" size={13} />Open in split down</button>
       <button type="button" role="menuitem" className="mx-menu-item" onClick={run(actions.onCopyPath)}><span className="mx-sm-gap" />Copy path</button>
+      {actions.onGetFile !== undefined && (
+        <button type="button" role="menuitem" className="mx-menu-item" disabled={!actions.online} onClick={run(actions.onGetFile)}><span className="mx-sm-gap" />Get a file…</button>
+      )}
       {actions.moveTargets.length > 0 && (
         <>
           <div className="mx-menu-sep" />

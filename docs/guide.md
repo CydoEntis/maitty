@@ -564,6 +564,10 @@ the path it was saved to. A `~/` at the start of the path is the machine's home 
 
 Exit status: 0 saved, 2 a mistake in how it was asked, 1 the pull did not work (the message says why).
 
+In the desktop app, right-click a session that is on another machine and choose **Get a file…**. Type the file's
+path (the box starts with the session's folder), and it is saved in `Downloads/maitty/<machine>/` with a progress
+toast you can cancel and an **Open folder** button when it is done. It is the same pull as the command.
+
 ### Agents on a machine
 
 An agent can reach a machine from your `[[machines]]` list through the same MCP tools it uses here

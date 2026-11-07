@@ -10,6 +10,8 @@ export type SessionMenuActions = {
   /** Shows the session beside the pane that has focus. */
   onSplit: (direction: 'right' | 'down') => void
   onCopyPath: () => void
+  /** Asks for the path of a file on the session's machine to pull here; left out for this computer's sessions. */
+  onGetFile?: () => void
   /** Starts renaming it, where it is shown. */
   onRename: () => void
   onPin: (pinned: boolean) => void

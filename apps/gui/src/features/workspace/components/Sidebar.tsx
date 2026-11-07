@@ -67,6 +67,8 @@ export type SidebarProps = {
   /** Shows a session beside the pane that has focus. */
   onSplitSession: (id: string, direction: 'right' | 'down') => void
   onCopyPath: (id: string) => void
+  /** Asks for a file to pull from the machine of session `id`. */
+  onGetFile: (id: string) => void
   onOpenSettings: () => void
   /** Crewmates and crews: the mode switch under the filter, and what the sidebar lists in Crewmates mode. */
   crew: CrewApi
@@ -181,6 +183,7 @@ function Expanded(props: SidebarProps) {
       onPin={(pinned) => { props.onPinSession(session.id, pinned) }}
       onSplit={(direction) => { props.onSplitSession(session.id, direction) }}
       onCopyPath={() => { props.onCopyPath(session.id) }}
+      {...(session.machineName === null ? {} : { onGetFile: () => { props.onGetFile(session.id) } })}
       onEnd={() => { props.onEndSession(session.id) }}
     />
   )

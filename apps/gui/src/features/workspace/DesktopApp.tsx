@@ -72,6 +72,7 @@ import { useIdleUpdate } from '@/features/updates/useIdleUpdate'
 import { routeDrop } from '@/features/terminal/dropRoute'
 import { dropOnComposer } from '@/features/chat/composerDrop'
 import { useFileDrop } from '@/features/terminal/useFileDrop'
+import { useFileGets } from '@/features/terminal/useFileGets'
 import { useFileSends } from '@/features/terminal/useFileSends'
 import { useImagePaste } from '@/features/terminal/useImagePaste'
 import { updaterSummary, useUpdater } from '@/features/updates/useUpdater'
@@ -95,6 +96,7 @@ import { usePaneViews } from './usePaneViews'
 import { chatAvailability, chatSourceOf, effectiveView, type ChatAgent, type PaneView } from './model/chatView'
 import { NewSessionHost } from './components/NewSessionHost'
 import type { NewSessionRequest } from './components/NewSessionModal'
+import { GetFileDialog } from './components/GetFileDialog'
 import { RenameDialog } from './components/RenameDialog'
 import { Sidebar } from './components/Sidebar'
 import { TabBar } from './components/TabBar'
@@ -270,6 +272,7 @@ export function DesktopApp() {
   const [liveSidebarWidth, setLiveSidebarWidth] = useState<number | null>(null)
   const [settingsSection, setSettingsSection] = useState<DesktopSettingsSection | null>(null)
   const [renameId, setRenameId] = useState<string | null>(null)
+  const [getFileId, setGetFileId] = useState<string | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [inboxOpen, setInboxOpen] = useState(false)
   const [focusMode, setFocusMode] = useState(false)
@@ -494,6 +497,7 @@ export function DesktopApp() {
     return true
   }
   const { sendFiles, sendImage } = useFileSends({ typeInto: typeIntoPane })
+  const { getFile } = useFileGets()
   // A pasted image goes the same two ways (ticket 19): saved here and its path typed, or sent to the pane's machine.
   const pasteImage = useImagePaste({
     sendImage,
@@ -1396,7 +1400,7 @@ export function DesktopApp() {
 
   // Captured on the window before xterm sees the key, so only these few keys leave the shell.
   const overlayOpen = paletteOpen || inboxOpen
-  const dialogOpen = settingsSection !== null || renameId !== null || newSessionMachine !== null
+  const dialogOpen = settingsSection !== null || renameId !== null || getFileId !== null || newSessionMachine !== null
   const modalOpen = dialogOpen || overlayOpen
   const drawerShown = compact && drawerOpen
   const shortcutState = useRef({ runShortcut, canUndoClose: () => lastClose !== null, settingsOpen: dialogOpen, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
@@ -1768,6 +1772,7 @@ export function DesktopApp() {
       onPinSession={pinSession}
       onSplitSession={(id, direction) => { afterPick(); openInSplit(id, direction) }}
       onCopyPath={copyPathOf}
+      onGetFile={setGetFileId}
       onOpenSettings={() => { afterPick(); setSettingsSection('general') }}
       updateSlot={updateSlot('footer')}
       railUpdateSlot={updateSlot('rail')}
@@ -2029,6 +2034,17 @@ export function DesktopApp() {
                 defaultView={preferences.newSessionView}
                 onStart={startFromModal}
                 onCancel={() => { setNewSessionMachine(null) }}
+              />
+            )}
+            {getFileId !== null && sessionMap.get(getFileId)?.machineName != null && (
+              <GetFileDialog
+                session={sessionMap.get(getFileId) as SessionView}
+                onGet={(path) => {
+                  const target = sessionMap.get(getFileId)
+                  setGetFileId(null)
+                  if (target?.machineName != null) getFile(target.machineName, path)
+                }}
+                onCancel={() => { setGetFileId(null) }}
               />
             )}
             {renameId !== null && sessionMap.get(renameId) && (

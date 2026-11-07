@@ -783,6 +783,7 @@ pub fn run() {
             add_machine::cancel_add_machine,
             file_send::send_files_to_machine,
             file_get::get_file_from_machine,
+            file_get::open_pulled_folder,
             file_send::cancel_file_send,
             attachment::attach_local_file,
             attachment::attachments_exist,

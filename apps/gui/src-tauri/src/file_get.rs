@@ -169,6 +169,43 @@ pub async fn get_file_from_machine(
     start(&app, job)
 }
 
+/// Whether `folder` is the app's folder in Downloads or inside it, with no `..` to climb out.
+fn inside_pulls(folder: &Path, downloads: &Path) -> bool {
+    folder.starts_with(downloads.join(FOLDER))
+        && !folder
+            .components()
+            .any(|part| matches!(part, std::path::Component::ParentDir))
+}
+
+/// Show a folder the pulled files were saved in, in the system's file manager. Only a folder
+/// this feature saves into can be opened: the window cannot use it to open anything else.
+#[tauri::command]
+pub fn open_pulled_folder(app: tauri::AppHandle, folder: String) -> Result<(), String> {
+    let downloads = app
+        .path()
+        .download_dir()
+        .map_err(|e| format!("could not find your Downloads folder: {e}"))?;
+    let folder = PathBuf::from(folder);
+    if !inside_pulls(&folder, &downloads) {
+        return Err("that is not a folder pulled files are saved in".into());
+    }
+    if !folder.is_dir() {
+        return Err("that folder is gone".into());
+    }
+    let program = if cfg!(windows) {
+        "explorer"
+    } else if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    std::process::Command::new(program)
+        .arg(&folder)
+        .spawn()
+        .map(drop)
+        .map_err(|e| format!("could not open the folder: {e}"))
+}
+
 /// Run a planned pull on a blocking worker, one transfer at a time.
 fn start(app: &tauri::AppHandle, job: Job) -> Result<(), String> {
     let cancel = app.state::<Transfers>().begin(&job.transfer)?;

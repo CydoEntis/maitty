@@ -190,3 +190,15 @@ fn a_file_is_pulled_from_a_fake_remote_and_the_window_is_told_where_it_is() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn only_a_folder_inside_the_apps_downloads_folder_can_be_opened() {
+    let downloads = Path::new("/home/me/Downloads");
+    let app = downloads.join(maitty_machines::APP_COMMAND);
+    assert!(inside_pulls(&app, downloads));
+    assert!(inside_pulls(&app.join("build"), downloads));
+    assert!(!inside_pulls(downloads, downloads), "Downloads itself is not one of ours");
+    assert!(!inside_pulls(Path::new("/etc"), downloads));
+    assert!(!inside_pulls(&app.join("..").join(".."), downloads), "no climbing out");
+    assert!(!inside_pulls(&downloads.join("other").join("build"), downloads));
+}

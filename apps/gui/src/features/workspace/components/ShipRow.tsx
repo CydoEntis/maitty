@@ -26,6 +26,8 @@ export type ShipRowProps = {
   onPin: (pinned: boolean) => void
   onSplit: (direction: 'right' | 'down') => void
   onCopyPath: () => void
+  /** Pull a file from the ship's machine; absent for a ship on this computer. */
+  onGetFile?: () => void
   onEnd: () => void
   /** The other fleets on the ship's machine it can move to, and the move. */
   moveTargets: readonly Fleet[]
@@ -49,7 +51,7 @@ export function ShipRow(props: ShipRowProps) {
   const agent = session.process !== 'shell'
   const unread = Boolean(track?.unread) && !selected
   const [editing, setEditing] = useState(false)
-  const menu = useSessionMenu(session, { online, portalContainer: props.portalContainer, onSplit: props.onSplit, onCopyPath: props.onCopyPath, onRename: () => { setEditing(true) }, onPin: props.onPin, onEnd: props.onEnd, moveTargets: props.moveTargets, onMove: props.onMove })
+  const menu = useSessionMenu(session, { online, portalContainer: props.portalContainer, onSplit: props.onSplit, onCopyPath: props.onCopyPath, ...(props.onGetFile === undefined ? {} : { onGetFile: props.onGetFile }), onRename: () => { setEditing(true) }, onPin: props.onPin, onEnd: props.onEnd, moveTargets: props.moveTargets, onMove: props.onMove })
   const body = (
     <>
       <span className="mx-ship-icon">
