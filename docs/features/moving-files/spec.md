@@ -25,6 +25,18 @@ as untrusted. Each rule below is a requirement of the tickets.
    secrets; the guide says where it lands.
 7. **Progress and Cancel** use the existing `Watch` (bytes so far, a cancel flag).
 
+8. **Names from the machine are untrusted when listed.** An entry must start with the folder the
+   machine says it listed, and its name must not contain `/`. A name with a control or invisible
+   character is not offered; the count of those is shown. What is shown is exactly what is
+   sent back as the path.
+9. **Everything is capped.** A listing returns at most 2000 entries, an index at most 5000
+   files, to a depth of 6, and the answer is cut at a byte limit. A cut answer says so.
+10. **Read-only.** The list and index scripts write nothing, signal nothing, and do not follow
+    symlinks when indexing.
+11. **Each ask has a time limit** (30 seconds), and a failure leaves the typed-path box working.
+12. **Browsing is not limited to the session's folder.** The person may go up to any folder their
+    own account can read; only the search index is limited to the session's folder and below.
+
 ## Requirements
 
 - R1: a fixed script prints a marker line, the file's size, and then exactly that many bytes;
@@ -38,6 +50,13 @@ as untrusted. Each rule below is a requirement of the tickets.
 - R5: the desktop app saves into `Downloads/maitty/<machine>/` and reports progress and
   completion as events; its dialog offers Cancel and Open folder.
 
+- R6: a fixed script prints one folder's contents (sub-folders, then other entries) with its
+  resolved path first. R7: a fixed script prints the regular files below a folder, skipping
+  `.git`, `node_modules`, `target`, `dist`, `build`, `.cache`, `__pycache__` and `.venv`.
+- R8: the Get a file dialog lists the session's folder, lets the person open folders and go
+  up, and ranks index matches as they type (fuzzy: every typed letter in order, better for the
+  file name, word starts and consecutive letters).
+
 ## Coverage
 
 - R1, R2: MAITTY-227
@@ -45,3 +64,5 @@ as untrusted. Each rule below is a requirement of the tickets.
 - R4: MAITTY-229
 - R5, host half: MAITTY-230; window half: MAITTY-231
 - Text how-to (intent, phase 3): MAITTY-232
+- R6: MAITTY-233; R7: MAITTY-234; concerns 8 to 11 and the parsing: MAITTY-235
+- R8, host half: MAITTY-236; matching: MAITTY-237; window half: MAITTY-238

@@ -36,12 +36,18 @@ daemon: files travel over ssh (ADR 0007).
 
 ## Out of scope
 
-- Browsing a remote's files (Plane MAITTY-139).
+- The remote file API for the Files, Changes and Find views (Plane MAITTY-139). Browsing and
+  searching inside the Get a file dialog is in scope and does not need it: it reads folders with
+  fixed scripts over ssh.
 - Syncing, and resuming a cut-off transfer.
 - A Windows machine as the remote.
 - A key or screen for it in the terminal app (the command does the job).
 
 ## Phases
+
+1b. Browse and search in the Get a file dialog (added 2026-11-07 at the user's request: typing a
+    whole path is a rough edge). Click through a machine's folders, and search by typing a few
+    letters of a name inside the session's folder and everything below it.
 
 1. Pull a file from a remote machine (command line and desktop app).
 2. Folders both ways, as a tar stream. Ticketed after phase 1 lands. Needs approval for the
@@ -62,5 +68,14 @@ Phase 1, filed in Plane (project MAITTY, module "Moving files"), in this order:
 4. MAITTY-230 the desktop host command to get a file (blocked by 2)
 5. MAITTY-231 a Get dialog on a remote session (blocked by 4)
 6. MAITTY-232 how to move text between machines (docs, no blockers)
+
+Phase 1b, in the same module:
+
+7. MAITTY-233 the fixed script and ssh line that list one folder
+8. MAITTY-234 the fixed script and ssh line that index files below a folder
+9. MAITTY-235 list a folder and index its files, cleaned and capped (blocked by 7 and 8)
+10. MAITTY-236 host commands to list a folder and index files (blocked by 9)
+11. MAITTY-237 a fuzzy matcher for file paths
+12. MAITTY-238 browse and search in the Get a file dialog (blocked by 10 and 11)
 
 Phase 2 (folders both ways) is ticketed after phase 1 lands.
