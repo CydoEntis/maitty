@@ -1,13 +1,13 @@
 /**
- * The window's split layouts, kept in this app only (sessions and fleets are the daemon's). An
- * arrangement is a tab: one to four panes in columns, each pane naming a session by id, and its first
- * pane's session names the tab. The tab bar shows the arrangements of the selected fleet (`tabs.ts`);
- * the sidebar picks a ship and the arrangement it sits in is what you see. A pane goes only
- * when you close it (`removeSessions`): one whose session stops being listed stays, as an ended pane.
+ * The window's split layouts, kept in this app only (sessions are the daemon's). An arrangement is
+ * one to four panes in columns, each pane naming a session by id. There is no tab bar: the sidebar
+ * picks a session and the arrangement it sits in is what you see. A pane goes only when you close
+ * it (`removeSessions`): one whose session stops being listed stays, as an ended pane.
  */
 export const MAX_PANES = 4
 
-export type PaneSlot = { id: string; sessionId: string; col: number }
+/** `h` is the pane's relative height in its column; absent means an equal share. */
+export type PaneSlot = { id: string; sessionId: string; col: number; h?: number }
 /** `widths` are the columns' relative widths (by column index); absent means equal. `broadcast` sends a typed line to every idle pane. */
 export type Arrangement = { id: string; panes: PaneSlot[]; focus: string; max: string | null; widths?: number[]; broadcast?: boolean }
 export type Layout = { arrangements: Arrangement[]; activeId: string | null }
@@ -45,22 +45,25 @@ function replaceArrangement(layout: Layout, next: Arrangement): Layout {
   return { ...layout, arrangements: layout.arrangements.map((tab) => (tab.id === valid.id ? valid : tab)) }
 }
 
-/** Shows an arrangement that exists; the tab bar's click. */
-export function activateArrangement(layout: Layout, arrangementId: string | null): Layout {
-  if (layout.activeId === arrangementId) return layout
-  if (arrangementId !== null && !layout.arrangements.some((tab) => tab.id === arrangementId)) return layout
-  return { ...layout, activeId: arrangementId }
-}
-
 export function openArrangement(layout: Layout, sessionId: string, makeId: MakeId): Layout {
   const pane: PaneSlot = { id: makeId('pane'), sessionId, col: 0 }
   const tab: Arrangement = { id: makeId('tab'), panes: [pane], focus: pane.id, max: null }
   return { arrangements: [...layout.arrangements, tab], activeId: tab.id }
 }
 
+/** A split gives the new pane half of the space of the pane it came from. */
+const HALVES = 2
+
+/** The relative widths of a tab's columns, equal when none were set. */
+function widthsOf(tab: Arrangement): number[] {
+  const count = columnCount(tab.panes)
+  return tab.widths && tab.widths.length === count ? tab.widths : Array.from({ length: count }, () => 1)
+}
+
 /**
- * Right adds a column after the pane and left one before it; down adds a pane below in the pane's column
- * and up one above it. The new pane takes the focus.
+ * Right adds a column after the pane and left one before it, taking half the pane's column; down adds
+ * a pane below in the pane's column and up one above it, taking half the pane's height. The new
+ * pane takes the focus.
  */
 export function splitPane(layout: Layout, paneId: string | null, direction: SplitDirection, sessionId: string, makeId: MakeId): Layout {
   const tab = activeArrangement(layout)
@@ -69,13 +72,37 @@ export function splitPane(layout: Layout, paneId: string | null, direction: Spli
   const current = tab.panes[index]
   if (!current) return layout
   const before = direction === 'left' || direction === 'up'
+  const sideways = direction === 'right' || direction === 'left'
   // A new column pushes every column from its place on to the right.
   const columnAt = direction === 'right' ? current.col + 1 : direction === 'left' ? current.col : null
   const shifted = columnAt === null ? tab.panes : tab.panes.map((pane) => (pane.col >= columnAt ? { ...pane, col: pane.col + 1 } : pane))
-  const added: PaneSlot = { id: makeId('pane'), sessionId, col: columnAt ?? current.col }
+  const half = (current.h ?? 1) / HALVES
+  const stacked = !sideways && tab.panes.some((pane) => pane.col === current.col && pane.id !== current.id)
+  const resized = stacked ? shifted.map((pane) => (pane.id === current.id ? { ...pane, h: half } : pane)) : shifted
+  const added: PaneSlot = { id: makeId('pane'), sessionId, col: columnAt ?? current.col, ...(stacked ? { h: half } : {}) }
   const at = before ? index : index + 1
-  const panes = [...shifted.slice(0, at), added, ...shifted.slice(at)]
-  return replaceArrangement(layout, { ...tab, panes, focus: added.id, max: null })
+  const panes = [...resized.slice(0, at), added, ...resized.slice(at)]
+  const next: Arrangement = { ...tab, panes, focus: added.id, max: null }
+  if (!sideways) return replaceArrangement(layout, next)
+  const widths = widthsOf(tab)
+  const share = (widths[current.col] ?? 1) / HALVES
+  const split = widths.flatMap((width, col) => (col === current.col ? [share, share] : [width]))
+  return replaceArrangement(layout, { ...next, widths: split })
+}
+
+/** Gives the panes of one column their relative heights, top to bottom; `null` goes back to equal. */
+export function setPaneHeights(layout: Layout, tabId: string, col: number, heights: number[] | null): Layout {
+  const tab = layout.arrangements.find((candidate) => candidate.id === tabId)
+  if (!tab) return layout
+  let row = 0
+  const panes = tab.panes.map((pane) => {
+    if (pane.col !== col) return pane
+    const h = heights?.[row]
+    row += 1
+    const base: PaneSlot = { id: pane.id, sessionId: pane.sessionId, col: pane.col }
+    return h === undefined ? base : { ...base, h }
+  })
+  return replaceArrangement(layout, { ...tab, panes })
 }
 
 function compactColumns(panes: PaneSlot[]): PaneSlot[] {
@@ -192,8 +219,10 @@ export function parseLayout(value: unknown): Layout {
     if (typeof tab.id !== 'string' || !Array.isArray(tab.panes)) return []
     const panes = tab.panes.flatMap((pane: unknown): PaneSlot[] => {
       if (typeof pane !== 'object' || pane === null) return []
-      const slot = pane as { id?: unknown; sessionId?: unknown; col?: unknown }
-      return typeof slot.id === 'string' && typeof slot.sessionId === 'string' && typeof slot.col === 'number' && Number.isInteger(slot.col) && slot.col >= 0 ? [{ id: slot.id, sessionId: slot.sessionId, col: slot.col }] : []
+      const slot = pane as { id?: unknown; sessionId?: unknown; col?: unknown; h?: unknown }
+      if (typeof slot.id !== 'string' || typeof slot.sessionId !== 'string' || typeof slot.col !== 'number' || !Number.isInteger(slot.col) || slot.col < 0) return []
+      const height = typeof slot.h === 'number' && Number.isFinite(slot.h) && slot.h > 0 ? { h: slot.h } : {}
+      return [{ id: slot.id, sessionId: slot.sessionId, col: slot.col, ...height }]
     }).slice(0, MAX_PANES)
     const first = panes[0]
     if (!first) return []

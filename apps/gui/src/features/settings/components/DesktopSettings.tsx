@@ -626,11 +626,7 @@ function HotkeysSection({ platform }: { platform: Platform }) {
 
 /** Native notifications: sent only while the window is in the background, for the session you are not looking at. */
 function UsageSection({ usage }: { usage: UsageInfo }) {
-  return (
-    <Card title="Usage & cost" color="var(--ansi-mag)" iconPath={<path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />}>
-      <UsagePage {...usage} />
-    </Card>
-  )
+  return <UsagePage {...usage} />
 }
 
 const AGENT_OPTIONS = [['claude', 'Claude'], ['codex', 'Codex']] as const

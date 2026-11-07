@@ -125,6 +125,10 @@ Daemon work is unchanged by this: it needs the same flat list, `Exited`, Undo an
 
 ## 8. Round two: desktop v31 and TUI v27 ("Fleets and Ships")
 
+> **Status (desktop):** superseded for the desktop app by the redesign handoff (`design_handoff_maitty_redesign`):
+> the sidebar is agents only, grouped by machine, with no fleets, ships, tab bar or Crewmates switch, and an agent opens
+> as its chat ([DESIGN](DESIGN.md#desktop-app), [UI](UI.md)). The daemon keeps its workspaces for the terminal app.
+
 The owner replaced both specs after the first wave landed (`dev` 8f52406e). The sources are
 `Maitty Desktop specification (4).zip` (desktop README v31 plus `TUI_SPEC_v31.md`) and
 `Sidebar design for remote and local machines (2).zip` (TUI v27). **They supersede sections 1 and 7.**

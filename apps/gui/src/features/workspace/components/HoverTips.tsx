@@ -15,7 +15,7 @@ const HALF_WIDTH_PX = 120
 const FLIP_BELOW_PX = 56
 const CENTRE_RATIO = 0.5
 /** What a tip never covers: a menu, or a rich hover card, which already says more than the tip would. */
-const RICH_OVERLAY = '[role="menu"], .mx-railpop, .mx-sessionmenu'
+const RICH_OVERLAY = '[role="menu"], .mx-ctx'
 /** Controls that carry only an icon name their action by `aria-label` alone. */
 const ICON_CONTROLS = 'button, [role="button"], [role="radio"], [role="switch"]'
 /** Marks a control, such as an activity-bar item, whose tip goes beside it, away from the window edge. */

@@ -1,5 +1,6 @@
 import { terminalOf } from '@/api/daemon'
 import type { Conversation, PermissionAsk, TerminalDetails } from '@/data/preview'
+import { toSubagentView, type SubagentView } from './subagents'
 
 /** The status vocabulary of the desktop app. Each one has its own shape, never colour alone. */
 export type SessionStatus = 'working' | 'needs' | 'done' | 'error' | 'idle' | 'unknown'
@@ -23,9 +24,7 @@ export type SessionView = {
   title: string
   /** The name you gave the session; null until you rename it. The daemon keeps it for every app. */
   name: string | null
-  /** The key of the fleet the daemon holds this session in (`machine:workspace`); null when it lists it in none. */
-  fleet: string | null
-  /** It runs in a linked worktree: the daemon says so for the pane, or its fleet was made as a worktree. */
+  /** It runs in a linked worktree, as the daemon says for the pane. */
   worktree: boolean
   /** Marked with a pin glyph. A pin never reorders the list. */
   pinned: boolean
@@ -49,6 +48,8 @@ export type SessionView = {
   interrupted: TerminalDetails['interrupted']
   timeline: TerminalDetails['timeline']
   usage: TerminalDetails['usage']
+  /** The agent's subagents, in the order its runtime reported them. */
+  subagents: SubagentView[]
   status: SessionStatus
   /** The status before the daemon disconnected. */
   lastKnownStatus: SessionStatus | null
@@ -149,10 +150,7 @@ export function tildePath(path: string, home: string): string {
   return clean
 }
 
-/** Where the daemon holds a session: the fleet's key, and whether that fleet is a worktree. */
-export type FleetPlacement = { fleet: string; worktree: boolean }
-
-export function toSessionView(conversation: Conversation, home: string, placement?: FleetPlacement): SessionView {
+export function toSessionView(conversation: Conversation, home: string): SessionView {
   const cwd = trimTrailingSeparator(conversation.cwd ?? conversation.folder)
   const machineName = conversation.machineName ?? null
   // The home folder written as `~` is this computer's; another machine's paths are shown as they are.
@@ -179,8 +177,7 @@ export function toSessionView(conversation: Conversation, home: string, placemen
     branch,
     title,
     name: conversation.named ? conversation.title.trim() || null : null,
-    fleet: placement?.fleet ?? null,
-    worktree: (placement?.worktree ?? false) || (conversation.linked ?? false),
+    worktree: conversation.linked ?? false,
     pinned: conversation.pinned ?? false,
     diffAdded: conversation.diffAdded ?? 0,
     diffRemoved: conversation.diffRemoved ?? 0,
@@ -194,6 +191,7 @@ export function toSessionView(conversation: Conversation, home: string, placemen
     interrupted: conversation.details?.interrupted ?? null,
     timeline: conversation.details?.timeline ?? [],
     usage: conversation.details?.usage ?? { context: null, cost: null, tokens: null },
+    subagents: (conversation.details?.subagents ?? []).map(toSubagentView),
     status,
     lastKnownStatus: lastKnown,
     conversation,

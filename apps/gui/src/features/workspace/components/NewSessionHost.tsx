@@ -1,40 +1,36 @@
-import { useCallback, useMemo } from 'react'
+import { useMemo } from 'react'
 import { chooseProjectFolder } from '@/api/folderPicker'
-import { listFolders } from '@/api/folders'
 import { LOCAL_MACHINE } from '@/api/machines'
-import type { ChatAgent, PaneView } from '../model/chatView'
+import type { ChatAgent } from '../model/chatView'
 import type { MachineHead } from '../model/machines'
 import type { SessionView } from '../model/session'
-import { modalMachines, recentFolders } from '../model/newSession'
+import { machineProjects } from '../model/newSession'
 import { NewSessionModal, type NewSessionRequest } from './NewSessionModal'
 
-/** The New session modal wired to the window's data. The starting itself is `onStart`'s. */
-export function NewSessionHost({ machine, heads, sessions, focused, startFolder, defaultAgent, defaultView, onStart, onCancel }: {
-  /** The machine the modal opens on. */
+/** The New session dialog wired to the window's data. The starting itself is `onStart`'s. */
+export function NewSessionHost({ machine, heads, sessions, focused, startFolder, defaultAgent, portalContainer, onStart, onCancel }: {
+  /** The machine the dialog opens on. */
   machine: number
   heads: readonly MachineHead[]
   sessions: readonly SessionView[]
   focused: SessionView | undefined
-  /** Where a session starts when no session is focused: the Settings start folder, resolved. */
+  /** Where a session starts when the machine has no project yet: the Settings start folder, resolved, or `~` on another machine. */
   startFolder: string
   defaultAgent: ChatAgent
-  defaultView: PaneView
+  portalContainer: HTMLElement | null
   onStart: (request: NewSessionRequest) => Promise<void>
   onCancel: () => void
 }) {
-  const machines = useMemo(() => modalMachines(heads), [heads])
-  const projectsOf = useCallback((id: number) => recentFolders(sessions, id), [sessions])
-  const initialFolder = focused?.machine === machine && focused.cwd !== '' ? focused.cwd : machine === LOCAL_MACHINE && startFolder !== '' ? startFolder : null
+  const local = machine === LOCAL_MACHINE
+  const projects = useMemo(() => machineProjects(sessions, machine, focused, local ? startFolder : '~'), [sessions, machine, focused, local, startFolder])
   return (
     <NewSessionModal
-      machines={machines}
-      initialMachine={machine}
-      initialFolder={initialFolder}
-      projectsOf={projectsOf}
-      list={listFolders}
-      browse={chooseProjectFolder}
+      machine={machine}
+      machineName={heads.find((head) => head.machine === machine)?.name ?? null}
+      projects={projects}
       defaultAgent={defaultAgent}
-      defaultView={defaultView}
+      browse={local ? () => chooseProjectFolder() : null}
+      portalContainer={portalContainer}
       onStart={onStart}
       onCancel={onCancel}
     />

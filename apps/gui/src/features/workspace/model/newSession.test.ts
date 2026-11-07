@@ -1,45 +1,32 @@
-import { describe, expect, it } from 'vitest'
-import type { FolderListing } from '@/api/folders'
-import { completionFor, effectiveStartView, folderName, isPathLike, matchingProjects, viewLockReason } from './newSession'
+import { describe, expect, it, vi } from 'vitest'
+import type { Conversation } from '@/data/preview'
+import { toSessionView, type SessionView } from './session'
+import { machineProjects, nameFromMessage } from './newSession'
 
-const listing = (names: string[]): FolderListing => ({ path: '~', exists: true, entries: names.map((name) => ({ name, git: null, has_children: false })), truncated: false })
+vi.mock('@/api/daemon', () => ({ terminalOf: (id: string) => Number(id.slice(1)) }))
 
-describe('the view toggle lock', () => {
-  it('locks to the terminal for a shell and for another machine, and says why', () => {
-    expect(viewLockReason('terminal', 0)).toBe('Shells always open in Terminal')
-    expect(viewLockReason('claude', 2)).toBe('Chat runs on this computer')
-    expect(viewLockReason('claude', 0)).toBeNull()
-    expect(effectiveStartView('chat', 'terminal', 0)).toBe('terminal')
-    expect(effectiveStartView('chat', 'claude', 2)).toBe('terminal')
-    expect(effectiveStartView('chat', 'codex', 0)).toBe('chat')
+function session(pane: number, cwd: string, extra: Partial<Conversation> = {}): SessionView {
+  return toSessionView({ id: `t${String(pane)}`, kind: 'terminal', title: '', project: '', folder: cwd, cwd, repo: null, branch: '', provider: 'Claude', status: 'idle', updated: null, model: '', permission: '', context: null, nativePane: pane, hasDiff: false, agent: null, ...extra }, '/home/me')
+}
+
+describe('the New session dialog’s projects', () => {
+  it('offers the focused session’s project first, then the newest, each once', () => {
+    const one = session(1, '/code/api')
+    const two = session(2, '/code/web')
+    const three = session(3, '/code/api')
+    expect(machineProjects([one, two, three], 0, two, '/home/me').map((project) => project.folder)).toEqual(['/code/web', '/code/api'])
+  })
+
+  it('offers only the machine’s own projects, and the start folder when it has none', () => {
+    const remote = session(1, '/srv/app', { machine: 3, machineName: 'box' })
+    expect(machineProjects([remote], 0, undefined, '/home/me/code').map((project) => project.name)).toEqual(['code'])
+    expect(machineProjects([remote], 3, undefined, '~').map((project) => project.folder)).toEqual(['/srv/app'])
   })
 })
 
-describe('completing a project', () => {
-  const projects = ['/home/u/AeVoxGrowth', '/home/u/pacman']
-  it('completes a name from the known projects and offers the whole folder', () => {
-    expect(completionFor('Ae', projects, null)).toEqual({ rest: 'VoxGrowth', folder: '/home/u/AeVoxGrowth' })
-    expect(completionFor('pac', projects, null)).toEqual({ rest: 'man', folder: '/home/u/pacman' })
-    expect(completionFor('zzz', projects, null)).toBeNull()
-    expect(completionFor('', projects, null)).toBeNull()
-  })
-  it('completes a path from the folders that exist, hiding dotfolders until a dot is typed', () => {
-    const inside = listing(['.cache', 'code', 'notes'])
-    expect(completionFor('~/co', [], inside)).toEqual({ rest: 'de', folder: '~/code/' })
-    expect(completionFor('~/.c', [], inside)).toEqual({ rest: 'ache', folder: '~/.cache/' })
-    expect(completionFor('~/', [], inside)?.folder).toBe('~/code/')
-    expect(completionFor('~/code', [], inside)).toBeNull()
-    expect(completionFor('~/x', [], { ...inside, exists: false })).toBeNull()
-  })
-  it('knows a path from a name, and names a folder by its last segment', () => {
-    expect(isPathLike('~/a')).toBe(true)
-    expect(isPathLike('/a')).toBe(true)
-    expect(isPathLike('a')).toBe(false)
-    expect(folderName('/home/u/pacman/')).toBe('pacman')
-    expect(folderName('~')).toBe('~')
-  })
-  it('ranks name prefixes above other matches', () => {
-    expect(matchingProjects('man', ['/a/pacman', '/a/manual', '/a/other'])).toEqual(['/a/manual', '/a/pacman'])
-    expect(matchingProjects('', ['/a', '/b'])).toEqual(['/a', '/b'])
+describe('a session named from its first message', () => {
+  it('takes the first three words and drops a closing mark', () => {
+    expect(nameFromMessage('  Add draft routes, with tests.')).toBe('Add draft routes')
+    expect(nameFromMessage('Fix it.')).toBe('Fix it')
   })
 })

@@ -19,6 +19,26 @@ export type TerminalDetails = {
   exit?: { code: number | null; at: number } | null
   /** What the provider reports the session has used; each is null when it did not say. */
   usage: { context: number | null; cost: number | null; tokens: number | null }
+  /** The agent's subagents as its runtime reports them; absent from an older daemon. */
+  subagents?: SubagentActivity[]
+}
+
+/** The runtime's states for a subagent (`SubagentState` in the protocol). */
+export type SubagentState = 'Starting' | 'Working' | 'WaitingForInput' | 'AwaitingApproval' | 'Completed' | 'Failed' | 'Cancelled' | 'ConnectionLost'
+
+/** One subagent of a session, as the daemon reports it. Times are unix seconds. */
+export type SubagentActivity = {
+  id: string
+  name: string
+  state: SubagentState
+  /** What it was asked to do. */
+  task: string | null
+  startedAt: number | null
+  updatedAt: number
+  /** The runtime's last word on what it is doing. */
+  latest: string | null
+  /** Its report, once it finished. */
+  result: string | null
 }
 
 export type Conversation = {

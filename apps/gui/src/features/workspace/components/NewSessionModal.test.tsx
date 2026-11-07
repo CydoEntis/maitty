@@ -1,141 +1,69 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import type { FolderListing } from '@/api/folders'
-import type { NewSessionMachine } from '../model/newSession'
-import { NewSessionModal } from './NewSessionModal'
+import { NewSessionModal, type NewSessionRequest } from './NewSessionModal'
 
-const entry = (name: string) => ({ name, git: null, has_children: false })
-const listing = (path: string, names: string[]): FolderListing => ({ path, exists: true, entries: names.map(entry), truncated: false })
-const missing = (path: string): FolderListing => ({ path, exists: false, entries: [], truncated: false })
-
-const MACHINES: NewSessionMachine[] = [
-  { id: 0, name: 'This computer', online: true, note: '' },
-  { id: 1, name: 'devbox', online: true, note: 'connected' },
-  { id: 2, name: 'gpu-01', online: false, note: 'unreachable' },
+const PROJECTS = [
+  { folder: '/code/api', name: 'api', color: 'var(--proj-1)' },
+  { folder: '/code/web', name: 'web', color: 'var(--proj-2)' },
 ]
-const FOLDERS: Record<string, string[]> = { '~': ['code', 'notes'], '~/code': ['maitty', 'shop'] }
 
-function open(overrides: Partial<Parameters<typeof NewSessionModal>[0]> = {}) {
-  const onStart = vi.fn().mockResolvedValue(undefined)
+function open(more: Partial<Parameters<typeof NewSessionModal>[0]> = {}) {
+  const onStart = vi.fn<(request: NewSessionRequest) => Promise<void>>(() => Promise.resolve())
   const onCancel = vi.fn()
-  const browse = vi.fn().mockResolvedValue(null)
-  const list = vi.fn((_machine: number, path: string) => Promise.resolve(FOLDERS[path] ? listing(path, FOLDERS[path]) : missing(path)))
-  render(
-    <NewSessionModal
-      machines={MACHINES}
-      initialMachine={0}
-      initialFolder="/home/u/pacman"
-      projectsOf={() => ['/home/u/pacman', '/home/u/AeVoxGrowth']}
-      list={list}
-      browse={browse}
-      defaultAgent="claude"
-      defaultView="chat"
-      onStart={onStart}
-      onCancel={onCancel}
-      {...overrides}
-    />,
-  )
-  return { onStart, onCancel, browse, list }
+  render(<NewSessionModal machine={0} machineName={null} projects={PROJECTS} defaultAgent="claude" browse={null} onStart={onStart} onCancel={onCancel} portalContainer={null} {...more} />)
+  return { onStart, onCancel, user: userEvent.setup(), dialog: screen.getByRole('dialog', { name: /^New session/ }) }
 }
 
-describe('the New session modal', () => {
-  it('reads as a sentence of pills and opens on the current project, so Enter takes it', async () => {
-    const user = userEvent.setup()
-    const { onStart } = open()
-    expect(screen.getByRole('dialog', { name: 'New session' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Project: pacman/ })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: /Browse/ })).toBeInTheDocument()
-    await user.keyboard('{Enter}{Enter}')
-    // Project, then machine, then the default agent is highlighted: Enter starts it.
-    await user.keyboard('{Enter}')
-    expect(onStart).toHaveBeenCalledWith({ machine: 0, machineName: 'This computer', folder: '/home/u/pacman', startAs: 'claude', view: 'chat' })
+describe('the New session dialog', () => {
+  it('starts the default agent in the first project with its first message', async () => {
+    const { onStart, user, dialog } = open()
+    await user.type(within(dialog).getByRole('textbox', { name: 'First message' }), 'Add draft routes')
+    await user.click(within(dialog).getByRole('button', { name: /^Start agent/ }))
+    expect(onStart).toHaveBeenCalledWith({ machine: 0, machineName: 'this computer', folder: '/code/api', startAs: 'claude', message: 'Add draft routes' })
   })
 
-  it('lists Browse first and opens the folder picker with Ctrl+O', async () => {
-    const user = userEvent.setup()
-    const { browse } = open()
-    const options = screen.getAllByRole('option')
-    expect(options[0]).toHaveTextContent('Browse')
-    await user.keyboard('{Control>}o{/Control}')
-    expect(browse).toHaveBeenCalledWith('/home/u/pacman')
+  it('starts the agent and project picked, with Ctrl+Enter', async () => {
+    const { onStart, user, dialog } = open()
+    await user.click(within(dialog).getByRole('radio', { name: /Codex/ }))
+    await user.click(within(dialog).getByRole('radio', { name: 'web' }))
+    await user.keyboard('{Control>}{Enter}{/Control}')
+    expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ folder: '/code/web', startAs: 'codex' }))
   })
 
-  it('completes a typed name with Tab and shows the hint', async () => {
-    const user = userEvent.setup()
-    open()
-    await user.type(screen.getByRole('combobox'), 'Ae')
-    expect(screen.getByText('Tab complete')).toBeInTheDocument()
-    await user.keyboard('{Tab}')
-    expect(screen.getByRole('combobox')).toHaveValue('/home/u/AeVoxGrowth')
+  it('opens a plain shell, which takes no agent, place or message', async () => {
+    const { onStart, user, dialog } = open()
+    await user.click(within(dialog).getByRole('radio', { name: 'Shell' }))
+    expect(within(dialog).queryByRole('radiogroup', { name: 'Agent' })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('textbox', { name: 'First message' })).not.toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: /^Open shell/ }))
+    expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ startAs: 'terminal', message: '' }))
   })
 
-  it('says a typed folder is missing and blocks Enter', async () => {
-    const user = userEvent.setup()
-    const { onStart } = open()
-    await user.type(screen.getByRole('combobox'), '~/no-such')
-    await waitFor(() => { expect(screen.getByRole('status')).toHaveTextContent('No such folder on This computer') })
-    await user.keyboard('{Enter}')
-    expect(screen.getByRole('button', { name: /Project: pacman/ })).toBeInTheDocument()
-    expect(onStart).not.toHaveBeenCalled()
+  it('works in a new worktree, and says why the current branch cannot be picked', () => {
+    const { dialog } = open()
+    expect(within(dialog).getByRole('radio', { name: 'New worktree' })).toHaveAttribute('aria-checked', 'true')
+    expect(within(dialog).getByRole('radio', { name: 'Current branch' })).toHaveAttribute('aria-disabled', 'true')
   })
 
-  it('takes a typed folder that exists on the machine', async () => {
-    const user = userEvent.setup()
-    open()
-    await user.type(screen.getByRole('combobox'), '~/code')
-    await waitFor(() => { expect(screen.queryByText(/No such folder/)).toBeNull() })
-    await waitFor(() => { expect(screen.getByRole('combobox')).toHaveValue('~/code') })
-    // The check is asked after a pause; Enter moves on once the machine has said the folder is there.
-    await waitFor(async () => {
-      await user.keyboard('{Enter}')
-      expect(screen.getByRole('button', { name: /Project: code/ })).toBeInTheDocument()
-    })
+  it('offers another folder through the folder picker, on this computer only', async () => {
+    const browse = vi.fn(() => Promise.resolve('/elsewhere/tool'))
+    const { onStart, user, dialog } = open({ browse })
+    await user.click(within(dialog).getByRole('button', { name: /Other folder/ }))
+    await waitFor(() => { expect(within(dialog).getByRole('radio', { name: 'tool' })).toHaveAttribute('aria-checked', 'true') })
+    await user.keyboard('{Control>}{Enter}{/Control}')
+    expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ folder: '/elsewhere/tool' }))
   })
 
-  it('greys out an offline machine and cannot pick it', async () => {
-    const user = userEvent.setup()
-    open()
-    await user.click(screen.getByRole('button', { name: /Machine:/ }))
-    const offline = screen.getByRole('option', { name: /gpu-01/ })
-    expect(offline).toHaveAttribute('aria-disabled', 'true')
-    expect(offline).toHaveTextContent('Reconnecting…')
-    await user.click(offline)
-    expect(screen.getByRole('button', { name: /Machine: This computer/ })).toBeInTheDocument()
+  it('names the machine it starts on when it is not this computer', () => {
+    open({ machine: 2, machineName: 'devbox' })
+    expect(screen.getByRole('dialog', { name: 'New session on devbox' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Other folder/ })).not.toBeInTheDocument()
   })
 
-  it('locks the view to the terminal for a shell and for another machine', async () => {
-    const user = userEvent.setup()
-    open()
-    const chat = screen.getByRole('radio', { name: 'Chat view' })
-    expect(chat).toHaveAttribute('aria-checked', 'true')
-    await user.click(screen.getByRole('button', { name: /Start as:/ }))
-    await user.keyboard('{ArrowUp}')
-    expect(screen.getByRole('radio', { name: 'Chat view' })).toHaveAttribute('aria-disabled', 'true')
-    expect(screen.getByRole('radio', { name: 'Chat view' })).toHaveAttribute('title', 'Shells always open in Terminal')
-    await user.click(screen.getByRole('button', { name: /Machine:/ }))
-    await user.click(screen.getByRole('option', { name: /devbox/ }))
-    await user.keyboard('{ArrowDown}')
-    expect(screen.getByRole('radio', { name: 'Chat view' })).toHaveAttribute('title', 'Chat runs on this computer')
-  })
-
-  it('disables Crew, and goes back with Esc before it cancels', async () => {
-    const user = userEvent.setup()
-    const { onCancel, onStart } = open()
-    await user.click(screen.getByRole('button', { name: /Start as:/ }))
-    expect(screen.getByRole('option', { name: /Crew/ })).toHaveAttribute('aria-disabled', 'true')
-    await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{Enter}')
-    expect(onStart).not.toHaveBeenCalled()
-    await user.keyboard('{Escape}')
-    expect(screen.getByRole('listbox', { name: 'Machine' })).toBeInTheDocument()
-    await user.keyboard('{Escape}{Escape}')
-    expect(onCancel).toHaveBeenCalledTimes(1)
-  })
-
-  it('starts on another machine as a terminal view', async () => {
-    const user = userEvent.setup()
-    const { onStart } = open({ initialMachine: 1, initialFolder: '~/code' })
-    await user.keyboard('{Enter}{Enter}{Enter}')
-    expect(onStart).toHaveBeenCalledWith({ machine: 1, machineName: 'devbox', folder: '~/code', startAs: 'claude', view: 'terminal' })
+  it('cancels with its button', async () => {
+    const { onCancel, user, dialog } = open()
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(onCancel).toHaveBeenCalled()
   })
 })

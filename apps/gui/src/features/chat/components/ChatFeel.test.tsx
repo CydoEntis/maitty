@@ -117,7 +117,6 @@ describe('how the chat feels while it waits', () => {
     await settle()
 
     expect(screen.getByText(/claude is thinking/)).toBeInTheDocument()
-    expect(screen.getByText('Working')).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Message claude' })).toHaveAttribute('placeholder', TYPING_BUSY_NOTE)
 
     // And the chat read the conversation at that moment, not at its next idle poll.
@@ -128,18 +127,19 @@ describe('how the chat feels while it waits', () => {
     expect(screen.queryByText(/claude is thinking/)).not.toBeInTheDocument()
   })
 
-  it('says in the header how the agent is set up, from its own file', async () => {
+  it('says under the message box how the agent is set up, from its own file', async () => {
     const { daemon } = open()
     daemon.meta = { mode: 'auto', model: 'claude-sonnet-5-5' }
     await settle(IDLE_POLL_MS)
 
-    expect(screen.getByText('Auto · sonnet 5.5')).toBeInTheDocument()
+    expect(screen.getByText('Auto')).toBeInTheDocument()
+    expect(screen.getByText('Claude Sonnet 5.5')).toBeInTheDocument()
   })
 
   it('marks a mode that asks about nothing, and shows nothing when the file said nothing', async () => {
     const { daemon } = open()
     await settle()
-    expect(screen.queryByTitle(/permission mode|model answering/)).not.toBeInTheDocument()
+    expect(screen.getByTitle('Not reported by the agent yet')).toHaveTextContent('Permissions')
 
     daemon.meta = { mode: 'bypassPermissions', model: null }
     await settle(IDLE_POLL_MS)

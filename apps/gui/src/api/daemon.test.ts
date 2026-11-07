@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { forgetMachines, registerMachine } from './machines'
-import { startTerminalSession, loadTerminalScreen, loadTerminalReplay, sendTerminalInput, resizeTerminal, archiveConversationOnDaemon, renameConversationOnDaemon, classifySubmissionFailure, createConversation, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversationDiff, loadConversationFile, loadConversationFiles, loadConversations, conversationsFromSnapshot, markSeenOnDaemon, pinSessionOnDaemon, archiveSessionOnDaemon, loadDaemonRestartStatus, loadMachines, loadMessages, restartMismatchedDaemon, resumeConversation } from './daemon'
+import { startTerminalSession, loadTerminalScreen, loadTerminalReplay, sendTerminalInput, resizeTerminal, archiveConversationOnDaemon, renameConversationOnDaemon, classifySubmissionFailure, createConversation, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversationDiff, loadConversationFile, loadConversationFiles, loadConversations, conversationsFromSnapshot, markSeenOnDaemon, archiveSessionOnDaemon, loadDaemonRestartStatus, loadMachines, loadMessages, restartMismatchedDaemon, resumeConversation } from './daemon'
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
@@ -571,7 +571,6 @@ describe('commands for a pane, on whichever machine it is', () => {
     await renameConversationOnDaemon(pane, 'api')
     await archiveConversationOnDaemon(pane, true)
     await markSeenOnDaemon(pane)
-    await pinSessionOnDaemon(pane, true)
     await archiveSessionOnDaemon(pane, true)
     expect(vi.mocked(invoke).mock.calls).toEqual([
       ['terminal_input', { term: 7, data: [108, 115] }],
@@ -579,7 +578,6 @@ describe('commands for a pane, on whichever machine it is', () => {
       ['rename_terminal_session', { term: 7, name: 'api' }],
       ['close_terminal_session', { term: 7 }],
       ['mark_terminal_seen', { term: 7 }],
-      ['pin_terminal_session', { term: 7, pinned: true }],
       ['archive_terminal_session', { term: 7, archived: true }],
     ])
   })
@@ -590,7 +588,6 @@ describe('commands for a pane, on whichever machine it is', () => {
     await renameConversationOnDaemon(there, 'api')
     await archiveConversationOnDaemon(there, true)
     await markSeenOnDaemon(there)
-    await pinSessionOnDaemon(there, true)
     await archiveSessionOnDaemon(there, false)
     expect(vi.mocked(invoke).mock.calls).toEqual([
       ['terminal_input', { term: 7, data: [108, 115], machine: 3 }],
@@ -598,7 +595,6 @@ describe('commands for a pane, on whichever machine it is', () => {
       ['rename_terminal_session', { term: 7, name: 'api', machine: 3 }],
       ['close_terminal_session', { term: 7, machine: 3 }],
       ['mark_terminal_seen', { term: 7, machine: 3 }],
-      ['pin_terminal_session', { term: 7, pinned: true, machine: 3 }],
       ['archive_terminal_session', { term: 7, archived: false, machine: 3 }],
     ])
   })
@@ -606,7 +602,7 @@ describe('commands for a pane, on whichever machine it is', () => {
   it('sends nothing for a machine the host has not told it of', async () => {
     forgetMachines()
     await expect(sendTerminalInput(there, 'ls')).rejects.toThrow('build is not one of this computer\'s machines')
-    await expect(pinSessionOnDaemon(there, true)).rejects.toThrow('build is not one of this computer\'s machines')
+    await expect(markSeenOnDaemon(there)).rejects.toThrow('build is not one of this computer\'s machines')
     expect(invoke).not.toHaveBeenCalled()
   })
 

@@ -6,10 +6,10 @@ import type { ItemStatus } from '../chatEvents'
 
 const STATUS_WORD: Record<ItemStatus, string> = { running: 'Running', completed: 'Done', failed: 'Failed', interrupted: 'Interrupted' }
 
-/** Spinner while running, a green check when done, a terminal glyph otherwise (v18 C.1 tool chip). */
+/** Spinner while running, a check when done, a terminal glyph otherwise (README: tool pill). */
 export function StatusMark({ status }: { status: ItemStatus }) {
-  if (status === 'running') return <Spinner className="mx-spin text-[var(--accent)]" />
-  if (status === 'completed') return <Check className="size-3.5 shrink-0 text-[var(--ok)]" aria-hidden="true" />
+  if (status === 'running') return <Spinner />
+  if (status === 'completed') return <Check className="size-3 shrink-0 text-fg2" strokeWidth={2.6} aria-hidden="true" />
   return <SquareTerminal className={`size-3.5 shrink-0 ${status === 'failed' ? 'text-[var(--danger)]' : 'text-dim'}`} aria-hidden="true" />
 }
 

@@ -125,7 +125,6 @@ describe('the chat history', () => {
     await settle()
 
     expect(screen.getAllByText(/claude is working/).length).toBeGreaterThan(0)
-    expect(screen.getByText('Working')).toBeInTheDocument()
   })
 
   it('says it is reconnecting when a read fails, keeps what it showed, and resumes without duplicates', async () => {
@@ -200,5 +199,33 @@ describe('the chat history', () => {
     await settle()
 
     expect(screen.getByText(/did not keep this change/)).toBeInTheDocument()
+  })
+})
+
+describe('a subagent’s own chat', () => {
+  const subagent = { id: 'b', name: 'Write drafts tests', kind: 'Explore', status: 'done' as const, task: 'Write drafts tests for the routes.', latest: null, result: 'Wrote 12 tests.\n\nThey all pass.', startedAt: 100, updatedAt: 170 }
+
+  it('shows what it was asked and its report under a bar that names it, instead of the session’s chat', async () => {
+    conversation(2)
+    render(<ChatSession link={link()} agent="claude" online subagent={subagent} />)
+    await settle()
+
+    expect(screen.getAllByRole('status').some((node) => node.textContent.startsWith('Subagent'))).toBe(true)
+    expect(screen.getByText('Write drafts tests', { selector: 'strong' })).toBeInTheDocument()
+    expect(screen.getByText('· done in 1m 10s')).toBeInTheDocument()
+    const log = screen.getByRole('log', { name: 'Subagent Write drafts tests' })
+    expect(within(log).getByText('Write drafts tests for the routes.')).toBeInTheDocument()
+    expect(within(log).getByText('Wrote 12 tests.')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Conversation with claude' })).not.toBeInTheDocument()
+  })
+
+  it('goes back to the main session from its bar', async () => {
+    conversation(2)
+    const onBackToMain = vi.fn()
+    render(<ChatSession link={link()} agent="claude" online subagent={subagent} onBackToMain={onBackToMain} />)
+    await settle()
+
+    act(() => { screen.getByRole('button', { name: 'Back to main session' }).click() })
+    expect(onBackToMain).toHaveBeenCalled()
   })
 })

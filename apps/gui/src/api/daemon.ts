@@ -63,6 +63,17 @@ const TerminalSessionSchema = z.object({
     cost: z.number().nullable().default(null),
     tokens: z.number().nullable().default(null),
   }).default({ context: null, cost: null, tokens: null }),
+  // The agent's subagents as its runtime reports them (`TermInfo.subagent_activity`); times are unix seconds.
+  subagent_activity: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    state: z.enum(['Starting', 'Working', 'WaitingForInput', 'AwaitingApproval', 'Completed', 'Failed', 'Cancelled', 'ConnectionLost']),
+    task: z.string().nullable().default(null),
+    started_at: z.number().int().nonnegative().nullable().default(null),
+    updated_at: z.number().int().nonnegative().default(0),
+    latest_activity: z.string().nullable().default(null),
+    result: z.string().nullable().default(null),
+  })).default([]),
 })
 const DaemonSnapshotSchema = z.object({
   // Read one by one, like the terminals: a record this app can't read must not take every session offline.
@@ -763,13 +774,6 @@ export async function cancelTurn(conversation: Pick<Conversation, 'id' | 'genera
   })
 }
 
-/** Pin a session to the top of its project, or let it go back to its place. The daemon keeps it for every app. */
-export async function pinSessionOnDaemon(conversation: Pick<Conversation, 'id'>, pinned: boolean): Promise<void> {
-  if (!isDesktop()) return
-  const pane = addressOf(conversation.id)
-  if (pane !== null) await invokeParsed('pin_terminal_session', NullSchema, { term: pane.term, pinned, ...machineArgs(pane) })
-}
-
 /** Put a session away from the project lists and tabs, or bring it back. It keeps running: this is a view setting, never a kill. */
 export async function archiveSessionOnDaemon(conversation: Pick<Conversation, 'id'>, archived: boolean): Promise<void> {
   if (!isDesktop()) return
@@ -874,38 +878,6 @@ export async function startShellSession(folder: string): Promise<void> {
   await invokeParsed('start_shell_session', NullSchema, { cwd: folder })
 }
 
-/**
- * Fleets: a named, coloured group of sessions on one machine (the daemon's workspace). `machine` is
- * the machine's number (`LOCAL_MACHINE` for this computer), `fleet` the daemon's workspace id and
- * `session` the pane number on that machine. A request for another machine is sent down its line
- * and shows in the next state update.
- */
-const machineOnly = (machine: number): { machine?: number } => (machine === LOCAL_MACHINE ? {} : { machine })
-
-/** Starts a named fleet holding one shell; the daemon gives it the first unused fleet colour. */
-export async function createFleet(machine: number, name: string): Promise<void> {
-  await invokeParsed('create_fleet', NullSchema, { name, ...machineOnly(machine) })
-}
-
-export async function renameFleet(machine: number, fleet: number, name: string): Promise<void> {
-  await invokeParsed('rename_fleet', NullSchema, { fleet, name, ...machineOnly(machine) })
-}
-
-/** `color` is one of the `FLEET_COLORS` values (`api/fleets.ts`). */
-export async function recolorFleet(machine: number, fleet: number, color: number): Promise<void> {
-  await invokeParsed('recolor_fleet', NullSchema, { fleet, color, ...machineOnly(machine) })
-}
-
-/** Moves a session to another fleet of the same machine; it keeps running. */
-export async function moveSessionToFleet(machine: number, session: number, fleet: number): Promise<void> {
-  await invokeParsed('move_session_to_fleet', NullSchema, { session, fleet, ...machineOnly(machine) })
-}
-
-/** Starts a shell in a fleet, in `folder` or, when left out, the fleet's own folder. */
-export async function startShellInFleet(machine: number, fleet: number, folder?: string): Promise<void> {
-  await invokeParsed('start_shell_in_fleet', NullSchema, { fleet, folder: folder ?? null, ...machineOnly(machine) })
-}
-
 export async function startTerminalSession(folder: string, provider: 'Codex' | 'Claude'): Promise<void> {
   await invokeParsed('start_terminal_session', NullSchema, { cwd: folder, provider })
 }
@@ -961,7 +933,15 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
     agent: term.agent,
     process: term.process,
     summary: term.summary,
-    details: { asking: term.asking, ask: term.ask, interrupted: term.interrupted, exit: term.exit, timeline: term.timeline, usage: term.usage },
+    details: {
+      asking: term.asking,
+      ask: term.ask,
+      interrupted: term.interrupted,
+      exit: term.exit,
+      timeline: term.timeline,
+      usage: term.usage,
+      subagents: term.subagent_activity.map((child) => ({ id: child.id, name: child.name, state: child.state, task: child.task, startedAt: child.started_at, updatedAt: child.updated_at, latest: child.latest_activity, result: child.result })),
+    },
     ...(chat ? { chat } : {}),
   }
 }

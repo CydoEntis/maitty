@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -80,7 +80,8 @@ async function openRemotePane() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(<QueryClientProvider client={client}><App /></QueryClientProvider>)
   const user = userEvent.setup()
-  const row = (await screen.findAllByRole('button', { name: /build · / })).find((button) => !button.classList.contains('mx-group-head'))
+  const list = await screen.findByRole('list', { name: 'Sessions on build' })
+  const row = within(list).getAllByRole('button')[0]
   if (row === undefined) throw new Error('the session row of build was not shown')
   await user.click(row)
   await screen.findByRole('region', { name: /Terminal 1/ })
@@ -102,7 +103,7 @@ describe('a pane of another machine and the features that need its files', () =>
     await user.keyboard('{Control>}{Shift>}i{/Shift}{/Control}')
     expect(await screen.findByText(REFUSAL('Inspect'))).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'More pane actions' }))
-    await user.click(await screen.findByRole('menuitem', { name: /^Inspect the repository/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /^Changes/ }))
     expect(await screen.findAllByText(REFUSAL('Inspect'))).not.toHaveLength(0)
     expect(screen.queryByRole('complementary', { name: /repository|inspect/i })).toBeNull()
   })

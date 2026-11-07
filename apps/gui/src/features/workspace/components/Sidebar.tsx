@@ -1,37 +1,31 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import type { Fleet } from '@/api/fleets'
-import { aboard, emptyShipsNote, fleetKeyOf, fleetsOfMachine, isDaemonFleet, isFreeFleetName, machineTitle, needsCount, priorityGroups, type FleetColor, shipsOf, visibleFleets } from '../model/fleets'
-import type { PaneView } from '../model/chatView'
-import type { MachineHead } from '../model/machines'
-import { matchesFilter, type SessionView } from '../model/session'
-import type { SessionTrack } from '../model/tracking'
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { machineTitle, type MachineHead } from '../model/machines'
+import { STATUS_WORD, type SessionView } from '../model/session'
+import { isShell, machineGroups, projectGroups, rowTitle, type MachineGroup } from '../model/sidebar'
+import type { SubagentView } from '../model/subagents'
+import { useTipWithKeys, useShortcutText } from '@/features/shortcuts/platform'
 import { SidebarResizer } from './SidebarResizer'
-import { Icon } from './glyphs'
-import { Collapse, SectionHead } from './Collapse'
-import { FleetRow, FleetTile } from './FleetRow'
-import { fleetStyle, MAX_FLEET_NAME_LENGTH } from './fleetStyle'
-import { InlineName } from './InlineName'
-import { ShipRow } from './ShipRow'
-import { RailPopoverLayer } from './RailPopovers'
-import { fleetHoverId, hoverHandlers, useRailHover } from './railHover'
-import { useTipWithKeys } from '@/features/shortcuts/platform'
-import type { CrewApi } from '@/features/crew/useCrew'
-import { CrewmatesPanel } from '@/features/crew/components/CrewmatesPanel'
-import { CrewModeSwitch } from '@/features/crew/components/CrewModeSwitch'
+import { AppIcon, Icon, StatusBadge } from './glyphs'
+import { Collapse } from './Collapse'
+import { MenuPopup, type MenuEntry } from './MenuPopup'
+import { SessionRow } from './SessionRow'
+import { SubagentList, SubagentPeek } from './SubagentRows'
+
+/** A subagent whose own chat a pane shows. */
+export type OpenSubagent = { sessionId: string; subagentId: string }
 
 export type SidebarProps = {
-  /** Every ship of every machine, in creation order. The filter narrows what shows; it never reorders. */
+  /** Every session of every machine. Each machine lists its own, most urgent first. */
   sessions: readonly SessionView[]
-  /** Every fleet of every machine, in the daemon's order. */
-  fleets: readonly Fleet[]
-  /** The machine headings: this computer first, then the others. */
+  /** The machine groups: this computer first, then the others. */
   machines: readonly MachineHead[]
-  selectedFleet: string | null
   focusedId: string | null
-  tracks: ReadonlyMap<string, SessionTrack>
+  openSubagent: OpenSubagent | null
   mode: 'docked' | 'rail'
   online: boolean
   canStart: boolean
+  /** The session whose name is being typed in its row; the window starts it from a menu, F2 or a double-click. */
+  renamingId: string | null
   /** Where portalled menus mount, so they read the theme's colours. */
   portalContainer: HTMLElement | null
   /** Collapses the docked sidebar to the rail, or expands the rail (over the window when it is narrow). */
@@ -45,36 +39,31 @@ export type SidebarProps = {
   inboxCount: number
   inboxNeeds: boolean
   onOpenInbox: () => void
-  /** The header's three starters: a chat in the current fleet, a shell there, and the Add machine page. */
-  onNewAgentChat: () => void
-  onNewShell: () => void
+  onNewAgentChat: (machine: number) => void
+  onNewShell: (machine: number) => void
   onAddMachine: () => void
-  onSelectFleet: (key: string) => void
-  /** Makes a fleet on a machine; the sidebar waits for it so a failed name stays in the field. */
-  onAddFleet: (machine: number, name: string) => void
-  onRenameFleet: (fleet: Fleet, name: string) => void
-  onRecolorFleet: (fleet: Fleet, color: FleetColor) => void
-  /** Moves a ship to a fleet (the drag target and the ship menu). The caller refuses a move across machines. */
-  onMoveShip: (sessionId: string, fleet: Fleet) => void
-  /** The view a ship shows, for the terminal or chat mark on its row. */
-  viewOf: (session: SessionView) => PaneView
+  onMachineSettings: () => void
   onShowSession: (id: string) => void
-  onEndSession: (id: string) => void
+  onShowSubagent: (sessionId: string, subagentId: string) => void
+  onRenameSession: (id: string | null) => void
   onSetName: (id: string, name: string) => void
-  /** Opens the rename dialog, for the rail, which has no room to rename a session in place. */
-  onRenameSession: (id: string) => void
-  onPinSession: (id: string, pinned: boolean) => void
   /** Shows a session beside the pane that has focus. */
   onSplitSession: (id: string, direction: 'right' | 'down') => void
+  onSplitSubagent: (sessionId: string, subagentId: string) => void
+  /** Opens a shell in an agent's folder, beside it. */
+  onOpenTerminal: (id: string) => void
   onCopyPath: (id: string) => void
+  onCopyText: (text: string, what: string) => void
+  onShowChanges: (id: string) => void
+  onEndSession: (id: string) => void
   onOpenSettings: () => void
-  /** Crewmates and crews: the mode switch under the filter, and what the sidebar lists in Crewmates mode. */
-  crew: CrewApi
-  /** The footer's left slot (version, update). The caller owns the updater. */
+  /** The footer's left slot (the update button). The caller owns the updater. */
   updateSlot: ReactNode
   /** The update button in the rail's foot. */
   railUpdateSlot: ReactNode
 }
+
+type OpenMenu = { title: string; at: { x: number; y: number }; items: MenuEntry[] }
 
 export function Sidebar(props: SidebarProps) {
   const [resizing, setResizing] = useState(false)
@@ -92,23 +81,10 @@ function InboxButton({ count, needs, onClick, rail = false }: { count: number; n
   const tip = useTipWithKeys()
   const label = `Inbox, ${String(count)}${needs ? ', something needs you' : ''}`
   return (
-    <button type="button" className={`mx-inbox-button${rail ? ' mx-icon-button mx-rail-button' : ''}${needs ? ' is-needs' : ''}`} aria-label={label} title={tip('Inbox', 'inbox')} onClick={onClick}>
+    <button type="button" className={`mx-head-button mx-inbox-button${rail ? ' is-rail' : ''}`} aria-label={label} title={tip('Inbox', 'inbox')} onClick={onClick}>
       <Icon name="inbox" size={15} />
       {count > 0 && <span className={`mx-inbox-count${needs ? ' is-needs' : ''}`}>{count}</span>}
     </button>
-  )
-}
-
-/** The three starters, in the order the design gives them. `rail` stacks them as the rail's buttons. */
-function StartButtons({ props, rail = false }: { props: SidebarProps; rail?: boolean }) {
-  const tip = useTipWithKeys()
-  const cls = rail ? 'mx-icon-button mx-rail-button mx-rail-new' : 'mx-new-button'
-  return (
-    <>
-      <button type="button" className={cls} aria-label="New agent chat" title={tip('New agent chat', 'new-agent-chat')} disabled={!props.canStart} onClick={props.onNewAgentChat}><Icon name="chatPlus" size={15} /></button>
-      <button type="button" className={cls} aria-label="New shell" title={tip('New shell', 'new-terminal')} disabled={!props.canStart} onClick={props.onNewShell}><Icon name="terminal" size={15} /></button>
-      <button type="button" className={cls} aria-label="Add a remote machine" title="Add a remote machine" onClick={props.onAddMachine}><Icon name="serverPlus" size={15} /></button>
-    </>
   )
 }
 
@@ -127,71 +103,111 @@ function useSlashFocus(input: React.RefObject<HTMLInputElement | null>) {
   }, [input])
 }
 
-/** Which sections are folded. A key is in the set while its section is closed. */
-function useFolds() {
+/** Which machines are folded and which are grouped by project. */
+function useMachineViews() {
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set())
-  const toggle = (key: string) => { setFolded((current) => { const next = new Set(current); if (!next.delete(key)) next.add(key); return next }) }
-  return { isOpen: (key: string) => !folded.has(key), toggle }
+  const [byProject, setByProject] = useState<ReadonlySet<string>>(new Set())
+  const flip = (set: ReadonlySet<string>, key: string) => { const next = new Set(set); if (!next.delete(key)) next.add(key); return next }
+  return {
+    isOpen: (key: string) => !folded.has(key),
+    toggle: (key: string) => { setFolded((current) => flip(current, key)) },
+    isByProject: (key: string) => byProject.has(key),
+    toggleByProject: (key: string) => { setByProject((current) => flip(current, key)) },
+  }
 }
 
-type ShipsView = 'fleets' | 'priority'
-
 function Expanded(props: SidebarProps) {
-  const { sessions, fleets, machines, online } = props
   const tip = useTipWithKeys()
-  const hover = useRailHover()
+  const shortcutText = useShortcutText()
   const input = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
-  const [view, setView] = useState<ShipsView>('fleets')
-  const [adding, setAdding] = useState<number | null>(null)
-  const folds = useFolds()
+  const [menu, setMenu] = useState<OpenMenu | null>(null)
+  const views = useMachineViews()
   useSlashFocus(input)
-  const selected = fleets.find((fleet) => fleet.key === props.selectedFleet)
-  const listed = visibleFleets(fleets, sessions, query)
-  const fleetShips = selected ? aboard(sessions, fleets, selected.key) : []
-  const matching = fleetShips.filter((ship) => matchesFilter(ship, query))
-  const { agents, shells } = shipsOf(matching)
-  const priority = priorityGroups(sessions.filter((ship) => matchesFilter(ship, query)))
-  const priorityTotal = priority.reduce((sum, group) => sum + group.ships.length, 0)
-  const otherMatch = listed.find((fleet) => fleet.key !== selected?.key)?.name ?? null
-  const shipCount = view === 'fleets' ? matching.length : priorityTotal
-  const fleetNameOf = (ship: SessionView) => fleets.find((fleet) => fleet.key === fleetKeyOf(ship.machine, ship.fleet, fleets))?.name
-
-  // The other fleets of the ship's own machine; a ship cannot leave its machine, and `Main` is no daemon fleet.
-  const moveTargetsOf = (ship: SessionView) => {
-    const own = fleetKeyOf(ship.machine, ship.fleet, fleets)
-    return fleets.filter((fleet) => fleet.machine === ship.machine && fleet.key !== own && isDaemonFleet(fleet))
+  const groups = machineGroups(props.sessions, props.machines, query)
+  const filtering = query.trim() !== ''
+  const openMenu = (event: MouseEvent, title: string, items: MenuEntry[]) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setMenu({ title, at: { x: event.clientX, y: event.clientY }, items })
   }
 
-  const row = (session: SessionView, fleetName?: string) => (
-    <ShipRow
-      key={session.id}
-      session={session}
-      track={props.tracks.get(session.id)}
-      selected={session.id === props.focusedId}
-      online={online}
-      view={props.viewOf(session)}
-      {...(fleetName === undefined ? {} : { fleetName })}
-      portalContainer={props.portalContainer}
-      hover={hover}
-      moveTargets={moveTargetsOf(session)}
-      onMove={(fleet) => { props.onMoveShip(session.id, fleet) }}
-      onShow={() => { props.onShowSession(session.id) }}
-      onSetName={(name) => { props.onSetName(session.id, name) }}
-      onPin={(pinned) => { props.onPinSession(session.id, pinned) }}
-      onSplit={(direction) => { props.onSplitSession(session.id, direction) }}
-      onCopyPath={() => { props.onCopyPath(session.id) }}
-      onEnd={() => { props.onEndSession(session.id) }}
-    />
-  )
+  const sessionMenu = (session: SessionView): MenuEntry[] => {
+    const agent = !isShell(session)
+    const other = session.id !== props.focusedId
+    return [
+      { label: 'Open', run: () => { props.onShowSession(session.id) } },
+      ...(other ? [{ label: 'Open in split right', run: () => { props.onSplitSession(session.id, 'right') } }, { label: 'Open in split down', run: () => { props.onSplitSession(session.id, 'down') } }] : []),
+      ...(agent ? [{ label: 'Open terminal here', run: () => { props.onOpenTerminal(session.id) }, disabled: !props.canStart }] : []),
+      'separator',
+      { label: 'Rename…', hint: 'F2', run: () => { props.onRenameSession(session.id) } },
+      { label: 'Copy folder path', run: () => { props.onCopyPath(session.id) } },
+      ...(agent ? [{ label: 'Show changes', run: () => { props.onShowChanges(session.id) } }] : []),
+      'separator',
+      // Stopping an agent asks a second click; a plain shell has nothing running to lose.
+      { label: agent ? 'Stop session' : 'Close shell', danger: true, ...(agent ? { armedLabel: `Stop ${session.process}? Click again` } : {}), disabled: !props.online, run: () => { props.onEndSession(session.id) } },
+    ]
+  }
+
+  const subagentMenu = (session: SessionView, subagent: SubagentView): MenuEntry[] => [
+    { label: 'Open', run: () => { props.onShowSubagent(session.id, subagent.id) } },
+    { label: 'Open in split right', run: () => { props.onSplitSubagent(session.id, subagent.id) } },
+    'separator',
+    { label: 'Copy summary', disabled: (subagent.result ?? subagent.latest ?? subagent.task) === null, run: () => { props.onCopyText(subagent.result ?? subagent.latest ?? subagent.task ?? '', 'Summary') } },
+    { label: 'Stop subagent', danger: true, disabled: true, why: `${session.process} stops its own subagents; stop the session to stop them all` },
+  ]
+
+  const machineMenu = (head: MachineHead): MenuEntry[] => {
+    const open = views.isOpen(head.key)
+    const grouped = views.isByProject(head.key)
+    return [
+      { label: 'New agent chat here', hint: shortcutText('new-agent-chat'), disabled: !props.canStart || head.down, run: () => { props.onNewAgentChat(head.machine) } },
+      { label: 'New shell here', disabled: !props.canStart || head.down, run: () => { props.onNewShell(head.machine) } },
+      'separator',
+      { label: open ? 'Collapse' : 'Expand', run: () => { views.toggle(head.key) } },
+      { label: grouped ? 'Show as one list' : 'Group by project', run: () => { views.toggleByProject(head.key) } },
+      'separator',
+      { label: 'Machine settings…', run: props.onMachineSettings },
+    ]
+  }
+
+  const renderRow = (session: SessionView, showProject: boolean) => {
+    const selected = session.id === props.focusedId
+    const subagents = session.subagents
+    return (
+      <div key={session.id} className="mx-row-wrap" role="listitem">
+        <SessionRow
+          session={session}
+          selected={selected}
+          showProject={showProject}
+          renaming={props.renamingId === session.id}
+          onShow={() => { props.onShowSession(session.id) }}
+          onRename={() => { props.onRenameSession(session.id) }}
+          onSetName={(name) => { props.onSetName(session.id, name) }}
+          onCancelRename={() => { props.onRenameSession(null) }}
+          onContextMenu={(event) => { openMenu(event, rowTitle(session), sessionMenu(session)) }}
+        />
+        {subagents.length > 0 && !selected && <SubagentPeek process={session.process} subagents={subagents} />}
+        {subagents.length > 0 && selected && (
+          <SubagentList
+            process={session.process}
+            subagents={subagents}
+            openId={props.openSubagent?.sessionId === session.id ? props.openSubagent.subagentId : null}
+            onOpen={(id) => { props.onShowSubagent(session.id, id) }}
+            onContextMenu={(subagent, event) => { openMenu(event, subagent.name, subagentMenu(session, subagent)) }}
+          />
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="mx-sidebar-expanded">
-      <RailPopoverLayer hover={hover} fleets={fleets} machines={machines} sessions={sessions} tracks={props.tracks} portalContainer={props.portalContainer} />
       <div className="mx-sidebar-head">
-        <button type="button" className="mx-icon-button mx-collapse" aria-label="Collapse sidebar" title={tip('Collapse sidebar', 'toggle-sidebar')} onClick={props.onToggleRail}><Icon name="collapse" /></button>
+        <button type="button" className="mx-head-button is-small" aria-label="Collapse sidebar" title={tip('Collapse sidebar', 'toggle-sidebar')} onClick={props.onToggleRail}><Icon name="collapse" /></button>
         <span className="mx-spacer" />
-        <StartButtons props={props} />
+        <button type="button" className="mx-head-button" aria-label="New agent chat" title={tip('New agent chat', 'new-agent-chat')} disabled={!props.canStart} onClick={() => { props.onNewAgentChat(props.machines[0]?.machine ?? 0) }}><Icon name="chatPlus" size={15} /></button>
+        <button type="button" className="mx-head-button" aria-label="Add a remote machine" title="Add a remote machine" onClick={props.onAddMachine}><Icon name="serverPlus" size={15} /></button>
         <InboxButton count={props.inboxCount} needs={props.inboxNeeds} onClick={props.onOpenInbox} />
       </div>
       <div className="mx-filter">
@@ -215,167 +231,130 @@ function Expanded(props: SidebarProps) {
         />
         {query === '' ? <kbd className="mx-filter-hint" aria-hidden="true">/</kbd> : <button type="button" className="mx-filter-clear" aria-label="Clear filter" onClick={() => { setQuery(''); input.current?.focus() }}><Icon name="close" size={11} /></button>}
       </div>
-      <CrewModeSwitch crew={props.crew} />
       <div className="mx-sidebar-list">
-        {props.crew.state.mode === 'crew' ? <CrewmatesPanel crew={props.crew} /> : <>
-        <section aria-label="Fleets" className="mx-group">
-          <SectionHead label="FLEETS" open={folds.isOpen('fleets')} onToggle={() => { folds.toggle('fleets') }} />
-          <Collapse open={folds.isOpen('fleets')}>
-            {machines.map((head) => {
-              const own = fleetsOfMachine(listed, head.machine)
-              if (query.trim() !== '' && own.length === 0) return null
-              const key = `machine-${head.key}`
-              const away = head.down
-              return (
-                <div key={head.key} className={`mx-machine${away ? ' is-away' : ''}`}>
-                  <SectionHead
-                    label={machineTitle(head)}
-                    icon={<Icon name={head.name === null ? 'laptop' : 'server'} size={13} />}
-                    open={folds.isOpen(key)}
-                    onToggle={() => { folds.toggle(key) }}
-                    className="is-machine"
-                  >
-                    <span className={`mx-machine-dot${away ? ' is-offline' : ''}`} role="img" aria-label={away ? `${machineTitle(head)} is ${head.chip?.word ?? 'away'}` : `${machineTitle(head)} is connected`} title={head.why ?? head.chip?.word ?? 'connected'} />
-                    <button type="button" className="mx-icon-button mx-machine-add" aria-label={`Add a fleet on ${machineTitle(head)}`} title={`Add a fleet on ${machineTitle(head)}`} disabled={away || !props.canStart} onClick={() => { if (!folds.isOpen(key)) folds.toggle(key); setAdding(head.machine) }}><Icon name="plus" size={13} /></button>
-                  </SectionHead>
-                  <Collapse open={folds.isOpen(key)}>
-                    <div className="mx-fleet-list">
-                      {own.map((fleet) => (
-                        <FleetRow
-                          key={fleet.key}
-                          fleet={fleet}
-                          ships={aboard(sessions, fleets, fleet.key)}
-                          selected={fleet.key === selected?.key}
-                          dimmed={away}
-                          portalContainer={props.portalContainer}
-                          editable={isDaemonFleet(fleet)}
-                          onSelect={() => { props.onSelectFleet(fleet.key) }}
-                          onRename={(name) => { props.onRenameFleet(fleet, name) }}
-                          onRecolor={(color) => { props.onRecolorFleet(fleet, color) }}
-                          onDropShip={(sessionId) => { props.onMoveShip(sessionId, fleet) }}
-                        />
-                      ))}
-                      {adding === head.machine && (
-                        <div className="mx-fleet is-editing" role="group" aria-label={`New fleet on ${machineTitle(head)}`}>
-                          <span className="mx-fleet-tile is-row is-new" aria-hidden="true"><Icon name="plus" size={12} /></span>
-                          <InlineName
-                            value=""
-                            placeholder="Fleet name"
-                            label={`Name for the new fleet on ${machineTitle(head)}`}
-                            maxLength={MAX_FLEET_NAME_LENGTH}
-                            onCommit={(name) => { setAdding(null); if (isFreeFleetName(fleets, head.machine, name)) props.onAddFleet(head.machine, name) }}
-                            onCancel={() => { setAdding(null) }}
-                          />
-                        </div>
-                      )}
-                      {own.length === 0 && adding !== head.machine && <div className="mx-empty-note">No fleets here yet. Use + to add one.</div>}
-                    </div>
-                  </Collapse>
-                </div>
-              )
-            })}
-            {query.trim() !== '' && listed.length === 0 && <div className="mx-empty-note">No fleet matches “{query.trim()}”.</div>}
-          </Collapse>
+        <section aria-label="Agents" className="mx-machines">
+          {groups.map((group) => (
+            <MachineSection
+              key={group.head.key}
+              group={group}
+              open={filtering || views.isOpen(group.head.key)}
+              byProject={views.isByProject(group.head.key)}
+              canStart={props.canStart}
+              onToggle={() => { views.toggle(group.head.key) }}
+              onToggleByProject={() => { views.toggleByProject(group.head.key) }}
+              onNewAgentChat={() => { props.onNewAgentChat(group.head.machine) }}
+              onContextMenu={(event) => { openMenu(event, machineTitle(group.head), machineMenu(group.head)) }}
+              renderRow={renderRow}
+            />
+          ))}
+          {filtering && groups.length === 0 && <div className="mx-empty-note">No agent matches “{query.trim()}”.</div>}
+          {!filtering && props.sessions.length === 0 && <div className="mx-empty-note">No agents running. Use the buttons above to start one.</div>}
         </section>
-
-        <div className="mx-sidebar-rule" aria-hidden="true" />
-        <section aria-label="Ships" className="mx-group">
-          <SectionHead label="SHIPS" count={shipCount} className="is-counted" open={folds.isOpen('ships')} onToggle={() => { folds.toggle('ships') }}>
-            <span className="mx-view-switch" role="radiogroup" aria-label="Ships view">
-              <button type="button" role="radio" aria-checked={view === 'fleets'} aria-label="Selected fleet" title="Ships of the selected fleet" className={view === 'fleets' ? 'is-on' : ''} onClick={() => { setView('fleets') }}><Icon name="fleets" /></button>
-              <button type="button" role="radio" aria-checked={view === 'priority'} aria-label="Priority" title="Every agent, most urgent first" className={view === 'priority' ? 'is-on' : ''} onClick={() => { setView('priority') }}><Icon name="priority" /></button>
-            </span>
-          </SectionHead>
-          <Collapse open={folds.isOpen('ships')}>
-            {view === 'fleets' && (
-              <>
-                {agents.length > 0 && (
-                  <div className="mx-ship-group">
-                    <SectionHead label="Agents" count={agents.length} icon={<Icon name="fleets" size={10} />} open={folds.isOpen('agents')} onToggle={() => { folds.toggle('agents') }} className="is-sub" style={selected ? fleetStyle(selected) : undefined} />
-                    <Collapse open={folds.isOpen('agents')}><div className="mx-ship-list" role="list" aria-label="Agents">{agents.map((ship) => row(ship))}</div></Collapse>
-                  </div>
-                )}
-                {shells.length > 0 && (
-                  <div className="mx-ship-group">
-                    <SectionHead label="Shells" count={shells.length} icon={<Icon name="fleets" size={10} />} open={folds.isOpen('shells')} onToggle={() => { folds.toggle('shells') }} className="is-sub is-shells" style={selected ? fleetStyle(selected) : undefined} />
-                    <Collapse open={folds.isOpen('shells')}><div className="mx-ship-list" role="list" aria-label="Shells">{shells.map((ship) => row(ship))}</div></Collapse>
-                  </div>
-                )}
-                {matching.length === 0 && (
-                  <div className="mx-empty-note">{selected ? emptyShipsNote({ fleetName: selected.name, query, hasShips: fleetShips.length > 0, otherMatch }) : 'Nothing aboard yet. Use + to start a session.'}</div>
-                )}
-              </>
-            )}
-            {view === 'priority' && (
-              <>
-                {priority.map((group) => (
-                  <div key={group.id} className="mx-ship-group">
-                    <SectionHead label={group.title} count={group.ships.length} open={folds.isOpen(`p-${group.id}`)} onToggle={() => { folds.toggle(`p-${group.id}`) }} className="is-sub" />
-                    <Collapse open={folds.isOpen(`p-${group.id}`)}><div className="mx-ship-list" role="list" aria-label={group.title}>{group.ships.map((ship) => row(ship, fleetNameOf(ship)))}</div></Collapse>
-                  </div>
-                ))}
-                {priorityTotal === 0 && <div className="mx-empty-note">{query.trim() === '' ? 'No agents are running. Use the chat button above to start one.' : `No agent matches “${query.trim()}”.`}</div>}
-              </>
-            )}
-          </Collapse>
-        </section>
-        </>}
       </div>
       <div className="mx-sidebar-foot">
-        {online
+        {props.online
           ? <span className="mx-foot-slot">{props.updateSlot}</span>
           : <><span className="mx-daemon-dot is-offline" aria-hidden="true" /><span className="mx-daemon-text is-offline" role="status">Reconnecting to maittyd…</span></>}
-        <button type="button" className="mx-icon-button mx-settings-button" aria-label="Settings" title={tip('Settings', 'settings')} onClick={props.onOpenSettings}><Icon name="gear" size={15} /></button>
+        <button type="button" className="mx-head-button mx-settings-button" aria-label="Settings" title={tip('Settings', 'settings')} onClick={props.onOpenSettings}><Icon name="gear" size={15} /></button>
       </div>
+      {menu && <MenuPopup title={menu.title} at={menu.at} items={menu.items} portalContainer={props.portalContainer} onClose={() => { setMenu(null) }} />}
     </div>
   )
 }
 
-/** The words a rail tile says: the fleet, its machine and how many ships need you. */
-function railWords(fleet: Fleet, head: MachineHead | undefined, needs: number): string {
-  const where = head === undefined ? '' : ` on ${machineTitle(head)}`
-  return `${fleet.name}${where}${needs > 0 ? `, ${String(needs)} need you` : ''}`
+type SectionProps = {
+  group: MachineGroup
+  open: boolean
+  byProject: boolean
+  canStart: boolean
+  onToggle: () => void
+  onToggleByProject: () => void
+  onNewAgentChat: () => void
+  onContextMenu: (event: MouseEvent) => void
+  renderRow: (session: SessionView, showProject: boolean) => ReactNode
 }
 
+/** One machine: its heading (name, count, group-by-project, its line's dot, +) and its sessions. */
+function MachineSection({ group, open, byProject, canStart, onToggle, onToggleByProject, onNewAgentChat, onContextMenu, renderRow }: SectionProps) {
+  const { head, sessions } = group
+  const title = machineTitle(head)
+  const projects = byProject ? projectGroups(sessions) : []
+  return (
+    <div className={`mx-machine${head.down ? ' is-away' : ''}`}>
+      <div className="mx-machine-head">
+        <button type="button" className="mx-machine-toggle" aria-expanded={open} onClick={onToggle} onContextMenu={onContextMenu}>
+          <span className={`mx-caret-wrap${open ? ' is-open' : ''}`}><Icon name="caret" /></span>
+          <span className="mx-machine-icon" aria-hidden="true"><Icon name={head.name === null ? 'laptop' : 'server'} size={13} /></span>
+          <span className="mx-machine-name">{title}</span>
+          <span className="mx-machine-count">{sessions.length}</span>
+        </button>
+        <button type="button" className={`mx-machine-group${byProject ? ' is-on' : ''}`} aria-pressed={byProject} aria-label={byProject ? 'Show one list, most urgent first' : 'Group by project'} title={byProject ? 'Show one list, most urgent first' : 'Group by project'} onClick={onToggleByProject}><Icon name="folder" /></button>
+        <span className={`mx-machine-dot${head.down ? ' is-offline' : ''}`} role="img" aria-label={head.down ? `${title} is ${head.chip?.word ?? 'not reachable'}` : `${title} is connected`} title={head.why ?? (head.down ? head.chip?.word ?? 'not reachable' : `${title} is connected`)} />
+        <button type="button" className="mx-machine-add" aria-label={`New agent on ${title}`} title={`New agent on ${title}`} disabled={!canStart || head.down} onClick={onNewAgentChat}><Icon name="plus" size={13} /></button>
+      </div>
+      <Collapse open={open}>
+        {byProject ? (
+          <div className="mx-projects">
+            {projects.map((project) => <ProjectSection key={project.name} name={project.name} color={project.color} needs={project.needs} sessions={project.sessions} renderRow={renderRow} />)}
+          </div>
+        ) : (
+          <div className="mx-rows" role="list" aria-label={`Sessions on ${title}`}>{sessions.map((session) => renderRow(session, true))}</div>
+        )}
+      </Collapse>
+    </div>
+  )
+}
+
+function ProjectSection({ name, color, needs, sessions, renderRow }: { name: string; color: string; needs: number; sessions: readonly SessionView[]; renderRow: (session: SessionView, showProject: boolean) => ReactNode }) {
+  const [open, setOpen] = useState(true)
+  return (
+    <div className="mx-project">
+      <button type="button" className="mx-project-head" aria-expanded={open} onClick={() => { setOpen(!open) }}>
+        <span className={`mx-caret-wrap${open ? ' is-open' : ''}`}><Icon name="caret" /></span>
+        <span className="mx-project-square" style={{ background: color }} aria-hidden="true" />
+        <span className="mx-project-name">{name}</span>
+        {needs > 0 && <span className="mx-project-needs" aria-label={`${String(needs)} need you`}>{needs}</span>}
+        <span className="mx-project-count">{sessions.length}</span>
+      </button>
+      <Collapse open={open}>
+        <div className="mx-rows" role="list" aria-label={name}>{sessions.map((session) => renderRow(session, false))}</div>
+      </Collapse>
+    </div>
+  )
+}
+
+/** The 60px rail of a narrow window: the starters, then one tile per session with its status badge. */
 function Rail(props: SidebarProps) {
-  const { sessions, fleets, machines, online } = props
   const tip = useTipWithKeys()
-  const label = online ? `maittyd · ${String(sessions.length)} sessions` : 'Reconnecting to maittyd…'
-  const hover = useRailHover()
+  const label = props.online ? `maittyd · ${String(props.sessions.length)} sessions` : 'Reconnecting to maittyd…'
   return (
     <div className="mx-rail">
-      <RailPopoverLayer hover={hover} fleets={fleets} machines={machines} sessions={sessions} tracks={props.tracks} portalContainer={props.portalContainer} />
       <div className="mx-rail-top">
-        <button type="button" className="mx-icon-button mx-rail-button" aria-label="Expand sidebar" title={tip('Expand sidebar', 'toggle-sidebar')} onClick={props.onToggleRail}><Icon name="expand" /></button>
-        <StartButtons props={props} rail />
+        <button type="button" className="mx-head-button is-rail" aria-label="Expand sidebar" title={tip('Expand sidebar', 'toggle-sidebar')} onClick={props.onToggleRail}><Icon name="expand" /></button>
+        <button type="button" className="mx-head-button is-rail" aria-label="New agent chat" title={tip('New agent chat', 'new-agent-chat')} disabled={!props.canStart} onClick={() => { props.onNewAgentChat(props.machines[0]?.machine ?? 0) }}><Icon name="chatPlus" size={15} /></button>
         <InboxButton rail count={props.inboxCount} needs={props.inboxNeeds} onClick={props.onOpenInbox} />
       </div>
       <div className="mx-rail-divider" />
-      <div className="mx-rail-list mx-no-scrollbar" role="group" aria-label="Fleets">
-        {fleets.map((fleet) => {
-          const head = machines.find((candidate) => candidate.machine === fleet.machine)
-          const ships = aboard(sessions, fleets, fleet.key)
-          const needs = needsCount(ships)
-          const words = railWords(fleet, head, needs)
-          return (
-            <button
-              key={fleet.key}
-              type="button"
-              className={`mx-rail-fleet${fleet.key === props.selectedFleet ? ' is-selected' : ''}${head?.down ? ' is-dimmed' : ''}`}
-              aria-label={words}
-              aria-current={fleet.key === props.selectedFleet ? 'true' : undefined}
-              {...hoverHandlers(hover, fleetHoverId(fleet.key))}
-              onClick={() => { hover.close(); props.onSelectFleet(fleet.key) }}
-            >
-              <FleetTile fleet={fleet} needs={needs} size="rail" />
-            </button>
-          )
-        })}
+      <div className="mx-rail-list mx-no-scrollbar" role="list" aria-label="Sessions">
+        {machineGroups(props.sessions, props.machines, '').flatMap((group) => group.sessions).map((session) => (
+          <button
+            key={session.id}
+            type="button"
+            role="listitem"
+            className={`mx-rail-session${session.id === props.focusedId ? ' is-selected' : ''}`}
+            aria-label={`${rowTitle(session)}, ${STATUS_WORD[session.status]}`}
+            aria-current={session.id === props.focusedId ? 'page' : undefined}
+            title={rowTitle(session)}
+            onClick={() => { props.onShowSession(session.id) }}
+          >
+            <span className="mx-row-icon"><AppIcon process={session.process} size={24} dimmed={session.status === 'unknown'} /><StatusBadge status={session.status} /></span>
+          </button>
+        ))}
       </div>
       <div className="mx-rail-bottom">
         {props.railUpdateSlot}
-        <span className={`mx-daemon-dot${online ? '' : ' is-offline'}`} role="img" aria-label={label} title={label} />
-        <button type="button" className="mx-icon-button mx-rail-button" aria-label="Settings" title={tip('Settings', 'settings')} onClick={props.onOpenSettings}><Icon name="gear" /></button>
+        <span className={`mx-daemon-dot${props.online ? '' : ' is-offline'}`} role="img" aria-label={label} title={label} />
+        <button type="button" className="mx-head-button is-rail" aria-label="Settings" title={tip('Settings', 'settings')} onClick={props.onOpenSettings}><Icon name="gear" /></button>
       </div>
     </div>
   )

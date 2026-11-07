@@ -41,6 +41,10 @@ conversation continuity are planned in phases 34–37:
 - Leader keys (a shell is `n`, only kept features have keys), Alt+arrows without the leader, armed pill in sky — shipped by v0.30.1 — `crates/maitty-terminal-client/src/keys.rs` `DEFAULT_PREFIX_KEYS`
 - Copy on select with toast, copy mode, Ctrl+click paths, paste images — shipped — `crates/maitty-terminal-client/src/client/copy.rs`, `crates/maitty-terminal-client/src/client/pick.rs`
 
+**The desktop app**
+- Redesign ("Maitty Desktop" handoff): an agents-only sidebar grouped by machine, most urgent first, with project and branch on each row and an in-place rename; subagents under their session, each with its own chat; one pane header for agents and shells that gives up controls as the pane narrows; mixed right and down splits with draggable dividers; an agent opens as its chat; a three-layer message box (question tray, glass box, settings tray); glass menus, dialogs and drawer — shipped — `apps/gui/src/features/workspace/components/Sidebar.tsx`, `PaneCard.tsx`, `apps/gui/src/features/chat/components/Composer.tsx`, `QuestionTray.tsx`
+- Fleets, ships, the tab bar and the Crewmates switch are gone from the desktop app (the redesign supersedes them); `features/crew/` stays in the tree, unmounted, until Crewmates is designed
+
 **Code and git**
 - Worktrees per agent, create / move / remove with hooks — shipped — `crates/maitty-core/src/daemon/git.rs`, `crates/maitty-core/src/project.rs`
 - Worktree clean-up: closing the last pane of a worktree Maitty made removes it only when it is clean and everything in it is merged (clean with commits found nowhere else: it asks, and Enter keeps the folder; uncommitted changes: it stays and says why; every removal or keep is in `daemon.log`), and a list per repo says why each is still around and removes the ones you tick — shipped — `crates/maitty-core/src/tidy.rs`, `crates/maitty-core/src/daemon/worktrees.rs`, `crates/maitty-terminal-client/src/client/screen/tidy.rs`

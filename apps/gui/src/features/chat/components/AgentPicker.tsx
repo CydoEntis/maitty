@@ -1,7 +1,9 @@
 import { useState, type KeyboardEvent, type ReactNode } from 'react'
-import { Check, ChevronUp } from 'lucide-react'
+import { Check } from 'lucide-react'
 import { Popover } from 'radix-ui'
 import { CHAT_AGENTS, type ChatAgent } from '@/features/workspace/model/chatView'
+import { AppIcon, Icon } from '@/features/workspace/components/glyphs'
+import { AGENT_LABEL, modelName } from '../modelName'
 import {
   DEFAULT_PICK, KNOWN_MODELS, REASONING_LABEL, REASONING_LEVELS, REASONING_PICKS, type AgentChoice, type Reasoning, type ReasoningPick,
 } from '../agentChoice'
@@ -10,7 +12,6 @@ import {
 const BAR_BASE_PX = 4
 const BAR_STEP_PX = 3
 
-const AGENT_LABEL: Readonly<Record<ChatAgent, string>> = { claude: 'Claude', codex: 'Codex' }
 
 /** The bars of a reasoning level's strength meter: Low fills one of four, Max all four. */
 function Meter({ level }: { level: Reasoning }) {
@@ -79,7 +80,15 @@ function Column({ title, options, value, onPick }: { title: string; options: rea
  * the other one is greyed out with the reason. A model and a reasoning level that are picked go to the
  * agent with each next message; "Default" sends nothing, so the chat keeps what it started with.
  */
-export function AgentPicker({ agent, choice, onChange }: { agent: ChatAgent; choice: AgentChoice; onChange: (change: Partial<AgentChoice>) => void }) {
+type PickerProps = {
+  agent: ChatAgent
+  choice: AgentChoice
+  onChange: (change: Partial<AgentChoice>) => void
+  /** The model the agent's own file says it runs; null when it has not said. */
+  currentModel?: string | null
+}
+
+export function AgentPicker({ agent, choice, onChange, currentModel = null }: PickerProps) {
   const [open, setOpen] = useState(false)
   const models = KNOWN_MODELS[agent]
   const model = models.find((option) => option.id === choice.model) ?? models[0]
@@ -89,23 +98,21 @@ export function AgentPicker({ agent, choice, onChange }: { agent: ChatAgent; cho
     ...(name === agent ? {} : { disabledReason: `Fixed for this chat · start a new chat to use ${AGENT_LABEL[name]}` }),
   }))
   const summary = `${AGENT_LABEL[agent]} · ${model?.label ?? ''} · ${REASONING_LABEL[choice.reasoning]}`
+  const shownModel = modelName(agent, model, currentModel)
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
-        <button
-          type="button"
-          aria-label={`Agent, model and reasoning: ${summary}`}
-          title="Agent, model and reasoning"
-          className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg px-2 text-[12px] text-fg2 outline-none hover:bg-hover hover:text-fg focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        >
-          <span className="truncate">{summary}</span>
-          <ChevronUp aria-hidden="true" className="size-3.5 shrink-0" />
+        <button type="button" aria-label={`Agent, model and reasoning: ${summary}`} title="Agent, model and reasoning" className="mx-model-button">
+          <span className="mx-model-icon"><AppIcon process={agent} size={14} /></span>
+          <span className="mx-model-name">{shownModel}</span>
+          <span className="mx-model-effort">{REASONING_LABEL[choice.reasoning]}</span>
+          <Icon name="chevronDown" />
         </button>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
           side="top"
-          align="start"
+          align="end"
           sideOffset={8}
           aria-label="Agent, model and reasoning"
           className="z-50 w-[min(640px,calc(100vw-32px))] rounded-[14px] border border-line2 bg-[var(--pane)] p-2 shadow-[var(--sh-pop)]"

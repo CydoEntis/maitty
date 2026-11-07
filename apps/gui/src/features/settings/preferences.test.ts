@@ -26,7 +26,7 @@ const DEFAULTS: SettingsPreferences = {
   
   
   defaultAgent: 'claude', newSessionView: 'chat',
-  density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, monthlyBudget: null, iconSize: 'medium', iconColor: 'color', statusBar: false, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, chatFullAccessDefault: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass',
+  density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, monthlyBudget: null, iconSize: 'medium', iconColor: 'color', statusBar: false, chatViewDefault: { claude: 'chat', codex: 'chat' }, chatFullAccessDefault: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass',
 }
 
 describe('settings preferences', () => {
@@ -133,12 +133,12 @@ describe('settings preferences', () => {
     expect(readSettingsPreferences()).toMatchObject({ chatFullAccessDefault: false })
   })
 
-  it('opens agent sessions in the terminal unless a view was chosen, and ignores nonsense', () => {
-    expect(readSettingsPreferences().chatViewDefault).toEqual({ claude: 'terminal', codex: 'terminal' })
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ chatViewDefault: { claude: 'chat', codex: 'sideways' } }))
-    expect(readSettingsPreferences().chatViewDefault).toEqual({ claude: 'chat', codex: 'terminal' })
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ chatViewDefault: 'chat' }))
-    expect(readSettingsPreferences().chatViewDefault).toEqual({ claude: 'terminal', codex: 'terminal' })
+  it('opens agent sessions in the chat unless a view was chosen, and ignores nonsense', () => {
+    expect(readSettingsPreferences().chatViewDefault).toEqual({ claude: 'chat', codex: 'chat' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ chatViewDefault: { claude: 'terminal', codex: 'sideways' } }))
+    expect(readSettingsPreferences().chatViewDefault).toEqual({ claude: 'terminal', codex: 'chat' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ chatViewDefault: 'terminal' }))
+    expect(readSettingsPreferences().chatViewDefault).toEqual({ claude: 'chat', codex: 'chat' })
   })
 
   it('keeps icons in colour unless grayscale was chosen, in either style', () => {

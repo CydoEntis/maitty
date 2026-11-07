@@ -1,48 +1,56 @@
-import { useEffect, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react'
-import { ContextMenu as ContextMenuPrimitive, DropdownMenu } from 'radix-ui'
+import { useEffect, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react'
 import { MAX_PANES, type PaneSlot, type SplitDirection } from '../model/layout'
-import { rowName, type SessionView } from '../model/session'
+import type { SessionView } from '../model/session'
+import { headerFit } from '../model/paneHeader'
+import { rowTitle } from '../model/sidebar'
 import { AppIcon, Icon, StatusBadge } from './glyphs'
 import { SESSION_DRAG_TYPE } from './dragSession'
 import { runsProgram, useArmed } from './useArmed'
-import { PaneStatus } from './PaneStatus'
 import { PaneViewSwitch } from './PaneViewSwitch'
+import { MenuPopup, type MenuEntry } from './MenuPopup'
+import { menuPoint } from './menuPoint'
 import type { PaneView } from '../model/chatView'
-import { usageParts } from '../model/usage'
+import type { InspectView } from '@/features/inspect/InspectPanel'
 import { useShortcutText, useTipWithKeys } from '@/features/shortcuts/platform'
+
+/** The Files and Changes tray: which of the two the repository drawer shows for this pane, if any. */
+export type PaneTool = Extract<InspectView, 'files' | 'changes'>
 
 export type PaneCardProps = {
   pane: PaneSlot
   index: number
   session: SessionView
   paneCount: number
-  /** Typing in any pane of this tab goes to the idle ones too. */
+  /** Typing in any pane of this layout goes to its idle ones too. */
   broadcast: boolean
-  onToggleBroadcast: () => void
   focused: boolean
   maximized: boolean
   dropTarget: boolean
-  workingSince: number | null
   terminal: ReactNode
   /** The view the pane shows. The terminal stays mounted under the chat, so it keeps streaming and keeps its size. */
   view?: PaneView
-  /** Present when the pane has a Terminal | Chat switch; picking a view sends nothing to the daemon. */
+  /** Present when the pane has a terminal | chat switch; picking a view sends nothing to the daemon. */
   onViewChange?: (view: PaneView) => void
   /** The chat that covers the terminal while `view` is `chat`. */
   chat?: ReactNode
+  /** Which tool of the tray is showing for this pane; null when the drawer is closed or shows another pane. */
+  tool: PaneTool | null
+  onTool: (tool: PaneTool) => void
+  /** For an agent: whether a terminal you opened in its folder is open. Null for a shell, which has its own. */
+  terminalOpen: boolean | null
+  onToggleTerminal: () => void
   online: boolean
   /** Where portalled menus mount, so they read the theme's colours. */
   portalContainer: HTMLElement | null
   onFocus: (paneId: string) => void
   onSplit: (paneId: string, direction: SplitDirection) => void
   onToggleMaximize: (paneId: string) => void
-  /** Opens the repository view (Inspect) for this pane's session. */
-  onInspect: () => void
   onClose: (paneId: string) => void
+  /** Clears a shell's screen, as Ctrl+L does in it. */
+  onClear: () => void
+  onCopyPath: () => void
   /** Starts a new shell in an ended pane's folder, in its place. */
   onRestart: (paneId: string) => void
-  onEndSession: (sessionId: string) => void
-  onRenameSession: (sessionId: string) => void
   onDragStart: (paneId: string) => void
   onDragEnd: () => void
   /** `fromSidebar` is true when a session from the sidebar is being dragged over, not another pane. */
@@ -70,32 +78,72 @@ function useReturning(view: PaneView): boolean {
   return returning
 }
 
-const stop = (event: MouseEvent) => { event.stopPropagation() }
+/** The pane's width as it is laid out, so its header can give up controls as it narrows. */
+function useWidth(): [React.RefObject<HTMLElement | null>, number | null] {
+  const element = useRef<HTMLElement>(null)
+  const [width, setWidth] = useState<number | null>(null)
+  useEffect(() => {
+    const target = element.current
+    if (!target || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver((entries) => {
+      const box = entries[0]?.contentRect
+      if (box) setWidth(Math.round(box.width))
+    })
+    observer.observe(target)
+    return () => { observer.disconnect() }
+  }, [])
+  return [element, width]
+}
 
-/** A menu that opens a dialog must not hand focus back to the pane it came from: that would take it from the dialog. */
-const keepFocus = (event: Event) => { event.preventDefault() }
+const stop = (event: MouseEvent) => { event.stopPropagation() }
 
 export function PaneCard(props: PaneCardProps) {
   const { pane, session, paneCount, focused, maximized } = props
   const tip = useTipWithKeys()
   const shortcutText = useShortcutText()
+  const [box, width] = useWidth()
+  const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null)
   const multi = paneCount > 1
   const full = paneCount >= MAX_PANES
-  const status = session.status
   const ended = session.ended
   const closing = useArmed(runsProgram(session))
   const view = props.view ?? 'terminal'
   const returning = useReturning(view)
+  const fit = headerFit(width)
+  const title = rowTitle(session)
   const closeLabel = closing.armed ? `Click again to close and stop ${session.process}` : 'Close pane · ends its session'
+  const toggleTool = (tool: PaneTool) => { props.onTool(tool) }
+
+  const menuItems: MenuEntry[] = [
+    { label: 'Split right', hint: shortcutText('split-right'), disabled: full, run: () => { props.onSplit(pane.id, 'right') } },
+    { label: 'Split down', hint: shortcutText('split-down'), disabled: full, run: () => { props.onSplit(pane.id, 'down') } },
+    { label: maximized ? 'Restore layout' : 'Maximize pane', disabled: !multi && !maximized, run: () => { props.onToggleMaximize(pane.id) } },
+    'separator',
+    ...(props.onViewChange
+      ? [{ label: view === 'chat' ? 'Show terminal' : 'Show chat', hint: shortcutText('chat-toggle'), run: () => { props.onViewChange?.(view === 'chat' ? 'terminal' : 'chat') } }]
+      : []),
+    ...(props.terminalOpen === null
+      ? [{ label: 'Clear', hint: 'Ctrl+L', disabled: !props.online || ended, run: props.onClear }, { label: 'Copy folder path', run: props.onCopyPath }]
+      : [{ label: props.terminalOpen ? 'Close its terminal' : 'Open terminal here', disabled: !props.online, run: props.onToggleTerminal }]),
+    { label: 'Files', run: () => { toggleTool('files') } },
+    { label: 'Changes', run: () => { toggleTool('changes') } },
+    'separator',
+    { label: 'Close pane', danger: true, ...(runsProgram(session) ? { armedLabel: `Close and stop ${session.process}? Click again` } : {}), run: () => { props.onClose(pane.id) } },
+  ]
+
   return (
-    <ContextMenuPrimitive.Root>
-      <ContextMenuPrimitive.Trigger asChild>
     <section
-      className={`mx-pane${view === 'chat' ? '' : ' is-terminal'}${focused && multi ? ' is-focused' : ''}${props.broadcast ? ' is-broadcast' : ''}${props.dropTarget ? ' is-drop-target' : ''}`}
+      ref={box}
+      className={`mx-pane${view === 'chat' ? ' is-chat' : ' is-terminal'}${multi ? ' is-card' : ''}${focused && multi ? ' is-focused' : ''}${props.broadcast ? ' is-broadcast' : ''}${props.dropTarget ? ' is-drop-target' : ''}`}
       aria-label={`Terminal ${String(props.index + 1)}: ${session.cwdLabel}${focused ? ', focused' : ''}`}
       data-session-id={session.id}
       data-pane={pane.id}
       onMouseDown={() => { props.onFocus(pane.id) }}
+      onContextMenu={(event) => {
+        if (event.target instanceof Element && event.target.closest('textarea, input, .xterm')) return
+        event.preventDefault()
+        setMenuAt(menuPoint(event, false))
+      }}
       onDragOver={(event: DragEvent) => {
         event.preventDefault()
         props.onDragOver(pane.id, event.dataTransfer.types.includes(SESSION_DRAG_TYPE))
@@ -108,6 +156,7 @@ export function PaneCard(props: PaneCardProps) {
       <div
         className={`mx-pane-head${multi ? ' is-draggable' : ''}`}
         draggable={multi}
+        title={multi ? 'Drag to move this pane' : undefined}
         onDragStart={(event) => {
           event.dataTransfer.effectAllowed = 'move'
           event.dataTransfer.setData('text/plain', pane.id)
@@ -117,35 +166,37 @@ export function PaneCard(props: PaneCardProps) {
         onDoubleClick={() => { props.onToggleMaximize(pane.id) }}
       >
         <span className="mx-pane-icon">
-          <AppIcon process={session.process} size={26} dimmed={status === 'unknown'} />
-          <StatusBadge status={status} />
+          <AppIcon process={session.process} size={26} dimmed={session.status === 'unknown'} />
+          <StatusBadge status={session.status} />
         </span>
         <span className="mx-pane-title">
-          <span className="mx-pane-proc">{rowName(session)}</span>
+          <span className="mx-pane-name">{title}</span>
           <span className="mx-pane-where">
             <span className="mx-pane-cwd" title={session.cwd}>{session.cwdLabel}</span>
             {session.branch && <span className="mx-pane-branch" title={`Branch ${session.branch}`}><Icon name="branch" size={10} />{session.branch}</span>}
           </span>
         </span>
         {props.broadcast && <span className="mx-broadcast-pill">◉ Broadcast</span>}
-        {usageParts(session.usage).length > 0 && <span className="mx-pill mx-usage-pill" title="What the agent reports this session has used">{usageParts(session.usage).join(' · ')}</span>}
         <span className="mx-pane-controls">
-          {props.onViewChange && <><PaneViewSwitch view={view} onChange={props.onViewChange} /><span className="mx-pane-divider" aria-hidden="true" /></>}
-          <button type="button" className="mx-pane-control is-foldable" aria-label={tip('Split right', 'split-right')} title={tip('Split right', 'split-right')} disabled={full} onMouseDown={stop} onClick={() => { props.onSplit(pane.id, 'right') }}><Icon name="splitRight" /></button>
-          <button type="button" className="mx-pane-control is-foldable" aria-label={tip('Split down', 'split-down')} title={tip('Split down', 'split-down')} disabled={full} onMouseDown={stop} onClick={() => { props.onSplit(pane.id, 'down') }}><Icon name="splitDown" /></button>
-          <button type="button" className="mx-pane-control is-foldable" aria-label={maximized ? 'Restore layout' : 'Maximize pane'} title={maximized ? 'Restore layout' : 'Maximize pane'} disabled={!multi && !maximized} onMouseDown={stop} onClick={() => { props.onToggleMaximize(pane.id) }}>{maximized ? <Icon name="restore" /> : <Icon name="maximize" />}</button>
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger className="mx-pane-control mx-pane-more" aria-label="More pane actions" title="More pane actions" onMouseDown={stop}>⋯</DropdownMenu.Trigger>
-            <DropdownMenu.Portal container={props.portalContainer}>
-              <DropdownMenu.Content className="mx-menu mx-pane-more-menu" sideOffset={6} align="end" onCloseAutoFocus={keepFocus}>
-                <DropdownMenu.Item className="mx-menu-item" disabled={!multi} onSelect={props.onToggleBroadcast}>{props.broadcast ? 'Stop broadcasting' : 'Broadcast to this tab'}<span className="mx-menu-hint">{shortcutText('broadcast')}</span></DropdownMenu.Item>
-                <DropdownMenu.Item className="mx-menu-item" disabled={full} onSelect={() => { props.onSplit(pane.id, 'right') }}>Split right<span className="mx-menu-hint">{shortcutText('split-right')}</span></DropdownMenu.Item>
-                <DropdownMenu.Item className="mx-menu-item" disabled={full} onSelect={() => { props.onSplit(pane.id, 'down') }}>Split down<span className="mx-menu-hint">{shortcutText('split-down')}</span></DropdownMenu.Item>
-                <DropdownMenu.Item className="mx-menu-item" disabled={!multi && !maximized} onSelect={() => { props.onToggleMaximize(pane.id) }}>{maximized ? 'Restore layout' : 'Maximize pane'}</DropdownMenu.Item>
-                <DropdownMenu.Item className="mx-menu-item" onSelect={props.onInspect}>Inspect the repository<span className="mx-menu-hint">{shortcutText('inspect')}</span></DropdownMenu.Item>
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-          </DropdownMenu.Root>
+          {props.onViewChange && fit.switcher && <PaneViewSwitch view={view} onChange={props.onViewChange} />}
+          {fit.tools && (
+            <>
+              <span className="mx-pane-gap" aria-hidden="true" />
+              <span className="mx-pane-tray" role="group" aria-label="Repository">
+                <button type="button" className={`mx-tray-button${props.tool === 'files' ? ' is-on' : ''}`} aria-pressed={props.tool === 'files'} aria-label="Files" title={tip('Files', 'inspect')} onMouseDown={stop} onClick={() => { toggleTool('files') }}><Icon name="files" size={13} />{fit.toolLabels && 'Files'}</button>
+                <button type="button" className={`mx-tray-button${props.tool === 'changes' ? ' is-on' : ''}`} aria-pressed={props.tool === 'changes'} aria-label="Changes" title="Changes" onMouseDown={stop} onClick={() => { toggleTool('changes') }}><Icon name="plus" size={13} />{fit.toolLabels && 'Changes'}</button>
+              </span>
+              <span className="mx-pane-divider" aria-hidden="true" />
+            </>
+          )}
+          {fit.splits && (
+            <>
+              <button type="button" className="mx-pane-control" aria-label={tip('Split right', 'split-right')} title={tip('Split right', 'split-right')} disabled={full} onMouseDown={stop} onClick={() => { props.onSplit(pane.id, 'right') }}><Icon name="splitRight" /></button>
+              <button type="button" className="mx-pane-control" aria-label={tip('Split down', 'split-down')} title={tip('Split down', 'split-down')} disabled={full} onMouseDown={stop} onClick={() => { props.onSplit(pane.id, 'down') }}><Icon name="splitDown" /></button>
+              <button type="button" className="mx-pane-control" aria-label={maximized ? 'Restore layout' : 'Maximize pane'} title={maximized ? 'Restore layout' : 'Maximize pane'} disabled={!multi && !maximized} onMouseDown={stop} onClick={() => { props.onToggleMaximize(pane.id) }}><Icon name={maximized ? 'restore' : 'maximize'} /></button>
+            </>
+          )}
+          <button type="button" className="mx-pane-control mx-pane-more" aria-label="More pane actions" title="More pane actions" aria-haspopup="menu" onMouseDown={stop} onClick={(event) => { setMenuAt(menuPoint(event, true)) }}>⋯</button>
           <button type="button" className={`mx-pane-control is-close${closing.armed ? ' is-armed' : ''}`} aria-label={closeLabel} title={closeLabel} onMouseDown={stop} onBlur={closing.disarm} onClick={() => { if (closing.press()) props.onClose(pane.id) }}><Icon name="close" /></button>
         </span>
       </div>
@@ -168,31 +219,8 @@ export function PaneCard(props: PaneCardProps) {
           <button type="button" className="mx-pane-ended-button" onMouseDown={stop} onClick={() => { props.onClose(pane.id) }}>Close pane</button>
         </div>
       )}
-      {!ended && status !== 'idle' && view === 'terminal' && <PaneStatus status={status} workingSince={props.workingSince} />}
+      <span className="mx-pane-ring" aria-hidden="true" />
+      {menuAt && <MenuPopup title={title} at={menuAt} items={menuItems} portalContainer={props.portalContainer} onClose={() => { setMenuAt(null) }} />}
     </section>
-      </ContextMenuPrimitive.Trigger>
-      <ContextMenuPrimitive.Portal container={props.portalContainer}>
-        <ContextMenuPrimitive.Content className="mx-menu" onCloseAutoFocus={keepFocus}>
-          <ContextMenuPrimitive.Sub>
-            <ContextMenuPrimitive.SubTrigger className="mx-menu-item" disabled={full}>Split<span className="mx-menu-hint">›</span></ContextMenuPrimitive.SubTrigger>
-            <ContextMenuPrimitive.Portal container={props.portalContainer}>
-              <ContextMenuPrimitive.SubContent className="mx-menu" sideOffset={6}>
-                <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { props.onSplit(pane.id, 'up') }}>Split up</ContextMenuPrimitive.Item>
-                <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { props.onSplit(pane.id, 'down') }}>Split down<span className="mx-menu-hint">{shortcutText('split-down')}</span></ContextMenuPrimitive.Item>
-                <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { props.onSplit(pane.id, 'left') }}>Split left</ContextMenuPrimitive.Item>
-                <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { props.onSplit(pane.id, 'right') }}>Split right<span className="mx-menu-hint">{shortcutText('split-right')}</span></ContextMenuPrimitive.Item>
-              </ContextMenuPrimitive.SubContent>
-            </ContextMenuPrimitive.Portal>
-          </ContextMenuPrimitive.Sub>
-          <ContextMenuPrimitive.Item className="mx-menu-item" disabled={!multi && !maximized} onSelect={() => { props.onToggleMaximize(pane.id) }}>{maximized ? 'Restore layout' : 'Maximize pane'}</ContextMenuPrimitive.Item>
-          <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={props.onInspect}>Inspect the repository</ContextMenuPrimitive.Item>
-          <ContextMenuPrimitive.Separator className="mx-menu-sep" />
-          <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { props.onRenameSession(session.id) }}>Rename…</ContextMenuPrimitive.Item>
-          <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { void navigator.clipboard.writeText(session.cwd) }}>Copy folder path</ContextMenuPrimitive.Item>
-          <ContextMenuPrimitive.Separator className="mx-menu-sep" />
-          <ContextMenuPrimitive.Item className={`mx-menu-item is-danger${closing.armed ? ' is-armed' : ''}`} disabled={!props.online && !ended} onSelect={(event) => { if (ended) props.onClose(pane.id); else if (closing.press()) props.onEndSession(session.id); else event.preventDefault() }}>{ended ? 'Close pane' : closing.armed ? `Close and stop ${session.process}? Click again` : 'Close session'}<span className="mx-menu-hint">{ended ? '' : closing.armed ? '' : 'ends it'}</span></ContextMenuPrimitive.Item>
-        </ContextMenuPrimitive.Content>
-      </ContextMenuPrimitive.Portal>
-    </ContextMenuPrimitive.Root>
   )
 }

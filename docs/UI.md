@@ -114,19 +114,14 @@ name, never by where it points. A session of another machine has the id `build/t
 saved layout survives a restart; this computer's stay `t12`). **Settings › Machines** retries, removes and
 adds machines (the behaviour is the terminal app's [Machines dialog](#project-specific-machines-dialog),
 with the host list read off the UI thread, the look at the machine ended by a 12 s limit or Cancel, and a
-login that needs a person run in a session named `ssh <name>`); **New session** (⌘T, Ctrl+Shift+T, ⌘K) always opens the **New session modal**: one 560px dialog of fixed height
-whose header reads "Start in `<project>` on `<machine>` as `<agent>` in `[>_ | chat]`". Each part is a pill that jumps to its
-step; the toggle locks to the terminal for a plain shell ("Shells always open in Terminal") and for another machine ("Chat
-runs on this computer"). **1 Project:** Browse… (⌘O, Ctrl+O; this computer's folder picker) comes first, then the recent
-projects (the focused session's folder is highlighted, so Enter takes it); the field completes in grey after what is typed
-(Tab or → accepts) from known projects for a name and from the folders that exist on the machine for a path starting with `~`
-or `/` (`Query::ListFolders`, [API_PATTERNS](API_PATTERNS.md)), and a folder that is not there shows a red "No such folder on
-`<machine>`" and blocks Enter. **2 Machine:** this computer, then each machine with how its line is; one that is down is greyed
-out with "Reconnecting…" and cannot be picked. **3 Start as:** Terminal, Claude, Codex, and a disabled "Crew (soon)", with the
-default agent highlighted. Enter goes on, Esc goes back and then cancels; the dialog traps focus and gives it back on close.
-Starting on another machine opens its shell there and, for an agent, types the agent's name into it. `NewSessionModal` is
-presentation only; the window starts the session through the same paths as before (`startShellSession`, an agent typed into the
-new shell, `startSessionOnMachine`). `New shell on <name>` in ⌘K opens the same modal on that machine. The sidebar's header starts without it: **New agent chat** (⌘⇧A, Ctrl+Shift+A) runs the default agent in the selected fleet and shows it as a chat, **New shell** (⌘⇧T, Ctrl+Alt+T) a shell there (a fleet on another machine asks for a folder, so it opens the modal), and **Add a remote machine** opens Settings › Machines. A new shell joins the selected fleet through `startShellInFleet` (`api/daemon.ts`). A screen reader is told when a machine goes down (`build disconnected: unreachable`) and when it is back, once each and not for every retry, through a polite live region; every state is a word as well as a shape and a colour, nothing about machines animates, and the Machines page works with the keyboard alone (Tab, Enter, Esc ends a look in progress without closing Settings). Features that read a pane's files (Inspect, worktreesFeatures that read a pane's files (Inspect, worktrees, opening a file from the output, dropping files, the screen text) are for this computer's panes only: each says `<Feature> is local-only in v1: the files are on <machine>, not on this computer.` and the Repository button shows disabled with that text.
+login that needs a person run in a session named `ssh <name>`); **New session** (⌘T, Ctrl+Shift+T, ⌘K, the sidebar's New agent chat, a machine's New agent chat here) opens the
+**New session dialog** (`NewSessionModal`, look in [DESIGN](DESIGN.md#desktop-app)): an agent chat or a shell, which
+agent, which project (the machine's projects, the focused one first; **Other folder…** is this computer's folder picker),
+where it works and a first message. It is presentation only; the window starts the session through the same paths as
+before (`startShellSession` and the agent typed into the new shell, `startSessionOnMachine` on another machine) and holds
+the first message under the new session (`firstMessage.ts`) until the agent takes input. **New agent chat** (⌘⇧A,
+Ctrl+Shift+A) starts the default agent in the start folder without the dialog, and **New shell** (⌘⇧T, Ctrl+Alt+T, a
+machine's New shell here) a plain shell; another machine asks for a folder there first, so it opens the dialog. A screen reader is told when a machine goes down (`build disconnected: unreachable`) and when it is back, once each and not for every retry, through a polite live region; every state is a word as well as a shape and a colour, nothing about machines animates, and the Machines page works with the keyboard alone (Tab, Enter, Esc ends a look in progress without closing Settings). Features that read a pane's files (Inspect, worktreesFeatures that read a pane's files (Inspect, worktrees, opening a file from the output, dropping files, the screen text) are for this computer's panes only: each says `<Feature> is local-only in v1: the files are on <machine>, not on this computer.` and the Repository button shows disabled with that text.
 
 **Desktop service states** (`ServiceStatus`, `model/serviceState.ts`). While maittyd does not answer, every status reads
 Unknown, spinners stop and input waits. The first four failed tries show a thin bar under the pane header, "Reconnecting to
@@ -175,32 +170,18 @@ Rules for `apps/gui/` (the look is in [DESIGN](DESIGN.md#desktop-app)).
    expanding it opens the full sidebar as an overlay; under 800px panes stack in one
    column. The widths are constants in `features/workspace/model/windowSize.ts`; change
    them there and in DESIGN, nowhere else.
-2. The sidebar has a FLEETS section and a SHIPS section (spec v31). A **fleet** is a daemon
-   workspace (a name, a colour, a machine); a **ship** is one session in it, an agent or a shell. FLEETS
-   lists this computer and each other machine as a collapsible heading (laptop or server mark, name, a
-   status dot, and a + that adds a fleet there with an inline name field), and a row per fleet below it
-   (initials tile in the fleet's colour with a needs-you count, name, up to three stacked app icons then +N).
-   SHIPS shows only the selected fleet, in **Agents** and **Shells** (an agent's line is its branch, a
-   shell's its folder and never a branch), or, with the Fleets | Priority switch, every agent across
-   fleets grouped Needs you, Exited, Working, Done, Idle, each row naming its fleet. Ships are in
-   creation order (`model/session.ts`, by the daemon's pane number) and nothing (status, pin, focus, a
-   click, the filter) reorders them. Rows show no diff counts and no folder badge. Which fleet a session
-   is in is the daemon's (`api/fleets.ts` reads `workspaces`); the window never decides it. Fleet colours
-   are teal, violet, blue, green, pink and orange, never amber or red. The pure parts are in
-   `model/fleets.ts`; `useFleets` holds the selection, which follows the focused ship. A ship moves between fleets of the same machine
-   by dragging its row or tab onto a fleet row or from the ship menu's Move to fleet list (`moveSessionToFleet`);
-   across machines the window refuses with a toast, since the terminal runs on its own machine. A fleet's
-   right-click menu renames it and recolours it with the six `FLEET_COLORS` (`api/fleets.ts`); the daemon's
-   palette index reads back as the colour chosen (`fleetColorOf`). Closing a whole fleet is not offered. A ship
-   shows "worktree" when the daemon says its pane is in a linked worktree (`TermInfo.linked`) or its fleet is one.
-   Right-click menus share `MenuPopup` (focus, arrow keys, Esc, kept inside the window).
-   The workspace is a second card: a **tab tray** on top holds one tab per ship of the selected fleet
-   (`model/tabs.ts`; a ship split beside another's pane is part of that tab, and the tab shows the pane
-   count), then the panes. Split layouts are this window's own state (`model/layout.ts`), up to four
-   panes per tab; a session closes with a 6 second Undo. A Fleets | Crewmates switch swaps the sidebar;
-   Crewmates mode (`features/crew/`) is sample-data chat only and covers the workspace card with a chat.
-3. A new surface that sits on the terminal's ground uses `--term`, not `--main`,
-   so a terminal pane reads as one surface.
+2. The sidebar lists **agents and shells only, grouped by machine** (this computer first), most urgent first within a
+   machine: needs you, an agent that stopped, working, done, idle, then a shell whose last command failed; creation order
+   (the daemon's pane number) within each rank, so a row moves only when its state does (`model/sidebar.ts`). A machine can
+   be grouped by project and folded. There are no fleets, ships, tabs or tab bar: choosing a session shows the layout it
+   is in (`model/layout.ts`), else one of its own. A session's **subagents** are the daemon's `TermInfo.subagent_activity`
+   (`model/subagents.ts`), shown under their session (small icons when it is not selected, a row each when it is);
+   clicking one shows its own chat in the session's pane until you pick a session or **Back to main session**. Rename is
+   in place (double-click, F2 or the menu). Right-click menus share `MenuPopup` (focus, arrow keys, Esc, kept inside the
+   window). Split layouts are this window's own state, up to four panes, mixed right and down with draggable dividers; a
+   session closes with a 6 second Undo. Crewmates (`features/crew/`) is not mounted: the redesign leaves it undesigned.
+3. A terminal sits on the workspace card's own ground (`--main`, xterm's background and ANSI black), so a pane reads as
+   part of the card and not as a box inside it.
 
 ## Project-specific: usage and cost page (desktop)
 
@@ -762,15 +743,16 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
 - **A chat session is the other kind of session** ([ADR 0003](adr/0003-status-and-conversation-trust.md)):
   a structured conversation the daemon started (`Conversation.execution` is `Structured`, `chat` is set without
   `readOnly`, `native_term` is none; `model/chatSession.ts` `isChatSession`). It is a sidebar row, tab and pane of its
-  own, grouped by its repository (`ConversationSummary.root`, `branch`). It has **no terminal**: the pane is the chat
+  own, grouped by its machine like any session. It has **no terminal**: the pane is the chat
   always, there is no Terminal | Chat switch, `chat-toggle` does nothing, the terminal slot holds a one-line note
   (`NoTerminalNote`), and nothing that needs a pane number (find, restart, paste, broadcast, typed answers, the
   worktree menu, Inspect) is offered for it. Its composer is on (send, queue with Remove, Stop, attachments); an
   approval is answered by request id (y / a / n) and a user-input request by a form (`UserInputForm`), so neither
   points to a terminal.
-  **A new session** (the sidebar +, Ctrl/Cmd+T) starts the default
-  agent (Settings › General › Chat view › **Default agent**, Claude or Codex) in a new shell the daemon owns and types
-  the agent's command into it, and opens the pane in the view **New sessions open as** names (Chat by default). It is
+  **A new session** (the New session dialog, or New agent chat) starts the chosen
+  agent (Settings › General › Chat view › **Default agent**, Claude or Codex, unless the dialog picks the other) in a new
+  shell the daemon owns and types the agent's command into it, and opens the pane in the view **New sessions open as**
+  names (Chat by default). It is
   one session either way: **the switch between Terminal and Chat never restarts the agent**
   ([ADR 0003](adr/0003-status-and-conversation-trust.md), v18 B.3). The chat reads the
   agent's own transcript (ADR 0003), and its composer **types into the agent's terminal** as one bracketed paste and
@@ -778,15 +760,17 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   **Stop** sends Esc, and while it asks something in the terminal the chat shows a card, built from the agent's own
   `PermissionRequest` hook and never the screen: "<agent> wants to use <tool>" and one line of what it acts on. For
   Claude the card has **Approve once** (sends `1`) and **Deny** (sends Esc); for an agent whose answer keys are not
-  verified (Codex) it says "Answer in the terminal." and sends nothing. The composer stays off while the card shows,
-  because typed text would answer that prompt. Attachments are off for it. **New terminal** (the sidebar button, Ctrl/Cmd+Shift+T,
+  verified (Codex) it says "Answer in the terminal." and sends nothing. The card is the message box's question tray
+  ("Yes, once" sends `1`, "No" sends Esc). The box stays off while the tray shows, because typed text would answer
+  that prompt. Attachments are off for it. **New terminal** (the sidebar button, Ctrl/Cmd+Shift+T,
   a project's **New terminal here**, the palette) is a plain shell with no chat view. A chat session of ADR 0003, with
   no terminal, still starts from a shell's empty chat card (**Start a Claude chat** / **Start a Codex chat**) and
   stops the agent when closed (`closeChatSession`: end, then put away; if the stop fails it stays open).
 - **Choosing the agent for one session.** A small chevron beside the sidebar's + opens **New Claude chat** / **New Codex chat**
   (the default is marked); the + still starts the default from Settings. It starts the chosen agent in the start folder and
   opens in the view Settings names. Beside a session on another machine it opens the New session modal on that machine, as + does.
-- **Agent, model and reasoning.** Under the composer a button reads `Claude · Default · Default` and opens one popover with
+- **Agent, model and reasoning.** In the message box a button names the agent's mark, the model (the one picked, else
+  the one the agent's own file says, else just the agent) and the effort, and opens one popover with
   three radio columns (`AgentPicker`): Agent (the other agent is greyed out with "Fixed for this chat · start a new chat
   to use Codex"), Model (the agent's list, a one-line description each) and Reasoning (Default, then Low, Medium, High,
   Max with a four-bar meter). Picking ticks the choice and leaves the popover open; Esc or a click outside closes it; the
@@ -854,11 +838,12 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   dropped after 20 s rather than left standing as sent. The **working line** says what the agent is doing from the newest
   step still running (`workPhase.ts`): "reading src/app.ts", "writing hello.txt", "running npm test", "thinking". It says
   only what the history says.
-- **Mode and model.** A chip in the chat header says how Claude is set up, from its own transcript and never a guess:
-  the permission mode (`Auto`, `Plan`, `Accept edits`, `Default`) then the model (`sonnet 5.5`). `Bypass permissions` is drawn
-  in the danger colour, like Full access. It is read-only: the mode cycles with Shift+Tab in the terminal and the model with
-  `/model`, and the chip follows at the agent's next line in its file. Nothing shows until the file has said it, and a
-  Codex chat shows none yet (`chatMeta.ts`, `SessionMeta` in the read result).
+- **Mode and model.** The settings tray under the message box says how Claude is set up, from its own transcript and
+  never a guess: the permission mode (`Ask before running`, `Auto`, `Plan`, `Accept edits`; `Bypass permissions` in the
+  danger colour, like Full access), "Permissions" until the file has said one. A chat that follows a terminal agent names
+  its model in the box ("Claude Sonnet 5.5") since it cannot pick one. Both are read-only: the mode cycles with Shift+Tab in
+  the terminal and the model with `/model`, and they follow at the agent's next line in its file. A Codex chat shows none
+  yet (`chatMeta.ts`, `SessionMeta` in the read result).
 - **Composer.** `useChatComposer` sends through the conversation's own send (`send_conversation`) with an operation
   number (the receipt's plus one; a failed send is retried with the same number so the daemon can tell a retry from a
   new message). Enter sends, Shift+Enter adds a line (not while an input method is composing), Esc or Stop interrupts
@@ -891,9 +876,10 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
 - **Read-only chat.** For a link with `readOnly` the composer is off with "Read-only: talk to the agent in the
   terminal" as its placeholder, and offers no Stop or queue wording; the daemon refuses send, approve and cancel
   for such a conversation. The history and status still follow the agent.
-- **Approvals.** The card answers through `approve_conversation` by request id and then reads "You answered: ...",
-  with the buttons gone. While it is pending and focused, `y` (once), `a` (this session) and `n` (no) answer it, the
-  same letters as typing into the terminal, which stays a working fallback. The daemon's `answered_approvals` are
+- **Approvals.** A pending request is the message box's question tray (`QuestionTray.tsx`), not a row of the list; it
+  answers through `approve_conversation` by request id, and the request then shows in the list as "You answered: ...",
+  with the buttons gone. While it is pending, `y` (once), `a` (this session) and `n` (no) answer it from anywhere in the
+  chat but a field, the same letters as typing into the terminal, which stays a working fallback. The daemon's `answered_approvals` are
   read with every page, so a request answered in the terminal or in another window shows as answered with the real
   choice, even when this chat was opened afterwards. The card names the tool step it is about (`item_id`) and its
   "For: ..." link scrolls the list to that step. A request that asks the person a question (`UserInput`) is answered

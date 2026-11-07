@@ -4,6 +4,7 @@ import { CHAT_AGENTS, noChatReason, type ChatAgent, type ChatAvailability } from
 import { Button } from '@/components/ui/button'
 import type { PermissionAsk } from '@/data/preview'
 import type { SessionStatus } from '@/features/workspace/model/session'
+import type { SubagentView } from '@/features/workspace/model/subagents'
 import { FULL_ACCESS_LABEL, FULL_ACCESS_WARNING } from '../fullAccess'
 import { ChatSession } from './ChatSession'
 import { StartingChat } from './StartingChat'
@@ -35,6 +36,15 @@ export type ChatPaneProps = {
   onStartChat?: (agent: ChatAgent, fullAccess: boolean) => void
   /** Whether the full-access switch next to the start buttons starts on (the desktop setting). */
   defaultFullAccess?: boolean
+  /** The project folder's name and the branch, for the tray under the message box. */
+  folder?: string
+  branch?: string | null
+  subagentCount?: number
+  /** A subagent whose own chat shows instead of the session's, and the way back. */
+  subagent?: SubagentView | null
+  onBackToMain?: () => void
+  /** Shows the session's files beside the pane. */
+  onOpenFiles?: () => void
 }
 
 /**
@@ -46,9 +56,29 @@ export function ChatPane(props: ChatPaneProps) {
   return (
     <section className="mx-chat-layer mx-chat-in" aria-label="Chat">
       {availability.kind === 'ready'
-        ? <ChatSession key={availability.link.conversation} link={availability.link} agent={availability.agent} online={props.online} hasTerminal={props.hasTerminal ?? true} root={props.root ?? null} onOpenDiff={props.onOpenDiff ?? null} typeInto={props.typeInto} ask={props.ask ?? null} {...(props.sessionId === undefined ? {} : { sessionId: props.sessionId })} {...(props.paneStatus === undefined ? {} : { paneStatus: props.paneStatus })} />
+        ? (
+          <ChatSession
+            key={availability.link.conversation}
+            link={availability.link}
+            agent={availability.agent}
+            online={props.online}
+            hasTerminal={props.hasTerminal ?? true}
+            root={props.root ?? null}
+            onOpenDiff={props.onOpenDiff ?? null}
+            typeInto={props.typeInto}
+            ask={props.ask ?? null}
+            folder={props.folder ?? ''}
+            branch={props.branch ?? null}
+            subagentCount={props.subagentCount ?? 0}
+            subagent={props.subagent ?? null}
+            onOpenFolder={props.onOpenFiles ?? null}
+            {...(props.onBackToMain === undefined ? {} : { onBackToMain: props.onBackToMain })}
+            {...(props.sessionId === undefined ? {} : { sessionId: props.sessionId })}
+            {...(props.paneStatus === undefined ? {} : { paneStatus: props.paneStatus })}
+          />
+        )
         : availability.kind === 'no-events' && props.sessionId !== undefined
-          ? <StartingChat agent={availability.agent} sessionId={props.sessionId} onBackToTerminal={props.onBackToTerminal} />
+          ? <StartingChat agent={availability.agent} sessionId={props.sessionId} onBackToTerminal={props.onBackToTerminal} folder={props.folder ?? ''} branch={props.branch ?? null} />
           : <NoChat {...props} availability={availability} />}
     </section>
   )

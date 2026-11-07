@@ -3,6 +3,7 @@ import {
   activeArrangement,
   dropSession,
   setColumnWidths,
+  setPaneHeights,
   toggleBroadcast,
   cycleFocus,
   EMPTY_LAYOUT,
@@ -289,5 +290,35 @@ describe('dropping a session on a pane', () => {
     const { layout } = withPanes('a', 'b')
     const first = activeArrangement(layout)?.panes[0]?.id ?? ''
     expect(cols(dropSession(layout, first, 'z'))).toEqual(['z@0', 'b@1'])
+  })
+})
+
+describe('mixed splits', () => {
+  it('gives a pane split right half of its column’s width', () => {
+    const { layout, makeId } = withPanes('a', 'b')
+    const three = splitPane(layout, null, 'right', 'c', makeId)
+    expect(activeArrangement(three)?.widths).toEqual([0.5, 0.25, 0.25])
+  })
+
+  it('gives a pane split down half of its pane’s height, in a column of its own', () => {
+    const { layout, makeId } = withPanes('a', 'b')
+    const stacked = splitPane(layout, null, 'down', 'c', makeId)
+    const twice = splitPane(stacked, null, 'down', 'd', makeId)
+    expect(activeArrangement(twice)?.panes.map((pane) => [pane.sessionId, pane.col, pane.h])).toEqual([['a', 0, undefined], ['b', 1, undefined], ['c', 1, 0.5], ['d', 1, 0.5]])
+  })
+
+  it('sets the heights of one column’s panes, and evens them out again', () => {
+    const { layout, makeId } = withPanes('a')
+    const stacked = splitPane(layout, null, 'down', 'b', makeId)
+    const tab = activeArrangement(stacked)
+    if (!tab) throw new Error('no tab')
+    const sized = setPaneHeights(stacked, tab.id, 0, [300, 100])
+    expect(activeArrangement(sized)?.panes.map((pane) => pane.h)).toEqual([300, 100])
+    expect(activeArrangement(setPaneHeights(sized, tab.id, 0, null))?.panes.map((pane) => pane.h)).toEqual([undefined, undefined])
+  })
+
+  it('keeps a stored pane height when it reads a saved layout back', () => {
+    const saved = parseLayout({ activeId: 't', arrangements: [{ id: 't', focus: 'p1', max: null, panes: [{ id: 'p1', sessionId: 'a', col: 0, h: 2 }, { id: 'p2', sessionId: 'b', col: 0, h: -1 }] }] })
+    expect(activeArrangement(saved)?.panes.map((pane) => pane.h)).toEqual([2, undefined])
   })
 })

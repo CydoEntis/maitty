@@ -17,7 +17,6 @@ const daemon = vi.hoisted(() => ({
   archiveConversationOnDaemon: vi.fn(),
   renameConversationOnDaemon: vi.fn(),
   markSeenOnDaemon: vi.fn(() => Promise.resolve()),
-  pinSessionOnDaemon: vi.fn(),
   loadDaemonRestartStatus: vi.fn(),
   restartMismatchedDaemon: vi.fn(),
   suggestProjectFolders: vi.fn(() => Promise.resolve([] as string[])),
@@ -117,8 +116,19 @@ describe('the Terminal | Chat view of a pane', () => {
     terminal.focused.length = 0
     forgetChatFeeds()
     forgetComposers()
+    // These tests switch a pane between its views, so agents start in the terminal here; the default (the chat) has its own test.
+    window.localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ chatViewDefault: { claude: 'terminal', codex: 'terminal' } }))
     daemon.defaultSessionFolder.mockResolvedValue(HOME)
     daemon.loadDaemonRestartStatus.mockResolvedValue({ daemonProtocol: 49, guiProtocol: 59, canRestart: false, sessionCount: 1, activeTurnCount: 0 })
+  })
+
+  it('opens an agent as its chat when no view was chosen', async () => {
+    window.localStorage.clear()
+    daemon.loadConversations.mockResolvedValue([claude(2)])
+    renderDesktopApp()
+    const pane = await screen.findByRole('region', { name: /^Terminal 1/ })
+    expect(within(pane).getByRole('radio', { name: /^Chat view/ })).toBeChecked()
+    expect(within(pane).getByRole('region', { name: 'Chat' })).toBeInTheDocument()
   })
 
   it('switches to the chat and back with the button and Ctrl+Shift+E, sending nothing to the daemon and keeping the terminal mounted', async () => {
@@ -229,7 +239,7 @@ describe('the Terminal | Chat view of a pane', () => {
     await waitFor(() => { expect(box).toBeDisabled() })
     expect(box).toHaveAttribute('placeholder', 'Answer the request above first')
 
-    await user.click(within(pane).getByRole('button', { name: 'Yes, once (y)' }))
+    await user.click(within(pane).getByRole('button', { name: /^Yes, once/ }))
     expect(daemon.approveRequest).toHaveBeenCalledWith({ id: '42', generation: 1 }, 'req-1', 'Accept')
     await waitFor(() => { expect(box).not.toBeDisabled() })
     history.approvals = []

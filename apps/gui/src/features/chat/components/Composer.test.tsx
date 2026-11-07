@@ -137,13 +137,13 @@ describe('while a request waits for an answer', () => {
 
     expect(box).toBeDisabled()
     expect(box).toHaveAttribute('placeholder', PENDING_APPROVAL_NOTE)
-    expect(screen.getByRole('group', { name: /Approval/ })).toHaveTextContent('rm -rf build')
+    expect(screen.getByRole('region', { name: /Approval/ })).toHaveTextContent('rm -rf build')
   })
 
   it('answers through the daemon by request id, then shows the choice and turns the composer back on', async () => {
     const { daemon, user, box } = await open((setup) => { setup.status = 'Blocked'; setup.approvals = pending })
 
-    await user.click(screen.getByRole('button', { name: 'This session (a)' }))
+    await user.click(within(screen.getByRole('region', { name: /Approval/ })).getByRole('button', { name: /This session/ }))
 
     await settle()
     expect(fake.approveRequest).toHaveBeenCalledWith(TARGET, 9, 'AcceptForSession')

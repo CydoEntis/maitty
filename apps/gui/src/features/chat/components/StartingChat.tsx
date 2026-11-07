@@ -15,6 +15,9 @@ type StartingChatProps = {
   /** The session this chat belongs to: its held message and draft are kept under it. */
   sessionId: string
   onBackToTerminal: () => void
+  /** The project folder's name and the branch, for the tray under the message box. */
+  folder?: string
+  branch?: string | null
 }
 
 /**
@@ -23,7 +26,7 @@ type StartingChatProps = {
  * box are there at once. A message sent now is held and goes out when the real chat takes over; a
  * half-typed one is carried across.
  */
-export function StartingChat({ agent, sessionId, onBackToTerminal }: StartingChatProps) {
+export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', branch = null }: StartingChatProps) {
   const [draft, setDraftState] = useState('')
   const held = useHeldFirstMessage(sessionId)
   const [late, setLate] = useState(false)
@@ -58,16 +61,15 @@ export function StartingChat({ agent, sessionId, onBackToTerminal }: StartingCha
   }), [draft, held, sessionId])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-8 shrink-0 items-center gap-2 border-b border-line2 px-4 text-[12px] text-fg2">
-        <span className="font-semibold text-fg">Starting {agent}…</span>
-        {late && <span role="note" className="text-[var(--warn)]">{noEventsHint(agent)}</span>}
-        <button type="button" className="ml-auto text-dim underline-offset-2 hover:text-fg hover:underline" onClick={onBackToTerminal}>Back to terminal</button>
+    <div className="mx-chat">
+      <div className="mx-chat-notices">
+        <span className="mx-chat-starting">Starting {agent}…</span>
+        {late && <span role="note" className="is-warn">{noEventsHint(agent)}</span>}
+        <span className="mx-spacer" />
+        <button type="button" className="mx-sub-back" onClick={onBackToTerminal}>Back to terminal</button>
       </div>
-      <p className="m-0 flex flex-1 items-center justify-center px-6 text-center text-[13px] text-dim">
-        No messages yet. Type below: it is sent as soon as {agent} is ready.
-      </p>
-      <Composer agent={agent} composer={composer} />
+      <p className="mx-chat-empty">No messages yet. Type below: it is sent as soon as {agent} is ready.</p>
+      <Composer agent={agent} composer={composer} facts={{ mode: null, modeDanger: false, subagents: 0, folder, branch, model: null, onOpenFolder: null }} />
     </div>
   )
 }
