@@ -260,10 +260,10 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   already used there is refused; a machine that is away is dimmed with its + disabled) and under it a 34px row
   per fleet: a 22px initials tile in the fleet's colour with an amber needs-you count, the name and up to three
   stacked 18px app icons (Claude first, then Codex, then shells, ringed and overlapping 5px) then `+N`. The
-  selected fleet is tinted with its colour; double-click or F2 renames it. **SHIPS** (with a count and the
+  selected fleet is tinted with its colour; double-click or F2 renames it, and a right-click opens its menu: Rename and a Colour row of the six fleet swatches (teal, violet, blue, green, pink, orange; the chosen one ringed, never amber or red). A ship dragged over a fleet row on the same machine tints the row with its colour and a 1.5px ring, and dropping moves the ship there; the ship menu's Move to fleet list does the same from the keyboard. There is no Close fleet: the window offers no way to end every ship of a fleet at once. **SHIPS** (with a count and the
   Fleets | Priority switch) shows the selected fleet's ships in **Agents · N** (the app tile with its status
   badge, the name, a branch line in `--ansi-mag` mono 10.5, and at the right a terminal or chat mark with
-  "worktree" under it when the fleet is one) and **Shells · N** (a grey tile, the name, a folder line in dim
+  "worktree" under it when the daemon says the ship runs in a linked worktree) and **Shells · N** (a grey tile, the name, a folder line in dim
   mono, never a branch). Priority lists every agent across fleets under Needs you, Exited, Working, Done and
   Idle, each row naming its fleet. A ship row is 40px; the selected one is `--raise`. Rows show no diff counts
   and no folder badge. An empty fleet says "Nothing aboard yet. Use + to start a session."; a filter that finds
@@ -271,9 +271,10 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   folds with `grid-template-rows` 1fr to 0fr over .3s (`cubic-bezier(.2,.8,.2,1)`) and a .22s fade, the carets
   turn 90° in .2s, folded content is `inert` and `aria-hidden`, and Reduce motion removes the movement; groups
   of ships sit 16px apart. The footer holds the version or the update button and the Settings gear. Ships drag
-  onto a pane. The **rail** (60px) holds the expand button, the three starters and the Inbox stacked, one 36px
+  onto a pane or a fleet row (the tabs drag too). The **rail** (60px) holds the expand button, the three starters and the Inbox stacked, one 36px
   tile per fleet (its initials, its colour, the needs-you count; the selected one is tinted), then the update
-  button and the Settings gear. **Hover cards** open beside a ship row on hover or keyboard focus after 280ms
+  button and the Settings gear. A fleet tile's hover card names the fleet and its machine, counts its ships and
+  spells out the exact request of each ship that needs you (three, then "and N more"). **Hover cards** open beside a ship row on hover or keyboard focus after 280ms
   (instantly once one is open), 10px to its right with an arrow, and close 160ms after the pointer leaves
   both: the folder and name, the status word, the path, the machine and the exact request when the ship asks,
   else its state. Choosing a ship focuses its pane where it is shown, else it gets a tab of its own. The

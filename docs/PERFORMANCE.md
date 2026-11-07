@@ -247,6 +247,10 @@ Still owed: the hub's state messages, so that scenario `e` lists its four panes 
 
 ## Status effects and adaptive animations (2026-11-04)
 
+Record only: Waves, Sweep, the Animations setting and the frame-time checks that stepped them down were
+removed with the flat-list redesign, and status marks play once or not at all. The numbers below stay as the
+measurement they were.
+
 Waves (Settings › Appearance › Motion) are the one deliberate loop: a 200%-wide SVG layer per band
 translating -50% with `transform` only, in a clipped child of the row or tab. Auto starts at Waves
 with WebGL 2 and at Sweep without it, samples frame times (3 s, 2 s after launch and again when Waves
