@@ -255,6 +255,20 @@ fn machine_update_needs_a_configured_machine_and_never_runs_ssh_for_anything_els
 }
 
 #[test]
+fn machine_update_with_hold_says_why_it_ended_and_waits_for_enter() {
+    let sandbox = Sandbox::new();
+    let out = usage(&sandbox, &["machine", "update", "bild", "--hold"]);
+    let said = text(&out.stderr);
+    assert_eq!(out.status.code(), Some(2), "{said}");
+    let reason = said
+        .find(r#"unknown machine "bild""#)
+        .expect("the reason is said");
+    let prompt = said.find("Press Enter to close.").expect("it waits");
+    assert!(reason < prompt, "the reason comes before the wait: {said}");
+    assert_eq!(said.matches("unknown machine").count(), 1, "said once: {said}");
+}
+
+#[test]
 fn restart_if_idle_with_no_server_says_so_and_starts_nothing() {
     let sandbox = Sandbox::new();
     let mut command = sandbox.local(MAITTY);

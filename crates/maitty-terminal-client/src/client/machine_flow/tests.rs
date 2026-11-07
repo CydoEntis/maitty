@@ -826,15 +826,16 @@ fn the_dialog_lists_your_machines_and_its_keys_update_and_remove_the_chosen_one(
         h.type_text("r");
         assert_eq!(h.view().query, "r", "in the input a letter is typed");
 
-        // `u` runs the update in a popup on this computer, with --install for a machine that
-        // has no app, and the machine is dialled when the popup closes.
+        // `u` runs the update in a popup on this computer, and the machine is dialled when the
+        // popup closes. No --install: its question there is the consent, and --hold keeps the
+        // result on screen until Enter.
         h.open(Vec::new());
         h.key(KeyCode::Up);
         h.type_text("u");
         let popups = h.popups();
         let (machine, cmd) = popups.last().expect("a popup");
         assert_eq!(*machine, MachineId::LOCAL);
-        assert!(cmd.ends_with(" machine update box --install"), "{cmd}");
+        assert!(cmd.ends_with(" machine update box --hold"), "{cmd}");
         assert!(
             !matches!(h.app.mode, Mode::Machines(_)),
             "the popup takes the keys, so the dialog is closed"

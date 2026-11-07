@@ -11,7 +11,7 @@ use super::*;
 use crate::client::link::ConnectionState;
 use crate::client::machine_config;
 use crate::client::machine_ids;
-use crate::link_failure::{FIX_INSTALL, FailureClass};
+use crate::link_failure::FailureClass;
 use crate::machine_probe::{self, Probe};
 use maitty_settings::config::MachineDef;
 use std::collections::HashSet;
@@ -296,24 +296,19 @@ impl App {
         Ok(())
     }
 
-    /// Run `machine update` for a configured machine in a popup on this computer, where it asks
-    /// before it installs. The machine is dialled again when the popup closes.
+    /// Run `machine update` for a configured machine in a popup on this computer, where it says
+    /// what it found and asks before it installs or replaces anything; the result stays there
+    /// until Enter. The machine is dialled again when the popup closes.
     pub(in crate::client) fn machine_update(&mut self, name: &str) -> MachineNotice {
         let Some(def) = self.configured(name) else {
             return say(format!("{name} is not in your machines."), true);
         };
-        let install = self.machine_id_named(&def.name).is_some_and(|id| {
-            matches!(
-                self.remotes.get(&id).map(|r| &r.state),
-                Some(ConnectionState::NeedsUpdate { why }) if why == FIX_INSTALL
-            )
-        });
         let program = std::env::current_exe()
             .ok()
             .and_then(|exe| exe.to_str().map(str::to_string))
             .unwrap_or_else(|| env!("APP_COMMAND").to_string());
         let machine = ipc::Machine::from_def_via(&def, &self.machine_flow.ssh);
-        let cmd = match machine.update_command(&program, install) {
+        let cmd = match machine.update_command(&program) {
             Ok(cmd) => cmd,
             Err(e) => {
                 return say(
