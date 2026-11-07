@@ -34,7 +34,8 @@ pub use machine::{
     SSH_PROGRAM, hello, open_remote, other_version,
 };
 pub use remote_scripts::{
-    INSTALL_SCRIPT, PASTE_MARKER, PASTE_SCRIPT, PLATFORM_SCRIPT, WHERE_SCRIPT,
+    GET_MARKER, GET_MISSING, GET_NOT_A_FILE, GET_READ_FAILED, GET_SCRIPT, GET_TOO_BIG,
+    GET_UNREADABLE, INSTALL_SCRIPT, PASTE_MARKER, PASTE_SCRIPT, PLATFORM_SCRIPT, WHERE_SCRIPT,
 };
 
 /// Windows: start a console program without opening a console window.

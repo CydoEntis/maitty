@@ -51,6 +51,8 @@ pub(crate) enum SshCommandError {
     CannotQuote(String),
     /// A pasted file's name must be a plain word that cannot be a path or an option.
     BadPasteName(String),
+    /// A path to read on the far side: not empty, not too long, nothing that is not text.
+    BadRemotePath(String),
 }
 
 impl std::fmt::Display for SshCommandError {
@@ -78,6 +80,10 @@ impl std::fmt::Display for SshCommandError {
             CannotQuote(word) => write!(
                 f,
                 "{word:?} cannot be passed safely to a shell; run ssh to that machine in a terminal once to log in"
+            ),
+            BadRemotePath(path) => write!(
+                f,
+                "{path:?} is not a path a file can be read from: it must be 1 to {MOST_REMOTE_PATH_BYTES} bytes with no control characters"
             ),
             BadPasteName(name) => write!(
                 f,
@@ -266,6 +272,31 @@ pub(crate) fn ssh_argv_install(
 /// The longest name a pasted or sent file may have: the 28-character stamp and salt (ADR 0007)
 /// and the 48 kept of the original name fit with room to spare.
 const PASTE_NAME_MAX: usize = 96;
+
+/// The longest path to read on the far side.
+const MOST_REMOTE_PATH_BYTES: usize = 4096;
+
+/// Runs the get script on the far side: it prints the file at `path`, refusing one over
+/// `max_bytes`. Both reach it as arguments, never as part of its text.
+pub(crate) fn ssh_argv_get(
+    ssh: &[String],
+    target: &str,
+    path: &str,
+    max_bytes: u64,
+) -> Result<Vec<String>, SshCommandError> {
+    validate_target(target)?;
+    if path.is_empty()
+        || path.len() > MOST_REMOTE_PATH_BYTES
+        || path.chars().any(char::is_control)
+    {
+        return Err(BadRemotePath(path.chars().take(80).collect()));
+    }
+    let remote = sh_script(
+        crate::remote_scripts::GET_SCRIPT,
+        &[path, &max_bytes.to_string()],
+    );
+    Ok(build(ssh, target, remote, Shape::PROXY))
+}
 
 /// Runs the paste script on the far side; the image goes in on stdin. `name` and `bytes` are
 /// its two arguments.
@@ -996,5 +1027,33 @@ mod tests {
         let argv = ssh_argv_activity(&args(&["ssh"]), "box", "~/.local/bin/maitty").unwrap();
         assert_eq!(argv.last().unwrap(), "~/'.local/bin/maitty' activity");
         assert!(ssh_argv_activity(&args(&["ssh"]), "box", "").is_err());
+    }
+
+    #[test]
+    fn the_get_line_passes_the_path_and_the_cap_as_the_last_two_quoted_words() {
+        let path = "~/out dir/it's $HOME `x` -n.log";
+        let line = ssh_argv_get(&args(&["ssh"]), "box", path, 1000).unwrap();
+        let remote = line.last().unwrap();
+        assert!(
+            remote.ends_with(&format!(" sh {} '1000'", quote_word(path))),
+            "{remote}"
+        );
+        assert!(
+            !remote.replace(&quote_word(path), "").contains("`x`"),
+            "the path never appears outside its quotes"
+        );
+    }
+
+    #[test]
+    fn a_path_that_is_empty_too_long_or_holds_control_characters_is_refused_before_ssh() {
+        let get = |path: &str| ssh_argv_get(&args(&["ssh"]), "box", path, 1);
+        assert!(get("").is_err());
+        assert!(get("a\nb").is_err());
+        assert!(get("a\0b").is_err());
+        assert!(get("a\u{1b}[31mb").is_err());
+        assert!(get(&"a".repeat(4097)).is_err());
+        assert!(get(&"a".repeat(4096)).is_ok());
+        assert!(get("-rf").is_ok(), "a leading dash is a file name, the script uses --");
+        assert!(ssh_argv_get(&args(&["ssh"]), "-oProxyCommand=x", "a", 1).is_err());
     }
 }

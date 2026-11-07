@@ -243,6 +243,18 @@ impl Machine {
         )?)
     }
 
+    /// The line that makes this machine print the file at `path` (see `GET_SCRIPT`), refusing
+    /// one over `max_bytes`.
+    pub fn get_argv(&self, path: &str, max_bytes: u64) -> Result<Vec<String>> {
+        let route = self.ssh_route()?;
+        Ok(ssh_command::ssh_argv_get(
+            &route.ssh,
+            &route.target,
+            path,
+            max_bytes,
+        )?)
+    }
+
     /// The line that has the app installed at `program` there restart its daemon if idle, or
     /// with `now` also when its sessions are saved.
     pub fn restart_if_idle_argv(&self, program: &str, now: bool) -> Result<Vec<String>> {
