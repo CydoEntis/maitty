@@ -86,6 +86,9 @@ pub fn allow(opts: &MachineOpts, msg: &ServerMsg) -> Verdict {
         ServerMsg::AskRemoveWorktree { .. } => {
             Verdict::Ignore("a worktree prompt names a folder on this computer")
         }
+        ServerMsg::SettingsChanged(_) => {
+            Verdict::Ignore("the settings shown are this computer's, not another machine's")
+        }
         ServerMsg::AutoWorkspace(_) => {
             Verdict::Ignore("a new workspace here is not another machine's to announce")
         }
@@ -326,6 +329,18 @@ mod tests {
                 text: "x".into(),
             },
             ServerMsg::AutoWorkspace("api".into()),
+            ServerMsg::SettingsChanged(maitty_shared::settings_view::SharedSettings {
+                default_agent: "claude".into(),
+                new_session_view: Default::default(),
+                sidebar_side: Default::default(),
+                theme_dark: "night".into(),
+                theme_light: "day".into(),
+                appearance: Default::default(),
+                spinner: Vec::new(),
+                start_dir: String::new(),
+                reduce_motion: false,
+                window_style: Default::default(),
+            }),
             ServerMsg::Raise,
             ServerMsg::Bye,
         ]
@@ -345,6 +360,7 @@ mod tests {
             ServerMsg::AskRemoveWorktree { .. } => "AskRemoveWorktree",
             ServerMsg::Clipboard { .. } => "Clipboard",
             ServerMsg::AutoWorkspace(_) => "AutoWorkspace",
+            ServerMsg::SettingsChanged(_) => "SettingsChanged",
             ServerMsg::Raise => "Raise",
             ServerMsg::Bye => "Bye",
         }
@@ -389,6 +405,7 @@ mod tests {
                 "AskRemoveWorktree",
                 "Clipboard",
                 "AutoWorkspace",
+                "SettingsChanged",
                 "Raise"
             ]
         );

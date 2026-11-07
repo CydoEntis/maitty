@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 73;
+pub const PROTOCOL_VERSION: u32 = 74;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -467,6 +467,12 @@ pub enum Command {
         color: u8,
     },
     ReloadConfig,
+    /// Change one shared setting in config.toml (human clients only). The daemon checks the
+    /// value, edits the file in place, reloads, and tells every client `SettingsChanged`.
+    SetSetting {
+        key: crate::settings_view::SettingKey,
+        value: crate::settings_view::SettingValue,
+    },
     /// The program running in `term` is an agent: add it to config (by its program, or by
     /// its script when node/python runs it) so its status shows.
     TeachAgent {
@@ -566,6 +572,8 @@ pub enum Command {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Query {
+    /// The shared settings; answered with `Reply::Settings`.
+    Settings,
     ConversationRead {
         id: crate::conversation::ConversationId,
         cursor: Option<crate::conversation::history::Cursor>,
@@ -781,6 +789,8 @@ pub enum ServerMsg {
     },
     /// An agent started in a new repo, which became a workspace (undoable).
     AutoWorkspace(String),
+    /// A shared setting changed (by either app); the settings as they are now.
+    SettingsChanged(crate::settings_view::SharedSettings),
     /// Come to the front: a notification for one of this server's sessions was clicked.
     Raise,
     Bye,
@@ -788,6 +798,7 @@ pub enum ServerMsg {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Reply {
+    Settings(crate::settings_view::SharedSettings),
     ConversationStarted {
         id: crate::conversation::ConversationId,
         generation: u64,
@@ -1990,7 +2001,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 73);
+        assert_eq!(PROTOCOL_VERSION, 74);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -2164,6 +2175,93 @@ mod tests {
             assert!(decode::<OldCommand>(&bytes).is_err());
             assert!(decode::<Command>(&bytes).is_ok());
         }
+    }
+
+    fn sample_settings() -> crate::settings_view::SharedSettings {
+        use crate::settings_view::*;
+        SharedSettings {
+            default_agent: "claude".into(),
+            new_session_view: NewSessionView::Terminal,
+            sidebar_side: SidebarSide::Right,
+            theme_dark: "night".into(),
+            theme_light: "day".into(),
+            appearance: Appearance::Light,
+            spinner: vec!["a".into(), "b".into()],
+            start_dir: "C:\\Users\\me\\code".into(),
+            reduce_motion: true,
+            window_style: WindowStyle::Glass,
+        }
+    }
+
+    #[test]
+    fn settings_round_trip_through_the_codec() {
+        use crate::settings_view::*;
+        let settings = sample_settings();
+        let bytes = encode(&ServerMsg::Reply(Reply::Settings(settings.clone()))).unwrap();
+        match decode::<ServerMsg>(&bytes).unwrap() {
+            ServerMsg::Reply(Reply::Settings(back)) => assert_eq!(back, settings),
+            other => panic!("{other:?}"),
+        }
+        let bytes = encode(&ServerMsg::SettingsChanged(settings.clone())).unwrap();
+        match decode::<ServerMsg>(&bytes).unwrap() {
+            ServerMsg::SettingsChanged(back) => assert_eq!(back, settings),
+            other => panic!("{other:?}"),
+        }
+        round_trips(&ClientMsg::Query(Query::Settings));
+        for (key, value) in [
+            (SettingKey::ReduceMotion, SettingValue::Bool(true)),
+            (SettingKey::Spinner, SettingValue::List(vec!["x".into()])),
+            (SettingKey::StartDir, SettingValue::Text("~/code".into())),
+            (
+                SettingKey::WindowStyle,
+                SettingValue::WindowStyle(WindowStyle::Glass),
+            ),
+        ] {
+            let command = Command::SetSetting {
+                key,
+                value: value.clone(),
+            };
+            let bytes = encode(&ClientMsg::Command(command)).unwrap();
+            match decode::<ClientMsg>(&bytes).unwrap() {
+                ClientMsg::Command(Command::SetSetting { key: k, value: v }) => {
+                    assert_eq!((k, v), (key, value));
+                }
+                other => panic!("{other:?}"),
+            }
+        }
+    }
+
+    /// The settings messages are new variants: a peer built before them can't read them.
+    #[test]
+    fn a_peer_from_before_the_settings_messages_cannot_read_them() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldCommand {
+            RenamePane { term: TermId, name: String },
+        }
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldQuery {
+            UsageReport,
+        }
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldServerMsg {
+            Bye,
+        }
+        let command = Command::SetSetting {
+            key: crate::settings_view::SettingKey::ReduceMotion,
+            value: crate::settings_view::SettingValue::Bool(true),
+        };
+        let bytes = encode(&command).unwrap();
+        assert!(decode::<OldCommand>(&bytes).is_err());
+        assert!(decode::<Command>(&bytes).is_ok());
+        let bytes = encode(&Query::Settings).unwrap();
+        assert!(decode::<OldQuery>(&bytes).is_err());
+        assert!(decode::<Query>(&bytes).is_ok());
+        let bytes = encode(&ServerMsg::SettingsChanged(sample_settings())).unwrap();
+        assert!(decode::<OldServerMsg>(&bytes).is_err());
+        assert!(decode::<ServerMsg>(&bytes).is_ok());
     }
 
     #[test]

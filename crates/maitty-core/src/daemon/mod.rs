@@ -815,6 +815,16 @@ impl Daemon {
                 anyhow::bail!("Only a human client can remove a queued message")
             }
             Command::ConversationDequeue { .. } => self.may(client, Grant::Write, None),
+            Command::SetSetting { .. }
+                if structured
+                    || self
+                        .clients
+                        .get(&client)
+                        .is_some_and(|client| client.from.is_some()) =>
+            {
+                anyhow::bail!("Only a human client can change settings")
+            }
+            Command::SetSetting { .. } => Ok(()),
             Command::ConversationRename { .. } | Command::ConversationArchive { .. }
                 if structured
                     || self
@@ -2485,6 +2495,16 @@ impl Daemon {
                         }) =>
                     {
                         ServerMsg::Error("Only a human client can read usage".into())
+                    }
+                    Query::Settings
+                        if self.clients.get(&client).is_some_and(|client| {
+                            client.from.is_some() || client.structured.is_some()
+                        }) =>
+                    {
+                        ServerMsg::Error("Only a human client can read settings".into())
+                    }
+                    Query::Settings => {
+                        ServerMsg::Reply(Reply::Settings(crate::shared_settings::read(&self.cfg)))
                     }
                     Query::UsageReport { period } => {
                         ServerMsg::Reply(Reply::UsageReport(self.usage_report(period)))

@@ -911,8 +911,22 @@ impl Daemon {
                     .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?
                     .grants = grants;
             }
+            Command::SetSetting { key, value } => {
+                crate::shared_settings::apply(key, value)?;
+                self.command(client, Command::ReloadConfig)?;
+            }
             Command::ReloadConfig => {
+                let before = crate::shared_settings::read(&self.cfg);
                 self.cfg = Config::load()?;
+                let after = crate::shared_settings::read(&self.cfg);
+                if after != before {
+                    // Whoever changed them (either app, or a hand edit followed by a reload),
+                    // every window shows the new ones at once.
+                    self.broadcast(
+                        |c| c.attach && c.from.is_none(),
+                        ServerMsg::SettingsChanged(after),
+                    );
+                }
                 self.configure_conversation_cache()?;
                 self.drop_saved_outputs();
                 self.agents = self.cfg.agent_defs();

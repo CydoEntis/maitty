@@ -292,6 +292,15 @@ impl App {
                     *at = Instant::now() + Duration::from_secs(10);
                 }
             }
+            // The desktop app changed a shared setting: load the file, unless this window
+            // already shows these values (its own change comes back as the same message).
+            ServerMsg::SettingsChanged(settings)
+                if machine == MachineId::LOCAL
+                    && settings != crate::shared_settings::read(&self.cfg) =>
+            {
+                self.reload_config()
+            }
+            ServerMsg::SettingsChanged(_) => {}
             ServerMsg::Raise => crate::reveal::raise_window(),
             // The server stopped for the update: an older window can't speak to the new one, so
             // the installed the app takes its place; a current window just connects again.

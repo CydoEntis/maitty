@@ -130,6 +130,20 @@ fn fold_legacy_corners(value: &mut toml::Table) {
     }
 }
 
+/// The spec's `ui.reduce_motion` is the inverse of `ui.motion`: read it as that unless the
+/// file sets `motion` itself. The file itself is not rewritten.
+fn fold_reduce_motion(value: &mut toml::Table) {
+    let Some(ui) = value.get_mut("ui").and_then(toml::Value::as_table_mut) else {
+        return;
+    };
+    let reduce = ui.remove("reduce_motion");
+    if !ui.contains_key("motion")
+        && let Some(reduce) = reduce.as_ref().and_then(toml::Value::as_bool)
+    {
+        ui.insert("motion".into(), toml::Value::Boolean(!reduce));
+    }
+}
+
 /// The file a repository names its own checks in, relative to its root.
 pub const REPO_CHECKS_FILE: &str = concat!(".", env!("APP_COMMAND"), "/checks.toml");
 /// The repo's checks file in `worktree`: the current name, else one under a name the app had
@@ -298,6 +312,37 @@ pub fn agent_from_command(program: &str, args: &[String]) -> Option<AgentDef> {
 /// the file stays as it is.
 pub fn add_agent(def: &AgentDef) -> Result<()> {
     add_agent_to(&config_path(), def)
+}
+
+/// Edits to config.toml from this process go one at a time, so two of them never read the same
+/// text and then each write over the other. Another process (the terminal app's own writes)
+/// can still interleave, but every write swaps the whole file in atomically, so the file is
+/// never half-written; only the later of two simultaneous edits can lose the earlier one.
+static CONFIG_EDIT: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Change config.toml through `edit`, keeping the rest of the file (comments included).
+pub fn edit_config(edit: impl FnOnce(&mut toml_edit::DocumentMut) -> Result<()>) -> Result<()> {
+    edit_config_at(&config_path(), edit)
+}
+
+/// [`edit_config`] on `file`. A missing file is created; one with a syntax error is left alone.
+pub fn edit_config_at(
+    file: &Path,
+    edit: impl FnOnce(&mut toml_edit::DocumentMut) -> Result<()>,
+) -> Result<()> {
+    let _one_at_a_time = CONFIG_EDIT.lock().unwrap_or_else(|e| e.into_inner());
+    let text = match std::fs::read_to_string(file) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e).context("reading config"),
+    };
+    let mut doc: toml_edit::DocumentMut = text
+        .parse()
+        .context("config.toml has a syntax error; fix it first")?;
+    edit(&mut doc)?;
+    write_atomic(file, doc.to_string()).context("writing config")?;
+    crate::sync::push_soon();
+    Ok(())
 }
 
 fn add_agent_to(file: &std::path::Path, def: &AgentDef) -> Result<()> {
@@ -950,7 +995,7 @@ impl Config {
     }
 
     /// Read `path`, with `config.local.toml` beside it laid over it when `with_local`.
-    fn load_at(path: &Path, with_local: bool) -> Result<Config> {
+    pub(crate) fn load_at(path: &Path, with_local: bool) -> Result<Config> {
         let mut value: toml::Table = match std::fs::read_to_string(path) {
             Ok(s) => toml::from_str(&s).with_context(|| format!("parsing {}", path.display()))?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => toml::Table::new(),
@@ -966,6 +1011,7 @@ impl Config {
         }
         fold_legacy_helpers(&mut value);
         fold_legacy_corners(&mut value);
+        fold_reduce_motion(&mut value);
         let written =
             ["theme_dark", "theme_light", "appearance"].map(|key| value.contains_key(key));
         let mut cfg: Config = toml::Value::Table(value)

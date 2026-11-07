@@ -699,19 +699,7 @@ pub fn write_at(parts: &[&str], mut value: toml_edit::Value) -> Result<()> {
 
 /// Change config.toml through `edit`, keeping the rest of the file (comments included).
 pub fn edit_config(edit: impl FnOnce(&mut toml_edit::DocumentMut) -> Result<()>) -> Result<()> {
-    let file = crate::config::config_path();
-    let text = match std::fs::read_to_string(&file) {
-        Ok(t) => t,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(e) => return Err(e).context("reading config"),
-    };
-    let mut doc: toml_edit::DocumentMut = text
-        .parse()
-        .context("config.toml has a syntax error; fix it first")?;
-    edit(&mut doc)?;
-    crate::config::write_atomic(&file, doc.to_string()).context("writing config")?;
-    crate::sync::push_soon();
-    Ok(())
+    crate::config::edit_config(edit)
 }
 
 #[cfg(test)]

@@ -255,6 +255,30 @@ override skips legacy-name migration; it does not redirect config files or
 provider-native history. Empty or relative paths and existing non-directories
 fail startup. A missing absolute directory is created by the private state writers.
 
+## Project-specific: settings both apps share
+
+The terminal app and the desktop app read and write the same `config.toml`. The desktop app
+reaches it only through the daemon (`Query::Settings`, `Command::SetSetting`; ADR 0004), and
+only for these keys. Secrets, `[[machines]]` and `[keys]` are not reachable that way.
+
+| Setting | On disk (written) | Also read as | Values |
+| --- | --- | --- | --- |
+| default agent | `sessions.agent` | | `last used`, `claude`, `codex`, `gemini` |
+| new session view | `ui.new_session_view` | | `chat` (default), `terminal` |
+| sidebar side | `ui.sidebar_position` | `ui.sidebar_side` | `left`, `right` |
+| dark / light theme | `theme_dark`, `theme_light` | | a theme name (letters, digits, `-`, `_`, `.`; at most 64) |
+| appearance | `appearance` | | `dark`, `light` |
+| spinner | `ui.spinner` | | frames, as in the terminal app (at most 64) |
+| start folder | `ui.start_dir` | | a path or `~...`; at most 4096 bytes, no control characters |
+| reduce motion | `ui.motion` (inverted) | `ui.reduce_motion` | true when `motion = false`; `motion` wins if both are set |
+| window style | `ui.window_style` | | `flat` (default), `glass` |
+
+A change edits the one key in place (comments and other keys stay), swaps the file in
+atomically, reloads, and sends `ServerMsg::SettingsChanged` to attached windows. A write
+removes the alias spelling of the same key, so the file keeps loading. A value outside the
+table is refused before the file is opened. A key set in `config.local.toml` still overrides
+what is written to `config.toml`.
+
 ## Project-specific: environments
 
 Local only: Maitty is a desktop tool. Development builds use `cargo install --path apps/tui`;

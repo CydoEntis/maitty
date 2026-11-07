@@ -188,7 +188,7 @@ the pane's process tree or `MAITTY_PANE_TOKEN`.
 Saved role profiles and sequenced planner/worker/reviewer workflows are not part
 of Maitty's interface, and neither is a fleet commander (`maitty brief`, `[team]`): old
 config keys for them are read and ignored. Sessions, ordinary agent launches, helpers, and
-MCP session controls remain supported. The wire protocol is version 66.
+MCP session controls remain supported. The wire protocol version is `PROTOCOL_VERSION` in `crates/maitty-shared/src/protocol.rs`.
 Conversation tool-history entries carry a bounded provider-supplied `label` for
 display; `#[serde(default)]` keeps older cached entries readable without a
 protocol bump. A tool entry may also carry `input` (the tool's own input JSON,
@@ -513,6 +513,22 @@ to 72 and the two refuse to talk. The window's Tauri command `start_chat_session
 workspace write with approval on request, or, with its optional `full_access` flag, for `Sandbox::FullAccess`
 with `ApprovalPolicy::Never` ([ADR 0005](adr/0005-provider-adapters-and-permissions.md)). It adds no wire field: the choice rides in the existing
 `LaunchSettings`, so the protocol version is unchanged. It is local-only.
+
+**Shared settings.** `Query::Settings` answers
+`Reply::Settings(SharedSettings)`; `Command::SetSetting { key: SettingKey, value: SettingValue }`
+(human clients only) edits `config.toml` in place and reloads, and every attached local window
+gets `ServerMsg::SettingsChanged`. Keys, values and limits are in
+[ENVIRONMENT](ENVIRONMENT.md#project-specific-settings-both-apps-share). A value of the wrong kind or
+out of range answers `ServerMsg::Error` and leaves the file as it was. A peer that predates the
+variants cannot decode them (a test), and another machine's `SettingsChanged` is ignored.
+
+Protocol 74 adds `Command::CloseSession { term }` and `Command::UndoClose { term }`, the shared settings
+messages above, and, without a bump of their own, the defaulted `TermInfo` fields `diff_added`,
+`diff_removed` and `exit`. `CloseSession` hides a session from the snapshot and its layouts for six seconds
+(`UNDO_WINDOW`) with its process still running, then closes it as `ClosePane` does; `UndoClose` inside the
+window brings back the same session in the same place. `ClosePane` still closes at once. A session ids only
+count up, so id order is creation order. `exit` is set from the shell's own exit mark when a command ends
+non-zero, and is only a signal for the red "exited with error" mark.
 
 Protocol 73 adds `Query::ListFolders { path, tag }` and `Reply::Folders { tag, listing }`: the folders
 directly inside `path` on the daemon's computer (`FolderListing`, `FolderEntry` in

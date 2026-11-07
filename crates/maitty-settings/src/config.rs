@@ -170,7 +170,8 @@ pub const PADDING_TOP: &str = "top";
 #[serde(default)]
 pub struct Ui {
     pub sidebar: bool,
-    /// "left" or "right".
+    /// "left" or "right". The desktop app's spelling, `sidebar_side`, is read too.
+    #[serde(alias = "sidebar_side")]
     pub sidebar_position: String,
     /// The column of tool chips (Files, Changes, Branch, References) on the right edge.
     pub tool_rail: bool,
@@ -241,6 +242,11 @@ pub struct Ui {
     pub cursor: String,
     /// That cursor blinks.
     pub cursor_blink: bool,
+    /// What a new session opens as: "chat" or "terminal" (the desktop app's choice; the
+    /// terminal app keeps it for it).
+    pub new_session_view: maitty_shared::settings_view::NewSessionView,
+    /// How the desktop window is drawn: "flat" or "glass".
+    pub window_style: maitty_shared::settings_view::WindowStyle,
 }
 
 pub const NEW_AGENTS: &[&str] = &["last used", "claude", "codex", "gemini"];
@@ -878,6 +884,8 @@ impl Default for Ui {
             subagent_count: true,
             cursor: "block".into(),
             cursor_blink: true,
+            new_session_view: Default::default(),
+            window_style: Default::default(),
         }
     }
 }
