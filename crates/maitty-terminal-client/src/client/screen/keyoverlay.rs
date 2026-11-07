@@ -61,7 +61,9 @@ pub(in crate::client) fn key_groups() -> Vec<(&'static str, Vec<KeyRow>)> {
             "SESSIONS",
             vec![
                 r("New shell here", vec![A::ShellHere], true),
-                r("New session", vec![A::PickSession], true),
+                r("New session", vec![A::PickSession], false),
+                r("Next tab", vec![A::NextTab], true),
+                r("Previous tab", vec![A::PrevTab], true),
                 r("Undo close", vec![A::UndoClose], true),
                 r("Message this session", vec![A::Message], true),
                 r("Menu", vec![A::Menu], true),

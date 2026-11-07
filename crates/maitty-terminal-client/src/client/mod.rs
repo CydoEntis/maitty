@@ -452,7 +452,7 @@ impl PromptKind {
             PromptKind::RenameConversation(_) => "Rename chat (empty: automatic)",
             PromptKind::RenameProject(_) => "Rename project (empty: its folder name)",
             PromptKind::RenameTab(..) => "Rename session",
-            PromptKind::NewWorkspace => "New pane: name it (empty = its folder)",
+            PromptKind::NewWorkspace => "New fleet: name it (empty = its folder)",
             PromptKind::ConfirmCloseWorkspace(_) => "Close workspace and all its panes? (y/n)",
             PromptKind::ConfirmKillServer => "Kill the server and every pane? (y/n)",
             PromptKind::ConfirmRemoveWorktree(_) => "Remove this worktree? (y / f = force / n)",

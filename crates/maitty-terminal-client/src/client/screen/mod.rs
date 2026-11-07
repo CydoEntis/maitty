@@ -47,7 +47,7 @@ pub(super) struct Saved {
     pub order: Vec<String>,
     /// Paths a session was last started in from the New Session popup, newest first, as typed.
     pub recent_paths: Vec<String>,
-    /// Folded sidebar rows ("p:<project key>").
+    /// Folded sidebar rows: `m:<machine>` and `c:<machine>/<fleet>`.
     pub closed: Vec<String>,
     /// Sessions in the order you dragged them to (within a group; what needs you still
     /// comes first).
@@ -201,8 +201,15 @@ pub(super) struct Screen {
     pub dividers: Vec<(Rect, bool, Vec<bool>)>,
     /// Sidebar cursor (keyboard browsing; bare keys work while it's set).
     pub cursor: Option<ClientSession>,
-    /// The sidebar cursor on a project row instead (its key).
+    /// The sidebar cursor on a heading instead (its fold key, `m:<machine>` or `c:<fleet>`).
     pub cursor_proj: Option<String>,
+    /// The sidebar cursor on a fleet row.
+    pub cursor_fleet: Option<fleets::FleetId>,
+    /// The session you were last on in each fleet: what picking the fleet opens.
+    pub fleet_active: HashMap<fleets::FleetId, ClientTerm>,
+    /// The ships half's scroll, and the row the divider between the halves was drawn on.
+    pub ships_scroll: u16,
+    pub mid_y: u16,
     /// What the sidebar cursor walks over, top to bottom.
     pub side_items: Vec<SideItem>,
     /// Projects opened this run that haven't been looked at (NEW chip).
@@ -271,8 +278,6 @@ pub(super) struct Screen {
     pub splash_away: bool,
     pub splash_away_sel: usize,
     pub splash_wide: bool,
-    /// The colour of each project's +/− button, picked at random when it opens (key -> colour).
-    pub fold_colors: HashMap<String, Color>,
     /// The scrollbar being dragged: (pane, track, lines of history).
     pub bar: Option<(ClientTerm, Rect, usize)>,
     /// Where each agent row was drawn in the sidebar (for the follow-up box beside it).
@@ -296,7 +301,10 @@ pub(super) struct Screen {
 /// A row the sidebar cursor can rest on.
 #[derive(Debug, Clone, PartialEq)]
 pub(super) enum SideItem {
+    /// A heading that folds: its key (`m:<machine>` or `c:<fleet>`).
     Proj(String),
+    /// A fleet row.
+    Fleet(fleets::FleetId),
     Sess(ClientSession),
 }
 
@@ -1207,6 +1215,7 @@ impl App {
                 }
                 let prev = self.screen.last_focus;
                 self.screen_place(f, prev);
+                self.note_fleet_active(f);
                 // Which panes share a split may have changed, and the sidebar folds those.
                 self.screen_fresh();
             }
@@ -1432,14 +1441,22 @@ pub(super) enum ScreenHit {
     ToastClose,
     /// The sidebar's ` inbox N ` chip.
     OpenInbox,
-    /// The sidebar's `/ filter` row.
+    /// The sidebar's search field.
     SideFilter,
+    /// The ` x ` on the search field: clear what is typed.
+    ClearFilter,
+    /// A machine, fleet or ship-group row of the sidebar: its place in `Screen::side_items`.
+    SideRow(usize),
+    /// The `+` on a machine heading: a shell in that machine's first fleet.
+    MachinePlus(MachineId),
+    /// A tab of the workspace's tab row (its ship), and the `×` on it.
+    Tab(ClientTerm),
+    TabClose(ClientTerm),
+    /// The ` Files ` and ` Changes ` chips on the tab row.
+    FilesChip,
+    ChangesChip,
     /// A button on a split pane's header.
     PaneBtn(ClientTerm, PaneBtn),
-    /// A pane's ` ▾ Project ` chip: the project tools.
-    ProjectMenu(ClientTerm),
-    /// The project on a sidebar row: filter the list to it.
-    SideProject(ClientSession),
     /// The sidebar's "+ new": a plain shell in the selected project.
     Session(ClientSession),
     /// A button on the selected Inbox item: the key it stands for (`\n` Enter, `\x1b` Esc).
@@ -1594,6 +1611,7 @@ mod check_sheet;
 mod dialogs;
 mod draw;
 mod failure_note;
+pub(in crate::client) mod fleets;
 pub(in crate::client) mod glyphs;
 mod hairline;
 pub(in crate::client) mod status_mark;
@@ -1640,6 +1658,7 @@ mod side;
 mod splash;
 mod workspace;
 mod splash_wide;
+mod tabs;
 mod tidy;
 pub(in crate::client) use self::{
     branch_sheet::*, card::*, check_actions::*, check_approve::*, check_sheet::*, dialogs::*,

@@ -11,18 +11,20 @@ in Settings › Keys or under `[keys.prefix]` in your config.
 | Key | Action |
 |---|---|
 | `Ctrl+A` | The prefix: shortcut mode, then the keys below (configurable as `prefix`) |
-| `Ctrl+T` | New session (the prefix then `t` in a browser terminal that cannot send it) |
+| `Ctrl+T` | New shell in the fleet you are in, at once (the prefix then `t` where the terminal cannot send it) |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab of the fleet (the prefix then `n` / `p`) |
 | `Ctrl+K` | Search commands |
 | `Ctrl+J` | Inbox |
 | `Ctrl+Shift+F` | Find in the pane (the prefix then `/` where the terminal cannot report Shift) |
 | `Alt+Down` / `Alt+Up` | Next / previous session |
 | `F2` | Rename the selected session |
-| `Alt+1`-`9` | Go to that tab of the session |
+| `Alt+1`-`9` | Go to that tab of the fleet |
 
 **`Ctrl+Space` still opens shortcut mode for one release**, so a muscle memory or a script keeps working.
 It stops working when the prefix is set to another key on purpose or `Ctrl+Space` is bound to something
-else under `[keys.global]`. The old `s` (an agent at once) and `o` (the picker) keys are gone: Ctrl+T opens
-the one New session dialog; `v` and `h` (splits) are now `-` and `|`; `z` (collapse the sidebar) is `b`;
+else under `[keys.global]`. The old `s` (an agent at once) and `o` (the picker) keys are gone: Ctrl+T makes a
+shell at once, and the New session dialog (another folder or machine) is the Menu's `Session...`; `n` (a shell) is `t`
+and `p` (find a file) is `o`, since `n` and `p` now step through tabs; `v` and `h` (splits) are now `-` and `|`; `z` (collapse the sidebar) is `b`;
 `m` (Menu) is `.`; `l` (history) is `h`; `e` (the sidebar) is the prefix then `←`; `b` (branch) is `g`;
 `a` (references) is `e`; `[` `]` (tabs) resize the sidebar.
 
@@ -32,8 +34,8 @@ Press the prefix for shortcut mode, then the key. Only `?`, `_` and `|` need Shi
 
 | Key | Action |
 |---|---|
-| `n` | New shell where you are |
-| `t` | New session (the dialog) |
+| `t` | New shell in the fleet you are in (a new tab; the status bar names the fleet and folder) |
+| `n` / `p` | Next / previous tab of the fleet |
 | `z` | Undo the last close (six seconds) |
 | `Enter` | Message the agent |
 | `k` | Stop the agent |
@@ -67,7 +69,7 @@ Press the prefix for shortcut mode, then the key. Only `?`, `_` and `|` need Shi
 | `g` | Branches (in the side panel; its first row switches branch) |
 | `h` | History: what happened |
 | `e` | References (in the side panel) |
-| `p` | Find a file |
+| `o` | Find a file |
 
 ### Maitty
 
@@ -92,10 +94,10 @@ sidebar completely, send the prefix itself to the program.
 The prefix is `Ctrl+A`. Press it and you are in **shortcut mode**: each key runs its
 action, and the mode stays for the next, so a run of actions is one key each. `Esc`, the
 leader again or a click go back to **input mode**, where keys type into the pane. So does
-an action that starts a pane for you to type into: `n` a shell, `-` / `|` a split, and `t` once its dialog
+an action that starts a pane for you to type into: `t` a shell, `-` / `|` a split, and the dialog once it
 starts the session; the next key goes to the new pane. An action that opens a popup or sheet hands it the keys, and closing it
 returns to shortcut mode; `Enter` (message the agent) is one of those. The bar along the bottom always says which mode you are in: `TYPING · keys go to claude · Ctrl+A then ← sidebar · Ctrl+A then . menu · Ctrl+T new`, or, while
-shortcut mode is on, a sky-blue bar with `⌃A` and keys to press from your keymap (`n shell  t session
+shortcut mode is on, a sky-blue bar with `⌃A` and keys to press from your keymap (`t shell  n next tab
 . menu  i inbox  c changes  f files  , settings  ? all keys  Esc type`; a click on one runs it, a click on `TYPING` starts shortcut mode). While something
 other than the panes has the keys (the sidebar, a popup, Files, …) it names it and says how to
 use and leave it, such as `SIDEBAR · ↑↓ move · Enter open · Esc back`, adding `shortcut mode
@@ -149,12 +151,12 @@ Branch, `a` references, `l` what happened, `w` machines, `?` all keys, `Ctrl+W` 
 
 | Keys | Action |
 | --- | --- |
-| The key shown beside a row | Run it (the same leader key works anywhere): `n` Shell here, `t` Session..., `|` Pane beside this, `i` Inbox, `Space` Search commands, `?` All keys, `b` Collapse sidebar, `,` Settings |
+| The key shown beside a row | Run it (the same leader key works anywhere): `t` Shell here, `|` Pane beside this, `i` Inbox, `Space` Search commands, `?` All keys, `b` Collapse sidebar, `,` Settings |
 | Up, Down, Enter | Choose and run a row |
 | Esc | Close the Menu |
 
-"Shell here" starts a plain shell where you are (the same as `n`); "Session..." opens the New session
-dialog. Start an agent by typing `claude` (or any other) in the shell: it starts in its own worktree
+"Shell here" starts a shell at once in the fleet you are in (the same as `t`); "Session..." opens the New
+session dialog, for another folder or machine. Start an agent by typing `claude` (or any other) in the shell: it starts in its own worktree
 in a git project. Section headers (NEW, TOOLS, FIND, SIDEBAR) are not rows: the arrows skip them.
 
 ## Worktrees second step
@@ -203,8 +205,8 @@ shell; step 1 is the project, step 2 the machine.
 | Enter | Pick the project (starts the shell at once when this computer is the only machine); in step 2, start the shell on that machine. Blocked while the folder is missing |
 | Esc | Back (step 2, the picker), then close |
 
-The details are in [UI](UI.md#project-specific-new-session-dialog). Leader `n` is still a plain shell where
-you are.
+The details are in [UI](UI.md#project-specific-new-session-dialog). Ctrl+T and leader `t` are not this dialog: they make a
+shell in the fleet you are in at once.
 
 ## A session wants to start helpers
 

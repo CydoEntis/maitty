@@ -12,8 +12,6 @@ pub(in crate::client) enum Chip {
     Action,
     /// Information, not a button.
     Quiet,
-    /// A branch name.
-    Branch,
     /// Something needs you: amber.
     Alert,
     /// The red ×.
@@ -37,7 +35,6 @@ pub(in crate::client) fn chip(
         Chip::Title { focused: false } => (t.btn, Style::default().fg(t.strong).add_modifier(bold)),
         Chip::Action => (t.btn, Style::default().fg(t.accent).add_modifier(bold)),
         Chip::Quiet => (t.btn, Style::default().fg(t.muted)),
-        Chip::Branch => (t.btn, Style::default().fg(t.violet())),
         Chip::Alert => (
             t.blocked,
             Style::default().fg(t.ink_on(t.blocked)).add_modifier(bold),

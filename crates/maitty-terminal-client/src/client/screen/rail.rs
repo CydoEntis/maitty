@@ -1,8 +1,9 @@
 //! The collapsed sidebar: a 10-column box down the side. A `»` chip on the top border, the
-//! inbox count, then one line per session (its status, the initials of its name and a dot
-//! when it has something unread), and the `+` and `≡` chips at the foot.
+//! inbox count, then the fleets (FLT) and the agent ships (SHP), each half under a divider and
+//! one line per row, and the `+` and `≡` chips at the foot. Rows go by initials.
 use super::chips::{Chip, chip};
-use super::side::{FlatRow, shown_rows};
+use super::fleets::Fleet;
+use super::side::{Counts, FlatRow, ShipLine, SideModel, TopRow, divider, scroll_marks, window};
 use super::status_mark::State;
 use super::*;
 
@@ -11,13 +12,15 @@ pub(in crate::client) const RAIL_W: u16 = 10;
 /// The screen width below which the sidebar collapses by itself, and the full one opens over
 /// the workspace instead of beside it.
 pub(in crate::client) const COLLAPSE_BELOW: u16 = 110;
-/// Inside rows above the list: the inbox count, then the rule under it.
+/// Inside rows above the lists: the inbox count, then the FLT divider.
 const HEAD_ROWS: u16 = 2;
-/// Inside rows below the list: the rule over the footer, then the `+` and `≡` chips.
+/// Inside rows below the lists: the rule over the footer, then the `+` and `≡` chips.
 const FOOT_ROWS: u16 = 3;
-/// The mark before the current session's row.
+/// The mark before the current row.
 const BAR: &str = "▌";
 const UNREAD: &str = "•";
+const DIAMOND: &str = "◆";
+const OFFLINE: &str = "┆";
 
 /// The two letters a session goes by: the first letters of its first two words, or the first
 /// two letters of a single word.
@@ -38,17 +41,52 @@ pub(super) fn initials(name: &str) -> String {
     letters.iter().flat_map(|c| c.to_uppercase()).collect()
 }
 
-/// A session's line in the column.
-fn row_segs(app: &App, row: &FlatRow, (current, picked): (bool, bool), t: &Theme) -> Vec<Seg> {
-    let unknown = row.state == State::Unknown;
-    let ground = if picked {
+/// The ground of a row: selected, current or plain.
+fn ground_of((current, picked): (bool, bool), t: &Theme) -> Color {
+    if picked {
         t.sel_bg()
     } else if current {
         t.card
     } else {
         t.bg
+    }
+}
+
+/// A fleet's line in the column: its needs count, a diamond in its colour or the offline mark,
+/// then its initials.
+fn fleet_segs(f: &Fleet, counts: Counts, down: bool, flags: (bool, bool), t: &Theme) -> Vec<Seg> {
+    let current = flags.0;
+    let st = Style::default().bg(ground_of(flags, t));
+    let icon = if counts.needs > 0 {
+        seg(
+            counts.needs.min(9).to_string(),
+            st.fg(t.blocked).add_modifier(Modifier::BOLD),
+        )
+    } else if down {
+        seg(OFFLINE, st.fg(t.idle))
+    } else {
+        seg(DIAMOND, st.fg(f.colour.unwrap_or(t.muted)))
     };
-    let st = Style::default().bg(ground);
+    let ink = if down { t.idle } else { t.strong };
+    vec![
+        if current {
+            seg(BAR, st.fg(t.accent))
+        } else {
+            seg(" ", st)
+        },
+        seg(" ", st),
+        icon,
+        seg(" ", st),
+        seg(initials(&f.name), st.fg(ink).add_modifier(Modifier::BOLD)),
+        seg("   ", st),
+    ]
+}
+
+/// An agent ship's line in the column.
+fn ship_segs(app: &App, row: &FlatRow, flags: (bool, bool), t: &Theme) -> Vec<Seg> {
+    let unknown = row.state == State::Unknown;
+    let current = flags.0;
+    let st = Style::default().bg(ground_of(flags, t));
     let mark = app.state_mark(row.state, t);
     let ink = if unknown { t.idle } else { t.strong };
     vec![
@@ -99,8 +137,7 @@ fn rule(buf: &mut Buffer, area: Rect, y: u16, colour: Color, ground: Color) {
     );
 }
 
-/// Draw the column in `area`. Sessions that don't fit scroll, the current one kept in view,
-/// and a `…` row in the last place says there are more (it opens the sidebar).
+/// Draw the column in `area`. Rows that don't fit scroll, the current one kept in view.
 pub(super) fn draw(app: &mut App, buf: &mut Buffer, area: Rect, model: &[Proj], t: &Theme) {
     fill(buf, area, t.bg);
     app.screen.side_rect = Rect::default();
@@ -109,7 +146,7 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, area: Rect, model: &[Proj], 
     let lit = side_focused(app);
     let border = if lit { t.accent } else { t.line };
     panel_box(buf, area, look, Style::default().fg(border).bg(t.bg));
-    if area.width < RAIL_W || area.height < HEAD_ROWS + FOOT_ROWS + 4 {
+    if area.width < RAIL_W || area.height < HEAD_ROWS + FOOT_ROWS + 5 {
         return;
     }
     let inner = Rect {
@@ -128,12 +165,9 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, area: Rect, model: &[Proj], 
     let expand = chip(app, arrow, Chip::Action, t.bg, t);
     centred(app, buf, area, area.y, expand, ScreenHit::ExpandSidebar);
 
-    // The inbox count, amber while anything needs you.
-    let needing = model
-        .iter()
-        .flat_map(|p| p.sessions())
-        .filter(|s| check::needs_you(s))
-        .count();
+    let sm = SideModel::build(app, model);
+    let lists = sm.lists(app, true);
+    let needing: usize = sm.counts.values().map(|c| c.needs).sum();
     let count = chip(
         app,
         &super::inbox::inbox_count(app).to_string(),
@@ -146,61 +180,118 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, area: Rect, model: &[Proj], 
         t,
     );
     centred(app, buf, area, inner.y, count, ScreenHit::OpenInbox);
-    rule(buf, area, inner.y + 1, border, t.bg);
-    rule(buf, area, area.bottom() - FOOT_ROWS - 1, border, t.bg);
+    let rule_y = area.bottom() - FOOT_ROWS - 1;
+    rule(buf, area, rule_y, border, t.bg);
     let plus = chip(app, "+", Chip::Action, t.bg, t);
     centred(app, buf, area, area.bottom() - 3, plus, ScreenHit::NewShell);
     let menu = chip(app, "≡", Chip::Quiet, t.bg, t);
     centred(app, buf, area, area.bottom() - 2, menu, ScreenHit::Actions);
 
-    // The sessions.
-    let rows = shown_rows(app, model);
-    let keys: Vec<ClientSession> = rows.iter().map(|r| r.key).collect();
-    app.screen.visible = keys.clone();
-    app.screen.side_items = keys.iter().map(|k| SideItem::Sess(*k)).collect();
+    // FLT above, SHP at the middle of what is left.
+    let flt = inner.y + 1;
+    let last = rule_y.saturating_sub(1);
+    let mid = (flt + last) / 2;
+    divider(app, buf, area, flt, "FLT", border, t);
+    divider(app, buf, area, mid, "SHP", border, t);
+    app.screen.mid_y = mid;
+    app.screen.side_items = lists.items();
+    app.screen.visible = sm.rows.iter().map(|r| r.key).collect();
     app.screen.row_y.clear();
-    let current = app.focused().map(|id| app.session_key(id));
-    let picked = if lit { app.screen.cursor } else { None };
-    let top = inner.y + HEAD_ROWS;
-    let room = (area.bottom() - FOOT_ROWS - 1).saturating_sub(top) as usize;
-    let at = picked
-        .or(current)
-        .and_then(|k| keys.iter().position(|x| *x == k));
-    let from = match at {
-        Some(i) if i >= room => i + 1 - room,
-        _ => 0,
+
+    let want = if app.screen.follow {
+        let picked = if lit { app.screen.cursor } else { None };
+        picked
+            .or(app.focused().map(|id| app.session_key(id)))
+            .map(SideItem::Sess)
+    } else {
+        None
     };
-    let more_below = from + room < rows.len();
-    for (n, row) in rows.iter().skip(from).take(room).enumerate() {
-        let y = top + n as u16;
-        let row_area = Rect {
-            y,
-            height: 1,
-            ..inner
+    let picked_item = lit
+        .then(|| app.cursor_head().or(app.screen.cursor.map(SideItem::Sess)))
+        .flatten();
+    let current_fleet = app.current_fleet();
+    let current = app.focused().map(|id| app.session_key(id));
+
+    // The fleets.
+    let (top, bottom) = (flt + 1, mid);
+    let room = bottom.saturating_sub(top);
+    let heights = vec![1u16; lists.top.len()];
+    let want_fleet = app
+        .screen
+        .follow
+        .then(|| current_fleet.map(SideItem::Fleet))
+        .flatten();
+    let want_at = want_fleet
+        .as_ref()
+        .and_then(|w| lists.top.iter().position(|(_, i)| i == w));
+    let (first, shown) = window(&heights, app.screen.side_scroll as usize, want_at, room);
+    app.screen.side_scroll = first as u16;
+    for (n, (row, item)) in lists.top.iter().enumerate().skip(first).take(shown) {
+        let y = top + (n - first) as u16;
+        let TopRow::Fleet(gi, fi) = *row else {
+            continue;
         };
-        if more_below && n + 1 == room {
-            put(
-                buf,
-                inner.x,
-                y,
-                &[seg("   …    ", Style::default().fg(t.muted).bg(t.bg))],
-                inner.right(),
-            );
-            hit(app, row_area, ScreenHit::ExpandSidebar);
-            break;
-        }
-        let segs = row_segs(
-            app,
-            row,
-            (current == Some(row.key), picked == Some(row.key)),
-            t,
-        );
+        let f = sm.fleet(gi, fi);
+        let flags = (current_fleet == Some(f.id), picked_item.as_ref() == Some(item));
+        let segs = fleet_segs(f, sm.counts_of(f.id), sm.groups[gi].down, flags, t);
         put(buf, inner.x, y, &segs, inner.right());
-        hit(app, row_area, ScreenHit::Session(row.key));
+        hit(
+            app,
+            Rect {
+                y,
+                height: 1,
+                ..inner
+            },
+            ScreenHit::SideRow(n),
+        );
+    }
+    scroll_marks(
+        buf,
+        inner.right().saturating_sub(1),
+        (top, room),
+        (first > 0, first + shown < lists.top.len()),
+        Style::default().bg(t.bg).fg(t.muted),
+    );
+
+    // The ships.
+    let (top, bottom) = (mid + 1, rule_y);
+    let room = bottom.saturating_sub(top);
+    let heights = vec![1u16; lists.ships.len()];
+    let want_at = want
+        .as_ref()
+        .and_then(|w| lists.ships.iter().position(|(_, i)| i == w));
+    let (first, shown) = window(&heights, app.screen.ships_scroll as usize, want_at, room);
+    app.screen.ships_scroll = first as u16;
+    for (n, (line, item)) in lists.ships.iter().enumerate().skip(first).take(shown) {
+        let y = top + (n - first) as u16;
+        let ShipLine::Ship(i) = *line else {
+            continue;
+        };
+        let row = &sm.rows[i];
+        let flags = (current == Some(row.key), picked_item.as_ref() == Some(item));
+        let segs = ship_segs(app, row, flags, t);
+        put(buf, inner.x, y, &segs, inner.right());
+        hit(
+            app,
+            Rect {
+                y,
+                height: 1,
+                ..inner
+            },
+            ScreenHit::Session(row.key),
+        );
         if let Some(term) = row.term {
             app.screen.row_y.insert(term, y);
         }
     }
+    scroll_marks(
+        buf,
+        inner.right().saturating_sub(1),
+        (top, room),
+        (first > 0, first + shown < lists.ships.len()),
+        Style::default().bg(t.bg).fg(t.muted),
+    );
+    app.screen.follow = false;
 }
 
 #[cfg(test)]

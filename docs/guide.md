@@ -105,7 +105,7 @@ and your configured custom ones; rows click and the wheel scrolls.
 - Nothing moves in the sidebar by itself: a session that needs you or finishes keeps its row (its mark and name say so, and the Inbox lists what needs you). Idle agents stay running; no sleep screen is shown for sessions saved by older releases.
 - A session taking a real share of the machine says so in its pane's title, beside its state
   (`▲ 38% CPU · 2.1 GB`, from a fifth of the CPU or two gigabytes).
-- The sidebar footer keeps **+ new** and **Menu** available. `Ctrl+A n` and a project's **+** open a plain shell where you are; **+ new** and `Ctrl+T` open the New session dialog (a project, then a machine) and start a shell there. Type your agent in the shell.
+- The sidebar footer keeps **+ new** and **Menu** available. `Ctrl+T`, `Ctrl+A t`, **+ New** and a machine's **+** start a shell at once in the fleet you are in (a new tab); the Menu's **Session...** opens the New session dialog (a project, then a machine). Type your agent in the shell.
 - `⇆` under a row names a file that this checkout and another have each changed since their
   branches parted (a merge conflict waiting to happen); more than two are one line with a count.
 - Drag a project, or a session within its project, up or down to reorder it. Click a project to fold or open it. With the sidebar focused

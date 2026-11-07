@@ -299,7 +299,7 @@ fn a_remote_agents_row_is_what_its_daemon_reported_and_follows_its_next_report()
         );
         let asked = window.app.remotes[&BOX].snap.questions[0].clone();
         let drawn = frame_text(&mut window.app);
-        assert!(drawn.contains("⇄ box"), "its row names the machine: {drawn}");
+        assert!(drawn.contains("▤ box"), "its machine heads its fleets: {drawn}");
 
         window.send(ClientMsg::Command(Command::AnswerHuman {
             id: asked.id,
