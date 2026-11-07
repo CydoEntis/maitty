@@ -90,7 +90,8 @@ import { NewSessionHost } from './components/NewSessionHost'
 import type { NewSessionRequest } from './components/NewSessionModal'
 import { RenameDialog } from './components/RenameDialog'
 import { Sidebar } from './components/Sidebar'
-import { EmptyState, OfflineBanner, Toast, type RestartOffer } from './components/states'
+import { EmptyState, Toast, type RestartOffer } from './components/states'
+import { ServiceStatus } from './components/ServiceStatus'
 import { TabBar } from './components/TabBar'
 import {
   activeTab,
@@ -1664,7 +1665,10 @@ export function DesktopApp() {
         onRestart: () => {
           setRestartPending(true)
           void restartMismatchedDaemon(mismatch.daemonProtocol)
-            .then(async () => { await refetchSessions() })
+            .then(async () => {
+              await refetchSessions()
+              toast.success(`Service restarted · ${String(restartStatusQuery.data?.sessionCount ?? 0)} sessions back`)
+            })
             .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not restart the Maitty service')) })
             .finally(() => { setRestartPending(false) })
         },
@@ -1800,7 +1804,7 @@ export function DesktopApp() {
                   onResume={resumeInterrupted}
                   onDismiss={(id) => { setDismissedRestores((current) => new Set(current).add(id)) }}
                 />
-                {!online && <OfflineBanner retryAt={retryAt} detail={offlineDetail} restart={restartOffer} onRetry={() => { void refetchSessions() }} />}
+                <ServiceStatus online={online} failures={failures} mismatch={Boolean(mismatch)} retryAt={retryAt} detail={offlineDetail ?? (sessionsQuery.isError ? daemonConnectionError(sessionsQuery.error) : null)} restart={restartOffer} onRetry={() => { void refetchSessions() }} />
                 {tab ? (
                   <div className="mx-panes">
                     {paneColumns(tab, narrow).map((column, columnIndex, columns) => (
