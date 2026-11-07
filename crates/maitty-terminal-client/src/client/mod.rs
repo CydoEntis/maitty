@@ -200,6 +200,8 @@ enum Mode {
     Actions {
         sel: usize,
     },
+    /// The Updates box: what is new, download, restart.
+    Updates,
     /// A tab being renamed in its pill.
     RenameTab(Box<screen::TabName>),
     /// The computers reached over ssh: how each stands, and adding or removing one.
@@ -491,6 +493,10 @@ pub struct App {
     update_checked: Option<Instant>,
     /// An update is downloading.
     updating: bool,
+    /// Why the last install failed, until it is tried again or the box is read.
+    update_failed: Option<String>,
+    /// The version the Updates box was told to skip this run.
+    update_skipped: Option<String>,
     /// The installed daemon needs a restart after the panes are closed.
     update_installed_this_run: bool,
     daemon_restart_requested: bool,
@@ -520,6 +526,15 @@ pub struct App {
     copy_flash: Option<copy::Flash>,
     /// A line the mode bar shows in place of its hint for `BAR_FLASH_FOR` (`+ name started`).
     bar_flash: Option<(String, Instant)>,
+    /// The undo offer after a session is closed, and a first press waiting for its second.
+    closing: screen::Closing,
+    /// Whether the window has its daemon, and where the tries to get it back stand.
+    service: screen::Service,
+    /// `r` asked to try now; `s` asked to start the service. Taken by the next tick.
+    service_retry_now: bool,
+    service_start_now: bool,
+    /// When the daemon's last restart was first seen to have stopped agents.
+    stopped_since: Option<Instant>,
     /// What happened lately, newest last: (unix secs, pane, kind, text). Kinds: '!' needs
     /// you, '✓' finished, 'i' a message, 'x' an error.
     pub(super) history: std::collections::VecDeque<(u64, Option<ClientTerm>, char, String)>,
@@ -788,6 +803,8 @@ impl App {
             update_notes: Vec::new(),
             update_checked: None,
             updating: false,
+            update_failed: None,
+            update_skipped: None,
             update_installed_this_run: false,
             daemon_restart_requested: false,
             daemon_restart_reconnect: false,
@@ -815,6 +832,11 @@ impl App {
             notice_card: None,
             copy_flash: None,
             bar_flash: None,
+            closing: Default::default(),
+            service: Default::default(),
+            service_retry_now: false,
+            service_start_now: false,
+            stopped_since: None,
             history: Default::default(),
             right_down: None,
             snap: Snapshot::default(),
@@ -977,6 +999,10 @@ impl App {
                         self.dirty = true;
                     }
                     self.expire_unseen_logins();
+                    if self.closing.expire() {
+                        self.dirty = true;
+                    }
+                    self.service_tick(connections).await;
                     if self.bar_flash.as_ref().is_some_and(|(_, at)| at.elapsed() >= BAR_FLASH_FOR) {
                         self.bar_flash = None;
                         self.dirty = true;
@@ -1058,7 +1084,8 @@ impl App {
                 self.notify(format!("Lost the connection to {name}"), true);
             }
         } else if !self.reattach(connections).await {
-            self.quit.get_or_insert_with(|| "server exited".into());
+            // The daemon keeps every session; the window stays and keeps asking for it.
+            self.service_lost();
         }
     }
 
@@ -1117,6 +1144,7 @@ impl App {
                 }
                 Err(e) => {
                     app.updating = false;
+                    app.update_failed = Some(format!("{e:#}"));
                     app.notify(format!("Update failed: {e:#}"), true);
                 }
             }))
@@ -2128,7 +2156,3 @@ mod mcp_machine_tests;
 mod remote_status_tests;
 #[cfg(test)]
 mod routing_tests;
-#[cfg(test)]
-mod quick_new_tests;
-#[cfg(test)]
-mod session_popup_tests;

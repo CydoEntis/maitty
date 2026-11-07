@@ -11,12 +11,12 @@ use crate::keys::{Action, KeySpec};
 fn suggestions() -> [(Action, &'static str); 7] {
     [
         (Action::ShellHere, "shell"),
-        (Action::StartSession, "session"),
+        (Action::PickSession, "session"),
+        (Action::Menu, "menu"),
+        (Action::Jump, "inbox"),
         (Action::Changes, "changes"),
         (Action::Files, "files"),
-        (Action::Jump, "inbox"),
         (Action::Settings, "settings"),
-        (Action::References, "references"),
     ]
 }
 
@@ -111,7 +111,7 @@ fn suggestion(app: &mut App, key: KeySpec, label: &str, t: &Theme) -> Piece {
     }
 }
 
-/// Lit: the SHORTCUT tag (a click opens the key map), the suggestions bound to a key, then All
+/// Lit: the ⌃A tag (a click opens the key map), the suggestions bound to a key, then All
 /// keys and Esc, which go last.
 fn lit(app: &mut App, t: &Theme) -> (Piece, Vec<Piece>, Vec<Piece>) {
     let tag = Style::default()
@@ -119,7 +119,7 @@ fn lit(app: &mut App, t: &Theme) -> (Piece, Vec<Piece>, Vec<Piece>) {
         .bg(t.bg)
         .add_modifier(Modifier::BOLD);
     let tag = Piece {
-        segs: vec![seg(" SHORTCUT ", tag)],
+        segs: vec![seg(" ⌃A ", tag)],
         gap: 0,
         hit: Some(ScreenHit::Leader),
     };
@@ -141,48 +141,48 @@ fn lit(app: &mut App, t: &Theme) -> (Piece, Vec<Piece>, Vec<Piece>) {
     (tag, middle, tail)
 }
 
-/// Typing: quiet, and how to get to the shortcuts. A click there starts shortcut mode, as the
-/// leader does.
+/// What the keys go to while typing: the agent in the focused session, else the program in it.
+fn typing_target(app: &App) -> Option<String> {
+    let info = app.focused().and_then(|f| app.term_info(f))?;
+    let name = info.agent.clone().unwrap_or_else(|| info.process.clone());
+    (!name.is_empty()).then_some(name)
+}
+
+/// Typing: the mode chip, where the keys go, and the keys that reach everything else, spelled
+/// out. A narrow bar drops whole hints from the right, never part of one. A click on the chip
+/// starts shortcut mode, as the prefix does.
 fn typing(app: &App, t: &Theme) -> (Piece, Vec<Piece>) {
     let hit = Some(ScreenHit::ShortcutMode);
     let lead = crate::client::design::long_key(&app.keymap.prefix);
-    if Look::of(&app.cfg.ui).hairline {
+    let tag = if Look::of(&app.cfg.ui).hairline {
         // Hairline has no chips: the mode is a bold word in the accent.
-        let tag = Piece {
-            segs: vec![seg(
-                "TYPING",
-                Style::default()
-                    .fg(t.accent)
-                    .bg(t.bg)
-                    .add_modifier(Modifier::BOLD),
-            )],
-            gap: 0,
-            hit,
-        };
-        let hint = Piece {
-            segs: vec![seg(
-                format!("{lead} for shortcuts"),
-                Style::default().fg(t.muted).bg(t.bg),
-            )],
+        seg("TYPING", Style::default().fg(t.accent).bg(t.bg).add_modifier(Modifier::BOLD))
+    } else {
+        seg(" TYPING ", Style::default().fg(t.muted).bg(t.btn))
+    };
+    let tag = Piece { segs: vec![tag], gap: 0, hit };
+    let quiet = Style::default().fg(t.muted).bg(t.bg);
+    let mut pieces = Vec::new();
+    if let Some(target) = typing_target(app) {
+        pieces.push(Piece { segs: vec![seg(format!("keys go to {target}"), quiet)], gap: 1, hit: None });
+    }
+    for (key, words) in [
+        (format!("{lead} then ←"), "sidebar"),
+        (format!("{lead} then ."), "menu"),
+        ("Ctrl+T".to_string(), "new"),
+        ("Ctrl+K".to_string(), "palette"),
+        ("Ctrl+J".to_string(), "inbox"),
+    ] {
+        pieces.push(Piece {
+            segs: vec![
+                seg(key, quiet.fg(t.strong).add_modifier(Modifier::BOLD)),
+                seg(format!(" {words}"), quiet),
+            ],
             gap: GAP,
             hit,
-        };
-        return (tag, vec![hint]);
+        });
     }
-    let tag = Piece {
-        segs: vec![seg(" TYPING ", Style::default().fg(t.muted).bg(t.btn))],
-        gap: 0,
-        hit,
-    };
-    let hint = Piece {
-        segs: vec![seg(
-            format!("· {lead} for shortcuts"),
-            Style::default().fg(t.muted).bg(t.bg),
-        )],
-        gap: 1,
-        hit,
-    };
-    (tag, vec![hint])
+    (tag, pieces)
 }
 
 /// A key and what it does; an empty key is words alone ("type").
@@ -221,8 +221,8 @@ fn keys_holder(app: &App) -> Option<Holder> {
         ),
         Mode::KeyMap(km) => match km.view {
             KeyView::Search => holder(
-                "KEY MAP",
-                &[("", "type to search"), ("↑↓", "pick"), ("Enter", "run")],
+                "PALETTE",
+                &[("", "type to search"), ("↑↓", "move"), ("Enter", "run")],
                 ("Esc", "close"),
             ),
             KeyView::All => holder(
@@ -234,7 +234,7 @@ fn keys_holder(app: &App) -> Option<Holder> {
         },
         Mode::Side => holder(
             "SIDEBAR",
-            &[("↑↓", "move"), ("Enter", "open")],
+            &[("↑↓", "move"), ("Enter", "open"), ("n", "new")],
             ("Esc", "back"),
         ),
         Mode::Secret { .. } => holder(
@@ -273,9 +273,14 @@ fn keys_holder(app: &App) -> Option<Holder> {
                 &[("↑↓", "select"), ("Enter", "open"), ("m", "send to agent")],
                 ("Esc", "close"),
             ),
+            _ if matches!(super::inbox::inbox_selected(app), Some(GoRow::Ask(_))) => holder(
+                "INBOX",
+                &[("↑↓", "select"), ("y", "yes"), ("a", "session"), ("n", "no"), ("Enter", "open")],
+                ("Esc", "close"),
+            ),
             _ => holder(
                 "INBOX",
-                &[("↑↓", "select"), ("Enter", "open")],
+                &[("↑↓", "select"), ("Enter", "open"), ("c", "clear finished")],
                 ("Esc", "close"),
             ),
         },
@@ -360,10 +365,11 @@ fn keys_holder(app: &App) -> Option<Holder> {
         Mode::NewSession(_) => holder(
             "NEW SESSION",
             &[
-                ("", "type search all · ~/ · host:~/"),
+                ("", "type a project or ~/path"),
                 ("Tab", "complete"),
+                ("Ctrl+O", "browse"),
                 ("↑↓", "move"),
-                ("Enter", "start"),
+                ("Enter", "pick"),
             ],
             ("Esc", "close"),
         ),
@@ -387,8 +393,13 @@ fn keys_holder(app: &App) -> Option<Holder> {
             &[("↑↓", "move"), ("Enter", "pick")],
             ("Esc", "close"),
         ),
+        Mode::Updates => holder(
+            "UPDATES",
+            &[("d", "download"), ("s", "skip"), ("r", "restart")],
+            ("Esc", "close"),
+        ),
         Mode::Actions { .. } => holder(
-            "COMMANDS",
+            "MENU",
             &[("↑↓", "move"), ("Enter", "run")],
             ("Esc", "close"),
         ),
@@ -655,10 +666,6 @@ fn holding(app: &App, h: &Holder, t: &Theme) -> (Piece, Vec<Piece>, Vec<Piece>) 
         hit: None,
     };
     let mut middle: Vec<Piece> = h.hints.iter().map(|&hint| hint_piece(hint, t)).collect();
-    // The sidebar says what `n` will do now, so nobody has to guess where it starts.
-    if matches!(app.mode, Mode::Side) {
-        middle.push(live_hint_piece("n", &app.quick_hint(), t));
-    }
     if shortcut_waits(app) {
         middle.push(hint_piece(("", "shortcut mode waits"), t));
     }
@@ -707,27 +714,6 @@ fn fit<'a>(
 /// outside the popup and close it.
 fn only_says(app: &App) -> bool {
     shortcut_waits(app) || !matches!(app.mode, Mode::Normal | Mode::Side | Mode::Prefix { .. })
-}
-
-/// After TYPING: which tab of its session this is and how many splits it shows, dim. When
-/// narrow the hint after it goes first, then this.
-fn layout_piece(app: &App, t: &Theme) -> Option<Piece> {
-    let n = app.screen.leaf_rects.len();
-    let tabs = app.session_tabs();
-    let at = tabs.iter().position(|&i| i == app.screen.tab)?;
-    (n > 0 && app.focused().is_some()).then(|| {
-        let words = format!(
-            "tab {}/{} · {n} split{}",
-            at + 1,
-            tabs.len(),
-            if n == 1 { "" } else { "s" }
-        );
-        Piece {
-            segs: vec![seg(words, Style::default().fg(t.muted).bg(t.bg))],
-            gap: GAP,
-            hit: None,
-        }
-    })
 }
 
 /// The right end's first piece: how many sessions need you in amber (the session's name when
@@ -856,12 +842,6 @@ pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rec
             hit: None,
         }];
     }
-    if calm
-        && holder.is_none()
-        && let Some(p) = layout_piece(app, t)
-    {
-        middle.insert(0, p);
-    }
     let releases: Vec<Piece> = if app.screen.release_in_side {
         Vec::new()
     } else {
@@ -892,33 +872,51 @@ pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rec
             .find(|a| tag_w + GAP + segs_width(&a.segs) <= room)
         {
             let alert_w = GAP + segs_width(&alert.segs);
-            let (left, release) = fit(
-                room.saturating_sub(alert_w),
-                &tag,
-                &middle,
-                &tail,
-                &releases,
-            );
-            let used = width(&left) + release_room(release) + alert_w;
-            right.push(alert);
-            for extra in branch_piece(app, t)
-                .into_iter()
-                .chain(pr_piece(app, t))
-                .chain(load_piece(app, t))
-            {
-                let more = extra.gap + segs_width(&extra.segs);
-                if used
-                    + right[1..]
-                        .iter()
-                        .map(|p| p.gap + segs_width(&p.segs))
-                        .sum::<u16>()
-                    + more
-                    <= room
+            if holder.is_some() || armed(app) {
+                // What has the keys, or shortcut mode, says all of its keys first; the branch and
+                // the load are there only while the whole left side still fits beside them.
+                let (left, release) = fit(room.saturating_sub(alert_w), &tag, &middle, &tail, &releases);
+                let used = width(&left) + release_room(release) + alert_w;
+                right.push(alert);
+                for extra in branch_piece(app, t)
+                    .into_iter()
+                    .chain(pr_piece(app, t))
+                    .chain(load_piece(app, t))
                 {
-                    right.push(extra);
+                    let more = extra.gap + segs_width(&extra.segs);
+                    let beside: u16 = right[1..].iter().map(|p| p.gap + segs_width(&p.segs)).sum();
+                    if used + beside + more <= room {
+                        right.push(extra);
+                    }
                 }
+                left_and_release = Some((left, release));
+            } else {
+                // Typing: who needs you, the branch and the load keep their place, and the hints
+                // give way first, whole, from the right.
+                right.push(alert);
+                let least_left =
+                    tag_w + middle.first().map_or(0, |p| p.gap + segs_width(&p.segs));
+                let mut used = least_left + alert_w + release_room(releases.first());
+                for extra in branch_piece(app, t)
+                    .into_iter()
+                    .chain(pr_piece(app, t))
+                    .chain(load_piece(app, t))
+                {
+                    let more = extra.gap + segs_width(&extra.segs);
+                    if used + more <= room {
+                        used += more;
+                        right.push(extra);
+                    }
+                }
+                let beside: u16 = right[1..].iter().map(|p| p.gap + segs_width(&p.segs)).sum();
+                left_and_release = Some(fit(
+                    room.saturating_sub(alert_w + beside),
+                    &tag,
+                    &middle,
+                    &tail,
+                    &releases,
+                ));
             }
-            left_and_release = Some((left, release));
         }
     }
     let right_w: u16 = right.iter().map(|p| p.gap + segs_width(&p.segs)).sum();

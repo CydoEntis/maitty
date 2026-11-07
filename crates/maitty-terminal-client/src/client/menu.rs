@@ -31,7 +31,14 @@ pub enum Act {
     EditMachine(MachineId),
     /// Take a machine out of the list; its sessions keep running there.
     RemoveMachine(String),
-    Beside(ClientTerm),
+    /// Show this session in a split of the focused one, on that side.
+    Beside(ClientTerm, crate::layout::Dir),
+    /// Pin a session to the top of the list, or let it go.
+    Pin(ClientTerm, bool),
+    /// Copy the session's folder to the clipboard.
+    CopyPath(ClientTerm),
+    /// Find in the session's output.
+    FindIn(ClientTerm),
     /// The program in this pane is an agent: the app learns it.
     TeachAgent(ClientTerm),
     /// End these (stops what runs in them).
@@ -49,8 +56,6 @@ pub enum Act {
     /// Put a checkout's files back as a snapshot has them: (folder, commit, when, whose row).
     Restore(PathBuf, String, String, ClientTerm),
     Split(ClientTerm, crate::layout::Dir),
-    /// Trade the places of two panes of the tab on screen.
-    Swap(ClientTerm, ClientTerm),
     RightClicks(ClientTerm),
     RenameProject(String, String),
     /// End everything in a project and forget it.
@@ -311,52 +316,33 @@ impl App {
         let agent = find(&model, term)
             .map(|(_, _, s)| s.agent.clone())
             .unwrap_or_default();
+        use crate::layout::Dir;
         let mut items = vec![
-            ("Rename pane".to_string(), Act::RenamePane(term)),
+            ("Split up".to_string(), Act::Split(term, Dir::Up)),
+            ("Split down".to_string(), Act::Split(term, Dir::Down)),
+            ("Split left".to_string(), Act::Split(term, Dir::Left)),
+            ("Split right".to_string(), Act::Split(term, Dir::Right)),
+            ("Find".to_string(), Act::FindIn(term)),
+            ("Rename".to_string(), Act::RenamePane(term)),
+            ("Copy path".to_string(), Act::CopyPath(term)),
             (
-                "Split right".to_string(),
-                Act::Split(term, crate::layout::Dir::Right),
-            ),
-            (
-                "Split down".to_string(),
-                Act::Split(term, crate::layout::Dir::Down),
-            ),
-            (
-                "Split left".to_string(),
-                Act::Split(term, crate::layout::Dir::Left),
-            ),
-            (
-                "Split up".to_string(),
-                Act::Split(term, crate::layout::Dir::Up),
+                if self.screen.right_clicks.contains(&term) {
+                    "Stop sending right-clicks to pane"
+                } else {
+                    "Send right-clicks to pane"
+                }
+                .to_string(),
+                Act::RightClicks(term),
             ),
         ];
-        use crate::layout::Dir;
-        for (dir, way) in [
-            (Dir::Left, "left"),
-            (Dir::Right, "right"),
-            (Dir::Up, "up"),
-            (Dir::Down, "down"),
-        ] {
-            if let Some(to) = crate::layout::neighbor(&self.screen.leaf_rects, term, dir) {
-                items.push((format!("Move pane {way}"), Act::Swap(term, to)));
-            }
-        }
-        items.push((
-            if self.screen.right_clicks.contains(&term) {
-                "Stop sending right-clicks to pane"
-            } else {
-                "Send right-clicks to pane"
-            }
-            .to_string(),
-            Act::RightClicks(term),
-        ));
         // A program the app doesn't know (an agent started by an alias, say): teach it.
         if let Some(t) = self.term_info(term).filter(|t| {
             t.agent.is_none() && !t.is_shell() && !t.process.is_empty() && t.remote.is_none()
         }) {
             items.push((format!("{} is an agent…", t.process), Act::TeachAgent(term)));
         }
-        items.push(("Close pane".to_string(), Act::End(vec![term])));
+        let several = self.screen.leaf_rects.len() > 1;
+        items.push((if several { "Close pane" } else { "Close session" }.to_string(), Act::End(vec![term])));
         self.menu(
             if agent.is_empty() {
                 "pane".into()
@@ -413,10 +399,14 @@ impl App {
         }) {
             items.push((format!("{} is an agent…", t.process), Act::TeachAgent(term)));
         }
-        if self.focused().is_some_and(|f| f != term) {
-            items.push(("Open beside".into(), Act::Beside(term)));
-        }
         items.push(("Rename".to_string(), Act::RenamePane(term)));
+        let pinned = info.is_some_and(|t| t.pinned);
+        items.push((if pinned { "Unpin" } else { "Pin" }.to_string(), Act::Pin(term, !pinned)));
+        if self.focused().is_some_and(|f| f != term) {
+            items.push(("Open in split right".into(), Act::Beside(term, crate::layout::Dir::Right)));
+            items.push(("Open in split down".into(), Act::Beside(term, crate::layout::Dir::Down)));
+        }
+        items.push(("Copy path".to_string(), Act::CopyPath(term)));
         if let Some(d) = dir
             .filter(|_| self.is_local_pane(term))
             .filter(|d| crate::gitfs::head(d).is_some())
@@ -435,7 +425,7 @@ impl App {
         if let Some(check) = info.and_then(|t| t.check()) {
             items.extend(super::screen::check_menu_items(term, check));
         }
-        items.push(("Close".to_string(), Act::End(vec![term])));
+        items.push(("Close session".to_string(), Act::End(vec![term])));
         // Titled by what it is (an agent, or the program's name), never its window title.
         let what = if s.is_agent {
             agent
@@ -621,25 +611,15 @@ impl App {
 
     /// What a menu item does; closing things asks first, a plain shell too.
     pub(super) fn menu_act(&mut self, a: Act) {
+        // One session closes at once, with an Undo; a running agent asks for a second press.
+        if let Act::End(ts) = &a
+            && let [term] = ts.as_slice()
+        {
+            self.close_session(*term);
+            return;
+        }
         let model = self.screen_model();
         let ask: Option<Confirm> = match &a {
-            Act::End(ts) if ts.len() == 1 => {
-                let name = super::screen::session_name(self, &model, ts[0]);
-                let path = self.term_info(ts[0]).map(|t| t.cwd.display().to_string()).unwrap_or_default();
-                let running = self.term_info(ts[0]).is_some_and(|t| t.status == crate::protocol::Status::Working);
-                Some(Confirm {
-                    title: super::screen::pane_number(self, ts[0]).map_or_else(|| "Close pane".into(), |n| format!("Close pane {n}")),
-                    sub: name.clone(),
-                    what: name,
-                    detail: path,
-                    note: if running { "It's still working; the program running in it will stop.".into() } else { "The program running in it will stop.".into() },
-                    list: Vec::new(),
-                    yes: "Close".into(),
-                    key: '\n',
-                    danger: true,
-                    act: a.clone(),
-                })
-            }
             Act::End(ts) => Some(Confirm {
                 title: "Close panes".into(),
                 sub: String::new(),
@@ -810,9 +790,6 @@ impl App {
                         cmd: None,
                     },
                 );
-            }
-            Act::Swap(a, b) => {
-                self.swap_panes(a, b);
             }
             Act::Update => self.start_update(),
             Act::RestartDaemon => self.restart_daemon_now(),
@@ -1011,7 +988,27 @@ impl App {
                     None => self.notify("start something in this project first".into(), true),
                 }
             }
-            Act::Beside(t) => {
+            Act::Pin(t, pinned) => self.cmd_on(t.machine, Command::PinPane { term: t.term, pinned }),
+            Act::CopyPath(t) => {
+                let path = self.term_info(t).map(|x| x.cwd.display().to_string());
+                match path {
+                    Some(path) => {
+                        super::copy::to_clipboard(&path);
+                        self.notify(format!("Copied {path}"), false);
+                    }
+                    None => self.notify("no folder to copy".into(), true),
+                }
+            }
+            Act::FindIn(t) => {
+                if self.enter_copy(t)
+                    && let Mode::Copy(c) = &mut self.mode
+                {
+                    c.input = Some(String::new());
+                    c.backward = true;
+                }
+            }
+            Act::Beside(t, dir) => {
+                self.screen.split_dir = Some(dir);
                 if let Some(f) = self.focused() {
                     self.screen_unshow(t);
                     self.screen.pending_split = Some((f, std::time::Instant::now()));
@@ -1146,16 +1143,12 @@ fn pressed(keys: &[Option<MenuKey>], k: &KeyEvent) -> Option<usize> {
 
 /// The leader action an item does the same as, whose key it then shows: splitting, moving the
 /// pane to a side, closing one pane, a checkout's changes.
-fn bound_action(app: &App, act: &Act) -> Option<crate::keys::Action> {
+fn bound_action(act: &Act) -> Option<crate::keys::Action> {
     use crate::keys::Action;
     use crate::layout::Dir;
     match act {
         Act::Split(_, Dir::Right) => Some(Action::SplitRight),
         Act::Split(_, Dir::Down) => Some(Action::SplitDown),
-        Act::Swap(a, b) => [Dir::Left, Dir::Right, Dir::Up, Dir::Down]
-            .into_iter()
-            .find(|d| crate::layout::neighbor(&app.screen.leaf_rects, *a, *d) == Some(*b))
-            .map(Action::Swap),
         Act::End(ts) if ts.len() == 1 => Some(Action::ClosePane),
         Act::Changes(_) => Some(Action::Changes),
         _ => None,
@@ -1179,7 +1172,7 @@ pub(super) fn menu_keys(app: &App, items: &[(String, Act)]) -> Vec<Option<MenuKe
     let bound: Vec<Option<crate::keys::KeySpec>> = items
         .iter()
         .map(|(_, a)| {
-            bound_action(app, a)
+            bound_action(a)
                 .and_then(|b| bound_key(app, &b))
                 .filter(|k| !menu_owns(items, a, k))
         })
@@ -1320,6 +1313,8 @@ pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: 
     let mut yy = r.y + 2;
     for (i, (label, act)) in m.items.iter().enumerate() {
         if gap && danger(act) && i + 1 == m.items.len() {
+            let rule = "─".repeat(usize::from(w).saturating_sub(6));
+            put(f.buffer_mut(), r.x + 3, yy, &[seg(rule, Style::default().fg(t.line).bg(bgm))], r.right().saturating_sub(2));
             yy += 1;
         }
         let row = Rect {
@@ -1339,7 +1334,7 @@ pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: 
                 row.x + 1,
                 yy,
                 &[seg(
-                    "›",
+                    "▌",
                     Style::default()
                         .fg(t.accent)
                         .bg(bg)

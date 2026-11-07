@@ -144,17 +144,17 @@ fn a_menus_selection_is_a_raised_row_with_an_accent_bar() {
     app.menu_for_session(ClientTerm::local(4), (10, 10));
     let buf = draw(&mut app, 160, 45);
     let t = app.theme.clone();
-    let (x, y) = find_in(&buf, buf.area, "Open beside").expect("the selected row");
+    let (x, y) = find_in(&buf, buf.area, "Rename").expect("the selected row");
     assert_eq!(buf[(x, y)].bg, t.card2, "the selected row is raised");
     let marker = (buf.area.x..x)
         .map(|mx| &buf[(mx, y)])
-        .find(|c| ["▎", "›"].contains(&c.symbol()));
+        .find(|c| ["▎", "▌", "›"].contains(&c.symbol()));
     assert_eq!(
         marker.map(|c| c.fg),
         Some(t.accent),
         "an accent marker on it"
     );
-    let (ox, oy) = find_in(&buf, buf.area, "Rename").unwrap();
+    let (ox, oy) = find_in(&buf, buf.area, "Copy path").unwrap();
     assert_eq!(buf[(ox, oy)].bg, t.bg, "the others are not");
 }
 

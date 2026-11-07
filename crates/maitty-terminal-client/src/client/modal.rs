@@ -737,7 +737,7 @@ mod tests {
         assert_eq!(step(&cfg, side, 1).unwrap().as_str(), Some("right"));
         assert_eq!(step(&cfg, side, -1).unwrap().as_str(), Some("right"));
         let leader = SETTINGS.iter().find(|s| s.path == "prefix").unwrap();
-        assert_eq!(display(&cfg, leader), "C-Space");
+        assert_eq!(display(&cfg, leader), "C-a");
     }
 
     #[test]

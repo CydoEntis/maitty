@@ -720,6 +720,32 @@ pub(in crate::client) fn hline(buf: &mut Buffer, x: u16, y: u16, w: u16, t: &The
     }
 }
 
+/// The workspace with nothing in it: what is true, one line of help, and the key.
+fn draw_no_sessions(app: &App, f: &mut Frame, area: Rect, t: &Theme) {
+    let lines = [
+        ("No sessions running", Style::default().fg(t.strong).add_modifier(Modifier::BOLD)),
+        ("Sessions keep running when you close the app.", Style::default().fg(t.muted)),
+    ];
+    let key = crate::client::design::long_key(&crate::keys::KeySpec::from_event(
+        &crossterm::event::KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL),
+    ));
+    let mut y = area.y + area.height / 3;
+    for (text, style) in lines {
+        let x = area.x + area.width.saturating_sub(text.width() as u16) / 2;
+        put(f.buffer_mut(), x, y, &[seg(text, style)], area.right());
+        y += 1;
+    }
+    let words = " new session";
+    let width = (key.width() + words.width()) as u16;
+    let x = area.x + area.width.saturating_sub(width) / 2;
+    let caps = [
+        seg(key, Style::default().fg(t.strong).bg(t.btn).add_modifier(Modifier::BOLD)),
+        seg(words, Style::default().fg(t.muted)),
+    ];
+    put(f.buffer_mut(), x, y + 1, &caps, area.right());
+    let _ = app;
+}
+
 pub(in crate::client) fn draw_main(
     app: &mut App,
     f: &mut Frame,
@@ -728,20 +754,7 @@ pub(in crate::client) fn draw_main(
     t: &Theme,
 ) {
     let Some(focus) = app.focused() else {
-        let nk = k(app, &Action::ShellHere);
-        put(
-            f.buffer_mut(),
-            area.x + 4,
-            area.y + 3,
-            &[seg(
-                format!(
-                    "Nothing open. Press {} {nk} for a new shell.",
-                    app.keymap.prefix.to_string().replace("C-", "Ctrl+")
-                ),
-                Style::default().fg(t.muted),
-            )],
-            area.right(),
-        );
+        draw_no_sessions(app, f, area, t);
         return;
     };
     // Which tab was on screen last, per session.
@@ -1188,14 +1201,6 @@ fn grid_index(app: &App, term: ClientTerm) -> usize {
         .collect();
     order.sort_unstable();
     order.iter().position(|(.., id)| *id == term).unwrap_or(0)
-}
-
-/// The number a pane shows in its title: its place in the tab in reading order, from 1. Only
-/// while the tab shows two panes or more, so a lone pane's title stays as it was.
-pub(in crate::client) fn pane_number(app: &App, term: ClientTerm) -> Option<usize> {
-    let split =
-        app.screen.leaf_rects.len() > 1 && app.screen.leaf_rects.iter().any(|(id, _)| *id == term);
-    split.then(|| grid_index(app, term) + 1)
 }
 
 /// Between a pane's number and its name in a title chip.

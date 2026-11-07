@@ -21,8 +21,9 @@ pub enum Choice {
     Quit,
 }
 
-/// Rows the text block takes: title, gap, two lines, gap, buttons.
-const BLOCK_HEIGHT: u16 = 6;
+/// Rows the text block takes: title, gap, what version, what survives, what stops, what resumes,
+/// gap, buttons.
+const BLOCK_HEIGHT: u16 = 8;
 const BUTTON_GAP: u16 = 2;
 
 pub struct Prompt {
@@ -73,7 +74,7 @@ impl Prompt {
 
     pub fn on_key(&mut self, k: KeyEvent) -> Option<Choice> {
         match k.code {
-            KeyCode::Enter => Some(Choice::Restart),
+            KeyCode::Enter | KeyCode::Char('r') => Some(Choice::Restart),
             KeyCode::Esc => Some(Choice::Quit),
             // Raw mode turns Ctrl+C into a key, so it has to be answered here.
             KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => Some(Choice::Quit),
@@ -110,11 +111,12 @@ impl Prompt {
         let this = crate::protocol::PROTOCOL_VERSION;
         let age = if self.daemon < this { "older" } else { "newer" };
         let cost = self.cost();
+        let title = format!(" {}D NEEDS AN UPDATE ", env!("APP_COMMAND").to_uppercase());
         let lines = [
             (
                 0,
-                env!("APP_NAME").to_string(),
-                ground.fg(t.strong).add_modifier(Modifier::BOLD),
+                title,
+                Style::default().fg(t.acc_ink).bg(t.blocked).add_modifier(Modifier::BOLD),
             ),
             (
                 2,
@@ -124,7 +126,9 @@ impl Prompt {
                 ),
                 ground.fg(t.text),
             ),
-            (3, cost, ground.fg(t.muted)),
+            (3, "SURVIVES  shells and their scrollback".to_string(), ground.fg(t.done)),
+            (4, "STOPS     agents: Enter on a row resumes one afterwards".to_string(), ground.fg(t.blocked)),
+            (5, cost, ground.fg(t.muted)),
         ];
         let top = area.y + area.height.saturating_sub(BLOCK_HEIGHT) / 2;
         for (row, text, style) in lines {
@@ -135,9 +139,9 @@ impl Prompt {
         let buttons = [
             (
                 Choice::Restart,
-                button(t, "Restart and open", "Enter", BtnKind::Primary),
+                button(t, "Restart service", "r", BtnKind::Primary),
             ),
-            (Choice::Quit, button(t, "Quit", "Esc", BtnKind::Normal)),
+            (Choice::Quit, button(t, "Not now", "Esc", BtnKind::Normal)),
         ];
         let total: u16 = buttons.iter().map(|(_, b)| segs_width(b)).sum::<u16>() + BUTTON_GAP;
         let mut x = area.x + area.width.saturating_sub(total) / 2;
@@ -270,8 +274,10 @@ mod tests {
                     format!("protocol v{OLD_PROTOCOL}"),
                     format!("v{this}"),
                     "Running agents stop and resume".to_string(),
-                    "Restart and open".to_string(),
-                    "Quit".to_string(),
+                    "Restart service".to_string(),
+                    "Not now".to_string(),
+                    "SURVIVES".to_string(),
+                    "STOPS".to_string(),
                 ] {
                     assert!(
                         out.contains(&want),
@@ -310,9 +316,10 @@ mod tests {
     }
 
     #[test]
-    fn enter_restarts_and_escape_quits() {
+    fn r_or_enter_restarts_and_escape_quits() {
         let mut prompt = Prompt::new(OLD_PROTOCOL, &cfg(LAYOUTS[0]));
         assert_eq!(press(&mut prompt, KeyCode::Enter), Some(Choice::Restart));
+        assert_eq!(press(&mut prompt, KeyCode::Char('r')), Some(Choice::Restart));
         assert_eq!(press(&mut prompt, KeyCode::Esc), Some(Choice::Quit));
         assert_eq!(
             prompt.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL)),

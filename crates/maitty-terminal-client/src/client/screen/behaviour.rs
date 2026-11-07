@@ -661,8 +661,7 @@ impl App {
         let focused = self.selected_term();
         match a {
             Action::Settings => self.screen_settings(),
-            Action::StartSession => self.screen_start_session(None),
-            Action::PickSession => self.screen_open_session_popup(""),
+            Action::PickSession => self.open_new_session(None),
             // A plain shell in the project's own folder (the repo itself, not a worktree).
             Action::ShellHere => {
                 let dir = self
@@ -831,16 +830,17 @@ impl App {
                     let tab = self.screen.tab;
                     self.screen.tabs[tab].layout.resize(f.term, *d, 0.05);
                 } else {
-                    let w = self
-                        .screen
-                        .saved
-                        .side_w
-                        .unwrap_or(self.screen.side_rect.width.max(SIDE_MIN));
-                    let w = if grow { w + 2 } else { w.saturating_sub(2) };
-                    self.screen.saved.side_w = Some(w.clamp(SIDE_MIN, SIDE_MAX));
+                    self.resize_sidebar(grow);
                 }
                 self.screen.save();
             }
+            Action::SidebarWider | Action::SidebarNarrower => {
+                self.resize_sidebar(*a == Action::SidebarWider);
+                self.screen.save();
+            }
+            Action::NextSession | Action::PrevSession => self.step_session(*a == Action::NextSession),
+            Action::UndoClose => self.undo_close(),
+            Action::Updates => self.open_updates(),
             Action::Files | Action::Changes => {
                 let dir = self.screen_target_dir();
                 self.screen.cursor = None;
@@ -868,6 +868,38 @@ impl App {
         true
     }
 
+    /// Two columns wider or narrower, within the sidebar's limits.
+    fn resize_sidebar(&mut self, grow: bool) {
+        let w = self
+            .screen
+            .saved
+            .side_w
+            .unwrap_or(self.screen.side_rect.width.max(SIDE_MIN));
+        let w = if grow { w + 2 } else { w.saturating_sub(2) };
+        self.screen.saved.side_w = Some(w.clamp(SIDE_MIN, SIDE_MAX));
+    }
+
+    /// Alt+Down / Alt+Up: the next or previous session in the sidebar's order, wrapping.
+    fn step_session(&mut self, next: bool) {
+        let terms: Vec<ClientTerm> = self
+            .screen_model()
+            .iter()
+            .flat_map(|p| p.sessions())
+            .filter_map(|s| s.native_term)
+            .collect();
+        let at = self.focused().and_then(|f| terms.iter().position(|t| *t == f));
+        let n = terms.len();
+        let to = match at {
+            Some(i) if n > 1 => terms[if next { (i + 1) % n } else { (i + n - 1) % n }],
+            Some(_) => return,
+            None => match terms.first() {
+                Some(t) => *t,
+                None => return,
+            },
+        };
+        self.screen_focus(to);
+    }
+
     /// Keys while the sidebar cursor is up: arrows move, Enter opens, other keys act as
     /// if the leader had been pressed.
     /// Keys while the sidebar has them: ↑↓ move, →← open or fold (← from a session goes to
@@ -893,7 +925,7 @@ impl App {
         let spec = KeySpec::from_event(k);
         let proj = self.screen.cursor_proj.clone();
         let model = self.screen_model();
-        if spec == self.keymap.prefix {
+        if self.keymap.is_prefix(&spec) {
             self.mode = Mode::Prefix {
                 since: Instant::now(),
                 acted: false,
@@ -929,10 +961,8 @@ impl App {
         match spec.code {
             // [: full, then the narrow column, then hidden, then full again.
             KeyCode::Char('[') if plain => self.cycle_sidebar(),
-            // New session: at once where the sidebar is (`quick_target`); `N` is the popup that
-            // starts one on any project, folder or machine.
-            KeyCode::Char('n') if plain => self.quick_new(),
-            KeyCode::Char('N') if plain => self.screen_open_session_popup(""),
+            // New session: the dialog, which starts a shell on any project and machine.
+            KeyCode::Char('n' | 'N') if plain => self.open_new_session(None),
             KeyCode::Up | KeyCode::Char('k') if !k.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.screen_side_move(-1)
             }
@@ -997,6 +1027,8 @@ impl App {
                 (None, c) => {
                     if let Some(c) = c {
                         if let Some(term) = self.open_session_term(c) {
+                            // An agent the restart stopped: Enter brings its conversation back.
+                            self.resume_stopped_agent(term);
                             self.screen_focus(term);
                             self.screen_side_leave();
                         }
@@ -1006,7 +1038,7 @@ impl App {
                 }
             },
             KeyCode::Esc => self.screen_side_leave(),
-            _ if spec == self.keymap.prefix => {
+            _ if self.keymap.is_prefix(&spec) => {
                 self.mode = Mode::Prefix {
                     since: Instant::now(),
                     acted: false,
@@ -1506,6 +1538,33 @@ impl App {
                 }
                 return;
             }
+            // y, a and n answer a permission prompt in the selected card's session, as if typed
+            // there: yes once, always this session, no. They go to its PTY; the card leaves when
+            // the agent stops asking.
+            KeyCode::Char(c @ ('y' | 'a' | 'n'))
+                if query.is_empty() && matches!(sel_row, Some(GoRow::Ask(_))) =>
+            {
+                if let Some(GoRow::Ask(term)) = sel_row {
+                    self.send_input(term, vec![c as u8]);
+                    let word = match c {
+                        'y' => "yes once",
+                        'a' => "yes for the session",
+                        _ => "no",
+                    };
+                    let name = self.session_name(term);
+                    self.notify(format!("{name}: {word}"), false);
+                }
+                self.mode = Mode::GoTo { query, sel };
+                return;
+            }
+            // c clears what finished: each card leaves, its session stays.
+            KeyCode::Char('c') if query.is_empty() => {
+                for row in &rows {
+                    if let GoRow::Done(term) = row {
+                        self.cmd_on(term.machine, Command::MarkSeen { term: term.term });
+                    }
+                }
+            }
             // Any item: its session.
             KeyCode::Char('o') if query.is_empty() && sel_item.is_some() => {
                 self.mode = Mode::Normal;
@@ -1855,7 +1914,7 @@ impl App {
         self.splash = false;
         self.screen.splash_sel = 0;
         match c {
-            'n' => self.screen_open_session_popup(""),
+            'n' => self.open_new_session(None),
             'o' => self.screen_open_finder(),
             ',' => self.screen_settings(),
             '?' => self.open_keymap(None),
@@ -1965,7 +2024,7 @@ impl App {
             ScreenHit::ExpandSidebar | ScreenHit::CollapseSidebar => {
                 self.act(Action::ToggleSidebar)
             }
-            ScreenHit::NewShell => self.quick_new(),
+            ScreenHit::NewShell => self.open_new_session(None),
             ScreenHit::Actions => self.act(Action::Menu),
             ScreenHit::ActionRow(i) => self.actions_run(i),
             ScreenHit::Leader => self.open_keymap(None),
@@ -2018,9 +2077,8 @@ impl App {
                 self.dismiss_notice();
             }
             ScreenHit::SettingsBody => {}
-            ScreenHit::NsMachine(machine) => self.screen_open_scoped(machine),
-            ScreenHit::NsRow(i) => self.session_popup_row_click(i),
-            ScreenHit::NsChip(i) => self.session_popup_chip_click(i),
+            ScreenHit::NsMachine(machine) => self.open_new_session(Some(machine)),
+            ScreenHit::NsRow(i) => self.new_session_row_click(i),
             ScreenHit::FinderPick(i) => {
                 if let Mode::Finder(fd) = &self.mode {
                     let mut fd = (**fd).clone();

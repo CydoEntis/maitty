@@ -293,7 +293,6 @@ impl App {
         let mut actions = vec![
             Action::Jump,
             Action::BrowseTree,
-            Action::StartSession,
             Action::PickSession,
             Action::ShellHere,
             Action::SplitRight,

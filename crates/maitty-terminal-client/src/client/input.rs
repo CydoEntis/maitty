@@ -9,6 +9,13 @@ const PASTE_MIN_CHARS: usize = 16;
 const DEAD_KEY_HINT: &str = "Shortcut mode — Esc to type";
 const DEAD_KEY_HINT_EVERY: std::time::Duration = std::time::Duration::from_secs(6);
 
+/// Ctrl+Shift+F, find in the pane. Only a terminal that reports the shift state sends it; the
+/// rest reach the same find with the prefix and `/`.
+fn is_find_in_pane(k: &KeyEvent) -> bool {
+    k.modifiers.contains(KeyModifiers::CONTROL | KeyModifiers::SHIFT)
+        && matches!(k.code, KeyCode::Char('f' | 'F'))
+}
+
 /// How many keys went down in `events`.
 pub(super) fn presses(events: &[Event]) -> usize {
     events
@@ -181,7 +188,7 @@ impl App {
                     _ => {}
                 }
             }
-            Mode::NewSession(_) => self.session_popup_paste(&s),
+            Mode::NewSession(_) => self.new_session_paste(&s),
             Mode::Finder(fd) => {
                 fd.q.push_str(s.lines().next().unwrap_or("").trim());
                 fd.sel = 0;
@@ -275,6 +282,15 @@ impl App {
     }
 
     /// The open view has the keys, unless a click into a pane set it aside.
+    /// Ctrl+A is both the prefix and select-all: a file being edited gets it, and the prefix is
+    /// still on Ctrl+Space (or Esc out of the editor first).
+    fn editor_takes(&self, k: &KeyEvent) -> bool {
+        k.modifiers == KeyModifiers::CONTROL
+            && k.code == KeyCode::Char('a')
+            && self.view_has_keys()
+            && matches!(&self.view, Some(View::Files(v)) if v.edit.is_some())
+    }
+
     pub(super) fn view_has_keys(&self) -> bool {
         self.view.is_some() && self.view_set_aside != self.view_kind()
     }
@@ -297,6 +313,11 @@ impl App {
         if k.code == KeyCode::Esc && matches!(self.screen.drag, Some(screen::Drag::Pane { .. })) {
             self.screen.drag = None;
             self.dirty = true;
+            return;
+        }
+        // Without its daemon the window has nothing to type into: only the service's own keys work.
+        if self.service != screen::Service::Up {
+            self.on_service_key(&k);
             return;
         }
         if self.splash {
@@ -361,11 +382,13 @@ impl App {
         }
         match self.mode.clone() {
             Mode::Normal => {
-                if spec == self.keymap.prefix {
+                if self.keymap.is_prefix(&spec) && !self.editor_takes(&k) {
                     self.mode = Mode::Prefix {
                         since: Instant::now(),
                         acted: false,
                     };
+                } else if is_find_in_pane(&k) {
+                    self.act(Action::Search);
                 } else if let Some(a) = self.keymap.global.get(&spec).cloned() {
                     self.act(a);
                 } else if self.view_has_keys() {
@@ -376,7 +399,7 @@ impl App {
                 }
             }
             Mode::Finder(fd) => self.on_finder_key(*fd, &k),
-            Mode::NewSession(ns) => self.on_session_popup_key(*ns, &k),
+            Mode::NewSession(ns) => self.on_new_session_key(*ns, &k),
             Mode::ScreenPane(np) => self.on_hy_pane_key(np, &k),
             Mode::ScreenSettings(_) => self.screen_settings_key(&k),
             Mode::Themes { query, sel, saving } => self.on_theme_key(query, sel, saving, &k),
@@ -433,7 +456,7 @@ impl App {
             },
             Mode::Prefix { since, acted } => {
                 // Esc or the leader again: back to typing.
-                if k.code == KeyCode::Esc || spec == self.keymap.prefix {
+                if k.code == KeyCode::Esc || self.keymap.is_prefix(&spec) {
                     self.mode = Mode::Normal;
                     self.shortcut_held = false;
                     return;
@@ -467,6 +490,7 @@ impl App {
             }
             Mode::KeyMap(km) => self.on_keymap_key(*km, &k),
             Mode::Actions { sel } => self.on_actions_key(sel, &k),
+            Mode::Updates => self.on_updates_key(&k),
             Mode::RenameTab(nt) => self.on_rename_tab_key(*nt, &k),
             Mode::Worktrees {
                 ws,
