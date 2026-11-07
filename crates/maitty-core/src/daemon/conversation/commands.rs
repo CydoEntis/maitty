@@ -82,6 +82,10 @@ fn cached_claude_history(
     Ok((history, is_complete))
 }
 
+/// The requester of a start the daemon makes itself. No client has this id, so a reply to it is
+/// dropped and a failure is only recorded on the conversation and logged.
+pub(in crate::daemon) const DAEMON_REQUESTER: ClientId = ClientId::MAX;
+
 pub(in crate::daemon) enum Pending {
     Validating {
         client: ClientId,
@@ -410,6 +414,9 @@ impl Daemon {
         client: ClientId,
         target: StartTarget,
     ) -> Result<()> {
+        if client == DAEMON_REQUESTER && !matches!(target, StartTarget::Conversation { .. }) {
+            bail!("The daemon may only resume an existing conversation");
+        }
         self.may(client, Grant::Start, None)?;
         self.durable_conversation()?;
         let by = self.starting(client, "a structured Codex conversation")?;
@@ -2350,6 +2357,9 @@ impl Daemon {
         state.status = Status::Blocked;
         state.error = Some(error.clone());
         state.history_ready = false;
+        if client == Some(DAEMON_REQUESTER) {
+            tracing::warn!("conversation {} was not resumed: {error}", id.0);
+        }
         if let Some(client) = client {
             self.send(client, ServerMsg::Error(error));
         }

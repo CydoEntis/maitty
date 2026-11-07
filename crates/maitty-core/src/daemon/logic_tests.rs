@@ -7130,6 +7130,34 @@ fn legacy_pane_metadata_does_not_invent_a_verified_binding() {
 }
 
 #[test]
+fn a_restore_notes_only_the_conversations_that_were_running() {
+    use crate::conversation::{ConversationId, RecoveryState};
+    let record = |id: u64, state, native_session: &str| {
+        let mut record = crate::test_support::conversation();
+        record.id = ConversationId(id);
+        record.state = state;
+        record.binding.session_id = native_session.into();
+        record
+    };
+    let (mut d, _rx) = daemon();
+    let before = crate::test_support::conversation().generation;
+    d.restore(persist::Saved {
+        conversations: vec![
+            record(1, RecoveryState::Running, "thread-1"),
+            record(2, RecoveryState::Stopped, "thread-2"),
+            record(3, RecoveryState::RecoveryRequired, "thread-3"),
+            record(4, RecoveryState::Transferring, "thread-4"),
+        ],
+        ..Default::default()
+    });
+    assert_eq!(
+        d.resumable_conversations,
+        vec![(ConversationId(1), before + 1), (ConversationId(4), before + 1)],
+        "a stopped one, or one already needing recovery, is not resumed by the restart"
+    );
+}
+
+#[test]
 fn startup_persists_recovered_generations_before_another_restart() {
     use crate::conversation::RecoveryState;
     for state in [RecoveryState::Running, RecoveryState::Transferring] {

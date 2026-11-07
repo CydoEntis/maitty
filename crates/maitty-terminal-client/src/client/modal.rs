@@ -423,6 +423,13 @@ pub const SETTINGS: &[Setting] = &[
         help: "Restart agents in their last conversation (claude --resume, codex resume).",
     },
     Setting {
+        path: "restore.conversations",
+        label: "Resume chat conversations",
+        kind: Kind::Bool,
+        cat: Cat::Sessions,
+        help: "After a restart, chat conversations that were running pick up on the same provider session.",
+    },
+    Setting {
         path: "restore.commands",
         label: "Re-run commands",
         kind: Kind::Bool,

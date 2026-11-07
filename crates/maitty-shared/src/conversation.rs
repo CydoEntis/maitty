@@ -346,7 +346,9 @@ pub enum IdentityError {
 }
 
 impl Conversation {
-    pub fn recover(&mut self) -> Result<(), IdentityError> {
+    /// Fence a writer that was running when the daemon went away. Returns whether this record
+    /// was one: its generation moved and it now needs recovery.
+    pub fn recover(&mut self) -> Result<bool, IdentityError> {
         if matches!(
             self.state,
             RecoveryState::Running | RecoveryState::Transferring
@@ -356,8 +358,9 @@ impl Conversation {
                 .checked_add(1)
                 .ok_or(IdentityError::GenerationExhausted)?;
             self.state = RecoveryState::RecoveryRequired;
+            return Ok(true);
         }
-        Ok(())
+        Ok(false)
     }
 }
 

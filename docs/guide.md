@@ -721,7 +721,9 @@ saved to the data directory a couple of seconds after it changes. On the next st
 `maitty kill-server` keeps the session for next time, and `maitty kill-server --forget` discards it.
 Closing every pane yourself also starts fresh. A pane or agent that ends on its own is left out
 of the saved session for 15 seconds: a shutdown, reboot or logoff kills agents a moment before
-maitty, so the session from before it is the one that comes back. Configure all of this under `[restore]`,
+maitty, so the session from before it is the one that comes back. Chat conversations that were running
+resume by themselves on the same provider session (`conversations = false` leaves them in Recovery
+needed until you press Resume). Configure all of this under `[restore]`,
 and per agent with `resume` / `resume_last`. Each pane's recent output is kept on disk so it is
 there after a restart; it can hold secrets that were on screen, so `output = false` (Settings ›
 Sessions › Keep each pane's recent output) stops saving it and deletes what was saved.

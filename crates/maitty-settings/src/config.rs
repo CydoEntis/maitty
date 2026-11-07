@@ -301,6 +301,9 @@ pub struct Restore {
     pub enabled: bool,
     /// Relaunch agents with their resume command (`claude --resume <id>`, ...).
     pub agents: bool,
+    /// Resume chat conversations that were running when the server stopped, on the same
+    /// provider session.
+    pub conversations: bool,
     /// Re-run commands panes were started with (`spawn-right:lazygit`, `<app> split -- x`).
     pub commands: bool,
     /// Keep each pane's recent output on disk so it is there after a restart. It can hold
@@ -375,6 +378,7 @@ impl Default for Restore {
         Restore {
             enabled: true,
             agents: true,
+            conversations: true,
             commands: true,
             output: true,
         }
@@ -1062,9 +1066,22 @@ mod tests {
     }
 
     #[test]
+    fn a_config_can_turn_conversation_resume_off() {
+        let restore: Restore = toml::from_str("conversations = false").unwrap();
+        assert!(!restore.conversations);
+        assert!(restore.agents, "the other restore settings keep their defaults");
+    }
+
+    #[test]
     fn persistence_worktree_and_mcp_settings_keep_their_defaults() {
         let restore = Restore::default();
-        assert!(restore.enabled && restore.agents && restore.commands && restore.output);
+        assert!(
+            restore.enabled
+                && restore.agents
+                && restore.conversations
+                && restore.commands
+                && restore.output
+        );
 
         let worktree = Worktree::default();
         assert_eq!(worktree.dir, "{repo_parent}/{repo}-worktrees/{branch}");

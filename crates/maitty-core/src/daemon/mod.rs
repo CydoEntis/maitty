@@ -391,6 +391,9 @@ struct Daemon {
     conversations: Vec<crate::conversation::Conversation>,
     pending_starts: Vec<crate::conversation::PendingStart>,
     conversation_operations: Vec<crate::conversation::Operation>,
+    /// Chat conversations that were running when the previous daemon went away, with the
+    /// generation they were fenced to: what an automatic resume may start, once.
+    resumable_conversations: Vec<(crate::conversation::ConversationId, u64)>,
     conversation_states: BTreeMap<crate::conversation::ConversationId, conversation::State>,
     /// Conversations whose agent was stopped on purpose, so its exit is not a failure.
     conversation_ending: std::collections::BTreeSet<crate::conversation::ConversationId>,
@@ -528,6 +531,7 @@ pub fn run(on_start: impl FnOnce()) -> Result<()> {
             d.restore_startup(saved);
         }
         d.initialize_conversation_cache().await?;
+        d.resume_conversations();
         d.run(rx).await;
         Ok(())
     })
@@ -1073,6 +1077,7 @@ impl Daemon {
             conversations: Vec::new(),
             pending_starts: Vec::new(),
             conversation_operations: Vec::new(),
+            resumable_conversations: Vec::new(),
             conversation_states: BTreeMap::new(),
             conversation_ending: std::collections::BTreeSet::new(),
             conversation_requests: BTreeMap::new(),
