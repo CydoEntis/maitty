@@ -20,7 +20,7 @@ import {
   startShellSession,
   undoCloseSession,
 } from '@/api/daemon'
-import { LOCAL_MACHINE, addMachine, cancelAddMachine, listSshHosts, listenAttention, listenMachineClipboard, listenMachineError, listenMachineNotice, listenMachineRemoved, listenMachineSessions, listenMachineState, loadMachinesOverview, machineActivity, removeMachine, retryMachine, setMachineGrant, updateMachine, startSessionOnMachine, terminalOf, unregisterMachine, type Attention, type Grant, type MachineState } from '@/api/machines'
+import { LOCAL_MACHINE, addMachine, cancelAddMachine, listSshHosts, listenAttention, listenMachineClipboard, listenMachineError, listenMachineNotice, listenMachineRemoved, listenMachineSessions, listenMachineState, loadMachinesOverview, machineActivity, removeMachine, retryMachine, setMachineGrant, startSessionOnMachine, terminalOf, unregisterMachine, type Attention, type Grant, type MachineState } from '@/api/machines'
 import { TitleBar } from '@/components/TitleBar'
 import { Toaster } from '@/components/ui/sonner'
 import { markConversationsDisconnected } from '@/data/connection'
@@ -46,7 +46,7 @@ import { runsProgram } from './components/useArmed'
 import { rememberSessions, withEnded } from './model/ended'
 import { isChatSession, isListedChatSession } from './model/chatSession'
 import { advanceLoginWatch, LOGIN_CHECK_MS, startLoginWatch, type LoginWatch } from './model/loginWatch'
-import { announcementFor, idsOfMachinesNotHeard, LOCAL_HEAD, machineHeads, remoteStartRefusal, remoteTargetOf, remoteTerminals, type RemoteMachine } from './model/machines'
+import { announcementFor, idsOfMachinesNotHeard, LOCAL_HEAD, machineHeads, remoteStartRefusal, remoteTargetOf, remoteTerminals, type RemoteMachine, type UpdateAction } from './model/machines'
 import { HoverTips } from './components/HoverTips'
 import { ShortcutOverlay } from '@/features/shortcuts/ShortcutOverlay'
 import { StatusBar, type FocusMachine } from './components/StatusBar'
@@ -91,6 +91,8 @@ import { chatAvailability, chatSourceOf, effectiveView, type ChatAgent, type Pan
 import { NewSessionHost } from './components/NewSessionHost'
 import type { NewSessionRequest } from './components/NewSessionModal'
 import { GetFileDialog } from './components/GetFileDialog'
+import { MachineUpdateDialog } from './components/MachineUpdateDialog'
+import { runMachineUpdate } from './machineUpdate'
 import { RenameDialog } from './components/RenameDialog'
 import { Sidebar, type OpenSubagent } from './components/Sidebar'
 import { EmptyState, Toast, type RestartOffer } from './components/states'
@@ -275,6 +277,7 @@ export function DesktopApp() {
   // The shell opened beside an agent with "Open terminal here", by the agent's session id.
   const [agentTerminals, setAgentTerminals] = useState<ReadonlyMap<string, string>>(new Map())
   const [getFileId, setGetFileId] = useState<string | null>(null)
+  const [updateAsk, setUpdateAsk] = useState<{ name: string; action: UpdateAction } | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [inboxOpen, setInboxOpen] = useState(false)
   const [focusMode, setFocusMode] = useState(false)
@@ -581,13 +584,18 @@ export function DesktopApp() {
     setMachineGrant(name, grant, on).catch((error: unknown) => { toast.error(errorMessage(error, `Could not change ${name}`)) })
   }, [])
   // The restarted daemon is dialled again once the update is in: the state moves on by itself.
-  const updateNamed = useCallback(async (name: string, install: boolean, whenIdle: boolean) => {
+  // One update per machine at a time: two would race to replace the same file there.
+  const updatingRef = useRef<Set<string>>(new Set())
+  const updateNamed = useCallback(async (name: string, action: UpdateAction, whenIdle: boolean) => {
+    if (updatingRef.current.has(name)) {
+      toast.message(`${name} is already being updated.`)
+      return
+    }
+    updatingRef.current.add(name)
     try {
-      const result = await updateMachine(name, install, whenIdle)
-      toast.success(result)
-      retryNamed(name)
-    } catch (error) {
-      toast.error(errorMessage(error, `Could not update ${name}`))
+      await runMachineUpdate(name, action, whenIdle, () => { retryNamed(name) })
+    } finally {
+      updatingRef.current.delete(name)
     }
   }, [retryNamed])
   const copyCommand = useCallback((command: string) => {
@@ -1848,6 +1856,7 @@ export function DesktopApp() {
       onNewShell={(machine) => { afterPick(); newTerminal(machine) }}
       onAddMachine={() => { afterPick(); setSettingsSection('machines') }}
       onMachineSettings={() => { afterPick(); setSettingsSection('machines') }}
+      onUpdateMachine={(name, action) => { afterPick(); setUpdateAsk({ name, action }) }}
       onShowSession={(id) => { afterPick(); showSessionById(id) }}
       onShowSubagent={(sessionId, subagentId) => { afterPick(); showSubagent(sessionId, subagentId) }}
       onRenameSession={setRenameId}
@@ -2049,6 +2058,15 @@ export function DesktopApp() {
                   if (target?.machineName != null) getFile(target.machineName, path)
                 }}
                 onCancel={() => { setGetFileId(null) }}
+              />
+            )}
+            {updateAsk !== null && (
+              <MachineUpdateDialog
+                name={updateAsk.name}
+                action={updateAsk.action}
+                checkActivity={machineActivity}
+                onUpdate={(whenIdle) => { setUpdateAsk(null); void updateNamed(updateAsk.name, updateAsk.action, whenIdle) }}
+                onCancel={() => { setUpdateAsk(null) }}
               />
             )}
             {renameId !== null && !renameInline && sessionMap.get(renameId) && (

@@ -78,7 +78,10 @@ Each machine with its sessions under it, on the panel ground, 34 columns by defa
 resizable). On the top border the ` maitty ` chip at the left and ` « ` (hide) at the right; hidden,
 a ` » ` chip beside the panes brings it back. Row 2 is the filter field, `/ filter sessions` on the
 darker ground. A machine is a heading chip with its count (` This computer 5 `), an accent ` + `
-chip (a shell there at once) and a green `●` at the right while it is up. A session is two lines:
+chip (a shell there at once) and a green `●` at the right while it is up. While its app is missing
+or on another version the ` + ` gives way to an accent ` install ` or ` update ` chip, the fix one
+click from where it shows; the Machines dialog marks that row ` u install ` / ` u update ` beside its
+state. A session is two lines:
 the status mark and the name (bold and bright for an agent with something going on), then `■` in
 the project's colour, the project and the branch in violet. No status words anywhere. Agents come
 first, then shells, each in the order they started, so a row never moves when its status changes.
@@ -220,7 +223,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   terminal here (agents), Rename… (F2), Copy folder path, Get a file… (another machine's sessions), Show changes
   (agents), Stop session or Close shell.
   **Subagent**: Open, Open in split right, Copy summary, Stop subagent (disabled: the agent stops its own subagents).
-  **Machine**: New agent chat here, New shell here, Collapse or Expand, Group by project or Show as one list, Machine
+  **Machine**: Install Maitty or Update Maitty first (a machine that needs it), New agent chat here, New shell here, Collapse or Expand, Group by project or Show as one list, Machine
   settings…. **Pane** (⋯ or a right-click in the pane): Split right, Split down, Maximize pane, Show chat or Show
   terminal and Open terminal here or Close its terminal (agents) or Clear and Copy folder path (shells), Files,
   Changes, Close pane.
@@ -526,10 +529,16 @@ and timings; the feature stylesheets beside their components carry them (`sideba
 - **Machines.** With another machine, the sidebar's folders sit under a header per machine: `this
   computer` first, then the others in id order, in a small uppercase `--dim` label. A machine's state is a
   chip at the right of its header: a glyph and a word (`●` connected in `--done`; `○` connecting and `◐`
-  reconnecting #n in `--dim`; `▲` needs login and needs update and `✕` unreachable and refused in
+  reconnecting #n in `--dim`; `▲` needs login, not installed and needs update and `✕` unreachable and refused in
   `--danger`), so colour never carries it alone, and nothing animates. Amber stays for agents that need
   you. A machine that is down shows `disconnected since 2m ago` and its fix (wrapped, in `--dim`) under the
-  header, and its folders are drawn at 60% opacity. With one machine there is no header. **Settings ›
-  Machines** is a card per machine (chip, how long, the fix in full, **Retry**, a confirmed **Remove**) and an
-  **Add a machine** card (a field, then the `~/.ssh/config` hosts as rows); its states are loading, empty,
-  error and checking, and it works with the keyboard alone.
+  header, and its folders are drawn at 60% opacity. A machine that needs the app has a line under its header,
+  lined up with its mark: `▲ not installed` or `▲ needs update` in `--danger` and an **Install** or **Update**
+  text button in the accent (11.5px), which opens the same question as the menu's Install Maitty or Update
+  Maitty (`components/MachineUpdateDialog.tsx`, the Rename dialog's frame: what it needs, what it interrupts,
+  Cancel, Update when idle, and the primary Install now or Update now); a machine's header shows even with no
+  sessions anywhere. With one machine there is no header. **Settings › Machines** is a card per machine (chip
+  in its tone, how long, what it needs in plain words or the fix in full, the primary **Install** or **Update**
+  in the accent, then **Copy command** with the command under the text as the secondary way, **Retry**, a
+  confirmed **Remove**) and an **Add a machine** card (a field, then the `~/.ssh/config` hosts as rows); its
+  states are loading, empty, error and checking, and it works with the keyboard alone.

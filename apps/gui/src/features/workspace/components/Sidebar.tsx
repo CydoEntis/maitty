@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
-import { machineTitle, type MachineHead } from '../model/machines'
+import { machineTitle, UPDATE_WORDS, type MachineHead, type UpdateAction } from '../model/machines'
 import { STATUS_WORD, type SessionView } from '../model/session'
 import { isShell, machineGroups, projectGroups, rowTitle, type MachineGroup } from '../model/sidebar'
 import type { SubagentView } from '../model/subagents'
@@ -43,6 +43,8 @@ export type SidebarProps = {
   onNewShell: (machine: number) => void
   onAddMachine: () => void
   onMachineSettings: () => void
+  /** Installs or updates the app on a machine that needs it; the window asks first. */
+  onUpdateMachine: (name: string, action: UpdateAction) => void
   onShowSession: (id: string) => void
   onShowSubagent: (sessionId: string, subagentId: string) => void
   onRenameSession: (id: string | null) => void
@@ -163,7 +165,10 @@ function Expanded(props: SidebarProps) {
   const machineMenu = (head: MachineHead): MenuEntry[] => {
     const open = views.isOpen(head.key)
     const grouped = views.isByProject(head.key)
+    const name = head.name
+    const action = head.updateAction
     return [
+      ...(name !== null && action !== null ? [{ label: `${UPDATE_WORDS[action].verb} Maitty`, run: () => { props.onUpdateMachine(name, action) } }, 'separator' as const] : []),
       { label: 'New agent chat here', hint: shortcutText('new-agent-chat'), disabled: !props.canStart || head.down, run: () => { props.onNewAgentChat(head.machine) } },
       { label: 'New shell here', disabled: !props.canStart || head.down, run: () => { props.onNewShell(head.machine) } },
       'separator',
@@ -246,6 +251,7 @@ function Expanded(props: SidebarProps) {
               onToggle={() => { views.toggle(group.head.key) }}
               onToggleByProject={() => { views.toggleByProject(group.head.key) }}
               onNewAgentChat={() => { props.onNewAgentChat(group.head.machine) }}
+              onUpdate={props.onUpdateMachine}
               onContextMenu={(event) => { openMenu(event, machineTitle(group.head), machineMenu(group.head)) }}
               renderRow={renderRow}
             />
@@ -273,12 +279,13 @@ type SectionProps = {
   onToggle: () => void
   onToggleByProject: () => void
   onNewAgentChat: () => void
+  onUpdate: (name: string, action: UpdateAction) => void
   onContextMenu: (event: MouseEvent) => void
   renderRow: (session: SessionView, showProject: boolean) => ReactNode
 }
 
 /** One machine: its heading (name, count, group-by-project, its line's dot, +) and its sessions. */
-function MachineSection({ group, open, byProject, canStart, onToggle, onToggleByProject, onNewAgentChat, onContextMenu, renderRow }: SectionProps) {
+function MachineSection({ group, open, byProject, canStart, onToggle, onToggleByProject, onNewAgentChat, onUpdate, onContextMenu, renderRow }: SectionProps) {
   const { head, sessions } = group
   const title = machineTitle(head)
   const projects = byProject ? projectGroups(sessions) : []
@@ -295,6 +302,7 @@ function MachineSection({ group, open, byProject, canStart, onToggle, onToggleBy
         <span className={`mx-machine-dot${head.down ? ' is-offline' : ''}`} role="img" aria-label={head.down ? `${title} is ${head.chip?.word ?? 'not reachable'}` : `${title} is connected`} title={head.why ?? (head.down ? head.chip?.word ?? 'not reachable' : `${title} is connected`)} />
         <button type="button" className="mx-machine-add" aria-label={`New agent on ${title}`} title={`New agent on ${title}`} disabled={!canStart || head.down} onClick={onNewAgentChat}><Icon name="plus" size={13} /></button>
       </div>
+      {head.name !== null && head.updateAction !== null && <UpdateNote name={head.name} action={head.updateAction} onUpdate={onUpdate} />}
       <Collapse open={open}>
         {byProject ? (
           <div className="mx-projects">
@@ -304,6 +312,17 @@ function MachineSection({ group, open, byProject, canStart, onToggle, onToggleBy
           <div className="mx-rows" role="list" aria-label={`Sessions on ${title}`}>{sessions.map((session) => renderRow(session, true))}</div>
         )}
       </Collapse>
+    </div>
+  )
+}
+
+/** What a machine without the app, or with another version of it, needs, and the button that does it. */
+function UpdateNote({ name, action, onUpdate }: { name: string; action: UpdateAction; onUpdate: (name: string, action: UpdateAction) => void }) {
+  const words = UPDATE_WORDS[action]
+  return (
+    <div className="mx-machine-note">
+      <span className="mx-machine-state"><span aria-hidden="true">▲ </span>{words.state}</span>
+      <button type="button" className="mx-machine-fix-button" aria-label={`${words.verb} Maitty on ${name}`} title={words.need(name)} onClick={() => { onUpdate(name, action) }}>{words.verb}</button>
     </div>
   )
 }

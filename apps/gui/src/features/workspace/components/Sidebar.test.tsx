@@ -26,7 +26,7 @@ function show(sessions: SessionView[], more: Partial<SidebarProps> = {}) {
   const props: SidebarProps = {
     sessions, machines: [LOCAL_HEAD], focusedId: null, openSubagent: null, mode: 'docked', online: true, canStart: true, renamingId: null, portalContainer: null,
     onToggleRail: none, side: 'left', width: 264, onResize: none, onResizeEnd: none, inboxCount: 0, inboxNeeds: false, onOpenInbox: none,
-    onNewAgentChat: none, onNewShell: none, onAddMachine: none, onMachineSettings: none, onShowSession: none, onShowSubagent: none, onRenameSession: none,
+    onNewAgentChat: none, onNewShell: none, onAddMachine: none, onMachineSettings: none, onUpdateMachine: none, onShowSession: none, onShowSubagent: none, onRenameSession: none,
     onSetName: none, onSplitSession: none, onSplitSubagent: none, onOpenTerminal: none, onCopyPath: none, onCopyText: none, onShowChanges: none, onGetFile: none,
     onEndSession: none, onOpenSettings: none, updateSlot: null, railUpdateSlot: null,
     ...more,
@@ -83,6 +83,52 @@ describe('the sidebar', () => {
     show([session(1)])
     await user.click(screen.getByRole('button', { name: /^This computer/ }))
     expect(screen.getByRole('button', { name: /^This computer/ })).toHaveAttribute('aria-expanded', 'false')
+  })
+})
+
+describe('a machine that needs maitty installed or updated', () => {
+  const needing = (action: MachineHead['updateAction']): MachineHead => ({ ...DEVBOX, chip: { glyph: '▲', word: 'needs update', tone: 'bad' }, down: true, updateAction: action })
+  const machineMenuItems = () => {
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^devbox/ }))
+    return within(screen.getByRole('menu', { name: 'devbox' })).getAllByRole('menuitem').map((item) => item.textContent)
+  }
+
+  it('says not installed under its header, with an Install button there', async () => {
+    const user = userEvent.setup()
+    const onUpdateMachine = vi.fn()
+    show([], { machines: [LOCAL_HEAD, needing('install')], onUpdateMachine })
+    expect(screen.getByText('not installed')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Install Maitty on devbox' }))
+    expect(onUpdateMachine).toHaveBeenCalledWith('devbox', 'install')
+  })
+
+  it('offers Install Maitty first in its menu', async () => {
+    const user = userEvent.setup()
+    const onUpdateMachine = vi.fn()
+    show([], { machines: [LOCAL_HEAD, needing('install')], onUpdateMachine })
+    expect(machineMenuItems()[0]).toBe('Install Maitty')
+    await user.click(screen.getByRole('menuitem', { name: 'Install Maitty' }))
+    expect(onUpdateMachine).toHaveBeenCalledWith('devbox', 'install')
+  })
+
+  it('says needs update under its header and offers Update Maitty for another version', async () => {
+    const user = userEvent.setup()
+    const onUpdateMachine = vi.fn()
+    show([session(1)], { machines: [LOCAL_HEAD, needing('update')], onUpdateMachine })
+    expect(screen.getByText('needs update')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Update Maitty on devbox' })).toBeInTheDocument()
+    expect(machineMenuItems()).toContain('Update Maitty')
+    await user.click(screen.getByRole('menuitem', { name: 'Update Maitty' }))
+    expect(onUpdateMachine).toHaveBeenCalledWith('devbox', 'update')
+  })
+
+  it('offers neither on a machine that is up to date, nor on this computer', () => {
+    show([session(1)], { machines: [LOCAL_HEAD, DEVBOX] })
+    expect(machineMenuItems().filter((item) => item.endsWith('Maitty'))).toEqual([])
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^This computer/ }))
+    expect(screen.queryByRole('menuitem', { name: /Maitty$/ })).toBeNull()
+    expect(screen.queryByText(/needs update|not installed/)).toBeNull()
+    expect(screen.queryByRole('button', { name: /Maitty on/ })).toBeNull()
   })
 })
 

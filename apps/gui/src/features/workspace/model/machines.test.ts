@@ -3,7 +3,7 @@ import { conversationsFromSnapshot } from '@/api/daemon'
 import { forgetMachines, parseSessionId, registerMachine, type MachineKind, type MachineState } from '@/api/machines'
 import type { Conversation } from '@/data/preview'
 import type { Layout } from './layout'
-import { idsOfMachinesNotHeard, announcementFor, machineChip, machineHeads, remoteStartRefusal, remoteTargetOf, remoteTerminals, updateCommandOf, type RemoteMachine } from './machines'
+import { idsOfMachinesNotHeard, announcementFor, machineChip, machineHeads, remoteStartRefusal, remoteTargetOf, remoteTerminals, updateActionOf, updateCommandOf, type RemoteMachine } from './machines'
 import { folderNameOf, toSessionView } from './session'
 
 afterEach(() => { forgetMachines() })
@@ -212,6 +212,18 @@ describe('the command that fixes a machine that needs an update', () => {
     expect(updateCommandOf({ ...state(1, 'build', 'needs-update'), why: 'run `maitty machine update build --install` (or set `remote_cmd` to its path), then retry' })).toBe('maitty machine update build --install')
     expect(updateCommandOf({ ...state(1, 'build', 'unreachable'), why: fix })).toBeNull()
     expect(updateCommandOf(state(1, 'build', 'needs-update'))).toBeNull()
+  })
+
+  it('installs on a machine with no app, updates one with another version, and does neither otherwise', () => {
+    const missing = { ...state(1, 'build', 'needs-update'), why: 'run `maitty machine update build --install` (or set `remote_cmd` to its path), then retry' }
+    const other = { ...state(1, 'build', 'needs-update'), why: 'run `maitty machine update build`, then retry' }
+    expect(updateActionOf(missing)).toBe('install')
+    expect(updateActionOf(other)).toBe('update')
+    expect(updateActionOf(state(1, 'build', 'needs-update'))).toBe('update')
+    expect(updateActionOf({ ...missing, state: 'unreachable' })).toBeNull()
+    expect(updateActionOf(state(1, 'build'))).toBeNull()
+    expect(machineChip(missing).word).toBe('not installed')
+    expect(machineChip(other).word).toBe('needs update')
   })
 })
 

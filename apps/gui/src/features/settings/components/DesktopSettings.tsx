@@ -12,7 +12,7 @@ import { errorMessage } from '@/lib/error-message'
 import { BUNDLED_FONT_NAME, fontStackFor, installedMonospaceFamilies, isFontFamily, WEIGHT_BOLD, WEIGHT_EXTRA_BOLD, WEIGHT_LIGHT, WEIGHT_MEDIUM, WEIGHT_REGULAR, WEIGHT_SEMIBOLD, type TerminalFontWeight } from '@/lib/terminalFont'
 import type { Added, Grant, HostChoice } from '@/api/machines'
 import { DisconnectedSince } from '@/features/workspace/components/times'
-import type { MachineHead } from '@/features/workspace/model/machines'
+import { installNote, UPDATE_WORDS, updateWarning, type MachineHead, type UpdateAction } from '@/features/workspace/model/machines'
 import { UsagePage } from '@/features/usage/UsagePage'
 import type { OpenSession } from '@/features/usage/UsageTable'
 import { FOLDER_PATH } from '@/features/workspace/components/paths'
@@ -33,7 +33,7 @@ export type MachinesInfo = {
    * Installs this version on a machine and restarts its daemon there; its saved sessions come
    * back. Settles when the update ended and has already told the person how it went.
    */
-  onUpdate: (name: string, install: boolean, whenIdle: boolean) => Promise<void>
+  onUpdate: (name: string, action: UpdateAction, whenIdle: boolean) => Promise<void>
   /**
    * How many sessions are open on a machine and how many are busy; null when it cannot say (its
    * app is too old, or it cannot be reached). The update question uses it to say what it will interrupt.
@@ -797,19 +797,23 @@ function MachineList({ machines }: { machines: MachinesInfo }) {
   const [confirmingUpdate, setConfirmingUpdate] = useState<string | null>(null)
   const [activity, setActivity] = useState<{ sessions: number; busy: number } | null>(null)
   const [checking, setChecking] = useState<string | null>(null)
-  const askUpdate = (name: string) => {
-    setChecking(name)
+  const askUpdate = (name: string, action: UpdateAction) => {
     setActivity(null)
+    if (action === 'install') {
+      setConfirmingUpdate(name)
+      return
+    }
+    setChecking(name)
     void machines.onCheckActivity(name)
       .catch(() => null)
       .then((found) => { setActivity(found); setConfirmingUpdate(name) })
       .finally(() => { setChecking(null) })
   }
   const [updating, setUpdating] = useState<string | null>(null)
-  const runUpdate = (name: string, install: boolean, whenIdle: boolean) => {
+  const runUpdate = (name: string, action: UpdateAction, whenIdle: boolean) => {
     setConfirmingUpdate(null)
     setUpdating(name)
-    void machines.onUpdate(name, install, whenIdle).finally(() => { setUpdating(null) })
+    void machines.onUpdate(name, action, whenIdle).finally(() => { setUpdating(null) })
   }
   const icon = <><rect x="4" y="4" width="16" height="7" rx="2" /><rect x="4" y="13" width="16" height="7" rx="2" /><path d="M8 7.5h.01M8 16.5h.01" /></>
   if (!machines.known) {
@@ -830,6 +834,8 @@ function MachineList({ machines }: { machines: MachinesInfo }) {
         const asking = confirming === name
         const askingUpdate = confirmingUpdate === name
         const busyUpdating = updating === name
+        const action = head.updateAction
+        const words = action === null ? null : UPDATE_WORDS[action]
         return (
           <Fragment key={head.key}>
           <div className="mx-scard-row mx-machine-row">
@@ -839,24 +845,25 @@ function MachineList({ machines }: { machines: MachinesInfo }) {
                 {chip && <span className={`mx-machine-chip is-${chip.tone}`}> <span aria-hidden="true">{chip.glyph}</span> {chip.word}</span>}
               </span>
               {head.down && <span><DisconnectedSince at={head.downSince} /></span>}
-              {head.why !== null && head.chip?.tone === 'bad' && <span className="mx-machine-fix">{head.why}</span>}
-              {head.updateCommand !== null && <span className="mx-machine-fix mono">{head.updateCommand}</span>}
+              {words !== null && <span className="mx-machine-need">{words.need(name)}</span>}
+              {words === null && head.why !== null && head.chip?.tone === 'bad' && <span className="mx-machine-fix">{head.why}</span>}
+              {head.updateCommand !== null && <span className="mx-machine-fix">Or in a terminal: <span className="mono">{head.updateCommand}</span></span>}
               {asking && <span role="alert">Removes {name} from this list. Its sessions keep running on {name}.</span>}
-              {askingUpdate && (
-                <span role="alert">
-                  {activity === null
-                    ? `Updating ${name} restarts its daemon, and ${name} could not say what is open on it. `
-                    : `${name} has ${String(activity.sessions)} ${activity.sessions === 1 ? 'session' : 'sessions'} open, ${String(activity.busy)} busy. Updating restarts its daemon. `}
-                  Its sessions are saved and come back with their agents resumed; an agent in the middle of a turn loses that turn if you update now. Update when idle waits up to half an hour for nothing to be running first.
-                </span>
-              )}
-              {busyUpdating && <span role="status">Updating {name}…</span>}
+              {askingUpdate && <span role="alert">{action === 'install' ? installNote(name) : updateWarning(name, activity)}</span>}
+              {busyUpdating && words !== null && <span role="status">{words.running(name)}</span>}
             </div>
-            {askingUpdate
+            {askingUpdate && action === 'install'
               ? (
                 <>
-                  <button type="button" className="mx-scard-button is-danger" onClick={() => { runUpdate(name, head.updateCommand?.includes('--install') === true, false) }}>Update {name} now</button>
-                  <button type="button" className="mx-scard-button" onClick={() => { runUpdate(name, head.updateCommand?.includes('--install') === true, true) }}>Update {name} when idle</button>
+                  <button type="button" className="mx-scard-button is-primary" onClick={() => { runUpdate(name, action, false) }}>Install on {name} now</button>
+                  <button type="button" className="mx-scard-button" onClick={() => { setConfirmingUpdate(null) }}>Cancel</button>
+                </>
+              )
+              : askingUpdate && action !== null
+              ? (
+                <>
+                  <button type="button" className="mx-scard-button is-danger" onClick={() => { runUpdate(name, action, false) }}>Update {name} now</button>
+                  <button type="button" className="mx-scard-button" onClick={() => { runUpdate(name, action, true) }}>Update {name} when idle</button>
                   <button type="button" className="mx-scard-button" onClick={() => { setConfirmingUpdate(null) }}>Cancel</button>
                 </>
               )
@@ -869,7 +876,7 @@ function MachineList({ machines }: { machines: MachinesInfo }) {
               )
               : (
                 <>
-                  {head.updateCommand !== null && <button type="button" className="mx-scard-button" disabled={updating !== null || checking !== null} aria-label={`Update ${name}`} onClick={() => { askUpdate(name) }}>{checking === name ? 'Checking…' : 'Update'}</button>}
+                  {action !== null && words !== null && <button type="button" className="mx-scard-button is-primary" disabled={updating !== null || checking !== null} aria-label={`${words.verb} Maitty on ${name}`} onClick={() => { askUpdate(name, action) }}>{checking === name ? 'Checking…' : words.verb}</button>}
                   {head.updateCommand !== null && <button type="button" className="mx-scard-button" aria-label={`Copy the update command for ${name}`} onClick={() => { if (head.updateCommand !== null) machines.onCopyCommand(head.updateCommand) }}>Copy command</button>}
                   <button type="button" className="mx-scard-button" disabled={chip?.word === 'connected'} aria-label={`Retry ${name}`} onClick={() => { machines.onRetry(name) }}>Retry</button>
                   <button type="button" className="mx-scard-button" aria-label={`Remove ${name}`} onClick={() => { setConfirming(name) }}>Remove</button>

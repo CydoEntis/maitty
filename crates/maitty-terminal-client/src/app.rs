@@ -343,6 +343,9 @@ enum MachineCmd {
         /// Wait until nothing is open on the machine, then restart its daemon (up to half an hour).
         #[arg(long, conflicts_with = "restart")]
         wait: bool,
+        /// Wait for Enter before exiting: the window runs this in a popup that closes when it ends.
+        #[arg(long, hide = true)]
+        hold: bool,
     },
     /// Pull one file from a machine to this computer, up to 1 GB. It is saved in the folder
     /// (the current one by default) under a name made here from the remote path, and never
@@ -449,25 +452,18 @@ fn command_target(args: &Args) -> Target {
 }
 
 /// `machine update`: a mistake in how it was asked is a usage error, a step that did not work
-/// exits 1 with what became of the machine.
-fn machine_update(
-    name: &str,
-    install: bool,
-    yes: bool,
-    force: bool,
-    restart: bool,
-    wait: bool,
-) -> anyhow::Result<()> {
-    use cli::machine_update::{Failure, Flags};
-    let flags = Flags {
-        install,
-        yes,
-        force,
-        restart,
-        wait,
-    };
-    match cli::machine_update::run(name, &machines_config(), flags) {
+/// exits 1 with what became of the machine. With `hold` the outcome is said and Enter awaited
+/// before it exits.
+fn machine_update(name: &str, flags: cli::machine_update::Flags, hold: bool) -> anyhow::Result<()> {
+    use cli::machine_update::Failure;
+    let result = cli::machine_update::run(name, &machines_config(), flags);
+    if hold {
+        cli::machine_update::hold(&result);
+    }
+    match result {
         Ok(()) => Ok(()),
+        Err(Failure::Usage(_)) if hold => std::process::exit(2),
+        Err(Failure::Failed(_)) if hold => std::process::exit(1),
         Err(Failure::Usage(message)) => usage_error(message),
         Err(Failure::Failed(message)) => Err(anyhow::anyhow!(message)),
     }
@@ -672,8 +668,19 @@ pub(crate) fn run() {
                     force,
                     restart,
                     wait,
+                    hold,
                 },
-        }) => machine_update(&name, install, yes, force, restart, wait),
+        }) => machine_update(
+            &name,
+            cli::machine_update::Flags {
+                install,
+                yes,
+                force,
+                restart,
+                wait,
+            },
+            hold,
+        ),
         Some(Cmd::Machine {
             cmd: MachineCmd::Get { name, path, folder },
         }) => machine_get(&name, &path, folder.as_deref()),

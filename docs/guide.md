@@ -418,8 +418,8 @@ machine*). `config.example.toml` lists every key.
 
 Adding a machine starts maitty there if it is not running, so you can create the first session from this
 computer. If the connection drops later, maitty only reconnects to a maitty that is still running there; it
-never starts one you stopped. Right-click the machine's line in the sidebar and choose Reconnect to start it there again. If maitty is not
-installed there, see *Install or update maitty on a machine*.
+never starts one you stopped. Right-click the machine's heading in the sidebar and choose Reconnect to start it there again. If maitty is not
+installed there, its heading has an **install** button: see *Install or update maitty on a machine*.
 
 ### What you see
 
@@ -434,12 +434,12 @@ need shows in the Inbox with `· on build`.
 | `connected` | The line is up. |
 | `reconnecting #2` | A line that was up dropped. maitty tries again at once, then after 250 ms, doubling up to 30 s; three tries in a row without an answer make it `unreachable`. |
 | `needs login` | ssh cannot log in without asking you. Make plain `ssh` to that machine work in a terminal (load your key, accept its host key), then right-click the machine and choose Reconnect. |
-| `needs update` | The machine runs another version of maitty, or has none on its PATH. Run `maitty machine update <name>` (add `--install` when there is none, or set `remote_cmd` to its path), then right-click the machine and choose Reconnect. |
+| `needs update` | The machine runs another version of maitty, or has none on its PATH. Click **install** (none there) or **update** (another version) on the machine's heading in the sidebar, or right-click the heading and choose Install Maitty / Update Maitty: it asks in a popup, then reconnects. From a terminal: `maitty machine update <name>` (add `--install` when there is none, or set `remote_cmd` to its path). |
 | `unreachable` | No answer, or maitty is not running there. The reason is written under it (ssh's last line, or "maitty is not running on that machine; retry to start it there"); maitty keeps trying in the background. |
 | `refused` | A different computer now answers at that name. If you replaced the machine, remove it and add it again; otherwise check the host name and DNS. |
 
 When a machine drops, its cards give way to one item saying how it stands, such as `needs update · click for the fix` (click it for the
-Machines dialog, which says what to do and can reconnect, update or remove it; right-click it for the same three). They come back by themselves when the line does, each pane showing
+Machines dialog, which says what to do and can reconnect, install or update, edit or remove it; right-click the machine's heading for Install / Update Maitty, a new shell, Reconnect and the Machines dialog). They come back by themselves when the line does, each pane showing
 its screen again. Its needs-you and failed marks leave the Inbox while it is down. Typing sent to a machine while it
 was down is dropped, never queued (replaying keystrokes into a pane that moved on could run commands you no
 longer meant); when the machine is back, maitty says how much was not sent.
@@ -538,6 +538,13 @@ build: maitty 0.60.0 installed to ~/.local/bin/maitty
   not saved is never restarted.
 - **Not supported: a Windows machine as the remote.** In v1 Windows is never the remote; the command says so
   and exits. Linux and macOS (x86_64 and aarch64) are supported.
+
+**From the terminal app.** You do not need the command or its flags: a machine that `needs update` has an
+**install** or **update** button on its heading in the sidebar (also in its right-click menu, the sidebar's
+**menu**, and `u` on it in Machines, leader `w`). It runs the same command in a popup on this computer, which
+says what it found and asks before it installs or replaces anything; your `y` is the consent. When it is done
+the popup shows how it ended (installed, already up to date, not confirmed, refused because a newer version is
+there, or why the machine could not be reached) until you press Enter, then the machine reconnects.
 
 Exit status: 0 done or already up to date, 2 a mistake in how it was asked (an unknown machine, a flag
 missing), 1 a step that did not work.
@@ -677,7 +684,7 @@ one shows in the other the next time that app starts.
 
 With one machine the sidebar looks as it always did. Once you have another, every machine's folders sit under
 a header: **this computer** first, then the others. A machine's header carries its state as a shape and a
-word: `connected`, `connecting`, `reconnecting #2`, `needs login`, `needs update`, `unreachable` or `refused`
+word: `connected`, `connecting`, `reconnecting #2`, `needs login`, `not installed`, `needs update`, `unreachable` or `refused`
 (a different computer answers at that name). When you have to act, the fix is written under the header, in
 full. A machine that is down keeps its folders and sessions, dimmed, with `disconnected since 2m ago`; its
 sessions' needs-you and done marks leave the counts and the Inbox until it is back, and everything returns on
@@ -693,11 +700,19 @@ its own. An Inbox row from another machine says `· on build`.
   it) and adds it only when ssh could reach it. If ssh needs you to type a password or accept a host key, the
   machine is added and ssh opens in a session named `ssh <name>`; the machine connects when that session
   closes. On Windows use ssh keys or an agent: password prompts work in that session but are not remembered.
-  A machine whose app is missing or old is added too; its header then says `needs update` with the fix.
+  A machine whose app is missing or old is added too; its header then says `not installed` or `needs update`.
 
-A machine that needs an update or no app at all says `needs update`, with the exact command to run (for example
-`maitty machine update build --install`) and a **Copy command** button. The desktop app never installs or restarts
-anything on a machine: you run the command in a terminal.
+A machine with no maitty says `not installed` under its header in the sidebar, with an **Install** button; one
+with another version says `needs update`, with an **Update** button. Its right-click menu has the same as
+**Install Maitty** or **Update Maitty**, and Settings › Machines has it as the first button. No command or flag is
+needed: Install runs `maitty machine update <name> --install` for you, and Update replaces the version there
+(`--yes`). Both ask first. Install says what it puts on the machine; Update says how many sessions are open there
+and how many are busy, and offers **Update now** (its daemon restarts and its saved sessions come back with their
+agents resumed; a turn in progress is lost) or **Update when idle** (it waits up to half an hour for nothing to
+be running). A toast says it is running, then how it ended: installed, already up to date, or why it did not (ssh
+could not get in, the machine has a newer maitty than this app, which is never downgraded from here, or it is a
+Windows machine, which cannot be a remote yet). After a success the machine is dialled again. The exact command
+is still shown with a **Copy command** button, to run in a terminal instead.
 
 Each machine on that page has two switches. **Copy to your clipboard** (what that machine's sessions ask to
 copy is put on your clipboard) is on until you turn it off. **Notifications** (its notices, and a notice when

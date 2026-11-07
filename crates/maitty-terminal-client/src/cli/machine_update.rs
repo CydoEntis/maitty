@@ -89,6 +89,19 @@ pub(crate) fn run(name: &str, cfg: &Config, flags: Flags) -> Result<(), Failure>
     Ok(())
 }
 
+/// `--hold`: say how it ended and wait for Enter. The window's popup closes the moment the
+/// command ends, which would take the outcome off the screen before it could be read.
+pub(crate) fn hold(result: &Result<(), Failure>) {
+    if let Err(Failure::Usage(why) | Failure::Failed(why)) = result {
+        eprintln!("{APP_COMMAND}: {why}");
+    }
+    eprint!("Press Enter to close.");
+    let mut answer = String::new();
+    if let Err(e) = std::io::stdin().read_line(&mut answer) {
+        eprintln!("\ncould not read the keyboard ({e}); closing");
+    }
+}
+
 /// Look at the machine, decide, send, swap, and tell the daemon.
 pub(crate) fn update(
     machine: &Machine,
