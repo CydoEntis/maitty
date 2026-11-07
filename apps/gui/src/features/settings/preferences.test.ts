@@ -27,7 +27,7 @@ const DEFAULTS: SettingsPreferences = {
   
   
   defaultAgent: 'claude', newSessionView: 'chat',
-  animations: 'auto', density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, monthlyBudget: null, iconSize: 'medium', trayStyle: 'tree', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, chatFullAccessDefault: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass',
+  animations: 'auto', density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, monthlyBudget: null, iconSize: 'medium', trayStyle: 'tree', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, chatFullAccessDefault: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'flat',
 }
 
 describe('settings preferences', () => {
@@ -93,15 +93,13 @@ describe('settings preferences', () => {
   it('reads preferences saved before the terminal settings existed', () => {
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ accent: 'blue', spinner: 'bars', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: true, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: false, notificationSound: false, terminalFontSize: 10, startFolder: '~/code', groupBy: 'folder' }))
 
-    expect(readSettingsPreferences()).toEqual({ ...DEFAULTS, style: 'glass', accent: 'blue', spinner: 'bars', compactSidebar: true, toastPosition: 'bottom-right', notifyFinished: false, terminalFontSize: 12, startFolder: '~/code', groupBy: 'folder' })
+    expect(readSettingsPreferences()).toEqual({ ...DEFAULTS, accent: 'blue', spinner: 'bars', compactSidebar: true, toastPosition: 'bottom-right', notifyFinished: false, terminalFontSize: 12, startFolder: '~/code', groupBy: 'folder' })
   })
 
-  it('starts a fresh install in Glass with the sweeps on, and Flat or Tiled with them off', () => {
-    expect(readSettingsPreferences()).toMatchObject({ style: 'glass', })
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'flat', }))
-    expect(readSettingsPreferences()).toMatchObject({ style: 'flat', })
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'flat', }))
-    expect(readSettingsPreferences()).toMatchObject({ style: 'flat', })
+  it('starts a fresh install in Flat and keeps a saved Glass', () => {
+    expect(readSettingsPreferences()).toMatchObject({ style: 'flat' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'glass' }))
+    expect(readSettingsPreferences()).toMatchObject({ style: 'glass' })
   })
 
   it('defaults Animations to Auto and ignores a value it does not know', () => {
@@ -112,13 +110,13 @@ describe('settings preferences', () => {
     expect(readSettingsPreferences().animations).toBe('auto')
   })
 
-  it('reads the old style names as Flat and Glass, keeps Tiled, and falls back from nonsense', () => {
+  it('reads the old style names and a saved Tiled as Flat, keeps Glass, and falls back from nonsense', () => {
     const style = (value: string) => {
       localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: value }))
       return readSettingsPreferences().style
     }
-    expect([style('minimal'), style('expressive'), style('tiled'), style('flat'), style('glass')]).toEqual(['flat', 'glass', 'tiled', 'flat', 'glass'])
-    expect(style('neon')).toBe('glass')
+    expect([style('minimal'), style('expressive'), style('tiled'), style('flat'), style('glass')]).toEqual(['flat', 'glass', 'flat', 'flat', 'glass'])
+    expect(style('neon')).toBe('flat')
   })
 
   it('shows the status bar unless it was turned off', () => {

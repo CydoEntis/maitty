@@ -92,6 +92,7 @@ import { RenameDialog } from './components/RenameDialog'
 import { Sidebar } from './components/Sidebar'
 import { EmptyState, Toast, type RestartOffer } from './components/states'
 import { ServiceStatus } from './components/ServiceStatus'
+import { useSharedSettings } from '@/features/settings/sharedSettings'
 import { TabBar } from './components/TabBar'
 import {
   activeTab,
@@ -624,6 +625,7 @@ export function DesktopApp() {
   const auto = useAutoState()
   const cap = levelFor(preferences.animations, auto)
   useAdaptiveAnimations(preferences.animations === 'auto' && !reducedMotion && cap !== 'none', false)
+  useSharedSettings(preferences, setPreferences, online)
 
   const flash = useCallback((text: string) => { setToastMessage({ text, key: Date.now() }) }, [])
   useEffect(() => {
@@ -656,7 +658,6 @@ export function DesktopApp() {
   }, [])
 
   useEffect(() => {
-    // Flat and Tiled share one finish (neutral, no glow); Tiled changes the layout on top of it.
     document.documentElement.dataset.style = preferences.style
     document.documentElement.dataset.finish = preferences.style === 'glass' ? 'glass' : 'flat'
   }, [preferences.style])

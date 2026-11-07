@@ -374,9 +374,8 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
 }
 
 const STYLE_CARDS: ReadonlyArray<{ id: StyleChoice; name: string; blurb: string; foot: string }> = [
-  { id: 'flat', name: 'Flat', blurb: 'Solid panels, soft corners, quiet', foot: 'Solid panels, no glow. Status sweeps start off.' },
-  { id: 'tiled', name: 'Tiled', blurb: 'Edge-to-edge panes, square corners, hairline dividers', foot: 'Edge-to-edge panes with square corners. Status sweeps start off.' },
-  { id: 'glass', name: 'Glass', blurb: 'Floating frosted cards, colour icons, status sweeps', foot: 'Floating glass cards and glow.' },
+  { id: 'flat', name: 'Flat', blurb: 'Solid panels, soft corners, quiet', foot: 'Solid panels and no glow. The default.' },
+  { id: 'glass', name: 'Glass', blurb: 'Light sheen on the cards, frosted menus and dialogs', foot: 'Floating glass menus and dialogs, and a glow.' },
 ]
 const CHAT_VIEW_OPTIONS = [['terminal', 'Terminal'], ['chat', 'Chat']] as const
 const ICON_COLOR_OPTIONS = [['color', 'Color'], ['grayscale', 'Grayscale']] as const

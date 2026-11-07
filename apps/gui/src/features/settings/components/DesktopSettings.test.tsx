@@ -316,20 +316,19 @@ describe('desktop settings', () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ iconSize: 'small' }))
   })
 
-  it('offers Flat, Tiled and Glass as the window style, with the current one checked', async () => {
+  it('offers Flat and Glass as the window style, with the current one checked, and no Tiled', async () => {
     const user = userEvent.setup()
     const { onChange } = renderSettings('appearance', { preferences: { ...PREFS, style: 'glass' } })
     const styles = screen.getByRole('radiogroup', { name: 'Window style' })
 
     expect(within(styles).getAllByRole('radio').map((radio) => radio.textContent)).toEqual([
       expect.stringContaining('Flat'),
-      expect.stringContaining('Tiled'),
       expect.stringContaining('Glass'),
     ])
     expect(within(styles).getByRole('radio', { name: /Glass/ })).toBeChecked()
 
-    await user.click(within(styles).getByRole('radio', { name: /Tiled/ }))
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ style: 'tiled' }))
+    await user.click(within(styles).getByRole('radio', { name: /Flat/ }))
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ style: 'flat' }))
   })
 
   it('replays the welcome from General', async () => {

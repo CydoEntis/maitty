@@ -1022,7 +1022,7 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 .mx-confirm-button.is-danger { background: var(--danger); color: #fff; box-shadow: none; font-weight: 600; }
 .mx-confirm-button.is-danger:hover { background: color-mix(in srgb, var(--danger) 85%, #fff); }
 
-/* Finish: Flat (also under Tiled). Flat surfaces, no glow, no resting rings and smaller radii.
+/* Finish: Flat. Flat surfaces, no glow, no resting rings and smaller radii.
    Glass is the rules above; these only take things away. Accent and warn rings (the
    focused pane, needs-you) and every status colour stay. */
 :root[data-finish="flat"] .mx-window { background: var(--bg); }
@@ -1086,42 +1086,8 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 }
 .mx-app[data-theme-kind="light"] { --tbar: var(--main); --sh: none; --sh-pop: 0 12px 32px rgba(17, 24, 32, .14), 0 0 0 1px rgba(17, 22, 27, .08); --glow-accent: 9%; --glow-mag: 6%; }
 :root[data-style="flat"] .mx-app { --r14: 8px; --r16: 10px; }
-:root[data-style="tiled"] .mx-app {
-  --rk: 0; --r14: 0px; --r16: 0px; --pg: 0px; --ptop: 0px; --tbh: 40px; --tbp: 0; --tbg: 0px; --tbb: 1px solid var(--pane-line);
-  --tabh: 40px; --tabbr: 1px solid var(--pane-line); --tbar: var(--main); --tbar-b: 1px solid var(--line); --sh: none; --sh-pop: 0 0 0 1px var(--line2); --blur-pop: none;
-  --sbm: 0; --sbw: 0 1px 0 0; --tba: stretch; --tl: 0px; --edge: 0px; --tsh: 40px; --tsw: 40px; --ibh: 40px;
-  --strip-bg: transparent; --strip-ring: none; --strip-hover: rgba(255, 255, 255, .06);
-  --tick: var(--line2); --ch-ff: var(--mono); --ch-tt: uppercase; --ch-ls: .1em; --ch-fs-sm: 11px; --ch-fs-md: 11.5px;
-}
 
-/* Tiled: a hairline grid. The variables above zero the gaps and radii; these rules draw the lines between
-   regions and take away what the flat finish still shadows. Each pane owns its right and bottom hairline, and
-   the tab bar, sidebar and title bar own the top and left, so no line is drawn twice. */
 .mx-app .title-bar { background: var(--tbar); border-bottom: var(--tbar-b); }
-:root[data-style="tiled"] .mx-pane { border-width: 0 1px 1px 0; }
-:root[data-style="tiled"] .mx-pane-head { border-bottom: 1px solid var(--pane-line); }
-:root[data-style="tiled"] .mx-pane.is-focused,
-:root[data-style="tiled"] .mx-pane.is-focused:hover { box-shadow: inset 0 0 0 1px var(--accent-line); }
-:root[data-style="tiled"] .mx-inspect { border-width: 0 0 0 1px; box-shadow: none; }
-/* Popovers carry a hairline and no blur, and sit square. */
-:root[data-style="tiled"] :is(.mx-menu, .mx-tip, .mx-rail-popover, .mx-status-pop, .mx-stack-menu, .mx-alltabs-menu, .mx-palette, .mx-sessionmenu, .mx-picker-menu, .mx-notice, .mx-toast, .mx-upd-card, .mx-rename, .mx-settings, .mx-inbox) {
-  border-radius: 0; box-shadow: var(--sh-pop); backdrop-filter: none;
-}
-:root[data-style="tiled"] :is(.mx-menu-item, .mx-alltabs-row, .mx-stack-menu-row, .mx-palette-row, .mx-keycap, .mx-tab-close, .mx-pane-control, .mx-group-head, .mx-new-button, .mx-sb-modes, .mx-sb-mode) { border-radius: 0; }
-/* The four corners of the pane area carry a static 9px "+", drawn as two 1px bars each in one pseudo-element. */
-:root[data-style="tiled"] .mx-panes { position: relative; }
-:root[data-style="tiled"] .mx-panes::after {
-  content: ""; position: absolute; inset: 0; z-index: 4; pointer-events: none;
-  background:
-    linear-gradient(var(--tick), var(--tick)) left 0 top 4px / 9px 1px no-repeat,
-    linear-gradient(var(--tick), var(--tick)) left 4px top 0 / 1px 9px no-repeat,
-    linear-gradient(var(--tick), var(--tick)) right 0 top 4px / 9px 1px no-repeat,
-    linear-gradient(var(--tick), var(--tick)) right 4px top 0 / 1px 9px no-repeat,
-    linear-gradient(var(--tick), var(--tick)) left 0 bottom 4px / 9px 1px no-repeat,
-    linear-gradient(var(--tick), var(--tick)) left 4px bottom 0 / 1px 9px no-repeat,
-    linear-gradient(var(--tick), var(--tick)) right 0 bottom 4px / 9px 1px no-repeat,
-    linear-gradient(var(--tick), var(--tick)) right 4px bottom 0 / 1px 9px no-repeat;
-}
 
 /* Settings › Appearance › Window style cards. */
 .mx-style-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; padding: 0 14px 14px; }
@@ -1135,7 +1101,6 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 .mx-sp-pane b:nth-child(1) { width: 40%; background: var(--accent); }
 .mx-sp-pane b:nth-child(2) { width: 92%; }
 .mx-sp-pane b:nth-child(3) { width: 66%; }
-.mx-style-preview.is-tiled { --g: 0; --r: 0; overflow: hidden; }
 .mx-style-preview.is-glass { --r: 8px; background: radial-gradient(90px 50px at 8% 0, var(--accent-soft), transparent), var(--well); }
 .mx-style-preview.is-glass .mx-sp-side, .mx-style-preview.is-glass .mx-sp-pane { background: var(--main); box-shadow: inset 0 0 0 1px var(--pane-line); }
 .mx-style-name { display: flex; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 600; color: var(--fg); }
@@ -1252,7 +1217,7 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 .mx-activity-badge { position: absolute; top: 1px; right: 0; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px; font-size: 9.5px; font-weight: 700; line-height: 15px; text-align: center; color: var(--fg2); background: var(--raise); box-shadow: 0 0 0 2px var(--card, var(--pane)); font-variant-numeric: tabular-nums; }
 .mx-activity-badge.is-needs { color: #1a1206; background: var(--warn); }
 .mx-activity-rule { width: 22px; height: 1px; margin: 4px 0; background: var(--pane-line); }
-:root[data-finish="tiled"] .mx-activity, :root[data-finish="flat"] .mx-activity { border-radius: 0; }
+:root[data-finish="flat"] .mx-activity { border-radius: 0; }
 @media (prefers-reduced-motion: reduce) { .mx-activity-button { transition: none; } }
 
 /* What a stopped agent asks, above the message box: a question with its choices as rows, or a permission with its buttons. */

@@ -17,8 +17,8 @@ export type IconSize = 'small' | 'medium' | 'large'
 export type TrayStyle = 'tree' | 'names' | 'icons' | 'stacked'
 /** Which side of the window the sidebar sits on. */
 export type SidebarSide = 'left' | 'right'
-/** The window style: Flat is solid panels, Tiled is edge-to-edge panes with square corners, Glass is floating frosted cards with sweeps. */
-export type StyleChoice = 'flat' | 'tiled' | 'glass'
+/** The window style: Flat is solid panels, Glass is floating frosted cards. Both share one layout. */
+export type StyleChoice = 'flat' | 'glass'
 /** App and folder icons keep their colours, or drop to neutral gray tiles. Independent of the style. */
 export type IconColor = 'color' | 'grayscale'
 
@@ -166,8 +166,7 @@ function defaults(): SettingsPreferences {
     scrollback: SCROLLBACK_DEFAULT,
     scrollSpeed: SCROLL_NORMAL,
     terminalScreenReader: false,
-    style: 'glass',
-    // Glass runs the status sweeps; Flat and Tiled start with them off. A choice made in Settings wins either way.
+    style: 'flat',
     animations: 'auto',
     density: 'comfortable',
     sidebarTextSize: UI_TEXT_SIZE_DEFAULT,
@@ -304,8 +303,9 @@ function isAccent(value: unknown): value is SettingsPreferences['accent'] {
 
 /** "minimal" and "expressive" were the names before the window styles; they read as Flat and Glass. */
 function styleOf(value: unknown): StyleChoice | null {
-  if (value === 'flat' || value === 'tiled' || value === 'glass') return value
-  if (value === 'minimal') return 'flat'
+  // Tiled is gone: a saved Tiled reads as Flat.
+  if (value === 'flat' || value === 'tiled' || value === 'minimal') return 'flat'
+  if (value === 'glass') return 'glass'
   if (value === 'expressive') return 'glass'
   return null
 }
