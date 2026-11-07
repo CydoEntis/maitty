@@ -591,8 +591,9 @@ impl FromStr for Action {
 /// finds them.
 pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     // Sessions
-    ("n", "shell-here"),
-    ("t", "pick-session"),
+    ("t", "shell-here"),
+    ("n", "next-tab"),
+    ("p", "prev-tab"),
     ("enter", "message"),
     ("k", "stop-agent"),
     ("i", "jump"),
@@ -628,7 +629,7 @@ pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     ("g", "branch"),
     ("h", "history"),
     ("e", "references"),
-    ("p", "find-file"),
+    ("o", "find-file"),
     // The app
     ("space", "palette"),
     (".", "menu"),
@@ -647,7 +648,9 @@ pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
 /// Ctrl+Shift+F (find in pane) is matched in the client, where the shift state is known.
 /// Alt+1-9 go to a tab of the session.
 pub const DEFAULT_GLOBAL_KEYS: &[(&str, &str)] = &[
-    ("ctrl+t", "pick-session"),
+    ("ctrl+t", "shell-here"),
+    ("ctrl+tab", "next-tab"),
+    ("ctrl+shift+tab", "prev-tab"),
     ("ctrl+k", "palette"),
     ("ctrl+j", "jump"),
     ("alt+down", "next-session"),
