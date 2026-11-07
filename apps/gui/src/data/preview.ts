@@ -44,6 +44,9 @@ export type Conversation = {
   /** The machine's name; absent for this computer. */
   machineName?: string
   hasDiff: boolean
+  /** Lines added and removed in the session's checkout against HEAD, from the daemon; absent when unknown. */
+  diffAdded?: number
+  diffRemoved?: number
   isGitRepository?: boolean
   // Put away in any client; the daemon keeps it running.
   archived?: boolean

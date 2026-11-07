@@ -40,6 +40,9 @@ const TerminalSessionSchema = z.object({
   pinned: z.boolean().default(false),
   archived: z.boolean().default(false),
   conversation_id: z.number().nullable().default(null),
+  // Lines added and removed in the session's checkout against HEAD; zero outside git.
+  diff_added: z.number().int().nonnegative().default(0),
+  diff_removed: z.number().int().nonnegative().default(0),
   popup: z.boolean().default(false),
   remote: z.string().nullable().default(null),
   asking: z.string().default(''),
@@ -765,6 +768,22 @@ export async function archiveSessionOnDaemon(conversation: Pick<Conversation, 'i
   if (pane !== null) await invokeParsed('archive_terminal_session', NullSchema, { term: pane.term, archived, ...machineArgs(pane) })
 }
 
+/**
+ * Ends a terminal session with a six-second undo window: the daemon hides it at once and closes it
+ * for real when the window passes. `undoCloseSession` brings it back while the window is open.
+ */
+export async function closeSessionWithUndo(conversation: Pick<Conversation, 'id'>): Promise<void> {
+  if (!isDesktop()) return
+  const pane = addressOf(conversation.id)
+  if (pane !== null) await invokeParsed('close_session_with_undo', NullSchema, { term: pane.term, ...machineArgs(pane) })
+}
+
+export async function undoCloseSession(conversation: Pick<Conversation, 'id'>): Promise<void> {
+  if (!isDesktop()) return
+  const pane = addressOf(conversation.id)
+  if (pane !== null) await invokeParsed('undo_close_terminal_session', NullSchema, { term: pane.term, ...machineArgs(pane) })
+}
+
 /** The user is looking at this pane: a finished agent's "done" becomes idle, as when the terminal app focuses it. */
 export async function markSeenOnDaemon(conversation: Pick<Conversation, 'id'>): Promise<void> {
   if (!isDesktop()) return
@@ -891,7 +910,9 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
     context: null,
     nativePane: term.id,
     ...(machine ? { machine: machine.id, machineName: machine.name } : {}),
-    hasDiff: false,
+    hasDiff: term.diff_added + term.diff_removed > 0,
+    diffAdded: term.diff_added,
+    diffRemoved: term.diff_removed,
     named: label !== '',
     pinned: term.pinned,
     archived: term.archived,
