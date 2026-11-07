@@ -1238,7 +1238,7 @@ mod screen_tests {
     }
 
     #[test]
-    fn a_context_menu_pads_its_bottom_like_its_top() {
+    fn a_context_menu_holds_its_items_inside_its_box() {
         let layout = "floating";
         let (_, mut app) = super::design_tests::render_with(230, 50);
         app.splash = false;
@@ -1250,22 +1250,16 @@ mod screen_tests {
         let mut term = Terminal::new(TestBackend::new(230, 50)).unwrap();
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = term.backend().buffer().clone();
-        // The menu has no fill of its own: its ground is the screen's.
-        let card = app.theme.bg;
+        // The menu sits on the panel ground, its items straight inside its box.
+        let card = app.theme.sidebar_bg;
         let x = 62;
         let last_item = (0..25u16)
             .rev()
             .find(|&y| (62..90).any(|x| buf[(x, y)].symbol() == "C") && buf[(x, y)].bg == card)
             .expect("the Close pane row");
-        let below = |n: u16| buf[(x, last_item + n)].bg;
-        assert_eq!(
-            below(1),
-            card,
-            "{layout}: one padding row under the last item"
-        );
         assert!(
-            matches!(buf[(x, last_item + 2)].symbol(), "─" | "╰" | "└"),
-            "{layout}: then its box, as it began one row above the first item"
+            matches!(buf[(x, last_item + 1)].symbol(), "─" | "╰" | "└"),
+            "{layout}: its box right under the last item, as it began right above the first"
         );
     }
 
@@ -2613,8 +2607,8 @@ mod screen_tests {
             "UPDATES, then STARTUP, then INPUT"
         );
         assert!(
-            o.contains("› Version"),
-            "the first row, the version, is selected"
+            o.contains("Version"),
+            "the first row is the version"
         );
         // Appearance, the next tab, has the dark/light switch and a theme control for each, which open the searchable browser.
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
@@ -2626,8 +2620,8 @@ mod screen_tests {
                 && o.contains("Dark theme")
                 && o.contains("Light theme")
                 && !o.contains("Corners")
-                && o.contains("PREVIEW"),
-            "the theme settings first, with their preview"
+                && !o.contains("PREVIEW"),
+            "the theme settings first; no preview in the narrower modal"
         );
         assert!(
             o.contains("Status glyphs")
@@ -2920,6 +2914,9 @@ mod screen_tests {
             row: at.1,
             modifiers: KeyModifiers::NONE,
         });
+        assert!(matches!(app.mode, Mode::ScreenMenu(_)), "the chip's own menu");
+        app.mode = Mode::Normal;
+        app.act(Action::Menu);
         assert!(matches!(app.mode, Mode::Actions { sel: 0 }));
         let o = draw(&mut app, 160, 45);
         show(&o);
@@ -3020,6 +3017,13 @@ mod screen_tests {
             assert!(app.sidebar, "» brings the sidebar back");
             draw(&mut app, w, h);
             click(&mut app, screen::ScreenHit::Actions);
+            let Mode::ScreenMenu(menu) = &app.mode else {
+                panic!("the menu chip opens its menu: {:?}", std::mem::discriminant(&app.mode))
+            };
+            let labels: Vec<&str> = menu.items.iter().map(|(l, _)| l.as_str()).collect();
+            assert_eq!(labels, ["Filter sessions", "Inbox", "Usage and cost", "Settings", "Keys"]);
+            // The full Menu is the leader's `.`; its rows are clickable.
+            app.act(Action::Menu);
             assert!(matches!(app.mode, Mode::Actions { .. }));
             let screen = draw(&mut app, w, h);
             show(&screen);
@@ -3358,7 +3362,7 @@ mod screen_tests {
                 "Settings leaves the workspace geometry unchanged at {width}x{height}"
             );
             assert!(
-                screen.contains("Settings") && screen.contains("General"),
+                screen.contains(" settings ") && screen.contains("General"),
                 "Settings renders in the centered modal at {width}x{height}"
             );
         }
@@ -4592,8 +4596,8 @@ second line
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(
-            o.contains("snapshots · dsa-tool")
-                && o.contains("1  2m ago · before claude's turn")
+            o.contains("1  2m ago")
+                && o.contains("before claude's turn")
                 && o.contains("9  18m ago")
                 && !o.contains("20m ago"),
             "the list"
@@ -4718,16 +4722,19 @@ second line
         app.update_available = Some("9.9.9".into());
         app.act(Action::Settings);
         let o = draw(&mut app, 160, 45);
-        let tabs = o
-            .lines()
-            .find(|l| l.contains("General") && l.contains("Sessions"))
-            .expect("the tab strip");
-        // The strip itself, not the sidebar row beside it.
-        let tabs = &tabs[tabs.find("General").unwrap()..];
-        assert!(
-            !tabs.contains('●'),
-            "the pill and the splash say so; the tabs do not: {tabs}"
-        );
+        // The sections column: each name, then the line beside it.
+        for name in ["General", "Appearance", "Sessions", "Alerts", "Agents", "Check", "Keys"] {
+            let row = o
+                .lines()
+                .find(|l| l.contains(&format!(" {name} ")))
+                .unwrap_or_else(|| panic!("the {name} section"));
+            let at = row.find(name).unwrap();
+            let section = row[at..].split('│').next().unwrap_or_default();
+            assert!(
+                !section.contains('●'),
+                "the release chip and the splash say so; the sections do not: {section}"
+            );
+        }
         let version_row = design::settings_rows(modal::Cat::General)
             .iter()
             .position(|r| matches!(r, design::SRow::Version))
@@ -5995,8 +6002,8 @@ second line
         }));
         assert_eq!(
             lit_edges(&mut app),
-            (false, false),
-            "the modal dims the workspace and overlays it without creating a sheet edge"
+            (true, false),
+            "the modal overlays the workspace without creating a sheet edge; the pane it came from keeps its edge, as under a menu"
         );
     }
 
@@ -6648,12 +6655,12 @@ second line
         (
             "settings",
             true,
-            "SETTINGS  · ↑↓ move · ←→ change · Tab section · shortcut mode waits · Esc close",
+            "SETTINGS  · j/k move · Tab section · Enter change · shortcut mode waits · Esc close",
         ),
         (
             "settings",
             false,
-            "SETTINGS  · ↑↓ move · ←→ change · Tab section · Esc close",
+            "SETTINGS  · j/k move · Tab section · Enter change · Esc close",
         ),
         (
             "files",
@@ -8215,7 +8222,6 @@ mod settings_v8_tests {
             "last used",
             "Where",
             "new worktree",
-            "this folder",
             "SIDEBAR",
             "Tabs in the sidebar",
             "WORKTREES",
@@ -8384,7 +8390,7 @@ mod settings_v8_tests {
             .find(|s| s.path == "ui.subagent_count")
             .unwrap()
             .help;
-        let lines = screen::wrap_two(help, 88);
+        let lines = screen::wrap_two(help, screen::settings_help_cols(94) as usize);
         assert!(
             lines.iter().all(|l| o.contains(l.as_str())),
             "{lines:?} in {o}"
@@ -8411,7 +8417,7 @@ mod settings_v8_tests {
                 .unwrap()
                 .help;
             assert!(
-                screen::wrap_two(help, 68)
+                screen::wrap_two(help, screen::settings_help_cols(74) as usize)
                     .iter()
                     .all(|l| o.contains(l.as_str())),
                 "its help is whole at 80x24: {o}"
@@ -15310,7 +15316,7 @@ mod pane_swap_tests {
     }
 
     #[test]
-    fn the_pane_menu_lists_the_four_splits_find_rename_copy_path_and_close() {
+    fn the_pane_menu_lists_rename_the_splits_find_and_close() {
         let (mut app, _rx) = side_by_side("tiled");
         app.menu_for_pane(ClientTerm::local(1), (5, 5));
         let Mode::ScreenMenu(menu) = app.mode.clone() else {
@@ -15318,8 +15324,8 @@ mod pane_swap_tests {
         };
         let labels: Vec<&str> = menu.items.iter().map(|(l, _)| l.as_str()).collect();
         assert_eq!(
-            &labels[..7],
-            ["Split up", "Split down", "Split left", "Split right", "Find", "Rename", "Copy path"],
+            &labels[..4],
+            ["Rename", "Split right", "Split down", "Find"],
             "{labels:?}"
         );
         assert_eq!(

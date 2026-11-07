@@ -75,7 +75,7 @@ fn bound(app: &App, a: &Action) -> Option<KeySpec> {
 }
 
 /// A key as the bar spells it: lower case, Ctrl as `^` (`^space`, `tab`, `esc`, `S`).
-pub(super) fn short_key(k: &KeySpec) -> String {
+pub(in crate::client) fn short_key(k: &KeySpec) -> String {
     let long = crate::client::design::long_key(k).replace("Ctrl+", "^");
     if long.chars().count() > 1 {
         long.to_lowercase()
@@ -238,7 +238,7 @@ fn keys_holder(app: &App) -> Option<Holder> {
         }
         Mode::ScreenSettings(_) => holder(
             "SETTINGS",
-            &[("↑↓", "move"), ("←→", "change"), ("Tab", "section")],
+            &[("j/k", "move"), ("Tab", "section"), ("Enter", "change")],
             ("Esc", "close"),
         ),
         // A merge or throw-away asked in a finished row: Enter does it, Esc only drops the question.

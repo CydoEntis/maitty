@@ -427,6 +427,11 @@ fn draw_panel_body(app: &mut App, buf: &mut Buffer, body: Rect, kind: SheetKind,
     }
 }
 
+/// The Settings modal's size at most: the redesign's 96 columns and a little more, since real
+/// values (a hooks state, the version line) run longer than its examples.
+const SETTINGS_W: u16 = 110;
+const SETTINGS_H: u16 = 32;
+
 /// Settings is a modal so it does not take width away from the workspace.
 pub(in crate::client) fn draw_settings_modal(
     app: &mut App,
@@ -438,8 +443,8 @@ pub(in crate::client) fn draw_settings_modal(
         return;
     };
     let view = (**view).clone();
-    let max_width = area.width.saturating_sub(4).min(128);
-    let max_height = area.height.saturating_sub(2).min(48);
+    let max_width = area.width.saturating_sub(4).min(SETTINGS_W);
+    let max_height = area.height.saturating_sub(2).min(SETTINGS_H);
     let r = Rect {
         x: area.x + area.width.saturating_sub(max_width) / 2,
         y: area.y + area.height.saturating_sub(max_height) / 2,
@@ -448,7 +453,7 @@ pub(in crate::client) fn draw_settings_modal(
     };
     super::dim_all(app, buf, area, t);
     hit(app, area, ScreenHit::Noop);
-    let r = panel_at(app, buf, r, "Settings", &[], t);
+    let r = panel_at(app, buf, r, "settings", &[], t);
     let inside = Rect {
         x: r.x + 1,
         y: r.y + 1,

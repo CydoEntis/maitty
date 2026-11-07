@@ -1891,7 +1891,7 @@ impl App {
             ScreenHit::ExpandSidebar | ScreenHit::CollapseSidebar => {
                 self.act(Action::ToggleSidebar)
             }
-            ScreenHit::Actions => self.act(Action::Menu),
+            ScreenHit::Actions => self.sidebar_menu(),
             ScreenHit::ActionRow(i) => self.actions_run(i),
             ScreenHit::Leader => self.open_keymap(None),
             ScreenHit::ShortcutMode => {

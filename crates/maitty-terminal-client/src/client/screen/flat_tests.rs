@@ -644,14 +644,7 @@ fn the_row_menu_lists_what_the_design_does() {
     let labels: Vec<&str> = items.iter().map(|(l, _)| l.as_str()).collect();
     assert_eq!(
         labels,
-        [
-            "Rename",
-            "Pin",
-            "Open in split right",
-            "Open in split down",
-            "Copy path",
-            "Close session"
-        ]
+        ["Open", "Open in split", "Rename", "Copy path", "Stop session"]
     );
 }
 

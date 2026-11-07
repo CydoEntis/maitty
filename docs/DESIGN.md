@@ -115,14 +115,15 @@ groups* and *check evidence sheet*.
 
 ## Modals and popovers
 
-The Menu and a row's context menu have no fill of their own: they are drawn on the ground like the panes. Everything else that floats over the screen is boxed as the look boxes a pane: a `line` box round
-`card` with corners by `ui.rounded` (the outline's own cells keep the ground behind them, so none of the body's colour shows outside the line; what sits on the top border stands on that ground too). Deciding is a modal: centred, framed like a pane (the title as an accent chip on the top border,
-a red × chip at the right), its border in the accent because it holds the keys, the screen behind
-left as it is (no dimming, no fill: the modal clears its own area to the ground), no shadow. Settings, override, command
-approval and the key overlay are modals. Small explanations (why, a row's menu, the message and
-helpers popovers) open beside their row with a `◂` pointer; a menu row ends in its key, the bound leader
-key when there is one. Every panel ends in an action bar
-of keycaps. See UI › *UI conventions* and *check modals and settings*.
+Everything that floats over the screen (menus, Settings, the keys help, confirms) is a box in the accent
+on the panel ground (`sidebar_bg`), corners by `ui.rounded`; what sits on its top border stands on the ground
+behind. Deciding is a modal: centred, its title as an accent chip on the top border (` settings `), a ` × `
+chip on `btn` a cell in from the corner, no shadow. Settings has its sections down the left and the
+chosen section's rows at the right (label, then the value bold in the accent with `‹ ›` and `2/3`), and a
+footer with its keys and where it is saved. The keys help is three columns of keys. A menu has no title:
+one row per item, the leader key at the right in the accent, the item that ends something last in red.
+Small explanations (why, the message and helpers popovers) open beside their row with a `◂` pointer.
+See UI › *UI conventions*, *Menus* and *check modals and settings*.
 
 ## Toasts
 
