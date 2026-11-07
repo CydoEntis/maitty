@@ -33,6 +33,36 @@ export async function getFileFromMachine(machine: string, path: string, transfer
   await invoke('get_file_from_machine', { machine, path, transfer })
 }
 
+const ListingSchema = z.object({
+  folder: z.string(),
+  dirs: z.array(z.string()),
+  files: z.array(z.string()),
+  truncated: z.boolean(),
+  hidden: z.number().int().nonnegative(),
+})
+const IndexSchema = z.object({
+  folder: z.string(),
+  files: z.array(z.string()),
+  truncated: z.boolean(),
+  hidden: z.number().int().nonnegative(),
+})
+/** What is in one folder of a machine, as the host cleaned and capped it. */
+export type RemoteListing = z.infer<typeof ListingSchema>
+/** The files below a folder of a machine, as paths below `folder`. */
+export type RemoteIndex = z.infer<typeof IndexSchema>
+
+/** What is in the folder `path` on `machine`; an empty path is its home folder. Rejects with the host's words. */
+export async function listRemoteFolder(machine: string, path: string): Promise<RemoteListing> {
+  if (!isTauri()) throw new Error('Folders can only be listed from the desktop app')
+  return ListingSchema.parse(await invoke('list_remote_folder', { machine, path }))
+}
+
+/** The files below `folder` on `machine`, for a search. Rejects with the host's words. */
+export async function indexRemoteFiles(machine: string, folder: string): Promise<RemoteIndex> {
+  if (!isTauri()) throw new Error('Folders can only be searched from the desktop app')
+  return IndexSchema.parse(await invoke('index_remote_files', { machine, folder }))
+}
+
 /** Show a folder pulled files were saved in. The host opens only folders it saved into. */
 export async function openPulledFolder(folder: string): Promise<void> {
   if (isTauri()) await invoke('open_pulled_folder', { folder })

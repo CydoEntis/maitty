@@ -72,6 +72,7 @@ import { useIdleUpdate } from '@/features/updates/useIdleUpdate'
 import { routeDrop } from '@/features/terminal/dropRoute'
 import { dropOnComposer } from '@/features/chat/composerDrop'
 import { useFileDrop } from '@/features/terminal/useFileDrop'
+import { indexRemoteFiles, listRemoteFolder } from '@/api/fileGets'
 import { useFileGets } from '@/features/terminal/useFileGets'
 import { useFileSends } from '@/features/terminal/useFileSends'
 import { useImagePaste } from '@/features/terminal/useImagePaste'
@@ -2039,6 +2040,10 @@ export function DesktopApp() {
             {getFileId !== null && sessionMap.get(getFileId)?.machineName != null && (
               <GetFileDialog
                 session={sessionMap.get(getFileId) as SessionView}
+                browse={{
+                  list: (path) => listRemoteFolder(sessionMap.get(getFileId)?.machineName ?? '', path),
+                  index: (folder) => indexRemoteFiles(sessionMap.get(getFileId)?.machineName ?? '', folder),
+                }}
                 onGet={(path) => {
                   const target = sessionMap.get(getFileId)
                   setGetFileId(null)

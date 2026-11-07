@@ -564,9 +564,13 @@ the path it was saved to. A `~/` at the start of the path is the machine's home 
 
 Exit status: 0 saved, 2 a mistake in how it was asked, 1 the pull did not work (the message says why).
 
-In the desktop app, right-click a session that is on another machine and choose **Get a file…**. Type the file's
-path (the box starts with the session's folder), and it is saved in `Downloads/maitty/<machine>/` with a progress
-toast you can cancel and an **Open folder** button when it is done. It is the same pull as the command.
+In the desktop app, right-click a session that is on another machine and choose **Get a file…**. The box lists the
+session's folder: click a folder to open it, **Up** to go back, or a file to get it. Type a few letters of a name to
+search the session's folder and everything below it (not `.git`, `node_modules` or build folders; the first 5000
+files), and use the arrow keys and Enter. If the file is somewhere else, browse up to it or type the path in the box
+under the list. The file is saved in `Downloads/maitty/<machine>/` with a progress toast you can cancel and an
+**Open folder** button when it is done. It is the same pull as the command. Names with unusual characters are left
+out of the list, and the dialog says how many.
 
 ### Moving text between machines
 
