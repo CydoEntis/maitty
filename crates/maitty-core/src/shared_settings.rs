@@ -180,7 +180,7 @@ mod tests {
         std::fs::write(&file, FIXTURE).unwrap();
         let settings = read(&load(&file));
         assert_eq!(settings.new_session_view, NewSessionView::Chat);
-        assert_eq!(settings.window_style, WindowStyle::Flat);
+        assert_eq!(settings.window_style, WindowStyle::Glass);
         assert_eq!(settings.sidebar_side, SidebarSide::Left);
         assert!(!settings.reduce_motion);
         assert_eq!(settings.appearance, Appearance::Dark);

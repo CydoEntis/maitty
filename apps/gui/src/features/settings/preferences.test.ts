@@ -26,7 +26,7 @@ const DEFAULTS: SettingsPreferences = {
   
   
   defaultAgent: 'claude', newSessionView: 'chat',
-  density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, monthlyBudget: null, iconSize: 'medium', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, chatFullAccessDefault: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'flat',
+  density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, monthlyBudget: null, iconSize: 'medium', iconColor: 'color', statusBar: false, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, chatFullAccessDefault: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass',
 }
 
 describe('settings preferences', () => {
@@ -102,10 +102,10 @@ describe('settings preferences', () => {
     expect(readSettingsPreferences().restoreLayout).toBe(true)
   })
 
-  it('starts a fresh install in Flat and keeps a saved Glass', () => {
-    expect(readSettingsPreferences()).toMatchObject({ style: 'flat' })
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'glass' }))
+  it('starts a fresh install in Glass and keeps a saved Flat', () => {
     expect(readSettingsPreferences()).toMatchObject({ style: 'glass' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'flat' }))
+    expect(readSettingsPreferences()).toMatchObject({ style: 'flat' })
   })
 
   it('reads the old style names and a saved Tiled as Flat, keeps Glass, and falls back from nonsense', () => {
@@ -114,15 +114,15 @@ describe('settings preferences', () => {
       return readSettingsPreferences().style
     }
     expect([style('minimal'), style('expressive'), style('tiled'), style('flat'), style('glass')]).toEqual(['flat', 'glass', 'flat', 'flat', 'glass'])
-    expect(style('neon')).toBe('flat')
+    expect(style('neon')).toBe('glass')
   })
 
-  it('shows the status bar unless it was turned off', () => {
-    expect(readSettingsPreferences().statusBar).toBe(true)
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ statusBar: false }))
+  it('hides the status bar unless it was turned on', () => {
     expect(readSettingsPreferences().statusBar).toBe(false)
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ statusBar: 'no' }))
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ statusBar: true }))
     expect(readSettingsPreferences().statusBar).toBe(true)
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ statusBar: 'no' }))
+    expect(readSettingsPreferences().statusBar).toBe(false)
   })
 
   it('starts new agent sessions as chats with full access off, and ignores nonsense', () => {

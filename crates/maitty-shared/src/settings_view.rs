@@ -38,8 +38,8 @@ pub enum Appearance {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum WindowStyle {
-    #[default]
     Flat,
+    #[default]
     Glass,
 }
 

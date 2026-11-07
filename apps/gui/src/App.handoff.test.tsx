@@ -108,6 +108,7 @@ describe('desktop terminal multiplexer', () => {
     vi.clearAllMocks()
     toast.dismiss()
     window.localStorage.clear()
+    window.localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ statusBar: true }))
     daemon.defaultSessionFolder.mockResolvedValue(HOME)
     daemon.loadConversations.mockResolvedValue([])
     daemon.startShellSession.mockResolvedValue(undefined)
@@ -1247,6 +1248,7 @@ describe('desktop overlays and pane tools', () => {
   })
 
   it('keeps the status bar to quick controls: theme, layout style, text size and the shortcuts', async () => {
+    window.localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ statusBar: true }))
     const user = userEvent.setup()
     daemon.loadConversations.mockResolvedValue([
       inRepo(3, `${HOME}/code/maitty`, `${HOME}/code/maitty`, { agent: 'claude', status: 'working' }),
@@ -1275,6 +1277,7 @@ describe('desktop overlays and pane tools', () => {
   })
 
   it('changes the layout style from the status bar', async () => {
+    window.localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ statusBar: true }))
     const user = userEvent.setup()
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
     renderDesktopApp()
@@ -1288,6 +1291,7 @@ describe('desktop overlays and pane tools', () => {
   })
 
   it('picks a theme from the status bar and opens the full list in Settings', async () => {
+    window.localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ statusBar: true }))
     const user = userEvent.setup()
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
     renderDesktopApp()
@@ -1316,6 +1320,7 @@ describe('desktop overlays and pane tools', () => {
   })
 
   it('hides the status bar in focus mode and when Settings turns it off', async () => {
+    window.localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ statusBar: true }))
     const user = userEvent.setup()
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
     const app = renderDesktopApp()
