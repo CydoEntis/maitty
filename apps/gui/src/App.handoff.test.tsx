@@ -158,6 +158,9 @@ describe('desktop terminal multiplexer', () => {
     daemon.loadConversations.mockResolvedValue([term(5, HOME)])
 
     await user.keyboard('{Control>}{Shift>}t{/Shift}{/Control}')
+    // The shortcut opens the New session modal; Enter takes the start folder, this computer and the default agent.
+    await screen.findByRole('dialog', { name: 'New session' })
+    await user.keyboard('{Enter}{Enter}{Enter}')
 
     await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalledWith(HOME) })
     await waitFor(() => { expect(daemon.sendTerminalInput).toHaveBeenCalledWith({ id: 't5', generation: 0 }, 'claude\r') })
@@ -174,6 +177,8 @@ describe('desktop terminal multiplexer', () => {
     daemon.loadConversations.mockResolvedValue([term(5, HOME)])
 
     await user.keyboard('{Control>}{Shift>}t{/Shift}{/Control}')
+    await screen.findByRole('dialog', { name: 'New session' })
+    await user.keyboard('{Enter}{Enter}{Enter}')
 
     await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalledWith(HOME) })
     await waitFor(() => { expect(daemon.sendTerminalInput).toHaveBeenCalledWith({ id: 't5', generation: 0 }, 'codex\r') })
@@ -1575,7 +1580,9 @@ describe('desktop overlays and tab tools', () => {
 
     await user.click(within(set).getByRole('button', { name: 'Start a session' }))
     expect(screen.queryByRole('dialog', { name: "You're set" })).not.toBeInTheDocument()
-    expect(daemon.startShellSession).toHaveBeenCalled()
+    await screen.findByRole('dialog', { name: 'New session' })
+    await user.keyboard('{Enter}{Enter}{Enter}')
+    await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalled() })
 
     app.unmount()
     renderDesktopApp({ firstRun: true })

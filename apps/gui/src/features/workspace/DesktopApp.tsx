@@ -87,8 +87,8 @@ import { rememberConversationPermissions } from '@/data/conversationPermissions'
 import { reserveOperation } from '@/features/chat/sendOperation'
 import { usePaneViews } from './usePaneViews'
 import { chatAvailability, chatSourceOf, effectiveView, type ChatAgent, type PaneView } from './model/chatView'
-import { listFolders } from '@/api/folders'
-import { RemoteSessionDialog } from './components/RemoteSessionDialog'
+import { NewSessionHost } from './components/NewSessionHost'
+import type { NewSessionRequest } from './components/NewSessionModal'
 import { RenameDialog } from './components/RenameDialog'
 import { Sidebar } from './components/Sidebar'
 import { EmptyState, OfflineBanner, Toast, type RestartOffer } from './components/states'
@@ -286,7 +286,8 @@ export function DesktopApp() {
   // The sessions there were when a start began: one the daemon lists before its tab is placed is kept off the sidebar until it is.
   const [startedFrom, setStartedFrom] = useState<ReadonlySet<string> | null>(null)
   // A new session on another machine asks for a folder there first.
-  const [remoteStart, setRemoteStart] = useState<{ machine: number; name: string } | null>(null)
+  // The machine the New session modal opened on; null while it is closed.
+  const [newSessionMachine, setNewSessionMachine] = useState<number | null>(null)
   const [failures, setFailures] = useState(0)
   const [restartPending, setRestartPending] = useState(false)
   const [root, setRoot] = useState<HTMLDivElement | null>(null)
@@ -849,8 +850,7 @@ export function DesktopApp() {
   // A new session is the default agent, running in a terminal the daemon owns, shown as its chat or
   // as its terminal as Settings says. It is one session either way: the view can be switched at any
   // time without restarting the agent (ADR 0003). A plain shell is `runStart` and has no chat view.
-  const startAgentSession = useCallback((folder: () => Promise<string>, agent: ChatAgent = preferences.defaultAgent) => {
-    const view = preferences.newSessionView
+  const startAgentSession = useCallback((folder: () => Promise<string>, agent: ChatAgent = preferences.defaultAgent, view: PaneView = preferences.newSessionView) => {
     runStart(folder, (id) => {
       // The daemon learns which agent runs from the agent's own hook, a moment after the command is typed; until then the
       // session is known to be this agent, so it never shows as a shell.
@@ -862,17 +862,11 @@ export function DesktopApp() {
     })
   }, [preferences.defaultAgent, preferences.newSessionView, runStart, paneViews])
 
+  // New session (the shortcut, the sidebar's +, the palette) always opens the modal, on the focused session's machine.
   const newSession = useCallback(() => {
     setSettingsSection(null)
-    // A new session goes where the focused one is: on another machine the folder is typed there,
-    // because the folder picker and the start folder are this computer's.
-    const remote = remoteTargetOf(focusedSession)
-    if (remote !== null) {
-      setRemoteStart(remote)
-      return
-    }
-    startAgentSession(async () => resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())))
-  }, [startAgentSession, preferences.startFolder, home, focusedSession])
+    setNewSessionMachine(remoteTargetOf(focusedSession)?.machine ?? LOCAL_MACHINE)
+  }, [focusedSession])
 
   // The agent menu next to +: this agent for this session, the default left as Settings has it. Chats run on this
   // computer only, so beside a session on another machine it opens that machine's folder dialog as + does.
@@ -880,7 +874,7 @@ export function DesktopApp() {
     setSettingsSection(null)
     const remote = remoteTargetOf(focusedSession)
     if (remote !== null) {
-      setRemoteStart(remote)
+      setNewSessionMachine(remote.machine)
       return
     }
     startAgentSession(async () => resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), agent)
@@ -891,42 +885,48 @@ export function DesktopApp() {
     setSettingsSection(null)
     const remote = remoteTargetOf(focusedSession)
     if (remote !== null) {
-      setRemoteStart(remote)
+      setNewSessionMachine(remote.machine)
       return
     }
     runStart(async () => resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => { setLayout((current) => openInNewTab(current, id, makeId)) })
   }, [runStart, preferences.startFolder, home, focusedSession])
 
   // The sidebar's header for a machine and the palette both choose where the session goes.
-  const newSessionOn = useCallback((machine: number, name: string) => {
+  const newSessionOn = useCallback((machine: number) => {
     setSettingsSection(null)
-    setRemoteStart({ machine, name })
+    setNewSessionMachine(machine)
   }, [])
 
-  // What the folder dialog asks the machine, and the folders its sessions are in.
-  const remoteMachine = remoteStart?.machine ?? LOCAL_MACHINE
-  const listOnRemote = useCallback((path: string) => listFolders(remoteMachine, path), [remoteMachine])
-  const recentOnRemote = useMemo(() => {
-    const folders = (machines.get(remoteMachine)?.conversations ?? []).flatMap((item) => (item.kind === 'terminal' && item.cwd ? [item.cwd] : []))
-    return [...new Set(folders)].reverse()
-  }, [machines, remoteMachine])
-
-  const startOnMachine = useCallback(async (target: { machine: number; name: string }, folder: string) => {
+  // Starts a shell on another machine and opens it once the machine lists it; resolves to its id.
+  const startOnMachine = useCallback(async (target: { machine: number; name: string }, folder: string): Promise<string | null> => {
     const known = new Set((machinesRef.current.get(target.machine)?.conversations ?? []).map((item) => item.id))
     await startSessionOnMachine(target.machine, folder)
-    setRemoteStart(null)
     // The machine tells its new session in its next list; the tab opens when it does.
     const deadline = Date.now() + REMOTE_START_WAIT_MS
     while (Date.now() < deadline) {
       const fresh = machinesRef.current.get(target.machine)?.conversations.find((item) => item.kind === 'terminal' && !known.has(item.id))
       if (fresh) {
         setLayout((current) => openInNewTab(current, fresh.id, makeId))
-        return
+        return fresh.id
       }
       await new Promise((resolve) => { setTimeout(resolve, REMOTE_START_POLL_MS) })
     }
     toast.error(`${target.name} did not report the new session`)
+    return null
   }, [])
+
+  // What the New session modal asks for: a shell or an agent, here or on another machine. The modal closes once it is started.
+  const startFromModal = useCallback(async (request: NewSessionRequest) => {
+    if (request.machine !== LOCAL_MACHINE) {
+      const id = await startOnMachine({ machine: request.machine, name: request.machineName }, request.folder)
+      if (id !== null && request.startAs !== 'terminal') await sendTerminalInput({ id, generation: 0 }, `${request.startAs}\r`)
+    } else if (request.startAs === 'terminal') {
+      runStart(() => Promise.resolve(request.folder), (id) => { setLayout((current) => openInNewTab(current, id, makeId)) })
+    } else {
+      startAgentSession(() => Promise.resolve(request.folder), request.startAs, request.view)
+    }
+    setNewSessionMachine(null)
+  }, [startOnMachine, runStart, startAgentSession])
 
   // The + after the tabs starts a shell in the project you are in; ⌘T and the sidebar's New use the start folder.
   const activeGroupKey = (() => {
@@ -1336,7 +1336,7 @@ export function DesktopApp() {
 
   // Captured on the window before xterm sees the key, so only these few keys leave the shell.
   const overlayOpen = paletteOpen || inboxOpen
-  const dialogOpen = settingsSection !== null || renameId !== null || remoteStart !== null
+  const dialogOpen = settingsSection !== null || renameId !== null || newSessionMachine !== null
   const modalOpen = dialogOpen || overlayOpen
   const drawerShown = compact && drawerOpen
   const shortcutState = useRef({ runShortcut, settingsOpen: dialogOpen, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
@@ -1632,7 +1632,7 @@ export function DesktopApp() {
       action('new-here', activeGroupKey ? `New session in ${projectName ?? 'this project'}` : 'New session', newProjectSession, keys('new-session')),
       action('new-start', 'New session in the start folder', newSession),
       action('new-terminal', 'New terminal (a plain shell)', newTerminal),
-      ...heads.filter((head) => head.name !== null && head.chip?.tone === 'ok' && online).map((head) => action(`new-on-${head.key}`, `New terminal on ${head.label}…`, () => { newSessionOn(head.machine, head.label) })),
+      ...heads.filter((head) => head.name !== null && head.chip?.tone === 'ok' && online).map((head) => action(`new-on-${head.key}`, `New terminal on ${head.label}…`, () => { newSessionOn(head.machine) })),
       action('sidebar-side', preferences.sidebarSide === 'left' ? 'Move sidebar to the right' : 'Move sidebar to the left', () => { setPreferences((current) => ({ ...current, sidebarSide: current.sidebarSide === 'left' ? 'right' : 'left' })) }),
       action('split-right', 'Split right', () => { split(null, 'right') }, keys('split-right')),
       action('split-down', 'Split down', () => { split(null, 'down') }, keys('split-down')),
@@ -1728,7 +1728,7 @@ export function DesktopApp() {
       onNewTerminal={() => { afterPick(); newTerminal() }}
       onNewTerminalIn={(folder, machineName) => { afterPick(); startTerminalIn(folder, machineName) }}
       onLocalOnly={(machineName) => { afterPick(); explainLocalOnly(machineName) }}
-      onNewSessionOn={(machine, name) => { afterPick(); newSessionOn(machine, name) }}
+      onNewSessionOn={(machine) => { afterPick(); newSessionOn(machine) }}
       onNewWorktree={(groupKey) => {
         const group = groups.find((candidate) => candidate.key === groupKey)
         const lead = group?.sessions.find((member) => member.id === focusedId) ?? group?.sessions[0]
@@ -2027,13 +2027,17 @@ export function DesktopApp() {
                 onCancel={() => { setWorktreeFrom(null) }}
               />
             )}
-            {remoteStart !== null && (
-              <RemoteSessionDialog
-                machineName={remoteStart.name}
-                list={listOnRemote}
-                recent={recentOnRemote}
-                onStart={(folder) => startOnMachine(remoteStart, folder)}
-                onCancel={() => { setRemoteStart(null) }}
+            {newSessionMachine !== null && (
+              <NewSessionHost
+                machine={newSessionMachine}
+                heads={heads}
+                sessions={sessions}
+                focused={focusedSession}
+                startFolder={resolveStartFolder(preferences.startFolder, home)}
+                defaultAgent={preferences.defaultAgent}
+                defaultView={preferences.newSessionView}
+                onStart={startFromModal}
+                onCancel={() => { setNewSessionMachine(null) }}
               />
             )}
             {renameId !== null && sessionMap.get(renameId) && (
