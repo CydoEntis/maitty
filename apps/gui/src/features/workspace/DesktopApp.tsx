@@ -426,7 +426,7 @@ export function DesktopApp() {
   const sessions = everySession
   const sessionMap = useMemo(() => new Map(sessions.map((session) => [session.id, session])), [sessions])
   // A session the daemon stops listing keeps its pane, shown as ended, so a refresh that misses one
-  // never closes a tab or moves your focus. A pane goes only when you close it.
+  // never closes a layout or moves your focus. A pane goes only when you close it.
   const [remembered, setRemembered] = useState<ReadonlyMap<string, SessionView>>(() => new Map())
   const [seenSessions, setSeenSessions] = useState(sessions)
   if (seenSessions !== sessions) {
@@ -779,7 +779,7 @@ export function DesktopApp() {
     }
   }, [queryClient])
 
-  // A chat session in `path`, opened in a new tab. Chats are this computer's: another machine's shell asks first.
+  // A chat session in `path`, opened in a layout of its own. Chats are this computer's: another machine's shell asks first.
   const startChat = useCallback((path: string, agent: ChatAgent, fullAccess: boolean) =>
     startChatSession(path, agent, null, fullAccess).then((started) => {
       if (fullAccess) rememberConversationPermissions(String(started.id), 'full-access')
@@ -868,7 +868,7 @@ export function DesktopApp() {
     const known = new Set((machinesRef.current.get(target.machine)?.conversations ?? []).map((item) => item.id))
     await startSessionOnMachine(target.machine, folder)
     setRemoteStart(null)
-    // The machine tells its new session in its next list; the tab opens when it does.
+    // The machine tells its new session in its next list; its layout opens when it does.
     const deadline = Date.now() + REMOTE_START_WAIT_MS
     while (Date.now() < deadline) {
       const fresh = machinesRef.current.get(target.machine)?.conversations.find((item) => item.kind === 'terminal' && !known.has(item.id))
@@ -897,7 +897,7 @@ export function DesktopApp() {
     }
     const cwd = sourceSession?.cwd
     runStart(async () => cwd ?? resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => {
-      // If the tab changed or filled up while the shell started, the shell still gets a tab: it must not be left with no pane.
+      // If the layout changed or filled up while the shell started, the shell still gets a layout: it must not be left with no pane.
       setLayout((current) => {
         const next = splitPane(current, source?.id ?? null, direction, id, makeId)
         return next === current ? openArrangement(current, id, makeId) : next
@@ -1362,7 +1362,7 @@ export function DesktopApp() {
   const needsCount = inboxEntries.filter((entry) => entry.session.status === 'needs').length
   const needsElsewhere = sessions.filter((item) => item.status === 'needs' && item.id !== focusedId).length
 
-  // Inspect looks at the focused pane's own repository; the tab bar's +N −N comes from the same daemon question.
+  // Inspect looks at the focused pane's own repository; the Inspector's changed-file count comes from the same daemon question.
   // A pane of another machine has no checkout on this computer, so there is nothing to inspect.
   const inspectTerm = online && isDesktop() && focusedSession && focusedSession.machine === LOCAL_MACHINE && !isChatSession(focusedSession.conversation) ? focusedSession.pane : null
   const diffStat = useQuery({
@@ -1519,7 +1519,7 @@ export function DesktopApp() {
     })
   }, [inboxEntries])
 
-  // With broadcast on, what is typed in one pane also goes to the tab's other panes, but only the idle ones: never into a busy agent.
+  // With broadcast on, what is typed in one pane also goes to the layout's other panes, but only the idle ones: never into a busy agent.
   const mirrorInput = useCallback((fromSessionId: string, data: string | Uint8Array) => {
     const showing = activeArrangement(layout)
     if (!showing?.broadcast || typeof data !== 'string') return
