@@ -148,7 +148,7 @@ fn ctrl_t_and_the_prefix_then_t_make_a_shell_and_do_not_open_the_dialog() {
     assert!(!matches!(app.mode, Mode::NewSession(_)));
     let tabs = sent(&mut rx)
         .iter()
-        .filter(|o| matches!(&o.msg, ClientMsg::Command(Command::NewTab { .. })))
+        .filter(|o| matches!(&o.msg, ClientMsg::Command(Command::NewShip { .. })))
         .count();
     assert_eq!(tabs, 2, "a new tab of the fleet each time");
 }

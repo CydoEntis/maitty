@@ -3241,9 +3241,9 @@ mod screen_tests {
                 assert!(
                     matches!(
                         commands.as_slice(),
-                        [Command::NewTab {
+                        [Command::NewShip {
                             ws: 10,
-                            name: None,
+                            cwd: Some(_),
                             cmd: None
                         }]
                     ),
@@ -3288,8 +3288,8 @@ mod screen_tests {
         assert!(
             matches!(
                 cmds.as_slice(),
-                [Command::NewTab {
-                    name: None,
+                [Command::NewShip {
+                    cwd: Some(_),
                     cmd: None,
                     ..
                 }]
@@ -3301,7 +3301,7 @@ mod screen_tests {
         app.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE));
         let cmds = sent(&mut rx);
         assert!(
-            matches!(cmds.as_slice(), [Command::NewTab { cmd: None, .. }]),
+            matches!(cmds.as_slice(), [Command::NewShip { cmd: None, .. }]),
             "Menu key t: {cmds:?}"
         );
     }
@@ -3352,7 +3352,7 @@ mod screen_tests {
         assert!(
             std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).any(|message| matches!(
                 message,
-                ClientMsg::Command(Command::NewTab { cmd: None, .. })
+                ClientMsg::Command(Command::NewShip { cmd: None, .. })
             )),
             "leader + Caps Lock + t starts a shell"
         );
@@ -6354,6 +6354,7 @@ second line
                     m,
                     Command::NewWorkspace { .. }
                         | Command::NewTab { .. }
+                        | Command::NewShip { .. }
                         | Command::Split { .. }
                         | Command::NewWorktree { .. }
                 )),

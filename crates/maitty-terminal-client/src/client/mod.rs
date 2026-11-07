@@ -1533,6 +1533,8 @@ impl App {
             c,
             Command::NewWorkspace { .. }
                 | Command::NewTab { .. }
+                | Command::NewShip { .. }
+                | Command::NewFleet { .. }
                 | Command::NewWorktree { .. }
                 | Command::AgentWorktree { .. }
         ) {

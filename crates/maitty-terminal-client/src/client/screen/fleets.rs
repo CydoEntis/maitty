@@ -224,13 +224,19 @@ impl App {
             return;
         };
         let name = fleet_name(info);
-        // The daemon starts a new tab in the fleet's own folder.
-        let folder = info.cwd.clone();
+        // The folder you are working in if you are in this fleet, else where it last was, else
+        // the fleet's own.
+        let folder = self
+            .focused()
+            .filter(|t| self.fleet_of(*t) == Some(fleet))
+            .or_else(|| self.fleet_target(fleet))
+            .and_then(|t| self.term_info(t))
+            .map_or_else(|| info.cwd.clone(), |t| t.cwd.clone());
         self.cmd_on(
             fleet.machine,
-            Command::NewTab {
+            Command::NewShip {
                 ws: fleet.ws,
-                name: None,
+                cwd: Some(folder.clone()),
                 cmd: None,
             },
         );

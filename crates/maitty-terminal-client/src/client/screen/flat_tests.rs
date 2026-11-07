@@ -386,7 +386,7 @@ fn the_plus_on_a_machine_heading_starts_a_shell_in_its_first_fleet() {
     let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
     assert!(
         sent.iter()
-            .any(|o| matches!(&o.msg, ClientMsg::Command(Command::NewTab { ws: 10, cmd: None, .. }))),
+            .any(|o| matches!(&o.msg, ClientMsg::Command(Command::NewShip { ws: 10, cmd: None, .. }))),
         "{} messages",
         sent.len()
     );
