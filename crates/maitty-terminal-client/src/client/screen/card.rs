@@ -59,7 +59,7 @@ pub(in crate::client) fn strip(buf: &mut Buffer, r: Rect, bg: Color) {
 /// `text` on a pill in the style's background, as wide as `" text "` would be.
 pub(in crate::client) fn chip(text: &str, st: Style) -> Vec<Seg> {
     let (l, r) = ends(st.bg.unwrap_or(Color::Reset));
-    plain(vec![l, seg(text, st), r])
+    vec![l, seg(text, st), r]
 }
 
 /// How far the inside of an unfocused card fades toward its background at "30%" (the design's v5).
@@ -76,13 +76,6 @@ pub(in crate::client) fn pane_bg(t: &Theme) -> Color {
 /// How the cards are laid out and drawn, from the settings.
 #[derive(Clone, Copy)]
 pub(in crate::client) struct Look {
-    /// Pane colours: each pane a box in its own colour (Floating only).
-    pub pane_colors: bool,
-    /// Leave a border cell between tab chips (`ui.tab_gap`).
-    pub tab_gap: bool,
-    /// Hairline: no boxes, only `│` / `─` hairlines, and always square. Drawing
-    /// asks this, and takes its colours from `hairline::Ink`.
-    pub hairline: bool,
     pub rounded: bool,
     /// Rows between stacked cards, and columns between cards side by side.
     pub gap: u16,
@@ -90,26 +83,14 @@ pub(in crate::client) struct Look {
     pub caps: bool,
     /// Round the ends of the tab chips and the sidebar's selected folder row (`ui.rounded`).
     pub round_tabs: bool,
-    /// Round the ends of the sidebar's session rows (`ui.rounded`).
-    pub round_rows: bool,
 }
 
 impl Look {
     pub fn of(ui: &crate::config::Ui) -> Look {
-        use crate::config::LayoutKind;
-        let kind = ui.layout_kind();
-        let hairline = kind == LayoutKind::Hairline;
         let rounding = ui.rounding();
         Look {
-            pane_colors: ui.pane_colors && !hairline,
-            tab_gap: ui.tab_gap,
-            hairline,
             rounded: rounding.corners(),
-            gap: if hairline {
-                0
-            } else {
-                crate::config::size_cells(&ui.gap).min(3)
-            },
+            gap: crate::config::size_cells(&ui.gap).min(3),
             dim: match ui.dim.as_str() {
                 "off" => 0.0,
                 "light" | "subtle" => DIM_SUBTLE,
@@ -118,7 +99,6 @@ impl Look {
             },
             caps: rounding.caps(),
             round_tabs: rounding.caps(),
-            round_rows: rounding.caps(),
         }
     }
 }
@@ -140,7 +120,7 @@ pub(in crate::client) fn pill(look: Look, segs: Vec<Seg>, bg: Color, outer: Colo
     let mut out = vec![end(l)];
     out.extend(segs.into_iter().map(|(x, st)| (x, st.bg(bg))));
     out.push(end(r));
-    plain(out)
+    out
 }
 
 /// `segs` with a half-circle cap each end, in the first and last segment's background, over
@@ -245,34 +225,6 @@ pub(in crate::client) fn corners(look: Look) -> [&'static str; 4] {
     }
 }
 
-/// A row's highlight laid over what's already drawn there (a glide passing over rows): its
-/// ground becomes `bg`, its text stays, with the pill's ends.
-pub(in crate::client) fn tint_row(
-    look: Look,
-    buf: &mut Buffer,
-    x: u16,
-    y: u16,
-    w: u16,
-    bg: Color,
-    outer: Color,
-) {
-    let area = buf.area;
-    if w < 2 || y < area.y || y >= area.bottom() {
-        return;
-    }
-    let right = (x + w).min(area.right());
-    for xx in x.max(area.x)..right {
-        buf[(xx, y)].set_bg(bg);
-    }
-    if look.caps {
-        buf[(x, y)].set_symbol(CAP_L).set_fg(bg).set_bg(outer);
-        buf[(right - 1, y)]
-            .set_symbol(CAP_R)
-            .set_fg(bg)
-            .set_bg(outer);
-    }
-}
-
 /// A button as a pill: the primary one in the accent, the others raised with their key lit.
 /// The pointer's tint is laid over every clickable region after drawing (`render`).
 pub(in crate::client) fn button_pill(
@@ -344,41 +296,13 @@ impl<'a> Card<'a> {
     }
 }
 
-/// How wide a card's ✕ is drawn on its top border, the spaces round it included.
-pub(in crate::client) fn close_width(look: Look, after_right: bool) -> u16 {
-    if look.hairline {
-        close_lead(look, after_right) + 2 * u16::from(look.caps) + 2
-    } else {
-        close_lead(look, after_right) + RED_CLOSE_W
-    }
-}
-
 const RED_CLOSE_W: u16 = 3;
 
 /// Spaces before the ✕: two after other right-hand segments. Alone, a square ✕'s chip starts on
 /// the padding before the segments, where the reference frames put it; a capped chip needs that cell
 /// blank to stand clear of the border, so it starts a cell on.
-fn close_lead(look: Look, after_right: bool) -> u16 {
-    if after_right {
-        2
-    } else if look.hairline {
-        u16::from(look.caps)
-    } else {
-        0
-    }
-}
-
-/// The ✕'s click target, which the pointer's tint lights: the ✕ and a cell each side, and with
-/// caps a space more each side inside them, so the hovered ✕ is a whole chip like the others
-/// rather than two caps pressed against the glyph.
-fn close_chip_w(look: Look) -> u16 {
-    if look.hairline && look.caps {
-        5
-    } else if look.hairline {
-        3
-    } else {
-        RED_CLOSE_W
-    }
+fn close_lead(after_right: bool) -> u16 {
+    if after_right { 2 } else { 0 }
 }
 
 /// Where a card's title chip starts: on the top border two in.
@@ -400,7 +324,7 @@ fn title_chip(look: Look, c: &Card, t: &Theme, room: u16, ground: Color) -> Vec<
     if caps {
         round_ends(chip, ground)
     } else {
-        plain(chip)
+        chip
     }
 }
 
@@ -475,42 +399,23 @@ pub(in crate::client) fn card(
             ..r
         };
     }
-    let inside = if look.hairline && c.docked {
-        // No second `│` beside one already there (the sidebar's, when it takes the pane column).
-        hairline_zone(
-            buf,
-            r,
-            c,
-            t,
-            ruled(app, buf, r) && buf[(r.x - 1, r.y)].symbol() != "│",
-        )
-    } else {
-        box_frame(buf, r, c, look)
-    };
+    let inside = box_frame(buf, r, c, look);
     let ground = t.bg;
     let mut right = c.right.clone();
-    let flush = c.close.is_some() && !look.hairline;
+    let flush = c.close.is_some();
     if c.close.is_some() {
-        let lead = " ".repeat(close_lead(look, !right.is_empty()) as usize);
+        let lead = " ".repeat(close_lead(!right.is_empty()) as usize);
         let close = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).close;
-        if flush {
-            right.push(seg(lead, Style::default()));
-            let glyph = Style::default()
-                .fg(t.strong)
-                .bg(t.err)
-                .add_modifier(Modifier::BOLD);
-            if look.caps {
-                let cap = Style::default().fg(t.err).bg(ground);
-                right.extend([seg(CAP_L, cap), seg(close, glyph), seg(CAP_R, cap)]);
-            } else {
-                right.push(seg(format!(" {close} "), glyph));
-            }
+        right.push(seg(lead, Style::default()));
+        let glyph = Style::default()
+            .fg(t.strong)
+            .bg(t.err)
+            .add_modifier(Modifier::BOLD);
+        if look.caps {
+            let cap = Style::default().fg(t.err).bg(ground);
+            right.extend([seg(CAP_L, cap), seg(close, glyph), seg(CAP_R, cap)]);
         } else {
-            let inner = if look.caps { " " } else { "" };
-            right.push(seg(
-                format!("{lead}{inner}{close}{inner} "),
-                Style::default().fg(t.muted),
-            ));
+            right.push(seg(format!(" {close} "), glyph));
         }
     }
     let end = if flush { r.right() } else { right_end(r) };
@@ -531,7 +436,7 @@ pub(in crate::client) fn card(
             .collect();
         put(buf, rx - pad, r.y, &segs, end + pad);
         if let Some(h) = c.close {
-            let w = close_chip_w(look);
+            let w = RED_CLOSE_W;
             hit(
                 app,
                 Rect {
@@ -568,11 +473,6 @@ fn box_frame(buf: &mut Buffer, r: Rect, c: &Card, look: Look) -> Rect {
         c.bg,
     );
     let b = Style::default().fg(c.border);
-    let b = if look.pane_colors && c.bold {
-        b.add_modifier(Modifier::BOLD)
-    } else {
-        b
-    };
     let (x, y, right, bottom) = (r.x, r.y, r.right() - 1, r.bottom() - 1);
     for xx in x + 1..right {
         buf[(xx, y)].set_symbol("─").set_style(b);
@@ -592,40 +492,6 @@ fn box_frame(buf: &mut Buffer, r: Rect, c: &Card, look: Look) -> Rect {
         y: y + 1,
         width: r.width - 2,
         height: r.height - 2,
-    }
-}
-
-/// Whether a docked zone at `r` has a `│` rule down its left: it does not start at the left of
-/// the room the screen is laid out in (the window less its padding), as the panes beside a
-/// left sidebar, or a sidebar on the right.
-pub(in crate::client) fn ruled(app: &App, buf: &Buffer, r: Rect) -> bool {
-    r.x > framed(app, buf.area).x
-}
-
-/// A docked card in Hairline: the title row, a `─` rule under it (in `border` when focused,
-/// as a pane's), and a `│` down its left when `ruled`. Returns the inside, under the rule.
-fn hairline_zone(buf: &mut Buffer, r: Rect, c: &Card, t: &Theme, ruled: bool) -> Rect {
-    fill(buf, r, c.bg);
-    fill(buf, Rect { height: 2, ..r }, t.bg);
-    let lead = u16::from(ruled);
-    if ruled {
-        for yy in r.y..r.bottom() {
-            buf[(r.x, yy)]
-                .set_symbol("│")
-                .set_style(Style::default().fg(t.line).bg(t.bg));
-        }
-    }
-    let rule = Style::default()
-        .fg(if c.bold { c.border } else { t.line })
-        .bg(t.bg);
-    for xx in r.x + lead..r.right() {
-        buf[(xx, r.y + 1)].set_symbol("─").set_style(rule);
-    }
-    Rect {
-        x: r.x + lead,
-        y: r.y + 2,
-        width: r.width - lead,
-        height: r.height.saturating_sub(2),
     }
 }
 
@@ -681,7 +547,6 @@ mod tests {
         assert!(rounded_look.rounded, "the setting rounds box corners");
         assert!(rounded_look.caps, "chips are pills");
         assert!(rounded_look.round_tabs, "tab chips are pills");
-        assert!(rounded_look.round_rows, "sidebar rows are pills");
 
         let square = look("floating", false);
         assert!(!square.rounded, "rounding can be turned off");

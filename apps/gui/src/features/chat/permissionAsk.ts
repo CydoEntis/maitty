@@ -1,3 +1,8 @@
+import type { ApprovalDecision } from './chatEvents'
+
+/** Each answer to a request the chat runs, and the key that gives it: the same letters as typing into the terminal. */
+export const ANSWER_KEY: Readonly<Record<Exclude<ApprovalDecision, 'Cancel'>, string>> = { Accept: 'y', AcceptForSession: 'a', Decline: 'n' }
+
 /** How a person answers an agent's permission prompt from the chat. */
 export type AskChoice = 'approve' | 'deny'
 

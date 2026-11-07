@@ -265,6 +265,46 @@ fn restart_if_idle_with_no_server_says_so_and_starts_nothing() {
 }
 
 #[test]
+fn machine_get_needs_a_configured_machine_and_never_runs_ssh_for_anything_else() {
+    let sandbox = Sandbox::new();
+    for (name, want) in [
+        ("bild", r#"unknown machine "bild"; no machines are configured"#),
+        ("local", "name a machine from [[machines]]"),
+    ] {
+        let out = usage(&sandbox, &["machine", "get", name, "~/out.log"]);
+        let said = text(&out.stderr);
+        assert_eq!(out.status.code(), Some(2), "{name}: {said}");
+        assert!(said.contains(want), "{name}: {said}");
+    }
+    assert!(!sandbox.log().exists(), "ssh must not have been run");
+}
+
+#[test]
+fn machine_put_needs_a_configured_machine_and_never_runs_ssh_for_anything_else() {
+    let sandbox = Sandbox::new();
+    for (name, want) in [
+        ("bild", r#"unknown machine "bild"; no machines are configured"#),
+        ("local", "name a machine from [[machines]]"),
+    ] {
+        let out = usage(&sandbox, &["machine", "put", name, "./file.txt"]);
+        let said = text(&out.stderr);
+        assert_eq!(out.status.code(), Some(2), "{name}: {said}");
+        assert!(said.contains(want), "{name}: {said}");
+    }
+    assert!(!sandbox.log().exists(), "ssh must not have been run");
+}
+
+#[test]
+fn activity_with_no_server_reports_nothing_open_and_starts_nothing() {
+    let sandbox = Sandbox::new();
+    let mut command = sandbox.local(MAITTY);
+    command.arg("activity");
+    let out = output_within(command, WAIT);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(text(&out.stdout).trim(), "activity: sessions=0 busy=0");
+}
+
+#[test]
 fn on_with_remote_or_with_a_command_that_ignores_it_is_a_usage_error() {
     let sandbox = Sandbox::new();
     let both = usage(&sandbox, &["--on", "build", "--remote", "box", "ls"]);

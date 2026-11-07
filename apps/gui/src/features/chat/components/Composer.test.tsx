@@ -2,6 +2,7 @@ import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FAKE_CONVERSATION, FakeDaemonHistory } from '../fakeDaemonHistory'
+import { forgetChoices, writeChoice } from '../agentChoice'
 import { forgetComposers } from '../composerStore'
 import { PENDING_APPROVAL_NOTE } from '../useChatComposer'
 import { forgetChatFeeds, IDLE_POLL_MS } from '../useChatFeed'
@@ -9,7 +10,7 @@ import { ChatSession } from './ChatSession'
 
 const fake = vi.hoisted(() => ({
   current: null as null | { read: (cursor: never) => Promise<unknown> },
-  submitMessage: vi.fn<(conversation: { id: string; generation: number }, operation: number, text: string) => Promise<unknown>>(),
+  submitMessage: vi.fn<(conversation: { id: string; generation: number }, operation: number, text: string, choice?: { model?: string; effort?: string }) => Promise<unknown>>(),
   cancelTurn: vi.fn<(conversation: { id: string; generation: number }) => Promise<void>>(),
   dequeueMessage: vi.fn<(conversation: { id: string; generation: number }, operation: number) => Promise<void>>(),
   approveRequest: vi.fn<(conversation: { id: string; generation: number }, requestId: number | string, decision: string) => Promise<void>>(),
@@ -75,6 +76,20 @@ describe('sending', () => {
     expect(box).toHaveValue('')
   })
 
+  it('sends the model and reasoning picked for this chat with the message, and only what was picked', async () => {
+    window.localStorage.clear()
+    forgetChoices()
+    writeChoice(FAKE_CONVERSATION, { model: 'opus', reasoning: 'high' })
+    try {
+      const { user, box } = await open()
+      await user.type(box, 'think hard{Enter}')
+      expect(fake.submitMessage).toHaveBeenCalledWith(TARGET, 1, 'think hard', { model: 'opus', effort: 'high' })
+    } finally {
+      window.localStorage.clear()
+      forgetChoices()
+    }
+  })
+
   it('adds a new line on Shift+Enter and sends nothing', async () => {
     const { user, box } = await open()
 
@@ -122,13 +137,13 @@ describe('while a request waits for an answer', () => {
 
     expect(box).toBeDisabled()
     expect(box).toHaveAttribute('placeholder', PENDING_APPROVAL_NOTE)
-    expect(screen.getByRole('group', { name: /Approval/ })).toHaveTextContent('rm -rf build')
+    expect(screen.getByRole('region', { name: /Approval/ })).toHaveTextContent('rm -rf build')
   })
 
   it('answers through the daemon by request id, then shows the choice and turns the composer back on', async () => {
     const { daemon, user, box } = await open((setup) => { setup.status = 'Blocked'; setup.approvals = pending })
 
-    await user.click(screen.getByRole('button', { name: 'This session (a)' }))
+    await user.click(within(screen.getByRole('region', { name: /Approval/ })).getByRole('button', { name: /This session/ }))
 
     await settle()
     expect(fake.approveRequest).toHaveBeenCalledWith(TARGET, 9, 'AcceptForSession')

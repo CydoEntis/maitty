@@ -36,16 +36,23 @@ const TerminalSessionSchema = z.object({
   cwd: z.string(),
   root: z.string().nullable().default(null),
   branch: z.string().nullable().default(null),
+  // The pane runs in a linked worktree rather than the main checkout (the daemon's `TermInfo.linked`).
+  linked: z.boolean().default(false),
   label: z.string().default(''),
   pinned: z.boolean().default(false),
   archived: z.boolean().default(false),
   conversation_id: z.number().nullable().default(null),
+  // Lines added and removed in the session's checkout against HEAD; zero outside git.
+  diff_added: z.number().int().nonnegative().default(0),
+  diff_removed: z.number().int().nonnegative().default(0),
   popup: z.boolean().default(false),
   remote: z.string().nullable().default(null),
   asking: z.string().default(''),
   // The agent's own hook said what its permission prompt asks (not read off the screen).
   ask: z.object({ tool: z.string(), detail: z.string(), answerable: z.boolean().default(false), choices: z.array(z.string()).default([]) }).nullable().default(null),
   interrupted: z.object({ agent: z.string(), resume: z.string() }).nullable().default(null),
+  // How the last command ended, when it ended in failure (the daemon's `TermInfo.exit`); absent from an older daemon.
+  exit: z.object({ code: z.number().int().nullable().default(null), at: z.number().default(0) }).nullable().default(null),
   timeline: z.array(z.object({
     at: z.number().int().nonnegative(),
     kind: z.enum(['Working', 'NeedsYou', 'Done', 'Idle', 'Prompt', 'CommandStarted', 'CommandFinished']),
@@ -56,6 +63,17 @@ const TerminalSessionSchema = z.object({
     cost: z.number().nullable().default(null),
     tokens: z.number().nullable().default(null),
   }).default({ context: null, cost: null, tokens: null }),
+  // The agent's subagents as its runtime reports them (`TermInfo.subagent_activity`); times are unix seconds.
+  subagent_activity: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    state: z.enum(['Starting', 'Working', 'WaitingForInput', 'AwaitingApproval', 'Completed', 'Failed', 'Cancelled', 'ConnectionLost']),
+    task: z.string().nullable().default(null),
+    started_at: z.number().int().nonnegative().nullable().default(null),
+    updated_at: z.number().int().nonnegative().default(0),
+    latest_activity: z.string().nullable().default(null),
+    result: z.string().nullable().default(null),
+  })).default([]),
 })
 const DaemonSnapshotSchema = z.object({
   // Read one by one, like the terminals: a record this app can't read must not take every session offline.
@@ -690,16 +708,21 @@ export async function resizeTerminal(conversation: Pick<Conversation, 'id'> & { 
 
 export type QueuedReceipt = z.infer<typeof QueuedReceiptSchema>
 
+/** The model and reasoning effort picked in the composer, sent with a message. Only what was picked is present. */
+export type MessageChoice = { readonly model?: string; readonly effort?: string }
+
 /**
  * Sends a message. A conversation that is mid-turn does not refuse it: the daemon holds it and sends it
  * when the turn ends, in order, even if this window closes, and answers with a `QueuedReceipt`.
  */
-export async function submitMessage(conversation: Pick<Conversation, 'id' | 'generation'>, operation: number, text: string): Promise<ConversationReceipt | QueuedReceipt> {
+export async function submitMessage(conversation: Pick<Conversation, 'id' | 'generation'>, operation: number, text: string, choice?: MessageChoice): Promise<ConversationReceipt | QueuedReceipt> {
   return invokeParsed('send_conversation', z.union([ConversationReceiptSchema, QueuedReceiptSchema]), {
     id: Number(conversation.id),
     generation: conversation.generation,
     operation,
     text,
+    ...(choice?.model === undefined ? {} : { model: choice.model }),
+    ...(choice?.effort === undefined ? {} : { effort: choice.effort }),
   })
 }
 
@@ -751,18 +774,27 @@ export async function cancelTurn(conversation: Pick<Conversation, 'id' | 'genera
   })
 }
 
-/** Pin a session to the top of its project, or let it go back to its place. The daemon keeps it for every app. */
-export async function pinSessionOnDaemon(conversation: Pick<Conversation, 'id'>, pinned: boolean): Promise<void> {
-  if (!isDesktop()) return
-  const pane = addressOf(conversation.id)
-  if (pane !== null) await invokeParsed('pin_terminal_session', NullSchema, { term: pane.term, pinned, ...machineArgs(pane) })
-}
-
 /** Put a session away from the project lists and tabs, or bring it back. It keeps running: this is a view setting, never a kill. */
 export async function archiveSessionOnDaemon(conversation: Pick<Conversation, 'id'>, archived: boolean): Promise<void> {
   if (!isDesktop()) return
   const pane = addressOf(conversation.id)
   if (pane !== null) await invokeParsed('archive_terminal_session', NullSchema, { term: pane.term, archived, ...machineArgs(pane) })
+}
+
+/**
+ * Ends a terminal session with a six-second undo window: the daemon hides it at once and closes it
+ * for real when the window passes. `undoCloseSession` brings it back while the window is open.
+ */
+export async function closeSessionWithUndo(conversation: Pick<Conversation, 'id'>): Promise<void> {
+  if (!isDesktop()) return
+  const pane = addressOf(conversation.id)
+  if (pane !== null) await invokeParsed('close_session_with_undo', NullSchema, { term: pane.term, ...machineArgs(pane) })
+}
+
+export async function undoCloseSession(conversation: Pick<Conversation, 'id'>): Promise<void> {
+  if (!isDesktop()) return
+  const pane = addressOf(conversation.id)
+  if (pane !== null) await invokeParsed('undo_close_terminal_session', NullSchema, { term: pane.term, ...machineArgs(pane) })
 }
 
 /** The user is looking at this pane: a finished agent's "done" becomes idle, as when the terminal app focuses it. */
@@ -891,14 +923,25 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
     context: null,
     nativePane: term.id,
     ...(machine ? { machine: machine.id, machineName: machine.name } : {}),
-    hasDiff: false,
+    linked: term.linked,
+    hasDiff: term.diff_added + term.diff_removed > 0,
+    diffAdded: term.diff_added,
+    diffRemoved: term.diff_removed,
     named: label !== '',
     pinned: term.pinned,
     archived: term.archived,
     agent: term.agent,
     process: term.process,
     summary: term.summary,
-    details: { asking: term.asking, ask: term.ask, interrupted: term.interrupted, timeline: term.timeline, usage: term.usage },
+    details: {
+      asking: term.asking,
+      ask: term.ask,
+      interrupted: term.interrupted,
+      exit: term.exit,
+      timeline: term.timeline,
+      usage: term.usage,
+      subagents: term.subagent_activity.map((child) => ({ id: child.id, name: child.name, state: child.state, task: child.task, startedAt: child.started_at, updatedAt: child.updated_at, latest: child.latest_activity, result: child.result })),
+    },
     ...(chat ? { chat } : {}),
   }
 }

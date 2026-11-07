@@ -1,7 +1,9 @@
 //! The Inbox sheet: what needs you, failed checks, checks that could not run, what finished,
 //! then what two agents both changed. Typing finds any session instead.
 
-use super::check_inbox::{self, FAILED_HEAD, FINISHED_HEAD, Item, NEEDS_HEAD, NOT_RUN_HEAD};
+use super::check_inbox::{
+    self, EXITED_HEAD, FAILED_HEAD, FINISHED_HEAD, Item, NEEDS_HEAD, NOT_RUN_HEAD,
+};
 use super::*;
 use crate::theme::mix;
 
@@ -15,6 +17,15 @@ const AGE_GAP: u16 = 4;
 
 /// The groups the Inbox title counts: everything but what finished and the heads-ups.
 const COUNTED: [&str; 3] = [NEEDS_HEAD, FAILED_HEAD, NOT_RUN_HEAD];
+
+/// A session whose last command failed, not cleared, that no other group already lists.
+fn has_exited(s: &Session) -> bool {
+    s.exit.is_some()
+        && !s.exit_seen
+        && !s.down
+        && s.status != Status::Blocked
+        && check_inbox::row(s).is_none()
+}
 
 /// The Inbox's rows with nothing typed, in its fixed order; an empty group is left out.
 pub(super) fn inbox_rows(model: &[Proj], heads: usize) -> Vec<GoRow> {
@@ -39,11 +50,23 @@ pub(super) fn inbox_rows(model: &[Proj], heads: usize) -> Vec<GoRow> {
                 .filter_map(|s| s.native_term.map(GoRow::Quiet)),
         )
         .collect();
+    // Exited: a command ended in failure and you have not cleared it, the newest first. A
+    // session that asks, or whose check failed, is already listed above.
+    let mut gone: Vec<&Session> = model
+        .iter()
+        .flat_map(Proj::sessions)
+        .filter(|s| has_exited(s))
+        .collect();
+    gone.sort_by_key(|s| (std::cmp::Reverse(s.exit.map(|e| e.at)), s.key));
+    let exited = gone
+        .into_iter()
+        .filter_map(|s| s.native_term.map(GoRow::Exited))
+        .collect();
     // Finished: a session with a check result first, then the newest (the reference's order).
     let mut done: Vec<&Session> = waiting
         .iter()
         .map(|(s, ..)| s)
-        .filter(|s| check::finished(s))
+        .filter(|s| check::finished(s) && !has_exited(s))
         .collect();
     done.sort_by_key(|s| (s.checks.is_empty(), std::cmp::Reverse(s.since)));
     let finished = done
@@ -62,6 +85,7 @@ pub(super) fn inbox_rows(model: &[Proj], heads: usize) -> Vec<GoRow> {
             check_inbox::rows(model, |r| matches!(r, GoRow::NotRun(_))),
         ),
         (FINISHED_HEAD, finished),
+        (EXITED_HEAD, exited),
         // Last: there can be dozens (every file two checkouts both changed), and they must
         // never stand between you and an agent that needs you or has finished.
         (HEADS_HEAD, (0..heads).map(GoRow::Heads).collect()),
@@ -130,7 +154,7 @@ fn chip_head(
     if let Some(n) = n {
         segs.push(seg(format!(" {n} "), b.bg(mix(color, t.bg, COUNT_FADE))));
     }
-    put(buf, x, y, &plain(segs), right);
+    put(buf, x, y, &segs, right);
 }
 
 fn head_color(name: &str, t: &Theme) -> Color {
@@ -139,6 +163,7 @@ fn head_color(name: &str, t: &Theme) -> Color {
         FAILED_HEAD => t.err,
         NOT_RUN_HEAD => t.violet(),
         FINISHED_HEAD => t.done,
+        EXITED_HEAD => t.err,
         HEADS_HEAD => blend(t.sky(), t.text, 0.3),
         _ => t.btn,
     }
@@ -604,7 +629,7 @@ pub(super) fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, ground: 
             &[
                 seg("✓ ", Style::default().bg(ground).fg(t.done)),
                 seg(
-                    "Nothing is waiting on you.",
+                    "You're all caught up",
                     Style::default().bg(ground).fg(t.text),
                 ),
             ],
@@ -1238,6 +1263,53 @@ mod tests {
     }
 
     #[test]
+    fn y_a_and_n_answer_the_selected_question_in_its_session() {
+        for (key, byte) in [('y', b'y'), ('a', b'a'), ('n', b'n')] {
+            let mut app = inbox_world(Stage::Failed, 3);
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+            app.out = tx;
+            app.on_key(KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE));
+            let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).collect();
+            assert!(
+                sent.iter().any(|m| matches!(m, ClientMsg::Input { term: 3, data } if data == &[byte])),
+                "{key} goes to the session's PTY: {sent:?}"
+            );
+            assert!(matches!(app.mode, Mode::GoTo { .. }), "and the Inbox stays");
+        }
+    }
+
+    #[test]
+    fn c_clears_the_finished_cards_and_leaves_the_rest() {
+        let mut app = inbox_world(Stage::Failed, 4);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.out = tx;
+        app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE));
+        let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).collect();
+        assert!(
+            sent.iter().any(|m| matches!(m, ClientMsg::Command(Command::MarkSeen { term: 4 }))),
+            "the finished session is marked seen: {sent:?}"
+        );
+        assert!(
+            !sent.iter().any(|m| matches!(m, ClientMsg::Command(Command::ClosePane { .. } | Command::CloseSession { .. }))),
+            "no session is closed"
+        );
+    }
+
+    #[test]
+    fn an_empty_inbox_says_you_are_all_caught_up() {
+        let mut app = world(Stage::None);
+        app.snap.questions.clear();
+        for t in app.snap.terms.values_mut() {
+            t.status = crate::protocol::Status::Idle;
+        }
+        app.screen_sync();
+        app.mode = Mode::GoTo { query: String::new(), sel: 0 };
+        let area = Rect::new(0, 0, 62, 12);
+        let rows = draw(&mut app, area, 62, 12);
+        assert!(rows.iter().any(|r| r.contains("✓ You're all caught up")), "{rows:?}");
+    }
+
+    #[test]
     fn o_opens_the_session_of_any_item() {
         for (stage, term) in [
             (Stage::Failed, 3),
@@ -1298,5 +1370,67 @@ mod tests {
                 .any(|r| r.contains("type to find")),
             "no search row until you type"
         );
+    }
+
+    /// The sample's finished agent, its last command failed with `code`.
+    fn exited_fox(code: i32) -> App {
+        let mut app = inbox_world(Stage::Failed, 1);
+        app.snap.terms.get_mut(&FOX).unwrap().exit = Some(crate::protocol::ExitInfo {
+            code: Some(code),
+            at: 42,
+        });
+        app.screen_fresh();
+        app.screen_sync();
+        app
+    }
+
+    #[test]
+    fn a_session_whose_command_failed_is_an_exited_card_not_a_finished_one() {
+        let mut app = exited_fox(2);
+        let area = Rect::new(0, 0, 62, 40);
+        let rows = draw(&mut app, area, 62, 40);
+        let head = row_of(&rows, "EXITED");
+        assert!(rows[head + 1].contains("quick-fox"), "{rows:#?}");
+        assert!(rows[head + 2].contains("exited with code 2"), "{rows:#?}");
+        assert!(
+            !goto_rows(&app.screen_model(), "", 0)
+                .contains(&GoRow::Done(ClientTerm::local(FOX))),
+            "it is listed once"
+        );
+        assert_eq!(inbox_count(&app), 2, "an exit is not counted as needing you");
+    }
+
+    #[test]
+    fn c_clears_exited_cards_until_another_command_fails_and_enter_opens_one() {
+        let mut app = exited_fox(1);
+        app.mode = Mode::GoTo {
+            query: String::new(),
+            sel: 0,
+        };
+        let pos = goto_rows(&app.screen_model(), "", 0)
+            .iter()
+            .position(|r| matches!(r, GoRow::Exited(_)))
+            .expect("listed");
+        // Enter opens its session, which leaves the Inbox.
+        app.mode = Mode::GoTo {
+            query: String::new(),
+            sel: pos,
+        };
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(app.mode, Mode::Normal);
+
+        app.mode = Mode::GoTo {
+            query: String::new(),
+            sel: 0,
+        };
+        app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE));
+        assert!(!heads(&app).contains(&EXITED_HEAD), "cleared");
+        // A later failure is a new card.
+        app.snap.terms.get_mut(&FOX).unwrap().exit = Some(crate::protocol::ExitInfo {
+            code: Some(1),
+            at: 99,
+        });
+        app.screen_fresh();
+        assert!(heads(&app).contains(&EXITED_HEAD), "listed again");
     }
 }

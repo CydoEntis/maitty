@@ -6,7 +6,7 @@ vi.mock('@/api/daemon', () => ({
 
 import { chatAvailability, chatSourceOf } from './chatView'
 import { isChatSession, isListedChatSession } from './chatSession'
-import { groupSessions, toSessionView } from './session'
+import { folderNameOf, toSessionView } from './session'
 import type { Conversation } from '@/data/preview'
 
 const HOME = '/home/casey'
@@ -38,12 +38,10 @@ describe('what is a chat session', () => {
 })
 
 describe('a chat session in the window', () => {
-  it('sits in its project with its agent and branch, and its chat is ready', () => {
+  it('has its agent, folder and branch on its row, and its chat is ready', () => {
     const view = toSessionView(chat(), HOME)
     expect(view).toMatchObject({ process: 'claude', repoName: 'app', branch: 'agent/x', status: 'working' })
-    const groups = groupSessions([view], 'repo', null, HOME)
-    expect(groups).toHaveLength(1)
-    expect(groups[0]).toMatchObject({ name: 'app', kind: 'repo', workingCount: 1 })
+    expect(folderNameOf(view)).toBe('app')
     // Writable: the chat link has no read-only mark, so the composer is on.
     const availability = chatAvailability(chatSourceOf(view))
     expect(availability).toMatchObject({ kind: 'ready', agent: 'claude' })

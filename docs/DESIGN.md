@@ -34,7 +34,7 @@ themes fill the same roles; [theme sources](theme-credits.md) lists where they c
 | --- | --- | --- | --- |
 | `bg` | the ground, and a terminal cell's default background | `#08111d` | `#f6f8fa` |
 | `card`, `card2` | panels, header strips; fields and action rows inside modals | `#0f1b2b`, `#15253a` | `#ffffff`, `#e0edf2` |
-| `btn`, `hov` | chips and buttons; the hovered row | `#1a2c44`, `#15253a` | `#e4ebf1`, `#e0edf2` |
+| `btn`, `hov` | chips and buttons; the hovered row and the open session's row | `#15253a`, `#13233a` | `#e4ebf1`, `#e0edf2` |
 | `line` | borders, dividers | `#1d2d42` | `#d3dce5` |
 | `muted`, `text`, `strong` | quiet text, body text, names and titles | `#6f8399`, `#c9d6e3`, `#eef5fb` | `#61748a`, `#1f2f3f`, `#0b1724` |
 | `accent`, `acc_ink` | focus, working, the current tab; ink on the accent | `#3dd6c6`, `#08111d` | `#0b7a71`, `#ffffff` |
@@ -49,21 +49,21 @@ needs you never looks like failed. See UI › *design system*.
 
 The terminal's own font. Bold marks names and states worth a look; italic only the splash
 tagline and a toast's preview. Status glyphs come from Settings › Appearance › Status glyphs:
-**Dots** (the default: a coloured `●` for what wants you, `○` at rest) or **Unicode**,
-where each state has a glyph of its own (`✓` passed, `✕` failed,
-`●` needs you, `◷` stale, `⊘` overridden, `?` could not run). Working is the spinner you
+**Dots** (the default: a `●` told apart by colour alone, amber needs you, green done, red problem,
+`idle` colour at rest, `┆` for an unreachable machine) or **Unicode**, where each state has a
+shape of its own (`●` needs you, `✓` done, `✕` problem, `○` idle). Working is the spinner you
 pick; checking is a sweeping ring. An agent's own mark is `✻` Claude, `◆` Codex, `✦` Gemini,
-`◇` OpenCode. See UI › *sidebar check result* and *working spinner picker*.
+`◇` OpenCode. See UI › *the sidebar* and *working spinner picker*.
 
 ## Layouts
 
-There is one look, **Floating**: each pane a
-box, `ui.gap` between them. **Pane colours** (`ui.pane_colors`) gives each pane's border its own
-colour by its place in the tab.
+There is one look, drawn to the TUI redesign: the sidebar and the workspace, `ui.gap` apart (one
+column by default), and the status bar under them. Every pane is a box of its own with round
+corners; a split is two to four boxes a column or row apart. Every label on a border is a title
+chip. Exactly one box, the focused pane's, is in the accent.
 
-`ui.padding` is `small` by default: one empty cell all round the screen, so nothing touches the
-terminal's own edge; `medium` is two, `large` three. `ui.gap` takes the same three sizes between
-panes. See UI › *layout and navigation* and *the frame*.
+`ui.padding` is the blank space inside the terminal round both frames: `small` none, `medium` (the
+default) 1 row and 2 columns, `large` 2 rows and 4 columns. See UI › *layout and navigation* and *the frame*.
 
 ## Chips, rounding and padding
 
@@ -74,84 +74,56 @@ accent fill. See UI › *UI conventions*.
 
 ## Sidebar
 
-Two halves in one card. The
-top is `LOCAL`, a title chip on the card's border: this computer's sessions. The bottom half
-starts at a rule that joins the sides (`├ REMOTE 2 ──── m add ┤`) and holds the other machines;
-`m add` opens the Add Machine dialog. Each half scrolls on its own, and with no other machine Remote
-says `no remote machines`; the `m add` chip is the one way to add. A ` + ` chip (orange on `btn`) a cell after the LOCAL title and after each online
-machine's badge opens the New Session picker on that machine; a machine that is down has none. There are no folder rows and no machine headers.
+Each machine with its sessions under it, on the panel ground, 34 columns by default (24 to 60
+resizable). On the top border the ` maitty ` chip at the left and ` « ` (hide) at the right; hidden,
+a ` » ` chip beside the panes brings it back. Row 2 is the filter field, `/ filter sessions` on the
+darker ground. A machine is a heading chip with its count (` This computer 5 `), an accent ` + `
+chip (a shell there at once) and a green `●` at the right while it is up. A session is two lines:
+the status mark and the name (bold and bright for an agent with something going on), then `■` in
+the project's colour, the project and the branch in violet. No status words anywhere. Agents come
+first, then shells, each in the order they started, so a row never moves when its status changes.
+The open session has the row ground and an accent `▎`. An agent's subagents in its current turn
+follow it: `└` and a mark each, or under the open session one row each with `├`/`└` and the name.
+On the bottom border the release chip (` ↑ v0.15.0 ` when a release is out, else the version) and
+` menu `, each opening a menu upward. See UI › *the sidebar*; the Machines dialog and its states
+are in UI › *Machines dialog*.
 
-Inside a half, projects are rows that fold: `▾` open or `▸` closed, the
-name in `strong` bold, and at the right `⎇ branch` in `muted` and a `✓` in `done`, or a `✕` in `err`
-when one of its sessions failed a check; `no git` outside a repo. A folded project reads
-`n hidden`, with an amber `●` before it when one of them needs you. Remote starts each machine with
-a header: ` ⇄ build ` as a badge on `btn` and its
-connection at the right as one dot: `done` when it is up, amber while it connects or reconnects, `err`
-when it cannot be reached. The words live in the Machines dialog.
+## Pane titles
 
-A session is a **card** of two rows:
-1. its mark, its name in its state's colour (shimmering while it works, pulsing when it needs you),
-   and at the right the agent's mark and the age its state began, or `● you` in amber when it needs
-   you;
-2. what it is doing in `muted` (a check result, a plan-limit wait, `2 agents`), or in amber when it
-   asks something.
-
-Its other tabs follow it, one row each (`○ shell  2`), in line with it; a `muted` `▎` line down the left of the session and its tabs, as thick as the selection bar, groups them: the tab's state glyph
-before the name and its number at the right, so only the tab doing the work shows the working mark; the tab on screen is lit as the selected card is and one that needs
-you is in amber. One highlight serves a session, a tab and a project: the same cells and the same ends, for the selection and for the pointer. It runs from the left edge, with the accent bar there, and only its right end is rounded. A blank row follows each project, and one separates the Remote rule from the first machine. The selected card is a neutral tint on both rows
-with an accent `▎` bar. A machine whose line is not up, or that has no sessions, is its header and
-one line of how it stands: `no sessions yet`, `connecting…`, `reconnecting…`, or `needs update · click for the fix` (and so for `needs login`, `unreachable`, `refused`); a click opens the
-Machines dialog on that machine and a right-click its menu. The foot holds **+ New** and **Menu**. Collapsed, the sessions become a narrow
-column; hidden, the panes take everything. See UI › *sidebar check result* and *collapsed sidebar*.
-
-The **Add Machine dialog** (leader `w`, or `m add`) is a standard modal: one input typed like scp on
-`card2` with a parse line under it, the hosts of `~/.ssh/config` to complete it from, and a
-dim line for Windows; after Enter a checklist of the steps connecting takes. Its behaviour is in [UI](UI.md#project-specific-machines-dialog).
-
-## Pane titles and tabs
-
-The session's tabs sit on the first
-pane's top border, as the sidebar's `LOCAL` chip sits on its own,
-the border running on between the chips (`ui.tab_gap`, on by default, leaves a cell of it between one tab and the next; off, they touch). A chip's ends follow `ui.rounded`: square, rounded corners, or a pill. Each chip is led by its state's glyph (on screen or
-not) and ended by its ×, the current one in the accent and the others one `btn` chip with a muted
-number, then a **+** chip for a new tab. At the right, in the first stretch of plain border that
-fits it, a badge names where the focused session runs: `⌂ Local` or `⇄ build`.
-is named the same everywhere: its own name, else its focused session's. Panes are titled as an
-editor's are: a tab's only pane has no
-title of its own (its border carries the tabs), its tab naming it, showing its state (the glyph opens why) and
-closing it. A split's panes have no title at all:
-the tab names where you are, and a pane's top edge says its state, teal when focused and amber
-when it needs you. The tabs list the session's tabs, numbered 1–n, each with
-a × on the open one only, and ends in `◫` (split) and `⤢` (zoom the
-focused pane). A pane closes with Alt+x, leader `x` or its menu. Closing always
-asks first, naming the pane (`Close pane 2 · claude`) and lighting its lines in the
-red until you answer. Unfocused panes fade;
-the focused border is the accent, or `sky()` in shortcut mode. See UI › *the frame* and *pane
-focus*.
+Every pane's top border carries its **title chip** at the left: the status mark, the name in bold,
+then the folder and branch quieter (`mark name ~/cwd branch`, cut with `…`), the accent with dark
+ink while the pane has the keys. At the right ` files `, ` changes N ` (accent while their panel is
+open) and ` × `. The program starts on the row under the border: an agent's pane is its own
+terminal, and the TUI draws no chat of its own. With no pane open, a dashed box says `No pane open`
+over an ` n new session ` chip. A pane closes with Alt+x, leader `x` or its `×`, with an undo, and a
+running agent asks first, its box red until you answer. Unfocused panes fade; the focused pane's
+box is the accent, or `sky()` in shortcut mode. See UI › *the frame* and *pane focus*.
 
 ## Side panel
 
-Reading while you work happens in a sheet docked right (it takes the pane column on a narrow
-screen). **Files**, **Changes**, **Branch** and **References** share one sheet with a tab strip
-(`Files f · Changes c · Branch b · References a`), each tab at its own remembered width: Files a
-tree beside the open file (Markdown drawn), Changes the changed files and their diff, Branch the
-branch, ahead/behind, recent commits, the last check and snapshots, References the project's
-screenshots and design files, one line each (name, then kind, size and age muted at the right).
-The lit tab names the open view, so the sheet's top border does not repeat it: Every tab
-carries only the ×. The sheets draw no key-hint row of their own; the mode bar shows their keys. The Inbox and the check evidence
-sheet dock in the same place without the strip. See UI › *the frame* (Sheet), *Inbox check
+Reading while you work happens in a panel that slides in from the pane's right edge, inside its
+box (about 220 ms, eased out): the panel ground, a line down its left edge, its title chip
+(` files `, ` changes N `, ` branch `, ` references `, lit while it has the keys) and a ` » ` that
+closes it (Esc too). Files starts 96 columns wide and at most 80% of the panes, a tree beside the
+open file (Markdown drawn); Changes 54 and at most 70%, the changed files and their diff; Branch the
+branch, ahead/behind, recent commits, the last check and snapshots; References the project's
+screenshots and design files. The panes keep their size under it. The panels draw no key-hint row
+of their own; the status bar shows their keys. The check evidence sheet docks beside the panes
+(and over the sidebar below 100 columns). The Inbox is a panel 62 columns wide over the
+workspace from the sidebar's side, with a card for each session that needs you, finished or exited. See UI › *the frame* (Sheet), *Inbox check
 groups* and *check evidence sheet*.
 
 ## Modals and popovers
 
-The Menu and a row's context menu have no fill of their own: they are drawn on the ground like the panes. Everything else that floats over the screen is boxed as the look boxes a pane: a `line` box round
-`card` with corners by `ui.rounded` (the outline's own cells keep the ground behind them, so none of the body's colour shows outside the line; what sits on the top border stands on that ground too). Deciding is a modal: centred, framed like a pane (the title as an accent chip on the top border,
-a red × chip at the right), its border in the accent because it holds the keys, the screen behind
-left as it is (no dimming, no fill: the modal clears its own area to the ground), no shadow. Settings, override, command
-approval and the key overlay are modals. Small explanations (why, a row's menu, the message and
-helpers popovers) open beside their row with a `◂` pointer; a menu row ends in its key, the bound leader
-key when there is one. Every panel ends in an action bar
-of keycaps. See UI › *UI conventions* and *check modals and settings*.
+Everything that floats over the screen (menus, Settings, the keys help, confirms) is a box in the accent
+on the panel ground (`sidebar_bg`), corners by `ui.rounded`; what sits on its top border stands on the ground
+behind. Deciding is a modal: centred, its title as an accent chip on the top border (` settings `), a ` × `
+chip on `btn` a cell in from the corner, no shadow. Settings has its sections down the left and the
+chosen section's rows at the right (label, then the value bold in the accent with `‹ ›` and `2/3`), and a
+footer with its keys and where it is saved. The keys help is three columns of keys. A menu has no title:
+one row per item, the leader key at the right in the accent, the item that ends something last in red.
+Small explanations (why, the message and helpers popovers) open beside their row with a `◂` pointer.
+See UI › *UI conventions*, *Menus* and *check modals and settings*.
 
 ## Toasts
 
@@ -166,16 +138,18 @@ two answers as buttons on the bottom border: a green `Answer` that goes to the s
 red `Later esc` that dismisses it. Always round corners. It slides in and fades out
 with motion on. See UI › *the frame* (Toast).
 
-## Mode bar
+## Status bar
 
-The one full-width row, along the bottom.
-Typing: a quiet ` TYPING ` chip and the leader key. Shortcut mode: the whole row in `sky()`, a
-` SHORTCUT ` chip and the next keys you can press; starting a pane ends it. When something other than the panes
-has the keys, the bar stays on `bg`, never sky: a calm chip (`strong` bold on `btn`) names the
-holder, then its keys and the way out (`SIDEBAR · ↑↓ move · Enter open · n new in maitty · Esc back`, the `n` hint computed from what `n` would do), with
-`· shortcut mode waits` while the mode is held. Under a popup the bar is words only and takes
-no click. **Update** or **Restart** sits at its right end when waiting, unless the sidebar shows it at its foot. See UI › *the frame*
-(Mode bar).
+The one full-width row, along the bottom, on the panel ground. Typing: a ` PANE ` chip in the accent,
+the session the keys go to (`name · ~/folder`), and at the right `j/k sessions  ^space keys  ? help`.
+Key mode: a yellow ` KEYS ` chip and `n new  s split  x close  tab pane  ? help  esc back`, each a click
+that presses it; starting a pane ends it. When something other than the panes has the keys, a calm chip
+(`strong` bold on `btn`) names the holder and its keys sit at the right with the way out last
+(` SIDEBAR ` … `↑↓ move  enter open  n new  esc back`), with `shortcut mode waits` while the mode is held.
+Keys are bold in the accent, their words muted. Under a popup the bar is words only and takes no click.
+**Update** or **Restart** sits at its right end when waiting, unless the sidebar shows it at its foot.
+See UI › *the frame* (Status bar).
+
 
 ## Splash
 
@@ -196,121 +170,98 @@ Only one too small for the START box draws the cards.
 
 ## Desktop app
 
-The desktop app is a terminal multiplexer window:
-every session a shell that maittyd owns. Claude Code and Codex sessions also have a chat view
-(owner decision 2026-11-04, [chat view plan](features/chat-gui/chat-view-plan.md)); every other agent
-and every plain shell stays terminal-only. The design handoff (v10, terminal-first) is the
-reference for exact sizes, shadows and timings; `workspace.css` carries them.
+The desktop app is drawn to the redesign handoff (`design_handoff_maitty_redesign`, "Maitty Desktop.dc.html",
+Midnight first). One model: **sessions live in the sidebar, an agent opens as a chat, a shell opens as a terminal,
+and a terminal for an agent exists only when you ask** ("Open terminal here"). Every session is still a shell that
+maittyd owns; Claude Code and Codex sessions have a chat view ([chat view plan](features/chat-gui/chat-view-plan.md)),
+every other agent and every plain shell stays terminal-only. The prototype is the reference for exact sizes, shadows
+and timings; the feature stylesheets beside their components carry them (`sidebar.css`, `pane.css`, `menu.css`,
+`dialogs.css`, `features/chat/chat.css`), and `workspace.css` the rest.
 
-- **Floating cards on a flat ground.** The window is the theme's `--bg`. The sidebar, the tab tray, each pane
-  and the big panels (Inbox, Inspect, Find) are cards: opaque `--card` (`--main`), a 1px `--pane-line` hairline,
-  radius 14 (Settings 16), 8px outer margin and 12px between panes. Dark themes add a 1px top highlight
-  (`--sh`, an inset line with no blur radius); light themes add nothing. Cards have no resting drop shadow and
-  no gradient, so a spinner ticking inside one repaints only its glyph. Only small, short-lived surfaces blur
-  what is behind them and cast a soft shadow: menus, popovers, the palette, Settings and other centred dialogs
-  with their scrims, and notification cards (`--blur-pop`, `--sh-pop`). The sidebar, panes, tab tray and
-  drawers never blur. **Background glow** (Settings › Appearance, `backgroundGlow`, set on the root as
-  `data-glow`) is off by default; on, the ground is `--bg` under two faint tints, one of the accent and one of the
-  magenta, painted once behind the opaque cards. A pane's terminal sits on the theme's opaque `--term`
-  ground, and ANSI black is that ground, so a program that paints with it (Claude Code under its prompt and status
-  line) leaves no box. Settings › Appearance › See-through terminal lets the card show behind the text instead, only
-  when xterm draws with WebGL (the DOM renderer repaints rows, and each would blend through the card); such programs
-  then show as boxes on it. On a web view without WebGL 2 (`data-gpu="software"` on the root) Glass uses the same
-  rules with cheaper token values: no blur, a 1px ring instead of the soft popover shadow, and always a flat
-  ground; the colours, radii, layout, focus ring and status colours stay ([PERFORMANCE](PERFORMANCE.md)). The
-  focused pane has one even `--accent-line` border all the way round, flashed once when focus arrives, and no
-  extra line on its header.
-- **Window style: Flat, Tiled or Glass** (Settings › Appearance › Window style, `style`, stored with the other
-  preferences; the root carries `data-style` and `data-finish`). The finish and the layout only; features and
-  status colours do not change. The text above is **Glass**, the default for a fresh install: floating opaque cards, colour icons and the status sweeps.
-  **Flat** makes the window `--bg` with no glow, cards flat `--main` with
-  radius 8 (Settings 10), no blur or resting shadow, flat top-bar buttons and status pills (no gradient, lift or
-  entrance), no outline on the selected row or open tab, and the session tray flush under its main row with no
-  box. **Tiled** is Flat's finish as a hairline grid: no gap between panes or at the window's edge, every region
-  divided by a 1px `--pane-line`, radius 0 and no shadows. The sidebar is flush with a hairline; the title bar is
-  `--main` with a 1px `--line` under it; the 40px tab bar is a flush strip (tabs, **+**, Repository and Inbox divided
-  by hairlines, one line under the bar); each pane draws its own right and bottom line and a line under its
-  header; and a static 9px `+` tick (`--tick`, `--line2`) marks each of the four corners of the pane area.
-  Popovers, menus and dialogs are hairline-only (`0 0 0 1px var(--line2)`), square and with no blur. Chrome type
-  (tab titles, pane process names, project names, the status bar) is Geist Mono, uppercase, letter-spacing
-  .1em, 11 to 11.5px, through `--ch-ff`, `--ch-tt`, `--ch-ls`, `--ch-fs-sm` and `--ch-fs-md`, which only Tiled
-  sets (the rules fall back to the old values elsewhere); terminal text and session names are unchanged.
-  Flat and Tiled share `data-finish="flat"`;
-  The styles differ only in CSS variables set on the app root (`--rk` radius multiplier, `--r14`/`--r16`, `--pg` pane gap (0 in Tiled), `--ptop`, `--tbh`/`--tbp`/`--tbg`/`--tbb` for the tab bar, `--tabh`/`--tabbr` for tabs, and a few more beside them in `workspace.css`); the layout rules read them, so a style is a block of values, not a second set of rules. The focused pane's ring and the needs-you amber
-  stay in all three. Glass starts with the three status sweeps on and Flat and Tiled with them off; a choice made
-  in Settings wins. Settings saved as `minimal` read as Flat and `expressive` as Glass. **Icons** (Settings › Appearance › Icons, `iconColor`, set on the root as
-  `data-icons`) is separate from the style: `color` keeps app icons in their own colours in every
-  style; `grayscale` makes them neutral `--raise` tiles with the glyph in `--fg2`. Project tiles are always neutral.
-- **Title bar, tab bar and terminal surface.** The title bar (32px) has a colour of its own, apart from the ground,
-  through `--tbar` and `--tbar-b` on the app root: on dark themes a veil of `rgba(10,12,12,.35)` over the ground, on
-  light themes `--main`, no border; Tiled uses `--main` and a hairline. The tab bar is `--tbh` tall: 56px in Glass and
-  Flat (a 36px tab in a tray with 4px padding, centred), 40px in Tiled. A terminal pane is one surface: its header
-  and its text sit on the theme's `--term` ground (`.mx-pane.is-terminal`), so the terminal does not read as a box
-  inside the card; a pane in chat view stays on `--main`.
-- **Small windows.** The window is never narrower than 720px (`minWidth`). Under **1100px** the sidebar becomes
-  a drawer opened by the tab bar's Sessions button. Under **900px** the panes stack in one column, tabs shrink to a
-  96px minimum, and the activity bar folds into one **Panels** button (a grid icon with the Inbox count) whose
-  220px menu lists its items. The widths are `COMPACT_WIDTH_PX` and `NARROW_WIDTH_PX` in `model/windowSize.ts`.
+- **Glass cards on a flat ground** (the redesign handoff, `design_handoff_maitty_redesign`). The window is the theme's
+  `--bg`, with two cards on it: the **sidebar** (264px, 12px from the window's edges) and the **workspace**, 12px
+  beside it. Each is `--main` under a faint top-down highlight (`rgba(--hl, .035)` to `.012` over 120px), a 1px
+  `rgba(--hl, .09)` border, radius 14, a 1px inner top highlight and a soft drop shadow (`0 10px 30px -12px`).
+  `--hl`/`--hk` (the highlight colour and strength) and `--sd`/`--sk` (the shadow) are theme tokens: white and black at
+  full strength on dark themes, the theme's own ink, fainter, on light ones (`themeStyle` in `theme/themes.ts`).
+  Popovers, the palette, Settings and dialogs blur what is behind them and cast `--sh-pop`. **Background glow**
+  (Settings › Appearance, `backgroundGlow`, `data-glow`) is off by default. A terminal sits on the card's own ground:
+  xterm's background and ANSI black are `--main`, so a program that paints with black leaves no box. On a web view
+  without WebGL 2 (`data-gpu="software"`) the same rules use cheaper values: no blur, a 1px ring for the popover
+  shadow ([PERFORMANCE](PERFORMANCE.md)).
+- **Window style: Flat or Glass** (Settings › Appearance › Window style, `style`, shared with the terminal app as
+  `window_style`; the root carries `data-style` and `data-finish`). The finish only; layout, features and status
+  colours do not change. **Glass** is the default: the gradients, highlights and shadows above. **Flat** sets `--gk`
+  to 0, which turns every glass gradient and shadow off, and radius 8 (Settings 10). Tiled is gone: a saved `tiled`
+  reads as Flat, `minimal` as Flat and `expressive` as Glass. **Icons** (Settings › Appearance › Icons, `iconColor`,
+  `data-icons`): `color` keeps app icons in their own colours; `grayscale` makes them neutral `--raise` tiles.
+- **Title bar.** 32px, `--tbar` (on dark themes a veil of `rgba(10,12,12,.35)` over the ground, on light ones
+  `--main`): the 18px logo, "Maitty" in 12px `--muted`, and the platform's window buttons (46px captions on Windows).
+  There is no activity bar, no middle column and no tab bar: the window is the sidebar and the workspace.
+- **Small windows.** The window is never narrower than 720px (`minWidth`). Under **1100px** the sidebar is the
+  60px rail, and its expand button opens the full sidebar as an overlay from the sidebar's side, over a scrim;
+  picking a session, a click on the scrim or Esc closes it. Under **800px** the panes stack in one column. The
+  widths are `COMPACT_WIDTH_PX` and `NARROW_WIDTH_PX` in `model/windowSize.ts`.
 - **Settings dialog** (⌘,). A section list at the left and, at the right, a fixed header (the page title,
   a one-line description and a 30x30 **×** icon button, tooltip "Close (Esc)", no label) above a body that scrolls; the page
   itself never scrolls. The title and description slide with the page. Under Advanced, **Performance** shows live
   frame, drawing, output and process figures with a **Copy report** button, and a switch for a corner readout over
   the window ([PERFORMANCE](PERFORMANCE.md#measuring-in-the-app)).
-- **Shortcut overlay** (⌘/ or Ctrl+/, also in the palette; the table above lists the keys). An 820px dialog over a blurred scrim, titled
-  "Keyboard shortcuts" with a Close `esc` button, holding an auto-fill grid (230px minimum) of Sessions,
-  Panes, Find & jump and Window with each action and its keycaps (several chords stack). It is generated
-  from the same table (`hotkeyRows`, each row has a group) that Settings › Hotkeys reads, so the two never
-  differ. Other shortcuts are ignored while it is open; ⌘/ and Esc close it.
-- **Session menu: name, pin, close.** Right-click a sidebar row, a tray item or a rail icon for a 260px
-  menu: a **Name** field (the folder is its placeholder; Enter saves and an empty name clears it), **Pin to
-  top** or **Unpin**, **Open** and **Close session** (ends it). A name replaces the folder title everywhere.
-  A pinned session shows a pin on its main row; pinning does not reorder it. There is no Archive; a session archived by an older version shows as an ordinary
-  row. The daemon stores the name and pinned per session (`RenamePane`, `PinPane`; they survive a daemon
-  restart), so the TUI shows the names too and ignores the pin.
+- **Keyboard shortcuts** (⌘/ or Ctrl+/, also in the palette). An 860px dialog over a dimmed scrim: "Keyboard
+  shortcuts", "Change them in Settings › Hotkeys" and a close ×, then an auto-fit grid (240px minimum) of the groups
+  (Sessions, Panes, Find & jump, Window, and In chat: Enter, Shift+Enter, Y, A, N, Esc), each row 32px with its keys as
+  small 22px keycaps. The window's rows come from the same table Settings › Hotkeys reads (`hotkeyRows`), so the two
+  never differ. Other shortcuts are ignored while it is open; ⌘/ and Esc close it.
+- **Menus** (`components/MenuPopup.tsx`, `menu.css`). One look for every right-click and ⋯ menu: 228px or wider,
+  5px inside, radius 12, glass like the cards, a dim 11px heading that names what it is for, 30px rows of 13px text with
+  their key at the right in mono, separators between groups. A danger row is red; one that stops something running
+  asks a second click ("Stop claude? Click again"). Arrow keys, Home and End move, Esc or a click outside closes and
+  gives focus back. **Session**: Open, Open in split right, Open in split down (not for the one in front), Open
+  terminal here (agents), Rename… (F2), Copy folder path, Get a file… (another machine's sessions), Show changes
+  (agents), Stop session or Close shell.
+  **Subagent**: Open, Open in split right, Copy summary, Stop subagent (disabled: the agent stops its own subagents).
+  **Machine**: New agent chat here, New shell here, Collapse or Expand, Group by project or Show as one list, Machine
+  settings…. **Pane** (⋯ or a right-click in the pane): Split right, Split down, Maximize pane, Show chat or Show
+  terminal and Open terminal here or Close its terminal (agents) or Clear and Copy folder path (shells), Files,
+  Changes, Close pane.
 - **Status bar.** A 28px line at the bottom of the main area under a hairline, 11.5px muted, one line.
   The left is empty, except "Reconnecting to maittyd…" in amber with a dashed dot when the daemon is
   unreachable. The right holds quick controls: a **theme** menu (Dark, Light or System, a few themes of
-  the kind in use, and "All themes in Settings…"), the **layout style** (Flat, Tiled or Glass), the terminal
+  the kind in use, and "All themes in Settings…"), the **layout style** (Flat or Glass), the terminal
   **text size** (−, the size which resets it to 14px, +; Ctrl+= and Ctrl+− do the same) and the shortcuts
   keycaps, which open the shortcut overlay. Hidden in Focus mode and by Settings › General › Window ›
-  Status bar (on by default).
-- **Sidebar.** A `Projects` title with a **+** button (a bordered square that lights up in the accent on hover) and the collapse button at the right; groups by git repo (or by folder, in Settings), sorted by
-  name. A shell outside any repo is grouped by its own folder, so there is no catch-all group.
-  A group's tile carries a ring when it holds the focused session. A group's sessions **keep their place**:
-  they always show in creation order, and status, pin and focus never reorder them. The focused session is
-  the full **card** (the **main row**) in its own position; the others are compact rows above and below it.
-  The card is the process
-  icon with its status badge, then the program and where it works (`claude · dev`: the branch at the
-  checkout's root, the folder within the repo deeper in, the `~` path outside a repo), then a status
-  phrase when the session is not just working or idle. The card is the session you are in, else the last one
-  picked in that project, else the first by creation order. **Compact tree rows** (26px tall, no gap between
-  them) are what the sessions before the card always are: a 1px `--line2` guide at 19px from the row's left and
-  an elbow, a 12px state mark (spinner, amber needs-you square, green check, red `!`, a quiet dot, a dashed square for
-  unknown), the program in mono 12/500, where it is in 12 `--dim`, an unread dot and a state word (11), on a 34px
-  left inset; hover tints the row. Clicking one grows it into the card where it is (`v18grow`, opacity .55 to 1 and
-  scale .97 to 1, .28s, off under Reduce motion) and the old card shrinks to a row; nothing moves. The sessions
-  after the card follow Settings › Appearance › Sidebar › "Other sessions in a project": **Tree** (the default;
-  the same rows, four fit, then two and **N more**), **Names** (icon and process; two fit, then **+N**), **Icons**
-  (six fit) or **Stacked** (one line each with folder and state; three fit). The cap applies only to rows after the
-  card. **N more** (or **+N**) turns amber when a hidden session needs you and opens a side menu listing every
-  session of the project, most urgent first. A pin shows on the card and in the menu but does not move the session. Clicking a
-  session focuses its pane where it is open, else opens it in a **new tab**; it never replaces
-  another pane. ⌘B folds
-  it to a 60px rail. Every project tile is the same neutral (`--raise` with the glyph in `--fg2`); a project has no colour of its own.
-  In the rail each project is a 48px group (radius 14, square in Tiled) tinted in `--fg2` (6% collapsed,
-  9% open, 4% more when it holds the focused session) with an inset ring (20%, 34% focused); the focused
-  project also has a 3px bar at the rail's left edge. Its tile is an outlined folder filled 14% (26%
-  focused) with two letters inside: the initials of hyphenated parts (`maitty-docs` is `MD`), else the first
-  two letters (`maitty` is `Ma`). Badges on the tile: an amber square when something needs you; when the
-  group is folded, a count pill and a spinner if anything in it is working. An open group has a 20px
-  hairline under the tile, then its session icons. **Rail popovers** open beside the item on hover or keyboard focus after 280ms
-  (instantly once one is open), 10px to its right with an arrow pointing at it, and close 160ms after the
-  pointer leaves both the item and the popover, so the popover can be used. A project's (260px) shows its
-  colour, name, path and branch, then every session in priority order (icon, name, process, state word),
-  each one clickable, and the hint "Click the folder to collapse · right-click for more". A session's
-  (240px) shows its project and name, its state, process and path, a mono well with the pending approval
-  command (amber) or the last prompt (none for a plain shell), and "In tab N" when it is open in one.
-  They replace the browser's `title` tooltips in the rail. Under 1100px the sidebar is not on screen: a **Sessions** button at the start of the tab bar (and ⌘B) slides it in over the panes on a scrim, and picking a session, starting one or opening Settings, a click on the scrim or Esc closes it. The button carries an amber mark when something needs you.
+  Status bar (off by default).
+- **Sidebar** (`components/Sidebar.tsx`, `sidebar.css`). Agents only: no fleets, ships or tabs. The 48px header holds
+  Collapse sidebar, then **New agent chat** (opens the New session dialog), **Add a remote machine** (Settings ›
+  Machines) and the **Inbox** with its count (amber while something needs you). Under it the 32px sunken **Filter
+  sessions** field (`/` focuses it; a raised `/` keycap; its border brightens on hover). Sessions are grouped by
+  **machine**, this computer first: an uppercase 10.5px heading with a caret, a laptop or server mark, the count, a
+  group-by-project toggle, the line's 5px dot and a `+` (New agent on it); the heading folds the group. Within a
+  machine the rows are **most urgent first**: needs you, an agent that stopped, working, done, idle, then a shell whose
+  last command failed; creation order within each. Grouped by project, each project is a folding heading (its colour
+  square, name, needs-you count, count). A **row** (40px, radius 8) is the 20px app tile with its status badge
+  (spinner, amber `›`, green check, dashed square for unknown), the name (13px; 600 and `--fg` for an agent that is
+  doing anything), and under it the project's 6px colour square, the project and `·` and the branch in mono
+  `--ansi-mag`; a stopped agent says `stopped` and an exited shell `exited` at the right, in `--danger`, instead of a
+  badge. A shell's tile is a flat `--raise` square with a teal `>_`. The selected row is a raised glass pill. The row
+  is named by the name you gave it, else a shell's folder, else its agent. **Rename**: double-click, F2 or the menu
+  turns the name into a field; Enter or leaving saves, Esc cancels, empty clears. Project colours are five tokens
+  (`--proj-1` to `--proj-5`: teal, blue, pink, violet, green), chosen from the project's name, never amber or red.
+  **Subagents** (the daemon's `subagent_activity`, `model/subagents.ts`): under a session that is not selected, an
+  elbow line and one 14px tile per subagent with a corner mark (teal spinner working, amber square needs you, green
+  check done), no text; under the selected session, a 28px row each on a guide line. Clicking one opens its own chat.
+  The foot holds the update slot (or "Reconnecting to maittyd…") and the Settings gear. The edge drags (208 to 440px;
+  double-click resets). The **rail** of a narrow window is the starters, then one tile per session.
+- **Pane** (`components/PaneCard.tsx`, `pane.css`). Agents and shells share one 42px header: the 26px app icon with its
+  status badge, the name (15px, 600) over the folder (11px `--dim`) and the branch (mono 10.5px `--ansi-mag`), then at
+  the right the terminal | chat switch (agents with a chat), the **Files** and **Changes** tray, a hairline, split right,
+  split down, maximize, ⋯ and close. The switch and the tray are one sunken tray look (`rgba(--sd,.3)`, a 1px
+  `rgba(--hl,.1)` border, radius 9); the switch's thumb slides by `transform`. As the pane narrows the header gives up,
+  in order (`model/paneHeader.ts`): the Files and Changes labels under 660px, the split buttons under 600px, Files and
+  Changes under 520px, the switch under 420px; what is gone stays in ⋯ and the title keeps its room. A lone pane is no
+  card; with two or more each pane is a faint card (`rgba(--hl,.018)`, `rgba(--hl,.08)` border, radius 14) and the
+  focused one gets a teal ring drawn above its content (`--accent-line` plus a 3px accent halo). A pane's status is the
+  badge on its icon; there is no status chip in a corner. While broadcasting, the header says "◉ Broadcast".
 - **First-run welcome.** On the first launch (no saved settings and no earlier welcome) a 560px dialog opens
   over a blurred scrim with a progress bar per step: **Welcome** (the same sessions as the TUI, closing never
   stops an agent, and the **New sessions start in** folder, checked before it continues) and **You're set**
@@ -318,11 +269,11 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   open. A window that already has settings is never greeted. Settings › General › **Show the welcome again**
   replays it. The "Bring your TUI setup" step comes with the shared config.
 - **Interface size.** Settings › Appearance › Interface size sets the sidebar icon size (Small 0.8, Medium 1,
-  Large 1.2 times the project tiles, session icons, tray chips and the rail, whose width follows), the density (Compact 0.8,
-  Comfortable 1, Spacious 1.25 times the row, tab and pane spacing), the sidebar text size and the
+  Large 1.2 times the session icons), the density (Compact 0.8,
+  Comfortable 1, Spacious 1.25 times the row and pane spacing), the sidebar text size and the
   tab text size (12, 13.5, 15 px). They are CSS variables on the window root (`--pad`, `--sidebar-fs`,
   `--tab-fs`, `--icon-scale`), so every size rule that reads one follows it. The docked sidebar's right edge is a
-  drag handle (`role=separator`, 200–420 px, default 264): the width follows the pointer and is saved
+  drag handle (`role=separator`, 208–440 px, default 264): the width follows the pointer and is saved
   on release; arrow keys step 16 px, Home or a double-click resets. The collapsed rail is fixed at 60px.
 - **Terminal text.** Settings › Text & cursor sets the size (12 to 16), the font family, the normal weight
   (Light 300, Regular 400, Medium 500, Semibold 600) and the bold weight (Semibold, Bold 700, Extra bold 800).
@@ -339,36 +290,26 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   the Rust tile; any other name gets its first letter on a colour taken from the name. The marks are
   the LobeHub icon set's (MIT) and stay their owners' trademarks; they say which agent runs, nothing
   more.
-- **The tab bar shows one project.** Only the tabs of the project the active tab belongs to are on
-  the bar (a tab's project is that of its focused pane's session, so it moves when the shell cds
-  into another repo). Picking a session of another project in the sidebar switches the bar to that
-  project. ⌃Tab and ⌃⇧Tab cycle only these tabs, and closing a tab goes to the next one of the same
-  project. The **+** after the tabs starts a shell in the project's folder and says so ("New
-  session in maitty"); ⌘T and the sidebar's **New** use the start folder.
-- **Tabs that do not fit scroll.** When the tabs run off the bar, a scroll button appears at each
-  end that has more tabs beyond it, the ends fade, and the mouse wheel scrolls the tabs sideways.
-  The active tab is always scrolled into view (measured against the bar, 30px of room), so
-  switching tabs never lands off-screen; the new-tab button stays put at the end. An **All tabs**
-  button (a count and a chevron, with an amber diamond when a tab needs you) opens a menu that
-  lists every tab of the project; Esc or a click outside closes it.
-- **A tab says what is in it.** A tab shows a small icon for each pane it holds (up to three,
-  overlapped) and `+N` for the panes beyond the first; hovering it opens a list of every pane with
-  its agent, folder and state. A collapsed session's popover says "Open in tab N"; the expanded rows
-  carry no tab number. A working row shows its spinner and no run time, because the window only
-  knows when it first saw the change. Anything with a `title`, and every icon-only button, radio or switch
+- **Anything with a `title`, and every icon-only button, radio or switch**
   (by its `aria-label`), shows a themed tooltip (`HoverTips`), not the browser's: 420 ms after the
   pointer rests, 40 ms when another tip was on screen in the last 400 ms; hidden on a press, a key
   or the wheel; held back while a menu or a rich hover card is open. A trailing `(keys)` becomes
   keycaps and text after ` · ` a muted second line. It sits above the control, below it within 56px
   of the top, and beside it for a control marked `data-tip-side`. A control that opens its own hover
-  card carries `data-hovercard` and gets no tip.
-- **Tabs hold layouts, panes hold sessions.** A tab is one to eight panes in columns; closing a
-  pane or tab detaches and the session stays in the sidebar. Ending a session is its own action
-  on the sidebar row, a pane's menu or a row's menu. Right-click opens a menu on a pane (a Split submenu of up, down,
-  left and right, maximize, rename, copy folder path, close pane, close session), a tab (new tab, close tab) and a
-  session in the sidebar, expanded or collapsed (show in pane, rename, close session). Rename opens a
-  small dialog; the name is the daemon's, so every app shows it, and it replaces the folder on the
-  row, the tab and the pane header. An empty name goes back to the folder.
+  card carries `data-hovercard` and gets no tip. A working row shows no run time, because the window only
+  knows when it first saw the change.
+- **Layouts are local, sessions are the daemon's.** A session's split layout (one to four panes in columns, each
+  naming a session by id, each column with its relative width and each pane its relative height) is kept in this
+  window only, in `localStorage` under `maitty.gui.layout.v3` (`model/layout.ts`, `model/layoutStorage.ts`). Choosing a
+  session in the sidebar shows the layout it is in, else one of its own. Split right adds a column beside the focused
+  pane, taking half its width; split down a pane under it, taking half its height; they mix. Right-click a pane for its
+  menu.
+- **Close ends the session, with Undo.** The pane's **×**, the pane menu's Close session, a row's Close
+  session and Ctrl+Shift+W (⌘W) all send the daemon `CloseSession`: the session leaves the list at once and
+  its process runs on for 6 seconds. A toast "Closed name" with **Undo** stays for the same 6 seconds;
+  the button or ⌘Z (Ctrl+Shift+Z elsewhere; passed to the terminal when nothing was just closed, and left to a
+  text field inside one) sends `UndoClose` and puts the pane back in its place. A chat session has no terminal to
+  hide, so it ends at once with no Undo. Only closing the window leaves sessions running.
 - **Hotkeys are keycaps.** Settings › Hotkeys draws each key as its own key-shaped cap (a thicker
   bottom edge, symbols ⌘⇧⌃⌥ in the interface font, other keys in Geist Mono), with a dim "or"
   between alternatives. Windows and Linux show Ctrl, Shift and Alt as words.
@@ -382,63 +323,73 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   too. A binding with `available: false` (Undo close) is registered but
   its key does nothing and the overlay hides it until the feature lands.
   Jump to the next session that needs you is ⌘J on macOS only: Ctrl+J is a terminal key.
-- **Terminal | Chat switch.** Every pane head carries a two-button switch (terminal glyph, chat bubble) with a
-  raised thumb that slides by `transform` (.32s). The chat covers the pane body while the terminal stays mounted
-  underneath, hidden by `visibility`, so it keeps streaming and keeps its size: switching sends nothing to the
-  daemon. The incoming view slides 18px from its side and fades (.42s; chat from the right, terminal from the
-  left), `transform` and `opacity` only, no blur; Reduce motion turns both off at the window root. A shell, an
-  unsupported agent, a session on another machine and a Claude/Codex session the daemon holds no conversation for
-  show the chat card's empty state, "Chat view is for agent sessions", with the reason, **Start claude here** /
-  **Start codex here** (shells only; they type the command into the shell), **Start a Claude chat** /
-  **Start a Codex chat** (shells only; they start a chat session in the shell's folder) and **Back to terminal**.
-  Settings › General › Chat view picks the view each of Claude and Codex opens in (Terminal by default); a
-  session never switched by hand follows it. The same card holds **New agent sessions start as** (Chat by
-  default; Terminal stays one click away in the dialog) and **Full access in new chats** (off by default).
-  A chat started with full access shows a red **Full access** tag in the chat header.
-- **Chat session ([ADR 0003](adr/0003-status-and-conversation-trust.md)).**
-  A row, tab and pane like any session, with the agent's mark and its branch line. Its pane head has no
-  Terminal | Chat switch; the pane is the chat, and the chat's status strip ends with "Chat session · no
-  terminal". The composer, approvals (y / a / n), user-input form, Stop and the daemon's queue are the chat's own.
-- **Chat body.** A 760px centred column. Your messages are right-aligned bubbles (`--raise`, hairline, radius
-  16/16/5/16); an agent message has a 24px agent tile, a lead sentence in `--fg` and paragraphs in `--fg2`;
-  turn dividers read "Cooked for 7s · done 10:11 AM" (only with the daemon's times); tool steps are mono chips;
-  edits, commands, checklists, helper agents and approvals are cards on `--term` or `--raise` with a hairline.
-  Colour is a token everywhere (`--ok`, `--danger`, `--warn`), and a diff tints its lines 10%. A command card
-  shows the command, a `Running · m:ss` pill or the elapsed time and an `exit N` pill (green at 0, red otherwise),
-  and the last 3 output lines. An edit block folds past 12 diff lines. Consecutive helper agents are one card
-  ("3 agents, 2 working"). The approval card is amber (`--warn-soft`, `--warn-line`); once answered it reads "You
-  answered: ...". Agent text is rendered as markdown (headings, lists, code, tables as a hairline grid that scrolls sideways on its own, bold, italic, links as copy buttons).
-- **Composer.** A well (`--raise`, hairline, radius 14, accent ring on focus) under the list: a growing text box, Stop
-  while a turn runs, and a round send button. Footer hint "Same session as the terminal · switching views never
-  restarts claude"; while a turn runs it reads "Enter queues it · Esc interrupts claude" and queued messages show as
-  dashed bubbles. Disabled, it shows its reason in place of the placeholder. A ghost paperclip button sits left of the
-  text box; attached files show above the text row inside the well as small chips (`--term` fill, hairline, radius 8:
-  kind icon or a 32 px thumbnail, name, size, a remove cross). A sent message's files are the same chips under its
-  bubble, right-aligned, with "no longer available" in `--dim` when the file was cleared.
+- **Terminal | Chat switch.** An agent's pane header carries a two-button switch (terminal glyph, chat bubble). The
+  chat covers the pane body while the terminal stays mounted underneath, hidden by `visibility`, so it keeps streaming
+  and keeps its size: switching sends nothing to the daemon. **An agent opens as its chat**; a shell opens as a
+  terminal, and a terminal for an agent exists only when you ask: **Open terminal here** starts a shell in the agent's
+  folder beside it ("Close its terminal" ends it). Settings › General › Chat view picks the view each of Claude and
+  Codex opens in (Chat by default). A shell, an unsupported agent or a session on another machine shows the chat
+  card's empty state, "Chat view is for agent sessions", with the reason and the ways to start one.
+- **Chat session ([ADR 0003](adr/0003-status-and-conversation-trust.md)).** A row and pane like any session, with the
+  agent's mark and its branch line. Its pane has no terminal | chat switch; the pane is the chat. The approvals
+  (y / a / n), user-input form, Stop and the daemon's queue are the chat's own.
+- **Chat body** (`features/chat/chat.css`). A 760px centred column, 20px in, rows 14px apart, under a 56px fade at its
+  top. Your messages are right-aligned glass bubbles (`rgba(--hl,.05)`, a `rgba(--hl,.09)` border, radius 16/16/5/16,
+  14px). An agent's reply has no avatar: its first sentence in `--fg` at 500, the rest in `--fg2`, as markdown. Tool
+  steps and finished subagents are 28px mono pills with a check ("Ran a subagent: Check migration order · 4m 2s").
+  Commands and edits are glass cards (radius 12): a command shows the command, its time and `exit N` pill, the last
+  lines of its output and "Show all N lines"; an edit shows "Edited `path` +14", its diff with the hunk header in
+  `--ansi-blue`, added lines tinted with `--ok` at 7% and removed with `--danger`, syntax colours (keywords
+  `--ansi-mag`, strings `--ansi-green`, comments `--dim`, numbers `--ansi-blue`), folded past 12 lines ("N more
+  lines"). A request answered earlier stays in the list, "You answered: …". The working line is the spinner and "claude
+  is working · m:ss". Problems with the history (offline, incomplete, a provider error) and Full access show in one
+  slim strip above the list. **A subagent's chat** replaces the list with a bar ("Subagent · name · time", **Back to
+  main session**), then what it was asked, what it is doing while it works and its report once done.
+- **Message box** (`features/chat/components/Composer.tsx`), in three layers. **1. The question tray**, only while the
+  agent asks: a slightly narrower amber tray sliding up from behind the box (`mxRise`): "Wants to run a command" with
+  its pause tile, the command in a sunken mono box, and **Yes, once** `y` (amber, the same in every theme), **This
+  session** `a`, **No** `n`. y, a and n answer from anywhere in the chat but a field. Answering removes it, the box
+  unlocks and the agent is working again (its row, the Inbox and the badge follow the daemon). **2. The box**: glass
+  (`--main` under `rgba(--hl,.075)` to `.035`, a `rgba(--hl,.12)` border, radius 16), a two-line text box on top, **+**
+  (attach) at the left, and at the right the model picker ("Claude Sonnet 5.5 · Medium ▾": the agent's mark, the model
+  picked or the one its own file says, the effort) and the round 32px send button, teal when it can send and grey while
+  a question waits; with nothing typed while a turn runs it is a Stop square. Placeholders: "Message claude", "Queue a
+  message for when claude finishes" while it works, "Answer the request above first" (and off) while a question
+  waits. **3. The settings tray**: narrower and darker, under the box: the permission mode from the agent's own file
+  ("Ask before running", "Plan", "Bypass permissions" in red, or "Permissions" before it has said), Subagents with their
+  count, the project folder (opens Files), and the branch at the right. Queued messages are dashed bubbles above.
 - **Esc ladder.** Esc closes the topmost open layer and reaches the terminal only when none is
   open (`model/escLadder.ts`): What's new, palette, inbox, Settings, the sidebar drawer,
   Focus mode. A new dialog adds its id there.
-- **Jump to next (⌘J, macOS only).** Opens the next session that needs you, in creation order across every machine
+- **Jump to next (⌘⇧J, macOS only).** Opens the next session that needs you, in creation order across every machine
   (`features/needs-you/model/needsYou.ts`), with the toast "Needs you · name · 1 of 2"; with nothing needing you it
   only shows "Nothing needs you". Windows and Linux have no key for it yet.
-- **Command palette (⌘K).** A 600px card over a dimmed scrim: type a few letters to jump to a
-  session, project, action or theme (themes only once something is typed). A run of the typed text
-  ranks above letters that merely appear in order; ↑ ↓ move, ↵ runs, Esc closes. Sessions that need
-  you say so on their row.
-- **Inbox (⌘⇧J).** The tab bar's **Inbox** button (a count, amber when something needs you) opens a
-  panel listing every session that needs you, failed or finished, across all projects, in that
-  order. A needs-you card has **Yes, once**, **This session** and **No**, which type `y`, `a` or `n`
-  into that session; the window never decides for it. Done and error cards have **Clear** (hides it
-  until the session changes state) and **Open**.
-- **Focus mode (⌘.).** Hides the sidebar and tab bar; a pill at the bottom says where you are and
+- **Command palette (⌘K).** A 600px card 12% from the top over a dimmed scrim: type a few letters to jump to a
+  session, project, action or theme (themes only once something is typed). Sessions come first, most urgent first,
+  each named as its row is with its agent and project ("Needs you" in amber), then their projects, then the actions. A
+  run of the typed text ranks above letters that merely appear in order; ↑ ↓ move, ↵ runs, Esc closes.
+- **Inbox (⌘J).** The sidebar header's **Inbox** button (a count, amber when something needs you) opens a 440px
+  panel from the right listing every session that needs you, finished or exited, in that order ("N across all
+  projects", **Clear done**). A needs-you card shows what the agent asks in a well and has **Yes, once**, **This
+  session** and **No**, which type `y`, `a` or `n` into that session; the window never decides for it. Done and error
+  cards have **Clear** and **Open**. With nothing: "You're all caught up".
+- **New session dialog** (⌘T, Ctrl+Shift+T, the sidebar's New agent chat, a machine's New agent chat here). A 560px
+  dialog: **Agent chat | Shell**; AGENT (Claude Code, Codex as cards); PROJECT (a chip per project the machine has
+  sessions in, the focused one first, with its colour; **Other folder…** opens the folder picker on this computer);
+  WHERE IT WORKS (**New worktree**: the daemon starts an agent typed in a project's main checkout in a worktree of its
+  own; **Current branch** shows disabled, since that is the daemon's `worktree.per_agent` setting); FIRST MESSAGE (held
+  under the new session and sent when the agent takes input; its first three words name the session). **Cancel** and
+  **Start agent** or **Open shell** with `Ctrl ↵`. On another machine the title says so and the agent is typed into a
+  shell there.
+- **Focus mode (⌘.).** Hides the sidebar; a pill at the bottom says where you are and
   how many sessions need you elsewhere. Esc or the pill's Exit leaves it.
-- **Broadcast (⌘⇧B).** Per tab. While on, every pane of the tab has a violet outline and a
-  "Broadcast" pill, and what is typed in one pane is also typed into the tab's **idle** panes.
+- **Broadcast (⌘⇧B).** Per layout. While on, every pane of the layout has a violet outline and a
+  "Broadcast" pill, and what is typed in one pane is also typed into the layout's **idle** panes.
   A pane running something is skipped, so it never types into a busy agent.
 - **Pane resize.** The gap between two columns drags (180px minimum, snaps to an even split,
-  double-click resets). Widths are saved with the tab and reset when its columns change.
-- **Drag a session into a pane.** Any sidebar row or tray item drags onto a pane: in the same tab it
-  swaps, in another tab it moves here, otherwise it replaces the pane's session. The session that
+  double-click resets). Widths are saved with the layout and reset when its columns change.
+- **Drag a session into a pane.** Any sidebar row drags onto a pane: in the same layout it
+  swaps, in another layout it moves here, otherwise it replaces the pane's session. The session that
   leaves keeps running.
 - **Files dropped on a pane of another machine.** One sonner toast on the theme tokens (`bg-muted` track,
   `bg-primary` fill, `text-muted-foreground` percentage): the title `Sending <file> to <machine>`, with
@@ -448,36 +399,13 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
 - **A pasted image.** The same toast, titled `Sending the image to <machine>` (a progress bar named
   `Sending image`, **Cancel**), ending as `Sent the image to <machine>`. For a pane of this computer there is
   no progress: a short `Saving the image…` toast becomes `Pasted the image`.
-- **Splits in the sidebar.** A tab's second and later panes that are only quiet shells (a shell, idle) fold into the
-  row of the tab's first pane, which reads "+2 panes". A split that runs an agent, is working or needs you keeps
-  its own row, and so does every session that is not a split (a shell opened with +, New terminal or Ctrl+Shift+T).
-  Focusing a folded split highlights its tab's row (`model/splitFold.ts`). The terminal app is unchanged.
-- **Project menu.** Right-clicking a project, in the
-  sidebar or the rail, offers New session here, New terminal here, Collapse or Expand, Inspect project (the
-  repository drawer on that project's terminal on this computer) and Copy path. Project defaults (Start in, Run
-  when it opens) are not built: they need a shared-config key the terminal app also reads.
-- **Activity bar.** A 48px card on the side opposite the sessions sidebar (so it follows Sidebar position),
-  hidden under 900px where the Panels button replaces it. Top to bottom: the **Inbox** (count badge, amber
-  when something needs you), a divider, then **Files**, **Changes** (badge: changed files), **Branches**,
-  **History** and **References**. A button opens its drawer over the panes; pressing it again, another button,
-  the scrim or Esc closes it. One drawer is open at a time and a drawer never pushes the panes. The open one has
-  a 2px accent bar on the bar's outer edge. Extensions and Brain dump are not built.
-- **Inspect (⌘I).** A drawer opened from the activity bar, over a scrim and beside the bar (full width minus
-  24px under 900px), that
-  reads the focused pane's repository and never changes it. It is 680px wide on every tab, resizable from its
-  inner edge (420px to the window minus 300px, snapping to 680, double-click resets, remembered), and its header is the
-  project and branch, then text tabs with a 2px underline that slides the way the tab changed. It closes with a
-  210ms exit animation. Views: **Files** (folders and a text
-  preview), **Changes** (the working tree's diff, one file at a time), **Branches** (the current
-  one, its distance from the upstream), **History** and **References**. History lists commits and the daemon's snapshots
-  (taken before each agent turn) newest first. **Restore** on a snapshot asks first, says that
-  what is there now is saved first, and is disabled while the agent works. **Compare** picks any
-  two entries and shows what differs between them.
-  A tab that cannot load shows one calm screen in place of its content: what happened in plain words, that
-  nothing in the project changed and the terminals are unaffected, a Try again button (and an automatic retry
-  every 3 seconds while git is busy), and the daemon's own words only behind **Show details for support**. A
-  folder that is not a git project is a calm, non-error screen. Timeouts and an unreachable daemon have no
-  wording of their own yet: they read as the generic "couldn't load" screen.
+- **Files and Changes** (⌘I, a pane's tray, a session's Show changes). The repository drawer: 680px over a scrim, 12px
+  from the top and bottom and 24px from the right, radius 16. Its header is the project and branch; text tabs (Files,
+  Changes with its count, Branches, History, Timeline, References) with a 2px accent underline; Changes lists the
+  changed files (`+N −N`) and the picked file's diff (added lines tinted with `--ok`, removed with `--danger`, hunk
+  headers in the accent). It reads the focused pane's repository and never changes it. **Restore** on a snapshot asks
+  first and is disabled while the agent works; **Compare** picks two entries. A tab that cannot load shows one calm
+  screen with Try again. A folder that is not a git project says so.
 - **Quick-look links.** ⌘-click (Ctrl-click elsewhere) on a file name in a pane's output, with an
   optional `:line`, opens it in Inspect › Files at that line. A name that is not a file in the
   pane's repository says so in a toast.
@@ -489,13 +417,6 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   project's right-click menu has a **Worktrees** submenu that opens a shell in any of the repo's
   worktrees, and a **New worktree…** row. Worktrees group under their parent repo. A folder's row shows
   only its name: a branch belongs to a session, and a worktree's branch is not the folder's.
-- **Close ends the session.** A pane's ×, a tab's × (and its menu's **Close tab** and **Close other
-  tabs**), a session's **Close session**, **Close project tabs** and Ctrl+W all end the sessions they
-  close, and a notice says so. When a program such as an agent is running, the first click only arms the
-  control ("Close and stop claude? Click again", also for **Close other tabs**); a plain shell closes at
-  once. Ctrl+W, which a shell also uses to delete a word, always asks to be pressed twice, for the same
-  pane or tab, unless that pane already ended. Esc that leaves focus mode or closes a panel is not also
-  sent to the terminal. There is no undo. Closing the window never ends a session.
 - **Ended panes.** A pane never disappears because a refresh missed its session or the session ended: it
   stays in its tab with its output, the tab keeps its name, and a card along the bottom says **Session
   ended** with **Restart shell** (a new shell in the same folder, in the same place) and **Close pane**
@@ -518,7 +439,7 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   notes and "No session was interrupted."
 - **Sidebar position.** Settings › Appearance › Sidebar › Sidebar position, or the palette, puts the sidebar
   on the left or right. On the right the window mirrors: the resize edge is on its left, the narrow-window
-  drawer slides from the right, the activity bar is on the left, Inspect and the Inbox open from the left, and popovers open toward the middle.
+  overlay slides from the right, Inspect and the Inbox open from the left, and popovers open toward the middle.
 - **Notifications.** Settings › Notifications has one switch each for needs you, done and error. With
   one on, a session that changes to that state while you are not looking at it (the window is in the
   background, or it is not the focused pane) sends a system notification, once per change. It names
@@ -550,40 +471,25 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   Retry on failure (a failed refresh keeps the old figures and says they may be stale), "Nothing
   recorded yet" when the store is empty. Refreshes on open, when the period changes and every 60 s
   while open. Source: `features/usage/`, ADR 0009.
-- **Usage pill.** A pane's header shows what the provider reports the session has used (tokens,
-  context filled, cost). It is not drawn when the provider said nothing, so no number is invented.
 - **Turn timeline.** Inspect › Timeline lists the focused pane's latest events, newest first: the
   agent started working, stopped for you, finished (with how long the turn ran), and, in a shell
   that marks its prompts, each prompt and command with its exit code.
 - **Inbox detail.** A needs-you card shows what the agent is asking, the exact command or file and its
   choices as the agent printed them, instead of its last prompt.
-- **Status is shape and word.** Working is the TUI spinner, Needs you an amber tile with two pause
-  bars, Done a green check, Exited a red `!`, Unknown a dashed square, Idle a small dot. Every pane
-  but an idle one shows its status as a chip in its bottom-right corner, and hovering or focusing
-  the chip opens a popover that says what the state means. An idle pane has no chip, and an idle
-  session's sidebar row has no state line: idle is the default and says nothing. Amber still means needs you and only
-  that, in every theme.
+- **Status is shape and word.** Working is the user's spinner, Needs you an amber tile with a dark `›`, Done a green
+  check, Unknown a dashed square, and Idle nothing; a stopped agent or an exited shell says so in words on its row.
+  Amber still means needs you and only that, in every theme.
 - **Colours follow the theme.** Agent tiles, badges and the folder text are
   expressions over the active theme's tokens (`--accent`, `--ansi-*`, `--warn`, `--danger`,
   `--on-accent`), never fixed hex values, so switching theme recolours all of them.
-- **Status effects.** Settings › Appearance › Motion has, for Working, Needs you and Done, an on/off switch, a
-  **Waves / Sweep** choice and a live preview chip clipped to the chip. **Waves** are two layers of soft sine
-  bands (SVG paths in the status colour at low alpha) that drift at different speeds and in opposite directions
-  (a 200%-wide layer translating -50% over 18 s and 28 s, linear). It is the default for Working and the one
-  deliberate loop in the window; it stops while the window is hidden or in the background (`data-window` on
-  `<html>`). **Sweep** is one soft band that crosses once in 1.4 s when the status appears and then rests; the
-  default for Needs you and Done. Both are an absolutely positioned `.mx-fx` child of the row or tab
-  (`StatusEffect`), `overflow: hidden; contain: paint`, with `will-change: transform` on the moving layers; only
-  `transform` (`translate3d`) animates, never `box-shadow`, `filter` or `background-position`. A **Working
-  effect** setting (All / Selected / Off) limits which working rows and tabs animate; Selected means only the
-  one you are in. A style is capped by the animation level (`lib/animation-level.ts`), set by **Animations**
-  (Settings › Appearance › Motion, `animations`): **Auto** (default) starts at Waves with WebGL 2 and at Sweep
-  without it (`data-gpu="software"`), then samples animation-frame times for 3 s starting 2 s after launch and
-  again each time Waves begin to run (`lib/frame-monitor.ts`, `useAdaptiveAnimations`); if a quarter of the
-  frames take over 40 ms it steps down one level (Waves, Sweep, none) and never steps up within a run, and the
-  monitor stops itself after each verdict. **Full** always allows Waves, **Light** only Sweep, **Off** none.
-  Settings › Performance says what Auto chose and why (`describeAnimations`). Reduce motion (the setting or the
-  system's) and a disconnected daemon remove every layer, and a fixed choice is never measured. The needs-you badge and the Inbox count pop once with a ring (.6s) and
+- **Status marks, not effects.** Every state has its own shape on a row's or rail icon (`StatusBadge`), so colour
+  is never the only signal: **working** is the user's spinner in `--accent`, on the icon's corner; **needs you** an amber tile with
+  a dark `›`, popping once on arrival; **done** a dark green tile with a ✓; **exited** a dark red tile with a !
+  (the daemon's `TermInfo.exit`, a non-zero exit code of the last command, shown while nothing is working or
+  waiting); **idle** no badge at all; **unknown** (the daemon is gone) a dashed outlined square, with the
+  row dimmed. The window only displays these; the daemon decides them. There are no waves, sweeps, shimmer or glow
+  on rows and tabs, and no setting for them; the only looping motion is the spinner. Reduce motion (the setting or
+  the system's) removes the pulses, slides and size animations, and the spinner holds one frame. The needs-you badge and the Inbox count pop once with a ring (.6s) and
   the update dot once (.7s), as `transform` and `opacity` on a pseudo-element. The terminal caret is steady
   (blinking is Settings › Text › Blink, xterm's own option, off by default), and nothing animates `box-shadow`,
   `filter` or `backdrop-filter` ([PERFORMANCE](PERFORMANCE.md)). The working spinner steps every 160 ms and

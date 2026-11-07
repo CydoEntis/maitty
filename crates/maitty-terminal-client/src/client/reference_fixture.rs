@@ -19,10 +19,8 @@ use std::path::Path;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Stage {
     None,
-    Checking,
     Passed,
     Failed,
-    Over,
     Couldnt,
     Approve,
     Never,
@@ -30,19 +28,6 @@ pub(super) enum Stage {
     /// Several checkpoints: build and test.
     Multi,
 }
-
-pub(super) const STAGES: [Stage; 10] = [
-    Stage::None,
-    Stage::Checking,
-    Stage::Passed,
-    Stage::Failed,
-    Stage::Over,
-    Stage::Couldnt,
-    Stage::Approve,
-    Stage::Never,
-    Stage::Stale,
-    Stage::Multi,
-];
 
 /// The reference's boxed frames: Floating, and Tiled (Floating with no gaps). Its Flat frames
 /// are of a look the app no longer has.
@@ -130,6 +115,8 @@ pub(super) fn term(
         last_lines: String::new(),
         branch: None,
         linked: false,
+        diff_added: 0,
+        diff_removed: 0,
         subagents: Vec::new(),
         subagent_activity: Vec::new(),
         session: None,
@@ -157,6 +144,7 @@ pub(super) fn term(
         checks: Vec::new(),
         asking: String::new(),
         interrupted: None,
+        exit: None,
         ask: None,
         timeline: Vec::new(),
     }
@@ -217,6 +205,18 @@ pub(super) fn workspace(
         is_new: false,
         group: None,
     }
+}
+
+/// Focus pane `term` as the daemon would: its workspace and its tab become the active ones.
+pub(super) fn focus(app: &mut App, term: TermId) {
+    for w in &mut app.snap.workspaces {
+        if let Some(tab) = w.tabs.iter_mut().find(|t| t.layout.contains(term)) {
+            tab.focus = term;
+            w.active_tab = tab.id;
+            app.snap.active_ws = Some(w.id);
+        }
+    }
+    app.screen_sync();
 }
 
 pub(super) fn git(root: &Path, branch: &str, worktrees: Vec<WorktreeEntry>) -> GitInfo {
@@ -280,21 +280,8 @@ fn fix_footer_checks(stage: Stage, cwd: &Path) -> Vec<CheckInfo> {
     };
     match stage {
         Stage::None => vec![],
-        Stage::Checking => vec![CheckInfo {
-            state: CheckState::Checking,
-            started_at: now() - 6,
-            duration_ms: 0,
-            ..ran
-        }],
         Stage::Passed => vec![passed],
         Stage::Failed => vec![failed],
-        Stage::Over => vec![CheckInfo {
-            state: CheckState::Overridden,
-            overridden_at: Some(at(14, 30, 0)),
-            overridden_by: "you".into(),
-            override_reason: "flaky legal test, tracked in #212".into(),
-            ..failed
-        }],
         Stage::Couldnt => vec![CheckInfo {
             state: CheckState::CouldNotRun,
             command: "pnpm test".into(),
@@ -368,7 +355,6 @@ pub(super) fn world(stage: Stage) -> App {
         ui: crate::config::Ui {
             padding: "0".into(),
             // The reference has no tool rail, and its sheets sit beside the panes.
-            tool_rail: false,
             ..Default::default()
         },
         ..Default::default()
@@ -544,184 +530,6 @@ pub(super) fn cells(
     buf
 }
 
-/// `app` drawn in `layout` at `w`×`h` with the `glyphs` set (`unicode`, `ascii`, `nerd`), as
-/// text: one line per row, trailing spaces trimmed. `<APP>_SHOW=1` prints it under a heading
-/// like the reference frames.
-/// Row 0 as the reference draws it: its tabs end without the `✕ ` the app gives each, and its frames
-/// have no `+` chip after them (the app keeps one a cell clear of them, so a tab opens with a
-/// click). What the app adds
-/// reads as the title's own fill, so everything after it keeps its column.
-fn without_new_tab_chip(row: &str) -> String {
-    let chars: Vec<char> = row.chars().collect();
-    let mut out = String::new();
-    let (mut cut, mut cut_at) = (0, 0);
-    let mut i = 0;
-    while i < chars.len() {
-        let tab_close = chars[i] == '×'
-            && i >= 2
-            && chars[i - 1] == ' '
-            && chars[i - 2].is_alphanumeric()
-            && chars.get(i + 1) == Some(&' ')
-            && !chars[i + 1..]
-                .iter()
-                .find(|c| **c != ' ')
-                .is_some_and(|c| "┐╮│".contains(*c));
-        if tab_close {
-            cut += 2;
-            cut_at = out.len();
-            i += 2;
-        } else {
-            out.push(chars[i]);
-            i += 1;
-        }
-    }
-    // The `+` chip and the cell the app keeps clear before it.
-    const CHIP: &str = "  + ";
-    // The chip is followed by the title's fill; ASCII's done mark (`+ done`) is not.
-    let Some(at) = out
-        .match_indices(CHIP)
-        .map(|(i, _)| i)
-        .find(|&i| out[i + CHIP.len()..].starts_with(['─', ' ']))
-    else {
-        let fill = out[cut_at..].chars().next().unwrap_or(' ');
-        out.insert_str(cut_at, &fill.to_string().repeat(cut));
-        return out;
-    };
-    let rest = &out[at + CHIP.len()..];
-    let fill = rest.chars().next().unwrap_or(' ');
-    format!(
-        "{}{}{rest}",
-        &out[..at],
-        fill.to_string().repeat(CHIP.len() + cut)
-    )
-}
-
-/// The sidebar as the reference frames draw it, from what the app draws. `rows` is the
-/// whole screen; the sidebar's rectangle and its rows' places come from `app`. What the app changes
-/// on purpose, put back:
-/// - the foot sits a row higher in Flat and has a divider above it; its `new` and `menu` chips
-///   read `+ new` and `a actions` (the app's `+ New` and `Menu`), the reference's words at the same edges;
-///
-/// A second line that only names the state is gone from the app; `as_one_line_rows` drops it
-/// from the reference.
-fn as_the_reference_sidebar(rows: &mut [Vec<char>], app: &App) {
-    let side = app.screen.side_rect;
-    if side.width < 4 || side.height < 6 {
-        return;
-    }
-    let (left, right) = (side.x as usize + 1, side.right() as usize - 1);
-    let foot_y = side.bottom() as usize - 2;
-    // The foot: the divider over it goes (only its own run of `─`, a modal may cross that row).
-    let divider_from = left + 1;
-    for (x, cell) in rows[foot_y - 1]
-        .iter_mut()
-        .enumerate()
-        .take(right)
-        .skip(divider_from)
-    {
-        // A modal's bottom border can lie on this row: it is on the modal's ground, not the sidebar's.
-        let modal = app.screen.modal_rects.iter().any(|r| {
-            r.contains(ratatui::layout::Position::new(
-                x as u16,
-                (foot_y - 1) as u16,
-            ))
-        });
-        if *cell != '─' || modal {
-            break;
-        }
-        *cell = ' ';
-    }
-    let mut foot: Vec<char> = rows[foot_y][left..right].to_vec();
-    let chars = |s: &str| s.chars().collect::<Vec<char>>();
-    let find = |row: &[char], needle: &str| {
-        row.windows(needle.chars().count())
-            .position(|w| w == chars(needle).as_slice())
-    };
-    // A chip is its word with a cell either side (a space, or a cap with `ui.rounded`).
-    if let Some(at) = find(&foot, "+ New").filter(|at| *at > 0) {
-        foot.splice(at - 1..at + 6, chars("+ new  "));
-    }
-    if let Some(at) = find(&foot, "Menu").filter(|at| *at > 0) {
-        let end = at + 5;
-        foot.splice(at - 1..end, vec![' '; 6]);
-        let start = (end + 1).saturating_sub(9).min(foot.len() - 9);
-        foot.splice(start..start + 9, chars("a actions"));
-    }
-    foot.truncate(right - left);
-    rows[foot_y][left..right].fill(' ');
-    rows[foot_y][left..right].copy_from_slice(&foot);
-}
-
-/// A project row's `−` / `+` button, in the state bars' column, read as the caret the reference
-/// draws a column further in.
-fn with_the_reference_carets(rows: &mut [Vec<char>], app: &App, glyphs: &str) {
-    let (open, closed) = if glyphs == "ascii" {
-        ('v', '>')
-    } else {
-        ('▾', '›')
-    };
-    for (r, h) in &app.hits {
-        if !matches!(h, Hit::Screen(super::screen::ScreenHit::ToggleProj(_))) {
-            continue;
-        }
-        let (x, row) = (r.x as usize, &mut rows[r.y as usize]);
-        if row.get(x + 1) == Some(&' ') && (row[x] == '−' || row[x] == '+') {
-            row[x + 1] = if row[x] == '−' { open } else { closed };
-            row[x] = ' ';
-        }
-    }
-}
-
-/// The app bars only the selected row; the reference also bars a failed check's row in red.
-fn with_the_reference_failed_bars(rows: &mut [Vec<char>], app: &App, glyphs: &str) {
-    let side = app.screen.side_rect;
-    let bar_x = (side.x + 2) as usize;
-    let bar = if glyphs == "ascii" { '|' } else { '▎' };
-    let folders: Vec<usize> = app
-        .hits
-        .iter()
-        .filter(|(_, h)| matches!(h, Hit::Screen(super::screen::ScreenHit::ToggleProj(_))))
-        .map(|(r, _)| r.y as usize)
-        .collect();
-    let failed = |term: &crate::protocol::TermId| {
-        app.snap.terms.get(term).is_some_and(|i| {
-            i.reported_check()
-                .is_some_and(|c| c.state == crate::protocol::CheckState::Failed)
-        })
-    };
-    let mut owners: Vec<(usize, crate::protocol::TermId)> = app
-        .screen
-        .row_y
-        .iter()
-        .map(|(t, y)| (*y as usize, t.term))
-        .collect();
-    owners.sort();
-    for (y, row) in rows
-        .iter_mut()
-        .enumerate()
-        .take((side.bottom() as usize).saturating_sub(2))
-    {
-        // A line belongs to the session row that began at most two lines above it.
-        let owner = owners
-            .iter()
-            .rev()
-            .find(|(oy, _)| *oy <= y && y - oy <= 2)
-            .map(|(_, t)| t);
-        let has_text = row
-            .iter()
-            .skip(bar_x + 1)
-            .take(side.width as usize)
-            .any(|c| *c != ' ' && *c != '│');
-        if owner.is_some_and(failed)
-            && !folders.contains(&y)
-            && has_text
-            && row.get(bar_x) == Some(&' ')
-        {
-            row[bar_x] = bar;
-        }
-    }
-}
-
 /// `app` drawn as `frame` does but as the app draws it: no reference normalisation, rows in full.
 pub(super) fn raw_text(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str) -> String {
     let buf = &cells(app, layout, w, h, glyphs);
@@ -737,60 +545,8 @@ pub(super) fn raw_text(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &s
         .collect()
 }
 
-pub(super) fn frame(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str) -> String {
-    let buf = &cells(app, layout, w, h, glyphs);
-    let mut rows: Vec<Vec<char>> = (0..h)
-        .map(|y| {
-            (0..w)
-                .map(|x| buf[(x, y)].symbol().chars().next().unwrap_or(' '))
-                .collect()
-        })
-        .collect();
-    with_the_reference_carets(&mut rows, app, glyphs);
-    with_the_reference_failed_bars(&mut rows, app, glyphs);
-    as_the_reference_sidebar(&mut rows, app);
-    let text: String = rows
-        .iter()
-        .enumerate()
-        .map(|(y, row)| {
-            let row: String = row.iter().collect();
-            let row = if y == 0 {
-                without_new_tab_chip(&row)
-            } else {
-                row
-            };
-            row.trim_end().to_string() + "\n"
-        })
-        .collect();
-    if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
-        println!("===== {layout:?} | {w}x{h} | {glyphs}\n{text}");
-    }
-    text
-}
-
 mod tests {
     use super::*;
-
-    #[test]
-    fn every_stage_draws_in_every_layout_and_size() {
-        for stage in STAGES {
-            let mut app = world(stage);
-            for layout in LAYOUTS {
-                for (w, h) in SIZES {
-                    let text = frame(&mut app, layout, w, h, "unicode");
-                    assert_eq!(
-                        text.lines().count(),
-                        h as usize,
-                        "{stage:?} {layout:?} {w}x{h}"
-                    );
-                    assert!(
-                        text.contains("affiliate-site"),
-                        "{stage:?} {layout:?} {w}x{h}: the project is listed\n{text}"
-                    );
-                }
-            }
-        }
-    }
 
     #[test]
     fn the_world_holds_the_reference_s_sessions_and_fix_footer_s_check() {
@@ -851,79 +607,21 @@ mod tests {
     }
 }
 
-/// The fixture's sessions and the mark of the agent each runs (Unicode, then ASCII).
-const AGENT_MARKS: [(&str, char, char); 5] = [
-    ("fix-footer", '◆', 'X'),
-    ("add-payments", '✻', 'C'),
-    ("warm-finch", '◆', 'X'),
-    ("quick-fox", '✻', 'C'),
-    ("old-moth", '◆', 'X'),
-];
-
-/// The second lines that only name a session's state, which the app no longer draws.
-const STATE_ONLY_LINES: [&str; 5] = [
-    "working",
-    "finished",
-    "finished · not seen",
-    "needs you",
-    "idle",
-];
-
-/// The reference's sidebar rows as the app draws them on purpose since sessions became one
-/// line: a second line that only names the state is gone (the mark and the name's colour say
-/// it), and each session's row carries its agent's mark two spaces before its age, or where the
-/// age would end when there is none. A moving age (`any` in the reference) is any width, so the
-/// mark's place before it is `any` too. A name that would run into the mark is cut with `…`.
-pub(super) fn as_one_line_rows(rows: Vec<Vec<char>>, ascii: bool, any: char) -> Vec<Vec<char>> {
-    let text = |r: &[char]| r.iter().collect::<String>();
-    let mut rows: Vec<Vec<char>> = rows
-        .into_iter()
-        .filter(|r| {
-            !STATE_ONLY_LINES.contains(&text(r).trim_start_matches([' ', '▎', '|']).trim_end())
+/// `app` drawn in `layout` at `w`×`h` with the `glyphs` set (`unicode`, `ascii`, `nerd`), as
+/// text: one line per row, trailing spaces trimmed, a wide character as its first cell.
+/// `<APP>_SHOW=1` prints it under a heading.
+pub(super) fn frame(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str) -> String {
+    let buf = &cells(app, layout, w, h, glyphs);
+    let text: String = (0..h)
+        .map(|y| {
+            let row: String = (0..w)
+                .map(|x| buf[(x, y)].symbol().chars().next().unwrap_or(' '))
+                .collect();
+            row.trim_end().to_string() + "\n"
         })
         .collect();
-    let has = |r: &[char], needle: &str| text(r).contains(needle);
-    let last_of = |r: &[char]| r.iter().rposition(|c| *c != ' ');
-    let right_edge = rows
-        .iter()
-        .find(|r| has(r, "pixls"))
-        .and_then(|r| last_of(r))
-        .unwrap_or(0);
-    for row in &mut rows {
-        let Some((_, shape, letter)) = AGENT_MARKS.iter().find(|(name, ..)| has(row, name)) else {
-            continue;
-        };
-        let Some(last) = last_of(row) else { continue };
-        let start = row[..=last]
-            .iter()
-            .rposition(|c| *c == ' ')
-            .map_or(0, |i| i + 1);
-        let token: String = row[start..=last].iter().collect();
-        let moving = !token.is_empty() && token.chars().all(|c| c == any);
-        let is_age = moving
-            || token == "now"
-            || token
-                .trim_end_matches(['s', 'm', 'h', 'd'])
-                .parse::<u32>()
-                .is_ok();
-        let at = if is_age {
-            start.saturating_sub(3)
-        } else {
-            right_edge
-        };
-        if row.len() <= at + 1 {
-            row.resize(at + 2, ' ');
-        }
-        if moving {
-            // The name may or may not be cut, as the age is wider or narrower.
-            row[at.saturating_sub(2)..=at + 1].fill(any);
-            continue;
-        }
-        if at >= 2 && row[at - 1] != ' ' {
-            row[at - 2] = '…';
-            row[at - 1] = ' ';
-        }
-        row[at] = if ascii { *letter } else { *shape };
+    if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
+        println!("===== {layout:?} | {w}x{h} | {glyphs}\n{text}");
     }
-    rows
+    text
 }

@@ -140,7 +140,7 @@ impl App {
     ) -> bool {
         let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
         match k.code {
-            KeyCode::Esc | KeyCode::Char('a') => return false,
+            KeyCode::Esc | KeyCode::Char('e') => return false,
             KeyCode::Char('j') => v.sel = (v.sel + 1).min(v.items().len().saturating_sub(1)),
             KeyCode::Char('k') => v.sel = v.sel.saturating_sub(1),
             KeyCode::Enter | KeyCode::Char('o') => self.open_reference(v),

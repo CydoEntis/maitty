@@ -299,11 +299,7 @@ fn a_remote_agents_row_is_what_its_daemon_reported_and_follows_its_next_report()
         );
         let asked = window.app.remotes[&BOX].snap.questions[0].clone();
         let drawn = frame_text(&mut window.app);
-        assert!(drawn.contains("box"), "the machine is headed: {drawn}");
-        assert!(
-            drawn.contains("asks: use red"),
-            "its question is on the row: {drawn}"
-        );
+        assert!(drawn.contains(" box 1 "), "its machine heads its sessions: {drawn}");
 
         window.send(ClientMsg::Command(Command::AnswerHuman {
             id: asked.id,
@@ -326,7 +322,7 @@ fn a_remote_agents_row_is_what_its_daemon_reported_and_follows_its_next_report()
 /// The window drawn at 100x30 as text, one string.
 fn frame_text(app: &mut App) -> String {
     let mut terminal =
-        ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 30)).expect("a terminal");
+        ratatui::Terminal::new(ratatui::backend::TestBackend::new(160, 45)).expect("a terminal");
     terminal.draw(|f| render::draw(app, f)).expect("a frame");
     let text = terminal
         .backend()

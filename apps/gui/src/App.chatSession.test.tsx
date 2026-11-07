@@ -23,7 +23,6 @@ const daemon = vi.hoisted(() => ({
   startChatSession: vi.fn<(folder: string, agent: string, branch?: string | null) => Promise<{ id: number; generation: number }>>(),
   renameConversationOnDaemon: vi.fn(),
   markSeenOnDaemon: vi.fn(() => Promise.resolve()),
-  pinSessionOnDaemon: vi.fn(),
   loadDaemonRestartStatus: vi.fn(),
   restartMismatchedDaemon: vi.fn(),
   suggestProjectFolders: vi.fn(() => Promise.resolve([] as string[])),
@@ -111,19 +110,20 @@ describe('a chat session in the desktop window', () => {
     daemon.loadDaemonRestartStatus.mockResolvedValue({ daemonProtocol: 49, guiProtocol: 59, canRestart: false, sessionCount: 1, activeTurnCount: 0 })
   })
 
-  it('is a row beside the terminal sessions of its project, and opens as a chat with the composer on and no terminal', async () => {
+  it('is a row beside the terminal sessions, and opens as a chat with the composer on and no terminal', async () => {
     serveHistory()
     daemon.loadConversations.mockResolvedValue([term(2), chatSession(44)])
     renderDesktopApp()
 
-    const nav = await screen.findByRole('navigation', { name: 'Sessions by project' })
+    const nav = await screen.findByRole('navigation', { name: 'Sessions' })
     expect(within(nav).getByRole('button', { name: /, claude, / })).toBeInTheDocument()
 
     // Opening it: its pane is the chat and nothing else.
     await userEvent.setup().click(within(nav).getByRole('button', { name: /, claude, / }))
     const chat = await screen.findByRole('region', { name: 'Chat' })
     expect(await within(chat).findByText('On it.')).toBeInTheDocument()
-    expect(within(chat).getByText(/Chat session · no terminal/)).toBeInTheDocument()
+    // A chat session has no terminal, so its pane offers no switch to one.
+    expect(screen.queryByRole('radiogroup', { name: 'Pane view' })).not.toBeInTheDocument()
     expect(within(chat).getByRole('textbox')).toBeEnabled()
     expect(screen.queryByRole('radiogroup', { name: 'Pane view' })).not.toBeInTheDocument()
     // No terminal was attached for it: the only terminal on screen is the shell's, if that is shown at all.
@@ -152,8 +152,8 @@ describe('a chat session in the desktop window', () => {
     renderDesktopApp()
     const chat = await screen.findByRole('region', { name: 'Chat' })
 
-    const card = await within(chat).findByRole('group', { name: /Approval/ })
-    await user.click(within(card).getByRole('button', { name: 'Yes, once (y)' }))
+    const card = await within(chat).findByRole('region', { name: /Approval/ })
+    await user.click(within(card).getByRole('button', { name: /^Yes, once/ }))
     expect(daemon.approveRequest).toHaveBeenCalledWith({ id: '44', generation: 1 }, 'r-1', 'Accept')
     expect(daemon.sendTerminalInput).not.toHaveBeenCalled()
   })
@@ -202,8 +202,8 @@ describe('a chat session in the desktop window', () => {
 
     await waitFor(() => { expect(daemon.startChatSession).toHaveBeenCalledWith(HOME, 'claude', null, false) })
     expect(daemon.sendTerminalInput).not.toHaveBeenCalled()
-    const chats = await screen.findAllByRole('region', { name: 'Chat' })
-    expect(chats.some((chat) => within(chat).queryByText(/Chat session · no terminal/) !== null)).toBe(true)
+    // The chat session opens in a pane of its own, with no switch to a terminal it does not have.
+    await waitFor(() => { expect(screen.getAllByRole('region', { name: /^Terminal \d/ }).some((shown) => within(shown).queryByRole('region', { name: 'Chat' }) !== null && within(shown).queryByRole('radiogroup', { name: 'Pane view' }) === null)).toBe(true) })
   })
 })
 
@@ -258,14 +258,12 @@ describe('the chat that follows an agent in a pane', () => {
     daemon.loadConversations.mockResolvedValue([term(2, { provider: 'Claude', agent: 'claude', process: 'claude', chat: { conversation: 41, generation: 1, readOnly: true } })])
     renderDesktopApp()
     const pane = await screen.findByRole('region', { name: /^Terminal 1/ })
-    // The terminal view with its switch is still there.
-    await user.keyboard('{Control>}{Shift>}e{/Shift}{/Control}')
+    // An agent opens as its chat, and the switch to its terminal is there.
     const chat = await within(pane).findByRole('region', { name: 'Chat' })
     await within(chat).findByText('On it.')
 
     const composer = within(chat).getByRole('textbox')
     await waitFor(() => { expect(composer).toBeEnabled() })
-    expect(within(chat).queryByText(/Chat session · no terminal/)).not.toBeInTheDocument()
     expect(within(pane).getByRole('radiogroup', { name: 'Pane view' })).toBeInTheDocument()
 
     await user.type(composer, 'run the tests{Enter}')

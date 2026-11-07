@@ -1,7 +1,5 @@
 import { isSpinnerStyle, type SpinnerStyle } from '@/lib/spinner-clock'
 import { prefersPlainDrawing } from '@/lib/gpu'
-import type { EffectStyle } from '@/lib/animation-level'
-import type { AnimationMode } from '@/lib/animation-auto'
 import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, isFontFamily, isFontWeight, type TerminalFontWeight } from '@/lib/terminalFont'
 import { readThemePreference, type ThemePreference } from '@/data/themePreference'
 import { THEMES, type ThemeMode } from '@/features/workspace/theme/themes'
@@ -14,14 +12,10 @@ export type Density = 'compact' | 'comfortable' | 'spacious'
 export const DENSITIES: readonly Density[] = ['compact', 'comfortable', 'spacious']
 /** How big the sidebar's and the rail's icons and tiles are. */
 export type IconSize = 'small' | 'medium' | 'large'
-/** Which working rows and tabs show the working effect: every one, only the one you are in, or none. */
-export type WorkingScope = 'all' | 'selected' | 'off'
-/** How a project's other sessions sit under its main row in the sidebar. */
-export type TrayStyle = 'tree' | 'names' | 'icons' | 'stacked'
 /** Which side of the window the sidebar sits on. */
 export type SidebarSide = 'left' | 'right'
-/** The window style: Flat is solid panels, Tiled is edge-to-edge panes with square corners, Glass is floating frosted cards with sweeps. */
-export type StyleChoice = 'flat' | 'tiled' | 'glass'
+/** The window style: Flat is solid panels, Glass is floating frosted cards. Both share one layout. */
+export type StyleChoice = 'flat' | 'glass'
 /** App and folder icons keep their colours, or drop to neutral gray tiles. Independent of the style. */
 export type IconColor = 'color' | 'grayscale'
 
@@ -41,7 +35,8 @@ export type ScrollSpeed = (typeof SCROLL_SPEED_CHOICES)[number]
 export type SettingsPreferences = {
   accent: 'teal' | 'blue' | 'violet'
   spinner: SpinnerStyle
-  restoreTabs: boolean
+  /** Reopen the panes and splits of last time at launch. Saved as `restoreTabs` before fleets; that name is still read. */
+  restoreLayout: boolean
   reduceMotion: boolean
   animateSidebarActivity: boolean
   /** The desktop sidebar is collapsed to its rail. */
@@ -60,7 +55,6 @@ export type SettingsPreferences = {
   /** Where a new session starts. Empty: your home folder. */
   startFolder: string
   /** How the sidebar groups sessions: by git repository, or by the folder they are in. */
-  groupBy: 'repo' | 'folder'
   /** Which theme is in use: your dark one, your light one, or whichever the system asks for. */
   themeMode: ThemeMode
   /** The theme names used in dark and in light (Settings › Appearance). */
@@ -72,17 +66,6 @@ export type SettingsPreferences = {
   scrollSpeed: ScrollSpeed
   /** Mirror the terminal's text into the page for screen readers. It makes every pane much heavier to draw. */
   terminalScreenReader: boolean
-  /** Status effects on sidebar rows and tabs, each off by itself; Reduce motion turns all off. */
-  effectWorking: boolean
-  effectNeedsYou: boolean
-  effectDone: boolean
-  /** Waves or Sweep for each status; the animation level can only make it cheaper. */
-  effectStyleWorking: EffectStyle
-  effectStyleNeedsYou: EffectStyle
-  effectStyleDone: EffectStyle
-  workingScope: WorkingScope
-  /** How much the status effects may move: Auto measures, the others fix the level. Reduce motion wins over all of them. */
-  animations: AnimationMode
   density: Density
   /** Text size of the sidebar's folder names and session rows, in px. */
   sidebarTextSize: number
@@ -92,7 +75,6 @@ export type SettingsPreferences = {
   sidebarWidth: number
   sidebarSide: SidebarSide
   iconSize: IconSize
-  trayStyle: TrayStyle
   style: StyleChoice
   iconColor: IconColor
   /** Which view a Claude or Codex session opens in. Terminal until you change it. */
@@ -135,8 +117,8 @@ export function validBudget(value: unknown): number | null {
 
 export const TERMINAL_FONT_SIZE_MIN = 12
 export const TERMINAL_FONT_SIZE_MAX = 16
-export const SIDEBAR_WIDTH_MIN = 200
-export const SIDEBAR_WIDTH_MAX = 420
+export const SIDEBAR_WIDTH_MIN = 208
+export const SIDEBAR_WIDTH_MAX = 440
 export const SIDEBAR_WIDTH_DEFAULT = 264
 /** The sidebar and tab text sizes the controls offer, in px; any size in range that was saved is kept. */
 export const UI_TEXT_SIZE_SMALL = 12
@@ -155,7 +137,7 @@ function defaults(): SettingsPreferences {
   return {
     accent: 'teal',
     spinner: 'braille',
-    restoreTabs: true,
+    restoreLayout: true,
     reduceMotion: false,
     animateSidebarActivity: true,
     compactSidebar: false,
@@ -169,7 +151,6 @@ function defaults(): SettingsPreferences {
     terminalFontWeight: DEFAULT_FONT_WEIGHT,
     terminalFontWeightBold: DEFAULT_FONT_WEIGHT_BOLD,
     startFolder: '',
-    groupBy: 'repo',
     // The theme chosen before there were two slots keeps its look; otherwise follow the system.
     themeMode: legacy === 'Paper' ? 'light' : legacy === 'Abyss' ? 'dark' : 'system',
     darkTheme: legacy === 'Abyss' ? 'Abyss' : 'Midnight',
@@ -179,28 +160,18 @@ function defaults(): SettingsPreferences {
     scrollSpeed: SCROLL_NORMAL,
     terminalScreenReader: false,
     style: 'glass',
-    // Glass runs the status sweeps; Flat and Tiled start with them off. A choice made in Settings wins either way.
-    effectWorking: true,
-    effectNeedsYou: true,
-    effectDone: true,
-    effectStyleWorking: 'waves',
-    effectStyleNeedsYou: 'sweep',
-    effectStyleDone: 'sweep',
-    workingScope: 'all',
-    animations: 'auto',
     density: 'comfortable',
     sidebarTextSize: UI_TEXT_SIZE_DEFAULT,
     tabTextSize: UI_TEXT_SIZE_DEFAULT,
     sidebarWidth: SIDEBAR_WIDTH_DEFAULT,
     sidebarSide: 'left',
     iconSize: 'medium',
-    trayStyle: 'tree',
     iconColor: 'color',
     chatViewDefault: DEFAULT_CHAT_VIEWS,
     defaultAgent: 'claude',
     newSessionView: 'chat',
     chatFullAccessDefault: false,
-    statusBar: true,
+    statusBar: false,
     perfOverlay: false,
     terminalPlainDrawing: prefersPlainDrawing(),
     terminalSeeThrough: false,
@@ -237,10 +208,11 @@ export function readSettingsPreferences(): SettingsPreferences {
     if (typeof value !== 'object' || value === null) return fresh
     const preferences = value as Partial<Record<keyof SettingsPreferences, unknown>>
     const fallback = fresh
+    const saved = value as { restoreTabs?: unknown }
     return {
       accent: isAccent(preferences.accent) ? preferences.accent : fallback.accent,
       spinner: isSpinnerStyle(preferences.spinner) ? preferences.spinner : fallback.spinner,
-      restoreTabs: bool(preferences.restoreTabs, fallback.restoreTabs),
+      restoreLayout: bool(preferences.restoreLayout ?? saved.restoreTabs, fallback.restoreLayout),
       reduceMotion: bool(preferences.reduceMotion, fallback.reduceMotion),
       animateSidebarActivity: bool(preferences.animateSidebarActivity, fallback.animateSidebarActivity),
       compactSidebar: bool(preferences.compactSidebar, fallback.compactSidebar),
@@ -254,27 +226,17 @@ export function readSettingsPreferences(): SettingsPreferences {
       terminalFontWeight: isFontWeight(preferences.terminalFontWeight) ? preferences.terminalFontWeight : fallback.terminalFontWeight,
       terminalFontWeightBold: isFontWeight(preferences.terminalFontWeightBold) ? preferences.terminalFontWeightBold : fallback.terminalFontWeightBold,
       startFolder: typeof preferences.startFolder === 'string' ? preferences.startFolder.trim() : fallback.startFolder,
-      groupBy: preferences.groupBy === 'folder' || preferences.groupBy === 'repo' ? preferences.groupBy : fallback.groupBy,
       ...themeChoice(preferences, fallback),
       cursorStyle: isCursorStyle(preferences.cursorStyle) ? preferences.cursorStyle : fallback.cursorStyle,
       scrollback: isScrollback(preferences.scrollback) ? preferences.scrollback : fallback.scrollback,
       scrollSpeed: isScrollSpeed(preferences.scrollSpeed) ? preferences.scrollSpeed : fallback.scrollSpeed,
       terminalScreenReader: bool(preferences.terminalScreenReader, fallback.terminalScreenReader),
-      effectWorking: bool(preferences.effectWorking, fallback.effectWorking),
-      effectNeedsYou: bool(preferences.effectNeedsYou, fallback.effectNeedsYou),
-      effectDone: bool(preferences.effectDone, fallback.effectDone),
-      effectStyleWorking: effectStyle(preferences.effectStyleWorking, fallback.effectStyleWorking),
-      effectStyleNeedsYou: effectStyle(preferences.effectStyleNeedsYou, fallback.effectStyleNeedsYou),
-      effectStyleDone: effectStyle(preferences.effectStyleDone, fallback.effectStyleDone),
-      workingScope: preferences.workingScope === 'all' || preferences.workingScope === 'selected' || preferences.workingScope === 'off' ? preferences.workingScope : fallback.workingScope,
-      animations: isAnimationMode(preferences.animations) ? preferences.animations : fallback.animations,
       density: isDensity(preferences.density) ? preferences.density : fallback.density,
       sidebarTextSize: clampNumber(preferences.sidebarTextSize, UI_TEXT_SIZE_MIN, UI_TEXT_SIZE_MAX, fallback.sidebarTextSize),
       tabTextSize: clampNumber(preferences.tabTextSize, UI_TEXT_SIZE_MIN, UI_TEXT_SIZE_MAX, fallback.tabTextSize),
       sidebarWidth: clampNumber(preferences.sidebarWidth, SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX, fallback.sidebarWidth),
       sidebarSide: preferences.sidebarSide === 'left' || preferences.sidebarSide === 'right' ? preferences.sidebarSide : fallback.sidebarSide,
       iconSize: preferences.iconSize === 'small' || preferences.iconSize === 'medium' || preferences.iconSize === 'large' ? preferences.iconSize : fallback.iconSize,
-      trayStyle: preferences.trayStyle === 'tree' || preferences.trayStyle === 'names' || preferences.trayStyle === 'icons' || preferences.trayStyle === 'stacked' ? preferences.trayStyle : fallback.trayStyle,
       style: styleOf(preferences.style) ?? fallback.style,
       chatViewDefault: chatViewDefault(preferences.chatViewDefault, fallback.chatViewDefault),
       defaultAgent: preferences.defaultAgent === 'claude' || preferences.defaultAgent === 'codex' ? preferences.defaultAgent : fallback.defaultAgent,
@@ -316,14 +278,6 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
   return Math.min(max, Math.max(min, value))
 }
 
-function effectStyle(value: unknown, fallback: EffectStyle): EffectStyle {
-  return value === 'waves' || value === 'sweep' ? value : fallback
-}
-
-function isAnimationMode(value: unknown): value is AnimationMode {
-  return value === 'auto' || value === 'full' || value === 'light' || value === 'off'
-}
-
 function isDensity(value: unknown): value is Density {
   return value === 'compact' || value === 'comfortable' || value === 'spacious'
 }
@@ -334,8 +288,9 @@ function isAccent(value: unknown): value is SettingsPreferences['accent'] {
 
 /** "minimal" and "expressive" were the names before the window styles; they read as Flat and Glass. */
 function styleOf(value: unknown): StyleChoice | null {
-  if (value === 'flat' || value === 'tiled' || value === 'glass') return value
-  if (value === 'minimal') return 'flat'
+  // Tiled is gone: a saved Tiled reads as Flat.
+  if (value === 'flat' || value === 'tiled' || value === 'minimal') return 'flat'
+  if (value === 'glass') return 'glass'
   if (value === 'expressive') return 'glass'
   return null
 }

@@ -1,22 +1,46 @@
-import { useEffect, useRef, type ClipboardEvent, type KeyboardEvent } from 'react'
-import { ArrowUp, Paperclip, Square, X } from 'lucide-react'
+import { useEffect, useRef, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { pickFromClipboard, unsupportedMessage } from '@/features/terminal/clipboardImage'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
+import { AppIcon, Icon } from '@/features/workspace/components/glyphs'
 import { registerComposerDrop } from '../composerDrop'
 import type { ChatComposer } from '../useChatComposer'
+import { useAgentChoice } from '../agentChoice'
 import { DraftAttachments } from './Attachments'
+import { AgentPicker } from './AgentPicker'
+import { modelName } from '../modelName'
 
-type Props = { agent: ChatAgent; composer: ChatComposer }
+/** What the settings tray under the box says about the session. */
+export type ComposerFacts = {
+  /** The permission mode in words, from the agent's own file; null when it has not said. */
+  mode: string | null
+  /** The mode asks about nothing, so it is drawn in the danger colour. */
+  modeDanger: boolean
+  subagents: number
+  folder: string
+  branch: string | null
+  /** The model the agent's own file says it uses; null when it has not said. */
+  model: string | null
+  onOpenFolder: (() => void) | null
+}
+
+type Props = {
+  agent: ChatAgent
+  composer: ChatComposer
+  /** The chat's conversation number; with it the composer offers the agent, model and reasoning picker. */
+  conversation?: number
+  /** The question tray: what the agent asks, slid up from behind the box. Null when it asks nothing. */
+  question?: ReactNode
+  facts: ComposerFacts
+}
 
 /**
- * The composer (v18 B.3, C.1). Enter sends, Shift+Enter adds a line, Esc or Stop interrupts the
- * running turn. While the agent works, sending queues the message; while a request waits for an
- * answer, or the daemon is offline, the composer is off and says why.
+ * The message box, in three layers (README: message box): the question tray when the agent asks, the
+ * box (text, attach, model picker, send), and the settings tray under it. Enter sends, Shift+Enter
+ * adds a line, Esc interrupts the running turn. While the agent works, sending queues the message;
+ * while a request waits for an answer, or the daemon is offline, the box is off and says why.
  */
-export function Composer({ agent, composer }: Props) {
+export function Composer({ agent, composer, conversation, question = null, facts }: Props) {
   const { draft, setDraft, attachments, attach, readOnly, queue, removeQueued, submit, stop, running, sending, disabledReason, error } = composer
   const off = disabledReason !== null
   const box = useRef<HTMLDivElement>(null)
@@ -37,6 +61,9 @@ export function Composer({ agent, composer }: Props) {
   }
   const attachLabel = off ? `Attach files: ${disabledReason}` : 'Attach files'
   const placeholder = disabledReason ?? (running ? `Queue a message for when ${agent} finishes` : `Message ${agent}`)
+  const empty = draft.trim() === '' && attachments.length === 0
+  // With nothing typed while a turn runs, the round button stops the agent instead of sending.
+  const stopping = running && empty && !off
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter while an input method is composing text confirms the text; it is not a send.
@@ -51,72 +78,94 @@ export function Composer({ agent, composer }: Props) {
   }
 
   return (
-    <div ref={box} className="shrink-0 border-t border-line2 px-4 pt-2.5 pb-3">
-      <div className="mx-auto w-full max-w-[760px]">
+    <div ref={box} className="mx-composer">
+      <div className="mx-composer-column">
         {queue.length > 0 && (
-          <ul className="m-0 mb-2 flex list-none flex-col items-end gap-1.5 p-0" aria-label="Queued messages">
+          <ul className="mx-queue" aria-label="Queued messages">
             {queue.map((message) => (
-              <li key={message.id} className="flex max-w-[85%] flex-col gap-0.5 rounded-[16px_16px_5px_16px] border border-dashed border-line2 px-3.5 py-2 text-[14px] leading-[1.5] text-fg2">
-                <span className="whitespace-pre-wrap [overflow-wrap:anywhere]">{message.text}</span>
-                <span className="flex items-center gap-1.5 text-[11.5px] text-dim">
+              <li key={message.id} className="mx-queued">
+                <span className="mx-queued-text">{message.text}</span>
+                <span className="mx-queued-note">
                   Queued · sent when {agent} finishes this turn, even if you close the window
-                  <button type="button" className="inline-flex items-center gap-0.5 text-dim underline-offset-2 hover:text-fg hover:underline" onClick={() => { removeQueued(message.id) }}>
-                    <X className="size-3" aria-hidden="true" />Remove
-                  </button>
+                  <button type="button" className="mx-queued-remove" onClick={() => { removeQueued(message.id) }}><Icon name="close" size={10} />Remove</button>
                 </span>
               </li>
             ))}
           </ul>
         )}
-        <div className={`flex flex-col gap-2 rounded-[14px] border border-line2 bg-raise px-3 py-2 focus-within:border-[var(--accent-line)] focus-within:ring-2 focus-within:ring-[var(--accent-soft)] ${off ? 'opacity-70' : ''}`}>
+        {question}
+        <div className={`mx-box${off ? ' is-locked' : ''}`}>
           <DraftAttachments attachments={attachments} onRemove={attach.remove} />
-          <div className="flex items-end gap-2">
-          {!readOnly && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  {/* aria-disabled, not disabled: a disabled button gets no focus or tooltip, and the reason is the point. */}
-                  <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-lg text-dim hover:text-fg" aria-label={attachLabel} aria-disabled={off} onClick={() => { if (!off) attach.pick() }}>
-                    <Paperclip className="size-4" aria-hidden="true" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{attachLabel}</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
           <textarea
             aria-label={`Message ${agent}`}
-            rows={1}
+            rows={2}
             value={draft}
             disabled={off}
             placeholder={placeholder}
-            className="max-h-40 min-h-[24px] flex-1 resize-none bg-transparent py-0.5 text-[14px] leading-[1.5] text-fg outline-none [field-sizing:content] placeholder:text-dim disabled:cursor-not-allowed"
+            className="mx-box-text"
             onChange={(event) => { setDraft(event.target.value) }}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
           />
-          {running && (
-            <Button type="button" variant="outline" size="icon" className="size-8 shrink-0 rounded-lg" aria-label={`Stop ${agent}`} onClick={stop}>
-              <Square className="size-3.5 fill-current" aria-hidden="true" />
-            </Button>
-          )}
-          <Button
-            type="button"
-            size="icon"
-            className="size-8 shrink-0 rounded-lg bg-brand text-[var(--on-accent)] hover:bg-brand/85"
-            aria-label={running ? 'Queue message' : 'Send message'}
-            disabled={off || sending || (draft.trim() === '' && attachments.length === 0)}
-            onClick={submit}
-          >
-            <ArrowUp className="size-4" aria-hidden="true" />
-          </Button>
+          <div className="mx-box-row">
+            {!readOnly && (
+              // aria-disabled, not disabled: a disabled button gets no focus or tooltip, and the reason is the point.
+              <button type="button" className="mx-box-attach" aria-label={attachLabel} title={attachLabel} aria-disabled={off} onClick={() => { if (!off) attach.pick() }}>
+                <Icon name="plus" size={16} />
+              </button>
+            )}
+            <span className="mx-spacer" />
+            {conversation !== undefined && !readOnly && <ModelPicker agent={agent} conversation={conversation} model={facts.model} />}
+            {readOnly && facts.model !== null && <ModelLabel agent={agent} model={facts.model} />}
+            {stopping ? (
+              <button type="button" className="mx-send is-stop" aria-label={`Stop ${agent}`} title={`Stop ${agent} (Esc)`} onClick={stop}><span className="mx-stop-square" aria-hidden="true" /></button>
+            ) : (
+              <button type="button" className={`mx-send${off || empty ? ' is-off' : ''}`} aria-label={running ? 'Queue message' : 'Send message'} disabled={off || sending || empty} onClick={submit}>
+                <Icon name="arrowUp" size={15} strokeWidth={2.2} />
+              </button>
+            )}
           </div>
         </div>
-        <p className="m-0 mt-1.5 text-[11.5px] text-dim">
-          {running ? `Enter queues it · Esc interrupts ${agent}` : `Same session as the terminal · switching views never restarts ${agent}`}
-        </p>
-        {error !== null && <p role="alert" className="m-0 mt-1 text-[12px] text-[var(--danger)]">{error}. Your message is kept; send it again to retry.</p>}
+        <SettingsTray facts={facts} />
+        {error !== null && <p role="alert" className="mx-composer-error">{error}. Your message is kept; send it again to retry.</p>}
       </div>
     </div>
   )
+}
+
+/** The darker tray under the box: how the agent is set up, its subagents, its folder and branch. */
+function SettingsTray({ facts }: { facts: ComposerFacts }) {
+  return (
+    <div className="mx-settings-tray">
+      <span className={`mx-tray-fact${facts.modeDanger ? ' is-danger' : ''}`} title={facts.mode === null ? 'Not reported by the agent yet' : "The permission mode, from the agent's own file. Cycle it in the terminal with Shift+Tab."}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3 5 6v6c0 4.4 3 7.6 7 9 4-1.4 7-4.6 7-9V6z" /></svg>
+        {facts.mode ?? 'Permissions'}
+      </span>
+      <span className="mx-tray-fact" title="Subagents this session started">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+        {facts.subagents > 0 ? `Subagents · ${String(facts.subagents)}` : 'Subagents'}
+      </span>
+      {facts.onOpenFolder === null
+        ? <span className="mx-tray-fact"><Icon name="folder" />{facts.folder}</span>
+        : <button type="button" className="mx-tray-fact is-button" title="Show its files" onClick={facts.onOpenFolder}><Icon name="folder" />{facts.folder}</button>}
+      <span className="mx-spacer" />
+      {facts.branch !== null && <span className="mx-tray-fact is-branch"><Icon name="branch" size={13} strokeWidth={1.9} stroke="currentColor" />{facts.branch}</span>}
+    </div>
+  )
+}
+
+/** The model a chat that follows a terminal agent runs; it is changed in the terminal, so it is only said. */
+function ModelLabel({ agent, model }: { agent: ChatAgent; model: string }) {
+  return (
+    <span className="mx-model-button is-static" title="The model, from the agent's own file. Change it in the terminal with /model.">
+      <span className="mx-model-icon"><AppIcon process={agent} size={14} /></span>
+      <span className="mx-model-name">{modelName(agent, undefined, model)}</span>
+    </span>
+  )
+}
+
+/** The model and reasoning the next message uses, from the agent picker. */
+function ModelPicker({ agent, conversation, model }: { agent: ChatAgent; conversation: number; model: string | null }) {
+  const [choice, change] = useAgentChoice(conversation, agent)
+  return <AgentPicker agent={agent} choice={choice} onChange={change} currentModel={model} />
 }

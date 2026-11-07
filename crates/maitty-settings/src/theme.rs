@@ -649,6 +649,11 @@ impl Theme {
 
     /// The selected row's ground: the background a step toward the text, so it reads on any
     /// theme without a colour of its own.
+    /// Tree lines and line numbers: half way from the quiet text to the ground.
+    pub fn faint(&self) -> Color {
+        mix(self.muted, self.bg, 0.5)
+    }
+
     pub fn sel_bg(&self) -> Color {
         mix(self.bg, self.text, 0.12)
     }
@@ -799,7 +804,7 @@ impl Theme {
                 [
                     "#08111d", "#c9d6e3", "#0b1624", "#0f1b2b", "#15253a", "#1d2d42", "#6f8399",
                     "#c9d6e3", "#eef5fb", "#3dd6c6", "#08111d", "#3dd6c6", "#7fd99a", "#f5c542",
-                    "#1a2c44", "#15253a",
+                    "#15253a", "#13233a",
                 ],
                 ["#c4a7ff", "#6cb6ff", "#e9b44c", "#3dd6c6"],
                 [
@@ -807,6 +812,7 @@ impl Theme {
                 ],
             )
             .with_err("#ff7b72")
+            .with_selection("#1a3050")
             .with_splash(["#e8f1f8", "#3dd6c6", "#1f6f8b", "#123049"]),
             // The same sea by day: pale grey-blue, deep teal for focus.
             "day" => Theme::design(
@@ -2014,6 +2020,11 @@ impl Theme {
 
     fn with_err(mut self, c: &str) -> Theme {
         self.err = hex(c);
+        self
+    }
+
+    fn with_selection(mut self, c: &str) -> Theme {
+        self.selection_bg = hex(c);
         self
     }
 

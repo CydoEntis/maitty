@@ -2,7 +2,7 @@
 # Location: %APPDATA%\maitty\config.toml on Windows, ~/.config/maitty/config.toml elsewhere
 # (override with MAITTY_CONFIG). Every key is optional; reload with <prefix> Ctrl+R.
 
-prefix = "ctrl+space"
+prefix = "ctrl+a"
 
 # Dark and light each remember a theme; `appearance` says which one shows. Browse the
 # built-in names in Settings > Appearance. The app's own pair is night (the dark default) and
@@ -42,9 +42,8 @@ sidebar_tabs = "all"        # all | busy | off: a session's tabs as lines under 
 alt_keys = true             # Alt+n shell, Alt+a session, Alt+x close, Alt+s / Alt+d split side by side / down, without the leader
 sidebar = true              # <leader> z collapses it
 sidebar_position = "left"   # left | right
-# tool_rail = false         # a column of f c b a chips on the right edge (needs 100 columns); the Menu opens them too
-pane_colors = false         # floating: each pane's border in its own colour
-tab_gap = true              # a cell between one tab and the next; false: they touch
+# new_session_view = "chat"  # chat | terminal: what a new session opens as (the desktop app's choice)
+# window_style = "flat"      # flat | glass: the desktop window
 rounded = false            # rounded card corners (older "full" and "corners" still read as true)
 # padding = "small"         # small | medium | large: space round the screen
 # gap = "small"             # small | medium | large: space between floating panes
@@ -75,6 +74,7 @@ helpers_at_once = "3"       # 2 | 3 | 4
 [restore]
 enabled = true              # rebuild workspaces / tabs / panes when the server starts
 agents = true               # resume agents (claude --resume <id>, codex resume --last, ...)
+conversations = true        # resume chat conversations that were running, on the same provider session
 commands = true             # re-run commands panes were started with
 output = true               # keep each pane's recent output on disk (may hold secrets; false deletes it)
 

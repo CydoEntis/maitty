@@ -28,6 +28,17 @@ const SPINNERS: Record<TuiSpinner, readonly string[]> = {
   bars: ['⣰⡄', '⣼⡀', '⣶⡆', '⣧⡇', '⣆⡆', '⣤⡄', '⣸⡆', '⣴⡇', '⣇⡄', '⣦⡀'],
 }
 
+/** The frames of a TUI spinner: what the shared config stores for it. */
+export function framesOfTuiSpinner(spinner: TuiSpinner): readonly string[] {
+  return SPINNERS[spinner]
+}
+
+/** The TUI spinner whose frames these are, or null when they are a custom set. */
+export function tuiSpinnerOfFrames(frames: readonly string[]): TuiSpinner | null {
+  const found = TUI_SPINNERS.find(([id]) => SPINNERS[id].length === frames.length && SPINNERS[id].every((frame, index) => frame === frames[index]))
+  return found?.[0] ?? null
+}
+
 /**
  * The TUI steps its spinners every 80-90 ms. Here every step repaints each mounted spinner in a
  * web view that may draw in software, so the frames go at half that rate (docs/PERFORMANCE.md).

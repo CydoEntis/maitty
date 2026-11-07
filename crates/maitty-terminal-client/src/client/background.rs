@@ -273,7 +273,7 @@ impl App {
             ServerMsg::Error(e) => {
                 // The output a failure waited for may be what failed; a later reply is not its.
                 self.screen.failure_ask = None;
-                self.session_popup_failed();
+                self.new_session_failed();
                 self.notify(e, true);
             }
             ServerMsg::Notice(n) if machine != MachineId::LOCAL => self.notify(n, false),
@@ -292,6 +292,15 @@ impl App {
                     *at = Instant::now() + Duration::from_secs(10);
                 }
             }
+            // The desktop app changed a shared setting: load the file, unless this window
+            // already shows these values (its own change comes back as the same message).
+            ServerMsg::SettingsChanged(settings)
+                if machine == MachineId::LOCAL
+                    && settings != crate::shared_settings::read(&self.cfg) =>
+            {
+                self.reload_config()
+            }
+            ServerMsg::SettingsChanged(_) => {}
             ServerMsg::Raise => crate::reveal::raise_window(),
             // The server stopped for the update: an older window can't speak to the new one, so
             // the installed the app takes its place; a current window just connects again.
@@ -312,7 +321,7 @@ impl App {
                 self.check_output_arrived(text)
             }
             ServerMsg::Reply(Reply::Folders { tag, listing }) => {
-                self.session_popup_listing(machine, tag, listing);
+                self.new_session_listing(machine, tag, listing);
             }
             ServerMsg::Welcome { .. } | ServerMsg::Reply(_) => {}
         }

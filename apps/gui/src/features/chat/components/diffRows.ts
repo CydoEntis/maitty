@@ -9,11 +9,3 @@ export function diffRows(hunks: readonly DiffHunk[]): DiffRow[] {
     ...hunk.lines.map((line, lineIndex): DiffRow => ({ key: `${String(hunkIndex)}:${String(lineIndex)}`, sign: line.kind === 'add' ? '+' : line.kind === 'remove' ? '−' : ' ', text: line.text, tone: line.kind })),
   ])
 }
-
-/** A line's tint is its theme colour at 10%, so it holds in the light themes too (v18 C.10). */
-export const DIFF_TONE: Record<DiffRow['tone'], string> = {
-  add: 'bg-[color-mix(in_srgb,var(--ok)_10%,transparent)]',
-  remove: 'bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]',
-  context: '',
-  header: 'text-dim',
-}

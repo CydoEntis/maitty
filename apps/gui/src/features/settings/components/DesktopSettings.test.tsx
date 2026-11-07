@@ -6,10 +6,10 @@ import type { SettingsPreferences } from '../preferences'
 import { machineHeads, type RemoteMachine } from '@/features/workspace/model/machines'
 import { DesktopSettings, type DesktopSettingsSection, type MachinesInfo } from './DesktopSettings'
 
-const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, terminalFontFamily: '', terminalFontWeight: 400, terminalFontWeightBold: 700, startFolder: '', groupBy: 'repo', themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper', cursorStyle: 'block', scrollback: 10000, scrollSpeed: 1, effectWorking: true, effectNeedsYou: true, effectDone: true, effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all', animations: 'auto', density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, monthlyBudget: null, iconSize: 'medium', trayStyle: 'names', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, defaultAgent: 'claude', newSessionView: 'chat', chatFullAccessDefault: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass' }
+const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreLayout: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, terminalFontFamily: '', terminalFontWeight: 400, terminalFontWeightBold: 700, startFolder: '', themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper', cursorStyle: 'block', scrollback: 10000, scrollSpeed: 1, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, monthlyBudget: null, iconSize: 'medium', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, defaultAgent: 'claude', newSessionView: 'chat', chatFullAccessDefault: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass' }
 
 function info(overrides: Partial<MachinesInfo> = {}): MachinesInfo {
-  return { known: true, list: [], onRetry: vi.fn(), onRemove: vi.fn(), onGrant: vi.fn(), onCopyCommand: vi.fn(), add: { windows: false, loadHosts: () => Promise.resolve([]), onAdd: vi.fn(), onCancel: vi.fn() }, ...overrides }
+  return { known: true, list: [], onRetry: vi.fn(), onRemove: vi.fn(), onGrant: vi.fn(), onUpdate: vi.fn(() => Promise.resolve()), onCheckActivity: vi.fn(() => Promise.resolve(null)), onCopyCommand: vi.fn(), add: { windows: false, loadHosts: () => Promise.resolve([]), onAdd: vi.fn(), onCancel: vi.fn() }, ...overrides }
 }
 
 function renderSettings(section: DesktopSettingsSection, overrides: Partial<Parameters<typeof DesktopSettings>[0]> = {}) {
@@ -198,46 +198,11 @@ describe('desktop settings', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
-  it('picks Waves or Sweep for each status and a scope for the working effect', async () => {
-    const user = userEvent.setup()
-    const { onChange } = renderSettings('appearance')
-    const working = screen.getByRole('radiogroup', { name: 'Working style' })
-    expect(within(working).getByRole('radio', { name: 'Waves' })).toHaveAttribute('aria-checked', 'true')
-    expect(within(screen.getByRole('radiogroup', { name: 'Done style' })).getByRole('radio', { name: 'Sweep' })).toHaveAttribute('aria-checked', 'true')
-
-    await user.click(within(working).getByRole('radio', { name: 'Sweep' }))
-    expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, effectStyleWorking: 'sweep' })
-    await user.click(within(screen.getByRole('radiogroup', { name: 'Needs you style' })).getByRole('radio', { name: 'Waves' }))
-    expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, effectStyleNeedsYou: 'waves' })
-    await user.click(within(screen.getByRole('radiogroup', { name: 'Working effect' })).getByRole('radio', { name: 'Selected' }))
-    expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, workingScope: 'selected' })
-  })
-
-  it('picks how much the animations may move, with Auto as the default', async () => {
-    const user = userEvent.setup()
-    const { onChange } = renderSettings('appearance')
-    const animations = screen.getByRole('radiogroup', { name: 'Animations' })
-    expect(within(animations).getAllByRole('radio').map((radio) => radio.textContent)).toEqual(['Auto', 'Full', 'Light', 'Off'])
-    expect(within(animations).getByRole('radio', { name: 'Auto' })).toHaveAttribute('aria-checked', 'true')
-
-    await user.click(within(animations).getByRole('radio', { name: 'Light' }))
-    expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, animations: 'light' })
-  })
-
-  it('says on the Performance page what Auto chose and why', () => {
+  it('measures running animations on the Performance page and offers no animation level to choose', () => {
     renderSettings('performance')
 
-    // jsdom has no WebGL 2, so the web view counts as software rendering.
-    expect(screen.getByText('Auto: Software rendering detected, using Sweep')).toBeInTheDocument()
-  })
-
-  it('clips a live preview to each status chip', () => {
-    renderSettings('appearance')
-    const chips = document.querySelectorAll('.mx-effect-chip')
-
-    expect(chips).toHaveLength(3)
-    expect(chips[0]?.querySelectorAll('.mx-fx-wave')).toHaveLength(2)
-    expect(chips[1]?.querySelector('.mx-fx-band')).not.toBeNull()
+    expect(screen.getByText('Animations running')).toBeInTheDocument()
+    expect(screen.queryByText('Animations')).not.toBeInTheDocument()
   })
 
   it('picks a dark and a light theme separately, from searchable dropdowns that list the one in use first', async () => {
@@ -299,12 +264,11 @@ describe('desktop settings', () => {
     expect(onPreviewTheme).not.toHaveBeenCalledWith('GitHub Light')
   })
 
-  it('keeps the status effect switches off while the system reduces motion', () => {
-    renderSettings('appearance', { systemReducedMotion: true })
-    for (const name of ['Working', 'Needs you', 'Done']) {
-      expect(screen.getByRole('switch', { name })).toBeDisabled()
-      expect(screen.getByRole('switch', { name })).toHaveAttribute('aria-checked', 'false')
-    }
+  it('has no status effect, animation level or working-effect controls', () => {
+    renderSettings('appearance')
+    expect(screen.queryByRole('radiogroup', { name: 'Animations' })).toBeNull()
+    expect(screen.queryByRole('radiogroup', { name: 'Working effect' })).toBeNull()
+    expect(screen.queryByRole('switch', { name: 'Needs you' })).toBeNull()
   })
 
   it('shows only what maittyd reports about itself', () => {
@@ -352,20 +316,19 @@ describe('desktop settings', () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ iconSize: 'small' }))
   })
 
-  it('offers Flat, Tiled and Glass as the window style, with the current one checked', async () => {
+  it('offers Flat and Glass as the window style, with the current one checked, and no Tiled', async () => {
     const user = userEvent.setup()
     const { onChange } = renderSettings('appearance', { preferences: { ...PREFS, style: 'glass' } })
     const styles = screen.getByRole('radiogroup', { name: 'Window style' })
 
     expect(within(styles).getAllByRole('radio').map((radio) => radio.textContent)).toEqual([
       expect.stringContaining('Flat'),
-      expect.stringContaining('Tiled'),
       expect.stringContaining('Glass'),
     ])
     expect(within(styles).getByRole('radio', { name: /Glass/ })).toBeChecked()
 
-    await user.click(within(styles).getByRole('radio', { name: /Tiled/ }))
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ style: 'tiled' }))
+    await user.click(within(styles).getByRole('radio', { name: /Flat/ }))
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ style: 'flat' }))
   })
 
   it('replays the welcome from General', async () => {
@@ -463,6 +426,51 @@ describe('the Machines page', () => {
     expect(screen.getByText('maitty machine update box --install')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Copy the update command for box' }))
     expect(onCopyCommand).toHaveBeenCalledWith('maitty machine update box --install')
+  })
+
+  it('asks before updating a machine, says what happens to its sessions, then updates it', async () => {
+    const user = userEvent.setup()
+    const onUpdate = vi.fn(() => Promise.resolve())
+    renderSettings('machines', { machines: info({ list: others('needs-update', 'run `maitty machine update box --install` (or set `remote_cmd` to its path), then retry'), onUpdate }) })
+    await user.click(screen.getByRole('button', { name: 'Update box' }))
+    expect(onUpdate).not.toHaveBeenCalled()
+    expect(await screen.findByRole('alert')).toHaveTextContent(/come back with their agents resumed/)
+    await user.click(await screen.findByRole('button', { name: 'Update box now' }))
+    expect(onUpdate).toHaveBeenCalledWith('box', true, false)
+  })
+
+  it('does not update when the question is cancelled', async () => {
+    const user = userEvent.setup()
+    const onUpdate = vi.fn(() => Promise.resolve())
+    renderSettings('machines', { machines: info({ list: others('needs-update', 'run `maitty machine update box`, then retry'), onUpdate }) })
+    await user.click(screen.getByRole('button', { name: 'Update box' }))
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }))
+    expect(onUpdate).not.toHaveBeenCalled()
+  })
+
+  it('can wait for the machine to be idle before it updates', async () => {
+    const user = userEvent.setup()
+    const onUpdate = vi.fn(() => Promise.resolve())
+    renderSettings('machines', { machines: info({ list: others('needs-update', 'run `maitty machine update box`, then retry'), onUpdate }) })
+    await user.click(screen.getByRole('button', { name: 'Update box' }))
+    await user.click(await screen.findByRole('button', { name: 'Update box when idle' }))
+    expect(onUpdate).toHaveBeenCalledWith('box', false, true)
+  })
+
+  it('says how many sessions are open and how many are busy before it updates', async () => {
+    const user = userEvent.setup()
+    const onCheckActivity = vi.fn(() => Promise.resolve({ sessions: 3, busy: 1 }))
+    renderSettings('machines', { machines: info({ list: others('needs-update', 'run `maitty machine update box`, then retry'), onCheckActivity }) })
+    await user.click(screen.getByRole('button', { name: 'Update box' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('box has 3 sessions open, 1 busy.')
+    expect(onCheckActivity).toHaveBeenCalledWith('box')
+  })
+
+  it('still asks, and says it could not see what is open, when the machine cannot say', async () => {
+    const user = userEvent.setup()
+    renderSettings('machines', { machines: info({ list: others('needs-update', 'run `maitty machine update box`, then retry'), onCheckActivity: vi.fn(() => Promise.reject(new Error('no route'))) }) })
+    await user.click(screen.getByRole('button', { name: 'Update box' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('box could not say what is open on it.')
   })
 
   it('has no command to copy for a machine that needs nothing installed', () => {

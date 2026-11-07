@@ -34,7 +34,7 @@ export function remoteTerminals(machines: ReadonlyMap<number, RemoteMachine>): C
 export function idsOfMachinesNotHeard(layout: Layout, machines: ReadonlyMap<number, RemoteMachine>): string[] {
   const heard = new Set([...machines.values()].filter((machine) => machine.heard).map((machine) => machine.state.name.toLowerCase()))
   const ids = new Set<string>()
-  for (const tab of layout.tabs) {
+  for (const tab of layout.arrangements) {
     for (const pane of tab.panes) {
       const name = machineNameOf(pane.sessionId)
       if (name !== null && !heard.has(name.toLowerCase())) ids.add(pane.sessionId)
@@ -102,6 +102,14 @@ export function isDown(state: MachineState): boolean {
 
 export const THIS_COMPUTER = 'this computer'
 
+/** This computer's header, which the sidebar shows even when there is no other machine. */
+export const LOCAL_HEAD: MachineHead = { key: 'machine-0', machine: LOCAL_MACHINE, name: null, label: THIS_COMPUTER, chip: null, why: null, down: false, downSince: null, grants: { clipboard: false, notices: false }, updateCommand: null }
+
+/** The name a machine heading shows. */
+export function machineTitle(head: MachineHead): string {
+  return head.name ?? 'This computer'
+}
+
 /**
  * The headers the sidebar groups its folders under: this computer first, then the others in the
  * order of their ids, which only changes when the machine list does (the sidebar never reorders
@@ -112,7 +120,7 @@ export function machineHeads(machines: ReadonlyMap<number, RemoteMachine>): Mach
   const others = [...machines.entries()]
     .sort(([a], [b]) => a - b)
     .map(([id, machine]): MachineHead => ({ key: `machine-${String(id)}`, machine: id, name: machine.state.name, label: machine.state.name, chip: machineChip(machine.state), why: machine.state.why, down: isDown(machine.state), downSince: machine.state.since ?? null, grants: { clipboard: machine.state.clipboard === true, notices: machine.state.notices === true }, updateCommand: updateCommandOf(machine.state) }))
-  return [{ key: 'machine-0', machine: LOCAL_MACHINE, name: null, label: THIS_COMPUTER, chip: null, why: null, down: false, downSince: null, grants: { clipboard: false, notices: false }, updateCommand: null }, ...others]
+  return [LOCAL_HEAD, ...others]
 }
 
 /**

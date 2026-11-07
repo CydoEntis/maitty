@@ -15,6 +15,8 @@ use ratatui::style::{Modifier, Style};
 use std::path::PathBuf;
 use unicode_width::UnicodeWidthStr;
 
+/// The sidebar menu's width, so it opens with its right edge under the chip.
+const SIDEBAR_MENU_W: u16 = 24;
 /// How many snapshots the list offers (each has its number as its key).
 const SNAPSHOTS_LISTED: usize = 9;
 /// Why a snapshot is not restored while its session's agent works.
@@ -23,17 +25,20 @@ pub(super) const RESTORE_WHILE_WORKING: &str =
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Act {
-    /// Dial a machine again.
-    ReconnectMachine(String),
-    /// Install or update the app on a machine, in a popup that asks first.
-    UpdateMachine(String),
-    /// Change where a machine is: the dialog, on its address.
-    EditMachine(MachineId),
-    /// Take a machine out of the list; its sessions keep running there.
-    RemoveMachine(String),
-    Beside(ClientTerm),
+    /// Run a command, as its key would: an item of the Project menu.
+    Tool(crate::keys::Action),
+    /// Show this session in a split of the focused one, on that side.
+    Beside(ClientTerm, crate::layout::Dir),
+    /// Show this session in the workspace.
+    Open(ClientTerm),
+    /// Copy the session's folder to the clipboard.
+    CopyPath(ClientTerm),
+    /// Find in the session's output.
+    FindIn(ClientTerm),
     /// The program in this pane is an agent: the app learns it.
     TeachAgent(ClientTerm),
+    /// The tools and folder actions of the project this session is in.
+    ProjectTools(ClientTerm),
     /// End these (stops what runs in them).
     End(Vec<ClientTerm>),
     Changes(PathBuf),
@@ -49,8 +54,6 @@ pub enum Act {
     /// Put a checkout's files back as a snapshot has them: (folder, commit, when, whose row).
     Restore(PathBuf, String, String, ClientTerm),
     Split(ClientTerm, crate::layout::Dir),
-    /// Trade the places of two panes of the tab on screen.
-    Swap(ClientTerm, ClientTerm),
     RightClicks(ClientTerm),
     RenameProject(String, String),
     /// End everything in a project and forget it.
@@ -291,7 +294,6 @@ impl App {
                 Act::End(_)
                     | Act::CloseProject(_)
                     | Act::ArchiveConversation(_)
-                    | Act::RemoveMachine(_)
             )
         });
         self.mode = Mode::ScreenMenu(Box::new(ScreenMenu {
@@ -300,6 +302,51 @@ impl App {
             sel: 0,
             at,
         }));
+    }
+
+    /// The release chip at the sidebar's foot: what is on offer, what runs, and the notes. It
+    /// opens upward from the chip.
+    pub(super) fn release_menu(&mut self) {
+        use crate::keys::Action;
+        let running = format!("Running v{}", crate::brand::APP_VERSION);
+        let notes = ("Release notes".to_string(), Act::Tool(Action::Updates));
+        let items = if let Some(v) = self.update_available.clone() {
+            vec![
+                (format!("Update to v{}", v.trim_start_matches('v')), Act::Tool(Action::Update)),
+                (running, Act::Tool(Action::Updates)),
+                notes,
+            ]
+        } else if self.restart_needed() {
+            vec![
+                ("Restart onto the new version".to_string(), Act::Tool(Action::Restart)),
+                (running, Act::Tool(Action::Updates)),
+                notes,
+            ]
+        } else {
+            vec![
+                (running, Act::Tool(Action::Updates)),
+                ("Check for updates".to_string(), Act::Tool(Action::CheckUpdate)),
+                notes,
+            ]
+        };
+        let side = self.screen.side_rect;
+        self.menu("maitty".into(), items, (side.x + 2, side.bottom().saturating_sub(1)));
+    }
+
+    /// The sidebar foot's ` menu ` chip: the sidebar's own few things, opening upward. The full
+    /// Menu is the leader's `.`.
+    pub(super) fn sidebar_menu(&mut self) {
+        use crate::keys::Action;
+        let items = vec![
+            ("Filter sessions".to_string(), Act::Tool(Action::FilterSessions)),
+            ("Inbox".to_string(), Act::Tool(Action::Jump)),
+            ("Usage and cost".to_string(), Act::Tool(Action::Usage)),
+            ("Settings".to_string(), Act::Tool(Action::Settings)),
+            ("Keys".to_string(), Act::Tool(Action::Help)),
+        ];
+        let side = self.screen.side_rect;
+        let x = side.right().saturating_sub(SIDEBAR_MENU_W + 1);
+        self.menu("menu".into(), items, (x, side.bottom().saturating_sub(1)));
     }
 
     /// Right-click on a pane's content.
@@ -311,51 +358,31 @@ impl App {
         let agent = find(&model, term)
             .map(|(_, _, s)| s.agent.clone())
             .unwrap_or_default();
+        use crate::layout::Dir;
         let mut items = vec![
-            ("Rename pane".to_string(), Act::RenamePane(term)),
+            ("Rename".to_string(), Act::RenamePane(term)),
+            ("Split right".to_string(), Act::Split(term, Dir::Right)),
+            ("Split down".to_string(), Act::Split(term, Dir::Down)),
+            ("Find".to_string(), Act::FindIn(term)),
             (
-                "Split right".to_string(),
-                Act::Split(term, crate::layout::Dir::Right),
-            ),
-            (
-                "Split down".to_string(),
-                Act::Split(term, crate::layout::Dir::Down),
-            ),
-            (
-                "Split left".to_string(),
-                Act::Split(term, crate::layout::Dir::Left),
-            ),
-            (
-                "Split up".to_string(),
-                Act::Split(term, crate::layout::Dir::Up),
+                if self.screen.right_clicks.contains(&term) {
+                    "Stop sending right-clicks to pane"
+                } else {
+                    "Send right-clicks to pane"
+                }
+                .to_string(),
+                Act::RightClicks(term),
             ),
         ];
-        use crate::layout::Dir;
-        for (dir, way) in [
-            (Dir::Left, "left"),
-            (Dir::Right, "right"),
-            (Dir::Up, "up"),
-            (Dir::Down, "down"),
-        ] {
-            if let Some(to) = crate::layout::neighbor(&self.screen.leaf_rects, term, dir) {
-                items.push((format!("Move pane {way}"), Act::Swap(term, to)));
-            }
-        }
-        items.push((
-            if self.screen.right_clicks.contains(&term) {
-                "Stop sending right-clicks to pane"
-            } else {
-                "Send right-clicks to pane"
-            }
-            .to_string(),
-            Act::RightClicks(term),
-        ));
         // A program the app doesn't know (an agent started by an alias, say): teach it.
         if let Some(t) = self.term_info(term).filter(|t| {
             t.agent.is_none() && !t.is_shell() && !t.process.is_empty() && t.remote.is_none()
         }) {
             items.push((format!("{} is an agent…", t.process), Act::TeachAgent(term)));
         }
+        // What the folder offers that the design has no other place for: worktrees, snapshots,
+        // the check.
+        items.push(("Project…".to_string(), Act::ProjectTools(term)));
         items.push(("Close pane".to_string(), Act::End(vec![term])));
         self.menu(
             if agent.is_empty() {
@@ -413,10 +440,12 @@ impl App {
         }) {
             items.push((format!("{} is an agent…", t.process), Act::TeachAgent(term)));
         }
-        if self.focused().is_some_and(|f| f != term) {
-            items.push(("Open beside".into(), Act::Beside(term)));
+        if self.focused() != Some(term) {
+            items.push(("Open".to_string(), Act::Open(term)));
+            items.push(("Open in split".into(), Act::Beside(term, crate::layout::Dir::Right)));
         }
         items.push(("Rename".to_string(), Act::RenamePane(term)));
+        items.push(("Copy path".to_string(), Act::CopyPath(term)));
         if let Some(d) = dir
             .filter(|_| self.is_local_pane(term))
             .filter(|d| crate::gitfs::head(d).is_some())
@@ -426,16 +455,18 @@ impl App {
                 items.push(("Snapshots…".to_string(), Act::Snapshots(d, term)));
             }
         }
-        if !s.queued.is_empty() {
+        let queued = info.map_or(0, |t| t.queued.len());
+        if queued > 0 {
             items.push((
-                format!("Drop queued follow-ups ({})", s.queued.len()),
+                format!("Drop queued follow-ups ({queued})"),
                 Act::ClearQueue(term),
             ));
         }
         if let Some(check) = info.and_then(|t| t.check()) {
             items.extend(super::screen::check_menu_items(term, check));
         }
-        items.push(("Close".to_string(), Act::End(vec![term])));
+        let close = if s.is_agent { "Stop session" } else { "Close shell" };
+        items.push((close.to_string(), Act::End(vec![term])));
         // Titled by what it is (an agent, or the program's name), never its window title.
         let what = if s.is_agent {
             agent
@@ -486,49 +517,65 @@ impl App {
         );
     }
 
-    /// Right-click on a project row.
-    /// Right-click on a remote machine's line.
-    pub(super) fn menu_for_machine(&mut self, machine: MachineId, at: (u16, u16)) {
-        let name = self.machine_name(machine).to_string();
-        if name.is_empty() {
-            return;
+    /// The `Project…` item of a pane's menu: the tools that look at the project the pane is in,
+    /// then what else the project's folder offers (worktrees, its checks, snapshots, closing it).
+    pub(super) fn menu_for_project_tools(&mut self, term: ClientTerm, at: (u16, u16)) {
+        if Some(term) != self.focused() {
+            self.cmd_on(term.machine, Command::FocusPane { term: term.term });
         }
-        let items = vec![
-            ("Reconnect".to_string(), Act::ReconnectMachine(name.clone())),
-            ("Update…".to_string(), Act::UpdateMachine(name.clone())),
-            ("Edit…".to_string(), Act::EditMachine(machine)),
-            ("Remove".to_string(), Act::RemoveMachine(name.clone())),
-        ];
-        self.menu(name, items, at);
+        let items = self.project_items(term);
+        self.menu("Project".into(), items, at);
     }
 
-    pub(super) fn menu_for_project(&mut self, pi: usize, at: (u16, u16)) {
-        if let Some((title, items)) = self.project_items(pi) {
-            self.menu(title, items, at);
-        }
-    }
-
-    pub(super) fn project_items(&self, pi: usize) -> Option<(String, Vec<(String, Act)>)> {
+    /// The items of `term`'s Project menu, in order.
+    pub(super) fn project_items(&self, term: ClientTerm) -> Vec<(String, Act)> {
+        use crate::keys::Action;
+        let mut items: Vec<(String, Act)> = [
+            ("Files", Action::Files),
+            ("Changes", Action::Changes),
+            ("Branches", Action::Branches),
+            ("History", Action::History),
+            ("References", Action::References),
+        ]
+        .into_iter()
+        .map(|(label, action)| (label.to_string(), Act::Tool(action)))
+        .collect();
         let model = self.screen_model();
-        let p = model.get(pi)?;
-        let mut items = vec![
-            (
-                "Rename".to_string(),
-                Act::RenameProject(p.key.clone(), p.name.clone()),
-            ),
-            ("Close".to_string(), Act::CloseProject(pi)),
-        ];
-        if p.git {
-            items.push(("New worktree".to_string(), Act::NewWorktree(pi)));
-            items.push(("Open worktree…".to_string(), Act::OpenWorktree(pi)));
-            items.push(("Clean up worktrees…".to_string(), Act::TidyOpen(pi)));
-        } else if self.files_are_here(p.machine) {
+        if let Some(pi) = model
+            .iter()
+            .position(|p| p.sessions().any(|s| s.native_term == Some(term)))
+        {
+            let p = &model[pi];
+            if p.git {
+                items.push(("New worktree".to_string(), Act::NewWorktree(pi)));
+                items.push(("Open worktree…".to_string(), Act::OpenWorktree(pi)));
+                items.push(("Tidy worktrees…".to_string(), Act::TidyOpen(pi)));
+            } else if self.files_are_here(p.machine) {
+                items.push((
+                    "Make it a git repo…".to_string(),
+                    Act::GitInit(p.path.clone()),
+                ));
+            }
             items.push((
-                "Make it a git repo…".to_string(),
-                Act::GitInit(p.path.clone()),
+                "Rename project…".to_string(),
+                Act::RenameProject(p.key.clone(), p.name.clone()),
             ));
+            items.push(("Close project".to_string(), Act::CloseProject(pi)));
         }
-        Some((p.name.clone(), items))
+        let dir = self
+            .term_info(term)
+            .map(|i| i.top.clone().unwrap_or_else(|| i.cwd.clone()));
+        if let Some(d) = dir.filter(|d| {
+            self.cfg.snapshots.enabled
+                && self.is_local_pane(term)
+                && crate::gitfs::head(d).is_some()
+        }) {
+            items.push(("Snapshots…".to_string(), Act::Snapshots(d, term)));
+        }
+        if let Some(check) = self.term_info(term).and_then(|t| t.check()) {
+            items.extend(super::screen::check_menu_items(term, check));
+        }
+        items
     }
 
     pub(super) fn on_hy_menu_key(&mut self, mut m: ScreenMenu, k: &KeyEvent) {
@@ -621,25 +668,15 @@ impl App {
 
     /// What a menu item does; closing things asks first, a plain shell too.
     pub(super) fn menu_act(&mut self, a: Act) {
+        // One session closes at once, with an Undo; a running agent asks for a second press.
+        if let Act::End(ts) = &a
+            && let [term] = ts.as_slice()
+        {
+            self.close_session(*term);
+            return;
+        }
         let model = self.screen_model();
         let ask: Option<Confirm> = match &a {
-            Act::End(ts) if ts.len() == 1 => {
-                let name = super::screen::session_name(self, &model, ts[0]);
-                let path = self.term_info(ts[0]).map(|t| t.cwd.display().to_string()).unwrap_or_default();
-                let running = self.term_info(ts[0]).is_some_and(|t| t.status == crate::protocol::Status::Working);
-                Some(Confirm {
-                    title: super::screen::pane_number(self, ts[0]).map_or_else(|| "Close pane".into(), |n| format!("Close pane {n}")),
-                    sub: name.clone(),
-                    what: name,
-                    detail: path,
-                    note: if running { "It's still working; the program running in it will stop.".into() } else { "The program running in it will stop.".into() },
-                    list: Vec::new(),
-                    yes: "Close".into(),
-                    key: '\n',
-                    danger: true,
-                    act: a.clone(),
-                })
-            }
             Act::End(ts) => Some(Confirm {
                 title: "Close panes".into(),
                 sub: String::new(),
@@ -694,24 +731,6 @@ impl App {
                 Some(c) => Some(c),
                 None => return,
             },
-            Act::RemoveMachine(name) => Some(Confirm {
-                title: "Remove machine".into(),
-                sub: String::new(),
-                what: name.clone(),
-                detail: self
-                    .cfg
-                    .machines
-                    .iter()
-                    .find(|m| m.name == *name)
-                    .map(|m| m.target.clone())
-                    .unwrap_or_default(),
-                note: "It's taken off this list. Its sessions keep running on it, and you can add it again.".into(),
-                list: Vec::new(),
-                yes: "Remove".into(),
-                key: '\n',
-                danger: true,
-                act: a.clone(),
-            }),
             Act::CloseProject(pi) => model.get(*pi).map(|p| {
                 let n = p.sessions().count();
                 Confirm {
@@ -735,9 +754,7 @@ impl App {
                 // one asked about is going), or the same row when it stays.
                 // The cursor is still on a row when the leader key or the actions list was
                 // opened from the sidebar: that's the sidebar too.
-                let from_side = self.mode == Mode::Side
-                    || self.screen.cursor.is_some()
-                    || self.screen.cursor_proj.is_some();
+                let from_side = self.mode == Mode::Side || self.screen.cursor.is_some();
                 self.screen.side_return = match &c.act {
                     _ if !from_side => None,
                     Act::Restore(_, _, _, t) | Act::OverrideCheck(t, ..) => {
@@ -811,9 +828,6 @@ impl App {
                     },
                 );
             }
-            Act::Swap(a, b) => {
-                self.swap_panes(a, b);
-            }
             Act::Update => self.start_update(),
             Act::RestartDaemon => self.restart_daemon_now(),
             Act::InstallStatus(agent) => {
@@ -853,6 +867,10 @@ impl App {
                         app.screen_fresh();
                     }))
                 });
+            }
+            Act::ProjectTools(term) => {
+                let at = self.hover.map_or((0, 0), |p| (p.x, p.y + 1));
+                self.menu_for_project_tools(term, at);
             }
             Act::TeachAgent(term) => {
                 self.cmd_on(term.machine, Command::TeachAgent { term: term.term })
@@ -927,19 +945,7 @@ impl App {
                     );
                 }
             }
-            Act::ReconnectMachine(name) => {
-                let said = self.machine_retry(&name);
-                self.notify(said.text, said.error);
-            }
-            Act::EditMachine(machine) => self.open_machine_edit(machine),
-            Act::UpdateMachine(name) => {
-                let said = self.machine_update(&name);
-                self.notify(said.text, said.error);
-            }
-            Act::RemoveMachine(name) => {
-                let said = self.machines_remove(&name);
-                self.notify(said.text, said.error);
-            }
+            Act::Tool(action) => self.act(action),
             Act::RenameProject(key, name) => {
                 self.mode = Mode::Prompt {
                     kind: super::PromptKind::RenameProject(key),
@@ -1011,7 +1017,27 @@ impl App {
                     None => self.notify("start something in this project first".into(), true),
                 }
             }
-            Act::Beside(t) => {
+            Act::Open(t) => self.screen_focus(t),
+            Act::CopyPath(t) => {
+                let path = self.term_info(t).map(|x| x.cwd.display().to_string());
+                match path {
+                    Some(path) => {
+                        super::copy::to_clipboard(&path);
+                        self.notify(format!("Copied {path}"), false);
+                    }
+                    None => self.notify("no folder to copy".into(), true),
+                }
+            }
+            Act::FindIn(t) => {
+                if self.enter_copy(t)
+                    && let Mode::Copy(c) = &mut self.mode
+                {
+                    c.input = Some(String::new());
+                    c.backward = true;
+                }
+            }
+            Act::Beside(t, dir) => {
+                self.screen.split_dir = Some(dir);
                 if let Some(f) = self.focused() {
                     self.screen_unshow(t);
                     self.screen.pending_split = Some((f, std::time::Instant::now()));
@@ -1146,18 +1172,16 @@ fn pressed(keys: &[Option<MenuKey>], k: &KeyEvent) -> Option<usize> {
 
 /// The leader action an item does the same as, whose key it then shows: splitting, moving the
 /// pane to a side, closing one pane, a checkout's changes.
-fn bound_action(app: &App, act: &Act) -> Option<crate::keys::Action> {
+fn bound_action(act: &Act) -> Option<crate::keys::Action> {
     use crate::keys::Action;
     use crate::layout::Dir;
     match act {
         Act::Split(_, Dir::Right) => Some(Action::SplitRight),
         Act::Split(_, Dir::Down) => Some(Action::SplitDown),
-        Act::Swap(a, b) => [Dir::Left, Dir::Right, Dir::Up, Dir::Down]
-            .into_iter()
-            .find(|d| crate::layout::neighbor(&app.screen.leaf_rects, *a, *d) == Some(*b))
-            .map(Action::Swap),
         Act::End(ts) if ts.len() == 1 => Some(Action::ClosePane),
         Act::Changes(_) => Some(Action::Changes),
+        Act::RenamePane(_) => Some(Action::RenameWorkspace),
+        Act::Tool(a) => Some(a.clone()),
         _ => None,
     }
 }
@@ -1179,7 +1203,7 @@ pub(super) fn menu_keys(app: &App, items: &[(String, Act)]) -> Vec<Option<MenuKe
     let bound: Vec<Option<crate::keys::KeySpec>> = items
         .iter()
         .map(|(_, a)| {
-            bound_action(app, a)
+            bound_action(a)
                 .and_then(|b| bound_key(app, &b))
                 .filter(|k| !menu_owns(items, a, k))
         })
@@ -1277,23 +1301,34 @@ fn menu_letters(
         .collect()
 }
 
-/// A right-click menu. Its items' keys (`menu_keys`) run them while it is open but aren't
-/// shown: a bare letter beside an item reads as a key that works anywhere.
+/// A menu (right-click, a chip's): a box in the accent on the panel ground, one row per item with
+/// its leader key at the right in the accent when it has one, a line before the item that ends
+/// something, which is red. It opens under its point, or above it when there is no room below
+/// (the sidebar foot's chips). Letters a menu gives items of its own (`menu_keys`) run them
+/// while it is open but are not shown: a bare letter beside an item reads as a key that works
+/// anywhere.
 pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: &ScreenMenu) {
-    let buf = f.buffer_mut();
-    let danger = |a: &Act| matches!(a, Act::End(_) | Act::CloseProject(_));
-    // The destructive item sits last, after a blank row.
-    let gap = m.items.iter().any(|(_, a)| danger(a)) && m.items.len() > 1;
+    let danger = |a: &Act| matches!(a, Act::End(_) | Act::CloseProject(_) | Act::ArchiveConversation(_));
+    let keys: Vec<String> = menu_keys(app, &m.items)
+        .into_iter()
+        .map(|k| match k {
+            Some(MenuKey::Bound(k)) => super::screen::short_key(&k),
+            _ => String::new(),
+        })
+        .collect();
+    // The destructive item sits last, after a line.
+    let rule = m.items.iter().any(|(_, a)| danger(a)) && m.items.len() > 1;
+    let key_w = keys.iter().map(|k| k.width() as u16).max().unwrap_or(0);
     let w = m
         .items
         .iter()
         .map(|(l, _)| l.width() as u16)
         .max()
         .unwrap_or(10)
-        .max(m.title.width() as u16)
-        .clamp(16, 44)
-        + 10;
-    let h = m.items.len() as u16 + 4 + gap as u16;
+        .clamp(14, 44)
+        + key_w
+        + 6;
+    let h = m.items.len() as u16 + 2 + u16::from(rule);
     let x = m.at.0.min(area.right().saturating_sub(w + 1)).max(area.x);
     let y = if m.at.1 + h < area.bottom() {
         m.at.1 + 1
@@ -1301,66 +1336,38 @@ pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: 
         m.at.1.saturating_sub(h)
     }
     .max(area.y);
-    let r = Rect {
-        x,
-        y,
-        width: w,
-        height: h,
-    };
+    let r = Rect { x, y, width: w, height: h };
     // Clicking anywhere else closes it.
     hit(app, area, ScreenHit::Close);
-    // The right-click menu uses the same card and ground as the app menu.
-    let bgm = t.bg;
-    let title = truncate(&m.title, (w - 10) as usize);
-    let mut card = super::screen::Card::new(t, &title).lit(t.accent);
-    card.bg = bgm;
-    super::screen::card(app, buf, r, &card, t);
+    let ground = t.sidebar_bg;
+    let mut card = super::screen::Card::new(t, "").lit(t.accent);
+    card.bg = ground;
+    let inside = super::screen::card(app, f.buffer_mut(), r, &card, t);
+    super::design::fill(f.buffer_mut(), inside, ground);
     hit(app, r, ScreenHit::Noop);
-    let look = super::screen::Look::of(&app.cfg.ui);
-    let mut yy = r.y + 2;
-    for (i, (label, act)) in m.items.iter().enumerate() {
-        if gap && danger(act) && i + 1 == m.items.len() {
+    let buf = f.buffer_mut();
+    let mut yy = r.y + 1;
+    for (i, ((label, act), key)) in m.items.iter().zip(&keys).enumerate() {
+        if rule && danger(act) && i + 1 == m.items.len() {
+            let line = "─".repeat(usize::from(w).saturating_sub(2));
+            put(buf, r.x + 1, yy, &[seg(line, Style::default().fg(t.line).bg(ground))], r.right() - 1);
             yy += 1;
         }
-        let row = Rect {
-            x: r.x + 1,
-            y: yy,
-            width: w - 2,
-            height: 1,
+        let row = Rect { x: r.x + 1, y: yy, width: w - 2, height: 1 };
+        let bg = if i == m.sel { t.hov } else { ground };
+        super::design::fill(buf, row, bg);
+        let st = Style::default().bg(bg);
+        let ink = match act {
+            _ if danger(act) => t.err,
+            // What a release chip offers is the accent, as the chip is.
+            Act::Tool(crate::keys::Action::Update | crate::keys::Action::Restart) => t.accent,
+            _ => t.text,
         };
-        let on = i == m.sel;
-        let bg = if on { t.hov } else { bgm };
-        if on {
-            super::screen::row_pill(look, f.buffer_mut(), row.x, yy, row.width, bg, bgm);
+        put(buf, row.x + 2, yy, &[seg(label.clone(), st.fg(ink))], row.right().saturating_sub(key_w + 2));
+        if !key.is_empty() {
+            let kx = row.right().saturating_sub(key.width() as u16 + 2);
+            put(buf, kx, yy, &[seg(key.clone(), st.fg(t.accent).add_modifier(Modifier::BOLD))], row.right());
         }
-        if i == m.sel {
-            put(
-                f.buffer_mut(),
-                row.x + 1,
-                yy,
-                &[seg(
-                    "›",
-                    Style::default()
-                        .fg(t.accent)
-                        .bg(bg)
-                        .add_modifier(Modifier::BOLD),
-                )],
-                row.right(),
-            );
-        }
-        let mut ls = Style::default()
-            .fg(if danger(act) { t.err } else { t.strong })
-            .bg(bg);
-        if i == m.sel {
-            ls = ls.add_modifier(Modifier::BOLD);
-        }
-        put(
-            f.buffer_mut(),
-            row.x + 3,
-            yy,
-            &[seg(label.clone(), ls)],
-            row.right().saturating_sub(2),
-        );
         hit(app, row, ScreenHit::MenuPick(i));
         yy += 1;
     }

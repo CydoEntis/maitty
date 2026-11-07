@@ -77,7 +77,7 @@ pub(in crate::client) fn panel_at(
     panel_box(buf, r, look, Style::default().fg(t.accent));
     let red = Style::default()
         .fg(t.strong)
-        .bg(t.err)
+        .bg(t.btn)
         .add_modifier(Modifier::BOLD);
     let esc = header_chip(
         look,
@@ -92,9 +92,9 @@ pub(in crate::client) fn panel_at(
     );
     let esc_w = segs_width(&esc);
     // Too narrow for the chip beside the corner: Esc and a click outside still close it.
-    let shows_esc = r.width >= esc_w + 4;
+    let shows_esc = r.width >= esc_w + 5;
     let esc_x = if shows_esc {
-        r.right() - esc_w
+        r.right() - esc_w - 1
     } else {
         r.right() - 1
     };
@@ -170,9 +170,11 @@ pub(in crate::client) fn flatten_modals(app: &App, buf: &mut Buffer, t: &Theme) 
             for x in r.left()..r.right() {
                 let c = &mut buf[(x, y)];
                 c.bg = match c.bg {
-                    b if b == t.card || b == t.card2 => t.bg,
-                    b if b == t.sel_on(t.card) || b == t.sel_on(t.card2) => t.sel_on(t.bg),
-                    b if b == t.hover_on(t.card) || b == t.hover_on(t.card2) => t.hover_on(t.bg),
+                    // A keycap or chip keeps its ground where a theme's chips share `card2`.
+                    b if b == t.btn => b,
+                    b if b == t.card || b == t.card2 => t.sidebar_bg,
+                    b if b == t.sel_on(t.card) || b == t.sel_on(t.card2) => t.sel_on(t.sidebar_bg),
+                    b if b == t.hover_on(t.card) || b == t.hover_on(t.card2) => t.hover_on(t.sidebar_bg),
                     b => b,
                 };
             }
@@ -204,7 +206,7 @@ fn header_chip(look: Look, segs: Vec<Seg>, ground: Color) -> Vec<Seg> {
     if look.caps {
         round_ends(segs, ground)
     } else {
-        plain(segs)
+        segs
     }
 }
 
@@ -259,8 +261,6 @@ pub(in crate::client) fn action_bar(
     ground: Color,
     keys: &[(&str, &str)],
 ) {
-    // Hairline has no raised band: the keys are words on the panel's own ground.
-    let ground = if plain_on() { t.bg } else { ground };
     let row = Rect { height: 1, ..bar };
     fill(buf, row, ground);
     let room = row.width.saturating_sub(2);
@@ -736,31 +736,6 @@ pub(in crate::client) fn list_row(
     st
 }
 
-/// A working agent's name: the working colour with a bright band sweeping across it.
-pub(in crate::client) fn shimmer(
-    text: &str,
-    frame: u64,
-    base: Color,
-    bright: Color,
-    st: Style,
-) -> Vec<Seg> {
-    const WIDTH: f32 = 3.0;
-    let chars: Vec<char> = text.chars().collect();
-    let span = chars.len() as u64 + 8;
-    let pos = (frame % span) as f32 - 4.0;
-    chars
-        .iter()
-        .enumerate()
-        .map(|(i, ch)| {
-            let k = (1.0 - (i as f32 - pos).abs() / WIDTH).max(0.0);
-            seg(
-                ch.to_string(),
-                st.fg(crate::client::render::blend(base, bright, k * 0.8)),
-            )
-        })
-        .collect()
-}
-
 /// Go to's rows. With nothing typed it opens on what needs you (the Inbox): agents asking,
 /// ones that finished, pull requests that need you; then every session by project. Typing
 /// finds any session.
@@ -782,6 +757,8 @@ pub(in crate::client) enum GoRow {
     Approve(ClientTerm),
     /// A working agent gone silent: it may be stuck.
     Quiet(ClientTerm),
+    /// One whose last command ended in failure (`TermInfo.exit`).
+    Exited(ClientTerm),
     Sess(usize, ClientTerm),
 }
 
@@ -794,6 +771,7 @@ impl GoRow {
             | GoRow::NotRun(t)
             | GoRow::Approve(t)
             | GoRow::Quiet(t)
+            | GoRow::Exited(t)
             | GoRow::Sess(_, t) => Some(*t),
             GoRow::Head(_) | GoRow::Heads(_) => None,
         }

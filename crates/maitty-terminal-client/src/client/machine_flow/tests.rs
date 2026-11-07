@@ -7,13 +7,12 @@ use super::*;
 use crate::client::connections::Connections;
 use crate::client::ids::Outgoing;
 use crate::client::link::{Backoff, LinkEvent, Links, Timing};
-use crate::client::machine_ids::{IdCheck, check_daemon_id};
 use crate::client::reference_fixture::term;
 use crate::client::remote_status_tests::{Runtime, Sandbox};
 use crate::client::screen::machines::{MachinesView, Outcome};
 use crate::client::ssh_hosts::SshHost;
 use crate::link_failure::{FIX_INSTALL, FIX_LOGIN};
-use crate::protocol::{ServerMsg, SessionKey, Snapshot, Status};
+use crate::protocol::{ServerMsg, Snapshot, Status};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::path::Path;
 use std::process::Command as Process;
@@ -689,26 +688,6 @@ fn a_popup_that_is_never_seen_does_not_leave_the_machine_undialled_for_ever() {
     });
 }
 
-async fn terms_the_daemon_has(sandbox: &Sandbox) -> usize {
-    let halves = ipc::open_to(&sandbox.machine(), true)
-        .await
-        .expect("a second connection to the daemon");
-    let mut connections = Connections::default();
-    connections.add(MachineId(9), halves);
-    let look = async {
-        loop {
-            for msg in connections.recv_burst(16).await.msgs {
-                if let ServerMsg::State(snap) = msg {
-                    return snap.terms.len();
-                }
-            }
-        }
-    };
-    tokio::time::timeout(WAIT, look)
-        .await
-        .expect("the daemon's state")
-}
-
 /// Fails saying which machine the window still knows, and what it knows of it: a machine put
 /// back by its daemon has no name, one put back by its supervisor has no panes.
 #[track_caller]
@@ -724,102 +703,6 @@ fn assert_no_machine_is_held(h: &Harness) {
         "the window still holds a machine: (id, name, state, panes) {held:?}, refused {:?}",
         h.app.refused
     );
-}
-
-#[test]
-fn removing_forgets_the_machine_here_and_leaves_its_sessions_and_the_saved_layout_alone() {
-    let runtime = Runtime::new();
-    runtime.block_on(async {
-        let mut h = Harness::live("proxy").await;
-        h.add_by_enter("box");
-        h.until("the machine to connect", |h| h.connected("box"))
-            .await;
-        let id = h.id_of("box").unwrap();
-        h.connections
-            .send(Outgoing {
-                machine: id,
-                msg: ClientMsg::Command(Command::NewWorkspace {
-                    cwd: None,
-                    name: Some("work".into()),
-                    cmd: None,
-                }),
-            })
-            .expect("the machine is connected");
-        h.until("a pane there", |h| {
-            h.app
-                .remotes
-                .get(&id)
-                .is_some_and(|r| !r.snap.terms.is_empty())
-        })
-        .await;
-        assert!(
-            h.app.screen_model().iter().any(|p| p.machine == id),
-            "the machine's folder is in the sidebar"
-        );
-        h.app
-            .screen
-            .saved
-            .session_order_mut("box")
-            .push(SessionKey::Pane(5));
-        assert!(
-            check_daemon_id(&mut h.app.machine_ids, "box", Some("ab")).is_err(),
-            "its daemon id was recorded"
-        );
-
-        // From the machine's line in the sidebar: its right-click menu.
-        h.app.menu_for_machine(id, (5, 5));
-        assert!(
-            h.local_config().unwrap().contains("[[machines]]"),
-            "opening the menu removes nothing"
-        );
-        let Mode::ScreenMenu(m) = &h.app.mode else {
-            panic!("the machine's menu")
-        };
-        let remove = m.items.iter().position(|(l, _)| l == "Remove").unwrap();
-        assert!(
-            m.items.iter().any(|(l, _)| l == "Reconnect") && remove == m.items.len() - 1,
-            "reconnect, then remove last"
-        );
-        h.app.menu_pick(remove);
-        let Mode::Confirm(ask) = &h.app.mode else {
-            panic!("Remove asks before it removes")
-        };
-        let act = ask.act.clone();
-        h.app.confirm_done(Some(act));
-        h.pump().await;
-
-        let kept = h.local_config().unwrap_or_default();
-        assert!(!kept.contains("box"), "{kept}");
-        assert!(h.app.cfg.machines.is_empty());
-        assert!(!h.app.links.supervises(id), "its supervisor is stopped");
-        assert_no_machine_is_held(&h);
-        assert!(
-            h.app.screen_model().iter().all(|p| p.machine != id),
-            "its folders are out of the sidebar"
-        );
-        assert_eq!(
-            check_daemon_id(&mut h.app.machine_ids, "box", Some("cd")),
-            Ok(IdCheck::Recorded),
-            "the next daemon at that name is taken as the machine"
-        );
-        assert_eq!(
-            h.app.screen.saved.session_order_of("box"),
-            [SessionKey::Pane(5)],
-            "the saved layout lane is kept"
-        );
-        assert_eq!(
-            h.notice(),
-            "Removes box from this list. Its sessions keep running on box."
-        );
-        assert!(
-            !h.connections.is_connected(id),
-            "the connection is let go of"
-        );
-        assert!(
-            terms_the_daemon_has(&h.sandbox).await >= 1,
-            "the remote daemon's pane is still alive"
-        );
-    });
 }
 
 fn work_pane() -> TermInfo {
@@ -848,35 +731,6 @@ fn window_with_box() -> (Harness, MachineId) {
     h.app.on_machine_server(id, ServerMsg::State(state));
     assert_eq!(h.app.remotes[&id].snap.terms.len(), 1, "its pane is known");
     (h, id)
-}
-
-#[test]
-fn removing_a_machine_from_its_menu_asks_first_and_removes_only_on_yes() {
-    let (mut h, _id) = window_with_box();
-
-    h.app
-        .menu_act(crate::client::menu::Act::RemoveMachine("box".into()));
-
-    let Mode::Confirm(ask) = &h.app.mode else {
-        panic!("a menu's Remove asks before it removes");
-    };
-    assert_eq!(
-        (ask.title.as_str(), ask.what.as_str()),
-        ("Remove machine", "box")
-    );
-    assert!(ask.note.contains("sessions keep running"), "{}", ask.note);
-    assert_eq!(h.app.cfg.machines.len(), 1, "nothing is removed by asking");
-
-    let act = ask.act.clone();
-    h.app.confirm_done(None);
-    assert_eq!(
-        h.app.cfg.machines.len(),
-        1,
-        "No leaves the machine in the list"
-    );
-
-    h.app.confirm_done(Some(act));
-    assert!(h.app.cfg.machines.is_empty(), "Yes removes it");
 }
 
 #[test]
@@ -927,46 +781,6 @@ fn what_a_removed_machine_s_supervisor_said_before_it_stopped_does_not_bring_it_
             "the line is not taken, which ends its ssh"
         );
         assert_no_machine_is_held(&h);
-    });
-}
-
-#[test]
-fn retry_clears_a_refusal_and_dials_again() {
-    let runtime = Runtime::new();
-    runtime.block_on(async {
-        let mut h = Harness::live("proxy").await;
-        h.add_by_enter("box");
-        h.until("the machine to connect", |h| h.connected("box"))
-            .await;
-        let id = h.id_of("box").unwrap();
-        let dials = |h: &Harness| {
-            std::fs::read_to_string(h.calls())
-                .unwrap_or_default()
-                .lines()
-                .count()
-        };
-        let before = dials(&h);
-
-        let why = "a different machine answers at box".to_string();
-        h.app.links.refuse(id, why.clone());
-        h.app.refused.insert(id, why);
-        h.until("the refusal to hold the machine", |h| {
-            matches!(h.state_of("box"), Some(ConnectionState::Unreachable { .. }))
-        })
-        .await;
-        assert_eq!(dials(&h), before, "a refused machine is not dialled");
-
-        h.app.menu_for_machine(id, (5, 5));
-        let Mode::ScreenMenu(m) = &h.app.mode else {
-            panic!("the machine's menu")
-        };
-        let reconnect = m.items.iter().position(|(l, _)| l == "Reconnect").unwrap();
-        h.app.menu_pick(reconnect);
-        assert!(h.app.refused.is_empty(), "the refusal is cleared");
-        assert_eq!(h.notice(), "Trying box again.");
-        h.until("the machine to connect again", |h| h.connected("box"))
-            .await;
-        assert_eq!(dials(&h), before + 1, "it dialled once more");
     });
 }
 

@@ -188,6 +188,14 @@ pub enum Action {
     ClosePane,
     Focus(crate::layout::Dir),
     FocusNext,
+    /// The focused pane fills its view, or goes back to its split.
+    ZoomPane,
+    /// The focused pane trades places with the next one of its view.
+    SwapNext,
+    /// Type into the sidebar's filter.
+    FilterSessions,
+    /// What each agent has used, and the plan limits, as the providers report them.
+    Usage,
     FocusPrev,
     Resize(crate::layout::Dir),
     /// Trade places with the neighbouring pane that way.
@@ -218,10 +226,18 @@ pub enum Action {
     BrowseTree,
     /// Recent and project files; Enter puts the path in the prompt.
     Files,
-    /// A new session straight away with the defaults in Settings › Sessions (`n`, `+`).
-    StartSession,
-    /// The New Session picker with nothing typed: open projects and folders on every machine.
+    /// The New session dialog: a shell in a project folder on a machine (Ctrl+T).
     PickSession,
+    /// Bring back the session closed in the last few seconds.
+    UndoClose,
+    /// The session below or above this one in the sidebar (Alt+Down, Alt+Up).
+    NextSession,
+    PrevSession,
+    /// Widen or narrow the sidebar.
+    SidebarWider,
+    SidebarNarrower,
+    /// The Updates box: what is new, download, restart.
+    Updates,
     /// The selected worktree's changes (review and ship).
     Changes,
     /// Interrupt the selected worktree's agent (Ctrl+C).
@@ -301,6 +317,10 @@ impl Action {
             Action::ClosePane => "Close pane".into(),
             Action::Focus(d) => format!("Focus the pane {}", dir(d)),
             Action::FocusNext => "Next pane".into(),
+            Action::ZoomPane => "Zoom pane".into(),
+            Action::SwapNext => "Move pane".into(),
+            Action::FilterSessions => "Filter sessions".into(),
+            Action::Usage => "Usage and cost".into(),
             Action::FocusPrev => "Previous pane".into(),
             Action::Resize(d) => format!("Resize the pane {}", dir(d)),
             Action::Swap(d) => format!("Swap with the pane {}", dir(d)),
@@ -326,8 +346,13 @@ impl Action {
             Action::Settings => "Settings".into(),
             Action::BrowseTree => "Focus the sidebar".into(),
             Action::Files => "Files".into(),
-            Action::StartSession => "New session".into(),
-            Action::PickSession => "New session anywhere".into(),
+            Action::PickSession => "New session".into(),
+            Action::UndoClose => "Undo close".into(),
+            Action::NextSession => "Next session".into(),
+            Action::PrevSession => "Previous session".into(),
+            Action::SidebarWider => "Widen sidebar".into(),
+            Action::SidebarNarrower => "Narrow sidebar".into(),
+            Action::Updates => "Updates".into(),
             Action::Changes => "Changes".into(),
             Action::StopAgent => "Stop agent".into(),
             Action::Message => "Message this session".into(),
@@ -386,6 +411,10 @@ impl Action {
             Action::ClosePane => "close-pane".into(),
             Action::Focus(dir) => format!("focus-{}", d(dir)),
             Action::FocusNext => "focus-next".into(),
+            Action::ZoomPane => "zoom-pane".into(),
+            Action::SwapNext => "swap-next".into(),
+            Action::FilterSessions => "filter-sessions".into(),
+            Action::Usage => "usage".into(),
             Action::FocusPrev => "focus-prev".into(),
             Action::Resize(dir) => format!("resize-{}", d(dir)),
             Action::Swap(dir) => format!("swap-{}", d(dir)),
@@ -411,8 +440,13 @@ impl Action {
             Action::Settings => "settings".into(),
             Action::BrowseTree => "browse-tree".into(),
             Action::Files => "files".into(),
-            Action::StartSession => "start-session".into(),
             Action::PickSession => "pick-session".into(),
+            Action::UndoClose => "undo-close".into(),
+            Action::NextSession => "next-session".into(),
+            Action::PrevSession => "prev-session".into(),
+            Action::SidebarWider => "sidebar-wider".into(),
+            Action::SidebarNarrower => "sidebar-narrower".into(),
+            Action::Updates => "updates".into(),
             Action::Jump => "jump".into(),
             Action::NewSession => "new-beside".into(),
             Action::CloseSplit => "close-split".into(),
@@ -483,6 +517,10 @@ impl FromStr for Action {
             "focus-up" => Action::Focus(Up),
             "focus-down" => Action::Focus(Down),
             "focus-next" => Action::FocusNext,
+            "zoom-pane" => Action::ZoomPane,
+            "swap-next" | "move-pane" => Action::SwapNext,
+            "filter-sessions" => Action::FilterSessions,
+            "usage" => Action::Usage,
             "focus-prev" => Action::FocusPrev,
             "resize-left" => Action::Resize(Left),
             "resize-right" => Action::Resize(Right),
@@ -514,8 +552,15 @@ impl FromStr for Action {
             "files" => Action::Files,
             // The options dialog these named is gone; a saved binding stays loadable and does nothing.
             "new-pane" | "new" => Action::None,
-            "start-session" => Action::StartSession,
-            "pick-session" => Action::PickSession,
+            // `start-session` started an agent at once; the dialog starts a shell now, so a saved
+            // binding opens the dialog.
+            "start-session" | "pick-session" => Action::PickSession,
+            "undo-close" => Action::UndoClose,
+            "next-session" => Action::NextSession,
+            "prev-session" => Action::PrevSession,
+            "sidebar-wider" => Action::SidebarWider,
+            "sidebar-narrower" => Action::SidebarNarrower,
+            "updates" => Action::Updates,
             "jump" => Action::Jump,
             "new-session" | "new-beside" => Action::NewSession,
             "close-split" => Action::CloseSplit,
@@ -560,26 +605,44 @@ impl FromStr for Action {
     }
 }
 
-/// Bindings in shortcut mode (after the leader): one key each, none needing Shift
-/// but `?` for all keys, chosen from what other apps use. Copy mode, hide sidebar,
-/// prompt jumps, new worktree, rename workspace and send-prefix have no default key; search
-/// commands finds them.
+/// Bindings in key mode (after the leader): one key each, as the TUI redesign lists them. Three
+/// need Shift (`S` splits down, `_` up, `?` is the keys help). Copy mode, hide sidebar, find in
+/// the pane, prompt jumps, new worktree, updates and send-prefix have no default key; search
+/// commands (Ctrl+K) finds them.
 pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     // Sessions
-    ("n", "shell-here"),
-    ("s", "start-session"),
-    ("o", "pick-session"),
+    ("n", "pick-session"),
+    ("t", "shell-here"),
+    ("j", "next-session"),
+    ("k", "prev-session"),
+    ("1", "select-tab-1"),
+    ("2", "select-tab-2"),
+    ("3", "select-tab-3"),
+    ("4", "select-tab-4"),
+    ("5", "select-tab-5"),
+    ("6", "select-tab-6"),
+    ("7", "select-tab-7"),
+    ("8", "select-tab-8"),
+    ("9", "select-tab-9"),
+    ("r", "rename-workspace"),
+    ("/", "filter-sessions"),
     ("enter", "message"),
-    ("k", "stop-agent"),
+    ("ctrl+c", "stop-agent"),
     ("i", "jump"),
+    ("ctrl+z", "undo-close"),
     // Panes
     ("left", "focus-left"),
     ("down", "focus-down"),
     ("up", "focus-up"),
     ("right", "focus-right"),
-    ("v", "split-down"),
-    ("h", "split-right"),
+    ("tab", "focus-next"),
+    ("s", "split-right"),
+    ("S", "split-down"),
+    ("_", "split-up"),
+    ("\\", "split-left"),
+    ("z", "zoom-pane"),
     ("x", "close-pane"),
+    ("m", "swap-next"),
     ("ctrl+left", "resize-left"),
     ("ctrl+down", "resize-down"),
     ("ctrl+up", "resize-up"),
@@ -590,37 +653,23 @@ pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     ("alt+right", "swap-right"),
     ("pageup", "scroll-up"),
     ("pagedown", "scroll-down"),
-    ("z", "toggle-sidebar"),
-    // Tabs
-    ("t", "new-tab"),
-    ("ctrl+w", "close-tab"),
-    ("r", "rename-tab"),
-    ("]", "next-tab"),
-    ("[", "prev-tab"),
-    ("1", "select-tab-1"),
-    ("2", "select-tab-2"),
-    ("3", "select-tab-3"),
-    ("4", "select-tab-4"),
-    ("5", "select-tab-5"),
-    ("6", "select-tab-6"),
-    ("7", "select-tab-7"),
-    ("8", "select-tab-8"),
-    ("9", "select-tab-9"),
-    // Project
+    // Sidebar
+    ("b", "toggle-sidebar"),
+    ("[", "sidebar-narrower"),
+    ("]", "sidebar-wider"),
+    // Project tools
     ("f", "files"),
-    ("e", "browse-tree"),
-    ("p", "find-file"),
-    ("/", "search-code"),
     ("c", "changes"),
-    ("g", "worktrees"),
-    ("b", "branch"),
-    ("a", "references"),
+    ("g", "branch"),
+    ("h", "history"),
+    ("e", "references"),
+    ("o", "find-file"),
     // The app
     ("space", "palette"),
-    ("m", "menu"),
+    (".", "menu"),
+    ("u", "usage"),
     (",", "settings"),
     ("?", "help"),
-    ("l", "history"),
     ("w", "machines"),
     ("ctrl+v", "paste-image"),
     ("d", "send-file"),
@@ -628,9 +677,19 @@ pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     ("ctrl+r", "reload-config"),
 ];
 
-/// Bindings active without the prefix: Alt+1–9 go to a tab. With `ALT_ARROW_KEYS` and
-/// `ALT_LETTER_KEYS` (each with its own switch) these are all that is taken from programs.
+/// Bindings active without the prefix. Inside a pane these are the only keys taken from the
+/// program: everything else (Ctrl+C, Ctrl+D, Ctrl+Z, Ctrl+L, Ctrl+R, arrows, Tab, Esc) goes to it.
+/// Ctrl+Shift+F (find in pane) is matched in the client, where the shift state is known.
+/// Alt+1-9 go to a tab of the session.
 pub const DEFAULT_GLOBAL_KEYS: &[(&str, &str)] = &[
+    ("ctrl+t", "shell-here"),
+    ("ctrl+tab", "next-tab"),
+    ("ctrl+shift+tab", "prev-tab"),
+    ("ctrl+k", "palette"),
+    ("ctrl+j", "jump"),
+    ("alt+down", "next-session"),
+    ("alt+up", "prev-session"),
+    ("f2", "rename-workspace"),
     ("alt+1", "select-tab-1"),
     ("alt+2", "select-tab-2"),
     ("alt+3", "select-tab-3"),
@@ -644,23 +703,19 @@ pub const DEFAULT_GLOBAL_KEYS: &[(&str, &str)] = &[
 
 /// The everyday actions without the leader (`ui.alt_keys`), on no key an agent uses: Claude
 /// Code takes Alt+v (paste an image, on Windows) and Alt+t (thinking), so the splits are Alt+s
-/// (side by side) and Alt+d (down), a new session (an agent) is Alt+a, and a
-/// new tab has none. No Alt+[ or Alt+]: terminals send those as the start of an escape sequence.
+/// (side by side) and Alt+d (down), and a new tab has none. No Alt+[ or Alt+]: terminals
+/// send those as the start of an escape sequence.
 pub const ALT_LETTER_KEYS: &[(&str, &str)] = &[
     ("alt+n", "shell-here"),
-    ("alt+a", "start-session"),
+    ("alt+a", "pick-session"),
     ("alt+x", "close-pane"),
     ("alt+s", "split-right"),
     ("alt+d", "split-down"),
 ];
 
-/// Moving between panes without the leader (`ui.alt_arrows`).
-pub const ALT_ARROW_KEYS: &[(&str, &str)] = &[
-    ("alt+left", "focus-left"),
-    ("alt+down", "focus-down"),
-    ("alt+up", "focus-up"),
-    ("alt+right", "focus-right"),
-];
+/// Moving between panes without the leader (`ui.alt_arrows`). Alt+Up and Alt+Down change
+/// session instead (`DEFAULT_GLOBAL_KEYS`).
+pub const ALT_ARROW_KEYS: &[(&str, &str)] = &[("alt+left", "focus-left"), ("alt+right", "focus-right")];
 
 /// Keys plain VT can't express exactly (Ctrl+Shift+letter, Ctrl+Enter, Ctrl+Tab, Ctrl with
 /// symbols) — sent as Windows key records when ConPTY asked for them. Everything else keeps
@@ -930,7 +985,8 @@ mod tests {
     const SHIFTED: &str = "~!@#$%^&*()_+{}|:\"<>?";
 
     /// The one default that needs Shift, at the user's request.
-    const SHIFTED_ALLOWED: &[(&str, &str)] = &[("?", "help")];
+    const SHIFTED_ALLOWED: &[(&str, &str)] =
+        &[("?", "help"), ("_", "split-up"), ("S", "split-down")];
 
     #[test]
     fn default_shortcuts_are_one_key_each_and_none_but_all_keys_needs_shift() {

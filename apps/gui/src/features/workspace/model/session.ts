@@ -1,5 +1,6 @@
 import { terminalOf } from '@/api/daemon'
 import type { Conversation, PermissionAsk, TerminalDetails } from '@/data/preview'
+import { toSubagentView, type SubagentView } from './subagents'
 
 /** The status vocabulary of the desktop app. Each one has its own shape, never colour alone. */
 export type SessionStatus = 'working' | 'needs' | 'done' | 'error' | 'idle' | 'unknown'
@@ -23,8 +24,13 @@ export type SessionView = {
   title: string
   /** The name you gave the session; null until you rename it. The daemon keeps it for every app. */
   name: string | null
-  /** Pinned to the top of its project: it leads the project and sorts first in the tray. */
+  /** It runs in a linked worktree, as the daemon says for the pane. */
+  worktree: boolean
+  /** Marked with a pin glyph. A pin never reorders the list. */
   pinned: boolean
+  /** Lines added and removed in the session's checkout against HEAD; zero outside git. */
+  diffAdded: number
+  diffRemoved: number
   /** Put away from the project lists and tabs. It keeps running in the daemon. */
   archived: boolean
   /** The daemon no longer lists it, but its pane stays on screen until you close or restart it. */
@@ -42,6 +48,8 @@ export type SessionView = {
   interrupted: TerminalDetails['interrupted']
   timeline: TerminalDetails['timeline']
   usage: TerminalDetails['usage']
+  /** The agent's subagents, in the order its runtime reported them. */
+  subagents: SubagentView[]
   status: SessionStatus
   /** The status before the daemon disconnected. */
   lastKnownStatus: SessionStatus | null
@@ -85,7 +93,6 @@ export function processName(agent: string | null | undefined, program: string | 
 const SEPARATOR = /[\\/]/
 // A folder deep in a repo is shown by its last two parts (`crates/maitty-core`).
 const TITLE_PARTS = 2
-const SHORT_NAME_LETTERS = 2
 
 const STATUS_FROM_CONVERSATION: Record<Conversation['status'], SessionStatus> = {
   working: 'working',
@@ -94,6 +101,17 @@ const STATUS_FROM_CONVERSATION: Record<Conversation['status'], SessionStatus> = 
   idle: 'idle',
   recovery: 'error',
   unknown: 'unknown',
+}
+
+/**
+ * The daemon's status for a session, with a failed last command shown as exited. The daemon sets
+ * `exit` (a non-zero code from the shell) and clears it when work starts again, so the window only
+ * displays it; a session that is working or needs you shows that instead.
+ */
+function statusOf(conversation: Conversation): SessionStatus {
+  const status = STATUS_FROM_CONVERSATION[conversation.status]
+  const failed = conversation.details?.exit != null
+  return failed && (status === 'idle' || status === 'done') ? 'error' : status
 }
 
 export const STATUS_WORD: Record<SessionStatus, string> = {
@@ -145,7 +163,7 @@ export function toSessionView(conversation: Conversation, home: string): Session
   const branch = repoName !== null && conversation.branch && conversation.branch !== 'working tree' ? conversation.branch : null
   // At a checkout's root the row says its branch; deeper in, the folder is what tells sessions apart.
   const title = repoName === null ? cwdLabel : inside === '' ? branch ?? repoName : inside.split('/').slice(-TITLE_PARTS).join('/')
-  const status = STATUS_FROM_CONVERSATION[conversation.status]
+  const status = statusOf(conversation)
   const lastKnown = conversation.lastKnownStatus ? STATUS_FROM_CONVERSATION[conversation.lastKnownStatus] : null
   return {
     id: conversation.id,
@@ -159,7 +177,10 @@ export function toSessionView(conversation: Conversation, home: string): Session
     branch,
     title,
     name: conversation.named ? conversation.title.trim() || null : null,
+    worktree: conversation.linked ?? false,
     pinned: conversation.pinned ?? false,
+    diffAdded: conversation.diffAdded ?? 0,
+    diffRemoved: conversation.diffRemoved ?? 0,
     archived: conversation.archived ?? false,
     ended: false,
     promptPath,
@@ -170,6 +191,7 @@ export function toSessionView(conversation: Conversation, home: string): Session
     interrupted: conversation.details?.interrupted ?? null,
     timeline: conversation.details?.timeline ?? [],
     usage: conversation.details?.usage ?? { context: null, cost: null, tokens: null },
+    subagents: (conversation.details?.subagents ?? []).map(toSubagentView),
     status,
     lastKnownStatus: lastKnown,
     conversation,
@@ -205,83 +227,29 @@ export function iconSaysProcess(process: string): boolean {
   return program === '' || ICONED_PROGRAMS.has(program)
 }
 
-const STATUS_RANK: Record<SessionStatus, number> = { needs: 0, error: 0, working: 1, done: 2, idle: 2, unknown: 2 }
-
-/** The session a tab reports: whatever needs you first, then whatever is working. */
-export function worstSession(sessions: readonly SessionView[]): SessionView | undefined {
-  return [...sessions].sort((a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status])[0]
-}
-
-export type GroupBy = 'repo' | 'folder'
-
-/** Where a session's project is: its git repo's root, or (outside a repo, or grouping by folder) its own folder. */
-function placeOf(session: Pick<SessionView, 'repoRoot' | 'cwd'>, groupBy: GroupBy): string {
-  return (groupBy === 'repo' ? session.repoRoot : null) ?? session.cwd
-}
-
 /**
- * The project a session belongs to: its git repo's root, or (outside a repo, or grouping by folder)
- * its own folder. A folder of another machine is a project of its own, whatever a folder here is called.
+ * The sessions in the sidebar's order: creation order, which is the daemon's pane number (it only
+ * counts up). Status, pin and focus never move a row.
  */
-export function groupKeyOf(session: Pick<SessionView, 'repoRoot' | 'cwd'> & { machineName?: string | null }, groupBy: GroupBy): string {
-  const place = placeOf(session, groupBy)
-  return session.machineName ? `${session.machineName}\u0000${place}` : place
+export function inCreationOrder(sessions: readonly SessionView[]): SessionView[] {
+  return [...sessions].sort((a, b) => a.pane - b.pane || a.machine - b.machine)
 }
 
-export type SessionGroup = {
-  key: string
-  name: string
-  kind: 'repo' | 'folder'
-  /** Shown on hover: the repo or folder path. */
-  path: string
-  /** The machine the project is on; null for this computer. */
-  machineName: string | null
-  sessions: SessionView[]
-  containsFocused: boolean
-  needsCount: number
-  workingCount: number
+/** What a row calls a session: the name you gave it, else the program running in it. */
+export function rowName(session: Pick<SessionView, 'name' | 'process'>): string {
+  return session.name ?? session.process
 }
 
-/**
- * Sidebar groups: by the git repo that holds each shell's folder (a shell outside any repo is
- * grouped by its own folder), or always by folder. Groups sort by name; rows keep creation order,
- * so nothing moves when a status changes.
- */
-export function groupSessions(sessions: readonly SessionView[], groupBy: GroupBy, focusedId: string | null, home: string): SessionGroup[] {
-  const groups = new Map<string, SessionGroup>()
-  for (const session of [...sessions].sort((a, b) => a.pane - b.pane)) {
-    const repoRoot = groupBy === 'repo' ? session.repoRoot : null
-    const key = groupKeyOf(session, groupBy)
-    const place = placeOf(session, groupBy)
-    let group = groups.get(key)
-    if (!group) {
-      group = {
-        key,
-        name: `${machinePrefix(session.machineName)}${repoRoot ? (session.repoName ?? baseName(place)) : session.cwdLabel === '~' ? '~' : baseName(place)}`,
-        kind: repoRoot ? 'repo' : 'folder',
-        path: tildePath(place, session.machineName ? '' : home),
-        machineName: session.machineName,
-        sessions: [],
-        containsFocused: false,
-        needsCount: 0,
-        workingCount: 0,
-      }
-      groups.set(key, group)
-    }
-    group.sessions.push(session)
-    if (session.id === focusedId) group.containsFocused = true
-    if (session.status === 'needs') group.needsCount += 1
-    if (session.status === 'working') group.workingCount += 1
-  }
-  return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name))
+/** The folder a row's badge shows: its last segment. */
+export function folderNameOf(session: Pick<SessionView, 'repoRoot' | 'cwd'>): string {
+  const place = session.repoRoot ?? session.cwd
+  return baseName(place)
 }
 
-const MAX_INITIALS = 3
-
-/** The rail's short label for a group: initials of its parts (`maitty-docs` → `MD`), else two letters. */
-export function groupInitials(group: Pick<SessionGroup, 'kind' | 'name'>): string {
-  const parts = group.name.split(/[-_.]/).filter(Boolean)
-  if (parts.length > 1) return parts.map((part) => part[0] ?? '').join('').slice(0, MAX_INITIALS).toUpperCase()
-  const letters = group.name.slice(0, SHORT_NAME_LETTERS)
-  return `${letters.slice(0, 1).toUpperCase()}${letters.slice(1).toLowerCase()}`
+/** The filter field's match: the query is found in the name, folder, process, branch or machine, ignoring case. */
+export function matchesFilter(session: SessionView, query: string): boolean {
+  const needle = query.trim().toLowerCase()
+  if (needle === '') return true
+  const fields = [rowName(session), session.title, folderNameOf(session), session.cwdLabel, session.process, session.branch ?? '', session.machineName ?? 'this computer']
+  return fields.some((field) => field.toLowerCase().includes(needle))
 }

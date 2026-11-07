@@ -47,8 +47,9 @@ const ICON_DRAWINGS = {
   arrowDown: ({ size = 14, strokeWidth = 2 }: IconProps) => <Svg size={size} strokeWidth={strokeWidth}><path d="M12 5v14M6 13l6 6 6-6" /></Svg>,
   close: ({ size = 13, strokeWidth = 2 }: IconProps) => <Svg size={size} strokeWidth={strokeWidth}><path d="M6 6l12 12M18 6 6 18" /></Svg>,
   chevron: () => <Svg className="mx-chevron" size={12} strokeWidth={2.25} stroke="var(--dim)"><path d="m9 6 6 6-6 6" /></Svg>,
-  folder: () => (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d={FOLDER_PATH} /></svg>
+  chevronDown: ({ size = 11 }: IconProps) => <Svg size={size} strokeWidth={2.2} stroke="var(--dim)"><path d="m6 9 6 6 6-6" /></Svg>,
+  folder: ({ size = 13 }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d={FOLDER_PATH} /></svg>
   ),
   gear: () => (
     <Svg size={13} strokeWidth={1.75}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.8 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.8H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 2.8-1.2V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.8H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1.1z" /></Svg>
@@ -58,8 +59,8 @@ const ICON_DRAWINGS = {
   splitDown: () => <Svg size={16} strokeWidth={1.6}><rect x="3" y="4.5" width="18" height="15" rx="2.5" /><path d="M3 12h18" /></Svg>,
   maximize: () => <Svg size={15} strokeWidth={1.8}><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></Svg>,
   restore: () => <Svg size={15} strokeWidth={1.8}><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /></Svg>,
-  branch: ({ size = 11, strokeWidth = 2.2 }: IconProps) => (
-    <Svg size={size} strokeWidth={strokeWidth} stroke="var(--ansi-mag)"><circle cx="6" cy="6" r="2.5" /><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="8" r="2.5" /><path d="M6 8.5v7M18 10.5c0 4-6 3-10 5.5" /></Svg>
+  branch: ({ size = 11, strokeWidth = 2.2, stroke = 'var(--ansi-mag)' }: IconProps) => (
+    <Svg size={size} strokeWidth={strokeWidth} stroke={stroke}><circle cx="6" cy="6" r="2.5" /><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="8" r="2.5" /><path d="M6 8.5v7M18 10.5c0 4-6 3-10 5.5" /></Svg>
   ),
   broadcast: () => <Svg size={15} strokeWidth={1.8}><circle cx="12" cy="12" r="2" /><path d="M16.2 7.8a6 6 0 0 1 0 8.4M7.8 16.2a6 6 0 0 1 0-8.4M19 5a10 10 0 0 1 0 14M5 19A10 10 0 0 1 5 5" /></Svg>,
   grid: ({ size = 16 }: IconProps) => <Svg size={size} strokeWidth={1.8}><rect x="3.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="3.5" y="13.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="13.5" width="7" height="7" rx="1.5" /></Svg>,
@@ -69,13 +70,23 @@ const ICON_DRAWINGS = {
   changes: ({ size = 18 }: IconProps) => <Svg size={size} strokeWidth={1.8}><rect x="3.5" y="3.5" width="17" height="17" rx="3" /><path d="M8 9h8M12 7v4M8 16h8" /></Svg>,
   history: ({ size = 18 }: IconProps) => <Svg size={size} strokeWidth={1.8}><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></Svg>,
   references: ({ size = 18 }: IconProps) => <Svg size={size} strokeWidth={1.8}><path d="M6 3.5h12a1 1 0 0 1 1 1V21l-7-4-7 4V4.5a1 1 0 0 1 1-1Z" /></Svg>,
+  laptop: ({ size = 13 }: IconProps) => <Svg size={size} strokeWidth={1.7}><rect x="4.5" y="5" width="15" height="10.5" rx="1.8" /><path d="M2.5 19h19" /></Svg>,
+  server: ({ size = 13 }: IconProps) => <Svg size={size} strokeWidth={1.7}><rect x="3.5" y="4" width="17" height="6.5" rx="1.8" /><rect x="3.5" y="13.5" width="17" height="6.5" rx="1.8" /><path d="M7 7.25h.01M7 16.75h.01" /></Svg>,
+  search: ({ size = 13 }: IconProps) => <Svg size={size} strokeWidth={1.9}><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.2-4.2" /></Svg>,
   pin: ({ size = 13 }: IconProps) => <Svg size={size} strokeWidth={1.8}><path d="M12 17v5" /><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" /></Svg>,
   pencil: ({ size = 13 }: IconProps) => <Svg size={size} strokeWidth={1.8}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></Svg>,
   download: ({ size = 15 }: IconProps) => <Svg size={size} strokeWidth={1.9}><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19h14" /></Svg>,
   palette: ({ size = 12 }: IconProps) => <Svg size={size} strokeWidth={1.8}><path d="M12 3a9 9 0 1 0 0 18c1.3 0 2-.8 2-1.8 0-.5-.2-.9-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1 .8-1.8 1.8-1.8H17a4 4 0 0 0 4-4C21 6.5 17 3 12 3Z" /><circle cx="7.5" cy="11" r="1" /><circle cx="10" cy="7" r="1" /><circle cx="15" cy="7.5" r="1" /></Svg>,
   layout: ({ size = 12 }: IconProps) => <Svg size={size} strokeWidth={1.8}><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M3 10h18M10 10v10" /></Svg>,
-  prompt: ({ size = 18 }: IconProps) => <Svg size={size}><path d="m5 8 4 4-4 4M12 17h7" /></Svg>,
+  prompt: ({ size = 18, strokeWidth = 2 }: IconProps) => <Svg size={size} strokeWidth={strokeWidth}><path d="m5 8 4 4-4 4M12 17h7" /></Svg>,
   check: ({ size = 9, stroke = 'var(--ok)', strokeWidth = 3.5 }: IconProps) => <Svg size={size} strokeWidth={strokeWidth} stroke={stroke}><path d="M5 12.5 10 17 19 7" /></Svg>,
+  chatPlus: ({ size = 15 }: IconProps) => <Svg size={size} strokeWidth={1.8}><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" /><path d="M8 12h8M12 8v8" /></Svg>,
+  terminal: ({ size = 15 }: IconProps) => <Svg size={size} strokeWidth={1.9}><path d="m5 8 4 4-4 4M12 17h7" /></Svg>,
+  serverPlus: ({ size = 15 }: IconProps) => <Svg size={size} strokeWidth={1.7}><rect x="3" y="4" width="14" height="6" rx="1.8" /><rect x="3" y="13.5" width="14" height="6" rx="1.8" /><path d="M6.5 7h.01M6.5 16.5h.01M20 7v6M17 10h6" /></Svg>,
+  chat: ({ size = 13, strokeWidth = 1.8 }: IconProps) => <Svg size={size} strokeWidth={strokeWidth}><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" /></Svg>,
+  fleets: ({ size = 14 }: IconProps) => <Svg size={size} strokeWidth={1.8}><path d="M12 3v13M12 5l6 9H12M12 8l-5 6h5M4 18c2 2.5 5 3 8 1 3 2 6 1.5 8-1" /></Svg>,
+  priority: ({ size = 14 }: IconProps) => <Svg size={size} strokeWidth={1.9}><path d="M4 7h16M4 12h11M4 17h6" /></Svg>,
+  caret: () => <Svg className="mx-caret-icon" size={10} strokeWidth={2.5} stroke="currentColor"><path d="m9 6 6 6-6 6" /></Svg>,
   bang: () => <Svg size={9} strokeWidth={3.5} stroke="var(--danger)"><path d="M12 6v7" /><path d="M12 18h.01" /></Svg>,
 } satisfies Record<string, (props: IconProps) => ReactNode>
 
@@ -84,15 +95,6 @@ export type IconName = keyof typeof ICON_DRAWINGS
 /** The design's line icons, drawn at the sizes and stroke widths the prototype uses. */
 export function Icon({ name, ...props }: IconProps & { name: IconName }) {
   return ICON_DRAWINGS[name](props)
-}
-
-export function PauseBars() {
-  return (
-    <>
-      <span className="mx-pause-bar" />
-      <span className="mx-pause-bar" />
-    </>
-  )
 }
 
 type IconKind = { kind: 'shell' | 'codex' | 'claude' | 'deepseek' | 'gemini' | 'opencode' | 'rust'; glyph: ReactNode }
@@ -116,7 +118,7 @@ const ICONS: Record<string, IconKind> = {
 }
 const SHELL_ICON: IconKind = { kind: 'shell', glyph: '>_' }
 
-type IconSize = 18 | 20 | 22 | 24 | 28
+type IconSize = 14 | 18 | 20 | 22 | 24 | 26 | 28 | 32
 
 export function AppIcon({ process, size, dimmed = false }: { process: string; size: IconSize; dimmed?: boolean }) {
   const program = process.split(/\s+/)[0] ?? ''
@@ -128,19 +130,18 @@ export function AppIcon({ process, size, dimmed = false }: { process: string; si
 }
 
 /** The badge on a sidebar row's icon: a shape per status, so colour is never the only signal. */
-export function StatusBadge({ status, rail = false }: { status: SessionStatus; rail?: boolean }) {
+export function StatusBadge({ status }: { status: SessionStatus }) {
   switch (status) {
-    // A row shows a working session with a spinner beside its title; the rail and the tray have no room for one.
     case 'working':
-      return rail ? <span className="mx-badge is-working"><Spinner className="" /></span> : null
+      return <span className="mx-badge is-working"><Spinner className="" /></span>
     case 'needs':
-      return <span className="mx-badge is-needs"><PauseBars /></span>
+      return <span className="mx-badge is-needs" aria-hidden="true">›</span>
     case 'done':
       return <span className="mx-badge is-done"><Icon name="check" /></span>
     case 'error':
       return <span className="mx-badge is-error"><Icon name="bang" /></span>
     case 'unknown':
-      return rail ? null : <span className="mx-badge is-unknown" />
+      return <span className="mx-badge is-unknown" />
     case 'idle':
       return null
   }

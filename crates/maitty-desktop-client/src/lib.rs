@@ -1,7 +1,9 @@
 use maitty_shared::conversation::{ApprovalPolicy, LaunchSettings, Provider, Sandbox, StartTarget};
 mod ipc;
+mod shared_daemon;
 use anyhow::{Context, Result, bail};
 pub use ipc::data_dir;
+pub use shared_daemon::{ensure_shared_daemon, shared_daemon_path};
 use maitty_shared::protocol::{ClientMsg, Command, Query, Reply, ServerMsg};
 use serde_json::{Value, json};
 use std::path::PathBuf;
@@ -25,6 +27,9 @@ pub enum PaneCommand {
     Archive(bool),
     Seen,
     Close,
+    /// End the session after an undo window; `UndoClose` inside it brings the session back.
+    CloseSession,
+    UndoClose,
 }
 
 impl PaneCommand {
@@ -43,6 +48,8 @@ impl PaneCommand {
             }
             PaneCommand::Seen => ClientMsg::Command(Command::MarkSeen { term }),
             PaneCommand::Close => ClientMsg::Command(Command::ClosePane { term }),
+            PaneCommand::CloseSession => ClientMsg::Command(Command::CloseSession { term }),
+            PaneCommand::UndoClose => ClientMsg::Command(Command::UndoClose { term }),
         }
     }
 }
@@ -258,6 +265,40 @@ pub async fn restart_mismatched_daemon(expected_protocol: u32) -> Result<()> {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     bail!("the old daemon still holds the local service socket")
+}
+
+/// Stop a running daemon so its file can be replaced by a newer release. Its sessions must be
+/// saved (the next daemon restores them) or absent, or it is left running and this fails.
+fn stop_running_daemon_for_update() -> Result<()> {
+    if !daemon_is_running() {
+        return Ok(());
+    }
+    validate_restart_activity(read_activity().as_ref(), session_file().is_file())?;
+    stop_mismatched_daemon()?;
+    for _ in 0..50 {
+        if !daemon_is_running() {
+            ipc::remove_pid_file();
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    bail!("the old daemon still holds the local service socket")
+}
+
+/// A blocking check for callers outside the async runtime. It runs on its own thread because
+/// a runtime cannot be started from inside another.
+fn daemon_is_running() -> bool {
+    std::thread::scope(|scope| {
+        scope
+            .spawn(|| {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .is_ok_and(|runtime| runtime.block_on(ipc::is_running()))
+            })
+            .join()
+            .unwrap_or(false)
+    })
 }
 
 fn validate_restart_confirmation(daemon_protocol: u32, expected_protocol: u32) -> Result<()> {
@@ -766,6 +807,25 @@ pub async fn close_terminal_session(term: u32, daemon_executable: PathBuf) -> Re
     }
 }
 
+/// End a terminal session with an undo window: the daemon hides it at once and closes it after
+/// the window unless `undo_close_terminal_session` comes first.
+pub async fn close_session_with_undo(term: u32, daemon_executable: PathBuf) -> Result<Value> {
+    let reply = request(PaneCommand::CloseSession.message(term), daemon_executable).await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected close reply"),
+    }
+}
+
+/// Bring back a session `close_session_with_undo` hid, while the undo window is open.
+pub async fn undo_close_terminal_session(term: u32, daemon_executable: PathBuf) -> Result<Value> {
+    let reply = request(PaneCommand::UndoClose.message(term), daemon_executable).await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected undo reply"),
+    }
+}
+
 /// Pin a pane to the top of its project, or let it go back to its place.
 pub async fn pin_terminal_session(
     term: u32,
@@ -810,6 +870,7 @@ pub async fn send_conversation(
     generation: u64,
     operation: u64,
     text: String,
+    choice: Option<maitty_shared::conversation::TurnChoice>,
     daemon_executable: PathBuf,
 ) -> Result<Value> {
     let reply = request(
@@ -818,6 +879,7 @@ pub async fn send_conversation(
             generation,
             operation,
             text,
+            choice: choice.filter(|picked| !picked.is_empty()),
         }),
         daemon_executable,
     )
@@ -1549,6 +1611,14 @@ mod pane_command_tests {
                 PaneCommand::Close,
                 ClientMsg::Command(Command::ClosePane { term: 4 }),
             ),
+            (
+                PaneCommand::CloseSession,
+                ClientMsg::Command(Command::CloseSession { term: 4 }),
+            ),
+            (
+                PaneCommand::UndoClose,
+                ClientMsg::Command(Command::UndoClose { term: 4 }),
+            ),
         ];
         for (command, expected) in cases {
             let shown = format!("{command:?}");
@@ -1580,5 +1650,166 @@ mod chat_posture_tests {
             chat_session_permissions(true).launch_policy(),
             (Sandbox::FullAccess, ApprovalPolicy::Never)
         );
+    }
+}
+
+/// The workspace-palette indexes a fleet may be coloured with, in the order the window shows
+/// them: teal, violet, blue, green, pink, orange. They are positions in the default
+/// `ui.workspace_colors`, whose meaning saved colours keep; amber (4) and red are left out so a
+/// fleet never looks like a status.
+pub const FLEET_COLORS: [u8; 6] = [3, 0, 1, 7, 2, 5];
+
+/// What the window may ask a machine's daemon to do with a fleet (a workspace) or with a session
+/// moving between fleets. Like `PaneCommand`, one place makes each message for this computer and
+/// for another machine.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FleetCommand {
+    /// A named fleet with one shell; its colour is the first of `FLEET_COLORS` not in use.
+    Create { name: String },
+    Rename { fleet: u32, name: String },
+    /// `color` is a palette index from `FLEET_COLORS`.
+    Recolor { fleet: u32, color: u8 },
+    /// Move a session to another fleet on the same machine.
+    MoveSession { term: u32, fleet: u32 },
+    /// A new shell in the fleet, in `folder` or, when that is left out, the fleet's own folder.
+    StartShell { fleet: u32, folder: Option<String> },
+}
+
+impl FleetCommand {
+    /// The message that asks the daemon, or why the window's request is refused.
+    pub fn message(self) -> Result<ClientMsg, String> {
+        let command = match self {
+            FleetCommand::Create { name } => Command::NewFleet {
+                name: fleet_name(&name)?,
+                cwd: None,
+                colors: FLEET_COLORS.to_vec(),
+            },
+            FleetCommand::Rename { fleet, name } => Command::RenameWorkspace {
+                ws: fleet,
+                name: fleet_name(&name)?,
+            },
+            FleetCommand::Recolor { fleet, color } => {
+                if !FLEET_COLORS.contains(&color) {
+                    return Err("That is not one of the fleet colours".to_string());
+                }
+                Command::SetWorkspaceColor { ws: fleet, color }
+            }
+            FleetCommand::MoveSession { term, fleet } => Command::MovePane {
+                term,
+                to: Some(fleet),
+                name: None,
+            },
+            FleetCommand::StartShell { fleet, folder } => Command::NewShip {
+                ws: fleet,
+                cwd: folder
+                    .map(|f| f.trim().to_string())
+                    .filter(|f| !f.is_empty())
+                    .map(PathBuf::from),
+                cmd: None,
+            },
+        };
+        Ok(ClientMsg::Command(command))
+    }
+}
+
+/// The most bytes a fleet name may have; the daemon holds the same limit.
+const MOST_FLEET_NAME_BYTES: usize = 80;
+
+/// A fleet name as the daemon will take it: trimmed, not empty, short, no control characters.
+fn fleet_name(name: &str) -> Result<String, String> {
+    let name = name.trim();
+    if name.is_empty() || name.len() > MOST_FLEET_NAME_BYTES || name.chars().any(char::is_control)
+    {
+        return Err("Give the fleet a short name".to_string());
+    }
+    Ok(name.to_string())
+}
+
+/// Ask this computer's daemon to do `command` to a fleet.
+pub async fn fleet_command(command: FleetCommand, daemon_executable: PathBuf) -> Result<Value> {
+    let message = command.message().map_err(anyhow::Error::msg)?;
+    let reply = request(message, daemon_executable).await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected fleet reply"),
+    }
+}
+
+#[cfg(test)]
+mod fleet_tests {
+    use super::{FLEET_COLORS, FleetCommand};
+    use maitty_shared::protocol::{ClientMsg, Command};
+
+    fn command(of: FleetCommand) -> Command {
+        match of.message().unwrap() {
+            ClientMsg::Command(command) => command,
+            other => panic!("not a command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_fleet_is_created_with_a_trimmed_name_and_only_the_fleet_colours() {
+        let Command::NewFleet { name, colors, .. } = command(FleetCommand::Create {
+            name: " api ".into(),
+        }) else {
+            panic!("expected NewFleet")
+        };
+        assert_eq!(name, "api");
+        assert_eq!(colors, FLEET_COLORS);
+        assert!(!colors.contains(&4), "amber is not a fleet colour");
+    }
+
+    #[test]
+    fn a_nameless_or_oversized_fleet_name_is_refused() {
+        for name in ["", "   ", "a\nb", &"x".repeat(81)] {
+            assert!(
+                FleetCommand::Create { name: name.into() }.message().is_err(),
+                "{name:?}"
+            );
+            assert!(
+                FleetCommand::Rename {
+                    fleet: 1,
+                    name: name.into()
+                }
+                .message()
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn only_a_fleet_colour_can_be_set() {
+        for color in FLEET_COLORS {
+            assert!(FleetCommand::Recolor { fleet: 1, color }.message().is_ok());
+        }
+        for color in [4, 6, 8, 255] {
+            assert!(FleetCommand::Recolor { fleet: 1, color }.message().is_err());
+        }
+    }
+
+    #[test]
+    fn moving_and_starting_name_the_fleet_and_a_blank_folder_means_the_fleets_own() {
+        assert!(matches!(
+            command(FleetCommand::MoveSession { term: 4, fleet: 2 }),
+            Command::MovePane {
+                term: 4,
+                to: Some(2),
+                name: None
+            }
+        ));
+        let Command::NewShip { ws, cwd, cmd } = command(FleetCommand::StartShell {
+            fleet: 2,
+            folder: Some("  ".into()),
+        }) else {
+            panic!("expected NewShip")
+        };
+        assert_eq!((ws, cwd, cmd), (2, None, None));
+        let Command::NewShip { cwd, .. } = command(FleetCommand::StartShell {
+            fleet: 2,
+            folder: Some("/srv/app".into()),
+        }) else {
+            panic!("expected NewShip")
+        };
+        assert_eq!(cwd, Some("/srv/app".into()));
     }
 }

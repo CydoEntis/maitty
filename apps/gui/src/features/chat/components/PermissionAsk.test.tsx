@@ -52,9 +52,9 @@ describe('the chat of an agent stopped on a permission prompt', () => {
   it('says what the agent wants to do, and approves with the key Claude Code takes', async () => {
     const { typeInto, user } = await open('Blocked', WRITE_ASK)
 
-    expect(screen.getByText('claude wants to use Write')).toBeInTheDocument()
+    expect(screen.getByText('Wants to use Write')).toBeInTheDocument()
     expect(screen.getByText('src/notes.txt')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Approve once' }))
+    await user.click(screen.getByRole('button', { name: /^Yes, once/ }))
 
     expect(typeInto).toHaveBeenCalledExactlyOnceWith(ANSWER_KEYS.approve)
     expect(ANSWER_KEYS.approve).toBe('1')
@@ -63,7 +63,7 @@ describe('the chat of an agent stopped on a permission prompt', () => {
   it('refuses with Esc', async () => {
     const { typeInto, user } = await open('Blocked', WRITE_ASK)
 
-    await user.click(screen.getByRole('button', { name: 'Deny' }))
+    await user.click(screen.getByRole('button', { name: /^No/ }))
 
     expect(typeInto).toHaveBeenCalledExactlyOnceWith('\x1b')
   })
@@ -77,8 +77,8 @@ describe('the chat of an agent stopped on a permission prompt', () => {
   it('offers no buttons for a prompt whose answer key is not known, and says where to answer', async () => {
     const { typeInto } = await open('Blocked', { ...WRITE_ASK, answerable: false })
 
-    expect(screen.getByText('claude wants to use Write')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Approve once' })).not.toBeInTheDocument()
+    expect(screen.getByText('Wants to use Write')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Yes, once/ })).not.toBeInTheDocument()
     expect(screen.getByText('Answer in the terminal.')).toBeInTheDocument()
     expect(typeInto).not.toHaveBeenCalled()
   })
@@ -88,7 +88,7 @@ describe('the chat of an agent stopped on a permission prompt', () => {
 
     expect(screen.getByText('claude has a question for you')).toBeInTheDocument()
     expect(screen.getByText('Which database? 1 SQLite · 2 Postgres')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Approve once' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Yes, once/ })).not.toBeInTheDocument()
     expect(screen.getByText('Answer in the terminal.')).toBeInTheDocument()
     expect(typeInto).not.toHaveBeenCalled()
   })
@@ -97,7 +97,7 @@ describe('the chat of an agent stopped on a permission prompt', () => {
     const { typeInto, user } = await open('Blocked', { tool: 'AskUserQuestion', detail: 'Which database?', answerable: false, choices: ['SQLite', 'Postgres'] })
 
     expect(screen.getByText('Which database?')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Approve once' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Yes, once/ })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Postgres/ }))
 
     expect(typeInto).toHaveBeenCalledExactlyOnceWith('2')
@@ -108,14 +108,14 @@ describe('the chat of an agent stopped on a permission prompt', () => {
     await open('Blocked', null)
 
     expect(screen.getByText('claude is waiting for you')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Approve once' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Yes, once/ })).not.toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Message claude' })).toHaveAttribute('placeholder', TYPING_ASKING_NOTE)
   })
 
   it('shows no card while the agent is not stopped on a prompt', async () => {
     await open('Idle', WRITE_ASK)
 
-    expect(screen.queryByText('claude wants to use Write')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Approve once' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Wants to use Write')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Yes, once/ })).not.toBeInTheDocument()
   })
 })

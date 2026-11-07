@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 73;
+pub const PROTOCOL_VERSION: u32 = 75;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -227,6 +227,10 @@ pub enum Command {
         generation: u64,
         operation: u64,
         text: String,
+        /// The model and reasoning effort for this message and the ones after it, when the user
+        /// picked them. Absent from a peer that predates it, which keeps the chat's own.
+        #[serde(default)]
+        choice: Option<crate::conversation::TurnChoice>,
     },
     /// Take a message back out of the daemon's queue before it is delivered.
     ConversationDequeue {
@@ -336,6 +340,16 @@ pub enum Command {
         cwd: Option<PathBuf>,
     },
     ClosePane {
+        term: TermId,
+    },
+    /// End a session with an undo window: it leaves the snapshot at once but its process runs
+    /// on until `UNDO_WINDOW` passes, then it is closed as `ClosePane` closes it.
+    CloseSession {
+        term: TermId,
+    },
+    /// Bring back a session `CloseSession` hid, still inside the window. After the window, or
+    /// for a session that isn't closing, it does nothing.
+    UndoClose {
         term: TermId,
     },
     /// Focus a pane anywhere: switches workspace and tab as needed.
@@ -451,12 +465,34 @@ pub enum Command {
     PaneToWorkspace {
         term: TermId,
     },
-    /// Index into the configured workspace colour palette.
+    /// Start a named fleet (a workspace) on this machine, holding one new shell in `cwd` (the
+    /// home folder when absent or not a folder). Its colour is the first of `colors` (indexes
+    /// into the workspace palette) that no workspace uses, else the first free colour of any
+    /// index; `colors` empty means any.
+    NewFleet {
+        name: String,
+        cwd: Option<PathBuf>,
+        colors: Vec<u8>,
+    },
+    /// Start a new session in an existing fleet: a shell, or `cmd`, in `cwd` (the fleet's
+    /// folder when absent or not a folder). It joins the fleet as a new tab.
+    NewShip {
+        ws: WsId,
+        cwd: Option<PathBuf>,
+        cmd: Option<String>,
+    },
+    /// Index into the configured workspace colour palette; an index past the palette is refused.
     SetWorkspaceColor {
         ws: WsId,
         color: u8,
     },
     ReloadConfig,
+    /// Change one shared setting in config.toml (human clients only). The daemon checks the
+    /// value, edits the file in place, reloads, and tells every client `SettingsChanged`.
+    SetSetting {
+        key: crate::settings_view::SettingKey,
+        value: crate::settings_view::SettingValue,
+    },
     /// The program running in `term` is an agent: add it to config (by its program, or by
     /// its script when node/python runs it) so its status shows.
     TeachAgent {
@@ -556,6 +592,8 @@ pub enum Command {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Query {
+    /// The shared settings; answered with `Reply::Settings`.
+    Settings,
     ConversationRead {
         id: crate::conversation::ConversationId,
         cursor: Option<crate::conversation::history::Cursor>,
@@ -771,6 +809,8 @@ pub enum ServerMsg {
     },
     /// An agent started in a new repo, which became a workspace (undoable).
     AutoWorkspace(String),
+    /// A shared setting changed (by either app); the settings as they are now.
+    SettingsChanged(crate::settings_view::SharedSettings),
     /// Come to the front: a notification for one of this server's sessions was clicked.
     Raise,
     Bye,
@@ -778,6 +818,7 @@ pub enum ServerMsg {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Reply {
+    Settings(crate::settings_view::SharedSettings),
     ConversationStarted {
         id: crate::conversation::ConversationId,
         generation: u64,
@@ -1145,6 +1186,12 @@ pub struct TermInfo {
     pub branch: Option<String>,
     /// The pane is in a linked worktree.
     pub linked: bool,
+    /// Lines added and removed in its checkout against HEAD (untracked files not counted); zero
+    /// outside git. Shared by every pane in the same checkout.
+    #[serde(default)]
+    pub diff_added: u32,
+    #[serde(default)]
+    pub diff_removed: u32,
     /// Subagents running right now (their kinds).
     pub subagents: Vec<String>,
     /// Persistent lifecycle records reported by the runtime.
@@ -1231,6 +1278,25 @@ pub struct TermInfo {
     /// pane needs you and the agent said what it asks.
     #[serde(default)]
     pub ask: Option<PermissionAsk>,
+    /// How the last command in the pane ended, when it ended in failure. See [`ExitInfo`].
+    #[serde(default)]
+    pub exit: Option<ExitInfo>,
+}
+
+/// A command in a pane that ended in failure, as the shell reported it (OSC 133 D), never read
+/// off the screen. Set only for a non-zero exit, so `Some` means "show the red exited-with-error
+/// mark" and `None` means nothing failed: a running pane, a clean exit (code 0, which reads as
+/// Done, not as a problem) or a shell that reported no code. It is cleared as soon as the next
+/// command starts or the agent works again, and it is not kept across a daemon restart (the
+/// restored pane is a fresh shell). A signal kill reaches the shell as a code above 128
+/// (130 for Ctrl+C, 137 for SIGKILL), so it counts as an error too. Clients display it; only
+/// the daemon sets it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExitInfo {
+    /// The exit code the shell reported; `None` if a failure carried no code.
+    pub code: Option<i32>,
+    /// When it ended (unix seconds).
+    pub at: u64,
 }
 
 /// An agent that was working when the daemon restarted.
@@ -1852,6 +1918,34 @@ mod tests {
         assert!(read.queued.is_empty() && read.history.resume.is_none() && !read.history.reset);
     }
 
+    /// `choice` was added to `ConversationSend` as a defaulted field: a send from before it still
+    /// decodes, as "nothing picked", and one that carries a choice round-trips.
+    #[test]
+    fn a_send_from_before_the_model_choice_still_decodes() {
+        #[derive(Serialize)]
+        enum OldCommand {
+            ConversationSend {
+                id: crate::conversation::ConversationId,
+                generation: u64,
+                operation: u64,
+                text: String,
+            },
+        }
+        let id = crate::conversation::ConversationId(3);
+        let bytes = encode(&OldCommand::ConversationSend { id, generation: 1, operation: 2, text: "hi".into() }).unwrap();
+        let Command::ConversationSend { choice, .. } = decode(&bytes).unwrap() else {
+            panic!("expected a send")
+        };
+        assert_eq!(choice, None);
+
+        let picked = crate::conversation::TurnChoice { model: Some("opus".into()), effort: Some("high".into()) };
+        let sent = Command::ConversationSend { id, generation: 1, operation: 3, text: "hi".into(), choice: Some(picked.clone()) };
+        let Command::ConversationSend { choice, .. } = decode(&encode(&sent).unwrap()).unwrap() else {
+            panic!("expected a send")
+        };
+        assert_eq!(choice, Some(picked));
+    }
+
     /// `agent` and `prompt` were added to `NewWorktree` as defaulted fields: a peer that does not
     /// send them still decodes, as "no agent", so the version stays as it was.
     #[test]
@@ -1955,7 +2049,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 73);
+        assert_eq!(PROTOCOL_VERSION, 75);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -2080,6 +2174,15 @@ mod tests {
         decode(&rmp_serde::to_vec_named(&v).unwrap()).expect("a pane")
     }
 
+    /// A peer from before diff counts sends none: the pane reads as having no changes.
+    #[test]
+    fn a_pane_from_before_diff_counts_reads_as_zero() {
+        let old = pane_from(serde_json::json!({}));
+        assert_eq!((old.diff_added, old.diff_removed), (0, 0));
+        let new = pane_from(serde_json::json!({"diff_added": 7, "diff_removed": 2}));
+        assert_eq!((new.diff_added, new.diff_removed), (7, 2));
+    }
+
     /// Pin and archive are new commands: a peer built before them can't read them.
     #[test]
     fn a_peer_from_before_pin_and_archive_cannot_read_them() {
@@ -2102,6 +2205,146 @@ mod tests {
             assert!(decode::<OldCommand>(&bytes).is_err());
             assert!(decode::<Command>(&bytes).is_ok());
         }
+    }
+
+    /// Starting a fleet or a ship are new commands: a peer built before them can't read them.
+    #[test]
+    fn a_peer_from_before_fleets_and_ships_cannot_read_them() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldCommand {
+            NewWorkspace {
+                cwd: Option<PathBuf>,
+                name: Option<String>,
+                cmd: Option<String>,
+            },
+            NewTab {
+                ws: WsId,
+                name: Option<String>,
+                cmd: Option<String>,
+            },
+        }
+        for command in [
+            Command::NewFleet {
+                name: "api".into(),
+                cwd: None,
+                colors: vec![3, 0],
+            },
+            Command::NewShip {
+                ws: 2,
+                cwd: Some(PathBuf::from("/srv")),
+                cmd: None,
+            },
+        ] {
+            let bytes = encode(&command).unwrap();
+            assert!(decode::<OldCommand>(&bytes).is_err());
+            assert!(decode::<Command>(&bytes).is_ok());
+        }
+    }
+
+    /// Soft close and undo are new commands: a peer built before them can't read them.
+    #[test]
+    fn a_peer_from_before_soft_close_cannot_read_it() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldCommand {
+            ClosePane { term: TermId },
+        }
+        for command in [
+            Command::CloseSession { term: 3 },
+            Command::UndoClose { term: 3 },
+        ] {
+            let bytes = encode(&command).unwrap();
+            assert!(decode::<OldCommand>(&bytes).is_err());
+            assert!(decode::<Command>(&bytes).is_ok());
+        }
+    }
+
+    fn sample_settings() -> crate::settings_view::SharedSettings {
+        use crate::settings_view::*;
+        SharedSettings {
+            default_agent: "claude".into(),
+            new_session_view: NewSessionView::Terminal,
+            sidebar_side: SidebarSide::Right,
+            theme_dark: "night".into(),
+            theme_light: "day".into(),
+            appearance: Appearance::Light,
+            spinner: vec!["a".into(), "b".into()],
+            start_dir: "C:\\Users\\me\\code".into(),
+            reduce_motion: true,
+            window_style: WindowStyle::Glass,
+        }
+    }
+
+    #[test]
+    fn settings_round_trip_through_the_codec() {
+        use crate::settings_view::*;
+        let settings = sample_settings();
+        let bytes = encode(&ServerMsg::Reply(Reply::Settings(settings.clone()))).unwrap();
+        match decode::<ServerMsg>(&bytes).unwrap() {
+            ServerMsg::Reply(Reply::Settings(back)) => assert_eq!(back, settings),
+            other => panic!("{other:?}"),
+        }
+        let bytes = encode(&ServerMsg::SettingsChanged(settings.clone())).unwrap();
+        match decode::<ServerMsg>(&bytes).unwrap() {
+            ServerMsg::SettingsChanged(back) => assert_eq!(back, settings),
+            other => panic!("{other:?}"),
+        }
+        round_trips(&ClientMsg::Query(Query::Settings));
+        for (key, value) in [
+            (SettingKey::ReduceMotion, SettingValue::Bool(true)),
+            (SettingKey::Spinner, SettingValue::List(vec!["x".into()])),
+            (SettingKey::StartDir, SettingValue::Text("~/code".into())),
+            (
+                SettingKey::WindowStyle,
+                SettingValue::WindowStyle(WindowStyle::Glass),
+            ),
+        ] {
+            let command = Command::SetSetting {
+                key,
+                value: value.clone(),
+            };
+            let bytes = encode(&ClientMsg::Command(command)).unwrap();
+            match decode::<ClientMsg>(&bytes).unwrap() {
+                ClientMsg::Command(Command::SetSetting { key: k, value: v }) => {
+                    assert_eq!((k, v), (key, value));
+                }
+                other => panic!("{other:?}"),
+            }
+        }
+    }
+
+    /// The settings messages are new variants: a peer built before them can't read them.
+    #[test]
+    fn a_peer_from_before_the_settings_messages_cannot_read_them() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldCommand {
+            RenamePane { term: TermId, name: String },
+        }
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldQuery {
+            UsageReport,
+        }
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldServerMsg {
+            Bye,
+        }
+        let command = Command::SetSetting {
+            key: crate::settings_view::SettingKey::ReduceMotion,
+            value: crate::settings_view::SettingValue::Bool(true),
+        };
+        let bytes = encode(&command).unwrap();
+        assert!(decode::<OldCommand>(&bytes).is_err());
+        assert!(decode::<Command>(&bytes).is_ok());
+        let bytes = encode(&Query::Settings).unwrap();
+        assert!(decode::<OldQuery>(&bytes).is_err());
+        assert!(decode::<Query>(&bytes).is_ok());
+        let bytes = encode(&ServerMsg::SettingsChanged(sample_settings())).unwrap();
+        assert!(decode::<OldServerMsg>(&bytes).is_err());
+        assert!(decode::<ServerMsg>(&bytes).is_ok());
     }
 
     #[test]
@@ -2139,6 +2382,20 @@ mod tests {
             detail: "cargo test".into(),
             answerable: true,
             choices: vec!["A".into(), "B".into()],
+        });
+        round_trips(&ServerMsg::State(Snapshot {
+            terms: [(3, term)].into(),
+            ..Default::default()
+        }));
+    }
+
+    #[test]
+    fn a_pane_from_before_the_exit_mark_reads_with_none_and_one_with_it_round_trips() {
+        let mut term = pane_from(serde_json::json!({}));
+        assert_eq!(term.exit, None, "an older peer sends none");
+        term.exit = Some(ExitInfo {
+            code: Some(137),
+            at: 9,
         });
         round_trips(&ServerMsg::State(Snapshot {
             terms: [(3, term)].into(),

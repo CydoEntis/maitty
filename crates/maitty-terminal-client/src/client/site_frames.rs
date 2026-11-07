@@ -56,7 +56,7 @@ const SHOTS: &[Shot] = &[
         name: "grid",
         cols: 160,
         rows: 45,
-        caption: "Pane colours: four agents in one tab, each in its own colour.",
+        caption: "Four agents in one tab.",
         setup: grid,
     },
     Shot {
@@ -86,20 +86,6 @@ const SHOTS: &[Shot] = &[
         rows: 34,
         caption: "Floating: a box per pane, with room between them.",
         setup: floating,
-    },
-    Shot {
-        name: "layout-hairline",
-        cols: 120,
-        rows: 34,
-        caption: "Hairline: no boxes, only lines, the most room for output.",
-        setup: hairline,
-    },
-    Shot {
-        name: "layout-colours",
-        cols: 120,
-        rows: 34,
-        caption: "Pane colours: each pane in its own colour.",
-        setup: grid_look,
     },
     Shot {
         name: "shortcut",
@@ -357,7 +343,6 @@ fn world(theme: &str) -> App {
         add(&mut app, t);
     }
     app.screen_sync();
-    pin_fold_colors(&mut app);
     for (dir, lines) in [
         (&checkout_dir, (38, 6)),
         (&cart_dir, (54, 2)),
@@ -367,21 +352,6 @@ fn world(theme: &str) -> App {
         app.screen.lines_changed.insert(dir.clone(), lines);
     }
     app
-}
-
-/// Each project's −/+ button in the next colour of the palette, in place of the random one the
-/// app picks the first time it draws it.
-fn pin_fold_colors(app: &mut App) {
-    let palette: Vec<_> = app
-        .cfg
-        .ui
-        .workspace_colors
-        .iter()
-        .filter_map(|c| crate::theme::parse_color(c))
-        .collect();
-    for (p, color) in app.screen_model().iter().zip(palette.iter().cycle()) {
-        app.screen.fold_colors.insert(p.key.clone(), *color);
-    }
 }
 
 /// A made-up folder under `~/code`, written with `/` on every platform so the frames read the
@@ -441,17 +411,8 @@ fn floating(app: &mut App) {
     app.cfg.ui.layout = "floating".into();
 }
 
-fn hairline(app: &mut App) {
-    app.cfg.ui.layout = "hairline".into();
-}
-
-fn grid_look(app: &mut App) {
-    app.cfg.ui.pane_colors = true;
-}
-
-/// Pane colours on a tab of four: Claude asking, Codex at work, Gemini and Codex done.
+/// A tab of four: Claude asking, Codex at work, Gemini and Codex done.
 fn grid(app: &mut App) {
-    grid_look(app);
     let store = app.snap.workspaces[0].cwd.clone();
     add(
         app,

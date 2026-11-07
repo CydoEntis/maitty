@@ -1,78 +1,70 @@
-//! The main screen: the sidebar, pane tabs, the panes,
+//! The main screen: the sidebar, the panes,
 //! the sheet, the mode bar along the bottom and the toast.
 
 use super::*;
 use crate::brand::APP_COMMAND;
-use crate::client::ids::ClientSession;
 use crate::client::ids::ClientTerm;
 
 // ---- main screen ---------------------------------------------------------------------------
 
-/// The sidebar's width on a screen `width` wide: 40 from `WIDE` columns, 34 from `NARROW`,
-/// else 26.
+/// The sidebar's width before you drag it: the design's 34 columns, less on a screen too
+/// narrow to leave the workspace half of it.
 pub(in crate::client) fn side_w(width: u16) -> u16 {
-    if width >= WIDE {
-        40
-    } else if width >= NARROW {
-        34
-    } else {
-        26
-    }
+    SIDE_DEFAULT.min(width / 2)
 }
+
+/// The sidebar's default width in columns (resizable between `SIDE_MIN` and `SIDE_MAX`).
+pub(in crate::client) const SIDE_DEFAULT: u16 = 34;
+
+/// The sidebar's width: the default, or what you dragged it to.
+pub(in crate::client) fn full_side_w(app: &App, area: Rect) -> u16 {
+    app.screen
+        .saved
+        .side_w
+        .unwrap_or_else(|| side_w(area.width))
+        .clamp(SIDE_MIN, SIDE_MAX)
+        .min(area.width / 2)
+}
+
+/// Below this many columns a docked sheet (a check's evidence, both diffs) takes the sidebar's
+/// room as well as the panes'.
+const SHEET_OVER_SIDE_BELOW: u16 = 100;
+
+/// Columns the `»` chip takes at the top left while the sidebar is hidden, its gap included.
+pub(in crate::client) const SHOW_CHIP_W: u16 = 4;
 
 /// The narrowest the sidebar (sliding) or the sheet is drawn; below it, it's only space.
 const SIDE_DRAWN_FROM: u16 = 12;
 pub(in crate::client) const SHEET_DRAWN_FROM: u16 = 24;
 /// The narrowest a pane is drawn while it grows in.
-const PANE_DRAWN_FROM: u16 = 8;
+pub(super) const PANE_DRAWN_FROM: u16 = 8;
 
 /// Below this many columns the layout tightens: a slimmer sidebar, and a sheet takes the
 /// whole pane column instead of docking beside the panes.
 pub(in crate::client) const NARROW: u16 = 140;
-/// From this many columns the sidebar is at its widest.
-const WIDE: u16 = 200;
 
-/// Where everything goes: the sidebar, the pane column and the sheet.
-pub(in crate::client) struct Grid {
-    pub side: Rect,
-    pub panes: Rect,
-    /// Between the sidebar and the panes (drag it to resize).
-    pub edge: Rect,
-    /// The sheet docked right of the panes, when one is open (else empty).
-    pub sheet: Rect,
-    /// The tool rail on the right edge (empty when the screen is too narrow for it).
-    pub tools: Rect,
-    /// The tab row: over the panes and the sheet in Hairline, over the panes in Floating.
-    pub tabs: Rect,
-}
+/// Blank rows round the screen for each step of `ui.padding` (small 0, medium 1, large 2); a
+/// column is half the width of a row, so each gets twice as many.
+const PADDING_COLS_PER_ROW: u16 = 2;
 
-/// The tool rail's width, and the screen width from which it is drawn.
-pub(in crate::client) const TOOLS_W: u16 = 5;
-const TOOLS_FROM: u16 = 100;
-
-/// Most the padding round the screen may be, in cells.
-const PADDING_MAX: u16 = 3;
-
-/// The window less the padding setting: that many cells all round, or with `top` (the
-/// default) one row above only, so the tabs don't touch the terminal's own tab bar while the
-/// panes still reach its sides and foot.
+/// The window less the padding setting: `small` none, `medium` 1 row and 2 columns, `large`
+/// 2 rows and 4 columns, all round.
 fn padded(app: &App, area: Rect) -> Rect {
-    let m = crate::config::size_cells(&app.cfg.ui.padding).min(PADDING_MAX);
+    let rows = crate::config::size_cells(&app.cfg.ui.padding).saturating_sub(1);
+    let cols = rows * PADDING_COLS_PER_ROW;
     Rect {
-        x: area.x + m,
-        y: area.y + m,
-        width: area.width.saturating_sub(2 * m),
-        height: area.height.saturating_sub(2 * m),
+        x: area.x + cols,
+        y: area.y + rows,
+        width: area.width.saturating_sub(2 * cols),
+        height: area.height.saturating_sub(2 * rows),
     }
 }
 
-/// The room the screen is laid out in: inside the padding, above the mode bar and, in
-/// Hairline, above the rule over it.
+/// The room the screen is laid out in: inside the padding, above the mode bar.
 pub(in crate::client) fn framed(app: &App, area: Rect) -> Rect {
     let r = padded(app, area);
-    let bar = if Look::of(&app.cfg.ui).hairline { 2 } else { 1 };
     Rect {
-        height: r.height.saturating_sub(bar),
+        height: r.height.saturating_sub(1),
         ..r
     }
 }
@@ -97,39 +89,25 @@ pub(in crate::client) fn above_bar(app: &App, area: Rect) -> Rect {
     }
 }
 
+/// Where everything goes: the sidebar, the pane column and the sheet.
+pub(in crate::client) struct Grid {
+    pub side: Rect,
+    pub panes: Rect,
+    /// Between the sidebar and the panes (drag it to resize).
+    pub edge: Rect,
+    /// The sheet docked right of the panes, when one is open (else empty).
+    pub sheet: Rect,
+}
+
 /// The grid in `area` (already `framed`): the sidebar the full height at one side, then the
-/// pane column from its top row. Cards floating leave the gap setting between them, tiled none (the two
-/// borders sit side by side); Flat starts the panes on the sidebar's last column, so one `│`
-/// parts them. A width you dragged the sidebar to wins over the default.
+/// pane column from its top row. Cards floating leave the gap setting between them. A width
+/// you dragged the sidebar to wins over the default.
 pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
     let look = Look::of(&app.cfg.ui);
-    let default_w = if look.hairline {
-        hairline::SIDE_W
-    } else {
-        side_w(area.width)
-    };
-    let full = app
-        .screen
-        .saved
-        .side_w
-        .unwrap_or(default_w)
-        .clamp(SIDE_MIN, SIDE_MAX)
-        .min(area.width / 2);
-    // Collapsed, the sidebar is the narrow column (`rail`); only hiding it takes the room.
-    let rail_w = if app.side_hidden {
-        0
-    } else {
-        rail::RAIL_W.min(area.width / 2)
-    };
-    let sw = ((full as f32 * app.side_frac).round() as u16).max(rail_w);
-    // Hairline keeps a column for the `│` between the sidebar and the panes.
-    let gap = if sw == 0 {
-        0
-    } else if look.hairline {
-        1
-    } else {
-        look.gap
-    };
+    let full = full_side_w(app, area);
+    let sw = (full as f32 * app.side_frac).round() as u16;
+    // Hidden, the gap holds the `»` chip that brings the sidebar back.
+    let gap = if sw == 0 { SHOW_CHIP_W } else { look.gap };
     let (side, col) = if app.cfg.ui.sidebar_position == "right" {
         let side = Rect {
             x: area.right().saturating_sub(sw),
@@ -154,58 +132,6 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
             },
         )
     };
-    // The tabs have a row of their own over the panes in both looks: Hairline's
-    // over a rule across the whole column, Floating's chips right over the boxes only, the side
-    // sheet being a card of its own.
-    let tab_rows = if look.hairline {
-        hairline::TAB_ROWS
-    } else {
-        FLOAT_TAB_ROW
-    };
-    let carve = |r: Rect| {
-        if r.height > tab_rows && r.width > 0 {
-            (
-                Rect {
-                    height: tab_rows,
-                    ..r
-                },
-                Rect {
-                    y: r.y + tab_rows,
-                    height: r.height - tab_rows,
-                    ..r
-                },
-            )
-        } else {
-            (Rect::default(), r)
-        }
-    };
-    // The tool rail: a column on the right edge that is always there, so the drawer has a place
-    // to open from. The screen's too narrow for it, or a right-hand sidebar, and it is left out.
-    let (tools, col) = if !look.hairline
-        && app.cfg.ui.tool_rail
-        && app.cfg.ui.sidebar_position != "right"
-        && area.width >= TOOLS_FROM
-    {
-        let gap = look.gap.max(1);
-        (
-            Rect {
-                x: col.right().saturating_sub(TOOLS_W),
-                width: TOOLS_W,
-                ..col
-            },
-            Rect {
-                width: col.width.saturating_sub(TOOLS_W + gap),
-                ..col
-            },
-        )
-    } else {
-        (Rect::default(), col)
-    };
-    let (hair_tabs, col) = if look.hairline {
-        carve(col)
-    } else {
-        (Rect::default(), col)
-    };
     let edge = if side.x > col.x {
         Rect {
             x: col.right(),
@@ -220,23 +146,35 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
         }
     };
     let (sheet, panes) = match open_sheet(app) {
-        // A tool floats over the panes' right side: the panes keep the whole column.
+        // The Inbox floats over the workspace from the sidebar's side; the panes keep the column.
+        Some(SheetKind::Inbox) => {
+            let w = ((INBOX_W.min(col.width) as f32 * app.sheet_frac.clamp(0.0, 1.0)).round()
+                as u16)
+                .min(col.width);
+            let x = if side.x > col.x { col.right() - w } else { col.x };
+            (Rect { x, width: w, ..col }, col)
+        }
+        // A tool slides in from the panes' right edge, inside their box (its top and bottom
+        // lines and its chips stay in view): the panes keep the whole column.
         Some(kind) if overlaid(app, kind) => {
-            let full = if area.width < NARROW {
-                col.width
-            } else {
-                wanted_w(app, kind, area.width).clamp(SHEET_MIN, overlay_widest(col).max(SHEET_MIN))
-            };
-            let w = ((full as f32 * app.sheet_frac.clamp(0.0, 1.0)).round() as u16).min(col.width);
+            let pane = focused_box(app, col);
+            let full = wanted_w(app, kind, area.width)
+                .min(drawer_cap(kind, pane))
+                .clamp(SHEET_MIN, overlay_widest(pane).max(SHEET_MIN));
+            let inner = pane.width.saturating_sub(2);
+            let w = ((full as f32 * app.sheet_frac.clamp(0.0, 1.0)).round() as u16).min(inner);
             (
                 Rect {
-                    x: col.right() - w,
+                    x: pane.right().saturating_sub(1 + w),
+                    y: pane.y + 1,
                     width: w,
-                    ..col
+                    height: pane.height.saturating_sub(2),
                 },
                 col,
             )
         }
+        // Too narrow to read beside the sidebar: a docked sheet covers it too.
+        Some(_) if area.width < SHEET_OVER_SIDE_BELOW => (area, col),
         Some(kind) => split_for_sheet(
             area.width,
             col,
@@ -246,18 +184,11 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
         ),
         None => (Rect::default(), col),
     };
-    let (tabs, panes) = if look.hairline {
-        (hair_tabs, panes)
-    } else {
-        carve(panes)
-    };
     Grid {
         side,
         panes,
         edge,
         sheet,
-        tools,
-        tabs,
     }
 }
 
@@ -275,7 +206,9 @@ fn note_sheet(app: &mut App, g: &Grid, screen_w: u16) {
         Some(kind) if overlaid(app, kind) => overlay_widest(g.panes),
         _ => widest(col, look),
     };
-    let sizable = open_sheet(app).is_some() && screen_w >= NARROW && room >= SHEET_MIN;
+    let sizable = open_sheet(app).is_some_and(|k| k != SheetKind::Inbox)
+        && screen_w >= NARROW
+        && room >= SHEET_MIN;
     app.screen.sheet_rect = g.sheet;
     app.screen.sheet_widest = if sizable { room } else { 0 };
     app.screen.sheet_screen_w = screen_w;
@@ -327,38 +260,9 @@ fn draw_grip(buf: &mut Buffer, x: u16, (top, bottom): (u16, u16), lit: bool, t: 
     }
 }
 
-/// The least a pane's share of the width may come to before the sessions fold into the narrow column by
-/// themselves (until a sidebar key is pressed): a full sidebar would leave the panes too little room to read.
-const PANE_COMFORT_COLS: u16 = 20;
-
-/// Whether a full sidebar leaves `panes` panes a readable share of a screen `width` wide. One pane always fits.
-fn sidebar_fits(width: u16, panes: usize) -> bool {
-    if panes < 2 {
-        return true;
-    }
-    let share = usize::from(width.saturating_sub(side_w(width))) / panes;
-    share >= usize::from(PANE_COMFORT_COLS)
-}
-
-/// The sessions are collapsed into the narrow column (`z`), not hidden (`Z`).
-pub(in crate::client) fn strip_on(app: &App) -> bool {
-    !app.sidebar && !app.side_hidden
-}
-
 /// Draw the main screen; returns the pane area.
 pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Theme) -> Rect {
-    // The Hairline look draws nothing boxed, and the strip is a box, so it keeps the sidebar it was given.
-    if app.side_auto && !app.side_hidden && !Look::of(&app.cfg.ui).hairline {
-        let panes = app.screen.tabs.get(app.screen.tab).map_or(1, |tab| tab.layout.leaves().len());
-        let fits = sidebar_fits(area.width, panes);
-        if app.sidebar && !fits {
-            (app.sidebar, app.side_folded) = (false, true);
-        } else if app.side_folded && fits {
-            (app.sidebar, app.side_folded) = (true, false);
-        }
-    }
     // How far the sidebar and the sheet are in this frame (they slide when they change).
-    popover::refresh_receipts(app);
     let on = app.motion_on();
     app.side_frac = app.motion.side(app.sidebar, on);
     app.sheet_frac = app.motion.sheet(open_sheet(app).is_some(), on);
@@ -376,15 +280,10 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     note_sheet(app, &g, room.width);
     // Too narrow mid-slide to draw anything sensible: just the room it takes.
     if g.side.width >= SIDE_DRAWN_FROM {
-        if Look::of(&app.cfg.ui).hairline {
-            hairline::draw_side(app, f.buffer_mut(), g.side, &model, t);
-            hairline::draw_side_rule(f.buffer_mut(), g.edge, t);
-        } else {
-            draw_side(app, f.buffer_mut(), g.side, &model, t);
-        }
+        draw_side(app, f.buffer_mut(), g.side, &model, t);
         // The edge beside the sidebar: drag it. It lights up while you point at it.
-        let ex = g.edge.x + g.edge.width / 2;
         if app.screen.drag == Some(Drag::Side) || hovered(app, g.edge) {
+            let ex = g.edge.x + g.edge.width / 2;
             for yy in g.side.top() + 1..g.side.bottom().saturating_sub(1) {
                 if let Some(px) = f.buffer_mut().cell_mut((ex, yy)) {
                     px.set_symbol("│")
@@ -392,54 +291,30 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
                 }
             }
             draw_grip(f.buffer_mut(), ex, (g.side.top(), g.side.bottom()), true, t);
-        } else {
-            // Always a small grip, so a person can see the edge moves.
-            draw_grip(f.buffer_mut(), ex, (g.side.top(), g.side.bottom()), false, t);
         }
         hit(app, g.edge, ScreenHit::SideEdge);
-    } else if !app.side_hidden {
-        rail::draw(app, f.buffer_mut(), g.side, &model, t);
-        if Look::of(&app.cfg.ui).hairline {
-            hairline::draw_side_rule(f.buffer_mut(), g.edge, t);
-        }
     } else {
-        // Hidden: nothing to point at, nothing to move a cursor over.
+        // Hidden: nothing to point at, nothing to move a cursor over, and `»` to bring it back.
         app.screen.side_rect = Rect::default();
         app.screen.visible.clear();
         app.screen.side_items.clear();
         app.screen.row_y.clear();
+        app.screen.sub_rows.clear();
+        if !app.sidebar {
+            draw_show_chip(app, f.buffer_mut(), room, g.panes, t);
+        }
     }
     if g.panes.width > 0 {
         draw_main(app, f, g.panes, &model, t);
     }
-    if !Look::of(&app.cfg.ui).hairline {
-        draw_tab_chips(app, f.buffer_mut(), g.panes, &model, t);
-    } else {
-        hairline::draw_tab_row(app, f.buffer_mut(), g.tabs, &model, t);
-        let edge = (g.side.width > 0).then_some(g.edge.x);
-        hairline::draw_bar_rule(
-            f.buffer_mut(),
-            Rect {
-                y: room.bottom(),
-                height: 1,
-                ..room
-            },
-            g.tabs,
-            edge,
-            g.side.x < g.edge.x,
-            t,
-        );
-    }
     if let Some(kind) = open_sheet(app).filter(|_| g.sheet.width >= SHEET_DRAWN_FROM) {
-        // A floating drawer clears what it covers first, or the chips of the tabs under it show
-        // through its border.
-        if overlaid(app, kind) {
+        // A floating drawer clears what it covers first.
+        if overlaid(app, kind) || kind == SheetKind::Inbox {
             fill(f.buffer_mut(), g.sheet, t.bg);
         }
         draw_sheet(app, f.buffer_mut(), g.sheet, kind, t);
         draw_sheet_edge(app, f.buffer_mut(), &g, t);
     }
-    tools::draw_tools(app, f.buffer_mut(), g.tools, t);
     draw_mode_bar(app, f.buffer_mut(), mode_bar_row(app, area), t);
     app.screen.crumb_x = g.panes.x + 1;
     // A popup (`<app> popup`) floats over everything, the rest dimmed.
@@ -463,230 +338,26 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
             width: w,
             height: h,
         };
-        draw_session(app, f, r, term, true, &model, t);
+        draw_pane(app, f, r, term, (true, true), &model, t);
     }
     draw_toast(app, f.buffer_mut(), room, t);
     g.panes
 }
 
-/// What a tab's ✕ does: close the tab, or a session's only tab's only pane. Panes have no ✕
-/// of their own, so every tab has one. Each asks first.
-pub(in crate::client) fn tab_close(app: &App, tab: usize, tabs: usize) -> Option<ScreenHit> {
-    if tabs > 1 {
-        return Some(ScreenHit::CloseTab(tab));
-    }
-    // A session's only tab: its only pane, or (split, its panes having no ✕) all of them.
-    match app.screen.tabs.get(tab)?.leaves().as_slice() {
-        [only] => Some(ScreenHit::CloseSplit(*only)),
-        _ => Some(ScreenHit::CloseTab(tab)),
-    }
-}
-
-/// A tab's most urgent agent, whose state the tab shows wherever it is drawn (its chip, its
-/// sidebar line), on screen or not: one that needs you first, then by its state.
-pub(in crate::client) fn tab_agent(app: &App, tab: usize) -> Option<&TermInfo> {
-    app.term_info(tab_agent_term(app, tab)?)
-}
-
-pub(in crate::client) fn tab_agent_term(app: &App, tab: usize) -> Option<ClientTerm> {
-    let urgency = |i: &TermInfo| {
-        if check::needs(i.status, i.check()) {
-            0
-        } else {
-            i.status.urgency()
-        }
-    };
-    app.screen
-        .tabs
-        .get(tab)?
-        .leaves()
-        .into_iter()
-        .filter_map(|t| app.term_info(t).map(|i| (t, i)))
-        .filter(|(_, i)| i.agent.is_some())
-        .min_by_key(|(_, i)| urgency(i))
-        .map(|(t, _)| t)
-}
-
-/// The tab on screen shows `term` alone: its tab carries its name, so its title doesn't repeat it.
-pub(in crate::client) fn lone_pane(app: &App, term: ClientTerm) -> bool {
-    matches!(app.screen.leaf_rects.as_slice(), [(id, _)] if *id == term)
-}
-
-/// Floating tabs share the first pane's top border; Hairline keeps its own row.
-const FLOAT_TAB_ROW: u16 = 0;
-
-/// Draw tabs on the first pane's top border, leaving the border line between chips.
-fn draw_tab_chips(app: &mut App, buf: &mut Buffer, panes: Rect, model: &[Proj], t: &Theme) {
-    if app.focused().is_none() {
-        return;
-    }
-    let Some(first) = app
-        .screen
-        .leaf_rects
-        .iter()
-        .map(|(_, rect)| *rect)
-        .min_by_key(|rect| (rect.y, rect.x))
-    else {
-        return;
-    };
-    let first = first.intersection(buf.area);
-    if first.width < 8 || first.height == 0 {
-        return;
-    }
-    let x = card::title_x(first);
-    let border = buf[(x, first.y)].fg;
-    // With the sidebar hidden a `»` chip leads the tabs: a click brings it back.
-    let lead = if app.side_hidden {
-        let mut segs = vec![seg(
-            " » ",
-            Style::default()
-                .fg(t.strong)
-                .bg(t.btn)
-                .add_modifier(Modifier::BOLD),
-        )];
-        if Look::of(&app.cfg.ui).caps {
-            segs = round_ends(segs, t.bg);
-        }
-        let w = segs_width(&segs);
-        put(buf, x, first.y, &segs, panes.right());
-        hit(
-            app,
-            Rect {
-                x,
-                y: first.y,
-                width: w,
-                height: 1,
-            },
-            ScreenHit::ExpandSidebar,
-        );
-        put(buf, x + w, first.y, &[seg("─", Style::default().fg(border))], panes.right());
-        w + 1
+/// The sidebar hidden: a `»` chip on the top row, in the gap beside the panes, brings it back
+/// (`«` when the sidebar sits on the right).
+fn draw_show_chip(app: &mut App, buf: &mut Buffer, room: Rect, panes: Rect, t: &Theme) {
+    let right = app.cfg.ui.sidebar_position == "right";
+    let text = if right { HIDE } else { SHOW };
+    let c = chips::chip(app, text, chips::Chip::Title { focused: false }, t.bg, t);
+    let w = segs_width(&c);
+    let x = if right {
+        room.right().saturating_sub(w)
     } else {
-        0
+        room.x
     };
-    let x = x + lead;
-    let row = Rect {
-        x,
-        y: first.y,
-        width: panes.right().saturating_sub(x),
-        height: 1,
-    };
-    let chips = tab_strip(app, model, row, true, t)
-        .into_iter()
-        .map(|(text, style)| {
-            if style.bg.is_none() && text.trim().is_empty() {
-                ("─".repeat(text.width()), Style::default().fg(border))
-            } else {
-                (text, style)
-            }
-        })
-        .collect::<Vec<_>>();
-    let tabs_end = x + segs_width(&chips);
-    put(buf, x, first.y, &chips, row.right());
-    draw_machine_badge(app, buf, (tabs_end, first.right(), first.y), t);
-}
-
-/// Where the focused session runs, as a chip set into the first pane's top border at the right:
-/// ` ⌂ Local ` or ` ⇄ build `. It takes the rightmost stretch of plain border that fits it
-/// between the tabs and the chips already at the right (the state, the ✕), and is left out when
-/// there is none.
-fn draw_machine_badge(app: &App, buf: &mut Buffer, (from, to, y): (u16, u16, u16), t: &Theme) {
-    let Some(focus) = app.focused() else {
-        return;
-    };
-    let name = if focus.machine == MachineId::LOCAL {
-        format!("{} Local", super::machine_group::LOCAL_ICON)
-    } else {
-        format!(
-            "{} {}",
-            super::machine_group::REMOTE_ICON,
-            app.machine_label_of(focus.machine)
-        )
-    };
-    let badge = seg(
-        format!(" {name} "),
-        Style::default()
-            .fg(t.strong)
-            .bg(t.btn)
-            .add_modifier(Modifier::BOLD),
-    );
-    // With `ui.rounded = full` the badge is a pill, its ends on the border's own ground.
-    let caps = Look::of(&app.cfg.ui).caps;
-    let w = badge.0.width() as u16 + 2 * u16::from(caps);
-    // One border cell is kept either side of the badge.
-    let mut run = 0u16;
-    for x in (from..to.saturating_sub(1)).rev() {
-        if buf[(x, y)].symbol() == "─" {
-            run += 1;
-            if run >= w + 2 {
-                let segs = if caps {
-                    round_ends(vec![badge], buf[(x, y)].bg)
-                } else {
-                    vec![badge]
-                };
-                put(buf, x + 1, y, &segs, x + 1 + w);
-                return;
-            }
-        } else {
-            run = 0;
-        }
-    }
-}
-
-/// The tab row's fixed right end: `◫` splits the focused pane and `⤢` zooms it (lit while it
-/// is). Drawn over the row's last cells; returns where the tabs must end. Too narrow a row
-/// has none.
-pub(in crate::client) fn tab_tools(
-    app: &mut App,
-    buf: &mut Buffer,
-    row: Rect,
-    fg: Color,
-    hover: Color,
-    bg: Color,
-    lit: Color,
-) -> u16 {
-    const TOOLS_W: u16 = 5;
-    if row.width < TOOLS_W * 4 {
-        return row.right();
-    }
-    let zoomed = app.screen.zoom == Some(app.screen.tab);
-    let tools = [
-        ("◫", row.right() - TOOLS_W + 1, ScreenHit::TabSplit, false),
-        ("⤢", row.right() - 2, ScreenHit::TabZoom, zoomed),
-    ];
-    for (glyph, x, h, on) in tools {
-        let cell = Rect {
-            x,
-            y: row.y,
-            width: 1,
-            height: 1,
-        };
-        let colour = if on {
-            lit
-        } else if hovered(app, cell) {
-            hover
-        } else {
-            fg
-        };
-        put(
-            buf,
-            x,
-            row.y,
-            &[seg(glyph, Style::default().fg(colour).bg(bg))],
-            x + 1,
-        );
-        hit(
-            app,
-            Rect {
-                x: x.saturating_sub(1),
-                y: row.y,
-                width: 3,
-                height: 1,
-            },
-            h,
-        );
-    }
-    row.right() - TOOLS_W
+    put(buf, x, panes.y, &c, x + w);
+    hit(app, Rect { x, y: panes.y, width: w, height: 1 }, ScreenHit::ExpandSidebar);
 }
 
 pub(in crate::client) fn find(model: &[Proj], term: ClientTerm) -> Option<(&Proj, &Wt, &Session)> {
@@ -700,17 +371,6 @@ pub(in crate::client) fn find(model: &[Proj], term: ClientTerm) -> Option<(&Proj
     })
 }
 
-pub(in crate::client) fn find_key(
-    model: &[Proj],
-    key: ClientSession,
-) -> Option<(&Proj, &Wt, &Session)> {
-    model.iter().find_map(|p| {
-        p.wts
-            .iter()
-            .find_map(|w| w.sessions.iter().find(|s| s.key == key).map(|s| (p, w, s)))
-    })
-}
-
 pub(in crate::client) fn hline(buf: &mut Buffer, x: u16, y: u16, w: u16, t: &Theme, bg: Color) {
     for i in 0..w {
         if let Some(px) = buf.cell_mut((x + i, y)) {
@@ -720,142 +380,61 @@ pub(in crate::client) fn hline(buf: &mut Buffer, x: u16, y: u16, w: u16, t: &The
     }
 }
 
-pub(in crate::client) fn draw_main(
-    app: &mut App,
-    f: &mut Frame,
-    area: Rect,
-    model: &[Proj],
-    t: &Theme,
-) {
-    let Some(focus) = app.focused() else {
-        let nk = k(app, &Action::ShellHere);
-        put(
-            f.buffer_mut(),
-            area.x + 4,
-            area.y + 3,
-            &[seg(
-                format!(
-                    "Nothing open. Press {} {nk} for a new shell.",
-                    app.keymap.prefix.to_string().replace("C-", "Ctrl+")
-                ),
-                Style::default().fg(t.muted),
-            )],
-            area.right(),
-        );
+/// The workspace with no pane open: a dashed box, "No pane open", an `n new session` chip
+/// (the New session dialog) and where else to go.
+pub(in crate::client) fn draw_no_sessions(app: &mut App, f: &mut Frame, area: Rect, t: &Theme) {
+    let buf = f.buffer_mut();
+    dashed_box(buf, area, Style::default().fg(t.line).bg(t.bg));
+    let quiet = Style::default().fg(t.muted).bg(t.bg);
+    let mid = area.y + area.height.saturating_sub(5) / 2;
+    let centred = |w: usize| area.x + area.width.saturating_sub(w as u16) / 2;
+    let title = "No pane open";
+    put(buf, centred(title.width()), mid, &[seg(title, quiet)], area.right());
+    let chip = pill(
+        Look::of(&app.cfg.ui),
+        vec![
+            seg("n", Style::default().fg(t.accent).add_modifier(Modifier::BOLD)),
+            seg(" new session", Style::default().fg(t.strong).add_modifier(Modifier::BOLD)),
+        ],
+        t.btn,
+        t.bg,
+    );
+    let w = segs_width(&chip);
+    let x = centred(w as usize);
+    put(buf, x, mid + 2, &chip, area.right());
+    hit(app, Rect { x, y: mid + 2, width: w, height: 1 }, ScreenHit::NoPaneNew);
+    let hint = "or pick a session on the left";
+    put(f.buffer_mut(), centred(hint.width()), mid + 4, &[seg(hint, quiet)], area.right());
+}
+
+/// A box of dashed lines round `r`, with round corners.
+fn dashed_box(buf: &mut Buffer, r: Rect, st: Style) {
+    if r.width < 2 || r.height < 2 {
         return;
-    };
-    // Which tab was on screen last, per session.
-    app.screen.tick += 1;
-    let (tick, cur) = (app.screen.tick, app.screen.tab);
-    if let Some(tab) = app.screen.tabs.get_mut(cur) {
-        tab.used = tick;
     }
-    let look = Look::of(&app.cfg.ui);
-    // Between cards: `gap` rows stacked, as many columns side by side.
-    let (gap_x, gap_y) = (look.gap, look.gap);
-    let inset = |r: Rect| -> Rect {
-        let mut r = r;
-        if r.right() < area.right() {
-            r.width = r.width.saturating_sub(gap_x);
-        }
-        if r.bottom() < area.bottom() {
-            r.height = r.height.saturating_sub(gap_y);
-        }
-        r
-    };
-    app.screen.dividers.clear();
-    let layout = app
-        .screen
-        .tabs
-        .get(app.screen.tab)
-        .map(|tab| tab.layout.clone())
-        .filter(|l| {
-            l.contains(focus.term)
-                && l.leaves().len() > 1
-                && app.screen.zoom != Some(app.screen.tab)
-        });
-    let Some(layout) = layout else {
-        app.screen.leaf_rects = vec![(focus, area)];
-        draw_session(app, f, area, focus, true, model, t);
-        return;
-    };
-    let leaves = layout.leaves();
-    // A pane that has just opened grows out of its edge (the split's share eases to where it
-    // goes); one too thin to draw yet is only space.
-    let mut layout = layout;
-    let ratio = layout.ratio_at(&[]).unwrap_or(0.5);
-    let ids: Vec<u64> = leaves.iter().map(|l| u64::from(*l)).collect();
-    let on = app.motion_on();
-    let shown = app.motion.split(app.screen.tab as u64, &ids, ratio, on);
-    if (shown - ratio).abs() > f32::EPSILON {
-        layout.set_ratio(&[], shown);
+    let (right, bottom) = (r.right() - 1, r.bottom() - 1);
+    for x in r.x + 1..right {
+        buf[(x, r.y)].set_symbol("┄").set_style(st);
+        buf[(x, bottom)].set_symbol("┄").set_style(st);
     }
-    let rects = layout.rects(area);
-    app.screen.leaf_rects = rects
-        .iter()
-        .map(|(id, r)| (ClientTerm::on(focus.machine, *id), *r))
-        .collect();
-    for (id, r) in rects {
-        let id = ClientTerm::on(focus.machine, id);
-        if r.width >= PANE_DRAWN_FROM && r.height >= 3 {
-            draw_session(app, f, inset(r), id, id == focus, model, t);
-        }
+    for y in r.y + 1..bottom {
+        buf[(r.x, y)].set_symbol("┆").set_style(st);
+        buf[(right, y)].set_symbol("┆").set_style(st);
     }
-    for (i, (sa, horizontal, path)) in layout.splits(area).into_iter().enumerate() {
-        let ratio = layout.ratio_at(&path).unwrap_or(0.5);
-        let div = crate::layout::Node::divider(sa, horizontal, ratio);
-        // The gap between the two grabs it, and a cell either side of its middle line (one
-        // column is hard to hit); it lights up while you point at it or drag.
-        let grab = if horizontal {
-            let g = gap_x.max(1);
-            Rect {
-                x: div.x.saturating_sub(g),
-                width: g + 2,
-                ..div
-            }
-        } else if look.hairline {
-            // Hairline draws the `─` as the lower pane's top rule, on the row under the upper
-            // pane: that row is the grab.
-            Rect {
-                y: div.y + 1,
-                ..div
-            }
-        } else {
-            let h = gap_y.max(1);
-            Rect {
-                y: div.y.saturating_sub(h),
-                height: h,
-                ..div
-            }
-        };
-        if app.screen.drag == Some(Drag::Divider(i)) || hovered(app, grab) {
-            let buf = f.buffer_mut();
-            let (lx, ly) = (grab.x + 1, grab.y + grab.height / 2);
-            for yy in grab.top()..grab.bottom() {
-                for xx in grab.left()..grab.right() {
-                    let on = if horizontal { xx == lx } else { yy == ly };
-                    if on && let Some(px) = buf.cell_mut((xx, yy)) {
-                        px.set_symbol(if horizontal { "│" } else { "─" })
-                            .set_style(Style::default().fg(t.accent).bg(t.bg));
-                    }
-                }
-            }
-        }
-        hit(app, grab, ScreenHit::Divider(i));
-        app.screen.dividers.push((sa, horizontal, path));
+    for (x, y, g) in [(r.x, r.y, "╭"), (right, r.y, "╮"), (r.x, bottom, "╰"), (right, bottom, "╯")] {
+        buf[(x, y)].set_symbol(g).set_style(st);
     }
-    draw_pane_drag(app, f.buffer_mut(), model, t);
 }
 
 /// A pane dragged by its title: the pane it would swap with gets lit lines and a "swap here"
 /// pill, and the dragged pane's name follows the pointer.
-fn draw_pane_drag(app: &App, buf: &mut Buffer, model: &[Proj], t: &Theme) {
+pub(super) fn draw_pane_drag(app: &App, buf: &mut Buffer, model: &[Proj], t: &Theme) {
     let Some(Drag::Pane { from, over, at }) = app.screen.drag else {
         return;
     };
     let look = Look::of(&app.cfg.ui);
     if let Some((_, r)) = over.and_then(|o| app.pane_frames.iter().find(|(id, _)| *id == o)) {
-        light_lines(buf, *r, look.hairline, t.accent);
+        light_lines(buf, *r, t.accent);
         let pill = pill(
             look,
             vec![seg(
@@ -889,15 +468,11 @@ fn draw_pane_drag(app: &App, buf: &mut Buffer, model: &[Proj], t: &Theme) {
     put(buf, at.x.saturating_add(1), at.y, &ghost, buf.area.right());
 }
 
-/// Light the frame lines of the pane at `r` (its border, or Hairline's rule under the title).
-fn light_lines(buf: &mut Buffer, r: Rect, hairline: bool, colour: Color) {
+/// Light the frame lines of the pane at `r` (its border).
+fn light_lines(buf: &mut Buffer, r: Rect, colour: Color) {
     let r = r.intersection(buf.area);
     let edge = |x: u16, y: u16| {
-        y == r.y
-            || (hairline && y == r.y + 1)
-            || y + 1 == r.bottom()
-            || x == r.x
-            || x + 1 == r.right()
+        y == r.y || y + 1 == r.bottom() || x == r.x || x + 1 == r.right()
     };
     for y in r.top()..r.bottom() {
         for x in r.left()..r.right() {
@@ -913,32 +488,6 @@ fn light_lines(buf: &mut Buffer, r: Rect, hairline: bool, colour: Color) {
             }
         }
     }
-}
-
-/// The name you gave a tab, if any. "tab 2" (what an earlier version named new tabs) isn't
-/// one: the chip shows the number already.
-pub(in crate::client) fn tab_name(tab: &ScreenTab) -> Option<String> {
-    let n = tab.name.trim();
-    let generic = n
-        .strip_prefix("tab ")
-        .is_some_and(|d| d.chars().all(|c| c.is_ascii_digit()));
-    (!n.is_empty() && !generic).then(|| n.to_string())
-}
-
-/// A tab's chips as text: its number when the session has several (a lone tab has none) and
-/// its name, else its focused session's, as the sidebar's tab lines say it.
-fn tab_label(
-    app: &App,
-    model: &[Proj],
-    i: usize,
-    n: usize,
-    several: bool,
-) -> (Option<String>, String) {
-    let tab = &app.screen.tabs[i];
-    (
-        several.then(|| (n + 1).to_string()),
-        tab_name(tab).unwrap_or_else(|| session_name(app, model, tab.focus)),
-    )
 }
 
 /// Leader mode is on: waiting for the key, or showing the key map.
@@ -971,445 +520,15 @@ pub(in crate::client) fn session_name(app: &App, model: &[Proj], term: ClientTer
     }
 }
 
-/// A name chip: ` name `, in the accent while its pane has the keys, else raised and bold.
-fn name_chip(name: &str, lit: bool, t: &Theme) -> Seg {
-    let (bg, fg) = if lit {
-        (t.accent, t.acc_ink)
-    } else {
-        (t.btn, t.strong)
-    };
-    seg(
-        format!(" {name} "),
-        Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD),
-    )
-}
-
-/// The tabs of the session on screen, as the top-left pane's title along `row`: a number chip
-/// and a name chip each (the tab's name, else its focused session's), the current one in the
-/// accent, then a + chip that opens a tab. The current tab outranks the rest: the other tabs,
-/// before and after it, drop before it shortens its name. A click on one picks it.
-fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, t: &Theme) -> Vec<Seg> {
-    let look = Look::of(&app.cfg.ui);
-    let ground = Color::Reset;
-    let (y, max_x) = (row.y, row.right());
-    let mut out = Vec::new();
-    let mut at = row.x;
-    let tabs = app.session_tabs();
-    let closes: Vec<Option<ScreenHit>> = tabs
-        .iter()
-        .map(|&i| {
-            if i == app.screen.tab {
-                tab_close(app, i, tabs.len())
-            } else {
-                None
-            }
-        })
-        .collect();
-    let marks: Vec<Option<(String, Color)>> = tabs
-        .iter()
-        .map(|&i| super::side_tabs::tab_mark(app, i, t).map(|(g, _, c)| (g, c)))
-        .collect();
-    let labels: Vec<(Option<String>, String)> = tabs
-        .iter()
-        .enumerate()
-        .map(|(n, &i)| tab_label(app, model, i, n, tabs.len() > 1))
-        .collect();
-    let names: Vec<String> = labels.iter().map(|(_, name)| name.clone()).collect();
-    let current = Style::default()
-        .fg(t.acc_ink)
-        .bg(t.accent)
-        .add_modifier(Modifier::BOLD);
-    let close_mark = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).close;
-    let chips = |n: usize, on: bool, name: &str| {
-        let number = if on {
-            current
-        } else {
-            Style::default().fg(t.muted).bg(t.btn)
-        };
-        let label = if on {
-            name_chip(name, lit, t)
-        } else {
-            seg(format!(" {name} "), Style::default().fg(t.text).bg(t.btn))
-        };
-        // Its state, on screen or not, so a tab out of view still says it works or asks; on the
-        // accent the glyph takes the accent's ink, its shape saying the state.
-        let mut pair: Vec<Seg> = marks[n]
-            .iter()
-            .map(|(g, c)| {
-                seg(
-                    format!(" {g}"),
-                    number
-                        .fg(if on { t.acc_ink } else { *c })
-                        .add_modifier(Modifier::BOLD),
-                )
-            })
-            .collect();
-        pair.extend(
-            labels[n]
-                .0
-                .as_ref()
-                .map(|head| seg(format!(" {head} "), number)),
-        );
-        pair.push(label);
-        if closes[n].is_some() {
-            let (fg, bg) = if on {
-                if lit {
-                    (t.acc_ink, t.accent)
-                } else {
-                    (t.strong, t.btn)
-                }
-            } else {
-                (t.muted, t.card)
-            };
-            pair.push(seg(
-                format!("{close_mark} "),
-                Style::default().fg(fg).bg(bg),
-            ));
-        }
-        if look.round_tabs {
-            round_ends(pair, ground)
-        } else {
-            pair
-        }
-    };
-    // The room the tabs before the current one leave it: its whole pair, else its shortest,
-    // so it never shortens or drops while another tab shows.
-    let current_w = |shorten: bool| {
-        let n = tabs.iter().position(|&i| i == app.screen.tab);
-        n.map_or(0, |n| {
-            segs_width(&chips(
-                n,
-                true,
-                &if shorten {
-                    cut_label(&names[n], 2)
-                } else {
-                    names[n].clone()
-                },
-            ))
-        })
-    };
-    let keep = [current_w(false), current_w(true)]
-        .into_iter()
-        .find(|w| row.x + w <= max_x)
-        .unwrap_or(0);
-    let (mut all_fit, mut placed, mut crowded) = (true, false, false);
-    for (n, &i) in tabs.iter().enumerate() {
-        let on = i == app.screen.tab;
-        let mut pair = chips(n, on, &names[n]);
-        let rest = segs_width(&pair).saturating_sub(names[n].width() as u16);
-        if on && at + segs_width(&pair) > max_x && max_x > at + rest + 1 {
-            pair = chips(n, on, &cut_label(&names[n], (max_x - at - rest) as usize));
-        }
-        let w = segs_width(&pair);
-        let reserve = if on || placed { 0 } else { keep };
-        let gap = u16::from(look.tab_gap);
-        let need = if on { w } else { w + gap };
-        if crowded && !on || at + need + reserve > max_x {
-            all_fit = false;
-            if on || placed {
-                break;
-            }
-            crowded = true;
-            continue;
-        }
-        hit(
-            app,
-            Rect {
-                x: at,
-                y,
-                width: w,
-                height: 1,
-            },
-            ScreenHit::TabPick(i),
-        );
-        if let Some(h) = closes[n] {
-            let close_w = if look.round_tabs { 3 } else { 2 };
-            hit(
-                app,
-                Rect {
-                    x: at + w - close_w,
-                    y,
-                    width: 2,
-                    height: 1,
-                },
-                h,
-            );
-        }
-        placed |= on;
-        out.extend(pair);
-        if look.tab_gap {
-            out.push(seg(" ", Style::default()));
-        }
-        at += w + gap;
-    }
-    // The chip that opens a tab, a cell clear of the tabs: it drops first, so never shows
-    // without every tab before it.
-    if !all_fit {
-        return out;
-    }
-    let mut plus = vec![seg(
-        " + ",
-        Style::default()
-            .fg(t.strong)
-            .bg(t.btn)
-            .add_modifier(Modifier::BOLD),
-    )];
-    if look.round_tabs {
-        plus = round_ends(plus, ground);
-    }
-    let w = segs_width(&plus);
-    if at + w <= max_x {
-        hit(
-            app,
-            Rect {
-                x: at,
-                y,
-                width: w,
-                height: 1,
-            },
-            ScreenHit::NewTab,
-        );
-        out.extend(plus);
-    }
-    out
-}
-
-/// How far an unfocused pane's own colour (Pane colours) fades toward the ground.
-const GRID_UNFOCUSED_FADE: f32 = 0.42;
-
-/// A pane's place among the tab's panes (0 first): top-left first, left to right and top to
-/// bottom. Pane colours colour panes by it, and every look numbers them by it.
-fn grid_index(app: &App, term: ClientTerm) -> usize {
-    let mut order: Vec<(u16, u16, ClientTerm)> = app
-        .screen
-        .leaf_rects
-        .iter()
-        .map(|(id, r)| (r.y, r.x, *id))
-        .collect();
-    order.sort_unstable();
-    order.iter().position(|(.., id)| *id == term).unwrap_or(0)
-}
-
-/// The number a pane shows in its title: its place in the tab in reading order, from 1. Only
-/// while the tab shows two panes or more, so a lone pane's title stays as it was.
-pub(in crate::client) fn pane_number(app: &App, term: ClientTerm) -> Option<usize> {
-    let split =
-        app.screen.leaf_rects.len() > 1 && app.screen.leaf_rects.iter().any(|(id, _)| *id == term);
-    split.then(|| grid_index(app, term) + 1)
-}
-
-/// Between a pane's number and its name in a title chip.
-const NUMBER_SEP: &str = " · ";
-
-/// `label` cut to `room` columns. A numbered name keeps its number: the name is cut first
-/// (`2 · warm-f…`), then the ` · `, leaving the bare number (`2`).
-fn cut_label(label: &str, room: usize) -> String {
-    let Some((number, name)) = label
-        .split_once(NUMBER_SEP)
-        .filter(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
-    else {
-        return truncate(label, room);
-    };
-    let front = number.width() + NUMBER_SEP.width();
-    if room >= front + 2 {
-        format!("{number}{NUMBER_SEP}{}", truncate(name, room - front))
-    } else {
-        truncate(number, room)
-    }
-}
-
-/// A pane's own colour (Pane colours), by its place; they repeat from the fifth.
-fn grid_color(app: &App, term: ClientTerm, t: &Theme) -> Color {
-    let colors = t.grid_colors();
-    colors[grid_index(app, term) % colors.len()]
-}
-
-/// A pane as a card, or Hairline's zone. A split pane's title is its number, state glyph (it
-/// opens why) and name; a lone pane has none. The terminal sits inside, 3 columns
-/// and 2 rows in.
-/// Unfocused cards fade; one that needs you keeps its amber.
-pub(in crate::client) fn draw_session(
-    app: &mut App,
-    f: &mut Frame,
-    r: Rect,
-    term: ClientTerm,
-    focused: bool,
-    model: &[Proj],
-    t: &Theme,
-) {
-    let Some(info) = app.term_info(term).cloned() else {
-        return;
-    };
-    let pane = term;
-    let look = Look::of(&app.cfg.ui);
-    let st = info.status;
-    // While the sidebar has the keys, no pane shows as focused.
-    // Exactly one lit edge: an open sheet has the keys, so the pane gives up its lit border.
-    let focused = focused && !side_focused(app) && !sheet_has_keys(app);
-    let scrolled = app
-        .parsers
-        .get(&pane)
-        .map(|p| p.screen().scrollback())
-        .filter(|n| *n > 0);
-    // Answer buttons only for a question asked through the app (ask-human), which has nowhere
-    // else to be answered: an agent's own question is answered in its own prompt.
-    let ask = st == Status::Blocked && info.agent.is_some() && app.pending_question(term).is_some();
-    let (inside, inner, terminal_bg) = if look.hairline {
-        let surface = app.parsers.get(&pane).map_or(pane_bg(t), |p| {
-            crate::client::render::terminal_surface_bg(p.screen(), pane_bg(t))
-        });
-        let inside = hairline::pane_frame(
-            app,
-            f.buffer_mut(),
-            r,
-            term,
-            &info,
-            focused,
-            model,
-            surface,
-            t,
-        );
-        // The terminal: the pane's padding in from each side, from under the rule to the bottom.
-        let below = if ask { 3 } else { 0 };
-        let pad = hairline::PANE_PAD;
-        let inner = Rect {
-            x: inside.x + pad,
-            width: inside.width.saturating_sub(2 * pad),
-            height: inside.height.saturating_sub(below),
-            ..inside
-        };
-        (inside, inner, surface)
-    } else {
-        let (inside, terminal_bg) = card_frame(app, f.buffer_mut(), r, term, &info, focused, t);
-        // The terminal: 3 columns in, a row below the title, down to the last row inside.
-        let below = 1 + if ask { 2 } else { 0 };
-        (
-            inside,
-            Rect {
-                x: r.x + 3,
-                y: r.y + 2,
-                width: r.width.saturating_sub(6),
-                height: r.height.saturating_sub(2 + below),
-            },
-            terminal_bg,
-        )
-    };
-    app.pane_frames.push((pane, r));
-    app.panes.push((pane, inner));
-    // The whole inside of the card focuses the pane, as the reference's focus region does.
-    app.hits.push((inside, Hit::Pane(pane)));
-    app.hits.push((inner, Hit::Pane(pane)));
-    let copying = matches!(&app.mode, Mode::Copy(c) if c.term == pane);
-    if copying {
-        if let Mode::Copy(c) = &mut app.mode {
-            c.height = inner.height as usize;
-            c.width = inner.width as usize;
-            crate::client::render::render_copy(c, inner, f.buffer_mut(), t);
-        }
-    } else if let Some(p) = app.parsers.get(&pane) {
-        let screen = p.screen();
-        render_screen(screen, inner, f.buffer_mut(), terminal_bg);
-        if focused
-            && !screen.hide_cursor()
-            && scrolled.is_none()
-            && matches!(app.mode, Mode::Normal | Mode::Prefix { .. })
-            && !sheet_has_keys(app)
-        {
-            let (row, col) = screen.cursor_position();
-            if row < inner.height && col < inner.width {
-                f.set_cursor_position(Position::new(inner.x + col, inner.y + row));
-            }
-        }
-    }
-    draw_scrollbar(app, f.buffer_mut(), pane, inner, terminal_bg, t);
-    draw_to_bottom(app, f.buffer_mut(), pane, inner, scrolled, terminal_bg, t);
-
-    // Not the one you're in: its inside fades (the border and its amber tag stay as they are).
-    if !focused {
-        dim_inside(f.buffer_mut(), inside, look.dim, t);
-    }
-    if ask && r.height >= 8 {
-        draw_answer_bar(app, f.buffer_mut(), r, term, terminal_bg, t);
-    }
-}
-
 /// A close confirm asks about this pane: its lines are lit in `err` until you answer, so you
 /// see which one goes.
 pub(in crate::client) fn closing(app: &App, term: ClientTerm) -> bool {
     matches!(&app.mode, Mode::Confirm(c) if matches!(&c.act, crate::client::menu::Act::End(ts) if ts.contains(&term)))
 }
 
-/// A Floating pane's frame: the box (or zone) with its title on the top border.
-/// Returns the inside and the terminal's ground.
-fn card_frame(
-    app: &mut App,
-    buf: &mut Buffer,
-    r: Rect,
-    term: ClientTerm,
-    info: &TermInfo,
-    focused: bool,
-    t: &Theme,
-) -> (Rect, Color) {
-    let look = Look::of(&app.cfg.ui);
-    let grid_color = look.pane_colors.then(|| grid_color(app, term, t));
-    let closing = closing(app, term);
-    let border = if closing {
-        t.err
-    } else if let Some(own) = grid_color {
-        match (focused, armed(app)) {
-            (true, true) => t.sky(),
-            (true, false) => own,
-            (false, _) => crate::theme::mix(own, t.bg, GRID_UNFOCUSED_FADE),
-        }
-    } else if !focused {
-        t.line
-    } else if armed(app) {
-        t.sky()
-    } else {
-        match app.cfg.ui.focus_border.as_str() {
-            "bright" => t.strong,
-            "none" => t.line,
-            _ => t.accent,
-        }
-    };
-    // Just moved here: the border flares and settles, so you see where you landed.
-    let on = app.motion_on();
-    let flash = if focused {
-        app.motion.land(term.motion_key(), on)
-    } else {
-        0.0
-    };
-    let flare = if app.cfg.ui.focus_border == "bright" {
-        t.accent
-    } else {
-        t.strong
-    };
-    let border = if flash > 0.0 {
-        blend(border, flare, flash)
-    } else {
-        border
-    };
-    let mut c = Card::new(t, "");
-    if let Some(parser) = app.parsers.get(&term) {
-        c.bg = crate::client::render::terminal_surface_bg(parser.screen(), c.bg);
-    }
-    let terminal_bg = c.bg;
-    // A split has no title: the tab names it. Its edge says what the title did: lit on the
-    // focused pane, amber on one that needs you.
-    if focused || closing {
-        c = c.lit(border);
-    } else if check::needs(info.status, info.check()) {
-        c = c.lit(t.blocked);
-    } else if look.pane_colors {
-        c.border = border;
-    }
-    let inside = card(app, buf, r, &c, t);
-    (inside, terminal_bg)
-}
-
 /// A scrollbar in the margin right of the terminal when there's history: where you are, click
 /// or drag it.
-fn draw_scrollbar(
+pub(super) fn draw_scrollbar(
     app: &mut App,
     buf: &mut Buffer,
     term: ClientTerm,
@@ -1450,7 +569,7 @@ fn draw_scrollbar(
 
 /// Scrolled up (in the app's history, or an agent that scrolls itself paged up by the wheel):
 /// a button back to the newest output, where a chat's is, at the bottom right.
-fn draw_to_bottom(
+pub(super) fn draw_to_bottom(
     app: &mut App,
     buf: &mut Buffer,
     term: ClientTerm,
@@ -1495,7 +614,7 @@ fn draw_to_bottom(
 
 /// Answer bar: the choices of the question asked through the app, a full-width pill that
 /// keeps its amber even when the card is faded.
-fn draw_answer_bar(
+pub(super) fn draw_answer_bar(
     app: &mut App,
     buf: &mut Buffer,
     r: Rect,
@@ -1576,10 +695,9 @@ const TOAST_ABOVE_INPUT: u16 = 5;
 const TOAST_TITLE_LINES: usize = 3;
 const TOAST_DETAIL_LINES: usize = 3;
 const TOAST_PREVIEW_LINES: usize = 2;
-/// Where a toast's rows after the title start, from its left edge, per look; the close and the
-/// bar leave two cells on the right.
-const TOAST_TEXT_X_FLOATING: usize = 2;
-const TOAST_TEXT_X_HAIRLINE: usize = 4;
+/// Where a toast's rows after the title start, from its left edge; the close leaves two cells
+/// on the right.
+const TOAST_TEXT_X: usize = 2;
 
 /// `text` wrapped on at most `max` lines of `width` cells, none when there is no text.
 fn toast_lines(text: Option<&str>, width: usize, max: usize) -> Vec<String> {
@@ -1668,11 +786,7 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
         .min((area.width as usize).saturating_sub(4)) as u16;
     // Wrapped against the settled width, not the sliding one, so the text does not reflow while
     // the toast slides in. What the window cannot hold is left out, the title first kept.
-    let text_x = if look.hairline {
-        TOAST_TEXT_X_HAIRLINE
-    } else {
-        TOAST_TEXT_X_FLOATING
-    };
+    let text_x = TOAST_TEXT_X;
     let text_room = (w as usize).saturating_sub(text_x + 2);
     let mut rows_left = area.height.saturating_sub(TOAST_ABOVE_INPUT + 2) as usize;
     let title_w = (w as usize).saturating_sub(TOAST_TEXT_PAD + 1);
@@ -1708,68 +822,43 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     };
     app.screen.toast_rect = r;
     let ink = |c: Color, bg: Color| if fade > 0.0 { blend(c, bg, fade) } else { c };
-    // Floating: framed like a pane (a box on the plain ground, round corners whatever
-    // `ui.rounded` says, no fill of its own), its border and a kind chip on the top border in the
-    // notice's colour. Hairline, which has no boxes: a solid block in `card2` (its `card` is the
-    // ground), its left edge a heavy rule.
-    let bg = if look.hairline { t.card2 } else { t.bg };
-    let bar = Style::default().fg(ink(colour, bg)).bg(bg);
+    // Framed like a pane (a box on the plain ground, round corners whatever `ui.rounded` says,
+    // no fill of its own), its border and a kind chip on the top border in the notice's colour.
+    let bg = t.bg;
     // A box's outline keeps the ground behind it, as a modal's does: a border cell on the
     // toast's own ground would show a band of it outside the line.
     let behind_top = top_ground(buf, r);
-    if look.hairline {
-        fill(buf, r, bg);
-        for yy in r.y..r.bottom() {
-            buf[(r.x, yy)].set_symbol("┃").set_style(bar);
-        }
-    } else {
-        fill(buf, inside_outline(r), bg);
-        panel_box(
-            buf,
-            r,
-            Look {
-                rounded: true,
-                ..look
-            },
-            Style::default().fg(ink(colour, bg)),
-        );
-        // The kind chip carries the notice's mark, as a modal's title chip carries its title.
-        let chip = pill(
-            look,
-            vec![seg(
-                format!("{mark} {kind}"),
-                Style::default()
-                    .fg(ink(t.ink_on(colour), colour))
-                    .add_modifier(Modifier::BOLD),
-            )],
-            ink(colour, bg),
-            bg,
-        );
-        put(buf, r.x + 2, r.y, &chip, r.right().saturating_sub(1));
-    }
-    // Floating: every row starts under the chip; Hairline puts the mark in front of the title and
-    // indents what follows it. The title also leaves room for the close.
-    let tx = if look.hairline { r.x + 4 } else { r.x + 2 };
+    fill(buf, inside_outline(r), bg);
+    panel_box(
+        buf,
+        r,
+        Look {
+            rounded: true,
+            ..look
+        },
+        Style::default().fg(ink(colour, bg)),
+    );
+    // The kind chip carries the notice's mark, as a modal's title chip carries its title.
+    let chip = pill(
+        look,
+        vec![seg(
+            format!("{mark} {kind}"),
+            Style::default()
+                .fg(ink(t.ink_on(colour), colour))
+                .add_modifier(Modifier::BOLD),
+        )],
+        ink(colour, bg),
+        bg,
+    );
+    put(buf, r.x + 2, r.y, &chip, r.right().saturating_sub(1));
+    // Every row starts under the chip.
+    let tx = r.x + 2;
     let title_style = Style::default()
         .fg(ink(t.strong, bg))
         .bg(bg)
         .add_modifier(Modifier::BOLD);
     let title_seg = seg(title_lines[0].clone(), title_style);
-    let head = if look.hairline {
-        vec![
-            seg(
-                format!("{mark} "),
-                Style::default()
-                    .fg(ink(colour, bg))
-                    .bg(bg)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            title_seg,
-        ]
-    } else {
-        vec![title_seg]
-    };
-    put(buf, r.x + 2, r.y + 1, &head, r.right() - 1);
+    put(buf, r.x + 2, r.y + 1, &[title_seg], r.right() - 1);
     for (i, line) in title_lines.iter().enumerate().skip(1) {
         put(
             buf,
@@ -1779,27 +868,22 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
             r.right() - 1,
         );
     }
-    // Floating: the close is the red chip modals wear on their top border; Hairline keeps a
-    // quiet × on the title row.
-    let close_chip = if look.hairline {
-        vec![seg("×", Style::default().fg(ink(t.muted, bg)).bg(bg))]
-    } else {
-        pill(
-            look,
-            vec![seg(
-                "×",
-                Style::default()
-                    .fg(ink(t.ink_on(t.err), t.err))
-                    .add_modifier(Modifier::BOLD),
-            )],
-            ink(t.err, bg),
-            bg,
-        )
-    };
+    // The close is the red chip modals wear on their top border.
+    let close_chip = pill(
+        look,
+        vec![seg(
+            "×",
+            Style::default()
+                .fg(ink(t.ink_on(t.err), t.err))
+                .add_modifier(Modifier::BOLD),
+        )],
+        ink(t.err, bg),
+        bg,
+    );
     let close_w = segs_width(&close_chip);
     let close = Rect {
         x: r.right().saturating_sub(close_w + 1),
-        y: if look.hairline { r.y + 1 } else { r.y },
+        y: r.y,
         width: close_w,
         height: 1,
     };
@@ -1832,7 +916,6 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     // A question waiting on you gets its two answers as buttons on the bottom border: go and
     // answer it, or leave it for later (Esc does the same).
     if needs
-        && !look.hairline
         && let Some(term) = about
     {
         let on = |c: Color| pill_label(look, ink(c, bg), bg, ink(t.ink_on(c), c));
@@ -1857,9 +940,7 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
         hit(app, rect(lx, segs_width(&later)), ScreenHit::ToastClose);
     }
     hit(app, close, ScreenHit::ToastClose);
-    if !look.hairline {
-        border_on_ground(buf, r, bg, &behind_top);
-    }
+    border_on_ground(buf, r, bg, &behind_top);
 }
 
 /// A bold label on a pill of `bg`, ends rounded on `outer` when the look rounds them.
@@ -1905,18 +986,5 @@ mod tests {
             toast_rect(Rect::new(0, 0, 80, 24), 40, 4, 0.0),
             Some(Rect::new(38, 15, 40, 4))
         );
-    }
-}
-
-#[cfg(test)]
-mod sidebar_fit_tests {
-    use super::sidebar_fits;
-
-    #[test]
-    fn many_panes_in_a_small_window_fold_the_sessions_and_a_few_or_a_wide_window_do_not() {
-        assert!(!sidebar_fits(80, 6), "six panes in 80 columns would each get about 9");
-        assert!(sidebar_fits(80, 1), "one pane always fits");
-        assert!(sidebar_fits(80, 2), "two panes get 27 each");
-        assert!(sidebar_fits(200, 6), "a wide window keeps the sidebar");
     }
 }

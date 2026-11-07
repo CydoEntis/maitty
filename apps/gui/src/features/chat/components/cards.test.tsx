@@ -10,6 +10,9 @@ import { CommandCard, EditCard, TodoCard, ToolChip } from './StepCards'
 
 afterEach(cleanup)
 
+/** The diff's lines as drawn, each its own row of syntax-coloured text. */
+const diffLines = () => screen.queryAllByText((_, element) => element?.classList.contains('mx-diff-text') === true && /^line \d+$/.test(element.textContent))
+
 describe('command card', () => {
   const finished = (over = {}) => commandEvent('c', { command: 'pnpm test', output: 'one\ntwo\nthree\nfour\nfive', ...over })
 
@@ -100,13 +103,13 @@ describe('edit block', () => {
   ])('folds %i lines to 12 (%s)', async (count, footer) => {
     render(<EditCard event={long(count)} root={null} onOpen={null} />)
 
-    expect(screen.queryAllByText(/^line \d+$/)).toHaveLength(Math.min(count, 12))
+    expect(diffLines()).toHaveLength(Math.min(count, 12))
     if (footer === null) {
       expect(screen.queryByRole('button')).toBeNull()
       return
     }
     await userEvent.click(screen.getByRole('button', { name: footer }))
-    expect(screen.getAllByText(/^line \d+$/)).toHaveLength(count)
+    expect(diffLines()).toHaveLength(count)
     expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true')
   })
 
@@ -166,8 +169,8 @@ describe('helper agents card', () => {
     const done = { ...subagentEvent('a', { title: 'Audit', prompt: 'Read parser.rs', report: 'Found 3 issues.' }), timing: { startedAtMs: 0, completedAtMs: 330_000 } }
     render(<AgentsCard agents={[done, subagentEvent('b', { title: 'Search', status: 'running' })]} />)
 
-    expect(screen.getByText('2 agents, 1 working')).toBeInTheDocument()
-    expect(screen.getByText('Done · 5m 30s')).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: '2 agents, 1 working' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Ran a subagent: Audit · 5m 30s/ })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /Audit/ }))
     expect(screen.getByText('Read parser.rs')).toBeInTheDocument()
     expect(screen.getByText('Found 3 issues.')).toBeInTheDocument()

@@ -1,8 +1,11 @@
 mod add_machine;
+mod browse;
+mod file_get;
 mod file_send;
 mod attachment;
 mod image_paste;
 pub mod hub;
+mod machine_update;
 mod machines;
 mod output_socket;
 mod performance;
@@ -13,10 +16,31 @@ pub mod streams;
 use std::path::PathBuf;
 mod terminal_stream;
 
-use maitty_desktop_client::PaneCommand;
+use maitty_desktop_client::{FleetCommand, PaneCommand};
 use tauri::Manager;
 
+/// The daemon to start. A packaged app runs the shared per-user `maitty`, which it first brings
+/// up to its own release (ADR 0004); a development build runs the one it just built.
 fn daemon_executable(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    if cfg!(debug_assertions) {
+        return bundled_daemon(app);
+    }
+    static SHARED: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+    let mut shared = SHARED
+        .lock()
+        .map_err(|_| "the daemon install lock was poisoned".to_string())?;
+    if let Some(path) = shared.as_ref() {
+        return Ok(path.clone());
+    }
+    let version = app.package_info().version.to_string();
+    let path = maitty_desktop_client::ensure_shared_daemon(&bundled_daemon(app)?, &version)
+        .map_err(|error| format!("{error:#}"))?;
+    *shared = Some(path.clone());
+    Ok(path)
+}
+
+/// The daemon file shipped inside the app: what gets installed, never what runs.
+fn bundled_daemon(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let suffix = if cfg!(windows) { ".exe" } else { "" };
     let (file_name, development_path) = if cfg!(debug_assertions) {
         let file_name = format!(
@@ -395,18 +419,146 @@ async fn close_terminal_session(
 }
 
 #[tauri::command]
+async fn close_session_with_undo(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    term: u32,
+) -> Result<serde_json::Value, String> {
+    if routing::is_remote(machine) {
+        return wire
+            .command(machine, term, PaneCommand::CloseSession)
+            .map(|()| serde_json::Value::Null);
+    }
+    maitty_desktop_client::close_session_with_undo(term, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn undo_close_terminal_session(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    term: u32,
+) -> Result<serde_json::Value, String> {
+    if routing::is_remote(machine) {
+        return wire
+            .command(machine, term, PaneCommand::UndoClose)
+            .map(|()| serde_json::Value::Null);
+    }
+    maitty_desktop_client::undo_close_terminal_session(term, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// Start a named fleet (holding one shell) on a machine. The answer to a request for another machine arrives with the next state update.
+#[tauri::command]
+async fn create_fleet(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    name: String,
+) -> Result<serde_json::Value, String> {
+    let command = FleetCommand::Create { name };
+    if routing::is_remote(machine) {
+        return wire.fleet(machine, command).map(|()| serde_json::Value::Null);
+    }
+    maitty_desktop_client::fleet_command(command, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// Rename a fleet. The answer to a request for another machine arrives with the next state update.
+#[tauri::command]
+async fn rename_fleet(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    fleet: u32,
+    name: String,
+) -> Result<serde_json::Value, String> {
+    let command = FleetCommand::Rename { fleet, name };
+    if routing::is_remote(machine) {
+        return wire.fleet(machine, command).map(|()| serde_json::Value::Null);
+    }
+    maitty_desktop_client::fleet_command(command, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// Recolour a fleet with one of `maitty_desktop_client::FLEET_COLORS`. The answer to a request for another machine arrives with the next state update.
+#[tauri::command]
+async fn recolor_fleet(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    fleet: u32,
+    color: u8,
+) -> Result<serde_json::Value, String> {
+    let command = FleetCommand::Recolor { fleet, color };
+    if routing::is_remote(machine) {
+        return wire.fleet(machine, command).map(|()| serde_json::Value::Null);
+    }
+    maitty_desktop_client::fleet_command(command, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// Move a session to another fleet of the same machine. The answer to a request for another machine arrives with the next state update.
+#[tauri::command]
+async fn move_session_to_fleet(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    session: u32,
+    fleet: u32,
+) -> Result<serde_json::Value, String> {
+    let command = FleetCommand::MoveSession { term: session, fleet };
+    if routing::is_remote(machine) {
+        return wire.fleet(machine, command).map(|()| serde_json::Value::Null);
+    }
+    maitty_desktop_client::fleet_command(command, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// Start a shell in a fleet, in `folder` or the fleet's own folder. The answer to a request for another machine arrives with the next state update.
+#[tauri::command]
+async fn start_shell_in_fleet(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    fleet: u32,
+    folder: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let command = FleetCommand::StartShell { fleet, folder };
+    if routing::is_remote(machine) {
+        return wire.fleet(machine, command).map(|()| serde_json::Value::Null);
+    }
+    maitty_desktop_client::fleet_command(command, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
 async fn send_conversation(
     app: tauri::AppHandle,
     id: u64,
     generation: u64,
     operation: u64,
     text: String,
+    model: Option<String>,
+    effort: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    let choice = maitty_shared::conversation::TurnChoice { model, effort };
+    choice.validate().map_err(str::to_owned)?;
     maitty_desktop_client::send_conversation(
         id,
         generation,
         operation,
         text,
+        Some(choice),
         daemon_executable(&app)?,
     )
     .await
@@ -622,6 +774,8 @@ pub fn run() {
             machines::list_machines,
             terminal_stream::list_machines_overview,
             terminal_stream::retry_machine,
+            machine_update::update_machine,
+            machine_update::machine_activity,
             terminal_stream::start_session_on_machine,
             terminal_stream::remove_machine,
             terminal_stream::set_machine_grant,
@@ -629,6 +783,10 @@ pub fn run() {
             add_machine::add_machine,
             add_machine::cancel_add_machine,
             file_send::send_files_to_machine,
+            browse::list_remote_folder,
+            browse::index_remote_files,
+            file_get::get_file_from_machine,
+            file_get::open_pulled_folder,
             file_send::cancel_file_send,
             attachment::attach_local_file,
             attachment::attachments_exist,
@@ -643,6 +801,8 @@ pub fn run() {
             terminal_stream::terminal_history,
             terminal_stream::watch_terminal_output,
             terminal_stream::list_folders,
+            terminal_stream::get_shared_settings,
+            terminal_stream::set_shared_setting,
             output_socket::open_terminal_socket,
             terminal_screen,
             terminal_replay,
@@ -664,6 +824,13 @@ pub fn run() {
             pin_terminal_session,
             archive_terminal_session,
             close_terminal_session,
+            close_session_with_undo,
+            undo_close_terminal_session,
+            create_fleet,
+            rename_fleet,
+            recolor_fleet,
+            move_session_to_fleet,
+            start_shell_in_fleet,
             send_conversation,
             approve_conversation,
             answer_conversation_input,

@@ -34,6 +34,50 @@ pub enum Sandbox {
     FullAccess,
 }
 
+/// Reasoning efforts both providers' CLIs accept, lowest first.
+pub const TURN_EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
+/// Longest model name a message may carry.
+pub const MAX_MODEL_CHARS: usize = 64;
+
+/// What the user picked in the chat for the next message: a model and a reasoning effort. A field
+/// left `None` keeps what the conversation already uses. Permissions are never part of it (ADR 0005).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TurnChoice {
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub effort: Option<String>,
+}
+
+impl TurnChoice {
+    /// Refuses anything that is not a plain model name or a known effort. The values reach a
+    /// command line, so a name that could read as an option is refused too.
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if let Some(model) = &self.model {
+            let plain = |c: char| c.is_ascii_alphanumeric() || ".-_:/[]".contains(c);
+            if model.is_empty()
+                || model.len() > MAX_MODEL_CHARS
+                || model.starts_with('-')
+                || !model.chars().all(plain)
+            {
+                return Err("The model name is not valid");
+            }
+        }
+        if let Some(effort) = &self.effort
+            && !TURN_EFFORTS.contains(&effort.as_str())
+        {
+            return Err("The reasoning effort is not one the agents accept");
+        }
+        Ok(())
+    }
+
+    /// Nothing picked: the message goes out as it always did.
+    pub fn is_empty(&self) -> bool {
+        self.model.is_none() && self.effort.is_none()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StartTarget {
     Create(LaunchSettings),
@@ -302,7 +346,9 @@ pub enum IdentityError {
 }
 
 impl Conversation {
-    pub fn recover(&mut self) -> Result<(), IdentityError> {
+    /// Fence a writer that was running when the daemon went away. Returns whether this record
+    /// was one: its generation moved and it now needs recovery.
+    pub fn recover(&mut self) -> Result<bool, IdentityError> {
         if matches!(
             self.state,
             RecoveryState::Running | RecoveryState::Transferring
@@ -312,8 +358,9 @@ impl Conversation {
                 .checked_add(1)
                 .ok_or(IdentityError::GenerationExhausted)?;
             self.state = RecoveryState::RecoveryRequired;
+            return Ok(true);
         }
-        Ok(())
+        Ok(false)
     }
 }
 
@@ -431,6 +478,30 @@ pub fn validate_registry(records: &[Conversation]) -> Result<(), IdentityError> 
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod turn_choice_tests {
+    use super::TurnChoice;
+
+    fn choice(model: Option<&str>, effort: Option<&str>) -> TurnChoice {
+        TurnChoice { model: model.map(str::to_owned), effort: effort.map(str::to_owned) }
+    }
+
+    #[test]
+    fn plain_models_and_known_efforts_pass() {
+        assert!(choice(Some("opus"), Some("max")).validate().is_ok());
+        assert!(choice(Some("claude-sonnet-4.5[1m]"), None).validate().is_ok());
+        assert!(choice(None, None).is_empty());
+    }
+
+    #[test]
+    fn anything_that_could_read_as_an_option_or_is_unknown_is_refused() {
+        for model in ["", "--dangerously-skip-permissions", "a b", "a\nb", &"x".repeat(65)] {
+            assert!(choice(Some(model), None).validate().is_err(), "{model:?}");
+        }
+        assert!(choice(None, Some("ultra-extreme")).validate().is_err());
+    }
 }
 
 #[cfg(test)]

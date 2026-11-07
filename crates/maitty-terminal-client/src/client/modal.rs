@@ -305,20 +305,6 @@ pub const SETTINGS: &[Setting] = &[
         help: "Space between floating panes, in rows stacked and columns side by side.",
     },
     Setting {
-        path: "ui.tab_gap",
-        label: "Tab gap",
-        kind: Kind::Bool,
-        cat: Cat::Appearance,
-        help: "Leave a cell of border between tabs.",
-    },
-    Setting {
-        path: "ui.pane_colors",
-        label: "Pane colours",
-        kind: Kind::Bool,
-        cat: Cat::Appearance,
-        help: "Floating: each pane's border in its own colour, by its place in the tab.",
-    },
-    Setting {
         path: "ui.rounded",
         label: "Rounded",
         kind: Kind::Choice(crate::config::Rounding::NAMES),
@@ -352,13 +338,6 @@ pub const SETTINGS: &[Setting] = &[
         kind: Kind::Bool,
         cat: Cat::Appearance,
         help: "Blink that caret. No effect with your terminal's own cursor.",
-    },
-    Setting {
-        path: "ui.tool_rail",
-        label: "Tool rail",
-        kind: Kind::Bool,
-        cat: Cat::Appearance,
-        help: "A column of f, c, b and a chips on the right edge that opens Files, Changes, Branch and References. They are in the Menu too.",
     },
     Setting {
         path: "ui.glyphs",
@@ -442,6 +421,13 @@ pub const SETTINGS: &[Setting] = &[
         kind: Kind::Bool,
         cat: Cat::Sessions,
         help: "Restart agents in their last conversation (claude --resume, codex resume).",
+    },
+    Setting {
+        path: "restore.conversations",
+        label: "Resume chat conversations",
+        kind: Kind::Bool,
+        cat: Cat::Sessions,
+        help: "After a restart, chat conversations that were running pick up on the same provider session.",
     },
     Setting {
         path: "restore.commands",
@@ -561,10 +547,10 @@ pub const SETTINGS: &[Setting] = &[
     },
     Setting {
         path: "ui.subagent_count",
-        label: "Count on the session row",
+        label: "Subagents in the sidebar",
         kind: Kind::Bool,
         cat: Cat::Agents,
-        help: "Shows \"· 4 agents\" on a working row only when the agent reports helpers. Claude does; Codex doesn't.",
+        help: "Lists the subagents of an agent's current turn under its row, as its hooks report them.",
     },
     Setting {
         path: "auto_continue",
@@ -699,19 +685,7 @@ pub fn write_at(parts: &[&str], mut value: toml_edit::Value) -> Result<()> {
 
 /// Change config.toml through `edit`, keeping the rest of the file (comments included).
 pub fn edit_config(edit: impl FnOnce(&mut toml_edit::DocumentMut) -> Result<()>) -> Result<()> {
-    let file = crate::config::config_path();
-    let text = match std::fs::read_to_string(&file) {
-        Ok(t) => t,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(e) => return Err(e).context("reading config"),
-    };
-    let mut doc: toml_edit::DocumentMut = text
-        .parse()
-        .context("config.toml has a syntax error; fix it first")?;
-    edit(&mut doc)?;
-    crate::config::write_atomic(&file, doc.to_string()).context("writing config")?;
-    crate::sync::push_soon();
-    Ok(())
+    crate::config::edit_config(edit)
 }
 
 #[cfg(test)]

@@ -7130,6 +7130,34 @@ fn legacy_pane_metadata_does_not_invent_a_verified_binding() {
 }
 
 #[test]
+fn a_restore_notes_only_the_conversations_that_were_running() {
+    use crate::conversation::{ConversationId, RecoveryState};
+    let record = |id: u64, state, native_session: &str| {
+        let mut record = crate::test_support::conversation();
+        record.id = ConversationId(id);
+        record.state = state;
+        record.binding.session_id = native_session.into();
+        record
+    };
+    let (mut d, _rx) = daemon();
+    let before = crate::test_support::conversation().generation;
+    d.restore(persist::Saved {
+        conversations: vec![
+            record(1, RecoveryState::Running, "thread-1"),
+            record(2, RecoveryState::Stopped, "thread-2"),
+            record(3, RecoveryState::RecoveryRequired, "thread-3"),
+            record(4, RecoveryState::Transferring, "thread-4"),
+        ],
+        ..Default::default()
+    });
+    assert_eq!(
+        d.resumable_conversations,
+        vec![(ConversationId(1), before + 1), (ConversationId(4), before + 1)],
+        "a stopped one, or one already needing recovery, is not resumed by the restart"
+    );
+}
+
+#[test]
 fn startup_persists_recovered_generations_before_another_restart() {
     use crate::conversation::RecoveryState;
     for state in [RecoveryState::Running, RecoveryState::Transferring] {
@@ -7481,6 +7509,28 @@ fn the_timeline_records_status_changes_and_the_shells_prompt_marks() {
 }
 
 #[test]
+fn a_failed_command_sets_the_exit_mark_and_the_next_one_clears_it() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let feed = |d: &mut Daemon, bytes: &[u8]| {
+        let pane = d.terms.get_mut(&t).unwrap();
+        pane.output(bytes);
+        pane.take_marks();
+        d.snapshot().terms[&t].exit
+    };
+    assert_eq!(d.snapshot().terms[&t].exit, None, "a running pane has none");
+    let failed = feed(&mut d, b"\x1b]133;C\x07\x1b]133;D;137\x07").expect("a failure");
+    assert_eq!(failed.code, Some(137));
+    assert_eq!(feed(&mut d, b"\x1b]133;C\x07"), None, "a new command clears it");
+    assert_eq!(feed(&mut d, b"\x1b]133;D;0\x07"), None, "a clean exit is not a problem");
+    assert_eq!(feed(&mut d, b"\x1b]133;D\x07"), None, "no code, no claim");
+    feed(&mut d, b"\x1b]133;D;1\x07");
+    d.set_status(t, Status::Working, "hook: UserPromptSubmit");
+    assert_eq!(d.snapshot().terms[&t].exit, None, "the agent working again clears it");
+    close(&mut d, &[t]);
+}
+
+#[test]
 fn a_blocked_pane_reports_what_it_is_asking_and_a_working_one_does_not() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
@@ -7727,4 +7777,273 @@ fn a_pane_reports_its_question_only_while_it_needs_you() {
     d.terms.get_mut(&t).unwrap().status = Status::Idle;
     assert!(d.terms[&t].ask_now().is_none(), "a question left over from before is not shown");
     close(&mut d, &[t]);
+}
+
+/// A workspace with one shell, and a second shell split beside it.
+fn two_panes(d: &mut Daemon) -> (TermId, TermId) {
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
+    let a = *d.terms.keys().next().unwrap();
+    d.command(
+        0,
+        Command::Split {
+            term: a,
+            dir: crate::layout::Dir::Right,
+            cmd: None,
+            cwd: None,
+        },
+    )
+    .unwrap();
+    let b = *d.terms.keys().find(|t| **t != a).unwrap();
+    (a, b)
+}
+
+/// Pretend the undo window opened `ago` back.
+fn closed_ago(d: &mut Daemon, term: TermId, ago: Duration) {
+    let t = d.terms.get_mut(&term).unwrap();
+    t.closing = t.closing.map(|(_, by)| (crate::clock::ago(ago), by));
+}
+
+#[test]
+fn a_soft_closed_session_leaves_the_snapshot_but_keeps_running() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (a, b) = two_panes(&mut d);
+    d.command(0, Command::CloseSession { term: b }).unwrap();
+    let snap = d.snapshot();
+    assert!(!snap.terms.contains_key(&b) && snap.terms.contains_key(&a));
+    for ws in &snap.workspaces {
+        for tab in &ws.tabs {
+            assert_eq!(tab.layout.leaves(), vec![a], "no hole for clients to draw");
+        }
+    }
+    assert!(d.terms.contains_key(&b) && !d.terms[&b].process_exited);
+    assert!(
+        d.saved().workspaces[0].tabs[0]
+            .panes
+            .keys()
+            .all(|t| *t != b),
+        "a restart inside the window does not bring it back"
+    );
+    assert_eq!(d.activity().sessions, 1, "it is not counted as a session");
+    d.finish_closes();
+    assert!(d.terms.contains_key(&b), "not before the window ends");
+    let terms: Vec<TermId> = d.terms.keys().copied().collect();
+    close(&mut d, &terms);
+}
+
+#[test]
+fn undo_within_the_window_brings_back_the_same_session() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (a, b) = two_panes(&mut d);
+    d.command(0, Command::CloseSession { term: b }).unwrap();
+    closed_ago(&mut d, b, UNDO_WINDOW - Duration::from_secs(1));
+    d.command(0, Command::UndoClose { term: b }).unwrap();
+    d.finish_closes();
+    let snap = d.snapshot();
+    assert!(snap.terms.contains_key(&b));
+    assert_eq!(snap.workspaces[0].tabs[0].layout.leaves(), vec![a, b]);
+    close(&mut d, &[a, b]);
+}
+
+#[test]
+fn a_soft_closed_session_ends_when_the_window_passes() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (a, b) = two_panes(&mut d);
+    d.command(0, Command::CloseSession { term: b }).unwrap();
+    // A second close doesn't restart the clock.
+    closed_ago(&mut d, b, UNDO_WINDOW);
+    d.command(0, Command::CloseSession { term: b }).unwrap();
+    d.finish_closes();
+    assert!(!d.terms.contains_key(&b), "closed once the window passed");
+    assert_eq!(d.snapshot().workspaces[0].tabs[0].layout.leaves(), vec![a]);
+    // Undo after that, or for a session that isn't closing, does nothing.
+    d.command(0, Command::UndoClose { term: b }).unwrap();
+    d.command(0, Command::UndoClose { term: a }).unwrap();
+    assert!(!d.terms.contains_key(&b) && d.terms.contains_key(&a));
+    close(&mut d, &[a]);
+}
+
+#[test]
+fn soft_closing_the_only_pane_hides_its_workspace_until_it_ends() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (a, b) = two_panes(&mut d);
+    d.command(0, Command::ClosePane { term: b }).unwrap();
+    d.command(0, Command::CloseSession { term: a }).unwrap();
+    let snap = d.snapshot();
+    assert!(snap.workspaces.is_empty() && snap.active_ws.is_none());
+    assert_eq!(d.workspaces.len(), 1, "the tree keeps it for an undo");
+    d.command(0, Command::UndoClose { term: a }).unwrap();
+    assert_eq!(d.snapshot().workspaces.len(), 1);
+    d.command(0, Command::CloseSession { term: a }).unwrap();
+    closed_ago(&mut d, a, UNDO_WINDOW);
+    d.finish_closes();
+    assert!(d.workspaces.is_empty() && d.terms.is_empty());
+}
+
+fn new_fleet(d: &mut Daemon, name: &str, colors: Vec<u8>) -> Result<bool> {
+    d.command(
+        0,
+        Command::NewFleet {
+            name: name.into(),
+            cwd: Some(std::env::temp_dir()),
+            colors,
+        },
+    )
+}
+
+#[test]
+fn a_new_fleet_is_named_holds_one_shell_and_takes_a_wanted_free_colour() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    new_fleet(&mut d, "  api  ", vec![3, 0]).unwrap();
+    new_fleet(&mut d, "web", vec![3, 0]).unwrap();
+    new_fleet(&mut d, "docs", vec![3, 0]).unwrap();
+    let fleets = &d.snapshot().workspaces;
+    assert_eq!(fleets.len(), 3);
+    assert_eq!(fleets[0].name, "api", "the name is trimmed");
+    assert_eq!(fleets[0].tabs[0].layout.leaves().len(), 1);
+    assert_eq!(fleets[0].color, 3);
+    assert_eq!(fleets[1].color, 0, "the wanted colour in use is skipped");
+    assert!(
+        !matches!(fleets[2].color, 3 | 0),
+        "with every wanted colour taken, any free colour is used"
+    );
+    let terms: Vec<_> = d.terms.keys().copied().collect();
+    close(&mut d, &terms);
+}
+
+#[test]
+fn a_fleet_needs_a_plain_name_and_a_colour_in_the_palette() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    assert!(new_fleet(&mut d, "   ", vec![]).is_err());
+    assert!(new_fleet(&mut d, "a\u{7}b", vec![]).is_err());
+    assert!(new_fleet(&mut d, &"x".repeat(81), vec![]).is_err());
+    assert!(
+        d.workspaces.is_empty() && d.terms.is_empty(),
+        "nothing started"
+    );
+    new_fleet(&mut d, "api", vec![200]).unwrap();
+    let ws = d.workspaces[0].id;
+    assert!(
+        d.workspaces[0].color < 8,
+        "a colour past the palette is ignored"
+    );
+    d.command(0, Command::SetWorkspaceColor { ws, color: 5 })
+        .unwrap();
+    assert_eq!(d.workspaces[0].color, 5);
+    assert!(d
+        .command(0, Command::SetWorkspaceColor { ws, color: 8 })
+        .is_err());
+    assert_eq!(d.workspaces[0].color, 5, "a refused colour changes nothing");
+    d.command(
+        0,
+        Command::RenameWorkspace {
+            ws,
+            name: "core".into(),
+        },
+    )
+    .unwrap();
+    assert_eq!(d.workspaces[0].name, "core");
+    let terms: Vec<_> = d.terms.keys().copied().collect();
+    close(&mut d, &terms);
+}
+
+#[test]
+fn a_new_ship_joins_its_fleet_in_the_fleets_folder_or_a_given_one() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    new_fleet(&mut d, "api", vec![]).unwrap();
+    let ws = d.workspaces[0].id;
+    let first = d.workspaces[0].tabs[0].focus;
+    d.command(
+        0,
+        Command::NewShip {
+            ws,
+            cwd: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
+    let elsewhere = std::env::temp_dir().join("maitty-ship-folder");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    d.command(
+        0,
+        Command::NewShip {
+            ws,
+            cwd: Some(elsewhere.clone()),
+            cmd: None,
+        },
+    )
+    .unwrap();
+    d.command(
+        0,
+        Command::NewShip {
+            ws,
+            cwd: Some(std::env::temp_dir().join("maitty-no-such-folder")),
+            cmd: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(d.workspaces.len(), 1, "ships join; they start no fleet");
+    let ships: Vec<TermId> = d.workspace_panes(ws);
+    assert_eq!(ships.len(), 4);
+    assert!(ships.contains(&first));
+    assert!(same_path(&d.terms[&ships[2]].cwd, &elsewhere));
+    assert!(same_path(&d.terms[&ships[3]].cwd, &d.workspaces[0].cwd));
+    assert!(d
+        .command(
+            0,
+            Command::NewShip {
+                ws: 9999,
+                cwd: None,
+                cmd: None
+            }
+        )
+        .is_err());
+    close(&mut d, &ships);
+    let _ = std::fs::remove_dir(&elsewhere);
+}
+
+#[test]
+fn a_session_moves_to_another_fleet_of_the_same_machine() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    new_fleet(&mut d, "api", vec![]).unwrap();
+    new_fleet(&mut d, "web", vec![]).unwrap();
+    let (from, to) = (d.workspaces[0].id, d.workspaces[1].id);
+    d.command(
+        0,
+        Command::NewShip {
+            ws: from,
+            cwd: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
+    let ship = *d.workspace_panes(from).last().unwrap();
+    d.command(
+        0,
+        Command::MovePane {
+            term: ship,
+            to: Some(to),
+            name: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(d.workspace_panes(from).len(), 1);
+    assert!(d.workspace_panes(to).contains(&ship));
+    let terms: Vec<_> = d.terms.keys().copied().collect();
+    close(&mut d, &terms);
 }

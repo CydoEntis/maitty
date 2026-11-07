@@ -386,13 +386,6 @@ pub(in crate::client) fn draw_new_pane(
 
 // Settings ------------------------------------------------------------------------------------
 
-/// A setting the current look ignores: Hairline is always square, has no gaps and no pane
-/// colours (Rounded, Gap and Pane colours are Floating's).
-fn unused_here(app: &App, row: &SRow) -> bool {
-    matches!(row, SRow::Setting(s) if matches!(s.path, "ui.rounded" | "ui.gap" | "ui.pane_colors"))
-        && Look::of(&app.cfg.ui).hairline
-}
-
 /// The values a settings row offers as chips, and which one is current.
 pub(in crate::client) fn chips_for(app: &App, row: &SRow) -> Option<(Vec<String>, Option<usize>)> {
     use crate::client::modal::Kind;
@@ -460,10 +453,146 @@ pub(in crate::client) fn set_chip(app: &mut App, row: &SRow, vi: usize) {
 /// Columns the label column of a settings page holds; no setting label is longer.
 pub(in crate::client) const SETTINGS_LABEL_COLS: u16 = 33;
 
-/// Widths the settings tab row needs: padded full names, then unpadded ones, then short names.
-const TABS_FULL_COLS: u16 = 86;
-const TABS_SHORT_BELOW_COLS: u16 = 66;
+/// The sections column's width, the line beside it included.
+const SECTIONS_W: u16 = 22;
+/// Narrower than this, Settings keeps the sections column to its longest name.
+const SECTIONS_FULL_FROM: u16 = 90;
+const SECTIONS_NARROW_W: u16 = 14;
 
+/// The sections column's width in a Settings body `w` wide.
+fn sections_w(w: u16) -> u16 {
+    if w >= SECTIONS_FULL_FROM { SECTIONS_W } else { SECTIONS_NARROW_W }
+}
+
+/// The width the right column gives a row's help, in a Settings body `w` wide.
+pub(in crate::client) fn settings_help_cols(w: u16) -> u16 {
+    w.saturating_sub(sections_w(w) + 3)
+}
+
+/// The sections down the left: the chosen one on the selection ground with an accent `▎`.
+fn draw_sections(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, cur: usize) {
+    use crate::client::modal::Cat;
+    let c = Style::default().bg(t.card);
+    for (i, cat) in Cat::ALL.iter().enumerate() {
+        let y = r.y + 1 + i as u16;
+        if y >= r.bottom() {
+            break;
+        }
+        let on = i == cur;
+        let row = Rect { x: r.x, y, width: r.width, height: 1 };
+        let bg = if on { t.selection_bg } else { t.card };
+        fill(buf, row, bg);
+        let st = Style::default().bg(bg);
+        if on {
+            put(buf, r.x, y, &[seg("▎", st.fg(t.accent))], r.x + 1);
+        }
+        put(buf, r.x + 2, y, &[seg(cat.label(), st.fg(if on { t.strong } else { t.text }))], r.right());
+        hit(app, row, ScreenHit::SetTab(i));
+    }
+    for y in r.top()..r.bottom() {
+        put(buf, r.right(), y, &[seg("│", c.fg(t.line))], r.right() + 1);
+    }
+}
+
+/// What is off about the versions, each a line under the section's title: a newer release, an
+/// installed or daemon version that differs, a restart that waits. Returns the lines used.
+fn draw_version_notes(app: &mut App, buf: &mut Buffer, r: Rect, y0: u16, t: &Theme) -> u16 {
+    let look = Look::of(&app.cfg.ui);
+    let c = Style::default().bg(t.card);
+    let window = env!("APP_VERSION");
+    let daemon = if app.snap.daemon_version.is_empty() {
+        "unknown".to_string()
+    } else {
+        app.snap.daemon_version.clone()
+    };
+    let known = daemon != "unknown";
+    let mismatch = known && daemon != window;
+    let host = app
+        .machine
+        .host()
+        .map(|h| format!("Remote daemon ({h})"))
+        .unwrap_or_else(|| "Running daemon".into());
+    let mut used = 0u16;
+    let end = r.right().saturating_sub(2);
+    if let Some(next) = app.update_available.clone() {
+        let y = y0 + used;
+        used += 1;
+        let lead = format!("↑ {} {next} is out — ", env!("APP_COMMAND"));
+        let x = put(buf, r.x, y, &[seg(lead, c.fg(t.accent).add_modifier(Modifier::BOLD))], end);
+        let btn = button_pill(look, t, "Update now", "", true, t.card);
+        let bend = put(buf, x, y, &btn, end);
+        hit(app, Rect { x, y, width: bend.saturating_sub(x).max(1), height: 1 }, ScreenHit::Update);
+    }
+    let mut notes: Vec<(String, Style)> = Vec::new();
+    match &app.installed_version {
+        Some(Ok(v)) if v != window => notes.push((format!("Installed here: {v}   This window: {window}"), c.fg(t.muted))),
+        Some(Err(error)) => notes.push((format!("Installed here: unavailable ({error})"), c.fg(t.err))),
+        _ => {}
+    }
+    if mismatch || !known {
+        notes.push((format!("{host}: {daemon}"), c.fg(t.muted)));
+    }
+    for (text, style) in notes {
+        put(buf, r.x, y0 + used, &[seg(text, style)], end);
+        used += 1;
+    }
+    let say = |buf: &mut Buffer, y: u16, text: &str, style: Style| {
+        put(buf, r.x, y, &[seg(text, style)], end);
+    };
+    if app.daemon_restartable() {
+        let lead = "Restart pending — ";
+        let y = y0 + used;
+        used += 1;
+        say(buf, y, lead, c.fg(t.accent).add_modifier(Modifier::BOLD));
+        let x = r.x + lead.width() as u16;
+        let btn = button_pill(look, t, "Restart now", "R", true, t.card);
+        let bend = put(buf, x, y, &btn, end);
+        hit(app, Rect { x, y, width: bend.saturating_sub(x).max(1), height: 1 }, ScreenHit::Restart);
+        put(buf, bend, y, &[seg("  or when all sessions close", c.fg(t.muted))], end);
+    } else if app.restart_pending() {
+        let note = if app.machine.is_remote() {
+            "Remote daemon differs — update it on its host after its sessions are closed."
+        } else {
+            "Restart pending — waiting until all sessions are closed."
+        };
+        say(buf, y0 + used, note, c.fg(t.accent).add_modifier(Modifier::BOLD));
+        used += 1;
+    }
+    used
+}
+
+/// The footer: a rule, then the keys at the left and where the settings are saved at the right.
+fn draw_settings_footer(buf: &mut Buffer, r: Rect, t: &Theme) {
+    let c = Style::default().bg(t.card);
+    let y = r.bottom().saturating_sub(1);
+    hline(buf, r.x, y.saturating_sub(1), r.width, t, t.card);
+    let mut segs = Vec::new();
+    for (key, words) in [("j/k", "move"), ("tab", "section"), ("enter", "change"), ("o", "open"), ("esc", "close")] {
+        segs.push(seg(key, c.fg(t.accent).add_modifier(Modifier::BOLD)));
+        segs.push(seg(format!(" {words}  "), c.fg(t.muted)));
+    }
+    let used = put(buf, r.x + 2, y, &segs, r.right());
+    let saved = format!("saved to {}", tilde(&crate::config::config_path()));
+    let sx = r.right().saturating_sub(2 + saved.width() as u16);
+    if sx > used + 1 {
+        put(buf, sx, y, &[seg(saved, c.fg(t.muted))], r.right());
+    }
+}
+
+/// A choice row's value as the design draws it: the value bold in the accent, `‹ ›`, then where
+/// it is among the choices (`2/3`).
+fn choice_segs(opts: &[String], cur: Option<usize>, bg: Color, t: &Theme) -> Vec<Seg> {
+    let st = Style::default().bg(bg);
+    let i = cur.unwrap_or(0);
+    vec![
+        seg(opts.get(i).cloned().unwrap_or_default(), st.fg(t.accent).add_modifier(Modifier::BOLD)),
+        seg("  ‹ ›", st.fg(t.muted)),
+        seg(format!("  {}/{}", i + 1, opts.len()), st.fg(t.faint())),
+    ]
+}
+
+/// Settings: the sections down the left, the chosen section's rows at the right (label, value),
+/// the selected row's help, and the footer. Enter or a click changes a value.
 pub(in crate::client) fn draw_settings(
     app: &mut App,
     buf: &mut Buffer,
@@ -473,184 +602,24 @@ pub(in crate::client) fn draw_settings(
 ) {
     use crate::client::design::settings_group;
     use crate::client::modal::Cat;
-    let look = Look::of(&app.cfg.ui);
     hit(app, r, ScreenHit::SettingsBody);
     let c = Style::default().bg(t.card);
-    // Tabs: the current one a pill.
-    let compact_tabs = r.width < TABS_FULL_COLS;
-    let mut x = r.x + 3;
-    for (i, cat) in Cat::ALL.iter().enumerate() {
-        let on = i == v.cat;
-        let label = if r.width < TABS_SHORT_BELOW_COLS {
-            match cat {
-                Cat::General => "Gen",
-                Cat::Sessions => "Sess",
-                Cat::Appearance => "Look",
-                Cat::Alerts => "Alert",
-                Cat::Agents => "Agent",
-                Cat::Check => "Check",
-                Cat::Keys => "Keys",
-            }
-        } else if compact_tabs && *cat == Cat::Appearance {
-            "Look"
-        } else {
-            cat.label()
-        };
-        let tab_label = if compact_tabs {
-            label.to_string()
-        } else {
-            format!(" {label} ")
-        };
-        let segs = vec![seg(
-            tab_label,
-            Style::default()
-                .fg(if on { t.acc_ink } else { t.text })
-                .add_modifier(if on {
-                    Modifier::BOLD
-                } else {
-                    Modifier::empty()
-                }),
-        )];
-        let w = segs_width(&segs) + 2;
-        let tr = Rect {
-            x,
-            y: r.y + 2,
-            width: w,
-            height: 1,
-        };
-        let segs = if on {
-            pill(look, segs, t.accent, t.card)
-        } else {
-            let bg = if hovered(app, tr) { t.hov } else { t.card };
-            let mut out = vec![seg(" ", c.bg(bg))];
-            out.extend(segs.into_iter().map(|(s, st)| (s, st.bg(bg))));
-            out.push(seg(" ", c.bg(bg)));
-            out
-        };
-        put(buf, x, r.y + 2, &segs, r.right());
-        hit(app, tr, ScreenHit::SetTab(i));
-        x += w + 1;
-    }
-    // Which version this is and the way to update are General's Version row. Up here only what
-    // is off: the installed or daemon version differs, or a restart is waiting.
-    let window = env!("APP_VERSION");
-    let daemon = if app.snap.daemon_version.is_empty() {
-        "unknown".to_string()
-    } else {
-        app.snap.daemon_version.clone()
+    let foot = 2u16;
+    let body = Rect { height: r.height.saturating_sub(foot), ..r };
+    let sw = sections_w(r.width);
+    draw_sections(app, buf, Rect { width: sw - 1, ..body }, t, v.cat);
+    draw_settings_footer(buf, r, t);
+    let right = Rect {
+        x: r.x + sw + 2,
+        width: settings_help_cols(r.width),
+        ..body
     };
-    let daemon = daemon.as_str();
-    let dot = c.fg(t.muted);
-    let known = daemon != "unknown";
-    let mismatch = known && daemon != window;
-    let vy = r.y + 3;
-    // Detail lines only when versions differ or something needs saying.
-    let host = app
-        .machine
-        .host()
-        .map(|h| format!("Remote daemon ({h})"))
-        .unwrap_or_else(|| "Running daemon".into());
-    let mut lines_used = 0u16;
-    // A newer release is out: said first, on every tab, with its button.
-    if let Some(next) = app.update_available.clone() {
-        lines_used += 1;
-        let lead = format!("↑ {} {next} is out — ", env!("APP_COMMAND"));
-        let y = vy + lines_used;
-        let x = put(
-            buf,
-            r.x + 4,
-            y,
-            &[seg(lead, c.fg(t.accent).add_modifier(Modifier::BOLD))],
-            r.right() - 3,
-        );
-        let btn = button_pill(look, t, "Update now", "", true, t.card);
-        let end = put(buf, x, y, &btn, r.right() - 3);
-        hit(
-            app,
-            Rect {
-                x,
-                y,
-                width: end.saturating_sub(x).max(1),
-                height: 1,
-            },
-            ScreenHit::Update,
-        );
-    }
-    let mut say = |buf: &mut Buffer, text: String, style: Style| {
-        lines_used += 1;
-        put(
-            buf,
-            r.x + 4,
-            vy + lines_used,
-            &[seg(text, style)],
-            r.right() - 3,
-        );
-    };
-    match &app.installed_version {
-        Some(Ok(v)) if v != window => say(
-            buf,
-            format!("Installed here: {v}   This window: {window}"),
-            c.fg(t.muted),
-        ),
-        Some(Err(error)) => say(
-            buf,
-            format!("Installed here: unavailable ({error})"),
-            c.fg(t.err),
-        ),
-        _ => {}
-    }
-    if mismatch || !known {
-        say(buf, format!("{host}: {daemon}"), c.fg(t.muted));
-    }
-    if app.daemon_restartable() {
-        let lead = "Restart pending — ";
-        say(
-            buf,
-            lead.into(),
-            c.fg(t.accent).add_modifier(Modifier::BOLD),
-        );
-        let (x, y) = (r.x + 4 + lead.width() as u16, vy + lines_used);
-        let btn = button_pill(look, t, "Restart now", "R", true, t.card);
-        let end = put(buf, x, y, &btn, r.right() - 3);
-        hit(
-            app,
-            Rect {
-                x,
-                y,
-                width: end.saturating_sub(x).max(1),
-                height: 1,
-            },
-            ScreenHit::Restart,
-        );
-        put(
-            buf,
-            end,
-            y,
-            &[seg("  or when all sessions close", dot)],
-            r.right() - 3,
-        );
-    } else if app.restart_pending() {
-        let note = if app.machine.is_remote() {
-            "Remote daemon differs — update it on its host after its sessions are closed."
-        } else {
-            "Restart pending — waiting until all sessions are closed."
-        };
-        say(
-            buf,
-            note.into(),
-            c.fg(t.accent).add_modifier(Modifier::BOLD),
-        );
-    }
-    hline(buf, r.x + 3, r.y + 3, r.width.saturating_sub(6), t, t.card);
     let cat = Cat::ALL[v.cat.min(Cat::ALL.len() - 1)];
+    put(buf, right.x, right.y + 1, &[seg(cat.label().to_lowercase(), c.fg(t.muted))], right.right());
+    let notes = draw_version_notes(app, buf, right, right.y + 2, t);
     if cat == Cat::Check {
-        return crate::client::screen::check_settings::draw_page(
-            app,
-            buf,
-            r,
-            r.y + 5 + lines_used,
-            t,
-        );
+        let page = Rect { x: right.x.saturating_sub(3), width: right.width + 3, ..body };
+        return crate::client::screen::check_settings::draw_page(app, buf, page, right.y + 3 + notes, t);
     }
     if cat == Cat::Agents && !app.claude_hooks_asked {
         app.claude_hooks_asked = true;
@@ -669,314 +638,108 @@ pub(in crate::client) fn draw_settings(
         });
     }
     let rows = crate::client::design::settings_rows(cat);
-    let lx = r.x + 6;
-    let vx = if r.width >= 68 {
-        lx + SETTINGS_LABEL_COLS + 1
+    let lx = right.x;
+    // The labels' column as wide as this section's longest label, so its values have the room.
+    let label_cols = rows
+        .iter()
+        .map(|row| match row {
+            SRow::Setting(s) => s.label.width(),
+            SRow::Bind { label, .. } => label.width(),
+            SRow::Agent(row) => row.label().width(),
+            SRow::Version => "Version".width(),
+        })
+        .max()
+        .unwrap_or(0)
+        .min(SETTINGS_LABEL_COLS as usize) as u16;
+    let vx = if right.width >= label_cols + 18 {
+        lx + label_cols + 2
     } else {
-        r.x + (r.width * 54 / 100).max(19)
+        lx + right.width * 55 / 100
     };
-    // What the selected row does (shown under it).
     let help = match rows.get(v.sel) {
         Some(SRow::Setting(s)) => s.help.to_string(),
         Some(SRow::Bind { acts, .. }) if acts.len() > 1 => "Several keys; change them in the config file (o).".into(),
         Some(SRow::Bind { .. }) => "Enter, then press the new key.".into(),
         Some(SRow::Agent(row)) => row.help().to_string(),
-        Some(SRow::Version) => concat!("u looks for a newer ", env!("APP_COMMAND"), " now; Enter installs one that was found. The Update button on the bottom bar says when one is out.").into(),
+        Some(SRow::Version) => concat!("u looks for a newer ", env!("APP_COMMAND"), " now; Enter installs one that was found.").into(),
         None => String::new(),
     };
-    // Lines: headings, rows with a blank between them, a wider gap between groups. The
-    // selected row's help sits in its own line at the bottom, so nothing moves.
+    // A group's heading, then its rows; the selected row's help stays two lines over the footer.
     enum L {
         Head(&'static str),
         Row(usize),
-        Blank,
     }
     let mut lines: Vec<L> = Vec::new();
     let mut last = "";
     for (i, row) in rows.iter().enumerate() {
         let g = settings_group(row);
         if g != last {
-            if !last.is_empty() {
-                lines.push(L::Blank);
-            }
             lines.push(L::Head(g));
-            lines.push(L::Blank);
             last = g;
         }
         lines.push(L::Row(i));
-        lines.push(L::Blank);
     }
-    let top = r.y + 5 + lines_used;
-    // Appearance keeps room at the foot for its preview.
-    let preview = cat == Cat::Appearance && r.height >= 30 && r.width >= 46;
-    let h = r.height.saturating_sub(if preview { 19 } else { 14 }) as usize;
+    let top = right.y + 3 + notes;
+    let help_y = body.bottom().saturating_sub(2);
+    let h = help_y.saturating_sub(top + 1) as usize;
     let at = lines
         .iter()
         .position(|l| matches!(l, L::Row(i) if *i == v.sel))
         .unwrap_or(0);
-    // A line under the selection stays in view, unless the selection is the last line.
-    let start = (at + 2).min(lines.len()).saturating_sub(h);
+    let start = (at + 1).min(lines.len()).saturating_sub(h);
+    let row_x = right.x.saturating_sub(2);
+    let row_w = right.right().saturating_sub(row_x);
     for (k, line) in lines.iter().enumerate().skip(start).take(h) {
         let y = top + (k - start) as u16;
         match line {
-            L::Blank => {}
             L::Head(g) => {
-                // A dim caps heading and a rule out to the edge.
-                let end = put(
-                    buf,
-                    r.x + 4,
-                    y,
-                    &[
-                        seg(*g, c.fg(t.muted).add_modifier(Modifier::BOLD)),
-                        seg(" ", c),
-                    ],
-                    r.right(),
-                );
-                hline(
-                    buf,
-                    end,
-                    y,
-                    (r.right().saturating_sub(3)).saturating_sub(end),
-                    t,
-                    t.card,
-                );
+                // A dim heading and a rule out to the edge.
+                let end = put(buf, lx, y, &[seg(*g, c.fg(t.muted).add_modifier(Modifier::BOLD)), seg(" ", c)], right.right());
+                hline(buf, end, y, right.right().saturating_sub(end), t, t.card);
             }
             L::Row(i) => {
                 let row = &rows[*i];
                 let sel = *i == v.sel;
-                let rr = Rect {
-                    x: r.x + 3,
-                    y,
-                    width: r.width.saturating_sub(6),
-                    height: 1,
-                };
-                let bg = if sel {
-                    t.sel_on(t.card)
-                } else if hovered(app, rr) {
-                    t.hover_on(t.card)
-                } else {
-                    t.card
-                };
-                if bg != t.card {
-                    row_pill(look, buf, rr.x, y, rr.width, bg, t.card);
-                }
+                let rr = Rect { x: row_x, y, width: row_w, height: 1 };
+                let bg = if sel { t.hov } else { t.card };
+                fill(buf, rr, bg);
                 let st = Style::default().bg(bg);
-                if sel {
-                    put(
-                        buf,
-                        r.x + 4,
-                        y,
-                        &[seg("›", st.fg(t.accent).add_modifier(Modifier::BOLD))],
-                        r.right(),
-                    );
-                }
-                let unused = unused_here(app, row);
-                let mut ls = st.fg(if unused {
-                    t.muted
-                } else if sel {
-                    t.strong
-                } else {
-                    t.text
-                });
-                if sel {
-                    ls = ls.add_modifier(Modifier::BOLD);
-                }
-                hit(
-                    app,
-                    Rect {
-                        x: r.x + 1,
-                        y,
-                        width: vx - r.x - 2,
-                        height: 1,
-                    },
-                    ScreenHit::SetRow(*i),
-                );
                 let label = match row {
                     SRow::Setting(s) => s.label.to_string(),
                     SRow::Bind { label, .. } => label.to_string(),
                     SRow::Agent(row) => row.label().to_string(),
                     SRow::Version => "Version".into(),
                 };
-                put(
-                    buf,
-                    lx,
-                    y,
-                    &[seg(truncate(&label, (vx - lx - 1) as usize), ls)],
-                    vx - 1,
-                );
-                // Every option as a chip, unless they would not fit beside the label: then the
-                // current one between arrows.
-                let chips = chips_for(app, row).filter(|(opts, _)| {
-                    let need: usize = opts.iter().map(|o| o.width() + 3).sum();
-                    vx as usize + need < r.right() as usize - 3
-                });
-                if unused {
-                    put(
-                        buf,
-                        vx,
-                        y,
-                        &[seg(
-                            " not in Hairline",
-                            st.fg(t.muted).add_modifier(Modifier::ITALIC),
-                        )],
-                        r.right() - 3,
-                    );
-                } else if let Some((opts, cur)) = chips.filter(|_| !(sel && v.editing.is_some())) {
-                    let mut cx = vx;
-                    for (vi, o) in opts.iter().enumerate() {
-                        let on = Some(vi) == cur;
-                        // The chosen one a pill; the others plain, the same width.
-                        let segs = if on {
-                            pill(
-                                look,
-                                vec![seg(
-                                    o.clone(),
-                                    Style::default().fg(t.acc_ink).add_modifier(Modifier::BOLD),
-                                )],
-                                t.accent,
-                                bg,
-                            )
-                        } else {
-                            vec![seg(format!(" {o} "), st.fg(t.muted))]
-                        };
-                        let w = segs_width(&segs);
-                        put(buf, cx, y, &segs, r.right() - 3);
-                        hit(
-                            app,
-                            Rect {
-                                x: cx,
-                                y,
-                                width: w,
-                                height: 1,
-                            },
-                            ScreenHit::SetVal(*i, vi),
-                        );
-                        cx += w + 1;
-                    }
-                } else {
-                    let shown = crate::client::design::control(app, t, row, v, sel);
-                    let ctrl: Vec<Seg> = shown
+                put(buf, lx, y, &[seg(truncate(&label, (vx - lx - 1) as usize), st.fg(t.text))], vx - 1);
+                hit(app, Rect { x: row_x, y, width: vx - row_x, height: 1 }, ScreenHit::SetRow(*i));
+                let value: Vec<Seg> = match chips_for(app, row).filter(|_| !(sel && v.editing.is_some())) {
+                    Some((opts, cur)) => choice_segs(&opts, cur, bg, t),
+                    None => crate::client::design::control(app, t, row, v, sel)
                         .into_iter()
                         .map(|(x, s)| (x, if s.bg.is_none() { s.bg(bg) } else { s }))
-                        .collect();
-                    put(buf, vx, y, &ctrl, r.right() - 1);
-                    hit(
-                        app,
-                        Rect {
-                            x: vx,
-                            y,
-                            width: segs_width(&ctrl).max(1),
-                            height: 1,
-                        },
-                        ScreenHit::SetVal(*i, usize::MAX),
-                    );
-                }
+                        .collect(),
+                };
+                let next = chips_for(app, row)
+                    .map_or(usize::MAX, |(opts, cur)| (cur.unwrap_or(0) + 1) % opts.len().max(1));
+                let end = put(buf, vx, y, &value, right.right());
+                hit(
+                    app,
+                    Rect { x: vx, y, width: end.saturating_sub(vx).max(1), height: 1 },
+                    ScreenHit::SetVal(*i, next),
+                );
             }
         }
     }
     if rows.is_empty() {
-        put(
-            buf,
-            lx,
-            top,
-            &[seg(
-                "Nothing to change here.",
-                c.fg(t.muted).add_modifier(Modifier::ITALIC),
-            )],
-            r.right(),
-        );
+        put(buf, lx, top, &[seg("Nothing to change here.", c.fg(t.muted))], right.right());
     }
-    // How panes look with these settings: one focused, one faded.
-    if preview {
-        let py = r.bottom().saturating_sub(10);
-        put(
-            buf,
-            r.x + 4,
-            py,
-            &[seg("PREVIEW", c.fg(t.muted).add_modifier(Modifier::BOLD))],
-            r.right(),
-        );
-        let mini = |app: &mut App, buf: &mut Buffer, mx: u16, focus: bool| {
-            let label = if focus { "focused" } else { "dimmed" };
-            let mut card_look = Card::new(t, "");
-            card_look.bg = if focus { pane_bg(t) } else { t.card };
-            if focus {
-                card_look = card_look.lit(match app.cfg.ui.focus_border.as_str() {
-                    "bright" => t.strong,
-                    "none" => t.line,
-                    _ => t.accent,
-                });
-            }
-            let mr = Rect {
-                x: mx,
-                y: py + 1,
-                width: 18,
-                height: 3,
-            };
-            let fg = if focus {
-                t.strong
-            } else {
-                blend(t.text, t.card, Look::of(&app.cfg.ui).dim)
-            };
-            let mut st = Style::default().bg(card_look.bg).fg(fg);
-            if focus {
-                st = st.add_modifier(Modifier::BOLD);
-            }
-            // Hairline previews a pane as it draws one: its name over its rule.
-            if Look::of(&app.cfg.ui).hairline {
-                (card_look.title, card_look.title_fg, card_look.docked) = (label, fg, true);
-                card(app, buf, mr, &card_look, t);
-                return;
-            }
-            card(app, buf, mr, &card_look, t);
-            put(buf, mx + 2, py + 2, &[seg(label, st)], mr.right() - 1);
-        };
-        mini(app, buf, lx, true);
-        mini(app, buf, lx + 20, false);
-    }
-    // The selected row's help, always in the same place.
-    hline(
-        buf,
-        r.x + 3,
-        r.bottom() - 5,
-        r.width.saturating_sub(6),
-        t,
-        t.card,
-    );
-    for (k, line) in wrap_two(&help, (r.width - 6) as usize)
+    for (k, line) in wrap_two(&help, right.width as usize)
         .iter()
         .enumerate()
         .filter(|(_, l)| !l.is_empty())
     {
-        put(
-            buf,
-            r.x + 3,
-            r.bottom() - 4 + k as u16,
-            &[seg(
-                line.clone(),
-                c.fg(t.muted).add_modifier(Modifier::ITALIC),
-            )],
-            r.right() - 2,
-        );
+        put(buf, lx, help_y + k as u16, &[seg(line.clone(), c.fg(t.muted))], right.right());
     }
-    let bar = Rect {
-        y: r.bottom().saturating_sub(1),
-        height: 1,
-        ..r
-    };
-    action_bar(
-        buf,
-        bar,
-        t,
-        t.card2,
-        &[
-            ("↑↓", "move"),
-            ("←→", "change"),
-            ("Tab", "section"),
-            ("o", "open config.toml"),
-            ("Esc", "close"),
-        ],
-    );
 }
 
 /// `text` on up to two lines of `width` columns, broken at spaces; the second ends in `…` if cut.

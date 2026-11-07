@@ -556,6 +556,9 @@ impl Daemon {
             .flatten();
         t.blocked_at = (new == Status::Blocked).then(Instant::now);
         t.status = new;
+        if new == Status::Working {
+            t.exit = None;
+        }
         if let Some(kind) = match new {
             Status::Working => Some(TurnKind::Working),
             Status::Blocked => Some(TurnKind::NeedsYou),
@@ -721,6 +724,10 @@ impl Daemon {
 
     /// No window open: the server shows a desktop notification; needs-you also gets a sound.
     pub(super) fn alert(&mut self, term: TermId, status: Status, what: &str) {
+        // A session being closed has nothing to tell anyone.
+        if self.terms.get(&term).is_some_and(|t| t.closing.is_some()) {
+            return;
+        }
         let now = std::time::Instant::now();
         let last_any = self
             .terms
@@ -772,7 +779,7 @@ impl Daemon {
             return;
         }
         let now = term::unix_now();
-        for t in self.terms.values_mut() {
+        for t in self.terms.values_mut().filter(|t| t.closing.is_none()) {
             let Some(agent) = t.agent.clone() else {
                 continue;
             };

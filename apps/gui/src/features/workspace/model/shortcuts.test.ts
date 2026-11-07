@@ -18,7 +18,8 @@ function pressOf(text: string, platform: Platform): Key {
 /** One row per binding: what the keycap says on macOS and on Windows and Linux ('' = no key there). */
 const TABLE: readonly [ShortcutAction, string, string][] = [
   ['new-session', '⌘T', 'Ctrl+Shift+T'],
-  ['new-terminal', '⌘⇧T', 'Ctrl+Alt+Shift+T'],
+  ['new-terminal', '⌘⇧T', 'Ctrl+Alt+T'],
+  ['new-agent-chat', '⌘⇧A', 'Ctrl+Shift+A'],
   ['new-worktree', '⌘⇧N', 'Ctrl+Shift+N'],
   ['split-right', '⌘D', 'Ctrl+Shift+D'],
   ['split-down', '⌘⇧D', 'Ctrl+Alt+Shift+D'],
@@ -26,13 +27,10 @@ const TABLE: readonly [ShortcutAction, string, string][] = [
   ['focus-next', '⌘]', 'Ctrl+]'],
   ['close', '⌘W', 'Ctrl+Shift+W'],
   ['undo-close', '⌘Z', 'Ctrl+Shift+Z'],
-  ['go-to-tab', '⌘1…9', 'Ctrl+1…9'],
-  ['next-tab', '⌃Tab', 'Ctrl+Tab'],
-  ['previous-tab', '⌃⇧Tab', 'Ctrl+Shift+Tab'],
   ['broadcast', '⌘⇧B', 'Ctrl+Alt+Shift+B'],
   ['palette', '⌘K', 'Ctrl+Shift+K'],
-  ['inbox', '⌘⇧J', 'Ctrl+Shift+J'],
-  ['jump-needs', '⌘J', ''],
+  ['inbox', '⌘J', 'Ctrl+Shift+J'],
+  ['jump-needs', '⌘⇧J', ''],
   ['inspect', '⌘I', 'Ctrl+Shift+I'],
   ['find', '⌘F', 'Ctrl+Shift+F'],
   ['toggle-sidebar', '⌘B', 'Ctrl+Shift+B'],
@@ -78,11 +76,8 @@ describe('matching a key press', () => {
   const live = TABLE.filter(([action]) => bindingFor(action).available)
 
   it.each(live)('%s is taken from %s on macOS and from %s on Windows and Linux', (action, mac, other) => {
-    const expected = action === 'go-to-tab' ? { action, tab: 3 } : { action }
-    const press = (text: string, platform: Platform) => {
-      const key = pressOf(action === 'go-to-tab' ? text.replace('1…9', '3') : text, platform)
-      return matchShortcut(key, platform)
-    }
+    const expected = { action }
+    const press = (text: string, platform: Platform) => matchShortcut(pressOf(text, platform), platform)
     expect(press(mac, 'mac')).toEqual(expected)
     if (other !== '') {
       expect(press(other, 'windows')).toEqual(expected)
@@ -90,10 +85,8 @@ describe('matching a key press', () => {
     }
   })
 
-  it.each(TABLE.filter(([action]) => !bindingFor(action).available))('%s is registered but the key does nothing until the feature lands', (action, mac, other) => {
-    expect(matchShortcut(pressOf(mac, 'mac'), 'mac')).toBeNull()
-    expect(matchShortcut(pressOf(other, 'linux'), 'linux')).toBeNull()
-    expect(hotkeyRows('mac').some((row) => row.action === bindingFor(action).label)).toBe(false)
+  it('has no key registered for a feature that is not built', () => {
+    expect(BINDINGS.filter((binding) => !binding.available)).toEqual([])
   })
 
   it('never takes a bare Ctrl+letter on Windows or Linux', () => {
@@ -120,7 +113,10 @@ describe('matching a key press', () => {
     expect(matchShortcut({ key: 't', ctrlKey: false, metaKey: true, shiftKey: false, altKey: false }, 'linux')).toBeNull()
   })
 
-  it('needs the modifiers exactly, so Ctrl+Shift+T is a new session and Ctrl+Alt+Shift+T a new terminal', () => {
+  it('needs the modifiers exactly, so Ctrl+Shift+T is a new session and Ctrl+Alt+T (or Ctrl+Alt+Shift+T) a new shell', () => {
+    expect(matchShortcut({ key: 't', ctrlKey: true, metaKey: false, shiftKey: false, altKey: true }, 'linux')).toEqual({ action: 'new-terminal' })
+    expect(matchShortcut({ key: 'A', ctrlKey: true, metaKey: false, shiftKey: true, altKey: false }, 'linux')).toEqual({ action: 'new-agent-chat' })
+    expect(matchShortcut({ key: 'A', ctrlKey: false, metaKey: true, shiftKey: true, altKey: false }, 'mac')).toEqual({ action: 'new-agent-chat' })
     expect(matchShortcut({ key: 'T', ctrlKey: true, metaKey: false, shiftKey: true, altKey: false }, 'linux')).toEqual({ action: 'new-session' })
     expect(matchShortcut({ key: 'T', ctrlKey: true, metaKey: false, shiftKey: true, altKey: true }, 'linux')).toEqual({ action: 'new-terminal' })
     expect(matchShortcut({ key: 't', ctrlKey: false, metaKey: false, shiftKey: true, altKey: false }, 'linux')).toBeNull()
@@ -141,11 +137,15 @@ describe('matching a key press', () => {
     expect(matchShortcut({ key: '+', ctrlKey: true, metaKey: false, shiftKey: true, altKey: false }, 'linux')).toEqual({ action: 'text-larger' })
   })
 
-  it('takes go-to-tab for 1 to 9 only', () => {
-    const press = (key: string) => matchShortcut({ key, ctrlKey: true, metaKey: false, shiftKey: false, altKey: false }, 'windows')
-    expect(press('1')).toEqual({ action: 'go-to-tab', tab: 1 })
-    expect(press('9')).toEqual({ action: 'go-to-tab', tab: 9 })
-    expect(press('0')).toBeNull()
+  it('takes the Inbox on Cmd+J on macOS and Ctrl+Shift+J elsewhere, and leaves a bare Ctrl+J to the terminal', () => {
+    expect(matchShortcut({ key: 'j', ctrlKey: false, metaKey: true, shiftKey: false, altKey: false }, 'mac')).toEqual({ action: 'inbox' })
+    expect(matchShortcut({ key: 'J', ctrlKey: true, metaKey: false, shiftKey: true, altKey: false }, 'linux')).toEqual({ action: 'inbox' })
+    expect(matchShortcut({ key: 'j', ctrlKey: true, metaKey: false, shiftKey: false, altKey: false }, 'linux')).toBeNull()
+  })
+
+  it('has no tab shortcuts: Ctrl+Tab and Ctrl+1 belong to the terminal now', () => {
+    expect(matchShortcut({ key: 'Tab', ctrlKey: true, metaKey: false, shiftKey: false, altKey: false }, 'windows')).toBeNull()
+    expect(matchShortcut({ key: '1', ctrlKey: true, metaKey: false, shiftKey: false, altKey: false }, 'windows')).toBeNull()
   })
 })
 
@@ -165,7 +165,7 @@ describe('the shortcut lists', () => {
     expect(hotkeyRows('mac').some((row) => row.action.startsWith('Jump to the next'))).toBe(true)
     expect(hotkeyRows('mac').some((row) => row.action === 'Overview')).toBe(false)
     expect(hotkeyRows('mac').some((row) => row.action === 'Session panel')).toBe(false)
-    expect(hotkeyRows('mac').some((row) => row.action === 'Undo close')).toBe(false)
+    expect(hotkeyRows('mac').some((row) => row.action === 'Undo close')).toBe(true)
   })
 
   it('puts every hotkey in a group of the overlay, and every group has some', () => {

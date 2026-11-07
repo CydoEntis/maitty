@@ -10,7 +10,7 @@ export function rememberSessions(
   listed: readonly SessionView[],
   layout: Layout,
 ): ReadonlyMap<string, SessionView> {
-  const shown = new Set(layout.tabs.flatMap((tab) => tab.panes.map((pane) => pane.sessionId)))
+  const shown = new Set(layout.arrangements.flatMap((tab) => tab.panes.map((pane) => pane.sessionId)))
   const next = new Map<string, SessionView>()
   for (const [id, session] of before) if (shown.has(id)) next.set(id, session)
   for (const session of listed) next.set(session.id, session)

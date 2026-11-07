@@ -87,6 +87,8 @@ export function VirtualList<T>({ items, getKey, estimate, renderItem, label, ove
     observer.current?.disconnect()
     observer.current = null
     window.cancelAnimationFrame(frame.current)
+    // A remount (React's development double effects) must be able to schedule a frame again.
+    frame.current = 0
   }, [])
 
   useLayoutEffect(() => {
@@ -160,7 +162,7 @@ export function VirtualList<T>({ items, getKey, estimate, renderItem, label, ove
   const drawn = items.slice(range.start, range.end)
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      <div ref={scroller} role="region" aria-label={label} tabIndex={0} className="min-h-0 flex-1 overflow-y-auto overscroll-contain" onScroll={onScroll} onWheel={onWheel}>
+      <div ref={scroller} role="region" aria-label={label} tabIndex={0} className="mx-chat-scroller min-h-0 flex-1 overflow-y-auto overscroll-contain" onScroll={onScroll} onWheel={onWheel}>
         <div className="relative" style={{ height: layout.total }}>
           {drawn.map((item, index) => {
             const at = range.start + index

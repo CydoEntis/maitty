@@ -4,7 +4,6 @@
 @keyframes v7fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @keyframes v7scrim { from { opacity: 0; } to { opacity: 1; } }
 @keyframes v7pulse { 0% { opacity: .9; transform: scale(1); } 70%, 100% { opacity: 0; transform: scale(1.7); } }
-@keyframes mx-ov-pulse { 0% { transform: scale(.97); } 50% { transform: scale(1.015); } 100% { transform: none; } }
 @keyframes v14focus { from { opacity: 1; } to { opacity: 0; } }
 @keyframes v7moved { 0% { background-color: rgba(95, 212, 191, .16); } 100% { background-color: transparent; } }
 @keyframes v8tabin { from { opacity: 0; transform: translateY(-3px) scale(.97); } to { opacity: 1; transform: none; } }
@@ -48,8 +47,11 @@
 .mx-no-scrollbar { scrollbar-width: none !important; }
 .mx-no-scrollbar::-webkit-scrollbar { display: none; }
 
-:where(.mx-app) button { font: inherit; color: inherit; background: none; border: 0; margin: 0; padding: 0; cursor: pointer; text-align: inherit; }
-:where(.mx-app) button:disabled { cursor: default; }
+/* The reset sits in the base layer so Tailwind's utilities (a later layer) can still set a button's padding and fill. */
+@layer base {
+  :where(.mx-app) button { font: inherit; color: inherit; background: none; border: 0; margin: 0; padding: 0; cursor: pointer; text-align: inherit; }
+  :where(.mx-app) button:disabled { cursor: default; }
+}
 .mx-app :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .mx-app .xterm-helper-textarea:focus-visible { outline: none; }
 
@@ -80,7 +82,6 @@
   box-shadow: var(--sh);
 }
 
-
 /* Sidebar */
 .mx-sidebar {
   position: relative;
@@ -98,41 +99,15 @@
 .mx-drawer-scrim { position: absolute; inset: 0; z-index: 54; background: rgba(0, 0, 0, .45); animation: v7scrim .2s ease-out; }
 .mx-drawer { position: absolute; top: 0; bottom: 0; left: 0; display: flex; animation: v8insp .32s var(--ease-out); }
 .mx-drawer .mx-sidebar { margin: 8px; max-width: calc(100vw - 48px); }
-.mx-sessions-button { flex: none; }
-.mx-sessions-needs { width: 7px; height: 7px; margin-left: 6px; border-radius: 2px; background: var(--warn); }
-/* Panels (a narrow window): Repository and Inbox as one button and a 220px menu that opens leftward. */
-.mx-panels { position: relative; flex: none; }
-.mx-panels-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 40; width: 220px; padding: 6px; display: flex; flex-direction: column; gap: 2px; border-radius: calc(12px * var(--rk)); background: var(--main); border: 1px solid var(--line2); box-shadow: var(--sh-pop); backdrop-filter: var(--blur-pop); animation: v8insp .2s var(--ease-out); }
-.mx-panels-row { height: 34px; display: flex; align-items: center; gap: 10px; padding: 0 10px; border-radius: calc(8px * var(--rk)); font-size: 13px; color: var(--fg2); cursor: pointer; }
-.mx-panels-row > span:first-of-type { flex: 1; text-align: left; }
-.mx-panels-row:hover, .mx-panels-row:focus-visible { background: rgba(255, 255, 255, .06); color: var(--fg); }
-.mx-panels-row[aria-disabled="true"] { opacity: .5; }
+
 .mx-sidebar.is-rail { width: calc(60px * var(--icon-scale, 1)); }
 /* While the edge is dragged the width follows the pointer with no easing. */
 .mx-sidebar.is-resizing { transition: none; }
 .mx-sidebar-expanded { flex: 1; min-height: 0; min-width: var(--sidebar-w, 264px); display: flex; flex-direction: column; animation: v7fade .24s ease-out; }
-.mx-sidebar-head { flex: none; height: calc(48px * var(--pad, 1)); display: flex; align-items: center; gap: 8px; padding: 0 10px 0 16px; }
-.mx-sidebar-head .mx-collapse { width: 28px; height: 28px; border-radius: 8px; color: var(--muted); }
-.mx-sidebar-title { font-size: 13.5px; font-weight: 600; color: var(--fg2); }
-.mx-caps { font-size: 11px; font-weight: 600; letter-spacing: .08em; color: var(--dim); }
 .mx-spacer { flex: 1; }
-.mx-new-button { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--fg); background: rgba(255, 255, 255, .05); box-shadow: inset 0 0 0 1px var(--line2); transition: background-color .14s ease, color .14s ease, transform .12s ease; }
-.mx-new-button:not(:disabled):hover { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); color: var(--accent); }
-.mx-new-button:disabled { opacity: .4; }
-.mx-new-button:active { transform: scale(.95); }
-.mx-sidebar-list { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 0 8px 12px; display: flex; flex-direction: column; gap: calc(6px * var(--pad, 1)); }
-.mx-group { display: flex; flex-direction: column; gap: 2px; animation: v7fade .24s ease-out; }
-.mx-group-head { height: calc(34px * var(--pad, 1)); display: flex; align-items: center; gap: 8px; padding: 0 8px 0 4px; border-radius: 9px; transition: background-color .14s ease, transform .12s ease; }
-.mx-group-head:hover { background: rgba(255, 255, 255, .045); }
-.mx-group-head:active { transform: scale(.985); }
+/* Header starters are plain icons: no resting chrome, a quiet fill on hover. */
 .mx-chevron { flex: none; transition: transform .2s var(--ease-out); }
-.mx-group.is-open .mx-group-head .mx-chevron { transform: rotate(90deg); }
-.mx-folder-tile { width: calc(22px * var(--icon-scale, 1)); height: calc(22px * var(--icon-scale, 1)); flex: none; border-radius: 6px; display: flex; align-items: center; justify-content: center; background: var(--raise); color: var(--fg2); }
-.mx-folder-tile svg path { fill: color-mix(in srgb, var(--fg2) 22%, transparent); }
-/* The folder that holds the focused session carries a ring, since every tile is the same neutral. */
-.mx-folder-tile.is-focused { box-shadow: 0 0 0 2px var(--accent-soft); }
-.mx-group-name { font-size: var(--ch-fs-md, var(--sidebar-fs, 13.5px)); font-weight: 600; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-group.has-focused .mx-group-name { color: var(--fg); }
+
 /* A fixed width and layout containment keep a frame change inside the glyph: the row is not laid out
    again 6 times a second. The clock writes the frame straight into the element (lib/spinner-clock.ts). */
 .mx-spin { display: inline-block; inline-size: 1ch; text-align: center; contain: layout style paint; will-change: transform; font-family: var(--mono); font-size: 12px; color: var(--accent); flex: none; }
@@ -157,113 +132,20 @@
 @keyframes mx-wspin-dot { 0%, 100% { transform: scale(.5); opacity: .35; } 50% { transform: scale(1); opacity: 1; } }
 @keyframes mx-wspin-bar { 0%, 100% { transform: scaleY(.35); } 50% { transform: scaleY(1); } }
 @keyframes mx-wspin-ping { from { transform: scale(.35); opacity: 1; } to { transform: scale(1); opacity: 0; } }
-.mx-machine { display: flex; flex-direction: column; gap: calc(6px * var(--pad, 1)); }
-.mx-machine + .mx-machine { margin-top: 6px; }
-.mx-machine-head { display: flex; align-items: center; gap: 8px; padding: 2px 8px 0 4px; min-width: 0; }
-.mx-machine-tile { flex: none; width: 20px; height: 20px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--accent); background: var(--accent-soft, var(--raise)); }
-.mx-machine.is-down .mx-machine-head { opacity: .72; }
-.mx-machine-name { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-/* No animation: a state is told by its shape and its word, and the colour only backs them. */
-.mx-machine-chip { flex: none; font-size: 11.5px; white-space: nowrap; color: var(--dim); }
-.mx-machine-chip.is-ok { color: var(--done); }
-.mx-machine-chip.is-bad { color: var(--danger); }
-.mx-machine-new { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--dim); cursor: pointer; }
-.mx-machine-new:hover:not(:disabled) { background: var(--raise); color: var(--fg); }
-.mx-machine-new:disabled { opacity: .4; cursor: not-allowed; }
-.mx-machine.is-down .mx-group { opacity: .6; }
-.mx-machine-why { margin: 0; padding: 0 8px 0 4px; font-size: 11.5px; line-height: 1.5; color: var(--dim); overflow-wrap: anywhere; text-wrap: pretty; }
-.mx-needs-text { font-size: 11.5px; color: var(--warn); white-space: nowrap; }
-.mx-count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--raise); font-size: 11px; color: var(--muted); display: flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; }
-.mx-group-rows { position: relative; display: flex; flex-direction: column; gap: 2px; padding-left: 20px; animation: v7fade .2s ease-out; }
-.mx-group-guide { position: absolute; left: 15px; top: 2px; bottom: 8px; width: 1px; background: var(--pane-line); }
+
 .mx-empty-note { padding: 6px 10px; font-size: 12.5px; line-height: 1.55; color: var(--dim); text-wrap: pretty; }
 
-.mx-row-wrap { position: relative; }
-.mx-row {
-  width: 100%;
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: calc(7px * var(--pad, 1)) 8px;
-  border-radius: 10px;
-  background-color: transparent;
-  background-repeat: no-repeat;
-  animation: v8row .26s var(--ease-out);
-  transition: background-color .16s ease, box-shadow .18s ease, transform .2s var(--ease-out);
-}
-.mx-row:not(.is-selected):hover { background-color: rgba(255, 255, 255, .055); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); transform: translateX(2px); }
-.mx-row:active { transform: scale(.985); }
-.mx-row.is-selected { background-color: var(--raise); box-shadow: inset 0 0 0 1px var(--pane-line), 0 4px 12px rgba(0, 0, 0, .25); }
-.mx-row.is-moved { animation: v7moved 1.6s ease-out; }
-.mx-row-icon { position: relative; width: calc(24px * var(--icon-scale, 1)); height: calc(24px * var(--icon-scale, 1)); flex: none; margin-top: 1px; }
-.mx-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.mx-row-line1 { display: flex; align-items: center; gap: 8px; height: 20px; min-width: 0; }
-.mx-row-title { flex: 1; min-width: 0; font-size: var(--sidebar-fs, 13.5px); color: var(--fg2); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-row.is-loud .mx-row-title { color: var(--fg); font-weight: 500; }
-.mx-row:hover .mx-row-title { color: var(--fg); }
-.mx-unread { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
-.mx-row-meta { font-size: calc(var(--sidebar-fs, 13.5px) - 2px); color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; flex: none; }
-.mx-row-meta.is-working { color: var(--accent); }
-.mx-row-line2 { font-size: calc(var(--sidebar-fs, 13.5px) - 1.5px); line-height: calc(var(--sidebar-fs, 13.5px) + 3.5px); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-row-line2.is-needs { color: var(--warn); }
-.mx-row-line2.is-error { color: var(--danger); }
-.mx-row-line2.is-working { color: var(--muted); }
-.mx-row-proc { color: var(--fg); font-weight: 500; }
-.mx-row-end { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 7px; color: var(--dim); opacity: 0; background: var(--raise); transition: opacity .14s ease, background-color .14s ease, color .14s ease; }
-.mx-row-wrap:hover .mx-row-end, .mx-row-end:focus-visible { opacity: 1; }
-.mx-row-end:hover { color: var(--danger); background: var(--danger-soft); }
-/* The close button takes the row's top-right corner, so what sits there steps aside while it shows. */
-.mx-row-wrap:hover .mx-row-meta, .mx-row-wrap:hover .mx-row-line1 > .mx-spin { opacity: 0; }
-.mx-row-meta, .mx-row-line1 > .mx-spin { transition: opacity .14s ease; }
-
-.mx-sidebar-foot { flex: none; padding: 10px 12px 12px; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--pane-line); }
 .mx-daemon-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
 .mx-daemon-dot.is-offline { background: transparent; border: 1.5px dashed var(--danger); }
 .mx-daemon-text { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-daemon-text.is-offline { color: var(--danger); }
-.mx-settings-button { height: 26px; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); padding: 0 8px; border-radius: 7px; }
-.mx-settings-button:hover { color: var(--fg); background: rgba(255, 255, 255, .06); }
 
 /* Rail */
 .mx-rail { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; animation: v7fade .24s ease-out; }
 .mx-rail-top { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0 8px; }
-.mx-rail-button { width: calc(36px * var(--icon-scale, 1)); height: calc(32px * var(--icon-scale, 1)); border-radius: 9px; color: var(--muted); }
-.mx-rail-new { color: var(--fg2); background: rgba(255, 255, 255, .03); box-shadow: inset 0 0 0 1px var(--pane-line); }
-.mx-rail-new:not(:disabled):hover { background: rgba(255, 255, 255, .07); }
 .mx-rail-divider { width: calc(28px * var(--icon-scale, 1)); height: 1px; background: var(--pane-line); flex: none; }
 .mx-rail-list { flex: 1; min-height: 0; width: 100%; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 0 12px; }
-/* A folder and its sessions sit on one strip in the folder's colour, so the rail shows which belong together. */
-.mx-rail-group { --tint: 6%; --ring: 20%; position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; width: calc(48px * var(--icon-scale, 1)); padding: 4px 0; border-radius: calc(14px * var(--rk)); background: color-mix(in srgb, var(--fg2) var(--tint), transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg2) var(--ring), transparent); transition: background-color .2s ease, box-shadow .2s ease; }
-.mx-rail-group.is-open { --tint: 9%; }
-.mx-rail-group.has-focused { --tint: 10%; --ring: 34%; }
-.mx-rail-group.is-open.has-focused { --tint: 13%; }
-.mx-rail-group.has-focused::before { content: ""; position: absolute; left: -6px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--fg2); }
-.mx-rail-label { position: relative; width: calc(40px * var(--icon-scale, 1)); height: calc(36px * var(--icon-scale, 1)); display: flex; align-items: center; justify-content: center; border-radius: calc(9px * var(--rk)); transition: background-color .14s ease, transform .2s var(--ease-out); }
-.mx-rail-label:hover { background: rgba(255, 255, 255, .06); transform: scale(1.06); }
-.mx-rail-folder-shape { fill: color-mix(in srgb, var(--fg2) 14%, transparent); stroke: color-mix(in srgb, var(--fg2) 55%, transparent); stroke-width: 1.4; transition: fill .2s ease; }
-.mx-rail-folder.is-focused .mx-rail-folder-shape { fill: color-mix(in srgb, var(--fg2) 26%, transparent); }
-.mx-rail-folder svg { display: block; width: calc(30px * var(--icon-scale, 1)); height: calc(26px * var(--icon-scale, 1)); overflow: visible; }
-.mx-rail-folder-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding-top: 3px; font-size: 10.5px; font-weight: 700; line-height: 1; color: color-mix(in srgb, var(--fg2) 70%, var(--fg)); }
-.mx-rail-folder.is-focused .mx-rail-folder-text { color: var(--fg); }
-.mx-rail-needs { position: absolute; top: 0; right: 0; width: 8px; height: 8px; border-radius: 2px; background: var(--warn); }
-.mx-rail-count { position: absolute; right: -2px; bottom: -2px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--fg); background: var(--raise); box-shadow: 0 0 0 2px var(--card-ring); }
-.mx-rail-spin { position: absolute; left: -2px; bottom: -2px; width: 15px; height: 15px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 10px; line-height: 1; color: var(--accent); background: var(--well); box-shadow: 0 0 0 2px var(--card-ring); contain: layout style paint; will-change: transform; }
-.mx-rail-hairline { flex: none; width: 20px; height: 1px; background: color-mix(in srgb, var(--fg2) 30%, transparent); }
-.mx-rail-folder { position: relative; display: flex; align-items: center; justify-content: center; }
-/* What a collapsed folder is, beside it: fixed to the window so the rail's scrolling cannot clip it. */
-.mx-rail-popover { position: fixed; z-index: 50; transform: translateY(-50%); min-width: 200px; max-width: 300px; padding: 10px 12px; border-radius: 12px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); backdrop-filter: var(--blur-pop); pointer-events: none; animation: v7fade .14s ease-out; }
-.mx-pop-head { display: flex; align-items: center; gap: 8px; }
-.mx-pop-head strong { font-size: 13.5px; font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mx-pop-path { margin-top: 4px; font-family: var(--mono); font-size: 11px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mx-pop-sessions { list-style: none; margin: 8px 0 0; padding: 8px 0 0; border-top: 1px solid var(--pane-line); display: flex; flex-direction: column; gap: 5px; }
-.mx-pop-sessions li { display: flex; flex-direction: column; gap: 1px; }
-.mx-pop-title { font-size: 12.5px; color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mx-pop-status { font-family: var(--mono); font-size: 11px; color: var(--dim); }
-.mx-rail-rows { display: flex; flex-direction: column; align-items: center; gap: 6px; animation: v7fade .2s ease-out; }
-.mx-rail-row { position: relative; width: calc(40px * var(--icon-scale, 1)); height: calc(40px * var(--icon-scale, 1)); display: flex; align-items: center; justify-content: center; border-radius: 11px; transition: background-color .16s ease, box-shadow .18s ease, transform .2s var(--ease-out); }
-.mx-rail-row:not(.is-selected):hover { background: rgba(255, 255, 255, .055); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); transform: scale(1.06); }
-.mx-rail-row:active { transform: scale(.92); }
-.mx-rail-row.is-selected { background: var(--raise); box-shadow: inset 0 0 0 1px var(--pane-line), 0 4px 12px rgba(0, 0, 0, .25); }
+
 .mx-rail-bottom { flex: none; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 0 12px; border-top: 1px solid var(--pane-line); }
 .mx-rail-bottom .mx-daemon-dot { width: 8px; height: 8px; }
 
@@ -273,6 +155,7 @@
 .mx-app-icon.size-28 { width: 28px; height: 28px; border-radius: 8px; font-size: 12px; }
 .mx-app-icon.size-24 { width: 24px; height: 24px; border-radius: 7px; font-size: 11px; }
 .mx-app-icon.size-22 { width: 22px; height: 22px; border-radius: 6px; font-size: 10px; }
+.mx-app-icon.size-14 { width: 14px; height: 14px; border-radius: 4px; font-size: 6.5px; }
 .mx-app-icon.size-18 { width: 18px; height: 18px; border-radius: 5px; font-size: 8.5px; }
 .mx-app-icon.size-20 { width: 20px; height: 20px; border-radius: 6px; font-size: 9px; }
 .mx-app-icon.is-shell { background: linear-gradient(140deg, color-mix(in oklab, var(--bg) 70%, var(--fg) 16%), var(--well)); color: var(--accent); }
@@ -287,72 +170,22 @@
 .mx-app-icon.is-tinted { background: linear-gradient(140deg, var(--program-from), var(--program-to)); color: var(--on-accent); }
 
 .mx-badge { position: absolute; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px var(--card-ring); }
-.mx-row-icon .mx-badge { right: -4px; bottom: -4px; width: 14px; height: 14px; border-radius: 4px; }
-.mx-rail-row .mx-badge { right: 1px; bottom: 1px; width: 15px; height: 15px; border-radius: 4px; }
 .mx-badge { animation: v9pop .26s var(--ease-out); }
-.mx-badge.is-needs { gap: 1.5px; background: var(--warn); }
+.mx-badge.is-needs { background: var(--warn); }
 /* A pulse is a ring on a pseudo-element that scales out and fades once, then rests. An animated
    box-shadow, or any endless animation, repaints the card on every frame for as long as the state lasts
    (docs/PERFORMANCE.md). */
-.mx-inbox-count.is-needs, .mx-upd-dot { position: relative; }
 .mx-badge.is-needs::after, .mx-inbox-count.is-needs::after, .mx-upd-dot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 2px rgba(242, 182, 90, .45); opacity: 0; pointer-events: none; animation: v7pulse .6s ease-out 1; }
 .mx-upd-dot::after { animation-duration: .7s; }
 .mx-badge.is-done { background: color-mix(in oklab, var(--ok) 24%, var(--bg)); }
+.mx-badge.is-idle { background: var(--raise); box-shadow: 0 0 0 2px var(--card-ring), inset 0 0 0 1px var(--line2); color: var(--muted); }
 .mx-badge.is-error { background: color-mix(in oklab, var(--danger) 24%, var(--bg)); }
-.mx-row-icon .mx-badge.is-unknown { width: 12px; height: 12px; border-radius: 3.5px; background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
-.mx-rail-row .mx-badge.is-working { width: 16px; height: 16px; border-radius: 50%; background: var(--well); font-family: var(--mono); font-size: 11px; line-height: 1; color: var(--accent); }
-.mx-rail-unread { position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--card-ring); }
-.mx-ov-pulse { animation: mx-ov-pulse .5s ease-out 1; }
-.mx-pause-bar { width: 2px; height: 5px; border-radius: 1px; background: var(--on-warn); }
 
-/* Tab bar */
-.mx-main-wrap { flex: 1; min-width: 0; display: flex; }
-.mx-main { flex: 1; min-width: 0; position: relative; display: flex; flex-direction: column; overflow: hidden; }
-.mx-tabbar { flex: none; height: calc(var(--tbh) * var(--pad, 1)); display: flex; align-items: var(--tba); gap: var(--tbg); padding: var(--tbp); border-bottom: var(--tbb); }
-.mx-tablist { flex: 0 1 auto; max-width: 100%; min-width: 0; scroll-behavior: smooth; display: flex; align-items: center; gap: var(--tl); padding: var(--tl); border-radius: calc(14px * var(--rk)); background: rgba(255, 255, 255, .025); box-shadow: inset 0 0 0 1px var(--pane-line); overflow-x: auto; }
-.mx-tab {
-  height: calc(var(--tabh) * var(--pad, 1));
-  flex: 0 0 auto;
-  max-width: 250px;
-  min-width: 120px;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 0 6px 0 7px;
-  border-radius: calc(10px * var(--rk));
-  border-right: var(--tabbr);
-  cursor: pointer;
-  color: var(--muted);
-  font-size: var(--ch-fs-md, var(--tab-fs, 13.5px));
-  font-weight: 400;
-  background-color: transparent;
-  background-repeat: no-repeat;
-  animation: v8tabin .28s var(--ease-out);
-  transition: background-color .18s ease, color .18s ease, box-shadow .2s ease, transform .2s var(--ease-out);
-}
-.mx-app.is-narrow .mx-tab { min-width: 96px; }
-.mx-tab:not(.is-active):hover, .mx-tab:not(.is-active):focus-visible { background-color: rgba(255, 255, 255, .075); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .09), 0 4px 12px rgba(0, 0, 0, .22); transform: translateY(-1px); color: var(--fg); }
-.mx-tab:hover .mx-app-icon { transform: scale(1.08); }
-.mx-tab:active { transform: scale(.98); }
-.mx-tab.is-active { background-color: var(--raise); box-shadow: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 0 0 1px var(--pane-line), 0 6px 16px rgba(0, 0, 0, .28); color: var(--fg); font-weight: 500; }
-.mx-tab-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-tab-label .mx-tab-folder { color: var(--muted); font-weight: 400; }
+/* With a single pane the workspace's own border takes the focus; with several, the focused pane does. Never both. */
+.mx-app[data-side="right"] .mx-sidebar { margin: 12px 12px 12px 0; }
 /* A name edited where it is shown: on a sidebar row's title line and on a tab. */
 .mx-inline-name { all: unset; box-sizing: border-box; flex: 1; min-width: 0; height: 22px; padding: 0 6px; border-radius: 6px; background: var(--well); box-shadow: inset 0 0 0 1px var(--accent-line); font: inherit; color: var(--fg); }
 .mx-inline-name::placeholder { color: var(--dim); }
-.mx-tab-label .mx-inline-name { flex: none; width: 150px; }
-.mx-tab-needs { width: 12px; height: 12px; flex: none; border-radius: 3.5px; background: var(--warn); display: flex; align-items: center; justify-content: center; gap: 2px; }
-.mx-tab-done, .mx-tab-error { width: 14px; height: 14px; flex: none; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
-.mx-tab-done { background: rgba(141, 184, 155, .18); }
-.mx-tab-error { background: rgba(240, 127, 120, .18); }
-/* A tab shows one small icon for each pane it holds, side by side, and +N for the panes beyond the first. */
-.mx-tab-icons { display: flex; align-items: center; gap: 3px; flex: none; }
-.mx-tab-more { margin-left: 5px; font-size: 11.5px; font-weight: 500; color: var(--dim); font-variant-numeric: tabular-nums; }
-.mx-tab-close { width: 22px; height: 22px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--dim); opacity: .3; transition: opacity .14s ease, background-color .14s ease, color .14s ease; }
-.mx-tab.is-active .mx-tab-close, .mx-tab:hover .mx-tab-close, .mx-tab:focus-visible .mx-tab-close { opacity: .9; }
-.mx-tab-close:hover { opacity: 1 !important; background: var(--danger-soft); color: var(--danger); }
-.mx-new-tab { width: 36px; height: var(--tabh); min-width: var(--tabh); border-radius: calc(11px * var(--rk)); border-right: var(--tabbr); background: rgba(255, 255, 255, .025); box-shadow: inset 0 0 0 1px var(--pane-line); margin-left: min(2px, var(--tbg)); color: var(--muted); }
-.mx-new-tab:not(:disabled):hover { background: rgba(255, 255, 255, .06); }
 
 /* Offline banner */
 .mx-offline { flex: none; display: flex; align-items: center; gap: 10px; padding: 9px 16px; background: var(--danger-soft); border-bottom: 1px solid var(--danger-line); font-size: 12.5px; animation: v7fade .26s ease-out; }
@@ -362,6 +195,20 @@
 .mx-offline-button { height: 26px; padding: 0 10px; display: flex; align-items: center; border-radius: 7px; background: var(--raise); border: 1px solid var(--line2); font-size: 12px; flex: none; white-space: nowrap; }
 .mx-offline-button:not(:disabled):hover { background: var(--sel); }
 .mx-offline-button:disabled { opacity: .55; }
+.mx-offline-count { flex: none; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.mx-service-layer { position: absolute; inset: 0; z-index: 35; display: flex; align-items: center; justify-content: center; padding: 24px; pointer-events: none; }
+.mx-service-card { pointer-events: auto; width: 440px; max-width: 100%; padding: 20px; border-radius: 16px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); display: flex; flex-direction: column; gap: 10px; color: var(--fg2); font-size: 13px; }
+.mx-service-card h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--fg); }
+.mx-service-card p, .mx-service-card ol { margin: 0; }
+.mx-service-card ol { padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.mx-service-card.is-down { border-color: var(--danger-line); box-shadow: inset 0 0 0 1px var(--danger-line), var(--sh-pop); }
+.mx-service-card.is-down h2 { color: var(--danger); }
+.mx-service-card.is-update { border-color: var(--warn-line); }
+.mx-service-card.is-update h2 { color: var(--warn); }
+.mx-service-card pre { margin: 6px 0 0; padding: 8px; max-height: 120px; overflow: auto; border-radius: 8px; background: var(--well); font-size: 11.5px; white-space: pre-wrap; }
+.mx-service-card summary { cursor: pointer; color: var(--muted); }
+.mx-service-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+.mx-text-button.is-armed { color: var(--warn); }
 .mx-offline-button.is-armed { color: var(--warn); border-color: var(--warn-line); }
 
 /* Empty state */
@@ -377,78 +224,19 @@
 .mx-primary:not(:disabled):hover { filter: brightness(1.08); }
 .mx-primary:not(:disabled):active { transform: scale(.97); }
 .mx-primary:disabled { opacity: .55; }
-.mx-primary kbd { font-family: var(--mono); font-size: 11.5px; opacity: .6; }
+.mx-primary kbd { font-family: var(--mono); font-size: 11.5px; opacity: .6; background: none; border: 0; padding: 0; box-shadow: none; color: inherit; }
 .mx-quiet { height: 36px; padding: 0 12px; display: flex; align-items: center; border-radius: 9px; font-size: 13px; color: var(--muted); white-space: nowrap; }
 .mx-quiet:hover { color: var(--fg); background: rgba(255, 255, 255, .06); }
 .mx-empty-note-small { font-size: 12px; color: var(--dim); }
 
-/* Panes */
 /* Chrome type: the hooks are set by Tiled (uppercase Geist Mono) and unset elsewhere, where these fall back
-   to what the elements already were. Terminal text and session names never read them. */
-.mx-tab-label, .mx-pane-proc, .mx-group-name, .mx-statusbar { font-family: var(--ch-ff, inherit); text-transform: var(--ch-tt, inherit); letter-spacing: var(--ch-ls, inherit); }
-.mx-panes { flex: 1; min-height: 0; padding: calc(var(--ptop) * var(--pad, 1)) calc(var(--pg) * var(--pad, 1)) calc(var(--pg) * var(--pad, 1)); display: flex; flex-direction: row; gap: calc(var(--pg) * var(--pad, 1)); }
-.mx-app.is-narrow .mx-panes { flex-direction: column; }
-.mx-pane-column { flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: calc(var(--pg) * var(--pad, 1)); }
-.mx-pane {
-  position: relative;
-  flex: 1 1 0;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  border-radius: var(--r14);
-  background: var(--pane);
-  border: 1px solid var(--pane-line);
-  box-shadow: var(--sh);
-  outline-offset: -1px;
-  overflow: hidden;
-  /* Repaints inside a pane stay inside it. */
-  contain: paint;
-  animation: v8pane .3s var(--ease-out);
-  transition: border-color .2s ease, background-color .35s ease;
-}
-.mx-pane:hover { border-color: var(--line2); }
-/* A terminal pane is one surface: the header and the text sit on the terminal's own ground, so the terminal does not read as a box inside the card. */
-.mx-pane.is-terminal { background: var(--term); }
-.mx-pane.is-focused, .mx-pane.is-focused:hover { border-color: var(--accent-line); box-shadow: 0 0 0 1px var(--accent-line), var(--sh); }
-/* The focus ring flashes once, as opacity on a pseudo-element; animating its box-shadow would repaint the pane. */
-.mx-pane.is-focused::after { content: ''; position: absolute; inset: -1px; border: 2px solid var(--accent); border-radius: inherit; pointer-events: none; animation: v14focus .45s ease-out forwards; }
-.mx-pane.is-drop-target { outline: 2px dashed var(--accent); }
-.mx-pane-head { flex: none; height: calc(44px * var(--pad, 1)); display: flex; align-items: center; gap: 10px; padding: 0 8px 0 14px; cursor: default; }
-.mx-pane-head.is-draggable { cursor: grab; }
-.mx-pane-title { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; white-space: nowrap; overflow: hidden; }
-.mx-pane-proc { font-size: var(--ch-fs-md, 14px); font-weight: 600; color: var(--fg); }
-.mx-pane-cwd { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
-.mx-pill { height: 22px; display: flex; align-items: center; gap: 6px; padding: 0 9px; border-radius: 999px; font-size: 11.5px; white-space: nowrap; flex: none; }
-.mx-status-pill { font-weight: 500; font-variant-numeric: tabular-nums; }
-.mx-status-pill.is-working { background: var(--accent-soft); color: var(--accent); }
-.mx-status-pill.is-needs { background: var(--warn-soft); color: var(--warn); }
-.mx-status-pill.is-done { background: rgba(141, 184, 155, .12); color: var(--ok); }
-.mx-status-pill.is-error { background: var(--danger-soft); color: var(--danger); }
-.mx-status-pill.is-unknown { background: rgba(255, 255, 255, .05); color: var(--muted); }
-.mx-repo-pill { background: rgba(255, 255, 255, .04); box-shadow: inset 0 0 0 1px var(--pane-line); color: var(--fg2); }
-.mx-pane-controls { display: flex; align-items: center; gap: 0; margin-left: 2px; }
-.mx-pane-control { width: 28px; height: 28px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--dim); transition: background-color .14s ease, color .14s ease, transform .12s ease; }
-.mx-pane-control:not(:disabled):hover { background: rgba(255, 255, 255, .09); color: var(--fg); }
-.mx-pane-control:not(:disabled):active { transform: scale(.88); }
-.mx-pane-control.is-close:not(:disabled):hover { background: var(--danger-soft); color: var(--danger); }
-.mx-pane-control:disabled { opacity: .3; }
-.mx-pane-body { flex: 1; min-height: 0; padding: 4px 18px 16px; font-family: var(--mono); line-height: 1.6; cursor: text; display: flex; }
-.mx-pane-body > * { flex: 1; min-width: 0; min-height: 0; }
+   to what the elements already were. Terminal text never reads them. */
+.mx-statusbar { font-family: var(--ch-ff, inherit); text-transform: var(--ch-tt, inherit); letter-spacing: var(--ch-ls, inherit); }
 
-/* The terminal inside a pane: the card shows through, and the viewport scrolls like the rest. */
-.mx-pane-body .terminal-view { display: flex; flex-direction: column; height: 100%; gap: 0; padding: 0; }
-.mx-pane-body .terminal-screen { flex: 1; min-height: 0; margin: 0; background: transparent; border: 0; border-radius: 0; padding: 0; }
-/* The pane card carries the focus ring; the terminal draws none of its own. */
-.mx-pane-body .terminal-screen:focus-within { border-color: transparent; box-shadow: none; }
 /* xterm's own stylesheet paints the scroll viewport black. It is taller than the rows by the part of a
    row that does not fit, so on the opaque renderers that remainder showed as a black bar along the pane's bottom edge. */
-.mx-pane-body .xterm-viewport { background-color: var(--term); }
 /* With the WebGL renderer the terminal is see-through and the card shows behind the text. The DOM
    renderer keeps the theme's opaque terminal ground, so a row repaint never blends through the card. */
-.mx-pane-body .terminal-view.is-transparent .xterm, .mx-pane-body .terminal-view.is-transparent .xterm-viewport, .mx-pane-body .terminal-view.is-transparent .xterm-screen { background-color: transparent !important; }
-.mx-pane-body .terminal-input-error, .mx-pane-body .terminal-load-status { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 0; font-family: "Geist Variable", Geist, system-ui, sans-serif; font-size: 12.5px; color: var(--muted); }
-.mx-pane-body .terminal-input-error p { margin: 0; color: var(--danger); }
 
 /* Toast */
 .mx-toast { position: absolute; left: 50%; top: 58px; transform: translateX(-50%); z-index: 45; padding: 8px 14px; border-radius: 999px; background: var(--raise); border: 1px solid var(--line2); font-size: 12.5px; color: var(--fg); box-shadow: 0 12px 40px rgba(0, 0, 0, .45); white-space: nowrap; animation: v7fade .22s ease-out; }
@@ -532,11 +320,6 @@
 .mx-swatch i { height: 3px; border-radius: 2px; display: block; }
 .mx-theme-name { font-size: 12.5px; font-weight: 500; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-theme-sub { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-effects { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 14px; border-top: 1px solid var(--pane-line); transition: opacity .2s ease; }
-.mx-effects.is-locked { opacity: .45; }
-.mx-effect-row { display: flex; align-items: center; gap: 12px; min-height: 36px; }
-.mx-effect-chip { width: 84px; height: 26px; flex: none; border-radius: 7px; background-color: var(--raise); background-repeat: no-repeat; box-shadow: inset 0 0 0 1px var(--pane-line); display: flex; align-items: center; gap: 6px; padding: 0 8px; font-size: 11.5px; }
-.mx-effect-chip > span:not(.mx-fx) { color: var(--fg2); }
 .mx-hotkey { font-family: var(--mono); font-size: 11.5px; color: var(--fg); padding: 3px 8px; border-radius: 6px; background: var(--well); box-shadow: inset 0 0 0 1px var(--pane-line); white-space: pre; }
 .mx-hotkey-row { display: flex; align-items: center; gap: 12px; min-height: 38px; padding: 0 16px; border-top: 1px solid var(--pane-line); font-size: 13px; }
 .mx-hotkey-row > span:first-child { flex: 1; color: var(--fg2); }
@@ -547,66 +330,17 @@
 .mx-menu-item[data-highlighted] { background: var(--sel); }
 .mx-menu-item.is-danger { color: var(--danger); }
 .mx-menu-item.is-armed { background: var(--danger-soft); box-shadow: inset 0 0 0 1px var(--danger-line); }
-.mx-pane-control.is-armed, .mx-tab-close.is-armed, .mx-row-end.is-armed { background: var(--danger-soft); box-shadow: inset 0 0 0 1px var(--danger-line); color: var(--danger); opacity: 1; }
 .mx-menu-item[data-disabled] { opacity: .4; }
-.mx-menu-hint { margin-left: auto; padding-left: 18px; font-family: var(--mono); font-size: 11px; color: var(--dim); }
 .mx-menu-sep { height: 1px; margin: 4px 2px; background: var(--line2); }
 
-/* Status effects on rows and tabs, after the row and tab rules so their layer sits behind the
-   content. The app renders a `.mx-fx` child only for effects that are switched on and allowed (see
-   EffectsContext, StatusEffect). The child is clipped to its host, paints once and then only moves
-   with `transform` on its own layer: never box-shadow, filter or background-position, which would
-   repaint the card every frame (docs/PERFORMANCE.md).
-   Sweep crosses once when the status appears and rests. Waves drift forever, which is the one
-   deliberate loop; they stop with the window (data-window) and the app drops them to Sweep where
-   frames run slow (lib/animation-level.ts). */
-.mx-fx-working, .mx-fx-needs, .mx-fx-done { position: relative; overflow: hidden; isolation: isolate; }
-.mx-fx { position: absolute; inset: 0; z-index: -1; overflow: hidden; contain: paint; pointer-events: none; border-radius: inherit; }
-.mx-fx[data-status="working"] { color: var(--accent); }
-.mx-fx[data-status="needs"] { color: var(--warn); }
-.mx-fx[data-status="done"] { color: var(--ok); }
-.mx-fx-strong { --fx-k: 1; }
-.mx-fx-band { position: absolute; top: 0; bottom: 0; left: 0; width: 30%; will-change: transform; transform: translate3d(-110%, 0, 0); background: linear-gradient(90deg, transparent, color-mix(in srgb, currentColor calc(20% * var(--fx-k, .6)), transparent) 50%, transparent); animation: mx-fx-sweep 1.4s cubic-bezier(.4, 0, .2, 1) 1 forwards; }
-.mx-fx-wave { position: absolute; top: 0; bottom: 0; left: 0; width: 200%; will-change: transform; animation: mx-fx-drift 18s linear infinite; }
-.mx-fx-wave.is-reverse { animation-duration: 28s; animation-direction: reverse; }
-.mx-fx-wave svg { display: block; width: 100%; height: 100%; }
-.mx-fx-wave path { fill: currentColor; fill-opacity: calc(.11 * var(--fx-k, .6)); }
-.mx-fx-wave.is-reverse path { fill-opacity: calc(.08 * var(--fx-k, .6)); }
-:root[data-window="inactive"] .mx-fx-wave { animation-play-state: paused; }
-@keyframes mx-fx-sweep { from { transform: translate3d(-110%, 0, 0); } to { transform: translate3d(330%, 0, 0); } }
-@keyframes mx-fx-drift { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-50%, 0, 0); } }
-/* The Settings preview repeats the one-pass sweep so there is something to see. */
-.mx-effect-chip .mx-fx-band { animation: mx-fx-sweep-preview 3.2s cubic-bezier(.4, 0, .2, 1) infinite; }
-@keyframes mx-fx-sweep-preview { 0% { transform: translate3d(-110%, 0, 0); } 45%, 100% { transform: translate3d(330%, 0, 0); } }
-
-
-/* Reduce motion (the setting or the system's) stops slides, lifts, pulses and sweeps; spinners
+/* Reduce motion (the setting or the system's) stops slides, lifts and pulses; spinners
    show one frame. */
 .mx-app[data-motion="reduced"] *, .mx-app[data-motion="reduced"] *::before, .mx-app[data-motion="reduced"] *::after { animation: none !important; transition: none !important; }
-.mx-app[data-motion="reduced"] .mx-row:hover, .mx-app[data-motion="reduced"] .mx-tab:hover, .mx-app[data-motion="reduced"] .mx-rail-row:hover, .mx-app[data-motion="reduced"] .mx-theme-card:hover { transform: none; }
+.mx-app[data-motion="reduced"] .mx-theme-card:hover { transform: none; }
 @media (prefers-reduced-motion: reduce) {
   .mx-app *, .mx-app *::before, .mx-app *::after { animation: none !important; transition: none !important; }
-  .mx-app .mx-row:hover, .mx-app .mx-tab:hover, .mx-app .mx-rail-row:hover, .mx-app .mx-theme-card:hover { transform: none; }
-  .mx-app .mx-fx-working, .mx-app .mx-fx-needs, .mx-app .mx-fx-done { background-image: none; }
+  .mx-app .mx-theme-card:hover { transform: none; }
 }
-
-/* A session's state in the pane's bottom-right corner; the popover says what it means. */
-.mx-pane-status-wrap { position: absolute; right: 10px; bottom: 8px; z-index: 2; }
-.mx-pane-status { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px 0 7px; border-radius: 999px; font-size: 12px; font-weight: 500; line-height: 1; color: var(--muted); background: color-mix(in srgb, var(--raise) 94%, transparent); box-shadow: inset 0 0 0 1px var(--pane-line); cursor: default; animation: v9pop .26s var(--ease-out); transition: transform .16s var(--ease-out), box-shadow .16s ease; }
-.mx-pane-status:hover { transform: translateY(-1px); }
-.mx-pane-status.is-working { color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent), 0 4px 14px -6px color-mix(in srgb, var(--accent) 55%, transparent); }
-.mx-pane-status.is-needs { color: var(--warn); background: var(--warn-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 42%, transparent), 0 4px 14px -6px color-mix(in srgb, var(--warn) 55%, transparent); }
-.mx-pane-status.is-done { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 34%, transparent), 0 4px 14px -6px color-mix(in srgb, var(--ok) 45%, transparent); }
-.mx-pane-status.is-error { color: var(--danger); background: var(--danger-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 40%, transparent), 0 4px 14px -6px color-mix(in srgb, var(--danger) 50%, transparent); }
-.mx-pane-status.is-unknown { color: var(--dim); box-shadow: inset 0 0 0 1px var(--line2); }
-.mx-pane-status-icon { display: flex; align-items: center; justify-content: center; width: 14px; height: 14px; font-family: var(--mono); }
-.mx-pane-status-icon svg { width: 13px; height: 13px; }
-.mx-status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: .7; }
-.mx-status-dashed { width: 9px; height: 9px; border-radius: 2px; border: 1.5px dashed currentColor; }
-.mx-pane-status-icon .mx-pause-bar { background: currentColor; }
-.mx-status-pop { display: none; position: absolute; right: 0; bottom: calc(100% + 8px); width: 250px; padding: 10px 12px; border-radius: 12px; background: var(--raise); border: 1px solid var(--pane-line); box-shadow: 0 14px 34px rgba(0, 0, 0, .4); font-size: 12.5px; line-height: 1.5; color: var(--fg2); pointer-events: none; }
-.mx-status-pop strong { display: block; margin-bottom: 2px; font-size: 13px; font-weight: 600; color: var(--fg); }
-.mx-pane-status-wrap:hover .mx-status-pop, .mx-pane-status-wrap:focus-within .mx-status-pop { display: block; animation: v7fade .14s ease-out; }
 
 /* The drag handle on the docked sidebar's right edge. */
 .mx-sidebar-resizer { position: absolute; top: 0; bottom: 0; right: 0; width: 6px; z-index: 3; cursor: col-resize; touch-action: none; }
@@ -618,162 +352,26 @@
 .mx-text-button:not(:disabled):hover { background: var(--sel); color: var(--fg); }
 .mx-text-button:disabled { opacity: .4; }
 
-/* A collapsed session's popover: the agent, its state and what that means, and where it is. */
-.mx-rail-popover.is-session { width: 270px; max-width: 270px; }
-.mx-pop-head .mx-app-icon { flex: none; }
-.mx-pop-state { margin-left: auto; padding-left: 10px; font-size: 11.5px; font-weight: 500; color: var(--muted); white-space: nowrap; }
-.mx-pop-state.is-working { color: var(--accent); }
-.mx-pop-state.is-needs { color: var(--warn); }
-.mx-pop-state.is-done { color: var(--ok); }
-.mx-pop-state.is-error { color: var(--danger); }
-.mx-pop-repo { margin-top: 4px; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ansi-mag); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mx-pop-repo svg { width: 12px; height: 12px; flex: none; }
-.mx-pop-prompt { margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--pane-line); font-size: 12.5px; line-height: 1.5; color: var(--fg2); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
-.mx-pop-label { display: block; margin-bottom: 2px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
-
-/* On a sidebar row: the tab it is open in, once there is more than one tab. */
-
-.mx-pop-tab { margin-top: 4px; font-size: 12px; color: var(--muted); }
-
-/* A tab's popover: below the tab, listing every pane in it. */
-.mx-rail-popover.is-tab { transform: none; width: 320px; max-width: 320px; }
-.mx-pop-title-line { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
-.mx-rail-popover.is-tab .mx-pop-sessions { margin-top: 6px; padding-top: 6px; gap: 6px; }
-.mx-pop-pane { flex-direction: row !important; align-items: center; gap: 8px !important; }
-.mx-pop-pane-text { flex: 1; min-width: 0; }
-.mx-pop-pane .mx-pop-title { display: block; font-weight: 600; color: var(--fg); }
-.mx-pop-pane .mx-pop-status { font-weight: 400; margin-left: 4px; }
-
-/* Tabs that do not fit scroll sideways: edge buttons appear only when more tabs lie beyond that end. */
-.mx-tabstrip { display: flex; align-items: center; gap: 2px; flex: 0 1 auto; min-width: 0; max-width: 100%; }
-.mx-tab-scroll { width: var(--tsw); height: var(--tsh); flex: none; border-radius: calc(9px * var(--rk)); border-right: var(--tabbr); color: var(--muted); background: var(--strip-bg, rgba(255, 255, 255, .03)); box-shadow: var(--strip-ring, inset 0 0 0 1px var(--pane-line)); }
-.mx-tab-scroll:hover { background: var(--strip-hover, var(--sel)); color: var(--fg); }
-.mx-tab-scroll.is-left svg { transform: scaleX(-1); }
-/* The ends fade where tabs continue, a hint that there is more. */
-.mx-tablist.has-left { -webkit-mask-image: linear-gradient(to right, transparent 0, #000 28px); mask-image: linear-gradient(to right, transparent 0, #000 28px); }
-.mx-tablist.has-right { -webkit-mask-image: linear-gradient(to left, transparent 0, #000 28px); mask-image: linear-gradient(to left, transparent 0, #000 28px); }
-.mx-tablist.has-left.has-right { -webkit-mask-image: linear-gradient(to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%); mask-image: linear-gradient(to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%); }
-
 /* Naming a session. */
 .mx-rename { width: 100%; max-width: 420px; padding: 20px; border-radius: 16px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); backdrop-filter: var(--blur-pop); display: flex; flex-direction: column; gap: 10px; animation: v8pane .3s var(--ease-out); }
-.mx-folder-dialog { max-width: 480px; }
 .mx-folder-row { display: flex; gap: 8px; align-items: center; }
 .mx-folder-row input { flex: 1; min-width: 0; height: 38px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--pane-line); background: var(--well, var(--raise)); color: var(--fg); font-family: var(--mono, monospace); font-size: 13px; }
 .mx-folder-row input.is-missing { border-color: var(--danger-line, var(--danger)); box-shadow: 0 0 0 3px var(--danger-soft, transparent); }
-.mx-folder-bad { color: var(--danger) !important; }
-.mx-folder-suggestions { list-style: none; margin: 0; padding: 4px; max-height: 210px; overflow-y: auto; border-radius: 9px; border: 1px solid var(--pane-line); display: flex; flex-direction: column; gap: 1px; }
-.mx-folder-suggestions li { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 8px; border-radius: 6px; font-family: var(--mono, monospace); font-size: 12.5px; color: var(--fg2); cursor: pointer; }
-.mx-folder-suggestions li.is-on, .mx-folder-suggestions li:hover { background: var(--raise); color: var(--fg); }
-.mx-folder-suggestions li small { margin-left: auto; color: var(--dim); font-family: inherit; }
 .mx-rename h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--fg); }
 .mx-rename p { margin: 0; font-size: 12.5px; color: var(--muted); }
 .mx-rename input { height: 38px; padding: 0 12px; border-radius: 10px; background: var(--well); border: 1px solid var(--pane-line); color: var(--fg); font-size: 14px; outline: none; }
 .mx-rename input:focus { border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); }
 .mx-rename-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.mx-rename.mx-getfile { max-width: 560px; }
+.mx-getfile-where { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mx-getfile-where code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; font-family: var(--mono, monospace); font-size: 12.5px; color: var(--muted); }
+.mx-getfile-list { display: flex; flex-direction: column; max-height: 260px; min-height: 96px; overflow-y: auto; border: 1px solid var(--pane-line); border-radius: 10px; background: var(--well); padding: 4px; }
+.mx-getfile-list p { margin: 8px; }
+.mx-getfile-row { display: block; width: 100%; text-align: left; padding: 6px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--fg); font-family: var(--mono, monospace); font-size: 13px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mx-getfile-row.is-selected { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+.mx-getfile-row mark { background: transparent; color: var(--accent); font-weight: 700; text-decoration: underline; }
 .mx-text-button.is-primary { background: var(--accent); color: var(--on-accent); box-shadow: none; font-weight: 600; }
 .mx-text-button.is-primary:not(:disabled):hover { background: var(--accent); filter: brightness(1.08); color: var(--on-accent); }
-.mx-pane-name { font-size: 13px; color: var(--accent); overflow: hidden; text-overflow: ellipsis; }
-.mx-pop-name { margin-top: 4px; font-size: 13px; font-weight: 600; color: var(--accent); }
-
-/* A project: its main row, with the other sessions hanging off its bottom edge in a tray */
-.mx-stack { display: flex; flex-direction: column; }
-.mx-stack .mx-row-wrap { position: relative; z-index: 1; }
-.mx-row.is-swapped { animation: v18grow .28s var(--ease-out); }
-.mx-tray { position: relative; z-index: 0; display: grid; gap: 2px; margin: 0 0 4px; padding: 2px 4px 2px 10px; animation: v7fade .2s ease-out; }
-.mx-tray.is-stacked { grid-template-columns: minmax(0, 1fr); }
-.mx-tray-item { position: relative; min-width: 0; height: calc(24px * var(--icon-scale, 1)); box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 9px 0 3px; border-radius: 7px; background-color: transparent; background-repeat: no-repeat; cursor: pointer; transition: background-color .16s ease, box-shadow .16s ease, transform .2s var(--ease-out); }
-.mx-tray-item.is-icons { width: 24px; padding: 0; justify-content: center; }
-.mx-tray-item.is-stacked { padding: 0 8px 0 3px; }
-.mx-tray-item:hover { background-color: rgba(255, 255, 255, .08); transform: translateY(-1px) scale(1.06); }
-.mx-tray-item:active { transform: scale(.9); }
-.mx-tray-icon { position: relative; flex: none; display: flex; }
-.mx-tray-icon .mx-badge { right: -5px; bottom: -5px; width: 12px; height: 12px; border-radius: 3.5px; }
-.mx-tray-icon .mx-badge.is-working { border-radius: 50%; background: var(--well); font-family: var(--mono); font-size: 9px; line-height: 1; color: var(--accent); }
-.mx-tray-icon .mx-badge svg { width: 8px; height: 8px; }
-.mx-tray-icon .mx-pause-bar { width: 1.5px; height: 4.5px; }
-.mx-tray-unread { position: absolute; top: -3px; right: -3px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--card-ring); }
-.mx-tray-proc { min-width: 0; font-family: var(--mono); font-size: 11px; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-tray-item.is-stacked .mx-tray-proc { flex: none; }
-.mx-tray-where { flex: 1; min-width: 0; font-size: 11.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-tray-word { flex: none; margin-left: auto; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--dim); }
-.mx-tray-word.is-working { color: var(--accent); }
-.mx-tray-word.is-needs { color: var(--warn); }
-.mx-tray-word.is-done { color: var(--ok); }
-.mx-tray-word.is-error { color: var(--danger); }
-.mx-tray-more { height: calc(24px * var(--icon-scale, 1)); min-width: 0; box-sizing: border-box; padding: 0 6px; display: flex; align-items: center; justify-content: center; border-radius: 7px; background: transparent; font-family: var(--mono); font-size: 10.5px; color: var(--muted); cursor: pointer; transition: background-color .14s ease, color .14s ease, transform .12s ease; }
-.mx-tray-more:hover, .mx-tray-more.is-open { background: rgba(255, 255, 255, .07); color: var(--fg); }
-.mx-tray-more.is-needs { color: var(--warn); }
-.mx-tray-more:active { transform: scale(.92); }
-.mx-tray.is-stacked .mx-tray-more { width: 100%; }
-
-/* Every session of a project, beside the sidebar */
-.mx-menu-scrim { position: fixed; inset: 0; z-index: 34; }
-/* Compact tree rows (v18 D.8): 26px tall, nothing between them, a guide line and an elbow at x=19. */
-.mx-tree { position: relative; display: flex; flex-direction: column; margin: 0 0 1px; animation: v7fade .2s ease-out; }
-.mx-tree-item { all: unset; cursor: pointer; position: relative; height: 26px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 34px; border-radius: 7px; background-color: transparent; transition: background-color .14s ease; }
-.mx-tree-item:hover, .mx-tree-item:focus-visible { background-color: rgba(255, 255, 255, .055); }
-.mx-tree-item:active { transform: scale(.985); }
-.mx-tree-guide { position: absolute; left: 19px; top: 0; bottom: 0; width: 1px; background: var(--line2); }
-.mx-tree-item.is-last .mx-tree-guide { bottom: 50%; }
-.mx-tree-elbow { position: absolute; left: 19px; top: 7px; width: 9px; height: 6px; border-left: 1px solid var(--line2); border-bottom: 1px solid var(--line2); border-bottom-left-radius: 5px; }
-.mx-tree-mark { width: 12px; height: 14px; flex: none; display: flex; align-items: center; justify-content: center; }
-.mx-tree-spin { font-family: var(--mono); font-size: 12px; line-height: 1; color: var(--accent); display: inline-block; contain: paint; }
-.mx-tree-needs { width: 11px; height: 11px; border-radius: 3px; background: linear-gradient(160deg, #FFD27A, #EFA436); display: flex; align-items: center; justify-content: center; gap: 1px; animation: v7pulse .6s var(--ease-out) 1; }
-.mx-tree-needs .mx-pause-bar { width: 1.5px; height: 4.5px; background: #3A2402; }
-.mx-tree-done { display: flex; color: var(--ok); }
-.mx-tree-error { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--danger); }
-.mx-tree-idle { width: 5px; height: 5px; border-radius: 50%; background: var(--line2); }
-.mx-tree-unknown { width: 8px; height: 8px; border-radius: 2px; border: 1.2px dashed var(--dim); }
-.mx-tree-proc { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--fg2); white-space: nowrap; }
-.mx-tree-item:hover .mx-tree-proc, .mx-tree-item.is-needs .mx-tree-proc { color: var(--fg); }
-.mx-tree-where { flex: 1; min-width: 0; font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-tree-unread { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--accent); }
-.mx-tree-word { flex: none; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--dim); }
-.mx-tree-word.is-working { color: var(--accent); }
-.mx-tree-word.is-needs { color: var(--warn); }
-.mx-tree-word.is-done { color: var(--ok); }
-.mx-tree-word.is-error { color: var(--danger); }
-.mx-tree-more { position: relative; }
-.mx-tree-more::before { content: ""; position: absolute; left: 19px; top: 0; height: 12px; width: 9px; border-left: 1px solid var(--line2); border-bottom: 1px solid var(--line2); border-bottom-left-radius: 5px; }
-.mx-tree-more .mx-tray-more { width: 100%; height: 24px; justify-content: flex-start; padding: 0 8px 0 34px; border-radius: 7px; font-family: inherit; font-size: 11.5px; }
-.mx-stack-menu { position: fixed; z-index: 35; width: 300px; max-height: 420px; display: flex; flex-direction: column; border-radius: 14px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); backdrop-filter: var(--blur-pop); overflow: hidden; animation: v8insp .26s var(--ease-out); transform-origin: left top; }
-.mx-stack-menu-head { flex: none; height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 14px; border-bottom: 1px solid var(--pane-line); }
-.mx-stack-menu-head .mx-icon-button { width: 26px; height: 26px; border-radius: 7px; color: var(--muted); }
-.mx-stack-menu-title { font-size: 13.5px; font-weight: 600; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-stack-menu-count { flex: none; font-size: 11.5px; color: var(--dim); }
-.mx-stack-menu-list { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 6px; display: flex; flex-direction: column; gap: 2px; }
-.mx-stack-menu-row { min-height: 44px; display: flex; align-items: center; gap: 10px; padding: 5px 10px 5px 8px; border-radius: 9px; text-align: left; cursor: pointer; animation: v8row .24s var(--ease-out); transition: background-color .12s ease, transform .12s ease; }
-.mx-stack-menu-row:hover { background: rgba(255, 255, 255, .055); }
-.mx-stack-menu-row:active { transform: scale(.985); }
-.mx-stack-menu-row.is-selected { background: var(--raise); box-shadow: inset 0 0 0 1px var(--pane-line); }
-.mx-stack-menu-row .mx-tray-icon .mx-badge { right: -4px; bottom: -4px; width: 14px; height: 14px; }
-.mx-stack-menu-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.mx-stack-menu-name { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-stack-menu-proc { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
-.mx-stack-menu-state { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
-.mx-stack-menu-word { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--dim); }
-.mx-stack-menu-word.is-working { color: var(--accent); }
-.mx-stack-menu-word.is-needs { color: var(--warn); }
-.mx-stack-menu-word.is-done { color: var(--ok); }
-.mx-stack-menu-word.is-error { color: var(--danger); }
-.mx-stack-menu-meta { font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
-
-/* The project's tabs that do not fit, in a menu that opens leftward from its button */
-.mx-alltabs { position: relative; flex: none; margin-left: 4px; }
-.mx-alltabs-button { position: relative; height: 36px; display: flex; align-items: center; gap: 5px; padding: 0 10px; border-radius: 11px; background: rgba(255, 255, 255, .025); box-shadow: inset 0 0 0 1px var(--pane-line); font-size: 12px; color: var(--fg2); cursor: pointer; transition: background-color .14s ease, transform .12s ease; }
-.mx-alltabs-button:hover, .mx-alltabs-button.is-open { background: rgba(255, 255, 255, .06); color: var(--fg); }
-.mx-alltabs-button:active { transform: scale(.94); }
-.mx-alltabs-button span:first-child { font-variant-numeric: tabular-nums; }
-.mx-alltabs-needs { position: absolute; right: 4px; top: 4px; width: 7px; height: 7px; border-radius: 2px; transform: rotate(45deg); background: var(--warn); }
-.mx-alltabs-menu { position: absolute; z-index: 40; top: 42px; right: 0; width: 280px; max-height: 360px; overflow-y: auto; overflow-x: hidden; padding: 5px; border-radius: 12px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); backdrop-filter: var(--blur-pop); display: flex; flex-direction: column; gap: 1px; animation: v7fade .18s ease-out; }
-.mx-alltabs-row { height: 34px; flex: none; display: flex; align-items: center; gap: 9px; padding: 0 10px 0 7px; border-radius: 8px; font-size: 12.5px; color: var(--fg); text-align: left; cursor: pointer; transition: background-color .12s ease; }
-.mx-alltabs-row:hover { background: rgba(255, 255, 255, .06); }
-.mx-alltabs-row.is-active { background: var(--raise); }
-.mx-alltabs-row strong { font-weight: 600; }
-.mx-alltabs-folder { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-alltabs-state { font-size: 11px; }
-.mx-alltabs-state.is-needs { color: var(--warn); }
-.mx-alltabs-count { font-size: 11px; color: var(--dim); }
 
 /* Hotkeys as keycaps */
 .mx-keys { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
@@ -784,9 +382,6 @@
 
 /* Resizing columns: the 10px gap between them is the handle. The negative margin cancels the two flex gaps
    around it, so the handle takes the gap's width whatever --pg is (0 under Tiled). */
-.mx-pane-column { flex-basis: 0; }
-.mx-col-handle { flex: none; width: 10px; margin: 0 calc(-5px - var(--pg) * var(--pad, 1) / 2); position: relative; z-index: 3; cursor: col-resize; touch-action: none; }
-.mx-col-handle:hover, .mx-col-handle.is-dragging { background: linear-gradient(90deg, transparent 4px, var(--accent) 4px 6px, transparent 6px); }
 .mx-app.is-narrow .mx-col-handle { display: none; }
 
 /* A Settings row whose control sits under its label */
@@ -829,7 +424,6 @@
 .mx-inbox-word.is-done { color: var(--ok); }
 .mx-inbox-well { padding: 8px 10px; border-radius: 8px; background: var(--well); font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--fg2); overflow-wrap: anywhere; }
 .mx-inbox-asking { margin: 0; white-space: pre-wrap; max-height: 180px; overflow: auto; }
-.mx-usage-pill { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
 .mx-restore { flex: none; display: flex; flex-direction: column; gap: 6px; margin: 0 0 8px; padding: 8px 12px; border-radius: 12px; background: color-mix(in oklab, var(--warn) 12%, var(--pane)); box-shadow: inset 0 0 0 1px var(--warn-line); }
 .mx-restore-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12.5px; color: var(--fg2); }
 .mx-restore-text { flex: 1; min-width: 220px; }
@@ -844,17 +438,6 @@
 .mx-inbox-empty { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; font-size: 12.5px; color: var(--dim); }
 .mx-inbox-empty strong { font-size: 15px; color: var(--fg); }
 .mx-inbox-check { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: color-mix(in oklab, var(--ok) 20%, var(--bg)); }
-.mx-inbox-button { position: relative; height: var(--ibh); min-width: var(--ibh); display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 7px; border-radius: calc(9px * var(--rk)); border-left: var(--tabbr); background: linear-gradient(180deg, rgba(255, 255, 255, .055), rgba(255, 255, 255, .015)); box-shadow: inset 0 0 0 1px var(--pane-line); font-size: 12.5px; color: var(--fg2); cursor: pointer; transition: background-color .16s ease, box-shadow .16s ease, color .14s ease, transform .16s var(--ease-out); }
-.mx-inbox-button svg { transition: transform .2s var(--ease-out); }
-.mx-inbox-button:hover { background: linear-gradient(180deg, rgba(255, 255, 255, .09), rgba(255, 255, 255, .03)); color: var(--fg); transform: translateY(-1px); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, var(--pane-line)), 0 6px 16px -6px color-mix(in srgb, var(--accent) 40%, transparent); }
-.mx-inbox-button:hover svg { transform: scale(1.1); }
-.mx-inbox-button:active { transform: scale(.95); }
-.mx-inbox-button.is-open { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
-.mx-inspect-stat { font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; }
-.mx-inspect-stat .is-add { color: var(--ok); }
-.mx-inspect-stat .is-remove { color: var(--danger); }
-.mx-inbox-count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; background: var(--sel); color: var(--fg2); font-variant-numeric: tabular-nums; animation: v9pop .28s var(--ease-out); }
-.mx-inbox-count.is-needs { background: var(--warn); color: var(--on-warn); }
 
 /* Focus mode */
 .mx-focus-pill { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 45; display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 8px 0 14px; border-radius: 999px; background: var(--raise); border: 1px solid var(--line2); box-shadow: 0 12px 40px rgba(0, 0, 0, .45); font-size: 12.5px; color: var(--fg2); white-space: nowrap; animation: v8pane .26s var(--ease-out); }
@@ -862,45 +445,13 @@
 .mx-focus-needs { color: var(--warn); }
 .mx-focus-exit { height: 24px; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px; border-radius: 999px; background: rgba(255, 255, 255, .06); color: var(--fg); font-size: 12px; cursor: pointer; }
 .mx-focus-exit:hover { background: rgba(255, 255, 255, .1); }
-.mx-pane.is-broadcast { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--ansi-mag) 60%, transparent), 0 14px 34px rgba(0, 0, 0, .3); }
 .mx-broadcast-pill { height: 22px; display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; border-radius: 999px; font-size: 11.5px; color: var(--ansi-mag); background: color-mix(in srgb, var(--ansi-mag) 14%, transparent); }
-.mx-pane-control.is-on { color: var(--ansi-mag); background: color-mix(in srgb, var(--ansi-mag) 14%, transparent); }
 .mx-menu-caps { padding: 6px 10px 4px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
 
 /* The sidebar's and the rail's icons follow the Sidebar icons setting; tabs and pane headers keep their size. */
 .mx-sidebar .mx-app-icon.size-28 { width: calc(28px * var(--icon-scale, 1)); height: calc(28px * var(--icon-scale, 1)); font-size: calc(12px * var(--icon-scale, 1)); }
 .mx-sidebar .mx-app-icon.size-24 { width: calc(24px * var(--icon-scale, 1)); height: calc(24px * var(--icon-scale, 1)); font-size: calc(11px * var(--icon-scale, 1)); }
 .mx-sidebar .mx-app-icon.size-18 { width: calc(18px * var(--icon-scale, 1)); height: calc(18px * var(--icon-scale, 1)); font-size: calc(8.5px * var(--icon-scale, 1)); }
-
-/* Expressive: every icon button is a bordered square that lights up in the accent on hover, like the Projects +. */
-:root:not([data-finish="flat"]) :is(.mx-collapse, .mx-new-tab, .mx-tab-scroll, .mx-rail-button, .mx-inbox-button, .mx-pane-control:not(.is-on)) { background: rgba(255, 255, 255, .05); box-shadow: inset 0 0 0 1px var(--line2); color: var(--fg2); }
-:root:not([data-finish="flat"]) :is(.mx-collapse, .mx-new-tab, .mx-tab-scroll, .mx-rail-button, .mx-inbox-button, .mx-pane-control:not(.is-on)):not(:disabled):hover,
-:root:not([data-finish="flat"]) .mx-inbox-button.is-open { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); color: var(--accent); transform: none; }
-
-/* Rail popovers: they open on a short hover, stay while the pointer is on them, and point at their item. */
-@keyframes v9railpop { from { opacity: 0; transform: translate(-4px, -50%) scale(.97); } to { opacity: 1; transform: translate(0, -50%) scale(1); } }
-.mx-railpop { --arrow-shift: 0px; position: fixed; z-index: 60; width: 260px; transform: translateY(-50%); display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; background: var(--main); border: 1px solid var(--line2); box-shadow: 0 16px 44px rgba(0, 0, 0, .5); animation: v9railpop .16s var(--ease-out); }
-.mx-railpop.is-session { width: 300px; }
-.mx-railpop::before { content: ""; position: absolute; left: -5px; top: calc(50% + var(--arrow-shift)); width: 9px; height: 9px; margin-top: -4.5px; transform: rotate(45deg); background: var(--main); border-left: 1px solid var(--line2); border-bottom: 1px solid var(--line2); }
-.mx-rp-head { display: flex; align-items: center; gap: 9px; min-width: 0; }
-.mx-rp-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.mx-rp-title strong { font-size: 13.5px; font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mx-rp-path { font-family: var(--mono); font-size: 11px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mx-rp-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; }
-.mx-rp-row { width: 100%; display: flex; align-items: center; gap: 9px; padding: 5px 6px; border-radius: 8px; text-align: left; transition: background-color .14s ease; }
-.mx-rp-row:hover { background: rgba(255, 255, 255, .06); }
-.mx-rp-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.mx-rp-name { font-size: 12.5px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mx-rp-proc { font-family: var(--mono); font-size: 11px; color: var(--dim); }
-.mx-rp-state { flex: none; font-size: 11.5px; font-weight: 500; color: var(--muted); white-space: nowrap; }
-.mx-rp-state.is-working { color: var(--accent); }
-.mx-rp-state.is-needs { color: var(--warn); }
-.mx-rp-state.is-done { color: var(--ok); }
-.mx-rp-state.is-error { color: var(--danger); }
-.mx-rp-well { margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--well); font-family: var(--mono); font-size: 11.5px; line-height: 1.5; color: var(--fg2); word-break: break-word; }
-.mx-rp-well.is-needs { color: var(--warn); }
-.mx-rp-hint { font-size: 11px; color: var(--dim); }
-:root[data-finish="flat"] .mx-railpop { box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
 
 /* First-run welcome. */
 @keyframes v9stepin { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
@@ -943,23 +494,7 @@
 .mx-scard-button:hover { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-line); }
 
 /* Keyboard shortcut overlay. */
-.mx-shortcuts { position: fixed; z-index: 81; top: 50%; left: 50%; width: min(820px, calc(100% - 32px)); max-height: calc(100% - 48px); transform: translate(-50%, -50%); display: flex; flex-direction: column; border-radius: var(--r16); background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); overflow: hidden; animation: v9dialog .26s var(--ease-out); }
-.mx-shortcuts-head { flex: none; display: flex; align-items: center; gap: 16px; padding: 14px 14px 14px 24px; border-bottom: 1px solid var(--pane-line); }
-.mx-shortcuts-title { flex: 1; margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.01em; color: var(--fg); }
-.mx-shortcuts-grid { min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 22px 28px; padding: 18px 24px 24px; align-items: start; }
 .mx-shortcuts-grid .mx-menu-caps { padding: 0 0 6px; }
-.mx-shortcuts-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.mx-shortcuts-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; border-bottom: 1px solid var(--pane-line); font-size: 12.5px; color: var(--fg2); }
-.mx-shortcuts-chords { flex: none; display: inline-flex; flex-direction: column; align-items: flex-end; gap: 4px; padding: 4px 0; }
-.mx-shortcuts-list li > span:first-child { min-width: 0; }
-
-/* Session menu (right-click a row, tray item or rail icon), and pin mark. */
-.mx-sessionmenu { position: fixed; z-index: 70; width: 260px; display: flex; flex-direction: column; gap: 2px; padding: 8px; border-radius: 12px; background: var(--raise); border: 1px solid var(--pane-line); box-shadow: 0 16px 44px rgba(0, 0, 0, .5); animation: v7fade .14s ease-out; }
-.mx-sessionmenu .mx-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; }
-.mx-sessionmenu .mx-menu-item svg { flex: none; color: var(--muted); }
-.mx-sessionmenu .mx-menu-hint { margin-left: auto; }
-.mx-sm-gap { flex: none; width: 13px; }
-.mx-row-pin { flex: none; display: inline-flex; align-items: center; color: var(--accent); }
 
 /* Notification card (design 10.3): the app, the project, what happened, and what you can do about it. */
 .mx-notice { position: relative; width: 356px; max-width: calc(100vw - 32px); display: flex; gap: 12px; padding: 12px 14px 12px 12px; border-radius: 16px; overflow: hidden; color: var(--fg); background: color-mix(in oklab, var(--raise) 82%, transparent); backdrop-filter: var(--blur-pop); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); animation: v7fade .18s ease-out; }
@@ -985,10 +520,6 @@
 .mx-notice-actions button.is-quiet { background: transparent; box-shadow: none; }
 .mx-notice-countdown { position: absolute; left: 0; bottom: 0; width: 100%; height: 2px; background: var(--accent); transform-origin: left; animation: mx-notice-count linear forwards; }
 @keyframes mx-notice-count { to { transform: scaleX(0); } }
-
-/* Update offer; it reuses the interrupted-agents banner's frame. */
-.mx-update { background: color-mix(in oklab, var(--accent) 12%, var(--pane)); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 40%, transparent); }
-.mx-update-notes { margin: 0; padding: 0 0 0 18px; font-size: 12px; color: var(--muted); }
 
 /* Status bar. */
 .mx-statusbar { flex: none; height: 28px; display: flex; align-items: center; gap: 14px; padding: 0 14px; border-top: 1px solid var(--pane-line); font-size: var(--ch-fs-sm, 11.5px); color: var(--muted); white-space: nowrap; overflow: hidden; }
@@ -1028,56 +559,26 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 @media (prefers-reduced-motion: reduce) { .mx-tip { animation: none; } }
 
 /* Confirm before ending sessions. */
-.mx-confirm-scrim { position: fixed; inset: 0; z-index: 80; background: rgba(0, 0, 0, .5); animation: v7scrim .2s ease-out; }
-.mx-confirm { position: fixed; z-index: 81; top: 50%; left: 50%; width: min(400px, calc(100% - 32px)); transform: translate(-50%, -50%); display: flex; flex-direction: column; gap: 8px; padding: 18px; border-radius: 14px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); animation: v9dialog .22s var(--ease-out); }
-.mx-confirm-title { margin: 0; font-size: 15px; font-weight: 600; color: var(--fg); overflow-wrap: anywhere; }
-.mx-confirm-text { margin: 0; font-size: 13px; line-height: 1.5; color: var(--fg2); }
-.mx-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 .mx-confirm-button { height: 32px; padding: 0 14px; border-radius: 9px; font-size: 13px; color: var(--fg2); background: rgba(255, 255, 255, .05); box-shadow: inset 0 0 0 1px var(--pane-line); cursor: pointer; transition: background-color .14s ease, transform .12s ease; }
 .mx-confirm-button:hover { background: rgba(255, 255, 255, .09); color: var(--fg); }
 .mx-confirm-button:active { transform: scale(.96); }
 .mx-confirm-button.is-danger { background: var(--danger); color: #fff; box-shadow: none; font-weight: 600; }
 .mx-confirm-button.is-danger:hover { background: color-mix(in srgb, var(--danger) 85%, #fff); }
 
-/* Finish: Flat (also under Tiled). Flat surfaces, no glow, no resting rings and smaller radii.
+/* Finish: Flat. Flat surfaces, no glow, no resting rings and smaller radii.
    Glass is the rules above; these only take things away. Accent and warn rings (the
    focused pane, needs-you) and every status colour stay. */
 :root[data-finish="flat"] .mx-window { background: var(--bg); }
-:root[data-finish="flat"] .mx-card,
-:root[data-finish="flat"] .mx-pane { background: var(--main); backdrop-filter: none; }
-:root[data-finish="flat"] .mx-pane,
-:root[data-finish="flat"] .mx-card { box-shadow: none; }
+:root[data-finish="flat"] .mx-card { background: var(--main); backdrop-filter: none; box-shadow: none; }
 :root[data-finish="flat"] .mx-inbox { box-shadow: 0 22px 60px rgba(0, 0, 0, .5); }
-:root[data-finish="flat"] .mx-pane.is-focused,
-:root[data-finish="flat"] .mx-pane.is-focused:hover { box-shadow: 0 0 0 3px var(--accent-soft); }
 :root[data-finish="flat"] .mx-sidebar { box-shadow: none; }
 :root[data-finish="flat"] .mx-settings { background: var(--main); box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
 :root[data-finish="flat"] .mx-settings-scrim { backdrop-filter: none; }
-:root[data-finish="flat"] .mx-rail-popover { box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
 /* Settings › Appearance › Icons: Grayscale. Neutral app icons in either style; status badges on them keep their colours. */
 :root[data-icons="grayscale"] .mx-app-icon { background: var(--raise); box-shadow: none; color: var(--fg2); }
-/* No outlines on the selected row, hovered rows or the open tab: the fill says it. */
-:root[data-finish="flat"] .mx-row.is-selected,
-:root[data-finish="flat"] .mx-rail-row.is-selected,
-:root[data-finish="flat"] .mx-tab.is-active { box-shadow: none; }
-:root[data-finish="flat"] .mx-row:not(.is-selected):hover,
-:root[data-finish="flat"] .mx-rail-row:not(.is-selected):hover,
-:root[data-finish="flat"] .mx-tab:not(.is-active):hover,
-:root[data-finish="flat"] .mx-tab:not(.is-active):focus-visible { box-shadow: none; transform: none; }
-:root[data-finish="flat"] .mx-tablist { background: transparent; box-shadow: none; border-radius: calc(10px * var(--rk)); }
-:root[data-finish="flat"] .mx-new-tab { background: transparent; box-shadow: none; }
-/* Flat finish: a tray item does not lift on hover. */
-:root[data-finish="flat"] .mx-tray-item:hover { transform: none; }
+
 /* Top-bar buttons and status badges stay flat: no gradient, glow, lift or entrance. */
-:root[data-finish="flat"] .mx-inbox-button { background: var(--strip-bg, rgba(255, 255, 255, .025)); box-shadow: var(--strip-ring, inset 0 0 0 1px var(--pane-line)); }
-:root[data-finish="flat"] .mx-inbox-button:hover { background: var(--strip-hover, rgba(255, 255, 255, .06)); box-shadow: var(--strip-ring, inset 0 0 0 1px var(--pane-line)); transform: none; }
-:root[data-finish="flat"] .mx-inbox-button:hover svg { transform: none; }
-:root[data-finish="flat"] .mx-inbox-button.is-open { background: rgba(255, 255, 255, .09); color: var(--fg); box-shadow: var(--strip-ring, inset 0 0 0 1px var(--pane-line)); }
 :root[data-finish="flat"] .mx-inbox-count:not(.is-needs) { animation: none; }
-:root[data-finish="flat"] .mx-pane-status,
-:root[data-finish="flat"] .mx-pane-status:hover { animation: none; backdrop-filter: none; box-shadow: inset 0 0 0 1px var(--pane-line); transform: none; }
-:root[data-finish="flat"] .mx-pane-status.is-unknown { box-shadow: inset 0 0 0 1px var(--line2); }
-:root[data-finish="flat"] .mx-pane-status.is-done { background: transparent; }
 :root[data-finish="flat"] .mx-badge:not(.is-needs) { animation: none; }
 :root[data-finish="flat"] .mx-inspect { background: var(--main); backdrop-filter: none;  }
 
@@ -1091,7 +592,9 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
    edge (square corners, 4px gaps, a flush 40px tab strip with hairlines). The layout rules above read these.
    --rk multiplies the radii that Tiled squares off. --strip-* are the tab bar's buttons: Tiled drops their fill and ring. */
 .mx-app {
-  --rk: 1; --r14: 14px; --r16: 16px; --pg: 12px; --ptop: 0px; --tbh: 56px; --tbp: 0 10px; --tbg: 6px; --tbb: 0;
+  --rk: 1; --gk: 1; --r14: 14px; --r16: 16px;
+  /* Project squares in the sidebar: never amber or red, which only ever mean status. */
+  --proj-1: #2BB8A6; --proj-2: #4C8DF6; --proj-3: #E86FA8; --proj-4: #8B7CF6; --proj-5: #4CC38A; --pg: 12px; --ptop: 0px; --tbh: 56px; --tbp: 0 10px; --tbg: 6px; --tbb: 0;
   --tabh: 36px; --tabbr: 0; --tick: transparent;
   /* The title bar: a dark veil over the ground on dark themes, the card colour on light ones. Tiled sets a card colour and a hairline. */
   --tbar: rgba(10, 12, 12, .35); --tbar-b: 0;
@@ -1099,46 +602,12 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
      shadow only on short-lived popovers. */
   --card: var(--main); --sh: inset 0 1px 0 rgba(255, 255, 255, .045); --blur-pop: blur(14px) saturate(1.2); --sh-pop: 0 16px 40px rgba(0, 0, 0, .45);
   --glow-accent: 10%; --glow-mag: 7%;
-  --sbm: 8px 0 8px 8px; --sbw: 1px; --tba: center; --tl: 4px; --edge: 8px; --tsh: 32px; --tsw: 26px; --ibh: 30px;
+  --sbm: 12px 0 12px 12px; --sbw: 1px; --tba: center; --tl: 4px; --edge: 8px; --tsh: 32px; --tsw: 26px; --ibh: 30px;
 }
 .mx-app[data-theme-kind="light"] { --tbar: var(--main); --sh: none; --sh-pop: 0 12px 32px rgba(17, 24, 32, .14), 0 0 0 1px rgba(17, 22, 27, .08); --glow-accent: 9%; --glow-mag: 6%; }
-:root[data-style="flat"] .mx-app { --r14: 8px; --r16: 10px; }
-:root[data-style="tiled"] .mx-app {
-  --rk: 0; --r14: 0px; --r16: 0px; --pg: 0px; --ptop: 0px; --tbh: 40px; --tbp: 0; --tbg: 0px; --tbb: 1px solid var(--pane-line);
-  --tabh: 40px; --tabbr: 1px solid var(--pane-line); --tbar: var(--main); --tbar-b: 1px solid var(--line); --sh: none; --sh-pop: 0 0 0 1px var(--line2); --blur-pop: none;
-  --sbm: 0; --sbw: 0 1px 0 0; --tba: stretch; --tl: 0px; --edge: 0px; --tsh: 40px; --tsw: 40px; --ibh: 40px;
-  --strip-bg: transparent; --strip-ring: none; --strip-hover: rgba(255, 255, 255, .06);
-  --tick: var(--line2); --ch-ff: var(--mono); --ch-tt: uppercase; --ch-ls: .1em; --ch-fs-sm: 11px; --ch-fs-md: 11.5px;
-}
+:root[data-style="flat"] .mx-app { --r14: 8px; --r16: 10px; --gk: 0; }
 
-/* Tiled: a hairline grid. The variables above zero the gaps and radii; these rules draw the lines between
-   regions and take away what the flat finish still shadows. Each pane owns its right and bottom hairline, and
-   the tab bar, sidebar and title bar own the top and left, so no line is drawn twice. */
 .mx-app .title-bar { background: var(--tbar); border-bottom: var(--tbar-b); }
-:root[data-style="tiled"] .mx-pane { border-width: 0 1px 1px 0; }
-:root[data-style="tiled"] .mx-pane-head { border-bottom: 1px solid var(--pane-line); }
-:root[data-style="tiled"] .mx-pane.is-focused,
-:root[data-style="tiled"] .mx-pane.is-focused:hover { box-shadow: inset 0 0 0 1px var(--accent-line); }
-:root[data-style="tiled"] .mx-inspect { border-width: 0 0 0 1px; box-shadow: none; }
-/* Popovers carry a hairline and no blur, and sit square. */
-:root[data-style="tiled"] :is(.mx-menu, .mx-tip, .mx-rail-popover, .mx-status-pop, .mx-stack-menu, .mx-alltabs-menu, .mx-palette, .mx-sessionmenu, .mx-picker-menu, .mx-notice, .mx-toast, .mx-upd-card, .mx-rename, .mx-settings, .mx-inbox) {
-  border-radius: 0; box-shadow: var(--sh-pop); backdrop-filter: none;
-}
-:root[data-style="tiled"] :is(.mx-menu-item, .mx-alltabs-row, .mx-stack-menu-row, .mx-palette-row, .mx-keycap, .mx-tab-close, .mx-pane-control, .mx-group-head, .mx-new-button, .mx-sb-modes, .mx-sb-mode) { border-radius: 0; }
-/* The four corners of the pane area carry a static 9px "+", drawn as two 1px bars each in one pseudo-element. */
-:root[data-style="tiled"] .mx-panes { position: relative; }
-:root[data-style="tiled"] .mx-panes::after {
-  content: ""; position: absolute; inset: 0; z-index: 4; pointer-events: none;
-  background:
-    linear-gradient(var(--tick), var(--tick)) left 0 top 4px / 9px 1px no-repeat,
-    linear-gradient(var(--tick), var(--tick)) left 4px top 0 / 1px 9px no-repeat,
-    linear-gradient(var(--tick), var(--tick)) right 0 top 4px / 9px 1px no-repeat,
-    linear-gradient(var(--tick), var(--tick)) right 4px top 0 / 1px 9px no-repeat,
-    linear-gradient(var(--tick), var(--tick)) left 0 bottom 4px / 9px 1px no-repeat,
-    linear-gradient(var(--tick), var(--tick)) left 4px bottom 0 / 1px 9px no-repeat,
-    linear-gradient(var(--tick), var(--tick)) right 0 bottom 4px / 9px 1px no-repeat,
-    linear-gradient(var(--tick), var(--tick)) right 4px bottom 0 / 1px 9px no-repeat;
-}
 
 /* Settings › Appearance › Window style cards. */
 .mx-style-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; padding: 0 14px 14px; }
@@ -1152,7 +621,6 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 .mx-sp-pane b:nth-child(1) { width: 40%; background: var(--accent); }
 .mx-sp-pane b:nth-child(2) { width: 92%; }
 .mx-sp-pane b:nth-child(3) { width: 66%; }
-.mx-style-preview.is-tiled { --g: 0; --r: 0; overflow: hidden; }
 .mx-style-preview.is-glass { --r: 8px; background: radial-gradient(90px 50px at 8% 0, var(--accent-soft), transparent), var(--well); }
 .mx-style-preview.is-glass .mx-sp-side, .mx-style-preview.is-glass .mx-sp-pane { background: var(--main); box-shadow: inset 0 0 0 1px var(--pane-line); }
 .mx-style-name { display: flex; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 600; color: var(--fg); }
@@ -1195,36 +663,8 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 .mx-app[data-side="right"] .mx-sidebar-resizer { right: auto; left: 0; }
 .mx-app[data-side="right"] .mx-sidebar-resizer::after { right: auto; left: 0; }
 .mx-app[data-side="right"] .mx-inbox { right: auto; left: 12px; animation-name: v14inspL; }
-.mx-app[data-side="right"] .mx-tabbar > .mx-inbox-button:not(.mx-sessions-button) { order: -1; }
-.mx-app[data-side="right"] .mx-railpop::before { left: auto; right: -5px; border-left: 0; border-bottom: 0; border-right: 1px solid var(--line2); border-top: 1px solid var(--line2); }
 
 /* The session hover card. */
-.mx-sc-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.mx-sc-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.mx-sc-project { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mx-sc-title strong { font-size: 13.5px; font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mx-sc-chip { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 9px; border-radius: 999px; font-size: 11.5px; font-weight: 500; background: rgba(255, 255, 255, .05); box-shadow: inset 0 0 0 1px var(--pane-line); color: var(--muted); }
-.mx-sc-chip.is-working { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); color: var(--accent); }
-.mx-sc-chip.is-needs { background: var(--warn-soft); box-shadow: inset 0 0 0 1px var(--warn-line); color: var(--warn); }
-.mx-sc-chip.is-done { background: rgb(141 184 155 / 12%); box-shadow: inset 0 0 0 1px rgb(141 184 155 / 30%); color: var(--ok); }
-.mx-sc-chip.is-error { background: var(--danger-soft); box-shadow: inset 0 0 0 1px var(--danger-line); color: var(--danger); }
-.mx-sc-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 11.5px; color: var(--dim); }
-.mx-sc-path { display: block; direction: rtl; text-align: left; font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mx-sc-activity { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.mx-sc-activity li { display: flex; align-items: flex-start; gap: 8px; }
-.mx-sc-glyph { flex: none; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; font-size: 11px; font-weight: 700; background: rgba(255, 255, 255, .06); }
-.mx-sc-glyph.is-ok { color: var(--ok); background: rgb(141 184 155 / 14%); }
-.mx-sc-glyph.is-warn { color: var(--warn); background: var(--warn-soft); }
-.mx-sc-glyph.is-accent { color: var(--accent); background: var(--accent-soft); }
-.mx-sc-glyph.is-err { color: var(--danger); background: var(--danger-soft); }
-.mx-sc-line { min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: 12.5px; color: var(--fg2); }
-.mx-sc-line small { font-family: var(--mono); font-size: 11px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mx-sc-panes-head { margin: 4px 0 4px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
-.mx-sc-panes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.mx-sc-pane { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 6px; border-radius: 8px; font-size: 12px; }
-.mx-sc-pane.is-current { background: var(--sel); }
-.mx-sc-pane-name { font-family: var(--mono); font-weight: 600; color: var(--fg); }
-.mx-sc-pane-dir { flex: 1; min-width: 0; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mx-upd-chip { font-size: 11.5px; padding: 3px 9px; border-radius: 999px; background: rgba(255, 255, 255, .06); color: var(--muted); white-space: nowrap; }
 .mx-upd-chip.is-available, .mx-upd-chip.is-downloading, .mx-upd-chip.is-ready { background: var(--accent-soft); color: var(--accent); }
 .mx-upd-chip.is-failed { background: var(--danger-soft); color: var(--danger); }
@@ -1248,45 +688,15 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
    Transform and opacity only; Reduce motion removes every animation at the window root. */
 @keyframes mx-view-from-right { from { transform: translateX(18px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes mx-view-from-left { from { transform: translateX(-18px); opacity: 0; } to { transform: none; opacity: 1; } }
-.mx-pane-body { position: relative; }
 .mx-chat-in { animation: mx-view-from-right .42s cubic-bezier(.16, 1, .3, 1) both; }
 .mx-term-in { animation: mx-view-from-left .42s cubic-bezier(.16, 1, .3, 1) both; }
-/* The terminal stays mounted and keeps its size while the chat covers it; hidden, it is not reached by Tab or a screen reader. */
-.mx-pane-body.is-chat > :not(.mx-chat-layer) { visibility: hidden; }
-.mx-chat-layer { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; min-height: 0; background: var(--pane); font-family: "Geist Variable", system-ui, sans-serif; line-height: normal; cursor: default; }
 
 /* The activity bar (v19 §9): a 48px card on the side opposite the sessions sidebar. The window's row-reverse
    for a right-hand sidebar puts it on the far left without a rule of its own. */
 .mx-activity { flex: none; align-self: stretch; width: 48px; margin: var(--sbm-activity, var(--pg) var(--pg) var(--pg) 0); display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; border-radius: var(--r14); background: var(--card, var(--pane)); border: 1px solid var(--pane-line); box-shadow: var(--sh); }
 .mx-app[data-side="right"] .mx-activity { margin: var(--pg) 0 var(--pg) var(--pg); }
-.mx-activity-button { position: relative; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 9px; color: var(--muted); transition: background .15s, color .15s, transform .12s; }
-.mx-activity-button:hover { background: var(--raise); color: var(--fg); }
-.mx-activity-button:active { transform: scale(.9); }
-.mx-activity-button[aria-pressed="true"] { background: var(--raise); color: var(--fg); }
-.mx-activity-button[aria-pressed="true"]::before { content: ""; position: absolute; top: 9px; bottom: 9px; right: -6px; width: 2px; border-radius: 2px; background: var(--accent); }
-.mx-app[data-side="right"] .mx-activity-button[aria-pressed="true"]::before { right: auto; left: -6px; }
-.mx-activity-button[aria-disabled="true"] { opacity: .45; }
-.mx-activity-badge { position: absolute; top: 1px; right: 0; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px; font-size: 9.5px; font-weight: 700; line-height: 15px; text-align: center; color: var(--fg2); background: var(--raise); box-shadow: 0 0 0 2px var(--card, var(--pane)); font-variant-numeric: tabular-nums; }
-.mx-activity-badge.is-needs { color: #1a1206; background: var(--warn); }
-.mx-activity-rule { width: 22px; height: 1px; margin: 4px 0; background: var(--pane-line); }
-:root[data-finish="tiled"] .mx-activity, :root[data-finish="flat"] .mx-activity { border-radius: 0; }
-@media (prefers-reduced-motion: reduce) { .mx-activity-button { transition: none; } }
 
 /* What a stopped agent asks, above the message box: a question with its choices as rows, or a permission with its buttons. */
-.mx-ask { flex: none; margin: 0 16px 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; border-radius: var(--r14); background: color-mix(in srgb, var(--warn) 7%, var(--pane)); border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--pane-line)); }
-.mx-ask-head { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--fg); }
-.mx-ask-head strong { font-weight: 600; }
-.mx-ask-dot { width: 7px; height: 7px; border-radius: 2px; background: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 22%, transparent); }
-.mx-ask-question { margin: 0; font-size: 14px; line-height: 1.5; color: var(--fg); text-wrap: pretty; }
-.mx-ask-detail { margin: 0; max-height: 128px; overflow: auto; padding: 8px 10px; border-radius: 8px; background: var(--term); font-family: var(--mono); font-size: 12px; color: var(--fg2); white-space: pre-wrap; overflow-wrap: anywhere; }
-.mx-ask-choices { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.mx-ask-choice { width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; font-size: 13px; text-align: left; color: var(--fg); background: var(--raise); border: 1px solid var(--pane-line); transition: background .15s, border-color .15s, transform .12s; }
-.mx-ask-choice:hover:not(:disabled) { border-color: var(--accent-line, var(--accent)); background: var(--accent-soft); }
-.mx-ask-choice:active:not(:disabled) { transform: scale(.99); }
-.mx-ask-choice:disabled { opacity: .6; }
-.mx-ask-choice kbd { flex: none; min-width: 20px; height: 20px; display: grid; place-items: center; border-radius: 6px; font-family: var(--mono); font-size: 11px; color: var(--muted); background: rgba(255, 255, 255, .06); }
-.mx-ask-actions { display: flex; gap: 8px; }
-.mx-ask-foot { margin: 0; font-size: 12px; color: var(--dim); }
 @media (prefers-reduced-motion: reduce) { .mx-ask-choice { transition: none; } }
 
 /* The focused pane's machine, at the left of the status bar (v19 §8). */
@@ -1297,32 +707,8 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 .mx-sb-machine-dot.is-warn { background: var(--warn); }
 .mx-sb-machine-dot.is-bad { background: transparent; box-shadow: inset 0 0 0 1.5px var(--danger); }
 
-/* The sidebar header's machine menu: it stands where the "Projects" title stood. */
-.mx-machine-switcher { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 2px 6px; margin-left: -6px; border-radius: 8px; color: var(--fg2); }
-.mx-machine-switcher:hover, .mx-machine-switcher[data-state="open"] { background: var(--raise); color: var(--fg); }
-.mx-machine-switcher .mx-sidebar-title { color: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mx-machine-switcher-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
-.mx-machine-menu { min-width: 220px; }
-
-/* A narrow pane folds its header (v19 §2.1): under 600px Broadcast, Split and Maximize move into the ⋯ menu and the
-   project and usage pills go first; under 420px the folder goes too. Close stays. */
-.mx-pane-head { container-type: inline-size; container-name: panehead; }
-.mx-pane-more { display: none; }
-@container panehead (max-width: 600px) {
-  .mx-pane-control.is-foldable { display: none; }
-  .mx-pane-more { display: inline-flex; align-items: center; justify-content: center; }
-  .mx-usage-pill, .mx-repo-pill { display: none; }
-}
-@container panehead (max-width: 420px) { .mx-pane-cwd { display: none; } }
-
-/* "+2 panes" on a row: quiet shell splits of its tab, folded into it. */
-.mx-split-count { flex: none; padding: 0 6px; border-radius: 999px; font-size: 10.5px; line-height: 16px; color: var(--muted); background: rgba(255, 255, 255, .06); font-variant-numeric: tabular-nums; }
-
-/* The tab's hover card is live: a pane row jumps to its pane and its × closes it. */
-.mx-rail-popover.is-live { pointer-events: auto; }
-.mx-pop-pane.is-focused .mx-pop-title { color: var(--accent); }
-.mx-pop-pane-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 4px 6px; margin: -4px 0 -4px -6px; border-radius: 8px; text-align: left; }
-.mx-pop-pane-main:hover { background: var(--raise); }
-.mx-pop-pane-close { flex: none; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; color: var(--dim); opacity: 0; transition: opacity .12s, background .12s, color .12s; }
-.mx-pop-pane:hover .mx-pop-pane-close, .mx-pop-pane-close:focus-visible { opacity: 1; }
-.mx-pop-pane-close:hover { color: var(--danger); background: var(--danger-soft, rgba(255, 90, 90, .12)); }
+/* Flat sidebar: one list of two-line rows, a filter field, and a 60px rail. Status is the badge and nothing else
+   moves a row, so none of these animates. */
+.mx-app-icon.size-32 { width: 32px; height: 32px; border-radius: 9px; font-size: 13px; }
+.mx-app[data-side="right"] .mx-drawer { left: auto; right: 0; }
+.mx-palette-input input:focus-visible { outline: none; }

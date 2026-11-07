@@ -1,11 +1,8 @@
 import type { UpdaterState } from '@/features/updates/useUpdater'
-import { Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
-import { styleUnderCap, type EffectStyle } from '@/lib/animation-level'
-import { EffectsContext, type AppliedEffect, type StatusEffectKey } from '@/features/workspace/components/motion'
-import { StatusEffect } from '@/features/workspace/components/StatusEffect'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
 import { THEMES } from '@/features/workspace/theme/themes'
 import { ThemePicker } from './ThemePicker'
-import { SpinnerPicker, SpinnerPreview } from './SpinnerPicker'
+import { SpinnerPicker } from './SpinnerPicker'
 import { PerformanceSection } from './PerformanceSection'
 import { hotkeyRows, type Platform } from '@/features/workspace/model/shortcuts'
 import { CHAT_AGENTS } from '@/features/workspace/model/chatView'
@@ -32,7 +29,17 @@ export type MachinesInfo = {
   onRemove: (name: string) => void
   /** Allow or stop one of a machine's powers over this computer. */
   onGrant: (name: string, grant: Grant, on: boolean) => void
-  /** Puts a command on the clipboard to run in a terminal; the app never runs it on a machine. */
+  /**
+   * Installs this version on a machine and restarts its daemon there; its saved sessions come
+   * back. Settles when the update ended and has already told the person how it went.
+   */
+  onUpdate: (name: string, install: boolean, whenIdle: boolean) => Promise<void>
+  /**
+   * How many sessions are open on a machine and how many are busy; null when it cannot say (its
+   * app is too old, or it cannot be reached). The update question uses it to say what it will interrupt.
+   */
+  onCheckActivity: (name: string) => Promise<{ sessions: number; busy: number } | null>
+  /** Puts the same command on the clipboard, to run in a terminal instead. */
   onCopyCommand: (command: string) => void
   add: {
     /** Windows has no ssh agent by default: the page says to use keys. */
@@ -343,11 +350,8 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
         </Card>
       )}
       <Card title="Sessions" color="var(--ansi-mag)" iconPath={<><rect x="4" y="4" width="16" height="7" rx="2" /><rect x="4" y="13" width="16" height="7" rx="2" /><path d="M8 7.5h.01M8 16.5h.01" /></>}>
-        <Row label="Reopen tabs on launch" detail="Restore the tabs and splits you had last time.">
-          <Switch label="Reopen tabs on launch" checked={preferences.restoreTabs} onChange={(value) => { update('restoreTabs', value) }} />
-        </Row>
-        <Row label="Group sessions by" detail="Sessions outside a git repo are grouped by their own folder.">
-          <Segmented label="Group sessions by" value={preferences.groupBy} options={[['repo', 'Repository'], ['folder', 'Folder']] as const} onChange={(value) => { update('groupBy', value) }} />
+        <Row label="Reopen layout on launch" detail="Restore the panes and splits you had last time.">
+          <Switch label="Reopen layout on launch" checked={preferences.restoreLayout} onChange={(value) => { update('restoreLayout', value) }} />
         </Row>
         <Row label="Closing the window" detail="Sessions are owned by maittyd and keep running.">
           <span style={{ fontSize: 12, color: 'var(--dim)' }}>Always keeps running</span>
@@ -377,19 +381,11 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
 }
 
 const STYLE_CARDS: ReadonlyArray<{ id: StyleChoice; name: string; blurb: string; foot: string }> = [
-  { id: 'flat', name: 'Flat', blurb: 'Solid panels, soft corners, quiet', foot: 'Solid panels, no glow. Status sweeps start off.' },
-  { id: 'tiled', name: 'Tiled', blurb: 'Edge-to-edge panes, square corners, hairline dividers', foot: 'Edge-to-edge panes with square corners. Status sweeps start off.' },
-  { id: 'glass', name: 'Glass', blurb: 'Floating frosted cards, colour icons, status sweeps', foot: 'Floating glass cards and glow.' },
+  { id: 'flat', name: 'Flat', blurb: 'Solid panels, soft corners, quiet', foot: 'Solid panels and no glow.' },
+  { id: 'glass', name: 'Glass', blurb: 'Light sheen on the cards, frosted menus and dialogs', foot: 'Floating glass menus and dialogs, and a glow. The default.' },
 ]
 const CHAT_VIEW_OPTIONS = [['terminal', 'Terminal'], ['chat', 'Chat']] as const
 const ICON_COLOR_OPTIONS = [['color', 'Color'], ['grayscale', 'Grayscale']] as const
-const TRAY_NOTES = {
-  tree: 'Indented under the main row with guide lines, like a file tree.',
-  stacked: 'One per line under the main row, with folder and status.',
-  icons: 'Small icon tabs under the main row.',
-  names: 'Small named tabs under the main row.',
-} as const
-const TRAY_OPTIONS = [['tree', 'Tree'], ['names', 'Names'], ['icons', 'Icons'], ['stacked', 'Stacked']] as const
 const UPDATE_CHIP: Record<UpdaterState['status'], string> = { idle: 'Not checked', checking: 'Checking…', current: 'Up to date', available: 'Update available', downloading: 'Downloading', ready: 'Ready to restart', failed: 'Failed' }
 
 /** The one button that fits where the update is. */
@@ -523,30 +519,12 @@ function TerminalSection({ preferences, update }: { preferences: SettingsPrefere
 }
 
 
-const EFFECT_STYLE_OPTIONS = [['waves', 'Waves'], ['sweep', 'Sweep']] as const
-const ANIMATION_OPTIONS = [['auto', 'Auto'], ['full', 'Full'], ['light', 'Light'], ['off', 'Off']] as const
-const WORKING_SCOPE_OPTIONS = [['all', 'All'], ['selected', 'Selected'], ['off', 'Off']] as const
-
-/** What the preview says: the chosen style, or why a cheaper one (or none) is showing. */
-function effectNote(wanted: EffectStyle, shown: EffectStyle | null, on: boolean): string {
-  if (!on) return 'Off'
-  if (shown === null) return 'Off: animations are turned down'
-  if (shown !== wanted) return 'Shown as Sweep: the Animations level does not allow Waves'
-  return shown === 'waves' ? 'Soft bands drift while it lasts' : 'One band crosses as it starts, then rests'
-}
-
 const MODE_OPTIONS = [['system', 'System'], ['dark', 'Dark'], ['light', 'Light']] as const
 
 function AppearanceSection({ preferences, update, systemReducedMotion, systemDark, onPreviewTheme }: { preferences: SettingsPreferences; update: Update; systemReducedMotion: boolean; systemDark: boolean; onPreviewTheme: (name: string | null) => void }) {
   const reduced = preferences.reduceMotion || systemReducedMotion
   const darkInUse = preferences.themeMode === 'dark' || (preferences.themeMode === 'system' && systemDark)
   const modeNote = preferences.themeMode === 'system' ? `Follows your OS. Right now: ${systemDark ? 'dark' : 'light'}.` : `Always uses your ${preferences.themeMode} theme.`
-  const { cap } = useContext(EffectsContext)
-  const effects: Array<{ key: 'effectWorking' | 'effectNeedsYou' | 'effectDone'; styleKey: 'effectStyleWorking' | 'effectStyleNeedsYou' | 'effectStyleDone'; status: StatusEffectKey; label: string; color: string; glyph: ReactNode; short: string }> = [
-    { key: 'effectWorking', styleKey: 'effectStyleWorking', status: 'working', label: 'Working', color: 'var(--accent)', glyph: <SpinnerPreview spinner={preferences.spinner} reduced={reduced} />, short: '0:42' },
-    { key: 'effectNeedsYou', styleKey: 'effectStyleNeedsYou', status: 'needs', label: 'Needs you', color: 'var(--warn)', glyph: '◆', short: 'Allow?' },
-    { key: 'effectDone', styleKey: 'effectStyleDone', status: 'done', label: 'Done', color: 'var(--ok)', glyph: '✓', short: 'Done' },
-  ]
   return (
     <>
       <Card title="Window style" color="var(--accent)" iconPath={<><rect x="4" y="5" width="16" height="14" rx="3" /><path d="M4 10h16" /></>} meta={<span className="mx-scard-meta">Same features, different finish</span>}
@@ -591,13 +569,10 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
         </Row>
       </Card>
       <Card title="Sidebar" color="var(--accent)" iconPath={<><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M9 4v16" /></>}
-        foot={<>{TRAY_NOTES[preferences.trayStyle]} Sessions keep the order they were created in; the one you are in is the full card where it sits.</>}
+        foot="Sessions keep the order they were created in."
       >
         <Row label="Sidebar position" detail="Which side of the window the sidebar sits on. Inspect and the inbox open from the other side.">
           <Segmented label="Sidebar position" value={preferences.sidebarSide} options={SIDE_OPTIONS} onChange={(value) => { update('sidebarSide', value) }} />
-        </Row>
-        <Row label="Other sessions in a project" detail="How the sessions after the main row sit. Those before it are always tree rows.">
-          <Segmented label="Other sessions in a project" value={preferences.trayStyle} options={TRAY_OPTIONS} onChange={(value) => { update('trayStyle', value) }} />
         </Row>
       </Card>
       <Card title="Interface size" color="var(--ansi-green)" iconPath={<path d="M4 7h16M4 12h10M4 17h13" />}>
@@ -619,34 +594,8 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
         </Row>
       </Card>
       <Card title="Motion" color="var(--ansi-blue)" iconPath={<><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 0 0 16" /></>}>
-        <Row label="Reduce motion" detail="Turns off the shimmer, pulses and slide-ins. Your system setting is always respected.">
+        <Row label="Reduce motion" detail="Turns off pulses, slide-ins and size animations. Your system setting is always respected.">
           <Switch label="Reduce motion" checked={preferences.reduceMotion} onChange={(value) => { update('reduceMotion', value) }} />
-        </Row>
-        <Row label="Animations" detail="Auto starts with what this window can draw, and steps down if frames run slow. Full always allows Waves, Light only Sweep, Off no status effects. Reduce motion wins over all of them.">
-          <Segmented label="Animations" value={preferences.animations} options={ANIMATION_OPTIONS} onChange={(value) => { update('animations', value) }} />
-        </Row>
-        <div className={`mx-effects${reduced ? ' is-locked' : ''}`}>
-          <div className="mx-scard-text"><span>Status effects</span><span>{reduced ? 'Off while Reduce motion is on.' : 'Choose which states animate on sidebar rows and tabs, and how. Icons and words always show.'}</span></div>
-          {effects.map((effect) => {
-            const on = preferences[effect.key] && !reduced
-            const wanted = preferences[effect.styleKey]
-            const shown = on ? styleUnderCap(wanted, cap) : null
-            const applied: AppliedEffect = { className: `mx-fx-${effect.status} mx-fx-strong`, status: effect.status, style: shown }
-            return (
-              <div key={effect.key} className="mx-effect-row">
-                <span className={`mx-effect-chip${shown ? ` ${applied.className}` : ''}`} style={{ color: effect.color }} aria-hidden="true"><StatusEffect effect={applied} />{effect.glyph}<span>{effect.short}</span></span>
-                <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  <span style={{ fontSize: 12.5, color: 'var(--fg)' }}>{effect.label}</span>
-                  <span style={{ fontSize: 11.5, color: 'var(--dim)' }}>{effectNote(wanted, shown, on)}</span>
-                </span>
-                <Segmented label={`${effect.label} style`} value={wanted} options={EFFECT_STYLE_OPTIONS} onChange={(value) => { update(effect.styleKey, value) }} />
-                <Switch label={effect.label} checked={on} disabled={reduced} onChange={(value) => { update(effect.key, value) }} />
-              </div>
-            )
-          })}
-        </div>
-        <Row label="Working effect" detail="Which working rows and tabs animate: all of them, only the one you are in, or none.">
-          <Segmented label="Working effect" value={preferences.workingScope} options={WORKING_SCOPE_OPTIONS} onChange={(value) => { update('workingScope', value) }} />
         </Row>
       </Card>
     </>
@@ -677,11 +626,7 @@ function HotkeysSection({ platform }: { platform: Platform }) {
 
 /** Native notifications: sent only while the window is in the background, for the session you are not looking at. */
 function UsageSection({ usage }: { usage: UsageInfo }) {
-  return (
-    <Card title="Usage & cost" color="var(--ansi-mag)" iconPath={<path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />}>
-      <UsagePage {...usage} />
-    </Card>
-  )
+  return <UsagePage {...usage} />
 }
 
 const AGENT_OPTIONS = [['claude', 'Claude'], ['codex', 'Codex']] as const
@@ -849,6 +794,23 @@ function AddMachineCard({ add }: { add: MachinesInfo['add'] }) {
 
 function MachineList({ machines }: { machines: MachinesInfo }) {
   const [confirming, setConfirming] = useState<string | null>(null)
+  const [confirmingUpdate, setConfirmingUpdate] = useState<string | null>(null)
+  const [activity, setActivity] = useState<{ sessions: number; busy: number } | null>(null)
+  const [checking, setChecking] = useState<string | null>(null)
+  const askUpdate = (name: string) => {
+    setChecking(name)
+    setActivity(null)
+    void machines.onCheckActivity(name)
+      .catch(() => null)
+      .then((found) => { setActivity(found); setConfirmingUpdate(name) })
+      .finally(() => { setChecking(null) })
+  }
+  const [updating, setUpdating] = useState<string | null>(null)
+  const runUpdate = (name: string, install: boolean, whenIdle: boolean) => {
+    setConfirmingUpdate(null)
+    setUpdating(name)
+    void machines.onUpdate(name, install, whenIdle).finally(() => { setUpdating(null) })
+  }
   const icon = <><rect x="4" y="4" width="16" height="7" rx="2" /><rect x="4" y="13" width="16" height="7" rx="2" /><path d="M8 7.5h.01M8 16.5h.01" /></>
   if (!machines.known) {
     return <Card title="Machines" color="var(--ansi-green)" iconPath={icon}><p className="mx-scard-note" role="status">Loading machines…</p></Card>
@@ -866,6 +828,8 @@ function MachineList({ machines }: { machines: MachinesInfo }) {
         const name = head.label
         const chip = head.chip
         const asking = confirming === name
+        const askingUpdate = confirmingUpdate === name
+        const busyUpdating = updating === name
         return (
           <Fragment key={head.key}>
           <div className="mx-scard-row mx-machine-row">
@@ -878,8 +842,25 @@ function MachineList({ machines }: { machines: MachinesInfo }) {
               {head.why !== null && head.chip?.tone === 'bad' && <span className="mx-machine-fix">{head.why}</span>}
               {head.updateCommand !== null && <span className="mx-machine-fix mono">{head.updateCommand}</span>}
               {asking && <span role="alert">Removes {name} from this list. Its sessions keep running on {name}.</span>}
+              {askingUpdate && (
+                <span role="alert">
+                  {activity === null
+                    ? `Updating ${name} restarts its daemon, and ${name} could not say what is open on it. `
+                    : `${name} has ${String(activity.sessions)} ${activity.sessions === 1 ? 'session' : 'sessions'} open, ${String(activity.busy)} busy. Updating restarts its daemon. `}
+                  Its sessions are saved and come back with their agents resumed; an agent in the middle of a turn loses that turn if you update now. Update when idle waits up to half an hour for nothing to be running first.
+                </span>
+              )}
+              {busyUpdating && <span role="status">Updating {name}…</span>}
             </div>
-            {asking
+            {askingUpdate
+              ? (
+                <>
+                  <button type="button" className="mx-scard-button is-danger" onClick={() => { runUpdate(name, head.updateCommand?.includes('--install') === true, false) }}>Update {name} now</button>
+                  <button type="button" className="mx-scard-button" onClick={() => { runUpdate(name, head.updateCommand?.includes('--install') === true, true) }}>Update {name} when idle</button>
+                  <button type="button" className="mx-scard-button" onClick={() => { setConfirmingUpdate(null) }}>Cancel</button>
+                </>
+              )
+              : asking
               ? (
                 <>
                   <button type="button" className="mx-scard-button is-danger" onClick={() => { setConfirming(null); machines.onRemove(name) }}>Remove {name}</button>
@@ -888,6 +869,7 @@ function MachineList({ machines }: { machines: MachinesInfo }) {
               )
               : (
                 <>
+                  {head.updateCommand !== null && <button type="button" className="mx-scard-button" disabled={updating !== null || checking !== null} aria-label={`Update ${name}`} onClick={() => { askUpdate(name) }}>{checking === name ? 'Checking…' : 'Update'}</button>}
                   {head.updateCommand !== null && <button type="button" className="mx-scard-button" aria-label={`Copy the update command for ${name}`} onClick={() => { if (head.updateCommand !== null) machines.onCopyCommand(head.updateCommand) }}>Copy command</button>}
                   <button type="button" className="mx-scard-button" disabled={chip?.word === 'connected'} aria-label={`Retry ${name}`} onClick={() => { machines.onRetry(name) }}>Retry</button>
                   <button type="button" className="mx-scard-button" aria-label={`Remove ${name}`} onClick={() => { setConfirming(name) }}>Remove</button>

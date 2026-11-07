@@ -26,6 +26,12 @@ and the same bugs came back.
 6. **An agent session is one PTY with a chat view.** The agent runs as the user would run it, so
    its native terminal is always there. The chat view follows the provider's own transcript. The
    composer types into the PTY only while the trusted status says the agent waits for a prompt.
+7. **A chat conversation that was running when the daemon stopped is resumed by the daemon, once.**
+   At startup the daemon fences each running conversation to a new generation, then (with
+   `restore.conversations` on) starts it again on its own provider session, as the daemon itself
+   and for an existing conversation only: it never creates one, adopts a thread, or falls back to
+   a new or most-recent conversation. A resume that fails is shown on the conversation and is not
+   retried until a person resumes it.
 
 ## Alternatives considered
 

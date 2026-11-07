@@ -172,14 +172,7 @@ import './App.css'
 const OTHER_FOLDERS = 'Other folders'
 
 /** The sidebar group a terminal session belongs to. */
-function sessionGroup(
-  conversation: Conversation,
-  groupBy: 'repo' | 'folder',
-): string {
-  if (groupBy === 'folder') {
-    const folder = conversation.cwd ?? conversation.folder
-    return folder.split(/[\\/]/).filter(Boolean).at(-1) ?? folder
-  }
+function sessionGroup(conversation: Conversation): string {
   return conversation.repo ?? OTHER_FOLDERS
 }
 
@@ -274,9 +267,9 @@ function PreviewApp() {
       const started = startedWith[conversation.id]
       return {
         ...conversation,
-        // Terminal sessions group by repository or folder (Settings); the browser preview keeps its own.
+        // Terminal sessions group by repository; the browser preview keeps its own.
         ...(desktop
-          ? { project: sessionGroup(conversation, settingsPreferences.groupBy) }
+          ? { project: sessionGroup(conversation) }
           : {}),
         // The daemon holds the name for every client; only the browser preview keeps its own.
         title: desktop
@@ -298,7 +291,6 @@ function PreviewApp() {
     sessionsQuery.data,
     previewSessions,
     sidebarPreferences.renamedTitles,
-    settingsPreferences.groupBy,
     startedWith,
   ])
   const archivedIds = useMemo(
@@ -312,12 +304,12 @@ function PreviewApp() {
   )
   const [selectedId, setSelectedId] = useState(
     () =>
-      (readSettingsPreferences().restoreTabs
+      (readSettingsPreferences().restoreLayout
         ? readSelectedConversation()
         : null) ?? (desktop ? '' : 'codex-43'),
   )
   const [savedOpenTabIds, setSavedOpenTabIds] = useState(() =>
-    readSettingsPreferences().restoreTabs ? readOpenConversationTabs() : [],
+    readSettingsPreferences().restoreLayout ? readOpenConversationTabs() : [],
   )
   const [messagesById, setMessagesById] = useState<Record<string, Message[]>>(
     () => structuredClone(previewMessages),

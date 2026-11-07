@@ -12,10 +12,10 @@ export type ChatAgent = 'claude' | 'codex'
 
 export const CHAT_AGENTS: readonly ChatAgent[] = ['claude', 'codex']
 
-/** A per-agent choice of the view a session opens in. Terminal unless the user changes it. */
+/** A per-agent choice of the view a session opens in. An agent opens as its chat unless the user changes it. */
 export type ChatViewDefaults = Readonly<Record<ChatAgent, PaneView>>
 
-export const DEFAULT_CHAT_VIEWS: ChatViewDefaults = { claude: 'terminal', codex: 'terminal' }
+export const DEFAULT_CHAT_VIEWS: ChatViewDefaults = { claude: 'chat', codex: 'chat' }
 
 /** The daemon conversation that carries a session's structured events. */
 export type ChatLink = {

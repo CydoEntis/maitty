@@ -8,43 +8,39 @@ from the home network, so they are parked here. **Delete this file once they are
 Read this first. It orders every open fix in this file. The order is a proposal: the owner can
 change it, and an agent does not.
 
-**Order changed by the owner (2026-11-05, evening).** Phase 2 goes first, then v0.65.1 without the
-desktop app (`apps/gui/RELEASE-HOLD` holds it out), so the terminal fixes in #275 and #276 ship.
-Phase 1 follows.
+**v0.66.0 was released on 2026-11-06** (TUI and desktop app, all platforms; its install jobs passed). `dev` is ahead of it by the
+fleets-and-ships redesign below; nothing after v0.66.0 has been released.
 
-**v0.65.1 is out (2026-11-05)**, without the desktop app: the updater still offers 0.64.0. Phase 1
-is next. What is left of phase 2: ticket 26 (draft #281), ten passes in a row on `windows-latest`
-for 28 and 29, and ticket 27.
-
-**Resume here (rewritten 2026-11-06, afternoon). Read this block first; the two below it are older.**
-- **State.** `dev` holds everything from the day's sessions (the integration branch `test/integration` was fast-forwarded
-  into it; nothing is ahead of it). v0.65.1 is still the last release and the desktop app is still held out by
-  `apps/gui/RELEASE-HOLD`. **The owner plans to lift the hold and do a full release at home.** The release script needs
-  `dev`'s head to have passed CI, so merge first, then wait for one green run, then `scripts/release.sh X.Y.Z`.
-- **Merge before releasing:** pull requests #281 (`fix/hub-test-shell-isolation`) and #271
-  (`ci/time-tests-not-the-build`), the two aimed at Windows test hangs. Leave `fix/desktop-upgrade-path` alone: its fix is
-  already in `dev` from `fix/desktop-upgrade-path-v2`, and the rest is older docs. `debug/windows-hang-probe` was deleted.
-  `main` stays behind until the owner says.
-- **Not checked anywhere but Linux:** the desktop app on macOS and Windows (the release workflow builds those installers,
-  CI does not). Typing lag is fixed on WebKitGTK by drawing the terminal with the DOM renderer; Windows and macOS were not
-  re-measured on this build.
-- **Built today, hand-checked by the owner:** the mode and model chip, live working status, agent chevron menu, calm
-  Inspect error screens, spinners that keep turning when unfocused, Inspect project, the status bar machine.
-  **Built, tests pass, not looked at on screen:** the activity bar and Inspect drawer (v19 section 9), four-way splits
-  (desktop menu; terminal menu has Split left and Split up), folding quiet shell splits into "+N panes", the tab hover
-  card's clickable rows, the machine filter in the sidebar header, the narrow pane header, the terminal app folding its
-  sidebar when panes would be under 20 columns, and the fix that keeps a new split off the sidebar until it is placed
-  (desktop and terminal; the owner reported the jump twice, so check both).
-- **Decided 2026-11-06:** Brain dump is out; the extensions store and panels are later; project defaults are on hold; a
-  shell gets no Terminal/Chat switch. See [FEATURES](FEATURES.md).
-- **v19 left, if wanted (the owner starts this at home):** close with Undo (needs the daemon to delay the kill),
-  the "service is down" card (needs a real start-service command), the shared TUI config card and TUI import, the
-  Performance page's live strip, the 900 to 1099px rail rule, and dragging the line between stacked panes.
-- **Open, not fixed:** Stop in the chat can lag a moment behind the agent winding down (not reproduced from code);
-  several old daemons from earlier test servers still run and ring on their own (list them with
-  `ps -eo pid,args | grep "maitty.* daemon"`, stop them with `maitty kill-server` and that socket); Codex chat user
-  messages and its mode chip were parked by the owner; "Start a Claude chat" with Full access is now reachable only by
-  Ctrl+Shift+E on a shell.
+**Resume here (rewritten 2026-11-07). Read this block first; the notes below it are older.**
+- **State.** `dev` holds a redesign built overnight to the owner's specs: desktop v31 and TUI v27 ("Fleets and Ships",
+  `docs/FLAT-SESSIONS-PLAN.md` sections 7 and 8 say what was decided and why). A **fleet** is a named group on one machine
+  (the daemon's workspace); a **ship** is a session in it; **tabs** are one per ship of the selected fleet. Protocol is
+  **75**. The full gate passed on the pushed head (2,334 Rust tests, 1,427 frontend tests, clippy, Linux, macOS and Windows
+  checks, GUI dependency check). CI on GitHub must be read before trusting it.
+- **Built on the daemon:** per-session `diff_added`/`diff_removed`, `exit` (a failed command's code, from the shell's own
+  exit mark, so only shells with OSC 133 integration set it), close with a six-second Undo (`CloseSession`/`UndoClose`),
+  the shared settings route (`Query::Settings`, `Command::SetSetting`, `ServerMsg::SettingsChanged`), `NewFleet`/`NewShip`,
+  and a model/effort choice carried with a chat message (`ConversationSend.choice`).
+- **Built in the apps:** both sidebars (fleets, ships, machine headings, rail), tabs, instant new shell, the New session
+  modal/dialog, Menu, Search commands, Inbox (62 columns in the TUI), status marks, service and update states, chat model
+  picker, move/recolour a fleet, shared settings.
+- **Never looked at.** Nobody has seen any of it in a real window or terminal, on any platform; the desktop app on Windows
+  and macOS has only been built. Checks are `TestBackend` frames and unit tests. The first real pass will find layout and
+  feel problems the tests cannot.
+- **Not built, on purpose:** the desktop **Crewmates** mode (Captain, crewmates, crews; the spec says the multi-user
+  backend is not designed), latency in the New session dialog (the machine link has no figure), and **closing a whole
+  fleet** (it ends every ship in it; it needs the owner's call and a host command).
+- **Known gaps:** a new chat's first prompt goes out with the agent's default model (the picker does not exist yet);
+  Codex offers only its account default; the picker's effort/model flags are unproven against real Claude and Codex;
+  `exit` is blind to shells without OSC 133; `NewTab` has no folder (use `NewShip`); terminal-app update progress is
+  four stages, not bytes.
+- **Dead code left on purpose:** none known. The `Proj`/`Wt` types are the TUI's live model for menus.
+- **Open, not fixed:** Stop in the chat can lag behind the agent winding down; old daemons from earlier test servers still
+  run on the dev box (`ps -eo pid,args | grep "maitty.* daemon"`, stop with `maitty kill-server`); Codex chat user messages
+  and its mode chip are parked.
+- **Closed without merging:** PRs #281, #271 and #287 (their fixes were already in `dev`).
+- **Branches:** `dev` and `main` only, plus `backup/remote-image-paste-before-rewrite` and `feat/remote-image-paste-stacked`
+  (two patches not in `dev`). The overnight agents' worktrees may still exist under `.claude/worktrees/`.
 
 **Older note (rewritten 2026-11-05, night).**
 - **One branch holds all of the night's work: `integration/overnight`** (nothing pushed, `dev` untouched). It

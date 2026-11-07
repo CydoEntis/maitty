@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Conversation } from '@/data/preview'
-import { displayName, groupInitials, groupSessions, processName, statusText, tildePath, toSessionView, truncatePrompt, worstSession } from './session'
+import { displayName, folderNameOf, inCreationOrder, matchesFilter, processName, rowName, statusText, tildePath, toSessionView, truncatePrompt } from './session'
 import { formatAgo, formatElapsed, markSeen, trackSessions } from './tracking'
 import { folderExists, resolveStartFolder } from './startFolder'
 
@@ -29,6 +29,9 @@ describe('session view', () => {
     expect(toSessionView(repo(1, `${HOME}/maitty`, `${HOME}/maitty`), HOME)).toMatchObject({ title: 'main', promptPath: 'maitty', repoName: 'maitty', branch: 'main', process: 'shell' })
     expect(toSessionView(repo(1, `${HOME}/maitty`, `${HOME}/maitty/crates/maitty-core/src`), HOME)).toMatchObject({ title: 'maitty-core/src', promptPath: 'maitty/crates/maitty-core/src' })
     expect(toSessionView(conversation(1, `${HOME}/Downloads`, { agent: 'codex' }), HOME)).toMatchObject({ title: '~/Downloads', repoName: null, branch: null, process: 'codex' })
+    // The worktree mark follows the pane the daemon says is in a linked worktree.
+    expect(toSessionView(conversation(1, `${HOME}/wt`, { linked: true }), HOME).worktree).toBe(true)
+    expect(toSessionView(conversation(1, `${HOME}/wt`), HOME).worktree).toBe(false)
   })
 
   it('calls a session by the name you gave it, else by where it is', () => {
@@ -70,41 +73,34 @@ describe('session view', () => {
     expect(view('unknown', { lastKnownStatus: 'working' })).toBe('last seen working')
   })
 
-  it('reports what needs you first, then what is working', () => {
-    const sessions = [conversation(1, HOME, { status: 'done' }), conversation(2, HOME, { status: 'working' }), conversation(3, HOME, { status: 'needs-you' })].map((item) => toSessionView(item, HOME))
-    expect(worstSession(sessions)?.id).toBe('t3')
-    expect(worstSession(sessions.slice(0, 2))?.id).toBe('t2')
+  it('lists sessions in creation order whatever their status, and a pin changes nothing', () => {
+    const sessions = [conversation(3, HOME, { status: 'needs-you' }), conversation(1, HOME, { status: 'done', pinned: true }), conversation(2, HOME, { status: 'working' })].map((item) => toSessionView(item, HOME))
+    expect(inCreationOrder(sessions).map((session) => session.id)).toEqual(['t1', 't2', 't3'])
   })
 
-  it('groups by folder when asked', () => {
-    const sessions = [conversation(2, `${HOME}/b`), conversation(1, `${HOME}/a`), repo(3, `${HOME}/a`, `${HOME}/a`)].map((item) => toSessionView(item, HOME))
-    const groups = groupSessions(sessions, 'folder', 't1', HOME)
-    expect(groups.map((group) => [group.name, group.sessions.map((session) => session.id), group.containsFocused])).toEqual([
-      ['a', ['t1', 't3'], true],
-      ['b', ['t2'], false],
-    ])
+  it('names a row after the name you gave it, else the program', () => {
+    expect(rowName(toSessionView(conversation(1, HOME, { agent: 'claude' }), HOME))).toBe('claude')
+    expect(rowName(toSessionView(conversation(1, HOME, { title: 'Growth Tests', named: true }), HOME))).toBe('Growth Tests')
   })
 
-  it('groups a worktree with its main checkout when git spells the repo path with forward slashes', () => {
-    const worktree = repo(1, 'C:/dev/chameleon', 'C:\\dev\\chameleon-worktrees\\brave-wren')
-    const main = repo(2, 'C:\\dev\\chameleon', 'C:\\dev\\chameleon', { repo: 'chameleon' })
-    const groups = groupSessions([worktree, main].map((item) => toSessionView(item, HOME)), 'repo', null, HOME)
-    expect(groups.map((group) => [group.name, group.sessions.map((session) => session.id)])).toEqual([['chameleon', ['t1', 't2']]])
+  it('badges the folder by the repo root when there is one, else the shell folder', () => {
+    expect(folderNameOf(toSessionView(repo(1, `${HOME}/maitty`, `${HOME}/maitty/crates`), HOME))).toBe('maitty')
+    expect(folderNameOf(toSessionView(conversation(2, `${HOME}/personal/dynamic-ui`), HOME))).toBe('dynamic-ui')
   })
 
-  it('groups a shell outside any repo by its own folder, not under a catch-all', () => {
-    const sessions = [conversation(1, `${HOME}/personal/dynamic-ui`), repo(2, `${HOME}/maitty`, `${HOME}/maitty`)].map((item) => toSessionView(item, HOME))
-    const groups = groupSessions(sessions, 'repo', null, HOME)
-    expect(groups.map((group) => [group.name, group.kind])).toEqual([
-      ['dynamic-ui', 'folder'],
-      ['maitty', 'repo'],
-    ])
+  it('carries the diff counts the daemon sends, zero when it sends none', () => {
+    expect(toSessionView(conversation(1, HOME, { diffAdded: 104, diffRemoved: 61 }), HOME)).toMatchObject({ diffAdded: 104, diffRemoved: 61 })
+    expect(toSessionView(conversation(1, HOME), HOME)).toMatchObject({ diffAdded: 0, diffRemoved: 0 })
   })
 
-  it('shortens a group to initials for the rail', () => {
-    expect(groupInitials({ kind: 'repo', name: 'maitty-docs' })).toBe('MD')
-    expect(groupInitials({ kind: 'repo', name: 'maitty' })).toBe('Ma')
-    expect(groupInitials({ kind: 'folder', name: 'Downloads' })).toBe('Do')
+  it('filters by name, folder, process and machine, ignoring case', () => {
+    const local = toSessionView(repo(1, `${HOME}/AeVoxGrowth`, `${HOME}/AeVoxGrowth`, { agent: 'claude' }), HOME)
+    const remote = toSessionView(conversation(2, '/srv/app', { machine: 3, machineName: 'devbox' }), HOME)
+    expect(matchesFilter(local, 'aevox')).toBe(true)
+    expect(matchesFilter(local, 'CLAUDE')).toBe(true)
+    expect(matchesFilter(local, 'devbox')).toBe(false)
+    expect(matchesFilter(remote, 'devbox')).toBe(true)
+    expect(matchesFilter(remote, '  ')).toBe(true)
   })
 })
 
@@ -171,5 +167,19 @@ describe('start folder', () => {
   it('strips markup an agent quotes and collapses whitespace in a quoted line', () => {
     expect(truncatePrompt('<task-notification>\n  <task-id>bel0</task-id>   done </task-notification>')).toBe('bel0 done')
     expect(truncatePrompt('compare a < b and c > d')).toBe('compare a < b and c > d')
+  })
+})
+
+describe('an exited session', () => {
+  const failed = { code: 2, at: 10 }
+  it('reads as exited when the daemon reports a failed last command and nothing is running', () => {
+    expect(toSessionView(conversation(1, `${HOME}/a`, { status: 'idle', details: { asking: '', interrupted: null, exit: failed, timeline: [], usage: { context: null, cost: null, tokens: null } } }), HOME).status).toBe('error')
+    expect(toSessionView(conversation(1, `${HOME}/a`, { status: 'done', details: { asking: '', interrupted: null, exit: failed, timeline: [], usage: { context: null, cost: null, tokens: null } } }), HOME).status).toBe('error')
+  })
+  it('shows working or needs you before a failure, and idle when nothing failed', () => {
+    const details = { asking: '', interrupted: null, exit: failed, timeline: [], usage: { context: null, cost: null, tokens: null } }
+    expect(toSessionView(conversation(1, `${HOME}/a`, { status: 'working', details }), HOME).status).toBe('working')
+    expect(toSessionView(conversation(1, `${HOME}/a`, { status: 'needs-you', details }), HOME).status).toBe('needs')
+    expect(toSessionView(conversation(1, `${HOME}/a`, { status: 'idle', details: { ...details, exit: null } }), HOME).status).toBe('idle')
   })
 })

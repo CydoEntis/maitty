@@ -1,26 +1,24 @@
-//! The mode bar along the bottom of the screen: which mode the keys are in, always in
-//! view: in shortcut mode what the keys do, read from the keymap so a rebinding shows, and when
-//! something else has the keys, what it is and how to use and leave it.
+//! The status bar along the bottom: the mode chip (` PANE ` while keys go to the pane, ` KEYS `
+//! in key mode, or the name of whatever else has the keys), the session you are on, and at the
+//! right the keys worth knowing, read from the keymap so a rebinding shows.
 
 use super::*;
 use crate::client::BAR_FLASH_FOR;
 use crate::keys::{Action, KeySpec};
 
-/// What shortcut mode suggests after its tag, left to right; a narrow bar drops them from the
-/// right. All keys and Esc come after them and go last.
-fn suggestions() -> [(Action, &'static str); 7] {
+/// What key mode lists at the right, left to right; a narrow bar drops them from the right.
+/// `esc back` always goes last.
+fn key_mode_hints() -> [(Action, &'static str); 5] {
     [
-        (Action::ShellHere, "shell"),
-        (Action::StartSession, "session"),
-        (Action::Changes, "changes"),
-        (Action::Files, "files"),
-        (Action::Jump, "inbox"),
-        (Action::Settings, "settings"),
-        (Action::References, "references"),
+        (Action::PickSession, "new"),
+        (Action::SplitRight, "split"),
+        (Action::ClosePane, "close"),
+        (Action::FocusNext, "pane"),
+        (Action::Help, "help"),
     ]
 }
 
-/// Cells between two suggestions.
+/// Cells between two hints.
 const GAP: u16 = 2;
 
 /// One thing on the bar, the cells before it, and what a click on it does.
@@ -31,21 +29,16 @@ struct Piece {
     hit: Option<ScreenHit>,
 }
 
-/// How much of Update or Restart shows: all its words, the version, the arrow, or nothing.
+/// How much of Update or Restart shows: all its words, the version, or the arrow.
 #[derive(Clone, Copy, PartialEq)]
-pub(super) enum Release {
+enum Release {
     Words,
     Version,
     Arrow,
-    Hidden,
-}
-
-pub(super) fn release_segs(app: &App, shown: Release, t: &Theme) -> Option<(Vec<Seg>, ScreenHit)> {
-    release_pill(app, shown, t).and_then(|piece| Some((piece.segs, piece.hit?)))
 }
 
 /// Update when a newer release is out, else Restart once a newer one is installed but not
-/// running, as much of it as `shown`.
+/// running, as much of it as `shown`. Only while the sidebar's foot is not showing its chip.
 fn release_pill(app: &App, shown: Release, t: &Theme) -> Option<Piece> {
     let style = Style::default()
         .fg(t.accent)
@@ -55,33 +48,21 @@ fn release_pill(app: &App, shown: Release, t: &Theme) -> Option<Piece> {
         let words = match shown {
             Release::Words => format!(" ↑ Update {version} "),
             Release::Version => format!(" ↑ {version} "),
-            _ => " ↑ ".to_string(),
+            Release::Arrow => " ↑ ".to_string(),
         };
         (words, ScreenHit::Update)
     } else if app.restart_needed() {
         // Installed (here or from outside the app), not running yet: one click finishes it.
-        (
-            (if shown == Release::Words {
-                " ↻ Restart "
-            } else {
-                " ↻ "
-            })
-            .to_string(),
-            ScreenHit::Restart,
-        )
+        let words = if shown == Release::Words { " ↻ Restart " } else { " ↻ " };
+        (words.to_string(), ScreenHit::Restart)
     } else {
         return None;
     };
-    (shown != Release::Hidden).then(|| Piece {
+    Some(Piece {
         segs: vec![seg(words, style)],
-        gap: 0,
+        gap: GAP,
         hit: Some(h),
     })
-}
-
-/// The bar's ground: sky while shortcut mode is lit, so the whole row says so, else the screen's.
-fn ground(app: &App, t: &Theme) -> Color {
-    if armed(app) { t.sky() } else { t.bg }
 }
 
 /// A key bound after the leader to `a`, if any.
@@ -93,96 +74,94 @@ fn bound(app: &App, a: &Action) -> Option<KeySpec> {
         .copied()
 }
 
-/// A suggestion: its key in bold, then what it does, on the lit ground. A click presses the key.
-fn suggestion(app: &mut App, key: KeySpec, label: &str, t: &Theme) -> Piece {
-    let ink = Style::default().fg(t.ink_on(t.sky())).bg(t.sky());
-    app.screen.bar_keys.push(key);
-    let segs = vec![
-        seg(
-            crate::client::design::long_key(&key),
-            ink.add_modifier(Modifier::BOLD),
-        ),
-        seg(format!(" {label}"), ink),
-    ];
-    Piece {
-        segs,
-        gap: GAP,
-        hit: Some(ScreenHit::BarKey(app.screen.bar_keys.len() - 1)),
+/// A key as the bar spells it: lower case, Ctrl as `^` (`^space`, `tab`, `esc`, `S`).
+pub(in crate::client) fn short_key(k: &KeySpec) -> String {
+    let long = crate::client::design::long_key(k).replace("Ctrl+", "^");
+    if long.chars().count() > 1 {
+        long.to_lowercase()
+    } else {
+        long
     }
 }
 
-/// Lit: the SHORTCUT tag (a click opens the key map), the suggestions bound to a key, then All
-/// keys and Esc, which go last.
-fn lit(app: &mut App, t: &Theme) -> (Piece, Vec<Piece>, Vec<Piece>) {
-    let tag = Style::default()
-        .fg(t.sky())
-        .bg(t.bg)
-        .add_modifier(Modifier::BOLD);
-    let tag = Piece {
-        segs: vec![seg(" SHORTCUT ", tag)],
+/// A hint: its key bold in the accent, what it does muted.
+fn hint(key: String, words: &str, hit: Option<ScreenHit>, t: &Theme) -> Piece {
+    let base = Style::default().bg(t.sidebar_bg);
+    Piece {
+        segs: vec![
+            seg(key, base.fg(t.accent).add_modifier(Modifier::BOLD)),
+            seg(format!(" {words}"), base.fg(t.muted)),
+        ],
+        gap: GAP,
+        hit,
+    }
+}
+
+/// The mode chip: its word on its own ground, dark ink, bold.
+fn mode_chip(label: &str, ground: Color, ink: Color, hit: Option<ScreenHit>) -> Piece {
+    Piece {
+        segs: vec![seg(
+            format!(" {label} "),
+            Style::default().fg(ink).bg(ground).add_modifier(Modifier::BOLD),
+        )],
         gap: 0,
-        hit: Some(ScreenHit::Leader),
-    };
-    let mut middle = Vec::new();
-    for (a, label) in suggestions() {
+        hit,
+    }
+}
+
+/// Typing: `j/k sessions`, the leader for key mode (a click starts it) and `? help`.
+fn pane_hints(app: &App, t: &Theme) -> Vec<Piece> {
+    let mut hints = Vec::new();
+    if let (Some(next), Some(prev)) = (bound(app, &Action::NextSession), bound(app, &Action::PrevSession)) {
+        hints.push(hint(format!("{}/{}", short_key(&next), short_key(&prev)), "sessions", None, t));
+    }
+    hints.push(hint(short_key(&app.keymap.prefix), "keys", Some(ScreenHit::ShortcutMode), t));
+    if let Some(help) = bound(app, &Action::Help) {
+        hints.push(hint(short_key(&help), "help", None, t));
+    }
+    hints
+}
+
+/// Key mode: what its keys do, each a click that presses it, and `esc back` last.
+fn key_hints(app: &mut App, t: &Theme) -> Vec<Piece> {
+    let mut hints = Vec::new();
+    for (a, words) in key_mode_hints() {
         if let Some(key) = bound(app, &a) {
-            middle.push(suggestion(app, key, label, t));
+            app.screen.bar_keys.push(key);
+            let h = ScreenHit::BarKey(app.screen.bar_keys.len() - 1);
+            hints.push(hint(short_key(&key), words, Some(h), t));
         }
     }
-    let mut tail: Vec<Piece> = bound(app, &Action::Help)
-        .map(|key| suggestion(app, key, "all keys", t))
-        .into_iter()
-        .collect();
     let esc = KeySpec {
         code: crossterm::event::KeyCode::Esc,
         mods: crossterm::event::KeyModifiers::NONE,
     };
-    tail.push(suggestion(app, esc, "type", t));
-    (tag, middle, tail)
+    app.screen.bar_keys.push(esc);
+    let h = ScreenHit::BarKey(app.screen.bar_keys.len() - 1);
+    hints.push(hint("esc".into(), "back", Some(h), t));
+    hints
 }
 
-/// Typing: quiet, and how to get to the shortcuts. A click there starts shortcut mode, as the
-/// leader does.
-fn typing(app: &App, t: &Theme) -> (Piece, Vec<Piece>) {
-    let hit = Some(ScreenHit::ShortcutMode);
-    let lead = crate::client::design::long_key(&app.keymap.prefix);
-    if Look::of(&app.cfg.ui).hairline {
-        // Hairline has no chips: the mode is a bold word in the accent.
-        let tag = Piece {
-            segs: vec![seg(
-                "TYPING",
-                Style::default()
-                    .fg(t.accent)
-                    .bg(t.bg)
-                    .add_modifier(Modifier::BOLD),
-            )],
-            gap: 0,
-            hit,
-        };
-        let hint = Piece {
-            segs: vec![seg(
-                format!("{lead} for shortcuts"),
-                Style::default().fg(t.muted).bg(t.bg),
-            )],
-            gap: GAP,
-            hit,
-        };
-        return (tag, vec![hint]);
+/// The session the keys go to: its name and folder, bright; or a line that just happened.
+fn where_piece(app: &App, t: &Theme) -> Option<Piece> {
+    let base = Style::default().bg(t.sidebar_bg);
+    if let Some((text, at)) = &app.bar_flash
+        && at.elapsed() < BAR_FLASH_FOR
+    {
+        return Some(Piece {
+            segs: vec![seg(text.clone(), base.fg(t.done).add_modifier(Modifier::BOLD))],
+            gap: 1,
+            hit: None,
+        });
     }
-    let tag = Piece {
-        segs: vec![seg(" TYPING ", Style::default().fg(t.muted).bg(t.btn))],
-        gap: 0,
-        hit,
-    };
-    let hint = Piece {
-        segs: vec![seg(
-            format!("· {lead} for shortcuts"),
-            Style::default().fg(t.muted).bg(t.bg),
-        )],
+    let term = app.focused()?;
+    let info = app.term_info(term)?;
+    let name = pane_title(app, &app.screen_model(), term);
+    Some(Piece {
+        segs: vec![seg(format!("{name} · {}", tilde(&info.cwd)), base.fg(t.strong))],
         gap: 1,
-        hit,
-    };
-    (tag, vec![hint])
+        hit: None,
+    })
 }
 
 /// A key and what it does; an empty key is words alone ("type").
@@ -221,20 +200,20 @@ fn keys_holder(app: &App) -> Option<Holder> {
         ),
         Mode::KeyMap(km) => match km.view {
             KeyView::Search => holder(
-                "KEY MAP",
-                &[("", "type to search"), ("↑↓", "pick"), ("Enter", "run")],
+                "PALETTE",
+                &[("", "type to search"), ("↑↓", "move"), ("Enter", "run")],
                 ("Esc", "close"),
             ),
             KeyView::All => holder(
-                "KEY MAP",
-                &[("", "type to search"), ("↑↓", "scroll")],
+                "KEYS HELP",
+                &[("", "type to search")],
                 ("Esc", "close"),
             ),
             KeyView::Map => None,
         },
         Mode::Side => holder(
             "SIDEBAR",
-            &[("↑↓", "move"), ("Enter", "open")],
+            &[("↑↓", "move"), ("Enter", "open"), ("n", "new")],
             ("Esc", "back"),
         ),
         Mode::Secret { .. } => holder(
@@ -259,7 +238,7 @@ fn keys_holder(app: &App) -> Option<Holder> {
         }
         Mode::ScreenSettings(_) => holder(
             "SETTINGS",
-            &[("↑↓", "move"), ("←→", "change"), ("Tab", "section")],
+            &[("j/k", "move"), ("Tab", "section"), ("Enter", "change")],
             ("Esc", "close"),
         ),
         // A merge or throw-away asked in a finished row: Enter does it, Esc only drops the question.
@@ -273,9 +252,14 @@ fn keys_holder(app: &App) -> Option<Holder> {
                 &[("↑↓", "select"), ("Enter", "open"), ("m", "send to agent")],
                 ("Esc", "close"),
             ),
+            _ if matches!(super::inbox::inbox_selected(app), Some(GoRow::Ask(_))) => holder(
+                "INBOX",
+                &[("↑↓", "select"), ("y", "yes"), ("a", "session"), ("n", "no"), ("Enter", "open")],
+                ("Esc", "close"),
+            ),
             _ => holder(
                 "INBOX",
-                &[("↑↓", "select"), ("Enter", "open")],
+                &[("↑↓", "select"), ("Enter", "open"), ("c", "clear finished")],
                 ("Esc", "close"),
             ),
         },
@@ -360,10 +344,11 @@ fn keys_holder(app: &App) -> Option<Holder> {
         Mode::NewSession(_) => holder(
             "NEW SESSION",
             &[
-                ("", "type search all · ~/ · host:~/"),
+                ("", "type a project or ~/path"),
                 ("Tab", "complete"),
+                ("Ctrl+O", "browse"),
                 ("↑↓", "move"),
-                ("Enter", "start"),
+                ("Enter", "pick"),
             ],
             ("Esc", "close"),
         ),
@@ -387,8 +372,13 @@ fn keys_holder(app: &App) -> Option<Holder> {
             &[("↑↓", "move"), ("Enter", "pick")],
             ("Esc", "close"),
         ),
+        Mode::Updates => holder(
+            "UPDATES",
+            &[("d", "download"), ("s", "skip"), ("r", "restart")],
+            ("Esc", "close"),
+        ),
         Mode::Actions { .. } => holder(
-            "COMMANDS",
+            "MENU",
             &[("↑↓", "move"), ("Enter", "run")],
             ("Esc", "close"),
         ),
@@ -423,6 +413,7 @@ fn keys_holder(app: &App) -> Option<Holder> {
                 ("", "any other key back"),
             ),
         },
+        Mode::Usage => holder("USAGE", &[], ("Esc", "close")),
         Mode::History { .. } => holder(
             "HISTORY",
             &[("↑↓", "move"), ("Enter", "go to it"), ("c", "clear")],
@@ -605,100 +596,34 @@ fn view_holder(app: &App) -> Option<Holder> {
     }
 }
 
-/// One hint after a `·`: its key bold, what it does plain, both quiet on the screen's ground.
+/// One of a holder's hints: its key bold in the accent, what it does muted; a hint with no key
+/// is words alone.
 fn hint_piece((key, words): Hint, t: &Theme) -> Piece {
-    live_hint_piece(key, words, t)
+    if key.is_empty() {
+        return Piece {
+            segs: vec![seg(words, Style::default().fg(t.muted).bg(t.sidebar_bg))],
+            gap: GAP,
+            hit: None,
+        };
+    }
+    hint(key.to_lowercase(), words, None, t)
 }
 
-/// A hint whose words are worked out as the bar is drawn (the sidebar's `n`).
-fn live_hint_piece(key: &str, words: &str, t: &Theme) -> Piece {
-    let quiet = Style::default().fg(t.muted).bg(t.bg);
-    let mut segs = vec![seg("· ", quiet)];
-    if !key.is_empty() {
-        segs.push(seg(
-            format!("{key} "),
-            quiet.fg(t.strong).add_modifier(Modifier::BOLD),
-        ));
-    }
-    segs.push(seg(words, quiet));
-    Piece {
-        segs,
-        gap: 1,
-        hit: None,
-    }
-}
-
-/// Something else has the keys: its name in a calm chip (sky is for shortcut mode lit), its
-/// keys, and the way out last. While shortcut mode is held it says so, first to go when narrow,
-/// so nobody wonders where the mode went. Only words: the keys are that thing's to take.
-fn holding(app: &App, h: &Holder, t: &Theme) -> (Piece, Vec<Piece>, Vec<Piece>) {
-    let tag = if Look::of(&app.cfg.ui).hairline {
-        seg(
-            h.label,
-            Style::default()
-                .fg(t.strong)
-                .bg(t.bg)
-                .add_modifier(Modifier::BOLD),
-        )
-    } else {
-        seg(
-            format!(" {} ", h.label),
-            Style::default()
-                .fg(t.strong)
-                .bg(t.btn)
-                .add_modifier(Modifier::BOLD),
-        )
-    };
-    let tag = Piece {
-        segs: vec![tag],
-        gap: 0,
-        hit: None,
-    };
-    let mut middle: Vec<Piece> = h.hints.iter().map(|&hint| hint_piece(hint, t)).collect();
-    // The sidebar says what `n` will do now, so nobody has to guess where it starts.
-    if matches!(app.mode, Mode::Side) {
-        middle.push(live_hint_piece("n", &app.quick_hint(), t));
-    }
+/// Something else has the keys: its name in a calm chip, then its keys at the right with the
+/// way out last. While key mode is held it says so, first to go when narrow, so nobody
+/// wonders where the mode went. Only words: the keys are that thing's to take.
+fn holding(app: &App, h: &Holder, t: &Theme) -> (Piece, Vec<Piece>) {
+    let tag = mode_chip(h.label, t.btn, t.strong, None);
+    let mut right: Vec<Piece> = h.hints.iter().map(|&hint| hint_piece(hint, t)).collect();
     if shortcut_waits(app) {
-        middle.push(hint_piece(("", "shortcut mode waits"), t));
+        right.push(hint_piece(("", "shortcut mode waits"), t));
     }
-    (tag, middle, vec![hint_piece(h.out, t)])
+    right.push(hint_piece(h.out, t));
+    (tag, right)
 }
 
-fn width(pieces: &[&Piece]) -> u16 {
+fn width(pieces: &[Piece]) -> u16 {
     pieces.iter().map(|p| p.gap + segs_width(&p.segs)).sum()
-}
-
-/// The fullest bar that fits `room`: the suggestions go from the right, then Update shortens and
-/// goes, then All keys, then Esc. The tag always stays.
-fn fit<'a>(
-    room: u16,
-    tag: &'a Piece,
-    middle: &'a [Piece],
-    tail: &'a [Piece],
-    releases: &'a [Piece],
-) -> (Vec<&'a Piece>, Option<&'a Piece>) {
-    let (mut mid, mut rel, mut keep) = (middle.len(), 0, tail.len());
-    loop {
-        let left: Vec<&Piece> = std::iter::once(tag)
-            .chain(&middle[..mid])
-            .chain(&tail[tail.len() - keep..])
-            .collect();
-        let release = releases.get(rel);
-        let release_w = release.map_or(0, |r| segs_width(&r.segs) + GAP);
-        if width(&left) + release_w <= room {
-            return (left, release);
-        }
-        if mid > 0 {
-            mid -= 1;
-        } else if rel < releases.len() {
-            rel += 1;
-        } else if keep > 0 {
-            keep -= 1;
-        } else {
-            return (left, None);
-        }
-    }
 }
 
 /// Under anything that has the keys (a popup, a modal, a view shortcut mode opened, the key map
@@ -709,160 +634,26 @@ fn only_says(app: &App) -> bool {
     shortcut_waits(app) || !matches!(app.mode, Mode::Normal | Mode::Side | Mode::Prefix { .. })
 }
 
-/// After TYPING: which tab of its session this is and how many splits it shows, dim. When
-/// narrow the hint after it goes first, then this.
-fn layout_piece(app: &App, t: &Theme) -> Option<Piece> {
-    let n = app.screen.leaf_rects.len();
-    let tabs = app.session_tabs();
-    let at = tabs.iter().position(|&i| i == app.screen.tab)?;
-    (n > 0 && app.focused().is_some()).then(|| {
-        let words = format!(
-            "tab {}/{} · {n} split{}",
-            at + 1,
-            tabs.len(),
-            if n == 1 { "" } else { "s" }
-        );
-        Piece {
-            segs: vec![seg(words, Style::default().fg(t.muted).bg(t.bg))],
-            gap: GAP,
-            hit: None,
-        }
-    })
-}
-
-/// The right end's first piece: how many sessions need you in amber (the session's name when
-/// it is one), shortest last, or `all clear`.
-fn alerts(app: &App, needs: usize, t: &Theme) -> Vec<Piece> {
-    let amber = Style::default()
-        .fg(t.blocked)
-        .bg(t.bg)
-        .add_modifier(Modifier::BOLD);
-    let words = |text: String, st: Style| Piece {
-        segs: vec![seg(text, st)],
-        gap: 0,
-        hit: None,
-    };
-    if needs == 0 {
-        return vec![words(
-            "all clear".into(),
-            Style::default().fg(t.muted).bg(t.bg),
-        )];
-    }
-    let lone = (needs == 1)
-        .then(|| {
-            app.all_terms()
-                .into_iter()
-                .find(|(_, i)| check::needs(i.status, i.check()))
-                .map(|(t, _)| session_name(app, &app.screen_model(), t))
-        })
-        .flatten();
-    let full = match lone {
-        Some(name) => format!("● {name} needs you"),
-        None => format!("● {needs} needs you"),
-    };
-    vec![
-        words(full, amber),
-        words(format!("● {needs} needs you"), amber),
-        words(format!("● {needs}"), amber),
-    ]
-}
-
-/// The tab's checkout branch, dim: `⎇ bold-raven`.
-fn branch_piece(app: &App, t: &Theme) -> Option<Piece> {
-    let branch = app
-        .focused()
-        .and_then(|f| app.term_info(f))
-        .and_then(|i| i.branch.clone())?;
-    let words = format!("{} {branch}", check::marks(app).branch);
-    Some(Piece {
-        segs: vec![seg(words, Style::default().fg(t.muted).bg(t.bg))],
-        gap: GAP,
-        hit: None,
-    })
-}
-
-/// What the tab's panes take of the machine, dim: `▲ 3% CPU · 1.2 GB`.
-fn load_piece(app: &App, t: &Theme) -> Option<Piece> {
-    let leaves = app.screen.tabs.get(app.screen.tab)?.leaves();
-    let (cpu, mem) = leaves
-        .iter()
-        .filter_map(|id| app.term_info(*id))
-        .fold((0.0f32, 0u64), |(c, m), i| (c + i.cpu, m + i.mem));
-    let gb = mem as f64 / f64::from(1u32 << 30);
-    Some(Piece {
-        segs: vec![seg(
-            format!("▲ {cpu:.0}% CPU · {gb:.1} GB"),
-            Style::default().fg(t.muted).bg(t.bg),
-        )],
-        gap: GAP,
-        hit: None,
-    })
-}
-
-fn pr_piece(app: &App, t: &Theme) -> Option<Piece> {
-    let pr = app
-        .focused()
-        .and_then(|f| app.term_info(f))
-        .and_then(|i| i.pr.as_ref())?;
-    let colour = match pr.tone() {
-        crate::protocol::PrTone::Bad => t.err,
-        crate::protocol::PrTone::Good => t.done,
-        crate::protocol::PrTone::Waiting | crate::protocol::PrTone::Plain => t.muted,
-    };
-    Some(Piece {
-        segs: vec![seg(pr.headline(), Style::default().fg(colour).bg(t.bg))],
-        gap: GAP,
-        hit: None,
-    })
-}
-
-/// Draw the mode bar on `row`: lit, who has the keys, or typing, with Update or Restart at its
-/// right end. Hairline adds the look and pane count after TYPING and, unless shortcut mode
-/// lights the row, how many need you just before Update or Restart (or at the end without them).
+/// Draw the status bar on `row`: the mode chip and where the keys go at the left, the hints and
+/// (with the sidebar's foot out of view) Update or Restart at the right.
 pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rect, t: &Theme) {
     app.screen.bar_keys.clear();
     if row.height == 0 || row.width < 4 {
         return;
     }
+    fill(buf, row, t.sidebar_bg);
     let holder = keys_holder(app);
-    let ground = if holder.is_some() {
-        t.bg
-    } else {
-        ground(app, t)
-    };
-    fill(buf, row, ground);
-    let (tag, mut middle, tail) = if let Some(h) = &holder {
-        holding(app, h, t)
+    let (tag, mut right, place) = if let Some(h) = &holder {
+        let (tag, right) = holding(app, h, t);
+        (tag, right, None)
     } else if armed(app) {
-        lit(app, t)
+        let tag = mode_chip("KEYS", t.blocked, t.ink_on(t.blocked), Some(ScreenHit::Leader));
+        (tag, key_hints(app, t), where_piece(app, t))
     } else {
-        let (tag, hint) = typing(app, t);
-        (tag, hint, Vec::new())
+        let tag = mode_chip("PANE", t.accent, t.acc_ink, Some(ScreenHit::ShortcutMode));
+        (tag, pane_hints(app, t), where_piece(app, t))
     };
-    let calm = ground == t.bg;
-    // A line that just happened (`+ name started`) takes the hint's place for a moment, but never
-    // the suggestions of shortcut mode or what a holder says.
-    if holder.is_none()
-        && !armed(app)
-        && let Some((text, at)) = &app.bar_flash
-        && at.elapsed() < BAR_FLASH_FOR
-    {
-        middle = vec![Piece {
-            segs: vec![seg(
-                text.clone(),
-                Style::default().fg(t.done).bg(ground).add_modifier(Modifier::BOLD),
-            )],
-            gap: GAP,
-            hit: None,
-        }];
-    }
-    if calm
-        && holder.is_none()
-        && let Some(p) = layout_piece(app, t)
-    {
-        middle.insert(0, p);
-    }
-    let releases: Vec<Piece> = if app.screen.release_in_side {
+    let mut releases: Vec<Piece> = if app.screen.release_in_side {
         Vec::new()
     } else {
         [Release::Words, Release::Version, Release::Arrow]
@@ -870,105 +661,55 @@ pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rec
             .filter_map(|r| release_pill(app, r, t))
             .collect()
     };
+    let room = row.width.saturating_sub(2);
+    let tag_w = width(std::slice::from_ref(&tag));
+    let mut place = place;
+    let used = |place: &Option<Piece>, right: &[Piece], releases: &[Piece]| {
+        tag_w
+            + place.as_ref().map_or(0, |p| width(std::slice::from_ref(p)))
+            + width(right)
+            + releases.first().map_or(0, |p| width(std::slice::from_ref(p)))
+    };
+    // The hints give way from the right, the way out last; then Update shortens and goes;
+    // then where the keys go.
+    while used(&place, &right, &releases) > room {
+        if right.len() > 1 {
+            right.remove(right.len() - 2);
+        } else if !releases.is_empty() {
+            releases.remove(0);
+        } else if place.is_some() {
+            place = None;
+        } else {
+            right.clear();
+            break;
+        }
+    }
+    right.extend(releases.into_iter().take(1));
+    let words_only = only_says(app);
+    // With `ui.rounded = "full"` a chip on the bar is capped on the bar's ground.
     let round = Look::of(&app.cfg.ui).round_tabs;
-    let caps = |p: &Piece| {
-        if round && p.segs.first().is_some_and(|(_, s)| s.bg != Some(ground)) {
+    let ground = t.sidebar_bg;
+    let put_piece = |app: &mut App, buf: &mut Buffer, x: u16, p: &Piece| -> u16 {
+        let chip = p.segs.first().is_some_and(|(_, s)| s.bg != Some(ground));
+        let segs = if round && chip {
             round_ends(p.segs.clone(), ground)
         } else {
             p.segs.clone()
-        }
-    };
-    let room = row.width.saturating_sub(2);
-    // The right end: needs you keeps its place before the mode's hints and Update do; the
-    // branch and the load are there only while the whole left side still fits beside them.
-    let release_room = |release: Option<&Piece>| release.map_or(0, |r| segs_width(&r.segs) + GAP);
-    let mut right: Vec<Piece> = Vec::new();
-    let mut left_and_release = None;
-    if calm {
-        let tag_w = width(&[&tag]);
-        let needing = alerts(app, super::hairline::needing(app), t);
-        if let Some(alert) = needing
-            .into_iter()
-            .find(|a| tag_w + GAP + segs_width(&a.segs) <= room)
-        {
-            let alert_w = GAP + segs_width(&alert.segs);
-            let (left, release) = fit(
-                room.saturating_sub(alert_w),
-                &tag,
-                &middle,
-                &tail,
-                &releases,
-            );
-            let used = width(&left) + release_room(release) + alert_w;
-            right.push(alert);
-            for extra in branch_piece(app, t)
-                .into_iter()
-                .chain(pr_piece(app, t))
-                .chain(load_piece(app, t))
-            {
-                let more = extra.gap + segs_width(&extra.segs);
-                if used
-                    + right[1..]
-                        .iter()
-                        .map(|p| p.gap + segs_width(&p.segs))
-                        .sum::<u16>()
-                    + more
-                    <= room
-                {
-                    right.push(extra);
-                }
-            }
-            left_and_release = Some((left, release));
-        }
-    }
-    let right_w: u16 = right.iter().map(|p| p.gap + segs_width(&p.segs)).sum();
-    let (left, release) =
-        left_and_release.unwrap_or_else(|| fit(room, &tag, &middle, &tail, &releases));
-    if !right.is_empty() {
-        let mut x = row
-            .right()
-            .saturating_sub(1 + release_room(release) + right_w);
-        for p in &right {
-            x += p.gap;
-            x = put(buf, x, row.y, &p.segs, row.right());
-        }
-    }
-    let words_only = only_says(app);
-    let mut x = row.x + 1;
-    for p in left {
-        x += p.gap;
-        let segs = caps(p);
+        };
         let end = put(buf, x, row.y, &segs, row.right());
         if let (false, Some(h)) = (words_only, p.hit) {
-            hit(
-                app,
-                Rect {
-                    x,
-                    y: row.y,
-                    width: end - x,
-                    height: 1,
-                },
-                h,
-            );
+            hit(app, Rect { x, y: row.y, width: end - x, height: 1 }, h);
         }
-        x = end;
+        end
+    };
+    let mut x = put_piece(app, buf, row.x + 1, &tag);
+    if let Some(p) = &place {
+        x = put_piece(app, buf, x + p.gap, p);
     }
-    if let Some(p) = release {
-        let segs = caps(p);
-        let x = row.right().saturating_sub(1 + segs_width(&segs));
-        put(buf, x, row.y, &segs, row.right());
-        if let (false, Some(h)) = (words_only, p.hit) {
-            hit(
-                app,
-                Rect {
-                    x,
-                    y: row.y,
-                    width: segs_width(&segs),
-                    height: 1,
-                },
-                h,
-            );
-        }
+    let _ = x;
+    let mut x = row.right().saturating_sub(1 + width(&right));
+    for p in &right {
+        x = put_piece(app, buf, x + p.gap, p);
     }
     if words_only {
         hit(app, row, ScreenHit::Noop);

@@ -3,7 +3,7 @@ export type ChatMeta = { readonly mode: string | null; readonly model: string | 
 
 /** Claude's permission modes in plain words. A mode not listed is shown as it was written. */
 const MODE_WORDS: Readonly<Record<string, string>> = {
-  default: 'Default',
+  default: 'Ask before running',
   plan: 'Plan',
   acceptEdits: 'Accept edits',
   auto: 'Auto',

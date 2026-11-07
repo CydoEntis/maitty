@@ -127,15 +127,14 @@ describe('approvals in the chat', () => {
     return daemon
   }
 
-  it('answers by request id when y is pressed on the focused card', async () => {
+  it('answers by request id when y is pressed in the chat while the tray asks', async () => {
     const daemon = withStep()
     daemon.approvals = [request('req-1')]
     daemon.status = 'Blocked'
     render(<ChatSession link={link()} agent="claude" online />)
     await settle()
 
-    screen.getByRole('group', { name: /Approval/ }).focus()
-    fireEvent.keyDown(document.activeElement as Element, { key: 'y' })
+    fireEvent.keyDown(screen.getByRole('region', { name: /Approval/ }), { key: 'y' })
     await settle()
 
     expect(fake.approveRequest).toHaveBeenCalledExactlyOnceWith({ id: String(FAKE_CONVERSATION), generation: 1 }, 'req-1', 'Accept')
@@ -157,7 +156,7 @@ describe('approvals in the chat', () => {
     daemon.approvals = [request('req-3')]
     render(<ChatSession link={link()} agent="claude" online />)
     await settle()
-    expect(screen.getByRole('button', { name: 'No (n)' })).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: /Approval/ })).getByRole('button', { name: /^No/ })).toBeInTheDocument()
 
     daemon.approvals = []
     daemon.answeredApprovals = [{ request: request('req-3'), decision: 'Decline' }]
@@ -165,14 +164,14 @@ describe('approvals in the chat', () => {
     await settle(IDLE_POLL_MS)
 
     expect(screen.getByRole('group', { name: /Approval/ })).toHaveTextContent('You answered: No')
-    expect(screen.queryByRole('button', { name: 'No (n)' })).toBeNull()
+    expect(screen.queryByRole('region', { name: /Approval/ })).toBeNull()
   })
 
   it('links the request to its tool step and scrolls the list there', async () => {
     const daemon = withStep()
     for (let index = 0; index < 60; index += 1) daemon.upsert(daemon.message('t1', `m${String(index)}`, 'Assistant', `filler ${String(index)}`))
     daemon.upsert(toolEntry('t2', 'x', 'ls', ''))
-    daemon.approvals = [request('req-4', { turn_id: 't2', item_id: 'x', command: 'ls' })]
+    daemon.answeredApprovals = [{ request: request('req-4', { turn_id: 't2', item_id: 'x', command: 'ls' }), decision: 'Accept' }]
     render(<ChatSession link={link()} agent="claude" online />)
     await settle()
     await settle()

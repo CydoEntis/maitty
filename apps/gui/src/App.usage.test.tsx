@@ -15,7 +15,6 @@ const daemon = vi.hoisted(() => ({
   archiveConversationOnDaemon: vi.fn(),
   renameConversationOnDaemon: vi.fn(),
   markSeenOnDaemon: vi.fn(),
-  pinSessionOnDaemon: vi.fn(),
   loadDaemonRestartStatus: vi.fn(),
   restartMismatchedDaemon: vi.fn(),
   suggestProjectFolders: vi.fn<(typed: string) => Promise<string[]>>(),

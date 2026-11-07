@@ -1,11 +1,16 @@
-//! The one key overlay. `Ctrl+Space` opens the key map (what each key does after the leader;
-//! pressing one runs it). Typing, or `Space`, searches every command, keyed or not. `?` lists
-//! every key, the ones that need no leader and the commands that have no key.
+//! The one key overlay. The prefix opens the key map (what each key does after it; pressing one
+//! runs it). Ctrl+K (or Space in the map) is Search commands: a fuzzy search over every command,
+//! keyed or not, and over the sessions. `?` is the keys help: three columns of the keys that matter.
 
 use super::*;
 use crate::client::design::{keycap, long_key};
 use crate::layout::Dir;
 
+/// Sessions listed before anything is typed.
+const SESSIONS_SHOWN: usize = 5;
+/// The most Search commands is tall, and its widest.
+const SEARCH_MAX_H: u16 = 26;
+const SEARCH_MAX_W: u16 = 110;
 /// How long typed words may get in the search.
 const QUERY_MAX: usize = 40;
 /// The widest the overlay gets.
@@ -55,11 +60,14 @@ pub(in crate::client) fn key_groups() -> Vec<(&'static str, Vec<KeyRow>)> {
             "SESSIONS",
             vec![
                 r("New shell here", vec![A::ShellHere], true),
-                r("New session", vec![A::StartSession], true),
-                r("New session anywhere", vec![A::PickSession], true),
+                r("New session", vec![A::PickSession], false),
+                r("Next tab", vec![A::NextTab], true),
+                r("Previous tab", vec![A::PrevTab], true),
+                r("Undo close", vec![A::UndoClose], true),
                 r("Message this session", vec![A::Message], true),
                 r("Menu", vec![A::Menu], true),
                 r("Inbox", vec![A::Jump], true),
+                r("Next or previous session", vec![A::NextSession, A::PrevSession], false),
                 r("Rename selected session", vec![A::RenameWorkspace], false),
                 r("Stop agent", vec![A::StopAgent], false),
                 r("Focus the sidebar", vec![A::BrowseTree], false),
@@ -68,8 +76,10 @@ pub(in crate::client) fn key_groups() -> Vec<(&'static str, Vec<KeyRow>)> {
         (
             "PANES",
             vec![
-                r("Split right", vec![A::SplitRight], true),
+                r("Split up", vec![A::SplitUp], true),
                 r("Split down", vec![A::SplitDown], true),
+                r("Split left", vec![A::SplitLeft], true),
+                r("Split right", vec![A::SplitRight], true),
                 r("Close pane", vec![A::ClosePane], true),
                 r(
                     "Move focus",
@@ -81,8 +91,6 @@ pub(in crate::client) fn key_groups() -> Vec<(&'static str, Vec<KeyRow>)> {
                     ],
                     true,
                 ),
-                r("Collapse sidebar", vec![A::ToggleSidebar], true),
-                r("Hide sidebar", vec![A::HideSidebar], true),
                 r(
                     "Resize pane",
                     vec![
@@ -103,6 +111,7 @@ pub(in crate::client) fn key_groups() -> Vec<(&'static str, Vec<KeyRow>)> {
                     ],
                     false,
                 ),
+                r("Find in pane", vec![A::Search], false),
                 r("Select text", vec![A::CopyMode], false),
                 r("Scroll", vec![A::ScrollUp, A::ScrollDown], false),
                 r(
@@ -115,26 +124,25 @@ pub(in crate::client) fn key_groups() -> Vec<(&'static str, Vec<KeyRow>)> {
             ],
         ),
         (
-            "TABS",
+            "SIDEBAR",
             vec![
-                r("New tab", vec![A::NewTab], true),
-                r("Next tab", vec![A::NextTab], true),
-                r("Previous tab", vec![A::PrevTab], true),
-                r("Rename session", vec![A::RenameTab], true),
-                r("Close tab", vec![A::CloseTab], false),
+                r("Collapse sidebar", vec![A::ToggleSidebar], true),
+                r("Widen or narrow the sidebar", vec![A::SidebarWider, A::SidebarNarrower], false),
+                r("Hide sidebar", vec![A::HideSidebar], false),
             ],
         ),
         (
-            "PROJECT",
+            "TOOLS",
             vec![
-                r("Worktrees ›", vec![A::Worktrees], true),
                 r("Files", vec![A::Files], true),
                 r("Changes", vec![A::Changes], true),
+                r("Branches", vec![A::Branches], true),
+                r("History", vec![A::History], true),
                 r("References", vec![A::References], true),
+                r("Worktrees ›", vec![A::Worktrees], true),
                 r("New worktree", vec![A::NewWorktree(None)], false),
                 r("Find a file", vec![A::Find(0)], false),
                 r("Search the code", vec![A::Find(1)], false),
-                r("Branch", vec![A::Branches], false),
             ],
         ),
         (
@@ -143,8 +151,8 @@ pub(in crate::client) fn key_groups() -> Vec<(&'static str, Vec<KeyRow>)> {
                 r("Search commands", vec![A::Palette], true),
                 r("Settings", vec![A::Settings], true),
                 r("All keys", vec![A::Help], true),
+                r("Updates", vec![A::Updates], true),
                 r("Quit, agents keep running", vec![A::Detach], true),
-                r("What happened", vec![A::History], false),
                 r("Machines", vec![A::Machines], true),
                 r("Reload config", vec![A::ReloadConfig], false),
             ],
@@ -172,10 +180,77 @@ fn group_of(a: &Action) -> &'static str {
         | A::PaneInfo
         | A::Spawn(..)
         | A::SideMove(_) => "PANES",
-        A::SpawnTab(_) | A::SelectTab(_) => "TABS",
-        A::RemoveWorktree | A::TidyWorktrees | A::NewWorktree(_) => "PROJECT",
+        A::NewTab | A::NextTab | A::PrevTab | A::CloseTab | A::RenameTab | A::SpawnTab(_) | A::SelectTab(_) => "PANES",
+        A::RemoveWorktree | A::TidyWorktrees | A::NewWorktree(_) => "TOOLS",
         _ => env!("APP_ENV"),
     }
+}
+
+/// The category column of Search commands.
+fn category_of(act: Option<&Action>) -> &'static str {
+    use Action as A;
+    match act {
+        Some(
+            A::SplitRight | A::SplitDown | A::SplitLeft | A::SplitUp | A::ClosePane | A::Focus(_)
+            | A::FocusNext | A::FocusPrev | A::Resize(_) | A::Swap(_) | A::ScrollUp | A::ScrollDown
+            | A::CopyMode | A::CloseSplit | A::PaneInfo | A::PrevPrompt | A::NextPrompt | A::Spawn(..)
+            | A::UndoClose | A::NewTab | A::NextTab | A::PrevTab | A::CloseTab | A::SelectTab(_),
+        ) => "Panes",
+        Some(
+            A::Files | A::Changes | A::Branches | A::History | A::References | A::Worktrees
+            | A::NewWorktree(_) | A::RemoveWorktree | A::TidyWorktrees | A::Machines,
+        ) => "Tools",
+        Some(A::Jump | A::Palette | A::Help | A::Find(_) | A::Search | A::Menu) => "Find",
+        Some(
+            A::ToggleSidebar | A::HideSidebar | A::BrowseTree | A::SidebarWider | A::SidebarNarrower
+            | A::SideMove(_),
+        ) => "Sidebar",
+        Some(A::ToggleAppearance) => "Appearance",
+        _ => "General",
+    }
+}
+
+/// A session the search offers.
+#[derive(Clone)]
+struct SessionHit {
+    term: ClientTerm,
+    state: super::status_mark::State,
+    name: String,
+    /// `project · machine`.
+    place: String,
+}
+
+/// The sessions whose name, project or machine match, in the sidebar's order. With nothing
+/// typed the first few are listed.
+fn session_hits(app: &App, query: &str) -> Vec<SessionHit> {
+    let q: String = query.split_whitespace().collect();
+    let machine_name = |m: MachineId| {
+        app.remotes
+            .get(&m)
+            .map_or_else(|| "local".to_string(), |r| r.name.clone())
+    };
+    let mut out: Vec<SessionHit> = app
+        .screen_model()
+        .iter()
+        .flat_map(|p| p.sessions().map(move |s| (p, s)))
+        .filter_map(|(p, s)| {
+            let term = s.native_term?;
+            let place = format!("{} · {}", p.name, machine_name(p.machine));
+            let exit = app.term_info(term).is_some_and(|i| i.exit.is_some());
+            let failed = super::status_mark::failed(exit, s.status, s.check.as_ref());
+            let state = super::status_mark::State::of(s.status, failed, s.down);
+            Some(SessionHit { term, state, name: s.name.clone(), place })
+        })
+        .filter(|h| {
+            q.is_empty()
+                || super::new_session::fuzzy_indices(&q, &h.name).is_some()
+                || super::new_session::fuzzy_indices(&q, &h.place).is_some()
+        })
+        .collect();
+    if q.is_empty() {
+        out.truncate(SESSIONS_SHOWN);
+    }
+    out
 }
 
 /// A group name as it reads in a list: "Sessions".
@@ -416,18 +491,30 @@ fn found(app: &App, query: &str) -> Vec<Entry> {
         }
         return out;
     }
-    let mut hits: Vec<(bool, Entry)> = all
+    // In-order subsequence, case-blind: "gs" finds "Go to session". Names that begin with what is
+    // typed come first, then names that contain it as a run, then the rest.
+    let q: String = words.concat();
+    let mut hits: Vec<(u8, Entry)> = all
         .into_iter()
         .filter_map(|e| {
-            let label = format!("{} {}", e.label, e.also).to_lowercase();
-            let group = e.group.to_lowercase();
-            words
-                .iter()
-                .all(|w| label.contains(w.as_str()) || group.contains(w.as_str()))
-                .then(|| (words.iter().all(|w| label.contains(w.as_str())), e))
+            let label = e.label.to_lowercase();
+            let rank = if label.starts_with(&q) {
+                0
+            } else if label.contains(&q) {
+                1
+            } else if super::new_session::fuzzy_indices(&q, &label).is_some() {
+                2
+            } else if super::new_session::fuzzy_indices(&q, &format!("{label} {}", e.also.to_lowercase())).is_some()
+                || super::new_session::fuzzy_indices(&q, &category_of(e.act.as_ref()).to_lowercase()).is_some()
+            {
+                3
+            } else {
+                return None;
+            };
+            Some((rank, e))
         })
         .collect();
-    hits.sort_by_key(|(by_name, _)| !*by_name);
+    hits.sort_by_key(|(rank, _)| *rank);
     hits.into_iter().map(|(_, e)| e).collect()
 }
 
@@ -450,7 +537,7 @@ struct Section {
 
 /// The map (`all` false: the short one) or All keys, group by group.
 /// The sidebar's own new-session keys (`Mode::Side` reads them); not in the keymap.
-const SIDEBAR_KEYS: [(&str, &str); 2] = [("n", "New here"), ("N", "Pick anywhere")];
+const SIDEBAR_KEYS: [(&str, &str); 1] = [("n", "New session")];
 
 fn grid_sections(app: &App, all: bool) -> Vec<Section> {
     let leader = leader_entries(app);
@@ -662,7 +749,134 @@ pub(in crate::client) fn draw_keymap(
     }
     match km.view {
         KeyView::Search => draw_search(app, buf, area, t, km),
-        view => draw_grid(app, buf, area, t, km, view == KeyView::All),
+        KeyView::All => draw_keys_help(app, buf, area, t),
+        KeyView::Map => draw_grid(app, buf, area, t, km, false),
+    }
+}
+
+/// The Keys dialog's widest, and the cells a key takes before its words.
+const HELP_W: u16 = 92;
+const HELP_KEY_W: u16 = 13;
+const HELP_NOTE: &str = "Keys only work in key mode ({lead}). Everything else goes to the pane.";
+
+/// A column of the keys help: its title, then each row's words and the actions its key runs.
+type HelpColumn = (&'static str, Vec<(&'static str, Vec<Action>)>);
+
+/// The keys help's three columns. `1–9` stands for the nine session keys, `j / k` for the pair.
+fn help_columns() -> [HelpColumn; 3] {
+    use Action as A;
+    [
+        (
+            "sessions",
+            vec![
+                ("new session", vec![A::PickSession]),
+                ("next / previous", vec![A::NextSession, A::PrevSession]),
+                ("jump to session", vec![A::SelectTab(1), A::SelectTab(9)]),
+                ("rename", vec![A::RenameWorkspace]),
+                ("filter", vec![A::FilterSessions]),
+                ("inbox", vec![A::Jump]),
+            ],
+        ),
+        (
+            "panes",
+            vec![
+                ("split right", vec![A::SplitRight]),
+                ("split down", vec![A::SplitDown]),
+                ("focus next pane", vec![A::FocusNext]),
+                ("zoom pane", vec![A::ZoomPane]),
+                ("close pane", vec![A::ClosePane]),
+                ("move pane", vec![A::SwapNext]),
+            ],
+        ),
+        (
+            "window",
+            vec![
+                ("files", vec![A::Files]),
+                ("changes", vec![A::Changes]),
+                ("usage and cost", vec![A::Usage]),
+                ("settings", vec![A::Settings]),
+                ("toggle sidebar", vec![A::ToggleSidebar]),
+                ("this help", vec![A::Help]),
+            ],
+        ),
+    ]
+}
+
+/// A row's key as bound now: `j / k` for a pair, `1–9` for the jump keys; empty when unbound.
+fn help_key(app: &App, acts: &[Action]) -> String {
+    let keys: Vec<String> = acts
+        .iter()
+        .filter_map(|a| {
+            app.keymap
+                .prefixed_order
+                .iter()
+                .find(|k| app.keymap.prefixed.get(k) == Some(a))
+                .map(super::mode_bar::short_key)
+        })
+        .collect();
+    match (acts.first(), keys.as_slice()) {
+        (Some(Action::SelectTab(_)), [first, last]) => format!("{first}–{last}"),
+        (_, [one]) => one.clone(),
+        (_, [a, b]) => format!("{a} / {b}"),
+        _ => String::new(),
+    }
+}
+
+/// `?`: the keys that matter, three columns (sessions, panes, window) of each key as bound and
+/// what it does, on the panel ground in an accent box; `keys` on the top border at the left and
+/// `esc close` at the right. Search commands (Ctrl+K) holds every other command.
+fn draw_keys_help(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme) {
+    dim_all(app, buf, area, t);
+    hit(app, area, ScreenHit::Close);
+    let columns = help_columns();
+    let rows = columns.iter().map(|(_, r)| r.len()).max().unwrap_or(0) as u16;
+    let w = HELP_W.min(area.width.saturating_sub(4));
+    let h = (rows + 6).min(area.height.saturating_sub(2));
+    let r = Rect {
+        x: area.x + (area.width - w) / 2,
+        y: area.y + area.height.saturating_sub(h) / 2,
+        width: w,
+        height: h,
+    };
+    let mut c = Card::new(t, "").lit(t.accent);
+    c.bg = t.sidebar_bg;
+    let inside = card(app, buf, r, &c, t);
+    fill(buf, inside, t.sidebar_bg);
+    hit(app, r, ScreenHit::Noop);
+    let ground = Style::default().bg(t.sidebar_bg);
+    let title = [seg(" keys ", ground.fg(t.strong).add_modifier(Modifier::BOLD))];
+    put(buf, r.x + 2, r.y, &title, r.right().saturating_sub(2));
+    let close = " esc close ";
+    let cx = r.right().saturating_sub(2 + close.width() as u16);
+    put(buf, cx, r.y, &[seg(close, ground.fg(t.muted))], r.right().saturating_sub(2));
+    hit(app, Rect { x: cx, y: r.y, width: close.width() as u16, height: 1 }, ScreenHit::Close);
+    let (x0, end) = (inside.x + 2, inside.right().saturating_sub(2));
+    let gap = 4u16;
+    let col_w = end.saturating_sub(x0).saturating_sub(2 * gap) / 3;
+    // As wide as the design's key column, or as the widest key and a cell where room is short.
+    let widest = columns
+        .iter()
+        .flat_map(|(_, rows)| rows.iter().map(|(_, acts)| help_key(app, acts).width() as u16))
+        .max()
+        .unwrap_or(1);
+    let key_w = if col_w >= HELP_KEY_W + 16 { HELP_KEY_W } else { widest + 1 };
+    for (i, (label, items)) in columns.iter().enumerate() {
+        let x = x0 + i as u16 * (col_w + gap);
+        let col_end = x + col_w;
+        put(buf, x, inside.y + 1, &[seg(*label, ground.fg(t.muted))], col_end);
+        for (j, (words, acts)) in items.iter().enumerate() {
+            let y = inside.y + 2 + j as u16;
+            if y >= inside.bottom() {
+                break;
+            }
+            put(buf, x, y, &[seg(help_key(app, acts), ground.fg(t.accent).add_modifier(Modifier::BOLD))], x + key_w);
+            put(buf, x + key_w + 1, y, &[seg(*words, ground.fg(t.text))], col_end);
+        }
+    }
+    let note = HELP_NOTE.replace("{lead}", &long_key(&app.keymap.prefix));
+    let ny = inside.y + 3 + rows;
+    if ny < inside.bottom() {
+        put(buf, x0, ny, &[seg(note, ground.fg(t.muted))], end);
     }
 }
 
@@ -675,7 +889,7 @@ fn bar(buf: &mut Buffer, inside: Rect, t: &Theme, keys: &[(&str, &str)]) {
 
 fn draw_grid(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, km: &KeyMap, all: bool) {
     let sections = grid_sections(app, all);
-    let lead = app.keymap.prefix.to_string().replace("C-", "Ctrl+");
+    let lead = long_key(&app.keymap.prefix);
     let w = MAX_W.min(area.width.saturating_sub(4));
     let cols = if w >= THREE_COLUMNS_FROM { 3 } else { 2 };
     let col_w = w.saturating_sub(6) / cols as u16;
@@ -907,158 +1121,122 @@ fn draw_grid(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, km: &KeyMap
     }
 }
 
-/// `label` with the first place `needle` (any case) occurs in the accent.
-fn highlighted(label: &str, needle: &str, plain: Style, lit: Style) -> Vec<Seg> {
-    let hay = label.to_lowercase();
-    let at = if needle.is_empty() {
-        None
-    } else {
-        hay.find(needle).filter(|_| hay.len() == label.len())
-    };
-    match at {
-        Some(i) if label.is_char_boundary(i) && label.is_char_boundary(i + needle.len()) => [
-            (&label[..i], plain),
-            (&label[i..i + needle.len()], lit),
-            (&label[i + needle.len()..], plain),
-        ]
-        .into_iter()
-        .filter(|(s, _)| !s.is_empty())
-        .map(|(s, st)| seg(s, st))
-        .collect(),
-        _ => vec![seg(label, plain)],
-    }
-}
-
+/// The Search commands box: amber border, its title and a pink close on the top edge, the typing
+/// row, COMMANDS (RESULTS while typing) and SESSIONS, and the keys on the bottom edge.
 fn draw_search(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, km: &KeyMap) {
     let list = found(app, &km.query);
-    let want = 12 + list.len().min(12) as u16;
-    let (r, inside) = frame(app, buf, area, t, "Search commands", want);
+    let sessions = session_hits(app, &km.query);
+    dim_all(app, buf, area, t);
+    hit(app, area, ScreenHit::Close);
+    let w = SEARCH_MAX_W.min(area.width.saturating_sub(4));
+    let want = 8 + (list.len() + sessions.len()).min(usize::from(SEARCH_MAX_H)) as u16;
+    let h = want.min(SEARCH_MAX_H).min(area.height.saturating_sub(2));
+    let r = Rect {
+        x: area.x + (area.width - w) / 2,
+        y: area.y + (area.height - h) / 2,
+        width: w,
+        height: h,
+    };
+    let mut c = Card::new(t, "Search commands").lit(t.blocked);
+    c.bg = t.bg;
+    c.close = Some(ScreenHit::Close);
+    app.screen.modal_rects.push(r);
+    let inside = card(app, buf, r, &c, t);
+    hit(app, r, ScreenHit::Noop);
     let cs = Style::default().bg(t.card);
     let ps = Style::default().bg(t.card2);
     let mut typed = vec![
-        seg(
-            km.query.clone(),
-            ps.fg(t.strong).add_modifier(Modifier::BOLD),
-        ),
+        seg(km.query.clone(), ps.fg(t.strong).add_modifier(Modifier::BOLD)),
         seg("█", ps.fg(t.accent)),
     ];
     if km.query.is_empty() {
         typed.push(seg(" type what you want to do", ps.fg(t.muted)));
     }
     input_row(app, buf, r, r.y + 2, t, prompt(t, typed));
-    let head_y = r.y + 4;
-    let head = if km.query.is_empty() {
-        "RECENT".to_string()
-    } else {
-        format!(
-            "{} match{}",
-            list.len(),
-            if list.len() == 1 { "" } else { "es" }
-        )
-    };
-    put(
-        buf,
-        r.x + 4,
-        head_y,
-        &[seg(head, cs.fg(t.muted).add_modifier(Modifier::BOLD))],
-        r.right().saturating_sub(3),
-    );
-    let cap = (inside.bottom().saturating_sub(2)).saturating_sub(head_y + 1) as usize;
-    let start = km.sel.saturating_sub(cap.saturating_sub(1));
-    let needle = km.query.trim().to_lowercase();
-    let first_word = needle.split_whitespace().next().unwrap_or("").to_string();
-    for (i, e) in list.iter().enumerate().skip(start).take(cap) {
-        let y = head_y + 1 + (i - start) as u16;
-        let rr = Rect {
-            x: r.x + 3,
-            y,
-            width: r.width.saturating_sub(6),
-            height: 1,
+
+    // Rows: a group head, its rows, then the next group. `row` numbers the selectable ones.
+    let first_y = r.y + 4;
+    let cap = inside.bottom().saturating_sub(1).saturating_sub(first_y) as usize;
+    let head_style = cs.fg(t.muted).add_modifier(Modifier::BOLD);
+    let mut lines: Vec<(Option<usize>, Vec<Seg>)> = Vec::new();
+    let commands_head = if km.query.is_empty() { "COMMANDS" } else { "RESULTS" };
+    if !list.is_empty() {
+        lines.push((None, vec![seg(commands_head, head_style)]));
+        lines.extend((0..list.len()).map(|i| (Some(i), Vec::new())));
+    }
+    if !sessions.is_empty() {
+        lines.push((None, vec![seg("SESSIONS", head_style)]));
+        lines.extend((0..sessions.len()).map(|i| (Some(list.len() + i), Vec::new())));
+    }
+    let at = lines.iter().position(|(i, _)| *i == Some(km.sel)).unwrap_or(0);
+    let start = at.saturating_sub(cap.saturating_sub(1));
+    let needle: String = km.query.split_whitespace().collect::<String>().to_lowercase();
+    for (offset, (_, (index, head))) in lines.iter().enumerate().skip(start).take(cap).enumerate() {
+        let y = first_y + offset as u16;
+        let Some(i) = *index else {
+            put(buf, r.x + 4, y, head, r.right().saturating_sub(3));
+            continue;
         };
+        let rr = Rect { x: r.x + 3, y, width: r.width.saturating_sub(6), height: 1 };
         let on = i == km.sel || hovered(app, rr);
         let bg = if on { t.sel_on(t.card) } else { t.card };
         if on {
             row_pill(Look::of(&app.cfg.ui), buf, rr.x, y, rr.width, bg, t.card);
-            put(
-                buf,
-                rr.x + 1,
-                y,
-                &[seg(
-                    "▎",
-                    Style::default()
-                        .bg(bg)
-                        .fg(t.accent)
-                        .add_modifier(Modifier::BOLD),
-                )],
-                rr.x + 2,
-            );
+            put(buf, rr.x, y, &[seg("▌", Style::default().bg(bg).fg(t.accent).add_modifier(Modifier::BOLD))], rr.x + 1);
         }
-        let plain = Style::default()
-            .bg(bg)
-            .fg(if e.keys.is_empty() && e.act.is_none() {
-                t.muted
-            } else {
-                t.strong
-            });
-        let lit = Style::default()
-            .bg(bg)
-            .fg(t.accent)
-            .add_modifier(Modifier::BOLD);
-        let n = if e.label.to_lowercase().contains(&needle) {
-            &needle
-        } else {
-            &first_word
-        };
-        let label = highlighted(&e.label, n, plain, lit);
-        put(buf, r.x + 5, y, &label, r.right().saturating_sub(34));
-        put(
-            buf,
-            r.right().saturating_sub(32),
-            y,
-            &[seg(e.group.clone(), Style::default().bg(bg).fg(t.muted))],
-            r.right().saturating_sub(4),
-        );
-        if !e.keys.is_empty() {
-            let caps = keycaps(t, &e.keys, bg);
-            let cw = segs_width(&caps);
+        let lit = Style::default().bg(bg).fg(t.accent).add_modifier(Modifier::BOLD);
+        if let Some(e) = list.get(i) {
+            let plain = Style::default().bg(bg).fg(if e.keys.is_empty() && e.act.is_none() { t.muted } else { t.strong });
+            put(buf, r.x + 5, y, &fuzzy_segs(&e.label, &needle, plain, lit), r.right().saturating_sub(34));
             put(
                 buf,
-                r.right().saturating_sub(cw + 5),
+                r.right().saturating_sub(32),
                 y,
-                &caps,
+                &[seg(category_of(e.act.as_ref()), Style::default().bg(bg).fg(t.muted))],
                 r.right().saturating_sub(4),
             );
+            if !e.keys.is_empty() {
+                let caps = keycaps(t, &e.keys, bg);
+                let cw = segs_width(&caps);
+                put(buf, r.right().saturating_sub(cw + 5), y, &caps, r.right().saturating_sub(4));
+            }
+        } else if let Some(sh) = sessions.get(i - list.len()) {
+            let mark = app.state_mark(sh.state, t);
+            let dim = sh.state == super::status_mark::State::Unknown;
+            let plain = Style::default().bg(bg).fg(if dim { t.idle } else { t.strong });
+            put(buf, r.x + 5, y, &[seg(mark.glyph, Style::default().bg(bg).fg(mark.color))], r.x + 7);
+            put(buf, r.x + 7, y, &fuzzy_segs(&sh.name, &needle, plain, lit), r.right().saturating_sub(34));
+            put(buf, r.right().saturating_sub(32), y, &[seg(sh.place.clone(), Style::default().bg(bg).fg(t.muted))], r.right().saturating_sub(4));
         }
         hit(app, rr, ScreenHit::KeyRow(i));
     }
-    if list.is_empty() {
+    if list.is_empty() && sessions.is_empty() {
         put(
             buf,
             r.x + 5,
-            head_y + 1,
-            &[seg(
-                format!("Nothing matches \"{}\".", km.query.trim()),
-                cs.fg(t.muted),
-            )],
+            first_y,
+            &[seg(format!("Nothing matches \"{}\".", km.query.trim()), cs.fg(t.muted))],
             r.right().saturating_sub(3),
         );
     }
-    bar(
-        buf,
-        inside,
-        t,
-        &[
-            ("↑↓", "move"),
-            ("Enter", "run"),
-            ("Tab", "key map"),
-            ("Esc", "close"),
-        ],
-    );
+    bar(buf, inside, t, &[("↑ ↓", "move"), ("Enter", "run"), ("Esc", "close")]);
+}
+
+/// `label` with the letters a fuzzy search matched in the accent.
+fn fuzzy_segs(label: &str, needle: &str, plain: Style, lit: Style) -> Vec<Seg> {
+    let Some(at) = (!needle.is_empty()).then(|| super::new_session::fuzzy_indices(needle, label)).flatten() else {
+        return vec![seg(label, plain)];
+    };
+    label
+        .chars()
+        .enumerate()
+        .map(|(i, ch)| seg(ch.to_string(), if at.contains(&i) { lit } else { plain }))
+        .collect()
 }
 
 fn draw_step(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, km: &KeyMap, step: Step) {
     let look = Look::of(&app.cfg.ui);
-    let lead = app.keymap.prefix.to_string().replace("C-", "Ctrl+");
+    let lead = long_key(&app.keymap.prefix);
     let (r, inside) = frame(app, buf, area, t, &lead, 16);
     let cs = Style::default().bg(t.card);
     let ps = Style::default().bg(t.card2);
@@ -1203,14 +1381,34 @@ impl App {
 
     /// Run what the overlay's row `i` stands for (a click, or Enter).
     pub(in crate::client) fn keymap_run(&mut self, km: &KeyMap, i: usize) {
-        if let Some(Some(a)) = keymap_actions(self, km).get(i).cloned() {
+        let commands = keymap_actions(self, km);
+        if km.view == KeyView::Search && km.step.is_none() && i >= commands.len() {
+            // A row of the SESSIONS group: go to it.
+            if let Some(hit) = session_hits(self, &km.query).get(i - commands.len()) {
+                let term = hit.term;
+                self.mode = Mode::Normal;
+                self.screen_focus(term);
+            }
+            return;
+        }
+        if let Some(Some(a)) = commands.get(i).cloned() {
             self.keymap_do(a);
+        }
+    }
+
+    /// How many rows the overlay's list has: the commands, then in Search the sessions.
+    fn keymap_rows(&self, km: &KeyMap) -> usize {
+        let n = keymap_actions(self, km).len();
+        if km.view == KeyView::Search && km.step.is_none() {
+            n + session_hits(self, &km.query).len()
+        } else {
+            n
         }
     }
 
     pub(in crate::client) fn on_keymap_key(&mut self, mut km: KeyMap, k: &KeyEvent) {
         let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
-        let n = keymap_actions(self, &km).len();
+        let n = self.keymap_rows(&km);
         let typed = match k.code {
             KeyCode::Char(c)
                 if !k

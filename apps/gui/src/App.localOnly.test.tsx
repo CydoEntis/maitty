@@ -80,7 +80,8 @@ async function openRemotePane() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(<QueryClientProvider client={client}><App /></QueryClientProvider>)
   const user = userEvent.setup()
-  const row = (await screen.findAllByRole('button', { name: /build · / })).find((button) => !button.classList.contains('mx-group-head'))
+  const list = await screen.findByRole('list', { name: 'Sessions on build' })
+  const row = within(list).getAllByRole('button')[0]
   if (row === undefined) throw new Error('the session row of build was not shown')
   await user.click(row)
   await screen.findByRole('region', { name: /Terminal 1/ })
@@ -97,13 +98,13 @@ describe('a pane of another machine and the features that need its files', () =>
     daemon.suggestProjectFolders.mockResolvedValue([])
   })
 
-  it('says Inspect is local-only, from the shortcut and the disabled Files button of the activity bar', async () => {
+  it('says Inspect is local-only, from the shortcut and from the pane menu', async () => {
     const user = await openRemotePane()
-    const button = within(screen.getByRole('toolbar', { name: 'Panels' })).getByRole('button', { name: 'Files' })
-    expect(button).toHaveAttribute('aria-disabled', 'true')
-    expect(button).toHaveAttribute('title', REFUSAL('Inspect'))
-    await user.click(button)
+    await user.keyboard('{Control>}{Shift>}i{/Shift}{/Control}')
     expect(await screen.findByText(REFUSAL('Inspect'))).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'More pane actions' }))
+    await user.click(await screen.findByRole('menuitem', { name: /^Changes/ }))
+    expect(await screen.findAllByText(REFUSAL('Inspect'))).not.toHaveLength(0)
     expect(screen.queryByRole('complementary', { name: /repository|inspect/i })).toBeNull()
   })
 

@@ -105,38 +105,36 @@ and your configured custom ones; rows click and the wheel scrolls.
 - Nothing moves in the sidebar by itself: a session that needs you or finishes keeps its row (its mark and name say so, and the Inbox lists what needs you). Idle agents stay running; no sleep screen is shown for sessions saved by older releases.
 - A session taking a real share of the machine says so in its pane's title, beside its state
   (`▲ 38% CPU · 2.1 GB`, from a fifth of the CPU or two gigabytes).
-- The sidebar footer keeps **+ new** and **Menu** available. **+ new**, `Ctrl+Space n` and a project's **+** open a plain shell where you are; type your agent there. `Ctrl+Space s` starts a session straight away (Settings › Sessions sets the agent and whether it gets a worktree).
+- The sidebar lists each machine with its sessions. `Ctrl+T`, `Ctrl+Space t` and a machine's **+** start a shell at once where you are; `Ctrl+Space n` (or the **n new session** chip when no pane is open) opens the New session dialog (a project, then a machine). Type your agent in the shell.
 - `⇆` under a row names a file that this checkout and another have each changed since their
   branches parted (a merge conflict waiting to happen); more than two are one line with a count.
 - Drag a project, or a session within its project, up or down to reorder it. Click a project to fold or open it. With the sidebar focused
-  (`Ctrl+Space e`), a row's menu letters work directly (a row's menu lists them): `x` (or
+  (`Ctrl+Space` then `←`), a row's menu letters work directly (a row's menu lists them): `x` (or
   Delete) asks to close, `r` renames. Settings › General › UPDATES shows the version; Settings warns at the top when the installed, window and daemon versions differ.
 
-The bar along the bottom always says which mode you are in: `TYPING` while keys go to the
-pane. The leader key is `Ctrl+Space`. Press it (or click the bar) for **shortcut mode**: the
-bar turns sky blue and suggests keys (`n shell`, `f files`, `? all keys`, `Esc type`, …; a click
-on one runs it), the pane you're in turns sky too, each key below runs its action, and the mode
-stays for the next key. A key
-that does nothing says "Shortcut mode — Esc to type". `Esc`, `Ctrl+Space` again or a click into a pane
-go back to typing, and so does a new shell, session, tab or split: the next key goes to the
-new pane. Closing a popup returns to shortcut mode. While the sidebar, a popup or a panel has
-the keys, the bar names it and says how to use and leave it (`FILES · / filter · i edit · Enter
-insert path · Esc close`). With **Leader waits for next key** on (Settings › General; off by default), a pause after the leader shows the compact key map: a key runs its
-command, Tab (or typing a letter that is no key) searches every command, `?` shows all keys,
-and keys marked `›` open a second step (`g` worktrees: new, switch, merge, delete; Backspace
-goes back). No default but `?` needs Shift, and each key does one thing; no letter acts by itself in
-the sidebar. Every default shortcut, and every screen's own keys, are in
-[shortcuts](shortcuts.md).
+The bar along the bottom always says which mode you are in: ` PANE ` while keys go to the
+pane, with the session you are on. The leader key is `Ctrl+Space`. Press it (or click ` PANE `) for
+**key mode**: the chip turns to a yellow ` KEYS ` and the bar lists keys (`n new  s split  x close
+tab pane  ? help  esc back`; a click on one runs it), the pane you're in turns sky, each key below
+runs its action, and the mode stays for the next key, so `j j k` walks the sessions. A key that does
+nothing says "Shortcut mode — Esc to type". `Esc`, `Ctrl+Space` again or a click into a pane go back to
+the pane, and so does a new shell, session or split: the next key goes to the new pane. Closing a
+popup returns to key mode. While the sidebar, a popup or a panel has the keys, the bar names it and
+lists its keys (` FILES ` … `/ filter  i edit  enter insert path  esc close`). With **Leader waits for
+next key** on (Settings › General; off by default), a pause after the leader shows the compact key map:
+a key runs its command, Tab (or typing a letter that is no key) searches every command, and keys marked
+`›` open a second step (`g` worktrees: new, switch, merge, delete; Backspace goes back). `?` is the
+keys help. Only `?`, `S` and `_` need Shift, and each key does one thing; no letter acts by itself in
+the sidebar. Every default shortcut, and every screen's own keys, are in [shortcuts](shortcuts.md).
 
-Without the leader: **Alt+1–9** selects tabs; **Alt+arrows** moves pane focus
-when enabled in Settings (after the leader, Alt+arrows swaps panes instead). All keys shows changes to these bindings too.
+Without the leader: **Alt+1–9** opens that session of the sidebar; **Alt+arrows** moves pane focus
+when enabled in Settings (after the leader, Alt+arrows swaps panes instead).
 
-**Files**, **Changes**, **Branch** and **References** share the side panel docked beside
-your panes. A tab strip at its top names each with its key (`Files f · Changes c · Branch b ·
-References a`), the open one lit
-while the panel has the keys; Tab / Shift+Tab (or a click on a tab) moves between them for the
-same checkout. A click into a pane gives that pane the keys and leaves the panel open beside
-it; a click in the panel, or its key again, gives the keys back.
+**Files**, **Changes**, **Branch** and **References** share the side panel that slides in from
+the pane's right edge, inside its box: its title chip names the open one (lit while the panel has
+the keys) and `»` or Esc closes it. A pane's `files` and `changes` chips open those two; Tab / Shift+Tab
+moves between the four for the same checkout. A click into the pane gives it the keys and leaves the
+panel open; a click in the panel, or its key again, gives the keys back.
 
 **Files** shows the project's tree and the file you pick beside it (on a narrow panel the
 file takes the panel, `‹` goes back). `f` again or Esc closes it; Ctrl+click on a `path:line`
@@ -200,7 +198,7 @@ still has them loads, and they are ignored.
   ssh to that machine (not a custom transport) and a login that works without a prompt.
 - **Files to another machine:** in a pane on another machine, `Ctrl+Space`, then `d`, asks for a
   file's path (type it, or drop the file on the terminal: the path is pasted into the box). The
-  file (up to 100 MB; one file, not a folder) goes to that machine over ssh the same way as an image,
+  file (up to 100 MB; a folder is sent too, up to 1 GB, see *Sending a file or a folder to a machine*) goes to that machine over ssh the same way as an image,
   into the same private folder (`~/.cache/maitty/pastes`), and its path there is typed into the pane.
   The name there is `paste-<time>-<id>-<your file's name>`, so two files never overwrite each other.
   A toast shows the percentage; `Ctrl+Space`, `d` again (or the toast's close mark) stops it.
@@ -505,6 +503,8 @@ maitty machine update build --install   # not installed there yet: install this 
 maitty machine update build --yes       # an older version there: replace it
 maitty machine update build             # asks, when you are at a keyboard
 maitty machine update build --force     # a newer version there: put this one on instead (a downgrade)
+maitty machine update build --yes --restart  # also restart its daemon now, even with sessions open
+maitty machine activity build           # how many sessions are open there and how many are busy (changes nothing)
 ```
 
 ```
@@ -514,7 +514,7 @@ sending 14.2 MB (sha256 3f2a9c1b7d04)…
 verified: it arrived whole and runs there
 installed to ~/.local/bin/maitty
 asking the daemon on build to restart if no session is open…
-daemon: left running: 3 open session(s); it keeps them
+daemon: left running: 3 open session(s); it keeps them   (with --restart: restarted, sessions come back)
 build: maitty 0.60.0 installed to ~/.local/bin/maitty
 ```
 
@@ -531,14 +531,78 @@ build: maitty 0.60.0 installed to ~/.local/bin/maitty
 - **Where.** At the machine's `remote_cmd` when that is an absolute path or starts with `~/`; otherwise at
   `~/.local/bin/maitty`. If `maitty` is not found on that machine's PATH afterwards, the command says to set
   `remote_cmd = "~/.local/bin/maitty"` for it in `config.local.toml` (it does not edit your config).
-- **Running sessions survive.** Nothing is killed. The old daemon keeps running on the old file. The new
-  maitty then restarts it only when it has no session open; otherwise it says it left it running, and the
-  daemon takes the new version the next time it restarts (when its sessions are closed).
+- **Running sessions survive an ordinary update.** The old daemon keeps running on the old file. The new
+  maitty restarts it only when it has no session open; otherwise it says it left it running. Add `--restart`
+  (the desktop app's Update button does, after asking) to restart it anyway: its sessions are saved, so the
+  new daemon restores them and resumes their agents. A turn in progress is lost. A daemon whose sessions are
+  not saved is never restarted.
 - **Not supported: a Windows machine as the remote.** In v1 Windows is never the remote; the command says so
   and exits. Linux and macOS (x86_64 and aarch64) are supported.
 
 Exit status: 0 done or already up to date, 2 a mistake in how it was asked (an unknown machine, a flag
 missing), 1 a step that did not work.
+
+### Getting a file or a folder from a machine
+
+```sh
+maitty machine get build ~/out.log          # saved in the folder you are in
+maitty machine get build /srv/app/app.zip ~/Downloads   # saved in that folder (made if missing)
+```
+
+`maitty machine get <machine> <path> [folder]` pulls one file or one folder from a machine you added, over ssh,
+and prints the path it was saved to. A `~/` at the start of the path is the machine's home folder.
+
+- **One file or one folder, up to 1 GB.** A folder arrives as a folder, with its sub-folders. A `.zip` you already
+  have is just a file, so it travels like any other. Symlinks inside a folder arrive as the files they point to.
+- **The name is made here.** The file keeps the last part of the remote path with anything but letters, digits,
+  `.`, `_`, `-` and spaces changed to `_`. Windows reserved names (`CON`, `NUL`, ...) get a leading `_`.
+- **Nothing is overwritten.** If the name is taken the file is called `out-1.log`, `out-2.log`, and so on.
+- **All or nothing.** The file or folder appears under its name only when everything arrived. A failed or stopped
+  pull leaves nothing; a hidden `.<name>...` file or folder can stay only if the program itself is killed mid-pull,
+  and is safe to delete.
+- **A folder is checked before it is unpacked.** The machine is not trusted, so a folder is refused whole, with the
+  first bad entry named, if it holds a link, a device or any special file, a path that leaves the folder, a name
+  this computer could not store safely (a backslash or colon, a Windows reserved name such as `CON`, a name ending
+  in a dot or space, odd or invisible characters), more than 50000 entries or a path deeper than 64 parts.
+- A pulled file can hold secrets that were on the machine. It is saved with your normal file permissions.
+
+Exit status: 0 saved, 2 a mistake in how it was asked, 1 the pull did not work (the message says why).
+
+### Sending a file or a folder to a machine
+
+```sh
+maitty machine put build ./report.pdf     # one file, up to 100 MB
+maitty machine put build ./my-project     # one folder, up to 1 GB
+```
+
+`maitty machine put <machine> <path>` sends one file or one folder from this computer to a machine you added, over
+ssh, and prints where it is there. It is kept in that machine's private cache folder (`~/.cache/maitty/pastes`, readable
+only by you, cleared after a week) under a name like `paste-<time>-<id>-my-project`, so nothing there is overwritten.
+Dropping a file on a session of another machine does the same thing for a file. A pulled or sent file can hold secrets,
+so do not send one you would not leave in that cache.
+
+Exit status: 0 sent, 2 a mistake in how it was asked, 1 the send did not work.
+
+In the desktop app, right-click a session that is on another machine and choose **Get a file…**. The box lists the
+session's folder: click a folder to open it, **Up** to go back, or a file to get it. Type a few letters of a name to
+search the session's folder and everything below it (not `.git`, `node_modules` or build folders; the first 5000
+files), and use the arrow keys and Enter. If the file is somewhere else, browse up to it or type the path in the box
+under the list. The file is saved in `Downloads/maitty/<machine>/` with a progress toast you can cancel and an
+**Open folder** button when it is done. It is the same pull as the command. Names with unusual characters are left
+out of the list, and the dialog says how many.
+
+### Moving text between machines
+
+Text needs no special command.
+
+- **From this computer to a machine:** paste into the session as you would anywhere. The text is typed into that
+  machine's session. A paste of text never sends a file, even when the text is a path.
+- **From a machine to this computer:** copy in the session as you would here (select text, or an agent's `/copy`),
+  and it reaches your clipboard. The machine's clipboard switch is on unless you turned it off (Settings › Machines, or
+  `clipboard = false` in its entry in `config.local.toml`).
+- **A long text, or one you want to keep as a file:** save it as a file. To bring it here, use
+  `maitty machine get` or **Get a file…** (see *Getting a file or a folder from a machine*). To send a file there, drop it on the
+  session.
 
 ### Agents on a machine
 
@@ -646,10 +710,10 @@ folder there, starting at `~`, because the folder picker is this computer's; a f
 opens in the machine's home folder. Files, Changes, worktrees and the other features that read a pane's files
 are for this computer's sessions only.
 
-**Dropping files on a session of another machine** sends them there: drag up to 10 files from your file
-manager onto the pane. Each goes over ssh (not a custom transport) into `~/.cache/maitty/pastes` on that
-machine (private, cleared after a week), and its path there is typed into the pane. Only files are sent, up
-to 100 MB each; a folder is refused. A toast shows the file, how far it has got, and a **Cancel** button; if a
+**Dropping files or folders on a session of another machine** sends them there: drag up to 10 files or folders from
+your file manager onto the pane. Each goes over ssh (not a custom transport) into `~/.cache/maitty/pastes` on that
+machine (private, cleared after a week), and its path there is typed into the pane. A file is sent up to
+100 MB, a folder (as one archive) up to 1 GB. A toast shows the file or folder, how far it has got, and a **Cancel** button; if a
 file fails, the ones after it are not tried. The machine has to be `connected`. A file stays on the machine for
 a week, readable by you only, so do not send a secret you would not leave there. Dropping on a session of this
 computer types the file's path, as before.
@@ -718,7 +782,9 @@ saved to the data directory a couple of seconds after it changes. On the next st
 `maitty kill-server` keeps the session for next time, and `maitty kill-server --forget` discards it.
 Closing every pane yourself also starts fresh. A pane or agent that ends on its own is left out
 of the saved session for 15 seconds: a shutdown, reboot or logoff kills agents a moment before
-maitty, so the session from before it is the one that comes back. Configure all of this under `[restore]`,
+maitty, so the session from before it is the one that comes back. Chat conversations that were running
+resume by themselves on the same provider session (`conversations = false` leaves them in Recovery
+needed until you press Resume). Configure all of this under `[restore]`,
 and per agent with `resume` / `resume_last`. Each pane's recent output is kept on disk so it is
 there after a restart; it can hold secrets that were on screen, so `output = false` (Settings ›
 Sessions › Keep each pane's recent output) stops saving it and deletes what was saved.

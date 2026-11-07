@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import { Check, ChevronRight, Circle, CircleDot, Pencil } from 'lucide-react'
+import { Check, Circle, CircleDot } from 'lucide-react'
+import { HighlightedLine } from '@/components/HighlightedLine'
 import { Spinner } from '@/features/workspace/components/glyphs'
 import { ElapsedSince } from '@/features/workspace/components/times'
 import type { CommandEvent, EditEvent, TodoEvent, ToolEvent } from '../chatEvents'
 import { isOmitted, redactionNote } from '../redaction'
 import { elapsedMs, relativePath, todoProgress, tookText } from '../stepInfo'
 import { Detail, StatusMark, StatusWord } from './cardParts'
-import { DIFF_TONE, diffRows } from './diffRows'
+import { diffRows, type DiffRow } from './diffRows'
 
 /**
  * The step cards of the chat (v18 C.1): tool chip, command card, edit block and checklist. A fact
@@ -24,14 +25,12 @@ export function ToolChip({ event }: { event: ToolEvent }) {
   const target = event.target?.slice(0, CHIP_TARGET_CHARS) ?? ''
   return (
     <div>
-      <button type="button" aria-expanded={open} className="flex h-7 max-w-full items-center gap-2 rounded-lg border border-line2 px-2.5 text-left font-mono text-[12px] text-fg2 hover:bg-hover" onClick={() => { setOpen((current) => !current) }}>
+      <button type="button" aria-expanded={open} className="mx-tool" onClick={() => { setOpen((current) => !current) }}>
         <StatusMark status={event.status} />
-        <span className="shrink-0 text-fg">{event.name}</span>
-        {target !== '' && <span className="truncate text-dim">{target}</span>}
-        <ChevronRight className={`size-3 shrink-0 text-dim transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden="true" />
+        <span className="mx-tool-text">{event.name}{target !== '' && ` ${target}`}</span>
       </button>
       {open && (
-        <div>
+        <div className="mx-tool-detail">
           {event.input !== null && (
             <>
               <p className="mt-1.5 mb-0 text-[11px] font-semibold text-dim">Input</p>
@@ -90,23 +89,19 @@ export function CommandCard({ event }: { event: CommandEvent }) {
   const lines = event.output === '' || omitted ? [] : event.output.replace(/\n+$/, '').split('\n')
   const shown = all ? lines : lines.slice(-COMMAND_TAIL_LINES)
   return (
-    <div role="group" aria-label={`Command ${event.command}`} className="overflow-hidden rounded-[10px] border border-line2 bg-term">
-      <div className="flex min-h-9 items-center gap-2.5 px-3 py-1.5">
-        <span className="font-mono text-[12.5px] text-dim" aria-hidden="true">$</span>
-        <code className="min-w-0 flex-1 font-mono text-[12.5px] text-fg [overflow-wrap:anywhere]">{event.command === '' ? 'A command' : event.command}</code>
+    <div role="group" aria-label={`Command ${event.command}`} className="mx-step-card">
+      <div className="mx-step-head">
+        <span className="font-mono text-dim" aria-hidden="true">$</span>
+        <code className="mx-step-command">{event.command === '' ? 'A command' : event.command}</code>
         <CommandState event={event} />
       </div>
-      {omitted && <p className="m-0 border-t border-line2 px-3 py-2 text-[12px] text-dim">The output shows a secret file, so the history does not keep it.</p>}
-      {shown.length > 0 && (
-        <div className="border-t border-line2 px-3 py-2">
-          <pre className="m-0 max-h-72 overflow-auto font-mono text-[11.5px] leading-[18px] whitespace-pre-wrap text-fg2 [overflow-wrap:anywhere]">{shown.join('\n')}</pre>
-          {lines.length > COMMAND_TAIL_LINES && (
-            <button type="button" aria-expanded={all} className="mt-1 text-[11.5px] text-dim hover:text-fg" onClick={() => { setAll((current) => !current) }}>
-              {all ? 'Show less' : `Show all ${String(lines.length)} lines`}
-            </button>
-          )}
-          <RedactionNote texts={[event.output]} />
-        </div>
+      {omitted && <p className="mx-step-note">The output shows a secret file, so the history does not keep it.</p>}
+      {shown.length > 0 && <pre className="mx-step-output">{shown.join('\n')}</pre>}
+      {shown.length > 0 && <RedactionNote texts={[event.output]} />}
+      {lines.length > COMMAND_TAIL_LINES && (
+        <button type="button" aria-expanded={all} className="mx-step-more" onClick={() => { setAll((current) => !current) }}>
+          {all ? 'Show less' : `Show all ${String(lines.length)} lines`}
+        </button>
       )}
     </div>
   )
@@ -131,45 +126,49 @@ export function EditCard({ event, root, onOpen }: EditCardProps) {
   const shown = all ? rows : rows.slice(0, FOLD_LINES)
   const headerBody = (
     <>
-      <Pencil className="size-3.5 shrink-0 text-dim" aria-hidden="true" />
-      <span className="text-[12px] text-fg2">{CHANGE_WORD[event.change]}</span>
-      <code className="min-w-0 flex-1 truncate text-left font-mono text-[12px] text-fg" title={name}>{name}</code>
-      {event.diff.status === 'available' && event.diff.added > 0 && <span className="font-mono text-[11.5px] text-[var(--ok)]">+{event.diff.added}</span>}
-      {event.diff.status === 'available' && event.diff.removed > 0 && <span className="font-mono text-[11.5px] text-[var(--danger)]">−{event.diff.removed}</span>}
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+      <span>{CHANGE_WORD[event.change]}</span>
+      <code className="mx-step-path" title={name}>{name}</code>
+      {event.diff.status === 'available' && event.diff.added > 0 && <span className="mx-step-add">+{event.diff.added}</span>}
+      {event.diff.status === 'available' && event.diff.removed > 0 && <span className="mx-step-del">−{event.diff.removed}</span>}
       {event.status !== 'completed' && <StatusWord status={event.status} />}
     </>
   )
   return (
-    <div role="group" aria-label={`${CHANGE_WORD[event.change]} ${name}`} className="overflow-hidden rounded-[10px] border border-line2 bg-term">
+    <div role="group" aria-label={`${CHANGE_WORD[event.change]} ${name}`} className="mx-step-card">
       {onOpen !== null && event.file !== null ? (
-        <button type="button" aria-label={`Open the diff of ${name} in the Changes panel`} className="flex min-h-[34px] w-full items-center gap-2 px-3 hover:bg-hover" onClick={() => { if (event.file !== null) onOpen(event.file) }}>
+        <button type="button" aria-label={`Open the diff of ${name} in the Changes panel`} className="mx-step-head" onClick={() => { if (event.file !== null) onOpen(event.file) }}>
           {headerBody}
         </button>
       ) : (
-        <div className="flex min-h-[34px] items-center gap-2 px-3">{headerBody}</div>
+        <div className="mx-step-head">{headerBody}</div>
       )}
-      {event.diff.status === 'unavailable' && (
-        <p className="m-0 border-t border-line2 px-3 py-2 text-[12px] text-dim">The conversation history did not keep this change&apos;s content, so its diff is unavailable.</p>
-      )}
-      {event.diff.status === 'omitted' && (
-        <p className="m-0 border-t border-line2 px-3 py-2 text-[12px] text-dim">This looks like a secret file, so the history keeps its name but not its content.</p>
-      )}
+      {event.diff.status === 'unavailable' && <p className="mx-step-note">The conversation history did not keep this change&apos;s content, so its diff is unavailable.</p>}
+      {event.diff.status === 'omitted' && <p className="mx-step-note">This looks like a secret file, so the history keeps its name but not its content.</p>}
       {shown.length > 0 && (
-        <div className="border-t border-line2 py-1 font-mono text-[11.5px] leading-[19px]">
-          {shown.map((row) => (
-            <div key={row.key} className={`flex ${DIFF_TONE[row.tone]}`}>
-              <span className="w-[22px] shrink-0 text-center text-dim select-none" aria-hidden="true">{row.sign}</span>
-              <span className="min-w-0 flex-1 pr-3 whitespace-pre-wrap text-fg2 [overflow-wrap:anywhere]">{row.text === '' ? ' ' : row.text}</span>
-            </div>
-          ))}
-          {event.diff.status === 'available' && event.diff.truncated && <p className="m-0 px-3 pt-1 text-[11.5px] text-dim">The daemon cut this diff at its size limit.</p>}
+        <div className="mx-diff">
+          {shown.map((row) => <DiffLine key={row.key} row={row} path={file ?? ''} />)}
+          {event.diff.status === 'available' && event.diff.truncated && <p className="mx-step-note">The daemon cut this diff at its size limit.</p>}
         </div>
       )}
       {rows.length > FOLD_LINES && (
-        <button type="button" aria-expanded={all} className="w-full border-t border-line2 px-3 py-1.5 text-left text-[11.5px] text-dim hover:text-fg" onClick={() => { setAll((current) => !current) }}>
+        <button type="button" aria-expanded={all} className="mx-step-more" onClick={() => { setAll((current) => !current) }}>
           {all ? 'Show less' : `${String(rows.length - FOLD_LINES)} more lines`}
         </button>
       )}
+    </div>
+  )
+}
+
+const LINE_TONE: Record<DiffRow['tone'], string> = { add: ' is-add', remove: ' is-del', context: '', header: '' }
+
+/** One line of a diff: a hunk header in blue, or the line with its sign and the file's syntax colours. */
+function DiffLine({ row, path }: { row: DiffRow; path: string }) {
+  if (row.tone === 'header') return <div className="mx-diff-hunk">{row.text}</div>
+  return (
+    <div className={`mx-diff-line${LINE_TONE[row.tone]}`}>
+      <span className="mx-diff-sign" aria-hidden="true">{row.sign}</span>
+      <span className="mx-diff-text">{row.text === '' ? ' ' : <HighlightedLine line={row.text} path={path} />}</span>
     </div>
   )
 }
@@ -178,7 +177,7 @@ export function EditCard({ event, root, onOpen }: EditCardProps) {
 export function TodoCard({ event }: { event: TodoEvent }) {
   const progress = event.items === null ? null : todoProgress(event.items)
   return (
-    <div role="group" aria-label="Checklist" className="rounded-[10px] border border-line2 bg-raise px-3 py-2">
+    <div role="group" aria-label="Checklist" className="mx-step-card px-3 py-2">
       <p className="m-0 mb-1 text-[11.5px] font-semibold text-fg2">
         {progress === null ? 'Checklist' : `Checklist · ${String(progress.done)} of ${String(progress.total)}`}
       </p>

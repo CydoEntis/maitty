@@ -298,8 +298,9 @@ impl Daemon {
                 .filter_map(|p| Some((p.latest.info.name.clone(), p.tree.clone()?)))
                 .collect(),
         };
-        let workspaces = self
-            .workspaces
+        // A session still inside its undo window is saved as closed: a restart ends it.
+        let visible = self.visible_workspaces();
+        let workspaces = visible
             .iter()
             .map(|w| persist::SavedWs {
                 name: w.name.clone(),
@@ -330,8 +331,7 @@ impl Daemon {
                     .collect(),
             })
             .collect();
-        let active = self
-            .workspaces
+        let active = visible
             .iter()
             .position(|w| Some(w.id) == self.active_ws)
             .unwrap_or(0);
@@ -403,6 +403,22 @@ impl Daemon {
         }
     }
 
+    /// Start again each chat conversation that was running when the last daemon went away, on
+    /// its own provider session (ADR 0003). Each is tried once: the list is emptied here, so a
+    /// runtime that fails again stays failed until a person resumes it.
+    pub(super) fn resume_conversations(&mut self) {
+        let candidates = std::mem::take(&mut self.resumable_conversations);
+        if !self.cfg.restore.conversations {
+            return;
+        }
+        for (id, generation) in candidates {
+            let target = crate::conversation::StartTarget::Conversation { id, generation };
+            if let Err(error) = self.conversation_start(conversation::commands::DAEMON_REQUESTER, target) {
+                tracing::warn!("conversation {} was not resumed: {error:#}", id.0);
+            }
+        }
+    }
+
     pub(super) fn restore_startup(&mut self, saved: persist::Saved) {
         // Recovery changes must differ from the snapshot actually on disk until saved.
         self.last_saved = serde_json::to_string(&saved).unwrap_or_default();
@@ -422,12 +438,20 @@ impl Daemon {
             tracing::warn!("refusing invalid conversation registry: {e:?}");
             return false;
         }
+        let mut resumable = Vec::new();
         for record in &mut saved.conversations {
-            if let Err(e) = record.recover() {
-                tracing::warn!("refusing conversation recovery: {e:?}");
-                return false;
+            match record.recover() {
+                Ok(true) if record.execution == crate::conversation::ExecutionKind::Structured => {
+                    resumable.push((record.id, record.generation));
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!("refusing conversation recovery: {e:?}");
+                    return false;
+                }
             }
         }
+        self.resumable_conversations = resumable;
         self.conversations = std::mem::take(&mut saved.conversations);
         self.pending_starts = std::mem::take(&mut saved.pending_starts);
         self.conversation_operations = std::mem::take(&mut saved.conversation_operations);

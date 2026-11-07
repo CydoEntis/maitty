@@ -72,6 +72,8 @@ pub(super) fn moves_focus(c: &Command) -> bool {
             | Command::SelectTab { .. }
             | Command::NewWorkspace { .. }
             | Command::NewTab { .. }
+            | Command::NewShip { .. }
+            | Command::NewFleet { .. }
             | Command::NewWorktree { .. }
             | Command::AgentWorktree { .. }
     )

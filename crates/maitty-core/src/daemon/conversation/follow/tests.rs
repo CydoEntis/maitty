@@ -507,7 +507,7 @@ async fn commands_that_would_drive_the_agent_are_refused_with_a_reason() {
 
     let send = world
         .daemon
-        .conversation_send(61, id, generation, 1, "hi".into())
+        .conversation_send(61, id, generation, 1, "hi".into(), Default::default())
         .unwrap_err();
     let cancel = world
         .daemon

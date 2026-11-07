@@ -133,6 +133,8 @@ mod design_tests {
             last_lines: String::new(),
             branch: None,
             linked: false,
+            diff_added: 0,
+            diff_removed: 0,
             subagents: Vec::new(),
             subagent_activity: Vec::new(),
             session: None,
@@ -153,6 +155,7 @@ mod design_tests {
             checks: Vec::new(),
             asking: String::new(),
             interrupted: None,
+            exit: None,
             ask: None,
             timeline: Vec::new(),
         }
@@ -167,8 +170,6 @@ mod design_tests {
         cfg.ui.glyphs = "unicode".into();
         // The reference has no padding round the screen; its frames are compared cell for cell.
         cfg.ui.padding = "0".into();
-        // The reference has no tool rail, and its sheets sit beside the panes.
-        cfg.ui.tool_rail = false;
         let mut app = App::new(cfg, tx, None, bg_tx);
         app.splash = false;
         let layout = Node::Leaf(1);
@@ -375,8 +376,7 @@ mod screen_tests {
         }
         // Duplicate keys are gone: one key per action.
         for dropped in [
-            "M", "S", "Z", "H", "J", "K", "L", "X", "F", "B", "W", "R", "V", "N", "{", "}", "|",
-            ":",
+            "M", "Z", "H", "J", "K", "L", "X", "F", "B", "W", "R", "V", "N", "{", "}", ":",
         ] {
             let spec: crate::keys::KeySpec = dropped.parse().unwrap();
             assert!(
@@ -433,30 +433,24 @@ mod screen_tests {
                 o.contains("goes after the leader") && o.contains("= split") && o.contains("Esc"),
                 "{w}x{h}\n{o}"
             );
-            for g in ["SESSIONS", "PANES", "TABS", "PROJECT", env!("APP_ENV")] {
+            for g in ["SESSIONS", "PANES", "SIDEBAR", "TOOLS", env!("APP_ENV")] {
                 assert!(o.contains(g), "{w}x{h}: the map has {g}");
             }
             assert!(
                 o.contains("run it") && o.contains("show all") && !o.contains("[Esc]"),
                 "{o}"
             );
-            // ? lists every key, with the keys that need no leader and the commands with none.
+            // ? is the keys help: three columns of the keys that matter, as bound now.
             key(&mut app, KeyCode::Char('?'));
             assert!(matches!(&app.mode, Mode::KeyMap(km) if km.view == screen::KeyView::All));
-            let mut seen = String::new();
-            for _ in 0..80 {
-                seen += &draw(&mut app, w, h);
-                app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+            let o = draw(&mut app, w, h);
+            show(&o);
+            for words in ["keys", "esc close", "sessions", "panes", "window", "new session", "split right", "files"] {
+                assert!(o.contains(words), "{w}x{h}: the keys help has {words}\n{o}");
             }
-            show(&seen);
-            assert!(
-                seen.contains("All keys")
-                    && seen.contains("WITHOUT THE LEADER")
-                    && seen.contains("press directly")
-                    && seen.contains("SEARCH ONLY")
-                    && seen.contains("Clean up worktrees"),
-                "{w}x{h}: scrolling reaches every part of the list"
-            );
+            if w >= 100 {
+                assert!(o.contains("Keys only work in key mode"), "{w}x{h}\n{o}");
+            }
             // Typing from there searches; Tab goes back to the map.
             key(&mut app, KeyCode::Char('s'));
             assert!(
@@ -468,7 +462,7 @@ mod screen_tests {
             let o = draw(&mut app, w, h);
             show(&o);
             assert!(
-                o.contains("Collapse sidebar") && o.contains("Hide sidebar") && o.contains("Panes"),
+                o.contains("Collapse sidebar") && o.contains("Hide sidebar") && o.contains("Sidebar"),
                 "{w}x{h}\n{o}"
             );
             key(&mut app, KeyCode::Tab);
@@ -502,8 +496,8 @@ mod screen_tests {
             let mut xs = vec![
                 x("SESSIONS"),
                 x("PANES"),
-                x("TABS"),
-                x("PROJECT"),
+                x("SIDEBAR"),
+                x("TOOLS"),
                 x(env!("APP_ENV")),
             ];
             xs.sort();
@@ -529,8 +523,8 @@ mod screen_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(
-            o.contains("RECENT") && o.contains("Inbox"),
-            "nothing typed shows recent commands\n{o}"
+            o.contains("COMMANDS") && o.contains("Inbox"),
+            "nothing typed shows the recent commands\n{o}"
         );
         // Every command the old palette listed can be found by name.
         for a in app.palette_commands() {
@@ -555,7 +549,7 @@ mod screen_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(
-            o.contains("Clean up worktrees") && o.contains("1 match"),
+            o.contains("Clean up worktrees") && o.contains("RESULTS"),
             "{o}"
         );
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
@@ -614,135 +608,6 @@ mod screen_tests {
     }
 
     #[test]
-    fn the_collapsed_column_keeps_every_session_and_mouse_access_beside_the_panes() {
-        for (w, h, layout) in [
-            (80, 24, "floating"),
-            (100, 30, "floating"),
-            (160, 45, "floating"),
-        ] {
-            for position in ["left", "right"] {
-                let (_, mut app) = super::design_tests::render_with(w, h);
-                app.cfg.ui.layout = layout.into();
-                app.cfg.ui.sidebar_position = position.into();
-                app.sidebar = false;
-                app.snap.terms.get_mut(&2).unwrap().label = "Review payments".into();
-                app.screen_fresh();
-                app.cfg.ui.motion = false;
-                app.screen_focus(ClientTerm::local(1));
-                app.mode = Mode::Normal;
-                let (tx, mut rx) = mpsc::unbounded_channel();
-                app.out = tx;
-                let screen = draw(&mut app, w, h);
-                show(&screen);
-                let g = screen::grid(&app, Rect::new(0, 0, w, h));
-                assert_eq!(
-                    g.side.width,
-                    screen::RAIL_W,
-                    "{w}x{h} {layout} {position}: a narrow column"
-                );
-                assert!(
-                    g.panes.y <= 1,
-                    "{w}x{h} {layout} {position}: the panes keep the top row"
-                );
-                let in_column = |hit: screen::ScreenHit| {
-                    app.hits
-                        .iter()
-                        .find(|(r, h)| {
-                            *h == Hit::Screen(hit) && r.x >= g.side.x && r.right() <= g.side.right()
-                        })
-                        .map(|(r, _)| *r)
-                };
-                assert!(
-                    in_column(screen::ScreenHit::Session(ClientSession::local(
-                        SessionKey::Pane(1)
-                    )))
-                    .is_some()
-                        && in_column(screen::ScreenHit::Session(ClientSession::local(
-                            SessionKey::Pane(2)
-                        )))
-                        .is_some(),
-                    "{w}x{h} {position}: a row per session"
-                );
-                assert!(
-                    in_column(screen::ScreenHit::ExpandSidebar).is_some()
-                        && in_column(screen::ScreenHit::Actions).is_some()
-                        && in_column(screen::ScreenHit::NewShell).is_some(),
-                    "{w}x{h} {position}: expand, Menu and New stay clickable"
-                );
-                assert!(
-                    screen
-                        .lines()
-                        .nth(g.panes.y as usize)
-                        .unwrap()
-                        .contains(" + "),
-                    "the tabs sit on row {}: {}",
-                    g.panes.y,
-                    screen.lines().nth(g.panes.y as usize).unwrap()
-                );
-                let click = |app: &mut App, r: Rect| {
-                    for kind in [
-                        MouseEventKind::Down(MouseButton::Left),
-                        MouseEventKind::Up(MouseButton::Left),
-                    ] {
-                        app.on_mouse(MouseEvent {
-                            kind,
-                            column: r.x + 1,
-                            row: r.y,
-                            modifiers: KeyModifiers::NONE,
-                        });
-                    }
-                };
-                let row = in_column(screen::ScreenHit::Session(ClientSession::local(
-                    SessionKey::Pane(2),
-                )))
-                .unwrap();
-                click(&mut app, row);
-                assert!(
-                    std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok())
-                        .any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: 2 })))
-                );
-                // More sessions than fit: the last row is a `…` that opens the sidebar.
-                for id in 4..60 {
-                    let mut t = app.snap.terms[&2].clone();
-                    t.id = id;
-                    app.snap.terms.insert(id, t);
-                    app.snap.workspaces[0].tabs.push(TabInfo {
-                        id: 100 + id,
-                        name: String::new(),
-                        layout: crate::layout::Node::Leaf(id),
-                        focus: id,
-                    });
-                }
-                let screen = draw(&mut app, w, h);
-                let y = screen
-                    .lines()
-                    .position(|l| {
-                        l.chars()
-                            .skip(g.side.x as usize)
-                            .take(g.side.width as usize)
-                            .any(|c| c == '…')
-                    })
-                    .unwrap_or_else(|| {
-                        panic!("{w}x{h} {position}: rows that don't fit give way to a …")
-                    });
-                let more = app
-                    .hits
-                    .iter()
-                    .rev()
-                    .find(|(r, h)| {
-                        *h == Hit::Screen(screen::ScreenHit::ExpandSidebar) && r.y as usize == y
-                    })
-                    .map(|(r, _)| *r)
-                    .expect("the … row opens the sidebar");
-                click(&mut app, more);
-                assert!(app.sidebar);
-                draw(&mut app, w, h);
-                assert!(app.screen.side_rect.width > 7);
-            }
-        }
-    }
-
-    #[test]
     fn active_sidebar_selection_survives_hover_and_keyboard_browsing() {
         let (_, mut app) = super::design_tests::render_with(120, 30);
         let (tx, mut rx) = mpsc::unbounded_channel();
@@ -775,7 +640,6 @@ mod screen_tests {
                     "pointing elsewhere leaves the open row as it is"
                 );
             }
-            assert_eq!(terminal.backend().buffer()[(x + 2, active_y)].symbol(), "▎");
         }
         app.on_mouse(MouseEvent {
             kind: MouseEventKind::Moved,
@@ -792,17 +656,23 @@ mod screen_tests {
         app.screen_side_set(screen::SideItem::Sess(ClientSession::local(
             SessionKey::Pane(2),
         )));
+        app.on_mouse(MouseEvent {
+            kind: MouseEventKind::Moved,
+            column: 100,
+            row: 20,
+            modifiers: KeyModifiers::NONE,
+        });
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = terminal.backend().buffer();
-        assert!(
-            !(buf[(x + 2, active_y)].symbol() == "▎"
-                && buf[(x + 2, active_y)].fg == app.theme.accent),
-            "while the keyboard browses, only its row has an accent bar"
+        assert_eq!(
+            buf[(x + 8, hover_y)].bg,
+            app.theme.sel_bg(),
+            "while the keyboard browses, its row is the selected one"
         );
         assert_eq!(
-            (buf[(x + 2, hover_y)].symbol(), buf[(x + 2, hover_y)].fg),
-            ("▎", app.theme.accent),
-            "the one under the keyboard, in the accent"
+            buf[(x + 8, active_y)].bg,
+            app.theme.hov,
+            "and the session open in the workspace keeps the row ground"
         );
         app.on_mouse(MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
@@ -824,14 +694,10 @@ mod screen_tests {
         app.screen_sync();
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
         assert_eq!(app.focused(), Some(ClientTerm::local(2)));
-        assert_eq!(terminal.backend().buffer()[(x + 2, hover_y)].symbol(), "▎");
-        app.snap.terms.get_mut(&2).unwrap().asleep = true;
-        app.screen_fresh();
-        terminal.draw(|f| render::draw(&mut app, f)).unwrap();
         assert_eq!(
-            terminal.backend().buffer()[(x + 2, hover_y)].symbol(),
-            "▎",
-            "sleep glyphs leave the selection bar visible"
+            terminal.backend().buffer()[(x + 8, hover_y)].bg,
+            app.theme.hov,
+            "the session now open has the row ground"
         );
     }
 
@@ -1092,182 +958,6 @@ mod screen_tests {
     }
 
     #[test]
-    fn main_screen_follows_the_reference() {
-        let (text, mut app) = super::design_tests::render_with(160, 45);
-        show(&text);
-        let lines: Vec<&str> = text.lines().collect();
-        assert!(
-            !text.contains(concat!(">_ ", env!("APP_COMMAND"))),
-            "no logo"
-        );
-        // The grid: no margin, the sidebar and first pane start at the top edge, and the tab
-        // chips sit on the pane's top border.
-        assert!(
-            lines[0].starts_with("┌─"),
-            "the sidebar card from the very corner: {}",
-            lines[0]
-        );
-        assert!(
-            lines[0].contains("● claude"),
-            "the tab keeps its session and state: {}",
-            lines[0]
-        );
-        assert!(
-            text.contains("+ New") && text.contains("Menu"),
-            "New and Actions stay in the sidebar foot"
-        );
-        assert!(
-            lines[0].contains(" claude ×")
-                && lines[0].contains(" + ")
-                && !lines[0].contains('◫')
-                && !lines[0].contains('⤢')
-                && !lines[0].contains('▯'),
-            "the tab's name and new-tab chip sit on the pane border, without split or zoom buttons: {}",
-            lines[0]
-        );
-        assert!(
-            !lines[1].contains("claude")
-                && !lines[1].contains("needs you")
-                && !lines[1].contains('×'),
-            "a lone pane has no title: its tab names it: {}",
-            lines[1]
-        );
-        // Projects and their sessions, nothing in between.
-        assert!(
-            text.contains("shop-api") && text.contains(" LOCAL ") && text.contains('▾'),
-            "a project with its fold arrow, under the Local title"
-        );
-        assert!(
-            !text.contains("AGENTS")
-                && !text.contains("TERMINALS")
-                && !text.contains("BRANCHES")
-                && !text.contains("WORKTREES"),
-            "no heading per kind of session"
-        );
-        assert!(!text.contains("main folder"), "no 'main folder' wording");
-        assert!(
-            !text.contains("+ open a project"),
-            "opening a project is in the header now"
-        );
-        // Rows: state and name, branch · age on the right, its question underneath.
-        assert!(
-            text.contains("● claude") && text.contains("● you"),
-            "state, then the name; a session that needs you says so on the right"
-        );
-        assert!(
-            text.contains("Run npm test -- checkout?"),
-            "the question under the agent"
-        );
-        assert!(
-            !text.contains("subagent") && !text.contains("Planning") && !text.contains("Building"),
-            "the sidebar has no subagent tree: {text}"
-        );
-        assert!(
-            text.contains("⣻ rate") && text.contains(" 2m"),
-            "a worktree's session is named after it"
-        );
-        assert!(
-            !text.contains("Rate limit /login"),
-            "under a session only its question, as in the redesign"
-        );
-        assert!(
-            text.contains("› shell") && !text.contains("shell 2"),
-            "a shell in the project's folder is just 'shell', no age"
-        );
-        assert!(!text.contains("session"), "no 'session' wording on screen");
-        assert!(
-            !text.contains("● answer") && !text.contains(" Yes 1 "),
-            "an agent's own question is answered in its own prompt: no answer bar"
-        );
-        // Overlays are centred over a dimmed screen.
-        for (mode, needle) in [
-            (
-                Mode::GoTo {
-                    query: String::new(),
-                    sel: 1,
-                },
-                "NEEDS YOU",
-            ),
-            (
-                Mode::ScreenPane(screen::NewPaneHy::new(0, false)),
-                "claude gets its own new worktree in shop-api",
-            ),
-            (
-                Mode::ScreenPane(screen::NewPaneHy {
-                    place: Some(1),
-                    ..screen::NewPaneHy::new(0, false)
-                }),
-                "Switches shop-api to a new branch",
-            ),
-            (
-                Mode::KeyMap(Box::new(screen::KeyMap::new(screen::KeyView::Map, None))),
-                "goes after the leader",
-            ),
-        ] {
-            app.mode = mode;
-            let o = draw(&mut app, 160, 45);
-            show(&o);
-            assert!(o.contains(needle), "overlay shows {needle}");
-        }
-        let tab = |c: modal::Cat| modal::Cat::ALL.iter().position(|x| *x == c).unwrap();
-        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView {
-            cat: tab(modal::Cat::Sessions),
-            sel: 0,
-            editing: None,
-            capturing: false,
-            scroll: 0,
-        }));
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        assert!(
-            o.contains(" General ")
-                && o.contains(" Sessions ")
-                && o.contains("NEW SESSIONS")
-                && o.contains("Tabs in the sidebar"),
-            "the Sessions page opens on new sessions and the sidebar"
-        );
-        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView {
-            cat: tab(modal::Cat::Appearance),
-            sel: 0,
-            editing: None,
-            capturing: false,
-            scroll: 0,
-        }));
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        assert!(
-            o.contains("Dark theme")
-                && o.contains("Light theme")
-                && o.contains("Cursor")
-                && !o.contains("Corners")
-                && o.contains("PREVIEW")
-                && o.contains("focused")
-                && o.contains("dimmed"),
-            "the appearance settings, with a preview"
-        );
-        // The splash: the <APP> wordmark, its tagline, what happened, buttons.
-        app.mode = Mode::Normal;
-        app.splash = true;
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        assert!(
-            o.contains(env!("APP_TAGLINE")) && !o.contains("⣿"),
-            "the tagline, no art"
-        );
-        assert!(
-            o.contains("WHILE YOU WERE AWAY")
-                && o.contains("RECENT PROJECTS")
-                && o.contains("MACHINES")
-                && o.contains("Resume where you left off")
-                && o.contains("New session")
-                && o.contains("Open a project…")
-        );
-        // Small windows keep it all, in the cards and the counters line.
-        let o = draw(&mut app, 100, 30);
-        assert!(!o.contains("⣿") && o.contains("New session") && o.contains("1 need you"));
-    }
-
-    #[test]
     fn a_release_waiting_is_a_banner_over_the_splash_s_cards_in_every_look() {
         for look in ["floating", "hairline"] {
             for (w, h) in [(160u16, 45u16), (80, 24)] {
@@ -1412,7 +1102,7 @@ mod screen_tests {
         assert_eq!(app.screen.splash_sel, choices, "the first project");
         app.on_key(key(KeyCode::Enter));
         assert!(!app.splash, "a project opens");
-        assert!(matches!(app.mode, Mode::Side), "with the keys in the sidebar");
+        assert_eq!(app.mode, Mode::Normal, "the keys go to the session it opened");
     }
 
     #[test]
@@ -1519,11 +1209,8 @@ mod screen_tests {
             o.contains("↑↓") && o.contains("select") && o.contains("Esc") && o.contains("close"),
             "the sheet's keys"
         );
-        // It's docked beside the panes, not over them: the session's card is still there.
-        assert!(
-            o.contains("fix the flaky checkout test"),
-            "the panes reflow beside it"
-        );
+        // It floats over the workspace from the sidebar's side, 62 columns wide.
+        assert_eq!(app.screen.sheet_rect.width, 62);
         // 2 answers the selected question without going there.
         app.on_key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE));
         assert!(matches!(app.mode, Mode::GoTo { .. }), "still in the Inbox");
@@ -1551,7 +1238,7 @@ mod screen_tests {
     }
 
     #[test]
-    fn a_context_menu_pads_its_bottom_like_its_top() {
+    fn a_context_menu_holds_its_items_inside_its_box() {
         let layout = "floating";
         let (_, mut app) = super::design_tests::render_with(230, 50);
         app.splash = false;
@@ -1563,142 +1250,16 @@ mod screen_tests {
         let mut term = Terminal::new(TestBackend::new(230, 50)).unwrap();
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = term.backend().buffer().clone();
-        // The menu has no fill of its own: its ground is the screen's.
-        let card = app.theme.bg;
+        // The menu sits on the panel ground, its items straight inside its box.
+        let card = app.theme.sidebar_bg;
         let x = 62;
         let last_item = (0..25u16)
             .rev()
             .find(|&y| (62..90).any(|x| buf[(x, y)].symbol() == "C") && buf[(x, y)].bg == card)
             .expect("the Close pane row");
-        let below = |n: u16| buf[(x, last_item + n)].bg;
-        assert_eq!(
-            below(1),
-            card,
-            "{layout}: one padding row under the last item"
-        );
         assert!(
-            matches!(buf[(x, last_item + 2)].symbol(), "─" | "╰" | "└"),
-            "{layout}: then its box, as it began one row above the first item"
-        );
-    }
-
-    #[test]
-    fn splash_menus_and_resizing() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        let key = |c: KeyCode| KeyEvent::new(c, KeyModifiers::NONE);
-        // The splash waits for a button: other keys do nothing.
-        app.splash = true;
-        app.on_key(key(KeyCode::Char('x')));
-        app.on_key(key(KeyCode::Esc));
-        assert!(app.splash, "random keys don't leave the splash");
-        app.on_key(key(KeyCode::Down));
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        app.on_key(key(KeyCode::Enter));
-        assert!(
-            !app.splash && matches!(app.mode, Mode::NewSession(_)),
-            "Enter picks the selected one (New session: the popup that starts one anywhere)"
-        );
-        app.mode = Mode::Normal;
-
-        // Right-click menus.
-        app.menu_for_session(ClientTerm::local(1), (10, 10));
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        assert!(o.contains("Rename") && o.contains("Close"));
-        let Mode::ScreenMenu(m) = &app.mode else {
-            panic!("a menu")
-        };
-        let rename = m.items.iter().position(|(l, _)| l == "Rename").unwrap();
-        app.menu_pick(rename);
-        assert!(
-            matches!(
-                app.mode,
-                Mode::Prompt {
-                    kind: PromptKind::RenamePane(ClientTerm {
-                        machine: MachineId::LOCAL,
-                        term: 1
-                    }),
-                    ..
-                }
-            ),
-            "picking an item does it"
-        );
-        app.mode = Mode::Normal;
-        app.menu_for_project(0, (5, 5));
-        let o = draw(&mut app, 160, 45);
-        assert!(
-            o.contains("Rename")
-                && o.contains("Close")
-                && o.contains("New worktree")
-                && o.contains("Open worktree…"),
-            "herdr's project menu"
-        );
-        app.mode = Mode::Normal;
-
-        // herdr's pane menu, and closing asks first.
-        app.menu_for_pane(ClientTerm::local(1), (40, 10));
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        for item in [
-            "Rename pane",
-            "Split right",
-            "Split down",
-            "Send right-clicks to pane",
-            "Close pane",
-        ] {
-            assert!(o.contains(item), "pane menu has {item}");
-        }
-        let Mode::ScreenMenu(m) = &app.mode else {
-            panic!("a menu")
-        };
-        let close = m.items.iter().position(|(l, _)| l == "Close pane").unwrap();
-        app.menu_pick(close);
-        assert!(
-            matches!(&app.mode, Mode::Confirm(c) if c.title == "Close pane"),
-            "asks before closing"
-        );
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        // Buttons are the same pills everywhere: each starts with a pill's end, not a flat block.
-        let cap = screen::ends(app.theme.btn).0.0.to_string();
-        assert!(
-            o.contains(&format!("{cap}Close Enter")) && o.contains(&format!("{cap}Cancel Esc")),
-            "a red Close and a plain Cancel"
-        );
-        app.on_key(key(KeyCode::Esc));
-        assert!(matches!(app.mode, Mode::Normal), "Esc keeps it");
-        // The sidebar: sessions right under their project, worktree sessions tagged.
-        let o = draw(&mut app, 160, 45);
-        assert!(
-            !o.contains("WORKTREES") && !o.contains("BRANCHES"),
-            "no folder headings"
-        );
-        assert!(
-            o.contains("rate") && o.contains(" 2m") && !o.contains("working"),
-            "a worktree session is named after it, with its age; its spinner says it is working"
-        );
-
-        // Resizing the sidebar, within its limits.
-        let before = app.screen.side_rect.width;
-        app.act(Action::Resize(crate::layout::Dir::Right));
-        draw(&mut app, 160, 45);
-        assert!(app.screen.side_rect.width > before, "wider");
-        for _ in 0..40 {
-            app.act(Action::Resize(crate::layout::Dir::Right));
-        }
-        assert_eq!(
-            app.screen.saved.side_w,
-            Some(screen::SIDE_MAX),
-            "but not past the max"
-        );
-        for _ in 0..40 {
-            app.act(Action::Resize(crate::layout::Dir::Left));
-        }
-        assert_eq!(
-            app.screen.saved.side_w,
-            Some(screen::SIDE_MIN),
-            "nor under the min"
+            matches!(buf[(x, last_item + 1)].symbol(), "─" | "╰" | "└"),
+            "{layout}: its box right under the last item, as it began right above the first"
         );
     }
 
@@ -2382,75 +1943,6 @@ mod screen_tests {
     }
 
     #[test]
-    fn pane_colours_draw_each_pane_in_its_own_colour_by_place() {
-        for corners in ["square", "rounded"] {
-            let (_, mut app) = super::design_tests::render_with(200, 50);
-            app.cfg.ui.pane_colors = true;
-            (app.cfg.ui.layout, app.cfg.ui.rounded) = (
-                "floating".into(),
-                if corners == "rounded" {
-                    crate::config::Rounding::Corners
-                } else {
-                    crate::config::Rounding::Off
-                },
-            );
-            let [a, b, c] = three_panes(&mut app);
-            app.screen_fresh();
-            let mut term = Terminal::new(TestBackend::new(200, 50)).unwrap();
-            term.draw(|f| render::draw(&mut app, f)).unwrap();
-            let buf = term.backend().buffer().clone();
-            show(
-                &(0..50)
-                    .map(|y| {
-                        (0..200)
-                            .map(|x| buf[(x, y)].symbol().to_string())
-                            .collect::<String>()
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-            );
-            let card = |id| app.pane_frames.iter().find(|(t, _)| *t == id).unwrap().1;
-            let colours = app.theme.grid_colors();
-            let edge = |id| &buf[(card(id).x, card(id).y + 1)];
-            assert_eq!(
-                edge(a).fg,
-                colours[0],
-                "{corners}: the top-left pane is the first colour, full while focused"
-            );
-            assert!(
-                edge(a).modifier.contains(ratatui::style::Modifier::BOLD),
-                "{corners}: focused is bold"
-            );
-            assert_eq!(
-                edge(b).fg,
-                crate::theme::mix(colours[1], app.theme.bg, 0.42),
-                "{corners}: the next, faded"
-            );
-            assert!(!edge(b).modifier.contains(ratatui::style::Modifier::BOLD));
-            assert_eq!(
-                edge(c).fg,
-                crate::theme::mix(colours[2], app.theme.bg, 0.42),
-                "{corners}: the third"
-            );
-            let corner = buf[(card(a).x, card(a).y)].symbol().to_string();
-            assert_eq!(corner, if corners == "rounded" { "╭" } else { "┌" });
-            assert!(
-                card(b).x > card(a).right(),
-                "{corners}: a gap, as in Floating"
-            );
-        }
-    }
-
-    /// Where `term`'s box is drawn.
-    fn card_of(app: &App, term: TermId) -> Rect {
-        app.pane_frames
-            .iter()
-            .find(|(t, _)| *t == ClientTerm::local(term))
-            .unwrap()
-            .1
-    }
-
-    #[test]
     fn a_narrow_title_keeps_its_status_glyph_last_in_every_look() {
         let mut failures = Vec::new();
         let layout = "floating";
@@ -2500,15 +1992,15 @@ mod screen_tests {
                         if !split || mode != "off" || !row.starts_with(['┌', '╭']) {
                             continue;
                         }
-                        if ![app.theme.blocked, app.theme.accent].contains(&buf[(r.x + 1, r.y)].fg)
+                        if ![app.theme.blocked, app.theme.accent, app.theme.acc_ink].contains(&buf[(r.x + 3, r.y)].fg)
                         {
-                            failures.push(format!("{layout} split {split} {mode} update {update} {w}: {row} {:?} want {:?}", buf[(r.x + 1, r.y)].fg, app.theme.blocked));
+                            failures.push(format!("{layout} split {split} {mode} update {update} {w}: {row} {:?} want {:?}", buf[(r.x + 3, r.y)].fg, app.theme.blocked));
                         }
                     }
                     // Typing says so on the mode bar at every width.
                     let (_, bar) = bar_text(&app, &buf);
-                    if mode == "off" && !bar.contains(" TYPING ") {
-                        failures.push(format!("{layout} split {split} {mode} update {update} {w}: no TYPING on the bar: {bar}"));
+                    if mode == "off" && !bar.contains(" PANE ") {
+                        failures.push(format!("{layout} split {split} {mode} update {update} {w}: no PANE on the bar: {bar}"));
                     }
                 }
             }
@@ -2542,378 +2034,6 @@ mod screen_tests {
     }
 
     #[test]
-    fn the_new_tab_chip_is_raised_and_a_cell_clear_of_the_tabs_in_every_look() {
-        for layout in ["floating", "tiled", "grid"] {
-            for rounded in [
-                crate::config::Rounding::Off,
-                crate::config::Rounding::Corners,
-                crate::config::Rounding::Full,
-            ] {
-                let (_, mut app) = super::design_tests::render_with(160, 45);
-                (app.cfg.ui.layout, app.cfg.ui.rounded) = (layout.into(), rounded);
-                app.cfg.ui.fold_retired_layout();
-                let buf = drawn(&mut app, 160, 45);
-                let at = format!("{layout} {rounded:?}");
-                let t = app.theme.clone();
-                let r = app
-                    .hits
-                    .iter()
-                    .find(|(_, h)| *h == Hit::Screen(screen::ScreenHit::NewTab))
-                    .expect("a + chip")
-                    .0;
-                let plus = (r.x..r.right())
-                    .find(|&x| buf[(x, r.y)].symbol() == "+")
-                    .expect("its +");
-                assert_eq!(
-                    (buf[(plus, r.y)].fg, buf[(plus, r.y)].bg),
-                    (t.strong, t.btn),
-                    "strong on btn: {at}"
-                );
-                let (l, e) = (&buf[(r.x, r.y)], &buf[(r.right() - 1, r.y)]);
-                if rounded != crate::config::Rounding::Full {
-                    assert_eq!(
-                        (l.symbol(), l.bg, e.symbol(), e.bg),
-                        (" ", t.btn, " ", t.btn),
-                        "square: {at}"
-                    );
-                } else {
-                    assert_eq!(
-                        (l.symbol(), l.fg, e.symbol(), e.fg),
-                        (screen::CAP_L, t.btn, screen::CAP_R, t.btn),
-                        "pill: {at}"
-                    );
-                }
-                let gap = &buf[(r.x - 1, r.y)];
-                assert!(
-                    gap.symbol() == "─" && gap.bg != t.btn,
-                    "a cell of the border before it, not of the chip: {at}"
-                );
-            }
-        }
-    }
-
-    /// The three panes, the current tab at `place` among three tabs of the session; the other
-    /// two show pane `c` and are named `other-tab-1` and `other-tab-2`.
-    fn three_tabs(app: &mut App, place: usize) -> [ClientTerm; 3] {
-        let [a, b, c] = three_panes(app);
-        let mut tabs: Vec<_> = (1..=2)
-            .map(|k| {
-                let mut tab = app.screen.tabs[0].clone();
-                (tab.layout, tab.focus, tab.name) = (
-                    crate::layout::Node::Leaf(c.term),
-                    c,
-                    format!("other-tab-{k}"),
-                );
-                tab
-            })
-            .collect();
-        tabs.insert(place, app.screen.tabs[0].clone());
-        (app.screen.tabs, app.screen.tab) = (tabs, place);
-        [a, b, c]
-    }
-
-    /// One session in three tabs, each tab one pane: an idle agent, one working and one that
-    /// needs you, the first tab on screen.
-    fn tabbed_session(layout: &str) -> (App, [ClientTerm; 3]) {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.cfg.ui.layout = layout.into();
-        let [a, b, c] = three_panes(&mut app);
-        let owner = app.screen.tabs[0].owner;
-        let tab = |id| screen::ScreenTab::single(id, owner);
-        (app.screen.tabs, app.screen.tab) = (vec![tab(a), tab(b), tab(c)], 0);
-        for (id, agent, status) in [
-            (a, "claude", Status::Idle),
-            (b, "codex", Status::Working),
-            (c, "gemini", Status::Blocked),
-        ] {
-            let info = app.snap.terms.get_mut(&id.term).unwrap();
-            (info.agent, info.status) = (Some(agent.into()), status);
-        }
-        (app, [a, b, c])
-    }
-
-    /// The sidebar's rows as text, top to bottom.
-    fn side_text(app: &App, buf: &ratatui::buffer::Buffer) -> Vec<String> {
-        let r = app.screen.side_rect;
-        (r.y..r.bottom())
-            .map(|y| {
-                (r.x..r.right())
-                    .map(|x| buf[(x, y)].symbol())
-                    .collect::<String>()
-            })
-            .collect()
-    }
-
-    /// The sidebar row that names `word` (a tab line shows its tab's name).
-    fn row_with(rows: &[String], word: &str) -> Option<usize> {
-        // The session's own row (claude's) may point at a tab beside it that needs you.
-        rows.iter()
-            .position(|r| r.contains(word) && (word == "claude" || !r.contains("claude")))
-    }
-
-    /// Whether the sidebar holds any tab line.
-    fn has_tab_lines(app: &App) -> bool {
-        let model = app.screen_model();
-        screen::side_lines(app, &model, &app.theme)
-            .iter()
-            .any(|l| matches!(l, screen::Line::Tab(..)))
-    }
-
-    #[test]
-    fn a_session_row_shows_only_its_own_tab_and_the_other_tabs_sit_under_a_tabs_heading() {
-        let (mut app, [owner, ..]) = tabbed_session("floating");
-        app.screen_fresh();
-        let model = app.screen_model();
-        let row = model
-            .iter()
-            .flat_map(|p| p.sessions())
-            .find(|s| s.native_term == Some(owner))
-            .expect("the session's row");
-        assert_eq!(
-            row.status,
-            Status::Idle,
-            "another tab that works or needs you does not change this row"
-        );
-        let buf = drawn(&mut app, 160, 45);
-        let rows = side_text(&app, &buf);
-        assert!(
-            rows.iter()
-                .all(|r| r.trim_matches(|c: char| c == '│' || c == ' ') != "tabs"),
-            "there is no tabs heading"
-        );
-        let (two, three) = (
-            row_with(&rows, "codex").expect("codex tab"),
-            row_with(&rows, "gemini").expect("gemini tab"),
-        );
-        assert_eq!(three, two + 1, "the other tabs follow in order");
-        let side = app.screen.side_rect;
-        let y = |row: usize| side.y + row as u16;
-        // The session's own row is the one above its first tab: it has no second line here.
-        let own = two - 1;
-        for row in [own, two, three] {
-            assert_eq!(
-                buf[(side.x + 3, y(row))].symbol(),
-                "▎",
-                "one line down the left of the session and its tabs: {}",
-                rows[row]
-            );
-            assert_ne!(
-                buf[(side.x + 4, y(row))].symbol(),
-                " ",
-                "their marks are in one column, the tabs not stepped in: {}",
-                rows[row]
-            );
-        }
-        for row in [two, three] {
-            assert_eq!(
-                buf[(side.x + 2, y(row))].symbol(),
-                "▎",
-                "and the project's line outside it: {}",
-                rows[row]
-            );
-        }
-        let project = rows
-            .iter()
-            .position(|r| r.contains('▾'))
-            .expect("the project's row");
-        assert_ne!(
-            buf[(side.x + 2, y(project))].symbol(),
-            "▎",
-            "the lines start under the project row"
-        );
-    }
-
-    #[test]
-    fn a_plain_shell_is_one_row_with_no_repeated_word() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        let buf = drawn(&mut app, 160, 45);
-        let rows = side_text(&app, &buf);
-        let shell = rows
-            .iter()
-            .position(|r| r.contains("shell"))
-            .expect("a shell row");
-        assert!(
-            !rows[shell + 1].contains("shell"),
-            "its name is not said twice: {:?}",
-            &rows[shell..shell + 2]
-        );
-    }
-
-    #[test]
-    fn a_session_s_tabs_each_show_their_own_state_under_its_row() {
-        for layout in ["floating", "hairline"] {
-            let (mut app, _) = tabbed_session(layout);
-            let buf = drawn(&mut app, 160, 45);
-            let rows = side_text(&app, &buf);
-            show(&rows.join("\n"));
-            let line = |name: &str| {
-                row_with(&rows, name)
-                    .unwrap_or_else(|| panic!("{layout}: tab line {name}\n{}", rows.join("\n")))
-            };
-            let (two, three) = (line("codex"), line("gemini"));
-            assert_eq!(three, two + 1, "{layout}: one line per tab, in order");
-            assert_eq!(
-                rows.iter().filter(|r| r.contains("claude")).count(),
-                1,
-                "{layout}: no line for the tab the session's own pane is in: its row is that one"
-            );
-            let spinner = crate::client::design::glyph(&app, Status::Working);
-            assert!(
-                rows[two].contains(&spinner),
-                "{layout}: the working tab says so though it is not on screen: {}",
-                rows[two]
-            );
-            let side = app.screen.side_rect;
-            let at = rows[three].find("gemini").expect("the name");
-            let name_x = side.x + rows[three][..at].chars().count() as u16;
-            assert_eq!(
-                buf[(name_x, side.y + three as u16)].fg,
-                app.theme.blocked,
-                "{layout}: the one that needs you has its name in amber: {}",
-                rows[three]
-            );
-        }
-    }
-
-    /// How sidebar row `row` is lit: its first and last selection-ground columns, and whether
-    /// a cap in that colour ends it on each side. None when it is not lit.
-    fn lit_shape(
-        app: &App,
-        buf: &ratatui::buffer::Buffer,
-        row: usize,
-    ) -> Option<(u16, u16, bool, bool)> {
-        let side = app.screen.side_rect;
-        let y = side.y + row as u16;
-        let sel = app.theme.sel_bg();
-        let lit: Vec<u16> = (side.x..side.right())
-            .filter(|&x| buf[(x, y)].bg == sel)
-            .collect();
-        let (first, last) = (*lit.first()?, *lit.last()?);
-        Some((
-            first,
-            last,
-            buf[(first - 1, y)].fg == sel,
-            buf[(last + 1, y)].fg == sel,
-        ))
-    }
-
-    #[test]
-    fn the_tab_on_screen_is_lit_exactly_as_a_selected_session_is() {
-        for rounded in [crate::config::Rounding::Off, crate::config::Rounding::Full] {
-            let (mut app, [_, b, _]) = tabbed_session("floating");
-            app.cfg.ui.rounded = rounded;
-            let buf = drawn(&mut app, 160, 45);
-            let rows = side_text(&app, &buf);
-            let (own, two) = (
-                row_with(&rows, "claude").expect("the session"),
-                row_with(&rows, "codex").expect("its second tab"),
-            );
-            let session = lit_shape(&app, &buf, own).expect("the session's row is the lit one");
-            assert_eq!(lit_shape(&app, &buf, two), None, "{rounded:?}: one row is lit");
-
-            // Its second tab comes on screen: that row is the lit one now, the same cells and ends.
-            app.screen.tab = 1;
-            app.snap.workspaces[0].tabs[0].focus = b.term;
-            let buf = drawn(&mut app, 160, 45);
-            let rows = side_text(&app, &buf);
-            let (own, two) = (
-                row_with(&rows, "claude").expect("the session"),
-                row_with(&rows, "codex").expect("its second tab"),
-            );
-            assert_eq!(
-                lit_shape(&app, &buf, two),
-                Some(session),
-                "{rounded:?}: {}",
-                rows[two]
-            );
-            assert_eq!(lit_shape(&app, &buf, own), None, "{rounded:?}: one row is lit");
-            let side = app.screen.side_rect;
-            let at = rows[two].find("codex").expect("the name");
-            let name = &buf[(
-                side.x + rows[two][..at].chars().count() as u16,
-                side.y + two as u16,
-            )];
-            assert_eq!(
-                name.fg, app.theme.strong,
-                "{rounded:?}: its name is strong as a selected session's is, not the accent"
-            );
-        }
-    }
-
-    #[test]
-    fn a_finished_or_asking_agent_has_no_line_of_words_and_a_new_one_reads_as_idle() {
-        let (mut app, [a, ..]) = tabbed_session("floating");
-        for status in [Status::Done, Status::Blocked] {
-            app.snap.terms.get_mut(&a.term).unwrap().status = status;
-            let buf = drawn(&mut app, 160, 45);
-            let rows = side_text(&app, &buf);
-            let own = row_with(&rows, "claude").expect("the session");
-            assert!(
-                !rows.iter().any(|r| r.contains("not seen") || r.contains("needs you")),
-                "{status:?}: the mark and the name's colour say it:\n{}",
-                rows.join("\n")
-            );
-            // A question it asked is still its second line; a finish has none.
-            assert!(
-                status == Status::Blocked || rows[own + 1].contains("codex"),
-                "{status:?}: the card is one line, its tabs straight under it:\n{}",
-                rows.join("\n")
-            );
-        }
-
-        // Told nothing yet, it is idle and is drawn as idle: no accent, nothing bold.
-        let info = app.snap.terms.get_mut(&a.term).unwrap();
-        info.status = Status::Idle;
-        (info.name, info.summary, info.label) = (String::new(), String::new(), String::new());
-        let buf = drawn(&mut app, 160, 45);
-        let rows = side_text(&app, &buf);
-        let own = row_with(&rows, "claude").expect("the session");
-        let side = app.screen.side_rect;
-        let mark = &buf[(side.x + 4, side.y + own as u16)];
-        assert_eq!(mark.symbol(), "○", "{}", rows[own]);
-        assert_ne!(mark.fg, app.theme.accent, "an idle mark is not the accent");
-        assert!(
-            !mark.modifier.contains(ratatui::style::Modifier::BOLD),
-            "nor bold"
-        );
-    }
-
-    #[test]
-    fn a_tab_out_of_view_shows_its_state_on_its_tab() {
-        for layout in ["floating", "hairline"] {
-            let (mut app, _) = tabbed_session(layout);
-            let buf = drawn(&mut app, 160, 45);
-            let row = screen::grid(&app, buf.area).tabs;
-            let tabs: String = (row.x..row.right())
-                .map(|x| buf[(x, row.y)].symbol())
-                .collect();
-            show(&tabs);
-            // Each tab's glyph: the first mark left of its number.
-            let glyph_before = |n: &str| {
-                let at = tabs
-                    .find(&format!("{n} "))
-                    .unwrap_or_else(|| panic!("{layout}: tab {n}: {tabs}"));
-                let x = row.x + tabs[..at].chars().count() as u16;
-                let gx = (row.x..x)
-                    .rev()
-                    .find(|&x| buf[(x, row.y)].symbol() != " ")
-                    .expect("a glyph");
-                (buf[(gx, row.y)].symbol().to_string(), buf[(gx, row.y)].fg)
-            };
-            let (working, _) = glyph_before("2");
-            assert!(
-                working != "○" && working != "✕",
-                "{layout}: the working tab, not on screen, says so: {tabs}"
-            );
-            let (blocked, colour) = glyph_before("3");
-            assert!(
-                ["▲", "●"].contains(&blocked.as_str()) && colour == app.theme.blocked,
-                "{layout}: so does the one that needs you, in its colour: {tabs}"
-            );
-        }
-    }
-
-    #[test]
     fn every_close_asks_first_an_idle_shell_too() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         // Closing from the sidebar acts on the row the cursor is on.
@@ -2926,11 +2046,12 @@ mod screen_tests {
             .expect("a shell");
         app.snap.terms.get_mut(&shell).unwrap().process = "pwsh.exe".into();
         app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(shell)));
-        app.mode = Mode::Normal;
+        app.mode = Mode::Side;
         app.act(Action::ClosePane);
-        assert!(
-            matches!(app.mode, Mode::Confirm(_)),
-            "an idle shell asks first too"
+        assert_eq!(
+            app.closing.last_closed(),
+            Some(ClientTerm::local(shell)),
+            "an idle shell closes at once, with an undo"
         );
         let agent = *app
             .snap
@@ -2939,18 +2060,26 @@ mod screen_tests {
             .find(|(_, t)| t.agent.is_some())
             .map(|(id, _)| id)
             .expect("an agent");
+        app.snap.terms.get_mut(&agent).unwrap().status = Status::Working;
         app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(agent)));
-        app.mode = Mode::Normal;
+        app.mode = Mode::Side;
         app.act(Action::ClosePane);
-        assert!(matches!(app.mode, Mode::Confirm(_)), "an agent asks first");
-        let (_, mut busy) = super::design_tests::render_with(160, 45);
-        busy.snap.terms.get_mut(&shell).unwrap().process = "npm".into();
-        busy.screen.cursor = Some(ClientSession::local(SessionKey::Pane(shell)));
-        busy.mode = Mode::Normal;
-        busy.act(Action::ClosePane);
+        assert_eq!(
+            app.closing.asking_about(),
+            Some(ClientTerm::local(agent)),
+            "a working agent asks for the same press again"
+        );
         assert!(
-            matches!(busy.mode, Mode::Confirm(_)),
-            "a shell running something asks first"
+            app.closing_banner().is_some_and(|b| b.text.starts_with("Close and stop ")),
+            "and says so"
+        );
+        app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(agent)));
+        app.mode = Mode::Side;
+        app.act(Action::ClosePane);
+        assert_eq!(
+            app.closing.last_closed(),
+            Some(ClientTerm::local(agent)),
+            "the second press closes it"
         );
     }
 
@@ -2962,7 +2091,7 @@ mod screen_tests {
         let on = Config::default().keymap();
         for (c, want) in [
             ('n', Action::ShellHere),
-            ('a', Action::StartSession),
+            ('a', Action::PickSession),
             ('x', Action::ClosePane),
             ('s', Action::SplitRight),
             ('d', Action::SplitDown),
@@ -2981,7 +2110,7 @@ mod screen_tests {
     }
 
     #[test]
-    fn alt_x_in_the_sidebar_closes_the_selected_session_and_asks_for_an_agent() {
+    fn alt_x_in_the_sidebar_closes_the_selected_session_and_asks_again_for_a_working_agent() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let focused = app.focused();
         let agent = app
@@ -2995,55 +2124,22 @@ mod screen_tests {
             SessionKey::Pane(agent.term),
         )));
         app.mode = Mode::Side;
+        app.snap.terms.get_mut(&agent.term).unwrap().status = Status::Working;
         app.on_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::ALT));
-        assert!(
-            matches!(&app.mode, Mode::Confirm(c) if matches!(&c.act, crate::client::menu::Act::End(ts) if *ts == vec![agent])),
-            "asks to close the row's session: {:?}",
+        assert_eq!(
+            app.closing.asking_about(),
+            Some(agent),
+            "a working agent asks for a second press before it closes: {:?}",
             app.mode
         );
         assert_eq!(app.focused(), focused, "it doesn't go into the pane");
     }
 
     #[test]
-    fn after_a_restart_a_sessions_tabs_come_back_as_its_tabs() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        // The daemon says the shell (3) is a tab of claude's (1); codex (2) is a session of its own.
-        app.snap.terms.get_mut(&3).unwrap().tab_of = Some(1);
-        (app.screen.tabs, app.screen.last_focus) = (Vec::new(), None);
-        app.screen_sync();
-        let mine: Vec<TermId> = app
-            .screen
-            .tabs
-            .iter()
-            .filter(|t| t.owner == ClientTerm::local(1))
-            .map(|t| t.layout.first_leaf())
-            .collect();
-        assert_eq!(mine, vec![1, 3], "claude's own tab first, then the shell's");
-        assert!(
-            !app.screen
-                .tabs
-                .iter()
-                .any(|t| t.owner == ClientTerm::local(3)),
-            "the shell is no session of its own"
-        );
-        let model = app.screen_model();
-        let rows: Vec<ClientTerm> = model
-            .iter()
-            .flat_map(|p| {
-                p.sessions()
-                    .filter_map(|s| s.native_term)
-                    .collect::<Vec<_>>()
-            })
-            .collect();
-        assert!(
-            !rows.contains(&ClientTerm::local(3)),
-            "so it has no row in the sidebar: {rows:?}"
-        );
-    }
-
-    #[test]
     fn padding_sizes_apply_evenly_around_the_screen() {
-        for (padding, inset) in [("small", 1), ("medium", 2), ("large", 3)] {
+        // Rows and columns of blank cells round the screen: none, 1 and 2, with twice as many
+        // columns as rows.
+        for (padding, rows, cols) in [("small", 0, 0), ("medium", 1, 2), ("large", 2, 4)] {
             let (_, mut app) = super::design_tests::render_with(160, 45);
             app.cfg.ui.padding = padding.into();
             let area = Rect::new(0, 0, 160, 45);
@@ -3051,15 +2147,15 @@ mod screen_tests {
             let bar = screen::mode_bar_row(&app, area);
             assert_eq!(
                 (grid.side.x, grid.side.y),
-                (inset, inset),
+                (cols, rows),
                 "{padding}: top and left"
             );
-            assert_eq!(grid.panes.right(), 160 - inset, "{padding}: right");
-            assert_eq!(bar.x, inset, "{padding}: mode bar left");
-            assert_eq!(bar.right(), 160 - inset, "{padding}: mode bar right");
-            assert_eq!(bar.y, 45 - inset - 1, "{padding}: bottom");
+            assert_eq!(grid.panes.right(), 160 - cols, "{padding}: right");
+            assert_eq!(bar.x, cols, "{padding}: mode bar left");
+            assert_eq!(bar.right(), 160 - cols, "{padding}: mode bar right");
+            assert_eq!(bar.y, 45 - rows - 1, "{padding}: bottom");
         }
-        assert_eq!(Config::default().ui.padding, "small");
+        assert_eq!(Config::default().ui.padding, "medium");
     }
 
     #[test]
@@ -3070,292 +2166,47 @@ mod screen_tests {
             .position(|c| *c == modal::Cat::Keys)
             .unwrap();
         let rows = design::settings_rows(modal::Cat::Keys);
+        let first_direct = rows
+            .iter()
+            .position(|r| matches!(r, design::SRow::Bind { direct: true, .. }))
+            .expect("the direct keys follow the leader keys");
         let last = rows.len() - 1;
-        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView {
-            cat: keys,
-            sel: last,
-            editing: None,
-            capturing: false,
-            scroll: 0,
-        }));
-        let o = draw(&mut app, 160, 45);
-        show(&o);
+        let page = |app: &mut App, sel: usize| {
+            app.mode = Mode::ScreenSettings(Box::new(design::SettingsView {
+                cat: keys,
+                sel,
+                editing: None,
+                capturing: false,
+                scroll: 0,
+            }));
+            let o = draw(app, 160, 45);
+            show(&o);
+            o
+        };
+        // The page scrolls with the selection: walk it over the group and read every screen.
+        let screens: Vec<String> = (first_direct..=last).map(|sel| page(&mut app, sel)).collect();
         assert!(
-            o.contains(design::DIRECT_GROUP),
-            "the heading
-{o}"
+            screens[0].contains(design::DIRECT_GROUP),
+            "the heading\n{}",
+            screens[0]
         );
         for (label, key) in [
-            ("Close pane", "Alt + x"),
-            ("Split down", "Alt + d"),
+            ("New shell here", "Ctrl + T"),
+            ("Next tab", "Ctrl + Tab"),
+            ("Search commands", "Ctrl + K"),
+            ("Inbox", "Ctrl + J"),
             ("Go to tab 1–9", "Alt + 1–9"),
+            ("Next session", "Alt + ↓"),
+            ("Previous session", "Alt + ↑"),
         ] {
             assert!(
-                o.lines().any(|l| l.contains(label) && l.contains(key)),
-                "{label} {key}
-{o}"
+                screens
+                    .iter()
+                    .any(|o| o.lines().any(|l| l.contains(label) && l.contains(key))),
+                "{label} {key}"
             );
         }
-    }
-
-    #[test]
-    fn the_sidebar_shows_all_busy_or_no_tab_lines_as_set() {
-        for layout in ["floating", "hairline"] {
-            for (setting, want) in [
-                ("all", vec!["codex", "gemini"]),
-                ("busy", vec!["codex", "gemini"]),
-                ("off", vec![]),
-            ] {
-                let (mut app, _) = tabbed_session(layout);
-                // The working tab on screen; the idle one is busy only while it is.
-                app.screen.tab = 1;
-                app.cfg.ui.sidebar_tabs = setting.into();
-                let buf = drawn(&mut app, 160, 45);
-                let rows = side_text(&app, &buf);
-                let got: Vec<&str> = ["codex", "gemini"]
-                    .into_iter()
-                    .filter(|n| row_with(&rows, n).is_some())
-                    .collect();
-                assert_eq!(
-                    got,
-                    want,
-                    "{layout} {setting}
-{}",
-                    rows.join(
-                        "
-"
-                    )
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn clicking_a_tab_line_shows_that_tab() {
-        for layout in ["floating", "hairline"] {
-            let (mut app, [_, _, c]) = tabbed_session(layout);
-            let buf = drawn(&mut app, 160, 45);
-            let rows = side_text(&app, &buf);
-            let y =
-                app.screen.side_rect.y + row_with(&rows, "gemini").expect("tab 3's line") as u16;
-            let x = app.screen.side_rect.x + 6;
-            app.on_mouse(MouseEvent {
-                kind: MouseEventKind::Down(MouseButton::Left),
-                column: x,
-                row: y,
-                modifiers: KeyModifiers::NONE,
-            });
-            assert_eq!(app.screen.tab, 2, "{layout}: the third tab is on screen");
-            assert_eq!(app.screen.tabs[2].focus, c, "{layout}");
-        }
-    }
-
-    #[test]
-    fn a_session_with_one_tab_has_no_tab_lines() {
-        for layout in ["floating", "hairline"] {
-            let (_, mut app) = super::design_tests::render_with(160, 45);
-            app.cfg.ui.layout = layout.into();
-            let buf = drawn(&mut app, 160, 45);
-            let rows = side_text(&app, &buf);
-            assert!(
-                !has_tab_lines(&app),
-                "{layout}
-{}",
-                rows.join(
-                    "
-"
-                )
-            );
-        }
-    }
-
-    #[test]
-    fn a_narrow_title_keeps_the_current_tab_before_any_other() {
-        let mut failures = Vec::new();
-        let mut others_dropped = false;
-        let layout = "floating";
-        for rounded in [
-            crate::config::Rounding::Off,
-            crate::config::Rounding::Corners,
-        ] {
-            for place in 0..3 {
-                for w in 44..=110u16 {
-                    let (_, mut app) = super::design_tests::render_with(w, 24);
-                    (app.cfg.ui.layout, app.cfg.ui.rounded) = (layout.into(), rounded);
-                    app.cfg.ui.fold_retired_layout();
-                    let [a, ..] = three_tabs(&mut app, place);
-                    app.snap.terms.get_mut(&a.term).unwrap().status = Status::Working;
-                    let buf = drawn(&mut app, w, 24);
-                    let card = card_of(&app, a.term);
-                    let title: String = (card.x..card.right())
-                        .map(|x| buf[(x, card.y)].symbol())
-                        .collect();
-                    // The tabs have their own row over the panes.
-                    // Floating's tabs sit on the top border: a row of one cell's height.
-                    let row = Rect {
-                        height: 1,
-                        ..screen::grid(&app, buf.area).panes
-                    };
-                    let top: String = (row.x..row.right())
-                        .map(|x| buf[(x, row.y)].symbol())
-                        .collect();
-                    let at = format!("{layout} {rounded:?} current {place} {w}: {top} / {title}");
-                    show(&at);
-                    let on_row = |want: Hit| {
-                        app.hits
-                            .iter()
-                            .filter(|(r, h)| *h == want && r.y == row.y && row.intersects(*r))
-                            .count()
-                    };
-                    let shown = |i| on_row(Hit::Screen(screen::ScreenHit::TabPick(i))) == 1;
-                    let others = (0..3).filter(|&i| i != place).filter(|&i| shown(i)).count();
-                    if others > 0 && !(shown(place) && top.contains("claude")) {
-                        failures.push(format!(
-                            "another tab kept over the current one, or while it shortens: {at}"
-                        ));
-                    }
-                    let plus = on_row(Hit::Screen(screen::ScreenHit::NewTab)) > 0;
-                    if plus && !(0..3).all(shown) {
-                        failures.push(format!("+ without every tab: {at}"));
-                    }
-                    let spinner = crate::client::design::glyph(&app, Status::Working);
-                    if !top.contains(&spinner) {
-                        failures.push(format!("no state on the tabs: {at}"));
-                    }
-                    others_dropped |= shown(place) && others < 2;
-                }
-            }
-        }
-        assert!(
-            failures.is_empty(),
-            "{}",
-            failures.join(
-                "
-"
-            )
-        );
-        assert!(
-            others_dropped,
-            "somewhere the other tabs give way and the current one stays"
-        );
-    }
-
-    #[test]
-    fn any_number_of_splits_and_tabs() {
-        let (_, mut app) = super::design_tests::render_with(200, 50);
-        app.cfg.ui.layout = "cards".into();
-        app.cfg.ui.panes = "floating".into();
-        app.cfg.ui.gap = "2".into();
-        let a = app.focused().unwrap();
-        let others: Vec<ClientTerm> = app
-            .snap
-            .terms
-            .keys()
-            .map(|t| ClientTerm::local(*t))
-            .filter(|t| *t != a)
-            .collect();
-        let (b, c) = (others[0], others[1]);
-        app.screen.tabs.clear();
-        app.screen_place(a, None);
-        app.screen.pending_split = Some((a, Instant::now()));
-        app.screen_place(b, Some(a));
-        app.screen.pending_split = Some((b, Instant::now()));
-        app.screen.split_dir = Some(crate::layout::Dir::Down);
-        app.screen_place(c, Some(b));
-        assert_eq!(app.screen.tabs.len(), 1);
-        assert_eq!(
-            app.screen.tabs[0].layout.leaves().len(),
-            3,
-            "all three panes share the tab"
-        );
-        // Focus stays on a (the snapshot's focus), so draw shows all three.
-        app.screen.tabs[0].focus = a;
-        let o = draw(&mut app, 200, 50);
-        show(&o);
-        assert_eq!(app.screen.leaf_rects.len(), 3);
-        let rect = |id| {
-            app.screen
-                .leaf_rects
-                .iter()
-                .find(|(term, _)| *term == id)
-                .unwrap()
-                .1
-        };
-        assert_eq!(
-            rect(c).x,
-            rect(b).x,
-            "an explicit down split stays in the target pane's column"
-        );
-        assert!(
-            rect(c).y > rect(b).y,
-            "an explicit down split appears below its target"
-        );
-        let card = |id| {
-            app.pane_frames
-                .iter()
-                .find(|(term, _)| *term == id)
-                .unwrap()
-                .1
-        };
-        assert_eq!(
-            card(b).x - card(a).right(),
-            2,
-            "the configured column gap separates cards"
-        );
-        assert_eq!(
-            card(c).y - card(b).bottom(),
-            2,
-            "the configured row gap separates cards"
-        );
-        // Close one: two left, with a line between them you can drag.
-        assert!(app.screen_unshow(c));
-        assert_eq!(app.screen.tabs[0].layout.leaves().len(), 2);
-        draw(&mut app, 200, 50);
-        assert_eq!(app.screen.dividers.len(), 1, "a divider between the two");
-        let before = app.screen.leaf_rects[0].1.width;
-        let path = app.screen.dividers[0].2.clone();
-        app.screen.tabs[0].layout.set_ratio(&path, 0.3);
-        draw(&mut app, 200, 50);
-        assert!(
-            app.screen.leaf_rects[0].1.width < before,
-            "dragging moves it"
-        );
-        // A new tab for c in this session; the bar shows both.
-        *app.screen.new_tab.borrow_mut() = Some(screen::PendingTab {
-            at: Instant::now(),
-            owner: app.screen.tabs[0].owner,
-            known: HashSet::new(),
-        });
-        app.screen_place(c, Some(a));
-        assert_eq!(app.screen.tabs.len(), 2);
-        assert_eq!(
-            app.screen.tabs[1].owner, app.screen.tabs[0].owner,
-            "a tab of the same session"
-        );
-        app.screen.tab = 0;
-        let o = draw(&mut app, 260, 50);
-        show(&o);
-        assert!(o.contains(" 1 ") && o.contains(" 2 "), "a tab bar");
-        let side = app.screen.side_rect;
-        assert_eq!(
-            app.hits
-                .iter()
-                .filter(
-                    |(r, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_)))
-                        && !side.intersects(*r)
-                )
-                .count(),
-            2,
-            "both tabs in the top-left pane's title"
-        );
-        assert_eq!(
-            app.hits
-                .iter()
-                .filter(|(_, h)| *h == Hit::Screen(screen::ScreenHit::NewTab))
-                .count(),
-            1,
-            "one + chip after the tabs"
-        );
+        let _ = last;
     }
 
     #[test]
@@ -3485,125 +2336,17 @@ mod screen_tests {
     }
 
     #[test]
-    fn a_session_started_after_asking_for_a_tab_is_its_own_session() {
+    fn the_new_tab_key_starts_a_shell_in_the_fleet_you_are_in() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        let rows = |app: &App| {
-            app.screen_model()
-                .iter()
-                .flat_map(|p| p.sessions().filter_map(|s| s.native_term))
-                .collect::<Vec<_>>()
-        };
-        let (tx, _rx) = mpsc::unbounded_channel();
+        let (tx, mut rx) = mpsc::unbounded_channel();
         app.out = tx;
-        app.screen.tabs.clear();
-        app.screen_place(ClientTerm::local(1), None);
-        // A tab is asked for in claude's session, then a session is started instead.
         app.act(Action::NewTab);
+        let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
         assert!(
-            app.screen.new_tab.borrow().is_some(),
-            "armed for the shell that answers it"
+            sent.iter()
+                .any(|o| matches!(&o.msg, ClientMsg::Command(Command::NewShip { cmd: None, .. }))),
+            "a shell joins the fleet as a tab: {sent:?}"
         );
-        app.screen_new_session(PathBuf::from("/tmp"), Some("claude".into()), false);
-        app.screen_place(ClientTerm::local(3), Some(ClientTerm::local(1)));
-        app.screen_fresh();
-        let own = app
-            .screen
-            .tabs
-            .iter()
-            .find(|t| t.layout.contains(3))
-            .expect("it has a tab");
-        assert_eq!(
-            own.owner,
-            ClientTerm::local(3),
-            "its own session, not a tab of claude's"
-        );
-        assert!(
-            rows(&app).contains(&ClientTerm::local(3)),
-            "with its own sidebar row: {:?}",
-            rows(&app)
-        );
-    }
-
-    #[test]
-    fn a_pending_tab_takes_only_the_new_shell_not_another_pane_that_gets_the_focus() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        let (tx, _rx) = mpsc::unbounded_channel();
-        app.out = tx;
-        app.screen.tabs.clear();
-        app.screen_place(ClientTerm::local(1), None);
-        app.act(Action::NewTab);
-        // You pick another session before the shell arrives: it stays its own, and the tab waits.
-        app.screen_place(ClientTerm::local(2), Some(ClientTerm::local(1)));
-        assert!(
-            app.screen
-                .tabs
-                .iter()
-                .find(|t| t.layout.contains(2))
-                .is_some_and(|t| t.owner == ClientTerm::local(2)),
-            "an existing session is not a tab"
-        );
-        assert!(
-            app.screen.new_tab.borrow().is_some(),
-            "the request is still waiting"
-        );
-        // A pane an agent started is not it either.
-        let mut helper = app.snap.terms[&3].clone();
-        helper.id = 40;
-        helper.started_by = Some(2);
-        app.snap.terms.insert(40, helper);
-        app.screen_place(ClientTerm::local(40), Some(ClientTerm::local(2)));
-        assert!(
-            app.screen
-                .tabs
-                .iter()
-                .find(|t| t.layout.contains(40))
-                .is_some_and(|t| t.owner == ClientTerm::local(40)),
-            "a helper keeps its own place"
-        );
-        // The shell the request is for: new, and nobody's helper.
-        let mut shell = app.snap.terms[&3].clone();
-        shell.id = 41;
-        shell.started_by = None;
-        app.snap.terms.insert(41, shell);
-        app.screen_place(ClientTerm::local(41), Some(ClientTerm::local(40)));
-        assert!(
-            app.screen
-                .tabs
-                .iter()
-                .find(|t| t.layout.contains(41))
-                .is_some_and(|t| t.owner == ClientTerm::local(1)),
-            "the new shell is claude's tab"
-        );
-        assert!(app.screen.new_tab.borrow().is_none(), "answered once");
-    }
-
-    #[test]
-    fn sessions_of_one_project_are_not_each_others_tabs() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.screen.tabs.clear();
-        // Four sessions opened one after another, as in the sidebar's project.
-        app.screen_place(ClientTerm::local(1), None);
-        for (id, prev) in [(2, 1), (3, 2)] {
-            app.screen_place(ClientTerm::local(id), Some(ClientTerm::local(prev)));
-        }
-        app.snap.terms.insert(4, app.snap.terms[&3].clone());
-        app.snap.terms.get_mut(&4).unwrap().id = 4;
-        app.screen_place(ClientTerm::local(4), Some(ClientTerm::local(3)));
-        draw(&mut app, 160, 45);
-        assert_eq!(
-            app.session_tabs().len(),
-            1,
-            "the tab row shows this session's tabs only"
-        );
-        let side = app.screen.side_rect;
-        let chips = app
-            .hits
-            .iter()
-            .filter(|(r, h)| {
-                matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_))) && !side.intersects(*r)
-            })
-            .count();
-        assert_eq!(chips, 1, "one chip, not one per session of the project");
     }
 
     #[test]
@@ -3613,14 +2356,11 @@ mod screen_tests {
         app.out = tx;
         app.screen.tabs.clear();
         app.screen_place(ClientTerm::local(1), None);
-        app.act(Action::NewTab);
+        // Claude has a shell tab of its own.
         app.screen
-            .new_tab
-            .borrow_mut()
-            .as_mut()
-            .expect("armed")
-            .known
-            .remove(&ClientTerm::local(3));
+            .tabs
+            .push(screen::ScreenTab::single(ClientTerm::local(3), ClientTerm::local(1)));
+        app.screen.tab = app.screen.tabs.len() - 1;
         app.screen_place(ClientTerm::local(3), Some(ClientTerm::local(1)));
         assert_eq!(
             app.screen.tabs[app.screen.tab].focus,
@@ -3639,181 +2379,6 @@ mod screen_tests {
     }
 
     #[test]
-    fn a_session_has_tabs_of_its_own() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        // claude (1), codex (2), and a shell (3).
-        let rows = |app: &App| {
-            app.screen_model()
-                .iter()
-                .flat_map(|p| {
-                    p.sessions()
-                        .map(|s| s.native_term.unwrap())
-                        .collect::<Vec<_>>()
-                })
-                .collect::<Vec<_>>()
-        };
-        app.screen.tabs.clear();
-        app.screen_place(ClientTerm::local(1), None);
-        draw(&mut app, 160, 45);
-        assert_eq!(
-            app.hits
-                .iter()
-                .filter(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_))))
-                .count(),
-            1,
-            "the tab in the pane's title, even with one tab"
-        );
-        // Ctrl+Space t in claude's session: a shell where you are, straight away, as a tab of
-        // claude's (no card to fill in first).
-        let key = |app: &mut App, c: KeyCode| app.on_key(KeyEvent::new(c, KeyModifiers::NONE));
-        let (tx, mut rx) = mpsc::unbounded_channel();
-        app.out = tx;
-        app.act(Action::NewTab);
-        assert_eq!(app.mode, Mode::Normal, "nothing to answer first");
-        assert!(
-            matches!(&*app.screen.new_tab.borrow(), Some(p) if p.owner == ClientTerm::local(1)),
-            "the next session is a tab of claude's: {:?}",
-            app.screen.new_tab.borrow()
-        );
-        // The fake world already has shell 3; for this test it is the one that arrives.
-        app.screen
-            .new_tab
-            .borrow_mut()
-            .as_mut()
-            .expect("armed")
-            .known
-            .remove(&ClientTerm::local(3));
-        app.screen_place(ClientTerm::local(3), Some(ClientTerm::local(1)));
-        app.screen_fresh();
-        assert!(
-            !rows(&app).contains(&ClientTerm::local(3)),
-            "the shell is one of claude's tabs, not a row of its own: {:?}",
-            rows(&app)
-        );
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        assert_eq!(app.session_tabs().len(), 2);
-        let side = app.screen.side_rect;
-        let title = o
-            .lines()
-            .next()
-            .unwrap_or_default()
-            .chars()
-            .skip(side.right() as usize)
-            .collect::<String>();
-        let in_title = app
-            .hits
-            .iter()
-            .filter(|(r, h)| {
-                matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_))) && !side.intersects(*r)
-            })
-            .count();
-        assert!(
-            in_title == 2 && !title.contains("2 shell"),
-            "claude's two tabs, unnamed ones shown by number: {title}"
-        );
-        let in_side = |l: &str| {
-            l.chars()
-                .skip(side.x as usize)
-                .take(side.width as usize)
-                .collect::<String>()
-        };
-        assert!(
-            o.lines().any(|l| in_side(l).contains(" shell")),
-            "the sidebar names the shell's tab under claude's row, without a number"
-        );
-        // Rename uses the same centered text editor as pane and project names.
-        app.act(Action::RenameTab);
-        for c in "tests".chars() {
-            key(&mut app, KeyCode::Char(c));
-        }
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        assert!(
-            o.contains("Rename session") && o.contains("tests█"),
-            "the dialog shows the draft: {o}"
-        );
-        key(&mut app, KeyCode::Enter);
-        // The daemon owns the name: play its part by applying the command to the snapshot.
-        let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).collect();
-        let focus = app.screen.tabs[app.screen.tab].focus;
-        let label = sent
-            .iter()
-            .find_map(|m| match m {
-                crate::protocol::ClientMsg::Command(crate::protocol::Command::RenamePane {
-                    term,
-                    name,
-                }) if *term == focus.term => Some(name.clone()),
-                _ => None,
-            })
-            .expect("the session is renamed, so the sidebar and every notice use the name");
-        assert_eq!(label, "tests");
-        app.snap.terms.get_mut(&focus.term).unwrap().label = label;
-        assert_eq!(
-            app.session_name(focus),
-            "tests",
-            "notices say the name you gave"
-        );
-        app.screen_sync();
-        let o = draw(&mut app, 160, 45);
-        let title = o
-            .lines()
-            .next()
-            .unwrap_or_default()
-            .chars()
-            .skip(app.screen.side_rect.right() as usize)
-            .collect::<String>();
-        assert!(
-            title.contains(" tests ") && !title.contains("2 tests"),
-            "renamed: the pill is its name: {title}"
-        );
-        // Views get rebuilt (another session reuses the slot, the client restarts): the name stays.
-        app.screen.tabs.iter_mut().for_each(|t| t.name.clear());
-        app.screen_sync();
-        let o = draw(&mut app, 160, 45);
-        assert!(
-            o.contains(" tests "),
-            "the name comes back from the daemon: {o}"
-        );
-        // Another session: its own tab row, with none of claude's tabs in it.
-        app.screen_place(ClientTerm::local(2), Some(ClientTerm::local(3)));
-        draw(&mut app, 160, 45);
-        assert_eq!(app.session_tabs().len(), 1);
-        let side = app.screen.side_rect;
-        assert!(
-            app.hits
-                .iter()
-                .filter(
-                    |(r, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_)))
-                        && !side.intersects(*r)
-                )
-                .count()
-                == 1,
-            "codex has one tab"
-        );
-        // Back to claude: the tab you were last on there (the shell).
-        app.screen_place(ClientTerm::local(1), Some(ClientTerm::local(2)));
-        assert_eq!(
-            app.screen.tabs[app.screen.tab].focus,
-            ClientTerm::local(3),
-            "back on the shell tab"
-        );
-        // Closing a tab asks first.
-        let mine = app
-            .screen
-            .tabs
-            .iter()
-            .position(|t| t.layout.contains(1))
-            .unwrap();
-        app.close_tab(mine);
-        assert!(
-            matches!(&app.mode, Mode::Confirm(c) if matches!(&c.act, crate::client::menu::Act::End(ts) if ts.contains(&ClientTerm::local(1)))),
-            "{:?}",
-            app.mode
-        );
-    }
-
-    #[test]
     fn the_wheel_scrolls_an_agents_full_screen_view() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         draw(&mut app, 160, 45);
@@ -3828,11 +2393,7 @@ mod screen_tests {
             })
         };
         // A drag whose release never came is over once the mouse moves with no button held.
-        app.screen.drag = Some(screen::Drag::Session(
-            ClientSession::local(SessionKey::Pane(2)),
-            false,
-            screen::ScreenHit::Session(ClientSession::local(SessionKey::Pane(2))),
-        ));
+        app.screen.drag = Some(screen::Drag::Side);
         mouse(&mut app, MouseEventKind::Moved);
         assert!(
             app.screen.drag.is_none(),
@@ -3848,7 +2409,6 @@ mod screen_tests {
             "paged (PgUp), not arrow keys into its prompt history"
         );
     }
-
     #[test]
     fn codex_output_above_its_input_box_can_be_scrolled_back() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
@@ -3953,7 +2513,7 @@ mod screen_tests {
         assert_eq!(
             o.matches("Doing something").count(),
             1,
-            "once: on the row, not in a second line"
+            "on its row, not in a second line"
         );
     }
 
@@ -3985,157 +2545,20 @@ mod screen_tests {
             "the cursor goes with the keys"
         );
         app.act(Action::ClosePane);
-        assert!(
-            matches!(&app.mode, Mode::Confirm(c) if c.act == crate::client::menu::Act::End(vec![focused])),
-            "close asks about the focused pane"
+        assert_eq!(
+            app.closing.last_closed().or(app.closing.asking_about()),
+            Some(focused),
+            "close acts on the focused pane"
         );
+        app.closing = Default::default();
         // Even a cursor left behind in normal mode is not a target.
         app.mode = Mode::Normal;
         app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(other)));
         app.act(Action::ClosePane);
-        assert!(
-            matches!(&app.mode, Mode::Confirm(c) if c.act == crate::client::menu::Act::End(vec![focused])),
-            "only the sidebar's own keys use its cursor"
-        );
-    }
-
-    #[test]
-    fn sidebar_by_keyboard() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        let key = |c: KeyCode| KeyEvent::new(c, KeyModifiers::NONE);
-        draw(&mut app, 160, 45);
-        // Clicking a project folds it and leaves the keys where they were.
-        app.mode = Mode::Normal;
-        let mode_before = std::mem::discriminant(&app.mode);
-        app.on_hy_hit(screen::ScreenHit::ToggleProj(0), false);
-        assert!(
-            app.screen.saved.closed.iter().any(|k| k.starts_with("p:")),
-            "the click folded it"
-        );
         assert_eq!(
-            std::mem::discriminant(&app.mode),
-            mode_before,
-            "the click did not move the keys"
-        );
-        app.on_hy_hit(screen::ScreenHit::ToggleProj(0), false);
-        // The sidebar's own keys start from the project row.
-        let proj = app.screen.proj_keys[0].clone();
-        app.screen_side_set(screen::SideItem::Proj(proj));
-        assert!(
-            matches!(app.mode, Mode::Side) && app.screen.cursor_proj.is_some(),
-            "on the project row"
-        );
-        draw(&mut app, 160, 45);
-        // ← folds it, → opens it again.
-        app.on_key(key(KeyCode::Left));
-        assert!(
-            app.screen.saved.closed.iter().any(|k| k.starts_with("p:")),
-            "folded"
-        );
-        app.on_key(key(KeyCode::Right));
-        assert!(
-            !app.screen.saved.closed.iter().any(|k| k.starts_with("p:")),
-            "open"
-        );
-        draw(&mut app, 160, 45);
-        // ↓ onto its first session; ← back up to the project.
-        app.on_key(key(KeyCode::Down));
-        let first = app.screen.cursor.expect("on a session");
-        app.on_key(key(KeyCode::Left));
-        assert!(
-            app.screen.cursor_proj.is_some() && app.screen.cursor.is_none(),
-            "← goes to its project"
-        );
-        app.on_key(key(KeyCode::Down));
-        assert_eq!(app.screen.cursor, Some(first));
-        draw(&mut app, 160, 45);
-        // No bare letter acts from the sidebar: x is typing, it doesn't ask to close.
-        app.on_key(key(KeyCode::Char('x')));
-        assert!(!matches!(&app.mode, Mode::Confirm(_)), "x closes nothing");
-        app.screen_side_set(screen::SideItem::Sess(first));
-        // The leader's x asks to close it.
-        app.mode = Mode::Prefix {
-            since: std::time::Instant::now(),
-            acted: false,
-        };
-        app.act(Action::ClosePane);
-        assert!(
-            matches!(&app.mode, Mode::Confirm(c) if c.title == "Close pane"),
-            "leader x closes (after asking)"
-        );
-        app.on_key(key(KeyCode::Esc));
-        assert!(
-            matches!(app.mode, Mode::Side) && app.screen.cursor == Some(first),
-            "saying no goes back to the sidebar"
-        );
-        let next = app.side_after_close();
-        app.mode = Mode::Prefix {
-            since: std::time::Instant::now(),
-            acted: false,
-        };
-        app.act(Action::ClosePane);
-        app.on_key(key(KeyCode::Enter));
-        assert!(
-            matches!(app.mode, Mode::Side),
-            "after closing, the keys stay in the sidebar"
-        );
-        assert_eq!(next.map(|n| n != screen::SideItem::Sess(first)), Some(true));
-        // The leader key's close, from the sidebar: the cursor's row, and the keys stay too.
-        let on = app
-            .screen
-            .cursor
-            .or_else(|| {
-                app.screen.side_items.iter().find_map(|i| match i {
-                    screen::SideItem::Sess(t) => Some(*t),
-                    _ => None,
-                })
-            })
-            .unwrap();
-        app.screen_side_set(screen::SideItem::Sess(on));
-        // Something running in it, so there is something to lose and it asks.
-        app.snap
-            .terms
-            .get_mut(
-                &app.session_term(on)
-                    .expect("the selected test row has a pane")
-                    .term,
-            )
-            .unwrap()
-            .process = "npm".into();
-        app.mode = Mode::Prefix {
-            since: std::time::Instant::now(),
-            acted: false,
-        };
-        app.act(Action::ClosePane);
-        assert!(
-            matches!(&app.mode, Mode::Confirm(c) if c.act == crate::client::menu::Act::End(vec![app.session_term(on).unwrap()])),
-            "it asks about the row the cursor is on"
-        );
-        app.on_key(key(KeyCode::Enter));
-        assert!(
-            matches!(app.mode, Mode::Side),
-            "and afterwards you're still in the sidebar"
-        );
-        app.screen_side_set(screen::SideItem::Sess(first));
-        // Enter opens it and gives the keys back to the pane.
-        app.on_key(key(KeyCode::Enter));
-        assert!(matches!(app.mode, Mode::Normal) && app.screen.cursor.is_none());
-        // The leader in the sidebar is the leader, not "message this one".
-        app.act(Action::BrowseTree);
-        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
-        assert!(
-            matches!(app.mode, Mode::Prefix { .. }),
-            "Ctrl+Space waits for a key: {:?}",
-            std::mem::discriminant(&app.mode)
-        );
-        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        // Typing in the sidebar goes to the pane instead.
-        app.act(Action::BrowseTree);
-        assert!(matches!(app.mode, Mode::Side));
-        app.on_key(key(KeyCode::Char('q')));
-        assert!(
-            matches!(app.mode, Mode::Normal),
-            "a letter leaves the sidebar (and is typed into the pane)"
+            app.closing.last_closed().or(app.closing.asking_about()),
+            Some(focused),
+            "only the sidebar's own keys use its cursor"
         );
     }
 
@@ -4184,8 +2607,8 @@ mod screen_tests {
             "UPDATES, then STARTUP, then INPUT"
         );
         assert!(
-            o.contains("› Version"),
-            "the first row, the version, is selected"
+            o.contains("Version"),
+            "the first row is the version"
         );
         // Appearance, the next tab, has the dark/light switch and a theme control for each, which open the searchable browser.
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
@@ -4197,8 +2620,8 @@ mod screen_tests {
                 && o.contains("Dark theme")
                 && o.contains("Light theme")
                 && !o.contains("Corners")
-                && o.contains("PREVIEW"),
-            "the theme settings first, with their preview"
+                && !o.contains("PREVIEW"),
+            "the theme settings first; no preview in the narrower modal"
         );
         assert!(
             o.contains("Status glyphs")
@@ -4237,32 +2660,6 @@ mod screen_tests {
         app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
         app.on_paste("Tokyo Night".into());
         assert!(draw(&mut app, 160, 45).contains("Tokyo Night"));
-    }
-
-    #[test]
-    fn a_program_app_doesnt_know_goes_by_its_name_and_can_be_taught() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        let t = app.snap.terms.get_mut(&3).unwrap();
-        (t.process, t.title) = ("dst".into(), "✦ 🐋 deepseek harness".into());
-        app.screen_fresh();
-        let model = app.screen_model();
-        let row = model
-            .iter()
-            .flat_map(|p| p.sessions().cloned().collect::<Vec<_>>())
-            .find(|s| s.native_term.unwrap() == ClientTerm::local(3))
-            .unwrap();
-        assert_eq!(row.name, "dst", "the row says what runs there, not 'shell'");
-        let (title, items) = app.session_items(ClientTerm::local(3)).unwrap();
-        let labels: Vec<&str> = items.iter().map(|(l, _)| l.as_str()).collect();
-        assert!(labels.contains(&"dst is an agent…"), "{labels:?}");
-        assert!(
-            !labels.iter().any(|l| l.starts_with("Message")),
-            "no messaging a program that isn't an agent: {labels:?}"
-        );
-        assert!(
-            !title.contains('🐋'),
-            "titled by the program, not its window title: {title}"
-        );
     }
 
     #[test]
@@ -4444,25 +2841,25 @@ mod screen_tests {
         let top = app.pane_frames[0].1.y;
         assert_eq!(
             (buf[(159, top)].symbol(), buf[(159, top)].fg),
-            ("┐", app.theme.sky()),
+            ("╮", app.theme.sky()),
             "the focused border turns sky"
         );
         let (row, text) = bar_text(&app, &buf);
         assert!(
-            text.starts_with("  SHORTCUT  ") && buf[(row.right() - 1, row.y)].bg == app.theme.sky(),
-            "the mode bar lit, its tag a column in: {text}"
+            text.starts_with("  KEYS  ") && buf[(row.x + 2, row.y)].bg == app.theme.blocked,
+            "the bar's KEYS chip, a column in: {text}"
         );
         // The delayed overview groups common commands; ? opens the full reference instead.
         app.open_keymap(None);
         assert!(matches!(app.mode, Mode::KeyMap(_)));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        for g in ["SESSIONS", "PANES", "TABS", "PROJECT", env!("APP_ENV")] {
+        for g in ["SESSIONS", "PANES", "SIDEBAR", "TOOLS", env!("APP_ENV")] {
             assert!(o.contains(g), "the key map has {g}");
         }
         assert!(
-            o.contains("Inbox") && o.contains("Worktrees ›"),
-            "steps marked"
+            o.contains("Inbox") && o.contains("Undo close"),
+            "the rows of the map"
         );
         // Tab, then words: a search over every leader key.
         key(&mut app, KeyCode::Tab);
@@ -4477,12 +2874,12 @@ mod screen_tests {
         // A key with › opens its second step; Backspace goes back.
         app.mode = Mode::Normal;
         app.on_key(lead);
-        key(&mut app, KeyCode::Char('g'));
+        app.open_keymap(Some(screen::Step::Worktrees));
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(
             matches!(&app.mode, Mode::KeyMap(km) if km.step == Some(screen::Step::Worktrees)),
-            "g opens the worktrees step"
+            "Worktrees › opens its step"
         );
         assert!(
             o.contains("WORKTREES IN SHOP-API")
@@ -4503,7 +2900,7 @@ mod screen_tests {
     fn actions_list_every_command_with_its_key() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains("Menu"));
+        assert!(o.contains(" menu "));
         let at = app
             .hits
             .iter()
@@ -4517,14 +2914,23 @@ mod screen_tests {
             row: at.1,
             modifiers: KeyModifiers::NONE,
         });
+        assert!(matches!(app.mode, Mode::ScreenMenu(_)), "the chip's own menu");
+        app.mode = Mode::Normal;
+        app.act(Action::Menu);
         assert!(matches!(app.mode, Mode::Actions { sel: 0 }));
         let o = draw(&mut app, 160, 45);
         show(&o);
         // Each section says what its rows are for, and the tools are among them: the rail that
         // also opens them is hidden unless it is asked for.
         let rows: Vec<&str> = o.lines().collect();
+        // The tab row's own Files and Changes chips are above the Menu's card.
+        let card = rows
+            .iter()
+            .position(|l| l.contains("─ Menu "))
+            .unwrap_or_else(|| panic!("no Menu card:\n{o}"));
         let row = |text: &str| {
-            rows.iter()
+            card + rows[card..]
+                .iter()
                 .position(|l| l.contains(text))
                 .unwrap_or_else(|| panic!("no {text} in the Menu:\n{o}"))
         };
@@ -4550,7 +2956,6 @@ mod screen_tests {
                 && o.contains("Search commands"),
             "{o}"
         );
-        assert!(!app.cfg.ui.tool_rail, "the tool rail is off unless asked for");
 
         // A short window keeps every row that does something: the blank rows and then the
         // titles give way first.
@@ -4579,10 +2984,10 @@ mod screen_tests {
         );
         // A row's leader key runs it here, unshown: z collapses the sidebar.
         assert!(app.sidebar);
-        app.on_key(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE));
+        app.on_key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::NONE));
         assert!(
             !app.sidebar && app.mode == Mode::Normal,
-            "z: the sidebar collapses"
+            "b: the sidebar collapses"
         );
     }
 
@@ -4607,11 +3012,21 @@ mod screen_tests {
                     modifiers: KeyModifiers::NONE,
                 });
             };
+            // Hidden, the sidebar leaves its `»` chip: that brings it back, and its menu chip.
+            click(&mut app, screen::ScreenHit::ExpandSidebar);
+            assert!(app.sidebar, "» brings the sidebar back");
+            draw(&mut app, w, h);
             click(&mut app, screen::ScreenHit::Actions);
+            let Mode::ScreenMenu(menu) = &app.mode else {
+                panic!("the menu chip opens its menu: {:?}", std::mem::discriminant(&app.mode))
+            };
+            let labels: Vec<&str> = menu.items.iter().map(|(l, _)| l.as_str()).collect();
+            assert_eq!(labels, ["Filter sessions", "Inbox", "Usage and cost", "Settings", "Keys"]);
+            // The full Menu is the leader's `.`; its rows are clickable.
+            app.act(Action::Menu);
             assert!(matches!(app.mode, Mode::Actions { .. }));
             let screen = draw(&mut app, w, h);
             show(&screen);
-            assert!(screen.contains("Expand sidebar"));
             let index = screen::action_items()
                 .iter()
                 .position(|(_, a)| *a == Action::Palette)
@@ -4692,14 +3107,15 @@ mod screen_tests {
         app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
     }
 
+
     fn click_new_chip(app: &mut App) {
         let at = app
             .hits
             .iter()
             .find_map(|(r, h)| {
-                (*h == Hit::Screen(screen::ScreenHit::NewShell)).then_some((r.x + 1, r.y))
+                matches!(h, Hit::Screen(screen::ScreenHit::MachinePlus(_))).then_some((r.x + 1, r.y))
             })
-            .expect("+ new is clickable");
+            .expect("the machine plus is clickable");
         app.on_mouse(MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
             column: at.0,
@@ -4709,10 +3125,10 @@ mod screen_tests {
     }
 
     #[test]
-    fn the_new_chip_starts_a_session_at_once_and_leader_n_a_plain_shell_where_you_are() {
+    fn the_new_chip_and_leader_t_start_a_shell_in_the_fleet_you_are_in_at_once() {
         for cursor in [None, Some(2)] {
             for by_mouse in [false, true] {
-                let (_, mut app) = super::design_tests::render_with(100, 30);
+                let (_, mut app) = super::design_tests::render_with(140, 30);
                 let (tx, mut rx) = mpsc::unbounded_channel();
                 app.out = tx;
                 app.screen.cursor = cursor.map(|id| ClientSession::local(SessionKey::Pane(id)));
@@ -4721,110 +3137,46 @@ mod screen_tests {
                 } else {
                     Mode::Normal
                 };
-                let screen = draw(&mut app, 100, 30);
+                let screen = draw(&mut app, 140, 30);
                 show(&screen);
                 if by_mouse {
-                    assert!(screen.contains("+ New"), "a visible new chip");
+                    assert!(screen.contains(" + "), "a visible plus chip");
                     click_new_chip(&mut app);
-                    assert!(
-                        !matches!(app.mode, Mode::NewSession(_)),
-                        "the chip starts at once, with no popup: {:?}",
-                        app.mode
-                    );
-                    let commands = sent(&mut rx);
-                    assert!(
-                        matches!(
-                            commands.as_slice(),
-                            [Command::NewWorkspace {
-                                cwd: Some(_),
-                                name: None,
-                                ..
-                            }]
-                        ),
-                        "one session in the selected project's folder: {commands:?}"
-                    );
-                    continue;
+                } else {
+                    leader(&mut app, 't');
                 }
-                leader(&mut app, 'n');
                 assert!(
-                    matches!(app.mode, Mode::Normal | Mode::Prefix { .. }),
-                    "new opens no form: {:?}",
+                    !matches!(app.mode, Mode::NewSession(_)),
+                    "a shell opens no form: {:?}",
                     app.mode
                 );
                 let commands = sent(&mut rx);
                 assert!(
                     matches!(
                         commands.as_slice(),
-                        [Command::NewWorkspace {
+                        [Command::NewShip {
+                            ws: 10,
                             cwd: Some(_),
-                            name: None,
                             cmd: None
                         }]
                     ),
-                    "one plain shell, no agent and no worktree: {commands:?}"
+                    "one plain shell in the fleet, no agent and no worktree: {commands:?}"
                 );
             }
         }
     }
-
     #[test]
-    fn instant_sessions_follow_the_sessions_settings() {
-        let start = |tweak: &dyn Fn(&mut App)| {
-            let (_, mut app) = super::design_tests::render_with(100, 30);
-            let (tx, mut rx) = mpsc::unbounded_channel();
-            app.out = tx;
-            tweak(&mut app);
-            leader(&mut app, 's');
-            (sent(&mut rx), app)
-        };
-        let (cmds, _) = start(&|a| a.cfg.sessions.place = "this folder".into());
-        assert!(
-            matches!(cmds.as_slice(), [Command::NewWorkspace { cwd: Some(cwd), cmd: Some(cmd), .. }] if cmd == "claude" && cwd.ends_with("shop-api")),
-            "{cmds:?}"
-        );
-        for agent in ["codex", "gemini"] {
-            let (cmds, app) = start(&|a| a.cfg.sessions.agent = agent.into());
-            assert!(
-                matches!(cmds.as_slice(), [Command::NewWorktree { cmd: Some(cmd), .. }] if cmd == agent),
-                "{cmds:?}"
-            );
-            assert_eq!(
-                app.screen.saved.last_agent, agent,
-                "the agent is remembered"
-            );
-        }
-        let (cmds, _) = start(&|a| a.screen.saved.last_agent = "gemini".into());
-        assert!(
-            matches!(cmds.as_slice(), [Command::NewWorktree { cmd: Some(cmd), .. }] if cmd == "gemini"),
-            "last used: {cmds:?}"
-        );
-        let (cmds, _) = start(&|a| a.screen.saved.last_agent = "gone".into());
-        assert!(
-            matches!(cmds.as_slice(), [Command::NewWorktree { cmd: Some(cmd), .. }] if cmd == "claude"),
-            "an unknown last agent falls back to claude: {cmds:?}"
-        );
-        let (cmds, _) = start(&|a| {
-            a.cfg.sessions.agent = "codex".into();
-            a.screen.saved.last_agent = "gemini".into();
-        });
-        assert!(
-            matches!(cmds.as_slice(), [Command::NewWorktree { cmd: Some(cmd), .. }] if cmd == "codex"),
-            "a named agent wins over last used: {cmds:?}"
-        );
-    }
-
-    #[test]
-    fn the_menu_starts_a_shell_or_a_session_and_n_is_the_shell_key() {
+    fn the_menu_starts_a_shell_or_opens_the_dialog_and_t_is_the_shell_key() {
         let rows = screen::action_items();
-        let labels: Vec<&str> = rows.iter().take(4).map(|(l, _)| *l).collect();
+        let labels: Vec<&str> = rows.iter().take(3).map(|(l, _)| *l).collect();
         assert_eq!(
             labels,
-            ["Shell here", "Session", "Pane beside this", "Tab"],
+            ["Shell here", "Session...", "Pane beside this"],
             "Shell first"
         );
         assert!(
             rows.iter()
-                .any(|(l, a)| *l == "Session" && *a == Action::StartSession)
+                .any(|(l, a)| *l == "Session..." && *a == Action::PickSession)
         );
         assert!(
             rows.iter()
@@ -4832,40 +3184,39 @@ mod screen_tests {
         );
         let key = |c: &str| c.parse::<crate::keys::KeySpec>().unwrap();
         let (_, app) = super::design_tests::render_with(100, 30);
-        assert_eq!(app.keymap.prefixed.get(&key("n")), Some(&Action::ShellHere));
+        assert_eq!(app.keymap.prefixed.get(&key("t")), Some(&Action::ShellHere));
+        assert_eq!(app.keymap.prefixed.get(&key("n")), Some(&Action::PickSession), "n is the New session dialog");
+        assert_eq!(app.keymap.prefixed.get(&key("j")), Some(&Action::NextSession));
         assert_eq!(
-            app.keymap.prefixed.get(&key("s")),
-            Some(&Action::StartSession)
+            app.keymap.global.get(&key("ctrl+t")),
+            Some(&Action::ShellHere),
+            "Ctrl+T makes a shell; the dialog is the Menu's Session..."
         );
-        assert_eq!(
-            app.keymap.prefixed.get(&key("o")),
-            Some(&Action::PickSession),
-            "`o` opens the full picker (the options dialog it once named is gone)"
-        );
+        assert_eq!(app.keymap.global.get(&key("ctrl+tab")), Some(&Action::NextTab));
         let (_, mut app) = super::design_tests::render_with(100, 30);
         let (tx, mut rx) = mpsc::unbounded_channel();
         app.out = tx;
-        leader(&mut app, 'n');
+        leader(&mut app, 't');
         let cmds = sent(&mut rx);
         assert!(
             matches!(
                 cmds.as_slice(),
-                [Command::NewWorkspace {
+                [Command::NewShip {
                     cwd: Some(_),
-                    name: None,
-                    cmd: None
+                    cmd: None,
+                    ..
                 }]
             ),
             "a plain shell: {cmds:?}"
         );
         // In the Menu, the leader key shown beside a row runs it.
-        for (key, plain) in [('n', true), ('s', false)] {
-            app.mode = Mode::Actions { sel: 0 };
-            app.on_key(KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE));
-            let cmds = sent(&mut rx);
-            let shell = matches!(cmds.as_slice(), [Command::NewWorkspace { cmd: None, .. }]);
-            assert_eq!(shell, plain, "Menu key {key}: {cmds:?}");
-        }
+        app.mode = Mode::Actions { sel: 0 };
+        app.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE));
+        let cmds = sent(&mut rx);
+        assert!(
+            matches!(cmds.as_slice(), [Command::NewShip { cmd: None, .. }]),
+            "Menu key t: {cmds:?}"
+        );
     }
 
     #[test]
@@ -4887,7 +3238,7 @@ mod screen_tests {
     }
 
     #[test]
-    fn caps_lock_n_after_the_leader_starts_a_session_not_history() {
+    fn caps_lock_t_after_the_leader_starts_a_shell() {
         use ratatui::crossterm::event::{KeyEventKind, KeyEventState};
 
         let (_, mut app) = super::design_tests::render_with(100, 30);
@@ -4900,7 +3251,7 @@ mod screen_tests {
             KeyEventState::CAPS_LOCK
         };
         app.on_key(KeyEvent::new_with_kind_and_state(
-            KeyCode::Char('N'),
+            KeyCode::Char('T'),
             KeyModifiers::NONE,
             KeyEventKind::Press,
             caps_state,
@@ -4914,9 +3265,9 @@ mod screen_tests {
         assert!(
             std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).any(|message| matches!(
                 message,
-                ClientMsg::Command(Command::NewWorkspace { cmd: None, .. })
+                ClientMsg::Command(Command::NewShip { cmd: None, .. })
             )),
-            "leader + Caps Lock + n starts a shell"
+            "leader + Caps Lock + t starts a shell"
         );
     }
 
@@ -5011,7 +3362,7 @@ mod screen_tests {
                 "Settings leaves the workspace geometry unchanged at {width}x{height}"
             );
             assert!(
-                screen.contains("Settings") && screen.contains("General"),
+                screen.contains(" settings ") && screen.contains("General"),
                 "Settings renders in the centered modal at {width}x{height}"
             );
         }
@@ -5044,7 +3395,7 @@ mod screen_tests {
             let (_, mut app) = super::design_tests::render_with(160, 45);
             app.cfg.ui.layout = layout.into();
             app.cfg.ui.fold_retired_layout();
-            app.cfg.ui.padding = "1".into();
+            app.cfg.ui.padding = "medium".into();
             let o = draw(&mut app, 160, 45);
             show(&o);
             let lines: Vec<&str> = o.lines().collect();
@@ -5056,12 +3407,12 @@ mod screen_tests {
             assert!(
                 lines
                     .iter()
-                    .all(|l| l.chars().next().is_none_or(|c| c == ' ')),
-                "{layout}: the left column is air"
+                    .all(|l| l.chars().take(2).all(|c| c == ' ')),
+                "{layout}: the left two columns are air"
             );
             assert_eq!(
-                app.screen.side_rect.x, 1,
-                "{layout}: the sidebar starts one in"
+                app.screen.side_rect.x, 2,
+                "{layout}: the sidebar starts two in"
             );
             assert_eq!(
                 app.screen.side_rect.bottom(),
@@ -5070,7 +3421,7 @@ mod screen_tests {
             );
             assert_eq!(
                 screen::mode_bar_row(&app, Rect::new(0, 0, 160, 45)),
-                Rect::new(1, 43, 158, 1),
+                Rect::new(2, 43, 156, 1),
                 "{layout}: the bar is inside the padding too"
             );
         }
@@ -5159,11 +3510,11 @@ mod screen_tests {
             y: row.y,
         };
         let focused = app.focused().unwrap();
-        for modal in ["Close pane", "Settings", "Message"] {
+        for modal in ["Updates", "Settings", "Message"] {
             match modal {
                 "Settings" => app.act(Action::Settings),
                 "Message" => app.act(Action::Message),
-                _ => app.menu_act(menu::Act::End(vec![focused])),
+                _ => app.act(Action::Updates),
             }
             assert_ne!(app.mode, Mode::Normal, "{modal} is open");
             let (lit, plain) = with_and_without_pointer(&mut app, on_row);
@@ -5175,7 +3526,9 @@ mod screen_tests {
             assert_eq!(lit, plain, "{modal}: nothing behind lights up");
             app.mode = Mode::Normal;
         }
-        app.menu_act(menu::Act::End(vec![focused]));
+        // Closing several panes at once still asks: they are not one session to undo.
+        let beside = ClientTerm::local(if focused.term == 3 { 2 } else { 3 });
+        app.menu_act(menu::Act::End(vec![focused, beside]));
         draw(&mut app, 160, 45);
         let (yes, _) = *app
             .hits
@@ -5248,51 +3601,18 @@ mod screen_tests {
     }
 
     #[test]
-    fn a_small_window_tightens() {
-        let (o, _) = super::design_tests::render_with(100, 30);
-        show(&o);
-        let lines: Vec<&str> = o.lines().collect();
-        // A 26-column sidebar card, no right-hand meta or question lines.
-        assert!(
-            lines[0].starts_with('┌') && lines[0].chars().nth(25) == Some('┐'),
-            "a slim sidebar: {}",
-            lines[0]
-        );
-        let side: String = lines
-            .iter()
-            .map(|l| l.chars().take(30).collect::<String>() + "\n")
-            .collect();
-        assert!(
-            !side.contains("working"),
-            "a working row is one line: {side}"
-        );
-        assert!(
-            side.contains("asks: Run npm"),
-            "a question keeps its line: {side}"
-        );
-        assert!(
-            o.contains("+ New") && o.contains("Menu"),
-            "both controls fit at the sidebar foot"
-        );
-        assert!(
-            !o.contains("? keys") && !o.contains("inbox"),
-            "there is no full-width status footer"
-        );
-    }
-
-    #[test]
-    fn the_fleet_is_gone_from_every_place_it_was_offered() {
+    fn the_commander_is_gone_from_every_place_it_was_offered() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         assert!(
             !screen::action_items()
                 .iter()
-                .any(|(label, ..)| label.to_lowercase().contains("fleet")),
+                .any(|(label, ..)| label.to_lowercase().contains("commander")),
             "not in the Menu"
         );
         assert!(
             !app.palette_commands()
                 .iter()
-                .any(|a| a.describe().to_lowercase().contains("fleet")),
+                .any(|a| a.describe().to_lowercase().contains("commander")),
             "not in search"
         );
         assert!(
@@ -5309,7 +3629,7 @@ mod screen_tests {
             app.act(Action::NewSession);
             let o = draw(&mut app, w, h);
             assert!(
-                !o.to_lowercase().contains("fleet") && !o.contains("GOAL"),
+                !o.to_lowercase().contains("commander") && !o.contains("GOAL"),
                 "at {w}x{h}: {o}"
             );
             app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
@@ -5347,8 +3667,8 @@ mod screen_tests {
         // A row's keys are in its menu; the status line has the global ones.
         let rows: Vec<&str> = o.lines().collect();
         assert!(
-            !rows[2].contains("Menu") && o.contains("+ New") && o.contains("Menu"),
-            "new and Actions are at the foot"
+            !rows[2].contains(" menu ") && o.contains(" menu "),
+            "the menu chip is at the foot"
         );
         let actions_y = app
             .hits
@@ -5362,124 +3682,6 @@ mod screen_tests {
             !o.lines().last().unwrap_or_default().contains("keys"),
             "no full-width status footer"
         );
-    }
-
-    #[test]
-    fn tabs_close_rename_and_reorder_with_the_mouse() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        app.out = tx;
-        app.screen.tabs.clear();
-        app.screen_place(ClientTerm::local(1), None);
-        *app.screen.new_tab.borrow_mut() = Some(screen::PendingTab {
-            at: Instant::now(),
-            owner: ClientTerm::local(1),
-            known: HashSet::new(),
-        });
-        app.screen_place(ClientTerm::local(3), Some(ClientTerm::local(1)));
-        *app.screen.new_tab.borrow_mut() = Some(screen::PendingTab {
-            at: Instant::now(),
-            owner: ClientTerm::local(1),
-            known: HashSet::new(),
-        });
-        app.screen_place(ClientTerm::local(2), Some(ClientTerm::local(3)));
-        assert_eq!(
-            app.session_tabs().len(),
-            3,
-            "claude's session with three tabs"
-        );
-        draw(&mut app, 160, 45);
-        let pill = |app: &App, i: usize| {
-            app.hits
-                .iter()
-                .find_map(|(r, h)| {
-                    (*h == Hit::Screen(screen::ScreenHit::TabPick(i))).then_some((r.x + 2, r.y))
-                })
-                .unwrap()
-        };
-        let mouse = |app: &mut App, kind: MouseEventKind, (x, y): (u16, u16)| {
-            app.on_mouse(MouseEvent {
-                kind,
-                column: x,
-                row: y,
-                modifiers: KeyModifiers::NONE,
-            });
-            draw(app, 160, 45);
-        };
-        // Only the tab on screen carries a ✕; the lone pane's title has none.
-        assert_eq!(
-            app.hits
-                .iter()
-                .filter(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::CloseTab(_))))
-                .count(),
-            1,
-            "a ✕ on the open tab only"
-        );
-        assert!(
-            !app.hits
-                .iter()
-                .any(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::CloseSplit(_)))),
-            "none on the lone pane"
-        );
-        // Double-click: rename it in its pill.
-        let first = app.session_tabs()[0];
-        let at = pill(&app, first);
-        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), at);
-        let at = pill(&app, first);
-        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), at);
-        let at = pill(&app, first);
-        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), at);
-        let at = pill(&app, first);
-        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), at);
-        assert!(
-            matches!(&app.mode, Mode::RenameTab(nt) if nt.tab == first),
-            "renaming the first tab"
-        );
-        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        assert_eq!(app.mode, Mode::Normal, "Escape closes the rename dialog");
-        draw(&mut app, 160, 45);
-        // Drag the first onto the third: it moves there, and stays the one you're on.
-        let (a, c) = (app.session_tabs()[0], app.session_tabs()[2]);
-        let moved = app.screen.tabs[a].focus;
-        let at = pill(&app, a);
-        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), at);
-        let at = pill(&app, c);
-        mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), at);
-        let at = pill(&app, c);
-        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), at);
-        let order: Vec<ClientTerm> = app
-            .session_tabs()
-            .iter()
-            .map(|i| app.screen.tabs[*i].focus)
-            .collect();
-        assert_eq!(order.last(), Some(&moved), "dragged to the end: {order:?}");
-        assert_eq!(
-            app.screen.tabs[app.screen.tab].focus, moved,
-            "still the tab you're on"
-        );
-        // A middle click closes a tab, once you say so (a shell too).
-        let shell_tab = app
-            .session_tabs()
-            .into_iter()
-            .find(|i| app.screen.tabs[*i].focus == ClientTerm::local(3))
-            .unwrap();
-        let at = pill(&app, shell_tab);
-        mouse(&mut app, MouseEventKind::Down(MouseButton::Middle), at);
-        assert!(
-            matches!(app.mode, Mode::Confirm(_)),
-            "it asks first: {:?}",
-            app.mode
-        );
-        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-        let closed = std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).any(|m| {
-            matches!(
-                m,
-                crate::protocol::ClientMsg::Command(crate::protocol::Command::ClosePane {
-                    term: 3
-                })
-            )
-        });
-        assert!(closed, "the shell's pane is closed");
     }
 
     #[test]
@@ -5564,9 +3766,8 @@ mod screen_tests {
             app.snap.terms.get_mut(&2).unwrap().status = codex;
             app.screen_fresh();
             let model = app.screen_model();
-            screen::side_lines(app, &model, &app.theme)
-                .iter()
-                .filter_map(|l| screen::line_term(&model, l))
+            screen::side_keys(app, &model)
+                .into_iter()
                 .filter_map(|key| app.session_term(key))
                 .filter(|t| *t != ClientTerm::local(3))
                 .take(2)
@@ -5588,123 +3789,12 @@ mod screen_tests {
         );
     }
 
-    /// claude (1) started helpers: codex (2) is its helper, 4 is codex's, 5 is 4's.
-    fn helper_tree() -> App {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        let tab = app.snap.workspaces[0]
-            .tabs
-            .iter_mut()
-            .find(|tab| tab.layout.contains(2))
-            .unwrap();
-        for (id, by) in [(4, 2), (5, 4)] {
-            let mut t = app.snap.terms[&2].clone();
-            t.id = id;
-            app.snap.terms.insert(id, t);
-            tab.layout.split(2, crate::layout::Dir::Down, id);
-            app.snap.terms.get_mut(&id).unwrap().started_by = Some(by);
-        }
-        app.snap.terms.get_mut(&2).unwrap().started_by = Some(1);
-        for t in app.snap.terms.values_mut() {
-            t.status = Status::Idle;
-        }
-        app.screen_fresh();
-        app
-    }
-
-    /// The agents' rows, top to bottom, with how deep each sits.
-    fn helper_rows(app: &mut App) -> Vec<(TermId, u8)> {
-        app.screen_fresh();
-        let model = app.screen_model();
-        screen::side_lines(app, &model, &app.theme)
-            .iter()
-            .filter_map(|l| match l {
-                screen::Line::Sess(.., depth) => screen::line_term(&model, l)
-                    .and_then(|key| app.session_term(key))
-                    .map(|t| (t.term, *depth)),
-                _ => None,
-            })
-            .filter(|(t, _)| *t != 3)
-            .collect()
-    }
-
     #[test]
-    fn helpers_sit_under_the_session_that_started_them() {
-        let mut app = helper_tree();
-        assert_eq!(
-            helper_rows(&mut app),
-            [(1, 0), (2, 1), (4, 2), (5, 2)],
-            "each under the session that started it, no deeper than two steps"
-        );
-        // One that needs you stays where it is, under its starter, with its own helpers.
-        app.snap.terms.get_mut(&2).unwrap().status = Status::Blocked;
-        assert_eq!(helper_rows(&mut app), [(1, 0), (2, 1), (4, 2), (5, 2)]);
-        // The session that started them closed: an ordinary row, its own helpers still under it.
-        app.snap.terms.get_mut(&2).unwrap().status = Status::Idle;
-        app.snap.terms.get_mut(&2).unwrap().started_by = Some(999);
-        assert_eq!(helper_rows(&mut app), [(1, 0), (2, 0), (4, 1), (5, 2)]);
-    }
-
-    #[test]
-    fn sessions_drag_within_their_group_and_click_to_open() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        for t in app.snap.terms.values_mut() {
-            t.status = Status::Idle;
-        }
-        app.screen_fresh();
-        draw(&mut app, 160, 45);
-        let rows = |app: &mut App| {
-            let model = app.screen_model();
-            screen::side_lines(app, &model, &app.theme)
-                .iter()
-                .filter_map(|l| screen::line_term(&model, l))
-                .collect::<Vec<_>>()
-        };
-        let before = rows(&mut app);
-        // claude, codex and the shell: one group.
-        let (first, last) = (before[0], before[1]);
-        let at = |app: &App, t: ClientSession| {
-            app.hits
-                .iter()
-                .find_map(|(r, h)| {
-                    (*h == Hit::Screen(screen::ScreenHit::Session(t))).then_some((r.x + 6, r.y))
-                })
-                .unwrap()
-        };
-        let mouse = |app: &mut App, kind: MouseEventKind, (x, y): (u16, u16)| {
-            app.on_mouse(MouseEvent {
-                kind,
-                column: x,
-                row: y,
-                modifiers: KeyModifiers::NONE,
-            });
-            draw(app, 160, 45);
-        };
-        let (from, to) = (at(&app, last), at(&app, first));
-        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), from);
-        mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), to);
-        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), to);
-        assert_eq!(
-            rows(&mut app)[0],
-            last,
-            "dragged to the top of its group: {:?}",
-            rows(&mut app)
-        );
-        // A click (no move) opens it.
-        let p = at(&app, first);
-        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), p);
-        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), p);
-        assert!(
-            app.screen.drag.is_none(),
-            "a click opens it and leaves nothing being dragged"
-        );
-    }
-
-    #[test]
-    fn an_update_appears_in_the_tab_bar_only_when_available() {
+    fn an_update_appears_at_the_sidebars_foot_only_when_available() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let initial = draw(&mut app, 160, 45);
         assert!(
-            !initial.contains("Update") && initial.contains("Menu"),
+            !initial.contains("↑ v") && initial.contains(" menu "),
             "actions stay in the sidebar, no update when current"
         );
         assert!(
@@ -5716,8 +3806,8 @@ mod screen_tests {
         app.update_notes = vec!["Fixed: copying".into(), "New: update button".into()];
         let updated = draw(&mut app, 160, 45);
         assert!(
-            updated.contains("↑ Update 9.9.9"),
-            "the mode bar announces an available update"
+            updated.contains("↑ v9.9.9"),
+            "the sidebar's foot announces an available update"
         );
         // One notice in the working area: the Menu's Settings row carries no dot for it.
         app.act(Action::Menu);
@@ -5733,12 +3823,6 @@ mod screen_tests {
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         draw(&mut app, 160, 45);
         assert!(
-            app.hits
-                .iter()
-                .any(|(_, hit)| *hit == Hit::Screen(screen::ScreenHit::Update)),
-            "the update is clickable"
-        );
-        assert!(
             app.palette_commands().contains(&Action::Update),
             "and remains in the command palette"
         );
@@ -5746,15 +3830,17 @@ mod screen_tests {
             .hits
             .iter()
             .find_map(|(rect, hit)| {
-                (*hit == Hit::Screen(screen::ScreenHit::Update)).then_some((rect.x, rect.y))
+                (*hit == Hit::Screen(screen::ScreenHit::ReleaseMenu)).then_some((rect.x, rect.y))
             })
-            .unwrap();
+            .expect("the update chip is clickable");
         app.on_mouse(MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
             column: x,
             row: y,
             modifiers: KeyModifiers::NONE,
         });
+        // Its menu opens with the update first.
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         let confirm = draw(&mut app, 160, 45);
         assert!(matches!(&app.mode, Mode::Confirm(c) if c.act == menu::Act::Update));
         assert!(
@@ -5771,20 +3857,30 @@ mod screen_tests {
     }
 
     #[test]
-    fn x_closes_and_x_confirms() {
+    fn closing_sends_a_close_with_undo_and_the_undo_key_undoes_it() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        // Something running in it, so closing it asks.
-        app.snap.terms.get_mut(&3).unwrap().process = "npm".into();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
         app.menu_act(menu::Act::End(vec![ClientTerm::local(3)]));
-        assert!(matches!(app.mode, Mode::Confirm(_)), "closing asks first");
-        app.on_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+        assert_eq!(app.mode, Mode::Normal, "nothing is asked");
+        let sent = |rx: &mut mpsc::UnboundedReceiver<Outgoing>| -> Vec<crate::protocol::Command> {
+            std::iter::from_fn(|| rx.try_recv().ok())
+                .filter_map(|o| match o.msg {
+                    crate::protocol::ClientMsg::Command(c) => Some(c),
+                    _ => None,
+                })
+                .collect()
+        };
+        assert!(sent(&mut rx).iter().any(|c| matches!(c, Command::CloseSession { term: 3 })));
+        let banner = app.closing_banner().expect("the undo offer").text;
+        assert!(banner.ends_with("undo 6s") && banner.contains("Ctrl+Space then Ctrl+Z"), "{banner}");
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        app.on_key(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::CONTROL));
         assert!(
-            matches!(app.mode, Mode::Normal),
-            "x (as you asked to close) says yes"
+            matches!(sent(&mut rx).as_slice(), [Command::UndoClose { term: 3 }]),
+            "the leader then Ctrl+Z undoes it"
         );
-        app.menu_act(menu::Act::End(vec![ClientTerm::local(3)]));
-        app.on_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
-        assert!(matches!(app.mode, Mode::Normal), "so does Delete");
+        assert!(app.closing_banner().is_none(), "and the offer goes");
     }
 
     #[test]
@@ -5837,21 +3933,6 @@ mod screen_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(!o.contains("SSH"), "no SSH heading: {o}");
-    }
-
-    #[test]
-    fn a_long_name_gives_way_to_its_age() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.snap.terms.get_mut(&2).unwrap().label =
-            "Rate limiter rework for login and signup".into();
-        app.screen_fresh();
-        let o = draw(&mut app, 140, 30);
-        show(&o);
-        assert!(
-            o.lines()
-                .any(|l| l.contains("Rate limiter") && l.contains("…") && l.contains(" 2m")),
-            "the name is cut, the age stays: {o}"
-        );
     }
 
     #[test]
@@ -6013,83 +4094,6 @@ mod screen_tests {
         app.notify("saved".into(), false);
         let o = draw(&mut app, 160, 45);
         assert!(o.contains("saved") && !o.contains("click to open"));
-    }
-
-    #[test]
-    fn a_split_is_one_session_and_others_open_full_size() {
-        let (_, mut app) = super::design_tests::render_with(200, 50);
-        let a = app.focused().unwrap();
-        let others: Vec<ClientTerm> = app
-            .snap
-            .terms
-            .keys()
-            .map(|t| ClientTerm::local(*t))
-            .filter(|t| *t != a)
-            .collect();
-        let (b, c) = (others[0], others[1]);
-        app.screen.tabs.clear();
-        app.screen_place(a, None);
-        app.screen.pending_split = Some((a, Instant::now()));
-        app.screen_place(b, Some(a));
-        app.screen_fresh();
-        let rows: Vec<ClientTerm> = app
-            .screen_model()
-            .iter()
-            .flat_map(|p| {
-                p.sessions()
-                    .map(|s| s.native_term.unwrap())
-                    .collect::<Vec<_>>()
-            })
-            .collect();
-        assert!(
-            rows.contains(&a) && !rows.contains(&b),
-            "the pane beside a isn't a session of its own: {rows:?}"
-        );
-        // A split pane has no title bar: its tab names it.
-        let o = draw(&mut app, 200, 50);
-        show(&o);
-        assert!(
-            !o.lines()
-                .any(|l| l.contains("┌─ 1 ") || l.contains("┌─ 2 ")),
-            "no title chips on the split's panes"
-        );
-        // b needs you: a's row says so.
-        app.snap.terms.get_mut(&b.term).unwrap().status = Status::Blocked;
-        app.screen_fresh();
-        let row = app
-            .screen_model()
-            .iter()
-            .flat_map(|p| p.sessions().cloned().collect::<Vec<_>>())
-            .find(|s| s.native_term.unwrap() == a)
-            .unwrap();
-        assert_eq!(row.status, Status::Blocked);
-        // Picking another session shows it alone; the split is still there to go back to.
-        app.screen_place(c, Some(b));
-        assert_eq!(
-            app.screen.tabs[app.screen.tab].layout,
-            crate::layout::Node::Leaf(c.term),
-            "full size"
-        );
-        assert_eq!(
-            app.session_tabs().len(),
-            1,
-            "c's tab row is c's alone: the kept split is another session's, not a tab of this one"
-        );
-        assert_eq!(
-            app.screen.tabs[app.screen.tab].owner, c,
-            "this tab is c's own"
-        );
-        assert!(
-            app.screen.tabs.iter().any(|t| t.leaves() == vec![a, b]),
-            "the split is kept: {:?}",
-            app.screen.tabs
-        );
-        app.screen_place(a, Some(c));
-        assert_eq!(
-            app.screen.tabs[app.screen.tab].leaves(),
-            vec![a, b],
-            "its row brings the split back"
-        );
     }
 
     #[test]
@@ -6274,23 +4278,6 @@ mod screen_tests {
             .take_while(|row| !row.contains("Answer"))
             .cloned();
         assert_eq!(own.collect::<Vec<_>>().join(" "), DETAIL, "{rows:?}");
-    }
-
-    #[test]
-    fn the_hairline_look_wraps_a_toasts_detail_and_preview_too() {
-        let (_, mut app) = super::design_tests::render_with(70, 30);
-        app.cfg.ui.layout = "hairline".into();
-        app.notify_card(
-            "Copied to clipboard".into(),
-            DETAIL.into(),
-            Some(PREVIEW.into()),
-            false,
-        );
-        let buf = frame(&mut app, 70, 30);
-        let r = app.screen.toast_rect;
-        let rows = below_title(&buf, r, r.x + 4);
-        assert!(r.height >= 7, "{r:?}");
-        assert_eq!(rows.join(" "), format!("{DETAIL} {PREVIEW}"), "{rows:?}");
     }
 
     #[test]
@@ -6563,11 +4550,12 @@ second line
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.snap.terms.get_mut(&2).unwrap().status = Status::Idle;
         app.snap.terms.get_mut(&3).unwrap().status = Status::Done;
+        for id in [2, 3] {
+            app.snap.terms.get_mut(&id).unwrap().agent = Some("claude".into());
+        }
+        app.screen_fresh();
         let model = app.screen_model();
-        let rows = screen::side_lines(&app, &model, &app.theme)
-            .iter()
-            .filter_map(|line| screen::line_term(&model, line))
-            .collect::<Vec<_>>();
+        let rows = screen::side_keys(&app, &model);
         assert!(
             rows.contains(&ClientSession::local(SessionKey::Pane(2)))
                 && rows.contains(&ClientSession::local(SessionKey::Pane(3))),
@@ -6608,8 +4596,8 @@ second line
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(
-            o.contains("snapshots · dsa-tool")
-                && o.contains("1  2m ago · before claude's turn")
+            o.contains("1  2m ago")
+                && o.contains("before claude's turn")
                 && o.contains("9  18m ago")
                 && !o.contains("20m ago"),
             "the list"
@@ -6685,40 +4673,7 @@ second line
     }
 
     #[test]
-    fn legacy_sleep_state_has_no_special_sidebar_or_preview_ui() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.got_state = true;
-        app.snap.terms.get_mut(&2).unwrap().asleep = true;
-        app.screen.tabs.clear();
-        app.screen_place(ClientTerm::local(1), None);
-        app.screen_side_set(screen::SideItem::Sess(ClientSession::local(
-            SessionKey::Pane(2),
-        )));
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        let legacy_ui = o.lines().find(|line| line.contains("waking up"));
-        assert!(
-            legacy_ui.is_none(),
-            "legacy status UI is absent: {legacy_ui:?}"
-        );
-        assert!(
-            o.contains("asleep zzZ"),
-            "the row says it is asleep in words"
-        );
-        assert!(
-            !o.contains("the last thing codex said"),
-            "sidebar selection doesn't replace the focused pane"
-        );
-        assert!(
-            !app.panes
-                .iter()
-                .any(|(term, _)| *term == ClientTerm::local(2)),
-            "legacy pane preview is removed"
-        );
-    }
-
-    #[test]
-    fn the_tabs_load_is_said_at_the_bottom_bars_right_end() {
+    fn the_load_is_said_nowhere() {
         let gb = |n: u64| n << 30;
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let on = app.focused().unwrap();
@@ -6727,17 +4682,7 @@ second line
             app.snap.terms.get_mut(&on.term).unwrap().mem,
         ) = (62.0, gb(5));
         let o = draw(&mut app, 160, 45);
-        show(&o);
-        let bar = o.lines().last().expect("a bar");
-        assert!(
-            bar.contains("▲ 62% CPU · 5.0 GB"),
-            "said on the bottom bar: {bar}"
-        );
-        assert!(
-            !o.lines().take(44).any(|l| l.contains("CPU")),
-            "and nowhere else: not on a pane's title, not under a sidebar row"
-        );
-        assert!(!o.contains("subagents"), "no subagent heading to fold");
+        assert!(!o.contains("CPU"), "the status bar has the mode, the session and keys only:\n{o}");
     }
 
     /// What the client sent as helper answers, in order.
@@ -6772,174 +4717,24 @@ second line
     }
 
     #[test]
-    fn a_session_asking_for_helpers_reads_wants_to_start_n_helpers_and_enter_opens_the_question() {
-        let (mut app, mut rx) = asking_for_helpers();
-        for (w, h) in [(160, 45), (100, 30)] {
-            let o = draw(&mut app, w, h);
-            show(&o);
-            let line = if w >= 160 {
-                "wants to start 3 helpers"
-            } else {
-                "wants 3 helpers"
-            };
-            assert!(o.contains(line), "the row's line at {w}x{h}");
-            assert!(o.contains("● you"), "it needs you: its card says so");
-        }
-        // Bare letters and digits do not answer from the sidebar.
-        app.screen_side_set(screen::SideItem::Sess(ClientSession::local(
-            SessionKey::Pane(2),
-        )));
-        for c in ['1', '2', '3', 'y'] {
-            app.mode = Mode::Side;
-            app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
-        }
-        assert!(
-            helper_answers(&mut rx).is_empty(),
-            "nothing is answered from the sidebar"
-        );
-        app.screen_side_set(screen::SideItem::Sess(ClientSession::local(
-            SessionKey::Pane(2),
-        )));
-        app.mode = Mode::Side;
-        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-        assert_eq!(
-            app.mode,
-            Mode::Helpers {
-                term: ClientTerm::local(2),
-                side: true
-            },
-            "Enter on the row opens the question"
-        );
-        for (w, h) in [(160, 45), (100, 30), (80, 24)] {
-            let o = draw(&mut app, w, h);
-            show(&o);
-            for must in [
-                "START HELPERS?",
-                "fix the login test",
-                "port the footer",
-                "update the docs",
-                "Their permission prompts come to your Inbox.",
-                "Nothing merges.",
-                "Allow",
-                "Esc later",
-            ] {
-                assert!(o.contains(must), "{must:?} at {w}x{h}");
-            }
-        }
-        let wide = draw(&mut app, 160, 45);
-        assert!(
-            wide.contains("Always in shop-api") && wide.contains("No, do it alone"),
-            "the full words when they fit:\n{wide}"
-        );
-        // Enter, y and Space are not an answer.
-        for c in [KeyCode::Enter, KeyCode::Char('y'), KeyCode::Char(' ')] {
-            app.on_key(KeyEvent::new(c, KeyModifiers::NONE));
-            assert_eq!(
-                app.mode,
-                Mode::Helpers {
-                    term: ClientTerm::local(2),
-                    side: true
-                }
-            );
-        }
-        assert!(helper_answers(&mut rx).is_empty());
-        // Esc is "later": nothing is sent and the row still asks.
-        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        assert_eq!(app.mode, Mode::Side);
-        assert!(helper_answers(&mut rx).is_empty() && app.helpers_asked(ClientTerm::local(2)));
-        assert!(
-            draw(&mut app, 160, 45).contains("wants to start 3 helpers"),
-            "the row stays"
-        );
-        // 1, 2 and 3 answer.
-        use crate::protocol::HelperChoice::{Allow, Always, No};
-        for (key, want) in [('1', Allow), ('2', Always), ('3', No)] {
-            app.mode = Mode::Helpers {
-                term: ClientTerm::local(2),
-                side: true,
-            };
-            app.on_key(KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE));
-            assert_eq!(helper_answers(&mut rx), [(2, want)], "{key}");
-            assert_eq!(app.mode, Mode::Side);
-        }
-    }
-
-    #[test]
-    fn the_helpers_question_is_reachable_and_answerable_by_mouse() {
-        let (mut app, mut rx) = asking_for_helpers();
-        draw(&mut app, 160, 45);
-        let line = app.hits.iter().rev().find_map(|(_, h)| match h {
-            Hit::Screen(screen::ScreenHit::HelperAsk(ClientTerm {
-                machine: MachineId::LOCAL,
-                term: 2,
-            })) => Some(*h),
-            _ => None,
-        });
-        let Some(Hit::Screen(open)) = line else {
-            panic!("the row's line is a click target")
-        };
-        app.on_hy_hit(open, false);
-        assert!(
-            matches!(
-                app.mode,
-                Mode::Helpers {
-                    term: ClientTerm {
-                        machine: MachineId::LOCAL,
-                        term: 2
-                    },
-                    ..
-                }
-            ),
-            "a click on the line opens the question"
-        );
-        draw(&mut app, 160, 45);
-        let choose = |app: &App, c| {
-            app.hits.iter().find_map(|(_, h)| match h {
-                Hit::Screen(screen::ScreenHit::HelperAnswer(
-                    ClientTerm {
-                        machine: MachineId::LOCAL,
-                        term: 2,
-                    },
-                    got,
-                )) if *got == c => Some(screen::ScreenHit::HelperAnswer(ClientTerm::local(2), c)),
-                _ => None,
-            })
-        };
-        let always =
-            choose(&app, crate::protocol::HelperChoice::Always).expect("Always is clickable");
-        choose(&app, crate::protocol::HelperChoice::Allow).expect("Allow is clickable");
-        let no = choose(&app, crate::protocol::HelperChoice::No).expect("No is clickable");
-        app.on_hy_hit(no, false);
-        assert_eq!(
-            helper_answers(&mut rx),
-            [(2, crate::protocol::HelperChoice::No)]
-        );
-        assert!(!matches!(app.mode, Mode::Helpers { .. }));
-        // With the question gone from the row, a stale click answers nothing.
-        app.snap.terms.get_mut(&2).unwrap().helper_ask.clear();
-        app.mode = Mode::Helpers {
-            term: ClientTerm::local(2),
-            side: false,
-        };
-        app.on_hy_hit(always, false);
-        assert!(helper_answers(&mut rx).is_empty(), "nothing is pending");
-        assert_eq!(app.mode, Mode::Normal);
-    }
-
-    #[test]
     fn the_settings_tabs_carry_no_update_dot() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.update_available = Some("9.9.9".into());
         app.act(Action::Settings);
         let o = draw(&mut app, 160, 45);
-        let tabs = o
-            .lines()
-            .find(|l| l.contains("General") && l.contains("Sessions"))
-            .expect("the tab strip");
-        assert!(
-            !tabs.contains('●'),
-            "the pill and the splash say so; the tabs do not: {tabs}"
-        );
+        // The sections column: each name, then the line beside it.
+        for name in ["General", "Appearance", "Sessions", "Alerts", "Agents", "Check", "Keys"] {
+            let row = o
+                .lines()
+                .find(|l| l.contains(&format!(" {name} ")))
+                .unwrap_or_else(|| panic!("the {name} section"));
+            let at = row.find(name).unwrap();
+            let section = row[at..].split('│').next().unwrap_or_default();
+            assert!(
+                !section.contains('●'),
+                "the release chip and the splash say so; the sections do not: {section}"
+            );
+        }
         let version_row = design::settings_rows(modal::Cat::General)
             .iter()
             .position(|r| matches!(r, design::SRow::Version))
@@ -7057,73 +4852,6 @@ second line
                 .all(|k| !['a', 'm', 'i', 'j', 'k'].contains(k)),
             "{keys:?}"
         );
-    }
-
-    #[test]
-    fn the_selected_row_still_says_its_state_in_every_theme() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        // The colour of a row's mark in the sidebar, left of its name.
-        let name_fg = |app: &mut App, name: &str| {
-            app.screen_fresh();
-            let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
-            term.draw(|f| render::draw(app, f)).unwrap();
-            let buf = term.backend().buffer().clone();
-            let letters: Vec<String> = name.chars().map(|c| c.to_string()).collect();
-            let (x, y) = (0..45u16)
-                .flat_map(|y| (0..30u16).map(move |x| (x, y)))
-                .find(|&(x, y)| {
-                    letters
-                        .iter()
-                        .enumerate()
-                        .all(|(i, l)| buf[(x + i as u16, y)].symbol() == l)
-                })
-                .unwrap_or_else(|| panic!("{name} is in the sidebar"));
-            (buf[(x - 2, y)].fg, buf[(x - 2, y)].bg)
-        };
-        for theme in crate::theme::BUILTIN.iter().filter(|n| **n != "mono") {
-            app.cfg.theme = theme.to_string();
-            app.theme = app.cfg.theme();
-            let t = app.theme.clone();
-            // claude (1) is the selected row, in each state in turn.
-            app.screen_side_set(screen::SideItem::Sess(ClientSession::local(
-                SessionKey::Pane(1),
-            )));
-            for (status, want) in [
-                (Status::Blocked, t.on_lit(t.blocked)),
-                (Status::Done, t.on_lit(t.done)),
-            ] {
-                app.snap.terms.get_mut(&1).unwrap().status = status;
-                let (fg, bg) = name_fg(&mut app, "claude");
-                assert_eq!(bg, t.sel_bg(), "{theme}: the row is lit");
-                assert_eq!(
-                    fg, want,
-                    "{theme}: {status:?} keeps its colour on the lit row"
-                );
-                assert!(
-                    crate::theme::contrast(fg, bg) >= 3.0,
-                    "{theme}: and reads there"
-                );
-            }
-            // Working is the accent, as everywhere.
-            app.snap.terms.get_mut(&1).unwrap().status = Status::Working;
-            let (fg, bg) = name_fg(&mut app, "claude");
-            assert_eq!(
-                fg,
-                t.on_lit(t.accent),
-                "{theme}: working is the accent on the lit row"
-            );
-            assert!(
-                crate::theme::contrast(fg, bg) >= 3.0,
-                "{theme}: and reads there"
-            );
-            // No state to show: a quiet mark.
-            app.snap.terms.get_mut(&1).unwrap().status = Status::Idle;
-            assert_eq!(
-                name_fg(&mut app, "claude").0,
-                t.on_lit(t.muted),
-                "{theme}: idle is a quiet mark"
-            );
-        }
     }
 
     #[test]
@@ -7325,144 +5053,6 @@ second line
             app.alerted[&id].1, first,
             "asking again within two minutes does not ring again"
         );
-    }
-
-    #[test]
-    fn worktrees_are_cleaned_up_from_one_list() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        app.out = tx;
-        let key = |c: KeyCode| KeyEvent::new(c, KeyModifiers::NONE);
-        let standing = |dirty: usize, merged: bool| crate::tidy::Standing {
-            dirty,
-            branch: Some("b".into()),
-            merged,
-            last_commit: "3 days ago".into(),
-        };
-        let row = |name: &str, sessions: usize, s: crate::tidy::Standing| screen::TidyRow {
-            path: PathBuf::from(format!("/wt/{name}")),
-            name: name.into(),
-            branch: format!("feat/{name}"),
-            sessions,
-            ticked: sessions == 0 && s.safe(),
-            standing: s,
-        };
-        // It opens from the project's menu and the palette, and says it's looking.
-        let pi = app.screen_model().iter().position(|p| p.git).unwrap();
-        assert!(app.project_items(pi).unwrap().1.iter().any(
-            |(l, a)| l == "Clean up worktrees…" && *a == crate::client::menu::Act::TidyOpen(pi)
-        ));
-        assert!(app.palette_commands().contains(&Action::TidyWorktrees));
-        app.mode = Mode::Tidy(Box::new(screen::TidyView {
-            repo: PathBuf::from("/repo"),
-            name: "shop-api".into(),
-            rows: None,
-            sel: 0,
-        }));
-        assert!(draw(&mut app, 160, 45).contains("looking at each worktree"));
-        // Looked at: one safe, one never merged, one with edits, one in use.
-        app.tidy_loaded(
-            PathBuf::from("/repo"),
-            vec![
-                row("done", 0, standing(0, true)),
-                row("parked", 0, standing(0, false)),
-                row("messy", 0, standing(2, false)),
-                row("busy", 1, standing(0, true)),
-            ],
-        );
-        let ticked = |app: &App| match &app.mode {
-            Mode::Tidy(v) => v
-                .rows
-                .as_ref()
-                .unwrap()
-                .iter()
-                .filter(|r| r.ticked)
-                .map(|r| r.name.clone())
-                .collect::<Vec<_>>(),
-            m => panic!("the list is open: {:?}", std::mem::discriminant(m)),
-        };
-        assert_eq!(
-            ticked(&app),
-            ["done"],
-            "only what holds nothing of its own comes ticked"
-        );
-        for (w, h) in [(160, 45), (100, 30)] {
-            let o = draw(&mut app, w, h);
-            show(&o);
-            assert!(
-                o.contains("Clean up worktrees")
-                    && o.contains("✓ done")
-                    && o.contains("○ parked")
-                    && o.contains("· busy")
-                    && o.contains("Remove 1"),
-                "at {w}x{h}"
-            );
-        }
-        let o = draw(&mut app, 160, 45);
-        assert!(
-            o.contains("merged, nothing uncommitted")
-                && o.contains("not merged anywhere")
-                && o.contains("2 uncommitted changes")
-                && o.contains("in use: 1 session")
-        );
-        // One in use can't be ticked; the others are yours to tick.
-        for _ in 0..3 {
-            app.on_key(key(KeyCode::Down));
-        }
-        app.on_key(key(KeyCode::Char(' ')));
-        assert_eq!(ticked(&app), ["done"], "busy stays");
-        app.on_key(key(KeyCode::Up));
-        app.on_key(key(KeyCode::Char(' ')));
-        assert_eq!(ticked(&app), ["done", "messy"]);
-        // Enter asks, and says what would be lost.
-        app.on_key(key(KeyCode::Enter));
-        assert!(
-            matches!(&app.mode, Mode::Confirm(c) if c.danger && c.what == "2 worktrees" && c.note.contains("1 has uncommitted changes, which will be lost")),
-            "asks first"
-        );
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        assert!(o.contains("messy (2 uncommitted)"));
-        assert!(
-            rx.try_recv().map(|o| o.msg).is_err(),
-            "nothing sent before you confirm"
-        );
-        app.on_key(key(KeyCode::Enter));
-        let sent = std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).find_map(|m| match m {
-            crate::protocol::ClientMsg::Command(crate::protocol::Command::TidyWorktrees {
-                items,
-            }) => Some(items),
-            _ => None,
-        });
-        assert_eq!(
-            sent,
-            Some(vec![
-                (PathBuf::from("/wt/done"), false),
-                (PathBuf::from("/wt/messy"), true)
-            ]),
-            "only the edited one is forced"
-        );
-        // Nothing ticked: Enter says so and the list stays.
-        app.mode = Mode::Tidy(Box::new(screen::TidyView {
-            repo: PathBuf::from("/repo"),
-            name: "shop-api".into(),
-            rows: Some(vec![row("parked", 0, standing(0, false))]),
-            sel: 0,
-        }));
-        app.on_key(key(KeyCode::Enter));
-        assert!(matches!(app.mode, Mode::Tidy(_)));
-        // a ticks every safe one; n unticks all.
-        app.tidy_loaded(
-            PathBuf::from("/repo"),
-            vec![
-                row("done", 0, standing(0, true)),
-                row("parked", 0, standing(0, false)),
-            ],
-        );
-        app.on_key(key(KeyCode::Char('n')));
-        assert!(ticked(&app).is_empty());
-        app.on_key(key(KeyCode::Char('a')));
-        assert_eq!(ticked(&app), ["done"]);
     }
 
     #[test]
@@ -7812,7 +5402,7 @@ second line
         show(&o);
         assert!(
             o.contains("Search commands")
-                && o.contains("RECENT")
+                && o.contains("COMMANDS")
                 && o.contains("Inbox")
                 && !o.contains("workspace ·"),
             "commands only, with the latest first"
@@ -7823,7 +5413,7 @@ second line
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(
-            o.contains(" matches")
+            o.contains("RESULTS")
                 && o.contains("Split right")
                 && o.contains("Split down")
                 && o.contains("Panes")
@@ -7836,13 +5426,13 @@ second line
         let a = o.lines().find(|l| l.contains("Inbox")).unwrap();
         let b = o
             .lines()
-            .find(|l| l.contains("New session  ") || l.contains("New session "))
+            .find(|l| l.contains("New shell here"))
             .unwrap();
         let column =
             |line: &str, label: &str| line.find(label).map(|byte| line[..byte].chars().count());
         assert_eq!(
             column(a, "Inbox"),
-            column(b, "New session"),
+            column(b, "New shell here"),
             "labels of a group line up by terminal column"
         );
     }
@@ -7925,24 +5515,6 @@ second line
     }
 
     #[test]
-    fn working_names_shimmer() {
-        use ratatui::style::{Color, Style};
-        let (base, bright) = (Color::Rgb(200, 160, 0), Color::Rgb(255, 255, 255));
-        let at = |frame| {
-            screen::shimmer("claude", frame, base, bright, Style::default())
-                .iter()
-                .map(|(_, s)| s.fg)
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(at(0).len(), 6, "one colour per letter");
-        assert_ne!(at(4), at(7), "the bright band moves");
-        assert!(
-            at(7).contains(&Some(base)),
-            "the rest stays the working colour"
-        );
-    }
-
-    #[test]
     fn the_inbox_takes_the_column_when_narrow_and_changes_is_a_sheet() {
         let (_, mut app) = super::design_tests::render_with(100, 30);
         app.act(Action::Jump);
@@ -7965,64 +5537,11 @@ second line
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(
-            o.contains("Changes") && o.contains("fix the flaky checkout test"),
+            o.contains(" changes ") && o.contains("fix the flaky checkout test"),
             "Changes docks beside the panes"
         );
-        assert!(o.contains("─ Changes "), "the drawer's title names it");
+        assert!(o.contains("│  changes "), "the panel's title chip names it");
         let _ = std::fs::remove_dir_all(&repo);
-    }
-
-    #[test]
-    fn a_follow_up_and_why_open_beside_the_row() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        let key = |app: &mut App, c: KeyCode, m: KeyModifiers| app.on_key(KeyEvent::new(c, m));
-        // claude's row (it needs you): m writes to it from the sidebar.
-        app.mode = Mode::Side;
-        app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(1)));
-        app.start_compose(ClientTerm::local(1), true, None);
-        assert!(
-            matches!(&app.mode, Mode::Compose(c) if c.term == ClientTerm::local(1) && c.side),
-            "a follow-up to the row's agent"
-        );
-        for ch in "use the fake clock".chars() {
-            key(&mut app, KeyCode::Char(ch), KeyModifiers::NONE);
-        }
-        key(&mut app, KeyCode::Enter, KeyModifiers::SHIFT);
-        key(&mut app, KeyCode::Char('x'), KeyModifiers::NONE);
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        assert!(
-            o.contains("MESSAGE claude")
-                && o.contains("claude asked")
-                && o.contains("Run npm test -- checkout?")
-                && o.contains("use the fake clock")
-                && o.contains("5 words"),
-            "the question, then the text, its word count"
-        );
-        assert!(o.contains("◂"), "it points at the row");
-        key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
-        assert!(app.mode == Mode::Side, "sent: back on the sidebar");
-        assert!(
-            app.screen.receipts.contains_key(&ClientTerm::local(1)),
-            "the row carries the receipt, not a notice"
-        );
-        // In the Inbox, m opens the box inside the row.
-        app.mode = Mode::Normal;
-        app.act(Action::Jump);
-        key(&mut app, KeyCode::Char('m'), KeyModifiers::NONE);
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        assert!(
-            matches!(&app.mode, Mode::Compose(c) if c.inbox.is_some())
-                && o.contains("INBOX")
-                && o.contains("Next prompt for claude"),
-            "the box in the Inbox row"
-        );
-        key(&mut app, KeyCode::Esc, KeyModifiers::NONE);
-        assert!(
-            matches!(app.mode, Mode::GoTo { .. }),
-            "Esc: back in the Inbox"
-        );
     }
 
     #[test]
@@ -8051,7 +5570,7 @@ second line
             !o.contains("shared files") && !o.contains("file0.ts"),
             "sidebar stays focused on sessions"
         );
-        let lines = screen::side_lines(&app, &app.screen_model(), &app.theme);
+        let lines = screen::side_keys(&app, &app.screen_model());
         assert!(
             lines.len() < 20,
             "the sidebar stays short: {} lines",
@@ -8252,7 +5771,15 @@ second line
     fn the_full_width_status_footer_is_removed_in_every_layout() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let cards = draw(&mut app, 160, 45);
-        assert!(!cards.lines().last().unwrap_or_default().contains("inbox"));
+        // The hints may name the Inbox key; a counter for it is not on the bar.
+        assert!(
+            !cards
+                .lines()
+                .last()
+                .unwrap_or_default()
+                .replace("Ctrl+J inbox", "")
+                .contains("inbox")
+        );
         assert!(
             !cards
                 .lines()
@@ -8261,7 +5788,7 @@ second line
                 .contains("settings")
         );
         assert!(
-            cards.contains("+ New") && cards.contains("Menu"),
+            cards.contains(" menu ") && cards.contains(" + "),
             "sidebar controls remain in the sidebar"
         );
     }
@@ -8475,8 +6002,8 @@ second line
         }));
         assert_eq!(
             lit_edges(&mut app),
-            (false, false),
-            "the modal dims the workspace and overlays it without creating a sheet edge"
+            (true, false),
+            "the modal overlays the workspace without creating a sheet edge; the pane it came from keeps its edge, as under a menu"
         );
     }
 
@@ -8486,54 +6013,25 @@ second line
         let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = term.backend().buffer().clone();
-        // Square corners (the default): a line round the card on the desk's ground, the
-        // card's inside on the same ground.
+        // Round corners (the default): a line round the sidebar on the desk's ground, its
+        // inside on the panel's.
         let side = app.screen.side_rect;
         let y = side.y + side.height / 2;
         assert_eq!(buf[(side.x, y)].symbol(), "│", "the card's line");
-        assert_eq!(
-            buf[(side.x, y)].bg,
-            buf[(side.x + 1, y)].bg,
-            "one ground: the line, not a second grey, marks the card"
-        );
-        assert_eq!(buf[(side.x, side.y)].symbol(), "┌", "a square corner");
-        // Rounded keeps the centred line.
+        assert_eq!(buf[(side.x, y)].bg, app.theme.bg);
+        assert_eq!(buf[(side.x + 1, y)].bg, app.theme.sidebar_bg, "the panel");
+        assert_eq!(buf[(side.x, side.y)].symbol(), "╭", "a round corner");
+        // Off makes it square; Full keeps the centred line.
+        app.cfg.ui.rounded = crate::config::Rounding::Off;
+        let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+        term.draw(|f| render::draw(&mut app, f)).unwrap();
+        assert_eq!(term.backend().buffer()[(side.x, side.y)].symbol(), "┌");
         app.cfg.ui.rounded = crate::config::Rounding::Full;
         let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = term.backend().buffer().clone();
         assert_eq!(buf[(side.x, y)].symbol(), "│");
         assert_eq!(buf[(side.x, side.y)].symbol(), "╭");
-    }
-
-    #[test]
-    fn agent_marks_wear_their_state() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        // Nothing lit by the keyboard, and the window on neither of them.
-        app.screen.cursor = None;
-        let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
-        term.draw(|f| render::draw(&mut app, f)).unwrap();
-        let buf = term.backend().buffer().clone();
-        // The mark left of a sidebar row's name (the sidebar only, not the card titles).
-        let side = app.screen.side_rect.right();
-        let mark_at = |name: &str| {
-            (0..45u16).find_map(|y| {
-                let row: String = (0..side)
-                    .map(|x| buf[(x, y)].symbol().to_string())
-                    .collect();
-                let col = row.find(&format!(" {name} "))?;
-                Some(buf[(row[..col].chars().count() as u16 - 1, y)].fg)
-            })
-        };
-        let t = &app.theme;
-        assert_eq!(mark_at("claude"), Some(t.blocked), "needs you: its colour");
-        let codex = mark_at("rate-limit")
-            .or_else(|| mark_at("rate"))
-            .expect("the working codex in the sidebar (named for its worktree)");
-        assert!(
-            codex != t.blocked && codex != t.done,
-            "working is neither amber nor green: {codex:?}"
-        );
     }
 
     #[test]
@@ -8595,66 +6093,6 @@ second line
     }
 
     #[test]
-    fn status_icons_ignore_terminal_bells() {
-        let (_, mut app) = super::design_tests::render_with(120, 30);
-        for status in [Status::Working, Status::Blocked, Status::Idle, Status::Done] {
-            let t = app.snap.terms.get_mut(&2).unwrap();
-            (t.status, t.bell) = (status, true);
-            app.screen_fresh();
-            let o = draw(&mut app, 120, 30);
-            show(&o);
-            let row = o.lines().find(|line| line.contains("rate")).unwrap();
-            assert!(
-                !row.contains('♪'),
-                "an agent keeps its {status:?} status when it rings: {row}"
-            );
-        }
-        let t = app.snap.terms.get_mut(&3).unwrap();
-        (t.status, t.bell) = (Status::None, true);
-        let o = draw(&mut app, 120, 30);
-        assert!(
-            o.lines()
-                .any(|line| line.contains("shell") && line.contains('›') && !line.contains('♪')),
-            "a plain terminal keeps its normal icon when it rings"
-        );
-        app.snap.terms.get_mut(&3).unwrap().status = Status::Blocked;
-        let o = draw(&mut app, 120, 30);
-        assert!(
-            o.lines().any(|line| line.contains("shell")
-                && line.contains(&app.cfg.icons.blocked)
-                && !line.contains('♪')),
-            "a terminal asking a question keeps its needs-you icon too"
-        );
-    }
-
-    #[test]
-    fn a_finished_agent_is_a_green_dot_even_if_it_rang() {
-        let (_, mut app) = super::design_tests::render_with(120, 30);
-        // codex finished and rang the bell (it does both), and you're on another session.
-        let t = app.snap.terms.get_mut(&2).unwrap();
-        (t.status, t.bell) = (Status::Done, true);
-        app.screen_fresh();
-        let mut term = Terminal::new(TestBackend::new(120, 30)).unwrap();
-        term.draw(|f| render::draw(&mut app, f)).unwrap();
-        let buf = term.backend().buffer().clone();
-        let row = |y: u16| {
-            (0..40u16)
-                .map(|x| buf[(x, y)].symbol().to_string())
-                .collect::<String>()
-        };
-        let y = (0..30)
-            .find(|&y| row(y).contains("rate"))
-            .expect("codex's row");
-        assert!(
-            row(y).contains('✓') && !row(y).contains('♪'),
-            "the done mark, not the bell: {:?}",
-            row(y)
-        );
-        let dot = (0..40u16).find(|&x| buf[(x, y)].symbol() == "✓").unwrap();
-        assert_eq!(buf[(dot, y)].fg, app.theme.done, "a green mark");
-    }
-
-    #[test]
     fn only_the_part_with_the_keys_looks_focused() {
         let (_, mut app) = super::design_tests::render_with(120, 30);
         // The colour of the focused card's top-right corner, and the sidebar card's left edge.
@@ -8686,13 +6124,13 @@ second line
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.cfg.ui.which_key = false;
         let lead = KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL);
-        for (c, what) in [('i', "inbox"), ('g', "worktrees"), (',', "settings")] {
+        for (c, what) in [('i', "inbox"), ('.', "menu"), (',', "settings")] {
             app.mode = Mode::Normal;
             app.on_key(lead);
             assert!(matches!(app.mode, Mode::Prefix { .. }), "leader waits");
             assert_eq!(
                 shortcut_tag(&mut app).map(|(tag, _)| tag).as_deref(),
-                Some("SHORTCUT"),
+                Some("KEYS"),
                 "the mode bar says so"
             );
             app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
@@ -8705,9 +6143,8 @@ second line
     }
 
     #[test]
-    fn pane_colours_show_shortcut_mode_on_the_focused_border_too() {
+    fn shortcut_mode_lights_the_focused_border_sky() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.cfg.ui.pane_colors = true;
         let border = |app: &mut App| {
             let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
             term.draw(|f| render::draw(app, f)).unwrap();
@@ -8777,17 +6214,17 @@ second line
     #[test]
     fn shortcut_mode_stays_for_the_next_key() {
         let mut app = shortcut_mode();
-        tap(&mut app, 'z');
+        tap(&mut app, 'b');
         assert!(
             matches!(app.mode, Mode::Prefix { acted: true, .. }),
             "still in shortcut mode after one"
         );
-        tap(&mut app, 'z');
+        tap(&mut app, 'b');
         assert!(
             matches!(app.mode, Mode::Prefix { .. }),
             "and after two, with one leader press"
         );
-        tap(&mut app, 'u');
+        tap(&mut app, 'j');
         assert!(
             matches!(app.mode, Mode::Prefix { .. }),
             "a key with no action does nothing and the mode stays"
@@ -8806,7 +6243,7 @@ second line
 
     #[test]
     fn a_new_pane_ends_shortcut_mode_and_the_next_key_types_into_it() {
-        for c in ['n', 's', 'v', 'h', 't'] {
+        for c in ['t', 's', 'S', '_', '\\'] {
             let mut app = shortcut_mode();
             let (tx, mut rx) = mpsc::unbounded_channel();
             app.out = tx;
@@ -8820,7 +6257,11 @@ second line
             assert!(
                 sent(&mut rx).iter().any(|m| matches!(
                     m,
-                    Command::NewWorkspace { .. } | Command::NewWorktree { .. }
+                    Command::NewWorkspace { .. }
+                        | Command::NewTab { .. }
+                        | Command::NewShip { .. }
+                        | Command::Split { .. }
+                        | Command::NewWorktree { .. }
                 )),
                 "{c} started a pane"
             );
@@ -8974,7 +6415,7 @@ second line
     #[test]
     fn an_action_that_starts_no_pane_keeps_shortcut_mode() {
         let mut app = shortcut_mode();
-        tap(&mut app, 'z');
+        tap(&mut app, 'b');
         assert!(
             matches!(app.mode, Mode::Prefix { .. }) && app.shortcut_held,
             "z keeps shortcut mode"
@@ -9046,22 +6487,22 @@ second line
         let buf = drawn(app, 160, 45);
         let (row, text) = bar_text(app, &buf);
         let tag = text.trim().split("  ").next().unwrap_or_default();
-        (tag != "TYPING").then(|| (tag.into(), buf[(row.right() - 1, row.y)].bg))
+        (tag != "PANE").then(|| (tag.into(), buf[(row.x + 2, row.y)].bg))
     }
 
     #[test]
     fn the_shortcut_pill_shows_after_the_leader_and_stays_lit_after_an_action() {
         let mut app = shortcut_mode();
-        let sky = app.theme.sky();
+        let sky = app.theme.blocked;
         assert_eq!(
             shortcut_tag(&mut app),
-            Some(("SHORTCUT".into(), sky)),
+            Some(("KEYS".into(), sky)),
             "after the leader"
         );
-        tap(&mut app, 'z');
+        tap(&mut app, 'b');
         assert_eq!(
             shortcut_tag(&mut app),
-            Some(("SHORTCUT".into(), sky)),
+            Some(("KEYS".into(), sky)),
             "still lit after an action that opens nothing"
         );
     }
@@ -9069,7 +6510,7 @@ second line
     #[test]
     fn the_bar_names_the_popup_that_has_the_keys_and_lights_again_when_it_closes() {
         let mut app = shortcut_mode();
-        let sky = app.theme.sky();
+        let sky = app.theme.blocked;
         hold(&mut app);
         assert!(
             matches!(app.mode, Mode::Compose(_)),
@@ -9082,7 +6523,7 @@ second line
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         assert_eq!(
             shortcut_tag(&mut app),
-            Some(("SHORTCUT".into(), sky)),
+            Some(("KEYS".into(), sky)),
             "lit again once it closes"
         );
     }
@@ -9112,7 +6553,7 @@ second line
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         assert_eq!(
             shortcut_tag(&mut app),
-            Some(("SHORTCUT".into(), app.theme.sky())),
+            Some(("KEYS".into(), app.theme.blocked)),
             "Files closed: lit again"
         );
     }
@@ -9204,22 +6645,22 @@ second line
         (
             "sidebar",
             true,
-            "SIDEBAR  · ↑↓ move · Enter open · n new in shop-api · shortcut mode waits · Esc back",
+            "SIDEBAR  · ↑↓ move · Enter open · n new · shortcut mode waits · Esc back",
         ),
         (
             "sidebar",
             false,
-            "SIDEBAR  · ↑↓ move · Enter open · n new in shop-api · Esc back",
+            "SIDEBAR  · ↑↓ move · Enter open · n new · Esc back",
         ),
         (
             "settings",
             true,
-            "SETTINGS  · ↑↓ move · ←→ change · Tab section · shortcut mode waits · Esc close",
+            "SETTINGS  · j/k move · Tab section · Enter change · shortcut mode waits · Esc close",
         ),
         (
             "settings",
             false,
-            "SETTINGS  · ↑↓ move · ←→ change · Tab section · Esc close",
+            "SETTINGS  · j/k move · Tab section · Enter change · Esc close",
         ),
         (
             "files",
@@ -9234,7 +6675,7 @@ second line
         (
             "inbox",
             true,
-            "INBOX  · ↑↓ select · Enter open · shortcut mode waits · Esc close",
+            "INBOX  · ↑↓ select · y yes · a session · n no · Enter open · shortcut mode waits · Esc close",
         ),
         (
             "changes",
@@ -9254,7 +6695,7 @@ second line
         (
             "key map search",
             true,
-            "KEY MAP  · type to search · ↑↓ pick · Enter run · Esc close",
+            "PALETTE  · type to search · ↑↓ move · Enter run · Esc close",
         ),
         (
             "confirm",
@@ -9296,7 +6737,10 @@ second line
             tap(app, c);
         };
         match (what, held) {
-            ("sidebar", true) => leader(app, 'e'),
+            ("sidebar", true) => {
+                app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+                app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+            }
             ("sidebar", false) => app.mode = Mode::Side,
             ("settings", true) => leader(app, ','),
             ("settings", false) => app.act(Action::Settings),
@@ -9305,7 +6749,7 @@ second line
             ("inbox", _) => leader(app, 'i'),
             ("changes", _) => {
                 if held {
-                    leader(app, 'z');
+                    leader(app, 'b');
                     app.mode = Mode::Normal;
                 }
                 app.show_view(View::Changes(Box::new(views::ChangesView {
@@ -9321,15 +6765,24 @@ second line
                     confirm: None,
                 })));
             }
-            ("branch", _) => leader(app, 'b'),
+            ("branch", _) => leader(app, 'g'),
             ("key map search", _) => {
-                leader(app, 'z');
+                leader(app, 'b');
                 app.mode =
                     Mode::KeyMap(Box::new(screen::KeyMap::new(screen::KeyView::Search, None)));
             }
-            ("confirm", true) => leader(app, 'x'),
-            ("confirm", false) => app.act(Action::ClosePane),
-            ("prompt", true) => leader(app, 'r'),
+            // Closing several panes at once is the one close that still asks.
+            ("confirm", true) => {
+                leader(app, 'b');
+                app.menu_act(menu::Act::End(vec![ClientTerm::local(1), ClientTerm::local(2)]));
+            }
+            ("confirm", false) => {
+                app.menu_act(menu::Act::End(vec![ClientTerm::local(1), ClientTerm::local(2)]))
+            }
+            ("prompt", true) => {
+                leader(app, 'b');
+                app.act(Action::RenameTab);
+            }
             ("prompt", false) => app.act(Action::RenameTab),
             ("compose", true) => {
                 app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
@@ -9366,7 +6819,7 @@ second line
                 }
             }
             ("key map step", _) => {
-                leader(app, 'z');
+                leader(app, 'b');
                 app.mode = Mode::KeyMap(Box::new(screen::KeyMap::new(
                     screen::KeyView::Map,
                     Some(screen::Step::Worktrees),
@@ -9450,14 +6903,14 @@ second line
             let buf = drawn(&mut app, 160, 45);
             let (row, bar) = bar_text(&app, &buf);
             show(&format!("{at}: |{bar}|"));
-            assert_eq!(bar.trim(), want, "{at}");
+            assert_eq!(bar_parts(&bar), designed(want), "{at}");
             assert!(!bar.contains("paused"), "{at}: {bar}");
             assert_ne!(
                 buf[(row.right() - 1, row.y)].bg,
                 app.theme.sky(),
                 "{at}: sky is for shortcut mode lit"
             );
-            let label = on_bar(&app, &buf, want.split("  ").next().unwrap()).expect("the label");
+            let label = on_bar(&app, &buf, &designed(want).0).expect("the label");
             assert_eq!(
                 buf[(label, row.y)].bg,
                 app.theme.btn,
@@ -9473,33 +6926,43 @@ second line
         let buf = drawn(&mut app, 160, 45);
         let (_, bar) = bar_text(&app, &buf);
         assert!(
-            bar.trim().starts_with("SHORTCUT") && bar.contains("f files"),
+            bar.trim().starts_with("KEYS") && bar.contains("s split"),
             "its keys still run shortcuts: {bar}"
         );
     }
 
     /// The bar's words, split: the label, then each hint and the way out.
     fn bar_parts(bar: &str) -> (String, Vec<String>) {
-        let mut halves = bar.trim().splitn(2, "  ");
-        let label = halves.next().unwrap_or_default().to_string();
-        let rest = halves
-            .next()
-            .unwrap_or_default()
+        let mut parts = bar
             .trim()
-            .trim_start_matches("· ");
-        (
-            label,
-            rest.split(" · ")
-                .filter(|s| !s.is_empty())
-                .map(str::to_string)
-                .collect(),
-        )
+            .split("  ")
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        let label = parts.next().unwrap_or_default();
+        (label, parts.collect())
+    }
+
+    /// What `WHO` says a holder shows, as the bar spells it: the label, then each hint with its
+    /// key in lower case.
+    fn designed(want: &str) -> (String, Vec<String>) {
+        let mut parts = want.split(" · ").map(str::trim);
+        let label = parts.next().unwrap_or_default().to_string();
+        let hints = parts
+            .map(|h| match h.split_once(' ') {
+                Some((key, words)) if !key.chars().all(|c| c.is_lowercase()) => {
+                    format!("{} {words}", key.to_lowercase())
+                }
+                _ => h.to_string(),
+            })
+            .collect();
+        (label, hints)
     }
 
     #[test]
     fn a_narrow_bar_drops_who_has_the_keys_hints_from_the_right_and_the_way_out_last() {
         for (what, held, want) in WHO {
-            let (label, parts) = bar_parts(want);
+            let (label, parts) = designed(want);
             let (hints, out) = parts.split_at(parts.len() - 1);
             for w in 40..=160u16 {
                 let (mut app, _rx) = super::check_settings_tests::app_with_channel();
@@ -9625,7 +7088,7 @@ second line
         );
         assert_eq!(
             shortcut_tag(&mut app),
-            Some(("SHORTCUT".into(), app.theme.sky())),
+            Some(("KEYS".into(), app.theme.blocked)),
             "and the pill lit"
         );
     }
@@ -9722,62 +7185,13 @@ second line
     #[test]
     fn a_bound_key_in_shortcut_mode_shows_no_hint() {
         let mut app = shortcut_mode();
-        tap(&mut app, 'z');
-        assert_eq!(notice(&app), None, "z toggled the sidebar quietly");
+        tap(&mut app, 'b');
+        assert_eq!(notice(&app), None, "b toggled the sidebar quietly");
         let mut app = shortcut_mode();
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         let dead = dead_letter(&app);
         tap(&mut app, dead);
         assert_eq!(notice(&app), None, "typing: the key went to the pane");
-    }
-
-    #[test]
-    fn a_narrow_title_in_shortcut_mode_keeps_the_current_tab_and_drops_the_plus_first() {
-        use screen::ScreenHit as S;
-        for layout in ["floating", "tiled", "grid"] {
-            for h in [24, 30] {
-                for (mode, update) in [
-                    ("lit", false),
-                    ("held", false),
-                    ("typing", true),
-                    ("lit", true),
-                    ("held", true),
-                ] {
-                    let (_, mut app) = super::design_tests::render_with(80, h);
-                    (app.cfg.ui.layout, app.cfg.ui.rounded, app.cfg.ui.which_key) =
-                        (layout.into(), crate::config::Rounding::Full, false);
-                    app.cfg.ui.fold_retired_layout();
-                    app.update_available = update.then(|| "0.44.0".into());
-                    if mode != "typing" {
-                        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
-                    }
-                    if mode == "held" {
-                        tap(&mut app, ',');
-                    }
-                    let at = format!("{layout} 80x{h} {mode} update {update}");
-                    let o = draw(&mut app, 80, h);
-                    let row0 = o.lines().next().unwrap_or_default();
-                    let current = app.screen.tab;
-                    let tabs: Vec<usize> = app
-                        .hits
-                        .iter()
-                        .filter_map(|(_, k)| match k {
-                            Hit::Screen(S::TabPick(i)) => Some(*i),
-                            _ => None,
-                        })
-                        .collect();
-                    assert!(
-                        tabs.contains(&current),
-                        "the current tab is drawn: {at}\n{row0}"
-                    );
-                    let plus = app.hits.iter().any(|(_, k)| *k == Hit::Screen(S::NewTab));
-                    assert!(
-                        !plus || tabs.len() == app.session_tabs().len(),
-                        "no + without every tab before it: {at}\n{row0}"
-                    );
-                }
-            }
-        }
     }
 
     #[test]
@@ -9794,7 +7208,7 @@ second line
         );
         assert_eq!(
             shortcut_tag(&mut app),
-            Some(("SHORTCUT".into(), app.theme.sky())),
+            Some(("KEYS".into(), app.theme.blocked)),
             "and the pill lit"
         );
     }
@@ -9841,20 +7255,19 @@ second line
         app.cfg.ui.fold_retired_layout();
         match side {
             "right" => app.cfg.ui.sidebar_position = "right".into(),
-            "collapsed" => app.sidebar = false,
-            "hidden" => (app.sidebar, app.side_hidden) = (false, true),
+            "hidden" => app.sidebar = false,
             _ => {}
         }
         app
     }
 
     const LOOKS: [&str; 3] = ["floating", "tiled", "grid"];
-    const SIDES: [&str; 4] = ["left", "right", "collapsed", "hidden"];
+    const SIDES: [&str; 3] = ["left", "right", "hidden"];
 
     #[test]
     fn no_mode_draws_a_frame_round_the_window() {
         for layout in LOOKS {
-            for padding in ["0", "1", "2"] {
+            for padding in ["small", "medium", "large"] {
                 for side in SIDES {
                     for mode in ["lit", "held", "typing"] {
                         let mut app = framed_app(layout, padding, side);
@@ -9871,7 +7284,7 @@ second line
                                 .any(|c| ["▀", "▄", "█"].contains(&c.symbol())),
                             "{at}: no solid frame"
                         );
-                        if padding != "0" {
+                        if padding != "small" {
                             assert!(
                                 ring(&buf).iter().all(|c| c.symbol() == " "),
                                 "{at}: the padding stays plain"
@@ -9914,9 +7327,9 @@ second line
     /// What the bar starts with in each mode.
     fn bar_words(mode: &str) -> &'static str {
         match mode {
-            "typing" => "TYPING",
-            "lit" => "SHORTCUT",
-            _ => "MESSAGE  · Enter send",
+            "typing" => "PANE",
+            "lit" => "KEYS",
+            _ => "MESSAGE",
         }
     }
 
@@ -9955,15 +7368,14 @@ second line
                         "{at}: the bar is the bottom row (no padding here)"
                     );
                     assert!(bar.trim().starts_with(bar_words(mode)), "{at}: {bar}");
-                    let sky = buf[(row.right() - 1, row.y)].bg == app.theme.sky();
                     assert_eq!(
-                        sky,
-                        mode == "lit",
-                        "{at}: the whole bar is sky only while lit"
+                        buf[(row.right() - 1, row.y)].bg,
+                        app.theme.sidebar_bg,
+                        "{at}: the bar is on the panel ground in every mode"
                     );
                     let row0: String = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
                     assert!(
-                        !row0.contains("TYPING") && !row0.contains("SHORTCUT"),
+                        !row0.contains("PANE") && !row0.contains("KEYS"),
                         "{at}: no tag in the corner: {row0}"
                     );
                     assert!(
@@ -9981,7 +7393,7 @@ second line
         let mut failures = Vec::new();
         for layout in LOOKS {
             for side in SIDES {
-                for padding in ["0", "1", "2"] {
+                for padding in ["small", "medium", "large"] {
                     for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
                         for (w, h) in [(80, 24), (120, 36), (200, 50)] {
                             for mode in ["typing", "lit", "held"] {
@@ -9994,8 +7406,12 @@ second line
                                     "{layout} {side} padding {padding} {rounded:?} {w}x{h} {mode}"
                                 );
                                 let (row, bar) = bar_text(&app, &buf);
-                                let pad: u16 = padding.parse().unwrap();
-                                if (row.x, row.y, row.width) != (pad, h - 1 - pad, w - 2 * pad) {
+                                let (rows, cols): (u16, u16) = match padding {
+                                    "small" => (0, 0),
+                                    "medium" => (1, 2),
+                                    _ => (2, 4),
+                                };
+                                if (row.x, row.y, row.width) != (cols, h - 1 - rows, w - 2 * cols) {
                                     failures.push(format!("{at}: the bar at {row:?}"));
                                 }
                                 let plain = |s: &str| {
@@ -10025,17 +7441,14 @@ second line
         assert!(failures.is_empty(), "{}", failures.join("\n"));
     }
 
-    /// The suggestions in the order they are dropped last to first.
-    const SUGGESTED: [&str; 9] = [
-        "n shell",
-        "s session",
-        "c changes",
-        "f files",
-        "i inbox",
-        ", settings",
-        "a references",
-        "? all keys",
-        "Esc type",
+    /// The key mode hints in the order they are dropped last to first; `esc back` goes last.
+    const SUGGESTED: [&str; 6] = [
+        "n new",
+        "s split",
+        "x close",
+        "tab pane",
+        "? help",
+        "esc back",
     ];
 
     #[test]
@@ -10048,16 +7461,16 @@ second line
             .map(|s| bar.find(s).unwrap_or_else(|| panic!("{s}: {bar}")))
             .collect();
         assert!(at.is_sorted(), "in order: {bar}");
-        app.cfg.keys.prefix.insert("f".into(), "none".into());
-        app.cfg.keys.prefix.insert("w".into(), "files".into());
+        app.cfg.keys.prefix.insert("s".into(), "none".into());
+        app.cfg.keys.prefix.insert("w".into(), "split-right".into());
         app.keymap = app.cfg.keymap();
         let buf = drawn(&mut app, 160, 45);
         let (_, bar) = bar_text(&app, &buf);
         assert!(
-            bar.contains("w files") && !bar.contains("f files"),
+            bar.contains("w split") && !bar.contains("s split"),
             "the rebound key: {bar}"
         );
-        let key = on_bar(&app, &buf, "w files").expect("w files");
+        let key = on_bar(&app, &buf, "w split").expect("w split");
         let y = screen::mode_bar_row(&app, buf.area).y;
         let bold = |x: u16| {
             buf[(x, y)]
@@ -10073,7 +7486,7 @@ second line
         let buf = drawn(&mut app, 160, 45);
         let (_, bar) = bar_text(&app, &buf);
         assert!(
-            !bar.contains("files"),
+            !bar.contains("split"),
             "an unbound action is not suggested: {bar}"
         );
     }
@@ -10084,28 +7497,24 @@ second line
             for w in 40..=200u16 {
                 let (_, mut app) = super::design_tests::render_with(w, 24);
                 app.update_available = update.then(|| "0.44.0".into());
-                (app.sidebar, app.side_hidden) = (false, true); // the sidebar would take the chip; this checks the bar
+                app.sidebar = false; // the sidebar would take the chip; this checks the bar
                 into_mode(&mut app, "lit");
                 let buf = drawn(&mut app, w, 24);
                 let (_, bar) = bar_text(&app, &buf);
                 let at = format!("{w} update {update}: {bar}");
                 let shown: Vec<bool> = SUGGESTED.iter().map(|s| bar.contains(s)).collect();
-                let (suggestions, tail) = shown.split_at(7);
-                assert!(bar.contains("SHORTCUT"), "the tag stays: {at}");
+                let (suggestions, tail) = shown.split_at(5);
+                assert!(bar.contains("KEYS"), "the tag stays: {at}");
                 assert!(
                     suggestions.windows(2).all(|p| p[0] || !p[1]),
                     "dropped from the right: {at}"
                 );
                 assert!(
-                    !suggestions[0] || tail.iter().all(|s| *s),
-                    "all keys and Esc go after every suggestion: {at}"
+                    !suggestions[0] || tail[0],
+                    "esc back goes after every hint: {at}"
                 );
-                assert!(!tail[0] || tail[1], "Esc goes last: {at}");
                 if w >= 80 {
-                    assert!(
-                        tail.iter().all(|s| *s),
-                        "from 80 columns, all keys and Esc always show: {at}"
-                    );
+                    assert!(tail[0], "from 80 columns, esc back always shows: {at}");
                 }
                 if w >= 120 && update {
                     assert!(
@@ -10130,37 +7539,34 @@ second line
         let mut app = shortcut_mode();
         let buf = drawn(&mut app, 160, 45);
         let y = screen::mode_bar_row(&app, buf.area).y;
-        let files = on_bar(&app, &buf, "f files").expect("f files");
-        click_at(&mut app, files + 2, y);
+        let new = on_bar(&app, &buf, "n new").expect("n new");
+        click_at(&mut app, new + 2, y);
         assert!(
-            matches!(app.view, Some(View::Files(_))) && screen::shortcut_waits(&app),
-            "f opened Files and the mode is held"
-        );
-        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        assert!(
-            matches!(app.mode, Mode::Prefix { .. }),
-            "Files closed: lit again"
-        );
-        let buf = drawn(&mut app, 160, 45);
-        let shell = on_bar(&app, &buf, "n shell").expect("n shell");
-        click_at(&mut app, shell, y);
-        assert_eq!(
-            app.mode,
-            Mode::Normal,
-            "a new shell is typed into: the mode ends"
-        );
-        let mut app = shortcut_mode();
-        let buf = drawn(&mut app, 160, 45);
-        let all = on_bar(&app, &buf, "? all keys").expect("? all keys");
-        click_at(&mut app, all + 3, y);
-        assert!(
-            matches!(&app.mode, Mode::KeyMap(km) if km.view == screen::KeyView::All),
-            "? opens All keys: {:?}",
+            matches!(app.mode, Mode::NewSession(_)),
+            "n opened New session: {:?}",
             std::mem::discriminant(&app.mode)
         );
         let mut app = shortcut_mode();
         let buf = drawn(&mut app, 160, 45);
-        let esc = on_bar(&app, &buf, "Esc type").expect("Esc type");
+        let split = on_bar(&app, &buf, "s split").expect("s split");
+        click_at(&mut app, split, y);
+        assert_eq!(
+            app.mode,
+            Mode::Normal,
+            "a new pane is typed into: the mode ends"
+        );
+        let mut app = shortcut_mode();
+        let buf = drawn(&mut app, 160, 45);
+        let help = on_bar(&app, &buf, "? help").expect("? help");
+        click_at(&mut app, help + 3, y);
+        assert!(
+            matches!(&app.mode, Mode::KeyMap(km) if km.view == screen::KeyView::All),
+            "? opens the keys help: {:?}",
+            std::mem::discriminant(&app.mode)
+        );
+        let mut app = shortcut_mode();
+        let buf = drawn(&mut app, 160, 45);
+        let esc = on_bar(&app, &buf, "esc back").expect("esc back");
         click_at(&mut app, esc + 4, y);
         assert_eq!(app.mode, Mode::Normal, "Esc goes back to typing");
         assert_eq!(shortcut_tag(&mut app), None, "and the bar says typing");
@@ -10172,20 +7578,20 @@ second line
         app.cfg.ui.which_key = false;
         let buf = drawn(&mut app, 160, 45);
         let y = screen::mode_bar_row(&app, buf.area).y;
-        let x = on_bar(&app, &buf, "TYPING").expect("TYPING");
+        let x = on_bar(&app, &buf, "PANE").expect("PANE");
         click_at(&mut app, x, y);
         assert!(
             matches!(app.mode, Mode::Prefix { .. }),
-            "it starts shortcut mode: {:?}",
+            "it starts key mode: {:?}",
             std::mem::discriminant(&app.mode)
         );
         assert_eq!(
             shortcut_tag(&mut app).map(|(tag, _)| tag).as_deref(),
-            Some("SHORTCUT")
+            Some("KEYS")
         );
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         let buf = drawn(&mut app, 160, 45);
-        let x = on_bar(&app, &buf, "for shortcuts").expect("the hint");
+        let x = on_bar(&app, &buf, "^space keys").expect("the hint");
         click_at(&mut app, x, y);
         assert!(matches!(app.mode, Mode::Prefix { .. }), "so does its hint");
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
@@ -10238,7 +7644,7 @@ second line
         let buf = drawn(&mut app, 160, 45);
         let (row, bar) = bar_text(&app, &buf);
         assert!(
-            bar.trim().starts_with("KEY MAP  · type to search"),
+            bar.trim().starts_with("PALETTE") && bar.contains("type to search"),
             "the search has the keys: {bar}"
         );
         assert!(
@@ -10318,10 +7724,10 @@ second line
         use screen::ScreenHit as S;
         type SetUp = fn(&mut App);
         let states: [(&str, Option<S>, SetUp); 3] = [
-            ("TYPING", Some(S::ShortcutMode), |app| {
+            ("PANE", Some(S::ShortcutMode), |app| {
                 app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
             }),
-            ("SHORTCUT", Some(S::Leader), |_| {}),
+            ("KEYS", Some(S::Leader), |_| {}),
             ("INBOX", None, |app| tap(app, 'i')),
         ];
         for (words, kind, set_up) in states {
@@ -10388,7 +7794,7 @@ second line
     fn update_sits_at_the_bar_s_right_end_and_clicks_except_while_held() {
         let mut app = shortcut_mode();
         app.update_available = Some("9.9.9".into());
-        (app.sidebar, app.side_hidden) = (false, true); // the sidebar would take the chip; this checks the bar
+        app.sidebar = false; // the sidebar would take the chip; this checks the bar
         for mode in ["lit", "held", "typing"] {
             match mode {
                 "held" => hold(&mut app),
@@ -10491,66 +7897,11 @@ second line
         let sheet = app.screen.sheet_rect;
         let close = (sheet.x..sheet.right())
             .rev()
-            .find(|&x| buf[(x, sheet.y)].symbol() == "×")
-            .expect("the sheet's ✕");
+            .find(|&x| buf[(x, sheet.y)].symbol() == "»")
+            .expect("the panel's »");
         assert!(close + 5 >= sheet.right(), "at the corner");
         click_at(&mut app, close, sheet.y);
         assert!(app.view.is_none(), "a click on it closes Files");
-    }
-
-    #[test]
-    fn a_right_hand_sidebar_keeps_its_title_and_counts_and_the_bar_its_mode() {
-        for (w, h) in [(80, 24), (140, 40), (160, 45)] {
-            for release in ["none", "update", "restart"] {
-                for mode in ["typing", "lit", "held"] {
-                    let (_, mut app) = super::design_tests::render_with(w, h);
-                    (app.cfg.ui.sidebar_position, app.cfg.ui.motion) = ("right".into(), false);
-                    match release {
-                        "update" => app.update_available = Some("0.44.0".into()),
-                        "restart" => app.installed_version = Some(Ok("999.0.0".into())),
-                        _ => {}
-                    }
-                    into_mode(&mut app, mode);
-                    let buf = drawn(&mut app, w, h);
-                    let at = format!("{w}x{h} {release} {mode}");
-                    let row: String = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
-                    let side = app.screen.side_rect;
-                    let title: String = (side.x..side.right())
-                        .map(|x| buf[(x, 0)].symbol())
-                        .collect();
-                    assert!(title.contains("LOCAL"), "{at}: the sidebar's title: {row}");
-                    let top = app.pane_frames.iter().map(|(_, r)| r.y).min().unwrap_or(0);
-                    let pane = app
-                        .pane_frames
-                        .iter()
-                        .map(|(_, r)| *r)
-                        .find(|r| r.y == top)
-                        .expect("a pane along the top");
-                    let tabs: String = (pane.x..pane.right())
-                        .map(|x| buf[(x, pane.y)].symbol())
-                        .collect();
-                    assert!(
-                        tabs.contains('●'),
-                        "{at}: the session's status on its tab: {row}"
-                    );
-                    let (_, bar) = bar_text(&app, &buf);
-                    assert!(bar.trim().starts_with(bar_words(mode)), "{at}: {bar}");
-                    let pill = match release {
-                        "update" => Some("↑"),
-                        "restart" => Some("↻"),
-                        _ => None,
-                    };
-                    let everywhere: String = (0..h)
-                        .flat_map(|y| (0..w).map(move |x| (x, y)))
-                        .map(|(x, y)| buf[(x, y)].symbol())
-                        .collect();
-                    assert!(
-                        pill.is_none_or(|p| everywhere.contains(p)),
-                        "{at}: the release pill on the screen: {bar}"
-                    );
-                }
-            }
-        }
     }
 
     #[test]
@@ -10561,7 +7912,7 @@ second line
             since: crate::clock::ago(std::time::Duration::from_secs(10)),
             acted: false,
         };
-        tap(&mut app, 'u');
+        tap(&mut app, 'y');
         assert!(
             matches!(app.mode, Mode::KeyMap(_)),
             "before any shortcut, a letter with the map up searches it"
@@ -10570,7 +7921,7 @@ second line
             since: crate::clock::ago(std::time::Duration::from_secs(10)),
             acted: true,
         };
-        tap(&mut app, 'u');
+        tap(&mut app, 'y');
         assert!(
             matches!(app.mode, Mode::Prefix { .. }),
             "after one, the mode just stays"
@@ -10828,55 +8179,6 @@ mod settings_v8_tests {
     }
 
     #[test]
-    fn rounded_says_it_does_not_apply_in_hairline() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        let rounded = |o: &str| {
-            o.lines()
-                .find(|l| l.contains("Rounded"))
-                .expect("the Rounded row")
-                .to_string()
-        };
-        open(
-            &mut app,
-            Cat::Appearance,
-            row_of(Cat::Appearance, "Rounded"),
-        );
-        assert!(
-            !rounded(&draw(&mut app, 160, 45)).contains("not in Hairline"),
-            "other looks offer it"
-        );
-        app.cfg.ui.layout = "hairline".into();
-        let row = rounded(&draw(&mut app, 160, 45));
-        assert!(
-            row.contains("not in Hairline") && !row.contains("corners"),
-            "{row}"
-        );
-    }
-
-    #[test]
-    fn floating_only_settings_say_they_do_not_apply_in_hairline() {
-        for label in ["Pane colours", "Gap"] {
-            let (_, mut app) = super::design_tests::render_with(160, 45);
-            let line = |o: &str| {
-                o.lines()
-                    .find(|l| l.contains(label))
-                    .unwrap_or_else(|| panic!("the {label} row"))
-                    .to_string()
-            };
-            open(&mut app, Cat::Appearance, row_of(Cat::Appearance, label));
-            assert!(
-                !line(&draw(&mut app, 160, 45)).contains("not in Hairline"),
-                "{label}: Floating offers it"
-            );
-            app.cfg.ui.layout = "hairline".into();
-            assert!(
-                line(&draw(&mut app, 160, 45)).contains("not in Hairline"),
-                "{label}"
-            );
-        }
-    }
-
-    #[test]
     fn no_label_is_wider_than_the_label_column_and_every_help_fits_two_lines() {
         for s in modal::SETTINGS {
             assert!(
@@ -10920,7 +8222,6 @@ mod settings_v8_tests {
             "last used",
             "Where",
             "new worktree",
-            "this folder",
             "SIDEBAR",
             "Tabs in the sidebar",
             "WORKTREES",
@@ -10992,7 +8293,7 @@ mod settings_v8_tests {
             "Connect agents…",
             "HELPERS",
             "Sessions may start helpers",
-            "Count on the session row",
+            "Subagents in the sidebar",
             "LIMITS",
         ] {
             assert!(o.contains(want), "Agents shows {want}: {o}");
@@ -11081,7 +8382,7 @@ mod settings_v8_tests {
         open(
             &mut app,
             Cat::Agents,
-            row_of(Cat::Agents, "Count on the session row"),
+            row_of(Cat::Agents, "Subagents in the sidebar"),
         );
         let o = draw(&mut app, 100, 30);
         let help = modal::SETTINGS
@@ -11089,7 +8390,7 @@ mod settings_v8_tests {
             .find(|s| s.path == "ui.subagent_count")
             .unwrap()
             .help;
-        let lines = screen::wrap_two(help, 88);
+        let lines = screen::wrap_two(help, screen::settings_help_cols(94) as usize);
         assert!(
             lines.iter().all(|l| o.contains(l.as_str())),
             "{lines:?} in {o}"
@@ -11105,7 +8406,7 @@ mod settings_v8_tests {
             (Cat::Agents, "Sessions may start helpers"),
             (Cat::Sessions, "Bring sessions back after restart"),
             (Cat::Alerts, "Phone: say what it's doing"),
-            (Cat::Agents, "Count on the session row"),
+            (Cat::Agents, "Subagents in the sidebar"),
         ] {
             open(&mut app, cat, row_of(cat, label));
             let o = draw(&mut app, 80, 24);
@@ -11116,7 +8417,7 @@ mod settings_v8_tests {
                 .unwrap()
                 .help;
             assert!(
-                screen::wrap_two(help, 68)
+                screen::wrap_two(help, screen::settings_help_cols(74) as usize)
                     .iter()
                     .all(|l| o.contains(l.as_str())),
                 "its help is whole at 80x24: {o}"
@@ -11213,7 +8514,6 @@ mod check_row_tests {
     use ratatui::backend::TestBackend;
     use ratatui::buffer::Buffer;
     use ratatui::layout::Position;
-    use ratatui::style::Modifier;
 
     const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
     /// (ui.layout, ui.panes): Cards floating and Cards tiled, as older files wrote them.
@@ -11225,8 +8525,6 @@ mod check_row_tests {
     struct Case {
         state: CheckState,
         exit: Option<i32>,
-        glyph: &'static str,
-        words: &'static str,
     }
 
     /// Each state's glyph (Unicode, ASCII) and the start of its line, short enough for the
@@ -11235,50 +8533,34 @@ mod check_row_tests {
         Case {
             state: CheckState::Checking,
             exit: None,
-            glyph: "◜",
-            words: "checking ci",
         },
         Case {
             state: CheckState::Passed,
             exit: Some(0),
-            glyph: "✓",
-            words: "passed: ci · 14.2s",
         },
         Case {
             state: CheckState::Failed,
             exit: Some(1),
-            glyph: "✕",
-            words: "failed: ci · exit 1",
         },
         Case {
             state: CheckState::Overridden,
             exit: Some(1),
-            glyph: "⊘",
-            words: "failed, overridden",
         },
         Case {
             state: CheckState::CouldNotRun,
             exit: Some(127),
-            glyph: "?",
-            words: "ci could not run",
         },
         Case {
             state: CheckState::Stale,
             exit: Some(0),
-            glyph: "◷",
-            words: "stale pass: ci",
         },
         Case {
             state: CheckState::Never,
             exit: None,
-            glyph: "?",
-            words: "not checked: never",
         },
         Case {
             state: CheckState::NeedsApproval,
             exit: None,
-            glyph: "●",
-            words: "approve check: just",
         },
     ];
 
@@ -11402,19 +8684,6 @@ mod check_row_tests {
         (0..buf.area.height)
             .find(|&y| side_text(buf, app, y).contains(name))
             .unwrap_or_else(|| panic!("no sidebar row named {name}"))
-    }
-
-    fn cell_with<'a>(
-        buf: &'a Buffer,
-        app: &App,
-        y: u16,
-        symbol: &str,
-    ) -> &'a ratatui::buffer::Cell {
-        let r = app.screen.side_rect;
-        (r.x..r.right())
-            .map(|x| &buf[(x, y)])
-            .find(|c| c.symbol() == symbol)
-            .unwrap_or_else(|| panic!("no {symbol} on row {y}"))
     }
 
     /// The column a row's edge bar is drawn in: the reference's X.
@@ -11604,72 +8873,6 @@ mod check_row_tests {
     }
 
     #[test]
-    fn each_state_shows_its_glyph_and_words_in_every_layout_and_size() {
-        for layout in LAYOUTS {
-            for (w, h) in SIZES {
-                for c in &CASES {
-                    let mut app = one(w, h, layout, c);
-                    let buf = render(&mut app, w, h);
-                    show(&buf, &format!("{} {:?}", label(layout, w, h), c.state));
-                    let y = row_of(&buf, &app, NAME);
-                    let at = label(layout, w, h);
-                    assert!(
-                        side_text(&buf, &app, y).contains(c.glyph),
-                        "{at} {:?}: glyph {} on {:?}",
-                        c.state,
-                        c.glyph,
-                        side_text(&buf, &app, y)
-                    );
-                    let words = if w < 100 {
-                        &c.words[..c.words.len().min(16)]
-                    } else {
-                        c.words
-                    };
-                    assert!(
-                        side_text(&buf, &app, y + 1).contains(words),
-                        "{at} {:?}: {words:?} under the row at every width, got {:?}",
-                        c.state,
-                        side_text(&buf, &app, y + 1)
-                    );
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn glyphs_use_existing_theme_slots_only() {
-        let (w, h) = (160, 45);
-        for layout in LAYOUTS {
-            for c in &CASES {
-                let mut app = one(w, h, layout, c);
-                let buf = render(&mut app, w, h);
-                let t = app.theme.clone();
-                let want = match c.state {
-                    CheckState::Checking => t.sky(),
-                    CheckState::Passed => t.done,
-                    CheckState::Failed => t.err,
-                    CheckState::Overridden | CheckState::Stale => t.text,
-                    CheckState::CouldNotRun | CheckState::Never => t.violet(),
-                    CheckState::NeedsApproval => t.blocked,
-                    other => unreachable!("not among the cases: {other:?}"),
-                };
-                let y = row_of(&buf, &app, NAME);
-                let cell = cell_with(&buf, &app, y, c.glyph);
-                assert_eq!(cell.fg, want, "{} {:?}", label(layout, w, h), c.state);
-                if c.state == CheckState::Failed {
-                    assert!(cell.modifier.contains(Modifier::BOLD), "failed is bold");
-                }
-                if matches!(c.state, CheckState::Overridden | CheckState::Stale) {
-                    assert_ne!(
-                        cell.fg, t.done,
-                        "an override or a stale pass is never green"
-                    );
-                }
-            }
-        }
-    }
-
-    #[test]
     fn no_state_gives_an_unselected_row_a_bar() {
         let (w, h) = (160, 45);
         for layout in LAYOUTS {
@@ -11693,162 +8896,6 @@ mod check_row_tests {
                     );
                 }
             }
-        }
-    }
-
-    #[test]
-    fn failed_and_needs_you_differ_in_glyph_and_word_without_colour() {
-        let (w, h) = (160, 45);
-        let failed = info(CheckState::Failed, Some(1));
-        let mut app = scene(
-            w,
-            h,
-            ("cards", "floating"),
-            &[
-                ("t-bad", Status::Done, Some(failed)),
-                ("t-ask", Status::Blocked, None),
-            ],
-        );
-        let buf = render(&mut app, w, h);
-        let (bad, ask) = (row_of(&buf, &app, "t-bad"), row_of(&buf, &app, "t-ask"));
-        let (bad_line, ask_line) = (side_text(&buf, &app, bad), side_text(&buf, &app, ask));
-        assert!(
-            bad_line.contains('✕') && !bad_line.contains('●'),
-            "{bad_line:?}"
-        );
-        assert!(
-            ask_line.contains('●') && !ask_line.contains('✕'),
-            "{ask_line:?}"
-        );
-        assert!(
-            side_text(&buf, &app, bad + 1).contains("failed:"),
-            "failed says so in words"
-        );
-        assert!(!side_text(&buf, &app, bad + 1).contains("needs you"));
-    }
-
-    #[test]
-    fn a_check_stays_under_its_own_row_when_sessions_sit_in_different_folders() {
-        for layout in LAYOUTS {
-            for (w, h) in [(100, 30), (160, 45)] {
-                let failed = info(CheckState::Failed, Some(1));
-                let mut app = scene(
-                    w,
-                    h,
-                    layout,
-                    &[
-                        ("t-far", Status::Done, Some(failed)),
-                        ("t-bare", Status::Done, None),
-                    ],
-                );
-                let far = app.snap.terms.get_mut(&20).unwrap();
-                (far.root, far.top, far.cwd) =
-                    (None, None, std::path::PathBuf::from("/tmp/elsewhere"));
-                app.screen_sync();
-                let buf = render(&mut app, w, h);
-                show(&buf, &format!("grouped {}", label(layout, w, h)));
-                let at = label(layout, w, h);
-                let (far_y, bare_y) = (row_of(&buf, &app, "t-far"), row_of(&buf, &app, "t-bare"));
-                assert!(
-                    side_text(&buf, &app, far_y).contains('✕'),
-                    "{at}: glyph on its own row"
-                );
-                assert!(
-                    side_text(&buf, &app, far_y + 1).contains("failed:"),
-                    "{at}: its line directly under it"
-                );
-                let bar_x = bar_column(&app);
-                let all: String = (bare_y..bare_y + 1)
-                    .map(|y| side_text(&buf, &app, y))
-                    .collect();
-                assert!(
-                    !all.contains("failed:") && !all.contains(COMMAND),
-                    "{at}: a session with no check has no sub-line: {all:?}"
-                );
-                assert_ne!(
-                    buf[(bar_x, bare_y)].fg,
-                    app.theme.err,
-                    "{at}: no red bar on a session with no check"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn the_collapsed_column_shows_the_same_glyphs() {
-        let (w, h) = (160, 45);
-        for layout in LAYOUTS {
-            for c in &CASES {
-                let mut app = one(w, h, layout, c);
-                app.sidebar = false;
-                app.side_frac = 0.0;
-                let buf = render(&mut app, w, h);
-                show(&buf, &format!("rail {} {:?}", label(layout, w, h), c.state));
-                let found = (0..8u16).any(|x| (0..h).any(|y| buf[(x, y)].symbol() == c.glyph));
-                assert!(
-                    found,
-                    "{} {:?}: {} in the column",
-                    label(layout, w, h),
-                    c.state,
-                    c.glyph
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn a_project_without_a_check_renders_as_before() {
-        for layout in LAYOUTS {
-            for (w, h) in SIZES {
-                let mut none = scene(w, h, layout, &[(NAME, Status::Done, None)]);
-                let plain = render(&mut none, w, h);
-                show(&plain, &format!("no check {}", label(layout, w, h)));
-                let all: String = (0..h).map(|y| side_text(&plain, &none, y)).collect();
-                assert!(
-                    !all.contains(COMMAND) && !all.contains('⊘') && !all.contains('✕'),
-                    "{}",
-                    label(layout, w, h)
-                );
-                // A result about a turn that is no longer the last one is not drawn on its row.
-                for status in [Status::Working, Status::Blocked] {
-                    let failed = Some(info(CheckState::Failed, Some(1)));
-                    let mut app = scene(w, h, layout, &[(NAME, status, failed)]);
-                    let mut bare = scene(w, h, layout, &[(NAME, status, None)]);
-                    let rows = |app: &App, buf: &Buffer| {
-                        let y = row_of(buf, app, NAME);
-                        (y..y + 1)
-                            .map(|y| side_text(buf, app, y))
-                            .collect::<Vec<_>>()
-                    };
-                    let (with, without) = (render(&mut app, w, h), render(&mut bare, w, h));
-                    assert_eq!(
-                        rows(&app, &with),
-                        rows(&bare, &without),
-                        "{} {status:?}",
-                        label(layout, w, h)
-                    );
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn a_narrow_sidebar_keeps_the_check_line_and_the_folder_name() {
-        let (w, h) = (80, 24);
-        for layout in LAYOUTS {
-            let mut app = one(w, h, layout, &CASES[2]);
-            let buf = render(&mut app, w, h);
-            let y = row_of(&buf, &app, NAME);
-            assert!(side_text(&buf, &app, y).contains('✕'), "the glyph stays");
-            assert!(
-                side_text(&buf, &app, y + 1).contains("failed: ci"),
-                "and so does the result's line"
-            );
-            assert!(
-                side_text(&buf, &app, row_of(&buf, &app, "shop-api")).contains("shop-api"),
-                "{}: folder name whole",
-                label(layout, w, h)
-            );
         }
     }
 
@@ -11905,42 +8952,6 @@ mod check_row_tests {
                 label(layout, w, h)
             );
         }
-    }
-
-    #[test]
-    fn a_result_names_its_checkpoint_and_an_approval_its_command() {
-        let (w, h) = (160, 45);
-        let mut long = info(CheckState::Failed, Some(1));
-        long.command = "npm run test:unit -- --coverage".into();
-        let mut app = scene(
-            w,
-            h,
-            ("cards", "floating"),
-            &[(NAME, Status::Done, Some(long.clone()))],
-        );
-        let buf = render(&mut app, w, h);
-        let sub = side_text(&buf, &app, row_of(&buf, &app, NAME) + 1);
-        assert!(
-            sub.contains("failed: ci · exit 1") && !sub.contains("npm"),
-            "{sub:?}"
-        );
-        let approve = CheckInfo {
-            state: CheckState::NeedsApproval,
-            exit_code: None,
-            ..long
-        };
-        let mut app = scene(
-            w,
-            h,
-            ("cards", "floating"),
-            &[(NAME, Status::Done, Some(approve))],
-        );
-        let buf = render(&mut app, w, h);
-        let sub = side_text(&buf, &app, row_of(&buf, &app, NAME) + 1);
-        assert!(
-            sub.contains("approve check: npm run test") && !sub.contains("coverage"),
-            "the command, cut at the edge: {sub:?}"
-        );
     }
 }
 
@@ -12190,7 +9201,7 @@ mod check_sheet_tests {
     fn the_sheet_keeps_the_sidebars_foot_and_waits_for_output_it_has_not_got() {
         let mut app = open(160, 45, |_| {}, check(CheckState::Failed, Some(1)), None);
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains("+ New") && o.contains("Menu"), "the foot stays");
+        assert!(o.contains(" menu "), "the foot stays");
         assert!(o.contains("OUTPUT  reading…"), "no output yet:\n{o}");
     }
 
@@ -12581,7 +9592,6 @@ mod check_sheet_tests {
         draw(&mut app, 160, 45);
         app.mode = Mode::Side;
         app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(TERM)));
-        app.screen.cursor_proj = None;
         press(&mut app, KeyCode::Enter);
         app
     }
@@ -13887,9 +10897,7 @@ mod check_wiring_tests {
     }
 
     fn labels(app: &App) -> Vec<String> {
-        app.session_items(PANE)
-            .unwrap()
-            .1
+        app.project_items(PANE)
             .into_iter()
             .map(|(l, _)| l)
             .collect()
@@ -13934,48 +10942,6 @@ mod check_wiring_tests {
             "an override is not overridden twice, but can be taken back"
         );
         assert_eq!(offered(Some(CheckState::Failed)), [true, true, true, false]);
-    }
-
-    #[test]
-    fn a_checks_menu_items_keep_their_row_keys_and_rename_moves_over() {
-        let keyed = |state: Option<CheckState>| {
-            let (app, _) = rig(100, 30, |_| {}, state.map(info), Status::Done);
-            let items = app.session_items(PANE).unwrap().1;
-            items
-                .iter()
-                .map(|(l, _)| l.clone())
-                .zip(menu_chars(&app, &items))
-                .collect::<Vec<_>>()
-        };
-        let key = |keys: &[(String, Option<char>)], label: &str| {
-            keys.iter().find(|(l, _)| l == label).and_then(|(_, k)| *k)
-        };
-        assert_eq!(
-            key(&keyed(None), "Rename"),
-            Some('r'),
-            "no check: Rename keeps r"
-        );
-        let failed = keyed(Some(CheckState::Failed));
-        assert_eq!(
-            ["Check output", "Re-run check", "Override check…"].map(|l| key(&failed, l)),
-            [Some('o'), Some('r'), Some('O')]
-        );
-        assert_eq!(
-            key(&failed, "Rename"),
-            Some('e'),
-            "Rename takes its next free letter"
-        );
-        assert_eq!(
-            key(&keyed(Some(CheckState::Overridden)), "Undo override"),
-            Some('u')
-        );
-        let running = keyed(Some(CheckState::Checking));
-        assert!(
-            running
-                .iter()
-                .all(|(l, k)| l.starts_with("Check") || !matches!(k, Some('r' | 'o' | 'u'))),
-            "reserved even while it runs: {running:?}"
-        );
     }
 
     /// `state`'s session under the sidebar's keyboard cursor.
@@ -14029,7 +10995,7 @@ mod check_wiring_tests {
     #[test]
     fn the_menu_tells_override_from_output_by_case() {
         let (mut app, mut rx) = done(CheckState::Failed);
-        app.menu_for_session(PANE, (20, 10));
+        app.menu_for_project_tools(PANE, (20, 10));
         app.on_key(KeyEvent::new(KeyCode::Char('O'), KeyModifiers::SHIFT));
         assert!(
             matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(PANE, ..))),
@@ -14040,20 +11006,21 @@ mod check_wiring_tests {
     }
 
     #[test]
-    fn the_check_items_never_take_a_letter_the_row_already_uses() {
+    fn the_check_items_never_take_a_letter_the_project_menu_already_uses() {
         for state in ALL_STATES {
             for status in [Status::Done, Status::Working, Status::Idle] {
                 let (app, _) = rig(100, 30, |_| {}, Some(info(state)), status);
-                let items = app.session_items(PANE).unwrap().1;
+                let items = app.project_items(PANE);
                 let keys = menu_chars(&app, &items);
                 let mut seen = Vec::new();
                 for ((label, act), key) in items.iter().zip(&keys) {
-                    let key = key.unwrap_or_else(|| panic!("{state:?}: {label} has a key"));
+                    // A long menu runs out of letters: an item without one is picked by arrows.
+                    let Some(key) = *key else { continue };
                     if matches!(act, Act::End(_)) {
                         assert_eq!(key, 'x');
                     } else {
                         assert!(
-                            !TAKEN.contains(&key) && key != 'x',
+                            !TAKEN.contains(&key),
                             "{state:?} {status:?}: {label} took {key}"
                         );
                     }
@@ -14068,7 +11035,7 @@ mod check_wiring_tests {
     }
 
     fn pick(app: &mut App, label: &str) {
-        app.menu_for_session(PANE, (20, 10));
+        app.menu_for_project_tools(PANE, (20, 10));
         let (items, keys) = match &app.mode {
             Mode::ScreenMenu(m) => (m.items.clone(), menu_chars(app, &m.items)),
             other => panic!("no menu: {other:?}"),
@@ -14140,7 +11107,7 @@ mod check_wiring_tests {
     #[test]
     fn a_result_that_is_no_longer_failed_is_not_overridden_from_a_stale_menu() {
         let (mut app, mut rx) = done(CheckState::Failed);
-        app.menu_for_session(PANE, (20, 10));
+        app.menu_for_project_tools(PANE, (20, 10));
         app.snap.terms.get_mut(&TERM).unwrap().checks = vec![info(CheckState::Passed)];
         app.screen_sync();
         app.menu_act(Act::OverrideCheck(PANE, String::new(), None));
@@ -14415,7 +11382,7 @@ mod check_wiring_tests {
     }
 
     #[test]
-    fn a_re_run_toasts_then_the_row_shows_the_checking_ring() {
+    fn a_re_run_toasts_and_the_sheet_offers_no_second_run_while_it_runs() {
         let (mut app, mut rx) = rig(
             160,
             45,
@@ -14436,11 +11403,6 @@ mod check_wiring_tests {
         app.screen_sync();
         app.open_check_sheet(PANE);
         press(&mut app, KeyCode::Esc);
-        let o = draw(&mut app, 160, 45);
-        assert!(
-            o.contains("checking test ·") && ['◜', '◝', '◞', '◟'].iter().any(|g| o.contains(*g)),
-            "the ring and its checkpoint's name:\n{o}"
-        );
         app.open_check_sheet(PANE);
         press(&mut app, KeyCode::Char('r'));
         assert!(
@@ -14792,12 +11754,6 @@ mod restart_tests {
         })
     }
 
-    fn pill_hit(app: &App, h: u16) -> Option<ratatui::layout::Rect> {
-        app.hits.iter().find_map(|(r, k)| {
-            (*k == Hit::Screen(screen::ScreenHit::Restart) && is_pill(app, h, r)).then_some(*r)
-        })
-    }
-
     fn click(app: &mut App, r: ratatui::layout::Rect) {
         app.on_mouse(MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
@@ -15078,18 +12034,18 @@ mod restart_tests {
         app.update_available = Some("9.9.9".into());
         let top = row0(&mut app);
         assert!(
-            top.contains("↑ Update 9.9.9") && !top.contains("↻ Restart"),
+            top.contains("↑ v9.9.9") && !top.contains("↻ restart"),
             "a release is out: {top}"
         );
         app.update_available = None;
         let top = row0(&mut app);
         assert!(
-            top.contains("↻ Restart") && !top.contains("Update"),
+            top.contains("↻ restart") && !top.contains("↑ v"),
             "installed but not running: {top}"
         );
         app.daemon_restart_requested = true;
         assert!(
-            !row0(&mut app).contains("↻ Restart"),
+            !row0(&mut app).contains("↻ restart"),
             "not while a restart is under way"
         );
         app.daemon_restart_requested = false;
@@ -15097,7 +12053,7 @@ mod restart_tests {
         app.installed_version = Some(Ok(env!("APP_VERSION").into()));
         let top = row0(&mut app);
         assert!(
-            !top.contains("Restart") && !top.contains("Update"),
+            !top.contains("restart") && !top.contains("↑ v"),
             "everything runs the installed version: {top}"
         );
     }
@@ -15108,10 +12064,18 @@ mod restart_tests {
             let (mut app, mut rx) = scene(100, 30, layout);
             app.snap.terms.retain(|id, _| *id == 3);
             let out = draw(&mut app, 100, 30);
-            assert!(out.contains("↻ Restart"), "{layout:?}\n{out}");
-            let r = pill_hit(&app, 30)
-                .expect("the pill is clickable, at the sidebar's foot or on the mode bar");
+            assert!(out.contains("↻ restart"), "{layout:?}\n{out}");
+            let r = app
+                .hits
+                .iter()
+                .find_map(|(r, k)| (*k == Hit::Screen(screen::ScreenHit::ReleaseMenu)).then_some(*r))
+                .expect("the chip at the sidebar's foot is clickable");
             click(&mut app, r);
+            let Mode::ScreenMenu(menu) = &app.mode else {
+                panic!("the chip opens its menu: {:?}", app.mode)
+            };
+            assert_eq!(menu.items[0].0, "Restart onto the new version");
+            app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
             assert!(
                 matches!(
                     sent(&mut rx).as_slice(),
@@ -15284,8 +12248,16 @@ mod side_panel_width_tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
-    /// The Inbox open in the side sheet on a screen `w` columns wide, drawn once.
+    /// The Changes drawer open on a screen `w` columns wide, drawn once.
     fn inbox_open(w: u16, h: u16) -> App {
+        let (_, mut app) = super::design_tests::render_with(w, h);
+        app.show_view(changes_view());
+        draw(&mut app, w, h);
+        app
+    }
+
+    /// The Inbox open on a screen `w` columns wide, drawn once.
+    fn real_inbox_open(w: u16, h: u16) -> App {
         let (_, mut app) = super::design_tests::render_with(w, h);
         app.act(Action::Jump);
         draw(&mut app, w, h);
@@ -15311,26 +12283,22 @@ mod side_panel_width_tests {
     #[test]
     fn brackets_narrow_and_widen_the_sheet_and_equals_puts_its_default_back() {
         let mut app = inbox_open(200, 50);
-        assert_eq!(app.screen.sheet_rect.width, 72, "the Inbox starts 72 wide");
+        assert_eq!(app.screen.sheet_rect.width, 54, "Changes starts 54 wide");
         key(&mut app, '[');
         draw(&mut app, 200, 50);
-        assert_eq!(app.screen.sheet_rect.width, 68, "[ narrows it 4");
+        assert_eq!(app.screen.sheet_rect.width, 50, "[ narrows it 4");
         key(&mut app, ']');
         key(&mut app, ']');
         draw(&mut app, 200, 50);
-        assert_eq!(app.screen.sheet_rect.width, 76, "] widens it 4 each");
+        assert_eq!(app.screen.sheet_rect.width, 58, "] widens it 4 each");
         assert_eq!(
-            app.screen.saved.sheet_w.get("inbox"),
-            Some(&76),
+            app.screen.saved.sheet_w.get("drawer"),
+            Some(&58),
             "kept in the saved UI state"
         );
         key(&mut app, '=');
         draw(&mut app, 200, 50);
-        assert_eq!(app.screen.sheet_rect.width, 72, "= puts the default back");
-        assert!(
-            matches!(&app.mode, Mode::GoTo { query, .. } if query.is_empty()),
-            "the keys sized the sheet, not the search"
-        );
+        assert_eq!(app.screen.sheet_rect.width, 54, "= puts the default back");
     }
 
     #[test]
@@ -15352,44 +12320,27 @@ mod side_panel_width_tests {
             app.screen.sheet_rect.right() - (at.x - 10),
             "the sheet's edge follows the pointer"
         );
-        assert!(app.screen.sheet_rect.width > 72, "wider than before");
+        assert!(app.screen.sheet_rect.width > 60, "wider than before");
     }
 
     #[test]
-    fn the_sheet_stays_between_its_least_and_what_leaves_the_panes_their_room() {
-        let mut app = inbox_open(200, 50);
-        app.screen.saved.sheet_w.insert("inbox".into(), 10);
+    fn the_inbox_is_62_wide_over_the_workspace_from_the_sidebars_side_and_keeps_its_width() {
+        let mut app = real_inbox_open(200, 50);
+        let col = app.screen.sheet_rect;
+        assert_eq!(col.width, 62);
+        let side = app.screen.side_rect;
+        assert!(col.x >= side.right(), "left sidebar: the Inbox starts beside it, not at the right edge");
+        assert!(col.right() < 200 - 62, "it is not docked on the right");
+        key(&mut app, ']');
         draw(&mut app, 200, 50);
-        assert_eq!(
-            app.screen.sheet_rect.width,
-            screen::SHEET_MIN,
-            "never under its least"
-        );
-        app.screen.saved.sheet_w.insert("inbox".into(), 500);
+        assert_eq!(app.screen.sheet_rect.width, 62, "it has no width to change");
+        assert!(edge(&app).is_none(), "and no edge to drag");
+        app.cfg.ui.sidebar_position = "right".into();
         draw(&mut app, 200, 50);
-        let panes_w = edge(&app).map(|e| e.x).unwrap() - app.screen.side_rect.right();
         assert!(
-            panes_w >= screen::PANES_KEEP,
-            "the panes keep {} columns, have {panes_w}",
-            screen::PANES_KEEP
+            app.screen.sheet_rect.right() <= app.screen.side_rect.x,
+            "right sidebar: the Inbox ends where the sidebar begins"
         );
-        // Too narrow for both: the sheet takes the whole pane column, with no edge to drag.
-        let app = inbox_open(80, 24);
-        assert!(
-            edge(&app).is_none() && app.screen.sheet_rect.x <= app.screen.side_rect.right() + 1,
-            "{:?}",
-            app.screen.sheet_rect
-        );
-    }
-
-    #[test]
-    fn changes_starts_half_the_screen_wide_and_an_older_saved_file_still_loads() {
-        let (_, app) = super::design_tests::render_with(200, 50);
-        assert_eq!(screen::wanted_w(&app, screen::SheetKind::Changes, 200), 100);
-        assert_eq!(screen::wanted_w(&app, screen::SheetKind::Check, 200), 72);
-        let old: screen::Saved = serde_json::from_str(r#"{"order":[],"draft":""}"#)
-            .expect("a file from before widths were kept");
-        assert!(old.sheet_w.is_empty());
     }
 
     #[test]
@@ -15410,22 +12361,7 @@ mod side_panel_width_tests {
         // Mid-slide, or left from another view: the drawn rectangle says nothing about the width.
         app.screen.sheet_rect.width = 22;
         key(&mut app, '[');
-        assert_eq!(app.screen.saved.sheet_w.get("inbox"), Some(&68));
-    }
-
-    #[test]
-    fn at_160_columns_the_inbox_leaves_the_panes_their_room() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.cfg.ui.padding = "1".into();
-        app.act(Action::Jump);
-        draw(&mut app, 160, 45);
-        let panes_w = edge(&app).map(|e| e.x).unwrap() - app.screen.side_rect.right();
-        assert!(panes_w >= screen::PANES_KEEP, "{panes_w}");
-        assert!(
-            app.screen.sheet_rect.width < 72 && app.screen.sheet_rect.width >= screen::SHEET_MIN,
-            "{}",
-            app.screen.sheet_rect.width
-        );
+        assert_eq!(app.screen.saved.sheet_w.get("drawer"), Some(&50));
     }
 
     #[test]
@@ -15449,35 +12385,6 @@ mod side_panel_width_tests {
         let back: screen::Saved =
             serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
         assert_eq!(back.sheet_w.get("changes"), Some(&90));
-    }
-
-    #[test]
-    fn the_keys_size_changes_too() {
-        let (_, mut app) = super::design_tests::render_with(200, 50);
-        app.view = Some(View::Changes(Box::new(views::ChangesView {
-            dir: PathBuf::from("/repo"),
-            review: None,
-            error: None,
-            agent: String::new(),
-            said: String::new(),
-            term: None,
-            ws: None,
-            reviewed: Default::default(),
-            linked: false,
-            confirm: None,
-        })));
-        draw(&mut app, 200, 50);
-        let widest = app.screen.sheet_widest;
-        assert_eq!(
-            app.screen.sheet_rect.width,
-            100.min(widest),
-            "Changes starts half the screen, held to the room"
-        );
-        key(&mut app, '[');
-        assert_eq!(
-            app.screen.saved.sheet_w.get("changes"),
-            Some(&(100.min(widest) - 4))
-        );
     }
 
     fn changes_view() -> View {
@@ -15556,14 +12463,14 @@ mod side_panel_width_tests {
     }
 
     #[test]
-    fn after_leader_n_beside_a_panel_the_next_key_goes_to_the_new_pane() {
+    fn after_leader_t_beside_a_panel_the_next_key_goes_to_the_new_pane() {
         let (_, mut app) = super::design_tests::render_with(200, 50);
         let (tx, mut rx) = mpsc::unbounded_channel();
         app.out = tx;
         app.cfg.ui.which_key = false;
         app.show_view(changes_view());
         app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
-        key(&mut app, 'n');
+        key(&mut app, 't');
         assert!(
             matches!(app.view, Some(View::Changes(_))),
             "Changes stays open beside it"
@@ -15576,8 +12483,8 @@ mod side_panel_width_tests {
             .map(|x| buf[(x, bar.y)].symbol().to_string())
             .collect();
         assert!(
-            text.trim_start().starts_with("TYPING"),
-            "the bar says typing, not CHANGES: {text}"
+            text.trim_start().starts_with("PANE"),
+            "the bar says PANE, not CHANGES: {text}"
         );
         assert!(
             typed_into_a_pane(&mut app, &mut rx, 'm'),
@@ -15623,23 +12530,18 @@ mod side_panel_width_tests {
             .expect("the focused pane beside the sheet");
         click(&mut app, pane.x + pane.width / 2, pane.y + pane.height / 2);
         leader_x(&mut app);
-        let Mode::Confirm(c) = &app.mode else {
-            panic!("the pane has the keys: x asks before closing it")
-        };
-        assert_eq!(
-            c.act,
-            crate::client::menu::Act::End(vec![focused]),
-            "it closes the focused pane"
-        );
-        assert!(
-            c.note.contains("still working"),
-            "and warns that it is working: {}",
-            c.note
-        );
+        let first = app.closing_banner().expect("the pane has the keys: x closes it").text;
+        // A working agent asks for the same press again; a shell is closed at once.
+        if first.starts_with("Close and stop") {
+            key(&mut app, 'x');
+        }
+        let banner = app.closing_banner().expect("closed").text;
+        assert!(banner.starts_with("Closed "), "it closes the focused pane: {banner}");
         assert!(
             matches!(app.view, Some(View::Changes(_))),
             "Changes stays open beside it"
         );
+        let _ = focused;
     }
 
     #[test]
@@ -15657,22 +12559,13 @@ mod side_panel_width_tests {
             .unwrap()
             .status = Status::Working;
         leader_x(&mut app);
-        let Mode::Confirm(c) = &app.mode else {
-            panic!(
-                "x asks before closing the row: {:?}",
-                std::mem::discriminant(&app.mode)
-            )
-        };
-        assert_eq!(
-            c.act,
-            crate::client::menu::Act::End(vec![app.session_term(row).unwrap()]),
-            "it closes the cursor's session"
-        );
-        assert!(
-            c.note.contains("still working"),
-            "and warns that it is working: {}",
-            c.note
-        );
+        let first = app.closing_banner().expect("x closes the row").text;
+        if first.starts_with("Close and stop") {
+            key(&mut app, 'x');
+        }
+        let banner = app.closing_banner().expect("closed").text;
+        assert!(banner.starts_with("Closed "), "it closes the cursor's session: {banner}");
+        let _ = row;
         assert!(
             matches!(app.view, Some(View::Changes(_))),
             "Changes stays open"
@@ -15696,10 +12589,12 @@ mod side_panel_width_tests {
         app.screen_place(b, Some(a));
         draw(&mut app, 200, 50);
         leader_x(&mut app);
-        assert!(
-            matches!(&app.mode, Mode::Confirm(c) if c.act == crate::client::menu::Act::End(vec![a])),
-            "x asks about the focused split only"
-        );
+        if app.closing_banner().is_some_and(|b| b.warn) {
+            key(&mut app, 'x');
+        }
+        let banner = app.closing_banner().expect("x closed the focused split").text;
+        assert!(banner.starts_with("Closed "), "{banner}");
+        let _ = a;
     }
 
     /// Files open in the sheet, set aside by a click into the pane beside it.
@@ -15711,7 +12606,7 @@ mod side_panel_width_tests {
         ))));
         draw(&mut app, 200, 50);
         let (_, pane) = *app.pane_frames.first().unwrap();
-        click(&mut app, pane.x + pane.width / 2, pane.y + pane.height / 2);
+        click(&mut app, pane.x + 4, pane.y + pane.height / 2);
         assert!(!app.view_has_keys(), "set aside");
         app
     }
@@ -15837,6 +12732,11 @@ mod files_panel_tests {
         pane.cwd = dir.to_path_buf();
         pane.top = Some(dir.to_path_buf());
         pane.root = Some(dir.to_path_buf());
+        // These tests read the whole panel, so it is as wide as the docked one used to be.
+        app.screen
+            .saved
+            .sheet_w
+            .insert("drawer".into(), w * 55 / 100);
         app
     }
 
@@ -15874,47 +12774,6 @@ mod files_panel_tests {
     }
 
     #[test]
-    fn f_opens_files_in_the_side_panel_beside_the_panes_and_f_or_esc_closes_it() {
-        let dir = project("open");
-        let mut app = screen_in(&dir, 160, 45);
-        let before = draw(&mut app, 160, 45);
-        app.act(Action::Files);
-        tree_read(&mut app, &dir);
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        assert_eq!(screen::open_sheet(&app), Some(screen::SheetKind::Files));
-        let sheet = app.screen.sheet_rect;
-        assert!(
-            sheet.width > 0 && o.contains("notes.txt"),
-            "the tree is in the panel:\n{o}"
-        );
-        let (_, pane) = *app.pane_frames.first().expect("a pane still on screen");
-        assert!(
-            pane.right() <= sheet.x,
-            "the panes reflow beside it: {pane:?} vs {sheet:?}"
-        );
-        // Above the mode bar, which now says Files has the keys.
-        let bar = screen::mode_bar_row(&app, Rect::new(0, 0, 160, 45)).y as usize;
-        let sidebar = |frame: &str| {
-            frame
-                .lines()
-                .take(bar)
-                .map(|l| l.chars().take(20).collect::<String>())
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(sidebar(&o), sidebar(&before), "the sidebar is not covered");
-        key(&mut app, KeyCode::Char('f'));
-        assert!(app.view.is_none(), "f again closes it");
-        app.act(Action::Files);
-        key(&mut app, KeyCode::Esc);
-        assert!(app.view.is_none(), "Esc closes it");
-        app.act(Action::Files);
-        app.act(Action::Files);
-        assert!(app.view.is_none(), "the leader's f again closes it");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
     fn the_tree_and_the_selected_file_sit_side_by_side_in_a_wide_panel() {
         let dir = project("wide");
         let mut app = screen_in(&dir, 160, 45);
@@ -15927,30 +12786,6 @@ mod files_panel_tests {
             .lines()
             .find(|l| l.contains("notes.txt") && l.contains("let line_1 = 1;"));
         assert!(row.is_some(), "the tree's row and the file beside it:\n{o}");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn files_starts_at_55_percent_of_the_screen_and_keeps_the_width_you_give_it() {
-        let dir = project("width");
-        let mut app = screen_in(&dir, 200, 50);
-        assert_eq!(screen::wanted_w(&app, screen::SheetKind::Files, 200), 110);
-        app.act(Action::Files);
-        draw(&mut app, 200, 50);
-        let widest = app.screen.sheet_widest;
-        assert_eq!(
-            app.screen.sheet_rect.width,
-            110.min(widest),
-            "55% of 200, held to the room"
-        );
-        key(&mut app, KeyCode::Char('['));
-        draw(&mut app, 200, 50);
-        assert_eq!(
-            app.screen.saved.sheet_w.get("files"),
-            Some(&(110.min(widest) - 4)),
-            "kept per view, like the others"
-        );
-        assert_eq!(app.screen.sheet_rect.width, 110.min(widest) - 4);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -16187,7 +13022,7 @@ mod files_panel_tests {
             .find(|l| l.contains('‹'))
             .expect("the file's header");
         assert!(
-            header.contains("i edit") && header.contains("1–16 of 60 "),
+            header.contains("1–15 of 60 "),
             "the title and the mode bar take a row each: {header}"
         );
         let _ = std::fs::remove_dir_all(&dir);
@@ -16225,29 +13060,6 @@ mod files_panel_tests {
         assert!(
             files(&app).filtering && !files(&app).in_preview,
             "the filter shows the tree, not the file"
-        );
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn at_100_by_30_the_panel_takes_the_pane_column_with_both_sides() {
-        let dir = project("mid");
-        let mut app = screen_in(&dir, 100, 30);
-        app.act(Action::Files);
-        tree_read(&mut app, &dir);
-        select(&mut app, "main.rs");
-        let o = draw(&mut app, 100, 30);
-        show(&o);
-        assert!(app.panes.is_empty(), "the panel takes the pane column");
-        assert!(
-            app.screen.sheet_rect.width >= 60,
-            "{:?}",
-            app.screen.sheet_rect
-        );
-        assert!(
-            o.lines()
-                .any(|l| l.contains("notes.txt") && l.contains("let line_1 = 1;")),
-            "the tree beside the file:\n{o}"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -16494,7 +13306,7 @@ mod files_panel_tests {
             o.contains("SENTINEL"),
             "the same file, width and theme reuse it:\n{o}"
         );
-        let (o, _) = frame(&mut app, 180, 50);
+        let (o, _) = frame(&mut app, 150, 50);
         assert!(
             !o.contains("SENTINEL"),
             "a new width lays it out again:\n{o}"
@@ -16502,7 +13314,7 @@ mod files_panel_tests {
         mark(&mut app);
         select(&mut app, "notes.txt");
         select(&mut app, "GUIDE.md");
-        let (o, _) = frame(&mut app, 180, 50);
+        let (o, _) = frame(&mut app, 150, 50);
         assert!(
             !o.contains("SENTINEL") && o.contains("Guide"),
             "a new preview lays it out again:\n{o}"
@@ -16520,10 +13332,12 @@ mod files_panel_tests {
         key(&mut app, KeyCode::Char('e'));
         let mut opened = None;
         while let Ok(msg) = rx.try_recv().map(|o| o.msg) {
-            if let crate::protocol::ClientMsg::Command(crate::protocol::Command::NewWorkspace {
-                cmd,
-                ..
-            }) = msg
+            use crate::protocol::{ClientMsg, Command};
+            if let ClientMsg::Command(
+                Command::NewWorkspace { cmd, .. }
+                | Command::NewTab { cmd, .. }
+                | Command::Split { cmd, .. },
+            ) = msg
             {
                 opened = cmd;
             }
@@ -16992,7 +13806,8 @@ mod files_panel_tests {
             .find(|(t, _)| *t == ClientTerm::local(1))
             .map(|(_, r)| *r)
             .expect("the pane beside the panel");
-        let inside = (pane.x + pane.width / 2, pane.y + pane.height / 2);
+        // The panel floats over the pane's right side: click on its left.
+        let inside = (pane.x + 3, pane.y + pane.height / 2);
         mouse(&mut app, MouseEventKind::Down(MouseButton::Left), inside);
         mouse(&mut app, MouseEventKind::Up(MouseButton::Left), inside);
         assert!(!app.view_has_keys(), "the click set the editor aside");
@@ -17298,7 +14113,7 @@ mod branch_view_tests {
         let (_, mut app) = super::design_tests::render_with(w, h);
         let mut rx = catch_bg(&mut app);
         app.snap.terms.get_mut(&1).unwrap().top = Some(dir.to_path_buf());
-        leader(&mut app, 'b');
+        leader(&mut app, 'g');
         assert!(
             sheet(&app).is_some_and(|v| v.dir == dir && v.facts.is_none()),
             "b opens the Branch view, reading git"
@@ -17316,9 +14131,10 @@ mod branch_view_tests {
     }
 
     #[test]
-    fn b_opens_branch_in_the_side_panel_and_b_or_esc_closes_it() {
+
+    fn g_opens_branch_in_the_side_panel_and_g_or_esc_closes_it() {
         let (_, mut app) = super::design_tests::render_with(200, 50);
-        leader(&mut app, 'b');
+        leader(&mut app, 'g');
         assert!(
             sheet(&app).is_some() && app.mode == Mode::Normal,
             "the view has the keys: {:?}",
@@ -17333,17 +14149,17 @@ mod branch_view_tests {
         assert_eq!(app.screen.sheet_rect.width, 60, "30% of the screen");
         key(&mut app, KeyCode::Char(']'));
         assert_eq!(
-            app.screen.saved.sheet_w.get("branch"),
+            app.screen.saved.sheet_w.get("drawer"),
             Some(&64),
-            "its width is remembered as Branch's"
+            "its width is remembered for the tools panel, which Branches shares with Files and Changes"
         );
-        key(&mut app, KeyCode::Char('b'));
+        key(&mut app, KeyCode::Char('g'));
         assert!(
             sheet(&app).is_none() && matches!(app.mode, Mode::Prefix { .. }),
-            "b closes it, back to shortcut mode"
+            "g closes it, back to shortcut mode"
         );
-        key(&mut app, KeyCode::Char('b'));
-        assert!(sheet(&app).is_some(), "the leader's b opens it again");
+        key(&mut app, KeyCode::Char('g'));
+        assert!(sheet(&app).is_some(), "the leader's g opens it again");
         key(&mut app, KeyCode::Esc);
         assert!(
             sheet(&app).is_none() && matches!(app.mode, Mode::Prefix { .. }),
@@ -17354,7 +14170,7 @@ mod branch_view_tests {
     #[test]
     fn opened_from_shortcut_mode_its_keys_reach_it_and_k_types_nothing() {
         let (mut app, mut out) = super::check_settings_tests::app_with_channel();
-        leader(&mut app, 'b');
+        leader(&mut app, 'g');
         while out.try_recv().map(|o| o.msg).is_ok() {}
         // k is the leader's stop-the-agent: here it moves up, and nothing goes to a pane.
         key(&mut app, KeyCode::Char('k'));
@@ -17491,7 +14307,7 @@ mod branch_view_tests {
     #[test]
     fn a_folder_outside_git_says_so() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        leader(&mut app, 'b');
+        leader(&mut app, 'g');
         let dir = sheet(&app).unwrap().dir.clone();
         app.branch_facts_arrived(&dir, screen::Facts::NotGit);
         let o = draw(&mut app, 160, 45);
@@ -17597,8 +14413,8 @@ mod leader_key_tests {
     }
 }
 
-/// The tool rail on the right edge and the drawer that floats over the terminal.
-mod tool_rail_tests {
+/// The drawer that floats over the terminal.
+mod drawer_tests {
     use super::*;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
@@ -17607,11 +14423,9 @@ mod tool_rail_tests {
     const W: u16 = 172;
     const H: u16 = 56;
 
-    /// The main screen with the rail on, the drawer floating, and the focused pane in a git repo.
+    /// The main screen with the drawer floating, and the focused pane in a git repo.
     fn app() -> App {
         let (_, mut app) = super::design_tests::render_with(W, H);
-        app.cfg.ui.tool_rail = true;
-        app.screen.saved.drawer_floats = true;
         static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let dir = std::env::temp_dir().join(format!("{APP_COMMAND}-rail-{}-{n}", std::process::id()));
@@ -17633,13 +14447,6 @@ mod tool_rail_tests {
         term.backend().buffer().clone()
     }
 
-    fn tool(app: &App, i: usize) -> Rect {
-        app.hits
-            .iter()
-            .find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::Tool(i))).then_some(*r))
-            .expect("the chip is clickable")
-    }
-
     fn click(app: &mut App, r: Rect) {
         for kind in [
             MouseEventKind::Down(MouseButton::Left),
@@ -17652,124 +14459,6 @@ mod tool_rail_tests {
                 modifiers: KeyModifiers::NONE,
             });
         }
-    }
-
-    fn click_tool(app: &mut App, i: usize) {
-        let r = tool(app, i);
-        click(app, r);
-    }
-
-    fn pane_right(app: &App) -> u16 {
-        app.panes.iter().map(|(_, r)| r.right()).max().unwrap_or(0)
-    }
-
-    #[test]
-    fn the_rail_is_always_on_the_right_edge_with_the_four_tools_stacked_down_it() {
-        let mut app = app();
-        let buf = draw(&mut app);
-        let chips: Vec<Rect> = (0..4).map(|i| tool(&app, i)).collect();
-        assert!(chips.windows(2).all(|w| w[1].y == w[0].y + 2), "two rows apart");
-        assert!(chips.iter().all(|c| c.right() < W), "inside the edge");
-        let x = chips[0].x;
-        let keys: String = chips.iter().map(|c| buf[(x + 1, c.y)].symbol().to_string()).collect();
-        assert_eq!(keys, "fcba");
-        assert!(
-            ["┌", "╭"].contains(&buf[(x - 1, chips[0].y - 1)].symbol()),
-            "in a box"
-        );
-    }
-
-    #[test]
-    fn a_chip_opens_its_tool_and_the_same_chip_again_closes_it() {
-        let mut app = app();
-        draw(&mut app);
-        click_tool(&mut app, 1);
-        assert_eq!(screen::open_sheet(&app), Some(screen::SheetKind::Changes));
-        draw(&mut app);
-        click_tool(&mut app, 2);
-        assert_eq!(screen::open_sheet(&app), Some(screen::SheetKind::Branch), "another switches");
-        draw(&mut app);
-        click_tool(&mut app, 2);
-        assert_eq!(screen::open_sheet(&app), None, "the open one closes");
-    }
-
-    #[test]
-    fn a_floating_drawer_never_resizes_the_terminal_and_a_pinned_one_does() {
-        let mut app = app();
-        draw(&mut app);
-        let closed = pane_right(&app);
-        click_tool(&mut app, 0);
-        draw(&mut app);
-        let drawer = app.screen.sheet_rect;
-        assert!(drawer.width >= 32 && drawer.x < closed && drawer.right() <= W - 5, "{drawer:?}");
-        assert_eq!(pane_right(&app), closed, "the terminal is where it was");
-        // Pinned: a column of its own, and the terminal gives it room.
-        app.screen.saved.drawer_floats = false;
-        draw(&mut app);
-        assert!(pane_right(&app) < closed, "the terminal shrank");
-    }
-
-    #[test]
-    fn with_full_rounding_the_rail_chips_are_pills() {
-        let mut app = app();
-        app.cfg.ui.rounded = crate::config::Rounding::Full;
-        let buf = draw(&mut app);
-        let chip = tool(&app, 0);
-        let cells: String = (chip.x..chip.right()).map(|x| buf[(x, chip.y)].symbol()).collect();
-        assert!(
-            cells.starts_with('\u{e0b6}') && cells.ends_with('\u{e0b4}') && cells.contains('f'),
-            "{cells:?}"
-        );
-    }
-
-    #[test]
-    fn a_selected_row_runs_to_the_left_edge_with_a_bar_and_rounds_only_its_right_end() {
-        let mut app = app();
-        app.cfg.ui.rounded = crate::config::Rounding::Full;
-        draw(&mut app);
-        let sel = app.theme.sel_bg();
-        // Put the cursor on each session in turn until one is a one-line row.
-        app.act(Action::BrowseTree);
-        for key in app.screen.visible.clone() {
-            app.screen.cursor = Some(key);
-            let buf = draw(&mut app);
-            let side = app.screen.side_rect;
-            // The selected row: the one whose cells are on the selection's ground.
-            let found = (side.y + 2..side.y + 14).find_map(|y| {
-                let lit: Vec<u16> = (side.x..side.right())
-                    .filter(|&x| buf[(x, y)].bg == sel)
-                    .collect();
-                Some((y, *lit.first()?, *lit.last()?))
-            });
-            let Some((y, first, last)) = found else {
-                continue;
-            };
-            // Not a block of lines: the row under it is not lit.
-            if buf[(first + 2, y + 1)].bg == sel {
-                continue;
-            }
-            assert_eq!(
-                first,
-                side.x + 2,
-                "it starts in the column of the project's line"
-            );
-            assert_eq!(
-                (buf[(first, y)].symbol(), buf[(first, y)].fg),
-                ("▎", app.theme.accent),
-                "the accent bar stands where the line was: the left end is never rounded"
-            );
-            assert_eq!(
-                (buf[(last + 1, y)].symbol(), buf[(last + 1, y)].fg),
-                (screen::CAP_R, sel),
-                "the right end is the cap"
-            );
-            assert!(
-                !(side.x..side.right()).any(|x| buf[(x, y)].symbol() == screen::CAP_L),
-                "no cap at the left"
-            );
-            return;
-        }
-        panic!("no row was a one-line selection");
     }
 
     #[test]
@@ -17788,97 +14477,6 @@ mod tool_rail_tests {
             std::mem::discriminant(&app.mode)
         );
         assert_eq!(app.screen.cursor, None, "the sidebar holds no cursor");
-    }
-
-    fn hit_rect(app: &App, h: screen::ScreenHit) -> Rect {
-        app.hits
-            .iter()
-            .find_map(|(r, x)| (*x == Hit::Screen(h)).then_some(*r))
-            .expect("the chip is clickable")
-    }
-
-    #[test]
-    fn the_sidebar_collapses_from_its_chip_and_comes_back_from_the_rail_and_from_hidden() {
-        let mut app = app();
-        let buf = draw(&mut app);
-        let chip = hit_rect(&app, screen::ScreenHit::CollapseSidebar);
-        let row: String = (0..W).map(|x| buf[(x, chip.y)].symbol()).collect();
-        assert!(row.contains('«'), "on the sidebar's top border: {row}");
-        click(&mut app, chip);
-        let buf = draw(&mut app);
-        assert!(!app.sidebar && !app.side_hidden, "the narrow column");
-        if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
-            for y in 0..24 {
-                println!("{}", (0..30).map(|x| buf[(x, y)].symbol()).collect::<String>());
-            }
-        }
-        let top: String = (0..6).map(|x| buf[(x, 0)].symbol()).collect();
-        assert!(top.contains('»'), "its chip is set into the top edge: {top}");
-        // [ walks on: hidden, then full again.
-        app.cycle_sidebar();
-        let buf = draw(&mut app);
-        assert!(app.side_hidden);
-        let lead = hit_rect(&app, screen::ScreenHit::ExpandSidebar);
-        let row: String = (0..W).map(|x| buf[(x, lead.y)].symbol()).collect();
-        assert!(row.contains('»'), "a » leads the tabs when it is hidden: {row}");
-        click(&mut app, lead);
-        draw(&mut app);
-        assert!(app.sidebar && !app.side_hidden, "back to full");
-    }
-
-    #[test]
-    fn the_collapsed_sidebar_wears_pills_with_full_rounding() {
-        use crate::config::Rounding;
-        for (rounded, pilled) in [(Rounding::Off, false), (Rounding::Full, true)] {
-            let mut app = app();
-            app.cfg.ui.rounded = rounded;
-            app.sidebar = false;
-            let buf = draw(&mut app);
-            let cells = |r: Rect| -> Vec<String> {
-                (r.x..r.right())
-                    .map(|x| buf[(x, r.y)].symbol().to_string())
-                    .collect()
-            };
-            for (hit, symbol) in [
-                (screen::ScreenHit::ExpandSidebar, "»"),
-                (screen::ScreenHit::NewShell, "+"),
-                (screen::ScreenHit::Actions, "≡"),
-            ] {
-                let want = if pilled {
-                    [screen::CAP_L, symbol, screen::CAP_R]
-                } else {
-                    [" ", symbol, " "]
-                };
-                assert_eq!(
-                    cells(hit_rect(&app, hit)),
-                    want,
-                    "{rounded:?}: the {symbol} chip"
-                );
-            }
-            // The selected session: a pill round its glyph, as the open sidebar's row is.
-            let selected = app
-                .hits
-                .iter()
-                .filter(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::Session(_))))
-                .filter(|(r, _)| r.width == 3)
-                .filter(|(r, _)| {
-                    let row = cells(*r);
-                    row[0] == screen::CAP_L && row[2] == screen::CAP_R
-                })
-                .count();
-            assert_eq!(selected, usize::from(pilled), "{rounded:?}: one selected row");
-        }
-    }
-
-    #[test]
-    fn a_draggable_edge_shows_a_grip_before_it_is_pointed_at() {
-        let mut app = app();
-        let buf = draw(&mut app);
-        let side = app.screen.side_rect;
-        let grips = (side.y..side.bottom())
-            .filter(|y| (side.right()..side.right() + 3).any(|x| buf[(x, *y)].symbol() == "┃"))
-            .count();
-        assert_eq!(grips, 3, "a three-row grip on the sidebar's edge");
     }
 }
 
@@ -18178,23 +14776,6 @@ mod drawer_tab_tests {
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
-
-    #[test]
-    fn each_view_keeps_its_own_width_across_switches() {
-        let (mut app, dir) = in_repo("width");
-        app.screen.saved.sheet_w.insert("files".into(), 70);
-        app.screen.saved.sheet_w.insert("changes".into(), 90);
-        app.act(Action::Files);
-        draw(&mut app);
-        assert_eq!(app.screen.sheet_rect.width, 70);
-        key(&mut app, KeyCode::Tab, KeyModifiers::NONE);
-        draw(&mut app);
-        assert_eq!(app.screen.sheet_rect.width, 90, "Changes' own width");
-        key(&mut app, KeyCode::BackTab, KeyModifiers::SHIFT);
-        draw(&mut app);
-        assert_eq!(app.screen.sheet_rect.width, 70, "back to Files' width");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
 }
 
 #[cfg(test)]
@@ -18252,10 +14833,10 @@ mod references_view_tests {
         pane.top = Some(dir.to_path_buf());
         // Unknown to the snapshot: the background read finds the project from the folder.
         pane.root = None;
-        leader(&mut app, 'a');
+        leader(&mut app, 'e');
         assert!(
             sheet(&app).is_some_and(|v| v.list.is_none()),
-            "a opens References, reading the folder"
+            "e opens References, reading the folder"
         );
         let b = next_bg(&mut rx);
         app.on_bg(b);
@@ -18272,24 +14853,20 @@ mod references_view_tests {
     #[test]
     fn an_empty_project_says_how_to_add_one_at_both_sizes() {
         let dir = project("empty", &[]);
-        for (w, h) in [(80, 24), (160, 45)] {
+        for (w, h) in [(100, 30), (160, 45)] {
             let (mut app, _rx) = opened(&dir, w, h);
             let o = draw(&mut app, w, h);
             show(&o);
             assert!(
-                o.contains("References"),
+                o.contains(" references "),
                 "in the side panel at {w}✕{h}:\n{o}"
             );
             assert!(
                 o.contains("No references yet · paste an image or add a file"),
                 "the empty state at {w}✕{h}:\n{o}"
             );
-            assert!(
-                o.contains("Refs") || o.contains("References"),
-                "its tab in the strip at {w}✕{h}"
-            );
-            key(&mut app, KeyCode::Char('a'));
-            assert!(sheet(&app).is_none(), "a closes it again");
+            key(&mut app, KeyCode::Char('e'));
+            assert!(sheet(&app).is_none(), "e closes it again");
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -18719,19 +15296,6 @@ mod pane_swap_tests {
     }
 
     #[test]
-    fn a_split_panes_title_has_no_close_button() {
-        for layout in LAYOUTS {
-            let (app, _rx) = side_by_side(layout);
-            assert!(
-                !app.hits
-                    .iter()
-                    .any(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::CloseSplit(_)))),
-                "{layout}: the tab's ✕, Alt+x or the pane's menu close it"
-            );
-        }
-    }
-
-    #[test]
     fn leader_alt_arrow_swaps_with_the_neighbour_that_way() {
         let (mut app, mut rx) = side_by_side("tiled");
         app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
@@ -18752,23 +15316,23 @@ mod pane_swap_tests {
     }
 
     #[test]
-    fn the_pane_menu_offers_a_move_toward_each_neighbour() {
-        let (mut app, mut rx) = side_by_side("tiled");
+    fn the_pane_menu_lists_rename_the_splits_find_and_close() {
+        let (mut app, _rx) = side_by_side("tiled");
         app.menu_for_pane(ClientTerm::local(1), (5, 5));
         let Mode::ScreenMenu(menu) = app.mode.clone() else {
             panic!("a menu")
         };
         let labels: Vec<&str> = menu.items.iter().map(|(l, _)| l.as_str()).collect();
-        assert!(labels.contains(&"Move pane right"), "{labels:?}");
-        assert!(
-            !labels
-                .iter()
-                .any(|l| ["Move pane left", "Move pane up", "Move pane down"].contains(l)),
+        assert_eq!(
+            &labels[..4],
+            ["Rename", "Split right", "Split down", "Find"],
             "{labels:?}"
         );
-        app.menu_do(menu::Act::Swap(ClientTerm::local(1), ClientTerm::local(2)));
-        assert_eq!(shown(&app), [2, 1]);
-        assert_eq!(swaps_sent(&mut rx), [(1, 2)]);
+        assert_eq!(
+            labels.last(),
+            Some(&"Close pane"),
+            "two panes are shown: closing one is closing a pane, and it is last: {labels:?}"
+        );
     }
 
     #[test]

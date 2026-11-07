@@ -4,7 +4,7 @@ import { forgetMachines, parseSessionId, registerMachine, type MachineKind, type
 import type { Conversation } from '@/data/preview'
 import type { Layout } from './layout'
 import { idsOfMachinesNotHeard, announcementFor, machineChip, machineHeads, remoteStartRefusal, remoteTargetOf, remoteTerminals, updateCommandOf, type RemoteMachine } from './machines'
-import { groupSessions, toSessionView } from './session'
+import { folderNameOf, toSessionView } from './session'
 
 afterEach(() => { forgetMachines() })
 
@@ -61,7 +61,7 @@ describe('merging the snapshots of several machines', () => {
     expect(views('connected').map((view) => view.status)).toEqual(['needs', 'done'])
     const down = views('unreachable')
     expect(down.some((view) => inboxStatuses.has(view.status))).toBe(false)
-    expect(groupSessions(down, 'folder', null, '/home/me').map((group) => group.needsCount)).toEqual([0])
+    expect(down.every((view) => view.status === 'unknown')).toBe(true)
   })
 
   it('says a session of this computer is exactly what it was, with one machine', () => {
@@ -98,10 +98,9 @@ describe('the sidebar groups of several machines', () => {
     const here = conversationsFromSnapshot(snapshot([term(1, '/work/app')]))
     const there = remoteTerminals(new Map([[1, machineOf(1, 'box', [term(1, '/work/app')])]]))
     const views = [...here, ...there].map((conversation) => toSessionView(conversation, '/home/me'))
-    const groups = groupSessions(views, 'folder', null, '/home/me')
-    expect(groups).toHaveLength(2)
-    expect(groups.map((group) => group.name).sort()).toEqual(['app', 'box · app'])
-    expect(groups.find((group) => group.name === 'box · app')?.path).toBe('/work/app')
+    // Same folder name on two machines: two rows, told apart by their machine, not merged.
+    expect(views.map((view) => [folderNameOf(view), view.machineName])).toEqual([['app', null], ['app', 'box']])
+    expect(views[1]?.cwdLabel).toBe('/work/app')
   })
 
   it('writes the home folder as ~ only for this computer', () => {
@@ -116,7 +115,7 @@ describe('the sidebar groups of several machines', () => {
 
 describe('a saved layout at launch', () => {
   const layout: Layout = {
-    tabs: [{
+    arrangements: [{
       id: 'tab1',
       panes: [
         { id: 'p1', sessionId: 't3', col: 0 },
@@ -126,7 +125,7 @@ describe('a saved layout at launch', () => {
       focus: 'p1',
       max: null,
     }],
-    activeTabId: 'tab1',
+    activeId: 'tab1',
   }
 
   it('keeps the panes of machines that have not answered yet', () => {

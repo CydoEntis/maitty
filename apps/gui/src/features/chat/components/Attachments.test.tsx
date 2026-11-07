@@ -92,7 +92,7 @@ function clipboard(text: string, files: File[]): DataTransfer {
 
 const PNG = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'image.png', { type: 'image/png' })
 
-const composerEl = (box: HTMLElement) => box.closest('.border-t') as HTMLElement
+const composerEl = (box: HTMLElement) => box.closest('.mx-composer') as HTMLElement
 const paperclip = () => screen.getByRole('button', { name: /^Attach files/ })
 const sendButton = () => screen.getByRole('button', { name: /^(Send|Queue) message$/ })
 

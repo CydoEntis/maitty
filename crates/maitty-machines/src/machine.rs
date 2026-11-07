@@ -243,10 +243,81 @@ impl Machine {
         )?)
     }
 
-    /// The line that has the app installed at `program` there restart its daemon if idle.
-    pub fn restart_if_idle_argv(&self, program: &str) -> Result<Vec<String>> {
+    /// The line that makes this machine print what is in the folder `path` (see `LIST_SCRIPT`),
+    /// at most `max_bytes` of it.
+    pub fn list_argv(&self, path: &str, max_bytes: u64) -> Result<Vec<String>> {
+        let route = self.ssh_route()?;
+        Ok(ssh_command::ssh_argv_list(
+            &route.ssh,
+            &route.target,
+            path,
+            max_bytes,
+        )?)
+    }
+
+    /// The line that makes this machine print the paths of the files below the folder `path`
+    /// (see `INDEX_SCRIPT`), at most `max_bytes` of it.
+    pub fn index_argv(&self, path: &str, max_bytes: u64) -> Result<Vec<String>> {
+        let route = self.ssh_route()?;
+        Ok(ssh_command::ssh_argv_index(
+            &route.ssh,
+            &route.target,
+            path,
+            max_bytes,
+        )?)
+    }
+
+    /// The line that makes this machine print the folder at `path` as a tar archive (see
+    /// `FOLDER_SCRIPT`).
+    pub fn get_folder_argv(&self, path: &str) -> Result<Vec<String>> {
+        let route = self.ssh_route()?;
+        Ok(ssh_command::ssh_argv_get_folder(
+            &route.ssh,
+            &route.target,
+            path,
+        )?)
+    }
+
+    /// The line that makes this machine print the file at `path` (see `GET_SCRIPT`), refusing
+    /// one over `max_bytes`.
+    pub fn get_argv(&self, path: &str, max_bytes: u64) -> Result<Vec<String>> {
+        let route = self.ssh_route()?;
+        Ok(ssh_command::ssh_argv_get(
+            &route.ssh,
+            &route.target,
+            path,
+            max_bytes,
+        )?)
+    }
+
+    /// The line that runs the put-folder script on this machine, the folder's tar archive on its
+    /// stdin: the far side keeps the folder as `name` and prints where.
+    pub fn put_folder_argv(&self, name: &str, bytes: u64) -> Result<Vec<String>> {
+        let route = self.ssh_route()?;
+        Ok(ssh_command::ssh_argv_put_folder(
+            &route.ssh,
+            &route.target,
+            name,
+            bytes,
+        )?)
+    }
+
+    /// The line that has the app installed at `program` there restart its daemon if idle, or
+    /// with `now` also when its sessions are saved.
+    pub fn restart_if_idle_argv(&self, program: &str, now: bool) -> Result<Vec<String>> {
         let route = self.ssh_route()?;
         Ok(ssh_command::ssh_argv_restart_if_idle(
+            &route.ssh,
+            &route.target,
+            program,
+            now,
+        )?)
+    }
+
+    /// The line that asks the app installed at `program` there how many sessions are open.
+    pub fn activity_argv(&self, program: &str) -> Result<Vec<String>> {
+        let route = self.ssh_route()?;
+        Ok(ssh_command::ssh_argv_activity(
             &route.ssh,
             &route.target,
             program,

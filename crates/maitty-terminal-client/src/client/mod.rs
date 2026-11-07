@@ -54,7 +54,9 @@ use crate::theme::Theme;
 use anyhow::Result;
 use connections::{Burst, Connections, NotConnected, SERVER_BURST};
 use futures_util::{FutureExt, StreamExt};
-use ids::{ClientSession, ClientTerm, MachineId, MachineSnap, Outgoing, Remote};
+#[cfg(test)]
+use ids::ClientSession;
+use ids::{ClientTerm, MachineId, MachineSnap, Outgoing, Remote};
 use ratatui::crossterm::event::{
     self, Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton,
     MouseEvent, MouseEventKind,
@@ -166,6 +168,8 @@ enum Mode {
     /// Switch branch.
     Branch(Box<branch::BranchView>),
     /// Notification history (the selected row, newest first).
+    /// Usage and cost: what each agent reported using, and the plan limits.
+    Usage,
     History {
         sel: usize,
     },
@@ -200,6 +204,8 @@ enum Mode {
     Actions {
         sel: usize,
     },
+    /// The Updates box: what is new, download, restart.
+    Updates,
     /// A tab being renamed in its pill.
     RenameTab(Box<screen::TabName>),
     /// The computers reached over ssh: how each stands, and adding or removing one.
@@ -299,9 +305,6 @@ fn settle_retired_layout(app: &mut App) {
     let mut writes: Vec<(&str, toml_edit::Value)> = vec![("ui.layout", r.kind.name().into())];
     if r.gap {
         writes.push(("ui.gap", "0".into()));
-    }
-    if r.pane_colors {
-        writes.push(("ui.pane_colors", true.into()));
     }
     for (path, value) in writes {
         if let Err(e) = modal::write(path, value) {
@@ -448,7 +451,7 @@ impl PromptKind {
             PromptKind::RenameConversation(_) => "Rename chat (empty: automatic)",
             PromptKind::RenameProject(_) => "Rename project (empty: its folder name)",
             PromptKind::RenameTab(..) => "Rename session",
-            PromptKind::NewWorkspace => "New pane: name it (empty = its folder)",
+            PromptKind::NewWorkspace => "New fleet: name it (empty = its folder)",
             PromptKind::ConfirmCloseWorkspace(_) => "Close workspace and all its panes? (y/n)",
             PromptKind::ConfirmKillServer => "Kill the server and every pane? (y/n)",
             PromptKind::ConfirmRemoveWorktree(_) => "Remove this worktree? (y / f = force / n)",
@@ -491,6 +494,10 @@ pub struct App {
     update_checked: Option<Instant>,
     /// An update is downloading.
     updating: bool,
+    /// Why the last install failed, until it is tried again or the box is read.
+    update_failed: Option<String>,
+    /// The version the Updates box was told to skip this run.
+    update_skipped: Option<String>,
     /// The installed daemon needs a restart after the panes are closed.
     update_installed_this_run: bool,
     daemon_restart_requested: bool,
@@ -520,6 +527,15 @@ pub struct App {
     copy_flash: Option<copy::Flash>,
     /// A line the mode bar shows in place of its hint for `BAR_FLASH_FOR` (`+ name started`).
     bar_flash: Option<(String, Instant)>,
+    /// The undo offer after a session is closed, and a first press waiting for its second.
+    closing: screen::Closing,
+    /// Whether the window has its daemon, and where the tries to get it back stand.
+    service: screen::Service,
+    /// `r` asked to try now; `s` asked to start the service. Taken by the next tick.
+    service_retry_now: bool,
+    service_start_now: bool,
+    /// When the daemon's last restart was first seen to have stopped agents.
+    stopped_since: Option<Instant>,
     /// What happened lately, newest last: (unix secs, pane, kind, text). Kinds: '!' needs
     /// you, '✓' finished, 'i' a message, 'x' an error.
     pub(super) history: std::collections::VecDeque<(u64, Option<ClientTerm>, char, String)>,
@@ -558,13 +574,8 @@ pub struct App {
     marks: HashMap<ClientTerm, marks::Marks>,
     sizes: HashMap<ClientTerm, (u16, u16)>,
     mode: Mode,
+    /// The sidebar shows; hidden, a `»` chip brings it back.
     sidebar: bool,
-    /// With the full sidebar off: the sessions are hidden completely, not shown as the top strip.
-    side_hidden: bool,
-    /// No sidebar key was pressed yet, so a narrow window may fold the sessions into the strip by itself (`screen::draw`).
-    side_auto: bool,
-    /// The sessions were folded into the strip by the rule above, not by a key, so they come back when there is room.
-    side_folded: bool,
     /// The last alert per agent (its status, when) and for any agent: the same news again
     /// soon doesn't ring twice.
     alerted: HashMap<ClientTerm, (Status, Instant)>,
@@ -788,6 +799,8 @@ impl App {
             update_notes: Vec::new(),
             update_checked: None,
             updating: false,
+            update_failed: None,
+            update_skipped: None,
             update_installed_this_run: false,
             daemon_restart_requested: false,
             daemon_restart_reconnect: false,
@@ -796,9 +809,6 @@ impl App {
             reattached: None,
             theme: cfg.theme(),
             sidebar: cfg.ui.sidebar,
-            side_hidden: false,
-            side_auto: true,
-            side_folded: false,
             alerted: HashMap::new(),
             last_alert: None,
             settling: HashMap::new(),
@@ -815,6 +825,11 @@ impl App {
             notice_card: None,
             copy_flash: None,
             bar_flash: None,
+            closing: Default::default(),
+            service: Default::default(),
+            service_retry_now: false,
+            service_start_now: false,
+            stopped_since: None,
             history: Default::default(),
             right_down: None,
             snap: Snapshot::default(),
@@ -977,6 +992,10 @@ impl App {
                         self.dirty = true;
                     }
                     self.expire_unseen_logins();
+                    if self.closing.expire() {
+                        self.dirty = true;
+                    }
+                    self.service_tick(connections).await;
                     if self.bar_flash.as_ref().is_some_and(|(_, at)| at.elapsed() >= BAR_FLASH_FOR) {
                         self.bar_flash = None;
                         self.dirty = true;
@@ -1058,7 +1077,8 @@ impl App {
                 self.notify(format!("Lost the connection to {name}"), true);
             }
         } else if !self.reattach(connections).await {
-            self.quit.get_or_insert_with(|| "server exited".into());
+            // The daemon keeps every session; the window stays and keeps asking for it.
+            self.service_lost();
         }
     }
 
@@ -1117,6 +1137,7 @@ impl App {
                 }
                 Err(e) => {
                     app.updating = false;
+                    app.update_failed = Some(format!("{e:#}"));
                     app.notify(format!("Update failed: {e:#}"), true);
                 }
             }))
@@ -1494,15 +1515,6 @@ impl App {
     fn cmd_on(&self, machine: MachineId, c: Command) {
         if routing::moves_focus(&c) {
             self.route.set_focus(machine);
-        }
-        if matches!(
-            c,
-            Command::NewWorkspace { .. }
-                | Command::NewTab { .. }
-                | Command::NewWorktree { .. }
-                | Command::AgentWorktree { .. }
-        ) {
-            *self.screen.new_tab.borrow_mut() = None;
         }
         self.send(machine, ClientMsg::Command(c));
     }
@@ -2107,8 +2119,6 @@ fn same_dir(a: &std::path::Path, b: &std::path::Path) -> bool {
 #[cfg(test)]
 mod reference_fixture;
 #[cfg(test)]
-mod reference_frames_tests;
-#[cfg(test)]
 mod site_frames;
 #[cfg(test)]
 mod tests;
@@ -2128,7 +2138,3 @@ mod mcp_machine_tests;
 mod remote_status_tests;
 #[cfg(test)]
 mod routing_tests;
-#[cfg(test)]
-mod quick_new_tests;
-#[cfg(test)]
-mod session_popup_tests;

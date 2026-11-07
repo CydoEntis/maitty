@@ -18,13 +18,83 @@ pub(in crate::client) fn helpers_line(n: usize) -> String {
     format!("wants to start {n} helper{}", if n == 1 { "" } else { "s" })
 }
 
-/// The same in `room` columns: the short form on a narrow sidebar, so it is not cut off.
-pub(in crate::client) fn helpers_line_in(n: usize, room: usize) -> String {
-    let full = helpers_line(n);
-    if full.width() <= room {
-        full
-    } else {
-        format!("wants {n} helper{}", if n == 1 { "" } else { "s" })
+impl App {
+    /// Whether session `term` has asked to start helpers and waits for you.
+    pub(in crate::client) fn helpers_asked(&self, term: ClientTerm) -> bool {
+        self.term_info(term)
+            .is_some_and(|t| !t.helper_ask.is_empty())
+    }
+
+    /// Open the question beside `term`'s row; `side`: back to the sidebar after.
+    pub(in crate::client) fn open_helpers(&mut self, term: ClientTerm, side: bool) {
+        if self.helpers_asked(term) {
+            self.screen.inbox_return = None;
+            self.mode = Mode::Helpers { term, side };
+        }
+    }
+
+    /// Open the question from the Inbox's row `sel` (typed `query`): closing it, or answering,
+    /// goes back to the Inbox on that row.
+    pub(in crate::client) fn open_helpers_from_inbox(
+        &mut self,
+        term: ClientTerm,
+        query: String,
+        sel: usize,
+    ) {
+        self.open_helpers(term, false);
+        if matches!(self.mode, Mode::Helpers { .. }) {
+            self.screen.inbox_return = Some((query, sel));
+        }
+    }
+
+    fn helpers_back(&mut self, side: bool) {
+        self.mode = match self.screen.inbox_return.take() {
+            Some((query, sel)) => Mode::GoTo { query, sel },
+            None if side => Mode::Side,
+            None => Mode::Normal,
+        };
+    }
+
+    /// Send your answer, say what it did, and close the question.
+    pub(in crate::client) fn answer_helpers(&mut self, term: ClientTerm, choice: HelperChoice) {
+        let Mode::Helpers { side, .. } = self.mode else {
+            return;
+        };
+        if !self.helpers_asked(term) {
+            self.helpers_back(side);
+            return;
+        }
+        let who = self.session_name(term);
+        self.send(
+            term.machine,
+            ClientMsg::Command(Command::AnswerHelpers {
+                term: term.term,
+                choice,
+            }),
+        );
+        self.helpers_back(side);
+        let said = match choice {
+            HelperChoice::Allow => format!("{who} may start helpers"),
+            HelperChoice::Always => {
+                format!("helpers may always start here · {who} is starting them")
+            }
+            HelperChoice::No => format!("{who} will do it alone"),
+        };
+        self.notify(said, false);
+    }
+
+    pub(in crate::client) fn on_helpers_key(&mut self, term: ClientTerm, side: bool, k: &KeyEvent) {
+        let plain = !k
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
+        match k.code {
+            KeyCode::Esc => self.helpers_back(side),
+            KeyCode::Char('1') if plain => self.answer_helpers(term, HelperChoice::Allow),
+            KeyCode::Char('2') if plain => self.answer_helpers(term, HelperChoice::Always),
+            KeyCode::Char('3') if plain => self.answer_helpers(term, HelperChoice::No),
+            KeyCode::Enter | KeyCode::Char('y' | ' ') => self.notify(NO_REFLEX.into(), false),
+            _ => {}
+        }
     }
 }
 
@@ -73,7 +143,7 @@ pub(in crate::client) fn draw_helpers_pop(
         buf,
         r.x + 2,
         r.y,
-        &plain(vec![
+        &[
             seg(
                 " START HELPERS? ",
                 Style::default()
@@ -82,7 +152,7 @@ pub(in crate::client) fn draw_helpers_pop(
                     .add_modifier(Modifier::BOLD),
             ),
             seg(format!("· {name} "), card.fg(t.muted)),
-        ]),
+        ],
         r.right() - 2,
     );
     let later = " Esc later ";
@@ -181,84 +251,4 @@ pub(in crate::client) fn draw_helpers_pop(
         ScreenHit::HelperAnswer(term, HelperChoice::No),
         right,
     );
-}
-
-impl App {
-    /// Whether session `term` has asked to start helpers and waits for you.
-    pub(in crate::client) fn helpers_asked(&self, term: ClientTerm) -> bool {
-        self.term_info(term)
-            .is_some_and(|t| !t.helper_ask.is_empty())
-    }
-
-    /// Open the question beside `term`'s row; `side`: back to the sidebar after.
-    pub(in crate::client) fn open_helpers(&mut self, term: ClientTerm, side: bool) {
-        if self.helpers_asked(term) {
-            self.screen.inbox_return = None;
-            self.mode = Mode::Helpers { term, side };
-        }
-    }
-
-    /// Open the question from the Inbox's row `sel` (typed `query`): closing it, or answering,
-    /// goes back to the Inbox on that row.
-    pub(in crate::client) fn open_helpers_from_inbox(
-        &mut self,
-        term: ClientTerm,
-        query: String,
-        sel: usize,
-    ) {
-        self.open_helpers(term, false);
-        if matches!(self.mode, Mode::Helpers { .. }) {
-            self.screen.inbox_return = Some((query, sel));
-        }
-    }
-
-    fn helpers_back(&mut self, side: bool) {
-        self.mode = match self.screen.inbox_return.take() {
-            Some((query, sel)) => Mode::GoTo { query, sel },
-            None if side => Mode::Side,
-            None => Mode::Normal,
-        };
-    }
-
-    /// Send your answer, say what it did, and close the question.
-    pub(in crate::client) fn answer_helpers(&mut self, term: ClientTerm, choice: HelperChoice) {
-        let Mode::Helpers { side, .. } = self.mode else {
-            return;
-        };
-        if !self.helpers_asked(term) {
-            self.helpers_back(side);
-            return;
-        }
-        let who = self.session_name(term);
-        self.send(
-            term.machine,
-            ClientMsg::Command(Command::AnswerHelpers {
-                term: term.term,
-                choice,
-            }),
-        );
-        self.helpers_back(side);
-        let said = match choice {
-            HelperChoice::Allow => format!("{who} may start helpers"),
-            HelperChoice::Always => {
-                format!("helpers may always start here · {who} is starting them")
-            }
-            HelperChoice::No => format!("{who} will do it alone"),
-        };
-        self.notify(said, false);
-    }
-
-    pub(in crate::client) fn on_helpers_key(&mut self, term: ClientTerm, side: bool, k: &KeyEvent) {
-        let plain = !k
-            .modifiers
-            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
-        match k.code {
-            KeyCode::Esc => self.helpers_back(side),
-            KeyCode::Char('1') if plain => self.answer_helpers(term, HelperChoice::Allow),
-            KeyCode::Char('2') if plain => self.answer_helpers(term, HelperChoice::Always),
-            KeyCode::Char('3') if plain => self.answer_helpers(term, HelperChoice::No),
-            KeyCode::Enter | KeyCode::Char('y' | ' ') => self.notify(NO_REFLEX.into(), false),
-            _ => {}
-        }
-    }
 }

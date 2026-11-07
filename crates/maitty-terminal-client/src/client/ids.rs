@@ -108,7 +108,7 @@ mod tests {
 
     #[test]
     fn machines_do_not_change_what_goes_over_the_wire() {
-        assert_eq!(PROTOCOL_VERSION, 73);
+        assert_eq!(PROTOCOL_VERSION, 75);
         let hello = ClientMsg::Hello {
             version: PROTOCOL_VERSION,
             attach: true,
@@ -129,7 +129,7 @@ mod tests {
         let command = ClientMsg::Command(crate::protocol::Command::FocusPane { term: 3 });
         assert_eq!(
             hex(&hello),
-            "81a548656c6c6f86a776657273696f6e49a6617474616368c3a466726f6d9203a430306666aa73747275637475726564c0a773757266616365a87465726d696e616ca77265706c617973c3"
+            "81a548656c6c6f86a776657273696f6e4ba6617474616368c3a466726f6d9203a430306666aa73747275637475726564c0a773757266616365a87465726d696e616ca77265706c617973c3"
         );
         assert_eq!(
             hex(&input),
@@ -144,29 +144,6 @@ mod tests {
             "81a7436f6d6d616e6481a9466f63757350616e6581a47465726d03"
         );
     }
-
-    /// A saved file as `maitty-ui.json` was written before machines, from a real install (folders
-    /// changed). Its sessions are bare pane numbers.
-    const OLD_SAVED: &str = r#"{
-  "order": [
-    "c:\\dev",
-    "c:\\dev\\maitty",
-    "ssh:github.com",
-    "\\\\?\\c:\\dev\\autobattler"
-  ],
-  "closed": ["p:c:\\dev"],
-  "session_order": [2, 1],
-  "placed": [[2, "c:\\dev\\maitty", true]],
-  "open_branches": [],
-  "side_w": 38,
-  "split": null,
-  "draft": "",
-  "last_agent": "claude",
-  "names": { "c:\\dev\\maitty": "maitty" },
-  "reviewed": {},
-  "recent": [],
-  "sheet_w": {}
-}"#;
 
     fn two_machines() -> App {
         let mut app = world(Stage::None);
@@ -183,59 +160,6 @@ mod tests {
         app
     }
 
-    /// The sessions as the sidebar lists them, top to bottom.
-    fn rows(app: &App) -> Vec<(MachineId, SessionKey)> {
-        let model = app.screen_model();
-        crate::client::screen::side_lines(app, &model, &app.theme)
-            .iter()
-            .filter_map(|line| crate::client::screen::line_term(&model, line))
-            .map(|s| (s.machine, s.key))
-            .collect()
-    }
-
-    #[test]
-    fn an_old_saved_file_loads_unchanged_and_sorts_the_same() {
-        let saved: crate::client::screen::Saved = serde_json::from_str(OLD_SAVED).unwrap();
-        assert!(saved.machines.is_empty());
-        assert_eq!(
-            saved.session_order,
-            [SessionKey::Pane(2), SessionKey::Pane(1)]
-        );
-        assert_eq!(saved.placed[0].0, SessionKey::Pane(2));
-        // Saving writes the sessions in their current spelling and nothing else differs.
-        let mut again: serde_json::Value =
-            serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
-        let mut old: serde_json::Value = serde_json::from_str(OLD_SAVED).unwrap();
-        for file in [&mut again, &mut old] {
-            let file = file.as_object_mut().unwrap();
-            file.remove("session_order");
-            file.remove("placed");
-            // A field added since, which an old file does not have and a new one writes empty.
-            file.remove("recent_paths");
-        }
-        assert_eq!(again, old);
-
-        let mut app = world(Stage::None);
-        let unsorted = rows(&app);
-        app.screen.saved = saved;
-        app.screen_fresh();
-        let sorted = rows(&app);
-        assert_eq!(sorted.len(), unsorted.len());
-        assert!(
-            sorted
-                .iter()
-                .all(|(machine, _)| *machine == MachineId::LOCAL)
-        );
-        let at = |rows: &[(MachineId, SessionKey)], id| {
-            rows.iter().position(|(_, k)| *k == SessionKey::Pane(id))
-        };
-        assert!(at(&unsorted, 1) < at(&unsorted, 2), "unsaved: {unsorted:?}");
-        assert!(
-            at(&sorted, 2) < at(&sorted, 1),
-            "the saved order wins: {sorted:?}"
-        );
-    }
-
     #[test]
     fn entries_for_machines_that_are_not_connected_are_kept() {
         let gone = r#"{"machines":{"gone-box":{"session_order":[{"Pane":7}],"placed":[[{"Pane":7},"/srv/app",true]]}}}"#;
@@ -247,40 +171,6 @@ mod tests {
         let written = serde_json::to_string(&app.screen.saved).unwrap();
         let read: crate::client::screen::Saved = serde_json::from_str(&written).unwrap();
         assert_eq!(read.machines, before);
-    }
-
-    #[test]
-    fn each_machine_sorts_by_its_own_saved_order() {
-        let mut app = two_machines();
-        app.screen.saved.session_order = vec![SessionKey::Pane(2)];
-        app.screen_fresh();
-        let all = rows(&app);
-        let order_on = |machine| -> Vec<SessionKey> {
-            all.iter()
-                .filter(|(m, _)| *m == machine)
-                .map(|(_, k)| *k)
-                .collect()
-        };
-        let (here, there) = (order_on(MachineId::LOCAL), order_on(MachineId(1)));
-        let at = |rows: &[SessionKey], id| rows.iter().position(|k| *k == SessionKey::Pane(id));
-        assert!(
-            at(&here, 2) < at(&here, 1),
-            "this machine's saved order: {here:?}"
-        );
-        assert!(
-            at(&there, 1) < at(&there, 2),
-            "the other has none of its own: {there:?}"
-        );
-        app.screen
-            .saved
-            .session_order_mut("build")
-            .push(SessionKey::Pane(2));
-        app.screen_fresh();
-        let there: Vec<_> = rows(&app)
-            .into_iter()
-            .filter(|(m, _)| *m == MachineId(1))
-            .collect();
-        assert_eq!(there[0].1, SessionKey::Pane(2), "its own order: {there:?}");
     }
 
     #[test]

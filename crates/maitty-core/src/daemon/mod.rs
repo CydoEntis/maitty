@@ -78,6 +78,8 @@ const HELPER_SETTLES: Duration = Duration::from_secs(45);
 /// the server starts the first check is.
 const VANISHED_CHECK_EVERY: Duration = Duration::from_secs(10 * 60);
 const VANISHED_CHECK_FIRST: Duration = Duration::from_secs(60);
+/// How long a closed session can still be brought back; its process runs until then.
+pub(crate) const UNDO_WINDOW: Duration = Duration::from_secs(6);
 /// A daemon nothing ever used (no panes, no clients) exits after this.
 const EXIT_WHEN_UNUSED_FOR: Duration = Duration::from_secs(30);
 /// How long a pane or agent ending on its own is kept out of the saved session. A shutdown
@@ -143,6 +145,8 @@ pub enum Ev {
     ProcessExited(TermId),
     Scan(Vec<scan::Found>),
     Git(Vec<(WsId, Option<GitInfo>)>),
+    /// Lines added and removed per checkout, read beside the git poll.
+    Diffs(HashMap<PathBuf, (u32, u32)>),
     Prs(Vec<(pr::Place, pr::Read)>),
     WorktreeCreated {
         client: ClientId,
@@ -359,6 +363,8 @@ struct Daemon {
     prs: pr::Prs,
     last_secret_files: Instant,
     git_busy: bool,
+    /// Lines added and removed against HEAD, by checkout (`git::diff_counts`).
+    diff_counts: HashMap<PathBuf, (u32, u32)>,
     last_git: Instant,
     last_save: Instant,
     last_output_save: Instant,
@@ -385,6 +391,9 @@ struct Daemon {
     conversations: Vec<crate::conversation::Conversation>,
     pending_starts: Vec<crate::conversation::PendingStart>,
     conversation_operations: Vec<crate::conversation::Operation>,
+    /// Chat conversations that were running when the previous daemon went away, with the
+    /// generation they were fenced to: what an automatic resume may start, once.
+    resumable_conversations: Vec<(crate::conversation::ConversationId, u64)>,
     conversation_states: BTreeMap<crate::conversation::ConversationId, conversation::State>,
     /// Conversations whose agent was stopped on purpose, so its exit is not a failure.
     conversation_ending: std::collections::BTreeSet<crate::conversation::ConversationId>,
@@ -522,6 +531,7 @@ pub fn run(on_start: impl FnOnce()) -> Result<()> {
             d.restore_startup(saved);
         }
         d.initialize_conversation_cache().await?;
+        d.resume_conversations();
         d.run(rx).await;
         Ok(())
     })
@@ -757,6 +767,8 @@ impl Daemon {
                 Command::ConversationStart { .. }
                     | Command::NewWorkspace { .. }
                     | Command::NewTab { .. }
+                    | Command::NewFleet { .. }
+                    | Command::NewShip { .. }
                     | Command::Split { .. }
                     | Command::NewWorktree { .. }
                     | Command::Popup { .. }
@@ -809,6 +821,16 @@ impl Daemon {
                 anyhow::bail!("Only a human client can remove a queued message")
             }
             Command::ConversationDequeue { .. } => self.may(client, Grant::Write, None),
+            Command::SetSetting { .. }
+                if structured
+                    || self
+                        .clients
+                        .get(&client)
+                        .is_some_and(|client| client.from.is_some()) =>
+            {
+                anyhow::bail!("Only a human client can change settings")
+            }
+            Command::SetSetting { .. } => Ok(()),
             Command::ConversationRename { .. } | Command::ConversationArchive { .. }
                 if structured
                     || self
@@ -847,10 +869,14 @@ impl Daemon {
             }
             Command::NewWorkspace { .. }
             | Command::NewTab { .. }
+            | Command::NewFleet { .. }
+            | Command::NewShip { .. }
             | Command::Split { .. }
             | Command::NewWorktree { .. }
             | Command::Popup { .. } => self.may(client, Grant::Start, None),
-            Command::ClosePane { term } => {
+            Command::ClosePane { term }
+            | Command::CloseSession { term }
+            | Command::UndoClose { term } => {
                 self.may_use_terminal(client, *term)?;
                 self.may(client, Grant::Admin, Some(*term)).or_else(|e| {
                     // Closing itself is fine.
@@ -974,6 +1000,11 @@ pub fn forget_session() {
     persist::forget();
 }
 
+/// Whether a saved session exists for the next daemon to restore.
+pub fn session_is_saved() -> bool {
+    persist::load().is_some()
+}
+
 /// Agents in the saved session: what a restart of a server that can't be asked would resume.
 pub fn saved_agent_count() -> usize {
     persist::load().map_or(0, |s| {
@@ -1024,6 +1055,7 @@ impl Daemon {
             prs: pr::Prs::default(),
             last_secret_files: Instant::now(),
             git_busy: false,
+            diff_counts: HashMap::new(),
             last_git: crate::clock::ago(GIT_POLL_EVERY),
             last_save: Instant::now(),
             last_output_save: Instant::now(),
@@ -1045,6 +1077,7 @@ impl Daemon {
             conversations: Vec::new(),
             pending_starts: Vec::new(),
             conversation_operations: Vec::new(),
+            resumable_conversations: Vec::new(),
             conversation_states: BTreeMap::new(),
             conversation_ending: std::collections::BTreeSet::new(),
             conversation_requests: BTreeMap::new(),
@@ -1106,6 +1139,7 @@ impl Daemon {
                 }
                 _ = tick.tick() => {
                     self.sync_scan_interval();
+                    self.finish_closes();
                     self.update_statuses();
                     self.settled_alerts();
                     self.phone_alerts();
@@ -1161,7 +1195,11 @@ impl Daemon {
     }
 
     fn activity(&self) -> crate::restart::Activity {
-        let live = || self.terms.values().filter(|t| !t.spare);
+        let live = || {
+            self.terms
+                .values()
+                .filter(|t| !t.spare && t.closing.is_none())
+        };
         let structured: Vec<_> = self
             .conversation_summaries()
             .into_iter()
@@ -1295,9 +1333,25 @@ impl Daemon {
 
     /// The first palette colour no workspace is using (cycling once all are taken).
     fn free_color(&self) -> u8 {
-        let n = self.cfg.ui.workspace_colors.len().clamp(1, 255) as u8;
-        (0..n)
-            .find(|c| !self.workspaces.iter().any(|w| w.color == *c))
+        self.free_color_among(&[])
+    }
+
+    /// How many colours the workspace palette has (at least one).
+    fn palette_len(&self) -> u8 {
+        self.cfg.ui.workspace_colors.len().clamp(1, 255) as u8
+    }
+
+    /// The first of `wanted` (palette indexes; empty means the whole palette) that no workspace
+    /// uses, else the first free colour of the whole palette, else cycling.
+    fn free_color_among(&self, wanted: &[u8]) -> u8 {
+        let n = self.palette_len();
+        let free = |c: &u8| !self.workspaces.iter().any(|w| w.color == *c);
+        wanted
+            .iter()
+            .copied()
+            .filter(|c| *c < n)
+            .find(free)
+            .or_else(|| (0..n).find(free))
             .unwrap_or((self.workspaces.len() % n as usize) as u8)
     }
 
@@ -1319,6 +1373,16 @@ impl Daemon {
             .map(|w| (w.id, w.cwd.clone()))
             .collect();
         let dir_of: HashMap<WsId, PathBuf> = dirs.iter().cloned().collect();
+        let checkouts: Vec<PathBuf> = {
+            let mut tops: Vec<PathBuf> = self
+                .terms
+                .values()
+                .filter_map(|t| t.head.as_ref().map(|h| h.top.clone()))
+                .collect();
+            tops.sort();
+            tops.dedup();
+            tops
+        };
         let tx = self.tx.clone();
         let stale_probes = self.stale_probes();
         let conversation_stale_probes = self.conversation_stale_probes();
@@ -1353,6 +1417,11 @@ impl Daemon {
                 }
             }
             let _ = tx.blocking_send(Ev::Git(res));
+            let diffs: HashMap<PathBuf, (u32, u32)> = checkouts
+                .into_iter()
+                .filter_map(|dir| git::diff_counts(&dir).map(|counts| (dir, counts)))
+                .collect();
+            let _ = tx.blocking_send(Ev::Diffs(diffs));
         });
     }
 
@@ -1583,6 +1652,7 @@ impl Daemon {
                     if let Some(t) = self.terms.get_mut(&tid)
                         && !seen
                         && !t.bell
+                        && t.closing.is_none()
                     {
                         t.bell = true;
                         self.dirty = true;
@@ -1746,6 +1816,12 @@ impl Daemon {
                         w.git = info;
                         self.dirty = true;
                     }
+                }
+            }
+            Ev::Diffs(counts) => {
+                if self.diff_counts != counts {
+                    self.diff_counts = counts;
+                    self.dirty = true;
                 }
             }
             Ev::Prs(reads) => self.prs_read(reads),
@@ -2450,6 +2526,16 @@ impl Daemon {
                     {
                         ServerMsg::Error("Only a human client can read usage".into())
                     }
+                    Query::Settings
+                        if self.clients.get(&client).is_some_and(|client| {
+                            client.from.is_some() || client.structured.is_some()
+                        }) =>
+                    {
+                        ServerMsg::Error("Only a human client can read settings".into())
+                    }
+                    Query::Settings => {
+                        ServerMsg::Reply(Reply::Settings(crate::shared_settings::read(&self.cfg)))
+                    }
                     Query::UsageReport { period } => {
                         ServerMsg::Reply(Reply::UsageReport(self.usage_report(period)))
                     }
@@ -2656,11 +2742,20 @@ impl Daemon {
         snap
     }
 
+    /// Lines added and removed in the checkout `t` is in; zero outside git or before the first read.
+    fn diff_of(&self, t: &Term) -> (u32, u32) {
+        t.head
+            .as_ref()
+            .and_then(|h| self.diff_counts.get(&h.top))
+            .copied()
+            .unwrap_or((0, 0))
+    }
+
     fn snapshot(&self) -> Snapshot {
         let terms: BTreeMap<TermId, TermInfo> = self
             .terms
             .values()
-            .filter(|t| !t.spare)
+            .filter(|t| !t.spare && t.closing.is_none())
             .map(|t| {
                 (
                     t.id,
@@ -2697,6 +2792,8 @@ impl Daemon {
                         said: t.said.clone(),
                         last_lines: t.last_lines.clone(),
                         branch: t.head.as_ref().map(|h| h.branch.clone()),
+                        diff_added: self.diff_of(t).0,
+                        diff_removed: self.diff_of(t).1,
                         linked: t.head.as_ref().is_some_and(|h| h.linked),
                         root: t.head.as_ref().map(|h| h.main_root.clone()),
                         top: t.head.as_ref().map(|h| h.top.clone()),
@@ -2730,6 +2827,7 @@ impl Daemon {
                         },
                         interrupted: t.interrupted.clone().filter(|_| t.agent.is_none()),
                         ask: t.ask_now(),
+                        exit: t.exit,
                         timeline: t.timeline.iter().cloned().collect(),
                         subagents: t.subagents.iter().map(|(_, k)| k.clone()).collect(),
                         started_by: t.started_by,
@@ -2743,12 +2841,17 @@ impl Daemon {
                 )
             })
             .collect();
+        let workspaces = self.visible_workspaces();
+        let active_ws = self
+            .active_ws
+            .filter(|id| workspaces.iter().any(|w| w.id == *id))
+            .or_else(|| workspaces.first().map(|w| w.id));
         Snapshot {
             conversations: self.conversation_summaries(),
             daemon_version: env!("APP_VERSION").into(),
             daemon_id: Some(self.id.clone()),
-            workspaces: self.workspaces.clone(),
-            active_ws: self.active_ws,
+            workspaces,
+            active_ws,
             terms,
             questions: self.questions.iter().map(|(q, ..)| q.clone()).collect(),
             secret_requests: self.secrets.requests(),
@@ -2975,6 +3078,87 @@ impl Daemon {
                 .find(|t| t.layout.contains(term))
                 .map(|t| (w.id, t.id))
         })
+    }
+
+    /// The workspaces as clients and saves should see them: sessions closing with an undo
+    /// window are left out of every layout, and tabs and workspaces they leave empty with them.
+    /// The real tree keeps the pane, so an undo puts it back where it was.
+    pub(super) fn visible_workspaces(&self) -> Vec<WorkspaceInfo> {
+        let hidden = |id: &TermId| self.terms.get(id).is_some_and(|t| t.closing.is_some());
+        if !self.terms.values().any(|t| t.closing.is_some()) {
+            return self.workspaces.clone();
+        }
+        let mut out = Vec::new();
+        for w in &self.workspaces {
+            let mut w = w.clone();
+            w.tabs = std::mem::take(&mut w.tabs)
+                .into_iter()
+                .filter_map(|mut tab| {
+                    for id in tab.layout.leaves().into_iter().filter(hidden) {
+                        tab.layout =
+                            std::mem::replace(&mut tab.layout, Node::Leaf(0)).remove(id)?;
+                    }
+                    if hidden(&tab.focus) {
+                        tab.focus = tab.layout.first_leaf();
+                    }
+                    Some(tab)
+                })
+                .collect();
+            if w.tabs.is_empty() {
+                continue;
+            }
+            if !w.tabs.iter().any(|t| t.id == w.active_tab) {
+                w.active_tab = w.tabs[0].id;
+            }
+            out.push(w);
+        }
+        out
+    }
+
+    /// Start ending a session: hide it, keep it running for `UNDO_WINDOW`.
+    fn soft_close(&mut self, client: ClientId, term: TermId) {
+        let Some(t) = self.terms.get_mut(&term) else {
+            return;
+        };
+        // A conversation-backed terminal belongs to a conversation that outlives the window
+        // and is listed on its own, so hiding the terminal would leave the two disagreeing.
+        if t.conversation_id.is_some() {
+            let tops = self.worktrees_of(&[term]);
+            self.close_term(term);
+            self.cleanup_worktrees(client, tops);
+            return;
+        }
+        // A second close keeps the first one's clock.
+        if t.closing.is_none() {
+            t.closing = Some((Instant::now(), client));
+            self.dirty = true;
+        }
+    }
+
+    fn undo_close(&mut self, term: TermId) {
+        if let Some(t) = self.terms.get_mut(&term)
+            && t.closing.take().is_some()
+        {
+            self.dirty = true;
+        }
+    }
+
+    /// End the sessions whose undo window has passed, as `ClosePane` ends one.
+    fn finish_closes(&mut self) {
+        let due: Vec<(TermId, ClientId)> = self
+            .terms
+            .values()
+            .filter_map(|t| {
+                t.closing
+                    .filter(|(at, _)| at.elapsed() >= UNDO_WINDOW)
+                    .map(|(_, by)| (t.id, by))
+            })
+            .collect();
+        for (term, client) in due {
+            let tops = self.worktrees_of(&[term]);
+            self.close_term(term);
+            self.cleanup_worktrees(client, tops);
+        }
     }
 
     fn close_term(&mut self, term: TermId) {

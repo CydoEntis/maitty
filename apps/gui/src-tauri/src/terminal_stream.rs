@@ -18,12 +18,13 @@
 use crate::hub::{Hub, HubHandle, LocalDial, MACHINE_STATE_EVENT, MachineState, Update, describe};
 use crate::routing::{self, machine_of};
 use crate::streams::{Out, Streams};
-use maitty_desktop_client::PaneCommand;
+use maitty_desktop_client::{FleetCommand, PaneCommand};
 use maitty_machines::link::Timing;
 use maitty_machines::machine_config::Grant;
 use maitty_machines::machine_ids::MachineIds;
 use maitty_machines::{MachineDef, MachineId, Outgoing};
 use maitty_shared::protocol::{ClientMsg, Command, FolderListing, Query, Snapshot, Status, TermId};
+use maitty_shared::settings_view::{Appearance, NewSessionView, SettingKey, SettingValue, SharedSettings, SidebarSide, WindowStyle};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -47,6 +48,8 @@ const MACHINE_CLIPBOARD_EVENT: &str = "machine-clipboard";
 const SESSION_ATTENTION_EVENT: &str = "session-attention";
 const MACHINE_ERROR_EVENT: &str = "machine-error";
 const FOLDER_LISTING_EVENT: &str = "folder-listing";
+/// The shared settings, whenever the daemon says them: the answer to a question, or a change.
+const SHARED_SETTINGS_EVENT: &str = "shared-settings";
 
 /// The longest folder path sent to another machine.
 const MOST_FOLDER_BYTES: usize = 4096;
@@ -233,6 +236,12 @@ impl Wire {
             .map_err(|_| refusal(handle, machine))
     }
 
+    /// A fleet request for another machine's daemon: the machine's line takes it without waiting.
+    /// Refused, naming the machine, when the machine has no line or the request is not valid.
+    pub fn fleet(&self, machine: Option<u16>, command: FleetCommand) -> Result<(), String> {
+        self.send(machine_of(machine), command.message()?)
+    }
+
     /// Start a terminal session in `folder` on another machine. The folder is a path there: one
     /// that does not exist opens in that machine's home folder, so `~` is a fair default.
     /// Refused, naming the machine, when it has no line.
@@ -267,6 +276,21 @@ impl Wire {
                 path: path.to_string(),
                 tag,
             }),
+        )
+    }
+
+    /// Ask this computer's daemon for the shared settings. The answer comes back as a
+    /// `shared-settings` event, the same one a change anywhere raises.
+    pub fn shared_settings(&self) -> Result<(), String> {
+        self.send(MachineId::LOCAL, ClientMsg::Query(Query::Settings))
+    }
+
+    /// Ask this computer's daemon to change one shared setting. The daemon checks the value and
+    /// tells every client; this window learns of it from the `shared-settings` event.
+    pub fn set_shared_setting(&self, key: SettingKey, value: SettingValue) -> Result<(), String> {
+        self.send(
+            MachineId::LOCAL,
+            ClientMsg::Command(Command::SetSetting { key, value }),
         )
     }
 
@@ -320,6 +344,70 @@ pub fn list_folders(
     tag: u64,
 ) -> Result<(), String> {
     wire.list_folders(machine, &path, tag)
+}
+
+/// Asks the daemon for the shared settings; the answer arrives as a `shared-settings` event.
+#[tauri::command]
+pub fn get_shared_settings(wire: tauri::State<'_, Wire>) -> Result<(), String> {
+    wire.shared_settings()
+}
+
+/// Changes one shared setting. `key` is the setting's name in config.toml terms (`default_agent`,
+/// `new_session_view`, `sidebar_side`, `theme_dark`, `theme_light`, `appearance`, `spinner`,
+/// `start_dir`, `reduce_motion`, `window_style`) and `value` the kind it takes; anything else is
+/// refused here, and the daemon checks the value again.
+#[tauri::command]
+pub fn set_shared_setting(
+    wire: tauri::State<'_, Wire>,
+    key: String,
+    value: serde_json::Value,
+) -> Result<(), String> {
+    let (key, value) = setting_from_wire(&key, value)?;
+    wire.set_shared_setting(key, value)
+}
+
+/// The typed setting a name and a JSON value stand for.
+pub(crate) fn setting_from_wire(
+    key: &str,
+    value: serde_json::Value,
+) -> Result<(SettingKey, SettingValue), String> {
+    fn text(value: serde_json::Value) -> Result<String, String> {
+        match value {
+            serde_json::Value::String(text) => Ok(text),
+            _ => Err("This setting takes text".to_string()),
+        }
+    }
+    fn word<T: serde::de::DeserializeOwned>(value: serde_json::Value) -> Result<T, String> {
+        serde_json::from_value(value).map_err(|_| "That is not one of this setting's values".to_string())
+    }
+    Ok(match key {
+        "default_agent" => (SettingKey::DefaultAgent, SettingValue::Text(text(value)?)),
+        "theme_dark" => (SettingKey::ThemeDark, SettingValue::Text(text(value)?)),
+        "theme_light" => (SettingKey::ThemeLight, SettingValue::Text(text(value)?)),
+        "start_dir" => (SettingKey::StartDir, SettingValue::Text(text(value)?)),
+        "new_session_view" => (
+            SettingKey::NewSessionView,
+            SettingValue::NewSessionView(word::<NewSessionView>(value)?),
+        ),
+        "sidebar_side" => (
+            SettingKey::SidebarSide,
+            SettingValue::SidebarSide(word::<SidebarSide>(value)?),
+        ),
+        "appearance" => (
+            SettingKey::Appearance,
+            SettingValue::Appearance(word::<Appearance>(value)?),
+        ),
+        "window_style" => (
+            SettingKey::WindowStyle,
+            SettingValue::WindowStyle(word::<WindowStyle>(value)?),
+        ),
+        "reduce_motion" => match value {
+            serde_json::Value::Bool(on) => (SettingKey::ReduceMotion, SettingValue::Bool(on)),
+            _ => return Err("This setting takes true or false".to_string()),
+        },
+        "spinner" => (SettingKey::Spinner, SettingValue::List(word::<Vec<String>>(value)?)),
+        _ => return Err("That is not a shared setting".to_string()),
+    })
 }
 
 /// `machine` is left out for this computer's own panes.
@@ -450,6 +538,8 @@ pub enum Reaction {
     },
     /// A machine was taken out of the list.
     Removed { machine: MachineId },
+    /// The shared settings of this computer's daemon.
+    Settings(SharedSettings),
     /// A machine's answer about a folder, for the window that asked.
     Folders {
         machine: MachineId,
@@ -536,6 +626,7 @@ fn reactions(handle: &HubHandle, outs: Vec<Out>) -> Vec<Reaction> {
             Out::Notice { machine, text } => Some(Reaction::Notice { machine, text }),
             Out::Clipboard { machine, text } => Some(Reaction::Clipboard { machine, text }),
             Out::Attention { machine, term, status } => Some(Reaction::Attention { machine, term, status }),
+            Out::Settings(settings) => Some(Reaction::Settings(settings)),
             Out::Folders { machine, tag, listing } => Some(Reaction::Folders { machine, tag, listing }),
             Out::Sessions { machine, snapshot } => Some(Reaction::Sessions { machine, snapshot }),
             Out::WantReplay { machine, term } => {
@@ -622,6 +713,9 @@ fn perform(app: &AppHandle, reactions: Vec<Reaction>) {
                         text,
                     },
                 );
+            }
+            Reaction::Settings(settings) => {
+                let _ = app.emit(SHARED_SETTINGS_EVENT, settings);
             }
             Reaction::Folders { machine, tag, listing } => {
                 let _ = app.emit(
@@ -768,5 +862,58 @@ mod tests {
         assert_eq!(json["machine"], 1);
         assert_eq!(json["state"], "connected");
         assert!(json.get("snapshot").is_some());
+    }
+
+    #[test]
+    fn a_shared_setting_is_typed_by_its_name_and_a_wrong_kind_is_refused() {
+        use serde_json::json;
+        assert_eq!(
+            setting_from_wire("window_style", json!("flat")).unwrap(),
+            (SettingKey::WindowStyle, SettingValue::WindowStyle(WindowStyle::Flat))
+        );
+        assert_eq!(
+            setting_from_wire("reduce_motion", json!(true)).unwrap(),
+            (SettingKey::ReduceMotion, SettingValue::Bool(true))
+        );
+        assert_eq!(
+            setting_from_wire("start_dir", json!("/srv")).unwrap(),
+            (SettingKey::StartDir, SettingValue::Text("/srv".to_string()))
+        );
+        assert_eq!(
+            setting_from_wire("spinner", json!(["a", "b"])).unwrap(),
+            (SettingKey::Spinner, SettingValue::List(vec!["a".to_string(), "b".to_string()]))
+        );
+        assert!(setting_from_wire("window_style", json!("tiled")).is_err(), "tiled is gone");
+        assert!(setting_from_wire("reduce_motion", json!("yes")).is_err());
+        assert!(setting_from_wire("start_dir", json!(3)).is_err());
+        assert!(setting_from_wire("machines", json!("x")).is_err(), "only the shared keys are reachable");
+    }
+
+    #[test]
+    fn only_this_computers_settings_reach_the_window() {
+        let settings = SharedSettings {
+            default_agent: "claude".to_string(),
+            new_session_view: NewSessionView::Chat,
+            sidebar_side: SidebarSide::Left,
+            theme_dark: "Midnight".to_string(),
+            theme_light: "Paper".to_string(),
+            appearance: Appearance::Dark,
+            spinner: vec![],
+            start_dir: String::new(),
+            reduce_motion: false,
+            window_style: WindowStyle::Flat,
+        };
+        let mut streams = Streams::default();
+        let now = Instant::now();
+        let local = streams.on_message(MachineId::LOCAL, ServerMsg::SettingsChanged(settings.clone()), now);
+        assert!(matches!(local.as_slice(), [Out::Settings(told)] if *told == settings));
+        let answer = streams.on_message(
+            MachineId::LOCAL,
+            ServerMsg::Reply(maitty_shared::protocol::Reply::Settings(settings.clone())),
+            now,
+        );
+        assert!(matches!(answer.as_slice(), [Out::Settings(_)]));
+        let other = streams.on_message(MachineId(1), ServerMsg::SettingsChanged(settings), now);
+        assert!(other.is_empty(), "another machine's settings are not shown");
     }
 }

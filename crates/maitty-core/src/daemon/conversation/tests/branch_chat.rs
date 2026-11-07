@@ -152,6 +152,7 @@ async fn a_chat_on_a_branch_starts_in_its_own_worktree_and_the_daemon_owns_it() 
                 generation,
                 operation: 1,
                 text: "Synthetic prompt".into(),
+                choice: None,
             }),
             None,
         )

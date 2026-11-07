@@ -192,7 +192,7 @@ pub(super) fn button(t: &Theme, label: &str, key: &str, kind: BtnKind) -> Vec<Se
         ));
     }
     v.push(r);
-    super::screen::plain(v)
+    v
 }
 
 /// A key drawn as a keycap: ` key ` raised on `btn`, strong and bold. A combo (`Ctrl+Space`) is
@@ -450,16 +450,17 @@ pub(super) fn draw_changes(
         } else {
             format!("{} · ", v.agent)
         };
+        // The branch in violet, then `2 files · +38 −4`, as the redesign says it.
         left.push(seg(
-            format!("{} · {agent}", r.task.branch),
+            r.task.branch.clone(),
+            Style::default().fg(t.violet()).add_modifier(Modifier::BOLD),
+        ));
+        left.push(seg(
+            format!("   {agent}{} files · ", r.files.len()),
             Style::default().fg(t.muted),
         ));
         left.push(seg(format!("+{added}"), Style::default().fg(green)));
         left.push(seg(format!(" −{removed}"), Style::default().fg(red)));
-        left.push(seg(
-            format!(" · {} files", r.files.len()),
-            Style::default().fg(t.muted),
-        ));
         if !v.reviewed.is_empty() {
             let all = v.reviewed.len() == r.files.len();
             left.push(seg(
@@ -813,6 +814,9 @@ pub(super) fn draw_changes(
 
 /// Files: the tree beside the selected file. `one_side` (a narrow panel) shows the tree, or
 /// the file you opened with a `‹` back to the tree.
+/// Files' tree column beside the open file, as the redesign draws it.
+const FILES_TREE_W: u16 = 24;
+
 pub(super) fn draw_files(
     app: &mut App,
     buf: &mut Buffer,
@@ -828,16 +832,11 @@ pub(super) fn draw_files(
         .clone()
         .map(|b| format!(" · {b}"))
         .unwrap_or_default();
-    let left = vec![
-        seg(
-            "files  ",
-            Style::default().fg(t.strong).add_modifier(Modifier::BOLD),
-        ),
-        seg(
-            format!("{}{branch}", tilde(&v.root)),
-            Style::default().fg(t.muted),
-        ),
-    ];
+    // The panel's title chip already says `files`: the header names the folder.
+    let left = vec![seg(
+        format!("{}{branch}", tilde(&v.root)),
+        Style::default().fg(t.strong).add_modifier(Modifier::BOLD),
+    )];
     let filter = if v.filtering || !v.filter.is_empty() {
         format!("/{}  ", v.filter)
     } else {
@@ -872,7 +871,7 @@ pub(super) fn draw_files(
     let fw: u16 = if one_side {
         body.width
     } else {
-        44.min(body.width / 2)
+        FILES_TREE_W.min(body.width / 2)
     };
     if show_tree {
         draw_files_tree(app, buf, body, fw, t, v, one_side);
@@ -1333,6 +1332,8 @@ fn single_label(a: &crate::keys::Action) -> &'static str {
         A::ScrollDown => "Scroll down",
         A::PrevPrompt => "Previous command",
         A::NextPrompt => "Next command",
+        A::NextSession => "Next session",
+        A::PrevSession => "Previous session",
         _ => "",
     }
 }
@@ -1385,6 +1386,20 @@ fn direct_key_rows() -> Vec<(&'static str, Vec<crate::keys::Action>)> {
         .filter_map(|(_, name)| name.parse::<A>().ok())
         .map(|a| (label_of(&a), vec![a]))
         .collect();
+    let listed: Vec<A> = rows.iter().flat_map(|(_, acts)| acts.clone()).collect();
+    // The keys that need no prefix and no Alt letter: new session, the palette, the inbox,
+    // changing session, renaming.
+    rows.extend(
+        crate::keys::DEFAULT_GLOBAL_KEYS
+            .iter()
+            .filter_map(|(_, name)| name.parse::<A>().ok())
+            .filter(|a| !matches!(a, A::SelectTab(_)))
+            .filter(|a| !listed.contains(a))
+            .map(|a| {
+                let label = Some(label_of(&a)).filter(|l| !l.is_empty()).unwrap_or_else(|| single_label(&a));
+                (label, vec![a])
+            }),
+    );
     rows.push(("Go to tab 1–9", (1..=9).map(A::SelectTab).collect()));
     rows.extend([Left, Up, Down, Right].map(|d| (single_label(&A::Focus(d)), vec![A::Focus(d)])));
     rows
@@ -1404,6 +1419,11 @@ fn direct_key_text(app: &App, acts: &[crate::keys::Action]) -> String {
                 .map(|(k, _)| *k)
                 .collect();
             keys.sort_by_key(|k| k.to_config());
+            // One action on one row lists every key it has (Alt+A and Ctrl+T both start a session).
+            if acts.len() == 1 {
+                return (!keys.is_empty())
+                    .then(|| keys.iter().map(long_key).collect::<Vec<_>>().join(" · "));
+            }
             keys.first().map(long_key)
         })
         .collect();
@@ -1515,8 +1535,7 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
             "appearance" | "theme_dark" | "theme_light" | "ui.glyphs" | "ui.spinner"
             | "ui.cursor" | "ui.cursor_blink" => "THEME",
             "ui.padding" | "ui.background" | "ui.sidebar_position" | "ui.motion" => "LAYOUT",
-            "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.pane_colors" | "ui.rounded" => "PANES",
-            "ui.tab_gap" => "TABS",
+            "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.rounded" => "PANES",
             "sessions.agent" | "sessions.where" => "NEW SESSIONS",
             "ui.sidebar_tabs" => "SIDEBAR",
             "worktree.delete_with_last" | "worktree.per_agent" | "worktree.command" => "WORKTREES",
@@ -1853,6 +1872,10 @@ pub(super) fn long_key(k: &crate::keys::KeySpec) -> String {
     }
     let code = match k.code {
         crossterm::event::KeyCode::Char(' ') => "Space".to_string(),
+        // A letter under a modifier is written as a capital, the way a keycap reads: `Ctrl+A`.
+        crossterm::event::KeyCode::Char(c) if c.is_ascii_lowercase() && !k.mods.is_empty() => {
+            c.to_ascii_uppercase().to_string()
+        }
         crossterm::event::KeyCode::Char(c) => c.to_string(),
         _ => {
             let bare = crate::keys::KeySpec {

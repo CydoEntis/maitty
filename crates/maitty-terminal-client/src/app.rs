@@ -221,9 +221,17 @@ enum Cmd {
         #[command(subcommand)]
         cmd: MachineCmd,
     },
-    /// (Run over ssh by `machine update`) restart this machine's server if no session is open.
+    /// (Run over ssh by `machine update`) restart this machine's server if no session is open, or
+    /// with `--now` also when its sessions are saved.
     #[command(hide = true)]
-    RestartIfIdle,
+    Activity,
+    /// (Run over ssh by `machine activity`) say how many sessions are open here.
+    #[command(hide = true)]
+    RestartIfIdle {
+        /// Restart even with sessions open, when they are saved to come back.
+        #[arg(long)]
+        now: bool,
+    },
     /// Install the newest release over this one.
     Update {
         /// Only say whether a newer version is out.
@@ -313,7 +321,8 @@ impl Cmd {
 #[derive(Subcommand)]
 enum MachineCmd {
     /// Install this version on a machine, or replace an older one there. It looks first and
-    /// installs nothing without a yes. The machine's running sessions are not stopped. Windows
+    /// installs nothing without a yes. Its daemon is restarted only when no session is open, unless
+    /// `--restart` is given. Windows
     /// machines are not supported as a remote.
     Update {
         /// The machine's name in config.
@@ -327,6 +336,38 @@ enum MachineCmd {
         /// Replace a newer version there with this one (a downgrade).
         #[arg(long)]
         force: bool,
+        /// Restart the daemon there even with sessions open: they are saved and come back, with
+        /// their agents resumed. A turn in progress is lost.
+        #[arg(long)]
+        restart: bool,
+        /// Wait until nothing is open on the machine, then restart its daemon (up to half an hour).
+        #[arg(long, conflicts_with = "restart")]
+        wait: bool,
+    },
+    /// Pull one file from a machine to this computer, up to 1 GB. It is saved in the folder
+    /// (the current one by default) under a name made here from the remote path, and never
+    /// overwrites a file. Prints where it landed.
+    Get {
+        /// The machine's name in config.
+        name: String,
+        /// The file's path on the machine; `~/` is its home folder.
+        path: String,
+        /// The folder to save it in (created if missing).
+        folder: Option<PathBuf>,
+    },
+    /// Send one file (up to 100 MB) or one folder (up to 1 GB) to a machine. It is kept in the
+    /// machine's private cache folder; prints where it is there.
+    Put {
+        /// The machine's name in config.
+        name: String,
+        /// The file or folder on this computer.
+        path: PathBuf,
+    },
+    /// Say how many sessions are open on a machine and how many are mid-turn. It changes
+    /// nothing. A machine running an older version cannot say.
+    Activity {
+        /// The machine's name in config.
+        name: String,
     },
 }
 
@@ -409,15 +450,60 @@ fn command_target(args: &Args) -> Target {
 
 /// `machine update`: a mistake in how it was asked is a usage error, a step that did not work
 /// exits 1 with what became of the machine.
-fn machine_update(name: &str, install: bool, yes: bool, force: bool) -> anyhow::Result<()> {
+fn machine_update(
+    name: &str,
+    install: bool,
+    yes: bool,
+    force: bool,
+    restart: bool,
+    wait: bool,
+) -> anyhow::Result<()> {
     use cli::machine_update::{Failure, Flags};
     let flags = Flags {
         install,
         yes,
         force,
+        restart,
+        wait,
     };
     match cli::machine_update::run(name, &machines_config(), flags) {
         Ok(()) => Ok(()),
+        Err(Failure::Usage(message)) => usage_error(message),
+        Err(Failure::Failed(message)) => Err(anyhow::anyhow!(message)),
+    }
+}
+
+/// `machine get`: the saved file's path is the one line on stdout; a mistake in how it was asked
+/// is a usage error, a pull that did not work exits 1 with why.
+fn machine_get(name: &str, path: &str, folder: Option<&std::path::Path>) -> anyhow::Result<()> {
+    use cli::machine_update::Failure;
+    match cli::machine_get::run(name, path, folder, &machines_config()) {
+        Ok(()) => Ok(()),
+        Err(Failure::Usage(message)) => usage_error(message),
+        Err(Failure::Failed(message)) => Err(anyhow::anyhow!(message)),
+    }
+}
+
+/// `machine put`: where it landed on the machine is the one line on stdout; a mistake in how it
+/// was asked is a usage error, a send that did not work exits 1 with why.
+fn machine_put(name: &str, path: &std::path::Path) -> anyhow::Result<()> {
+    use cli::machine_update::Failure;
+    match cli::machine_put::run(name, path, &machines_config()) {
+        Ok(()) => Ok(()),
+        Err(Failure::Usage(message)) => usage_error(message),
+        Err(Failure::Failed(message)) => Err(anyhow::anyhow!(message)),
+    }
+}
+
+/// `machine activity`: the answer is one line on stdout; a mistake in how it was asked is a
+/// usage error, an unreachable machine exits 1.
+fn machine_activity(name: &str) -> anyhow::Result<()> {
+    use cli::machine_update::Failure;
+    match cli::machine_update::activity(name, &machines_config()) {
+        Ok(line) => {
+            println!("{line}");
+            Ok(())
+        }
         Err(Failure::Usage(message)) => usage_error(message),
         Err(Failure::Failed(message)) => Err(anyhow::anyhow!(message)),
     }
@@ -584,9 +670,21 @@ pub(crate) fn run() {
                     install,
                     yes,
                     force,
+                    restart,
+                    wait,
                 },
-        }) => machine_update(&name, install, yes, force),
-        Some(Cmd::RestartIfIdle) => cli::restart_if_idle(),
+        }) => machine_update(&name, install, yes, force, restart, wait),
+        Some(Cmd::Machine {
+            cmd: MachineCmd::Get { name, path, folder },
+        }) => machine_get(&name, &path, folder.as_deref()),
+        Some(Cmd::Machine {
+            cmd: MachineCmd::Put { name, path },
+        }) => machine_put(&name, &path),
+        Some(Cmd::Machine {
+            cmd: MachineCmd::Activity { name },
+        }) => machine_activity(&name),
+        Some(Cmd::Activity) => cli::activity(),
+        Some(Cmd::RestartIfIdle { now }) => cli::restart_if_idle(now),
         Some(Cmd::Allow { dir }) => cli::allow(dir),
         Some(Cmd::Proxy { attach_only }) => match cli::block_on(ipc::proxy(attach_only)) {
             Err(e) if ipc::is_no_daemon_here(&e) => {

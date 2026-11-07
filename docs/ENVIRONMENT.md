@@ -68,11 +68,15 @@ To work on the optional desktop preview, from `apps/gui/` run:
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm desktop:dev       # run the Tauri desktop shell
+pnpm desktop:dev       # run the Tauri desktop shell (same as `pnpm tauri dev`)
 pnpm desktop:build     # create platform installer packages
 ```
 
-Desktop commands build the Rust CLI sidecar for the current host platform.
+Desktop commands build the Rust CLI sidecar for the current host platform. In dev,
+Tauri's `beforeDevCommand` rebuilds it (`pnpm bundle:daemon:dev`) on every start, so
+`pnpm tauri dev` never runs a stale service copy. A packaged app instead installs that
+file as the shared `maitty` on first start and after each update (see
+[ADR 0004](adr/0004-client-split-and-desktop-host.md)).
 The packaged GUI uses that sidecar to start the separate daemon when needed;
 closing the GUI leaves the daemon and its sessions running. `pnpm dev` opens
 the browser preview with sample data and does not start or connect to a daemon.
@@ -254,6 +258,37 @@ it contains approval decisions that repository files must not control. The data
 override skips legacy-name migration; it does not redirect config files or
 provider-native history. Empty or relative paths and existing non-directories
 fail startup. A missing absolute directory is created by the private state writers.
+
+## Project-specific: settings both apps share
+
+The terminal app and the desktop app read and write the same `config.toml`. The desktop app
+reaches it only through the daemon (`Query::Settings`, `Command::SetSetting`; ADR 0004), and
+only for these keys. Secrets, `[[machines]]` and `[keys]` are not reachable that way.
+
+| Setting | On disk (written) | Also read as | Values |
+| --- | --- | --- | --- |
+| default agent | `sessions.agent` | | `last used`, `claude`, `codex`, `gemini` |
+| new session view | `ui.new_session_view` | | `chat` (default), `terminal` |
+| sidebar side | `ui.sidebar_position` | `ui.sidebar_side` | `left`, `right` |
+| dark / light theme | `theme_dark`, `theme_light` | | a theme name (letters, digits, `-`, `_`, `.`; at most 64) |
+| appearance | `appearance` | | `dark`, `light` |
+| spinner | `ui.spinner` | | frames, as in the terminal app (at most 64) |
+| start folder | `ui.start_dir` | | a path or `~...`; at most 4096 bytes, no control characters |
+| reduce motion | `ui.motion` (inverted) | `ui.reduce_motion` | true when `motion = false`; `motion` wins if both are set |
+| window style | `ui.window_style` | | `flat` (default), `glass` |
+
+A change edits the one key in place (comments and other keys stay), swaps the file in
+atomically, reloads, and sends `ServerMsg::SettingsChanged` to attached windows. A write
+removes the alias spelling of the same key, so the file keeps loading. A value outside the
+table is refused before the file is opened. A key set in `config.local.toml` still overrides
+what is written to `config.toml`.
+
+## Project-specific: removed config keys
+
+Removed `[ui]` keys. `pane_colors`, `tab_gap` and `tool_rail` no longer exist: the TUI draws one accent focus border,
+the tabs follow the v27 tab row and the tools open from the Project chip. A `config.toml` that still names them
+loads without error and the keys are ignored (the file is not rewritten). `layout = "grid"` now reads as Floating
+without pane colours.
 
 ## Project-specific: environments
 

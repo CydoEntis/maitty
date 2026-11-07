@@ -5,112 +5,131 @@ in Settings › Keys or under `[keys.prefix]` in your config.
 
 ## Default shortcuts
 
-Press `Ctrl+Space` for shortcut mode, then the key. Only `?` needs Shift, and each key does
-one thing.
+**Inside a pane only these keys are taken; everything else goes to the program**, including
+`Ctrl+C`, `Ctrl+D`, `Ctrl+Z`, `Ctrl+L`, `Ctrl+R`, the arrows, `Tab` and `Esc`.
+
+| Key | Action |
+|---|---|
+| `Ctrl+Space` | Key mode: the keys below until `Esc` (configurable as `prefix`) |
+| `Ctrl+T` | New shell where you are, at once (the prefix then `t` where the terminal cannot send it) |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous session of the sidebar |
+| `Ctrl+K` | Search commands |
+| `Ctrl+J` | Inbox |
+| `Ctrl+Shift+F` | Find in the pane |
+| `Alt+Down` / `Alt+Up` | Next / previous session |
+| `F2` | Rename the selected session |
+| `Alt+1`-`9` | Go to that session of the sidebar |
+
+**`Ctrl+A` still opens key mode for one release**, so a muscle memory or a script keeps working.
+It stops working when the prefix is set to another key on purpose or `Ctrl+A` is bound to something
+else under `[keys.global]`. The keys follow the TUI redesign: `n` is the New session dialog (`t` a
+shell at once), `j` / `k` step through the sessions (`n` / `p` stepped through tabs, and there are no
+tabs), `s` / `S` split right and down (they were `|` and `-`), `z` zooms the pane (undo close is
+`Ctrl+Z`), `/` filters the sidebar (find in the pane is `Ctrl+Shift+F`), `u` is usage and cost
+(Updates is in the release chip's menu), `k` (stop the agent) is `Ctrl+C`.
+
+Press the prefix for key mode, then the key. Only `?`, `S` and `_` need Shift, and each key does one thing.
 
 ### Sessions
 
 | Key | Action |
 |---|---|
-| `n` | New shell where you are |
-| `s` | New session, started straight away with your default agent |
-| `o` | New session anywhere: the picker with nothing typed (open projects and folders on every machine) |
-| `Enter` | Message the agent |
-| `k` | Stop the agent |
+| `n` | New session (the dialog) |
+| `t` | New shell where you are, at once |
+| `j` / `k` | Next / previous session; key mode stays, so `j` `j` walks the list |
+| `1`–`9` | Open that session of the sidebar |
+| `r` | Rename the session |
+| `/` | Filter the sidebar |
 | `i` | Inbox: what needs you, then every session |
+| `Enter` | Message the agent |
+| `Ctrl+C` | Stop the agent |
+| `Ctrl+Z` | Undo the last close (six seconds) |
 
 ### Panes
 
 | Key | Action |
 |---|---|
+| `s` / `S` | Split right / down |
+| `_` `\` | Split up / left (the new pane goes before the focused one) |
+| `Tab` | Focus the next pane |
 | `←` `↓` `↑` `→` | Move to the pane that way (left past the edge: the sidebar) |
-| `v` | Split down (new pane underneath) |
-| `h` | Split right (new pane beside) |
-| `x` | Close what has the keys: the side panel (Files, Changes, Branch, a check) when it has them, else the focused pane, after asking |
+| `z` | Zoom the pane: it fills the view until pressed again |
+| `x` | Close what has the keys: the side panel (Files, Changes, Branch, a check) when it has them, else the focused pane, with an undo (a running agent asks for the same press again) |
+| `m` | Move the pane: trade places with the next one of the view |
 | `Ctrl`+arrows | Resize the pane |
 | `Alt`+arrows | Swap the pane with the one that way |
 | `PgUp` / `PgDn` | Scroll half a pane |
-| `z` | Collapse the sidebar (again brings it back) |
 
-The pane's right-click menu also has **Split left** and **Split up**, which put the new pane before the one you split; they have no leader key.
-
-### Tabs
+### Sidebar
 
 | Key | Action |
 |---|---|
-| `t` | New tab |
-| `Ctrl+W` | Close the tab |
-| `r` | Rename the tab |
-| `]` / `[` | Next / previous tab |
-| `1`–`9` | Go to that tab (`Alt+1`–`9` works without the leader) |
+| `b` | Hide the sidebar (again brings it back; so does its `»` chip) |
+| `[` / `]` | Narrow / widen the sidebar |
 
-### Project
+### Tools
 
 | Key | Action |
 |---|---|
 | `f` | Files |
-| `e` | The sidebar |
-| `p` | Find a file |
-| `/` | Search the code |
 | `c` | Changes |
-| `g` | Worktrees › |
-| `b` | Branch (in the side panel; its first row switches branch) |
-| `a` | References (in the side panel) |
+| `g` | Branches (in the side panel; its first row switches branch) |
+| `h` | History: what happened |
+| `e` | References (in the side panel) |
+| `o` | Find a file |
 
 ### Maitty
 
 | Key | Action |
 |---|---|
 | `Space` | Search commands |
-| `m` | Menu |
+| `.` | Menu |
+| `u` | Usage and cost: what each agent reported using, and the plan limits |
 | `,` | Settings |
-| `?` | All keys |
-| `l` | What happened (history) |
+| `?` | Keys help |
 | `w` | Machines: the computers reached over ssh; add, retry or remove one |
 | `Ctrl+V` | Paste the clipboard's image |
 | `d` | In a pane on another machine: send a file from this computer (type or drop its path; again while it sends stops it) |
 | `q` | Step away (agents keep running) |
 | `Ctrl+R` | Reload the config |
 
-**Search only** (`Space`, then type): hide the sidebar completely, previous / next command in
-history, open the worktree picker, rename a session, send `Ctrl+Space` itself to the program.
+**Search only** (`Ctrl+K`, then type): worktrees, new tab, Updates, find in the pane, previous / next
+command in history, send the prefix itself to the program.
 
-## How shortcut mode works
+## How key mode works
 
-The leader is `Ctrl+Space`. Press it and you are in **shortcut mode**: each key runs its
-action, and the mode stays for the next, so a run of actions is one key each. `Esc`, the
-leader again or a click go back to **input mode**, where keys type into the pane. So does
-an action that starts a pane for you to type into: `n` a shell, `s` a session,
-`t` a tab, `v` / `h` a split, and `o` once its dialog starts the session; the next key goes
-to the new pane. An action that opens a popup or sheet hands it the keys, and closing it
-returns to shortcut mode; `Enter` (message the agent) is one of those. The bar along the bottom always says which mode you are in: `TYPING · Ctrl+Space for
-shortcuts`, or, while shortcut mode is on, a sky-blue bar with `SHORTCUT` and keys to press
-from your keymap (`n shell  s session  c changes  f files  i inbox  , settings  ? all keys
-Esc type`; a click on one runs it, a click on `TYPING` starts shortcut mode). While something
-other than the panes has the keys (the sidebar, a popup, Files, …) it names it and says how to
-use and leave it, such as `SIDEBAR · ↑↓ move · Enter open · Esc back`, adding `shortcut mode
-waits` when shortcut mode comes back after. In shortcut mode the focused pane's border is sky blue,
-and a key that does nothing shows "Shortcut mode — Esc to type".
-To send `Ctrl+Space` itself to the pane, search
-commands for "Send the leader key" or bind `send-prefix` to a key. One overlay holds every key
-reference; it is not a second palette:
+The prefix is `Ctrl+Space`. Press it and you are in **key mode**: each key runs its action, and the
+mode stays for the next, so a run of actions is one key each. `Esc`, the prefix again or a click go
+back to the pane, where keys type into the program. So does an action that starts a pane for you to
+type into: `t` a shell, `s` / `S` a split, and the dialog once it starts the session; the next key goes
+to the new pane. An action that opens a popup or panel hands it the keys, and closing it returns to key
+mode; `Enter` (message the agent) is one of those. The status bar along the bottom always says which
+mode you are in: ` PANE ` (accent), the session and its folder, then `j/k sessions  ^space keys  ? help`;
+in key mode ` KEYS ` (yellow) and `n new  s split  x close  tab pane  ? help  esc back`, each a click
+that presses it, and a click on ` PANE ` starts key mode. While something other than the panes has the
+keys (the sidebar, a popup, Files, …) the chip names it and its keys sit at the right with the way
+out last, such as ` SIDEBAR ` … `↑↓ move  enter open  n new  esc back`, adding `shortcut mode waits`
+when key mode comes back after. In key mode the focused pane's border is sky blue, and a key that does
+nothing shows "Shortcut mode — Esc to type".
+To send `Ctrl+Space` itself to the pane, search commands for "Send the leader key" or bind
+`send-prefix` to a key. One overlay holds every key reference; it is not a second palette:
 
-- **Key map** (`Ctrl+Space`, then a pause, with Settings › General › **Leader waits for next
-  key** on; it is off by default): the keys by group, Sessions, Panes, Tabs,
-  Project and Maitty, built from your real bindings. Pressing a key runs it.
-- **Search commands** (`Space` after the leader, `Tab` from the map, or typing a letter
-  that is not a key): every command, including ones with no key. With nothing typed it
-  lists the ones you ran last.
-- **All keys** (`?` after the leader, or Menu → All keys): the map in full, the keys that
-  need no leader, and the commands that only search finds.
+- **Key map** (the prefix, then a pause, with Settings › General › **Leader waits for next
+  key** on; it is off by default): the keys by group, built from your real bindings. Pressing a key
+  runs it.
+- **Search commands** (`Ctrl+K`, `Space` after the prefix, `Tab` from the map, or typing a letter
+  that is not a key): every command, including ones with no key, and your sessions. Matching is
+  an in-order subsequence (`spld` finds Split down). With nothing typed it lists the commands you ran last.
+- **Keys help** (`?` after the prefix, or the sidebar's menu → Keys): three columns, sessions, panes
+  and window, each key as it is bound now; under them "Keys only work in key mode (Ctrl+Space).
+  Everything else goes to the pane." `esc close` on its top border closes it.
 
-Keys are drawn as keycaps; `Ctrl+Space` is two caps joined by a dim `+`. On Windows,
-Caps Lock does not change shortcut meaning, and no default but `?` needs Shift. The
-[README](../README.md#shortcuts) lists the defaults.
+Keys are drawn as keycaps in the key map and dialogs; the status bar and the keys help spell them
+short (`^space`, `tab`, `esc`). On Windows, Caps Lock does not change shortcut meaning, and no default
+but `?`, `S` and `_` needs Shift. The [README](../README.md#shortcuts) lists the defaults.
 
-Mouse entry: **Menu** has a chip (`≡`) in the collapsed column; with the sessions hidden
-(search commands for "Hide sidebar"), use the leader. Click a row to run it; the wheel moves the selection. Close buttons
-dismiss overlays.
+Mouse entry: the sidebar's ` menu ` chip; with the sidebar hidden, its ` » ` chip brings it back. Click
+a row to run it; the wheel moves the selection. Close buttons dismiss overlays.
 
 Keys below act inside the named screen, without the leader. Ordinary typing edits the
 focused text field; Backspace removes a character. Keys sent to Claude, Codex, your shell
@@ -122,30 +141,27 @@ or another program follow that program's own help.
 | --- | --- |
 | A bound key (key map) | Run its command and close |
 | Tab | Switch between the key map and the search |
-| Any unbound letter (key map or All keys) | Start a search with it |
+| Any unbound letter (key map or keys help) | Start a search with it |
 | Type, Backspace, Ctrl+U (search) | Edit the words; Backspace on an empty box returns to the map |
 | Up, Down, Ctrl+P, Ctrl+N, PgUp, PgDn (search) | Choose a result |
 | Enter (search) | Run the selected command |
-| Up, Down, PgUp, PgDn, Home, End (All keys) | Scroll the list |
 | Esc | Close; no command runs while reading |
 
-Every key is a leader key: there is no letter that acts by itself in the sidebar.
-The defaults are one key each, none but `?` needing Shift, chosen from what other apps use: `v` / `h` split stacked / side by side, `c` Changes, `i` Inbox, `y` why, `k` stop
-the agent, `Enter` message it, `p` find a file, `g` worktrees, `b`
-Branch, `a` references, `l` what happened, `w` machines, `?` all keys, `Ctrl+W` close tab, `Ctrl+V` paste an image, `d` send a file to the pane's machine,
-`Ctrl`+arrows resize, `Alt`+arrows swap panes, `1`–`9` go to a tab. Your own `[keys.prefix]` entries still load.
+Every key is a leader key: there is no letter that acts by itself in the sidebar. `Ctrl+V` pastes an
+image, `d` sends a file to the pane's machine, `Ctrl`+arrows resize, `Alt`+arrows swap panes. Your own
+`[keys.prefix]` entries still load.
 
 ## Menu
 
 | Keys | Action |
 | --- | --- |
-| The key shown beside a row | Run it (the same leader key works anywhere): `n` Shell here, `s` Session, `v` Pane beside this, `t` Tab, `i` Inbox, `Space` Search commands, `?` All keys, `z` Collapse sidebar, `,` Settings |
+| The key shown beside a row | Run it (the same leader key works anywhere) |
 | Up, Down, Enter | Choose and run a row |
 | Esc | Close the Menu |
 
-"Shell here" starts a plain shell where you are (the same as `n`); "Session" starts an agent
-straight away (leader `s`). You can also type `claude` in the shell yourself: it starts in its own
-worktree in a git project.
+"Shell here" starts a shell at once where you are (the same as `t`); "Session..." opens the New
+session dialog, for another folder or machine. Start an agent by typing `claude` (or any other) in the shell: it starts in its own worktree
+in a git project. Section headers (NEW, TOOLS, FIND, SIDEBAR) are not rows: the arrows skip them.
 
 ## Worktrees second step
 
@@ -156,15 +172,21 @@ worktree in a git project.
 
 ## Sidebar keyboard focus
 
-The sidebar takes navigation, and `n` / `N` to start a session. No other letter acts from it: every action is the leader (`Ctrl+Space`) and its key, such as `n` new shell, `s` new session, `x` close, `m` Menu, `Enter` message the agent, `y` why, `k` stop the agent. Any other key leaves the sidebar and types into the pane. The row's right-click menu runs its items by letter while it is open.
+The sidebar takes navigation and `/`. No other letter acts from it: every action is the prefix
+(`Ctrl+Space`) and its key, such as `t` new shell, `n` new session, `x` close, `.` Menu, `Enter`
+message the agent. Any other key leaves the sidebar and types into the pane. The row's right-click
+menu runs its items by letter while it is open.
 
 | Keys | Action |
 | --- | --- |
-| Up / k, Down / j, Home, End | Browse rows, first row, last row; active session stays selected |
-| Right, Left | Expand project or enter session; fold project or go to session's project |
-| Enter | Toggle project or open selected session; opening a sleeping session wakes it. On a session whose check failed, could not run, was overridden, went stale or is never run for its repo, open its evidence sheet instead; on one whose repo command waits for approval, open the approval |
-| `n` | New session at once in the selected row's project (the bar shows where: `n new in maitty`); on nothing or a machine with no project, the picker on that machine; on a machine that is down, reconnect it |
-| `N` | New session picker, nothing typed |
+| Up / k, Down / j, Home, End | Browse the sessions, first, last; the active session stays selected |
+| Right | Enter the selected session |
+| `1`–`9` | Open that session |
+| `/` | Filter the list: type to narrow it by name, project, process, machine or branch; Enter opens the match under the cursor, Esc clears the filter |
+| Enter | Open the selected session; opening a sleeping session wakes it. On a session whose check failed, could not run, was overridden, went stale or is never run for its repo, open its evidence sheet instead; on one whose repo command waits for approval, open the approval |
+| Menu key (`.` after the prefix), right-click | The session's menu |
+| `+` on a machine heading | A shell on that machine at once |
+| Enter on a row of an agent a restart stopped | Types its resume command, then opens the session |
 | Esc | Return keyboard focus to the active pane |
 
 ## Text prompts and worktree picker
@@ -177,12 +199,22 @@ The sidebar takes navigation, and `n` / `N` to start a session. No other letter 
 | Enter, Esc | Open the selected result / submit prompt, or cancel |
 | y / Y / Enter in close-group or remove-worktree prompt | Confirm; f / F forces worktree removal when offered; other keys cancel |
 
-## New session picker
+## New session dialog
 
-`s` starts a session at once (Settings › Sessions sets the agent and where). `o` opens the picker with
-nothing typed; in the sidebar `N` does the same and `n` starts at once where the sidebar is selected.
-The picker's keys are in [UI](UI.md#project-specific-new-session-popup). Leader `n` is still a plain
-shell where you are.
+Leader `n`, the Menu's `Session...` and the ` n new session ` chip of an empty workspace open it (`Ctrl+T`, leader `t` and a machine's `+` start a shell at once, with
+no dialog). It starts a shell; step 1 is the project, step 2 the machine.
+
+| Keys | Action |
+| --- | --- |
+| Type, Backspace, Ctrl or Alt+Backspace | Edit the search or path; the last also deletes a path segment |
+| `~`, `/` or `.` first | A folder path on the chosen machine, completed from the real folders |
+| Tab, Right | Accept the dim completion; with none, pick the project and go to step 2 |
+| Ctrl+O | Browse: `Use <folder>`, `..` and the folders inside |
+| Up, Down | Move through the list (the machines in step 2; offline ones are skipped) |
+| Enter | Pick the project (starts the shell at once when this computer is the only machine); in step 2, start the shell on that machine. Blocked while the folder is missing |
+| Esc | Back (step 2, the picker), then close |
+
+The details are in [UI](UI.md#project-specific-new-session-dialog). Ctrl+T and leader `t` are not this dialog: they make a shell where you are at once.
 
 ## A session wants to start helpers
 
@@ -198,16 +230,16 @@ No bare key answers from the sidebar.
 
 ## Side panel
 
-The panel docked right (Inbox, Changes, Files, checks, Branch, References). Its width is kept for each kind of view.
-Files, Changes, Branch and References show a tab strip at its top,
-`Files f · Changes c · Branch b · References a` with your own leader keys; the Inbox and checks
-have none.
+The panel on the right. The checks dock beside the panes; Files, Changes, Branches and
+References open from a pane's ` files ` and ` changes ` chips (or their leader keys) as a panel that slides in from the pane's right edge
+inside its box; the panes are not narrowed by it, and ` » ` or Esc closes it. The Inbox is a panel 62 columns wide
+over the workspace from the sidebar's side; it has a fixed width.
 
 | Keys | Action |
 | --- | --- |
-| [ , ] | Narrow or widen it by 4 columns (in the Inbox, while its search is empty; in Files, not while filtering or editing) |
+| [ , ] | Narrow or widen it by 4 columns (not for the Inbox, which is fixed; in Files, not while filtering or editing) |
 | = | Back to its default width |
-| Drag its left edge | Resize it |
+| Drag its left edge | Resize it (not the Inbox) |
 | Click a pane | Type into that pane; the view stays open, unlit |
 | Click the panel | Give the view the keys again |
 | Tab, Shift+Tab | Files, Changes, Branch, References: the next or previous tab, for the same checkout (not while Files filters or edits) |
@@ -222,12 +254,14 @@ have none.
 | Enter | The selected item's first button: Reply (a question), Read the command (a check waiting for approval), Output (a failed or could-not-run check), Re-run (a stale pass); an item with no buttons opens its session, as does a search result |
 | o | Open the selected item's session; empty search |
 | 1–9 | Answer selected agent question when search is empty |
+| y, a, n | On a question: yes once, yes for the session, no, sent to that session's terminal as typed; empty search |
+| c | Clear the finished and exited cards (each session stays); empty search |
 | m | Follow-up to selected asking/finished agent when search is empty; on a failed check, the message with the failure written in (sent only on Enter) |
 | d, M, x | Finished worktree: diff, ask to merge, ask to discard; empty search |
 | d, m, k | Shared-file warning: diff, message its agent, dismiss; empty search |
 | r, O, u, , | The selected item's check: run it again, override it (asks first), undo an override, its settings; only where they apply, else typed; empty search |
 | Click a button | The key it shows |
-| Delete | Mark selected finished session, or unrun check, seen |
+| Delete | Mark selected finished session, exited session or unrun check, seen |
 | Enter, Esc in confirmation | Confirm action, or cancel |
 | Esc | Close Inbox |
 
@@ -423,8 +457,9 @@ in Maitty's own history); a click goes back to the newest output. An agent that 
 far as the wheel paged it up; typing to the agent clears it, since the agent scrolls to its
 prompt itself.
 
-Leader `z` collapses the sessions into a narrow column (click a row to focus it, `»` or
-the `…` row to expand); with the column focused, `↑` `↓`, `←` `→` and `1`-`9` switch
+Leader `z` collapses the sessions into a 10-column column of status glyphs and initials (click a row
+to focus it, `»` or the `…` row to expand; under 110 columns it is collapsed by itself, and `z` then
+opens the full sidebar over the workspace); with the column focused, `↑` `↓`, `←` `→` and `1`-`9` switch
 sessions. "Hide sidebar" (search commands) hides the sessions completely; `z` brings them back.
 
 | Keys | Action |

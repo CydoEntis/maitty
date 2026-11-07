@@ -1,12 +1,11 @@
 //! A session's check result on its sidebar row: the glyph that stands for it, its colour,
 //! and the line of words under the row. Shape and word carry the meaning; colour backs them.
-use super::glyphs::{self, Glyphs, Kind, Mark};
+use super::glyphs::{self, Glyphs};
 use super::*;
 use crate::protocol::{CheckInfo, CheckState};
 
 /// The ring steps once per this many spinner frames.
 const RING_TICKS: u64 = 2;
-const RING_FRAMES: usize = 4;
 const EXIT_NOT_EXECUTABLE: i32 = 126;
 const EXIT_NOT_FOUND: i32 = 127;
 const SECS_PER_MIN: u64 = 60;
@@ -20,11 +19,6 @@ pub(super) fn marks(app: &App) -> &'static Glyphs {
 /// about an older turn, so the row says only what the agent is doing.
 pub(super) fn shown(s: &Session) -> Option<&CheckInfo> {
     crate::protocol::reported_check(s.status, s.check.as_ref())
-}
-
-/// Every checkpoint the row reports: none while the agent works or asks.
-pub(super) fn reported(s: &Session) -> &[CheckInfo] {
-    if shown(s).is_some() { &s.checks } else { &[] }
 }
 
 /// A turn that ended and whose work is not known to be bad: no check, or one that passed, went
@@ -54,22 +48,6 @@ pub(super) fn needs(status: Status, check: Option<&CheckInfo>) -> bool {
 pub(super) fn approving(status: Status, check: Option<&CheckInfo>) -> bool {
     crate::protocol::reported_check(status, check)
         .is_some_and(|info| info.state == CheckState::NeedsApproval)
-}
-
-/// What the row reads as.
-pub(super) fn kind(s: &Session) -> Kind {
-    Kind::of(s.status, s.check.as_ref(), s.asleep)
-}
-
-/// The row's mark: its glyph from the chosen set (the ring turning with motion, `working` for
-/// the working spinner), the colour that backs it and its word.
-pub(super) fn mark<'a>(app: &App, s: &Session, t: &Theme, working: &'a str) -> Mark<'a> {
-    let step = if app.motion_on() {
-        ring_step(app.spinner_frame(), RING_FRAMES)
-    } else {
-        0
-    };
-    kind(s).mark(marks(app), t, step, working)
 }
 
 /// The mark that stands for a failed check, in the same set as the sidebar's glyphs.
@@ -108,28 +86,6 @@ pub(super) fn glyph(app: &App, info: &CheckInfo) -> &'static str {
         CheckState::Stale => m.stale,
         CheckState::NeedsApproval => m.needs,
         CheckState::Pending => m.pend,
-    }
-}
-
-/// An override is never green and could-not-run is not a failure, so neither borrows those colours.
-pub(super) fn color(t: &Theme, info: &CheckInfo) -> Color {
-    match info.state {
-        CheckState::Checking => t.sky(),
-        CheckState::Passed => t.done,
-        CheckState::Failed => t.err,
-        CheckState::Overridden | CheckState::Stale => t.text,
-        CheckState::CouldNotRun | CheckState::Never => t.violet(),
-        CheckState::Pending => t.muted,
-        CheckState::NeedsApproval => t.blocked,
-    }
-}
-
-/// A checkpoint's glyph in the strip of several: as on the row, but a stale pass is muted.
-fn strip_color(t: &Theme, info: &CheckInfo) -> Color {
-    if info.state == CheckState::Stale {
-        t.muted
-    } else {
-        color(t, info)
     }
 }
 
@@ -212,33 +168,6 @@ pub(super) fn result_words(info: &CheckInfo, t: &Theme) -> Vec<Seg> {
     }
 }
 
-/// The word that heads a row of several checkpoints, from the headline one: the worst wins.
-pub(super) fn headline_word(checks: &[CheckInfo], t: &Theme) -> Seg {
-    let Some(h) = crate::protocol::headline(checks) else {
-        return styled("", t.muted, false);
-    };
-    let name = name(h);
-    match h.state {
-        CheckState::Failed => styled(format!("failed: {name} "), t.err, true),
-        CheckState::CouldNotRun => styled(format!("could not run: {name} "), t.violet(), false),
-        CheckState::NeedsApproval => styled(format!("needs you: {name} "), t.blocked, true),
-        CheckState::Checking => styled(format!("checking: {name} "), t.sky(), false),
-        CheckState::Pending => styled(format!("next: {name} "), t.muted, false),
-        CheckState::Stale => styled(format!("stale pass: {name} "), t.text, true),
-        CheckState::Never => styled(format!("not checked: {name} "), t.violet(), false),
-        CheckState::Overridden => styled(format!("overridden: {name} "), t.text, true),
-        CheckState::Passed => styled("all passed ", t.done, true),
-    }
-}
-
-/// One bold glyph per checkpoint, in order.
-pub(super) fn strip(app: &App, checks: &[CheckInfo], t: &Theme) -> Vec<Seg> {
-    checks
-        .iter()
-        .map(|c| styled(glyph(app, c), strip_color(t, c), true))
-        .collect()
-}
-
 pub(super) fn duration(ms: u64) -> String {
     let secs = ms / 1000;
     if secs < SECS_PER_MIN {
@@ -257,70 +186,9 @@ pub(super) fn why_not_run(exit: Option<i32>) -> String {
     }
 }
 
-/// The edge bar at a row's left: the selection's, or the red one a failed row keeps whether
-/// selected or not.
-pub(super) fn edge(app: &App, buf: &mut Buffer, x: u16, y: u16, fg: Color, bg: Color) {
-    if let Some(cell) = buf.cell_mut((x, y)) {
-        cell.set_symbol(marks(app).bar)
-            .set_style(Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD));
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn checkpoints(states: &[CheckState]) -> Vec<CheckInfo> {
-        states
-            .iter()
-            .zip(["build", "test"])
-            .map(|(&state, name)| CheckInfo {
-                name: name.into(),
-                state,
-                ..Default::default()
-            })
-            .collect()
-    }
-
-    #[test]
-    fn several_checkpoints_are_headed_by_the_worst_one() {
-        use CheckState::*;
-        let t = Theme::named(crate::theme::DEFAULT);
-        let cases = [
-            ([Passed, Failed], "failed: test ", t.err, true),
-            ([Failed, CouldNotRun], "failed: build ", t.err, true),
-            (
-                [CouldNotRun, NeedsApproval],
-                "could not run: build ",
-                t.violet(),
-                false,
-            ),
-            (
-                [NeedsApproval, Passed],
-                "needs you: build ",
-                t.blocked,
-                true,
-            ),
-            ([Checking, Pending], "checking: build ", t.sky(), false),
-            ([Passed, Pending], "next: test ", t.muted, false),
-            ([Passed, Stale], "stale pass: test ", t.text, true),
-            ([Passed, Never], "not checked: test ", t.violet(), false),
-            ([Overridden, Passed], "overridden: build ", t.text, true),
-            ([Passed, Passed], "all passed ", t.done, true),
-        ];
-        for (states, words, fg, bold) in cases {
-            let (text, st) = headline_word(&checkpoints(&states), &t);
-            assert_eq!(
-                (
-                    text.as_str(),
-                    st.fg,
-                    st.add_modifier.contains(Modifier::BOLD)
-                ),
-                (words, Some(fg), bold),
-                "{states:?}"
-            );
-        }
-    }
 
     #[test]
     fn a_result_from_before_checkpoints_had_names_is_named_by_its_command() {

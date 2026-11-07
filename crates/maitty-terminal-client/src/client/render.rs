@@ -23,15 +23,9 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     app.pane_frames.clear();
     app.screen.modal_rects.clear();
     let area = f.area();
-    let hairline = super::screen::Look::of(&app.cfg.ui).hairline;
-    let t = if hairline {
-        super::screen::flat_theme(&app.theme)
-    } else {
-        app.theme.clone()
-    };
+    let t = app.theme.clone();
     set_palette(t.ansi, t.ansi.map(|_| t.card2));
     super::screen::set_round(super::screen::Look::of(&app.cfg.ui).caps);
-    super::screen::set_plain(hairline.then_some(&t));
     // The terminal's own background (its window padding) matches ours while we run.
     let terminal_bg = app.cfg.ui.background != "solid";
     if let Color::Rgb(r, g, b) = t.bg
@@ -77,7 +71,11 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     }
     super::screen::draw(app, f, area, &t);
     let above = super::screen::above_bar(app, area);
+    super::screen::draw_banner(app, f, &t);
     draw_overlays(app, f, above, &t);
+    if app.service == super::screen::Service::Down {
+        super::screen::draw_service_down(app, f, above, &t);
+    }
     super::screen::flatten_modals(app, f.buffer_mut(), &t);
     tint_hovered(app, f.buffer_mut(), &t);
     if terminal_bg {
@@ -196,6 +194,7 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
             let sel = *sel;
             super::screen::draw_actions(app, f, area, &t, sel);
         }
+        Mode::Updates => super::screen::draw_updates(app, f, area, &t),
         Mode::Confirm(c) => {
             let c = (**c).clone();
             super::menu::draw_confirm(app, f, area, &t, &c);
@@ -204,6 +203,7 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
         Mode::GoTo { .. } => {}
         // Popovers beside a sidebar row (drawn with the screen).
         Mode::Compose(_) | Mode::Helpers { .. } | Mode::Secret { .. } => {}
+        Mode::Usage => super::screen::draw_usage(app, f, area, &t),
         Mode::History { sel } => {
             let sel = *sel;
             super::screen::draw_history(app, f, area, &t, sel);
@@ -234,7 +234,7 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
         }
         Mode::NewSession(ns) => {
             let ns = (**ns).clone();
-            super::screen::draw_session_popup(app, f, area, &t, &ns);
+            super::screen::draw_new_session(app, f, area, &t, &ns);
         }
         Mode::ScreenPane(np) => {
             let np = np.clone();

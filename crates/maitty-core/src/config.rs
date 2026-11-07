@@ -116,17 +116,33 @@ fn fold_legacy_helpers(value: &mut toml::Table) {
     }
 }
 
-/// An old `ui.corners = "rounded"` is `ui.rounded = "corners"` unless the file sets that itself,
-/// now that one setting rounds everything. The file itself is not rewritten.
+/// An old `ui.corners` is `ui.rounded` unless the file sets that itself, now that one setting
+/// rounds everything: `rounded` is `corners`, anything else (square, flush) is `off`, since
+/// round corners are the default now. The file itself is not rewritten.
 fn fold_legacy_corners(value: &mut toml::Table) {
     let Some(ui) = value.get_mut("ui").and_then(toml::Value::as_table_mut) else {
         return;
     };
-    let corners = ui.remove("corners");
-    if !ui.contains_key("rounded")
-        && corners.as_ref().and_then(toml::Value::as_str) == Some("rounded")
+    let Some(corners) = ui.remove("corners") else {
+        return;
+    };
+    if !ui.contains_key("rounded") {
+        let rounded = if corners.as_str() == Some("rounded") { "corners" } else { "off" };
+        ui.insert("rounded".into(), toml::Value::String(rounded.into()));
+    }
+}
+
+/// The spec's `ui.reduce_motion` is the inverse of `ui.motion`: read it as that unless the
+/// file sets `motion` itself. The file itself is not rewritten.
+fn fold_reduce_motion(value: &mut toml::Table) {
+    let Some(ui) = value.get_mut("ui").and_then(toml::Value::as_table_mut) else {
+        return;
+    };
+    let reduce = ui.remove("reduce_motion");
+    if !ui.contains_key("motion")
+        && let Some(reduce) = reduce.as_ref().and_then(toml::Value::as_bool)
     {
-        ui.insert("rounded".into(), toml::Value::String("corners".into()));
+        ui.insert("motion".into(), toml::Value::Boolean(!reduce));
     }
 }
 
@@ -300,6 +316,37 @@ pub fn add_agent(def: &AgentDef) -> Result<()> {
     add_agent_to(&config_path(), def)
 }
 
+/// Edits to config.toml from this process go one at a time, so two of them never read the same
+/// text and then each write over the other. Another process (the terminal app's own writes)
+/// can still interleave, but every write swaps the whole file in atomically, so the file is
+/// never half-written; only the later of two simultaneous edits can lose the earlier one.
+static CONFIG_EDIT: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Change config.toml through `edit`, keeping the rest of the file (comments included).
+pub fn edit_config(edit: impl FnOnce(&mut toml_edit::DocumentMut) -> Result<()>) -> Result<()> {
+    edit_config_at(&config_path(), edit)
+}
+
+/// [`edit_config`] on `file`. A missing file is created; one with a syntax error is left alone.
+pub fn edit_config_at(
+    file: &Path,
+    edit: impl FnOnce(&mut toml_edit::DocumentMut) -> Result<()>,
+) -> Result<()> {
+    let _one_at_a_time = CONFIG_EDIT.lock().unwrap_or_else(|e| e.into_inner());
+    let text = match std::fs::read_to_string(file) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e).context("reading config"),
+    };
+    let mut doc: toml_edit::DocumentMut = text
+        .parse()
+        .context("config.toml has a syntax error; fix it first")?;
+    edit(&mut doc)?;
+    write_atomic(file, doc.to_string()).context("writing config")?;
+    crate::sync::push_soon();
+    Ok(())
+}
+
 fn add_agent_to(file: &std::path::Path, def: &AgentDef) -> Result<()> {
     let text = match std::fs::read_to_string(file) {
         Ok(t) => t,
@@ -343,7 +390,7 @@ fn add_agent_to(file: &std::path::Path, def: &AgentDef) -> Result<()> {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            prefix: "ctrl+space".into(),
+            prefix: DEFAULT_PREFIX.into(),
             editor: String::new(),
             teach_agents: true,
             mcp: Mcp::default(),
@@ -950,7 +997,7 @@ impl Config {
     }
 
     /// Read `path`, with `config.local.toml` beside it laid over it when `with_local`.
-    fn load_at(path: &Path, with_local: bool) -> Result<Config> {
+    pub(crate) fn load_at(path: &Path, with_local: bool) -> Result<Config> {
         let mut value: toml::Table = match std::fs::read_to_string(path) {
             Ok(s) => toml::from_str(&s).with_context(|| format!("parsing {}", path.display()))?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => toml::Table::new(),
@@ -966,6 +1013,7 @@ impl Config {
         }
         fold_legacy_helpers(&mut value);
         fold_legacy_corners(&mut value);
+        fold_reduce_motion(&mut value);
         let written =
             ["theme_dark", "theme_light", "appearance"].map(|key| value.contains_key(key));
         let mut cfg: Config = toml::Value::Table(value)
@@ -1207,8 +1255,13 @@ impl Config {
         let mut warnings = Vec::new();
         let prefix = self.prefix.parse::<KeySpec>().unwrap_or_else(|e| {
             warnings.push(format!("prefix: {e}"));
-            "ctrl+space".parse().unwrap()
+            DEFAULT_PREFIX.parse().unwrap()
         });
+        // For one release the old prefix still works, unless the new one was changed on purpose
+        // or something else is bound to it.
+        let legacy_prefix = (self.prefix == DEFAULT_PREFIX)
+            .then(|| LEGACY_PREFIX.parse::<KeySpec>().ok())
+            .flatten();
         let mut build = |defaults: &[(&str, &str)], user: &BTreeMap<String, String>| {
             let mut map: HashMap<KeySpec, Action> = HashMap::new();
             let mut order: Vec<KeySpec> = Vec::new();
@@ -1252,8 +1305,10 @@ impl Config {
             .copied()
             .collect();
         let (global, _) = build(&globals, &self.keys.global);
+        let legacy_prefix = legacy_prefix.filter(|k| !global.contains_key(k));
         Keymap {
             prefix,
+            legacy_prefix,
             prefixed,
             prefixed_order,
             global,
@@ -1339,13 +1394,28 @@ pub struct CompiledAgent {
     pub resume_last: Option<String>,
 }
 
+/// The key that opens shortcut mode unless the config says otherwise.
+pub const DEFAULT_PREFIX: &str = "ctrl+space";
+/// The previous release's default, still accepted for one release beside `DEFAULT_PREFIX`.
+pub const LEGACY_PREFIX: &str = "ctrl+a";
+
 pub struct Keymap {
     pub prefix: KeySpec,
+    /// The previous release's prefix, accepted for one release when it collides with nothing;
+    /// None when the prefix was changed on purpose.
+    pub legacy_prefix: Option<KeySpec>,
     pub prefixed: HashMap<KeySpec, Action>,
     /// Prefix bindings in definition order, for the which-key and help screens.
     pub prefixed_order: Vec<KeySpec>,
     pub global: HashMap<KeySpec, Action>,
     pub warnings: Vec<String>,
+}
+
+impl Keymap {
+    /// Whether `key` opens shortcut mode: the prefix, or the previous release's while it works.
+    pub fn is_prefix(&self, key: &KeySpec) -> bool {
+        *key == self.prefix || self.legacy_prefix.as_ref() == Some(key)
+    }
 }
 
 pub fn default_shell() -> String {
@@ -1795,9 +1865,9 @@ mod tests {
     }
 
     #[test]
-    fn rounded_default_off_and_read_from_the_file_old_switch_or_name() {
+    fn rounded_default_corners_and_read_from_the_file_old_switch_or_name() {
         use super::Rounding;
-        assert_eq!(super::Ui::default().rounded, Rounding::Off);
+        assert_eq!(super::Ui::default().rounded, Rounding::Corners);
         for (written, read) in [
             ("true", Rounding::Corners),
             ("false", Rounding::Off),
@@ -1868,7 +1938,7 @@ mod tests {
             read("[ui]\ncorners = \"rounded\"\nrounded = true\n"),
             Rounding::Corners
         );
-        assert_eq!(read(""), Rounding::Off);
+        assert_eq!(read(""), Rounding::Corners);
     }
 
     #[test]
@@ -2403,47 +2473,47 @@ target = '-oProxyCommand=x'
             let mut ui = toml::from_str::<Config>(toml).unwrap().ui;
             ui.fold_retired_layout();
             ui.fold_legacy_sizes();
-            (ui.layout_kind(), ui.gap, ui.pane_colors)
+            (ui.layout_kind(), ui.gap)
         };
-        let floating = |gap: &str, colors: bool| (LayoutKind::Floating, gap.to_string(), colors);
+        let floating = |gap: &str| (LayoutKind::Floating, gap.to_string());
         assert_eq!(
             ui("[ui]
 panes = 'tiled'"),
-            floating("0", false),
+            floating("0"),
             "no layout line: Cards, tiled"
         );
         assert_eq!(
             ui("[ui]
 layout = 'cards'
 panes = 'tiled'"),
-            floating("0", false)
+            floating("0")
         );
         assert_eq!(
             ui("[ui]
 layout = 'tiled'
 gap = '2'"),
-            floating("0", false),
+            floating("0"),
             "tiled had no gaps"
         );
         assert_eq!(
             ui("[ui]
 layout = 'cards'
 panes = 'floating'"),
-            floating("small", false)
+            floating("small")
         );
-        assert_eq!(ui(""), floating("small", false), "the default");
+        assert_eq!(ui(""), floating("small"), "the default");
         assert_eq!(
             ui("[ui]
 layout = 'floating'
 panes = 'tiled'"),
-            floating("small", false),
+            floating("small"),
             "a new name wins over a leftover panes"
         );
         assert_eq!(
             ui("[ui]
 layout = 'grid'"),
-            floating("small", true),
-            "grid is floating in colour"
+            floating("small"),
+            "grid is floating"
         );
         assert_eq!(
             ui("[ui]
@@ -2497,9 +2567,7 @@ layout = 'tiled'"
 layout = 'grid'"
             )
             .as_deref(),
-            Some(
-                "The Grid layout is now Floating with Pane colours on. Change it in Settings › Appearance"
-            )
+            Some("The Grid layout is now Floating. Change it in Settings › Appearance")
         );
         assert_eq!(
             note(

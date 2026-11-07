@@ -9,6 +9,13 @@ const PASTE_MIN_CHARS: usize = 16;
 const DEAD_KEY_HINT: &str = "Shortcut mode — Esc to type";
 const DEAD_KEY_HINT_EVERY: std::time::Duration = std::time::Duration::from_secs(6);
 
+/// Ctrl+Shift+F, find in the pane. Only a terminal that reports the shift state sends it; the
+/// rest reach the same find with the prefix and `/`.
+fn is_find_in_pane(k: &KeyEvent) -> bool {
+    k.modifiers.contains(KeyModifiers::CONTROL | KeyModifiers::SHIFT)
+        && matches!(k.code, KeyCode::Char('f' | 'F'))
+}
+
 /// How many keys went down in `events`.
 pub(super) fn presses(events: &[Event]) -> usize {
     events
@@ -51,16 +58,6 @@ pub(super) fn paste_from_burst(events: &[Event], letters_are_commands: bool) -> 
     let held_key = text.chars().all(|c| text.starts_with(c));
     let short_paste = letters_are_commands && one_line && !held_key;
     (broken_line || long_line || short_paste).then_some(text)
-}
-
-/// The keys of the sessions a machine has now: what its saved lists are pruned to.
-fn alive_on(model: &[screen::Proj], machine: MachineId) -> Vec<SessionKey> {
-    model
-        .iter()
-        .flat_map(|p| p.sessions())
-        .filter(|s| s.key.machine == machine)
-        .map(|s| s.key.key)
-        .collect()
 }
 
 impl App {
@@ -181,7 +178,7 @@ impl App {
                     _ => {}
                 }
             }
-            Mode::NewSession(_) => self.session_popup_paste(&s),
+            Mode::NewSession(_) => self.new_session_paste(&s),
             Mode::Finder(fd) => {
                 fd.q.push_str(s.lines().next().unwrap_or("").trim());
                 fd.sel = 0;
@@ -275,6 +272,15 @@ impl App {
     }
 
     /// The open view has the keys, unless a click into a pane set it aside.
+    /// Ctrl+A is both the prefix and select-all: a file being edited gets it, and the prefix is
+    /// still on Ctrl+Space (or Esc out of the editor first).
+    fn editor_takes(&self, k: &KeyEvent) -> bool {
+        k.modifiers == KeyModifiers::CONTROL
+            && k.code == KeyCode::Char('a')
+            && self.view_has_keys()
+            && matches!(&self.view, Some(View::Files(v)) if v.edit.is_some())
+    }
+
     pub(super) fn view_has_keys(&self) -> bool {
         self.view.is_some() && self.view_set_aside != self.view_kind()
     }
@@ -297,6 +303,11 @@ impl App {
         if k.code == KeyCode::Esc && matches!(self.screen.drag, Some(screen::Drag::Pane { .. })) {
             self.screen.drag = None;
             self.dirty = true;
+            return;
+        }
+        // Without its daemon the window has nothing to type into: only the service's own keys work.
+        if self.service != screen::Service::Up {
+            self.on_service_key(&k);
             return;
         }
         if self.splash {
@@ -361,11 +372,13 @@ impl App {
         }
         match self.mode.clone() {
             Mode::Normal => {
-                if spec == self.keymap.prefix {
+                if self.keymap.is_prefix(&spec) && !self.editor_takes(&k) {
                     self.mode = Mode::Prefix {
                         since: Instant::now(),
                         acted: false,
                     };
+                } else if is_find_in_pane(&k) {
+                    self.act(Action::Search);
                 } else if let Some(a) = self.keymap.global.get(&spec).cloned() {
                     self.act(a);
                 } else if self.view_has_keys() {
@@ -376,7 +389,7 @@ impl App {
                 }
             }
             Mode::Finder(fd) => self.on_finder_key(*fd, &k),
-            Mode::NewSession(ns) => self.on_session_popup_key(*ns, &k),
+            Mode::NewSession(ns) => self.on_new_session_key(*ns, &k),
             Mode::ScreenPane(np) => self.on_hy_pane_key(np, &k),
             Mode::ScreenSettings(_) => self.screen_settings_key(&k),
             Mode::Themes { query, sel, saving } => self.on_theme_key(query, sel, saving, &k),
@@ -385,6 +398,7 @@ impl App {
             Mode::ScreenMenu(m) => self.on_hy_menu_key(*m, &k),
             Mode::Find(v) => self.on_find_key(*v, &k),
             Mode::Branch(v) => self.on_branch_key(*v, &k),
+            Mode::Usage => self.on_usage_key(&k),
             Mode::History { sel } => self.on_history_key(sel, &k),
             Mode::Tidy(v) => self.on_tidy_key(*v, &k),
             Mode::Machines(v) => self.on_machines_key(*v, &k),
@@ -433,7 +447,7 @@ impl App {
             },
             Mode::Prefix { since, acted } => {
                 // Esc or the leader again: back to typing.
-                if k.code == KeyCode::Esc || spec == self.keymap.prefix {
+                if k.code == KeyCode::Esc || self.keymap.is_prefix(&spec) {
                     self.mode = Mode::Normal;
                     self.shortcut_held = false;
                     return;
@@ -467,6 +481,7 @@ impl App {
             }
             Mode::KeyMap(km) => self.on_keymap_key(*km, &k),
             Mode::Actions { sel } => self.on_actions_key(sel, &k),
+            Mode::Updates => self.on_updates_key(&k),
             Mode::RenameTab(nt) => self.on_rename_tab_key(*nt, &k),
             Mode::Worktrees {
                 ws,
@@ -805,102 +820,6 @@ impl App {
                                 self.scroll_to(term, v.min(total));
                             }
                         }
-                        screen::Drag::Session(t, _, press) => {
-                            let over = self
-                                .hits
-                                .iter()
-                                .rev()
-                                .find(|(r, h)| {
-                                    r.contains(pos)
-                                        && matches!(
-                                            h,
-                                            Hit::Screen(
-                                                screen::ScreenHit::Session(_)
-                                                    | screen::ScreenHit::ToggleProj(_)
-                                            )
-                                        )
-                                })
-                                .map(|(_, h)| *h);
-                            let moved = match over {
-                                // Onto another session: into its group, at its place.
-                                Some(Hit::Screen(screen::ScreenHit::Session(u))) if u != t => {
-                                    let model = self.screen_model();
-                                    let into =
-                                        model.iter().position(|p| p.sessions().any(|s| s.key == u));
-                                    (into.is_some_and(|pi| self.place_session(t, pi)))
-                                        | self.move_session(t, u)
-                                }
-                                // Onto a group's name: into that group.
-                                Some(Hit::Screen(screen::ScreenHit::ToggleProj(pi))) => {
-                                    self.place_session(t, pi)
-                                }
-                                _ => false,
-                            };
-                            if moved {
-                                self.screen.drag = Some(screen::Drag::Session(t, true, press));
-                            }
-                        }
-                        screen::Drag::Group(pi, _) => {
-                            let over = self
-                                .hits
-                                .iter()
-                                .rev()
-                                .find(|(r, h)| {
-                                    r.contains(pos)
-                                        && matches!(
-                                            h,
-                                            Hit::Screen(screen::ScreenHit::ToggleProj(_))
-                                        )
-                                })
-                                .map(|(_, h)| *h);
-                            if let Some(Hit::Screen(screen::ScreenHit::ToggleProj(to))) = over
-                                && let Some(from) = self.screen.drag_key.clone()
-                                && let Some(target) = self.screen.proj_keys.get(to).cloned()
-                                && target != from
-                                && self.projects_share_machine(pi, to)
-                            {
-                                // Every group in today's order, then this one moved to the
-                                // other's place.
-                                let mut order: Vec<String> = self.screen.proj_keys.clone();
-                                order.retain(|k| *k != from);
-                                let at = order
-                                    .iter()
-                                    .position(|k| *k == target)
-                                    .unwrap_or(order.len());
-                                let at = if to > pi { at + 1 } else { at };
-                                order.insert(at.min(order.len()), from);
-                                // Groups not on screen keep their place after these.
-                                let rest: Vec<String> = self
-                                    .screen
-                                    .saved
-                                    .order
-                                    .iter()
-                                    .filter(|k| !order.contains(k))
-                                    .cloned()
-                                    .collect();
-                                order.extend(rest);
-                                self.screen.saved.order = order;
-                                self.screen.drag = Some(screen::Drag::Group(to, true));
-                                self.screen_fresh();
-                            }
-                        }
-                        screen::Drag::Tab(i) => {
-                            let over = self
-                                .hits
-                                .iter()
-                                .rev()
-                                .find(|(r, h)| {
-                                    r.contains(pos)
-                                        && matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_)))
-                                })
-                                .map(|(_, h)| *h);
-                            if let Some(Hit::Screen(screen::ScreenHit::TabPick(j))) = over
-                                && j != i
-                            {
-                                let now = self.move_tab(i, j);
-                                self.screen.drag = Some(screen::Drag::Tab(now));
-                            }
-                        }
                         screen::Drag::Pane { from, .. } => {
                             self.screen.drag = Some(screen::Drag::Pane {
                                 from,
@@ -912,11 +831,10 @@ impl App {
                             if let Some((r, horizontal, path)) =
                                 self.screen.dividers.get(i).cloned()
                             {
-                                // The line sits in the gap after the left card (as wide as the
-                                // gap setting): put it under the pointer.
-                                let gap = screen::Look::of(&self.cfg.ui).gap.max(1);
+                                // The line is the first pane's last column: put it under the
+                                // pointer.
                                 let f = if horizontal {
-                                    (m.column + gap).saturating_sub(r.x) as f32
+                                    (m.column + 1).saturating_sub(r.x) as f32
                                         / r.width.max(1) as f32
                                 } else {
                                     (m.row + 1).saturating_sub(r.y) as f32 / r.height.max(1) as f32
@@ -942,43 +860,13 @@ impl App {
                         self.dirty = true;
                         return;
                     }
-                    // A session pressed and let go where it was: open it, or its Changes when
-                    // the press was on its `+N −N`.
-                    if let screen::Drag::Session(_, false, press) = d {
-                        self.screen.drag = None;
-                        self.on_hy_hit(press, false);
-                        self.dirty = true;
-                        return;
-                    }
-                    // A group header pressed and let go where it was: fold or open it.
-                    if let screen::Drag::Group(pi, false) = d {
-                        self.screen.drag = None;
-                        self.screen.drag_key = None;
-                        self.on_hy_hit(screen::ScreenHit::ToggleProj(pi), false);
-                        self.dirty = true;
-                        return;
-                    }
                     self.screen.drag = None;
-                    self.screen.drag_key = None;
-                    self.screen.save();
+                        self.screen.save();
                     self.dirty = true;
                     return;
                 }
                 _ => {}
             }
-        }
-        // A middle click on a tab closes it, as in a browser.
-        if m.kind == MouseEventKind::Down(MouseButton::Middle)
-            && let Some(Hit::Screen(screen::ScreenHit::TabPick(i))) = self
-                .hits
-                .iter()
-                .rev()
-                .find(|(r, _)| r.contains(pos))
-                .map(|(_, h)| *h)
-        {
-            self.close_tab(i);
-            self.dirty = true;
-            return;
         }
         // Some terminals only report the release of a right click: open on whichever comes
         // first.
@@ -1012,12 +900,6 @@ impl App {
                         self.menu_for_session(term, at);
                     }
                 }
-                Some(Hit::Screen(screen::ScreenHit::ToggleProj(pi))) => {
-                    self.menu_for_project(pi, at)
-                }
-                Some(Hit::Screen(screen::ScreenHit::MachineRow(machine))) => {
-                    self.menu_for_machine(machine, at)
-                }
                 _ => {
                     if let Some((term, _)) = self
                         .pane_frames
@@ -1037,7 +919,6 @@ impl App {
             // window) is over. Left in place it would keep the mouse from the panes.
             if self.screen.drag.is_some() {
                 self.screen.drag = None;
-                self.screen.drag_key = None;
                 self.screen.save();
             }
             if self.hover != Some(pos) {
@@ -1058,30 +939,7 @@ impl App {
                 .rev()
                 .find(|(r, _)| r.contains(pos))
                 .map(|(_, h)| *h);
-            // A session's row: it may be dragged within its group; a plain click opens it
-            // (on release).
-            let session_press = match hit {
-                Some(Hit::Screen(press @ screen::ScreenHit::Session(s))) => Some((s, press)),
-                _ => None,
-            };
-            if let Some((t, press)) = session_press {
-                self.screen.drag = Some(screen::Drag::Session(t, false, press));
-                self.dirty = true;
-                return;
-            }
-            // A group's header: it may be dragged to a new place; a plain click folds it (on
-            // release).
-            if let Some(Hit::Screen(screen::ScreenHit::ToggleProj(pi))) = hit {
-                self.screen.drag = Some(screen::Drag::Group(pi, false));
-                self.screen.drag_key = self.screen.proj_keys.get(pi).cloned();
-                self.dirty = true;
-                return;
-            }
             if let Some(h @ Hit::Screen(hh)) = hit {
-                // A tab's pill may be dragged to another tab's place.
-                if let screen::ScreenHit::TabPick(i) = hh {
-                    self.screen.drag = Some(screen::Drag::Tab(i));
-                }
                 let double = self
                     .last_click
                     .is_some_and(|(prev, at)| prev == h && at.elapsed() < DOUBLE_CLICK);
@@ -1227,16 +1085,12 @@ impl App {
                     return;
                 }
                 if self.screen.side_rect.contains(pos) {
-                    // The Remote half scrolls on its own; the rest of the sidebar is Local's.
-                    let scroll = if self.screen.remote_rect.contains(pos) {
-                        &mut self.screen.remote_scroll
-                    } else {
-                        &mut self.screen.side_scroll
-                    };
+                    // A turn of the wheel moves the list a session (two rows).
+                    let scroll = &mut self.screen.side_scroll;
                     *scroll = if up {
-                        scroll.saturating_sub(3)
+                        scroll.saturating_sub(1)
                     } else {
-                        *scroll + 3
+                        *scroll + 1
                     };
                     self.dirty = true;
                     return;
@@ -1308,67 +1162,6 @@ impl App {
     fn swap_target(&self, from: ClientTerm, pos: Position) -> Option<ClientTerm> {
         let (to, _) = self.pane_frames.iter().find(|(_, r)| r.contains(pos))?;
         (*to != from && self.screen.leaf_rects.iter().any(|(id, _)| id == to)).then_some(*to)
-    }
-
-    /// Put session `t` where `u` is, within their group (the order you dragged them to).
-    /// False when they aren't in the same group.
-    /// Put session `t` in group `pi` (by the sidebar's groups). Not onto another machine's group.
-    pub(super) fn place_session(&mut self, t: ClientSession, pi: usize) -> bool {
-        let model = self.screen_model();
-        let Some(to) = model.get(pi) else {
-            return false;
-        };
-        let Some(from) = model.iter().find(|p| p.sessions().any(|s| s.key == t)) else {
-            return false;
-        };
-        if from.key == to.key || to.machine != t.machine {
-            return false;
-        }
-        let machine = self.machine_name(t.machine).to_string();
-        let placed = self.screen.saved.placed_mut(&machine);
-        placed.retain(|(x, ..)| *x != t.key);
-        placed.push((t.key, to.path.clone(), to.git));
-        let alive = alive_on(&model, t.machine);
-        placed.retain(|(x, ..)| alive.contains(x));
-        self.screen_fresh();
-        self.dirty = true;
-        true
-    }
-
-    pub(super) fn move_session(&mut self, t: ClientSession, u: ClientSession) -> bool {
-        let model = self.screen_model();
-        let Some(group) = model.iter().find(|p| p.sessions().any(|s| s.key == t)) else {
-            return false;
-        };
-        if !group.sessions().any(|s| s.key == u) {
-            return false;
-        }
-        // The group's sessions as shown, then t moved to u's place.
-        let lines = screen::side_lines(self, &model, &self.theme);
-        let mut ids: Vec<ClientSession> = lines
-            .iter()
-            .filter_map(|l| screen::line_term(&model, l))
-            .filter(|id| group.sessions().any(|s| s.key == *id))
-            .collect();
-        let (from, to) = (
-            ids.iter().position(|x| *x == t),
-            ids.iter().position(|x| *x == u),
-        );
-        let (Some(from), Some(to)) = (from, to) else {
-            return false;
-        };
-        let id = ids.remove(from);
-        ids.insert(to, id);
-        let machine = self.machine_name(t.machine).to_string();
-        let order = self.screen.saved.session_order_mut(&machine);
-        order.retain(|x| !ids.iter().any(|id| id.key == *x));
-        order.extend(ids.iter().map(|id| id.key));
-        // Only sessions that still exist.
-        let alive = alive_on(&model, t.machine);
-        order.retain(|x| alive.contains(x));
-        self.screen_fresh();
-        self.dirty = true;
-        true
     }
 
     /// The mouse pointer for what's under it: ↔ / ↕ over a line you can drag (in terminals

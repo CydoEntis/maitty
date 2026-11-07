@@ -3,7 +3,9 @@
 //! found, and installs nothing without a yes. The binary is this computer's own when the
 //! platform matches, else the release fetched here and checked; it is streamed through ssh to
 //! a fixed script that swaps it in only after it has arrived whole and run. The far side's
-//! daemon is never signalled: it keeps its sessions and is asked to restart only if none is open.
+//! install script never signals a process. Afterwards the far daemon is asked to restart: only
+//! if no session is open, or with `--restart` also when its sessions are saved, because the new
+//! daemon restores them and resumes their agents (a turn in progress is lost).
 
 pub(crate) mod binary;
 
@@ -25,6 +27,10 @@ pub(crate) struct Flags {
     pub install: bool,
     pub yes: bool,
     pub force: bool,
+    /// Restart the far daemon even with sessions open (they are saved and come back).
+    pub restart: bool,
+    /// Keep asking the far daemon to restart until nothing is open, up to half an hour.
+    pub wait: bool,
 }
 
 /// A mistake in how it was asked (exit 2), or a step that did not work (exit 1).
@@ -145,7 +151,11 @@ pub(crate) fn update(
     talk.say(&format!("installed to {to}"));
     check_reachable(machine, &remote_cmd, &to, &name, talk);
     if had_old {
-        restart_if_idle(machine, &to, &name, talk);
+        if flags.wait {
+            restart_when_idle(machine, &to, &name, IDLE_POLL, talk);
+        } else {
+            restart_daemon(machine, &to, &name, flags.restart, talk);
+        }
     }
     Ok(Outcome::Installed { destination: to })
 }
@@ -258,14 +268,71 @@ fn check_reachable(machine: &Machine, remote_cmd: &str, to: &str, name: &str, ta
     }
 }
 
+/// How long `--wait` pauses between asking, and how many times it asks (about half an hour).
+const IDLE_POLL: std::time::Duration = if cfg!(test) {
+    std::time::Duration::from_millis(5)
+} else {
+    std::time::Duration::from_secs(30)
+};
+const MOST_IDLE_ASKS: u32 = 60;
+
+/// Ask the far daemon to restart if idle, again and again until it does. The new file is
+/// already installed, so each ask runs the new binary, which can read the daemon's activity.
+/// Giving up is a note, not a failure: the update is done and the daemon was left running.
+fn restart_when_idle(
+    machine: &Machine,
+    to: &str,
+    name: &str,
+    pause: std::time::Duration,
+    talk: &mut dyn Talk,
+) {
+    talk.say(&format!(
+        "waiting for {name} to be idle, then restarting its daemon…"
+    ));
+    for ask in 0..MOST_IDLE_ASKS {
+        let asked = machine
+            .restart_if_idle_argv(to, false)
+            .map_err(|e| format!("{e:#}"))
+            .and_then(|argv| ssh_run::run(&argv, None, ASK_LIMIT));
+        match asked {
+            Ok(ran) if ran.code == Some(0) => {
+                let line = last_line(&ran.stdout);
+                if line.starts_with("restarted") || line.starts_with("no server") {
+                    talk.say(&format!("daemon: {line}"));
+                    return;
+                }
+            }
+            Ok(ran) => {
+                talk.say(&format!(
+                    "note: could not ask the daemon ({}); running sessions are untouched, and it takes the new version when it next restarts",
+                    last_line(&ran.stderr)
+                ));
+                return;
+            }
+            Err(why) => {
+                talk.say(&format!("note: could not ask the daemon ({why}); running sessions are untouched"));
+                return;
+            }
+        }
+        if ask + 1 < MOST_IDLE_ASKS {
+            std::thread::sleep(pause);
+        }
+    }
+    talk.say(&format!(
+        "note: {name} was still busy after half an hour; its daemon was left running and takes the new version when it next restarts"
+    ));
+}
+
 /// The old daemon keeps running; the new binary restarts it only when no session is open.
 /// A failure to ask is a note, not a failure: the update itself is done.
-fn restart_if_idle(machine: &Machine, to: &str, name: &str, talk: &mut dyn Talk) {
-    talk.say(&format!(
-        "asking the daemon on {name} to restart if no session is open…"
-    ));
+fn restart_daemon(machine: &Machine, to: &str, name: &str, now: bool, talk: &mut dyn Talk) {
+    talk.say(&if now {
+        format!("restarting the daemon on {name}; its saved sessions come back…")
+    } else {
+        format!("asking the daemon on {name} to restart if no session is open…")
+    });
     let asked = machine
-        .restart_if_idle_argv(to)
+        .restart_if_idle_argv(to, now)
         .map_err(|e| format!("{e:#}"))
         .and_then(|argv| ssh_run::run(&argv, None, ASK_LIMIT));
     match asked {
@@ -278,6 +345,36 @@ fn restart_if_idle(machine: &Machine, to: &str, name: &str, talk: &mut dyn Talk)
         )),
         Err(why) => talk.say(&format!("note: could not ask the daemon ({why}); running sessions are untouched")),
     }
+}
+
+/// `<app> machine activity <name>`: how many sessions are open on the machine and how many are
+/// mid-turn, as the one line the far side prints. A machine whose app is too old to answer, or
+/// that has none, gives `activity: unknown`; only a machine that cannot be reached is a failure.
+pub(crate) fn activity(name: &str, cfg: &Config) -> Result<String, Failure> {
+    let machine =
+        resolve_machine(name, cfg, SSH_PROGRAM).map_err(|e| Failure::Usage(e.to_string()))?;
+    if !machine.is_remote() || machine.transport_program().is_some() {
+        return Err(Failure::Usage(
+            "name a machine from [[machines]] in config.local.toml that is reached over ssh".into(),
+        ));
+    }
+    let remote_cmd = machine.remote_cmd().unwrap_or(APP_COMMAND).to_string();
+    let argv = machine
+        .activity_argv(&destination(&remote_cmd))
+        .map_err(|e| failed(format!("{e:#}")))?;
+    let ran = ssh_run::run(&argv, None, ASK_LIMIT).map_err(Failure::Failed)?;
+    reached(&ran, name)?;
+    Ok(activity_line(ran.code, &ran.stdout))
+}
+
+/// The far side's answer when it ran and printed one; anything else (an older app that does not
+/// know the word, a missing app) is "unknown", never a guess.
+fn activity_line(code: Option<i32>, stdout: &str) -> String {
+    let line = last_line(stdout);
+    if code == Some(0) && line.starts_with("activity: ") {
+        return sanitize(&line, false);
+    }
+    "activity: unknown".into()
 }
 
 /// The real terminal: progress on stderr, a question answered on stdin when there is a person.
@@ -312,4 +409,21 @@ impl Talk for Terminal {
 
 fn is_yes(answer: &str) -> bool {
     matches!(answer.trim().to_lowercase().as_str(), "y" | "yes")
+}
+
+
+#[cfg(test)]
+mod activity_tests {
+    use super::activity_line;
+
+    #[test]
+    fn the_far_sides_line_is_passed_on_and_anything_else_is_unknown() {
+        assert_eq!(
+            activity_line(Some(0), "login banner\nactivity: sessions=3 busy=1\n"),
+            "activity: sessions=3 busy=1"
+        );
+        assert_eq!(activity_line(Some(2), "error: unrecognized subcommand"), "activity: unknown");
+        assert_eq!(activity_line(Some(0), "something else"), "activity: unknown");
+        assert_eq!(activity_line(None, ""), "activity: unknown");
+    }
 }

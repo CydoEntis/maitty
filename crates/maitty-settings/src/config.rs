@@ -170,10 +170,9 @@ pub const PADDING_TOP: &str = "top";
 #[serde(default)]
 pub struct Ui {
     pub sidebar: bool,
-    /// "left" or "right".
+    /// "left" or "right". The desktop app's spelling, `sidebar_side`, is read too.
+    #[serde(alias = "sidebar_side")]
     pub sidebar_position: String,
-    /// The column of tool chips (Files, Changes, Branch, References) on the right edge.
-    pub tool_rail: bool,
     /// Milliseconds after the prefix before the which-key popup shows (0 = immediately).
     pub which_key_delay_ms: u64,
     pub which_key: bool,
@@ -226,10 +225,6 @@ pub struct Ui {
     pub focus_border: String,
     /// How round the shapes are: `full` (pills), `corners` (rounded boxes, square chips) or `off`.
     pub rounded: Rounding,
-    /// Floating: each pane's border in its own colour, by its place in the tab.
-    pub pane_colors: bool,
-    /// Leave a cell of border between tab chips.
-    pub tab_gap: bool,
     /// What `fold_retired_layout` changed, to say once and write back: the retired look's name
     /// and the settings that stand for it now. Never read from or written to the file.
     #[serde(skip)]
@@ -241,6 +236,11 @@ pub struct Ui {
     pub cursor: String,
     /// That cursor blinks.
     pub cursor_blink: bool,
+    /// What a new session opens as: "chat" or "terminal" (the desktop app's choice; the
+    /// terminal app keeps it for it).
+    pub new_session_view: maitty_shared::settings_view::NewSessionView,
+    /// How the desktop window is drawn: "flat" or "glass".
+    pub window_style: maitty_shared::settings_view::WindowStyle,
 }
 
 pub const NEW_AGENTS: &[&str] = &["last used", "claude", "codex", "gemini"];
@@ -301,6 +301,9 @@ pub struct Restore {
     pub enabled: bool,
     /// Relaunch agents with their resume command (`claude --resume <id>`, ...).
     pub agents: bool,
+    /// Resume chat conversations that were running when the server stopped, on the same
+    /// provider session.
+    pub conversations: bool,
     /// Re-run commands panes were started with (`spawn-right:lazygit`, `<app> split -- x`).
     pub commands: bool,
     /// Keep each pane's recent output on disk so it is there after a restart. It can hold
@@ -375,6 +378,7 @@ impl Default for Restore {
         Restore {
             enabled: true,
             agents: true,
+            conversations: true,
             commands: true,
             output: true,
         }
@@ -698,16 +702,13 @@ pub struct RetiredLayout {
     pub kind: LayoutKind,
     /// `gap = 0` stands for it (Tiled).
     pub gap: bool,
-    /// `pane_colors = true` stands for it (Grid).
-    pub pane_colors: bool,
 }
 
 impl RetiredLayout {
     /// What the app says once when it starts with it.
     pub fn note(&self) -> String {
-        let now = match (self.kind, self.gap, self.pane_colors) {
-            (_, true, _) => "Floating with no gap",
-            (_, _, true) => "Floating with Pane colours on",
+        let now = match (self.kind, self.gap) {
+            (_, true) => "Floating with no gap",
             _ => "Floating",
         };
         format!(
@@ -756,7 +757,6 @@ impl Ui {
             self.gap = "0".into();
             Some("Tiled")
         } else if self.layout == "grid" {
-            self.pane_colors = true;
             Some("Grid")
         } else if matches!(self.layout.as_str(), "compact" | "flat") {
             Some("Compact")
@@ -771,7 +771,6 @@ impl Ui {
             name,
             kind,
             gap: tiled,
-            pane_colors: name == "Grid",
         });
     }
 
@@ -818,8 +817,8 @@ pub const SPINNERS: &[(&str, &[&str])] = &[
     ("Braille", &["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]),
     ("Dots", &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
     ("Line (ASCII)", &["|", "/", "-", "\\"]),
-    // Three dots chasing round the cell's edge.
-    ("Snake", &["⠇", "⠋", "⠙", "⠸", "⢰", "⣠", "⣄", "⡆"]),
+    // A short body chasing round the cell, as the TUI design draws it.
+    ("Snake", &["⠏", "⠛", "⠹", "⢸", "⣰", "⣤", "⣆", "⡇"]),
     // Each frame held twice: the pulse breathes at half the other styles' pace.
     ("Pulse", &["·", "·", "•", "•", "●", "●", "•", "•"]),
     // From ratatui-spinner's FluxFrames (MIT): Fill is its PULSE.
@@ -844,7 +843,6 @@ impl Default for Ui {
         Ui {
             sidebar: true,
             sidebar_position: "left".into(),
-            tool_rail: false,
             which_key_delay_ms: 600,
             which_key: false,
             mouse: true,
@@ -868,16 +866,16 @@ impl Default for Ui {
             panes: "floating".into(),
             glyphs: "auto".into(),
             gap: "small".into(),
-            padding: "small".into(),
+            padding: "medium".into(),
             dim: "normal".into(),
             focus_border: "accent".into(),
-            rounded: Rounding::Off,
-            pane_colors: false,
-            tab_gap: true,
+            rounded: Rounding::Corners,
             retired_layout: None,
             subagent_count: true,
             cursor: "block".into(),
             cursor_blink: true,
+            new_session_view: Default::default(),
+            window_style: Default::default(),
         }
     }
 }
@@ -946,14 +944,20 @@ mod tests {
     fn ui_defaults_keep_the_existing_appearance_and_cursor_settings() {
         let ui = Ui::default();
 
-        assert_eq!(ui.rounded, Rounding::Off);
+        assert_eq!(ui.rounded, Rounding::Corners, "the redesign rounds every box");
         assert_eq!(ui.background, "solid");
         assert_eq!(ui.cursor, "block");
-        assert_eq!(ui.padding, "small");
+        assert_eq!(ui.padding, "medium");
         assert_eq!(ui.gap, "small");
         assert_eq!(ui.dim, "normal");
-        assert!(ui.tab_gap);
         assert_eq!(ui.spinner.first().map(String::as_str), Some("⣾"));
+    }
+
+    #[test]
+    fn a_config_that_still_names_a_removed_ui_key_loads() {
+        let ui: Ui = toml::from_str("pane_colors = true\ntab_gap = false\ntool_rail = true\ngap = 'medium'")
+            .expect("removed keys are ignored, not errors");
+        assert_eq!(ui.gap, "medium", "and the keys around them are still read");
     }
 
     #[test]
@@ -1062,9 +1066,22 @@ mod tests {
     }
 
     #[test]
+    fn a_config_can_turn_conversation_resume_off() {
+        let restore: Restore = toml::from_str("conversations = false").unwrap();
+        assert!(!restore.conversations);
+        assert!(restore.agents, "the other restore settings keep their defaults");
+    }
+
+    #[test]
     fn persistence_worktree_and_mcp_settings_keep_their_defaults() {
         let restore = Restore::default();
-        assert!(restore.enabled && restore.agents && restore.commands && restore.output);
+        assert!(
+            restore.enabled
+                && restore.agents
+                && restore.conversations
+                && restore.commands
+                && restore.output
+        );
 
         let worktree = Worktree::default();
         assert_eq!(worktree.dir, "{repo_parent}/{repo}-worktrees/{branch}");
