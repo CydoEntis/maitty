@@ -25,6 +25,9 @@ pub enum PaneCommand {
     Archive(bool),
     Seen,
     Close,
+    /// End the session after an undo window; `UndoClose` inside it brings the session back.
+    CloseSession,
+    UndoClose,
 }
 
 impl PaneCommand {
@@ -43,6 +46,8 @@ impl PaneCommand {
             }
             PaneCommand::Seen => ClientMsg::Command(Command::MarkSeen { term }),
             PaneCommand::Close => ClientMsg::Command(Command::ClosePane { term }),
+            PaneCommand::CloseSession => ClientMsg::Command(Command::CloseSession { term }),
+            PaneCommand::UndoClose => ClientMsg::Command(Command::UndoClose { term }),
         }
     }
 }
@@ -763,6 +768,25 @@ pub async fn close_terminal_session(term: u32, daemon_executable: PathBuf) -> Re
     match reply {
         Reply::Ok => Ok(Value::Null),
         _ => bail!("daemon returned an unexpected close reply"),
+    }
+}
+
+/// End a terminal session with an undo window: the daemon hides it at once and closes it after
+/// the window unless `undo_close_terminal_session` comes first.
+pub async fn close_session_with_undo(term: u32, daemon_executable: PathBuf) -> Result<Value> {
+    let reply = request(PaneCommand::CloseSession.message(term), daemon_executable).await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected close reply"),
+    }
+}
+
+/// Bring back a session `close_session_with_undo` hid, while the undo window is open.
+pub async fn undo_close_terminal_session(term: u32, daemon_executable: PathBuf) -> Result<Value> {
+    let reply = request(PaneCommand::UndoClose.message(term), daemon_executable).await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected undo reply"),
     }
 }
 
@@ -1548,6 +1572,14 @@ mod pane_command_tests {
             (
                 PaneCommand::Close,
                 ClientMsg::Command(Command::ClosePane { term: 4 }),
+            ),
+            (
+                PaneCommand::CloseSession,
+                ClientMsg::Command(Command::CloseSession { term: 4 }),
+            ),
+            (
+                PaneCommand::UndoClose,
+                ClientMsg::Command(Command::UndoClose { term: 4 }),
             ),
         ];
         for (command, expected) in cases {

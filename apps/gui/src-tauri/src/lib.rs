@@ -395,6 +395,40 @@ async fn close_terminal_session(
 }
 
 #[tauri::command]
+async fn close_session_with_undo(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    term: u32,
+) -> Result<serde_json::Value, String> {
+    if routing::is_remote(machine) {
+        return wire
+            .command(machine, term, PaneCommand::CloseSession)
+            .map(|()| serde_json::Value::Null);
+    }
+    maitty_desktop_client::close_session_with_undo(term, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn undo_close_terminal_session(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    term: u32,
+) -> Result<serde_json::Value, String> {
+    if routing::is_remote(machine) {
+        return wire
+            .command(machine, term, PaneCommand::UndoClose)
+            .map(|()| serde_json::Value::Null);
+    }
+    maitty_desktop_client::undo_close_terminal_session(term, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
 async fn send_conversation(
     app: tauri::AppHandle,
     id: u64,
@@ -664,6 +698,8 @@ pub fn run() {
             pin_terminal_session,
             archive_terminal_session,
             close_terminal_session,
+            close_session_with_undo,
+            undo_close_terminal_session,
             send_conversation,
             approve_conversation,
             answer_conversation_input,
