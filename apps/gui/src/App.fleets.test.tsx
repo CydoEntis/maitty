@@ -30,6 +30,11 @@ const daemon = vi.hoisted(() => ({
 
 vi.mock('@/api/daemon', () => ({
   ...daemon,
+  createFleet: fleetApi.createFleet,
+  renameFleet: fleetApi.renameFleet,
+  startShellInFleet: fleetApi.startShellInFleet,
+  recolorFleet: vi.fn(),
+  moveSessionToFleet: vi.fn(),
   isDesktop: () => true,
   terminalOf: (id: string) => {
     const match = /^t(\d+)$/.exec(id)
@@ -39,13 +44,12 @@ vi.mock('@/api/daemon', () => ({
 
 const fleetApi = vi.hoisted(() => ({
   loadFleets: vi.fn<() => Promise<Fleet[]>>(),
-  createFleet: vi.fn<(machine: number, name: string) => Promise<number | null>>(),
+  createFleet: vi.fn<(machine: number, name: string) => Promise<void>>(),
   renameFleet: vi.fn<(machine: number, fleet: number, name: string) => Promise<void>>(),
   startShellInFleet: vi.fn<(machine: number, fleet: number, folder?: string) => Promise<void>>(),
 }))
 
 vi.mock('@/api/fleets', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/api/fleets')>()), loadFleets: fleetApi.loadFleets }))
-vi.mock('@/api/fleetCommands', () => ({ ...fleetApi, recolorFleet: vi.fn(), moveSessionToFleet: vi.fn() }))
 
 vi.mock('@/api/machines', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/machines')>()),
@@ -97,7 +101,7 @@ describe('fleets and ships in the window', () => {
     daemon.startShellSession.mockResolvedValue(undefined)
     fleetApi.loadFleets.mockResolvedValue([MAITTY, GROWTH])
     fleetApi.startShellInFleet.mockResolvedValue(undefined)
-    fleetApi.createFleet.mockResolvedValue(7)
+    fleetApi.createFleet.mockResolvedValue(undefined)
     fleetApi.renameFleet.mockResolvedValue(undefined)
     daemon.loadConversations.mockResolvedValue([
       term(1, `${HOME}/a`, { agent: 'claude', status: 'needs-you' }),

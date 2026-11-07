@@ -11,18 +11,20 @@ import {
   conversationsFromSnapshot,
   isDesktop,
   listenSessionsChanged,
+  createFleet,
   loadConversations,
   loadDaemonRestartStatus,
   renameConversationOnDaemon,
+  renameFleet,
   restartMismatchedDaemon,
   sendTerminalInput,
   submitMessage,
   startChatSession,
+  startShellInFleet,
   startShellSession,
   undoCloseSession,
 } from '@/api/daemon'
-import { fleetKey, fleetsFromSnapshot, loadFleets, type Fleet } from '@/api/fleets'
-import { createFleet, renameFleet, startShellInFleet } from '@/api/fleetCommands'
+import { fleetsFromSnapshot, loadFleets, type Fleet } from '@/api/fleets'
 import { LOCAL_MACHINE, addMachine, cancelAddMachine, listSshHosts, listenAttention, listenMachineClipboard, listenMachineError, listenMachineNotice, listenMachineRemoved, listenMachineSessions, listenMachineState, loadMachinesOverview, removeMachine, retryMachine, setMachineGrant, startSessionOnMachine, terminalOf, unregisterMachine, type Attention, type Grant, type MachineState } from '@/api/machines'
 import { TitleBar } from '@/components/TitleBar'
 import { Toaster } from '@/components/ui/sonner'
@@ -1039,10 +1041,11 @@ export function DesktopApp() {
   // The new fleet is selected at once. Until the daemon lists it the window keeps showing the old one, then switches.
   const addFleet = useCallback((machine: number, name: string) => {
     createFleet(machine, name).then(
-      async (id) => {
+      async () => {
+        // The host does not say which fleet it made: find it by name once the daemon lists it.
         await queryClient.invalidateQueries({ queryKey: ['fleets'] })
         const listed = queryClient.getQueryData<Fleet[]>(['fleets']) ?? []
-        const key = id !== null ? fleetKey(machine, id) : (listed.find((fleet) => fleet.machine === machine && fleet.name === name)?.key ?? null)
+        const key = listed.find((fleet) => fleet.machine === machine && fleet.name === name)?.key ?? null
         if (key !== null) selectFleet(key)
       },
       (error: unknown) => { toast.error(errorMessage(error, `Could not add the fleet ${name}`)) },
