@@ -35,6 +35,8 @@ pub enum Act {
     FindIn(ClientTerm),
     /// The program in this pane is an agent: the app learns it.
     TeachAgent(ClientTerm),
+    /// The tools and folder actions of the project this session is in.
+    ProjectTools(ClientTerm),
     /// End these (stops what runs in them).
     End(Vec<ClientTerm>),
     Changes(PathBuf),
@@ -334,6 +336,7 @@ impl App {
         }) {
             items.push((format!("{} is an agent…", t.process), Act::TeachAgent(term)));
         }
+        items.push(("Project…".to_string(), Act::ProjectTools(term)));
         let several = self.screen.leaf_rects.len() > 1;
         items.push((if several { "Close pane" } else { "Close session" }.to_string(), Act::End(vec![term])));
         self.menu(
@@ -470,8 +473,8 @@ impl App {
         );
     }
 
-    /// The ` ▾ Project ` chip: the tools that look at the project the pane is in, then what else
-    /// the project's folder offers (worktrees, its checks, snapshots, closing it).
+    /// The `Project…` item of a pane's menu: the tools that look at the project the pane is in,
+    /// then what else the project's folder offers (worktrees, its checks, snapshots, closing it).
     pub(super) fn menu_for_project_tools(&mut self, term: ClientTerm, at: (u16, u16)) {
         if Some(term) != self.focused() {
             self.cmd_on(term.machine, Command::FocusPane { term: term.term });
@@ -822,6 +825,10 @@ impl App {
                         app.screen_fresh();
                     }))
                 });
+            }
+            Act::ProjectTools(term) => {
+                let at = self.hover.map_or((0, 0), |p| (p.x, p.y + 1));
+                self.menu_for_project_tools(term, at);
             }
             Act::TeachAgent(term) => {
                 self.cmd_on(term.machine, Command::TeachAgent { term: term.term })

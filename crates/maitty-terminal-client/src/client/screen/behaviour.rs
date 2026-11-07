@@ -203,17 +203,6 @@ impl App {
         pending.take().map(|asked| asked.owner)
     }
 
-    /// The tabs of the session you're on, in order: only its own, never another session's.
-    /// Both the tab row and the number keys walk this list.
-    pub(in crate::client) fn session_tabs(&self) -> Vec<usize> {
-        let Some(owner) = self.screen.tabs.get(self.screen.tab).map(|t| t.owner) else {
-            return Vec::new();
-        };
-        (0..self.screen.tabs.len())
-            .filter(|i| self.screen.tabs[*i].owner == owner)
-            .collect()
-    }
-
     /// Close a session's tab and what's in it (one of several: its last tab is the session,
     /// closed from the sidebar). With an agent in it, a second click within a few seconds.
     pub(in crate::client) fn close_tab(&mut self, i: usize) {
@@ -278,6 +267,23 @@ impl App {
         true
     }
 
+    /// A plain shell in the folder of the project you are in (the repo itself, not a worktree).
+    pub(in crate::client) fn shell_in_project(&mut self) {
+        let dir = self
+            .selected_term()
+            .and_then(|t| self.term_info(t))
+            .map(|t| t.root.clone().unwrap_or_else(|| t.cwd.clone()))
+            .or_else(|| {
+                self.screen_model()
+                    .iter()
+                    .find(|p| Some(&p.key) == self.screen.proj.as_ref())
+                    .map(|p| p.path.clone())
+            })
+            .unwrap_or_else(|| self.here_dir());
+        self.screen.cursor = None;
+        self.screen_new_session(dir, None, false);
+    }
+
     /// Show a session: it becomes the focused one.
     pub(in crate::client) fn screen_focus(&mut self, term: ClientTerm) {
         // A sidebar opened over the workspace (a narrow screen) puts itself away once you pick.
@@ -322,19 +328,43 @@ impl App {
         cmd: Option<String>,
         beside: bool,
     ) {
-        if beside && let Some(f) = self.focused() {
-            self.begin_split(f);
-        }
         self.screen.cursor = None;
         self.mode = Mode::Normal;
-        self.cmd_on(
-            machine,
-            Command::NewWorkspace {
-                cwd: Some(cwd),
-                name: None,
-                cmd,
-            },
-        );
+        // Beside the focused pane: a split of its tab, so the pair stays in one fleet and the
+        // daemon remembers the layout.
+        if beside && let Some(f) = self.focused().filter(|f| f.machine == machine) {
+            self.begin_split(f);
+            let dir = self.screen.split_dir.unwrap_or(crate::layout::Dir::Right);
+            self.cmd_on(
+                machine,
+                Command::Split {
+                    term: f.term,
+                    dir,
+                    cmd,
+                    cwd: Some(cwd),
+                },
+            );
+            return;
+        }
+        // Otherwise a ship in the fleet that works in this folder, if the machine has one;
+        // else the folder starts a fleet of its own.
+        let fleet = self.snap_of(machine).and_then(|snap| {
+            snap.workspaces
+                .iter()
+                .find(|w| super::super::same_dir(&w.cwd, &cwd))
+                .map(|w| w.id)
+        });
+        match fleet {
+            Some(ws) => self.cmd_on(machine, Command::NewTab { ws, name: None, cmd }),
+            None => self.cmd_on(
+                machine,
+                Command::NewWorkspace {
+                    cwd: Some(cwd),
+                    name: None,
+                    cmd,
+                },
+            ),
+        }
     }
 
     /// A new worktree of a project running `cmd`: on `branch` if given (an existing one),
@@ -496,12 +526,12 @@ impl App {
             return;
         }
         let cur = match (
-            &self.screen.cursor_proj,
+            self.cursor_head(),
             self.screen
                 .cursor
                 .or(self.focused().map(|id| self.session_key(id))),
         ) {
-            (Some(k), _) => items.iter().position(|i| *i == SideItem::Proj(k.clone())),
+            (Some(item), _) => items.iter().position(|i| *i == item),
             (None, Some(t)) => items.iter().position(|i| *i == SideItem::Sess(t)),
             _ => None,
         };
@@ -518,8 +548,8 @@ impl App {
     /// before.
     pub(in crate::client) fn side_after_close(&self) -> Option<SideItem> {
         let items = &self.screen.side_items;
-        let cur = match (&self.screen.cursor_proj, self.screen.cursor) {
-            (Some(k), _) => items.iter().position(|i| *i == SideItem::Proj(k.clone())),
+        let cur = match (self.cursor_head(), self.screen.cursor) {
+            (Some(item), _) => items.iter().position(|i| *i == item),
             (None, Some(t)) => items.iter().position(|i| *i == SideItem::Sess(t)),
             _ => None,
         }?;
@@ -527,6 +557,15 @@ impl App {
             .get(cur + 1)
             .or_else(|| cur.checked_sub(1).and_then(|i| items.get(i)))
             .cloned()
+    }
+
+    /// The heading or fleet row the sidebar cursor is on, if it is on one.
+    pub(in crate::client) fn cursor_head(&self) -> Option<SideItem> {
+        self.screen
+            .cursor_proj
+            .clone()
+            .map(SideItem::Proj)
+            .or(self.screen.cursor_fleet.map(SideItem::Fleet))
     }
 
     /// A confirm answered (`act` when yes): do it, and go back to the sidebar if it was
@@ -564,10 +603,17 @@ impl App {
         match item {
             SideItem::Proj(k) => {
                 self.screen.cursor_proj = Some(k);
+                self.screen.cursor_fleet = None;
+                self.screen.cursor = None;
+            }
+            SideItem::Fleet(f) => {
+                self.screen.cursor_proj = None;
+                self.screen.cursor_fleet = Some(f);
                 self.screen.cursor = None;
             }
             SideItem::Sess(t) => {
                 self.screen.cursor_proj = None;
+                self.screen.cursor_fleet = None;
                 self.screen.cursor = Some(t);
                 // Resting on a finished agent counts as seeing it.
                 if let Some(term) = self.session_term(t)
@@ -584,6 +630,7 @@ impl App {
     pub(in crate::client) fn screen_side_leave(&mut self) {
         self.screen.cursor = None;
         self.screen.cursor_proj = None;
+        self.screen.cursor_fleet = None;
         self.mode = Mode::Normal;
     }
 
@@ -656,36 +703,15 @@ impl App {
         true
     }
 
-    /// Fold or unfold a project (true: open it).
-    /// A new colour for a project's +/− button, never the one it had.
-    pub(in crate::client) fn pick_fold_color(&mut self, key: &str) {
-        let mut palette: Vec<Color> = self
-            .cfg
-            .ui
-            .workspace_colors
-            .iter()
-            .filter_map(|c| crate::theme::parse_color(c))
-            .collect();
-        let had = self.screen.fold_colors.get(key).copied();
-        palette.retain(|c| Some(*c) != had);
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.subsec_nanos() as usize);
-        if let Some(c) = palette.get(nanos % palette.len().max(1)) {
-            self.screen.fold_colors.insert(key.to_string(), *c);
-        }
-    }
-
+    /// Fold or unfold a heading by its key (`m:<machine>` or `c:<fleet>`); `open` forces a side.
     pub(in crate::client) fn screen_fold(&mut self, key: &str, open: Option<bool>) {
-        let k = format!("p:{key}");
-        let is_open = !self.screen.saved.closed.contains(&k);
+        let is_open = !self.screen.saved.closed.iter().any(|c| c == key);
         let want = open.unwrap_or(!is_open);
         if want != is_open {
             if want {
-                self.screen.saved.closed.retain(|c| *c != k);
-                self.pick_fold_color(key);
+                self.screen.saved.closed.retain(|c| c != key);
             } else {
-                self.screen.saved.closed.push(k);
+                self.screen.saved.closed.push(key.to_string());
             }
             self.screen.save();
         }
@@ -697,22 +723,8 @@ impl App {
         match a {
             Action::Settings => self.screen_settings(),
             Action::PickSession => self.open_new_session(None),
-            // A plain shell in the project's own folder (the repo itself, not a worktree).
-            Action::ShellHere => {
-                let dir = self
-                    .selected_term()
-                    .and_then(|t| self.term_info(t))
-                    .map(|t| t.root.clone().unwrap_or_else(|| t.cwd.clone()))
-                    .or_else(|| {
-                        self.screen_model()
-                            .iter()
-                            .find(|p| Some(&p.key) == self.screen.proj.as_ref())
-                            .map(|p| p.path.clone())
-                    })
-                    .unwrap_or_else(|| self.here_dir());
-                self.screen.cursor = None;
-                self.screen_new_session(dir, None, false);
-            }
+            // A shell at once in the fleet you are in: a new ship and a new tab.
+            Action::ShellHere => self.new_ship(None),
             // One place: what needs you on top, and type to go anywhere.
             Action::Message => {
                 let side = self.mode == Mode::Side || self.screen.cursor.is_some();
@@ -765,36 +777,22 @@ impl App {
             // A new tab in this session: a shell where you are, straight away.
             Action::NewTab => self.new_tab_start(),
             Action::RenameTab => self.rename_tab_start(),
+            // From the sidebar, on a ship: that row's menu, as a right-click on it opens.
+            Action::Menu if self.screen.cursor.is_some_and(|c| self.session_term(c).is_some()) => {
+                if let Some(term) = self.screen.cursor.and_then(|c| self.session_term(c)) {
+                    let y = self.screen.row_y.get(&term).copied().unwrap_or(self.screen.side_rect.y);
+                    self.screen_side_leave();
+                    self.screen.cursor = None;
+                    self.menu_for_session(term, (self.screen.side_rect.x + 8, y + 1));
+                }
+            }
             Action::Menu => self.mode = Mode::Actions { sel: 0 },
             Action::Help => self.open_key_view(KeyView::All),
             Action::Palette => self.open_key_view(KeyView::Search),
             Action::Worktrees => self.open_keymap(Some(Step::Worktrees)),
-            Action::NextTab | Action::PrevTab => {
-                // This session's tabs, in order.
-                let seen = self.session_tabs();
-                let n = seen.len();
-                if n > 1 {
-                    let at = seen.iter().position(|i| *i == self.screen.tab);
-                    let next = match (at, *a == Action::NextTab) {
-                        (Some(k), true) => seen[(k + 1) % n],
-                        (Some(k), false) => seen[(k + n - 1) % n],
-                        (None, _) => seen[0],
-                    };
-                    self.screen.tab = next;
-                    let to = self.screen.tabs[next].focus;
-                    self.cmd_on(to.machine, Command::FocusPane { term: to.term });
-                }
-            }
-            Action::SelectTab(n) => {
-                let seen = self.session_tabs();
-                if let Some(i) = n.checked_sub(1).and_then(|k| seen.get(k).copied())
-                    && let Some(tab) = self.screen.tabs.get(i)
-                {
-                    let to = tab.focus;
-                    self.screen.tab = i;
-                    self.cmd_on(to.machine, Command::FocusPane { term: to.term });
-                }
-            }
+            // The tabs of the fleet you are in, one per ship, in creation order.
+            Action::NextTab | Action::PrevTab => self.step_tab(*a == Action::NextTab),
+            Action::SelectTab(n) => self.select_tab(*n),
             Action::CloseTab => self.close_tab(self.screen.tab),
             // z: the sessions move into the top strip, or back into the sidebar.
             Action::ToggleSidebar => {
@@ -969,6 +967,8 @@ impl App {
     pub(in crate::client) fn on_side_key(&mut self, k: &KeyEvent) {
         let spec = KeySpec::from_event(k);
         let proj = self.screen.cursor_proj.clone();
+        let fleet = self.screen.cursor_fleet;
+        let on_head = proj.is_some() || fleet.is_some();
         let model = self.screen_model();
         if self.on_filter_key(k) {
             return;
@@ -990,7 +990,7 @@ impl App {
             .modifiers
             .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
         if k.code == KeyCode::Enter
-            && proj.is_none()
+            && !on_head
             && let Some(c) = self.screen.cursor.and_then(|key| self.session_term(key))
             && self.asks_you(c)
         {
@@ -998,7 +998,7 @@ impl App {
             return;
         }
         if k.code == KeyCode::Enter
-            && proj.is_none()
+            && !on_head
             && let Some(c) = self.screen.cursor.and_then(|key| self.session_term(key))
             && self.approval_waits(c)
         {
@@ -1010,8 +1010,16 @@ impl App {
             // [: full, then the narrow column, then hidden, then full again.
             KeyCode::Char('[') if plain => self.cycle_sidebar(),
             KeyCode::Char('/') if plain => self.start_side_filter(),
-            // New session: the dialog, which starts a shell on any project and machine.
-            KeyCode::Char('n' | 'N') if plain => self.open_new_session(None),
+            // A shell at once in the fleet under the cursor, else the one you are in.
+            KeyCode::Char('n' | 'N') if plain => {
+                let fleet = fleet.or_else(|| {
+                    self.screen
+                        .cursor
+                        .and_then(|c| self.session_term(c))
+                        .and_then(|t| self.fleet_of(t))
+                });
+                self.new_ship(fleet);
+            }
             KeyCode::Up | KeyCode::Char('k') if !k.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.screen_side_move(-1)
             }
@@ -1038,9 +1046,10 @@ impl App {
             {
                 self.strip_switch(spec.code)
             }
-            KeyCode::Right => match &proj {
-                Some(key) => self.screen_fold(key, Some(true)),
-                None => {
+            KeyCode::Right => match (&proj, fleet) {
+                (Some(key), _) => self.screen_fold(key, Some(true)),
+                (None, Some(f)) => self.open_fleet(f),
+                (None, None) => {
                     // Into the pane.
                     if let Some(c) = self.screen.cursor {
                         if let Some(term) = self.open_session_term(c) {
@@ -1054,13 +1063,26 @@ impl App {
             },
             KeyCode::Left => match (&proj, self.screen.cursor) {
                 (Some(key), _) => self.screen_fold(key, Some(false)),
+                // From a ship to its group's heading.
                 (None, Some(t)) => {
-                    if let Some(p) = model.iter().find(|p| p.sessions().any(|s| s.key == t)) {
-                        self.screen_side_set(SideItem::Proj(p.key.clone()));
+                    let head = super::side::SideModel::build(self, &model)
+                        .lists(self, false)
+                        .ships
+                        .into_iter()
+                        .rev()
+                        .skip_while(|(_, i)| *i != SideItem::Sess(t))
+                        .find_map(|(_, i)| matches!(i, SideItem::Proj(_)).then_some(i));
+                    if let Some(head) = head {
+                        self.screen_side_set(head);
                     }
                 }
                 _ => {}
             },
+            KeyCode::Enter if fleet.is_some() && proj.is_none() => {
+                if let Some(f) = fleet {
+                    self.open_fleet(f);
+                }
+            }
             KeyCode::Enter => match (&proj, self.screen.cursor) {
                 (Some(key), _) => self.screen_fold(key, None),
                 (None, Some(c))
@@ -1931,16 +1953,15 @@ impl App {
             return;
         }
         let model = self.screen_model();
-        let Some(key) = splash_wide::recent_projects(&model)
+        let Some(path) = splash_wide::recent_projects(&model)
             .get(i - menu)
-            .map(|p| p.key.clone())
+            .map(|p| p.path.clone())
         else {
             return;
         };
         self.splash = false;
         self.screen.splash_sel = 0;
-        self.screen_fold(&key, Some(true));
-        self.screen_side_set(SideItem::Proj(key));
+        self.screen_open_project(path);
     }
 
     /// Open the wide splash's away-list session.
@@ -1996,17 +2017,39 @@ impl App {
             }
             ScreenHit::OpenInbox => self.act(Action::Jump),
             ScreenHit::SideFilter => self.start_side_filter(),
-            ScreenHit::SideProject(key) => {
-                let model = self.screen_model();
-                if let Some(p) = model.iter().find(|p| p.sessions().any(|s| s.key == key)) {
-                    self.screen.filter = p.name.clone();
-                    self.screen.follow = true;
-                    self.screen.side_scroll = 0;
+            ScreenHit::ClearFilter => {
+                self.screen.filter.clear();
+                self.screen.filtering = false;
+                self.screen.side_scroll = 0;
+                self.screen.ships_scroll = 0;
+            }
+            // A machine heading or a ship group folds; a fleet opens its last active session.
+            ScreenHit::SideRow(i) => match self.screen.side_items.get(i).cloned() {
+                Some(SideItem::Proj(key)) => self.screen_fold(&key, None),
+                Some(SideItem::Fleet(f)) => self.open_fleet(f),
+                _ => {}
+            },
+            ScreenHit::MachinePlus(machine) => self.new_ship_on(machine),
+            ScreenHit::Tab(ship) => {
+                self.screen_focus(ship);
+            }
+            ScreenHit::TabClose(ship) => {
+                let panes = self.tab_panes(ship);
+                self.menu_act(crate::client::menu::Act::End(panes));
+            }
+            ScreenHit::FilesChip => {
+                if matches!(self.view, Some(crate::client::View::Files(_))) {
+                    self.view = None;
+                } else {
+                    self.act(Action::Files);
                 }
             }
-            ScreenHit::ProjectMenu(term) => {
-                let at = self.hover.map(|p| (p.x, p.y + 1)).unwrap_or((0, 0));
-                self.menu_for_project_tools(term, at);
+            ScreenHit::ChangesChip => {
+                if matches!(self.view, Some(crate::client::View::Changes(_))) {
+                    self.view = None;
+                } else {
+                    self.act(Action::Changes);
+                }
             }
             ScreenHit::PaneBtn(term, button) => self.pane_button(term, button),
             ScreenHit::TidyRow(i) => self.tidy_click(i),
@@ -2037,7 +2080,7 @@ impl App {
             ScreenHit::ExpandSidebar | ScreenHit::CollapseSidebar => {
                 self.act(Action::ToggleSidebar)
             }
-            ScreenHit::NewShell => self.open_new_session(None),
+            ScreenHit::NewShell => self.new_ship(None),
             ScreenHit::Actions => self.act(Action::Menu),
             ScreenHit::ActionRow(i) => self.actions_run(i),
             ScreenHit::Leader => self.open_keymap(None),

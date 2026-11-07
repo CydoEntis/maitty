@@ -11,7 +11,7 @@ use crate::keys::{Action, KeySpec};
 fn suggestions() -> [(Action, &'static str); 7] {
     [
         (Action::ShellHere, "shell"),
-        (Action::PickSession, "session"),
+        (Action::NextTab, "next tab"),
         (Action::Menu, "menu"),
         (Action::Jump, "inbox"),
         (Action::Changes, "changes"),

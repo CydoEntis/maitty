@@ -276,7 +276,7 @@ impl App {
             self.notify("open a session first".into(), true);
             return;
         };
-        self.screen_act(&Action::ShellHere);
+        self.shell_in_project();
         // After the command goes, which clears it: this is the one session it is for.
         let known = self.all_terms().into_iter().map(|(t, _)| t).collect();
         *self.screen.new_tab.borrow_mut() = Some(PendingTab {

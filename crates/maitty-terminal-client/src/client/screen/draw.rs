@@ -337,7 +337,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
             width: w,
             height: h,
         };
-        draw_session(app, f, r, term, true, &model, t);
+        draw_session(app, f, r, term, (true, Chrome::Title), &model, t);
     }
     draw_toast(app, f.buffer_mut(), room, t);
     g.panes
@@ -407,7 +407,7 @@ pub(in crate::client) fn draw_no_sessions(app: &App, f: &mut Frame, area: Rect, 
         put(f.buffer_mut(), x, y, &[seg(text, style)], area.right());
         y += 1;
     }
-    let words = " new session";
+    let words = " new shell";
     let width = (key.width() + words.width()) as u16;
     let x = area.x + area.width.saturating_sub(width) / 2;
     let caps = [

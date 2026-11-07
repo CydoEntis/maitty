@@ -57,7 +57,7 @@ pick; checking is a sweeping ring. An agent's own mark is `✻` Claude, `◆` Co
 
 ## Layouts
 
-There is one look, drawn to the v26 TUI design: two separate frames, the sidebar and the
+There is one look, drawn to the v27 TUI design (fleets and ships): two separate frames, the sidebar and the
 workspace, `ui.gap` apart (one column by default). A lone pane is one frame; a split is one frame
 cut by single lines with proper joints. Exactly one frame, or one pane's lines, is in the accent.
 
@@ -73,28 +73,41 @@ accent fill. See UI › *UI conventions*.
 
 ## Sidebar
 
-One flat list of sessions in creation order, in its own frame (46 columns by default, 24 to 60
-resizable). The title chip ` SESSIONS ` sits on the top border with ` inbox N ` (amber while
-anything needs you) and ` « ` at the right; under it a `/ filter` row; at the foot the version (or
-the update marker), a rule, and the ` + New ` and ` Menu ` chips.
+Fleets above, ships below. A **fleet** is a named group of sessions on one machine (the daemon's
+workspace; one daemon per machine, so each machine's workspaces are its fleets). A **ship** is one
+session in a fleet, an agent or a shell. The sidebar is 46 columns by default (24 to 60
+resizable), in its own frame. On the top border: ` « ` at the left, ` + ` (a shell in the fleet you
+are in) and ` inbox N ` (amber while anything needs you) at the right. Row 2 is the search field,
+a filled bar with a ` / ` key chip that becomes ` x ` once there is text. Two halves follow, each
+under a full-width divider with a title chip: ` FLEETS ` at row 4 and ` SHIPS N ` at the middle of
+the rest, and each half clips at its own divider. At the foot: the version (or the update marker),
+a rule, and the ` + New ` and ` Menu ` chips.
 
-A session is two lines with no gap between sessions: its status glyph, its name in bold (idle ones
-dim), a `•` when unread, a `⌖` when pinned, and at the right `+N −N` in green and red; under it its
-project in `muted` and, at the right, where it runs: `local`, `⇄ build` or, while that machine
-is down, `┆ build` in the quietest ink (the whole row is dim then). The selected row (the sidebar
-has the keys) has the `sel` ground on both lines, the session open in the workspace the `raise`
-ground, and a new row's accent `▌` flashes for half a second. Rows never move when a status
-changes. Collapsed (under 110 columns, or by the toggle), the sidebar is a 10-column column of
-status glyphs and initials; see UI › *collapsed sidebar*. The Machines dialog and its states are
-described in UI › *Machines dialog*.
+The top half lists machines (fold arrow, `⌂` for this computer or `▤` for another, the name, a green
+`●` when it is up or a dim `┆` while it reconnects, and a `+` that starts a shell in its first
+fleet) and, under each, its fleets: an amber bold count of the sessions that need you, or a `◆` in
+the fleet's colour (teal, violet, blue, orange; Scratch is muted), the name in bold, and `✻ N`
+agents and `>_ N` shells when there is room. The current fleet has the `raise` ground and an accent
+`▌`. The bottom half lists the agent ships, grouped by fleet (a folded group says how many and
+`N need you`): the status glyph, the name in bold (idle ones dim), a `•` when unread, a `⌖` when
+pinned and `>_` (or `◌` for a chat) at the right, then the git branch in magenta and `worktree`
+dim. The selected row has the `sel` ground, the ship open in the workspace the `raise` ground and
+an accent `▌` on both lines. Rows never move when a status changes. Collapsed (under 110 columns,
+or by the toggle), the sidebar is a 10-column column: the inbox count, `FLT` with each fleet's
+count or `◆` and initials, `SHP` with each agent's glyph and initials; see UI › *collapsed
+sidebar*. The Machines dialog and its states are described in UI › *Machines dialog*.
 
 ## Pane titles
 
-There is no tab row. A lone pane's top border carries its status glyph, a title chip (the accent
-when focused), then at the right ` ▾ Project `, its folder, `⎇ branch` in violet, the machine chip
-(` ⌂ This computer ` or ` ⇄ build `) and a red `×` that closes the session; the path chips go first
-when the border is short. A split's panes each have a two-row header: the glyph and title centred
-with `⋯ ×` at the right (`⊞ ⊟ ⤢ ⋯ ×` from 60 columns), then the folder and branch. A pane closes
+The top border of the workspace is the **tab row**: one tab per ship of the fleet you are in, in
+creation order. A tab is the status glyph, the title, the number of panes when there are two or
+more, and a `×`; there is no app icon. The active tab is the accent with `bg`-coloured text while
+the workspace has the keys, and a chip otherwise; the others are chips with `fg2` text. Too many
+tabs fold into ` …N `. After them comes ` + ` (a new shell) and, at the right, ` Files ` and
+` Changes ` (accent while their panel is open). A lone pane has no header: the tab names it and the
+program starts on the row under the border. A split's panes each have a two-row header: the glyph
+and title with `⋯ ×` at the right (`⊞ ⊟ ⤢ ⋯ ×` from 60 columns), then the folder, `⎇ branch` in violet
+and, for another machine, `▤ name`. A pane closes
 with Alt+x, leader `x` or its `×`; closing always asks first, naming the pane (`Close pane 2 ·
 claude`) and lighting its lines in red until you answer. Unfocused panes fade; the focused pane's
 lines are the accent, or `sky()` in shortcut mode. See UI › *the frame* and *pane focus*.

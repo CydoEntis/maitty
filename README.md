@@ -80,8 +80,8 @@ name, such as the MCP server (`maitty integrate mcp` renames it) or another agen
 ## Quick start
 
 1. Open a terminal in your project and run `maitty`.
-2. Press `Ctrl+T` (or click **+ new**), pick a folder and a machine, and a shell opens there; type
-   `claude` (or any agent) in it.
+2. Press `Ctrl+T` (or click **+ New**) and a shell opens at once in your current fleet; type
+   `claude` (or any agent) in it. The Menu's **Session...** picks another folder or machine.
 3. Watch the sidebar. In the default theme, teal means working, amber means it needs you,
    green means it finished and dim means idle. Click a row to go to that session.
 4. Press `Ctrl+A`, then `q` to step away. Your agents keep running; run `maitty`
@@ -101,10 +101,10 @@ close`), and a key that isn't a shortcut says "Shortcut mode — Esc to type". E
 
 | | |
 |---|---|
-| **Sessions** | `n` new shell · `s` new session · `Enter` message the agent · `k` stop it · `i` inbox · `y` why this status |
+| **Sessions** | `t` new shell · `Enter` message the agent · `k` stop it · `i` inbox · `y` why this status |
 | **Panes** | arrows move · `v` split side by side · `h` split stacked · `x` close · `Ctrl`+arrows resize · `z` collapse the sidebar |
-| **Tabs** | `t` new · `Ctrl+W` close · `r` rename · `]` / `[` next / previous · `1`–`9` go to tab |
-| **Project** | `f` files · `p` find a file · `/` search code · `c` changes · `g` worktrees · `b` branches · `e` the sidebar |
+| **Tabs** | `Ctrl+Tab` or `n` / `p` next / previous · `1`–`9` go to tab (one tab per ship of the fleet) |
+| **Project** | `f` files · `o` find a file · `/` search code · `c` changes · `g` worktrees · `b` branches · `e` the sidebar |
 | **Maitty** | `Space` search commands · `m` menu · `,` settings · `?` all keys · `l` history · `Ctrl+V` paste an image · `q` step away |
 
 Scrolled up in a pane? Click **↓ Back to bottom**. Every screen's own keys are in

@@ -1110,7 +1110,7 @@ mod screen_tests {
         assert_eq!(app.screen.splash_sel, choices, "the first project");
         app.on_key(key(KeyCode::Enter));
         assert!(!app.splash, "a project opens");
-        assert!(matches!(app.mode, Mode::Side), "with the keys in the sidebar");
+        assert_eq!(app.mode, Mode::Normal, "the keys go to the session it opened");
     }
 
     #[test]
@@ -2208,7 +2208,8 @@ mod screen_tests {
             screens[0]
         );
         for (label, key) in [
-            ("New session", "Ctrl + T"),
+            ("New shell here", "Ctrl + T"),
+            ("Next tab", "Ctrl + Tab"),
             ("Search commands", "Ctrl + K"),
             ("Inbox", "Ctrl + J"),
             ("Go to tab 1–9", "Alt + 1–9"),
@@ -2610,8 +2611,8 @@ mod screen_tests {
         );
         assert_eq!(
             o.matches("Doing something").count(),
-            1,
-            "once: on the row, not in a second line"
+            2,
+            "on its row and on its tab, not in a second line"
         );
     }
 
@@ -3018,8 +3019,14 @@ mod screen_tests {
         // Each section says what its rows are for, and the tools are among them: the rail that
         // also opens them is hidden unless it is asked for.
         let rows: Vec<&str> = o.lines().collect();
+        // The tab row's own Files and Changes chips are above the Menu's card.
+        let card = rows
+            .iter()
+            .position(|l| l.contains("─ Menu "))
+            .unwrap_or_else(|| panic!("no Menu card:\n{o}"));
         let row = |text: &str| {
-            rows.iter()
+            card + rows[card..]
+                .iter()
                 .position(|l| l.contains(text))
                 .unwrap_or_else(|| panic!("no {text} in the Menu:\n{o}"))
         };
@@ -3205,7 +3212,7 @@ mod screen_tests {
     }
 
     #[test]
-    fn the_new_chip_opens_the_dialog_and_leader_n_starts_a_plain_shell_where_you_are() {
+    fn the_new_chip_and_leader_t_start_a_shell_in_the_fleet_you_are_in_at_once() {
         for cursor in [None, Some(2)] {
             for by_mouse in [false, true] {
                 let (_, mut app) = super::design_tests::render_with(140, 30);
@@ -3222,37 +3229,31 @@ mod screen_tests {
                 if by_mouse {
                     assert!(screen.contains("+ New"), "a visible new chip");
                     click_new_chip(&mut app);
-                    assert!(
-                        matches!(app.mode, Mode::NewSession(_)),
-                        "the chip opens the New session dialog: {:?}",
-                        app.mode
-                    );
-                    assert!(sent(&mut rx).is_empty(), "and starts nothing yet");
-                    continue;
+                } else {
+                    leader(&mut app, 't');
                 }
-                leader(&mut app, 'n');
                 assert!(
-                    matches!(app.mode, Mode::Normal | Mode::Prefix { .. }),
-                    "a shell here opens no form: {:?}",
+                    !matches!(app.mode, Mode::NewSession(_)),
+                    "a shell opens no form: {:?}",
                     app.mode
                 );
                 let commands = sent(&mut rx);
                 assert!(
                     matches!(
                         commands.as_slice(),
-                        [Command::NewWorkspace {
-                            cwd: Some(_),
+                        [Command::NewTab {
+                            ws: 10,
                             name: None,
                             cmd: None
                         }]
                     ),
-                    "one plain shell, no agent and no worktree: {commands:?}"
+                    "one plain shell in the fleet, no agent and no worktree: {commands:?}"
                 );
             }
         }
     }
     #[test]
-    fn the_menu_starts_a_shell_or_opens_the_dialog_and_n_is_the_shell_key() {
+    fn the_menu_starts_a_shell_or_opens_the_dialog_and_t_is_the_shell_key() {
         let rows = screen::action_items();
         let labels: Vec<&str> = rows.iter().take(3).map(|(l, _)| *l).collect();
         assert_eq!(
@@ -3270,36 +3271,39 @@ mod screen_tests {
         );
         let key = |c: &str| c.parse::<crate::keys::KeySpec>().unwrap();
         let (_, app) = super::design_tests::render_with(100, 30);
-        assert_eq!(app.keymap.prefixed.get(&key("n")), Some(&Action::ShellHere));
+        assert_eq!(app.keymap.prefixed.get(&key("t")), Some(&Action::ShellHere));
+        assert_eq!(app.keymap.prefixed.get(&key("n")), Some(&Action::NextTab));
+        assert_eq!(app.keymap.prefixed.get(&key("p")), Some(&Action::PrevTab));
         assert_eq!(
-            app.keymap.prefixed.get(&key("t")),
-            Some(&Action::PickSession),
-            "the prefix and `t` open the New session dialog where Ctrl+T cannot be sent"
+            app.keymap.global.get(&key("ctrl+t")),
+            Some(&Action::ShellHere),
+            "Ctrl+T makes a shell; the dialog is the Menu's Session..."
         );
+        assert_eq!(app.keymap.global.get(&key("ctrl+tab")), Some(&Action::NextTab));
         let (_, mut app) = super::design_tests::render_with(100, 30);
         let (tx, mut rx) = mpsc::unbounded_channel();
         app.out = tx;
-        leader(&mut app, 'n');
+        leader(&mut app, 't');
         let cmds = sent(&mut rx);
         assert!(
             matches!(
                 cmds.as_slice(),
-                [Command::NewWorkspace {
-                    cwd: Some(_),
+                [Command::NewTab {
                     name: None,
-                    cmd: None
+                    cmd: None,
+                    ..
                 }]
             ),
             "a plain shell: {cmds:?}"
         );
         // In the Menu, the leader key shown beside a row runs it.
-        for (key, plain) in [('n', true), ('t', false)] {
-            app.mode = Mode::Actions { sel: 0 };
-            app.on_key(KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE));
-            let cmds = sent(&mut rx);
-            let shell = matches!(cmds.as_slice(), [Command::NewWorkspace { cmd: None, .. }]);
-            assert_eq!(shell, plain, "Menu key {key}: {cmds:?}");
-        }
+        app.mode = Mode::Actions { sel: 0 };
+        app.on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE));
+        let cmds = sent(&mut rx);
+        assert!(
+            matches!(cmds.as_slice(), [Command::NewTab { cmd: None, .. }]),
+            "Menu key t: {cmds:?}"
+        );
     }
 
     #[test]
@@ -3321,7 +3325,7 @@ mod screen_tests {
     }
 
     #[test]
-    fn caps_lock_n_after_the_leader_starts_a_session_not_history() {
+    fn caps_lock_t_after_the_leader_starts_a_shell() {
         use ratatui::crossterm::event::{KeyEventKind, KeyEventState};
 
         let (_, mut app) = super::design_tests::render_with(100, 30);
@@ -3334,7 +3338,7 @@ mod screen_tests {
             KeyEventState::CAPS_LOCK
         };
         app.on_key(KeyEvent::new_with_kind_and_state(
-            KeyCode::Char('N'),
+            KeyCode::Char('T'),
             KeyModifiers::NONE,
             KeyEventKind::Press,
             caps_state,
@@ -3348,9 +3352,9 @@ mod screen_tests {
         assert!(
             std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).any(|message| matches!(
                 message,
-                ClientMsg::Command(Command::NewWorkspace { cmd: None, .. })
+                ClientMsg::Command(Command::NewTab { cmd: None, .. })
             )),
-            "leader + Caps Lock + n starts a shell"
+            "leader + Caps Lock + t starts a shell"
         );
     }
 
@@ -3684,18 +3688,18 @@ mod screen_tests {
     }
 
     #[test]
-    fn the_fleet_is_gone_from_every_place_it_was_offered() {
+    fn the_commander_is_gone_from_every_place_it_was_offered() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         assert!(
             !screen::action_items()
                 .iter()
-                .any(|(label, ..)| label.to_lowercase().contains("fleet")),
+                .any(|(label, ..)| label.to_lowercase().contains("commander")),
             "not in the Menu"
         );
         assert!(
             !app.palette_commands()
                 .iter()
-                .any(|a| a.describe().to_lowercase().contains("fleet")),
+                .any(|a| a.describe().to_lowercase().contains("commander")),
             "not in search"
         );
         assert!(
@@ -3712,7 +3716,7 @@ mod screen_tests {
             app.act(Action::NewSession);
             let o = draw(&mut app, w, h);
             assert!(
-                !o.to_lowercase().contains("fleet") && !o.contains("GOAL"),
+                !o.to_lowercase().contains("commander") && !o.contains("GOAL"),
                 "at {w}x{h}: {o}"
             );
             app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
@@ -4636,6 +4640,10 @@ second line
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.snap.terms.get_mut(&2).unwrap().status = Status::Idle;
         app.snap.terms.get_mut(&3).unwrap().status = Status::Done;
+        for id in [2, 3] {
+            app.snap.terms.get_mut(&id).unwrap().agent = Some("claude".into());
+        }
+        app.screen_fresh();
         let model = app.screen_model();
         let rows = screen::side_keys(&app, &model);
         assert!(
@@ -5513,13 +5521,13 @@ second line
         let a = o.lines().find(|l| l.contains("Inbox")).unwrap();
         let b = o
             .lines()
-            .find(|l| l.contains("New session  ") || l.contains("New session "))
+            .find(|l| l.contains("New shell here"))
             .unwrap();
         let column =
             |line: &str, label: &str| line.find(label).map(|byte| line[..byte].chars().count());
         assert_eq!(
             column(a, "Inbox"),
-            column(b, "New session"),
+            column(b, "New shell here"),
             "labels of a group line up by terminal column"
         );
     }
@@ -6330,7 +6338,7 @@ second line
 
     #[test]
     fn a_new_pane_ends_shortcut_mode_and_the_next_key_types_into_it() {
-        for c in ['n', '-', '|', '_', '\\'] {
+        for c in ['t', '-', '|', '_', '\\'] {
             let mut app = shortcut_mode();
             let (tx, mut rx) = mpsc::unbounded_channel();
             app.out = tx;
@@ -6344,7 +6352,10 @@ second line
             assert!(
                 sent(&mut rx).iter().any(|m| matches!(
                     m,
-                    Command::NewWorkspace { .. } | Command::NewWorktree { .. }
+                    Command::NewWorkspace { .. }
+                        | Command::NewTab { .. }
+                        | Command::Split { .. }
+                        | Command::NewWorktree { .. }
                 )),
                 "{c} started a pane"
             );
@@ -7518,8 +7529,8 @@ second line
 
     /// The suggestions in the order they are dropped last to first.
     const SUGGESTED: [&str; 9] = [
-        "n shell",
-        "t session",
+        "t shell",
+        "n next tab",
         ". menu",
         "i inbox",
         "c changes",
@@ -7633,7 +7644,7 @@ second line
             "Files closed: lit again"
         );
         let buf = drawn(&mut app, 160, 45);
-        let shell = on_bar(&app, &buf, "n shell").expect("n shell");
+        let shell = on_bar(&app, &buf, "t shell").expect("t shell");
         click_at(&mut app, shell, y);
         assert_eq!(
             app.mode,
@@ -12524,14 +12535,14 @@ mod side_panel_width_tests {
     }
 
     #[test]
-    fn after_leader_n_beside_a_panel_the_next_key_goes_to_the_new_pane() {
+    fn after_leader_t_beside_a_panel_the_next_key_goes_to_the_new_pane() {
         let (_, mut app) = super::design_tests::render_with(200, 50);
         let (tx, mut rx) = mpsc::unbounded_channel();
         app.out = tx;
         app.cfg.ui.which_key = false;
         app.show_view(changes_view());
         app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
-        key(&mut app, 'n');
+        key(&mut app, 't');
         assert!(
             matches!(app.view, Some(View::Changes(_))),
             "Changes stays open beside it"
@@ -13393,10 +13404,12 @@ mod files_panel_tests {
         key(&mut app, KeyCode::Char('e'));
         let mut opened = None;
         while let Ok(msg) = rx.try_recv().map(|o| o.msg) {
-            if let crate::protocol::ClientMsg::Command(crate::protocol::Command::NewWorkspace {
-                cmd,
-                ..
-            }) = msg
+            use crate::protocol::{ClientMsg, Command};
+            if let ClientMsg::Command(
+                Command::NewWorkspace { cmd, .. }
+                | Command::NewTab { cmd, .. }
+                | Command::Split { cmd, .. },
+            ) = msg
             {
                 opened = cmd;
             }

@@ -83,6 +83,16 @@ fn key(app: &mut App, code: KeyCode) {
     app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
 }
 
+/// The way in: the Menu's `Session...` row. Ctrl+T makes a shell at once instead.
+fn open_dialog(app: &mut App) {
+    let row = crate::client::screen::action_items()
+        .iter()
+        .position(|(label, _)| *label == "Session...")
+        .expect("the Menu has a Session... row");
+    app.mode = Mode::Actions { sel: row };
+    key(app, KeyCode::Enter);
+}
+
 fn ctrl(app: &mut App, c: char) {
     app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL));
 }
@@ -112,9 +122,9 @@ fn dialog_lines(shown: &str) -> Vec<String> {
 }
 
 #[test]
-fn ctrl_t_opens_a_box_78_wide_and_19_tall_with_the_sentence_header() {
+fn the_menus_session_row_opens_a_box_78_wide_and_19_tall_with_the_sentence_header() {
     let (mut app, _rx) = world_with_machines();
-    ctrl(&mut app, 't');
+    open_dialog(&mut app);
     assert!(matches!(app.mode, Mode::NewSession(_)));
 
     let shown = frame(&mut app, 120, 40);
@@ -129,17 +139,24 @@ fn ctrl_t_opens_a_box_78_wide_and_19_tall_with_the_sentence_header() {
 }
 
 #[test]
-fn the_prefix_then_t_opens_it_where_a_terminal_cannot_send_ctrl_t() {
-    let (mut app, _rx) = world_with_machines();
+fn ctrl_t_and_the_prefix_then_t_make_a_shell_and_do_not_open_the_dialog() {
+    let (mut app, mut rx) = world_with_machines();
+    ctrl(&mut app, 't');
+    assert_eq!(app.mode, Mode::Normal);
     app.on_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL));
     key(&mut app, KeyCode::Char('t'));
-    assert!(matches!(app.mode, Mode::NewSession(_)));
+    assert!(!matches!(app.mode, Mode::NewSession(_)));
+    let tabs = sent(&mut rx)
+        .iter()
+        .filter(|o| matches!(&o.msg, ClientMsg::Command(Command::NewTab { .. })))
+        .count();
+    assert_eq!(tabs, 2, "a new tab of the fleet each time");
 }
 
 #[test]
 fn a_typed_path_asks_the_chosen_machine_completes_dim_and_tab_accepts() {
     let (mut app, mut rx) = world_with_machines();
-    ctrl(&mut app, 't');
+    open_dialog(&mut app);
     sent(&mut rx);
 
     type_text(&mut app, "~/co");
@@ -161,7 +178,7 @@ fn a_typed_path_asks_the_chosen_machine_completes_dim_and_tab_accepts() {
 #[test]
 fn a_missing_folder_shows_a_red_line_and_blocks_enter() {
     let (mut app, mut rx) = world_with_machines();
-    ctrl(&mut app, 't');
+    open_dialog(&mut app);
     sent(&mut rx);
     type_text(&mut app, "~/nope");
     let out = asked(&sent(&mut rx));
@@ -177,7 +194,7 @@ fn a_missing_folder_shows_a_red_line_and_blocks_enter() {
 #[test]
 fn with_only_this_computer_enter_on_a_folder_creates_the_shell() {
     let (mut app, mut rx) = world_alone();
-    ctrl(&mut app, 't');
+    open_dialog(&mut app);
     sent(&mut rx);
     type_text(&mut app, "~/code");
     let out = asked(&sent(&mut rx));
@@ -198,7 +215,7 @@ fn with_only_this_computer_enter_on_a_folder_creates_the_shell() {
 #[test]
 fn step_two_lists_machines_skips_the_offline_one_and_starts_the_shell_on_the_pick() {
     let (mut app, mut rx) = world_with_machines();
-    ctrl(&mut app, 't');
+    open_dialog(&mut app);
     sent(&mut rx);
     type_text(&mut app, "~/code");
     let out = asked(&sent(&mut rx));
@@ -237,7 +254,7 @@ fn step_two_lists_machines_skips_the_offline_one_and_starts_the_shell_on_the_pic
 #[test]
 fn a_folder_missing_on_the_picked_machine_blocks_the_start() {
     let (mut app, mut rx) = world_with_machines();
-    ctrl(&mut app, 't');
+    open_dialog(&mut app);
     sent(&mut rx);
     type_text(&mut app, "~/code");
     let out = asked(&sent(&mut rx));
@@ -256,7 +273,7 @@ fn a_folder_missing_on_the_picked_machine_blocks_the_start() {
 #[test]
 fn ctrl_o_opens_the_picker_which_lists_folders_and_enter_goes_into_one() {
     let (mut app, mut rx) = world_alone();
-    ctrl(&mut app, 't');
+    open_dialog(&mut app);
     sent(&mut rx);
     ctrl(&mut app, 'o');
     let out = asked(&sent(&mut rx));
@@ -283,7 +300,7 @@ fn ctrl_o_opens_the_picker_which_lists_folders_and_enter_goes_into_one() {
 fn recent_projects_are_listed_with_their_name_path_and_machine() {
     let (mut app, _rx) = world_with_machines();
     app.screen.saved.recent_paths = vec!["build:/srv/api".into(), "/home/x/maitty".into()];
-    ctrl(&mut app, 't');
+    open_dialog(&mut app);
     let shown = frame(&mut app, 120, 40);
     println!("{shown}");
     assert!(shown.contains("api") && shown.contains("/srv/api") && shown.contains("⇄ build"), "{shown}");

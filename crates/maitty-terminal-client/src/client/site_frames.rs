@@ -357,7 +357,6 @@ fn world(theme: &str) -> App {
         add(&mut app, t);
     }
     app.screen_sync();
-    pin_fold_colors(&mut app);
     for (dir, lines) in [
         (&checkout_dir, (38, 6)),
         (&cart_dir, (54, 2)),
@@ -367,21 +366,6 @@ fn world(theme: &str) -> App {
         app.screen.lines_changed.insert(dir.clone(), lines);
     }
     app
-}
-
-/// Each project's −/+ button in the next colour of the palette, in place of the random one the
-/// app picks the first time it draws it.
-fn pin_fold_colors(app: &mut App) {
-    let palette: Vec<_> = app
-        .cfg
-        .ui
-        .workspace_colors
-        .iter()
-        .filter_map(|c| crate::theme::parse_color(c))
-        .collect();
-    for (p, color) in app.screen_model().iter().zip(palette.iter().cycle()) {
-        app.screen.fold_colors.insert(p.key.clone(), *color);
-    }
 }
 
 /// A made-up folder under `~/code`, written with `/` on every platform so the frames read the

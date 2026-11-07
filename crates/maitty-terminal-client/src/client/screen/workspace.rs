@@ -1,10 +1,11 @@
-//! The workspace: one pane in a frame whose top border carries its status, title and chips,
-//! or up to four panes in one frame cut by single lines with proper joints, each with a
-//! two-row header. Exactly one frame, or one pane's lines, is in the accent. The program's
-//! own output is drawn as it is.
+//! The workspace: one pane in a frame, or up to four panes in one frame cut by single lines with
+//! proper joints, each with a two-row header. The top border is the tab row (`tabs.rs`), one
+//! tab per ship of the fleet. A lone pane has no header: its tab already names it. Exactly one
+//! frame, or one pane's lines, is in the accent. The program's own output is drawn as it is.
 
-use super::chips::{Chip, chip, right_chips};
+use super::chips::{Chip, chip};
 use super::side::display_name;
+use super::tabs::draw_tab_row;
 use super::status_mark::State;
 use super::*;
 use crate::layout::{Dir, Node};
@@ -17,6 +18,8 @@ const WIDE_HEADER: u16 = 60;
 const HEADER_ROWS: u16 = 2;
 /// Cells each header button takes (the glyph and a cell either side).
 const BUTTON_W: u16 = 3;
+/// Before the machine's name on a remote pane's header.
+const MACHINE_MARK: &str = "▤";
 
 /// A button on a pane's header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -236,7 +239,7 @@ pub(in crate::client) fn draw_main(
         });
     let Some(layout) = layout else {
         app.screen.leaf_rects = vec![(focus, area)];
-        draw_session(app, f, area, focus, true, model, t);
+        draw_session(app, f, area, focus, (true, Chrome::Tabs), model, t);
         return;
     };
     let leaves = layout.leaves();
@@ -336,49 +339,39 @@ pub(in crate::client) fn draw_main(
         hit(app, grab, ScreenHit::Divider(i));
         app.screen.dividers.push((sa, horizontal, path));
     }
+    draw_tab_row(app, f.buffer_mut(), area, model, lit, t);
     draw_pane_drag(app, f.buffer_mut(), model, t);
 }
 
+/// What a pane's frame carries on its top border.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::client) enum Chrome {
+    /// The workspace's tab row.
+    Tabs,
+    /// A floating pane's own status, title and close.
+    Title,
+}
+
 /// A pane's name for its title: yours, else what runs in it.
-fn pane_title(app: &App, model: &[Proj], term: ClientTerm) -> String {
+pub(super) fn pane_title(app: &App, model: &[Proj], term: ClientTerm) -> String {
     let fallback = find(model, term).map_or_else(String::new, |(_, _, s)| s.name.clone());
     display_name(app.term_info(term), &fallback)
 }
 
 /// The state glyph of a pane, from the daemon's report.
-fn pane_state(app: &App, info: &TermInfo, term: ClientTerm) -> State {
+pub(super) fn pane_state(app: &App, info: &TermInfo, term: ClientTerm) -> State {
     let failed = super::status_mark::failed(info.exit.is_some(), info.status, info.check());
     State::of(info.status, failed, app.machine_down(term.machine))
 }
 
-/// Where a pane runs, as its machine chip says it.
-fn machine_text(app: &App, machine: MachineId) -> String {
-    if machine == MachineId::LOCAL {
-        let this = if cfg!(target_os = "macos") {
-            "This Mac"
-        } else if cfg!(windows) {
-            "This PC"
-        } else {
-            "This computer"
-        };
-        format!("{} {this}", super::machine_group::LOCAL_ICON)
-    } else {
-        format!(
-            "{} {}",
-            super::machine_group::REMOTE_ICON,
-            app.machine_label_of(machine)
-        )
-    }
-}
-
-/// A single pane: a frame with its status, title and chips on the top border and the
-/// program below. Also a popup's pane.
+/// A single pane: a frame with the tab row (or, for a popup, its title) on the top border and
+/// the program below.
 pub(in crate::client) fn draw_session(
     app: &mut App,
     f: &mut Frame,
     r: Rect,
     term: ClientTerm,
-    focused: bool,
+    (focused, chrome): (bool, Chrome),
     model: &[Proj],
     t: &Theme,
 ) {
@@ -390,7 +383,8 @@ pub(in crate::client) fn draw_session(
     let ask = info.status == Status::Blocked
         && info.agent.is_some()
         && app.pending_question(term).is_some();
-    let (inside, terminal_bg) = lone_frame(app, f.buffer_mut(), r, term, &info, focused, model, t);
+    let (inside, terminal_bg) =
+        lone_frame(app, f.buffer_mut(), r, term, &info, (focused, chrome), model, t);
     let below = 1 + if ask { 2 } else { 0 };
     let inner = Rect {
         x: r.x + 2,
@@ -408,10 +402,13 @@ pub(in crate::client) fn draw_session(
         terminal_bg,
         t,
     );
+    if chrome == Chrome::Tabs {
+        draw_tab_row(app, f.buffer_mut(), r, model, focused, t);
+    }
 }
 
-/// The frame of a lone pane and the chips on its top border. Returns the inside and the
-/// terminal's ground.
+/// The frame of a lone pane and, for a popup, the title on its top border. Returns the inside
+/// and the terminal's ground.
 #[allow(clippy::too_many_arguments)]
 fn lone_frame(
     app: &mut App,
@@ -419,7 +416,7 @@ fn lone_frame(
     r: Rect,
     term: ClientTerm,
     info: &TermInfo,
-    focused: bool,
+    (focused, chrome): (bool, Chrome),
     model: &[Proj],
     t: &Theme,
 ) -> (Rect, Color) {
@@ -463,7 +460,7 @@ fn lone_frame(
         c = c.lit(border);
     }
     let inside = card(app, buf, r, &c, t);
-    if r.width < 12 {
+    if r.width < 12 || chrome == Chrome::Tabs {
         return (inside, terminal_bg);
     }
 
@@ -482,50 +479,20 @@ fn lone_frame(
     );
     let right_edge = r.right().saturating_sub(1);
     let title_x = glyph_x + 1;
-    // What the right of the border offers, most wanted last: the path chips go first.
-    let mut chips: Vec<(&str, Vec<Seg>, Option<ScreenHit>)> = vec![(
-        "project",
-        chip(app, "▾ Project", Chip::Action, t.bg, t),
-        Some(ScreenHit::ProjectMenu(term)),
-    )];
-    let folder = tilde(&info.cwd);
-    if !folder.is_empty() {
-        chips.push((
-            "folder",
-            chip(app, &format!("▢ {folder}"), Chip::Quiet, t.bg, t),
-            None,
-        ));
-    }
-    if let Some(branch) = info.branch.as_deref().filter(|b| !b.is_empty()) {
-        chips.push((
-            "branch",
-            chip(app, &format!("⎇ {branch}"), Chip::Branch, t.bg, t),
-            None,
-        ));
-    }
-    chips.push((
-        "machine",
-        chip(app, &machine_text(app, term.machine), Chip::Quiet, t.bg, t),
-        None,
-    ));
     let close = chip(app, "×", Chip::Close, t.bg, t);
-    let close_w = segs_width(&close) + 1;
-    let title_min = 12u16.min(right_edge.saturating_sub(title_x));
-    let room = right_edge.saturating_sub(title_x + title_min + 1 + close_w);
-    let width_of = |chips: &[(&str, Vec<Seg>, Option<ScreenHit>)]| -> u16 {
-        chips.iter().map(|(_, s, _)| segs_width(s) + 1).sum()
-    };
-    // The path chips drop first, then the branch, the machine and the menu.
-    for name in ["folder", "branch", "machine", "project"] {
-        if width_of(&chips) <= room {
-            break;
-        }
-        chips.retain(|(n, _, _)| *n != name);
-    }
-    let mut row: Vec<(Vec<Seg>, Option<ScreenHit>)> =
-        chips.into_iter().map(|(_, s, h)| (s, h)).collect();
-    row.push((close, Some(ScreenHit::CloseSplit(term))));
-    let start = right_chips(app, buf, r.y, (title_x, right_edge), row, border);
+    let close_w = segs_width(&close);
+    let start = right_edge.saturating_sub(close_w);
+    put(buf, start, r.y, &close, right_edge);
+    hit(
+        app,
+        Rect {
+            x: start,
+            y: r.y,
+            width: close_w,
+            height: 1,
+        },
+        ScreenHit::CloseSplit(term),
+    );
     let title_room = start.saturating_sub(title_x + 1) as usize;
     let name = truncate(
         &pane_title(app, model, term),
@@ -626,21 +593,27 @@ fn draw_split_pane(
         ),
         seg(name, name_style),
     ];
-    let lw = segs_width(&label);
-    let lx = r.x + r.width.saturating_sub(lw) / 2;
-    put(buf, lx, r.y, &label, r.right().saturating_sub(bw));
+    put(buf, r.x + 1, r.y, &label, r.right().saturating_sub(bw));
 
-    // Row 2: the path, and the branch at the right.
+    // Row 2: the folder and the branch (magenta), and the machine at the right for a remote.
     let y2 = r.y + 1;
+    let machine = (term.machine != MachineId::LOCAL).then(|| {
+        format!(
+            "{} {}",
+            MACHINE_MARK,
+            app.machine_label_of(term.machine)
+        )
+    });
+    let mwid = machine.as_ref().map_or(0, |m| m.width() as u16 + 1);
     let branch = info
         .branch
         .as_deref()
         .filter(|b| !b.is_empty())
         .map(|b| format!("⎇ {b}"));
     let bwid = branch.as_ref().map_or(0, |b| b.width() as u16 + 1);
-    let path_room = (r.width.saturating_sub(2 + bwid)) as usize;
+    let path_room = r.width.saturating_sub(2 + bwid + mwid) as usize;
     let path = truncate(&tilde(&info.cwd), path_room.max(1));
-    put(
+    let after = put(
         buf,
         r.x + 1,
         y2,
@@ -648,12 +621,21 @@ fn draw_split_pane(
         r.right(),
     );
     if let Some(branch) = branch {
-        let bx = r.right().saturating_sub(branch.width() as u16 + 1);
         put(
             buf,
-            bx,
+            after + 1,
             y2,
             &[seg(branch, Style::default().fg(t.violet()).bg(terminal_bg))],
+            r.right().saturating_sub(mwid),
+        );
+    }
+    if let Some(machine) = machine {
+        let mx = r.right().saturating_sub(machine.width() as u16 + 1);
+        put(
+            buf,
+            mx,
+            y2,
+            &[seg(machine, Style::default().fg(t.muted).bg(terminal_bg))],
             r.right(),
         );
     }
