@@ -677,7 +677,7 @@ one shows in the other the next time that app starts.
 
 With one machine the sidebar looks as it always did. Once you have another, every machine's folders sit under
 a header: **this computer** first, then the others. A machine's header carries its state as a shape and a
-word: `connected`, `connecting`, `reconnecting #2`, `needs login`, `needs update`, `unreachable` or `refused`
+word: `connected`, `connecting`, `reconnecting #2`, `needs login`, `not installed`, `needs update`, `unreachable` or `refused`
 (a different computer answers at that name). When you have to act, the fix is written under the header, in
 full. A machine that is down keeps its folders and sessions, dimmed, with `disconnected since 2m ago`; its
 sessions' needs-you and done marks leave the counts and the Inbox until it is back, and everything returns on
@@ -693,11 +693,19 @@ its own. An Inbox row from another machine says `· on build`.
   it) and adds it only when ssh could reach it. If ssh needs you to type a password or accept a host key, the
   machine is added and ssh opens in a session named `ssh <name>`; the machine connects when that session
   closes. On Windows use ssh keys or an agent: password prompts work in that session but are not remembered.
-  A machine whose app is missing or old is added too; its header then says `needs update` with the fix.
+  A machine whose app is missing or old is added too; its header then says `not installed` or `needs update`.
 
-A machine that needs an update or no app at all says `needs update`, with the exact command to run (for example
-`maitty machine update build --install`) and a **Copy command** button. The desktop app never installs or restarts
-anything on a machine: you run the command in a terminal.
+A machine with no maitty says `not installed` under its header in the sidebar, with an **Install** button; one
+with another version says `needs update`, with an **Update** button. Its right-click menu has the same as
+**Install Maitty** or **Update Maitty**, and Settings › Machines has it as the first button. No command or flag is
+needed: Install runs `maitty machine update <name> --install` for you, and Update replaces the version there
+(`--yes`). Both ask first. Install says what it puts on the machine; Update says how many sessions are open there
+and how many are busy, and offers **Update now** (its daemon restarts and its saved sessions come back with their
+agents resumed; a turn in progress is lost) or **Update when idle** (it waits up to half an hour for nothing to
+be running). A toast says it is running, then how it ended: installed, already up to date, or why it did not (ssh
+could not get in, the machine has a newer maitty than this app, which is never downgraded from here, or it is a
+Windows machine, which cannot be a remote yet). After a success the machine is dialled again. The exact command
+is still shown with a **Copy command** button, to run in a terminal instead.
 
 Each machine on that page has two switches. **Copy to your clipboard** (what that machine's sessions ask to
 copy is put on your clipboard) is on until you turn it off. **Notifications** (its notices, and a notice when

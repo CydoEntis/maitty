@@ -60,7 +60,7 @@ export function machineChip(state: MachineState): MachineChip {
     case 'needs-login':
       return { glyph: '▲', word: 'needs login', tone: 'bad' }
     case 'needs-update':
-      return { glyph: '▲', word: 'needs update', tone: 'bad' }
+      return { glyph: '▲', word: UPDATE_WORDS[updateActionOf(state) ?? 'update'].state, tone: 'bad' }
     case 'unreachable':
       return { glyph: '✕', word: 'unreachable', tone: 'bad' }
     case 'refused':
@@ -85,14 +85,63 @@ export type MachineHead = {
   grants: { clipboard: boolean; notices: boolean }
   /** The command that brings the app on a machine that needs it up to date, to copy; null when none is needed. */
   updateCommand: string | null
+  /** What the window's Install or Update button does for it; null when the machine needs neither. */
+  updateAction: UpdateAction | null
 }
 
 const UPDATE_COMMAND = /`(maitty machine update [^`]+)`/
+const INSTALL_FLAG = '--install'
 
 /** The command a needs-update fix names, as the host wrote it (the machine's name is in it). */
 export function updateCommandOf(state: MachineState): string | null {
   if (state.state !== 'needs-update') return null
   return UPDATE_COMMAND.exec(state.why ?? '')?.[1] ?? null
+}
+
+/** A first install (no app on the machine at all), or replacing the other version it runs. */
+export type UpdateAction = 'install' | 'update'
+
+/**
+ * Which fix a machine that needs update gets. The host only names `--install` when the app is not
+ * on the machine at all, and the update refuses a first install without it, so the button must
+ * pass it exactly then; a newer version there is refused by the update itself, never downgraded.
+ */
+export function updateActionOf(state: MachineState): UpdateAction | null {
+  if (state.state !== 'needs-update') return null
+  return updateCommandOf(state)?.includes(INSTALL_FLAG) === true ? 'install' : 'update'
+}
+
+type UpdateWords = { verb: string; state: string; need: (name: string) => string; running: (name: string) => string; failed: (name: string) => string }
+
+/** What the window says of each fix, so the sidebar, its dialog, Settings and the toasts agree. */
+export const UPDATE_WORDS: Record<UpdateAction, UpdateWords> = {
+  install: {
+    verb: 'Install',
+    state: 'not installed',
+    need: (name) => `Maitty is not installed on ${name}.`,
+    running: (name) => `Installing Maitty on ${name}…`,
+    failed: (name) => `Could not install Maitty on ${name}`,
+  },
+  update: {
+    verb: 'Update',
+    state: 'needs update',
+    need: (name) => `${name} runs another version of Maitty.`,
+    running: (name) => `Updating Maitty on ${name}…`,
+    failed: (name) => `Could not update Maitty on ${name}`,
+  },
+}
+
+/** What a first install does, said before it runs. There is no daemon there yet, so nothing to interrupt. */
+export function installNote(name: string): string {
+  return `Puts this version of Maitty on ${name} over ssh, then connects to it.`
+}
+
+/** What an update will interrupt, said before it runs. `activity` is null when the machine could not say. */
+export function updateWarning(name: string, activity: { sessions: number; busy: number } | null): string {
+  const open = activity === null
+    ? `Updating ${name} restarts its daemon, and ${name} could not say what is open on it. `
+    : `${name} has ${String(activity.sessions)} ${activity.sessions === 1 ? 'session' : 'sessions'} open, ${String(activity.busy)} busy. Updating restarts its daemon. `
+  return `${open}Its sessions are saved and come back with their agents resumed; an agent in the middle of a turn loses that turn if you update now. Update when idle waits up to half an hour for nothing to be running first.`
 }
 
 /** Whether a machine's sessions are shown as last seen: its line is not up and not on its first dial. */
@@ -103,7 +152,7 @@ export function isDown(state: MachineState): boolean {
 export const THIS_COMPUTER = 'this computer'
 
 /** This computer's header, which the sidebar shows even when there is no other machine. */
-export const LOCAL_HEAD: MachineHead = { key: 'machine-0', machine: LOCAL_MACHINE, name: null, label: THIS_COMPUTER, chip: null, why: null, down: false, downSince: null, grants: { clipboard: false, notices: false }, updateCommand: null }
+export const LOCAL_HEAD: MachineHead = { key: 'machine-0', machine: LOCAL_MACHINE, name: null, label: THIS_COMPUTER, chip: null, why: null, down: false, downSince: null, grants: { clipboard: false, notices: false }, updateCommand: null, updateAction: null }
 
 /** The name a machine heading shows. */
 export function machineTitle(head: MachineHead): string {
@@ -119,7 +168,7 @@ export function machineHeads(machines: ReadonlyMap<number, RemoteMachine>): Mach
   if (machines.size === 0) return []
   const others = [...machines.entries()]
     .sort(([a], [b]) => a - b)
-    .map(([id, machine]): MachineHead => ({ key: `machine-${String(id)}`, machine: id, name: machine.state.name, label: machine.state.name, chip: machineChip(machine.state), why: machine.state.why, down: isDown(machine.state), downSince: machine.state.since ?? null, grants: { clipboard: machine.state.clipboard === true, notices: machine.state.notices === true }, updateCommand: updateCommandOf(machine.state) }))
+    .map(([id, machine]): MachineHead => ({ key: `machine-${String(id)}`, machine: id, name: machine.state.name, label: machine.state.name, chip: machineChip(machine.state), why: machine.state.why, down: isDown(machine.state), downSince: machine.state.since ?? null, grants: { clipboard: machine.state.clipboard === true, notices: machine.state.notices === true }, updateCommand: updateCommandOf(machine.state), updateAction: updateActionOf(machine.state) }))
   return [LOCAL_HEAD, ...others]
 }
 
