@@ -188,7 +188,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
         <ChatSkeleton />
       )}
       {stoppedOnPrompt && <PermissionAskCard agent={agent} ask={ask} online={online} answer={answerPrompt} pick={pickChoice} />}
-      <Composer agent={agent} composer={shownComposer} />
+      <Composer agent={agent} composer={shownComposer} conversation={link.conversation} />
     </div>
   )
 }
