@@ -1,5 +1,6 @@
 use anyhow::{Context, Result, bail};
 use serde_json::Value;
+use maitty_shared::conversation::TurnChoice;
 use std::ffi::OsString;
 
 mod hooks;
@@ -307,6 +308,18 @@ pub fn command_arguments(
     resume: bool,
     settings: &maitty_shared::conversation::LaunchSettings,
 ) -> Vec<OsString> {
+    command_arguments_for_turn(session_id, resume, settings, &TurnChoice::default())
+}
+
+/// The launch arguments for one message. A picked model replaces the conversation's own for this
+/// message and an effort adds `--effort`; each message starts its own process, so the choice holds
+/// exactly as long as the caller keeps sending it. Permission arguments never depend on it.
+pub fn command_arguments_for_turn(
+    session_id: &str,
+    resume: bool,
+    settings: &maitty_shared::conversation::LaunchSettings,
+    choice: &TurnChoice,
+) -> Vec<OsString> {
     let mut arguments = vec![
         "-p".into(),
         "--input-format".into(),
@@ -337,8 +350,11 @@ pub fn command_arguments(
     } else {
         arguments.push(format!("--resume={session_id}").into());
     }
-    if let Some(model) = settings.model.as_deref() {
+    if let Some(model) = choice.model.as_deref().or(settings.model.as_deref()) {
         arguments.extend(["--model".into(), model.into()]);
+    }
+    if let Some(effort) = choice.effort.as_deref() {
+        arguments.extend(["--effort".into(), effort.into()]);
     }
     arguments
 }

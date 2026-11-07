@@ -9,9 +9,10 @@ use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio_util::codec::{FramedRead, FramedWrite, LinesCodec};
 
+use crate::conversation::TurnChoice;
 use maitty_provider_claude::{
     MAX_FRAME_BYTES, MAX_PENDING_TOOLS, OutputFrame, ProjectedEvent, TurnProjector,
-    command_arguments, parse_output_frame, session_id, verified_version,
+    command_arguments_for_turn, parse_output_frame, session_id, verified_version,
     version_number,
 };
 
@@ -400,6 +401,18 @@ struct TurnContext<'a> {
     stop: &'a mut tokio::sync::mpsc::Receiver<()>,
 }
 
+/// The model and effort the user picked for this message, read back from its start parameters.
+/// They are checked again here because they end up on a command line.
+fn turn_choice(params: &Value) -> Result<TurnChoice> {
+    let field = |name: &str| params.get(name).and_then(Value::as_str).map(str::to_owned);
+    let choice = TurnChoice {
+        model: field("model"),
+        effort: field("effort"),
+    };
+    choice.validate().map_err(anyhow::Error::msg)?;
+    Ok(choice)
+}
+
 async fn run_turn(
     context: TurnContext<'_>,
     token: u64,
@@ -432,7 +445,9 @@ async fn run_turn(
         .map_err(|error| TurnFailure::BeforeStart { token, error })?
         .to_owned();
     let (_, executable, cwd) = launch.paths();
-    let args = command_arguments(session, !awaiting_first_message, settings);
+    let choice = turn_choice(&params)
+        .map_err(|error| TurnFailure::BeforeStart { token, error })?;
+    let args = command_arguments_for_turn(session, !awaiting_first_message, settings, &choice);
     let mut client = Client::spawn(
         executable,
         cwd,
@@ -636,9 +651,12 @@ fn approval_request(
 
 #[cfg(test)]
 mod tests {
-    use super::{approval_request, parse_output_frame, verified_version};
+    use super::{approval_request, parse_output_frame, turn_choice, verified_version};
     use crate::conversation::{ApprovalPolicy, LaunchSettings, Provider, Sandbox};
-    use maitty_provider_claude::{MAX_FRAME_BYTES, OutputFrame, command_arguments, session_id};
+    use crate::conversation::TurnChoice;
+    use maitty_provider_claude::{
+        MAX_FRAME_BYTES, OutputFrame, command_arguments, command_arguments_for_turn, session_id,
+    };
     use serde_json::json;
     use std::path::PathBuf;
 
@@ -720,6 +738,48 @@ mod tests {
             args.iter()
                 .any(|argument| argument == "--permission-prompt-tool=stdio")
         );
+    }
+
+    #[test]
+    fn a_picked_model_and_effort_reach_the_next_message_and_leave_permissions_alone() {
+        let launch = settings(ApprovalPolicy::OnRequest, Sandbox::ReadOnly);
+        let plain = command_arguments("s", true, &launch);
+        let picked = command_arguments_for_turn(
+            "s",
+            true,
+            &launch,
+            &TurnChoice { model: Some("opus".into()), effort: Some("max".into()) },
+        );
+        let text = |args: &[std::ffi::OsString]| -> Vec<String> {
+            args.iter().map(|arg| arg.to_string_lossy().into_owned()).collect()
+        };
+        let (plain, picked) = (text(&plain), text(&picked));
+        assert!(picked.windows(2).any(|pair| pair == ["--model", "opus"]));
+        assert!(picked.windows(2).any(|pair| pair == ["--effort", "max"]));
+        assert_eq!(picked.iter().filter(|arg| *arg == "--model").count(), 1);
+        assert!(!plain.iter().any(|arg| arg == "--effort"));
+        let without_choice = |args: &[String]| -> Vec<String> {
+            let mut kept = Vec::new();
+            let mut skip = false;
+            for arg in args {
+                if skip { skip = false; continue; }
+                if arg == "--model" || arg == "--effort" { skip = true; continue; }
+                kept.push(arg.clone());
+            }
+            kept
+        };
+        // Everything but the model and effort, permissions included, is identical.
+        assert_eq!(without_choice(&plain), without_choice(&picked));
+    }
+
+    #[test]
+    fn a_turns_choice_is_read_from_its_parameters_and_checked() {
+        let choice = turn_choice(&json!({"threadId":"t","model":"sonnet","effort":"high"})).unwrap();
+        assert_eq!(choice.model.as_deref(), Some("sonnet"));
+        assert_eq!(choice.effort.as_deref(), Some("high"));
+        assert!(turn_choice(&json!({"threadId":"t"})).unwrap().is_empty());
+        assert!(turn_choice(&json!({"model":"--add-dir"})).is_err());
+        assert!(turn_choice(&json!({"effort":"warp"})).is_err());
     }
 
     #[test]

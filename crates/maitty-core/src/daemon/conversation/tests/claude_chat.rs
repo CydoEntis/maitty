@@ -52,6 +52,7 @@ async fn a_claude_chat_is_created_sent_a_message_and_read_back_through_the_daemo
                 generation,
                 operation: 1,
                 text: "hello fake Claude".into(),
+                choice: None,
             }),
             None,
         )
@@ -67,6 +68,7 @@ async fn a_claude_chat_is_created_sent_a_message_and_read_back_through_the_daemo
                 generation: generation + 1,
                 operation: 2,
                 text: "hello fake Claude".into(),
+                choice: None,
             }),
             None,
         )
@@ -100,6 +102,82 @@ async fn a_claude_chat_is_created_sent_a_message_and_read_back_through_the_daemo
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
         assert!(texts.iter().any(|text| text == "fake reply"), "{texts:?}");
+    })
+    .catch_unwind()
+    .await;
+    session.cleanup().await;
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[tokio::test]
+async fn a_picked_model_and_effort_start_the_next_claude_message_and_a_bad_pick_is_refused() {
+    let mut session = conversation_fixture("conversation-choice").await;
+    let outcome = AssertUnwindSafe(async {
+        let root = session.fixture.directory.path().to_path_buf();
+        let (executable, config_root) = tokio::task::spawn_blocking(move || {
+            (fake_claude_executable(&root), std::fs::canonicalize(&root).unwrap())
+        })
+        .await
+        .unwrap();
+        let arguments_file = executable.with_extension("args");
+        let claude = crate::conversation::LaunchSettings {
+            provider: crate::conversation::Provider::Claude,
+            executable,
+            config_root,
+            cwd: session.fixture.record.binding.cwd.clone(),
+            model: None,
+            model_provider: None,
+            approval_policy: crate::conversation::ApprovalPolicy::OnRequest,
+            sandbox: crate::conversation::Sandbox::WorkspaceWrite,
+        };
+        let started = exchange(
+            &mut session,
+            520,
+            ClientMsg::Command(Command::ConversationStart {
+                target: crate::conversation::StartTarget::Create(claude),
+                branch: None,
+            }),
+            None,
+        )
+        .await;
+        let ServerMsg::Reply(Reply::ConversationStarted { id, generation }) = started else {
+            panic!("{started:?}");
+        };
+        let send = |operation: u64, choice: crate::conversation::TurnChoice| {
+            ClientMsg::Command(Command::ConversationSend {
+                id,
+                generation,
+                operation,
+                text: "hello fake Claude".into(),
+                choice: Some(choice),
+            })
+        };
+
+        // An option-shaped model never reaches a command line.
+        let refused = exchange(
+            &mut session,
+            521,
+            send(1, crate::conversation::TurnChoice { model: Some("--add-dir".into()), effort: None }),
+            None,
+        )
+        .await;
+        assert!(matches!(refused, ServerMsg::Error(ref e) if e.contains("model name")), "{refused:?}");
+
+        let sent = exchange(
+            &mut session,
+            522,
+            send(1, crate::conversation::TurnChoice { model: Some("opus".into()), effort: Some("max".into()) }),
+            None,
+        )
+        .await;
+        assert!(matches!(sent, ServerMsg::Reply(Reply::ConversationSent(_))), "{sent:?}");
+        let arguments = std::fs::read_to_string(&arguments_file).unwrap();
+        let arguments: Vec<&str> = arguments.lines().collect();
+        assert!(arguments.windows(2).any(|pair| pair == ["--model", "opus"]), "{arguments:?}");
+        assert!(arguments.windows(2).any(|pair| pair == ["--effort", "max"]), "{arguments:?}");
+        assert!(arguments.windows(2).any(|pair| pair == ["--permission-mode", "default"]), "{arguments:?}");
     })
     .catch_unwind()
     .await;

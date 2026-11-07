@@ -6,6 +6,12 @@ fn main() {
         return;
     }
 
+    // Lets a test see which arguments the last message was started with.
+    if let Ok(executable) = std::env::current_exe() {
+        let arguments: Vec<String> = std::env::args().skip(1).collect();
+        let _ = std::fs::write(executable.with_extension("args"), arguments.join("\n"));
+    }
+
     let stdin = std::io::stdin();
     let mut input = stdin.lock();
     let mut output = std::io::stdout().lock();

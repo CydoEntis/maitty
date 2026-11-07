@@ -834,6 +834,7 @@ pub async fn send_conversation(
     generation: u64,
     operation: u64,
     text: String,
+    choice: Option<maitty_shared::conversation::TurnChoice>,
     daemon_executable: PathBuf,
 ) -> Result<Value> {
     let reply = request(
@@ -842,6 +843,7 @@ pub async fn send_conversation(
             generation,
             operation,
             text,
+            choice: choice.filter(|picked| !picked.is_empty()),
         }),
         daemon_executable,
     )

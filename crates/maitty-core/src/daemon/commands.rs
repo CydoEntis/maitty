@@ -26,8 +26,9 @@ impl Daemon {
                 generation,
                 operation,
                 text,
+                choice,
             } => {
-                self.conversation_send(client, id, generation, operation, text)?;
+                self.conversation_send(client, id, generation, operation, text, choice.unwrap_or_default())?;
                 return Ok(false);
             }
             Command::ConversationApprove {
