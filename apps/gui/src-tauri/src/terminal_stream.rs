@@ -18,7 +18,7 @@
 use crate::hub::{Hub, HubHandle, LocalDial, MACHINE_STATE_EVENT, MachineState, Update, describe};
 use crate::routing::{self, machine_of};
 use crate::streams::{Out, Streams};
-use maitty_desktop_client::PaneCommand;
+use maitty_desktop_client::{FleetCommand, PaneCommand};
 use maitty_machines::link::Timing;
 use maitty_machines::machine_config::Grant;
 use maitty_machines::machine_ids::MachineIds;
@@ -234,6 +234,12 @@ impl Wire {
         handle
             .send(Outgoing { machine, msg })
             .map_err(|_| refusal(handle, machine))
+    }
+
+    /// A fleet request for another machine's daemon: the machine's line takes it without waiting.
+    /// Refused, naming the machine, when the machine has no line or the request is not valid.
+    pub fn fleet(&self, machine: Option<u16>, command: FleetCommand) -> Result<(), String> {
+        self.send(machine_of(machine), command.message()?)
     }
 
     /// Start a terminal session in `folder` on another machine. The folder is a path there: one

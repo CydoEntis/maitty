@@ -867,6 +867,44 @@ export async function startShellSession(folder: string): Promise<void> {
   await invokeParsed('start_shell_session', NullSchema, { cwd: folder })
 }
 
+/**
+ * Fleets: a named, coloured group of sessions on one machine (the daemon's workspace). `machine` is
+ * the machine's number (`LOCAL_MACHINE` for this computer), `fleet` the daemon's workspace id and
+ * `session` the pane number on that machine. A request for another machine is sent down its line
+ * and shows in the next state update.
+ */
+const machineOnly = (machine: number): { machine?: number } => (machine === LOCAL_MACHINE ? {} : { machine })
+
+/**
+ * The daemon's palette indexes a fleet may be coloured with: teal, violet, blue, green, pink, orange.
+ * They are positions in the default workspace colours, so colours saved before fleets keep their meaning.
+ */
+export const FLEET_COLORS = { teal: 3, violet: 0, blue: 1, green: 7, pink: 2, orange: 5 } as const
+
+/** Starts a named fleet holding one shell; the daemon gives it the first unused fleet colour. */
+export async function createFleet(machine: number, name: string): Promise<void> {
+  await invokeParsed('create_fleet', NullSchema, { name, ...machineOnly(machine) })
+}
+
+export async function renameFleet(machine: number, fleet: number, name: string): Promise<void> {
+  await invokeParsed('rename_fleet', NullSchema, { fleet, name, ...machineOnly(machine) })
+}
+
+/** `color` is one of the `FLEET_COLORS` values. */
+export async function recolorFleet(machine: number, fleet: number, color: number): Promise<void> {
+  await invokeParsed('recolor_fleet', NullSchema, { fleet, color, ...machineOnly(machine) })
+}
+
+/** Moves a session to another fleet of the same machine; it keeps running. */
+export async function moveSessionToFleet(machine: number, session: number, fleet: number): Promise<void> {
+  await invokeParsed('move_session_to_fleet', NullSchema, { session, fleet, ...machineOnly(machine) })
+}
+
+/** Starts a shell in a fleet, in `folder` or, when left out, the fleet's own folder. */
+export async function startShellInFleet(machine: number, fleet: number, folder?: string): Promise<void> {
+  await invokeParsed('start_shell_in_fleet', NullSchema, { fleet, folder: folder ?? null, ...machineOnly(machine) })
+}
+
 export async function startTerminalSession(folder: string, provider: 'Codex' | 'Claude'): Promise<void> {
   await invokeParsed('start_terminal_session', NullSchema, { cwd: folder, provider })
 }
