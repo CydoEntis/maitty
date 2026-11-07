@@ -2471,47 +2471,47 @@ target = '-oProxyCommand=x'
             let mut ui = toml::from_str::<Config>(toml).unwrap().ui;
             ui.fold_retired_layout();
             ui.fold_legacy_sizes();
-            (ui.layout_kind(), ui.gap, ui.pane_colors)
+            (ui.layout_kind(), ui.gap)
         };
-        let floating = |gap: &str, colors: bool| (LayoutKind::Floating, gap.to_string(), colors);
+        let floating = |gap: &str| (LayoutKind::Floating, gap.to_string());
         assert_eq!(
             ui("[ui]
 panes = 'tiled'"),
-            floating("0", false),
+            floating("0"),
             "no layout line: Cards, tiled"
         );
         assert_eq!(
             ui("[ui]
 layout = 'cards'
 panes = 'tiled'"),
-            floating("0", false)
+            floating("0")
         );
         assert_eq!(
             ui("[ui]
 layout = 'tiled'
 gap = '2'"),
-            floating("0", false),
+            floating("0"),
             "tiled had no gaps"
         );
         assert_eq!(
             ui("[ui]
 layout = 'cards'
 panes = 'floating'"),
-            floating("small", false)
+            floating("small")
         );
-        assert_eq!(ui(""), floating("small", false), "the default");
+        assert_eq!(ui(""), floating("small"), "the default");
         assert_eq!(
             ui("[ui]
 layout = 'floating'
 panes = 'tiled'"),
-            floating("small", false),
+            floating("small"),
             "a new name wins over a leftover panes"
         );
         assert_eq!(
             ui("[ui]
 layout = 'grid'"),
-            floating("small", true),
-            "grid is floating in colour"
+            floating("small"),
+            "grid is floating"
         );
         assert_eq!(
             ui("[ui]
@@ -2565,9 +2565,7 @@ layout = 'tiled'"
 layout = 'grid'"
             )
             .as_deref(),
-            Some(
-                "The Grid layout is now Floating with Pane colours on. Change it in Settings › Appearance"
-            )
+            Some("The Grid layout is now Floating. Change it in Settings › Appearance")
         );
         assert_eq!(
             note(

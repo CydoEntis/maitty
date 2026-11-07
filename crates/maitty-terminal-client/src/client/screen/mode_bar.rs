@@ -154,12 +154,7 @@ fn typing_target(app: &App) -> Option<String> {
 fn typing(app: &App, t: &Theme) -> (Piece, Vec<Piece>) {
     let hit = Some(ScreenHit::ShortcutMode);
     let lead = crate::client::design::long_key(&app.keymap.prefix);
-    let tag = if Look::of(&app.cfg.ui).hairline {
-        // Hairline has no chips: the mode is a bold word in the accent.
-        seg("TYPING", Style::default().fg(t.accent).bg(t.bg).add_modifier(Modifier::BOLD))
-    } else {
-        seg(" TYPING ", Style::default().fg(t.muted).bg(t.btn))
-    };
+    let tag = seg(" TYPING ", Style::default().fg(t.muted).bg(t.btn));
     let tag = Piece { segs: vec![tag], gap: 0, hit };
     let quiet = Style::default().fg(t.muted).bg(t.bg);
     let mut pieces = Vec::new();
@@ -643,23 +638,13 @@ fn live_hint_piece(key: &str, words: &str, t: &Theme) -> Piece {
 /// keys, and the way out last. While shortcut mode is held it says so, first to go when narrow,
 /// so nobody wonders where the mode went. Only words: the keys are that thing's to take.
 fn holding(app: &App, h: &Holder, t: &Theme) -> (Piece, Vec<Piece>, Vec<Piece>) {
-    let tag = if Look::of(&app.cfg.ui).hairline {
-        seg(
-            h.label,
-            Style::default()
-                .fg(t.strong)
-                .bg(t.bg)
-                .add_modifier(Modifier::BOLD),
-        )
-    } else {
-        seg(
-            format!(" {} ", h.label),
-            Style::default()
-                .fg(t.strong)
-                .bg(t.btn)
-                .add_modifier(Modifier::BOLD),
-        )
-    };
+    let tag = seg(
+        format!(" {} ", h.label),
+        Style::default()
+            .fg(t.strong)
+            .bg(t.btn)
+            .add_modifier(Modifier::BOLD),
+    );
     let tag = Piece {
         segs: vec![tag],
         gap: 0,
@@ -866,7 +851,7 @@ pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rec
     let mut left_and_release = None;
     if calm {
         let tag_w = width(&[&tag]);
-        let needing = alerts(app, super::hairline::needing(app), t);
+        let needing = alerts(app, needing(app), t);
         if let Some(alert) = needing
             .into_iter()
             .find(|a| tag_w + GAP + segs_width(&a.segs) <= room)
@@ -971,4 +956,15 @@ pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rec
     if words_only {
         hit(app, row, ScreenHit::Noop);
     }
+}
+
+/// How many panes need you, a split's included: the right end of the mode bar says so. A pane
+/// needs you when its own agent asks or its own check waits for approval (the sidebar's rows use
+/// the same rule, `check::needs`).
+fn needing(app: &App) -> usize {
+    app.snap
+        .terms
+        .values()
+        .filter(|info| super::check::needs(info.status, info.check()))
+        .count()
 }

@@ -263,29 +263,6 @@ impl App {
         }
     }
 
-    /// A new tab of the session you're on: a shell where you are (cd and run what you like;
-    /// the sidebar groups it by where it works).
-    pub(in crate::client) fn new_tab_start(&mut self) {
-        let Some(owner) = self
-            .screen
-            .tabs
-            .get(self.screen.tab)
-            .map(|t| t.owner)
-            .or(self.focused())
-        else {
-            self.notify("open a session first".into(), true);
-            return;
-        };
-        self.shell_in_project();
-        // After the command goes, which clears it: this is the one session it is for.
-        let known = self.all_terms().into_iter().map(|(t, _)| t).collect();
-        *self.screen.new_tab.borrow_mut() = Some(PendingTab {
-            at: Instant::now(),
-            owner,
-            known,
-        });
-    }
-
     /// Rename the session you're on, in its pill: its name is the one the sidebar, the pill and
     /// every notice use, so a name kept on the tab alone would leave them all saying the old one.
     pub(in crate::client) fn rename_tab_start(&mut self) {

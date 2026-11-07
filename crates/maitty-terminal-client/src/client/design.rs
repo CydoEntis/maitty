@@ -192,7 +192,7 @@ pub(super) fn button(t: &Theme, label: &str, key: &str, kind: BtnKind) -> Vec<Se
         ));
     }
     v.push(r);
-    super::screen::plain(v)
+    v
 }
 
 /// A key drawn as a keycap: ` key ` raised on `btn`, strong and bold. A combo (`Ctrl+Space`) is
@@ -1536,8 +1536,7 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
             "appearance" | "theme_dark" | "theme_light" | "ui.glyphs" | "ui.spinner"
             | "ui.cursor" | "ui.cursor_blink" => "THEME",
             "ui.padding" | "ui.background" | "ui.sidebar_position" | "ui.motion" => "LAYOUT",
-            "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.pane_colors" | "ui.rounded" => "PANES",
-            "ui.tab_gap" => "TABS",
+            "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.rounded" => "PANES",
             "sessions.agent" | "sessions.where" => "NEW SESSIONS",
             "ui.sidebar_tabs" => "SIDEBAR",
             "worktree.delete_with_last" | "worktree.per_agent" | "worktree.command" => "WORKTREES",

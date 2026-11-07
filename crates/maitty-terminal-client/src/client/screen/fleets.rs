@@ -21,6 +21,9 @@ const FLEET_COLOURS: [Color; 4] = [
     Color::Rgb(0xfb, 0x92, 0x3c),
 ];
 
+/// What each of `FLEET_COLOURS` is called in the colour menu.
+const FLEET_COLOUR_NAMES: [&str; 4] = ["teal", "violet", "blue", "orange"];
+
 /// A fleet: the machine's daemon and the workspace on it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(in crate::client) struct FleetId {
@@ -260,7 +263,73 @@ impl App {
         self.notify(format!("New shell in {SCRATCH} · ~"), false);
     }
 
-    /// The `+` on a machine heading: a shell in that machine's first fleet.
+    /// The `+` on a machine heading: ask a name for a new fleet there. Left empty, it is a shell
+    /// in the machine's first fleet.
+    pub(super) fn machine_plus(&mut self, machine: MachineId) {
+        self.leave_shortcut_mode();
+        if self.machine_down(machine) {
+            self.new_scratch_ship(machine);
+            return;
+        }
+        self.mode = Mode::Prompt {
+            kind: crate::client::PromptKind::NewFleet(machine),
+            input: String::new(),
+        };
+    }
+
+    /// The name typed for `machine`'s new fleet: started with a shell, in the first of the four
+    /// fleet colours not in use.
+    pub(in crate::client) fn new_fleet(&mut self, machine: MachineId, name: String) {
+        if name.is_empty() {
+            self.new_ship_on(machine);
+            return;
+        }
+        if self.machine_down(machine) {
+            self.notify("that machine is offline; a fleet can't start there".into(), true);
+            return;
+        }
+        self.cmd_on(
+            machine,
+            Command::NewFleet {
+                name: name.clone(),
+                cwd: None,
+                colors: (0..FLEET_COLOURS.len() as u8).collect(),
+            },
+        );
+        self.notify(format!("New fleet {name}"), false);
+    }
+
+    /// Ask a new name for a fleet, the old one filled in.
+    pub(in crate::client) fn rename_fleet_start(&mut self, fleet: FleetId) {
+        let cur = self.fleet_info(fleet).map(fleet_name).unwrap_or_default();
+        self.mode = Mode::Prompt {
+            kind: crate::client::PromptKind::RenameFleet(fleet),
+            input: cur,
+        };
+    }
+
+    /// A fleet row's menu (right-click, or the Menu key on it): a shell, its name, its colour.
+    pub(in crate::client) fn menu_for_fleet(&mut self, fleet: FleetId, at: (u16, u16)) {
+        let Some(info) = self.fleet_info(fleet) else {
+            return;
+        };
+        let title = fleet_name(info);
+        let current = info.color as usize % FLEET_COLOURS.len();
+        let mut items = vec![
+            ("New shell here".to_string(), crate::client::menu::Act::NewShip(fleet)),
+            ("Rename".to_string(), crate::client::menu::Act::RenameFleet(fleet)),
+        ];
+        items.extend(FLEET_COLOUR_NAMES.iter().enumerate().map(|(i, name)| {
+            let mark = if i == current { "● " } else { "  " };
+            (
+                format!("Colour: {mark}{name}"),
+                crate::client::menu::Act::FleetColour(fleet, i as u8),
+            )
+        }));
+        self.menu(title, items, at);
+    }
+
+    /// The `+` on a machine heading with no name: a shell in that machine's first fleet.
     pub(super) fn new_ship_on(&mut self, machine: MachineId) {
         let first = self
             .snap_of(machine)

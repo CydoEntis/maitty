@@ -279,6 +279,13 @@ removes the alias spelling of the same key, so the file keeps loading. A value o
 table is refused before the file is opened. A key set in `config.local.toml` still overrides
 what is written to `config.toml`.
 
+## Project-specific: removed config keys
+
+Removed `[ui]` keys. `pane_colors`, `tab_gap` and `tool_rail` no longer exist: the TUI draws one accent focus border,
+the tabs follow the v27 tab row and the tools open from the Project chip. A `config.toml` that still names them
+loads without error and the keys are ignored (the file is not rewritten). `layout = "grid"` now reads as Floating
+without pane colours.
+
 ## Project-specific: environments
 
 Local only: Maitty is a desktop tool. Development builds use `cargo install --path apps/tui`;

@@ -170,8 +170,6 @@ mod design_tests {
         cfg.ui.glyphs = "unicode".into();
         // The reference has no padding round the screen; its frames are compared cell for cell.
         cfg.ui.padding = "0".into();
-        // The reference has no tool rail, and its sheets sit beside the panes.
-        cfg.ui.tool_rail = false;
         let mut app = App::new(cfg, tx, None, bg_tx);
         app.splash = false;
         let layout = Node::Leaf(1);
@@ -1217,11 +1215,8 @@ mod screen_tests {
             o.contains("↑↓") && o.contains("select") && o.contains("Esc") && o.contains("close"),
             "the sheet's keys"
         );
-        // It's docked beside the panes, not over them: the session's card is still there.
-        assert!(
-            o.contains("fix the flaky checkout test"),
-            "the panes reflow beside it"
-        );
+        // It floats over the workspace from the sidebar's side, 62 columns wide.
+        assert_eq!(app.screen.sheet_rect.width, 62);
         // 2 answers the selected question without going there.
         app.on_key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE));
         assert!(matches!(app.mode, Mode::GoTo { .. }), "still in the Inbox");
@@ -2353,96 +2348,17 @@ mod screen_tests {
     }
 
     #[test]
-    fn a_session_started_after_asking_for_a_tab_is_its_own_session() {
+    fn the_new_tab_key_starts_a_shell_in_the_fleet_you_are_in() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        let rows = |app: &App| {
-            app.screen_model()
-                .iter()
-                .flat_map(|p| p.sessions().filter_map(|s| s.native_term))
-                .collect::<Vec<_>>()
-        };
-        let (tx, _rx) = mpsc::unbounded_channel();
+        let (tx, mut rx) = mpsc::unbounded_channel();
         app.out = tx;
-        app.screen.tabs.clear();
-        app.screen_place(ClientTerm::local(1), None);
-        // A tab is asked for in claude's session, then a session is started instead.
         app.act(Action::NewTab);
+        let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
         assert!(
-            app.screen.new_tab.borrow().is_some(),
-            "armed for the shell that answers it"
+            sent.iter()
+                .any(|o| matches!(&o.msg, ClientMsg::Command(Command::NewShip { cmd: None, .. }))),
+            "a shell joins the fleet as a tab: {sent:?}"
         );
-        app.screen_new_session(PathBuf::from("/tmp"), Some("claude".into()), false);
-        app.screen_place(ClientTerm::local(3), Some(ClientTerm::local(1)));
-        app.screen_fresh();
-        let own = app
-            .screen
-            .tabs
-            .iter()
-            .find(|t| t.layout.contains(3))
-            .expect("it has a tab");
-        assert_eq!(
-            own.owner,
-            ClientTerm::local(3),
-            "its own session, not a tab of claude's"
-        );
-        assert!(
-            rows(&app).contains(&ClientTerm::local(3)),
-            "with its own sidebar row: {:?}",
-            rows(&app)
-        );
-    }
-
-    #[test]
-    fn a_pending_tab_takes_only_the_new_shell_not_another_pane_that_gets_the_focus() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        let (tx, _rx) = mpsc::unbounded_channel();
-        app.out = tx;
-        app.screen.tabs.clear();
-        app.screen_place(ClientTerm::local(1), None);
-        app.act(Action::NewTab);
-        // You pick another session before the shell arrives: it stays its own, and the tab waits.
-        app.screen_place(ClientTerm::local(2), Some(ClientTerm::local(1)));
-        assert!(
-            app.screen
-                .tabs
-                .iter()
-                .find(|t| t.layout.contains(2))
-                .is_some_and(|t| t.owner == ClientTerm::local(2)),
-            "an existing session is not a tab"
-        );
-        assert!(
-            app.screen.new_tab.borrow().is_some(),
-            "the request is still waiting"
-        );
-        // A pane an agent started is not it either.
-        let mut helper = app.snap.terms[&3].clone();
-        helper.id = 40;
-        helper.started_by = Some(2);
-        app.snap.terms.insert(40, helper);
-        app.screen_place(ClientTerm::local(40), Some(ClientTerm::local(2)));
-        assert!(
-            app.screen
-                .tabs
-                .iter()
-                .find(|t| t.layout.contains(40))
-                .is_some_and(|t| t.owner == ClientTerm::local(40)),
-            "a helper keeps its own place"
-        );
-        // The shell the request is for: new, and nobody's helper.
-        let mut shell = app.snap.terms[&3].clone();
-        shell.id = 41;
-        shell.started_by = None;
-        app.snap.terms.insert(41, shell);
-        app.screen_place(ClientTerm::local(41), Some(ClientTerm::local(40)));
-        assert!(
-            app.screen
-                .tabs
-                .iter()
-                .find(|t| t.layout.contains(41))
-                .is_some_and(|t| t.owner == ClientTerm::local(1)),
-            "the new shell is claude's tab"
-        );
-        assert!(app.screen.new_tab.borrow().is_none(), "answered once");
     }
 
     #[test]
@@ -2452,14 +2368,11 @@ mod screen_tests {
         app.out = tx;
         app.screen.tabs.clear();
         app.screen_place(ClientTerm::local(1), None);
-        app.act(Action::NewTab);
+        // Claude has a shell tab of its own.
         app.screen
-            .new_tab
-            .borrow_mut()
-            .as_mut()
-            .expect("armed")
-            .known
-            .remove(&ClientTerm::local(3));
+            .tabs
+            .push(screen::ScreenTab::single(ClientTerm::local(3), ClientTerm::local(1)));
+        app.screen.tab = app.screen.tabs.len() - 1;
         app.screen_place(ClientTerm::local(3), Some(ClientTerm::local(1)));
         assert_eq!(
             app.screen.tabs[app.screen.tab].focus,
@@ -3052,7 +2965,6 @@ mod screen_tests {
                 && o.contains("Search commands"),
             "{o}"
         );
-        assert!(!app.cfg.ui.tool_rail, "the tool rail is off unless asked for");
 
         // A short window keeps every row that does something: the blank rows and then the
         // titles give way first.
@@ -6237,9 +6149,8 @@ second line
     }
 
     #[test]
-    fn pane_colours_show_shortcut_mode_on_the_focused_border_too() {
+    fn shortcut_mode_lights_the_focused_border_sky() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.cfg.ui.pane_colors = true;
         let border = |app: &mut App| {
             let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
             term.draw(|f| render::draw(app, f)).unwrap();
@@ -12345,8 +12256,16 @@ mod side_panel_width_tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
-    /// The Inbox open in the side sheet on a screen `w` columns wide, drawn once.
+    /// The Changes drawer open on a screen `w` columns wide, drawn once.
     fn inbox_open(w: u16, h: u16) -> App {
+        let (_, mut app) = super::design_tests::render_with(w, h);
+        app.show_view(changes_view());
+        draw(&mut app, w, h);
+        app
+    }
+
+    /// The Inbox open on a screen `w` columns wide, drawn once.
+    fn real_inbox_open(w: u16, h: u16) -> App {
         let (_, mut app) = super::design_tests::render_with(w, h);
         app.act(Action::Jump);
         draw(&mut app, w, h);
@@ -12372,26 +12291,22 @@ mod side_panel_width_tests {
     #[test]
     fn brackets_narrow_and_widen_the_sheet_and_equals_puts_its_default_back() {
         let mut app = inbox_open(200, 50);
-        assert_eq!(app.screen.sheet_rect.width, 72, "the Inbox starts 72 wide");
+        assert_eq!(app.screen.sheet_rect.width, 60, "the drawer starts 60 wide");
         key(&mut app, '[');
         draw(&mut app, 200, 50);
-        assert_eq!(app.screen.sheet_rect.width, 68, "[ narrows it 4");
+        assert_eq!(app.screen.sheet_rect.width, 56, "[ narrows it 4");
         key(&mut app, ']');
         key(&mut app, ']');
         draw(&mut app, 200, 50);
-        assert_eq!(app.screen.sheet_rect.width, 76, "] widens it 4 each");
+        assert_eq!(app.screen.sheet_rect.width, 64, "] widens it 4 each");
         assert_eq!(
-            app.screen.saved.sheet_w.get("inbox"),
-            Some(&76),
+            app.screen.saved.sheet_w.get("drawer"),
+            Some(&64),
             "kept in the saved UI state"
         );
         key(&mut app, '=');
         draw(&mut app, 200, 50);
-        assert_eq!(app.screen.sheet_rect.width, 72, "= puts the default back");
-        assert!(
-            matches!(&app.mode, Mode::GoTo { query, .. } if query.is_empty()),
-            "the keys sized the sheet, not the search"
-        );
+        assert_eq!(app.screen.sheet_rect.width, 60, "= puts the default back");
     }
 
     #[test]
@@ -12413,7 +12328,27 @@ mod side_panel_width_tests {
             app.screen.sheet_rect.right() - (at.x - 10),
             "the sheet's edge follows the pointer"
         );
-        assert!(app.screen.sheet_rect.width > 72, "wider than before");
+        assert!(app.screen.sheet_rect.width > 60, "wider than before");
+    }
+
+    #[test]
+    fn the_inbox_is_62_wide_over_the_workspace_from_the_sidebars_side_and_keeps_its_width() {
+        let mut app = real_inbox_open(200, 50);
+        let col = app.screen.sheet_rect;
+        assert_eq!(col.width, 62);
+        let side = app.screen.side_rect;
+        assert!(col.x >= side.right(), "left sidebar: the Inbox starts beside it, not at the right edge");
+        assert!(col.right() < 200 - 62, "it is not docked on the right");
+        key(&mut app, ']');
+        draw(&mut app, 200, 50);
+        assert_eq!(app.screen.sheet_rect.width, 62, "it has no width to change");
+        assert!(edge(&app).is_none(), "and no edge to drag");
+        app.cfg.ui.sidebar_position = "right".into();
+        draw(&mut app, 200, 50);
+        assert!(
+            app.screen.sheet_rect.right() <= app.screen.side_rect.x,
+            "right sidebar: the Inbox ends where the sidebar begins"
+        );
     }
 
     #[test]
@@ -12434,7 +12369,7 @@ mod side_panel_width_tests {
         // Mid-slide, or left from another view: the drawn rectangle says nothing about the width.
         app.screen.sheet_rect.width = 22;
         key(&mut app, '[');
-        assert_eq!(app.screen.saved.sheet_w.get("inbox"), Some(&68));
+        assert_eq!(app.screen.saved.sheet_w.get("drawer"), Some(&56));
     }
 
     #[test]
@@ -14486,8 +14421,8 @@ mod leader_key_tests {
     }
 }
 
-/// The tool rail on the right edge and the drawer that floats over the terminal.
-mod tool_rail_tests {
+/// The drawer that floats over the terminal.
+mod drawer_tests {
     use super::*;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
@@ -14496,10 +14431,9 @@ mod tool_rail_tests {
     const W: u16 = 172;
     const H: u16 = 56;
 
-    /// The main screen with the rail on, the drawer floating, and the focused pane in a git repo.
+    /// The main screen with the drawer floating, and the focused pane in a git repo.
     fn app() -> App {
         let (_, mut app) = super::design_tests::render_with(W, H);
-        app.cfg.ui.tool_rail = true;
         static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let dir = std::env::temp_dir().join(format!("{APP_COMMAND}-rail-{}-{n}", std::process::id()));

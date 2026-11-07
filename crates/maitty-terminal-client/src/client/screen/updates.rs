@@ -98,7 +98,10 @@ pub(in crate::client) fn draw_updates(app: &mut App, f: &mut Frame, area: Rect, 
         Phase::Downloading => {
             let spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
             let frame = spinner[(app.screen.tick as usize / 2) % spinner.len()];
-            lines.push(vec![seg(format!("{frame} Downloading and installing…"), c.fg(t.accent))]);
+            let step = crate::cli::update::step();
+            let words = crate::cli::update::STEPS.get(step.wrapping_sub(1)).copied().unwrap_or("Starting");
+            lines.push(vec![seg(format!("{frame} {words}…"), c.fg(t.accent))]);
+            lines.push(progress_line(step, usize::from(BOX_W) - 8, c, t));
             lines.push(vec![seg("Sessions keep running while it installs.", c.fg(t.muted))]);
         }
         Phase::Ready => {
@@ -133,9 +136,39 @@ pub(in crate::client) fn draw_updates(app: &mut App, f: &mut Frame, area: Rect, 
     put(buf, r.x + 2, r.bottom() - 1, &bar, r.right().saturating_sub(2));
 }
 
+/// A bar of the steps done so far, and "step 2 of 4". The tools report no bytes, so it moves in
+/// whole steps and never claims a percentage.
+fn progress_line(step: usize, width: usize, c: Style, t: &Theme) -> Vec<Seg> {
+    let total = crate::cli::update::STEPS.len();
+    let done = step.saturating_sub(1).min(total);
+    let label = format!(" step {} of {total}", step.clamp(1, total));
+    let bar = width.saturating_sub(label.width()).max(total);
+    let filled = bar * done / total;
+    vec![
+        seg("█".repeat(filled), c.fg(t.accent)),
+        seg("░".repeat(bar - filled), c.fg(t.line)),
+        seg(label, c.fg(t.muted)),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_bar_counts_finished_steps_and_never_fills_before_the_last_is_done() {
+        let t = Theme::named(crate::theme::DEFAULT);
+        let text = |step| -> String {
+            progress_line(step, 40, Style::default(), &t)
+                .iter()
+                .map(|s| s.0.as_str())
+                .collect()
+        };
+        assert!(text(0).starts_with('░') && text(0).ends_with("step 1 of 4"));
+        assert!(text(1).starts_with('░'));
+        assert_eq!(text(3).matches('█').count(), 2 * (40 - " step 3 of 4".len()) / 4);
+        assert!(text(4).contains('░'), "the last step is still running");
+    }
 
     #[test]
     fn every_phase_can_be_left_with_l() {

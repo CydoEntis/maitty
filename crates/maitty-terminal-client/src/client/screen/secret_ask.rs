@@ -224,7 +224,7 @@ pub(in crate::client) fn draw_secret_pop(
         buf,
         r.x + 2,
         r.y,
-        &plain(vec![
+        &[
             seg(
                 " SECRET? ",
                 Style::default()
@@ -233,7 +233,7 @@ pub(in crate::client) fn draw_secret_pop(
                     .add_modifier(Modifier::BOLD),
             ),
             seg(format!("· {name} "), card.fg(t.muted)),
-        ]),
+        ],
         r.right() - 2,
     );
     let decline = " Esc declines ";

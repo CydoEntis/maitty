@@ -265,7 +265,7 @@ fn a_folder_missing_on_the_picked_machine_blocks_the_start() {
     answer(&mut app, BUILD, out[0].2, FolderListing::missing("/home/x/code"));
 
     let shown = frame(&mut app, 120, 40);
-    assert!(shown.contains("✗ No such folder on build"), "{shown}");
+    assert!(shown.contains("✗ /home/x/code is not a folder on build"), "{shown}");
     key(&mut app, KeyCode::Enter);
     assert!(matches!(app.mode, Mode::NewSession(_)));
 }
@@ -305,4 +305,40 @@ fn recent_projects_are_listed_with_their_name_path_and_machine() {
     println!("{shown}");
     assert!(shown.contains("api") && shown.contains("/srv/api") && shown.contains("⇄ build"), "{shown}");
     assert!(shown.contains("maitty") && shown.contains("local"), "{shown}");
+}
+
+#[test]
+fn a_project_from_a_machine_that_is_down_is_refused_with_its_name_not_started() {
+    let (mut app, mut rx) = world_with_machines();
+    app.screen.saved.recent_paths = vec!["gpu-01:/srv/train".into()];
+    open_dialog(&mut app);
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Enter);
+    let Mode::NewSession(ns) = &app.mode else { panic!("step two") };
+    assert_eq!(ns.step, super::new_session::Step::Machine);
+    let shown = frame(&mut app, 120, 40);
+    assert!(shown.contains("✗ gpu-01 is offline: pick another machine"), "{shown}");
+    sent(&mut rx);
+    key(&mut app, KeyCode::Enter);
+    assert!(matches!(app.mode, Mode::NewSession(_)), "Enter does not start it");
+    assert!(
+        !sent(&mut rx).iter().any(|o| matches!(&o.msg, ClientMsg::Command(Command::NewWorkspace { .. }))),
+        "no shell was started"
+    );
+}
+
+#[test]
+fn the_folder_is_checked_on_the_machine_picked_and_says_so_while_it_waits() {
+    let (mut app, mut rx) = world_with_machines();
+    app.screen.saved.recent_paths = vec!["/home/x/only-here".into()];
+    open_dialog(&mut app);
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Enter);
+    key(&mut app, KeyCode::Down);
+    let out: Vec<_> = asked(&sent(&mut rx)).into_iter().filter(|(m, ..)| *m == BUILD).collect();
+    assert_eq!(out.len(), 1, "build is asked about the same path: {out:?}");
+    let shown = frame(&mut app, 120, 40);
+    assert!(shown.contains("checking the folder on build"), "{shown}");
+    key(&mut app, KeyCode::Enter);
+    assert!(matches!(app.mode, Mode::NewSession(_)), "nothing starts until it answers");
 }

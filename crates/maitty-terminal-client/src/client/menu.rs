@@ -54,6 +54,12 @@ pub enum Act {
     Split(ClientTerm, crate::layout::Dir),
     RightClicks(ClientTerm),
     RenameProject(String, String),
+    /// Ask a new name for a fleet (a workspace).
+    RenameFleet(super::screen::fleets::FleetId),
+    /// Give a fleet the colour at this index of the fleet palette.
+    FleetColour(super::screen::fleets::FleetId, u8),
+    /// A shell at once in a fleet.
+    NewShip(super::screen::fleets::FleetId),
     /// End everything in a project and forget it.
     CloseProject(usize),
     NewWorktree(usize),
@@ -754,6 +760,12 @@ impl App {
                     input: cur,
                 };
             }
+            Act::RenameFleet(fleet) => self.rename_fleet_start(fleet),
+            Act::FleetColour(fleet, color) => self.cmd_on(
+                fleet.machine,
+                Command::SetWorkspaceColor { ws: fleet.ws, color },
+            ),
+            Act::NewShip(fleet) => self.new_ship(Some(fleet)),
             Act::RenameConversation(id) => {
                 let cur = self
                     .snap_of(self.conversation_machine(id))

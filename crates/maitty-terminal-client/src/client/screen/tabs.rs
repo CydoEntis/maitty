@@ -122,6 +122,12 @@ fn tab_segs(app: &App, tab: &Tab, title: &str, focused: bool, t: &Theme) -> Vec<
     } else {
         (t.btn, t.text)
     };
+    // A session that cannot be reached is shown dimmed, its mark `┆`.
+    let ink = if tab.state == State::Unknown && !(tab.active && focused) {
+        t.idle
+    } else {
+        ink
+    };
     // A glyph in the accent colour would vanish on the accent tab.
     let glyph_ink = if tab.active && focused && mark.color == t.accent {
         ink

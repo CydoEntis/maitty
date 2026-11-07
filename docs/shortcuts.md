@@ -176,7 +176,11 @@ The sidebar takes navigation, and `n` / `N` to open the New session dialog. No o
 | Right | Enter the selected session |
 | `/` | Filter the list: type to narrow it by name, folder, process or machine; Enter opens the match under the cursor, Esc clears the filter (a click on the project of a row filters to it too) |
 | Enter | Open the selected session; opening a sleeping session wakes it. On a session whose check failed, could not run, was overridden, went stale or is never run for its repo, open its evidence sheet instead; on one whose repo command waits for approval, open the approval |
-| `n`, `N` | The New session dialog |
+| `n`, `N` | A new shell at once in the fleet under the cursor (else the one you are in) |
+| `z` | Fold every machine and fleet heading; when all are folded, open them all |
+| Menu key (`.` after the prefix), right-click | On a fleet row: its menu (New shell here, Rename, Colour: teal, violet, blue, orange) |
+| F2 (the rename key) | On a fleet row: rename the fleet |
+| `+` on a machine heading | Ask a name and start a named fleet on that machine; an empty name starts a shell in its first fleet |
 | Enter on a row of an agent a restart stopped | Types its resume command, then opens the session |
 | Esc | Return keyboard focus to the active pane |
 
@@ -192,8 +196,8 @@ The sidebar takes navigation, and `n` / `N` to open the New session dialog. No o
 
 ## New session dialog
 
-`Ctrl+T` (the prefix then `t`), the sidebar's `n` and `+ New`, and the Menu's `Session...` open it. It starts a
-shell; step 1 is the project, step 2 the machine.
+The Menu's `Session...` opens it (`Ctrl+T`, the sidebar's `n` and `+ New` start a shell in the current fleet at once, with
+no dialog). It starts a shell; step 1 is the project, step 2 the machine.
 
 | Keys | Action |
 | --- | --- |
@@ -222,16 +226,16 @@ No bare key answers from the sidebar.
 
 ## Side panel
 
-The panel on the right. The Inbox and the checks dock beside the panes; Files, Changes, Branches and
+The panel on the right. The checks dock beside the panes; Files, Changes, Branches and
 References open from the pane's ` ▾ Project ` chip (or their leader keys) as a panel 60 columns wide
-over the right side of the workspace, which is not narrowed by it. The tools show a tab strip at their
-top with your own leader keys; the Inbox and checks have none.
+over the right side of the workspace, which is not narrowed by it. The Inbox is a panel 62 columns wide
+over the workspace from the sidebar's side; it has a fixed width.
 
 | Keys | Action |
 | --- | --- |
-| [ , ] | Narrow or widen it by 4 columns (in the Inbox, while its search is empty; in Files, not while filtering or editing) |
+| [ , ] | Narrow or widen it by 4 columns (not for the Inbox, which is fixed; in Files, not while filtering or editing) |
 | = | Back to its default width |
-| Drag its left edge | Resize it |
+| Drag its left edge | Resize it (not the Inbox) |
 | Click a pane | Type into that pane; the view stays open, unlit |
 | Click the panel | Give the view the keys again |
 | Tab, Shift+Tab | Files, Changes, Branch, References: the next or previous tab, for the same checkout (not while Files filters or edits) |
@@ -247,13 +251,13 @@ top with your own leader keys; the Inbox and checks have none.
 | o | Open the selected item's session; empty search |
 | 1–9 | Answer selected agent question when search is empty |
 | y, a, n | On a question: yes once, yes for the session, no, sent to that session's terminal as typed; empty search |
-| c | Clear the finished cards (each session stays); empty search |
+| c | Clear the finished and exited cards (each session stays); empty search |
 | m | Follow-up to selected asking/finished agent when search is empty; on a failed check, the message with the failure written in (sent only on Enter) |
 | d, M, x | Finished worktree: diff, ask to merge, ask to discard; empty search |
 | d, m, k | Shared-file warning: diff, message its agent, dismiss; empty search |
 | r, O, u, , | The selected item's check: run it again, override it (asks first), undo an override, its settings; only where they apply, else typed; empty search |
 | Click a button | The key it shows |
-| Delete | Mark selected finished session, or unrun check, seen |
+| Delete | Mark selected finished session, exited session or unrun check, seen |
 | Enter, Esc in confirmation | Confirm action, or cancel |
 | Esc | Close Inbox |
 

@@ -184,10 +184,6 @@ pub(super) struct Screen {
     pub tab: usize,
     /// The tab whose focused pane fills it (`⤢`).
     pub zoom: Option<usize>,
-    /// A new tab was asked for in this session: the shell that answers it goes in it. Starting
-    /// any other session clears it (`App::cmd`), so a session you start instead is never
-    /// taken for the tab. A `RefCell` because `cmd` only borrows the app.
-    pub new_tab: std::cell::RefCell<Option<PendingTab>>,
     /// Where the toast is drawn this frame (empty: none). It sits over the panes, so a click
     /// there is the toast's, never the program's under it.
     pub toast_rect: Rect,
@@ -285,6 +281,9 @@ pub(super) struct Screen {
     /// Quiet agents you marked seen in the Inbox, by when they went quiet: listed again only
     /// once they go quiet anew.
     pub quiet_seen: std::collections::HashMap<ClientTerm, u64>,
+    /// Exits you cleared in the Inbox, by when the command ended: listed again only once
+    /// another command fails.
+    pub exit_seen: std::collections::HashMap<ClientTerm, u64>,
     /// A follow-up left unsent with Esc, kept per session until it is sent or cleared.
     pub drafts: std::collections::HashMap<ClientTerm, String>,
     /// What you changed on Settings › Check and have not saved.
@@ -306,15 +305,6 @@ pub(super) enum SideItem {
     /// A fleet row.
     Fleet(fleets::FleetId),
     Sess(ClientSession),
-}
-
-/// A tab asked for and not yet answered: whose it is, and the panes that existed when it was
-/// asked for, none of which can be its shell.
-#[derive(Debug, Clone, PartialEq)]
-pub(super) struct PendingTab {
-    pub at: Instant,
-    pub owner: ClientTerm,
-    pub known: HashSet<ClientTerm>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -520,6 +510,10 @@ pub(super) struct Session {
     pub quiet_since: Option<u64>,
     /// You marked this quiet spell seen in the Inbox.
     pub quiet_seen: bool,
+    /// How its last command ended, when it ended in failure (`TermInfo.exit`).
+    pub exit: Option<crate::protocol::ExitInfo>,
+    /// You cleared this exit from the Inbox.
+    pub exit_seen: bool,
     pub question: Option<String>,
     pub is_agent: bool,
     /// The latest check the app ran after its turn: the headline of `checks`.
@@ -938,6 +932,10 @@ impl App {
                     quiet_seen: t
                         .quiet_since
                         .is_some_and(|at| self.screen.quiet_seen.get(&term) == Some(&at)),
+                    exit: t.exit,
+                    exit_seen: t
+                        .exit
+                        .is_some_and(|e| self.screen.exit_seen.get(&term) == Some(&e.at)),
                     question,
                     is_agent: t.agent.is_some(),
                     check: t.check().cloned(),
@@ -1004,6 +1002,8 @@ impl App {
                 since: now_secs(),
                 quiet_since: None,
                 quiet_seen: false,
+                exit: None,
+                exit_seen: false,
                 question: None,
                 is_agent: true,
                 check,
@@ -1502,8 +1502,6 @@ pub(super) enum ScreenHit {
     MenuPick(usize),
     /// The ✕ of a view in the sheet (Changes): it closes.
     ViewClose,
-    /// A tab of the side panel's strip (Files, Changes, Branch): it switches to that view.
-    DrawerTab(usize),
     /// The sidebar's edge (drag to resize).
     SideEdge,
     /// The side sheet's left edge: drag it to resize the sheet.
@@ -1613,7 +1611,6 @@ mod draw;
 mod failure_note;
 pub(in crate::client) mod fleets;
 pub(in crate::client) mod glyphs;
-mod hairline;
 pub(in crate::client) mod status_mark;
 mod heads;
 mod helpers_ask;
@@ -1642,7 +1639,6 @@ mod popups;
 mod rail;
 mod references_sheet;
 mod secret_ask;
-pub(in crate::client) use self::hairline::{flat_theme, plain, plain_on, set_plain};
 #[cfg(test)]
 mod flat_tests;
 #[cfg(test)]

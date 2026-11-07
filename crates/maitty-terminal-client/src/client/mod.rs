@@ -304,9 +304,6 @@ fn settle_retired_layout(app: &mut App) {
     if r.gap {
         writes.push(("ui.gap", "0".into()));
     }
-    if r.pane_colors {
-        writes.push(("ui.pane_colors", true.into()));
-    }
     for (path, value) in writes {
         if let Err(e) = modal::write(path, value) {
             app.notify(format!("{} (could not save it: {e:#})", r.note()), true);
@@ -435,6 +432,10 @@ enum PromptKind {
     RenameConversation(crate::conversation::ConversationId),
     RenameProject(String),
     RenameTab(WsId, TabId),
+    /// A fleet's name on its machine's daemon.
+    RenameFleet(screen::fleets::FleetId),
+    /// A new named fleet on this machine (empty: a shell in its first fleet instead).
+    NewFleet(MachineId),
     NewWorkspace,
     ConfirmCloseWorkspace(WsId),
     ConfirmKillServer,
@@ -452,6 +453,8 @@ impl PromptKind {
             PromptKind::RenameConversation(_) => "Rename chat (empty: automatic)",
             PromptKind::RenameProject(_) => "Rename project (empty: its folder name)",
             PromptKind::RenameTab(..) => "Rename session",
+            PromptKind::RenameFleet(_) => "Rename fleet",
+            PromptKind::NewFleet(_) => "New fleet: name it (empty: a shell in the first fleet)",
             PromptKind::NewWorkspace => "New fleet: name it (empty = its folder)",
             PromptKind::ConfirmCloseWorkspace(_) => "Close workspace and all its panes? (y/n)",
             PromptKind::ConfirmKillServer => "Kill the server and every pane? (y/n)",
@@ -1528,17 +1531,6 @@ impl App {
     fn cmd_on(&self, machine: MachineId, c: Command) {
         if routing::moves_focus(&c) {
             self.route.set_focus(machine);
-        }
-        if matches!(
-            c,
-            Command::NewWorkspace { .. }
-                | Command::NewTab { .. }
-                | Command::NewShip { .. }
-                | Command::NewFleet { .. }
-                | Command::NewWorktree { .. }
-                | Command::AgentWorktree { .. }
-        ) {
-            *self.screen.new_tab.borrow_mut() = None;
         }
         self.send(machine, ClientMsg::Command(c));
     }

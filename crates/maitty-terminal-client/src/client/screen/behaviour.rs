@@ -8,10 +8,6 @@ use crate::client::ids::ClientTerm;
 
 pub(in crate::client) use crate::gitfs::WT_NAMES;
 
-/// How long a new tab waits for its shell to arrive from the server, which takes moments; past
-/// this the request is dropped so a session that opens later is not taken for the tab.
-const NEW_TAB_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
-
 impl App {
     /// Where a session that just got the focus shows: beside the one it was opened from, in
     /// a new tab, in the tab that already shows it, or in place of the one you were on.
@@ -46,7 +42,6 @@ impl App {
                 None
             }
         };
-        let new_tab = self.answered_new_tab(f);
         let take_out = |tabs: &mut Vec<ScreenTab>, f: ClientTerm| {
             for tab in tabs.iter_mut() {
                 if tab.contains(f)
@@ -59,20 +54,6 @@ impl App {
             }
             tabs.retain(|t| !(t.owner.machine == f.machine && t.layout == Node::Leaf(f.term)));
         };
-        if let Some(owner) = new_tab.filter(|o| *o != f) {
-            take_out(&mut self.screen.tabs, f);
-            self.screen.tabs.push(ScreenTab::single(f, owner));
-            self.screen.tab = self.screen.tabs.len() - 1;
-            // The daemon keeps whose tab it is, so a restart brings it back as that session's.
-            self.cmd_on(
-                f.machine,
-                Command::SetTabOf {
-                    term: f.term,
-                    owner: Some(owner.term),
-                },
-            );
-            return;
-        }
         if let Some(p) = beside {
             take_out(&mut self.screen.tabs, f);
             let i = match self.screen.tabs.iter().position(|t| t.contains(p)) {
@@ -185,24 +166,6 @@ impl App {
         }
     }
 
-    /// The session `f` is the new tab of, if a tab was asked for and `f` is its shell: a pane
-    /// that did not exist then and no agent started. Any other pane that takes the focus
-    /// leaves the request waiting; once its time is up it is dropped.
-    fn answered_new_tab(&mut self, f: ClientTerm) -> Option<ClientTerm> {
-        let mut pending = self.screen.new_tab.borrow_mut();
-        let asked = pending.as_ref()?;
-        if asked.at.elapsed() >= NEW_TAB_WAIT {
-            *pending = None;
-            return None;
-        }
-        let is_its_shell =
-            !asked.known.contains(&f) && self.term_info(f).is_some_and(|t| t.started_by.is_none());
-        if !is_its_shell {
-            return None;
-        }
-        pending.take().map(|asked| asked.owner)
-    }
-
     /// Close a session's tab and what's in it (one of several: its last tab is the session,
     /// closed from the sidebar). With an agent in it, a second click within a few seconds.
     pub(in crate::client) fn close_tab(&mut self, i: usize) {
@@ -265,23 +228,6 @@ impl App {
             }
         }
         true
-    }
-
-    /// A plain shell in the folder of the project you are in (the repo itself, not a worktree).
-    pub(in crate::client) fn shell_in_project(&mut self) {
-        let dir = self
-            .selected_term()
-            .and_then(|t| self.term_info(t))
-            .map(|t| t.root.clone().unwrap_or_else(|| t.cwd.clone()))
-            .or_else(|| {
-                self.screen_model()
-                    .iter()
-                    .find(|p| Some(&p.key) == self.screen.proj.as_ref())
-                    .map(|p| p.path.clone())
-            })
-            .unwrap_or_else(|| self.here_dir());
-        self.screen.cursor = None;
-        self.screen_new_session(dir, None, false);
     }
 
     /// Show a session: it becomes the focused one.
@@ -717,6 +663,23 @@ impl App {
         }
     }
 
+    /// Fold every machine and fleet heading; with all of them folded already, unfold them all.
+    pub(in crate::client) fn fold_all(&mut self) {
+        let keys: Vec<String> = self
+            .fleet_groups()
+            .iter()
+            .flat_map(|g| {
+                std::iter::once(g.fold_key())
+                    .chain(g.fleets.iter().map(|f| f.fold_key(&g.key)))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        let open = keys.iter().any(|k| !self.screen.saved.closed.contains(k));
+        for key in &keys {
+            self.screen_fold(key, Some(!open));
+        }
+    }
+
     /// Actions that work differently in this layout. Returns true if handled.
     pub(in crate::client) fn screen_act(&mut self, a: &Action) -> bool {
         let focused = self.selected_term();
@@ -774,8 +737,8 @@ impl App {
                     self.cmd_on(to.machine, Command::FocusPane { term: to.term });
                 }
             }
-            // A new tab in this session: a shell where you are, straight away.
-            Action::NewTab => self.new_tab_start(),
+            // A new tab is a new shell in the fleet you are in (a binding of your own may name it).
+            Action::NewTab => self.new_ship(None),
             Action::RenameTab => self.rename_tab_start(),
             // From the sidebar, on a ship: that row's menu, as a right-click on it opens.
             Action::Menu if self.screen.cursor.is_some_and(|c| self.session_term(c).is_some()) => {
@@ -784,6 +747,14 @@ impl App {
                     self.screen_side_leave();
                     self.screen.cursor = None;
                     self.menu_for_session(term, (self.screen.side_rect.x + 8, y + 1));
+                }
+            }
+            // From the sidebar, on a fleet: its menu.
+            Action::Menu if self.screen.cursor_fleet.is_some() => {
+                if let Some(fleet) = self.screen.cursor_fleet {
+                    self.screen_side_leave();
+                    let at = (self.screen.side_rect.x + 8, self.screen.side_rect.y + 3);
+                    self.menu_for_fleet(fleet, at);
                 }
             }
             Action::Menu => self.mode = Mode::Actions { sel: 0 },
@@ -809,6 +780,12 @@ impl App {
                 self.screen.follow = true;
                 if self.side_hidden && self.mode == Mode::Side {
                     self.screen_side_leave();
+                }
+            }
+            Action::RenameWorkspace if self.screen.cursor_fleet.is_some() => {
+                if let Some(fleet) = self.screen.cursor_fleet {
+                    self.screen_side_leave();
+                    self.rename_fleet_start(fleet);
                 }
             }
             Action::RenameWorkspace => {
@@ -1010,6 +987,8 @@ impl App {
             // [: full, then the narrow column, then hidden, then full again.
             KeyCode::Char('[') if plain => self.cycle_sidebar(),
             KeyCode::Char('/') if plain => self.start_side_filter(),
+            // z folds every heading, or opens them all again when all are folded.
+            KeyCode::Char('z') if plain => self.fold_all(),
             // A shell at once in the fleet under the cursor, else the one you are in.
             KeyCode::Char('n' | 'N') if plain => {
                 let fleet = fleet.or_else(|| {
@@ -1632,13 +1611,18 @@ impl App {
                 self.mode = Mode::GoTo { query, sel };
                 return;
             }
-            // c clears what finished: each card leaves, its session stays.
+            // c clears what finished and what exited: each card leaves, its session stays.
             KeyCode::Char('c') if query.is_empty() => {
                 for row in &rows {
-                    if let GoRow::Done(term) = row {
-                        self.cmd_on(term.machine, Command::MarkSeen { term: term.term });
+                    match row {
+                        GoRow::Done(term) => {
+                            self.cmd_on(term.machine, Command::MarkSeen { term: term.term });
+                        }
+                        GoRow::Exited(term) => self.clear_exit(*term),
+                        _ => {}
                     }
                 }
+                self.screen_fresh();
             }
             // Any item: its session.
             KeyCode::Char('o') if query.is_empty() && sel_item.is_some() => {
@@ -1670,6 +1654,7 @@ impl App {
                     self.cmd_on(term.machine, Command::MarkSeen { term: term.term });
                 }
             }
+            KeyCode::Delete if let Some(GoRow::Exited(term)) = sel_row => self.clear_exit(term),
             KeyCode::Delete if let Some(GoRow::Quiet(term)) = sel_row => {
                 if let Some(at) = self.term_info(term).and_then(|i| i.quiet_since) {
                     self.screen.quiet_seen.insert(term, at);
@@ -1709,7 +1694,13 @@ impl App {
                         self.do_check_key(t, None, 'r');
                         self.mode = Mode::GoTo { query, sel };
                     }
-                    Some(GoRow::Ask(t) | GoRow::Done(t) | GoRow::Quiet(t) | GoRow::Sess(_, t)) => {
+                    Some(
+                        GoRow::Ask(t)
+                        | GoRow::Done(t)
+                        | GoRow::Quiet(t)
+                        | GoRow::Exited(t)
+                        | GoRow::Sess(_, t),
+                    ) => {
                         self.mode = Mode::Normal;
                         self.screen_focus(t);
                     }
@@ -1743,6 +1734,14 @@ impl App {
             sel = land(sel, true);
         }
         self.mode = Mode::GoTo { query, sel };
+    }
+
+    /// Take an exit off the Inbox; it comes back only once another command fails.
+    fn clear_exit(&mut self, term: ClientTerm) {
+        if let Some(exit) = self.term_info(term).and_then(|i| i.exit) {
+            self.screen.exit_seen.insert(term, exit.at);
+            self.screen_fresh();
+        }
     }
 
     pub(in crate::client) fn on_history_key(&mut self, sel: usize, k: &KeyEvent) {
@@ -2029,7 +2028,7 @@ impl App {
                 Some(SideItem::Fleet(f)) => self.open_fleet(f),
                 _ => {}
             },
-            ScreenHit::MachinePlus(machine) => self.new_ship_on(machine),
+            ScreenHit::MachinePlus(machine) => self.machine_plus(machine),
             ScreenHit::Tab(ship) => {
                 self.screen_focus(ship);
             }
@@ -2125,7 +2124,6 @@ impl App {
                 }
             }
             ScreenHit::ViewClose => self.view = None,
-            ScreenHit::DrawerTab(i) => self.switch_drawer(i),
             ScreenHit::Noop => {}
             ScreenHit::ToastClose => {
                 // The close mark on a progress toast stops the send it shows.

@@ -215,7 +215,7 @@ fn category_of(act: Option<&Action>) -> &'static str {
 #[derive(Clone)]
 struct SessionHit {
     term: ClientTerm,
-    status: Status,
+    state: super::status_mark::State,
     name: String,
     /// `project · machine`.
     place: String,
@@ -237,7 +237,10 @@ fn session_hits(app: &App, query: &str) -> Vec<SessionHit> {
         .filter_map(|(p, s)| {
             let term = s.native_term?;
             let place = format!("{} · {}", p.name, machine_name(p.machine));
-            Some(SessionHit { term, status: s.status, name: s.name.clone(), place })
+            let exit = app.term_info(term).is_some_and(|i| i.exit.is_some());
+            let failed = super::status_mark::failed(exit, s.status, s.check.as_ref());
+            let state = super::status_mark::State::of(s.status, failed, s.down);
+            Some(SessionHit { term, state, name: s.name.clone(), place })
         })
         .filter(|h| {
             q.is_empty()
@@ -249,16 +252,6 @@ fn session_hits(app: &App, query: &str) -> Vec<SessionHit> {
         out.truncate(SESSIONS_SHOWN);
     }
     out
-}
-
-/// The dot before a session in the search: the status colours of the spec, by colour alone.
-fn status_dot(status: Status, t: &Theme) -> (&'static str, Color) {
-    match status {
-        Status::Working => ("⠋", t.accent),
-        Status::Blocked => ("●", t.blocked),
-        Status::Done => ("●", t.done),
-        Status::Idle | Status::None => ("●", t.muted),
-    }
 }
 
 /// A group name as it reads in a list: "Sessions".
@@ -1082,9 +1075,10 @@ fn draw_search(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, km: &KeyM
                 put(buf, r.right().saturating_sub(cw + 5), y, &caps, r.right().saturating_sub(4));
             }
         } else if let Some(sh) = sessions.get(i - list.len()) {
-            let (glyph, color) = status_dot(sh.status, t);
-            let plain = Style::default().bg(bg).fg(t.strong);
-            put(buf, r.x + 5, y, &[seg(glyph, Style::default().bg(bg).fg(color))], r.x + 7);
+            let mark = app.state_mark(sh.state, t);
+            let dim = sh.state == super::status_mark::State::Unknown;
+            let plain = Style::default().bg(bg).fg(if dim { t.idle } else { t.strong });
+            put(buf, r.x + 5, y, &[seg(mark.glyph, Style::default().bg(bg).fg(mark.color))], r.x + 7);
             put(buf, r.x + 7, y, &fuzzy_segs(&sh.name, &needle, plain, lit), r.right().saturating_sub(34));
             put(buf, r.right().saturating_sub(32), y, &[seg(sh.place.clone(), Style::default().bg(bg).fg(t.muted))], r.right().saturating_sub(4));
         }

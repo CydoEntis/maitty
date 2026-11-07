@@ -204,7 +204,7 @@ fn header_chip(look: Look, segs: Vec<Seg>, ground: Color) -> Vec<Seg> {
     if look.caps {
         round_ends(segs, ground)
     } else {
-        plain(segs)
+        segs
     }
 }
 
@@ -259,8 +259,6 @@ pub(in crate::client) fn action_bar(
     ground: Color,
     keys: &[(&str, &str)],
 ) {
-    // Hairline has no raised band: the keys are words on the panel's own ground.
-    let ground = if plain_on() { t.bg } else { ground };
     let row = Rect { height: 1, ..bar };
     fill(buf, row, ground);
     let room = row.width.saturating_sub(2);
@@ -757,6 +755,8 @@ pub(in crate::client) enum GoRow {
     Approve(ClientTerm),
     /// A working agent gone silent: it may be stuck.
     Quiet(ClientTerm),
+    /// One whose last command ended in failure (`TermInfo.exit`).
+    Exited(ClientTerm),
     Sess(usize, ClientTerm),
 }
 
@@ -769,6 +769,7 @@ impl GoRow {
             | GoRow::NotRun(t)
             | GoRow::Approve(t)
             | GoRow::Quiet(t)
+            | GoRow::Exited(t)
             | GoRow::Sess(_, t) => Some(*t),
             GoRow::Head(_) | GoRow::Heads(_) => None,
         }
