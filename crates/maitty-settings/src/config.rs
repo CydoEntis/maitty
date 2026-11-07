@@ -824,8 +824,8 @@ pub const SPINNERS: &[(&str, &[&str])] = &[
     ("Braille", &["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]),
     ("Dots", &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
     ("Line (ASCII)", &["|", "/", "-", "\\"]),
-    // Three dots chasing round the cell's edge.
-    ("Snake", &["⠇", "⠋", "⠙", "⠸", "⢰", "⣠", "⣄", "⡆"]),
+    // A short body chasing round the cell, as the TUI design draws it.
+    ("Snake", &["⠏", "⠛", "⠹", "⢸", "⣰", "⣤", "⣆", "⡇"]),
     // Each frame held twice: the pulse breathes at half the other styles' pace.
     ("Pulse", &["·", "·", "•", "•", "●", "●", "•", "•"]),
     // From ratatui-spinner's FluxFrames (MIT): Fill is its PULSE.
@@ -874,7 +874,7 @@ impl Default for Ui {
             panes: "floating".into(),
             glyphs: "auto".into(),
             gap: "small".into(),
-            padding: "small".into(),
+            padding: "medium".into(),
             dim: "normal".into(),
             focus_border: "accent".into(),
             rounded: Rounding::Off,
@@ -957,7 +957,7 @@ mod tests {
         assert_eq!(ui.rounded, Rounding::Off);
         assert_eq!(ui.background, "solid");
         assert_eq!(ui.cursor, "block");
-        assert_eq!(ui.padding, "small");
+        assert_eq!(ui.padding, "medium");
         assert_eq!(ui.gap, "small");
         assert_eq!(ui.dim, "normal");
         assert!(ui.tab_gap);
