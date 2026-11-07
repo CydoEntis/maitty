@@ -224,9 +224,17 @@ export function findTheme(name: string): ThemeEntry {
   return found
 }
 
+/**
+ * The glass finish's light and shade: the highlight colour (`--hl`, as `r,g,b`) and its strength, and
+ * the shadow colour (`--sd`) and its strength. Dark themes catch white light and cast black shadows;
+ * light themes are lit and shaded by their own ink, more faintly.
+ */
+const DARK_GLASS = { '--hl': '255,255,255', '--hk': '1', '--sd': '0,0,0', '--sk': '1' }
+const LIGHT_GLASS = { '--hl': '20,32,46', '--hk': '.85', '--sd': '20,32,46', '--sk': '.3' }
+
 /** The theme as CSS custom properties, for the app root's style. */
 export function themeStyle(theme: ThemeEntry): Record<string, string> {
-  const style: Record<string, string> = { '--card-ring': theme.cardRing, colorScheme: theme.light ? 'light' : 'dark' }
+  const style: Record<string, string> = { '--card-ring': theme.cardRing, colorScheme: theme.light ? 'light' : 'dark', ...(theme.light ? LIGHT_GLASS : DARK_GLASS) }
   for (const [key, variable] of Object.entries(CSS_VARIABLES)) style[variable] = theme.tokens[key as keyof ThemeTokens]
   return style
 }
@@ -246,8 +254,8 @@ const PAPER_WHITE = '#FFFFFF'
 function selectionColors(tokens: ThemeTokens): { background: string; foreground: string } {
   let alpha = SELECTION_ALPHA
   for (;;) {
-    const background = composite(withAlpha(tokens.accent, alpha), tokens.term)
-    const foreground = contrastRatio(tokens.fg, background) >= contrastRatio(tokens.term, background) ? tokens.fg : tokens.term
+    const background = composite(withAlpha(tokens.accent, alpha), tokens.main)
+    const foreground = contrastRatio(tokens.fg, background) >= contrastRatio(tokens.main, background) ? tokens.fg : tokens.main
     if (contrastRatio(foreground, background) >= MIN_TEXT_CONTRAST) return { background, foreground }
     // Even the faintest tint can leave a theme's own text short (a darkened light accent over a pale
     // ground), so the text turns to plain black or white, whichever reads better.
@@ -267,21 +275,22 @@ export function terminalMinimumContrast(theme: ThemeEntry): number {
 }
 
 /**
- * xterm's palette from the same tokens, so a pane's ANSI colours follow the theme. The background
- * is the terminal ground; the pane makes it see-through when its renderer can afford that.
+ * xterm's palette from the same tokens, so a pane's ANSI colours follow the theme. The background is
+ * the workspace card's own ground, so a terminal sits on the card with no box of its own; the pane makes
+ * it see-through when its renderer can afford that.
  */
 export function xtermTheme(tokens: ThemeTokens): ITheme {
   const selection = selectionColors(tokens)
   return {
-    background: tokens.term,
+    background: tokens.main,
     foreground: tokens.fg2,
     cursor: tokens.accent,
-    cursorAccent: tokens.term,
+    cursorAccent: tokens.main,
     selectionBackground: selection.background,
     selectionForeground: selection.foreground,
     // The ground, not the well: programs paint with ANSI black expecting it to vanish into the
     // background, as Claude Code does under its prompt and status line.
-    black: tokens.term,
+    black: tokens.main,
     brightBlack: tokens.dim,
     red: tokens.danger,
     brightRed: tokens.danger,
