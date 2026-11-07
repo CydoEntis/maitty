@@ -158,16 +158,37 @@ pub(crate) fn receive(
     watch.sent.store(0, Ordering::Relaxed);
     watch.total.store(size, Ordering::Relaxed);
 
-    let final_path = reserve(dest_dir, &local_name(remote_path))?;
-    let part = dest_dir.join(format!(".{}.part", shown(&final_path)));
-    let outcome = copy_exactly(&mut reader, &part, size, cap, watch)
-        .and_then(|()| std::fs::rename(&part, &final_path).map_err(|e| format!("could not finish {}: {e}", shown(&final_path))));
-    if let Err(error) = outcome {
+    // The final name is claimed only once every byte is in, so a process killed on the way
+    // leaves at most a hidden .part file, never an empty file under the real name.
+    let local = local_name(remote_path);
+    let part = dest_dir.join(format!(".{local}.{}.part", unique()));
+    if let Err(error) = copy_exactly(&mut reader, &part, size, cap, watch) {
         let _ = std::fs::remove_file(&part);
-        let _ = std::fs::remove_file(&final_path);
         return Err(error);
     }
+    let final_path = match reserve(dest_dir, &local) {
+        Ok(path) => path,
+        Err(error) => {
+            let _ = std::fs::remove_file(&part);
+            return Err(error);
+        }
+    };
+    if let Err(e) = std::fs::rename(&part, &final_path) {
+        let _ = std::fs::remove_file(&part);
+        let _ = std::fs::remove_file(&final_path);
+        return Err(format!("could not finish {}: {e}", shown(&final_path)));
+    }
     Ok(final_path)
+}
+
+/// Something no other pull in this process or another has, for a part file's name.
+fn unique() -> String {
+    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    format!(
+        "{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    )
 }
 
 fn too_big(size: u64, cap: u64) -> String {

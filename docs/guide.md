@@ -542,7 +542,27 @@ build: maitty 0.60.0 installed to ~/.local/bin/maitty
   and exits. Linux and macOS (x86_64 and aarch64) are supported.
 
 Exit status: 0 done or already up to date, 2 a mistake in how it was asked (an unknown machine, a flag
-missing), 1 a step that did not work.
+missing), 1 a step that did not work.
+
+### Getting a file from a machine
+
+```sh
+maitty machine get build ~/out.log          # saved in the folder you are in
+maitty machine get build /srv/app/app.zip ~/Downloads   # saved in that folder (made if missing)
+```
+
+`maitty machine get <machine> <path> [folder]` pulls one file from a machine you added, over ssh, and prints
+the path it was saved to. A `~/` at the start of the path is the machine's home folder.
+
+- **One file, up to 1 GB.** A folder is refused ("is not a file"); zip it on the machine first. Folders come later.
+- **The name is made here.** The file keeps the last part of the remote path with anything but letters, digits,
+  `.`, `_`, `-` and spaces changed to `_`. Windows reserved names (`CON`, `NUL`, ...) get a leading `_`.
+- **Nothing is overwritten.** If the name is taken the file is called `out-1.log`, `out-2.log`, and so on.
+- **All or nothing.** The file appears under its name only when every byte arrived. A failed or stopped pull leaves
+  no half file; a hidden `.<name>.<n>.part` can stay only if the program itself is killed mid-pull, and is safe to delete.
+- A pulled file can hold secrets that were on the machine. It is saved with your normal file permissions.
+
+Exit status: 0 saved, 2 a mistake in how it was asked, 1 the pull did not work (the message says why).
 
 ### Agents on a machine
 

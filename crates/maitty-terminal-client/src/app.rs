@@ -344,6 +344,17 @@ enum MachineCmd {
         #[arg(long, conflicts_with = "restart")]
         wait: bool,
     },
+    /// Pull one file from a machine to this computer, up to 1 GB. It is saved in the folder
+    /// (the current one by default) under a name made here from the remote path, and never
+    /// overwrites a file. Prints where it landed.
+    Get {
+        /// The machine's name in config.
+        name: String,
+        /// The file's path on the machine; `~/` is its home folder.
+        path: String,
+        /// The folder to save it in (created if missing).
+        folder: Option<PathBuf>,
+    },
     /// Say how many sessions are open on a machine and how many are mid-turn. It changes
     /// nothing. A machine running an older version cannot say.
     Activity {
@@ -448,6 +459,17 @@ fn machine_update(
         wait,
     };
     match cli::machine_update::run(name, &machines_config(), flags) {
+        Ok(()) => Ok(()),
+        Err(Failure::Usage(message)) => usage_error(message),
+        Err(Failure::Failed(message)) => Err(anyhow::anyhow!(message)),
+    }
+}
+
+/// `machine get`: the saved file's path is the one line on stdout; a mistake in how it was asked
+/// is a usage error, a pull that did not work exits 1 with why.
+fn machine_get(name: &str, path: &str, folder: Option<&std::path::Path>) -> anyhow::Result<()> {
+    use cli::machine_update::Failure;
+    match cli::machine_get::run(name, path, folder, &machines_config()) {
         Ok(()) => Ok(()),
         Err(Failure::Usage(message)) => usage_error(message),
         Err(Failure::Failed(message)) => Err(anyhow::anyhow!(message)),
@@ -633,6 +655,9 @@ pub(crate) fn run() {
                     wait,
                 },
         }) => machine_update(&name, install, yes, force, restart, wait),
+        Some(Cmd::Machine {
+            cmd: MachineCmd::Get { name, path, folder },
+        }) => machine_get(&name, &path, folder.as_deref()),
         Some(Cmd::Machine {
             cmd: MachineCmd::Activity { name },
         }) => machine_activity(&name),

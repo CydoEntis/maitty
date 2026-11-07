@@ -340,6 +340,60 @@ fn wait_installs_then_asks_the_far_daemon_to_restart_when_idle() {
 }
 
 #[test]
+fn get_pulls_a_file_from_the_fake_remote_and_says_where_it_landed() {
+    needs_sh!();
+    let remote = Remote::new(LINUX);
+    std::fs::write(remote.home.join("out file.log"), "line one\nline two\n").unwrap();
+    let dest = remote.dir.join("downloads");
+    let path = crate::cli::machine_get::pull(
+        &remote.machine(AT_HOME),
+        "~/out file.log",
+        &dest,
+        false,
+    )
+    .unwrap();
+    assert_eq!(path, dest.join("out file.log"));
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap().replace("\r\n", "\n"),
+        "line one\nline two\n"
+    );
+    let again = crate::cli::machine_get::pull(
+        &remote.machine(AT_HOME),
+        "~/out file.log",
+        &dest,
+        false,
+    )
+    .unwrap();
+    assert_eq!(again, dest.join("out file-1.log"), "nothing is overwritten");
+    let mut left: Vec<_> = std::fs::read_dir(&dest)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    left.sort();
+    assert_eq!(left, ["out file-1.log", "out file.log"], "no part file is left");
+}
+
+#[test]
+fn get_says_why_a_file_cannot_be_pulled_and_leaves_nothing() {
+    needs_sh!();
+    let remote = Remote::new(LINUX);
+    std::fs::create_dir(remote.home.join("folder")).unwrap();
+    let dest = remote.dir.join("downloads");
+    let pull = |path: &str| {
+        match crate::cli::machine_get::pull(&remote.machine(AT_HOME), path, &dest, false) {
+            Err(Failure::Failed(why)) => why,
+            other => panic!("expected a failure for {path}: {other:?}"),
+        }
+    };
+    assert_eq!(pull("~/nope.log"), "~/nope.log does not exist on box");
+    assert!(pull("~/folder").contains("is not a file"), "a folder is refused");
+    assert!(
+        std::fs::read_dir(&dest).map_or(true, |mut d| d.next().is_none()),
+        "nothing was saved"
+    );
+}
+
+#[test]
 fn restart_asks_the_far_daemon_to_restart_even_with_sessions_open() {
     needs_sh!();
     let remote = Remote::new(LINUX);
