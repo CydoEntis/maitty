@@ -869,7 +869,7 @@ impl Default for Ui {
             padding: "medium".into(),
             dim: "normal".into(),
             focus_border: "accent".into(),
-            rounded: Rounding::Off,
+            rounded: Rounding::Corners,
             retired_layout: None,
             subagent_count: true,
             cursor: "block".into(),
@@ -944,7 +944,7 @@ mod tests {
     fn ui_defaults_keep_the_existing_appearance_and_cursor_settings() {
         let ui = Ui::default();
 
-        assert_eq!(ui.rounded, Rounding::Off);
+        assert_eq!(ui.rounded, Rounding::Corners, "the redesign rounds every box");
         assert_eq!(ui.background, "solid");
         assert_eq!(ui.cursor, "block");
         assert_eq!(ui.padding, "medium");

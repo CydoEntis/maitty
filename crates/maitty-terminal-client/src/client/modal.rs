@@ -547,10 +547,10 @@ pub const SETTINGS: &[Setting] = &[
     },
     Setting {
         path: "ui.subagent_count",
-        label: "Count on the session row",
+        label: "Subagents in the sidebar",
         kind: Kind::Bool,
         cat: Cat::Agents,
-        help: "Shows \"· 4 agents\" on a working row only when the agent reports helpers. Claude does; Codex doesn't.",
+        help: "Lists the subagents of an agent's current turn under its row, as its hooks report them.",
     },
     Setting {
         path: "auto_continue",
@@ -723,7 +723,7 @@ mod tests {
         assert_eq!(step(&cfg, side, 1).unwrap().as_str(), Some("right"));
         assert_eq!(step(&cfg, side, -1).unwrap().as_str(), Some("right"));
         let leader = SETTINGS.iter().find(|s| s.path == "prefix").unwrap();
-        assert_eq!(display(&cfg, leader), "C-a");
+        assert_eq!(display(&cfg, leader), "C-Space");
     }
 
     #[test]

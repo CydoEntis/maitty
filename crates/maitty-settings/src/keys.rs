@@ -188,6 +188,14 @@ pub enum Action {
     ClosePane,
     Focus(crate::layout::Dir),
     FocusNext,
+    /// The focused pane fills its view, or goes back to its split.
+    ZoomPane,
+    /// The focused pane trades places with the next one of its view.
+    SwapNext,
+    /// Type into the sidebar's filter.
+    FilterSessions,
+    /// What each agent has used, and the plan limits, as the providers report them.
+    Usage,
     FocusPrev,
     Resize(crate::layout::Dir),
     /// Trade places with the neighbouring pane that way.
@@ -309,6 +317,10 @@ impl Action {
             Action::ClosePane => "Close pane".into(),
             Action::Focus(d) => format!("Focus the pane {}", dir(d)),
             Action::FocusNext => "Next pane".into(),
+            Action::ZoomPane => "Zoom pane".into(),
+            Action::SwapNext => "Move pane".into(),
+            Action::FilterSessions => "Filter sessions".into(),
+            Action::Usage => "Usage and cost".into(),
             Action::FocusPrev => "Previous pane".into(),
             Action::Resize(d) => format!("Resize the pane {}", dir(d)),
             Action::Swap(d) => format!("Swap with the pane {}", dir(d)),
@@ -399,6 +411,10 @@ impl Action {
             Action::ClosePane => "close-pane".into(),
             Action::Focus(dir) => format!("focus-{}", d(dir)),
             Action::FocusNext => "focus-next".into(),
+            Action::ZoomPane => "zoom-pane".into(),
+            Action::SwapNext => "swap-next".into(),
+            Action::FilterSessions => "filter-sessions".into(),
+            Action::Usage => "usage".into(),
             Action::FocusPrev => "focus-prev".into(),
             Action::Resize(dir) => format!("resize-{}", d(dir)),
             Action::Swap(dir) => format!("swap-{}", d(dir)),
@@ -501,6 +517,10 @@ impl FromStr for Action {
             "focus-up" => Action::Focus(Up),
             "focus-down" => Action::Focus(Down),
             "focus-next" => Action::FocusNext,
+            "zoom-pane" => Action::ZoomPane,
+            "swap-next" | "move-pane" => Action::SwapNext,
+            "filter-sessions" => Action::FilterSessions,
+            "usage" => Action::Usage,
             "focus-prev" => Action::FocusPrev,
             "resize-left" => Action::Resize(Left),
             "resize-right" => Action::Resize(Right),
@@ -585,29 +605,44 @@ impl FromStr for Action {
     }
 }
 
-/// Bindings in shortcut mode (after the leader): one key each, chosen from what other apps use.
-/// Three need Shift (`_` and `|` split up and right, `?` is all keys). Copy mode, hide sidebar,
-/// prompt jumps, new worktree and send-prefix have no default key; search commands (Ctrl+K)
-/// finds them.
+/// Bindings in key mode (after the leader): one key each, as the TUI redesign lists them. Three
+/// need Shift (`S` splits down, `_` up, `?` is the keys help). Copy mode, hide sidebar, find in
+/// the pane, prompt jumps, new worktree, updates and send-prefix have no default key; search
+/// commands (Ctrl+K) finds them.
 pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     // Sessions
+    ("n", "pick-session"),
     ("t", "shell-here"),
-    ("n", "next-tab"),
-    ("p", "prev-tab"),
+    ("j", "next-session"),
+    ("k", "prev-session"),
+    ("1", "select-tab-1"),
+    ("2", "select-tab-2"),
+    ("3", "select-tab-3"),
+    ("4", "select-tab-4"),
+    ("5", "select-tab-5"),
+    ("6", "select-tab-6"),
+    ("7", "select-tab-7"),
+    ("8", "select-tab-8"),
+    ("9", "select-tab-9"),
+    ("r", "rename-workspace"),
+    ("/", "filter-sessions"),
     ("enter", "message"),
-    ("k", "stop-agent"),
+    ("ctrl+c", "stop-agent"),
     ("i", "jump"),
-    ("z", "undo-close"),
+    ("ctrl+z", "undo-close"),
     // Panes
     ("left", "focus-left"),
     ("down", "focus-down"),
     ("up", "focus-up"),
     ("right", "focus-right"),
+    ("tab", "focus-next"),
+    ("s", "split-right"),
+    ("S", "split-down"),
     ("_", "split-up"),
-    ("-", "split-down"),
     ("\\", "split-left"),
-    ("|", "split-right"),
+    ("z", "zoom-pane"),
     ("x", "close-pane"),
+    ("m", "swap-next"),
     ("ctrl+left", "resize-left"),
     ("ctrl+down", "resize-down"),
     ("ctrl+up", "resize-up"),
@@ -618,7 +653,6 @@ pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     ("alt+right", "swap-right"),
     ("pageup", "scroll-up"),
     ("pagedown", "scroll-down"),
-    ("/", "search"),
     // Sidebar
     ("b", "toggle-sidebar"),
     ("[", "sidebar-narrower"),
@@ -633,7 +667,7 @@ pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     // The app
     ("space", "palette"),
     (".", "menu"),
-    ("u", "updates"),
+    ("u", "usage"),
     (",", "settings"),
     ("?", "help"),
     ("w", "machines"),
@@ -952,7 +986,7 @@ mod tests {
 
     /// The one default that needs Shift, at the user's request.
     const SHIFTED_ALLOWED: &[(&str, &str)] =
-        &[("?", "help"), ("_", "split-up"), ("|", "split-right")];
+        &[("?", "help"), ("_", "split-up"), ("S", "split-down")];
 
     #[test]
     fn default_shortcuts_are_one_key_each_and_none_but_all_keys_needs_shift() {

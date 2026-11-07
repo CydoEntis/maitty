@@ -754,18 +754,6 @@ impl App {
             ),
             PromptKind::AddReference(root, dir) => self.add_reference(root, dir, &input),
             PromptKind::SendFile(term) => self.start_send(term, &input),
-            PromptKind::RenameFleet(fleet) => {
-                if !input.is_empty() {
-                    self.cmd_on(
-                        fleet.machine,
-                        Command::RenameWorkspace {
-                            ws: fleet.ws,
-                            name: input,
-                        },
-                    );
-                }
-            }
-            PromptKind::NewFleet(machine) => self.new_fleet(machine, input),
             PromptKind::NewWorkspace => {
                 // A group starts with a shell where you are.
                 let name = (!input.is_empty()).then_some(input);

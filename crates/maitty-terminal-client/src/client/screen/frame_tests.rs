@@ -45,13 +45,14 @@ fn a_modal_s_title_and_esc_close_are_chips_on_its_top_border_in_every_layout_and
                 "╭"
             };
             let caps = rounded == Rounding::Full;
-            let corner = if caps { CAP_R } else { " " };
+            // The close chip stands a cell of border in from the corner, which stays whole.
+            let corner = if rounded == Rounding::Off { "┐" } else { "╮" };
             assert_eq!(
                 (sym(r.x), sym(r.x + 1), sym(r.right() - 1)),
                 (tl.into(), "─".into(), corner.into()),
                 "{at}"
             );
-            let (title, esc) = (r.x + 2, if caps { r.right() - 5 } else { r.right() - 3 });
+            let (title, esc) = (r.x + 2, if caps { r.right() - 6 } else { r.right() - 4 });
             let row = |x0: u16, x1: u16| (x0..x1).map(sym).collect::<String>();
             let (l, e) = if caps { (CAP_L, CAP_R) } else { ("", "") };
             assert_eq!(
@@ -59,7 +60,7 @@ fn a_modal_s_title_and_esc_close_are_chips_on_its_top_border_in_every_layout_and
                 format!("{l} OVERRIDE {e}"),
                 "{at}"
             );
-            assert_eq!(row(esc, r.right()), format!("{l} × {e}"), "{at}");
+            assert_eq!(row(esc, r.right() - 1), format!("{l} × {e}"), "{at}");
             assert_eq!(
                 buf[(title + 2, r.y)].bg,
                 t.accent,
@@ -102,7 +103,7 @@ fn a_modal_s_title_and_esc_close_are_chips_on_its_top_border_in_every_layout_and
                 .expect("a close target");
             assert_eq!(
                 close,
-                Rect::new(esc, r.y, r.right() - esc, 1),
+                Rect::new(esc, r.y, r.right() - 1 - esc, 1),
                 "the whole close chip closes: {at}"
             );
         }
@@ -154,7 +155,8 @@ fn a_confirm_s_long_sub_is_cut_inside_its_title_chip() {
             text.starts_with(&format!("{tl}─{l} changes · a-folder")),
             "{at}: {text}"
         );
-        assert!(text.ends_with(&format!("─{l} × {e}")), "{at}: {text}");
+        let tr = if rounded == Rounding::Off { "┐" } else { "╮" };
+        assert!(text.ends_with(&format!("─{l} × {e}{tr}")), "{at}: {text}");
         let esc = close.x - x0;
         assert_eq!(
             (
@@ -218,7 +220,7 @@ fn drawn_in(app: &mut App, layout: &str) -> Buffer {
     term.backend().buffer().clone()
 }
 
-/// Rounded shapes reach every chip and floating card: the FLEETS chip, + New and Menu on the
+/// Rounded shapes reach every chip and floating card: the sidebar's title, machine and menu chips on the
 /// plain ground, and the Menu.
 #[test]
 fn rounded_shapes_round_cards_and_give_chips_pill_ends() {
@@ -226,7 +228,7 @@ fn rounded_shapes_round_cards_and_give_chips_pill_ends() {
         let mut app = world(Stage::None);
         app.cfg.ui.rounded = crate::config::Rounding::Full;
         let text = reference_fixture::raw_text(&mut app, layout, 140, 36, "unicode");
-        for chip in ["FLEETS", "+ New", "Menu"] {
+        for chip in ["maitty", "This computer", "menu"] {
             assert!(
                 text.contains(chip),
                 "{chip} stays visible: {layout:?}\n{text}"

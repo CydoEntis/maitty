@@ -34,7 +34,7 @@ themes fill the same roles; [theme sources](theme-credits.md) lists where they c
 | --- | --- | --- | --- |
 | `bg` | the ground, and a terminal cell's default background | `#08111d` | `#f6f8fa` |
 | `card`, `card2` | panels, header strips; fields and action rows inside modals | `#0f1b2b`, `#15253a` | `#ffffff`, `#e0edf2` |
-| `btn`, `hov` | chips and buttons; the hovered row | `#1a2c44`, `#15253a` | `#e4ebf1`, `#e0edf2` |
+| `btn`, `hov` | chips and buttons; the hovered row and the open session's row | `#15253a`, `#13233a` | `#e4ebf1`, `#e0edf2` |
 | `line` | borders, dividers | `#1d2d42` | `#d3dce5` |
 | `muted`, `text`, `strong` | quiet text, body text, names and titles | `#6f8399`, `#c9d6e3`, `#eef5fb` | `#61748a`, `#1f2f3f`, `#0b1724` |
 | `accent`, `acc_ink` | focus, working, the current tab; ink on the accent | `#3dd6c6`, `#08111d` | `#0b7a71`, `#ffffff` |
@@ -57,9 +57,10 @@ pick; checking is a sweeping ring. An agent's own mark is `✻` Claude, `◆` Co
 
 ## Layouts
 
-There is one look, drawn to the v27 TUI design (fleets and ships): two separate frames, the sidebar and the
-workspace, `ui.gap` apart (one column by default). A lone pane is one frame; a split is one frame
-cut by single lines with proper joints. Exactly one frame, or one pane's lines, is in the accent.
+There is one look, drawn to the TUI redesign: the sidebar and the workspace, `ui.gap` apart (one
+column by default), and the status bar under them. Every pane is a box of its own with round
+corners; a split is two to four boxes a column or row apart. Every label on a border is a title
+chip. Exactly one box, the focused pane's, is in the accent.
 
 `ui.padding` is the blank space inside the terminal round both frames: `small` none, `medium` (the
 default) 1 row and 2 columns, `large` 2 rows and 4 columns. See UI › *layout and navigation* and *the frame*.
@@ -73,69 +74,56 @@ accent fill. See UI › *UI conventions*.
 
 ## Sidebar
 
-Fleets above, ships below. A **fleet** is a named group of sessions on one machine (the daemon's
-workspace; one daemon per machine, so each machine's workspaces are its fleets). A **ship** is one
-session in a fleet, an agent or a shell. The sidebar is 46 columns by default (24 to 60
-resizable), in its own frame. On the top border: ` « ` at the left, ` + ` (a shell in the fleet you
-are in) and ` inbox N ` (amber while anything needs you) at the right. Row 2 is the search field,
-a filled bar with a ` / ` key chip that becomes ` x ` once there is text. Two halves follow, each
-under a full-width divider with a title chip: ` FLEETS ` at row 4 and ` SHIPS N ` at the middle of
-the rest, and each half clips at its own divider. At the foot: the version (or the update marker),
-a rule, and the ` + New ` and ` Menu ` chips.
-
-The top half lists machines (fold arrow, `⌂` for this computer or `▤` for another, the name, a green
-`●` when it is up or a dim `┆` while it reconnects, and a `+` that asks for a name and starts a
-named fleet there; left empty it starts a shell in its first fleet) and, under each, its fleets: an amber bold count of the sessions that need you, or a `◆` in
-the fleet's colour (teal, violet, blue, orange; Scratch is muted), the name in bold, and `✻ N`
-agents and `>_ N` shells when there is room. The current fleet has the `raise` ground and an accent
-`▌`. The bottom half lists the agent ships, grouped by fleet (a folded group says how many and
-`N need you`): the status glyph, the name in bold (idle ones dim), a `•` when unread, a `⌖` when
-pinned and `>_` (or `◌` for a chat) at the right, then the git branch in magenta and `worktree`
-dim. The selected row has the `sel` ground, the ship open in the workspace the `raise` ground and
-an accent `▌` on both lines. Rows never move when a status changes. Collapsed (under 110 columns,
-or by the toggle), the sidebar is a 10-column column: the inbox count, `FLT` with each fleet's
-count or `◆` and initials, `SHP` with each agent's glyph and initials; see UI › *collapsed
-sidebar*. The Machines dialog and its states are described in UI › *Machines dialog*.
+Each machine with its sessions under it, on the panel ground, 34 columns by default (24 to 60
+resizable). On the top border the ` maitty ` chip at the left and ` « ` (hide) at the right; hidden,
+a ` » ` chip beside the panes brings it back. Row 2 is the filter field, `/ filter sessions` on the
+darker ground. A machine is a heading chip with its count (` This computer 5 `), an accent ` + `
+chip (a shell there at once) and a green `●` at the right while it is up. A session is two lines:
+the status mark and the name (bold and bright for an agent with something going on), then `■` in
+the project's colour, the project and the branch in violet. No status words anywhere. Agents come
+first, then shells, each in the order they started, so a row never moves when its status changes.
+The open session has the row ground and an accent `▎`. An agent's subagents in its current turn
+follow it: `└` and a mark each, or under the open session one row each with `├`/`└` and the name.
+On the bottom border the release chip (` ↑ v0.15.0 ` when a release is out, else the version) and
+` menu `, each opening a menu upward. See UI › *the sidebar*; the Machines dialog and its states
+are in UI › *Machines dialog*.
 
 ## Pane titles
 
-The top border of the workspace is the **tab row**: one tab per ship of the fleet you are in, in
-creation order. A tab is the status glyph, the title, the number of panes when there are two or
-more, and a `×`; there is no app icon. The active tab is the accent with `bg`-coloured text while
-the workspace has the keys, and a chip otherwise; the others are chips with `fg2` text. Too many
-tabs fold into ` …N `. After them comes ` + ` (a new shell) and, at the right, ` Files ` and
-` Changes ` (accent while their panel is open). A lone pane has no header: the tab names it and the
-program starts on the row under the border. A split's panes each have a two-row header: the glyph
-and title with `⋯ ×` at the right (`⊞ ⊟ ⤢ ⋯ ×` from 60 columns), then the folder, `⎇ branch` in violet
-and, for another machine, `▤ name`. A pane closes
-with Alt+x, leader `x` or its `×`; closing always asks first, naming the pane (`Close pane 2 ·
-claude`) and lighting its lines in red until you answer. Unfocused panes fade; the focused pane's
-lines are the accent, or `sky()` in shortcut mode. See UI › *the frame* and *pane focus*.
+Every pane's top border carries its **title chip** at the left: the status mark, the name in bold,
+then the folder and branch quieter (`mark name ~/cwd branch`, cut with `…`), the accent with dark
+ink while the pane has the keys. At the right ` files `, ` changes N ` (accent while their panel is
+open) and ` × `. The program starts on the row under the border: an agent's pane is its own
+terminal, and the TUI draws no chat of its own. With no pane open, a dashed box says `No pane open`
+over an ` n new session ` chip. A pane closes with Alt+x, leader `x` or its `×`, with an undo, and a
+running agent asks first, its box red until you answer. Unfocused panes fade; the focused pane's
+box is the accent, or `sky()` in shortcut mode. See UI › *the frame* and *pane focus*.
 
 ## Side panel
 
-Reading while you work happens in a panel on the right (Files and the others float 60 columns wide
-over the workspace; the check sheets dock and take the pane column on a narrow screen). **Files**, **Changes**, **Branch** and **References** share one sheet with a tab strip
-(`Files f · Changes c · Branch b · References a`), each tab at its own remembered width: Files a
-tree beside the open file (Markdown drawn), Changes the changed files and their diff, Branch the
-branch, ahead/behind, recent commits, the last check and snapshots, References the project's
-screenshots and design files, one line each (name, then kind, size and age muted at the right).
-The lit tab names the open view, so the sheet's top border does not repeat it: Every tab
-carries only the ×. The sheets draw no key-hint row of their own; the mode bar shows their keys. The check evidence
-sheet docks in the same place without the strip. The Inbox is a panel 62 columns wide over the
+Reading while you work happens in a panel that slides in from the pane's right edge, inside its
+box (about 220 ms, eased out): the panel ground, a line down its left edge, its title chip
+(` files `, ` changes N `, ` branch `, ` references `, lit while it has the keys) and a ` » ` that
+closes it (Esc too). Files starts 96 columns wide and at most 80% of the panes, a tree beside the
+open file (Markdown drawn); Changes 54 and at most 70%, the changed files and their diff; Branch the
+branch, ahead/behind, recent commits, the last check and snapshots; References the project's
+screenshots and design files. The panes keep their size under it. The panels draw no key-hint row
+of their own; the status bar shows their keys. The check evidence sheet docks beside the panes
+(and over the sidebar below 100 columns). The Inbox is a panel 62 columns wide over the
 workspace from the sidebar's side, with a card for each session that needs you, finished or exited. See UI › *the frame* (Sheet), *Inbox check
 groups* and *check evidence sheet*.
 
 ## Modals and popovers
 
-The Menu and a row's context menu have no fill of their own: they are drawn on the ground like the panes. Everything else that floats over the screen is boxed as the look boxes a pane: a `line` box round
-`card` with corners by `ui.rounded` (the outline's own cells keep the ground behind them, so none of the body's colour shows outside the line; what sits on the top border stands on that ground too). Deciding is a modal: centred, framed like a pane (the title as an accent chip on the top border,
-a red × chip at the right), its border in the accent because it holds the keys, the screen behind
-left as it is (no dimming, no fill: the modal clears its own area to the ground), no shadow. Settings, override, command
-approval and the key overlay are modals. Small explanations (why, a row's menu, the message and
-helpers popovers) open beside their row with a `◂` pointer; a menu row ends in its key, the bound leader
-key when there is one. Every panel ends in an action bar
-of keycaps. See UI › *UI conventions* and *check modals and settings*.
+Everything that floats over the screen (menus, Settings, the keys help, confirms) is a box in the accent
+on the panel ground (`sidebar_bg`), corners by `ui.rounded`; what sits on its top border stands on the ground
+behind. Deciding is a modal: centred, its title as an accent chip on the top border (` settings `), a ` × `
+chip on `btn` a cell in from the corner, no shadow. Settings has its sections down the left and the
+chosen section's rows at the right (label, then the value bold in the accent with `‹ ›` and `2/3`), and a
+footer with its keys and where it is saved. The keys help is three columns of keys. A menu has no title:
+one row per item, the leader key at the right in the accent, the item that ends something last in red.
+Small explanations (why, the message and helpers popovers) open beside their row with a `◂` pointer.
+See UI › *UI conventions*, *Menus* and *check modals and settings*.
 
 ## Toasts
 
@@ -150,16 +138,18 @@ two answers as buttons on the bottom border: a green `Answer` that goes to the s
 red `Later esc` that dismisses it. Always round corners. It slides in and fades out
 with motion on. See UI › *the frame* (Toast).
 
-## Mode bar
+## Status bar
 
-The one full-width row, along the bottom.
-Typing: a quiet ` TYPING ` chip and the leader key. Shortcut mode: the whole row in `sky()`, a
-` SHORTCUT ` chip and the next keys you can press; starting a pane ends it. When something other than the panes
-has the keys, the bar stays on `bg`, never sky: a calm chip (`strong` bold on `btn`) names the
-holder, then its keys and the way out (`SIDEBAR · ↑↓ move · Enter open · n new in maitty · Esc back`, the `n` hint computed from what `n` would do), with
-`· shortcut mode waits` while the mode is held. Under a popup the bar is words only and takes
-no click. **Update** or **Restart** sits at its right end when waiting, unless the sidebar shows it at its foot. See UI › *the frame*
-(Mode bar).
+The one full-width row, along the bottom, on the panel ground. Typing: a ` PANE ` chip in the accent,
+the session the keys go to (`name · ~/folder`), and at the right `j/k sessions  ^space keys  ? help`.
+Key mode: a yellow ` KEYS ` chip and `n new  s split  x close  tab pane  ? help  esc back`, each a click
+that presses it; starting a pane ends it. When something other than the panes has the keys, a calm chip
+(`strong` bold on `btn`) names the holder and its keys sit at the right with the way out last
+(` SIDEBAR ` … `↑↓ move  enter open  n new  esc back`), with `shortcut mode waits` while the mode is held.
+Keys are bold in the accent, their words muted. Under a popup the bar is words only and takes no click.
+**Update** or **Restart** sits at its right end when waiting, unless the sidebar shows it at its foot.
+See UI › *the frame* (Status bar).
+
 
 ## Splash
 

@@ -39,15 +39,15 @@ fn frame(app: &mut App, w: u16, h: u16) -> String {
 }
 
 #[test]
-fn the_prefix_is_ctrl_a_and_ctrl_space_still_works_for_one_release() {
+fn the_prefix_is_ctrl_space_and_ctrl_a_still_works_for_one_release() {
     let (app, _rx) = app_with_channel();
     let key = |s: &str| s.parse::<crate::keys::KeySpec>().unwrap();
-    assert_eq!(app.keymap.prefix, key("ctrl+a"));
-    assert!(app.keymap.is_prefix(&key("ctrl+space")), "the old prefix still opens shortcut mode");
+    assert_eq!(app.keymap.prefix, key("ctrl+space"));
+    assert!(app.keymap.is_prefix(&key("ctrl+a")), "the old prefix still opens key mode");
     assert!(!app.keymap.is_prefix(&key("ctrl+b")));
     let cfg = crate::config::Config { prefix: "ctrl+b".into(), ..Default::default() };
     let km = cfg.keymap();
-    assert!(km.is_prefix(&key("ctrl+b")) && !km.is_prefix(&key("ctrl+space")), "a prefix set on purpose is the only one");
+    assert!(km.is_prefix(&key("ctrl+b")) && !km.is_prefix(&key("ctrl+a")), "a prefix set on purpose is the only one");
 }
 
 #[test]
@@ -141,8 +141,8 @@ fn the_updates_box_follows_the_install_and_offers_its_keys() {
     let (mut app, _rx) = app_with_channel();
     app.update_available = Some("9.9.9".into());
     app.update_notes = vec!["Flat sessions".into()];
-    press(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
-    press(&mut app, KeyCode::Char('u'), KeyModifiers::NONE);
+    // The release chip's menu (Release notes) and search commands open it; it has no key.
+    app.act(crate::keys::Action::Updates);
     assert_eq!(app.mode, Mode::Updates);
     let shown = frame(&mut app, 140, 40);
     println!("{shown}");

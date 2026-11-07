@@ -77,7 +77,7 @@ pub(in crate::client) fn panel_at(
     panel_box(buf, r, look, Style::default().fg(t.accent));
     let red = Style::default()
         .fg(t.strong)
-        .bg(t.err)
+        .bg(t.btn)
         .add_modifier(Modifier::BOLD);
     let esc = header_chip(
         look,
@@ -92,9 +92,9 @@ pub(in crate::client) fn panel_at(
     );
     let esc_w = segs_width(&esc);
     // Too narrow for the chip beside the corner: Esc and a click outside still close it.
-    let shows_esc = r.width >= esc_w + 4;
+    let shows_esc = r.width >= esc_w + 5;
     let esc_x = if shows_esc {
-        r.right() - esc_w
+        r.right() - esc_w - 1
     } else {
         r.right() - 1
     };
@@ -170,9 +170,11 @@ pub(in crate::client) fn flatten_modals(app: &App, buf: &mut Buffer, t: &Theme) 
             for x in r.left()..r.right() {
                 let c = &mut buf[(x, y)];
                 c.bg = match c.bg {
-                    b if b == t.card || b == t.card2 => t.bg,
-                    b if b == t.sel_on(t.card) || b == t.sel_on(t.card2) => t.sel_on(t.bg),
-                    b if b == t.hover_on(t.card) || b == t.hover_on(t.card2) => t.hover_on(t.bg),
+                    // A keycap or chip keeps its ground where a theme's chips share `card2`.
+                    b if b == t.btn => b,
+                    b if b == t.card || b == t.card2 => t.sidebar_bg,
+                    b if b == t.sel_on(t.card) || b == t.sel_on(t.card2) => t.sel_on(t.sidebar_bg),
+                    b if b == t.hover_on(t.card) || b == t.hover_on(t.card2) => t.hover_on(t.sidebar_bg),
                     b => b,
                 };
             }

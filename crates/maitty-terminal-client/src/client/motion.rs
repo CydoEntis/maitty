@@ -8,6 +8,8 @@ use std::time::{Duration, Instant};
 
 /// How long a slide takes; a glide between rows is quicker.
 pub const SLIDE: Duration = Duration::from_millis(140);
+/// How long the Files and Changes panel takes to slide in from a pane's right edge.
+pub const SHEET_SLIDE: Duration = Duration::from_millis(220);
 /// A toast's slide in, and the fade at the end of its time.
 pub const TOAST_IN: Duration = Duration::from_millis(120);
 pub const TOAST_FADE: Duration = Duration::from_millis(350);
@@ -94,7 +96,7 @@ impl Motion {
     pub fn sheet(&mut self, open: bool, on: bool) -> f32 {
         let now = Instant::now();
         if open && !self.sheet_was && on {
-            self.sheet = Some(Tween::new(0.0, 1.0, SLIDE));
+            self.sheet = Some(Tween::new(0.0, 1.0, SHEET_SLIDE));
         }
         self.sheet_was = open;
         match self.sheet {

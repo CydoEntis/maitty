@@ -7,30 +7,31 @@ use crate::client::ids::ClientTerm;
 
 // ---- main screen ---------------------------------------------------------------------------
 
-/// The sidebar's width before you drag it: the design's 46 columns, less on a screen too
+/// The sidebar's width before you drag it: the design's 34 columns, less on a screen too
 /// narrow to leave the workspace half of it.
 pub(in crate::client) fn side_w(width: u16) -> u16 {
     SIDE_DEFAULT.min(width / 2)
 }
 
 /// The sidebar's default width in columns (resizable between `SIDE_MIN` and `SIDE_MAX`).
-pub(in crate::client) const SIDE_DEFAULT: u16 = 46;
+pub(in crate::client) const SIDE_DEFAULT: u16 = 34;
 
-/// The full sidebar's width: the default, or what you dragged it to.
+/// The sidebar's width: the default, or what you dragged it to.
 pub(in crate::client) fn full_side_w(app: &App, area: Rect) -> u16 {
     app.screen
         .saved
         .side_w
         .unwrap_or_else(|| side_w(area.width))
         .clamp(SIDE_MIN, SIDE_MAX)
-        .min(area.width.saturating_sub(rail::RAIL_W).max(SIDE_MIN))
+        .min(area.width / 2)
 }
 
-/// Whether a screen this wide shows only the collapsed column, the full sidebar opening over
-/// the workspace on request.
-pub(in crate::client) fn overlaid_side(area: Rect) -> bool {
-    area.width < rail::COLLAPSE_BELOW
-}
+/// Below this many columns a docked sheet (a check's evidence, both diffs) takes the sidebar's
+/// room as well as the panes'.
+const SHEET_OVER_SIDE_BELOW: u16 = 100;
+
+/// Columns the `»` chip takes at the top left while the sidebar is hidden, its gap included.
+pub(in crate::client) const SHOW_CHIP_W: u16 = 4;
 
 /// The narrowest the sidebar (sliding) or the sheet is drawn; below it, it's only space.
 const SIDE_DRAWN_FROM: u16 = 12;
@@ -104,16 +105,9 @@ pub(in crate::client) struct Grid {
 pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
     let look = Look::of(&app.cfg.ui);
     let full = full_side_w(app, area);
-    // Collapsed, the sidebar is the narrow column (`rail`); only hiding it takes the room.
-    let rail_w = if app.side_hidden {
-        0
-    } else {
-        rail::RAIL_W.min(area.width / 2)
-    };
-    // Narrow, the full sidebar opens over the workspace and takes no room of its own.
-    let beside = if overlaid_side(area) { 0 } else { full };
-    let sw = ((beside as f32 * app.side_frac).round() as u16).max(rail_w);
-    let gap = if sw == 0 { 0 } else { look.gap };
+    let sw = (full as f32 * app.side_frac).round() as u16;
+    // Hidden, the gap holds the `»` chip that brings the sidebar back.
+    let gap = if sw == 0 { SHOW_CHIP_W } else { look.gap };
     let (side, col) = if app.cfg.ui.sidebar_position == "right" {
         let side = Rect {
             x: area.right().saturating_sub(sw),
@@ -160,19 +154,27 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
             let x = if side.x > col.x { col.right() - w } else { col.x };
             (Rect { x, width: w, ..col }, col)
         }
-        // A tool floats over the panes' right side: the panes keep the whole column.
+        // A tool slides in from the panes' right edge, inside their box (its top and bottom
+        // lines and its chips stay in view): the panes keep the whole column.
         Some(kind) if overlaid(app, kind) => {
-            let full = wanted_w(app, kind, area.width).clamp(SHEET_MIN, overlay_widest(col).max(SHEET_MIN));
-            let w = ((full as f32 * app.sheet_frac.clamp(0.0, 1.0)).round() as u16).min(col.width);
+            let pane = focused_box(app, col);
+            let full = wanted_w(app, kind, area.width)
+                .min(drawer_cap(kind, pane))
+                .clamp(SHEET_MIN, overlay_widest(pane).max(SHEET_MIN));
+            let inner = pane.width.saturating_sub(2);
+            let w = ((full as f32 * app.sheet_frac.clamp(0.0, 1.0)).round() as u16).min(inner);
             (
                 Rect {
-                    x: col.right() - w,
+                    x: pane.right().saturating_sub(1 + w),
+                    y: pane.y + 1,
                     width: w,
-                    ..col
+                    height: pane.height.saturating_sub(2),
                 },
                 col,
             )
         }
+        // Too narrow to read beside the sidebar: a docked sheet covers it too.
+        Some(_) if area.width < SHEET_OVER_SIDE_BELOW => (area, col),
         Some(kind) => split_for_sheet(
             area.width,
             col,
@@ -260,16 +262,6 @@ fn draw_grip(buf: &mut Buffer, x: u16, (top, bottom): (u16, u16), lit: bool, t: 
 
 /// Draw the main screen; returns the pane area.
 pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Theme) -> Rect {
-    // Until a sidebar key is pressed, a screen narrower than `COLLAPSE_BELOW` shows the
-    // collapsed column and a wide one the full sidebar.
-    if app.side_auto && !app.side_hidden {
-        let narrow = overlaid_side(area);
-        if app.sidebar && narrow {
-            (app.sidebar, app.side_folded) = (false, true);
-        } else if app.side_folded && !narrow {
-            (app.sidebar, app.side_folded) = (true, false);
-        }
-    }
     // How far the sidebar and the sheet are in this frame (they slide when they change).
     let on = app.motion_on();
     app.side_frac = app.motion.side(app.sidebar, on);
@@ -301,14 +293,16 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
             draw_grip(f.buffer_mut(), ex, (g.side.top(), g.side.bottom()), true, t);
         }
         hit(app, g.edge, ScreenHit::SideEdge);
-    } else if !app.side_hidden {
-        rail::draw(app, f.buffer_mut(), g.side, &model, t);
     } else {
-        // Hidden: nothing to point at, nothing to move a cursor over.
+        // Hidden: nothing to point at, nothing to move a cursor over, and `»` to bring it back.
         app.screen.side_rect = Rect::default();
         app.screen.visible.clear();
         app.screen.side_items.clear();
         app.screen.row_y.clear();
+        app.screen.sub_rows.clear();
+        if !app.sidebar {
+            draw_show_chip(app, f.buffer_mut(), room, g.panes, t);
+        }
     }
     if g.panes.width > 0 {
         draw_main(app, f, g.panes, &model, t);
@@ -321,7 +315,6 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
         draw_sheet(app, f.buffer_mut(), g.sheet, kind, t);
         draw_sheet_edge(app, f.buffer_mut(), &g, t);
     }
-    draw_overlay_side(app, f.buffer_mut(), room, g.side, &model, t);
     draw_mode_bar(app, f.buffer_mut(), mode_bar_row(app, area), t);
     app.screen.crumb_x = g.panes.x + 1;
     // A popup (`<app> popup`) floats over everything, the rest dimmed.
@@ -345,39 +338,26 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
             width: w,
             height: h,
         };
-        draw_session(app, f, r, term, (true, Chrome::Title), &model, t);
+        draw_pane(app, f, r, term, (true, true), &model, t);
     }
     draw_toast(app, f.buffer_mut(), room, t);
     g.panes
 }
 
-/// The sessions are collapsed into the narrow column (`z`), not hidden (`Z`).
-pub(in crate::client) fn strip_on(app: &App) -> bool {
-    !app.sidebar && !app.side_hidden
-}
-
-/// On a screen narrower than `COLLAPSE_BELOW` the full sidebar, when asked for, floats over
-/// the workspace from the sidebar's side.
-fn draw_overlay_side(app: &mut App, buf: &mut Buffer, room: Rect, rail: Rect, model: &[Proj], t: &Theme) {
-    let open = app.sidebar && overlaid_side(room) && !app.side_hidden;
-    app.screen.overlay_open = open;
-    if !open {
-        return;
-    }
-    let w = full_side_w(app, room).min(room.width);
-    let x = if app.cfg.ui.sidebar_position == "right" {
+/// The sidebar hidden: a `»` chip on the top row, in the gap beside the panes, brings it back
+/// (`«` when the sidebar sits on the right).
+fn draw_show_chip(app: &mut App, buf: &mut Buffer, room: Rect, panes: Rect, t: &Theme) {
+    let right = app.cfg.ui.sidebar_position == "right";
+    let text = if right { HIDE } else { SHOW };
+    let c = chips::chip(app, text, chips::Chip::Title { focused: false }, t.bg, t);
+    let w = segs_width(&c);
+    let x = if right {
         room.right().saturating_sub(w)
     } else {
         room.x
     };
-    let r = Rect {
-        x,
-        y: rail.y,
-        width: w,
-        height: rail.height,
-    };
-    fill(buf, r, t.bg);
-    draw_side(app, buf, r, model, t);
+    put(buf, x, panes.y, &c, x + w);
+    hit(app, Rect { x, y: panes.y, width: w, height: 1 }, ScreenHit::ExpandSidebar);
 }
 
 pub(in crate::client) fn find(model: &[Proj], term: ClientTerm) -> Option<(&Proj, &Wt, &Session)> {
@@ -400,30 +380,50 @@ pub(in crate::client) fn hline(buf: &mut Buffer, x: u16, y: u16, w: u16, t: &The
     }
 }
 
-/// The workspace with nothing in it: what is true, one line of help, and the key.
-pub(in crate::client) fn draw_no_sessions(app: &App, f: &mut Frame, area: Rect, t: &Theme) {
-    let lines = [
-        ("No sessions running", Style::default().fg(t.strong).add_modifier(Modifier::BOLD)),
-        ("Sessions keep running when you close the app.", Style::default().fg(t.muted)),
-    ];
-    let key = crate::client::design::long_key(&crate::keys::KeySpec::from_event(
-        &crossterm::event::KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL),
-    ));
-    let mut y = area.y + area.height / 3;
-    for (text, style) in lines {
-        let x = area.x + area.width.saturating_sub(text.width() as u16) / 2;
-        put(f.buffer_mut(), x, y, &[seg(text, style)], area.right());
-        y += 1;
+/// The workspace with no pane open: a dashed box, "No pane open", an `n new session` chip
+/// (the New session dialog) and where else to go.
+pub(in crate::client) fn draw_no_sessions(app: &mut App, f: &mut Frame, area: Rect, t: &Theme) {
+    let buf = f.buffer_mut();
+    dashed_box(buf, area, Style::default().fg(t.line).bg(t.bg));
+    let quiet = Style::default().fg(t.muted).bg(t.bg);
+    let mid = area.y + area.height.saturating_sub(5) / 2;
+    let centred = |w: usize| area.x + area.width.saturating_sub(w as u16) / 2;
+    let title = "No pane open";
+    put(buf, centred(title.width()), mid, &[seg(title, quiet)], area.right());
+    let chip = pill(
+        Look::of(&app.cfg.ui),
+        vec![
+            seg("n", Style::default().fg(t.accent).add_modifier(Modifier::BOLD)),
+            seg(" new session", Style::default().fg(t.strong).add_modifier(Modifier::BOLD)),
+        ],
+        t.btn,
+        t.bg,
+    );
+    let w = segs_width(&chip);
+    let x = centred(w as usize);
+    put(buf, x, mid + 2, &chip, area.right());
+    hit(app, Rect { x, y: mid + 2, width: w, height: 1 }, ScreenHit::NoPaneNew);
+    let hint = "or pick a session on the left";
+    put(f.buffer_mut(), centred(hint.width()), mid + 4, &[seg(hint, quiet)], area.right());
+}
+
+/// A box of dashed lines round `r`, with round corners.
+fn dashed_box(buf: &mut Buffer, r: Rect, st: Style) {
+    if r.width < 2 || r.height < 2 {
+        return;
     }
-    let words = " new shell";
-    let width = (key.width() + words.width()) as u16;
-    let x = area.x + area.width.saturating_sub(width) / 2;
-    let caps = [
-        seg(key, Style::default().fg(t.strong).bg(t.btn).add_modifier(Modifier::BOLD)),
-        seg(words, Style::default().fg(t.muted)),
-    ];
-    put(f.buffer_mut(), x, y + 1, &caps, area.right());
-    let _ = app;
+    let (right, bottom) = (r.right() - 1, r.bottom() - 1);
+    for x in r.x + 1..right {
+        buf[(x, r.y)].set_symbol("┄").set_style(st);
+        buf[(x, bottom)].set_symbol("┄").set_style(st);
+    }
+    for y in r.y + 1..bottom {
+        buf[(r.x, y)].set_symbol("┆").set_style(st);
+        buf[(right, y)].set_symbol("┆").set_style(st);
+    }
+    for (x, y, g) in [(r.x, r.y, "╭"), (right, r.y, "╮"), (r.x, bottom, "╰"), (right, bottom, "╯")] {
+        buf[(x, y)].set_symbol(g).set_style(st);
+    }
 }
 
 /// A pane dragged by its title: the pane it would swap with gets lit lines and a "swap here"

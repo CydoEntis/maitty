@@ -15,6 +15,8 @@ use ratatui::style::{Modifier, Style};
 use std::path::PathBuf;
 use unicode_width::UnicodeWidthStr;
 
+/// The sidebar menu's width, so it opens with its right edge under the chip.
+const SIDEBAR_MENU_W: u16 = 24;
 /// How many snapshots the list offers (each has its number as its key).
 const SNAPSHOTS_LISTED: usize = 9;
 /// Why a snapshot is not restored while its session's agent works.
@@ -27,8 +29,8 @@ pub enum Act {
     Tool(crate::keys::Action),
     /// Show this session in a split of the focused one, on that side.
     Beside(ClientTerm, crate::layout::Dir),
-    /// Pin a session to the top of the list, or let it go.
-    Pin(ClientTerm, bool),
+    /// Show this session in the workspace.
+    Open(ClientTerm),
     /// Copy the session's folder to the clipboard.
     CopyPath(ClientTerm),
     /// Find in the session's output.
@@ -54,12 +56,6 @@ pub enum Act {
     Split(ClientTerm, crate::layout::Dir),
     RightClicks(ClientTerm),
     RenameProject(String, String),
-    /// Ask a new name for a fleet (a workspace).
-    RenameFleet(super::screen::fleets::FleetId),
-    /// Give a fleet the colour at this index of the fleet palette.
-    FleetColour(super::screen::fleets::FleetId, u8),
-    /// A shell at once in a fleet.
-    NewShip(super::screen::fleets::FleetId),
     /// End everything in a project and forget it.
     CloseProject(usize),
     NewWorktree(usize),
@@ -308,6 +304,51 @@ impl App {
         }));
     }
 
+    /// The release chip at the sidebar's foot: what is on offer, what runs, and the notes. It
+    /// opens upward from the chip.
+    pub(super) fn release_menu(&mut self) {
+        use crate::keys::Action;
+        let running = format!("Running v{}", crate::brand::APP_VERSION);
+        let notes = ("Release notes".to_string(), Act::Tool(Action::Updates));
+        let items = if let Some(v) = self.update_available.clone() {
+            vec![
+                (format!("Update to v{}", v.trim_start_matches('v')), Act::Tool(Action::Update)),
+                (running, Act::Tool(Action::Updates)),
+                notes,
+            ]
+        } else if self.restart_needed() {
+            vec![
+                ("Restart onto the new version".to_string(), Act::Tool(Action::Restart)),
+                (running, Act::Tool(Action::Updates)),
+                notes,
+            ]
+        } else {
+            vec![
+                (running, Act::Tool(Action::Updates)),
+                ("Check for updates".to_string(), Act::Tool(Action::CheckUpdate)),
+                notes,
+            ]
+        };
+        let side = self.screen.side_rect;
+        self.menu("maitty".into(), items, (side.x + 2, side.bottom().saturating_sub(1)));
+    }
+
+    /// The sidebar foot's ` menu ` chip: the sidebar's own few things, opening upward. The full
+    /// Menu is the leader's `.`.
+    pub(super) fn sidebar_menu(&mut self) {
+        use crate::keys::Action;
+        let items = vec![
+            ("Filter sessions".to_string(), Act::Tool(Action::FilterSessions)),
+            ("Inbox".to_string(), Act::Tool(Action::Jump)),
+            ("Usage and cost".to_string(), Act::Tool(Action::Usage)),
+            ("Settings".to_string(), Act::Tool(Action::Settings)),
+            ("Keys".to_string(), Act::Tool(Action::Help)),
+        ];
+        let side = self.screen.side_rect;
+        let x = side.right().saturating_sub(SIDEBAR_MENU_W + 1);
+        self.menu("menu".into(), items, (x, side.bottom().saturating_sub(1)));
+    }
+
     /// Right-click on a pane's content.
     pub(super) fn menu_for_pane(&mut self, term: ClientTerm, at: (u16, u16)) {
         if Some(term) != self.focused() {
@@ -319,13 +360,10 @@ impl App {
             .unwrap_or_default();
         use crate::layout::Dir;
         let mut items = vec![
-            ("Split up".to_string(), Act::Split(term, Dir::Up)),
-            ("Split down".to_string(), Act::Split(term, Dir::Down)),
-            ("Split left".to_string(), Act::Split(term, Dir::Left)),
-            ("Split right".to_string(), Act::Split(term, Dir::Right)),
-            ("Find".to_string(), Act::FindIn(term)),
             ("Rename".to_string(), Act::RenamePane(term)),
-            ("Copy path".to_string(), Act::CopyPath(term)),
+            ("Split right".to_string(), Act::Split(term, Dir::Right)),
+            ("Split down".to_string(), Act::Split(term, Dir::Down)),
+            ("Find".to_string(), Act::FindIn(term)),
             (
                 if self.screen.right_clicks.contains(&term) {
                     "Stop sending right-clicks to pane"
@@ -342,9 +380,10 @@ impl App {
         }) {
             items.push((format!("{} is an agent…", t.process), Act::TeachAgent(term)));
         }
+        // What the folder offers that the design has no other place for: worktrees, snapshots,
+        // the check.
         items.push(("Project…".to_string(), Act::ProjectTools(term)));
-        let several = self.screen.leaf_rects.len() > 1;
-        items.push((if several { "Close pane" } else { "Close session" }.to_string(), Act::End(vec![term])));
+        items.push(("Close pane".to_string(), Act::End(vec![term])));
         self.menu(
             if agent.is_empty() {
                 "pane".into()
@@ -401,13 +440,11 @@ impl App {
         }) {
             items.push((format!("{} is an agent…", t.process), Act::TeachAgent(term)));
         }
-        items.push(("Rename".to_string(), Act::RenamePane(term)));
-        let pinned = info.is_some_and(|t| t.pinned);
-        items.push((if pinned { "Unpin" } else { "Pin" }.to_string(), Act::Pin(term, !pinned)));
-        if self.focused().is_some_and(|f| f != term) {
-            items.push(("Open in split right".into(), Act::Beside(term, crate::layout::Dir::Right)));
-            items.push(("Open in split down".into(), Act::Beside(term, crate::layout::Dir::Down)));
+        if self.focused() != Some(term) {
+            items.push(("Open".to_string(), Act::Open(term)));
+            items.push(("Open in split".into(), Act::Beside(term, crate::layout::Dir::Right)));
         }
+        items.push(("Rename".to_string(), Act::RenamePane(term)));
         items.push(("Copy path".to_string(), Act::CopyPath(term)));
         if let Some(d) = dir
             .filter(|_| self.is_local_pane(term))
@@ -428,7 +465,8 @@ impl App {
         if let Some(check) = info.and_then(|t| t.check()) {
             items.extend(super::screen::check_menu_items(term, check));
         }
-        items.push(("Close session".to_string(), Act::End(vec![term])));
+        let close = if s.is_agent { "Stop session" } else { "Close shell" };
+        items.push((close.to_string(), Act::End(vec![term])));
         // Titled by what it is (an agent, or the program's name), never its window title.
         let what = if s.is_agent {
             agent
@@ -716,9 +754,7 @@ impl App {
                 // one asked about is going), or the same row when it stays.
                 // The cursor is still on a row when the leader key or the actions list was
                 // opened from the sidebar: that's the sidebar too.
-                let from_side = self.mode == Mode::Side
-                    || self.screen.cursor.is_some()
-                    || self.screen.cursor_proj.is_some();
+                let from_side = self.mode == Mode::Side || self.screen.cursor.is_some();
                 self.screen.side_return = match &c.act {
                     _ if !from_side => None,
                     Act::Restore(_, _, _, t) | Act::OverrideCheck(t, ..) => {
@@ -760,12 +796,6 @@ impl App {
                     input: cur,
                 };
             }
-            Act::RenameFleet(fleet) => self.rename_fleet_start(fleet),
-            Act::FleetColour(fleet, color) => self.cmd_on(
-                fleet.machine,
-                Command::SetWorkspaceColor { ws: fleet.ws, color },
-            ),
-            Act::NewShip(fleet) => self.new_ship(Some(fleet)),
             Act::RenameConversation(id) => {
                 let cur = self
                     .snap_of(self.conversation_machine(id))
@@ -987,7 +1017,7 @@ impl App {
                     None => self.notify("start something in this project first".into(), true),
                 }
             }
-            Act::Pin(t, pinned) => self.cmd_on(t.machine, Command::PinPane { term: t.term, pinned }),
+            Act::Open(t) => self.screen_focus(t),
             Act::CopyPath(t) => {
                 let path = self.term_info(t).map(|x| x.cwd.display().to_string());
                 match path {
@@ -1150,6 +1180,8 @@ fn bound_action(act: &Act) -> Option<crate::keys::Action> {
         Act::Split(_, Dir::Down) => Some(Action::SplitDown),
         Act::End(ts) if ts.len() == 1 => Some(Action::ClosePane),
         Act::Changes(_) => Some(Action::Changes),
+        Act::RenamePane(_) => Some(Action::RenameWorkspace),
+        Act::Tool(a) => Some(a.clone()),
         _ => None,
     }
 }
@@ -1269,23 +1301,34 @@ fn menu_letters(
         .collect()
 }
 
-/// A right-click menu. Its items' keys (`menu_keys`) run them while it is open but aren't
-/// shown: a bare letter beside an item reads as a key that works anywhere.
+/// A menu (right-click, a chip's): a box in the accent on the panel ground, one row per item with
+/// its leader key at the right in the accent when it has one, a line before the item that ends
+/// something, which is red. It opens under its point, or above it when there is no room below
+/// (the sidebar foot's chips). Letters a menu gives items of its own (`menu_keys`) run them
+/// while it is open but are not shown: a bare letter beside an item reads as a key that works
+/// anywhere.
 pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: &ScreenMenu) {
-    let buf = f.buffer_mut();
-    let danger = |a: &Act| matches!(a, Act::End(_) | Act::CloseProject(_));
-    // The destructive item sits last, after a blank row.
-    let gap = m.items.iter().any(|(_, a)| danger(a)) && m.items.len() > 1;
+    let danger = |a: &Act| matches!(a, Act::End(_) | Act::CloseProject(_) | Act::ArchiveConversation(_));
+    let keys: Vec<String> = menu_keys(app, &m.items)
+        .into_iter()
+        .map(|k| match k {
+            Some(MenuKey::Bound(k)) => super::screen::short_key(&k),
+            _ => String::new(),
+        })
+        .collect();
+    // The destructive item sits last, after a line.
+    let rule = m.items.iter().any(|(_, a)| danger(a)) && m.items.len() > 1;
+    let key_w = keys.iter().map(|k| k.width() as u16).max().unwrap_or(0);
     let w = m
         .items
         .iter()
         .map(|(l, _)| l.width() as u16)
         .max()
         .unwrap_or(10)
-        .max(m.title.width() as u16)
-        .clamp(16, 44)
-        + 10;
-    let h = m.items.len() as u16 + 4 + gap as u16;
+        .clamp(14, 44)
+        + key_w
+        + 6;
+    let h = m.items.len() as u16 + 2 + u16::from(rule);
     let x = m.at.0.min(area.right().saturating_sub(w + 1)).max(area.x);
     let y = if m.at.1 + h < area.bottom() {
         m.at.1 + 1
@@ -1293,68 +1336,38 @@ pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: 
         m.at.1.saturating_sub(h)
     }
     .max(area.y);
-    let r = Rect {
-        x,
-        y,
-        width: w,
-        height: h,
-    };
+    let r = Rect { x, y, width: w, height: h };
     // Clicking anywhere else closes it.
     hit(app, area, ScreenHit::Close);
-    // The right-click menu uses the same card and ground as the app menu.
-    let bgm = t.bg;
-    let title = truncate(&m.title, (w - 10) as usize);
-    let mut card = super::screen::Card::new(t, &title).lit(t.accent);
-    card.bg = bgm;
-    super::screen::card(app, buf, r, &card, t);
+    let ground = t.sidebar_bg;
+    let mut card = super::screen::Card::new(t, "").lit(t.accent);
+    card.bg = ground;
+    let inside = super::screen::card(app, f.buffer_mut(), r, &card, t);
+    super::design::fill(f.buffer_mut(), inside, ground);
     hit(app, r, ScreenHit::Noop);
-    let look = super::screen::Look::of(&app.cfg.ui);
-    let mut yy = r.y + 2;
-    for (i, (label, act)) in m.items.iter().enumerate() {
-        if gap && danger(act) && i + 1 == m.items.len() {
-            let rule = "─".repeat(usize::from(w).saturating_sub(6));
-            put(f.buffer_mut(), r.x + 3, yy, &[seg(rule, Style::default().fg(t.line).bg(bgm))], r.right().saturating_sub(2));
+    let buf = f.buffer_mut();
+    let mut yy = r.y + 1;
+    for (i, ((label, act), key)) in m.items.iter().zip(&keys).enumerate() {
+        if rule && danger(act) && i + 1 == m.items.len() {
+            let line = "─".repeat(usize::from(w).saturating_sub(2));
+            put(buf, r.x + 1, yy, &[seg(line, Style::default().fg(t.line).bg(ground))], r.right() - 1);
             yy += 1;
         }
-        let row = Rect {
-            x: r.x + 1,
-            y: yy,
-            width: w - 2,
-            height: 1,
+        let row = Rect { x: r.x + 1, y: yy, width: w - 2, height: 1 };
+        let bg = if i == m.sel { t.hov } else { ground };
+        super::design::fill(buf, row, bg);
+        let st = Style::default().bg(bg);
+        let ink = match act {
+            _ if danger(act) => t.err,
+            // What a release chip offers is the accent, as the chip is.
+            Act::Tool(crate::keys::Action::Update | crate::keys::Action::Restart) => t.accent,
+            _ => t.text,
         };
-        let on = i == m.sel;
-        let bg = if on { t.hov } else { bgm };
-        if on {
-            super::screen::row_pill(look, f.buffer_mut(), row.x, yy, row.width, bg, bgm);
+        put(buf, row.x + 2, yy, &[seg(label.clone(), st.fg(ink))], row.right().saturating_sub(key_w + 2));
+        if !key.is_empty() {
+            let kx = row.right().saturating_sub(key.width() as u16 + 2);
+            put(buf, kx, yy, &[seg(key.clone(), st.fg(t.accent).add_modifier(Modifier::BOLD))], row.right());
         }
-        if i == m.sel {
-            put(
-                f.buffer_mut(),
-                row.x + 1,
-                yy,
-                &[seg(
-                    "▌",
-                    Style::default()
-                        .fg(t.accent)
-                        .bg(bg)
-                        .add_modifier(Modifier::BOLD),
-                )],
-                row.right(),
-            );
-        }
-        let mut ls = Style::default()
-            .fg(if danger(act) { t.err } else { t.strong })
-            .bg(bg);
-        if i == m.sel {
-            ls = ls.add_modifier(Modifier::BOLD);
-        }
-        put(
-            f.buffer_mut(),
-            row.x + 3,
-            yy,
-            &[seg(label.clone(), ls)],
-            row.right().saturating_sub(2),
-        );
         hit(app, row, ScreenHit::MenuPick(i));
         yy += 1;
     }

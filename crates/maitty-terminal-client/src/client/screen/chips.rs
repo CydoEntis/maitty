@@ -12,10 +12,6 @@ pub(in crate::client) enum Chip {
     Action,
     /// Information, not a button.
     Quiet,
-    /// Something needs you: amber.
-    Alert,
-    /// The red ×.
-    Close,
 }
 
 /// `text` as a chip over `outer` (the ground under its ends). Its width is `segs_width` of the
@@ -35,53 +31,7 @@ pub(in crate::client) fn chip(
         Chip::Title { focused: false } => (t.btn, Style::default().fg(t.strong).add_modifier(bold)),
         Chip::Action => (t.btn, Style::default().fg(t.accent).add_modifier(bold)),
         Chip::Quiet => (t.btn, Style::default().fg(t.muted)),
-        Chip::Alert => (
-            t.blocked,
-            Style::default().fg(t.ink_on(t.blocked)).add_modifier(bold),
-        ),
-        Chip::Close => (
-            t.err,
-            Style::default().fg(t.ink_on(t.err)).add_modifier(bold),
-        ),
     };
     pill(Look::of(&app.cfg.ui), vec![seg(text, style)], bg, outer)
 }
 
-/// Draw `chips` along the row `y` from the right edge `end` (exclusive) leftward, the first
-/// listed being the leftmost. A chip that would reach `left` is left out, and so are all the
-/// ones before it. Each is a click target for its hit (`None`: not clickable). Returns the
-/// column the leftmost drawn chip starts at.
-pub(in crate::client) fn right_chips(
-    app: &mut App,
-    buf: &mut Buffer,
-    y: u16,
-    (left, end): (u16, u16),
-    chips: Vec<(Vec<Seg>, Option<ScreenHit>)>,
-    border: Color,
-) -> u16 {
-    let mut x = end;
-    for (segs, h) in chips.into_iter().rev() {
-        let w = segs_width(&segs);
-        if x < left + w + 1 {
-            break;
-        }
-        x -= w;
-        put(buf, x, y, &segs, x + w);
-        if let Some(h) = h {
-            hit(
-                app,
-                Rect {
-                    x,
-                    y,
-                    width: w,
-                    height: 1,
-                },
-                h,
-            );
-        }
-        // A cell of border between neighbours.
-        x -= 1;
-        put(buf, x, y, &[seg("─", Style::default().fg(border))], x + 1);
-    }
-    x + 1
-}

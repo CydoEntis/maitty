@@ -268,7 +268,7 @@ agent exposes their lifecycle.
 
 Lifecycle reports are kept as child activity records after completion and
 restored with the saved pane. A working session's row shows how many helpers are
-running (`· 2 agents`; Settings › Agents › **Count on the session row**). A parent
+running (its subagent rows in the sidebar; Settings › Agents › **Subagents in the sidebar**). A parent
 ending or a child going quiet without an end event counts as unconfirmed, never
 completed.
 

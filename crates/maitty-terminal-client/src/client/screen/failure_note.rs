@@ -344,13 +344,13 @@ mod tests {
         let mut app = world(Stage::Failed);
         inbox_on_failure(&mut app);
         assert!(
-            mode_bar(&mut app).contains("· m send to agent"),
+            mode_bar(&mut app).contains("m send to agent"),
             "the Inbox"
         );
         app.mode = Mode::Normal;
         app.open_check_sheet(FAILED);
         assert!(
-            mode_bar(&mut app).contains("· m send to agent"),
+            mode_bar(&mut app).contains("m send to agent"),
             "the sheet"
         );
         let mut app = world(Stage::Passed);

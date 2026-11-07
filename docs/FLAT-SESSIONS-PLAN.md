@@ -1,6 +1,6 @@
 # Flat sessions: audit and plan (draft, 2026-11-06)
 
-Status: **built on `dev` as of 2026-11-07 (sections 7 and 8 are current; sections 1 and 7 of the first plan are superseded by 8).** The decisions in section 3 were taken on the owner's say-so; ADR 0004, ADR 0007 and `FEATURES.md` are edited to match (uncommitted). It compares the v26 spec
+Status: **built on `dev` as of 2026-11-07 (sections 7 and 8 are current for the desktop app; section 9, the redesign, is current for the TUI and supersedes 8 there).** The decisions in section 3 were taken on the owner's say-so; ADR 0004, ADR 0007 and `FEATURES.md` are edited to match (uncommitted). It compares the v26 spec
 (`Maitty Desktop specification (3).zip`: `README.md` for the desktop app, `TUI_SPEC.md` for the
 terminal app) with the repo at v0.66.0 (`dev` 5687632f). Facts come from three read-only audits
 of the daemon, the desktop app and the terminal app; guesses are marked.
@@ -166,3 +166,27 @@ view), the tab bar, and the local layout store (its sessions now group into flee
 | Sidebar mode switch in the TUI | `[Fleets or Crewmates]` | Not present | Not built (see above) |
 | Diff counts on rows | Not shown | Not shown | The data stays in the protocol; rows do not show it |
 | Status marks | A shape for every state | One glyph, colour only | Each app follows its own handoff |
+
+## 9. Round three: the redesign handoff (`design_handoff_maitty_redesign`), the TUI half
+
+Built on the `tui-redesign` branch. **It supersedes section 8 for the terminal app**: there are no fleets, ships,
+tab row or collapsed column in the TUI any more. The daemon keeps its workspaces (a new shell still starts in
+one); the TUI just does not show them. What the TUI is now: a 34-column sidebar listing each machine with its
+sessions (agents first, then shells, two lines each, colour-only status marks), the subagents of an agent's
+current turn from `TermInfo::subagent_activity`, every pane a box with a title chip and `files`, `changes`, `×`
+chips, Files and Changes sliding in inside the pane, a status bar with a `PANE` or yellow `KEYS` chip, `Ctrl+Space`
+key mode with the redesign's keys, a three-column keys help, Usage and cost, Settings with its sections down
+the left, menus with their leader keys, and "No pane open" when the last pane closes. The rules are in
+`UI.md` and `DESIGN.md`; the keys in `shortcuts.md`.
+
+**Calls taken where the handoff and the code disagree:**
+| Topic | Handoff | Call |
+| --- | --- | --- |
+| Chat view in the TUI | An agent pane drawn as a chat, subagent chats with `‹ main` | Not built, on the owner's word: an agent's pane is its own terminal (ADR 0004), and a subagent row opens its parent's pane |
+| Settings sections and rows | General, Appearance, Agents, Permissions, Notifications, Machines, Keys (placeholders) | The real sections and settings from `modal.rs`; the layout is the handoff's |
+| Settings width | 96 columns | Up to 110: real values (a hooks state, the version line) run longer |
+| `changes 2` | A file count | Shown once the Changes panel has read the files; the chip says `changes` before that |
+| Changes panel | Every file's diff stacked | The file list beside the selected file's diff stays (review marks, staging); the header is the handoff's |
+| New session form | Kind, agent, project, where, a message | The existing dialog (project, then machine; it starts a shell, ADR 0004) |
+| Project colours | Five of its own | The configured `ui.workspace_colors`, shared with the desktop app |
+| `j/k sessions` in the status bar | Shown while typing | Shown as is: they are key-mode keys, after `^space` |

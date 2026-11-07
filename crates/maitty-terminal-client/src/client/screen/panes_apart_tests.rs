@@ -193,12 +193,12 @@ fn closing_a_pane_hides_it_and_offers_undo_in_every_look() {
         assert_eq!(app.mode, Mode::Normal, "{look}: no dialog opens");
         let banner = app.closing_banner().unwrap_or_else(|| panic!("{look}: the undo offer"));
         assert!(
-            banner.text.starts_with("Closed ") && banner.text.contains("then z undo 6s"),
+            banner.text.starts_with("Closed ") && banner.text.contains("then Ctrl+Z undo 6s"),
             "{look}: {}",
             banner.text
         );
         let screen = text(&draw(&mut app, w, h));
-        assert!(screen.contains("then z undo"), "{look}: the banner is drawn:\n{screen}");
+        assert!(screen.contains("then Ctrl+Z undo"), "{look}: the banner is drawn:\n{screen}");
     }
 }
 
@@ -329,8 +329,8 @@ fn press(app: &mut App, code: KeyCode, mods: KeyModifiers) {
 fn the_pane_menu_shows_the_real_bound_keys() {
     let mut app = split_world("floating", 2);
     let rows = pane_menu(&mut app);
-    assert_eq!(key_of(&app, "Split right"), "|");
-    assert_eq!(key_of(&app, "Split down"), "-");
+    assert_eq!(key_of(&app, "Split right"), "s");
+    assert_eq!(key_of(&app, "Split down"), "S");
     assert_eq!(key_of(&app, "Close pane"), "x");
     let split = rows
         .iter()
