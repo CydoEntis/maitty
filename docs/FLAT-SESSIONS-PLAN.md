@@ -90,3 +90,35 @@ updates and states -> settings -> narrow rail. Expect to rewrite or delete most 
 
 The 793 KB prototype HTML. The spec says the README wins on behaviour and the prototype on exact
 pixels, so read it per screen when building that screen.
+
+## 7. The TUI handoff (`tui.zip`, "Maitty TUI v26") against the rest
+
+It replaces `TUI_SPEC.md` as the terminal app's spec. The desktop README still owns the desktop
+app. Where the two disagree, each app follows its own handoff, and the model underneath (the
+daemon's flat session list) is the same.
+
+**Closer to today's TUI than `TUI_SPEC.md` was (less rewrite):**
+- Keeps the bottom status bar with a mode chip and spelled-out hints (the current mode bar).
+- Keeps chips on borders, two separate frames with a one-column gap, and a bottom status bar.
+- Settings keep today's sections (General, Appearance, Sessions, Alerts, Agents, Check, Keys), with a
+  theme and spinner browser, not the eight pages of `TUI_SPEC.md`.
+- Project tools (Files, Changes, Branches, History, References) stay, as a panel from a `Project` menu.
+- No chat view in the TUI at all, which settles decision 4.
+
+**New in the TUI:** flat two-line rows (status, name, +N -N, project, machine), a filter row, a
+10-column collapsed sidebar (automatic under 110 columns), the footer update states, New session
+as a project then machine dialog, Menu and Search commands (`Ctrl+K`), the Inbox panel, four-way
+splits (`_ - \ |`), and the service and update states.
+
+**Differences between the two handoffs, and how I resolve them:**
+| Topic | Desktop README | TUI v26 | Resolution |
+| --- | --- | --- | --- |
+| New session | Project, machine, then "start as" (shell, Claude, Codex) and view | Project and machine only; every session is a shell, agents start inside | Same daemon model (a session is a shell). Each app keeps its own dialog; the TUI's Menu has "Session..." for an agent |
+| Status marks | A shape for every state, never colour alone | All states are `●`, told apart by colour; a "Status glyphs: unicode" setting for colour-blind users | Each app follows its own; the TUI setting must exist |
+| Project tools | Inspector and project actions removed | Kept as a panel | Keep the Inspector until the owner says otherwise (not in phase 2's delete list) |
+| Undo window | 6 seconds | 5 seconds | One daemon value; use 6 seconds and update the TUI copy |
+| Sidebar width | 264px, 208 to 440px | 46 columns, 24 to 60 | Each its own |
+| Settings pages | Nine, including Usage and Daemon | Seven, today's | Each its own |
+| Machine marks | Laptop and server icons | `local`, `⇄ name`, `┆ name` | Each its own |
+
+Daemon work is unchanged by this: it needs the same flat list, `Exited`, Undo and config route.
