@@ -122,3 +122,43 @@ splits (`_ - \ |`), and the service and update states.
 | Machine marks | Laptop and server icons | `local`, `⇄ name`, `┆ name` | Each its own |
 
 Daemon work is unchanged by this: it needs the same flat list, `Exited`, Undo and config route.
+
+## 8. Round two: desktop v31 and TUI v27 ("Fleets and Ships")
+
+The owner replaced both specs after the first wave landed (`dev` 8f52406e). The sources are
+`Maitty Desktop specification (4).zip` (desktop README v31 plus `TUI_SPEC_v31.md`) and
+`Sidebar design for remote and local machines (2).zip` (TUI v27). **They supersede sections 1 and 7.**
+
+**The model changes back to named groups, with different words:**
+- A **fleet** is a named group of work on one machine, with a colour and initials. A **ship** is one
+  session in a fleet (an agent or a shell). Machines are headings in the sidebar, and a fleet belongs to
+  exactly one machine. The flat single list is gone; so are the first wave's "no containers" rule and its
+  folder-badge rows.
+- The **tab bar returns**: one tab per session of the selected fleet; a session's panes (up to 4) live
+  in its tab.
+- Desktop only: a **Crewmates** mode (Captain, crewmates with chats, crews with invites). The spec itself
+  says multi-user crews need a sync service that is not designed. **Decision: not built.** The mode
+  switch shows Fleets only; crewmates and crews wait for a design of that backend.
+
+**What the daemon needs:** a fleet is what the daemon already calls a workspace (name, colour, tabs), and
+there is one daemon per machine (ADR 0007), so a workspace on a machine's daemon is a fleet on that
+machine. The commands the first wave planned to remove (`NewWorkspace`, `NewTab`, `SetGroup`,
+`SetWorkspaceColor`, `MovePane`, `PaneToWorkspace`) are therefore kept. Missing pieces, if any, are
+additive: create, rename and recolour a fleet, and move a ship between fleets. Decision 1 of section 3
+(layout belongs to each app) is reversed for the fleet and tab structure: it lives in the daemon again.
+
+**What survives from the first wave:** all daemon work (diff counts, `exit`, close with Undo, the shared
+settings route, protocol 74); the desktop New session modal, chat model picker, status marks,
+service states, shared settings, Flat default, filter, ship row pieces, rail; the TUI New session
+dialog (kept reachable from Menu), Menu, Search commands, Inbox, keys, service and update states,
+status glyph module, workspace chips. **What is rebuilt:** both sidebars (fleets above, ships below,
+machine headings, fleet rows with stacked app icons, Agents and Shells subgroups, Fleets or Priority
+view), the tab bar, and the local layout store (its sessions now group into fleets).
+
+**Conflicts between the new documents, and the call taken:**
+| Topic | Desktop v31 and `TUI_SPEC_v31.md` | TUI v27 | Call |
+| --- | --- | --- | --- |
+| Ctrl+T in the TUI | Opens the New session dialog; Ctrl+Shift+T makes a shell | Makes a shell at once, no dialog | v27 is the TUI's own handoff: Ctrl+T makes a shell; the dialog stays in the Menu as "Session..." |
+| Sidebar mode switch in the TUI | `[Fleets or Crewmates]` | Not present | Not built (see above) |
+| Diff counts on rows | Not shown | Not shown | The data stays in the protocol; rows do not show it |
+| Status marks | A shape for every state | One glyph, colour only | Each app follows its own handoff |
