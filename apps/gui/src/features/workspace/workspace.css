@@ -104,7 +104,6 @@
 .mx-sidebar-expanded { flex: 1; min-height: 0; min-width: var(--sidebar-w, 264px); display: flex; flex-direction: column; animation: v7fade .24s ease-out; }
 .mx-sidebar-head { flex: none; height: calc(48px * var(--pad, 1)); display: flex; align-items: center; gap: 8px; padding: 0 10px 0 16px; }
 .mx-sidebar-head .mx-collapse { width: 28px; height: 28px; border-radius: 8px; color: var(--muted); }
-.mx-caps { font-size: 11px; font-weight: 600; letter-spacing: .08em; color: var(--dim); }
 .mx-spacer { flex: 1; }
 .mx-new-button { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--fg); background: rgba(255, 255, 255, .05); box-shadow: inset 0 0 0 1px var(--line2); transition: background-color .14s ease, color .14s ease, transform .12s ease; }
 .mx-new-button:not(:disabled):hover { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); color: var(--accent); }
@@ -138,36 +137,10 @@
 @keyframes mx-wspin-bar { 0%, 100% { transform: scaleY(.35); } 50% { transform: scaleY(1); } }
 @keyframes mx-wspin-ping { from { transform: scale(.35); opacity: 1; } to { transform: scale(1); opacity: 0; } }
 
-.mx-count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--raise); font-size: 11px; color: var(--muted); display: flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; }
 .mx-empty-note { padding: 6px 10px; font-size: 12.5px; line-height: 1.55; color: var(--dim); text-wrap: pretty; }
 
-.mx-row-wrap { position: relative; }
-.mx-row {
-  width: 100%;
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: calc(7px * var(--pad, 1)) 8px;
-  border-radius: 10px;
-  background-color: transparent;
-  background-repeat: no-repeat;
-  animation: v8row .26s var(--ease-out);
-  transition: background-color .16s ease, box-shadow .18s ease, transform .2s var(--ease-out);
-}
-.mx-row:not(.is-selected):hover { background-color: rgba(255, 255, 255, .055); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); transform: translateX(2px); }
-.mx-row:active { transform: scale(.985); }
-.mx-row.is-selected { background-color: var(--raise); box-shadow: inset 0 0 0 1px var(--pane-line), 0 4px 12px rgba(0, 0, 0, .25); }
-.mx-row.is-moved { animation: v7moved 1.6s ease-out; }
-.mx-row-icon { position: relative; width: calc(24px * var(--icon-scale, 1)); height: calc(24px * var(--icon-scale, 1)); flex: none; margin-top: 1px; }
-.mx-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.mx-row-line1 { display: flex; align-items: center; gap: 8px; height: 20px; min-width: 0; }
-.mx-row-title { flex: 1; min-width: 0; font-size: var(--sidebar-fs, 13.5px); color: var(--fg2); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-row.is-loud .mx-row-title { color: var(--fg); font-weight: 500; }
-.mx-row:hover .mx-row-title { color: var(--fg); }
 .mx-unread { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
 /* The close button takes the row's top-right corner, so what sits there steps aside while it shows. */
-.mx-row-wrap:hover .mx-row-line1 > .mx-spin { opacity: 0; }
-.mx-row-line1 > .mx-spin { transition: opacity .14s ease; }
 
 .mx-sidebar-foot { flex: none; padding: 10px 12px 12px; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--pane-line); }
 .mx-daemon-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
@@ -188,10 +161,6 @@
 
 /* What a collapsed folder is, beside it: fixed to the window so the rail's scrolling cannot clip it. */
 .mx-rail-popover { position: fixed; z-index: 50; transform: translateY(-50%); min-width: 200px; max-width: 300px; padding: 10px 12px; border-radius: 12px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); backdrop-filter: var(--blur-pop); pointer-events: none; animation: v7fade .14s ease-out; }
-.mx-rail-row { position: relative; width: calc(40px * var(--icon-scale, 1)); height: calc(40px * var(--icon-scale, 1)); display: flex; align-items: center; justify-content: center; border-radius: 11px; transition: background-color .16s ease, box-shadow .18s ease, transform .2s var(--ease-out); }
-.mx-rail-row:not(.is-selected):hover { background: rgba(255, 255, 255, .055); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); transform: scale(1.06); }
-.mx-rail-row:active { transform: scale(.92); }
-.mx-rail-row.is-selected { background: var(--raise); box-shadow: inset 0 0 0 1px var(--pane-line), 0 4px 12px rgba(0, 0, 0, .25); }
 .mx-rail-bottom { flex: none; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 0 12px; border-top: 1px solid var(--pane-line); }
 .mx-rail-bottom .mx-daemon-dot { width: 8px; height: 8px; }
 
@@ -215,8 +184,6 @@
 .mx-app-icon.is-tinted { background: linear-gradient(140deg, var(--program-from), var(--program-to)); color: var(--on-accent); }
 
 .mx-badge { position: absolute; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px var(--card-ring); }
-.mx-row-icon .mx-badge { right: -4px; bottom: -4px; width: 14px; height: 14px; border-radius: 4px; }
-.mx-rail-row .mx-badge { right: 1px; bottom: 1px; width: 15px; height: 15px; border-radius: 4px; }
 .mx-badge { animation: v9pop .26s var(--ease-out); }
 .mx-badge.is-needs { gap: 1.5px; background: var(--warn); }
 /* A pulse is a ring on a pseudo-element that scales out and fades once, then rests. An animated
@@ -230,15 +197,16 @@
 .mx-zz { display: inline-flex; align-items: flex-start; font-family: var(--mono); font-style: italic; font-size: 8.5px; font-weight: 600; line-height: 1; }
 .mx-zz small { font-size: 6px; margin-top: -2px; }
 .mx-badge.is-error { background: color-mix(in oklab, var(--danger) 24%, var(--bg)); }
-.mx-rail-row .mx-badge.is-unknown, .mx-row-icon .mx-badge.is-unknown { width: 12px; height: 12px; border-radius: 3.5px; background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
-.mx-rail-row .mx-badge.is-working { width: 16px; height: 16px; border-radius: 50%; background: var(--well); font-family: var(--mono); font-size: 11px; line-height: 1; color: var(--accent); }
-.mx-rail-unread { position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--card-ring); }
 .mx-ov-pulse { animation: mx-ov-pulse .5s ease-out 1; }
 .mx-pause-bar { width: 2px; height: 5px; border-radius: 1px; background: var(--on-warn); }
 
 /* Tab bar */
-.mx-main-wrap { flex: 1; min-width: 0; display: flex; }
-.mx-main { flex: 1; min-width: 0; position: relative; display: flex; flex-direction: column; overflow: hidden; }
+.mx-main-wrap { flex: 1; min-width: 0; display: flex; padding: 12px; }
+/* The workspace is the second card: tabs on top, then the panes. */
+.mx-main { flex: 1; min-width: 0; position: relative; display: flex; flex-direction: column; overflow: hidden; transition: border-color .2s ease; }
+/* With a single pane the workspace's own border takes the focus; with several, the focused pane does. Never both. */
+.mx-main.is-focused-alone { border-color: var(--accent-line); }
+.mx-app[data-side="right"] .mx-sidebar { margin: 12px 12px 12px 0; }
 /* A name edited where it is shown: on a sidebar row's title line and on a tab. */
 .mx-inline-name { all: unset; box-sizing: border-box; flex: 1; min-width: 0; height: 22px; padding: 0 6px; border-radius: 6px; background: var(--well); box-shadow: inset 0 0 0 1px var(--accent-line); font: inherit; color: var(--fg); }
 .mx-inline-name::placeholder { color: var(--dim); }
@@ -290,7 +258,7 @@
    to what the elements already were. Terminal text and session names never read them. */
 .mx-pane-proc,
 .mx-statusbar { font-family: var(--ch-ff, inherit); text-transform: var(--ch-tt, inherit); letter-spacing: var(--ch-ls, inherit); }
-.mx-panes { flex: 1; min-height: 0; padding: calc(var(--ptop) * var(--pad, 1)) calc(var(--pg) * var(--pad, 1)) calc(var(--pg) * var(--pad, 1)); display: flex; flex-direction: row; gap: calc(var(--pg) * var(--pad, 1)); }
+.mx-panes { flex: 1; min-height: 0; padding: 2px calc(var(--pg) * var(--pad, 1)) calc(var(--pg) * var(--pad, 1)); display: flex; flex-direction: row; gap: calc(var(--pg) * var(--pad, 1)); }
 .mx-app.is-narrow .mx-panes { flex-direction: column; }
 .mx-pane-column { flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: calc(var(--pg) * var(--pad, 1)); }
 .mx-pane {
@@ -314,15 +282,21 @@
 .mx-pane:hover { border-color: var(--line2); }
 /* A terminal pane is one surface: the header and the text sit on the terminal's own ground, so the terminal does not read as a box inside the card. */
 .mx-pane.is-terminal { background: var(--term); }
-.mx-pane.is-focused, .mx-pane.is-focused:hover { border-color: var(--accent-line); box-shadow: 0 0 0 1px var(--accent-line), var(--sh); }
-/* The focus ring flashes once, as opacity on a pseudo-element; animating its box-shadow would repaint the pane. */
-.mx-pane.is-focused::after { content: ''; position: absolute; inset: -1px; border: 2px solid var(--accent); border-radius: inherit; pointer-events: none; animation: v14focus .45s ease-out forwards; }
+.mx-pane.is-focused, .mx-pane.is-focused:hover { border-color: transparent; }
+/* One focus border: with several panes the focused one gets a 1.5px inset ring, drawn over its terminal. */
+.mx-pane.is-focused::after { content: ''; position: absolute; inset: 0; z-index: 4; border-radius: inherit; box-shadow: inset 0 0 0 1.5px var(--accent-line); pointer-events: none; }
 .mx-pane.is-drop-target { outline: 2px dashed var(--accent); }
-.mx-pane-head { flex: none; height: calc(44px * var(--pad, 1)); display: flex; align-items: center; gap: 10px; padding: 0 8px 0 14px; cursor: default; }
+.mx-pane-head { flex: none; height: calc(42px * var(--pad, 1)); display: flex; align-items: center; gap: 10px; padding: 0 8px 0 12px; cursor: default; }
 .mx-pane-head.is-draggable { cursor: grab; }
-.mx-pane-title { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; white-space: nowrap; overflow: hidden; }
-.mx-pane-proc { font-size: var(--ch-fs-md, 14px); font-weight: 600; color: var(--fg); }
-.mx-pane-cwd { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.mx-pane-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; white-space: nowrap; overflow: hidden; }
+.mx-pane-proc { font-size: 13px; line-height: 17px; font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; }
+.mx-pane-where { display: flex; align-items: center; gap: 8px; min-width: 0; line-height: 14px; }
+.mx-pane-cwd { font-size: 11px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
+.mx-pane-branch { display: flex; align-items: center; gap: 4px; flex: none; font-family: var(--mono); font-size: 10.5px; color: var(--ansi-mag); }
+.mx-pane-icon { position: relative; width: 26px; height: 26px; flex: none; }
+.mx-pane-icon .mx-badge { right: -4px; bottom: -4px; width: 14px; height: 14px; border-radius: 4px; }
+.mx-pane-icon .mx-badge.is-working { width: 15px; height: 15px; border-radius: 50%; background: var(--well); font-family: var(--mono); font-size: 11px; line-height: 1; color: var(--accent); }
+.mx-pane-icon .mx-badge.is-unknown { width: 12px; height: 12px; border-radius: 3.5px; background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
 .mx-pill { height: 22px; display: flex; align-items: center; gap: 6px; padding: 0 9px; border-radius: 999px; font-size: 11.5px; white-space: nowrap; flex: none; }
 .mx-status-pill { font-weight: 500; font-variant-numeric: tabular-nums; }
 .mx-status-pill.is-working { background: var(--accent-soft); color: var(--accent); }
@@ -330,7 +304,6 @@
 .mx-status-pill.is-done { background: rgba(141, 184, 155, .12); color: var(--ok); }
 .mx-status-pill.is-error { background: var(--danger-soft); color: var(--danger); }
 .mx-status-pill.is-unknown { background: rgba(255, 255, 255, .05); color: var(--muted); }
-.mx-repo-pill { background: rgba(255, 255, 255, .04); box-shadow: inset 0 0 0 1px var(--pane-line); color: var(--fg2); }
 .mx-pane-controls { display: flex; align-items: center; gap: 0; margin-left: 2px; }
 .mx-pane-control { width: 28px; height: 28px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--dim); transition: background-color .14s ease, color .14s ease, transform .12s ease; }
 .mx-pane-control:not(:disabled):hover { background: rgba(255, 255, 255, .09); color: var(--fg); }
@@ -454,12 +427,10 @@
 /* Reduce motion (the setting or the system's) stops slides, lifts and pulses; spinners
    show one frame. */
 .mx-app[data-motion="reduced"] *, .mx-app[data-motion="reduced"] *::before, .mx-app[data-motion="reduced"] *::after { animation: none !important; transition: none !important; }
-.mx-app[data-motion="reduced"] .mx-row:hover,
-.mx-app[data-motion="reduced"] .mx-rail-row:hover,
 .mx-app[data-motion="reduced"] .mx-theme-card:hover { transform: none; }
 @media (prefers-reduced-motion: reduce) {
   .mx-app *, .mx-app *::before, .mx-app *::after { animation: none !important; transition: none !important; }
-  .mx-app .mx-row:hover, .mx-app .mx-rail-row:hover, .mx-app .mx-theme-card:hover { transform: none; }
+  .mx-app .mx-theme-card:hover { transform: none; }
 }
 
 /* A session's state in the pane's bottom-right corner; the popover says what it means. */
@@ -514,9 +485,7 @@
 .mx-rename-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .mx-text-button.is-primary { background: var(--accent); color: var(--on-accent); box-shadow: none; font-weight: 600; }
 .mx-text-button.is-primary:not(:disabled):hover { background: var(--accent); filter: brightness(1.08); color: var(--on-accent); }
-.mx-pane-name { font-size: 13px; color: var(--accent); overflow: hidden; text-overflow: ellipsis; }
 
-.mx-row.is-swapped { animation: v18grow .28s var(--ease-out); }
 
 /* Every session of a project, beside the sidebar */
 .mx-menu-scrim { position: fixed; inset: 0; z-index: 34; }
@@ -782,8 +751,6 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 :root[data-finish="flat"] .mx-pane,
 :root[data-finish="flat"] .mx-card { box-shadow: none; }
 :root[data-finish="flat"] .mx-inbox { box-shadow: 0 22px 60px rgba(0, 0, 0, .5); }
-:root[data-finish="flat"] .mx-pane.is-focused,
-:root[data-finish="flat"] .mx-pane.is-focused:hover { box-shadow: 0 0 0 3px var(--accent-soft); }
 :root[data-finish="flat"] .mx-sidebar { box-shadow: none; }
 :root[data-finish="flat"] .mx-settings { background: var(--main); box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
 :root[data-finish="flat"] .mx-settings-scrim { backdrop-filter: none; }
@@ -791,10 +758,6 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 /* Settings › Appearance › Icons: Grayscale. Neutral app icons in either style; status badges on them keep their colours. */
 :root[data-icons="grayscale"] .mx-app-icon { background: var(--raise); box-shadow: none; color: var(--fg2); }
 /* No outlines on the selected row, hovered rows or the open tab: the fill says it. */
-:root[data-finish="flat"] .mx-row.is-selected,
-:root[data-finish="flat"] .mx-rail-row.is-selected { box-shadow: none; }
-:root[data-finish="flat"] .mx-row:not(.is-selected):hover,
-:root[data-finish="flat"] .mx-rail-row:not(.is-selected):hover { box-shadow: none; transform: none; }
 
 /* Top-bar buttons and status badges stay flat: no gradient, glow, lift or entrance. */
 :root[data-finish="flat"] .mx-inbox-button { background: var(--strip-bg, rgba(255, 255, 255, .025)); box-shadow: var(--strip-ring, inset 0 0 0 1px var(--pane-line)); }
@@ -827,7 +790,7 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
      shadow only on short-lived popovers. */
   --card: var(--main); --sh: inset 0 1px 0 rgba(255, 255, 255, .045); --blur-pop: blur(14px) saturate(1.2); --sh-pop: 0 16px 40px rgba(0, 0, 0, .45);
   --glow-accent: 10%; --glow-mag: 7%;
-  --sbm: 8px 0 8px 8px; --sbw: 1px; --tba: center; --tl: 4px; --edge: 8px; --tsh: 32px; --tsw: 26px; --ibh: 30px;
+  --sbm: 12px 0 12px 12px; --sbw: 1px; --tba: center; --tl: 4px; --edge: 8px; --tsh: 32px; --tsw: 26px; --ibh: 30px;
 }
 .mx-app[data-theme-kind="light"] { --tbar: var(--main); --sh: none; --sh-pop: 0 12px 32px rgba(17, 24, 32, .14), 0 0 0 1px rgba(17, 22, 27, .08); --glow-accent: 9%; --glow-mag: 6%; }
 :root[data-style="flat"] .mx-app { --r14: 8px; --r16: 10px; }
@@ -969,7 +932,7 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 @container panehead (max-width: 600px) {
   .mx-pane-control.is-foldable { display: none; }
   .mx-pane-more { display: inline-flex; align-items: center; justify-content: center; }
-  .mx-usage-pill, .mx-repo-pill { display: none; }
+  .mx-usage-pill { display: none; }
 }
 @container panehead (max-width: 420px) { .mx-pane-cwd { display: none; } }
 
@@ -988,20 +951,7 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 .mx-filter-clear { flex: none; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--dim); }
 .mx-filter-clear:hover { color: var(--fg); background: var(--hover, rgba(255, 255, 255, .06)); }
 .mx-sidebar-list { gap: 2px; }
-.mx-row { min-height: calc(52px * var(--pad, 1)); padding: 8px; animation: none; }
-.mx-row:not(.is-selected):hover { transform: none; }
-.mx-row-text { min-height: 36px; }
-.mx-row-title { font-weight: 600; color: var(--fg); }
-.mx-row-diff { flex: none; display: inline-flex; gap: 5px; font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; }
-.mx-row-diff .is-add { color: var(--ok); }
-.mx-row-diff .is-del { color: var(--danger); }
-.mx-row-folder { position: absolute; left: calc(8px + 24px * var(--icon-scale, 1) + 10px); bottom: 7px; max-width: calc(100% - 110px); height: 18px; display: inline-flex; align-items: center; gap: 4px; padding: 0 4px; border-radius: 5px; font-size: 11.5px; color: var(--dim); }
-.mx-row-folder span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mx-row-folder:hover { color: var(--fg); background: var(--hover, rgba(255, 255, 255, .06)); }
-.mx-row-machine { position: absolute; right: 12px; bottom: 8px; display: inline-flex; color: var(--dim); }
-.mx-row-machine.is-away svg { opacity: .6; stroke-dasharray: 2.5 2.5; }
 .mx-sidebar.is-rail { width: 60px; }
 .mx-app-icon.size-32 { width: 32px; height: 32px; border-radius: 9px; font-size: 13px; }
-.mx-rail-row { width: 44px; height: 44px; }
 .mx-sc-phrase { margin: 8px 0 0; font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--fg2); overflow-wrap: anywhere; }
 .mx-app[data-side="right"] .mx-drawer { left: auto; right: 0; }

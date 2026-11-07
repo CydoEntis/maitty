@@ -1,17 +1,29 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { displayName, matchesFilter, STATUS_WORD, type SessionView } from '../model/session'
+import type { Fleet } from '@/api/fleets'
+import { aboard, emptyShipsNote, fleetKeyOf, fleetsOfMachine, isFreeFleetName, machineTitle, needsCount, priorityGroups, shipsOf, visibleFleets } from '../model/fleets'
+import type { PaneView } from '../model/chatView'
+import type { MachineHead } from '../model/machines'
+import { matchesFilter, type SessionView } from '../model/session'
 import type { SessionTrack } from '../model/tracking'
 import { SidebarResizer } from './SidebarResizer'
-import { AppIcon, Icon, StatusBadge } from './glyphs'
-import { SessionRow } from './SessionRow'
-import { useSessionMenu } from './SessionMenu'
+import { Icon } from './glyphs'
+import { Collapse, SectionHead } from './Collapse'
+import { FleetRow, FleetTile } from './FleetRow'
+import { MAX_FLEET_NAME_LENGTH } from './fleetStyle'
+import { InlineName } from './InlineName'
+import { ShipRow } from './ShipRow'
 import { RailPopoverLayer } from './RailPopovers'
-import { useRailHover, type RailHover } from './railHover'
+import { useRailHover } from './railHover'
 import { useTipWithKeys } from '@/features/shortcuts/platform'
 
 export type SidebarProps = {
-  /** Every session, in creation order. The filter field narrows what shows; it never reorders. */
+  /** Every ship of every machine, in creation order. The filter narrows what shows; it never reorders. */
   sessions: readonly SessionView[]
+  /** Every fleet of every machine, in the daemon's order. */
+  fleets: readonly Fleet[]
+  /** The machine headings: this computer first, then the others. */
+  machines: readonly MachineHead[]
+  selectedFleet: string | null
   focusedId: string | null
   tracks: ReadonlyMap<string, SessionTrack>
   mode: 'docked' | 'rail'
@@ -30,7 +42,16 @@ export type SidebarProps = {
   inboxCount: number
   inboxNeeds: boolean
   onOpenInbox: () => void
-  onNewSession: () => void
+  /** The header's three starters: a chat in the current fleet, a shell there, and the Add machine page. */
+  onNewAgentChat: () => void
+  onNewShell: () => void
+  onAddMachine: () => void
+  onSelectFleet: (key: string) => void
+  /** Makes a fleet on a machine; the sidebar waits for it so a failed name stays in the field. */
+  onAddFleet: (machine: number, name: string) => void
+  onRenameFleet: (fleet: Fleet, name: string) => void
+  /** The view a ship shows, for the terminal or chat mark on its row. */
+  viewOf: (session: SessionView) => PaneView
   onShowSession: (id: string) => void
   onEndSession: (id: string) => void
   onSetName: (id: string, name: string) => void
@@ -41,9 +62,9 @@ export type SidebarProps = {
   onSplitSession: (id: string, direction: 'right' | 'down') => void
   onCopyPath: (id: string) => void
   onOpenSettings: () => void
-  /** The footer's left slot while the daemon is reachable: the version, or an update that needs you. */
+  /** The footer's left slot (version, update). The caller owns the updater. */
   updateSlot: ReactNode
-  /** The rail's download button, present only while an update exists. */
+  /** The update button in the rail's foot. */
   railUpdateSlot: ReactNode
 }
 
@@ -70,6 +91,19 @@ function InboxButton({ count, needs, onClick, rail = false }: { count: number; n
   )
 }
 
+/** The three starters, in the order the design gives them. `rail` stacks them as the rail's buttons. */
+function StartButtons({ props, rail = false }: { props: SidebarProps; rail?: boolean }) {
+  const tip = useTipWithKeys()
+  const cls = rail ? 'mx-icon-button mx-rail-button mx-rail-new' : 'mx-new-button'
+  return (
+    <>
+      <button type="button" className={cls} aria-label="New agent chat" title={tip('New agent chat', 'new-agent-chat')} disabled={!props.canStart} onClick={props.onNewAgentChat}><Icon name="chatPlus" size={15} /></button>
+      <button type="button" className={cls} aria-label="New shell" title={tip('New shell', 'new-terminal')} disabled={!props.canStart} onClick={props.onNewShell}><Icon name="terminal" size={15} /></button>
+      <button type="button" className={cls} aria-label="Add a remote machine" title="Add a remote machine" onClick={props.onAddMachine}><Icon name="serverPlus" size={15} /></button>
+    </>
+  )
+}
+
 /** `/` focuses the filter from anywhere outside a pane or another field. */
 function useSlashFocus(input: React.RefObject<HTMLInputElement | null>) {
   useEffect(() => {
@@ -85,21 +119,63 @@ function useSlashFocus(input: React.RefObject<HTMLInputElement | null>) {
   }, [input])
 }
 
+/** Which sections are folded. A key is in the set while its section is closed. */
+function useFolds() {
+  const [folded, setFolded] = useState<ReadonlySet<string>>(new Set())
+  const toggle = (key: string) => { setFolded((current) => { const next = new Set(current); if (!next.delete(key)) next.add(key); return next }) }
+  return { isOpen: (key: string) => !folded.has(key), toggle }
+}
+
+type ShipsView = 'fleets' | 'priority'
+
 function Expanded(props: SidebarProps) {
-  const { sessions, online } = props
+  const { sessions, fleets, machines, online } = props
   const tip = useTipWithKeys()
   const hover = useRailHover()
   const input = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
+  const [view, setView] = useState<ShipsView>('fleets')
+  const [adding, setAdding] = useState<number | null>(null)
+  const folds = useFolds()
   useSlashFocus(input)
-  const shown = sessions.filter((session) => matchesFilter(session, query))
+  const selected = fleets.find((fleet) => fleet.key === props.selectedFleet)
+  const listed = visibleFleets(fleets, sessions, query)
+  const fleetShips = selected ? aboard(sessions, fleets, selected.key) : []
+  const matching = fleetShips.filter((ship) => matchesFilter(ship, query))
+  const { agents, shells } = shipsOf(matching)
+  const priority = priorityGroups(sessions.filter((ship) => matchesFilter(ship, query)))
+  const priorityTotal = priority.reduce((sum, group) => sum + group.ships.length, 0)
+  const otherMatch = listed.find((fleet) => fleet.key !== selected?.key)?.name ?? null
+  const shipCount = view === 'fleets' ? matching.length : priorityTotal
+  const fleetNameOf = (ship: SessionView) => fleets.find((fleet) => fleet.key === fleetKeyOf(ship.machine, ship.fleet, fleets))?.name
+
+  const row = (session: SessionView, fleetName?: string) => (
+    <ShipRow
+      key={session.id}
+      session={session}
+      track={props.tracks.get(session.id)}
+      selected={session.id === props.focusedId}
+      online={online}
+      view={props.viewOf(session)}
+      {...(fleetName === undefined ? {} : { fleetName })}
+      portalContainer={props.portalContainer}
+      hover={hover}
+      onShow={() => { props.onShowSession(session.id) }}
+      onSetName={(name) => { props.onSetName(session.id, name) }}
+      onPin={(pinned) => { props.onPinSession(session.id, pinned) }}
+      onSplit={(direction) => { props.onSplitSession(session.id, direction) }}
+      onCopyPath={() => { props.onCopyPath(session.id) }}
+      onEnd={() => { props.onEndSession(session.id) }}
+    />
+  )
+
   return (
     <div className="mx-sidebar-expanded">
       <RailPopoverLayer hover={hover} sessions={sessions} tracks={props.tracks} portalContainer={props.portalContainer} />
       <div className="mx-sidebar-head">
         <button type="button" className="mx-icon-button mx-collapse" aria-label="Collapse sidebar" title={tip('Collapse sidebar', 'toggle-sidebar')} onClick={props.onToggleRail}><Icon name="collapse" /></button>
-        <button type="button" className="mx-new-button" aria-label="New session" title={tip('New session', 'new-session')} disabled={!props.canStart} onClick={props.onNewSession}><Icon name="plus" size={15} /></button>
         <span className="mx-spacer" />
+        <StartButtons props={props} />
         <InboxButton count={props.inboxCount} needs={props.inboxNeeds} onClick={props.onOpenInbox} />
       </div>
       <div className="mx-filter">
@@ -123,27 +199,103 @@ function Expanded(props: SidebarProps) {
         />
         {query === '' ? <kbd className="mx-filter-hint" aria-hidden="true">/</kbd> : <button type="button" className="mx-filter-clear" aria-label="Clear filter" onClick={() => { setQuery(''); input.current?.focus() }}><Icon name="close" size={11} /></button>}
       </div>
-      <div className="mx-sidebar-list" role="list" aria-label="Sessions">
-        {shown.map((session) => (
-          <SessionRow
-            key={session.id}
-            session={session}
-            track={props.tracks.get(session.id)}
-            selected={session.id === props.focusedId}
-            online={online}
-            portalContainer={props.portalContainer}
-            hover={hover}
-            onShow={() => { props.onShowSession(session.id) }}
-            onFilterFolder={setQuery}
-            onSetName={(name) => { props.onSetName(session.id, name) }}
-            onPin={(pinned) => { props.onPinSession(session.id, pinned) }}
-            onSplit={(direction) => { props.onSplitSession(session.id, direction) }}
-            onCopyPath={() => { props.onCopyPath(session.id) }}
-            onEnd={() => { props.onEndSession(session.id) }}
-          />
-        ))}
-        {sessions.length === 0 && <div className="mx-empty-note">No sessions yet. New session starts one.</div>}
-        {sessions.length > 0 && shown.length === 0 && <div className="mx-empty-note">No session matches “{query}”.</div>}
+      <div className="mx-sidebar-list">
+        <section aria-label="Fleets" className="mx-group">
+          <SectionHead label="FLEETS" open={folds.isOpen('fleets')} onToggle={() => { folds.toggle('fleets') }} />
+          <Collapse open={folds.isOpen('fleets')}>
+            {machines.map((head) => {
+              const own = fleetsOfMachine(listed, head.machine)
+              if (query.trim() !== '' && own.length === 0) return null
+              const key = `machine-${head.key}`
+              const away = head.down
+              return (
+                <div key={head.key} className={`mx-machine${away ? ' is-away' : ''}`}>
+                  <SectionHead
+                    label={machineTitle(head)}
+                    icon={<Icon name={head.name === null ? 'laptop' : 'server'} size={13} />}
+                    open={folds.isOpen(key)}
+                    onToggle={() => { folds.toggle(key) }}
+                    className="is-machine"
+                  >
+                    <span className={`mx-machine-dot${away ? ' is-offline' : ''}`} role="img" aria-label={away ? `${machineTitle(head)} is ${head.chip?.word ?? 'away'}` : `${machineTitle(head)} is connected`} title={head.why ?? head.chip?.word ?? 'connected'} />
+                    <button type="button" className="mx-icon-button mx-machine-add" aria-label={`Add a fleet on ${machineTitle(head)}`} title={`Add a fleet on ${machineTitle(head)}`} disabled={away || !props.canStart} onClick={() => { if (!folds.isOpen(key)) folds.toggle(key); setAdding(head.machine) }}><Icon name="plus" size={13} /></button>
+                  </SectionHead>
+                  <Collapse open={folds.isOpen(key)}>
+                    <div className="mx-fleet-list">
+                      {own.map((fleet) => (
+                        <FleetRow
+                          key={fleet.key}
+                          fleet={fleet}
+                          ships={aboard(sessions, fleets, fleet.key)}
+                          selected={fleet.key === selected?.key}
+                          dimmed={away}
+                          onSelect={() => { props.onSelectFleet(fleet.key) }}
+                          onRename={(name) => { props.onRenameFleet(fleet, name) }}
+                        />
+                      ))}
+                      {adding === head.machine && (
+                        <div className="mx-fleet is-editing" role="group" aria-label={`New fleet on ${machineTitle(head)}`}>
+                          <span className="mx-fleet-tile is-row is-new" aria-hidden="true"><Icon name="plus" size={12} /></span>
+                          <InlineName
+                            value=""
+                            placeholder="Fleet name"
+                            label={`Name for the new fleet on ${machineTitle(head)}`}
+                            maxLength={MAX_FLEET_NAME_LENGTH}
+                            onCommit={(name) => { setAdding(null); if (isFreeFleetName(fleets, head.machine, name)) props.onAddFleet(head.machine, name) }}
+                            onCancel={() => { setAdding(null) }}
+                          />
+                        </div>
+                      )}
+                      {own.length === 0 && adding !== head.machine && <div className="mx-empty-note">No fleets here yet. Use + to add one.</div>}
+                    </div>
+                  </Collapse>
+                </div>
+              )
+            })}
+            {query.trim() !== '' && listed.length === 0 && <div className="mx-empty-note">No fleet matches “{query.trim()}”.</div>}
+          </Collapse>
+        </section>
+
+        <section aria-label="Ships" className="mx-group">
+          <SectionHead label="SHIPS" count={shipCount} open={folds.isOpen('ships')} onToggle={() => { folds.toggle('ships') }}>
+            <span className="mx-view-switch" role="radiogroup" aria-label="Ships view">
+              <button type="button" role="radio" aria-checked={view === 'fleets'} aria-label="Selected fleet" title="Ships of the selected fleet" className={view === 'fleets' ? 'is-on' : ''} onClick={() => { setView('fleets') }}><Icon name="fleets" /></button>
+              <button type="button" role="radio" aria-checked={view === 'priority'} aria-label="Priority" title="Every agent, most urgent first" className={view === 'priority' ? 'is-on' : ''} onClick={() => { setView('priority') }}><Icon name="priority" /></button>
+            </span>
+          </SectionHead>
+          <Collapse open={folds.isOpen('ships')}>
+            {view === 'fleets' && (
+              <>
+                {agents.length > 0 && (
+                  <div className="mx-ship-group">
+                    <SectionHead label="Agents" count={agents.length} open={folds.isOpen('agents')} onToggle={() => { folds.toggle('agents') }} className="is-sub" />
+                    <Collapse open={folds.isOpen('agents')}><div className="mx-ship-list" role="list" aria-label="Agents">{agents.map((ship) => row(ship))}</div></Collapse>
+                  </div>
+                )}
+                {shells.length > 0 && (
+                  <div className="mx-ship-group">
+                    <SectionHead label="Shells" count={shells.length} open={folds.isOpen('shells')} onToggle={() => { folds.toggle('shells') }} className="is-sub" />
+                    <Collapse open={folds.isOpen('shells')}><div className="mx-ship-list" role="list" aria-label="Shells">{shells.map((ship) => row(ship))}</div></Collapse>
+                  </div>
+                )}
+                {matching.length === 0 && (
+                  <div className="mx-empty-note">{selected ? emptyShipsNote({ fleetName: selected.name, query, hasShips: fleetShips.length > 0, otherMatch }) : 'Nothing aboard yet. Use + to start a session.'}</div>
+                )}
+              </>
+            )}
+            {view === 'priority' && (
+              <>
+                {priority.map((group) => (
+                  <div key={group.id} className="mx-ship-group">
+                    <SectionHead label={group.title} count={group.ships.length} open={folds.isOpen(`p-${group.id}`)} onToggle={() => { folds.toggle(`p-${group.id}`) }} className="is-sub" />
+                    <Collapse open={folds.isOpen(`p-${group.id}`)}><div className="mx-ship-list" role="list" aria-label={group.title}>{group.ships.map((ship) => row(ship, fleetNameOf(ship)))}</div></Collapse>
+                  </div>
+                ))}
+                {priorityTotal === 0 && <div className="mx-empty-note">{query.trim() === '' ? 'No agents are running. Use the chat button above to start one.' : `No agent matches “${query.trim()}”.`}</div>}
+              </>
+            )}
+          </Collapse>
+        </section>
       </div>
       <div className="mx-sidebar-foot">
         {online
@@ -155,68 +307,44 @@ function Expanded(props: SidebarProps) {
   )
 }
 
-/** A collapsed session: its icon and badge, and a card beside it that says what is going on. */
-function RailSessionButton(props: { session: SessionView; track: SessionTrack | undefined; selected: boolean; online: boolean; portalContainer: HTMLElement | null; hover: RailHover; onShow: () => void; onSetName: () => void; onPin: (pinned: boolean) => void; onSplit: (direction: 'right' | 'down') => void; onCopyPath: () => void; onEnd: () => void }) {
-  const { session, track, selected, hover } = props
-  const menu = useSessionMenu(session, { online: props.online, portalContainer: props.portalContainer, onSplit: props.onSplit, onCopyPath: props.onCopyPath, onRename: props.onSetName, onPin: props.onPin, onEnd: props.onEnd })
-  const unread = Boolean(track?.unread) && !selected
-  const words = `${displayName(session)}, ${session.process}, ${STATUS_WORD[session.status]}`
-  return (
-    <>
-      <button
-        type="button"
-        className={`mx-rail-row${selected ? ' is-selected' : ''}`}
-        aria-label={words}
-        data-hovercard=""
-        aria-current={selected ? 'page' : undefined}
-        onMouseEnter={(event) => { hover.enter(session.id, event.currentTarget) }}
-        onMouseLeave={hover.leave}
-        onFocus={(event) => { hover.enter(session.id, event.currentTarget) }}
-        onBlur={hover.leave}
-        onContextMenu={(event) => { hover.close(); menu.onContextMenu(event) }}
-        onClick={props.onShow}
-      >
-        <AppIcon process={session.process} size={32} dimmed={session.status === 'unknown'} />
-        <StatusBadge status={session.status} rail />
-        {unread && <span className="mx-rail-unread" />}
-      </button>
-      {menu.element}
-    </>
-  )
+/** The words a rail tile says: the fleet, its machine and how many ships need you. */
+function railWords(fleet: Fleet, head: MachineHead | undefined, needs: number): string {
+  const where = head === undefined ? '' : ` on ${machineTitle(head)}`
+  return `${fleet.name}${where}${needs > 0 ? `, ${String(needs)} need you` : ''}`
 }
 
 function Rail(props: SidebarProps) {
-  const { sessions, focusedId, tracks, online } = props
+  const { sessions, fleets, machines, online } = props
   const tip = useTipWithKeys()
-  const hover = useRailHover()
   const label = online ? `maittyd · ${String(sessions.length)} sessions` : 'Reconnecting to maittyd…'
   return (
     <div className="mx-rail">
-      <RailPopoverLayer hover={hover} sessions={sessions} tracks={tracks} portalContainer={props.portalContainer} />
       <div className="mx-rail-top">
         <button type="button" className="mx-icon-button mx-rail-button" aria-label="Expand sidebar" title={tip('Expand sidebar', 'toggle-sidebar')} onClick={props.onToggleRail}><Icon name="expand" /></button>
-        <button type="button" className="mx-icon-button mx-rail-button mx-rail-new" aria-label="New session" title={tip('New session', 'new-session')} disabled={!props.canStart} onClick={props.onNewSession}><Icon name="plus" /></button>
+        <StartButtons props={props} rail />
         <InboxButton rail count={props.inboxCount} needs={props.inboxNeeds} onClick={props.onOpenInbox} />
       </div>
       <div className="mx-rail-divider" />
-      <div className="mx-rail-list mx-no-scrollbar">
-        {sessions.map((session) => (
-          <RailSessionButton
-            key={session.id}
-            session={session}
-            track={tracks.get(session.id)}
-            selected={session.id === focusedId}
-            online={online}
-            portalContainer={props.portalContainer}
-            hover={hover}
-            onShow={() => { props.onShowSession(session.id) }}
-            onSetName={() => { props.onRenameSession(session.id) }}
-            onPin={(pinned) => { props.onPinSession(session.id, pinned) }}
-            onSplit={(direction) => { props.onSplitSession(session.id, direction) }}
-            onCopyPath={() => { props.onCopyPath(session.id) }}
-            onEnd={() => { props.onEndSession(session.id) }}
-          />
-        ))}
+      <div className="mx-rail-list mx-no-scrollbar" role="group" aria-label="Fleets">
+        {fleets.map((fleet) => {
+          const head = machines.find((candidate) => candidate.machine === fleet.machine)
+          const ships = aboard(sessions, fleets, fleet.key)
+          const needs = needsCount(ships)
+          const words = railWords(fleet, head, needs)
+          return (
+            <button
+              key={fleet.key}
+              type="button"
+              className={`mx-rail-fleet${fleet.key === props.selectedFleet ? ' is-selected' : ''}${head?.down ? ' is-dimmed' : ''}`}
+              aria-label={words}
+              aria-current={fleet.key === props.selectedFleet ? 'true' : undefined}
+              title={words}
+              onClick={() => { props.onSelectFleet(fleet.key) }}
+            >
+              <FleetTile fleet={fleet} needs={needs} size="rail" />
+            </button>
+          )
+        })}
       </div>
       <div className="mx-rail-bottom">
         {props.railUpdateSlot}

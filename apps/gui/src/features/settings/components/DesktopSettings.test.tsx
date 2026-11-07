@@ -388,7 +388,7 @@ describe('appearance section', () => {
 })
 
 function box(kind: RemoteMachine['state']['state'], why: string | null = null): RemoteMachine {
-  return { state: { machine: 1, name: 'box', state: kind, why, attempt: null, since: Date.now() - 180_000 }, conversations: [], heard: true }
+  return { state: { machine: 1, name: 'box', state: kind, why, attempt: null, since: Date.now() - 180_000 }, conversations: [], fleets: [], heard: true }
 }
 
 describe('the Machines page', () => {

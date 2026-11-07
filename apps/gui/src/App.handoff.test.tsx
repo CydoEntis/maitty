@@ -75,11 +75,6 @@ vi.mock('./TerminalView', () => ({
 
 const HOME = '/home/casey'
 
-/** Folds the docked sidebar to its rail, as a user does. */
-async function collapseSidebar() {
-  await userEvent.setup().click(await screen.findByRole('button', { name: 'Collapse sidebar' }))
-}
-
 function term(pane: number, cwd: string, extra: Partial<Conversation> = {}): Conversation {
   return {
     id: `t${String(pane)}`,
@@ -132,7 +127,7 @@ describe('desktop terminal multiplexer', () => {
 
     expect(await screen.findByRole('heading', { name: 'No sessions running' })).toBeInTheDocument()
     expect(screen.getByText(/A new session opens a shell in/)).toHaveTextContent('A new session opens a shell in ~. cd into a project')
-    expect(screen.getByText('No sessions yet. New session starts one.')).toBeInTheDocument()
+    expect(screen.getByText('Nothing aboard yet. Use + to start a session.')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Change start folder' }))
     const dialog = screen.getByRole('dialog', { name: 'Settings' })
@@ -152,7 +147,7 @@ describe('desktop terminal multiplexer', () => {
     expect(daemon.startChatSession).not.toHaveBeenCalled()
     expect(await screen.findByRole('region', { name: 'Shell in ~' })).toHaveTextContent('Pane 5')
     expect(screen.getByRole('region', { name: /^Terminal 1: ~/ })).toBeInTheDocument()
-    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('tab')).toHaveLength(1)
   })
 
   it('starts the default agent in a new shell in the home folder with Ctrl+T, and opens it as a chat', async () => {
@@ -294,8 +289,10 @@ describe('desktop terminal multiplexer', () => {
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
     renderDesktopApp()
 
+    // One focus border: with a single pane the workspace takes it, not the pane.
     const pane = await screen.findByRole('region', { name: 'Terminal 1: ~/a, focused' })
-    expect(pane).toHaveClass('is-focused')
+    expect(pane).not.toHaveClass('is-focused')
+    expect(document.querySelector('.mx-main')).toHaveClass('is-focused-alone')
   })
 
   it('takes the border off the focused pane on a click outside the panes, and puts it back on a click in one', async () => {
@@ -305,10 +302,10 @@ describe('desktop terminal multiplexer', () => {
     await screen.findByRole('region', { name: 'Terminal 1: ~/a, focused' })
 
     await user.click(screen.getByRole('navigation', { name: 'Sessions' }))
-    expect(screen.getByRole('region', { name: 'Terminal 1: ~/a' })).not.toHaveClass('is-focused')
+    expect(document.querySelector('.mx-main')).not.toHaveClass('is-focused-alone')
 
     await user.click(screen.getByRole('region', { name: 'Terminal 1: ~/a' }))
-    expect(screen.getByRole('region', { name: 'Terminal 1: ~/a, focused' })).toHaveClass('is-focused')
+    expect(document.querySelector('.mx-main')).toHaveClass('is-focused-alone')
   })
 
   it('leaves an idle pane without a status chip and an idle row without a state line', async () => {
@@ -362,7 +359,7 @@ describe('desktop terminal multiplexer', () => {
     await waitFor(() => { expect(daemon.renameConversationOnDaemon).toHaveBeenCalledWith({ id: 't2' }, 'Login fix') })
     expect(within(sidebar).queryByRole('textbox', { name: /^Name for / })).not.toBeInTheDocument()
     await within(sidebar).findByRole('button', { name: /^Login fix, shell, / })
-    expect(document.querySelector('.mx-pane-name')).toHaveTextContent('Login fix')
+    expect(document.querySelector('.mx-pane-proc')).toHaveTextContent('Login fix')
   })
 
   it('cancels an in-place rename with Escape and sends nothing, and an empty name clears it', async () => {
@@ -392,7 +389,7 @@ describe('desktop terminal multiplexer', () => {
     const sidebar = await screen.findByRole('navigation', { name: 'Sessions' })
     fireEvent.contextMenu(await within(sidebar).findByRole('button', { name: /, shell, / }))
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`, { pinned: true })])
-    await user.click(await screen.findByRole('menuitem', { name: 'Pin to top' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Pin' }))
     await waitFor(() => { expect(daemon.pinSessionOnDaemon).toHaveBeenCalledWith({ id: 't2' }, true) })
 
     await within(sidebar).findByRole('img', { name: 'Pinned' })
@@ -423,8 +420,8 @@ describe('desktop terminal multiplexer', () => {
     const sidebar = await screen.findByRole('navigation', { name: 'Sessions' })
     const named = await within(sidebar).findByRole('button', { name: /^Growth Tests, shell/ })
 
-    expect(named.querySelector('.mx-row-title')).toHaveTextContent('Growth Tests')
-    expect(within(sidebar).getByRole('button', { name: /, claude, / }).querySelector('.mx-row-title')).toHaveTextContent('claude')
+    expect(named.querySelector('.mx-ship-title')).toHaveTextContent('Growth Tests')
+    expect(within(sidebar).getByRole('button', { name: /, claude, / }).querySelector('.mx-ship-title')).toHaveTextContent('claude')
   })
 
   it('moves through a session menu with the arrow keys and gives focus back when it closes', async () => {
@@ -438,7 +435,7 @@ describe('desktop terminal multiplexer', () => {
     expect(rename).toHaveFocus()
 
     await user.keyboard('{ArrowDown}')
-    expect(screen.getByRole('menuitem', { name: /^Pin to top/ })).toHaveFocus()
+    expect(screen.getByRole('menuitem', { name: /^Pin/ })).toHaveFocus()
     await user.keyboard('{ArrowUp}{ArrowUp}')
     expect(screen.getByRole('menuitem', { name: /^Close session/ })).toHaveFocus()
     await user.keyboard('{Home}')
@@ -449,39 +446,19 @@ describe('desktop terminal multiplexer', () => {
     expect(row).toHaveFocus()
   })
 
-  it('opens a menu on right-click on a collapsed session, with pin, split and close', async () => {
-    const user = userEvent.setup()
-    const wide = window.innerWidth
-    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1400 })
-    try {
-      daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
-      renderDesktopApp()
-      await collapseSidebar()
-      const sidebar = await screen.findByRole('navigation', { name: 'Sessions' })
-
-      fireEvent.contextMenu(await within(sidebar).findByRole('button', { name: /, shell, / }))
-
-      expect(await screen.findByRole('menuitem', { name: 'Open in split right' })).toBeInTheDocument()
-      expect(screen.getByRole('menuitem', { name: /^Close session/ })).toBeInTheDocument()
-      await user.click(screen.getByRole('menuitem', { name: 'Pin to top' }))
-      await waitFor(() => { expect(daemon.pinSessionOnDaemon).toHaveBeenCalledWith({ id: 't2' }, true) })
-    } finally {
-      Object.defineProperty(window, 'innerWidth', { configurable: true, value: wide })
-    }
-  })
-
-  it('shows the diff counts and the folder on the row, and leaves "working" to the badge', async () => {
-    daemon.loadConversations.mockResolvedValue([inRepo(3, `${HOME}/code/maitty`, `${HOME}/code/maitty`, { agent: 'claude', status: 'working', diffAdded: 104, diffRemoved: 61 })])
+  it('shows no diff counts and no folder badge on a row, and leaves "working" to the badge', async () => {
+    daemon.loadConversations.mockResolvedValue([inRepo(3, `${HOME}/code/maitty`, `${HOME}/code/maitty`, { agent: 'claude', status: 'working', branch: 'agent/grow-028', diffAdded: 104, diffRemoved: 61 })])
     renderDesktopApp()
     const sidebar = await screen.findByRole('navigation', { name: 'Sessions' })
 
     const row = await within(sidebar).findByRole('button', { name: /, claude, working/ })
 
     expect(row).toHaveTextContent('claude')
-    expect(row).toHaveTextContent('+104')
-    expect(row).toHaveTextContent('−61')
+    expect(row).toHaveTextContent('agent/grow-028')
+    expect(row).not.toHaveTextContent('+104')
+    expect(row).not.toHaveTextContent('−61')
     expect(row).not.toHaveTextContent('working')
-    expect(within(sidebar).getByRole('button', { name: 'Show only maitty' })).toBeInTheDocument()
+    expect(within(sidebar).queryByRole('button', { name: 'Show only maitty' })).not.toBeInTheDocument()
   })
 
   it('says what a docked session is doing in a card beside its row, after a short hover', async () => {
@@ -524,86 +501,41 @@ describe('desktop terminal multiplexer', () => {
     expect(card?.textContent).not.toContain('<')
   })
 
-  it('says what a collapsed session is doing in a card beside it', async () => {
-    const user = userEvent.setup()
-    const wide = window.innerWidth
-    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1400 })
-    try {
-      daemon.loadConversations.mockResolvedValue([inRepo(3, `${HOME}/code/maitty`, `${HOME}/code/maitty`, { agent: 'claude', status: 'needs-you', details: { asking: 'Allow git push?', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null } } })])
-      renderDesktopApp()
-      await collapseSidebar()
-      const sidebar = await screen.findByRole('navigation', { name: 'Sessions' })
-      const row = await within(sidebar).findByRole('button', { name: /, claude, / })
-
-      await user.hover(row)
-
-      // It opens after a short hover, not at once.
-      expect(document.querySelector('.mx-railpop.is-session')).toBeNull()
-      const card = await waitFor(() => {
-        const found = document.querySelector('.mx-railpop.is-session')
-        expect(found).not.toBeNull()
-        return found
-      })
-      expect(card).toHaveTextContent('maitty')
-      expect(card).toHaveTextContent('needs you')
-      expect(card).toHaveTextContent('~/code/maitty')
-      expect(card).toHaveTextContent('Allow git push?')
-      await user.unhover(row)
-      await waitFor(() => { expect(document.querySelector('.mx-railpop.is-session')).toBeNull() })
-    } finally {
-      Object.defineProperty(window, 'innerWidth', { configurable: true, value: wide })
-    }
-  })
-
   it('says idle in the card of a quiet session', async () => {
     const user = userEvent.setup()
-    const wide = window.innerWidth
-    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1400 })
-    try {
-      daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
-      renderDesktopApp()
-      await collapseSidebar()
-      const sidebar = await screen.findByRole('navigation', { name: 'Sessions' })
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
+    renderDesktopApp()
+    const sidebar = await screen.findByRole('navigation', { name: 'Sessions' })
 
-      await user.hover(await within(sidebar).findByRole('button', { name: /, shell, / }))
+    await user.hover(await within(sidebar).findByRole('button', { name: /, shell, / }))
 
-      const card = await waitFor(() => {
-        const found = document.querySelector('.mx-railpop.is-session')
-        expect(found).not.toBeNull()
-        return found
-      })
-      expect(card).toHaveTextContent('idle')
-    } finally {
-      Object.defineProperty(window, 'innerWidth', { configurable: true, value: wide })
-    }
+    const card = await waitFor(() => {
+      const found = document.querySelector('.mx-railpop.is-session')
+      expect(found).not.toBeNull()
+      return found
+    })
+    expect(card).toHaveTextContent('idle')
   })
 
-  it('keeps a rail card open while the pointer is on it', async () => {
+  it('keeps a hover card open while the pointer is on it', async () => {
     const user = userEvent.setup()
-    const wide = window.innerWidth
-    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1400 })
-    try {
-      daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/personal/dynamic-ui`), term(3, `${HOME}/personal/dynamic-ui`)])
-      renderDesktopApp()
-      await collapseSidebar()
-      const sidebar = await screen.findByRole('navigation', { name: 'Sessions' })
-      const [first] = within(sidebar).getAllByRole('button', { name: /, shell, / })
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/personal/dynamic-ui`), term(3, `${HOME}/personal/dynamic-ui`)])
+    renderDesktopApp()
+    const sidebar = await screen.findByRole('navigation', { name: 'Sessions' })
+    const [first] = await within(sidebar).findAllByRole('button', { name: /, shell, / })
 
-      await user.hover(first as HTMLElement)
-      const card = await waitFor(() => {
-        const found = document.querySelector<HTMLElement>('.mx-railpop.is-session')
-        expect(found).not.toBeNull()
-        return found as HTMLElement
-      })
-      await user.unhover(first as HTMLElement)
-      await user.hover(card)
-      await new Promise((resolve) => { window.setTimeout(resolve, 300) })
-      expect(card).toBeInTheDocument()
-      await user.unhover(card)
-      await waitFor(() => { expect(card).not.toBeInTheDocument() })
-    } finally {
-      Object.defineProperty(window, 'innerWidth', { configurable: true, value: wide })
-    }
+    await user.hover(first as HTMLElement)
+    const card = await waitFor(() => {
+      const found = document.querySelector<HTMLElement>('.mx-railpop.is-session')
+      expect(found).not.toBeNull()
+      return found as HTMLElement
+    })
+    await user.unhover(first as HTMLElement)
+    await user.hover(card)
+    await new Promise((resolve) => { window.setTimeout(resolve, 300) })
+    expect(card).toBeInTheDocument()
+    await user.unhover(card)
+    await waitFor(() => { expect(card).not.toBeInTheDocument() })
   })
 
   it('starts a new terminal in the start folder from Settings, with ~ meaning the home folder', async () => {
@@ -617,7 +549,7 @@ describe('desktop terminal multiplexer', () => {
     await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalledWith(`${HOME}/code`) })
   })
 
-  it('lists every session in creation order in one flat list, whatever its repo, folder or status', async () => {
+  it('lists the selected fleet’s ships as Agents then Shells, each in creation order, whatever the repo, folder or status', async () => {
     daemon.loadConversations.mockResolvedValue([
       term(9, `${HOME}/Downloads`),
       inRepo(3, `${HOME}/code/maitty`, `${HOME}/code/maitty/crates/maitty-core`, { agent: 'codex', status: 'working' }),
@@ -629,8 +561,7 @@ describe('desktop terminal multiplexer', () => {
     const sidebar = await screen.findByRole('navigation', { name: 'Sessions' })
     await within(sidebar).findByRole('button', { name: 'main, shell, idle' })
     const rows = within(sidebar).getAllByRole('button', { name: /, (shell|codex), / }).map((row) => row.getAttribute('aria-label'))
-    expect(rows).toEqual(['main, shell, idle', 'crates/maitty-core, codex, working', 'main, shell, needs you', '~/Downloads, shell, idle'])
-    expect(within(sidebar).queryByRole('button', { expanded: true })).not.toBeInTheDocument()
+    expect(rows).toEqual(['crates/maitty-core, codex, working', 'main, shell, idle', 'main, shell, needs you', '~/Downloads, shell, idle'])
     expect(sidebar).not.toHaveTextContent('maittyd ·')
   })
 
@@ -645,7 +576,9 @@ describe('desktop terminal multiplexer', () => {
     expect(screen.getByRole('region', { name: 'Shell in ~/b' })).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Shell in ~/a' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '~/b, shell, idle' })).toHaveAttribute('aria-current', 'page')
-    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+    // One tab per ship of the fleet; the shown one is selected.
+    expect(screen.getAllByRole('tab')).toHaveLength(2)
+    expect(screen.getByRole('tab', { name: '~/b, shell, idle' })).toHaveAttribute('aria-selected', 'true')
     await user.click(screen.getByRole('button', { name: '~/a, shell, idle' }))
     expect(screen.getByRole('region', { name: 'Shell in ~/a' })).toBeInTheDocument()
   })
@@ -859,7 +792,7 @@ describe('desktop terminal multiplexer', () => {
     expect(screen.getAllByText('Reconnecting to maittyd…')).toHaveLength(2)
     expect(within(screen.getByLabelText('Status')).getByRole('status')).toHaveTextContent('Reconnecting to maittyd…')
     expect(screen.getByRole('region', { name: 'Shell in ~/a' })).toHaveAttribute('data-input-disabled', 'true')
-    expect(screen.getByRole('button', { name: 'New session' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'New shell' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '~/a, codex, unknown' })).not.toHaveClass('mx-fx-working')
 
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
@@ -1003,7 +936,7 @@ describe('desktop terminal multiplexer', () => {
   it('opens the inbox with Ctrl+Shift+J and Settings on Performance with Ctrl+Shift+P, and ignores a bare Ctrl+J', async () => {
     const user = userEvent.setup()
     renderDesktopApp()
-    await screen.findByRole('button', { name: 'New session' })
+    await screen.findByRole('button', { name: 'New shell' })
 
     await user.keyboard('{Control>}j{/Control}')
     expect(screen.queryByRole('dialog', { name: 'Inbox' })).not.toBeInTheDocument()
@@ -1019,7 +952,7 @@ describe('desktop terminal multiplexer', () => {
   it('opens Settings with Ctrl+comma, jumps by letter, traps focus and gives it back on Escape', async () => {
     const user = userEvent.setup()
     renderDesktopApp()
-    const newSession = await screen.findByRole('button', { name: 'New session' })
+    const newSession = await screen.findByRole('button', { name: 'New shell' })
     newSession.focus()
 
     await user.keyboard('{Control>},{/Control}')
@@ -1451,10 +1384,12 @@ describe('desktop overlays and pane tools', () => {
     await user.keyboard('{Control>}{Shift>}d{/Shift}{/Control}')
     await screen.findByRole('region', { name: /^Terminal 2:/ })
 
-    await user.click(screen.getAllByRole('button', { name: 'Broadcast typing to this tab' })[0] as HTMLElement)
+    await user.click(screen.getAllByRole('button', { name: 'More pane actions' })[0] as HTMLElement)
+    await user.click(await screen.findByRole('menuitem', { name: /^Broadcast to this tab/ }))
 
     expect(await screen.findAllByText('◉ Broadcast')).toHaveLength(2)
-    expect(screen.getAllByRole('button', { name: 'Stop broadcasting' })).toHaveLength(2)
+    await user.click(screen.getAllByRole('button', { name: 'More pane actions' })[0] as HTMLElement)
+    expect(await screen.findByRole('menuitem', { name: /^Stop broadcasting/ })).toBeInTheDocument()
   })
 })
 

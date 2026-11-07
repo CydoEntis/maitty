@@ -26,7 +26,7 @@ function state(machine: number, name: string, kind: MachineKind = 'connected'): 
 
 function machineOf(id: number, name: string, terms: ReturnType<typeof term>[], kind: MachineKind = 'connected', heard = true): RemoteMachine {
   registerMachine(name, id)
-  return { state: state(id, name, kind), conversations: conversationsFromSnapshot(snapshot(terms), { id, name }), heard }
+  return { state: state(id, name, kind), conversations: conversationsFromSnapshot(snapshot(terms), { id, name }), fleets: [], heard }
 }
 
 describe('merging the snapshots of several machines', () => {

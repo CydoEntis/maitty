@@ -23,6 +23,10 @@ export type SessionView = {
   title: string
   /** The name you gave the session; null until you rename it. The daemon keeps it for every app. */
   name: string | null
+  /** The key of the fleet the daemon holds this session in (`machine:workspace`); null when it lists it in none. */
+  fleet: string | null
+  /** The fleet it is in was made as a worktree. */
+  worktree: boolean
   /** Marked with a pin glyph. A pin never reorders the list. */
   pinned: boolean
   /** Lines added and removed in the session's checkout against HEAD; zero outside git. */
@@ -145,7 +149,10 @@ export function tildePath(path: string, home: string): string {
   return clean
 }
 
-export function toSessionView(conversation: Conversation, home: string): SessionView {
+/** Where the daemon holds a session: the fleet's key, and whether that fleet is a worktree. */
+export type FleetPlacement = { fleet: string; worktree: boolean }
+
+export function toSessionView(conversation: Conversation, home: string, placement?: FleetPlacement): SessionView {
   const cwd = trimTrailingSeparator(conversation.cwd ?? conversation.folder)
   const machineName = conversation.machineName ?? null
   // The home folder written as `~` is this computer's; another machine's paths are shown as they are.
@@ -172,6 +179,8 @@ export function toSessionView(conversation: Conversation, home: string): Session
     branch,
     title,
     name: conversation.named ? conversation.title.trim() || null : null,
+    fleet: placement?.fleet ?? null,
+    worktree: placement?.worktree ?? false,
     pinned: conversation.pinned ?? false,
     diffAdded: conversation.diffAdded ?? 0,
     diffRemoved: conversation.diffRemoved ?? 0,
@@ -239,10 +248,10 @@ export function folderNameOf(session: Pick<SessionView, 'repoRoot' | 'cwd'>): st
   return baseName(place)
 }
 
-/** The filter field's match: the query is found in the name, the folder, the process or the machine, ignoring case. */
+/** The filter field's match: the query is found in the name, folder, process, branch or machine, ignoring case. */
 export function matchesFilter(session: SessionView, query: string): boolean {
   const needle = query.trim().toLowerCase()
   if (needle === '') return true
-  const fields = [rowName(session), session.title, folderNameOf(session), session.cwdLabel, session.process, session.machineName ?? 'this computer']
+  const fields = [rowName(session), session.title, folderNameOf(session), session.cwdLabel, session.process, session.branch ?? '', session.machineName ?? 'this computer']
   return fields.some((field) => field.toLowerCase().includes(needle))
 }

@@ -114,7 +114,7 @@ name, never by where it points. A session of another machine has the id `build/t
 saved layout survives a restart; this computer's stay `t12`). **Settings › Machines** retries, removes and
 adds machines (the behaviour is the terminal app's [Machines dialog](#project-specific-machines-dialog),
 with the host list read off the UI thread, the look at the machine ended by a 12 s limit or Cancel, and a
-login that needs a person run in a session named `ssh <name>`); **New session** (⌘T, Ctrl+Shift+T, the sidebar +, ⌘K) always opens the **New session modal**: one 560px dialog of fixed height
+login that needs a person run in a session named `ssh <name>`); **New session** (⌘T, Ctrl+Shift+T, ⌘K) always opens the **New session modal**: one 560px dialog of fixed height
 whose header reads "Start in `<project>` on `<machine>` as `<agent>` in `[>_ | chat]`". Each part is a pill that jumps to its
 step; the toggle locks to the terminal for a plain shell ("Shells always open in Terminal") and for another machine ("Chat
 runs on this computer"). **1 Project:** Browse… (⌘O, Ctrl+O; this computer's folder picker) comes first, then the recent
@@ -126,7 +126,7 @@ out with "Reconnecting…" and cannot be picked. **3 Start as:** Terminal, Claud
 default agent highlighted. Enter goes on, Esc goes back and then cancels; the dialog traps focus and gives it back on close.
 Starting on another machine opens its shell there and, for an agent, types the agent's name into it. `NewSessionModal` is
 presentation only; the window starts the session through the same paths as before (`startShellSession`, an agent typed into the
-new shell, `startSessionOnMachine`). The **+** on a machine's sidebar header (disabled while its line is not connected) and `New session on <name>` in ⌘K open the same modal on that machine. A screen reader is told when a machine goes down (`build disconnected: unreachable`) and when it is back, once each and not for every retry, through a polite live region; every state is a word as well as a shape and a colour, nothing about machines animates, and the Machines page works with the keyboard alone (Tab, Enter, Esc ends a look in progress without closing Settings). Features that read a pane's files (Inspect, worktreesFeatures that read a pane's files (Inspect, worktrees, opening a file from the output, dropping files, the screen text) are for this computer's panes only: each says `<Feature> is local-only in v1: the files are on <machine>, not on this computer.` and the Repository button shows disabled with that text.
+new shell, `startSessionOnMachine`). `New shell on <name>` in ⌘K opens the same modal on that machine. The sidebar's header starts without it: **New agent chat** (⌘⇧A, Ctrl+Shift+A) runs the default agent in the selected fleet and shows it as a chat, **New shell** (⌘⇧T, Ctrl+Alt+T) a shell there (a fleet on another machine asks for a folder, so it opens the modal), and **Add a remote machine** opens Settings › Machines. A new shell joins the selected fleet through `startShellInFleet` (`api/fleetCommands.ts`). A screen reader is told when a machine goes down (`build disconnected: unreachable`) and when it is back, once each and not for every retry, through a polite live region; every state is a word as well as a shape and a colour, nothing about machines animates, and the Machines page works with the keyboard alone (Tab, Enter, Esc ends a look in progress without closing Settings). Features that read a pane's files (Inspect, worktreesFeatures that read a pane's files (Inspect, worktrees, opening a file from the output, dropping files, the screen text) are for this computer's panes only: each says `<Feature> is local-only in v1: the files are on <machine>, not on this computer.` and the Repository button shows disabled with that text.
 
 **Desktop service states** (`ServiceStatus`, `model/serviceState.ts`). While maittyd does not answer, every status reads
 Unknown, spinners stop and input waits. The first four failed tries show a thin bar under the pane header, "Reconnecting to
@@ -175,11 +175,23 @@ Rules for `apps/gui/` (the look is in [DESIGN](DESIGN.md#desktop-app)).
    expanding it opens the full sidebar as an overlay; under 800px panes stack in one
    column. The widths are constants in `features/workspace/model/windowSize.ts`; change
    them there and in DESIGN, nowhere else.
-2. The sidebar is one flat list: sessions render in creation order (`inCreationOrder` in
-   `model/session.ts`, by the daemon's pane number). Nothing (status, pin, focus, a click,
-   the filter) reorders them. There are no project, folder or machine groups; the folder
-   and the machine are badges on the row. Split layouts are this window's own state
-   (`model/layout.ts`), up to four panes; a session closes with a 6 second Undo.
+2. The sidebar has a FLEETS section and a SHIPS section (spec v31). A **fleet** is a daemon
+   workspace (a name, a colour, a machine); a **ship** is one session in it, an agent or a shell. FLEETS
+   lists this computer and each other machine as a collapsible heading (laptop or server mark, name, a
+   status dot, and a + that adds a fleet there with an inline name field), and a row per fleet below it
+   (initials tile in the fleet's colour with a needs-you count, name, up to three stacked app icons then +N).
+   SHIPS shows only the selected fleet, in **Agents** and **Shells** (an agent's line is its branch, a
+   shell's its folder and never a branch), or, with the Fleets | Priority switch, every agent across
+   fleets grouped Needs you, Exited, Working, Done, Idle, each row naming its fleet. Ships are in
+   creation order (`model/session.ts`, by the daemon's pane number) and nothing (status, pin, focus, a
+   click, the filter) reorders them. Rows show no diff counts and no folder badge. Which fleet a session
+   is in is the daemon's (`api/fleets.ts` reads `workspaces`); the window never decides it. Fleet colours
+   are teal, violet, blue, green, pink and orange, never amber or red. The pure parts are in
+   `model/fleets.ts`; `useFleets` holds the selection, which follows the focused ship.
+   The workspace is a second card: a **tab tray** on top holds one tab per ship of the selected fleet
+   (`model/tabs.ts`; a ship split beside another's pane is part of that tab, and the tab shows the pane
+   count), then the panes. Split layouts are this window's own state (`model/layout.ts`), up to four
+   panes per tab; a session closes with a 6 second Undo. The Crewmates mode is not built.
 3. A new surface that sits on the terminal's ground uses `--term`, not `--main`,
    so a terminal pane reads as one surface.
 
