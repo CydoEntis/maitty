@@ -8,33 +8,39 @@ from the home network, so they are parked here. **Delete this file once they are
 Read this first. It orders every open fix in this file. The order is a proposal: the owner can
 change it, and an agent does not.
 
-**v0.66.0 was released on 2026-11-06**, the first release with the desktop app back (`apps/gui/RELEASE-HOLD` is
-deleted). v0.65.1 (2026-11-05) was the last without it. Check the release run's result before relying on the installers.
+**v0.66.0 was released on 2026-11-06** (TUI and desktop app, all platforms; its install jobs passed). `dev` is ahead of it by the
+fleets-and-ships redesign below; nothing after v0.66.0 has been released.
 
-**Resume here (rewritten 2026-11-06, evening). Read this block first; the notes below it are older.**
-- **State.** `dev` holds everything and `main` was brought up to it by `scripts/release.sh 0.66.0`. No branch or worktree
-  holds unmerged work except `feat/remote-image-paste-stacked` (two patches not in `dev`).
-- **Closed without merging:** #281 and #271 (their fixes were already in `dev`: the sandbox config that turns PowerShell
-  history off, and the separate `cargo test --no-run` step). #287 duplicates `dev` and can be closed.
-- **CI failures met on the way, both fixed or cleared:** the Windows test
-  `a_tilde_is_the_home_folder_and_a_relative_path_is_nothing` used a fake home of `/home/me`, which is not an absolute path
-  on Windows (it now uses `C:\Users\me` there); and Ubuntu timed out installing the Tauri Linux packages, which passed on
-  the next run.
-- **Not checked anywhere but Linux:** the desktop app on macOS and Windows (CI builds the installers but nobody has run
-  them), and nothing was looked at in a real window before the release: the activity bar and Inspect drawer, four-way
-  splits and the sidebar jump, "+N panes", the tab hover card's clickable rows, the machine filter, and the terminal app
-  folding its sidebar in a small window.
-- **Decided 2026-11-06:** Brain dump is out; the extensions store and panels are later; project defaults are on hold; a
-  shell gets no Terminal/Chat switch. See [FEATURES](FEATURES.md). The owner may change how the whole system works, so
-  the v19 handoff is not being built yet.
-- **v19 left, if wanted:** close with Undo (needs the daemon to delay the kill), the "service is down" card (needs a
-  real start-service command), the shared TUI config card and TUI import, the Performance page's live strip, the 900 to
-  1099px rail rule, and dragging the line between stacked panes.
-- **Open, not fixed:** Stop in the chat can lag a moment behind the agent winding down (not reproduced from code);
-  several old daemons from earlier test servers still run and ring on their own (list them with
-  `ps -eo pid,args | grep "maitty.* daemon"`, stop them with `maitty kill-server` and that socket); Codex chat user
-  messages and its mode chip were parked by the owner; "Start a Claude chat" with Full access is now reachable only by
-  Ctrl+Shift+E on a shell.
+**Resume here (rewritten 2026-11-07). Read this block first; the notes below it are older.**
+- **State.** `dev` holds a redesign built overnight to the owner's specs: desktop v31 and TUI v27 ("Fleets and Ships",
+  `docs/FLAT-SESSIONS-PLAN.md` sections 7 and 8 say what was decided and why). A **fleet** is a named group on one machine
+  (the daemon's workspace); a **ship** is a session in it; **tabs** are one per ship of the selected fleet. Protocol is
+  **75**. The full gate passed on the pushed head (2,334 Rust tests, 1,427 frontend tests, clippy, Linux, macOS and Windows
+  checks, GUI dependency check). CI on GitHub must be read before trusting it.
+- **Built on the daemon:** per-session `diff_added`/`diff_removed`, `exit` (a failed command's code, from the shell's own
+  exit mark, so only shells with OSC 133 integration set it), close with a six-second Undo (`CloseSession`/`UndoClose`),
+  the shared settings route (`Query::Settings`, `Command::SetSetting`, `ServerMsg::SettingsChanged`), `NewFleet`/`NewShip`,
+  and a model/effort choice carried with a chat message (`ConversationSend.choice`).
+- **Built in the apps:** both sidebars (fleets, ships, machine headings, rail), tabs, instant new shell, the New session
+  modal/dialog, Menu, Search commands, Inbox (62 columns in the TUI), status marks, service and update states, chat model
+  picker, move/recolour a fleet, shared settings.
+- **Never looked at.** Nobody has seen any of it in a real window or terminal, on any platform; the desktop app on Windows
+  and macOS has only been built. Checks are `TestBackend` frames and unit tests. The first real pass will find layout and
+  feel problems the tests cannot.
+- **Not built, on purpose:** the desktop **Crewmates** mode (Captain, crewmates, crews; the spec says the multi-user
+  backend is not designed), latency in the New session dialog (the machine link has no figure), and **closing a whole
+  fleet** (it ends every ship in it; it needs the owner's call and a host command).
+- **Known gaps:** a new chat's first prompt goes out with the agent's default model (the picker does not exist yet);
+  Codex offers only its account default; the picker's effort/model flags are unproven against real Claude and Codex;
+  `exit` is blind to shells without OSC 133; `NewTab` has no folder (use `NewShip`); terminal-app update progress is
+  four stages, not bytes.
+- **Dead code left on purpose:** none known. The `Proj`/`Wt` types are the TUI's live model for menus.
+- **Open, not fixed:** Stop in the chat can lag behind the agent winding down; old daemons from earlier test servers still
+  run on the dev box (`ps -eo pid,args | grep "maitty.* daemon"`, stop with `maitty kill-server`); Codex chat user messages
+  and its mode chip are parked.
+- **Closed without merging:** PRs #281, #271 and #287 (their fixes were already in `dev`).
+- **Branches:** `dev` and `main` only, plus `backup/remote-image-paste-before-rewrite` and `feat/remote-image-paste-stacked`
+  (two patches not in `dev`). The overnight agents' worktrees may still exist under `.claude/worktrees/`.
 
 **Older note (rewritten 2026-11-05, night).**
 - **One branch holds all of the night's work: `integration/overnight`** (nothing pushed, `dev` untouched). It

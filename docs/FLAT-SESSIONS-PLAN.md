@@ -1,6 +1,6 @@
 # Flat sessions: audit and plan (draft, 2026-11-06)
 
-Status: **decided in principle, nothing built.** The decisions in section 3 were taken on the owner's say-so; ADR 0004, ADR 0007 and `FEATURES.md` are edited to match (uncommitted). It compares the v26 spec
+Status: **built on `dev` as of 2026-11-07 (sections 7 and 8 are current; sections 1 and 7 of the first plan are superseded by 8).** The decisions in section 3 were taken on the owner's say-so; ADR 0004, ADR 0007 and `FEATURES.md` are edited to match (uncommitted). It compares the v26 spec
 (`Maitty Desktop specification (3).zip`: `README.md` for the desktop app, `TUI_SPEC.md` for the
 terminal app) with the repo at v0.66.0 (`dev` 5687632f). Facts come from three read-only audits
 of the daemon, the desktop app and the terminal app; guesses are marked.
