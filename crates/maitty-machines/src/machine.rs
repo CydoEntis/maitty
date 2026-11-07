@@ -267,6 +267,17 @@ impl Machine {
         )?)
     }
 
+    /// The line that makes this machine print the folder at `path` as a tar archive (see
+    /// `FOLDER_SCRIPT`).
+    pub fn get_folder_argv(&self, path: &str) -> Result<Vec<String>> {
+        let route = self.ssh_route()?;
+        Ok(ssh_command::ssh_argv_get_folder(
+            &route.ssh,
+            &route.target,
+            path,
+        )?)
+    }
+
     /// The line that makes this machine print the file at `path` (see `GET_SCRIPT`), refusing
     /// one over `max_bytes`.
     pub fn get_argv(&self, path: &str, max_bytes: u64) -> Result<Vec<String>> {
@@ -276,6 +287,18 @@ impl Machine {
             &route.target,
             path,
             max_bytes,
+        )?)
+    }
+
+    /// The line that runs the put-folder script on this machine, the folder's tar archive on its
+    /// stdin: the far side keeps the folder as `name` and prints where.
+    pub fn put_folder_argv(&self, name: &str, bytes: u64) -> Result<Vec<String>> {
+        let route = self.ssh_route()?;
+        Ok(ssh_command::ssh_argv_put_folder(
+            &route.ssh,
+            &route.target,
+            name,
+            bytes,
         )?)
     }
 

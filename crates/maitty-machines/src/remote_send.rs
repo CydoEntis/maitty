@@ -100,6 +100,104 @@ pub fn send_file(
     transfer(machine, name, path, Kind::File, &remote_name, watch)
 }
 
+/// The most bytes of a folder (as a tar archive) that are sent (ADR 0007).
+pub const MAX_SEND_FOLDER_BYTES: u64 = crate::remote_get::MAX_GET_BYTES;
+
+/// Send the folder at `path` to `machine`, called `name` in words for the person: it is archived
+/// here with the system `tar` into a hidden temporary file (links are stored as links), and sent
+/// to be unpacked in the machine's private cache folder. Returns the folder's path on the far
+/// side, already checked by `remote_paste::pasted_path`. `watch` reports bytes sent and can end it.
+pub fn send_folder(
+    machine: &Machine,
+    name: &str,
+    path: &Path,
+    watch: &Watch,
+) -> Result<String, String> {
+    send_folder_capped(machine, name, path, watch, MAX_SEND_FOLDER_BYTES)
+}
+
+pub(crate) fn send_folder_capped(
+    machine: &Machine,
+    name: &str,
+    path: &Path,
+    watch: &Watch,
+    cap: u64,
+) -> Result<String, String> {
+    let meta =
+        std::fs::metadata(path).map_err(|e| format!("could not read {}: {e}", shown(path)))?;
+    if !meta.is_dir() {
+        return Err(format!("{} is not a folder", shown(path)));
+    }
+    let (parent, folder) = match (path.parent(), path.file_name()) {
+        (Some(parent), Some(folder)) => (parent, folder),
+        _ => return Err(format!("{} has no name to send it under", shown(path))),
+    };
+    let original = folder.to_string_lossy().into_owned();
+    let (stamp, salt) = stamp_and_salt();
+    let remote_name = sent_file_name(stamp, salt, &original);
+    // Check the machine can be reached this way before spending time archiving.
+    machine
+        .put_folder_argv(&remote_name, 0)
+        .map_err(|e| format!("sending the folder to {name} needs ssh: {e}"))?;
+
+    let archive = std::env::temp_dir().join(format!(".{}-send-{}.tar", crate::APP_COMMAND, crate::remote_get::unique()));
+    let outcome = archive_and_send(machine, name, parent, folder, &archive, &remote_name, watch, cap);
+    let _ = std::fs::remove_file(&archive);
+    outcome
+}
+
+#[allow(clippy::too_many_arguments)]
+fn archive_and_send(
+    machine: &Machine,
+    name: &str,
+    parent: &Path,
+    folder: &std::ffi::OsStr,
+    archive: &Path,
+    remote_name: &str,
+    watch: &Watch,
+    cap: u64,
+) -> Result<String, String> {
+    let made = crate::remote_folder::tar()
+        .arg("-cf")
+        .arg(archive)
+        .arg("-C")
+        .arg(parent)
+        .arg("--")
+        .arg(folder)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|e| format!("could not run tar (is it installed?): {e}"))?;
+    if !made.status.success() {
+        return Err(format!(
+            "could not pack the folder: {}",
+            crate::remote_paste::said_by(&String::from_utf8_lossy(&made.stderr))
+        ));
+    }
+    let bytes = std::fs::metadata(archive)
+        .map_err(|e| format!("could not read the packed folder: {e}"))?
+        .len();
+    if bytes > cap {
+        return Err(format!(
+            "the folder is {} MB, more than the {} MB that can be sent to {name}",
+            bytes.div_ceil(1024 * 1024),
+            cap / (1024 * 1024)
+        ));
+    }
+    watch.total.store(bytes, Ordering::Relaxed);
+    let argv = machine
+        .put_folder_argv(remote_name, bytes)
+        .map_err(|e| format!("sending the folder to {name} needs ssh: {e}"))?;
+    let ran = ssh_run::run_watched(&argv, Some(archive), Kind::File.limit(), watch)?;
+    if ran.cancelled {
+        return Err(format!("stopped sending the folder to {name}"));
+    }
+    if ran.code == Some(0) {
+        pasted_path(&ran.stdout).map_err(|why| format!("{name}: {why}"))
+    } else {
+        Err(paste_failure("the folder", name, ran.code, &ran.stderr))
+    }
+}
+
 /// A file's name for a message: the name only, so a long path does not fill a toast.
 pub fn shown(path: &Path) -> String {
     path.file_name().map_or_else(
@@ -232,5 +330,42 @@ mod tests {
             error.starts_with("sending the file to fly needs ssh"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn a_file_or_a_missing_path_is_not_a_folder_and_nothing_is_run() {
+        let file = std::env::temp_dir().join(format!("remote-send-folder-file-{}", std::process::id()));
+        std::fs::write(&file, b"x").unwrap();
+        let machine = box_machine();
+        let error = send_folder(&machine, "box", &file, &Watch::default()).unwrap_err();
+        let _ = std::fs::remove_file(&file);
+        assert!(error.contains("is not a folder"), "{error}");
+        let nope = std::env::temp_dir().join("remote-send-folder-no-such");
+        assert!(send_folder(&machine, "box", &nope, &Watch::default()).unwrap_err().starts_with("could not read"));
+    }
+
+    #[test]
+    fn a_folder_over_the_cap_is_refused_before_anything_is_sent_and_no_archive_is_left() {
+        let folder = std::env::temp_dir().join(format!("remote-send-folder-big-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("a.bin"), vec![7u8; 4096]).unwrap();
+        let before = archives_left();
+        let error = send_folder_capped(&box_machine(), "box", &folder, &Watch::default(), 1).unwrap_err();
+        let after = archives_left();
+        let _ = std::fs::remove_dir_all(&folder);
+        if error.contains("could not run tar") {
+            return; // no tar on this host
+        }
+        assert!(error.contains("more than the 0 MB that can be sent to box"), "{error}");
+        assert_eq!(before, after, "the temporary archive was removed");
+    }
+
+    /// Temporary archives this process has left in the temp folder.
+    fn archives_left() -> usize {
+        let mine = format!("-send-{}-", std::process::id());
+        std::fs::read_dir(std::env::temp_dir())
+            .unwrap()
+            .filter(|e| e.as_ref().is_ok_and(|e| e.file_name().to_string_lossy().contains(&mine)))
+            .count()
     }
 }

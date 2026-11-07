@@ -107,6 +107,7 @@ pub fn paste_failure(what: &str, machine: &str, code: Option<i32>, stderr: &str)
     match code {
         Some(70) => format!("{what} reached {machine} incomplete; try again"),
         Some(72) => format!("{machine} could not keep {what} (no writable cache folder there)"),
+        Some(73) => format!("{machine} could not unpack {what}"),
         None => format!("{machine} did not take {what} in time"),
         _ if said.is_empty() => format!("could not send {what} to {machine}"),
         _ => format!("could not send {what} to {machine}: {said}"),

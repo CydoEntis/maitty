@@ -26,7 +26,10 @@ People run agents on more than one computer and want one window over all of them
   fixed script. The bytes come from an untrusted machine, so the local name is made here from the
   path (never taken from the machine), nothing is overwritten, the file appears only when exactly
   the announced bytes arrived, and a cancel, a failure or the cap leaves nothing behind
-  ([spec](../features/moving-files/spec.md)).
+  ([spec](../features/moving-files/spec.md)). A folder travels as a tar archive made with the system
+  `tar` (no library). One pulled here is unpacked only after its listing is checked: plain files and
+  folders only, nothing outside its one top folder, no name this computer cannot store safely. One
+  sent from here is unpacked in the machine's private cache folder.
 - **A remote daemon is untrusted.** Its clipboard writes, notices and sounds are off unless that
   machine opts in. Every string it supplies is cleaned before display. Only the line after a
   marker, and only an absolute path, is taken from a script's output.

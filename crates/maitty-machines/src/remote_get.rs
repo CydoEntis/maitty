@@ -69,15 +69,20 @@ pub fn local_name(remote_path: &str) -> String {
     if name.is_empty() || name.chars().all(|c| c == '.' || c == ' ') {
         return "file".to_owned();
     }
-    let stem = name.split('.').next().unwrap_or_default().trim_end();
-    if RESERVED.iter().any(|reserved| stem.eq_ignore_ascii_case(reserved)) {
+    if reserved_name(&name) {
         return format!("_{name}");
     }
     name
 }
 
+/// Whether Windows would refuse `part` as a file name: a reserved name, with or without an extension.
+pub(crate) fn reserved_name(part: &str) -> bool {
+    let stem = part.split('.').next().unwrap_or_default().trim_end();
+    RESERVED.iter().any(|reserved| stem.eq_ignore_ascii_case(reserved))
+}
+
 /// `name`, or `name-1`, `name-2` before its extension. `n` of 0 is the name itself.
-fn numbered(name: &str, n: u32) -> String {
+pub(crate) fn numbered(name: &str, n: u32) -> String {
     if n == 0 {
         return name.to_owned();
     }
@@ -182,7 +187,7 @@ pub(crate) fn receive(
 }
 
 /// Something no other pull in this process or another has, for a part file's name.
-fn unique() -> String {
+pub(crate) fn unique() -> String {
     static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     format!(
         "{}-{}",

@@ -336,6 +336,21 @@ pub(crate) fn ssh_argv_index(
     Ok(build(ssh, target, remote, Shape::PROXY))
 }
 
+/// Runs the folder script on the far side: it prints the folder `path` as a tar archive. The path
+/// reaches it as an argument, never as part of its text.
+pub(crate) fn ssh_argv_get_folder(
+    ssh: &[String],
+    target: &str,
+    path: &str,
+) -> Result<Vec<String>, SshCommandError> {
+    validate_target(target)?;
+    if path.is_empty() || path.len() > MOST_REMOTE_PATH_BYTES || path.chars().any(char::is_control) {
+        return Err(BadRemotePath(path.chars().take(80).collect()));
+    }
+    let remote = sh_script(crate::remote_scripts::FOLDER_SCRIPT, &[path]);
+    Ok(build(ssh, target, remote, Shape::PROXY))
+}
+
 /// Runs the paste script on the far side; the image goes in on stdin. `name` and `bytes` are
 /// its two arguments.
 pub(crate) fn ssh_argv_paste(
@@ -356,6 +371,31 @@ pub(crate) fn ssh_argv_paste(
     }
     let remote = sh_script(
         crate::remote_scripts::PASTE_SCRIPT,
+        &[name, &bytes.to_string()],
+    );
+    Ok(build(ssh, target, remote, Shape::PROXY))
+}
+
+/// Runs the put-folder script on the far side; the folder goes in on stdin as a tar archive.
+/// `name` (a plain word, as for a pasted file) and `bytes` are its two arguments.
+pub(crate) fn ssh_argv_put_folder(
+    ssh: &[String],
+    target: &str,
+    name: &str,
+    bytes: u64,
+) -> Result<Vec<String>, SshCommandError> {
+    validate_target(target)?;
+    let plain = !name.is_empty()
+        && name.len() <= PASTE_NAME_MAX
+        && !name.starts_with('.')
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+    if !plain {
+        return Err(BadPasteName(name.to_owned()));
+    }
+    let remote = sh_script(
+        crate::remote_scripts::PUT_FOLDER_SCRIPT,
         &[name, &bytes.to_string()],
     );
     Ok(build(ssh, target, remote, Shape::PROXY))
@@ -1123,5 +1163,28 @@ mod tests {
         assert!(ssh_argv_index(&args(&["ssh"]), "box", "a\nb", 1).is_err());
         assert!(ssh_argv_index(&args(&["ssh"]), "box", &"a".repeat(4097), 1).is_err());
         assert!(ssh_argv_index(&args(&["ssh"]), "-oProxyCommand=x", "a", 1).is_err());
+    }
+
+    #[test]
+    fn the_folder_line_passes_the_path_as_the_last_quoted_word() {
+        let folder = "~/my dir/it's $HOME `x` -n";
+        let line = ssh_argv_get_folder(&args(&["ssh"]), "box", folder).unwrap();
+        assert!(line.last().unwrap().ends_with(&format!(" sh {}", quote_word(folder))));
+        let get = |path: &str| ssh_argv_get_folder(&args(&["ssh"]), "box", path);
+        assert!(get("").is_err());
+        assert!(get("a\nb").is_err());
+        assert!(get(&"a".repeat(4097)).is_err());
+        assert!(ssh_argv_get_folder(&args(&["ssh"]), "-oProxyCommand=x", "a").is_err());
+    }
+
+    #[test]
+    fn the_put_folder_line_passes_a_plain_name_and_the_size_as_its_last_two_words() {
+        let line = ssh_argv_put_folder(&args(&["ssh"]), "box", "paste-1-000000ab-proj", 4096).unwrap();
+        assert!(line.last().unwrap().ends_with(" sh 'paste-1-000000ab-proj' '4096'"), "{line:?}");
+        let name = |name: &str| ssh_argv_put_folder(&args(&["ssh"]), "box", name, 1);
+        for bad in ["", ".hidden", "../up", "a b", "a;b", "a'b", "$(x)", "a/b"] {
+            assert!(name(bad).is_err(), "{bad:?}");
+        }
+        assert!(ssh_argv_put_folder(&args(&["ssh"]), "-oProxyCommand=x", "p", 1).is_err());
     }
 }

@@ -433,6 +433,69 @@ fn browsing_says_why_a_folder_cannot_be_looked_into() {
 }
 
 #[test]
+fn a_folder_is_pulled_from_the_fake_remote_whole_and_a_second_pull_is_numbered() {
+    needs_sh!();
+    let remote = Remote::new(LINUX);
+    for file in ["app/README.md", "app/src/main.rs", "app/src/deep/lib.rs"] {
+        let path = remote.home.join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, format!("contents of {file}")).unwrap();
+    }
+    std::fs::create_dir_all(remote.home.join("app/empty")).unwrap();
+    let machine = remote.machine(AT_HOME);
+    let dest = remote.dir.join("downloads");
+
+    let first = maitty_machines::get_folder(&machine, "box", "~/app", &dest, &maitty_machines::ssh_run::Watch::default()).unwrap();
+    assert_eq!(first, dest.join("app"));
+    assert_eq!(std::fs::read_to_string(first.join("src/deep/lib.rs")).unwrap(), "contents of app/src/deep/lib.rs");
+    assert!(first.join("empty").is_dir(), "an empty folder arrives too");
+    let second = maitty_machines::get_folder(&machine, "box", "~/app", &dest, &maitty_machines::ssh_run::Watch::default()).unwrap();
+    assert_eq!(second, dest.join("app-1"), "nothing existing is touched");
+
+    let mut left: Vec<_> = std::fs::read_dir(&dest).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    left.sort();
+    assert_eq!(left, ["app", "app-1"], "no archive or temp folder is left");
+}
+
+#[test]
+fn a_folder_pull_says_why_it_cannot_and_leaves_nothing() {
+    needs_sh!();
+    let remote = Remote::new(LINUX);
+    std::fs::write(remote.home.join("plain.txt"), "x").unwrap();
+    let machine = remote.machine(AT_HOME);
+    let dest = remote.dir.join("downloads");
+    let pull = |path: &str| maitty_machines::get_folder(&machine, "box", path, &dest, &maitty_machines::ssh_run::Watch::default()).unwrap_err();
+    assert_eq!(pull("~/nope"), "~/nope does not exist on box");
+    assert_eq!(pull("~/plain.txt"), "~/plain.txt on box is not a folder");
+    assert!(std::fs::read_dir(&dest).map_or(true, |mut d| d.next().is_none()), "nothing was saved");
+}
+
+#[test]
+fn a_folder_is_sent_to_the_fake_remote_and_lands_whole_in_its_private_cache() {
+    needs_sh!();
+    let remote = Remote::new(LINUX);
+    let local = remote.dir.join("local");
+    let folder = local.join("my project");
+    std::fs::create_dir_all(folder.join("src/deep")).unwrap();
+    std::fs::create_dir_all(folder.join("empty")).unwrap();
+    std::fs::write(folder.join("README.md"), "hello").unwrap();
+    std::fs::write(folder.join("src/deep/lib.rs"), "fn x() {}").unwrap();
+    let machine = remote.machine(AT_HOME);
+
+    let path = maitty_machines::remote_send::send_folder(&machine, "box", &folder, &maitty_machines::ssh_run::Watch::default()).unwrap();
+
+    assert!(path.starts_with('/'), "{path}");
+    assert!(path.contains("/pastes/paste-") && path.ends_with("-my_project"), "{path}");
+    let cache = remote.home.join(".cache").join(APP_COMMAND).join("pastes");
+    let kept: Vec<_> = std::fs::read_dir(&cache).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    assert_eq!(kept.len(), 1, "one folder and no temporary leftovers: {kept:?}");
+    let landed = cache.join(&kept[0]);
+    assert_eq!(std::fs::read_to_string(landed.join("README.md")).unwrap(), "hello");
+    assert_eq!(std::fs::read_to_string(landed.join("src/deep/lib.rs")).unwrap(), "fn x() {}");
+    assert!(landed.join("empty").is_dir());
+}
+
+#[test]
 fn restart_asks_the_far_daemon_to_restart_even_with_sessions_open() {
     needs_sh!();
     let remote = Remote::new(LINUX);

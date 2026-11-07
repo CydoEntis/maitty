@@ -150,6 +150,39 @@ pub const INDEX_SCRIPT: &str = concat!(
     ") | head -c \"$max\"\n",
 );
 
+/// The line the folder script prints before the archive, so text a login shell prints first is
+/// never taken for it.
+pub const FOLDER_MARKER: &str = concat!(env!("APP_COMMAND"), "-folder");
+
+/// Exit statuses of `FOLDER_SCRIPT`.
+pub const FOLDER_MISSING: i32 = 73;
+pub const FOLDER_NOT_A_FOLDER: i32 = 74;
+pub const FOLDER_UNREADABLE: i32 = 75;
+
+/// Prints one folder of the far side as an uncompressed tar archive, and changes nothing. `$1` is
+/// the folder (a leading `~/` is the far side's home). Output: `FOLDER_MARKER` and a line break,
+/// then the archive, whose one top-level entry is the folder's own name. `tar -h` follows
+/// symlinks, so the archive holds only files and folders. The size is not known first: the
+/// receiver enforces its cap on the bytes that arrive. The root folder is refused.
+pub const FOLDER_SCRIPT: &str = concat!(
+    "dir=$1\n",
+    "case $dir in\n",
+    "  \"~/\"*) dir=$HOME/$(printf '%s' \"$dir\" | cut -c3-) ;;\n",
+    "esac\n",
+    "[ -e \"$dir\" ] || exit 73\n",
+    "[ -d \"$dir\" ] || exit 74\n",
+    "[ -r \"$dir\" ] || exit 75\n",
+    "[ -x \"$dir\" ] || exit 75\n",
+    "dir=$(cd -- \"$dir\" && pwd -P) || exit 75\n",
+    "[ \"$dir\" != / ] || exit 74\n",
+    "parent=$(dirname -- \"$dir\")\n",
+    "name=$(basename -- \"$dir\")\n",
+    "printf '%s\\n' '",
+    env!("APP_COMMAND"),
+    "-folder'\n",
+    "exec tar -chf - -C \"$parent\" -- \"$name\"\n",
+);
+
 /// The line the paste script prints before the path, so text a login shell prints first (a
 /// banner, a message of the day) is never taken for it.
 pub const PASTE_MARKER: &str = concat!(env!("APP_COMMAND"), "-paste");
@@ -190,6 +223,58 @@ pub const PASTE_SCRIPT: &str = concat!(
     "got=$(wc -c < \"$tmp\" | tr -d ' ')\n",
     "[ \"$got\" = \"$want\" ] || exit 70\n",
     "mv -f -- \"$tmp\" \"$dir/$name\" || exit 72\n",
+    "printf '%s\\n%s\\n' '",
+    env!("APP_COMMAND"),
+    "-paste' \"$dir/$name\"\n",
+);
+
+/// Keeps a folder sent from this computer (ADR 0007), as a tar archive on stdin. `$1` is the name
+/// the folder is kept under (letters, digits, `.`, `_` and `-`, not starting with a dot), `$2` the
+/// byte count expected on stdin. Like `PASTE_SCRIPT` it works in the app's private cache folder,
+/// which must belong to the user running it: the archive is saved, its size checked, unpacked
+/// into a fresh private folder (never with the sender's owners), which must then hold exactly one
+/// folder, and that folder is renamed into its place so a half-sent folder is never there. Old
+/// sent folders are cleared out after a week. It prints `PASTE_MARKER` and the folder's path.
+pub const PUT_FOLDER_SCRIPT: &str = concat!(
+    "umask 077\n",
+    "name=$1\n",
+    "want=$2\n",
+    "case $name in\n",
+    "  ''|.*|*[!A-Za-z0-9._-]*) exit 72 ;;\n",
+    "esac\n",
+    "case ${XDG_CACHE_HOME:-} in\n",
+    "  /*) base=$XDG_CACHE_HOME ;;\n",
+    "  *) base=${HOME:-}/.cache ;;\n",
+    "esac\n",
+    "case $base in\n",
+    "  /*) ;;\n",
+    "  *) exit 72 ;;\n",
+    "esac\n",
+    "dir=$base/",
+    env!("APP_COMMAND"),
+    "/pastes\n",
+    "mkdir -p -- \"$dir\" || exit 72\n",
+    "[ -O \"$dir\" ] || exit 72\n",
+    "find \"$dir\" -mindepth 1 -maxdepth 1 -type d -name 'paste-*' -mtime +7 -exec rm -rf {} + 2>/dev/null\n",
+    "find \"$dir\" -mindepth 1 -maxdepth 1 -name '.new.*' -mtime +1 -exec rm -rf {} + 2>/dev/null\n",
+    "[ ! -e \"$dir/$name\" ] || exit 72\n",
+    "tmp=$(mktemp \"$dir/.new.XXXXXX\") || exit 72\n",
+    "work=$(mktemp -d \"$dir/.new.XXXXXX\") || exit 72\n",
+    "trap 'rm -rf -- \"$tmp\" \"$work\"' EXIT\n",
+    "trap 'exit 72' HUP INT TERM\n",
+    "cat > \"$tmp\" || exit 72\n",
+    "got=$(wc -c < \"$tmp\" | tr -d ' ')\n",
+    "[ \"$got\" = \"$want\" ] || exit 70\n",
+    "tar -xf \"$tmp\" -C \"$work\" --no-same-owner || exit 73\n",
+    "count=0\n",
+    "for entry in \"$work\"/* \"$work\"/.[!.]* \"$work\"/..?*; do\n",
+    "  [ -e \"$entry\" ] || [ -L \"$entry\" ] || continue\n",
+    "  count=$((count + 1))\n",
+    "  only=$entry\n",
+    "done\n",
+    "[ \"$count\" = 1 ] || exit 73\n",
+    "[ -d \"$only\" ] || exit 73\n",
+    "mv -- \"$only\" \"$dir/$name\" || exit 72\n",
     "printf '%s\\n%s\\n' '",
     env!("APP_COMMAND"),
     "-paste' \"$dir/$name\"\n",
@@ -547,5 +632,158 @@ mod index_script_tests {
         let (_, stdout) = run(&dir, ".", "40");
         let _ = std::fs::remove_dir_all(&dir);
         assert!(stdout.len() <= 40, "{} bytes", stdout.len());
+    }
+}
+
+#[cfg(test)]
+mod folder_script_tests {
+    use super::*;
+    use std::process::{Command, Stdio};
+
+    fn has_tools() -> bool {
+        Command::new("sh")
+            .args(["-c", "command -v tar dirname basename cut printf cd pwd >/dev/null"])
+            .status()
+            .is_ok_and(|s| s.success())
+    }
+
+    fn tree(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("folder-script-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("proj/src/deep")).unwrap();
+        std::fs::create_dir_all(dir.join("proj/empty")).unwrap();
+        std::fs::write(dir.join("proj/README.md"), b"hello").unwrap();
+        std::fs::write(dir.join("proj/src/main.rs"), b"fn main() {}").unwrap();
+        std::fs::write(dir.join("proj/src/deep/lib.rs"), b"x").unwrap();
+        std::fs::write(dir.join("-dash"), b"d").unwrap();
+        dir
+    }
+
+    fn run(dir: &std::path::Path, folder: &str) -> (Option<i32>, Vec<u8>) {
+        let out = Command::new("sh")
+            .current_dir(dir)
+            .args(["-c", FOLDER_SCRIPT, "sh", folder])
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        (out.status.code(), out.stdout)
+    }
+
+    /// The archive part of an answer, listed by the system tar.
+    fn listing(dir: &std::path::Path, stdout: &[u8]) -> Vec<String> {
+        let marker = format!("{FOLDER_MARKER}\n");
+        let text = String::from_utf8_lossy(&stdout[..marker.len()]).replace("\r\n", "\n");
+        assert_eq!(text, marker, "the marker line comes first");
+        let archive = dir.join("answer.tar");
+        std::fs::write(&archive, &stdout[marker.len()..]).unwrap();
+        let out = Command::new("tar")
+            .arg("-tf")
+            .arg("answer.tar")
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        let mut names: Vec<String> = String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .map(|l| l.trim_end_matches('/').to_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn the_script_is_a_constant_that_only_reads() {
+        for placeholder in ['{', '}'] {
+            assert!(!FOLDER_SCRIPT.contains(placeholder), "{placeholder}");
+        }
+        for word in ["kill", "pkill", "killall", "pgrep", "systemctl", "rm ", "mv ", "> ", "-delete", "--remove"] {
+            assert!(!FOLDER_SCRIPT.contains(word), "{word}");
+        }
+        assert!(FOLDER_SCRIPT.contains("dir=$1"));
+        assert!(FOLDER_SCRIPT.contains("-chf"), "links are followed, so the archive holds no links");
+        assert!(FOLDER_SCRIPT.contains("-- \"$name\""), "a folder named like an option is a folder");
+    }
+
+    #[test]
+    fn a_folder_comes_out_as_the_marker_then_a_tar_whose_one_top_entry_is_its_own_name() {
+        if !has_tools() {
+            return;
+        }
+        let dir = tree("whole");
+        let (code, stdout) = run(&dir, "proj");
+        let names = listing(&dir, &stdout);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(code, Some(0));
+        assert_eq!(
+            names,
+            ["proj", "proj/README.md", "proj/empty", "proj/src", "proj/src/deep", "proj/src/deep/lib.rs", "proj/src/main.rs"]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_inside_arrives_as_the_file_it_points_to_not_as_a_link() {
+        if !has_tools() {
+            return;
+        }
+        let dir = tree("link");
+        std::os::unix::fs::symlink(dir.join("proj/README.md"), dir.join("proj/shortcut")).unwrap();
+        let (_, stdout) = run(&dir, "proj");
+        let marker = format!("{FOLDER_MARKER}\n");
+        std::fs::write(dir.join("answer.tar"), &stdout[marker.len()..]).unwrap();
+        let verbose = Command::new("tar").args(["-tvf", "answer.tar"]).current_dir(&dir).output().unwrap();
+        let verbose = String::from_utf8_lossy(&verbose.stdout).into_owned();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(verbose.contains("shortcut"));
+        assert!(!verbose.lines().any(|line| line.starts_with('l') || line.starts_with('h')), "{verbose}");
+    }
+
+    #[test]
+    fn a_name_that_starts_with_a_dash_is_a_folder_not_an_option() {
+        if !has_tools() {
+            return;
+        }
+        let dir = tree("dash");
+        std::fs::create_dir_all(dir.join("-odd")).unwrap();
+        std::fs::write(dir.join("-odd/f.txt"), b"x").unwrap();
+        let (code, stdout) = run(&dir, "-odd");
+        let names = listing(&dir, &stdout);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(code, Some(0));
+        assert_eq!(names, ["-odd", "-odd/f.txt"]);
+    }
+
+    #[test]
+    fn each_refusal_has_its_own_status_and_prints_nothing() {
+        if !has_tools() {
+            return;
+        }
+        let dir = tree("refuse");
+        let cases = [("nope", FOLDER_MISSING), ("-dash", FOLDER_NOT_A_FOLDER), ("/", FOLDER_NOT_A_FOLDER)];
+        let got: Vec<_> = cases.iter().map(|(folder, _)| run(&dir, folder)).collect();
+        let _ = std::fs::remove_dir_all(&dir);
+        for ((code, stdout), (folder, want)) in got.iter().zip(cases) {
+            assert_eq!(*code, Some(want), "{folder}");
+            assert!(stdout.is_empty(), "{folder}: nothing was printed");
+        }
+    }
+}
+
+#[cfg(test)]
+mod put_folder_script_tests {
+    use super::*;
+
+    #[test]
+    fn the_script_checks_the_count_then_unpacks_into_a_private_folder_and_signals_nothing() {
+        for word in ["kill", "pkill", "killall", "pgrep", "systemctl"] {
+            assert!(!PUT_FOLDER_SCRIPT.contains(word), "{word}");
+        }
+        assert!(PUT_FOLDER_SCRIPT.contains("name=$1") && PUT_FOLDER_SCRIPT.contains("want=$2"));
+        let counted = PUT_FOLDER_SCRIPT.find("wc -c").unwrap();
+        let unpacked = PUT_FOLDER_SCRIPT.find("tar -xf").unwrap();
+        let moved = PUT_FOLDER_SCRIPT.find("mv -- \"$only\"").unwrap();
+        assert!(counted < unpacked && unpacked < moved, "check the size, unpack, then move into place");
+        assert!(PUT_FOLDER_SCRIPT.contains("--no-same-owner"), "the sender's owners are never applied");
+        assert!(PUT_FOLDER_SCRIPT.contains("umask 077"));
+        assert!(PUT_FOLDER_SCRIPT.contains("[ -O \"$dir\" ] || exit 72"), "a cache folder someone else owns is refused");
     }
 }
