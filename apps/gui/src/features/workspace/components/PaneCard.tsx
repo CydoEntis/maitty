@@ -36,6 +36,8 @@ export type PaneCardProps = {
   onFocus: (paneId: string) => void
   onSplit: (paneId: string, direction: SplitDirection) => void
   onToggleMaximize: (paneId: string) => void
+  /** Opens the repository view (Inspect) for this pane's session. */
+  onInspect: () => void
   onClose: (paneId: string) => void
   /** Starts a new shell in an ended pane's folder, in its place. */
   onRestart: (paneId: string) => void
@@ -137,6 +139,7 @@ export function PaneCard(props: PaneCardProps) {
                 <DropdownMenu.Item className="mx-menu-item" disabled={full} onSelect={() => { props.onSplit(pane.id, 'right') }}>Split right<span className="mx-menu-hint">{shortcutText('split-right')}</span></DropdownMenu.Item>
                 <DropdownMenu.Item className="mx-menu-item" disabled={full} onSelect={() => { props.onSplit(pane.id, 'down') }}>Split down<span className="mx-menu-hint">{shortcutText('split-down')}</span></DropdownMenu.Item>
                 <DropdownMenu.Item className="mx-menu-item" disabled={!multi && !maximized} onSelect={() => { props.onToggleMaximize(pane.id) }}>{maximized ? 'Restore layout' : 'Maximize pane'}</DropdownMenu.Item>
+                <DropdownMenu.Item className="mx-menu-item" onSelect={props.onInspect}>Inspect the repository<span className="mx-menu-hint">{shortcutText('inspect')}</span></DropdownMenu.Item>
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
           </DropdownMenu.Root>
@@ -179,6 +182,7 @@ export function PaneCard(props: PaneCardProps) {
             </ContextMenuPrimitive.Portal>
           </ContextMenuPrimitive.Sub>
           <ContextMenuPrimitive.Item className="mx-menu-item" disabled={!multi && !maximized} onSelect={() => { props.onToggleMaximize(pane.id) }}>{maximized ? 'Restore layout' : 'Maximize pane'}</ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={props.onInspect}>Inspect the repository</ContextMenuPrimitive.Item>
           <ContextMenuPrimitive.Separator className="mx-menu-sep" />
           <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { props.onRenameSession(session.id) }}>Rename…</ContextMenuPrimitive.Item>
           <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { void navigator.clipboard.writeText(session.cwd) }}>Copy folder path</ContextMenuPrimitive.Item>

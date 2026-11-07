@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { rememberSessions, withEnded } from './ended'
-import { EMPTY_LAYOUT, openInNewTab, removeSessions, splitPane, type Layout, type MakeId } from './layout'
+import { EMPTY_LAYOUT, openArrangement, removeSessions, splitPane, type Layout, type MakeId } from './layout'
 import type { SessionView } from './session'
 
 const session = (id: string): SessionView => ({ id, status: 'working', ended: false }) as SessionView
@@ -13,7 +13,7 @@ function ids(): MakeId {
 function layoutOf(...sessionIds: string[]): Layout {
   const makeId = ids()
   const [first, ...rest] = sessionIds
-  let layout = openInNewTab(EMPTY_LAYOUT, first ?? 's', makeId)
+  let layout = openArrangement(EMPTY_LAYOUT, first ?? 's', makeId)
   for (const id of rest) layout = splitPane(layout, null, 'right', id, makeId)
   return layout
 }
@@ -52,6 +52,6 @@ describe('removing sessions on purpose', () => {
 
     const removed = removeSessions(layout, new Set(['b']))
 
-    expect(removed.tabs[0]?.panes.map((pane) => pane.sessionId)).toEqual(['a', 'c'])
+    expect(removed.arrangements[0]?.panes.map((pane) => pane.sessionId)).toEqual(['a', 'c'])
   })
 })

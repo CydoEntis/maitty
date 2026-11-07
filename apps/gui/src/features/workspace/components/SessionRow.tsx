@@ -1,94 +1,92 @@
-import { splitNote } from '../model/splitFold'
 import { useState } from 'react'
-import { displayName, MAX_SESSION_NAME_LENGTH, statusText, STATUS_WORD, type SessionView } from '../model/session'
-import { branchLineOf } from '../model/branchLine'
-import { MOVED_HIGHLIGHT_MS, type SessionTrack } from '../model/tracking'
-import { useRecent } from '@/lib/clock'
-import { Ago } from './times'
-import { AppIcon, Icon, Spinner, StatusBadge } from './glyphs'
+import { displayName, folderNameOf, MAX_SESSION_NAME_LENGTH, rowName, STATUS_WORD, type SessionView } from '../model/session'
+import type { SessionTrack } from '../model/tracking'
+import { AppIcon, Icon, StatusBadge } from './glyphs'
 import { SESSION_DRAG_TYPE } from './dragSession'
 import { InlineName } from './InlineName'
 import { useSessionMenu } from './SessionMenu'
 import { hoverHandlers, type RailHover } from './railHover'
-import { useStatusEffect } from './motion'
-import { StatusEffect } from './StatusEffect'
-import { runsAgent, useArmed } from './useArmed'
 
 export type SessionRowProps = {
   session: SessionView
   track: SessionTrack | undefined
   selected: boolean
   online: boolean
-  /** How many quiet shell splits of this session's tab are folded into the row. */
-  splits?: number | undefined
-  /** This row just took over as its project's main row. */
-  swapped: boolean
   /** Where portalled menus mount, so they read the theme's colours. */
   portalContainer: HTMLElement | null
-  /** Opens the session's popover beside the row. */
   hover: RailHover
   onShow: () => void
+  /** Clicking the folder badge puts the folder in the filter field. */
+  onFilterFolder: (folder: string) => void
   onSetName: (name: string) => void
   onPin: (pinned: boolean) => void
+  onSplit: (direction: 'right' | 'down') => void
+  onCopyPath: () => void
   onEnd: () => void
 }
 
-/** A project's main row: the session's icon and state, what runs in it, and its menu. */
+/** The machine mark: a laptop for this computer, a server for another machine, dashed while that one is away. */
+function MachineMark({ session }: { session: SessionView }) {
+  const remote = session.machineName !== null
+  const away = remote && session.status === 'unknown'
+  return (
+    <span className={`mx-row-machine${away ? ' is-away' : ''}`} title={remote ? `${session.machineName ?? ''}${away ? ' · reconnecting' : ''}` : 'This computer'}>
+      <Icon name={remote ? 'server' : 'laptop'} size={13} />
+    </span>
+  )
+}
+
+/** One session in the flat list: its icon and status badge, name and diff counts, folder and machine. */
 export function SessionRow(props: SessionRowProps) {
   const { session, track, selected, online } = props
   const unread = Boolean(track?.unread) && !selected
-  const moved = useRecent(track?.movedAt ?? null, MOVED_HIGHLIGHT_MS)
-  const status = session.status
-  // How long ago it changed. A working row shows its spinner instead: a run time only counts from when this window saw it start.
-  const changedAt = status === 'working' || status === 'needs' ? null : track?.changedAt ?? null
-  const loud = selected || unread || status === 'needs'
-  const effect = useStatusEffect(status, selected)
-  const closing = useArmed(runsAgent(session.process))
   const [editing, setEditing] = useState(false)
-  const menu = useSessionMenu(session, { online, portalContainer: props.portalContainer, onShow: props.onShow, onRename: () => { setEditing(true) }, onPin: props.onPin, onEnd: props.onEnd })
-  const rowClass = ['mx-row', selected && 'is-selected', loud && 'is-loud', props.swapped && 'is-swapped', moved ? 'is-moved' : effect.className].filter(Boolean).join(' ')
-  // The first line names the program, a working row has its spinner and an idle one is the default: say only what they do not.
-  const line2 = status === 'working' || status === 'idle' ? '' : statusText(session)
-  const branchLine = branchLineOf(session)
-  const line2Class = status === 'needs' ? 'is-needs' : status === 'error' ? 'is-error' : status === 'working' ? 'is-working' : ''
+  const menu = useSessionMenu(session, { online, portalContainer: props.portalContainer, onSplit: props.onSplit, onCopyPath: props.onCopyPath, onRename: () => { setEditing(true) }, onPin: props.onPin, onEnd: props.onEnd })
+  const folder = folderNameOf(session)
+  const hasDiff = session.diffAdded + session.diffRemoved > 0
   const body = (
     <>
-          {!moved && <StatusEffect effect={effect} />}
-          <span className="mx-row-icon">
-            <AppIcon process={session.process} size={24} dimmed={status === 'unknown'} />
-            <StatusBadge status={status} />
-          </span>
-          <span className="mx-row-text">
-            <span className="mx-row-line1">
-              {editing
-                ? <InlineName value={session.name ?? ''} placeholder={session.title} label={`Name for ${displayName(session)}`} maxLength={MAX_SESSION_NAME_LENGTH} onCommit={(name) => { setEditing(false); props.onSetName(name) }} onCancel={() => { setEditing(false) }} />
-                : <span className="mx-row-title"><span className="mx-row-proc">{session.process}</span> · {displayName(session)}</span>}
-              {session.pinned && <span className="mx-row-pin" role="img" aria-label="Pinned" title="Pinned to the top"><Icon name="pin" size={11} /></span>}
-              {unread && <span className="mx-unread" aria-label="Unread" />}
-              {props.splits !== undefined && <span className="mx-split-count" title="Quiet shell panes folded into this row">{splitNote(props.splits)}</span>}
-              {status === 'working' && <Spinner />}
-              {changedAt !== null && <span className="mx-row-meta"><Ago at={changedAt} /></span>}
-            </span>
-            {line2 && <span className={`mx-row-line2 ${line2Class}`}>{line2}</span>}
-            {branchLine && <span className="flex min-w-0 items-center gap-1 overflow-hidden font-mono text-[11.5px] leading-[1.35] text-[var(--ansi-mag)]" title={`Branch ${branchLine}`}><Icon name="branch" size={11} /><span className="truncate">{branchLine}</span></span>}
-          </span>
+      <span className="mx-row-icon">
+        <AppIcon process={session.process} size={24} dimmed={session.status === 'unknown'} />
+        <StatusBadge status={session.status} />
+      </span>
+      <span className="mx-row-text">
+        <span className="mx-row-line1">
+          {editing
+            ? <InlineName value={session.name ?? ''} placeholder={session.process} label={`Name for ${displayName(session)}`} maxLength={MAX_SESSION_NAME_LENGTH} onCommit={(name) => { setEditing(false); props.onSetName(name) }} onCancel={() => { setEditing(false) }} />
+            : <span className="mx-row-title">{rowName(session)}</span>}
+          {session.pinned && <span className="mx-row-pin" role="img" aria-label="Pinned" title="Pinned"><Icon name="pin" size={11} /></span>}
+          {unread && <span className="mx-unread" role="img" aria-label="Unread" />}
+          {hasDiff && <span className="mx-row-diff" title="Lines added and removed in this checkout"><span className="is-add">+{session.diffAdded}</span> <span className="is-del">−{session.diffRemoved}</span></span>}
+        </span>
+      </span>
     </>
   )
   return (
     <>
       <div className="mx-row-wrap" onContextMenu={(event) => { props.hover.close(); menu.onContextMenu(event) }}>
-        {editing ? <div className={rowClass}>{body}</div> : <button type="button" className={rowClass} {...hoverHandlers(props.hover, { kind: 'session', id: session.id })} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData(SESSION_DRAG_TYPE, session.id) }} aria-label={`${displayName(session)}, ${session.process}, ${STATUS_WORD[status]}`} aria-current={selected ? 'page' : undefined} onClick={props.onShow}>{body}</button>}
-        <button
-          type="button"
-          className={`mx-icon-button mx-row-end${closing.armed ? ' is-armed' : ''}`}
-          aria-label={closing.armed ? `Click again to close and stop ${session.process}` : `Close session ${displayName(session)}`}
-          title={closing.armed ? `Click again to close and stop ${session.process}` : 'Close session · ends its shell'}
-          disabled={!online}
-          onBlur={closing.disarm}
-          onClick={() => { if (closing.press()) props.onEnd() }}
-        >
-          <Icon name="close" size={11} strokeWidth={2.25} />
+        {editing
+          ? <div className="mx-row is-selected">{body}</div>
+          : (
+            <button
+              type="button"
+              className={`mx-row${selected ? ' is-selected' : ''}`}
+              {...hoverHandlers(props.hover, session.id)}
+              draggable
+              onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData(SESSION_DRAG_TYPE, session.id) }}
+              aria-label={`${displayName(session)}, ${session.process}, ${STATUS_WORD[session.status]}`}
+              aria-current={selected ? 'page' : undefined}
+              onClick={props.onShow}
+              onKeyDown={(event) => { if (event.key === 'F2') { event.preventDefault(); setEditing(true) } }}
+            >
+              {body}
+            </button>
+          )}
+        <button type="button" className="mx-row-folder" title={session.cwdLabel} aria-label={`Show only ${folder}`} onClick={() => { props.onFilterFolder(folder) }}>
+          <Icon name="folder" size={11} />
+          <span>{folder}</span>
         </button>
+        <MachineMark session={session} />
       </div>
       {menu.element}
     </>

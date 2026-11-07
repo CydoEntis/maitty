@@ -27,9 +27,6 @@ export type ShortcutAction =
   | 'focus-next'
   | 'close'
   | 'undo-close'
-  | 'go-to-tab'
-  | 'next-tab'
-  | 'previous-tab'
   | 'toggle-sidebar'
   | 'settings'
   | 'palette'
@@ -74,10 +71,6 @@ export type Binding = {
   available: boolean
 }
 
-/** The digits of "go to tab"; the matcher takes any one of 1 to 9. */
-const TAB_DIGITS = '1…9'
-const TAB_DIGIT_PATTERN = /^[1-9]$/
-
 const cmd = (key: string, ...more: Modifier[]): Combo => ({ mods: ['cmd', ...more], key })
 const ctrlShift = (key: string, ...more: Modifier[]): Combo => ({ mods: ['ctrl', ...more, 'shift'], key })
 
@@ -95,17 +88,14 @@ export const BINDINGS: readonly Binding[] = [
   { action: 'split-down', label: 'Split down', group: 'Panes', mac: [cmd('D', 'shift')], other: [ctrlShift('D', 'alt')], available: true },
   { action: 'focus-previous', label: 'Previous pane', group: 'Panes', mac: [cmd('[')], other: [{ mods: ['ctrl'], key: '[' }], available: true },
   { action: 'focus-next', label: 'Next pane', group: 'Panes', mac: [cmd(']')], other: [{ mods: ['ctrl'], key: ']' }], available: true },
-  { action: 'close', label: 'Close pane or tab', group: 'Panes', mac: [cmd('W')], other: [ctrlShift('W')], available: true },
-  // Closing ends the session, so there is no window to undo in yet.
-  { action: 'undo-close', label: 'Undo close', group: 'Panes', mac: [cmd('Z')], other: [ctrlShift('Z')], available: false },
-  { action: 'go-to-tab', label: 'Go to tab', group: 'Panes', mac: [cmd(TAB_DIGITS)], other: [{ mods: ['ctrl'], key: TAB_DIGITS }], available: true },
-  { action: 'next-tab', label: 'Next tab in a project', group: 'Panes', mac: [{ mods: ['ctrl'], key: 'Tab' }], other: [{ mods: ['ctrl'], key: 'Tab' }], available: true },
-  { action: 'previous-tab', label: 'Previous tab in a project', group: 'Panes', mac: [{ mods: ['ctrl', 'shift'], key: 'Tab' }], other: [{ mods: ['ctrl', 'shift'], key: 'Tab' }], available: true },
-  { action: 'broadcast', label: 'Broadcast to the tab', group: 'Panes', mac: [cmd('B', 'shift')], other: [ctrlShift('B', 'alt')], available: true },
+  { action: 'close', label: 'Close pane or session', group: 'Panes', mac: [cmd('W')], other: [ctrlShift('W')], available: true },
+  // Closing ends the session after a short window; this key brings back the last one closed inside it.
+  { action: 'undo-close', label: 'Undo close', group: 'Panes', mac: [cmd('Z')], other: [ctrlShift('Z')], available: true },
+  { action: 'broadcast', label: 'Broadcast to the layout', group: 'Panes', mac: [cmd('B', 'shift')], other: [ctrlShift('B', 'alt')], available: true },
   { action: 'palette', label: 'Command palette', group: 'Find & jump', mac: [cmd('K')], other: [ctrlShift('K')], available: true },
-  { action: 'inbox', label: 'Attention inbox', group: 'Find & jump', mac: [cmd('J', 'shift')], other: [ctrlShift('J')], available: true },
-  // Plain Ctrl+J is a line feed in a terminal, so Windows and Linux have no key for this yet.
-  { action: 'jump-needs', label: 'Jump to the next session that needs you', group: 'Find & jump', mac: [cmd('J')], other: [], available: true },
+  // Plain Ctrl+J is a line feed in a terminal, so Windows and Linux add Shift (the contract above).
+  { action: 'inbox', label: 'Inbox', group: 'Find & jump', mac: [cmd('J')], other: [ctrlShift('J')], available: true },
+  { action: 'jump-needs', label: 'Jump to the next session that needs you', group: 'Find & jump', mac: [cmd('J', 'shift')], other: [], available: true },
   { action: 'inspect', label: 'Inspect the repository', group: 'Find & jump', mac: [cmd('I')], other: [ctrlShift('I')], available: true },
   { action: 'find', label: 'Find in the pane or every session', group: 'Find & jump', mac: [cmd('F')], other: [ctrlShift('F')], available: true },
   { action: 'toggle-sidebar', label: 'Collapse sidebar', group: 'Window', mac: [cmd('B')], other: [ctrlShift('B')], available: true },
@@ -170,7 +160,7 @@ export function shortcutText(action: ShortcutAction, platform: Platform): string
 
 type KeyInput = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'altKey'>
 
-export type ShortcutMatch = { action: ShortcutAction; /** For go-to-tab: the 1-based tab number. */ tab?: number }
+export type ShortcutMatch = { action: ShortcutAction }
 
 function matches(combo: Combo, event: KeyInput, platform: Platform): boolean {
   const wanted = (modifier: Modifier) => combo.mods.includes(modifier)
@@ -179,7 +169,6 @@ function matches(combo: Combo, event: KeyInput, platform: Platform): boolean {
   if (event.altKey !== wanted('alt')) return false
   if (!combo.anyShift && event.shiftKey !== wanted('shift')) return false
   const pressed = event.key.toLowerCase()
-  if (combo.key === TAB_DIGITS) return TAB_DIGIT_PATTERN.test(pressed)
   return (EVENT_KEYS[combo.key] ?? [combo.key.toLowerCase()]).includes(pressed)
 }
 
@@ -193,7 +182,7 @@ export function matchShortcut(event: KeyInput, platform: Platform): ShortcutMatc
     if (!binding.available) continue
     for (const combo of platform === 'mac' ? binding.mac : binding.other) {
       if (!matches(combo, event, platform)) continue
-      return binding.action === 'go-to-tab' ? { action: binding.action, tab: Number(event.key) } : { action: binding.action }
+      return { action: binding.action }
     }
   }
   return null

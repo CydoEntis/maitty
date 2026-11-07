@@ -93,10 +93,6 @@ function SettingsDialog({ open, onClose, theme, onThemeChange, preferences, onPr
               <button type="button" className={preferences.restoreTabs ? 'is-selected' : ''} aria-pressed={preferences.restoreTabs} onClick={() => { updatePreference('restoreTabs', true) }}>Restore tabs</button>
               <button type="button" className={!preferences.restoreTabs ? 'is-selected' : ''} aria-pressed={!preferences.restoreTabs} onClick={() => { updatePreference('restoreTabs', false) }}>Start empty</button>
             </div></div>
-            <div className="settings-row"><span><strong>Group sessions by</strong><small>Repository groups sessions by their git repo; sessions outside a repo go under Other folders.</small></span><div className="segmented" role="group" aria-label="Group sessions by">
-              <button type="button" className={preferences.groupBy === 'repo' ? 'is-selected' : ''} aria-pressed={preferences.groupBy === 'repo'} onClick={() => { updatePreference('groupBy', 'repo') }}>Repository</button>
-              <button type="button" className={preferences.groupBy === 'folder' ? 'is-selected' : ''} aria-pressed={preferences.groupBy === 'folder'} onClick={() => { updatePreference('groupBy', 'folder') }}>Folder</button>
-            </div></div>
             <label className="settings-row"><span><strong>Start folder</strong><small>New sessions open a shell here. Leave empty for your home folder, then cd anywhere.</small></span><input type="text" className="settings-text-input" placeholder="Home folder" value={preferences.startFolder} onChange={(event) => { updatePreference('startFolder', event.target.value) }} /></label>
             <div className="settings-row"><span><strong>Closing this window</strong><small>Conversations belong to maittyd, so closing the window or a tab never stops an agent.</small></span><span className="settings-value">Always keeps running</span></div>
           </>}

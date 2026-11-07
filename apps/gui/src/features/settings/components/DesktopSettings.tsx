@@ -346,9 +346,6 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
         <Row label="Reopen tabs on launch" detail="Restore the tabs and splits you had last time.">
           <Switch label="Reopen tabs on launch" checked={preferences.restoreTabs} onChange={(value) => { update('restoreTabs', value) }} />
         </Row>
-        <Row label="Group sessions by" detail="Sessions outside a git repo are grouped by their own folder.">
-          <Segmented label="Group sessions by" value={preferences.groupBy} options={[['repo', 'Repository'], ['folder', 'Folder']] as const} onChange={(value) => { update('groupBy', value) }} />
-        </Row>
         <Row label="Closing the window" detail="Sessions are owned by maittyd and keep running.">
           <span style={{ fontSize: 12, color: 'var(--dim)' }}>Always keeps running</span>
         </Row>
@@ -383,13 +380,6 @@ const STYLE_CARDS: ReadonlyArray<{ id: StyleChoice; name: string; blurb: string;
 ]
 const CHAT_VIEW_OPTIONS = [['terminal', 'Terminal'], ['chat', 'Chat']] as const
 const ICON_COLOR_OPTIONS = [['color', 'Color'], ['grayscale', 'Grayscale']] as const
-const TRAY_NOTES = {
-  tree: 'Indented under the main row with guide lines, like a file tree.',
-  stacked: 'One per line under the main row, with folder and status.',
-  icons: 'Small icon tabs under the main row.',
-  names: 'Small named tabs under the main row.',
-} as const
-const TRAY_OPTIONS = [['tree', 'Tree'], ['names', 'Names'], ['icons', 'Icons'], ['stacked', 'Stacked']] as const
 const UPDATE_CHIP: Record<UpdaterState['status'], string> = { idle: 'Not checked', checking: 'Checking…', current: 'Up to date', available: 'Update available', downloading: 'Downloading', ready: 'Ready to restart', failed: 'Failed' }
 
 /** The one button that fits where the update is. */
@@ -591,13 +581,10 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
         </Row>
       </Card>
       <Card title="Sidebar" color="var(--accent)" iconPath={<><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M9 4v16" /></>}
-        foot={<>{TRAY_NOTES[preferences.trayStyle]} Sessions keep the order they were created in; the one you are in is the full card where it sits.</>}
+        foot="Sessions keep the order they were created in."
       >
         <Row label="Sidebar position" detail="Which side of the window the sidebar sits on. Inspect and the inbox open from the other side.">
           <Segmented label="Sidebar position" value={preferences.sidebarSide} options={SIDE_OPTIONS} onChange={(value) => { update('sidebarSide', value) }} />
-        </Row>
-        <Row label="Other sessions in a project" detail="How the sessions after the main row sit. Those before it are always tree rows.">
-          <Segmented label="Other sessions in a project" value={preferences.trayStyle} options={TRAY_OPTIONS} onChange={(value) => { update('trayStyle', value) }} />
         </Row>
       </Card>
       <Card title="Interface size" color="var(--ansi-green)" iconPath={<path d="M4 7h16M4 12h10M4 17h13" />}>

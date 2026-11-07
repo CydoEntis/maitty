@@ -6,14 +6,16 @@ export type SessionMenuActions = {
   online: boolean
   /** Where the menu mounts, so it reads the theme's colours. */
   portalContainer: HTMLElement | null
-  onShow: () => void
+  /** Shows the session beside the pane that has focus. */
+  onSplit: (direction: 'right' | 'down') => void
+  onCopyPath: () => void
   /** Starts renaming it, where it is shown. */
   onRename: () => void
   onPin: (pinned: boolean) => void
   onEnd: () => void
 }
 
-/** A right-click menu for a session: name it, pin it, open it, or end it. */
+/** A right-click menu for a session: name it, pin it, open it in a split, copy its path, or end it. */
 export function useSessionMenu(session: SessionView, actions: SessionMenuActions) {
   const [at, setAt] = useState<{ x: number; y: number } | null>(null)
   return {

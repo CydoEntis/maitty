@@ -18,7 +18,6 @@ const DEFAULTS: SettingsPreferences = {
   terminalFontWeight: 400,
   terminalFontWeightBold: 700,
   startFolder: '',
-  groupBy: 'repo',
   themeMode: 'system',
   darkTheme: 'Midnight',
   lightTheme: 'Paper',
@@ -27,7 +26,7 @@ const DEFAULTS: SettingsPreferences = {
   effectWorking: true,
   effectNeedsYou: true,
   defaultAgent: 'claude', newSessionView: 'chat',
-  effectDone: true, effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all', animations: 'auto', density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, monthlyBudget: null, iconSize: 'medium', trayStyle: 'tree', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, chatFullAccessDefault: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass',
+  effectDone: true, effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all', animations: 'auto', density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, monthlyBudget: null, iconSize: 'medium', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, chatFullAccessDefault: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass',
 }
 
 describe('settings preferences', () => {
@@ -91,9 +90,9 @@ describe('settings preferences', () => {
   })
 
   it('reads preferences saved before the terminal settings existed', () => {
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ accent: 'blue', spinner: 'bars', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: true, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: false, notificationSound: false, terminalFontSize: 10, startFolder: '~/code', groupBy: 'folder' }))
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ accent: 'blue', spinner: 'bars', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: true, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: false, notificationSound: false, terminalFontSize: 10, startFolder: '~/code' }))
 
-    expect(readSettingsPreferences()).toEqual({ ...DEFAULTS, style: 'glass', effectWorking: true, effectNeedsYou: true, effectDone: true, accent: 'blue', spinner: 'bars', compactSidebar: true, toastPosition: 'bottom-right', notifyFinished: false, terminalFontSize: 12, startFolder: '~/code', groupBy: 'folder' })
+    expect(readSettingsPreferences()).toEqual({ ...DEFAULTS, style: 'glass', effectWorking: true, effectNeedsYou: true, effectDone: true, accent: 'blue', spinner: 'bars', compactSidebar: true, toastPosition: 'bottom-right', notifyFinished: false, terminalFontSize: 12, startFolder: '~/code' })
   })
 
   it('starts a fresh install in Glass with the sweeps on, and Flat or Tiled with them off', () => {
@@ -164,13 +163,13 @@ describe('settings preferences', () => {
   it('keeps the interface sizes in range and falls back from nonsense', () => {
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ density: 'spacious', sidebarTextSize: 99, tabTextSize: 'big', sidebarWidth: 5 }))
 
-    expect(readSettingsPreferences()).toMatchObject({ density: 'spacious', sidebarTextSize: 17, tabTextSize: 13.5, sidebarWidth: 200 })
+    expect(readSettingsPreferences()).toMatchObject({ density: 'spacious', sidebarTextSize: 17, tabTextSize: 13.5, sidebarWidth: 208 })
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ density: 'huge', sidebarWidth: 9999 }))
-    expect(readSettingsPreferences()).toMatchObject({ density: 'comfortable', sidebarWidth: 420 })
+    expect(readSettingsPreferences()).toMatchObject({ density: 'comfortable', sidebarWidth: 440 })
+    // The old grouping and tray settings are gone: a saved copy is ignored, not carried.
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ trayStyle: 'stacked' }))
-    expect(readSettingsPreferences()).toMatchObject({ trayStyle: 'stacked' })
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ trayStyle: 'wide' }))
-    expect(readSettingsPreferences()).toMatchObject({ trayStyle: 'tree', iconColor: 'color' })
+    expect(readSettingsPreferences()).not.toHaveProperty('trayStyle')
+    expect(readSettingsPreferences()).not.toHaveProperty('groupBy')
   })
 
   it('keeps a valid terminal font and falls back to the defaults for nonsense', () => {

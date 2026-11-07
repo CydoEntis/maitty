@@ -16,8 +16,6 @@ export const DENSITIES: readonly Density[] = ['compact', 'comfortable', 'spaciou
 export type IconSize = 'small' | 'medium' | 'large'
 /** Which working rows and tabs show the working effect: every one, only the one you are in, or none. */
 export type WorkingScope = 'all' | 'selected' | 'off'
-/** How a project's other sessions sit under its main row in the sidebar. */
-export type TrayStyle = 'tree' | 'names' | 'icons' | 'stacked'
 /** Which side of the window the sidebar sits on. */
 export type SidebarSide = 'left' | 'right'
 /** The window style: Flat is solid panels, Tiled is edge-to-edge panes with square corners, Glass is floating frosted cards with sweeps. */
@@ -60,7 +58,6 @@ export type SettingsPreferences = {
   /** Where a new session starts. Empty: your home folder. */
   startFolder: string
   /** How the sidebar groups sessions: by git repository, or by the folder they are in. */
-  groupBy: 'repo' | 'folder'
   /** Which theme is in use: your dark one, your light one, or whichever the system asks for. */
   themeMode: ThemeMode
   /** The theme names used in dark and in light (Settings › Appearance). */
@@ -92,7 +89,6 @@ export type SettingsPreferences = {
   sidebarWidth: number
   sidebarSide: SidebarSide
   iconSize: IconSize
-  trayStyle: TrayStyle
   style: StyleChoice
   iconColor: IconColor
   /** Which view a Claude or Codex session opens in. Terminal until you change it. */
@@ -135,8 +131,8 @@ export function validBudget(value: unknown): number | null {
 
 export const TERMINAL_FONT_SIZE_MIN = 12
 export const TERMINAL_FONT_SIZE_MAX = 16
-export const SIDEBAR_WIDTH_MIN = 200
-export const SIDEBAR_WIDTH_MAX = 420
+export const SIDEBAR_WIDTH_MIN = 208
+export const SIDEBAR_WIDTH_MAX = 440
 export const SIDEBAR_WIDTH_DEFAULT = 264
 /** The sidebar and tab text sizes the controls offer, in px; any size in range that was saved is kept. */
 export const UI_TEXT_SIZE_SMALL = 12
@@ -169,7 +165,6 @@ function defaults(): SettingsPreferences {
     terminalFontWeight: DEFAULT_FONT_WEIGHT,
     terminalFontWeightBold: DEFAULT_FONT_WEIGHT_BOLD,
     startFolder: '',
-    groupBy: 'repo',
     // The theme chosen before there were two slots keeps its look; otherwise follow the system.
     themeMode: legacy === 'Paper' ? 'light' : legacy === 'Abyss' ? 'dark' : 'system',
     darkTheme: legacy === 'Abyss' ? 'Abyss' : 'Midnight',
@@ -194,7 +189,6 @@ function defaults(): SettingsPreferences {
     sidebarWidth: SIDEBAR_WIDTH_DEFAULT,
     sidebarSide: 'left',
     iconSize: 'medium',
-    trayStyle: 'tree',
     iconColor: 'color',
     chatViewDefault: DEFAULT_CHAT_VIEWS,
     defaultAgent: 'claude',
@@ -254,7 +248,6 @@ export function readSettingsPreferences(): SettingsPreferences {
       terminalFontWeight: isFontWeight(preferences.terminalFontWeight) ? preferences.terminalFontWeight : fallback.terminalFontWeight,
       terminalFontWeightBold: isFontWeight(preferences.terminalFontWeightBold) ? preferences.terminalFontWeightBold : fallback.terminalFontWeightBold,
       startFolder: typeof preferences.startFolder === 'string' ? preferences.startFolder.trim() : fallback.startFolder,
-      groupBy: preferences.groupBy === 'folder' || preferences.groupBy === 'repo' ? preferences.groupBy : fallback.groupBy,
       ...themeChoice(preferences, fallback),
       cursorStyle: isCursorStyle(preferences.cursorStyle) ? preferences.cursorStyle : fallback.cursorStyle,
       scrollback: isScrollback(preferences.scrollback) ? preferences.scrollback : fallback.scrollback,
@@ -274,7 +267,6 @@ export function readSettingsPreferences(): SettingsPreferences {
       sidebarWidth: clampNumber(preferences.sidebarWidth, SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX, fallback.sidebarWidth),
       sidebarSide: preferences.sidebarSide === 'left' || preferences.sidebarSide === 'right' ? preferences.sidebarSide : fallback.sidebarSide,
       iconSize: preferences.iconSize === 'small' || preferences.iconSize === 'medium' || preferences.iconSize === 'large' ? preferences.iconSize : fallback.iconSize,
-      trayStyle: preferences.trayStyle === 'tree' || preferences.trayStyle === 'names' || preferences.trayStyle === 'icons' || preferences.trayStyle === 'stacked' ? preferences.trayStyle : fallback.trayStyle,
       style: styleOf(preferences.style) ?? fallback.style,
       chatViewDefault: chatViewDefault(preferences.chatViewDefault, fallback.chatViewDefault),
       defaultAgent: preferences.defaultAgent === 'claude' || preferences.defaultAgent === 'codex' ? preferences.defaultAgent : fallback.defaultAgent,

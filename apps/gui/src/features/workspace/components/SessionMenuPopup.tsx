@@ -6,7 +6,7 @@ import { Icon } from './glyphs'
 import { runsAgent, useArmed } from './useArmed'
 
 const MENU_WIDTH_PX = 260
-const MENU_HEIGHT_PX = 190
+const MENU_HEIGHT_PX = 260
 const EDGE_PX = 8
 
 type Props = { session: SessionView; actions: SessionMenuActions; at: { x: number; y: number }; onClose: () => void }
@@ -56,11 +56,13 @@ export function SessionMenuPopup({ session, actions, at, onClose }: Props) {
   }
   const menu = (
     <div ref={root} role="dialog" aria-label={`Menu for ${displayName(session)}`} className="mx-sessionmenu" style={style}>
-      <button type="button" role="menuitem" className="mx-menu-item" onClick={run(actions.onRename)}><Icon name="pencil" size={13} />Rename</button>
+      <button type="button" role="menuitem" className="mx-menu-item" onClick={run(actions.onRename)}><Icon name="pencil" size={13} />Rename<span className="mx-menu-hint" aria-hidden="true">F2</span></button>
       <button type="button" role="menuitem" className="mx-menu-item" onClick={run(() => { actions.onPin(!session.pinned) })}>
         <Icon name="pin" size={13} />{session.pinned ? 'Unpin' : 'Pin to top'}
       </button>
-      <button type="button" role="menuitem" className="mx-menu-item" onClick={run(actions.onShow)}><span className="mx-sm-gap" />Open</button>
+      <button type="button" role="menuitem" className="mx-menu-item" onClick={run(() => { actions.onSplit('right') })}><Icon name="splitRight" size={13} />Open in split right</button>
+      <button type="button" role="menuitem" className="mx-menu-item" onClick={run(() => { actions.onSplit('down') })}><Icon name="splitDown" size={13} />Open in split down</button>
+      <button type="button" role="menuitem" className="mx-menu-item" onClick={run(actions.onCopyPath)}><span className="mx-sm-gap" />Copy path</button>
       <div className="mx-menu-sep" />
       <button
         type="button"

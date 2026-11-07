@@ -1,4 +1,4 @@
-/** Under this width the sidebar is a drawer opened from the tab bar (v18 README §2). */
+/** Under this width the sidebar is the 60px rail, and expanding it opens the full sidebar over the window (README section 2.1). */
 export const COMPACT_WIDTH_PX = 1100
-/** Under this width panes stack in one column, tabs shrink and the tab bar's panels fold into one menu. */
-export const NARROW_WIDTH_PX = 900
+/** Under this width panes stack in one column and the pane header folds its split buttons into the menu. */
+export const NARROW_WIDTH_PX = 800

@@ -34,7 +34,7 @@ export function remoteTerminals(machines: ReadonlyMap<number, RemoteMachine>): C
 export function idsOfMachinesNotHeard(layout: Layout, machines: ReadonlyMap<number, RemoteMachine>): string[] {
   const heard = new Set([...machines.values()].filter((machine) => machine.heard).map((machine) => machine.state.name.toLowerCase()))
   const ids = new Set<string>()
-  for (const tab of layout.tabs) {
+  for (const tab of layout.arrangements) {
     for (const pane of tab.panes) {
       const name = machineNameOf(pane.sessionId)
       if (name !== null && !heard.has(name.toLowerCase())) ids.add(pane.sessionId)

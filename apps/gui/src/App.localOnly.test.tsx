@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -97,13 +97,13 @@ describe('a pane of another machine and the features that need its files', () =>
     daemon.suggestProjectFolders.mockResolvedValue([])
   })
 
-  it('says Inspect is local-only, from the shortcut and the disabled Files button of the activity bar', async () => {
+  it('says Inspect is local-only, from the shortcut and from the pane menu', async () => {
     const user = await openRemotePane()
-    const button = within(screen.getByRole('toolbar', { name: 'Panels' })).getByRole('button', { name: 'Files' })
-    expect(button).toHaveAttribute('aria-disabled', 'true')
-    expect(button).toHaveAttribute('title', REFUSAL('Inspect'))
-    await user.click(button)
+    await user.keyboard('{Control>}{Shift>}i{/Shift}{/Control}')
     expect(await screen.findByText(REFUSAL('Inspect'))).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'More pane actions' }))
+    await user.click(await screen.findByRole('menuitem', { name: /^Inspect the repository/ }))
+    expect(await screen.findAllByText(REFUSAL('Inspect'))).not.toHaveLength(0)
     expect(screen.queryByRole('complementary', { name: /repository|inspect/i })).toBeNull()
   })
 

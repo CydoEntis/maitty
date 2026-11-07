@@ -111,12 +111,12 @@ describe('a chat session in the desktop window', () => {
     daemon.loadDaemonRestartStatus.mockResolvedValue({ daemonProtocol: 49, guiProtocol: 59, canRestart: false, sessionCount: 1, activeTurnCount: 0 })
   })
 
-  it('is a row beside the terminal sessions of its project, and opens as a chat with the composer on and no terminal', async () => {
+  it('is a row beside the terminal sessions, and opens as a chat with the composer on and no terminal', async () => {
     serveHistory()
     daemon.loadConversations.mockResolvedValue([term(2), chatSession(44)])
     renderDesktopApp()
 
-    const nav = await screen.findByRole('navigation', { name: 'Sessions by project' })
+    const nav = await screen.findByRole('navigation', { name: 'Sessions' })
     expect(within(nav).getByRole('button', { name: /, claude, / })).toBeInTheDocument()
 
     // Opening it: its pane is the chat and nothing else.
