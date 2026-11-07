@@ -3,6 +3,7 @@ mod file_send;
 mod attachment;
 mod image_paste;
 pub mod hub;
+mod machine_update;
 mod machines;
 mod output_socket;
 mod performance;
@@ -771,6 +772,7 @@ pub fn run() {
             machines::list_machines,
             terminal_stream::list_machines_overview,
             terminal_stream::retry_machine,
+            machine_update::update_machine,
             terminal_stream::start_session_on_machine,
             terminal_stream::remove_machine,
             terminal_stream::set_machine_grant,

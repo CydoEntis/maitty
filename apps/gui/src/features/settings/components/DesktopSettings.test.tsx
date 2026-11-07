@@ -9,7 +9,7 @@ import { DesktopSettings, type DesktopSettingsSection, type MachinesInfo } from 
 const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreLayout: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, terminalFontFamily: '', terminalFontWeight: 400, terminalFontWeightBold: 700, startFolder: '', themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper', cursorStyle: 'block', scrollback: 10000, scrollSpeed: 1, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, monthlyBudget: null, iconSize: 'medium', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, defaultAgent: 'claude', newSessionView: 'chat', chatFullAccessDefault: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass' }
 
 function info(overrides: Partial<MachinesInfo> = {}): MachinesInfo {
-  return { known: true, list: [], onRetry: vi.fn(), onRemove: vi.fn(), onGrant: vi.fn(), onCopyCommand: vi.fn(), add: { windows: false, loadHosts: () => Promise.resolve([]), onAdd: vi.fn(), onCancel: vi.fn() }, ...overrides }
+  return { known: true, list: [], onRetry: vi.fn(), onRemove: vi.fn(), onGrant: vi.fn(), onUpdate: vi.fn(() => Promise.resolve()), onCopyCommand: vi.fn(), add: { windows: false, loadHosts: () => Promise.resolve([]), onAdd: vi.fn(), onCancel: vi.fn() }, ...overrides }
 }
 
 function renderSettings(section: DesktopSettingsSection, overrides: Partial<Parameters<typeof DesktopSettings>[0]> = {}) {
@@ -426,6 +426,35 @@ describe('the Machines page', () => {
     expect(screen.getByText('maitty machine update box --install')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Copy the update command for box' }))
     expect(onCopyCommand).toHaveBeenCalledWith('maitty machine update box --install')
+  })
+
+  it('asks before updating a machine, says what happens to its sessions, then updates it', async () => {
+    const user = userEvent.setup()
+    const onUpdate = vi.fn(() => Promise.resolve())
+    renderSettings('machines', { machines: info({ list: others('needs-update', 'run `maitty machine update box --install` (or set `remote_cmd` to its path), then retry'), onUpdate }) })
+    await user.click(screen.getByRole('button', { name: 'Update box' }))
+    expect(onUpdate).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent(/come back with their agents resumed/)
+    await user.click(screen.getByRole('button', { name: 'Update box now' }))
+    expect(onUpdate).toHaveBeenCalledWith('box', true, false)
+  })
+
+  it('does not update when the question is cancelled', async () => {
+    const user = userEvent.setup()
+    const onUpdate = vi.fn(() => Promise.resolve())
+    renderSettings('machines', { machines: info({ list: others('needs-update', 'run `maitty machine update box`, then retry'), onUpdate }) })
+    await user.click(screen.getByRole('button', { name: 'Update box' }))
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(onUpdate).not.toHaveBeenCalled()
+  })
+
+  it('can wait for the machine to be idle before it updates', async () => {
+    const user = userEvent.setup()
+    const onUpdate = vi.fn(() => Promise.resolve())
+    renderSettings('machines', { machines: info({ list: others('needs-update', 'run `maitty machine update box`, then retry'), onUpdate }) })
+    await user.click(screen.getByRole('button', { name: 'Update box' }))
+    await user.click(screen.getByRole('button', { name: 'Update box when idle' }))
+    expect(onUpdate).toHaveBeenCalledWith('box', false, true)
   })
 
   it('has no command to copy for a machine that needs nothing installed', () => {

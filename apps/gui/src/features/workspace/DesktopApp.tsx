@@ -29,7 +29,7 @@ import {
   undoCloseSession,
 } from '@/api/daemon'
 import { fleetsFromSnapshot, loadFleets, type Fleet } from '@/api/fleets'
-import { LOCAL_MACHINE, addMachine, cancelAddMachine, listSshHosts, listenAttention, listenMachineClipboard, listenMachineError, listenMachineNotice, listenMachineRemoved, listenMachineSessions, listenMachineState, loadMachinesOverview, removeMachine, retryMachine, setMachineGrant, startSessionOnMachine, terminalOf, unregisterMachine, type Attention, type Grant, type MachineState } from '@/api/machines'
+import { LOCAL_MACHINE, addMachine, cancelAddMachine, listSshHosts, listenAttention, listenMachineClipboard, listenMachineError, listenMachineNotice, listenMachineRemoved, listenMachineSessions, listenMachineState, loadMachinesOverview, removeMachine, retryMachine, setMachineGrant, updateMachine, startSessionOnMachine, terminalOf, unregisterMachine, type Attention, type Grant, type MachineState } from '@/api/machines'
 import { TitleBar } from '@/components/TitleBar'
 import { Toaster } from '@/components/ui/sonner'
 import { markConversationsDisconnected } from '@/data/connection'
@@ -586,6 +586,16 @@ export function DesktopApp() {
   const grantNamed = useCallback((name: string, grant: Grant, on: boolean) => {
     setMachineGrant(name, grant, on).catch((error: unknown) => { toast.error(errorMessage(error, `Could not change ${name}`)) })
   }, [])
+  // The restarted daemon is dialled again once the update is in: the state moves on by itself.
+  const updateNamed = useCallback(async (name: string, install: boolean, whenIdle: boolean) => {
+    try {
+      const result = await updateMachine(name, install, whenIdle)
+      toast.success(result)
+      retryNamed(name)
+    } catch (error) {
+      toast.error(errorMessage(error, `Could not update ${name}`))
+    }
+  }, [retryNamed])
   const copyCommand = useCallback((command: string) => {
     navigator.clipboard.writeText(command).then(
       () => { toast.message('Copied. Run it in a terminal on this computer.') },
@@ -2039,7 +2049,7 @@ export function DesktopApp() {
                 platform={platform}
                 daemon={{ online, sessionCount: sessions.length }}
                 appVersion={runningVersion}
-                machines={{ known: machinesKnown, list: heads.filter((head) => head.name !== null), onRetry: retryNamed, onRemove: removeNamed, onGrant: grantNamed, onCopyCommand: copyCommand, add: { windows: navigator.userAgent.includes('Windows'), loadHosts: listSshHosts, onAdd: addNamed, onCancel: cancelAdding } }}
+                machines={{ known: machinesKnown, list: heads.filter((head) => head.name !== null), onRetry: retryNamed, onRemove: removeNamed, onGrant: grantNamed, onUpdate: updateNamed, onCopyCommand: copyCommand, add: { windows: navigator.userAgent.includes('Windows'), loadHosts: listSshHosts, onAdd: addNamed, onCancel: cancelAdding } }}
                 usage={usageInfo}
                 validateFolder={folderExists}
                 onChooseFolder={chooseStartFolder}

@@ -159,6 +159,17 @@ export async function retryMachine(name: string): Promise<void> {
 }
 
 /**
+ * Install this version on a machine and restart its daemon, now or (`whenIdle`) once nothing is
+ * open there, for up to half an hour. Its saved sessions come back with their agents resumed; a
+ * turn in progress is lost when it restarts now. Resolves with the result line and rejects
+ * with the real reason, so the page never claims an update that did not happen.
+ */
+export async function updateMachine(name: string, install: boolean, whenIdle: boolean): Promise<string> {
+  if (!isTauri()) throw new Error('Updating a machine needs the desktop app.')
+  return z.string().parse(await invoke('update_machine', { name, install, whenIdle }))
+}
+
+/**
  * Take a machine out of the list. Its sessions keep running on it and the layout saved under its
  * name is kept. Rejects with the host's words when the entry could not be removed.
  */

@@ -29,7 +29,12 @@ export type MachinesInfo = {
   onRemove: (name: string) => void
   /** Allow or stop one of a machine's powers over this computer. */
   onGrant: (name: string, grant: Grant, on: boolean) => void
-  /** Puts a command on the clipboard to run in a terminal; the app never runs it on a machine. */
+  /**
+   * Installs this version on a machine and restarts its daemon there; its saved sessions come
+   * back. Settles when the update ended and has already told the person how it went.
+   */
+  onUpdate: (name: string, install: boolean, whenIdle: boolean) => Promise<void>
+  /** Puts the same command on the clipboard, to run in a terminal instead. */
   onCopyCommand: (command: string) => void
   add: {
     /** Windows has no ssh agent by default: the page says to use keys. */
@@ -788,6 +793,13 @@ function AddMachineCard({ add }: { add: MachinesInfo['add'] }) {
 
 function MachineList({ machines }: { machines: MachinesInfo }) {
   const [confirming, setConfirming] = useState<string | null>(null)
+  const [confirmingUpdate, setConfirmingUpdate] = useState<string | null>(null)
+  const [updating, setUpdating] = useState<string | null>(null)
+  const runUpdate = (name: string, install: boolean, whenIdle: boolean) => {
+    setConfirmingUpdate(null)
+    setUpdating(name)
+    void machines.onUpdate(name, install, whenIdle).finally(() => { setUpdating(null) })
+  }
   const icon = <><rect x="4" y="4" width="16" height="7" rx="2" /><rect x="4" y="13" width="16" height="7" rx="2" /><path d="M8 7.5h.01M8 16.5h.01" /></>
   if (!machines.known) {
     return <Card title="Machines" color="var(--ansi-green)" iconPath={icon}><p className="mx-scard-note" role="status">Loading machines…</p></Card>
@@ -805,6 +817,8 @@ function MachineList({ machines }: { machines: MachinesInfo }) {
         const name = head.label
         const chip = head.chip
         const asking = confirming === name
+        const askingUpdate = confirmingUpdate === name
+        const busyUpdating = updating === name
         return (
           <Fragment key={head.key}>
           <div className="mx-scard-row mx-machine-row">
@@ -817,8 +831,18 @@ function MachineList({ machines }: { machines: MachinesInfo }) {
               {head.why !== null && head.chip?.tone === 'bad' && <span className="mx-machine-fix">{head.why}</span>}
               {head.updateCommand !== null && <span className="mx-machine-fix mono">{head.updateCommand}</span>}
               {asking && <span role="alert">Removes {name} from this list. Its sessions keep running on {name}.</span>}
+              {askingUpdate && <span role="alert">Updating {name} restarts its daemon. Its sessions are saved and come back with their agents resumed; an agent in the middle of a turn loses that turn if you update now. Update when idle waits up to half an hour for nothing to be running first.</span>}
+              {busyUpdating && <span role="status">Updating {name}…</span>}
             </div>
-            {asking
+            {askingUpdate
+              ? (
+                <>
+                  <button type="button" className="mx-scard-button is-danger" onClick={() => { runUpdate(name, head.updateCommand?.includes('--install') === true, false) }}>Update {name} now</button>
+                  <button type="button" className="mx-scard-button" onClick={() => { runUpdate(name, head.updateCommand?.includes('--install') === true, true) }}>Update {name} when idle</button>
+                  <button type="button" className="mx-scard-button" onClick={() => { setConfirmingUpdate(null) }}>Cancel</button>
+                </>
+              )
+              : asking
               ? (
                 <>
                   <button type="button" className="mx-scard-button is-danger" onClick={() => { setConfirming(null); machines.onRemove(name) }}>Remove {name}</button>
@@ -827,6 +851,7 @@ function MachineList({ machines }: { machines: MachinesInfo }) {
               )
               : (
                 <>
+                  {head.updateCommand !== null && <button type="button" className="mx-scard-button" disabled={updating !== null} aria-label={`Update ${name}`} onClick={() => { setConfirmingUpdate(name) }}>Update</button>}
                   {head.updateCommand !== null && <button type="button" className="mx-scard-button" aria-label={`Copy the update command for ${name}`} onClick={() => { if (head.updateCommand !== null) machines.onCopyCommand(head.updateCommand) }}>Copy command</button>}
                   <button type="button" className="mx-scard-button" disabled={chip?.word === 'connected'} aria-label={`Retry ${name}`} onClick={() => { machines.onRetry(name) }}>Retry</button>
                   <button type="button" className="mx-scard-button" aria-label={`Remove ${name}`} onClick={() => { setConfirming(name) }}>Remove</button>
