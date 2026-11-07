@@ -88,19 +88,14 @@ with `design_tests::render_with(w, h)` (projects, worktrees, agents in
 each state) and drive it with `app.on_key` / `app.act`. Layout tests use
 `client/reference_fixture.rs`: `world(stage)` is the reference sample world (affiliate-site,
 pixls, maitty) with fix-footer's check at one of its stages, on a pinned clock
-(`screen::FIXED_NOW`), and `frame(app, layout, w, h, glyphs)` draws it as text in Cards
-floating, Cards tiled or Flat, to compare with the reference frames.
+(`screen::FIXED_NOW`), and `frame(app, layout, w, h, glyphs)` draws it as text.
 
-`client/reference_frames_tests.rs` holds one test per reference preset (01–17, A1–A5, B1–B2, C1–C2). Each
-draws the whole screen in every layout at 160×45, 100×30 and 80×24 (and ASCII at Flat 80×24)
-and compares it cell for cell with the reference in `client/reference_frames/<preset>.txt`. Its
-header lists the masks (the pane's terminal text, the working spinner and ages the fixture
-can't pin, the sample's checkpoint kinds) and every deliberate difference from the sample. A
-failure prints each differing row as got/want. The reference frames
-(`client/reference_frames/*.txt`, `client/screen/reference.txt` and
-`client/screen/check_modals_frames.txt`) are fixed fixtures. The sidebar's column is masked in the
-presets; its cards are tested in `screen::side` and `screen::machine_group_tests`. Update them by hand, in the same
-change, only when the design itself changes; never to make a failing test pass.
+`client/screen/flat_tests.rs` holds the flat sidebar, the collapsed column, the status glyphs and the
+workspace frames to the v26 TUI design: it draws the sample world at 140×36, 100×30 or 200×40 with a
+`TestBackend` and asserts on rows, glyphs, colours and hit rects (`MAITTY_SHOW=1 cargo test <name> --
+--nocapture` prints a frame). The sheets' and popovers' insides are held to
+`client/screen/reference.txt` and `client/screen/check_modals_frames.txt`, fixed fixtures; update them by
+hand, in the same change, only when the design itself changes; never to make a failing test pass.
 
 The website's screenshots are real frames: `client/site_frames.rs` draws made-up app states
 (hero, grid, changes, files, inbox, the four looks, shortcut mode, the splash) in `night` and

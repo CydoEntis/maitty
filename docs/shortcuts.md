@@ -161,9 +161,10 @@ The sidebar takes navigation, and `n` / `N` to start a session. No other letter 
 | Keys | Action |
 | --- | --- |
 | Up / k, Down / j, Home, End | Browse rows, first row, last row; active session stays selected |
-| Right, Left | Expand project or enter session; fold project or go to session's project |
-| Enter | Toggle project or open selected session; opening a sleeping session wakes it. On a session whose check failed, could not run, was overridden, went stale or is never run for its repo, open its evidence sheet instead; on one whose repo command waits for approval, open the approval |
-| `n` | New session at once in the selected row's project (the bar shows where: `n new in maitty`); on nothing or a machine with no project, the picker on that machine; on a machine that is down, reconnect it |
+| Right | Enter the selected session |
+| `/` | Filter the list: type to narrow it by name, folder, process or machine; Enter opens the match under the cursor, Esc clears the filter (a click on the project of a row filters to it too) |
+| Enter | Open the selected session; opening a sleeping session wakes it. On a session whose check failed, could not run, was overridden, went stale or is never run for its repo, open its evidence sheet instead; on one whose repo command waits for approval, open the approval |
+| `n` | New session at once in the selected row's folder (the bar shows where: `n new in maitty`); on nothing, the picker |
 | `N` | New session picker, nothing typed |
 | Esc | Return keyboard focus to the active pane |
 
@@ -198,10 +199,10 @@ No bare key answers from the sidebar.
 
 ## Side panel
 
-The panel docked right (Inbox, Changes, Files, checks, Branch, References). Its width is kept for each kind of view.
-Files, Changes, Branch and References show a tab strip at its top,
-`Files f · Changes c · Branch b · References a` with your own leader keys; the Inbox and checks
-have none.
+The panel on the right. The Inbox and the checks dock beside the panes; Files, Changes, Branches and
+References open from the pane's ` ▾ Project ` chip (or their leader keys) as a panel 60 columns wide
+over the right side of the workspace, which is not narrowed by it. The tools show a tab strip at their
+top with your own leader keys; the Inbox and checks have none.
 
 | Keys | Action |
 | --- | --- |
@@ -423,8 +424,9 @@ in Maitty's own history); a click goes back to the newest output. An agent that 
 far as the wheel paged it up; typing to the agent clears it, since the agent scrolls to its
 prompt itself.
 
-Leader `z` collapses the sessions into a narrow column (click a row to focus it, `»` or
-the `…` row to expand); with the column focused, `↑` `↓`, `←` `→` and `1`-`9` switch
+Leader `z` collapses the sessions into a 10-column column of status glyphs and initials (click a row
+to focus it, `»` or the `…` row to expand; under 110 columns it is collapsed by itself, and `z` then
+opens the full sidebar over the workspace); with the column focused, `↑` `↓`, `←` `→` and `1`-`9` switch
 sessions. "Hide sidebar" (search commands) hides the sessions completely; `z` brings them back.
 
 | Keys | Action |
