@@ -140,6 +140,7 @@ pub(crate) fn run(cmd: Cmd) -> Result<()> {
             generation,
             operation,
             text: text.join(" "),
+            choice: None,
         }),
         Cmd::Read {
             conversation,

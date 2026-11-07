@@ -524,12 +524,17 @@ async fn send_conversation(
     generation: u64,
     operation: u64,
     text: String,
+    model: Option<String>,
+    effort: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    let choice = maitty_shared::conversation::TurnChoice { model, effort };
+    choice.validate().map_err(str::to_owned)?;
     maitty_desktop_client::send_conversation(
         id,
         generation,
         operation,
         text,
+        Some(choice),
         daemon_executable(&app)?,
     )
     .await

@@ -227,6 +227,10 @@ pub enum Command {
         generation: u64,
         operation: u64,
         text: String,
+        /// The model and reasoning effort for this message and the ones after it, when the user
+        /// picked them. Absent from a peer that predates it, which keeps the chat's own.
+        #[serde(default)]
+        choice: Option<crate::conversation::TurnChoice>,
     },
     /// Take a message back out of the daemon's queue before it is delivered.
     ConversationDequeue {
@@ -1912,6 +1916,34 @@ mod tests {
         }))
         .expect("a read from before the queue");
         assert!(read.queued.is_empty() && read.history.resume.is_none() && !read.history.reset);
+    }
+
+    /// `choice` was added to `ConversationSend` as a defaulted field: a send from before it still
+    /// decodes, as "nothing picked", and one that carries a choice round-trips.
+    #[test]
+    fn a_send_from_before_the_model_choice_still_decodes() {
+        #[derive(Serialize)]
+        enum OldCommand {
+            ConversationSend {
+                id: crate::conversation::ConversationId,
+                generation: u64,
+                operation: u64,
+                text: String,
+            },
+        }
+        let id = crate::conversation::ConversationId(3);
+        let bytes = encode(&OldCommand::ConversationSend { id, generation: 1, operation: 2, text: "hi".into() }).unwrap();
+        let Command::ConversationSend { choice, .. } = decode(&bytes).unwrap() else {
+            panic!("expected a send")
+        };
+        assert_eq!(choice, None);
+
+        let picked = crate::conversation::TurnChoice { model: Some("opus".into()), effort: Some("high".into()) };
+        let sent = Command::ConversationSend { id, generation: 1, operation: 3, text: "hi".into(), choice: Some(picked.clone()) };
+        let Command::ConversationSend { choice, .. } = decode(&encode(&sent).unwrap()).unwrap() else {
+            panic!("expected a send")
+        };
+        assert_eq!(choice, Some(picked));
     }
 
     /// `agent` and `prompt` were added to `NewWorktree` as defaulted fields: a peer that does not

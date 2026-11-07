@@ -1,10 +1,13 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { forgetChoices, readChoice, useAgentChoice } from '../agentChoice'
+import { forgetChoices, readChoice, useAgentChoice, wireChoice, writeChoice } from '../agentChoice'
+import type { ChatAgent } from '@/features/workspace/model/chatView'
 import { AgentPicker } from './AgentPicker'
 
-function Harness({ agent = 'claude' as const, conversation = 7 }) {
+const writeChoiceFor = writeChoice
+
+function Harness({ agent = 'claude' as ChatAgent, conversation = 7 }) {
   const [choice, change] = useAgentChoice(conversation, agent)
   return <AgentPicker agent={agent} choice={choice} onChange={change} />
 }
@@ -18,7 +21,7 @@ describe('the agent, model and reasoning picker', () => {
   it('shows the current choice on its button and opens three radio columns', async () => {
     const user = userEvent.setup()
     render(<Harness />)
-    const button = screen.getByRole('button', { name: /Agent, model and reasoning: Claude · Sonnet · Medium/ })
+    const button = screen.getByRole('button', { name: /Agent, model and reasoning: Claude · Default · Default/ })
     await user.click(button)
     expect(screen.getByRole('radiogroup', { name: 'Agent' })).toBeInTheDocument()
     expect(screen.getByRole('radiogroup', { name: 'Model' })).toBeInTheDocument()
@@ -47,7 +50,7 @@ describe('the agent, model and reasoning picker', () => {
     expect(within(screen.getByRole('radiogroup', { name: 'Model' })).getByRole('radio', { name: /Opus/ })).toBeChecked()
     expect(within(screen.getByRole('radiogroup', { name: 'Reasoning' })).getByRole('radio', { name: /Max/ })).toBeChecked()
     expect(readChoice(7, 'claude')).toEqual({ model: 'opus', reasoning: 'max' })
-    expect(readChoice(8, 'claude')).toEqual({ model: 'sonnet', reasoning: 'medium' })
+    expect(readChoice(8, 'claude')).toEqual({ model: 'default', reasoning: 'default' })
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('radiogroup', { name: 'Model' })).toBeNull()
     expect(screen.getByRole('button', { name: /Claude · Opus · Max/ })).toBeInTheDocument()
@@ -57,8 +60,34 @@ describe('the agent, model and reasoning picker', () => {
     const user = userEvent.setup()
     render(<Harness agent="claude" />)
     await user.click(screen.getByRole('button', { name: /Agent, model and reasoning/ }))
-    within(screen.getByRole('radiogroup', { name: 'Reasoning' })).getByRole('radio', { name: /Medium/ }).focus()
-    await user.keyboard('{ArrowDown}')
-    expect(within(screen.getByRole('radiogroup', { name: 'Reasoning' })).getByRole('radio', { name: /High/ })).toBeChecked()
+    within(screen.getByRole('radiogroup', { name: 'Reasoning' })).getByRole('radio', { name: /Default/ }).focus()
+    await user.keyboard('{ArrowDown}{ArrowDown}')
+    expect(within(screen.getByRole('radiogroup', { name: 'Reasoning' })).getByRole('radio', { name: /Medium/ })).toBeChecked()
+  })
+
+  it('offers only the account default for Codex, and says why', async () => {
+    const user = userEvent.setup()
+    render(<Harness agent="codex" />)
+    await user.click(screen.getByRole('button', { name: /Agent, model and reasoning/ }))
+    const models = within(screen.getByRole('radiogroup', { name: 'Model' })).getAllByRole('radio')
+    expect(models).toHaveLength(1)
+    expect(models[0]).toHaveTextContent(/Picking another is not offered for Codex yet/)
+  })
+})
+
+describe('what the picker sends with a message', () => {
+  it('sends nothing until something is picked, then only what was picked', () => {
+    expect(wireChoice(7, 'claude')).toBeNull()
+    writeChoiceFor(7, { reasoning: 'high' })
+    expect(wireChoice(7, 'claude')).toEqual({ effort: 'high' })
+    writeChoiceFor(7, { model: 'opus' })
+    expect(wireChoice(7, 'claude')).toEqual({ model: 'opus', effort: 'high' })
+    writeChoiceFor(7, { model: 'default', reasoning: 'default' })
+    expect(wireChoice(7, 'claude')).toBeNull()
+  })
+
+  it('ignores a stored model the agent does not offer', () => {
+    writeChoiceFor(9, { model: 'opus' })
+    expect(wireChoice(9, 'codex')).toBeNull()
   })
 })

@@ -483,6 +483,14 @@ closed as a pane). A client the pane does not belong to (ADR 0004) gets "No such
 history is the provider's own transcript projected through the same entries a structured runtime
 produces (`conversation/follow_transcript.rs`); nothing read from the file sets any status.
 
+`ConversationSend` carries an optional `choice` (`TurnChoice { model, effort }`, `#[serde(default)]`, no
+protocol bump; a send from before it decodes as no choice). The daemon validates it (a plain model name that
+cannot read as an option, an effort in `low | medium | high | xhigh | max`) and keeps it with a queued
+message. For Claude every message starts its own `claude` process, so the choice becomes `--model` and
+`--effort` on that process; for Codex it rides on `turn/start` as `model` and `effort`, which Codex applies
+to that turn and the ones after. The choice never touches the permission arguments or the thread's sandbox
+(ADR 0005). The window sends the picked values with each message, so the daemon stores nothing.
+
 Protocol 71 adds the daemon-held send queue. A `ConversationSend` for a conversation that is
 mid-turn (or whose earlier messages are still waiting, or with a send in flight) is not refused: the
 daemon holds it and answers `Reply::ConversationQueued { conversation, generation, operation }`.

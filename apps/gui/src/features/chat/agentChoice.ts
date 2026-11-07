@@ -4,40 +4,44 @@ import type { ChatAgent } from '@/features/workspace/model/chatView'
 /** How much the model thinks before it answers. */
 export type Reasoning = 'low' | 'medium' | 'high' | 'max'
 export const REASONING_LEVELS: readonly Reasoning[] = ['low', 'medium', 'high', 'max']
-export const DEFAULT_REASONING: Reasoning = 'medium'
+/** Nothing picked: the chat keeps the effort its agent already uses, and nothing is sent. */
+export const DEFAULT_PICK = 'default'
+export type ReasoningPick = Reasoning | typeof DEFAULT_PICK
+export const REASONING_PICKS: readonly ReasoningPick[] = [DEFAULT_PICK, ...REASONING_LEVELS]
 
 export type ModelOption = { readonly id: string; readonly label: string; readonly blurb: string }
 
 /**
- * PLACEHOLDER model lists. The host does not tell the window which models an agent offers, so these
- * are stand-ins until the adapters report their own; the first of each list is the agent's default.
+ * The models each agent's command line accepts by name, as a fixed list: the daemon does not report
+ * them. Claude takes these aliases (`claude --model`). Codex's models depend on the account and the
+ * installed version, so only the account's own default is offered until the daemon can list them.
+ * The first of each list is "Default", which sends nothing.
  */
-export const PLACEHOLDER_MODELS: Readonly<Record<ChatAgent, readonly ModelOption[]>> = {
+export const KNOWN_MODELS: Readonly<Record<ChatAgent, readonly ModelOption[]>> = {
   claude: [
+    { id: DEFAULT_PICK, label: 'Default', blurb: 'What this chat started with' },
     { id: 'sonnet', label: 'Sonnet', blurb: 'Fast and capable for everyday work' },
     { id: 'opus', label: 'Opus', blurb: 'The most capable, for hard problems' },
     { id: 'haiku', label: 'Haiku', blurb: 'The quickest, for small tasks' },
   ],
   codex: [
-    { id: 'gpt-codex', label: 'GPT Codex', blurb: 'Tuned for coding agents' },
-    { id: 'gpt', label: 'GPT', blurb: 'General purpose' },
-    { id: 'gpt-mini', label: 'GPT mini', blurb: 'Small and quick' },
+    { id: DEFAULT_PICK, label: 'Default', blurb: "Your account's model. Picking another is not offered for Codex yet" },
   ],
 }
 
 /** The reasoning levels' words for the picker. */
-export const REASONING_LABEL: Readonly<Record<Reasoning, string>> = { low: 'Low', medium: 'Medium', high: 'High', max: 'Max' }
+export const REASONING_LABEL: Readonly<Record<ReasoningPick, string>> = { default: 'Default', low: 'Low', medium: 'Medium', high: 'High', max: 'Max' }
 
 /** What a chat will use from its next message on. */
-export type AgentChoice = { readonly model: string; readonly reasoning: Reasoning }
+export type AgentChoice = { readonly model: string; readonly reasoning: ReasoningPick }
 
-export function defaultChoice(agent: ChatAgent): AgentChoice {
-  return { model: PLACEHOLDER_MODELS[agent][0]?.id ?? '', reasoning: DEFAULT_REASONING }
+export function defaultChoice(): AgentChoice {
+  return { model: DEFAULT_PICK, reasoning: DEFAULT_PICK }
 }
 
 const STORAGE_KEY = 'maitty.gui.agentChoice.v1'
 const listeners = new Set<() => void>()
-type Stored = Record<string, { model?: string; reasoning?: Reasoning }>
+type Stored = Record<string, { model?: string; reasoning?: ReasoningPick }>
 let cache: Stored | null = null
 
 function table(): Stored {
@@ -55,11 +59,23 @@ function table(): Stored {
 
 /** The choice stored for a chat, with the agent's defaults where nothing was chosen or the stored model is unknown. */
 export function readChoice(conversation: number, agent: ChatAgent): AgentChoice {
-  const fallback = defaultChoice(agent)
+  const fallback = defaultChoice()
   const saved = table()[String(conversation)]
-  const model = PLACEHOLDER_MODELS[agent].some((option) => option.id === saved?.model) ? (saved?.model ?? fallback.model) : fallback.model
-  const reasoning = REASONING_LEVELS.find((level) => level === saved?.reasoning) ?? fallback.reasoning
+  const model = KNOWN_MODELS[agent].some((option) => option.id === saved?.model) ? (saved?.model ?? fallback.model) : fallback.model
+  const reasoning = REASONING_PICKS.find((level) => level === saved?.reasoning) ?? fallback.reasoning
   return { model, reasoning }
+}
+
+/** What the daemon is told with the next message: only what was picked, or `null` when nothing was. */
+export type WireChoice = { readonly model?: string; readonly effort?: string }
+
+export function wireChoice(conversation: number, agent: ChatAgent): WireChoice | null {
+  const { model, reasoning } = readChoice(conversation, agent)
+  const wire: WireChoice = {
+    ...(model === DEFAULT_PICK ? {} : { model }),
+    ...(reasoning === DEFAULT_PICK ? {} : { effort: reasoning }),
+  }
+  return Object.keys(wire).length === 0 ? null : wire
 }
 
 export function writeChoice(conversation: number, change: Partial<AgentChoice>): void {

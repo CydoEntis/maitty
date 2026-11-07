@@ -1580,7 +1580,7 @@ async fn structured_provider_errors_and_failed_turns_never_read_as_done() {
         let mut s = conversation_fixture(mode).await;
         let outcome=AssertUnwindSafe(async {
             let (id,generation)=create(&mut s).await;
-            let reply=exchange(&mut s,220,crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationSend {id,generation,operation:1,text:"Synthetic failure request".into()}),None).await;
+            let reply=exchange(&mut s,220,crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationSend {id,generation,operation:1,text:"Synthetic failure request".into(),choice:None }),None).await;
             assert!(matches!(reply,ServerMsg::Reply(crate::protocol::Reply::ConversationSent(_))));
             while s.daemon.conversation_states[&id].error.is_none() {let event=tokio::time::timeout(Duration::from_secs(10),s.events.recv()).await.unwrap().unwrap();s.daemon.handle(event);}
             let reply=exchange(&mut s,221,crate::protocol::ClientMsg::Query(crate::protocol::Query::ConversationRead {id,cursor:None,limit:128}),None).await;
@@ -1607,6 +1607,7 @@ async fn command_approval_is_human_only_generation_bound_and_uses_exact_provider
                 generation,
                 operation: 1,
                 text: "Synthetic approval prompt".into(),
+                choice: None,
             }),
             None,
         )
@@ -1790,6 +1791,7 @@ async fn file_change_approval_is_human_only_and_uses_exact_provider_id() {
                 generation,
                 operation: 1,
                 text: "Synthetic file change request".into(),
+                choice: None,
             }),
             None,
         )
@@ -1884,6 +1886,7 @@ async fn a_file_change_approval_for_a_secret_file_keeps_the_path_and_omits_the_d
                 generation,
                 operation: 1,
                 text: "Synthetic secret file request".into(),
+                choice: None,
             }),
             None,
         )
@@ -1933,6 +1936,7 @@ async fn file_change_approval_is_disabled_until_the_exact_diff_arrives() {
                 generation,
                 operation: 1,
                 text: "Synthetic file change without patch".into(),
+                choice: None,
             }),
             None,
         )
@@ -1987,6 +1991,7 @@ async fn a_partial_malformed_file_diff_never_enables_approval() {
                 generation,
                 operation: 1,
                 text: "Synthetic malformed file diff".into(),
+                choice: None,
             }),
             None,
         )
@@ -2038,6 +2043,7 @@ async fn permission_approval_grants_only_the_requested_profile_for_the_turn() {
                 generation,
                 operation: 1,
                 text: "Synthetic permission request".into(),
+                choice: None,
             }),
             None,
         )
@@ -2150,6 +2156,7 @@ async fn user_input_requests_use_exact_ids_and_validated_ephemeral_answers() {
                 generation,
                 operation: 1,
                 text: "Synthetic input request".into(),
+                choice: None,
             }),
             None,
         )
@@ -2301,6 +2308,7 @@ async fn turn_cancellation_uses_only_the_acknowledged_active_turn_id() {
                 generation,
                 operation: 1,
                 text: "Synthetic long turn".into(),
+                choice: None,
             }),
             None,
         )
@@ -2392,6 +2400,7 @@ async fn turn_cancellation_uses_only_the_acknowledged_active_turn_id() {
                 generation,
                 operation: 2,
                 text: "Continue after stopping the previous turn".into(),
+                choice: None,
             }),
             None,
         )
@@ -2528,7 +2537,7 @@ async fn structured_read_acknowledgement_waits_for_durable_receipt_barrier() {
         let outcome=AssertUnwindSafe(async {
             let (id,generation)=create(&mut s).await;
             let (client,mut replies)=mpsc::channel(8);s.daemon.handle(Ev::Connected(250,client,false, crate::protocol::Surface::Terminal, true));
-            s.daemon.conversation_send(250,id,generation,1,"Synthetic delayed ack".into()).unwrap();
+            s.daemon.conversation_send(250,id,generation,1,"Synthetic delayed ack".into(), Default::default()).unwrap();
             loop {
                 let event=tokio::time::timeout(Duration::from_secs(20),s.events.recv()).await.unwrap().unwrap();
                 let submitted=matches!(&event,Ev::Conversation(Event {payload:Payload::Response {token,..},..}) if matches!(s.daemon.conversation_requests.get(token),Some(super::commands::Pending::Sending {..})));
@@ -2595,17 +2604,17 @@ async fn structured_local_ipc_create_send_read_reconnect_and_exact_identity() {
         s.daemon.initialize_conversation_cache().await.unwrap();
         let (id,generation)=create(&mut s).await;
         assert_eq!(s.daemon.conversations[0].binding.session_id,"exact-thread");
-        let sent=exchange(&mut s,101,crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationSend { id,generation,operation:1,text:"Synthetic prompt".into() }),None).await;
+        let sent=exchange(&mut s,101,crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationSend { id,generation,operation:1,text:"Synthetic prompt".into(),choice:None }),None).await;
         assert!(matches!(sent,ServerMsg::Reply(crate::protocol::Reply::ConversationSent(crate::conversation::Receipt { delivery:crate::conversation::Delivery::Acknowledged {..},.. }))));
         wait_for_history_message(&mut s,id,"Synthetic stream complete").await;
-        let retry=exchange(&mut s,103,crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationSend { id,generation,operation:1,text:"Synthetic prompt".into() }),None).await;
+        let retry=exchange(&mut s,103,crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationSend { id,generation,operation:1,text:"Synthetic prompt".into(),choice:None }),None).await;
         assert!(matches!(retry,ServerMsg::Reply(crate::protocol::Reply::ConversationSent(_))));
         let root=s.fixture.directory.path().to_owned();
         let (log,saved)=tokio::task::spawn_blocking(move||(std::fs::read_to_string(root.join("requests")).unwrap(),std::fs::read_to_string(root.join("data/session.json")).unwrap())).await.unwrap();
         assert_eq!(log.lines().count(),1);
         assert!(!saved.contains("Synthetic prompt"));
         assert!(saved.contains("turn-1"));
-        let stale=exchange(&mut s,104,crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationSend { id,generation:generation+1,operation:2,text:"Synthetic stale".into() }),None).await;
+        let stale=exchange(&mut s,104,crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationSend { id,generation:generation+1,operation:2,text:"Synthetic stale".into(),choice:None }),None).await;
         assert!(matches!(stale,ServerMsg::Error(ref e) if e.contains("Stale")));
     }).catch_unwind().await;
     s.cleanup().await;
@@ -2657,6 +2666,7 @@ async fn structured_delivery_stays_uncertain_after_provider_disconnect_and_resta
                 generation,
                 operation: 1,
                 text: "Synthetic uncertain prompt".into(),
+                choice: None,
             }),
             None,
         )
@@ -2670,6 +2680,7 @@ async fn structured_delivery_stays_uncertain_after_provider_disconnect_and_resta
                 generation,
                 operation: 1,
                 text: "Synthetic uncertain prompt".into(),
+                choice: None,
             }),
             None,
         )
@@ -2696,6 +2707,7 @@ async fn structured_delivery_stays_uncertain_after_provider_disconnect_and_resta
                 generation: recovered,
                 operation: 2,
                 text: "Synthetic next prompt".into(),
+                choice: None,
             }),
             None,
         )
@@ -2730,6 +2742,7 @@ async fn structured_unknown_provider_request_remains_blocked_and_unanswered() {
                 generation,
                 operation: 1,
                 text: "Synthetic question".into(),
+                choice: None,
             }),
             None,
         )
@@ -2762,6 +2775,7 @@ async fn structured_unknown_provider_request_remains_blocked_and_unanswered() {
                 generation,
                 operation: 2,
                 text: "Synthetic blocked followup".into(),
+                choice: None,
             }),
             None,
         )
@@ -2868,7 +2882,7 @@ async fn structured_failed_ack_persistence_never_returns_an_acknowledged_retry()
     let outcome=AssertUnwindSafe(async {
         let (id,generation)=create(&mut s).await;
         let (client,mut replies)=mpsc::channel(8);s.daemon.handle(Ev::Connected(170,client,false, crate::protocol::Surface::Terminal, true));
-        s.daemon.conversation_send(170,id,generation,1,"Synthetic ack fault".into()).unwrap();
+        s.daemon.conversation_send(170,id,generation,1,"Synthetic ack fault".into(), Default::default()).unwrap();
         loop {
             let event=tokio::time::timeout(Duration::from_secs(20),s.events.recv()).await.unwrap().unwrap();
             let submission=matches!(&event,Ev::Conversation(Event {payload:Payload::Response {token,..},..}) if matches!(s.daemon.conversation_requests.get(token),Some(super::commands::Pending::Sending {..})));
@@ -2881,7 +2895,7 @@ async fn structured_failed_ack_persistence_never_returns_an_acknowledged_retry()
         }
         assert!(matches!(drive_reply(&mut s,&mut replies).await,ServerMsg::Error(_)));
         assert_eq!(s.daemon.conversation_operations[0].receipt.delivery,crate::conversation::Delivery::SubmissionUncertain);
-        let retry=exchange(&mut s,171,crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationSend {id,generation,operation:1,text:"Synthetic ack fault".into()}),None).await;
+        let retry=exchange(&mut s,171,crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationSend {id,generation,operation:1,text:"Synthetic ack fault".into(),choice:None }),None).await;
         assert!(matches!(retry,ServerMsg::Error(ref e) if e.contains("uncertain")));
     }).catch_unwind().await;
     s.cleanup().await;
@@ -2897,7 +2911,7 @@ async fn structured_output_false_reads_native_memory_without_a_detached_cache() 
         s.daemon.cfg.restore.output=false;
         s.daemon.initialize_conversation_cache().await.unwrap();
         let (id,generation)=create(&mut s).await;
-        let sent=exchange(&mut s,180,crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationSend {id,generation,operation:1,text:"Synthetic private prompt".into()}),None).await;
+        let sent=exchange(&mut s,180,crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationSend {id,generation,operation:1,text:"Synthetic private prompt".into(),choice:None }),None).await;
         assert!(matches!(sent,ServerMsg::Reply(crate::protocol::Reply::ConversationSent(_))));
         let read=exchange(&mut s,181,crate::protocol::ClientMsg::Query(crate::protocol::Query::ConversationRead {id,cursor:None,limit:128}),None).await;
         assert!(matches!(read,ServerMsg::Reply(crate::protocol::Reply::ConversationRead(ref r)) if !r.history.entries.is_empty()));
@@ -2953,10 +2967,10 @@ async fn structured_newer_full_commit_releases_two_matching_conversation_barrier
         let (second_client, mut second_replies) = mpsc::channel(8);
         s.daemon.handle(Ev::Connected(192, second_client, false, crate::protocol::Surface::Terminal, true));
         s.daemon
-            .conversation_send(191, first, generation, 1, "Synthetic first".into())
+            .conversation_send(191, first, generation, 1, "Synthetic first".into(), Default::default())
             .unwrap();
         s.daemon
-            .conversation_send(192, second_id, 1, 1, "Synthetic second".into())
+            .conversation_send(192, second_id, 1, 1, "Synthetic second".into(), Default::default())
             .unwrap();
         let mut saves = Vec::new();
         while saves.len() < 2 {

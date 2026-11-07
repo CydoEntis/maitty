@@ -776,13 +776,15 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
 - **Choosing the agent for one session.** A small chevron beside the sidebar's + opens **New Claude chat** / **New Codex chat**
   (the default is marked); the + still starts the default from Settings. It starts the chosen agent in the start folder and
   opens in the view Settings names. Beside a session on another machine it opens the New session modal on that machine, as + does.
-- **Agent, model and reasoning.** Under the composer a button reads `Claude · Sonnet · Medium` and opens one popover with
+- **Agent, model and reasoning.** Under the composer a button reads `Claude · Default · Default` and opens one popover with
   three radio columns (`AgentPicker`): Agent (the other agent is greyed out with "Fixed for this chat · start a new chat
-  to use Codex"), Model (the agent's list, a one-line description each) and Reasoning (Low, Medium, High, Max with a
-  four-bar meter). Picking ticks the choice and leaves the popover open; Esc or a click outside closes it; the footer says
-  "Changes apply from your next message". The choice is kept per conversation in this window's storage
-  (`agentChoice.ts`). The model lists are placeholders (`PLACEHOLDER_MODELS`) until the adapters report their own, and
-  nothing yet sends the choice to the agent.
+  to use Codex"), Model (the agent's list, a one-line description each) and Reasoning (Default, then Low, Medium, High,
+  Max with a four-bar meter). Picking ticks the choice and leaves the popover open; Esc or a click outside closes it; the
+  footer says "Changes apply from your next message". The choice is kept per conversation in this window's storage
+  (`agentChoice.ts`) and goes to the daemon with every message (`send_conversation`'s `model` and `effort`). "Default"
+  sends nothing, so the chat keeps what it started with and the button never claims a model the chat is not using.
+  Claude offers Sonnet, Opus and Haiku (`KNOWN_MODELS`, a fixed list because the daemon does not report models);
+  Codex offers only its account default, because its models depend on the account and version. The agent never changes.
 - **Switching changes the window, not the session.** The choice is per session (`usePaneViews`), the terminal stays
   mounted and its pane keeps its size, and no daemon command is sent. The shortcut is `chat-toggle`
   (Ctrl+Shift+E, Cmd+Shift+E) on the focused pane.

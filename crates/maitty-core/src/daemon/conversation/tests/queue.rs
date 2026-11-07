@@ -20,6 +20,7 @@ async fn send(
             generation,
             operation,
             text: text.into(),
+            choice: None,
         }),
         None,
     )

@@ -1,13 +1,14 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { cancelTurn, dequeueMessage, submitMessage } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
-import type { ChatLink } from '@/features/workspace/model/chatView'
+import type { ChatAgent, ChatLink } from '@/features/workspace/model/chatView'
 import { hasPendingApproval, type ChatFeed } from './chatFeed'
 import { buildAttachmentMessage } from './attachmentMessage'
 import { selectChatEvents } from './projection'
 import { countUserMessages } from './workPhase'
 import { peekComposer, updateComposer, useComposerState, type DraftAttachment } from './composerStore'
 import { revokePreviews, useAttachmentIntake, type AttachmentIntake } from './useAttachmentIntake'
+import { wireChoice } from './agentChoice'
 import { reserveOperation, STALE_OPERATION } from './sendOperation'
 
 export const PENDING_APPROVAL_NOTE = 'Answer the request above first'
@@ -36,6 +37,8 @@ export type QueuedItem = { readonly id: number; readonly text: string }
 
 type Input = {
   link: ChatLink
+  /** The chat's agent: the model and reasoning picked for it go with each message. */
+  agent?: ChatAgent
   feed: ChatFeed
   /** The daemon is connected, so a message can be sent. */
   online: boolean
@@ -88,7 +91,7 @@ export type ChatComposer = {
  * not this window stays open; what it holds comes back with every read (`feed.queued`) and is shown
  * until it is sent. While an approval waits, nothing is sent.
  */
-export function useChatComposer({ link, feed, online, refresh, typeInto, answersPrompt = false, paneWorking = false }: Input): ChatComposer {
+export function useChatComposer({ link, agent, feed, online, refresh, typeInto, answersPrompt = false, paneWorking = false }: Input): ChatComposer {
   const { draft, attachments } = useComposerState(link.conversation)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -143,7 +146,9 @@ export function useChatComposer({ link, feed, online, refresh, typeInto, answers
     const operation = retry.current?.text === text ? retry.current.operation : reserveOperation(conversation, feed)
     retry.current = { text, operation }
     try {
-      await submitMessage({ id: String(conversation), generation: link.generation }, operation, text)
+      const picked = agent === undefined ? null : wireChoice(conversation, agent)
+      const target = { id: String(conversation), generation: link.generation }
+      await (picked === null ? submitMessage(target, operation, text) : submitMessage(target, operation, text, picked))
       retry.current = null
       refresh()
       return true
@@ -159,7 +164,7 @@ export function useChatComposer({ link, feed, online, refresh, typeInto, answers
     } finally {
       setSending(false)
     }
-  }, [conversation, link.generation, feed, refresh, typeText])
+  }, [conversation, link.generation, agent, feed, refresh, typeText])
 
   const submit = useCallback(() => {
     const text = draft.trim()

@@ -3,7 +3,7 @@ import { Check, ChevronUp } from 'lucide-react'
 import { Popover } from 'radix-ui'
 import { CHAT_AGENTS, type ChatAgent } from '@/features/workspace/model/chatView'
 import {
-  PLACEHOLDER_MODELS, REASONING_LABEL, REASONING_LEVELS, type AgentChoice, type Reasoning,
+  DEFAULT_PICK, KNOWN_MODELS, REASONING_LABEL, REASONING_LEVELS, REASONING_PICKS, type AgentChoice, type Reasoning, type ReasoningPick,
 } from '../agentChoice'
 
 /** The shortest bar of the meter, and how much taller each next one is, in px. */
@@ -76,11 +76,12 @@ function Column({ title, options, value, onPick }: { title: string; options: rea
  * The composer's Agent, model and reasoning picker: one popover with three radio columns. Picking
  * ticks the choice and leaves the popover open, so all three can be set in one go; Esc or a click
  * outside closes it. The agent is fixed for a chat (its agent is already running in the session), so
- * the other one is greyed out with the reason; model and reasoning apply from the next message.
+ * the other one is greyed out with the reason. A model and a reasoning level that are picked go to the
+ * agent with each next message; "Default" sends nothing, so the chat keeps what it started with.
  */
 export function AgentPicker({ agent, choice, onChange }: { agent: ChatAgent; choice: AgentChoice; onChange: (change: Partial<AgentChoice>) => void }) {
   const [open, setOpen] = useState(false)
-  const models = PLACEHOLDER_MODELS[agent]
+  const models = KNOWN_MODELS[agent]
   const model = models.find((option) => option.id === choice.model) ?? models[0]
   const agentOptions: Option[] = CHAT_AGENTS.map((name) => ({
     value: name,
@@ -119,9 +120,9 @@ export function AgentPicker({ agent, choice, onChange }: { agent: ChatAgent; cho
             />
             <Column
               title="Reasoning"
-              options={REASONING_LEVELS.map((level) => ({ value: level, label: REASONING_LABEL[level], extra: <Meter level={level} /> }))}
+              options={REASONING_PICKS.map((level) => ({ value: level, label: REASONING_LABEL[level], ...(level === DEFAULT_PICK ? {} : { extra: <Meter level={level} /> }) }))}
               value={choice.reasoning}
-              onPick={(value) => { onChange({ reasoning: value as Reasoning }) }}
+              onPick={(value) => { onChange({ reasoning: value as ReasoningPick }) }}
             />
           </div>
           <p className="m-0 mt-2 flex justify-between border-t border-line2 px-2 pt-2 text-[11.5px] text-dim">

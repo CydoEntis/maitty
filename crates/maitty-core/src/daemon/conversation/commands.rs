@@ -24,12 +24,39 @@ const MAX_QUEUED_BYTES: usize = 1024 * 1024;
 /// A queued message was sent by a request that is long over; its replies have nowhere to go.
 const NO_CLIENT: ClientId = ClientId::MAX;
 
+/// What a message carries on its way to the runtime: its text, the digest that tells a retry from a
+/// new message, and the model and effort picked for it.
+struct Outgoing {
+    text: String,
+    digest: String,
+    choice: TurnChoice,
+}
+
 /// A message waiting for the running turn to end.
 pub(in crate::daemon) struct QueuedSend {
     generation: u64,
     operation: u64,
     text: String,
     digest: String,
+    choice: TurnChoice,
+}
+
+/// The provider's `turn/start` parameters. Only what the user picked is added; the providers
+/// keep a model and effort for the turns after, so a choice made once holds until changed.
+fn send_params(
+    thread: &str,
+    text: &str,
+    client_message_id: &str,
+    choice: &TurnChoice,
+) -> Value {
+    let mut params = json!({"threadId":thread,"input":[{"type":"text","text":text,"text_elements":[]}],"clientUserMessageId":client_message_id});
+    if let Some(model) = &choice.model {
+        params["model"] = json!(model);
+    }
+    if let Some(effort) = &choice.effort {
+        params["effort"] = json!(effort);
+    }
+    params
 }
 const MAX_HYDRATION_ENTRIES: usize = 100_000;
 const MAX_HYDRATION_BYTES: usize = 32 * 1024 * 1024;
@@ -91,6 +118,7 @@ pub(in crate::daemon) enum Pending {
         client: ClientId,
         receipt: Receipt,
         text: String,
+        choice: TurnChoice,
     },
     Sending {
         client: ClientId,
@@ -960,10 +988,12 @@ impl Daemon {
         generation: u64,
         operation: u64,
         text: String,
+        choice: TurnChoice,
     ) -> Result<()> {
         self.refuse_if_followed(id)?;
         self.may(client, Grant::Write, None)?;
         self.durable_conversation()?;
+        choice.validate().map_err(anyhow::Error::msg)?;
         crate::hidden::check(&text).map_err(anyhow::Error::msg)?;
         if text.trim().is_empty() || text.len() > MAX_PROMPT_BYTES || operation == 0 {
             bail!("A bounded nonempty prompt and nonzero monotonic operation ID are required");
@@ -1055,10 +1085,15 @@ impl Daemon {
                 .conversation_queues
                 .get(&id)
                 .is_some_and(|queue| !queue.is_empty());
+        let message = Outgoing {
+            text,
+            digest,
+            choice,
+        };
         if busy {
-            return self.conversation_enqueue(client, id, generation, operation, text, digest);
+            return self.conversation_enqueue(client, id, generation, operation, message);
         }
-        self.conversation_submit(client, id, generation, operation, text, digest)
+        self.conversation_submit(client, id, generation, operation, message)
     }
 
     /// Hands a message to the runtime now: records its receipt, then submits once that is durable.
@@ -1068,9 +1103,13 @@ impl Daemon {
         id: ConversationId,
         generation: u64,
         operation: u64,
-        text: String,
-        digest: String,
+        message: Outgoing,
     ) -> Result<()> {
+        let Outgoing {
+            text,
+            digest,
+            choice,
+        } = message;
         let receipt = Receipt {
             conversation: id,
             generation,
@@ -1087,6 +1126,7 @@ impl Daemon {
             client,
             receipt,
             text,
+            choice,
         })?;
         self.conversation_persist(token)?;
         Ok(())
@@ -1098,9 +1138,13 @@ impl Daemon {
         id: ConversationId,
         generation: u64,
         operation: u64,
-        text: String,
-        digest: String,
+        message: Outgoing,
     ) -> Result<()> {
+        let Outgoing {
+            text,
+            digest,
+            choice,
+        } = message;
         let queue = self.conversation_queues.entry(id).or_default();
         if queue.len() >= MAX_QUEUED_MESSAGES
             || queue.iter().map(|m| m.text.len()).sum::<usize>() + text.len() > MAX_QUEUED_BYTES
@@ -1112,6 +1156,7 @@ impl Daemon {
             operation,
             text,
             digest,
+            choice,
         });
         self.send(
             client,
@@ -1215,8 +1260,11 @@ impl Daemon {
                 id,
                 next.generation,
                 next.operation,
-                next.text,
-                next.digest,
+                Outgoing {
+                    text: next.text,
+                    digest: next.digest,
+                    choice: next.choice,
+                },
             ) {
                 let state = self.conversation_states.entry(id).or_default();
                 state.error = Some(format!("A queued message could not be sent: {error}"));
@@ -1484,6 +1532,7 @@ impl Daemon {
                 client,
                 receipt,
                 text,
+                choice,
             } => {
                 let valid = self.conversations.iter().any(|c| {
                     c.id == id
@@ -1518,7 +1567,7 @@ impl Daemon {
                 let state = self.conversation_states.entry(id).or_default();
                 state.status = Status::Working;
                 state.error = None;
-                self.conversation_runtimes.request(id, generation, token, Rpc::Send { params: json!({"threadId":thread,"input":[{"type":"text","text":text,"text_elements":[]}],"clientUserMessageId":format!("{}-{generation}-{operation}", id.0)}) }).map_err(|e| (token, e.to_string()))
+                self.conversation_runtimes.request(id, generation, token, Rpc::Send { params: send_params(&thread, &text, &format!("{}-{generation}-{operation}", id.0), &choice) }).map_err(|e| (token, e.to_string()))
             }
             Pending::Receipt { client, receipt } => {
                 if self
@@ -2409,4 +2458,24 @@ mod native_resume_tests {
         assert_eq!(history.entries, cached.entries);
     }
 
+    #[test]
+    fn a_picked_model_and_effort_ride_on_the_codex_turn_start_and_nothing_else_changes() {
+        let plain = send_params("thread", "hi", "1-1-1", &TurnChoice::default());
+        assert!(plain.get("model").is_none() && plain.get("effort").is_none());
+        let picked = send_params(
+            "thread",
+            "hi",
+            "1-1-1",
+            &TurnChoice { model: Some("gpt-x".into()), effort: Some("high".into()) },
+        );
+        assert_eq!(picked["model"], "gpt-x");
+        assert_eq!(picked["effort"], "high");
+        // Permissions are set when the thread starts and are not part of a turn's parameters.
+        for key in ["approvalPolicy", "sandbox", "sandboxPolicy", "cwd"] {
+            assert!(picked.get(key).is_none(), "{key}");
+        }
+        let mut stripped = picked.clone();
+        stripped.as_object_mut().unwrap().retain(|key, _| key != "model" && key != "effort");
+        assert_eq!(stripped, plain);
+    }
 }
