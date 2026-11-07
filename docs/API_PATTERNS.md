@@ -533,7 +533,7 @@ non-zero, and is only a signal for the red "exited with error" mark.
 Protocol 73 adds `Query::ListFolders { path, tag }` and `Reply::Folders { tag, listing }`: the folders
 directly inside `path` on the daemon's computer (`FolderListing`, `FolderEntry` in
 `crates/maitty-shared/src/protocol.rs`), for a client choosing where to start a session (the terminal
-app's New Session popup, the desktop app's folder dialog). `path` is absolute or starts with `~`
+app's New session dialog, the desktop app's folder dialog). `path` is absolute or starts with `~`
 (the daemon's home folder), at most 4,096 bytes; anything else answers `exists: false`. Only folder
 names are listed, never file names or contents. Each entry carries the git branch when it is a
 checkout (read from `.git/HEAD`, no git run) and whether it holds a folder worth browsing into

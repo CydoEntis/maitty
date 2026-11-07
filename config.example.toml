@@ -2,7 +2,7 @@
 # Location: %APPDATA%\maitty\config.toml on Windows, ~/.config/maitty/config.toml elsewhere
 # (override with MAITTY_CONFIG). Every key is optional; reload with <prefix> Ctrl+R.
 
-prefix = "ctrl+space"
+prefix = "ctrl+a"
 
 # Dark and light each remember a theme; `appearance` says which one shows. Browse the
 # built-in names in Settings > Appearance. The app's own pair is night (the dark default) and
