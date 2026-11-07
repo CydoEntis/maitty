@@ -2,6 +2,7 @@ import { markConversationsDisconnected } from '@/data/connection'
 import type { Conversation } from '@/data/preview'
 import type { MachineState } from '@/api/machines'
 import { LOCAL_MACHINE, machineNameOf } from '@/api/machines'
+import type { Fleet } from '@/api/fleets'
 import type { Layout } from './layout'
 
 /** What the window holds of one other machine: how its line is, and the sessions it last listed. */
@@ -9,6 +10,8 @@ export type RemoteMachine = {
   state: MachineState
   /** The terminal sessions of its last snapshot, with ids that carry the machine's name. */
   conversations: readonly Conversation[]
+  /** The fleets of its last snapshot. */
+  fleets: readonly Fleet[]
   /** Its first snapshot has come: before that, a layout's panes for it are not known to be gone. */
   heard: boolean
 }
@@ -25,6 +28,11 @@ export function remoteTerminals(machines: ReadonlyMap<number, RemoteMachine>): C
       const terminals = machine.conversations.filter((item) => item.kind === 'terminal')
       return machine.state.state === 'connected' ? terminals : markConversationsDisconnected([...terminals])
     })
+}
+
+/** The fleets of the machines other than this computer, in the order of the machines' numbers. */
+export function remoteFleets(machines: ReadonlyMap<number, RemoteMachine>): Fleet[] {
+  return [...machines.entries()].sort(([a], [b]) => a - b).flatMap(([, machine]) => machine.fleets)
 }
 
 /**

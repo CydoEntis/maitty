@@ -1,7 +1,8 @@
 /**
- * The window's split layouts, kept in this app only (sessions are the daemon's). An arrangement is
- * what the workspace shows for a session: one to four panes in columns, each pane naming a session
- * by id. The sidebar picks the session; the arrangement it sits in is what you see. A pane goes only
+ * The window's split layouts, kept in this app only (sessions and fleets are the daemon's). An
+ * arrangement is a tab: one to four panes in columns, each pane naming a session by id, and its first
+ * pane's session names the tab. The tab bar shows the arrangements of the selected fleet (`tabs.ts`);
+ * the sidebar picks a ship and the arrangement it sits in is what you see. A pane goes only
  * when you close it (`removeSessions`): one whose session stops being listed stays, as an ended pane.
  */
 export const MAX_PANES = 4
@@ -42,6 +43,13 @@ function withValidWidths(tab: Arrangement): Arrangement {
 function replaceArrangement(layout: Layout, next: Arrangement): Layout {
   const valid = withValidWidths(next)
   return { ...layout, arrangements: layout.arrangements.map((tab) => (tab.id === valid.id ? valid : tab)) }
+}
+
+/** Shows an arrangement that exists; the tab bar's click. */
+export function activateArrangement(layout: Layout, arrangementId: string | null): Layout {
+  if (layout.activeId === arrangementId) return layout
+  if (arrangementId !== null && !layout.arrangements.some((tab) => tab.id === arrangementId)) return layout
+  return { ...layout, activeId: arrangementId }
 }
 
 export function openArrangement(layout: Layout, sessionId: string, makeId: MakeId): Layout {
