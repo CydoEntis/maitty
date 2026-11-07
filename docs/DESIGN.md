@@ -84,8 +84,8 @@ the rest, and each half clips at its own divider. At the foot: the version (or t
 a rule, and the ` + New ` and ` Menu ` chips.
 
 The top half lists machines (fold arrow, `⌂` for this computer or `▤` for another, the name, a green
-`●` when it is up or a dim `┆` while it reconnects, and a `+` that starts a shell in its first
-fleet) and, under each, its fleets: an amber bold count of the sessions that need you, or a `◆` in
+`●` when it is up or a dim `┆` while it reconnects, and a `+` that asks for a name and starts a
+named fleet there; left empty it starts a shell in its first fleet) and, under each, its fleets: an amber bold count of the sessions that need you, or a `◆` in
 the fleet's colour (teal, violet, blue, orange; Scratch is muted), the name in bold, and `✻ N`
 agents and `>_ N` shells when there is room. The current fleet has the `raise` ground and an accent
 `▌`. The bottom half lists the agent ships, grouped by fleet (a folded group says how many and
@@ -114,15 +114,16 @@ lines are the accent, or `sky()` in shortcut mode. See UI › *the frame* and *p
 
 ## Side panel
 
-Reading while you work happens in a sheet docked right (it takes the pane column on a narrow
-screen). **Files**, **Changes**, **Branch** and **References** share one sheet with a tab strip
+Reading while you work happens in a panel on the right (Files and the others float 60 columns wide
+over the workspace; the check sheets dock and take the pane column on a narrow screen). **Files**, **Changes**, **Branch** and **References** share one sheet with a tab strip
 (`Files f · Changes c · Branch b · References a`), each tab at its own remembered width: Files a
 tree beside the open file (Markdown drawn), Changes the changed files and their diff, Branch the
 branch, ahead/behind, recent commits, the last check and snapshots, References the project's
 screenshots and design files, one line each (name, then kind, size and age muted at the right).
 The lit tab names the open view, so the sheet's top border does not repeat it: Every tab
-carries only the ×. The sheets draw no key-hint row of their own; the mode bar shows their keys. The Inbox and the check evidence
-sheet dock in the same place without the strip. See UI › *the frame* (Sheet), *Inbox check
+carries only the ×. The sheets draw no key-hint row of their own; the mode bar shows their keys. The check evidence
+sheet docks in the same place without the strip. The Inbox is a panel 62 columns wide over the
+workspace from the sidebar's side, with a card for each session that needs you, finished or exited. See UI › *the frame* (Sheet), *Inbox check
 groups* and *check evidence sheet*.
 
 ## Modals and popovers

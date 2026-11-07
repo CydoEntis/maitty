@@ -246,7 +246,7 @@ A new `maitty` that finds a server of another version replaces it on the way in.
 
 Rules for keys and their labels: one key per action (no alias keys; a user's own `[keys.prefix]` entries still load), no default needing Shift, keys other apps use, sentence case, no bracketed explanations (the group gives the context). Every action has a leader key or is search only; nothing in the sidebar acts on a bare letter. `docs/shortcuts.md` documents the other screens' keys and is not embedded in the app.
 
-**Project tools** (`client/screen/sheet.rs`, `menu.rs` `project_items`). The pane's ` ▾ Project ` chip (or the key of each tool: leader `f` Files, `c` Changes, `g` Branches, `h` History, `e` References) opens Files, Changes, Branches, History and References. A picked tool opens as a panel 60 columns wide over the right side of the workspace (one saved width, `Saved::sheet_w["drawer"]`, drag its left edge or `[` `]`), so the panes are never resized by it; its title chip names the tool, and Tab / Shift+Tab step along the tools while it has the keys. Files shows the tree and the open file side by side from 60 columns, and by turns under that. Under the five tools the menu also keeps what the folder offers that the flat design has no place for: New / Open / Tidy worktrees, Rename and Close project, Snapshots and the check's output, re-run and override. The Inbox and the check sheets stay docked beside the panes (`PANES_KEEP` columns kept for them). There is no tool rail. A draggable edge (the sidebar's, the panel's) lights in the accent while pointed at or dragged.
+**Project tools** (`client/screen/sheet.rs`, `menu.rs` `project_items`). The pane's ` ▾ Project ` chip (or the key of each tool: leader `f` Files, `c` Changes, `g` Branches, `h` History, `e` References) opens Files, Changes, Branches, History and References. A picked tool opens as a panel 60 columns wide over the right side of the workspace (one saved width, `Saved::sheet_w["drawer"]`, drag its left edge or `[` `]`), so the panes are never resized by it; its title chip names the tool, and Tab / Shift+Tab step along the tools while it has the keys. Files shows the tree and the open file side by side from 60 columns, and by turns under that. Under the five tools the menu also keeps what the folder offers that the flat design has no place for: New / Open / Tidy worktrees, Rename and Close project, Snapshots and the check's output, re-run and override. The check sheets stay docked beside the panes (`PANES_KEEP` columns kept for them); the Inbox floats (see *the frame*). There is no tool rail. A draggable edge (the sidebar's, the panel's) lights in the accent while pointed at or dragged.
 
 **Cursor.** The focused pane shows the cursor its program asked for (DECSCUSR, read from its output); where it asks for none, or for the default, Settings › Appearance › Cursor (`ui.cursor`: `block` by default, `underline` or `line`; an older `terminal` reads as `block` and `bar` as `line`) and Cursor blink (`ui.cursor_blink`) decide (`client/mod.rs` `cursor_code`). An unknown `ui.cursor` is refused when the config loads.
 
@@ -367,7 +367,7 @@ A session's row carries no check line. A failed check, or a command that ended i
 
 ## Project-specific: check evidence sheet
 
-The check evidence sheet is part of the frame (see *the frame*). Enter on a sidebar row whose check failed, could not run, was overridden, went stale or is never run for its repo opens it (a row waiting for approval opens the approval; every other row still focuses its session), as does Output in the Inbox. It docks right like the Inbox and takes the pane column below `NARROW`. Its title is `CHECK · <session> › <checkpoint>`; content starts one column into the card's inside.
+The check evidence sheet is part of the frame (see *the frame*). Enter on a sidebar row whose check failed, could not run, was overridden, went stale or is never run for its repo opens it (a row waiting for approval opens the approval; every other row still focuses its session), as does Output in the Inbox. It docks right (`split_for_sheet`) and takes the pane column below `NARROW`. Its title is `CHECK · <session> › <checkpoint>`; content starts one column into the card's inside.
 
 - A result chip (` <glyph> <word> ` bold on the state's colour: `failed` on `err`, `failed · overridden` on `text`, `could not run` and `not checked` on `violet()`, `passed` on `done`, `stale pass` on `btn`), then what it came to in `strong` bold (`exit 1`, `exit 0 on older code`, `never for this repo`; `command not found` in `violet()` for exit 127).
 - Command, Folder (the run's folder, home as `~`), Ran (`14:22:05 · took 14.2s · after turn 3 ended 14:21:51`, local clock; `did not run` when it never started) and Seen by (`Maitty ran this itself. The agent said "…".`), or Source (`.maitty/checks.toml · <commit> · you chose never`) for a repo's own command. Rows are clipped at the sheet's edge, not wrapped.
@@ -393,9 +393,13 @@ Deciding is a modal; nothing here pops up on its own. Each matches its reference
 ## Project-specific: Inbox check groups
 
 The Inbox (`j`) is part of the frame. Its title is `INBOX <n>`, n counting
-everything not just finished. It lists, in this order: NEEDS YOU, FAILED CHECKS, COULD NOT RUN,
-FINISHED, then HEADS UP, each a chip head on its colour (`blocked`, `err`, `violet()`, `done`)
-with its count. A question is never below a check.
+everything not just finished or exited. It lists, in this order: NEEDS YOU, FAILED CHECKS, COULD NOT RUN,
+FINISHED, EXITED, then HEADS UP, each a chip head on its colour (`blocked`, `err`, `violet()`, `done`, `err`)
+with its count. A question is never below a check. EXITED lists a session whose last command ended in
+failure (`TermInfo.exit`, set by the daemon) that asks for nothing and has no check of its own to show:
+its line reads `exited with code N`, Enter or `o` opens it, and `c` or Delete clears it until another
+command fails (`Saved`-free: `screen.exit_seen`, by when the command ended). A session that is both
+finished and exited is listed as exited only.
 
 - A group with no rows is not drawn; with nothing at all it says "Nothing is waiting on you.".
   A project with no check has the groups it always had, FINISHED renamed from JUST FINISHED.
@@ -449,7 +453,8 @@ The layout and checkpoints are summed up in [DESIGN](DESIGN.md). `client/screen/
 - **Focus**: a click on a pane's header or body focuses it; a header button acts on that pane. While the sidebar or a side panel has the keys, no pane is lit.
 - **Swapping panes** (`input.rs` `Drag::Pane`, `behaviour.rs` `swap_panes`): a press on a split pane's title row starts a drag; let go on another pane of the view and the two trade places. While dragging, the pane under the pointer lights its lines in `accent` with a centred `⇄ swap here` pill, and a `btn` pill with the dragged pane's name follows the pointer.
 - **Mode bar** (`mode_bar.rs`): the bottom row of the room inside `ui.padding` (`draw.rs` `mode_bar_row`; `framed` is the room above it, so every look is a row shorter). Popups and their dimming sit above it (`above_bar`), so it is never covered or dimmed. Typing: ` TYPING ` (`muted` on `btn`), `keys go to <agent or process>`, then hints spelled out with the prefix from the keymap, key bold and words `muted`: `Ctrl+A then ← sidebar`, `Ctrl+A then . menu`, `Ctrl+T new`, `Ctrl+K palette`, `Ctrl+J inbox`; a click on the chip or a hint starts shortcut mode as the prefix does. Needs-you, the branch and the load keep the right end and the hints give way first, whole, from the right. Lit: the whole row in `sky()`, a bold ` ⌃A ` chip (the prefix; `sky` on `bg`; a click opens the key map), then suggestions read from the keymap, key bold and label plain in `ink_on(sky)`: `t shell`, `n next tab`, `. menu`, `i inbox`, `c changes`, `f files`, `, settings`, then `? all keys` and `Esc type`. A rebound key shows its new key; an action with no key is left out. A narrow bar drops suggestions from the right, then Update shortens (` ↑ 0.44.0 `, ` ↑ `) and goes, then `? all keys`, then `Esc type`; the tag stays. A click on a suggestion presses its key in shortcut mode, so it does what the key does: the mode stays, unless the key starts a pane. Who has the keys (anything but the panes, whether or not shortcut mode is held: the sidebar, a popup or modal, a side-panel view with the keys, the key map's search or All keys; `keys_holder`): the bar is on `bg`, never sky, and names it in a calm chip (`strong` bold on `btn`: ` SIDEBAR `, ` SETTINGS `, ` FILES `, ` INBOX `, ` CHANGES `, ` BRANCH `, ` PALETTE `, ` MENU `, ` UPDATES `, ` CONFIRM `, ` NAME `, ` MESSAGE `, …), then its main keys and the way out, each after a `·`, key bold `strong`, words `muted`: `SIDEBAR · ↑↓ move · Enter open · Esc back`, `CONFIRM · y yes · n no`, `NAME · type · Enter save · Esc cancel`, `MESSAGE · Enter send · Shift+Enter new line · Esc keep draft`. The keys are the ones that thing's own handler reads in the state it is in (Files' tree, filter, preview or editor; Changes asking y/n; each step of Switch branch; Settings waiting for a key or editing a value; Settings' Check page by its row, while its command is typed, before the project has a checkpoint (a letter starts the command) and with no project open (only Tab and Esc), and the project check likewise; the Inbox asking to merge or throw away; copy mode's search and selection; the key map's second step; a folder picked for a setting, where Esc goes back); add a row there when a mode or view is added (the match is exhaustive). While shortcut mode is held it adds `· shortcut mode waits` before the way out. A narrow bar drops these hints from the right (`shortcut mode waits` first), then Update, then the way out; the label stays. The key map before a search stays lit, since its keys still run shortcuts. Under anything that has the keys (a popup or modal from either mode, a view shortcut mode opened, or the key map and its search) the bar is only words: its chips take no click, and a click on its row does nothing (`only_says`), so it never closes the popup, runs a suggestion or drops typed text. **Update** or **Restart**, when waiting, sits at the bar's right end, clickable except under anything that has the keys. With `ui.rounded = "full"` each chip on the bar is capped on the bar's ground and its click covers the caps. In shortcut mode a key with no action shows the toast `Shortcut mode — Esc to type` (`input.rs` `hint_dead_key`), marked with a sky `i` and bar since it is information, not a success: at most once every 6 s, never over a toast still showing, and not kept in the notification history; keys that act are unchanged.
-- **Sheet** (`sheet.rs` `split_for_sheet`): the Inbox and the check sheets dock right from 140 columns, the layout's gap from the panes; below 140, or when the panes would keep fewer than 40 columns (`PANES_KEEP`), they take the pane column and Esc brings the panes back. Inbox, checks and both-diffs start at 72 columns.
+- **Sheet** (`sheet.rs` `split_for_sheet`): the check sheets and both-diffs dock right from 140 columns, the layout's gap from the panes; below 140, or when the panes would keep fewer than 40 columns (`PANES_KEEP`), they take the pane column and Esc brings the panes back. They start at 72 columns.
+- **Inbox** (`draw.rs` `grid`, `sheet.rs` `INBOX_W`): a panel 62 columns wide that floats over the workspace from the sidebar's side (the left edge of the pane column, or its right edge when the sidebar is on the right). The panes keep their column; the panel has a fixed width, so `[` `]` and its edge do nothing. Its cards are NEEDS YOU, FAILED CHECKS, COULD NOT RUN, FINISHED and EXITED.
 - **Message popover** (`popover.rs` `draw_compose_pop`): the follow-up to an agent, opened from the sidebar row or the leader (`M`). The screen is dimmed except the popover and its row. A full `accent` border (corners by `ui.rounded`), `card` ground, the input on `bg`, no shadow.
 - **Toast** (`draw_toast`): one component for every Maitty notice, bottom right, its bottom edge `TOAST_ABOVE_INPUT` (5) rows above the screen's so it sits over the agent's input area. It draws a `line` outline on `bg` with round corners whatever `ui.rounded` says, its left side a heavy `┃` in the notice's colour (error `err`, about a session that needs you `blocked`, about a finished one `done`, otherwise `accent`).
 - **Selecting and copying**: a mouse drag or `v`/`V` in copy mode tints the selection sky (`blend(bg, sky, 0.38)`) with `strong` text; `y` copies and closes copy mode; the copied cells then glow accent for `copy::FLASH_FOR` while the toast reads `Copied to clipboard`.
@@ -544,10 +549,11 @@ session it starts is a **shell**: there is no agent or view to choose, agents st
 
 **A new shell does not use the dialog.** **Ctrl+T** (prefix `t`), the sidebar's ` + ` and ` + New `,
 the tab row's ` + `, and `n` in the sidebar start a shell at once in the fleet of the focused session
-(`App::new_ship`; a machine heading's `+` uses that machine's first fleet; with no fleet, a Scratch
-fleet): a daemon `NewTab` in that workspace, so it is on the fleet's machine, becomes the fleet's
+(`App::new_ship`; a machine heading's `+` asks for a name and starts a named fleet there with `NewFleet`, in the first of the four fleet colours that is free, and an empty name starts a shell in that machine's first fleet instead; with no fleet, a Scratch
+fleet): a daemon `NewShip` in that workspace, so it is on the fleet's machine, becomes the fleet's
 active session and shows as a new tab. The status bar says `New shell in <fleet> · <folder>`. The
-daemon starts the shell in the fleet's own folder (`NewTab` carries no folder); a session started
+shell starts in the folder you are working in when you are in that fleet, else where the fleet was last
+used, else the fleet's own (`NewShip` carries it); a session started
 from the dialog in a folder some fleet of that machine already works in joins that fleet, else the
 folder starts a fleet of its own (`screen_start_pane_on`).
 
@@ -572,7 +578,10 @@ folder starts a fleet of its own (`screen_start_pane_on`).
 - **Step 2, machine.** Enter on a project goes here when more than one machine is up; with only this
   computer it starts the shell at once. Lists this computer and the remotes. A machine that is
   reconnecting is dim, says so, and is skipped by the arrows. The project's folder is read on the machine
-  picked; if it is not there the red line shows and Enter does nothing. Enter starts the shell
+  picked; if it is not there the red line names the folder (`✗ <path> is not a folder on <machine>`) and
+  Enter does nothing, while the answer is awaited it says `checking the folder on <machine>…`, and a
+  project remembered from a machine that is down shows `✗ <machine> is offline: pick another machine`
+  (with only this computer up, such a project is refused with a notice instead of starting there). Enter starts the shell
   through that machine's connection (ADR 0007). No latency is shown: the app does not measure it yet.
 - **After starting** the dialog closes, the folder is remembered, the daemon focuses the new session (the
   last row of the sidebar) and a green line names it in the mode bar for `BAR_FLASH_FOR`.
@@ -604,8 +613,8 @@ folder starts a fleet of its own (`screen_start_pane_on`).
   Resuming is never automatic.
 - **No sessions**: `No sessions running`, `Sessions keep running when you close the app.`, `Ctrl+T new session`.
 - **Updates box** (leader `u`; `client/screen/updates.rs`): above the sidebar footer. Available: `<current> → <version>`, the
-  notes under NEW, `d Download · s Skip · l Later`; Downloading: a spinner (the installer reports no byte count, so no
-  bar); Ready: `r Restart now` (this window reopens; the daemon is never stopped by it); Failed: the error and
+  notes under NEW, `d Download · s Skip · l Later`; Downloading: a spinner, the step (`Downloading`, `Checking the download`, `Unpacking`, `Installing`) and a bar of the steps done, `step 2 of 4`
+  (the installer reports no byte count, so the bar moves in whole steps and never shows a percentage; `cli::update::step`); Ready: `r Restart now` (this window reopens; the daemon is never stopped by it); Failed: the error and
   `r Retry`. It reads the existing state (`update_available`, `updating`, `restart_needed`) and uses `start_update` and `ask_restart`.
 
 ## Project-specific: Machines dialog
