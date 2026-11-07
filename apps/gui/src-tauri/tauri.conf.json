@@ -6,7 +6,7 @@
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "pnpm bundle:daemon:dev && pnpm dev",
     "beforeBuildCommand": "pnpm build"
   },
   "app": {

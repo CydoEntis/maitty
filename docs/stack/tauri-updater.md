@@ -15,8 +15,9 @@
 - Verify every update with the project's updater key. The public key is in `tauri.conf.json`; the
   private key lives only in the `TAURI_SIGNING_PRIVATE_KEY` repository secret and the owner's
   backup. Never commit it, print it, or put it in a fixture or log.
-- An update replaces the GUI only. It must never stop the daemon or end a session. After an install
-  the window restarts; the daemon keeps running.
+- An update replaces the GUI. After the restart the new GUI brings the shared daemon file up to its
+  own release (ADR 0004), stopping a running older daemon only when its sessions are saved, so they
+  restore on the next daemon. It never stops a daemon whose sessions would be lost.
 - A failed or offline check is quiet: no banner, only the line in Settings. A failed install says so
   and never claims the app is updated.
 - Enable only the operations the GUI calls in its Tauri capability.

@@ -68,11 +68,15 @@ To work on the optional desktop preview, from `apps/gui/` run:
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm desktop:dev       # run the Tauri desktop shell
+pnpm desktop:dev       # run the Tauri desktop shell (same as `pnpm tauri dev`)
 pnpm desktop:build     # create platform installer packages
 ```
 
-Desktop commands build the Rust CLI sidecar for the current host platform.
+Desktop commands build the Rust CLI sidecar for the current host platform. In dev,
+Tauri's `beforeDevCommand` rebuilds it (`pnpm bundle:daemon:dev`) on every start, so
+`pnpm tauri dev` never runs a stale service copy. A packaged app instead installs that
+file as the shared `maitty` on first start and after each update (see
+[ADR 0004](adr/0004-client-split-and-desktop-host.md)).
 The packaged GUI uses that sidecar to start the separate daemon when needed;
 closing the GUI leaves the daemon and its sessions running. `pnpm dev` opens
 the browser preview with sample data and does not start or connect to a daemon.

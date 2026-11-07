@@ -16,7 +16,28 @@ mod terminal_stream;
 use maitty_desktop_client::{FleetCommand, PaneCommand};
 use tauri::Manager;
 
+/// The daemon to start. A packaged app runs the shared per-user `maitty`, which it first brings
+/// up to its own release (ADR 0004); a development build runs the one it just built.
 fn daemon_executable(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    if cfg!(debug_assertions) {
+        return bundled_daemon(app);
+    }
+    static SHARED: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+    let mut shared = SHARED
+        .lock()
+        .map_err(|_| "the daemon install lock was poisoned".to_string())?;
+    if let Some(path) = shared.as_ref() {
+        return Ok(path.clone());
+    }
+    let version = app.package_info().version.to_string();
+    let path = maitty_desktop_client::ensure_shared_daemon(&bundled_daemon(app)?, &version)
+        .map_err(|error| format!("{error:#}"))?;
+    *shared = Some(path.clone());
+    Ok(path)
+}
+
+/// The daemon file shipped inside the app: what gets installed, never what runs.
+fn bundled_daemon(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let suffix = if cfg!(windows) { ".exe" } else { "" };
     let (file_name, development_path) = if cfg!(debug_assertions) {
         let file_name = format!(

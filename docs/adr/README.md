@@ -28,7 +28,7 @@ holds the history; an ADR states only what is true now.
 | [0001](0001-the-daemon-owns-every-session.md) | The daemon owns every session and conversation, and only one daemon runs |
 | [0002](0002-terminal-substrate-and-wire-protocol.md) | portable-pty and vt100; msgpack over local sockets, versioned |
 | [0003](0003-status-and-conversation-trust.md) | Status comes only from the owning runtime, and one writer decides it |
-| [0004](0004-client-split-and-desktop-host.md) | Clients are views: TUI, CLI and an optional desktop app |
+| [0004](0004-client-split-and-desktop-host.md) | Clients are views: TUI, CLI and an optional desktop app, sharing one installed daemon |
 | [0005](0005-provider-adapters-and-permissions.md) | Provider adapters sit behind the daemon; Maitty never widens permissions |
 | [0006](0006-secrets-never-enter-chat.md) | Secrets never enter chat |
 | [0007](0007-multiple-machines.md) | One connection per machine, held by the client |

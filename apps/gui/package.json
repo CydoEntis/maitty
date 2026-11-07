@@ -15,7 +15,7 @@
     "tauri": "tauri",
     "bundle:daemon:dev": "node scripts/bundle-daemon.ts",
     "bundle:daemon:release": "node scripts/bundle-daemon.ts --release",
-    "desktop:dev": "pnpm bundle:daemon:dev && tauri dev",
+    "desktop:dev": "tauri dev",
     "desktop:build": "pnpm bundle:daemon:release && tauri build"
   },
   "dependencies": {

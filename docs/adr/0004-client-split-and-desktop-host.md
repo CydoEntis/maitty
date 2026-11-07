@@ -23,10 +23,20 @@ without the desktop app dragging daemon code or a webview into the terminal-only
   gets a one-time token, sends it first, and trusts the socket only after the host answers
   `ready`; only the app's own origin may connect. The Tauri channel carries output until then.
 - Terminal-only installation and the native agent terminal interfaces stay supported.
+- **One daemon file per PC.** The installed `maitty` (`%LOCALAPPDATA%\Programs\maitty` on
+  Windows, `~/.local/bin` elsewhere, or `MAITTY_INSTALL_DIR`) is the only daemon any client
+  starts. The desktop app ships a copy of it only as the payload to install. At first use it
+  makes the installed file its own release: it installs the file when missing or older, keeps
+  a newer one, and asks its user to update instead of downgrading. Replacing the file stops a
+  running daemon first, but only when its sessions are saved or absent, so no agent state is
+  silently lost; otherwise the daemon is left running and the app says why. A development
+  build runs the daemon it just built and never touches the installed file.
 
 ## Alternatives considered
 
 - **One client that does both**: rejected, it ties the terminal install to a webview.
+- **A private daemon copy inside the desktop app**: rejected, two files on one PC drift apart
+  and a protocol bump left the app starting a stale daemon.
 - **Plugin ABI for clients**: rejected, no current consumer.
 
 ## Consequences

@@ -70,9 +70,11 @@ Keep native packaging and GUI build steps separate from `cargo install --path ap
 Desktop build scripts compile and package a GUI-specific CLI sidecar for the
 current host. Keep its `maitty-gui-daemon` name separate from the terminal CLI
 executable so a running daemon cannot lock the file a new GUI build must
-replace. Resolve the daemon from packaged resources first, then from an adjacent
-target-suffixed GUI sidecar so release builds launched from their output
-directory can start the daemon too.
+replace. That sidecar is only the payload: a packaged app installs it as the
+shared `maitty` (ADR 0004) and runs that file. Find the payload in packaged
+resources first, then as an adjacent target-suffixed sidecar so release builds
+launched from their output directory work too. A development build runs the
+sidecar directly.
 Expose only fixed commands to the webview. On a protocol mismatch, the GUI may
 offer an explicit restart for an older local daemon after showing its saved
 session and active-turn counts; recheck the exact protocol in Rust before
