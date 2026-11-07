@@ -394,6 +394,45 @@ fn get_says_why_a_file_cannot_be_pulled_and_leaves_nothing() {
 }
 
 #[test]
+fn browsing_a_fake_remote_lists_a_folder_and_indexes_the_files_below_it() {
+    needs_sh!();
+    let remote = Remote::new(LINUX);
+    for file in ["app/src/main.rs", "app/src/deep/lib.rs", "app/README.md", "app/.git/config", "app/node_modules/x/y.js"] {
+        let path = remote.home.join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, "x").unwrap();
+    }
+    let machine = remote.machine(AT_HOME);
+
+    let listing = maitty_machines::list_folder(&machine, "box", "~/app").unwrap();
+    assert!(listing.folder.ends_with("/app"), "{}", listing.folder);
+    assert_eq!(listing.dirs, [".git", "node_modules", "src"]);
+    assert_eq!(listing.files, ["README.md"]);
+    assert!(!listing.truncated);
+
+    let index = maitty_machines::index_files(&machine, "box", "~/app").unwrap();
+    assert_eq!(index.files, ["README.md", "src/deep/lib.rs", "src/main.rs"], "no .git or node_modules");
+    assert!(!index.truncated);
+}
+
+#[test]
+fn browsing_says_why_a_folder_cannot_be_looked_into() {
+    needs_sh!();
+    let remote = Remote::new(LINUX);
+    std::fs::write(remote.home.join("plain.txt"), "x").unwrap();
+    let machine = remote.machine(AT_HOME);
+    assert_eq!(
+        maitty_machines::list_folder(&machine, "box", "~/nope").unwrap_err(),
+        "~/nope does not exist on box"
+    );
+    assert_eq!(
+        maitty_machines::list_folder(&machine, "box", "~/plain.txt").unwrap_err(),
+        "~/plain.txt on box is not a folder"
+    );
+    assert!(maitty_machines::index_files(&machine, "box", "~/nope").is_err());
+}
+
+#[test]
 fn restart_asks_the_far_daemon_to_restart_even_with_sessions_open() {
     needs_sh!();
     let remote = Remote::new(LINUX);

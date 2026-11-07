@@ -14,6 +14,7 @@ mod machine;
 pub mod machine_config;
 pub mod machine_ids;
 pub mod machine_probe;
+mod remote_browse;
 mod remote_get;
 pub mod remote_paste;
 pub mod remote_policy;
@@ -35,6 +36,7 @@ pub use machine::{
     SSH_PROGRAM, hello, open_remote, other_version,
 };
 pub use brand::APP_COMMAND;
+pub use remote_browse::{Index, Listing, index_files, list_folder, parse_index, parse_listing};
 pub use remote_get::{MAX_GET_BYTES, get_file, local_name};
 pub use remote_scripts::{
     GET_MARKER, GET_MISSING, GET_NOT_A_FILE, GET_READ_FAILED, GET_SCRIPT, GET_TOO_BIG,
