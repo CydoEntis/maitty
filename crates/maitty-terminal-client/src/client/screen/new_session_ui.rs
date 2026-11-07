@@ -243,10 +243,19 @@ impl App {
                 ns.sel = 0;
             }
             Go::Choose { machine, path } => {
+                let several = chips.iter().filter(|c| c.state.pickable()).count() > 1;
+                let up = chips.iter().any(|c| c.id == machine && c.state.pickable());
+                // With one machine to start on there is no second step, so a folder remembered
+                // from a machine that is down must not start a shell on it.
+                if !several && !up {
+                    let name = self.dialog_machine_name(machine);
+                    self.notify(format!("{name} is offline: pick a folder on a machine that is up"), true);
+                    self.mode = Mode::NewSession(Box::new(ns));
+                    return;
+                }
                 ns.machine = machine;
                 ns.project = Some((machine, path.clone()));
                 ns.browsing = None;
-                let several = chips.iter().filter(|c| c.state.pickable()).count() > 1;
                 if !several {
                     self.create_shell(machine, &path);
                     return;
@@ -368,7 +377,17 @@ pub(in crate::client) fn draw_new_session(app: &mut App, f: &mut Frame, area: Re
         Step::Machine => ns.project_state() == FolderState::Missing,
     };
     let note_y = r.y + NOTE_ROW;
-    if missing {
+    let offline = ns.step == Step::Machine
+        && !chips.iter().any(|c| c.id == ns.machine && c.state.pickable());
+    if offline {
+        put(buf, left, note_y, &[seg(format!("✗ {machine_name} is offline: pick another machine"), c.fg(t.err))], right);
+    } else if missing && ns.step == Step::Machine {
+        // The project was chosen on another machine: say which folder is not here.
+        let line = format!("✗ {} is not a folder on {machine_name}", ns.project.as_ref().map_or("", |(_, p)| p));
+        put(buf, left, note_y, &[seg(truncate(&line, (right - left) as usize), c.fg(t.err))], right);
+    } else if ns.step == Step::Machine && ns.project_state() == FolderState::Pending {
+        put(buf, left, note_y, &[seg(format!("checking the folder on {machine_name}…"), c.fg(t.muted))], right);
+    } else if missing {
         put(buf, left, note_y, &[seg(format!("✗ No such folder on {machine_name}"), c.fg(t.err))], right);
     } else if ns.step == Step::Project && !ns.q.is_empty() && ns.typed_state() == FolderState::Pending {
         put(buf, left, note_y, &[seg("reading…", c.fg(t.muted))], right);
