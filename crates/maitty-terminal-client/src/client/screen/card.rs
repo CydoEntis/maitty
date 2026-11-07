@@ -78,8 +78,6 @@ pub(in crate::client) fn pane_bg(t: &Theme) -> Color {
 pub(in crate::client) struct Look {
     /// Pane colours: each pane a box in its own colour (Floating only).
     pub pane_colors: bool,
-    /// Leave a border cell between tab chips (`ui.tab_gap`).
-    pub tab_gap: bool,
     /// Hairline: no boxes, only `│` / `─` hairlines, and always square. Drawing
     /// asks this, and takes its colours from `hairline::Ink`.
     pub hairline: bool,
@@ -90,19 +88,16 @@ pub(in crate::client) struct Look {
     pub caps: bool,
     /// Round the ends of the tab chips and the sidebar's selected folder row (`ui.rounded`).
     pub round_tabs: bool,
-    /// Round the ends of the sidebar's session rows (`ui.rounded`).
-    pub round_rows: bool,
 }
 
 impl Look {
     pub fn of(ui: &crate::config::Ui) -> Look {
-        use crate::config::LayoutKind;
-        let kind = ui.layout_kind();
-        let hairline = kind == LayoutKind::Hairline;
+        // Hairline is retired (a config that names it reads as Floating): nothing is drawn in
+        // it any more, and the branches that were are left for a later clean-up.
+        let hairline = false;
         let rounding = ui.rounding();
         Look {
             pane_colors: ui.pane_colors && !hairline,
-            tab_gap: ui.tab_gap,
             hairline,
             rounded: rounding.corners(),
             gap: if hairline {
@@ -118,7 +113,6 @@ impl Look {
             },
             caps: rounding.caps(),
             round_tabs: rounding.caps(),
-            round_rows: rounding.caps(),
         }
     }
 }
@@ -242,34 +236,6 @@ pub(in crate::client) fn corners(look: Look) -> [&'static str; 4] {
         ["╭", "╮", "╰", "╯"]
     } else {
         ["┌", "┐", "└", "┘"]
-    }
-}
-
-/// A row's highlight laid over what's already drawn there (a glide passing over rows): its
-/// ground becomes `bg`, its text stays, with the pill's ends.
-pub(in crate::client) fn tint_row(
-    look: Look,
-    buf: &mut Buffer,
-    x: u16,
-    y: u16,
-    w: u16,
-    bg: Color,
-    outer: Color,
-) {
-    let area = buf.area;
-    if w < 2 || y < area.y || y >= area.bottom() {
-        return;
-    }
-    let right = (x + w).min(area.right());
-    for xx in x.max(area.x)..right {
-        buf[(xx, y)].set_bg(bg);
-    }
-    if look.caps {
-        buf[(x, y)].set_symbol(CAP_L).set_fg(bg).set_bg(outer);
-        buf[(right - 1, y)]
-            .set_symbol(CAP_R)
-            .set_fg(bg)
-            .set_bg(outer);
     }
 }
 
@@ -681,7 +647,6 @@ mod tests {
         assert!(rounded_look.rounded, "the setting rounds box corners");
         assert!(rounded_look.caps, "chips are pills");
         assert!(rounded_look.round_tabs, "tab chips are pills");
-        assert!(rounded_look.round_rows, "sidebar rows are pills");
 
         let square = look("floating", false);
         assert!(!square.rounded, "rounding can be turned off");

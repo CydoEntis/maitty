@@ -67,7 +67,9 @@ fn structured_only_conversation_renders_without_any_workspace_or_terminal() {
             "attaching does not implicitly open a terminal"
         );
         let text = draw(&mut app, width, height);
-        assert!(text.contains("Codex 41"), "{text}");
+        // Narrow, the collapsed column holds its initials.
+        let name = if width < 110 { "C4" } else { "Codex 41" };
+        assert!(text.contains(name), "{text}");
         assert!(app.snap.workspaces.is_empty() && app.snap.terms.is_empty());
         assert_eq!(
             app.screen
@@ -79,33 +81,6 @@ fn structured_only_conversation_renders_without_any_workspace_or_terminal() {
         );
         assert!(app.screen.tabs.is_empty() && app.parsers.is_empty());
     }
-}
-
-#[test]
-fn selecting_and_typing_on_an_unbound_conversation_sends_no_terminal_commands() {
-    let (mut app, mut out) = app();
-    let key = SessionKey::Conversation(ConversationId(41));
-    app.on_hy_hit(screen::ScreenHit::Session(ClientSession::local(key)), false);
-    for code in [KeyCode::Enter, KeyCode::Right, KeyCode::Char('x')] {
-        app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
-        assert!(matches!(app.mode, Mode::Side));
-        assert_eq!(app.screen.cursor, Some(ClientSession::local(key)));
-    }
-    for action in [
-        Action::StopAgent,
-        Action::NewTab,
-        Action::SplitRight,
-        Action::Message,
-    ] {
-        app.act(action);
-    }
-    app.on_hy_hit(
-        screen::ScreenHit::RowMenuSess(ClientSession::local(key)),
-        false,
-    );
-    draw(&mut app, 80, 24);
-    assert!(out.try_recv().map(|o| o.msg).is_err());
-    assert!(app.screen.tabs.is_empty() && app.parsers.is_empty());
 }
 
 #[test]
@@ -154,18 +129,6 @@ fn conversation_row_and_selection_survive_native_binding_changes_without_duplica
         assert!(draw(&mut app, 160, 45).contains("Codex 41"));
     }
     assert!(out.try_recv().map(|o| o.msg).is_err());
-}
-
-#[test]
-fn a_completed_structured_turn_keeps_its_failed_checkpoint_visible() {
-    let (mut app, _) = app();
-    let world = reference_fixture::world(reference_fixture::Stage::Failed);
-    app.snap.conversations[0].status = Status::Done;
-    app.snap.conversations[0].checks = world.snap.terms[&1].checks.clone();
-    app.screen_fresh();
-    let text = draw(&mut app, 160, 45);
-    assert!(text.contains("failed"), "{text}");
-    assert!(text.contains("Codex 41"));
 }
 
 #[test]

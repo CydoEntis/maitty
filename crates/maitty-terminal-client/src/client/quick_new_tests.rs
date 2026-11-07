@@ -6,8 +6,7 @@ use crate::client::reference_fixture::{Stage, world};
 use crate::client::screen::quick_new::{QuickTarget, Selected, quick_target_of};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-use ratatui::layout::Rect;
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 const BUILD: MachineId = MachineId(1);
 const GARAGE: MachineId = MachineId(2);
@@ -66,24 +65,6 @@ fn local_project(app: &App) -> screen::Proj {
         .into_iter()
         .find(|p| p.machine == MachineId::LOCAL)
         .expect("a local project")
-}
-
-/// The rects of every ` + ` hit that opens the picker on `machine`.
-fn chip_rects(app: &App, machine: MachineId) -> Vec<Rect> {
-    app.hits
-        .iter()
-        .filter(|(_, h)| *h == Hit::Screen(screen::ScreenHit::NsMachine(machine)))
-        .map(|(r, _)| *r)
-        .collect()
-}
-
-fn click(app: &mut App, r: Rect) {
-    app.on_mouse(MouseEvent {
-        kind: MouseEventKind::Down(MouseButton::Left),
-        column: r.x + 1,
-        row: r.y,
-        modifiers: KeyModifiers::NONE,
-    });
 }
 
 // ---- quick_target: every row of the table ------------------------------------------------------
@@ -254,68 +235,11 @@ fn n_with_nothing_selected_asks_where_and_capital_n_always_opens_the_picker() {
 // ---- the scoped chips -------------------------------------------------------------------------------------
 
 #[test]
-fn local_and_each_online_machine_have_a_plus_chip_and_an_offline_one_has_none() {
-    let (mut app, _rx) = machines();
-    let (rows, buf) = frame(&mut app, 120, 40);
-    let side = app.screen.side_rect;
-
-    let local = chip_rects(&app, MachineId::LOCAL);
-    assert_eq!(local.len(), 1, "{local:?}");
-    assert_eq!((local[0].x, local[0].y), (side.x + 12, side.y), "after the fold arrow and the LOCAL title on the border");
-    assert_eq!(rows[local[0].y as usize].chars().skip(local[0].x as usize).take(3).collect::<String>(), " + ");
-    let cell = &buf[(local[0].x + 1, local[0].y)];
-    assert_eq!((cell.fg, cell.bg), (app.theme.accent, app.theme.btn), "orange on the chip ground");
-
-    let build_row = rows.iter().position(|r| r.contains("⇄ build")).expect("build's badge row");
-    let on_row: Vec<_> = chip_rects(&app, BUILD).into_iter().filter(|r| r.y as usize == build_row).collect();
-    assert_eq!(on_row.len(), 1, "one chip on build's badge row: {rows:#?}");
-    let line: Vec<char> = rows[build_row].chars().collect();
-    let badge_end = line.iter().collect::<String>().find("⇄ build").map(|b| rows[build_row][..b].chars().count() + "⇄ build ".chars().count()).unwrap();
-    assert_eq!(on_row[0].x as usize, badge_end + 1, "one space after the badge");
-
-    let garage_row = rows.iter().position(|r| r.contains("⇄ pi-garage")).expect("pi-garage's badge row");
-    assert!(
-        chip_rects(&app, GARAGE).iter().all(|r| r.y as usize != garage_row),
-        "no chip on an offline machine"
-    );
-}
-
-#[test]
-fn a_chip_opens_the_picker_in_path_mode_on_that_machine_with_its_title() {
-    for (machine, query, title) in [
-        (MachineId::LOCAL, "~/", "NEW SESSION ON LOCAL"),
-        (BUILD, "build:~/", "NEW SESSION ON BUILD"),
-    ] {
-        let (mut app, _rx) = machines();
-        let (rows, _) = frame(&mut app, 120, 40);
-        let row = match machine {
-            MachineId::LOCAL => app.screen.side_rect.y,
-            _ => rows.iter().position(|r| r.contains("⇄ build")).unwrap() as u16,
-        };
-        let chip = chip_rects(&app, machine).into_iter().find(|r| r.y == row).expect("the chip");
-        click(&mut app, chip);
-        let Mode::NewSession(ns) = &app.mode else { panic!("no picker for {query}") };
-        assert_eq!(ns.q, query);
-        let (rows, _) = frame(&mut app, 120, 40);
-        assert!(rows.iter().any(|r| r.contains(title)), "{title}:\n{}", rows.join("\n"));
-    }
-}
-
-#[test]
 fn the_full_picker_keeps_the_plain_title() {
     let (mut app, _rx) = machines();
     app.screen_open_session_popup("");
     let (rows, _) = frame(&mut app, 120, 40);
     assert!(rows.iter().any(|r| r.contains("NEW SESSION ") && !r.contains(" ON ")), "plain title");
-}
-
-#[test]
-fn the_remote_rule_adds_a_machine_with_m_add() {
-    let (mut app, _rx) = machines();
-    let (rows, _) = frame(&mut app, 120, 40);
-    let rule = rows.iter().find(|r| r.contains("REMOTE")).expect("the remote rule");
-    assert!(rule.contains(" m add"), "{rule}");
-    assert!(!rule.contains("+ Add"), "{rule}");
 }
 
 // ---- the leader --------------------------------------------------------------------------------------------

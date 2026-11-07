@@ -20,137 +20,6 @@ pub(in crate::client) fn secret_line(label: &str) -> String {
     format!("asks for a secret: {}", truncate(label, LABEL_CHARS))
 }
 
-/// The same in `room` columns: the short form on a narrow sidebar, so it is not cut off.
-pub(in crate::client) fn secret_line_in(label: &str, room: usize) -> String {
-    let full = secret_line(label);
-    if full.width() <= room {
-        full
-    } else {
-        truncate("asks for a secret", room)
-    }
-}
-
-/// What a row says while it asks you for something: helpers or a secret.
-pub(in crate::client) fn ask_line_in(s: &Session, room: usize) -> String {
-    match &s.secret_ask {
-        Some(label) => secret_line_in(label, room),
-        None => helpers_line_in(s.helpers_wanted, room),
-    }
-}
-
-pub(in crate::client) fn draw_secret_pop(
-    app: &mut App,
-    buf: &mut Buffer,
-    screen: Rect,
-    side: Rect,
-    term: ClientTerm,
-    t: &Theme,
-) {
-    let Some(req) = app.secret_request(term) else {
-        return;
-    };
-    let x0 = side.right() + 1;
-    let w = POP_W.min(screen.right().saturating_sub(x0 + 1));
-    if w < 30 {
-        return;
-    }
-    let iw = w as usize - 4;
-    let agent = app
-        .term_info(term)
-        .and_then(|i| i.agent.clone())
-        .unwrap_or_else(|| "agent".into());
-    let intro = wrap(&format!("{agent} asks for: {}", req.label), iw);
-    let why = if req.reason.is_empty() {
-        Vec::new()
-    } else {
-        wrap(&req.reason, iw)
-    };
-    let note = wrap("Goes to this session only, once; never into the chat.", iw);
-    let h = (1 + 1 + intro.len() + why.len() + 1 + note.len() + 1 + 1 + 1 + 1 + 1) as u16;
-
-    let (r, _) = frame_beside_row(app, buf, screen, side, term, (x0, w, h), t);
-    let card = Style::default().bg(t.card);
-    let name = app.session_name(term);
-    put(
-        buf,
-        r.x + 2,
-        r.y,
-        &plain(vec![
-            seg(
-                " SECRET? ",
-                Style::default()
-                    .fg(t.acc_ink)
-                    .bg(t.accent)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            seg(format!("· {name} "), card.fg(t.muted)),
-        ]),
-        r.right() - 2,
-    );
-    let decline = " Esc declines ";
-    put(
-        buf,
-        (r.right() - 2).saturating_sub(decline.width() as u16),
-        r.y,
-        &[seg(decline, card.fg(t.muted))],
-        r.right() - 2,
-    );
-
-    let (x, right) = (r.x + 2, r.right() - 2);
-    let mut y = r.y + 2;
-    for l in &intro {
-        put(buf, x, y, &[seg(l.clone(), card.fg(t.text))], right);
-        y += 1;
-    }
-    for l in &why {
-        put(buf, x, y, &[seg(l.clone(), card.fg(t.muted))], right);
-        y += 1;
-    }
-    y += 1;
-    for l in &note {
-        put(buf, x, y, &[seg(l.clone(), card.fg(t.muted))], right);
-        y += 1;
-    }
-    y += 1;
-    let room = iw.saturating_sub(4);
-    let typed = app.screen.secret_typed.0.chars().count();
-    let dots: String = std::iter::repeat_n(MASK, typed.min(room)).collect();
-    put(
-        buf,
-        x,
-        y,
-        &[
-            seg("▸ ", card.fg(t.accent)),
-            seg(dots, card.fg(t.strong)),
-            seg("▏", card.fg(t.accent)),
-        ],
-        right,
-    );
-    y += 2;
-    let bx = btn(
-        app,
-        buf,
-        x,
-        y,
-        "Give it",
-        "Enter",
-        BtnKind::Primary,
-        ScreenHit::SecretGive(term),
-        right,
-    ) + 1;
-    btn(
-        app,
-        buf,
-        bx,
-        y,
-        "Decline",
-        "Esc",
-        BtnKind::Normal,
-        ScreenHit::SecretDecline(term),
-        right,
-    );
-}
-
 impl App {
     /// The request session `term` is waiting on you for, if any.
     pub(in crate::client) fn secret_request(&self, term: ClientTerm) -> Option<SecretRequest> {
@@ -318,17 +187,115 @@ impl App {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_row_line_names_the_secret_and_gives_way_on_a_narrow_sidebar() {
-        assert_eq!(
-            secret_line_in("OpenAI key", 60),
-            "asks for a secret: OpenAI key"
-        );
-        assert_eq!(secret_line_in("OpenAI key", 20), "asks for a secret");
-        assert!(secret_line(&"x".repeat(200)).width() <= "asks for a secret: ".len() + LABEL_CHARS);
+pub(in crate::client) fn draw_secret_pop(
+    app: &mut App,
+    buf: &mut Buffer,
+    screen: Rect,
+    side: Rect,
+    term: ClientTerm,
+    t: &Theme,
+) {
+    let Some(req) = app.secret_request(term) else {
+        return;
+    };
+    let x0 = side.right() + 1;
+    let w = POP_W.min(screen.right().saturating_sub(x0 + 1));
+    if w < 30 {
+        return;
     }
+    let iw = w as usize - 4;
+    let agent = app
+        .term_info(term)
+        .and_then(|i| i.agent.clone())
+        .unwrap_or_else(|| "agent".into());
+    let intro = wrap(&format!("{agent} asks for: {}", req.label), iw);
+    let why = if req.reason.is_empty() {
+        Vec::new()
+    } else {
+        wrap(&req.reason, iw)
+    };
+    let note = wrap("Goes to this session only, once; never into the chat.", iw);
+    let h = (1 + 1 + intro.len() + why.len() + 1 + note.len() + 1 + 1 + 1 + 1 + 1) as u16;
+
+    let (r, _) = frame_beside_row(app, buf, screen, side, term, (x0, w, h), t);
+    let card = Style::default().bg(t.card);
+    let name = app.session_name(term);
+    put(
+        buf,
+        r.x + 2,
+        r.y,
+        &plain(vec![
+            seg(
+                " SECRET? ",
+                Style::default()
+                    .fg(t.acc_ink)
+                    .bg(t.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            seg(format!("· {name} "), card.fg(t.muted)),
+        ]),
+        r.right() - 2,
+    );
+    let decline = " Esc declines ";
+    put(
+        buf,
+        (r.right() - 2).saturating_sub(decline.width() as u16),
+        r.y,
+        &[seg(decline, card.fg(t.muted))],
+        r.right() - 2,
+    );
+
+    let (x, right) = (r.x + 2, r.right() - 2);
+    let mut y = r.y + 2;
+    for l in &intro {
+        put(buf, x, y, &[seg(l.clone(), card.fg(t.text))], right);
+        y += 1;
+    }
+    for l in &why {
+        put(buf, x, y, &[seg(l.clone(), card.fg(t.muted))], right);
+        y += 1;
+    }
+    y += 1;
+    for l in &note {
+        put(buf, x, y, &[seg(l.clone(), card.fg(t.muted))], right);
+        y += 1;
+    }
+    y += 1;
+    let room = iw.saturating_sub(4);
+    let typed = app.screen.secret_typed.0.chars().count();
+    let dots: String = std::iter::repeat_n(MASK, typed.min(room)).collect();
+    put(
+        buf,
+        x,
+        y,
+        &[
+            seg("▸ ", card.fg(t.accent)),
+            seg(dots, card.fg(t.strong)),
+            seg("▏", card.fg(t.accent)),
+        ],
+        right,
+    );
+    y += 2;
+    let bx = btn(
+        app,
+        buf,
+        x,
+        y,
+        "Give it",
+        "Enter",
+        BtnKind::Primary,
+        ScreenHit::SecretGive(term),
+        right,
+    ) + 1;
+    btn(
+        app,
+        buf,
+        bx,
+        y,
+        "Decline",
+        "Esc",
+        BtnKind::Normal,
+        ScreenHit::SecretDecline(term),
+        right,
+    );
 }

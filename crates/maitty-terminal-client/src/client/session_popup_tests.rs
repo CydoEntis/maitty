@@ -2,7 +2,6 @@
 
 use super::*;
 use crate::client::ids::{MachineId, Remote};
-use crate::client::screen::ScreenHit;
 use crate::client::reference_fixture::{Stage, world};
 use crate::protocol::{FolderEntry, FolderListing, Query, Reply};
 use ratatui::Terminal;
@@ -204,25 +203,6 @@ fn a_session_started_from_the_popup_is_remembered_and_announced() {
 
     assert_eq!(app.screen.saved.recent_paths, vec!["build:/home/x".to_string()]);
     assert!(app.notice.as_ref().is_some_and(|(text, _, _)| text.starts_with("+ ") && text.ends_with(" on build")));
-}
-
-#[test]
-fn a_connected_machine_with_nothing_running_offers_new_and_opens_the_popup_on_its_home_folder() {
-    let (mut app, _rx) = two_machines();
-    let shown = frame(&mut app, 120, 40);
-    assert!(shown.contains("⏎ new"), "{shown}");
-    let offered = app
-        .hits
-        .iter()
-        .any(|(_, h)| *h == Hit::Screen(ScreenHit::NsMachine(THERE)));
-    assert!(offered, "the row for build is clickable");
-    // The one that is down offers its fix, not a session.
-    assert!(!app.hits.iter().any(|(_, h)| *h == Hit::Screen(ScreenHit::NsMachine(OFFLINE))));
-
-    app.on_hy_hit(ScreenHit::NsMachine(THERE), false);
-
-    let Mode::NewSession(ns) = &app.mode else { panic!("the popup did not open") };
-    assert_eq!(ns.q, "build:~/");
 }
 
 #[test]

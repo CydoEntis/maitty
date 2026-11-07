@@ -224,33 +224,6 @@ impl App {
         self.menu_act(crate::client::menu::Act::End(tab.leaves()));
     }
 
-    /// Move tab `from` to where tab `to` is (both of the same session); returns where it is
-    /// now. The tab you're on stays the one you're on.
-    pub(in crate::client) fn move_tab(&mut self, from: usize, to: usize) -> usize {
-        let n = self.screen.tabs.len();
-        if from >= n
-            || to >= n
-            || from == to
-            || self.screen.tabs[from].owner != self.screen.tabs[to].owner
-        {
-            return from;
-        }
-        let current = self.screen.tab;
-        let tab = self.screen.tabs.remove(from);
-        self.screen.tabs.insert(to, tab);
-        // Every index between the two shifted by one; the one you're on follows its tab.
-        self.screen.tab = if current == from {
-            to
-        } else if from < to && current > from && current <= to {
-            current - 1
-        } else if to < from && current >= to && current < from {
-            current + 1
-        } else {
-            current
-        };
-        to
-    }
-
     /// Trade the places of two panes shown in one tab; each takes the other's size. The
     /// server's tab follows when it holds both, so a restart keeps the new order. False when
     /// no tab here shows both.
@@ -307,6 +280,10 @@ impl App {
 
     /// Show a session: it becomes the focused one.
     pub(in crate::client) fn screen_focus(&mut self, term: ClientTerm) {
+        // A sidebar opened over the workspace (a narrow screen) puts itself away once you pick.
+        if self.screen.overlay_open {
+            self.sidebar = false;
+        }
         self.screen.show_own = Some(term);
         self.screen.cursor = None;
         self.mode = Mode::Normal;
@@ -610,6 +587,75 @@ impl App {
         self.mode = Mode::Normal;
     }
 
+    /// A button on a split pane's header acts on that pane, which takes the focus first.
+    fn pane_button(&mut self, term: ClientTerm, button: PaneBtn) {
+        if Some(term) != self.focused() {
+            self.cmd_on(term.machine, Command::FocusPane { term: term.term });
+        }
+        match button {
+            PaneBtn::SplitRight => self.act(Action::SplitRight),
+            PaneBtn::SplitDown => self.act(Action::SplitDown),
+            PaneBtn::Zoom => {
+                let tab = self.screen.tab;
+                self.screen.zoom = if self.screen.zoom == Some(tab) {
+                    None
+                } else {
+                    Some(tab)
+                };
+            }
+            PaneBtn::Menu => {
+                let at = self.hover.map(|p| (p.x, p.y + 1)).unwrap_or((0, 0));
+                self.menu_for_pane(term, at);
+            }
+        }
+    }
+
+    /// Put the keys in the sidebar's filter: what is typed narrows the list.
+    pub(in crate::client) fn start_side_filter(&mut self) {
+        self.screen.filtering = true;
+        self.screen.follow = true;
+        self.mode = Mode::Side;
+        if self.screen.cursor.is_none() {
+            let first = self.screen.visible.first().copied();
+            self.screen.cursor = first.or(self.focused().map(|id| self.session_key(id)));
+        }
+    }
+
+    /// Keys while the filter has them: letters narrow the list, Backspace edits, Enter opens
+    /// the session on the cursor, Esc clears it all. Returns whether the key was the filter's.
+    fn on_filter_key(&mut self, k: &KeyEvent) -> bool {
+        if !self.screen.filtering {
+            return false;
+        }
+        let plain = !k
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
+        match k.code {
+            KeyCode::Esc => {
+                self.screen.filter.clear();
+                self.screen.filtering = false;
+            }
+            KeyCode::Enter => {
+                self.screen.filtering = false;
+                return false;
+            }
+            KeyCode::Backspace => {
+                self.screen.filter.pop();
+            }
+            KeyCode::Char(c) if plain => self.screen.filter.push(c),
+            _ => return false,
+        }
+        self.screen.side_scroll = 0;
+        self.screen.follow = true;
+        // The cursor stays on a session the filter still shows.
+        let model = self.screen_model();
+        let shown = super::side::side_keys(self, &model);
+        if !self.screen.cursor.is_some_and(|c| shown.contains(&c)) {
+            self.screen.cursor = shown.first().copied();
+        }
+        true
+    }
+
     /// Fold or unfold a project (true: open it).
     /// A new colour for a project's +/− button, never the one it had.
     pub(in crate::client) fn pick_fold_color(&mut self, key: &str) {
@@ -628,17 +674,6 @@ impl App {
         if let Some(c) = palette.get(nanos % palette.len().max(1)) {
             self.screen.fold_colors.insert(key.to_string(), *c);
         }
-    }
-
-    /// Fold or unfold the Local or the Remote half of the sidebar, remembered like a folded project.
-    pub(in crate::client) fn toggle_region(&mut self, remote: bool) {
-        let key = super::side::region_key(remote);
-        if super::side::region_folded(self, remote) {
-            self.screen.saved.closed.retain(|c| c != key);
-        } else {
-            self.screen.saved.closed.push(key.to_string());
-        }
-        self.screen.save();
     }
 
     pub(in crate::client) fn screen_fold(&mut self, key: &str, open: Option<bool>) {
@@ -795,10 +830,20 @@ impl App {
             | Action::SplitLeft
             | Action::SplitUp
             | Action::Spawn(..) => {
+                // A view holds up to four panes.
+                let panes = self
+                    .screen
+                    .tabs
+                    .get(self.screen.tab)
+                    .map_or(1, |tab| tab.layout.leaves().len());
+                if !room_for_pane(panes) {
+                    self.notify(format!("{MAX_PANES} panes is the most one view holds"), true);
+                    return true;
+                }
+                // Up and left put the new pane before this one, down and right after it.
                 self.screen.split_dir = Some(match a {
-                    Action::SplitDown | Action::SplitUp => crate::layout::Dir::Down,
                     Action::Spawn(d, _) => *d,
-                    _ => crate::layout::Dir::Right,
+                    other => split_dir(other).unwrap_or(crate::layout::Dir::Right),
                 });
                 let cwd = focused
                     .and_then(|f| self.term_info(f))
@@ -893,6 +938,9 @@ impl App {
         let spec = KeySpec::from_event(k);
         let proj = self.screen.cursor_proj.clone();
         let model = self.screen_model();
+        if self.on_filter_key(k) {
+            return;
+        }
         if spec == self.keymap.prefix {
             self.mode = Mode::Prefix {
                 since: Instant::now(),
@@ -929,6 +977,7 @@ impl App {
         match spec.code {
             // [: full, then the narrow column, then hidden, then full again.
             KeyCode::Char('[') if plain => self.cycle_sidebar(),
+            KeyCode::Char('/') if plain => self.start_side_filter(),
             // New session: at once where the sidebar is (`quick_target`); `N` is the popup that
             // starts one on any project, folder or machine.
             KeyCode::Char('n') if plain => self.quick_new(),
@@ -1005,6 +1054,10 @@ impl App {
                     }
                 }
             },
+            KeyCode::Esc if !self.screen.filter.is_empty() => {
+                self.screen.filter.clear();
+                self.screen.side_scroll = 0;
+            }
             KeyCode::Esc => self.screen_side_leave(),
             _ if spec == self.keymap.prefix => {
                 self.mode = Mode::Prefix {
@@ -1867,13 +1920,6 @@ impl App {
     /// Clicks on this layout's chips, rows and buttons.
     pub(in crate::client) fn on_hy_hit(&mut self, h: ScreenHit, double: bool) {
         match h {
-            ScreenHit::ToggleProj(i) => {
-                if let Some(key) = self.screen.proj_keys.get(i).cloned() {
-                    // Only folds: the keys stay where they were, as after a click on a session
-                    // or a tab row.
-                    self.screen_fold(&key, None);
-                }
-            }
             // Opens it, as a click on one of its tabs does: the keys go to its pane. A session
             // with no pane has nothing to type into, so the sidebar keeps them on its row.
             ScreenHit::Session(t) => match self.session_term(t) {
@@ -1889,8 +1935,21 @@ impl App {
                 self.splash = false;
                 self.ask_restart();
             }
-            ScreenHit::AddMachine => self.open_machines(),
-            ScreenHit::ToggleRegion(remote) => self.toggle_region(remote),
+            ScreenHit::OpenInbox => self.act(Action::Jump),
+            ScreenHit::SideFilter => self.start_side_filter(),
+            ScreenHit::SideProject(key) => {
+                let model = self.screen_model();
+                if let Some(p) = model.iter().find(|p| p.sessions().any(|s| s.key == key)) {
+                    self.screen.filter = p.name.clone();
+                    self.screen.follow = true;
+                    self.screen.side_scroll = 0;
+                }
+            }
+            ScreenHit::ProjectMenu(term) => {
+                let at = self.hover.map(|p| (p.x, p.y + 1)).unwrap_or((0, 0));
+                self.menu_for_project_tools(term, at);
+            }
+            ScreenHit::PaneBtn(term, button) => self.pane_button(term, button),
             ScreenHit::TidyRow(i) => self.tidy_click(i),
             ScreenHit::TidyGo => {
                 if let Mode::Tidy(v) = std::mem::replace(&mut self.mode, Mode::Normal) {
@@ -1901,29 +1960,6 @@ impl App {
             // The ✕ on a pane: close it (after asking).
             ScreenHit::CloseSplit(t) => self.menu_act(crate::client::menu::Act::End(vec![t])),
             ScreenHit::Divider(i) => self.screen.drag = Some(Drag::Divider(i)),
-            ScreenHit::ShellIn(pi) => {
-                if let Some(p) = self.screen_model().get(pi) {
-                    let dir = p
-                        .wts
-                        .iter()
-                        .find(|w| w.main)
-                        .map(|w| w.path.clone())
-                        .unwrap_or_else(|| p.path.clone());
-                    self.screen_new_session_on(p.machine, dir, None, false);
-                }
-            }
-            ScreenHit::RowMenuSess(t) => {
-                let at = self.hover.map(|p| (p.x, p.y)).unwrap_or((0, 0));
-                if let Some(id) = self.bare_conversation(t) {
-                    self.menu_for_conversation(id, at);
-                } else if let Some(term) = self.require_session_term(t) {
-                    self.menu_for_session(term, at);
-                }
-            }
-            ScreenHit::RowMenuProj(i) => {
-                let at = self.hover.map(|p| (p.x, p.y)).unwrap_or((0, 0));
-                self.menu_for_project(i, at);
-            }
             ScreenHit::ConfirmYes => {
                 if let Mode::Confirm(c) = std::mem::replace(&mut self.mode, Mode::Normal) {
                     self.confirm_done(Some(c.act));
@@ -1934,33 +1970,10 @@ impl App {
                 self.confirm_done(None);
             }
             ScreenHit::Approve(h) => self.on_approve_hit(h),
-            ScreenHit::HelperAsk(term) => self.open_ask(term, matches!(self.mode, Mode::Side)),
             ScreenHit::HelperAnswer(term, choice) => self.answer_helpers(term, choice),
             ScreenHit::SecretGive(term) => self.answer_secret(term, true),
             ScreenHit::SecretDecline(term) => self.answer_secret(term, false),
             ScreenHit::CheckDraft(h) => self.on_check_draft_hit(h),
-            ScreenHit::TabPick(i) => {
-                if let Some(tab) = self.screen.tabs.get(i) {
-                    let to = tab.focus;
-                    self.screen.tab = i;
-                    self.cmd_on(to.machine, Command::FocusPane { term: to.term });
-                    // Double-click: rename it in its pill.
-                    if double {
-                        self.rename_tab_start();
-                    }
-                }
-            }
-            ScreenHit::CloseTab(i) => self.close_tab(i),
-            ScreenHit::NewTab => self.act(Action::NewTab),
-            ScreenHit::TabSplit => self.act(Action::SplitRight),
-            ScreenHit::TabZoom => {
-                let tab = self.screen.tab;
-                self.screen.zoom = if self.screen.zoom == Some(tab) {
-                    None
-                } else {
-                    Some(tab)
-                };
-            }
             ScreenHit::SideFocus => self.act(Action::BrowseTree),
             ScreenHit::ExpandSidebar | ScreenHit::CollapseSidebar => {
                 self.act(Action::ToggleSidebar)
@@ -2018,7 +2031,6 @@ impl App {
                 self.dismiss_notice();
             }
             ScreenHit::SettingsBody => {}
-            ScreenHit::NsMachine(machine) => self.screen_open_scoped(machine),
             ScreenHit::NsRow(i) => self.session_popup_row_click(i),
             ScreenHit::NsChip(i) => self.session_popup_chip_click(i),
             ScreenHit::FinderPick(i) => {
@@ -2165,15 +2177,6 @@ impl App {
                 } else {
                     self.screen.splash_away = true;
                     self.screen.splash_away_sel = i;
-                }
-            }
-            // A click on a machine's line opens the dialog on that machine: how it stands, the
-            // fix, and the keys that reconnect, update or remove it.
-            ScreenHit::MachineRow(machine) => self.open_machines_on(machine),
-            // The tool rail: its chip opens that tool, or closes it when it is the one open.
-            ScreenHit::Tool(i) => {
-                if let Some((_, _, _, action)) = sheet::DRAWER_TABS.get(i) {
-                    self.act(action.clone());
                 }
             }
             ScreenHit::SplashFocus(away) => self.screen.splash_away = away,

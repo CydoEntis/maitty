@@ -15,7 +15,7 @@ const HIDES: &str = "This hides a failure. It stays visible:";
 const STAYS: &str = "on the row, in the Inbox history and in the evidence";
 const SCOPE: &str = "for this result only; the next run replaces it";
 
-/// The row menu's items for a session whose check has a result, in menu order.
+/// The Project menu's items for a session whose check has a result, in menu order.
 pub(in crate::client) fn check_menu_items(
     term: ClientTerm,
     info: &CheckInfo,

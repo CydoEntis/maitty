@@ -87,30 +87,6 @@ impl App {
         });
     }
 
-    /// Open the dialog on one of your machines: its row chosen, the fix under it.
-    pub(super) fn open_machines_on(&mut self, machine: MachineId) {
-        let at = self.machine_listed_at(self.machine_name(machine));
-        self.open_machines();
-        self.with_machines_view(|v| v.machine_sel = at);
-    }
-
-    /// Open the dialog on changing where one of your machines is.
-    pub(super) fn open_machine_edit(&mut self, machine: MachineId) {
-        let name = self.machine_name(machine).to_string();
-        let Some(def) = self.configured(&name) else {
-            self.notify(format!("{name} is not in your machines."), true);
-            return;
-        };
-        self.open_machines_on(machine);
-        self.with_machines_view(|v| {
-            v.step = MachineStep::Edit {
-                name: def.name,
-                target: def.target,
-                error: None,
-            }
-        });
-    }
-
     pub(super) fn with_machines_view(&mut self, f: impl FnOnce(&mut MachinesView)) {
         if let Mode::Machines(v) = &mut self.mode {
             f(v);

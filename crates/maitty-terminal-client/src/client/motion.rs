@@ -8,7 +8,6 @@ use std::time::{Duration, Instant};
 
 /// How long a slide takes; a glide between rows is quicker.
 pub const SLIDE: Duration = Duration::from_millis(140);
-pub const GLIDE: Duration = Duration::from_millis(90);
 /// A toast's slide in, and the fade at the end of its time.
 pub const TOAST_IN: Duration = Duration::from_millis(120);
 pub const TOAST_FADE: Duration = Duration::from_millis(350);
@@ -103,26 +102,6 @@ impl Motion {
             _ => {
                 self.sheet = None;
                 1.0
-            }
-        }
-    }
-
-    /// Where highlight `key` is drawn: when what it marks (`id`) changes, it glides from the
-    /// row it was on to `y`. Some(row) while it's on its way; None once it's there.
-    pub fn glide(&mut self, key: &'static str, id: u64, y: u16, on: bool) -> Option<u16> {
-        let now = Instant::now();
-        let entry = self.glides.entry(key).or_insert((id, y, None));
-        if entry.0 != id {
-            let from = entry.2.map(|t| t.at(now)).unwrap_or(entry.1 as f32);
-            entry.2 = (on && from.round() as u16 != y).then(|| Tween::new(from, y as f32, GLIDE));
-            entry.0 = id;
-        }
-        entry.1 = y;
-        match entry.2 {
-            Some(t) if !t.done(now) => Some(t.at(now).round() as u16),
-            _ => {
-                entry.2 = None;
-                None
             }
         }
     }
@@ -252,17 +231,5 @@ mod tests {
             m.split(1, &[11, 10], 0.5, true) < 0.5,
             "opened left: the first (new) one starts narrow"
         );
-    }
-
-    #[test]
-    fn a_highlight_glides_to_its_new_row() {
-        let mut m = Motion::default();
-        assert_eq!(m.glide("side", 1, 5, true), None, "first sight: on its row");
-        let y = m
-            .glide("side", 2, 15, true)
-            .expect("moving to the next one");
-        assert!((5..15).contains(&y), "on its way: {y}");
-        assert!(m.moving());
-        assert_eq!(Motion::default().glide("side", 1, 5, false), None);
     }
 }

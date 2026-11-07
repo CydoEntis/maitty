@@ -709,24 +709,22 @@ fn only_says(app: &App) -> bool {
     shortcut_waits(app) || !matches!(app.mode, Mode::Normal | Mode::Side | Mode::Prefix { .. })
 }
 
-/// After TYPING: which tab of its session this is and how many splits it shows, dim. When
-/// narrow the hint after it goes first, then this.
+/// After TYPING: where the keys go, dim. When narrow the hint after it goes first, then this.
 fn layout_piece(app: &App, t: &Theme) -> Option<Piece> {
-    let n = app.screen.leaf_rects.len();
-    let tabs = app.session_tabs();
-    let at = tabs.iter().position(|&i| i == app.screen.tab)?;
-    (n > 0 && app.focused().is_some()).then(|| {
-        let words = format!(
-            "tab {}/{} · {n} split{}",
-            at + 1,
-            tabs.len(),
-            if n == 1 { "" } else { "s" }
-        );
-        Piece {
-            segs: vec![seg(words, Style::default().fg(t.muted).bg(t.bg))],
-            gap: GAP,
-            hit: None,
-        }
+    let term = app.focused()?;
+    let info = app.term_info(term)?;
+    let process = if info.process.trim().is_empty() {
+        "the shell"
+    } else {
+        info.process.trim()
+    };
+    Some(Piece {
+        segs: vec![seg(
+            format!("keys go to {process}"),
+            Style::default().fg(t.muted).bg(t.bg),
+        )],
+        gap: GAP,
+        hit: None,
     })
 }
 

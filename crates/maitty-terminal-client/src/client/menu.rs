@@ -23,27 +23,16 @@ pub(super) const RESTORE_WHILE_WORKING: &str =
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Act {
-    /// Dial a machine again.
-    ReconnectMachine(String),
-    /// Install or update the app on a machine, in a popup that asks first.
-    UpdateMachine(String),
-    /// Change where a machine is: the dialog, on its address.
-    EditMachine(MachineId),
-    /// Take a machine out of the list; its sessions keep running there.
-    RemoveMachine(String),
     Beside(ClientTerm),
     /// The program in this pane is an agent: the app learns it.
     TeachAgent(ClientTerm),
     /// End these (stops what runs in them).
     End(Vec<ClientTerm>),
-    Changes(PathBuf),
     RenamePane(ClientTerm),
     /// A chat's name, for every client.
     RenameConversation(crate::conversation::ConversationId),
     /// Put a chat away: it keeps running, and every client stops listing it.
     ArchiveConversation(crate::conversation::ConversationId),
-    /// Drop the follow-ups waiting for this agent's turn to end.
-    ClearQueue(ClientTerm),
     /// List a checkout's snapshots (its folder, and whose row asked).
     Snapshots(PathBuf, ClientTerm),
     /// Put a checkout's files back as a snapshot has them: (folder, commit, when, whose row).
@@ -81,6 +70,14 @@ pub enum Act {
     UndoOverride(ClientTerm),
     /// Delete a reference: (the project root, the file, its name in the references).
     RemoveReference(PathBuf, PathBuf, String),
+    /// Run a command, as its key would: an item of the Project menu.
+    Tool(crate::keys::Action),
+    /// Show this session beside the one on screen, on this side of it.
+    OpenSplit(ClientTerm, crate::layout::Dir),
+    /// Keep a session marked, or take the mark off.
+    Pin(ClientTerm, bool),
+    /// Copy the folder a session is in.
+    CopyPath(ClientTerm),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -291,7 +288,6 @@ impl App {
                 Act::End(_)
                     | Act::CloseProject(_)
                     | Act::ArchiveConversation(_)
-                    | Act::RemoveMachine(_)
             )
         });
         self.mode = Mode::ScreenMenu(Box::new(ScreenMenu {
@@ -300,6 +296,62 @@ impl App {
             sel: 0,
             at,
         }));
+    }
+
+    /// The ` ▾ Project ` chip: the tools that look at the project the pane is in, then what else
+    /// the project's folder offers (worktrees, its checks, snapshots, closing it).
+    pub(super) fn menu_for_project_tools(&mut self, term: ClientTerm, at: (u16, u16)) {
+        if Some(term) != self.focused() {
+            self.cmd_on(term.machine, Command::FocusPane { term: term.term });
+        }
+        let items = self.project_items(term);
+        self.menu("Project".into(), items, at);
+    }
+
+    /// The items of `term`'s Project menu, in order.
+    pub(super) fn project_items(&self, term: ClientTerm) -> Vec<(String, Act)> {
+        use crate::keys::Action;
+        let mut items: Vec<(String, Act)> = [
+            ("Files", Action::Files),
+            ("Changes", Action::Changes),
+            ("Branches", Action::Branches),
+            ("History", Action::History),
+            ("References", Action::References),
+        ]
+        .into_iter()
+        .map(|(label, action)| (label.to_string(), Act::Tool(action)))
+        .collect();
+        let model = self.screen_model();
+        if let Some(pi) = model
+            .iter()
+            .position(|p| p.sessions().any(|s| s.native_term == Some(term)))
+        {
+            let p = &model[pi];
+            if p.git {
+                items.push(("New worktree".to_string(), Act::NewWorktree(pi)));
+                items.push(("Open worktree…".to_string(), Act::OpenWorktree(pi)));
+                items.push(("Tidy worktrees…".to_string(), Act::TidyOpen(pi)));
+            }
+            items.push((
+                "Rename project…".to_string(),
+                Act::RenameProject(p.key.clone(), p.name.clone()),
+            ));
+            items.push(("Close project".to_string(), Act::CloseProject(pi)));
+        }
+        let dir = self
+            .term_info(term)
+            .map(|i| i.top.clone().unwrap_or_else(|| i.cwd.clone()));
+        if let Some(d) = dir.filter(|d| {
+            self.cfg.snapshots.enabled
+                && self.is_local_pane(term)
+                && crate::gitfs::head(d).is_some()
+        }) {
+            items.push(("Snapshots…".to_string(), Act::Snapshots(d, term)));
+        }
+        if let Some(check) = self.term_info(term).and_then(|t| t.check()) {
+            items.extend(super::screen::check_menu_items(term, check));
+        }
+        items
     }
 
     /// Right-click on a pane's content.
@@ -398,57 +450,33 @@ impl App {
         }
     }
 
-    /// A session's menu: its title and items, for right-click and for the sidebar's
-    /// letter keys.
+    /// A session's menu, as the design lists it: rename, pin, open it in a split, copy its
+    /// path, and close it last. For right-click and for the sidebar's `.` key.
     pub(super) fn session_items(&self, term: ClientTerm) -> Option<(String, Vec<(String, Act)>)> {
-        let model = self.screen_model();
-        let (_, _, s) = find(&model, term)?;
-        let agent = s.agent.clone();
-        let dir = find(&model, term).map(|(_, w, _)| w.path.clone());
-        let info = self.term_info(term);
-        // A program the app doesn't know can be taught.
-        let mut items = Vec::new();
-        if let Some(t) = info.filter(|t| {
-            t.agent.is_none() && !t.is_shell() && !t.process.is_empty() && t.remote.is_none()
-        }) {
-            items.push((format!("{} is an agent…", t.process), Act::TeachAgent(term)));
-        }
+        use crate::layout::Dir;
+        let info = self.term_info(term)?;
+        let pinned = info.pinned;
+        let title = super::screen::display_name(Some(info), "session");
+        let mut items = vec![
+            ("Rename".to_string(), Act::RenamePane(term)),
+            (
+                if pinned { "Unpin" } else { "Pin" }.to_string(),
+                Act::Pin(term, !pinned),
+            ),
+        ];
+        // Beside a session that is not itself on screen.
         if self.focused().is_some_and(|f| f != term) {
-            items.push(("Open beside".into(), Act::Beside(term)));
-        }
-        items.push(("Rename".to_string(), Act::RenamePane(term)));
-        if let Some(d) = dir
-            .filter(|_| self.is_local_pane(term))
-            .filter(|d| crate::gitfs::head(d).is_some())
-        {
-            items.push(("Changes".to_string(), Act::Changes(d.clone())));
-            if s.is_agent && self.cfg.snapshots.enabled {
-                items.push(("Snapshots…".to_string(), Act::Snapshots(d, term)));
-            }
-        }
-        if !s.queued.is_empty() {
             items.push((
-                format!("Drop queued follow-ups ({})", s.queued.len()),
-                Act::ClearQueue(term),
+                "Open in split right".to_string(),
+                Act::OpenSplit(term, Dir::Right),
+            ));
+            items.push((
+                "Open in split down".to_string(),
+                Act::OpenSplit(term, Dir::Down),
             ));
         }
-        if let Some(check) = info.and_then(|t| t.check()) {
-            items.extend(super::screen::check_menu_items(term, check));
-        }
-        items.push(("Close".to_string(), Act::End(vec![term])));
-        // Titled by what it is (an agent, or the program's name), never its window title.
-        let what = if s.is_agent {
-            agent
-        } else {
-            info.map(|t| t.process.clone())
-                .filter(|p| !p.is_empty())
-                .unwrap_or_else(|| "shell".into())
-        };
-        let title = if what == s.name {
-            what
-        } else {
-            format!("{} · {}", s.name, truncate(&what, 30))
-        };
+        items.push(("Copy path".to_string(), Act::CopyPath(term)));
+        items.push(("Close session".to_string(), Act::End(vec![term])));
         Some((title, items))
     }
 
@@ -484,51 +512,6 @@ impl App {
             items,
             at,
         );
-    }
-
-    /// Right-click on a project row.
-    /// Right-click on a remote machine's line.
-    pub(super) fn menu_for_machine(&mut self, machine: MachineId, at: (u16, u16)) {
-        let name = self.machine_name(machine).to_string();
-        if name.is_empty() {
-            return;
-        }
-        let items = vec![
-            ("Reconnect".to_string(), Act::ReconnectMachine(name.clone())),
-            ("Update…".to_string(), Act::UpdateMachine(name.clone())),
-            ("Edit…".to_string(), Act::EditMachine(machine)),
-            ("Remove".to_string(), Act::RemoveMachine(name.clone())),
-        ];
-        self.menu(name, items, at);
-    }
-
-    pub(super) fn menu_for_project(&mut self, pi: usize, at: (u16, u16)) {
-        if let Some((title, items)) = self.project_items(pi) {
-            self.menu(title, items, at);
-        }
-    }
-
-    pub(super) fn project_items(&self, pi: usize) -> Option<(String, Vec<(String, Act)>)> {
-        let model = self.screen_model();
-        let p = model.get(pi)?;
-        let mut items = vec![
-            (
-                "Rename".to_string(),
-                Act::RenameProject(p.key.clone(), p.name.clone()),
-            ),
-            ("Close".to_string(), Act::CloseProject(pi)),
-        ];
-        if p.git {
-            items.push(("New worktree".to_string(), Act::NewWorktree(pi)));
-            items.push(("Open worktree…".to_string(), Act::OpenWorktree(pi)));
-            items.push(("Clean up worktrees…".to_string(), Act::TidyOpen(pi)));
-        } else if self.files_are_here(p.machine) {
-            items.push((
-                "Make it a git repo…".to_string(),
-                Act::GitInit(p.path.clone()),
-            ));
-        }
-        Some((p.name.clone(), items))
     }
 
     pub(super) fn on_hy_menu_key(&mut self, mut m: ScreenMenu, k: &KeyEvent) {
@@ -694,24 +677,6 @@ impl App {
                 Some(c) => Some(c),
                 None => return,
             },
-            Act::RemoveMachine(name) => Some(Confirm {
-                title: "Remove machine".into(),
-                sub: String::new(),
-                what: name.clone(),
-                detail: self
-                    .cfg
-                    .machines
-                    .iter()
-                    .find(|m| m.name == *name)
-                    .map(|m| m.target.clone())
-                    .unwrap_or_default(),
-                note: "It's taken off this list. Its sessions keep running on it, and you can add it again.".into(),
-                list: Vec::new(),
-                yes: "Remove".into(),
-                key: '\n',
-                danger: true,
-                act: a.clone(),
-            }),
             Act::CloseProject(pi) => model.get(*pi).map(|p| {
                 let n = p.sessions().count();
                 Confirm {
@@ -762,6 +727,7 @@ impl App {
             }
         }
         match a {
+            Act::Tool(action) => self.act(action),
             // A terminal that belongs to a chat is named through the chat, so every client
             // shows the same name.
             Act::RenamePane(t)
@@ -858,9 +824,6 @@ impl App {
                 self.cmd_on(term.machine, Command::TeachAgent { term: term.term })
             }
             Act::TidyOpen(pi) => self.tidy_open(pi),
-            Act::ClearQueue(term) => {
-                self.cmd_on(term.machine, Command::ClearQueue { term: term.term })
-            }
             Act::Snapshots(dir, term) => {
                 let at = self
                     .screen
@@ -926,19 +889,6 @@ impl App {
                         false,
                     );
                 }
-            }
-            Act::ReconnectMachine(name) => {
-                let said = self.machine_retry(&name);
-                self.notify(said.text, said.error);
-            }
-            Act::EditMachine(machine) => self.open_machine_edit(machine),
-            Act::UpdateMachine(name) => {
-                let said = self.machine_update(&name);
-                self.notify(said.text, said.error);
-            }
-            Act::RemoveMachine(name) => {
-                let said = self.machines_remove(&name);
-                self.notify(said.text, said.error);
             }
             Act::RenameProject(key, name) => {
                 self.mode = Mode::Prompt {
@@ -1011,6 +961,33 @@ impl App {
                     None => self.notify("start something in this project first".into(), true),
                 }
             }
+            Act::OpenSplit(t, dir) => {
+                let panes = self
+                    .screen
+                    .tabs
+                    .get(self.screen.tab)
+                    .map_or(1, |tab| tab.layout.leaves().len());
+                if !super::screen::room_for_pane(panes) {
+                    self.notify(
+                        format!("{} panes is the most one view holds", super::screen::MAX_PANES),
+                        true,
+                    );
+                    return;
+                }
+                self.screen.split_dir = Some(dir);
+                self.menu_do(Act::Beside(t));
+            }
+            Act::Pin(t, pinned) => self.cmd_on(t.machine, Command::PinPane { term: t.term, pinned }),
+            Act::CopyPath(t) => {
+                if let Some(info) = self.term_info(t) {
+                    let path = info.cwd.display().to_string();
+                    let done = super::copy::to_clipboard(&path);
+                    self.notify(
+                        if done { format!("copied {path}") } else { "no clipboard".to_string() },
+                        !done,
+                    );
+                }
+            }
             Act::Beside(t) => {
                 if let Some(f) = self.focused() {
                     self.screen_unshow(t);
@@ -1034,7 +1011,6 @@ impl App {
                     self.cmd_on(t.machine, Command::ClosePane { term: t.term });
                 }
             }
-            Act::Changes(p) => self.open_changes(p),
             Act::CheckOutput(t) => self.open_check_sheet(t),
             Act::RerunCheck(t) => self.rerun_check(t),
             Act::OverrideCheck(t, reason, name) => self.override_check(t, name, reason),
@@ -1157,7 +1133,6 @@ fn bound_action(app: &App, act: &Act) -> Option<crate::keys::Action> {
             .find(|d| crate::layout::neighbor(&app.screen.leaf_rects, *a, *d) == Some(*b))
             .map(Action::Swap),
         Act::End(ts) if ts.len() == 1 => Some(Action::ClosePane),
-        Act::Changes(_) => Some(Action::Changes),
         _ => None,
     }
 }
