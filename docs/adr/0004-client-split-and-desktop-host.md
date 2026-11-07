@@ -15,8 +15,10 @@ without the desktop app dragging daemon code or a webview into the terminal-only
   nothing else.
 - The desktop app must not link `maitty-core`, `maitty-terminal-client` or `maitty-settings`.
   `scripts/check-gui-deps.sh` enforces it.
-- Every session belongs to exactly one app, recorded by the daemon (`Surface`). An app lists,
-  types into and resizes only its own sessions. The daemon still owns them all (0001).
+- Both apps list and attach to every session, and either may type into one. The daemon records
+  the app that created a session (`Surface`) as its size owner: only that app resizes the session,
+  so one app never reflows a pane the other is drawing. The daemon still owns every session (0001).
+  A window layout (which sessions sit in which panes) belongs to the app, not the daemon.
 - Terminal output reaches the desktop window over a local WebSocket on `127.0.0.1`. The window
   gets a one-time token, sends it first, and trusts the socket only after the host answers
   `ready`; only the app's own origin may connect. The Tauri channel carries output until then.

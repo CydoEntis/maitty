@@ -1,0 +1,92 @@
+# Flat sessions: audit and plan (draft, 2026-11-06)
+
+Status: **decided in principle, nothing built.** The decisions in section 3 were taken on the owner's say-so; ADR 0004, ADR 0007 and `FEATURES.md` are edited to match (uncommitted). It compares the v26 spec
+(`Maitty Desktop specification (3).zip`: `README.md` for the desktop app, `TUI_SPEC.md` for the
+terminal app) with the repo at v0.66.0 (`dev` 5687632f). Facts come from three read-only audits
+of the daemon, the desktop app and the terminal app; guesses are marked.
+
+## 1. What the spec changes
+
+- **One flat list.** The sidebar lists sessions in creation order. Folder and machine are badges on
+  a row. No projects, folders, spaces, machine headers, tab bar, activity bar or Inspector.
+- **A session is one shell PTY.** A window layout (up to 4 panes) is local client state; the spec
+  says "keep this as local layout state; sessions come from maittyd".
+- **Close means end, with a 6-second Undo.** Only closing the window leaves sessions running.
+- **One New session modal** (sentence header: project, machine, agent, view) replaces every other
+  way to start a session.
+- **Both apps show the same sessions** (TUI_SPEC §1), with the same glyphs, words and keys.
+
+## 2. Where the repo stands
+
+| Area | Today | Gap |
+| --- | --- | --- |
+| Daemon model | Workspace > Tab (layout tree) > Pane (`TermInfo`), groups, saved to `session-<socket>.json` | Containers and the layout tree live in the daemon and the protocol |
+| Close | `ClosePane` kills the process tree at once | Undo needs a delayed kill or a parked PTY (Windows: ConPTY) |
+| Status | None, Idle, Working, Blocked, Done | No `Exited` state; needs a daemon writer (ADR 0003) |
+| Row data | cwd, root, branch, process, label, name, pinned exist | Per-pane +N/-N is missing (only on request), no creation-order index, `machine` is only an ssh hint |
+| Shared config | `config.toml` read by core; GUI may not link settings (ADR 0004) | No protocol way to read or write config; key names differ (`ui.sidebar_position`, `ui.motion`) |
+| Service states | Client-side only; remote reconnect tries 3, spec says 5 | No "try N of 5" in the local path, no service-down card, no explicit start-service command |
+| Desktop app | Tab bar, activity bar, Inspector (about 929 lines), grouped sidebar, no filter, no New session modal, no model picker, no Undo | Most of sections 2 to 5 of the spec |
+| Terminal app | Project > Worktree > Session tree, floating cards, mode bar, leader `ctrl+space`, about 100k lines with heavy frame snapshots | Almost all of TUI_SPEC; it has no chat view at all |
+| Already done | Settings pages, updates card, Find, palette, notifications, spinners, themes, brain dump/presets/Overview/side panel already gone | Small fixes only |
+
+## 3. Decisions (taken 2026-11-06; the owner delegated them: "do whatever you think is best")
+
+Revisit any of these before its phase starts; reversing one later is expensive.
+
+1. **Layout belongs to each app.** The daemon keeps a flat list of sessions in creation order; the
+   workspace/tab/group tree leaves the daemon. The TUI and the desktop app stop sharing a window layout.
+2. **Both apps see every session.** ADR 0004 now says any app lists, attaches and types; the creating
+   app stays the size owner so one app never reflows a pane the other draws.
+3. **`FEATURES.md` "Out" no longer says flat adds no session model;** it points here. ADR 0007's
+   "new session goes to the focused machine" became the dialog's default.
+4. **No chat view in the TUI yet.** It stays desktop-only (AGENTS non-negotiable 4 is unchanged);
+   the TUI opens a chat session as a terminal, as today.
+5. **Saved layouts are reset** with a one-time notice: the desktop's `maitty.gui.layout.v2` and the daemon's saved workspaces and tabs.
+6. **The key changes are accepted** (TUI prefix `ctrl+a`; `ctrl+t`, `ctrl+k`, `ctrl+j`). Old bindings keep
+   working for one release with a note, where they do not collide.
+7. **Smaller calls:** the default window style is Flat and Tiled goes; the pane cap is 4; checks and
+   worktree creation keep running but show their command in a visible pane (spec "nothing runs
+   silently"); the cost figure stays labelled as the provider's estimate until ADR 0009 is revisited.
+
+Still the owner's: any change to the non-negotiables in `AGENTS.md`. Nothing above needs one.
+
+## 4. Proposed order
+
+**Phase 0, decisions and docs.** Resolve section 3. Edit ADR 0004 (and 0007 for the machine
+step), `FEATURES.md` and `AGENTS.md` first, in their own change.
+
+**Phase 1, daemon and protocol.** Additive first (no version bump; each needs a test that decodes the
+old shape): diff counts, folder, machine, creation order on `TermInfo`. Then the bump: `Status::Exited`,
+`UndoClose` with a delayed kill, a config read/write route, a service-status message, replay
+sequence numbers if wanted. Then drop the workspace/tab/group commands once both apps no longer use
+them. Rename config keys with a read-old-write-new migration. Every bump restarts hooked panes'
+reporting, so batch the bumps.
+
+**Phase 2, desktop app.** Order: a flat session model and local layout store (with the reset) ->
+flat sidebar with rows, badges, filter, footer -> New session modal -> pane header, 4-pane cap, focus
+rule -> status marks (add `zz`, drop waves and sweep) -> Inbox in the header, key changes -> chat
+agent/model/reasoning picker -> states (try N of 5, service down) -> then delete the tab bar,
+activity bar, Inspector, worktree dialog and the dead settings. Delete last so `dev` stays usable.
+
+**Phase 3, terminal app.** The largest piece. Order follows TUI_SPEC section 15: flat sidebar ->
+glyphs and spinners -> New session dialog -> pane header and splits -> inbox and palette -> footer
+updates and states -> settings -> narrow rail. Expect to rewrite or delete most frame snapshots
+(`tests.rs` alone is 18.8k lines).
+
+**Phase 4, docs.** Rewrite `UI.md`, `DESIGN.md`, `shortcuts.md`, `ARCHITECTURE.md`, `API_PATTERNS.md`,
+`guide.md` and the README tables; ADR 0004 and 0007 are in phase 0.
+
+## 5. Risks
+
+- The TUI rewrite is the biggest and riskiest piece; both apps must keep working at every step
+  (AGENTS non-negotiable 4), so phase 3 cannot be one change.
+- Dropping the daemon's workspace commands is a breaking protocol change; do it only after both
+  clients stop sending them.
+- A delayed kill must also work on Windows; test it there before relying on it.
+- Verification gate cross-checks (Windows, macOS targets) apply to every step.
+
+## 6. Not read
+
+The 793 KB prototype HTML. The spec says the README wins on behaviour and the prototype on exact
+pixels, so read it per screen when building that screen.

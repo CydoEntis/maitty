@@ -11,7 +11,8 @@ People run agents on more than one computer and want one window over all of them
 
 - **One supervised connection per machine, held by the client.** There is no daemon-to-daemon hub;
   each machine's daemon stays the only owner of its sessions (0001). The local daemon is mandatory.
-- A new session goes to the focused session's machine, local when nothing is focused.
+- A new session goes to the machine chosen in the New session dialog; the dialog starts on the
+  focused session's machine, and on this computer when nothing is focused.
 - A dropped machine's agents stay in the sidebar, greyed, with the reason. Reconnecting only
   attaches; it never starts a daemon the user stopped.
 - All reach goes through the shared `crates/maitty-machines` crate: the machine list, one hardened
