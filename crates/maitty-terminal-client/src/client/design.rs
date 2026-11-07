@@ -450,16 +450,17 @@ pub(super) fn draw_changes(
         } else {
             format!("{} · ", v.agent)
         };
+        // The branch in violet, then `2 files · +38 −4`, as the redesign says it.
         left.push(seg(
-            format!("{} · {agent}", r.task.branch),
+            r.task.branch.clone(),
+            Style::default().fg(t.violet()).add_modifier(Modifier::BOLD),
+        ));
+        left.push(seg(
+            format!("   {agent}{} files · ", r.files.len()),
             Style::default().fg(t.muted),
         ));
         left.push(seg(format!("+{added}"), Style::default().fg(green)));
         left.push(seg(format!(" −{removed}"), Style::default().fg(red)));
-        left.push(seg(
-            format!(" · {} files", r.files.len()),
-            Style::default().fg(t.muted),
-        ));
         if !v.reviewed.is_empty() {
             let all = v.reviewed.len() == r.files.len();
             left.push(seg(
@@ -813,6 +814,9 @@ pub(super) fn draw_changes(
 
 /// Files: the tree beside the selected file. `one_side` (a narrow panel) shows the tree, or
 /// the file you opened with a `‹` back to the tree.
+/// Files' tree column beside the open file, as the redesign draws it.
+const FILES_TREE_W: u16 = 24;
+
 pub(super) fn draw_files(
     app: &mut App,
     buf: &mut Buffer,
@@ -828,16 +832,11 @@ pub(super) fn draw_files(
         .clone()
         .map(|b| format!(" · {b}"))
         .unwrap_or_default();
-    let left = vec![
-        seg(
-            "files  ",
-            Style::default().fg(t.strong).add_modifier(Modifier::BOLD),
-        ),
-        seg(
-            format!("{}{branch}", tilde(&v.root)),
-            Style::default().fg(t.muted),
-        ),
-    ];
+    // The panel's title chip already says `files`: the header names the folder.
+    let left = vec![seg(
+        format!("{}{branch}", tilde(&v.root)),
+        Style::default().fg(t.strong).add_modifier(Modifier::BOLD),
+    )];
     let filter = if v.filtering || !v.filter.is_empty() {
         format!("/{}  ", v.filter)
     } else {
@@ -872,7 +871,7 @@ pub(super) fn draw_files(
     let fw: u16 = if one_side {
         body.width
     } else {
-        44.min(body.width / 2)
+        FILES_TREE_W.min(body.width / 2)
     };
     if show_tree {
         draw_files_tree(app, buf, body, fw, t, v, one_side);
