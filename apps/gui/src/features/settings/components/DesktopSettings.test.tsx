@@ -9,7 +9,7 @@ import { DesktopSettings, type DesktopSettingsSection, type MachinesInfo } from 
 const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreLayout: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, terminalFontFamily: '', terminalFontWeight: 400, terminalFontWeightBold: 700, startFolder: '', themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper', cursorStyle: 'block', scrollback: 10000, scrollSpeed: 1, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, monthlyBudget: null, iconSize: 'medium', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, defaultAgent: 'claude', newSessionView: 'chat', chatFullAccessDefault: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass' }
 
 function info(overrides: Partial<MachinesInfo> = {}): MachinesInfo {
-  return { known: true, list: [], onRetry: vi.fn(), onRemove: vi.fn(), onGrant: vi.fn(), onUpdate: vi.fn(() => Promise.resolve()), onCopyCommand: vi.fn(), add: { windows: false, loadHosts: () => Promise.resolve([]), onAdd: vi.fn(), onCancel: vi.fn() }, ...overrides }
+  return { known: true, list: [], onRetry: vi.fn(), onRemove: vi.fn(), onGrant: vi.fn(), onUpdate: vi.fn(() => Promise.resolve()), onCheckActivity: vi.fn(() => Promise.resolve(null)), onCopyCommand: vi.fn(), add: { windows: false, loadHosts: () => Promise.resolve([]), onAdd: vi.fn(), onCancel: vi.fn() }, ...overrides }
 }
 
 function renderSettings(section: DesktopSettingsSection, overrides: Partial<Parameters<typeof DesktopSettings>[0]> = {}) {
@@ -434,8 +434,8 @@ describe('the Machines page', () => {
     renderSettings('machines', { machines: info({ list: others('needs-update', 'run `maitty machine update box --install` (or set `remote_cmd` to its path), then retry'), onUpdate }) })
     await user.click(screen.getByRole('button', { name: 'Update box' }))
     expect(onUpdate).not.toHaveBeenCalled()
-    expect(screen.getByRole('alert')).toHaveTextContent(/come back with their agents resumed/)
-    await user.click(screen.getByRole('button', { name: 'Update box now' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/come back with their agents resumed/)
+    await user.click(await screen.findByRole('button', { name: 'Update box now' }))
     expect(onUpdate).toHaveBeenCalledWith('box', true, false)
   })
 
@@ -444,7 +444,7 @@ describe('the Machines page', () => {
     const onUpdate = vi.fn(() => Promise.resolve())
     renderSettings('machines', { machines: info({ list: others('needs-update', 'run `maitty machine update box`, then retry'), onUpdate }) })
     await user.click(screen.getByRole('button', { name: 'Update box' }))
-    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }))
     expect(onUpdate).not.toHaveBeenCalled()
   })
 
@@ -453,8 +453,24 @@ describe('the Machines page', () => {
     const onUpdate = vi.fn(() => Promise.resolve())
     renderSettings('machines', { machines: info({ list: others('needs-update', 'run `maitty machine update box`, then retry'), onUpdate }) })
     await user.click(screen.getByRole('button', { name: 'Update box' }))
-    await user.click(screen.getByRole('button', { name: 'Update box when idle' }))
+    await user.click(await screen.findByRole('button', { name: 'Update box when idle' }))
     expect(onUpdate).toHaveBeenCalledWith('box', false, true)
+  })
+
+  it('says how many sessions are open and how many are busy before it updates', async () => {
+    const user = userEvent.setup()
+    const onCheckActivity = vi.fn(() => Promise.resolve({ sessions: 3, busy: 1 }))
+    renderSettings('machines', { machines: info({ list: others('needs-update', 'run `maitty machine update box`, then retry'), onCheckActivity }) })
+    await user.click(screen.getByRole('button', { name: 'Update box' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('box has 3 sessions open, 1 busy.')
+    expect(onCheckActivity).toHaveBeenCalledWith('box')
+  })
+
+  it('still asks, and says it could not see what is open, when the machine cannot say', async () => {
+    const user = userEvent.setup()
+    renderSettings('machines', { machines: info({ list: others('needs-update', 'run `maitty machine update box`, then retry'), onCheckActivity: vi.fn(() => Promise.reject(new Error('no route'))) }) })
+    await user.click(screen.getByRole('button', { name: 'Update box' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('box could not say what is open on it.')
   })
 
   it('has no command to copy for a machine that needs nothing installed', () => {

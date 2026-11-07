@@ -1207,6 +1207,20 @@ pub fn restart_if_idle(now: bool) -> Result<()> {
     Ok(())
 }
 
+/// What `machine update` asks over ssh before it restarts anything: one line with the sessions
+/// open on this machine and how many are mid-turn. It only reads what the server published.
+pub fn activity() -> Result<()> {
+    if !server_running() {
+        println!("activity: sessions=0 busy=0");
+        return Ok(());
+    }
+    match crate::restart::read() {
+        Some(a) => println!("activity: sessions={} busy={}", a.sessions, a.busy()),
+        None => println!("activity: unknown"),
+    }
+    Ok(())
+}
+
 /// Stop this socket's server by its process, for when it's a version that can't be talked
 /// to. Its saved session stays, as with `kill-server`.
 fn stop_server_process() -> Result<u32> {

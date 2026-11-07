@@ -506,6 +506,7 @@ maitty machine update build --yes       # an older version there: replace it
 maitty machine update build             # asks, when you are at a keyboard
 maitty machine update build --force     # a newer version there: put this one on instead (a downgrade)
 maitty machine update build --yes --restart  # also restart its daemon now, even with sessions open
+maitty machine activity build           # how many sessions are open there and how many are busy (changes nothing)
 ```
 
 ```

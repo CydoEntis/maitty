@@ -347,6 +347,36 @@ fn restart_daemon(machine: &Machine, to: &str, name: &str, now: bool, talk: &mut
     }
 }
 
+/// `<app> machine activity <name>`: how many sessions are open on the machine and how many are
+/// mid-turn, as the one line the far side prints. A machine whose app is too old to answer, or
+/// that has none, gives `activity: unknown`; only a machine that cannot be reached is a failure.
+pub(crate) fn activity(name: &str, cfg: &Config) -> Result<String, Failure> {
+    let machine =
+        resolve_machine(name, cfg, SSH_PROGRAM).map_err(|e| Failure::Usage(e.to_string()))?;
+    if !machine.is_remote() || machine.transport_program().is_some() {
+        return Err(Failure::Usage(
+            "name a machine from [[machines]] in config.local.toml that is reached over ssh".into(),
+        ));
+    }
+    let remote_cmd = machine.remote_cmd().unwrap_or(APP_COMMAND).to_string();
+    let argv = machine
+        .activity_argv(&destination(&remote_cmd))
+        .map_err(|e| failed(format!("{e:#}")))?;
+    let ran = ssh_run::run(&argv, None, ASK_LIMIT).map_err(Failure::Failed)?;
+    reached(&ran, name)?;
+    Ok(activity_line(ran.code, &ran.stdout))
+}
+
+/// The far side's answer when it ran and printed one; anything else (an older app that does not
+/// know the word, a missing app) is "unknown", never a guess.
+fn activity_line(code: Option<i32>, stdout: &str) -> String {
+    let line = last_line(stdout);
+    if code == Some(0) && line.starts_with("activity: ") {
+        return sanitize(&line, false);
+    }
+    "activity: unknown".into()
+}
+
 /// The real terminal: progress on stderr, a question answered on stdin when there is a person.
 struct Terminal {
     interactive: bool,
@@ -379,4 +409,21 @@ impl Talk for Terminal {
 
 fn is_yes(answer: &str) -> bool {
     matches!(answer.trim().to_lowercase().as_str(), "y" | "yes")
+}
+
+
+#[cfg(test)]
+mod activity_tests {
+    use super::activity_line;
+
+    #[test]
+    fn the_far_sides_line_is_passed_on_and_anything_else_is_unknown() {
+        assert_eq!(
+            activity_line(Some(0), "login banner\nactivity: sessions=3 busy=1\n"),
+            "activity: sessions=3 busy=1"
+        );
+        assert_eq!(activity_line(Some(2), "error: unrecognized subcommand"), "activity: unknown");
+        assert_eq!(activity_line(Some(0), "something else"), "activity: unknown");
+        assert_eq!(activity_line(None, ""), "activity: unknown");
+    }
 }

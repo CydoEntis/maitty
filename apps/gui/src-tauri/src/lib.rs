@@ -773,6 +773,7 @@ pub fn run() {
             terminal_stream::list_machines_overview,
             terminal_stream::retry_machine,
             machine_update::update_machine,
+            machine_update::machine_activity,
             terminal_stream::start_session_on_machine,
             terminal_stream::remove_machine,
             terminal_stream::set_machine_grant,

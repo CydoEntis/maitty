@@ -158,6 +158,18 @@ export async function retryMachine(name: string): Promise<void> {
   if (isTauri()) await invoke('retry_machine', { name })
 }
 
+const MachineActivitySchema = z.object({ sessions: z.number().int().nonnegative(), busy: z.number().int().nonnegative() }).nullable()
+export type MachineActivity = { sessions: number; busy: number }
+
+/**
+ * How many sessions are open on a machine and how many are busy, so the question before an
+ * update can say what it will interrupt. Null when the machine cannot say (its app is too old).
+ */
+export async function machineActivity(name: string): Promise<MachineActivity | null> {
+  if (!isTauri()) return null
+  return MachineActivitySchema.parse(await invoke('machine_activity', { name }))
+}
+
 /**
  * Install this version on a machine and restart its daemon, now or (`whenIdle`) once nothing is
  * open there, for up to half an hour. Its saved sessions come back with their agents resumed; a

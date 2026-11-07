@@ -255,6 +255,16 @@ impl Machine {
         )?)
     }
 
+    /// The line that asks the app installed at `program` there how many sessions are open.
+    pub fn activity_argv(&self, program: &str) -> Result<Vec<String>> {
+        let route = self.ssh_route()?;
+        Ok(ssh_command::ssh_argv_activity(
+            &route.ssh,
+            &route.target,
+            program,
+        )?)
+    }
+
     /// The command that runs the app there, as configured (`remote_cmd`); `None` for this computer.
     pub fn remote_cmd(&self) -> Option<&str> {
         match &self.route {

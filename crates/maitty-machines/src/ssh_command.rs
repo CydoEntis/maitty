@@ -202,6 +202,8 @@ pub(crate) fn ssh_argv_probe(
 const RESTART_IF_IDLE: &str = "restart-if-idle";
 /// Added to it to restart even with sessions open, when they are saved.
 const RESTART_NOW: &str = "--now";
+/// The subcommand that prints how many sessions are open on the far side and how many are busy.
+const ACTIVITY: &str = "activity";
 
 /// A fixed script for the remote shell, run as `sh -c <script> sh <args>`. The script is a
 /// constant of the app; whatever varies is an argument, quoted as one literal word, so it
@@ -305,6 +307,18 @@ pub(crate) fn ssh_argv_restart_if_idle(
         remote.push(' ');
         remote.push_str(RESTART_NOW);
     }
+    Ok(build(ssh, target, remote, Shape::PROBE))
+}
+
+/// `<program> activity` on the far side: one line saying how many sessions are open and how
+/// many are mid-turn. It changes nothing there.
+pub(crate) fn ssh_argv_activity(
+    ssh: &[String],
+    target: &str,
+    program: &str,
+) -> Result<Vec<String>, SshCommandError> {
+    validate_target(target)?;
+    let remote = format!("{} {ACTIVITY}", remote_program(program)?);
     Ok(build(ssh, target, remote, Shape::PROBE))
 }
 
@@ -975,5 +989,12 @@ mod tests {
         let now = ssh_argv_restart_if_idle(&args(&["ssh"]), "box", "~/.local/bin/maitty", true).unwrap();
         assert_eq!(now.last().unwrap(), &format!("{} --now", idle.last().unwrap()));
         assert_eq!(now[..now.len() - 1], idle[..idle.len() - 1]);
+    }
+
+    #[test]
+    fn activity_runs_the_installed_program_with_one_fixed_word() {
+        let argv = ssh_argv_activity(&args(&["ssh"]), "box", "~/.local/bin/maitty").unwrap();
+        assert_eq!(argv.last().unwrap(), "~/'.local/bin/maitty' activity");
+        assert!(ssh_argv_activity(&args(&["ssh"]), "box", "").is_err());
     }
 }

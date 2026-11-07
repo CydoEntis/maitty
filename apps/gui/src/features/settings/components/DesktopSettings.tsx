@@ -34,6 +34,11 @@ export type MachinesInfo = {
    * back. Settles when the update ended and has already told the person how it went.
    */
   onUpdate: (name: string, install: boolean, whenIdle: boolean) => Promise<void>
+  /**
+   * How many sessions are open on a machine and how many are busy; null when it cannot say (its
+   * app is too old, or it cannot be reached). The update question uses it to say what it will interrupt.
+   */
+  onCheckActivity: (name: string) => Promise<{ sessions: number; busy: number } | null>
   /** Puts the same command on the clipboard, to run in a terminal instead. */
   onCopyCommand: (command: string) => void
   add: {
@@ -794,6 +799,16 @@ function AddMachineCard({ add }: { add: MachinesInfo['add'] }) {
 function MachineList({ machines }: { machines: MachinesInfo }) {
   const [confirming, setConfirming] = useState<string | null>(null)
   const [confirmingUpdate, setConfirmingUpdate] = useState<string | null>(null)
+  const [activity, setActivity] = useState<{ sessions: number; busy: number } | null>(null)
+  const [checking, setChecking] = useState<string | null>(null)
+  const askUpdate = (name: string) => {
+    setChecking(name)
+    setActivity(null)
+    void machines.onCheckActivity(name)
+      .catch(() => null)
+      .then((found) => { setActivity(found); setConfirmingUpdate(name) })
+      .finally(() => { setChecking(null) })
+  }
   const [updating, setUpdating] = useState<string | null>(null)
   const runUpdate = (name: string, install: boolean, whenIdle: boolean) => {
     setConfirmingUpdate(null)
@@ -831,7 +846,14 @@ function MachineList({ machines }: { machines: MachinesInfo }) {
               {head.why !== null && head.chip?.tone === 'bad' && <span className="mx-machine-fix">{head.why}</span>}
               {head.updateCommand !== null && <span className="mx-machine-fix mono">{head.updateCommand}</span>}
               {asking && <span role="alert">Removes {name} from this list. Its sessions keep running on {name}.</span>}
-              {askingUpdate && <span role="alert">Updating {name} restarts its daemon. Its sessions are saved and come back with their agents resumed; an agent in the middle of a turn loses that turn if you update now. Update when idle waits up to half an hour for nothing to be running first.</span>}
+              {askingUpdate && (
+                <span role="alert">
+                  {activity === null
+                    ? `Updating ${name} restarts its daemon, and ${name} could not say what is open on it. `
+                    : `${name} has ${String(activity.sessions)} ${activity.sessions === 1 ? 'session' : 'sessions'} open, ${String(activity.busy)} busy. Updating restarts its daemon. `}
+                  Its sessions are saved and come back with their agents resumed; an agent in the middle of a turn loses that turn if you update now. Update when idle waits up to half an hour for nothing to be running first.
+                </span>
+              )}
               {busyUpdating && <span role="status">Updating {name}…</span>}
             </div>
             {askingUpdate
@@ -851,7 +873,7 @@ function MachineList({ machines }: { machines: MachinesInfo }) {
               )
               : (
                 <>
-                  {head.updateCommand !== null && <button type="button" className="mx-scard-button" disabled={updating !== null} aria-label={`Update ${name}`} onClick={() => { setConfirmingUpdate(name) }}>Update</button>}
+                  {head.updateCommand !== null && <button type="button" className="mx-scard-button" disabled={updating !== null || checking !== null} aria-label={`Update ${name}`} onClick={() => { askUpdate(name) }}>{checking === name ? 'Checking…' : 'Update'}</button>}
                   {head.updateCommand !== null && <button type="button" className="mx-scard-button" aria-label={`Copy the update command for ${name}`} onClick={() => { if (head.updateCommand !== null) machines.onCopyCommand(head.updateCommand) }}>Copy command</button>}
                   <button type="button" className="mx-scard-button" disabled={chip?.word === 'connected'} aria-label={`Retry ${name}`} onClick={() => { machines.onRetry(name) }}>Retry</button>
                   <button type="button" className="mx-scard-button" aria-label={`Remove ${name}`} onClick={() => { setConfirming(name) }}>Remove</button>

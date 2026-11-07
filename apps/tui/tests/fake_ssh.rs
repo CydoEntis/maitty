@@ -265,6 +265,16 @@ fn restart_if_idle_with_no_server_says_so_and_starts_nothing() {
 }
 
 #[test]
+fn activity_with_no_server_reports_nothing_open_and_starts_nothing() {
+    let sandbox = Sandbox::new();
+    let mut command = sandbox.local(MAITTY);
+    command.arg("activity");
+    let out = output_within(command, WAIT);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(text(&out.stdout).trim(), "activity: sessions=0 busy=0");
+}
+
+#[test]
 fn on_with_remote_or_with_a_command_that_ignores_it_is_a_usage_error() {
     let sandbox = Sandbox::new();
     let both = usage(&sandbox, &["--on", "build", "--remote", "box", "ls"]);

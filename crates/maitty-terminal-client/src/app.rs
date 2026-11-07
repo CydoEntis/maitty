@@ -224,6 +224,9 @@ enum Cmd {
     /// (Run over ssh by `machine update`) restart this machine's server if no session is open, or
     /// with `--now` also when its sessions are saved.
     #[command(hide = true)]
+    Activity,
+    /// (Run over ssh by `machine activity`) say how many sessions are open here.
+    #[command(hide = true)]
     RestartIfIdle {
         /// Restart even with sessions open, when they are saved to come back.
         #[arg(long)]
@@ -341,6 +344,12 @@ enum MachineCmd {
         #[arg(long, conflicts_with = "restart")]
         wait: bool,
     },
+    /// Say how many sessions are open on a machine and how many are mid-turn. It changes
+    /// nothing. A machine running an older version cannot say.
+    Activity {
+        /// The machine's name in config.
+        name: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -440,6 +449,20 @@ fn machine_update(
     };
     match cli::machine_update::run(name, &machines_config(), flags) {
         Ok(()) => Ok(()),
+        Err(Failure::Usage(message)) => usage_error(message),
+        Err(Failure::Failed(message)) => Err(anyhow::anyhow!(message)),
+    }
+}
+
+/// `machine activity`: the answer is one line on stdout; a mistake in how it was asked is a
+/// usage error, an unreachable machine exits 1.
+fn machine_activity(name: &str) -> anyhow::Result<()> {
+    use cli::machine_update::Failure;
+    match cli::machine_update::activity(name, &machines_config()) {
+        Ok(line) => {
+            println!("{line}");
+            Ok(())
+        }
         Err(Failure::Usage(message)) => usage_error(message),
         Err(Failure::Failed(message)) => Err(anyhow::anyhow!(message)),
     }
@@ -610,6 +633,10 @@ pub(crate) fn run() {
                     wait,
                 },
         }) => machine_update(&name, install, yes, force, restart, wait),
+        Some(Cmd::Machine {
+            cmd: MachineCmd::Activity { name },
+        }) => machine_activity(&name),
+        Some(Cmd::Activity) => cli::activity(),
         Some(Cmd::RestartIfIdle { now }) => cli::restart_if_idle(now),
         Some(Cmd::Allow { dir }) => cli::allow(dir),
         Some(Cmd::Proxy { attach_only }) => match cli::block_on(ipc::proxy(attach_only)) {

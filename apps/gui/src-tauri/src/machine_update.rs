@@ -60,6 +60,70 @@ fn run(executable: &Path, name: &str, install: bool, when_idle: bool) -> Result<
         .map_or_else(|| format!("The update of {name} failed."), str::to_string))
 }
 
+/// What is open on a machine: the sessions, and how many of them are mid-turn.
+#[derive(Debug, PartialEq, Eq, serde::Serialize)]
+pub struct Activity {
+    sessions: usize,
+    busy: usize,
+}
+
+/// The far side's one line, `activity: sessions=3 busy=1`; `None` when it could not say.
+fn parse_activity(text: &str) -> Option<Activity> {
+    let line = last_line(text)?;
+    let numbers = line.strip_prefix("activity: ")?;
+    let mut sessions = None;
+    let mut busy = None;
+    for part in numbers.split_whitespace() {
+        match part.split_once('=') {
+            Some(("sessions", value)) => sessions = value.parse().ok(),
+            Some(("busy", value)) => busy = value.parse().ok(),
+            _ => {}
+        }
+    }
+    Some(Activity {
+        sessions: sessions?,
+        busy: busy?,
+    })
+}
+
+fn ask_activity(executable: &Path, name: &str) -> Result<Option<Activity>, String> {
+    let mut command = Command::new(executable);
+    command
+        .args(["machine", "activity", name])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
+    let output = command
+        .output()
+        .map_err(|error| format!("Could not ask {name}: {error}"))?;
+    if !output.status.success() {
+        let said = String::from_utf8_lossy(&output.stderr);
+        return Err(last_line(&said).map_or_else(|| format!("Could not ask {name}."), str::to_string));
+    }
+    Ok(parse_activity(&String::from_utf8_lossy(&output.stdout)))
+}
+
+/// How many sessions are open on a machine and how many are busy, so the question before an
+/// update can say what it will interrupt. `None` when the machine's app is too old to say.
+#[tauri::command]
+pub async fn machine_activity(
+    app: tauri::AppHandle,
+    name: String,
+) -> Result<Option<Activity>, String> {
+    if !valid_name(&name) {
+        return Err("That is not a machine name.".into());
+    }
+    let executable = crate::daemon_executable(&app)?;
+    tauri::async_runtime::spawn_blocking(move || ask_activity(&executable, &name))
+        .await
+        .map_err(|error| format!("The question stopped unexpectedly: {error}"))?
+}
+
 #[tauri::command]
 pub async fn update_machine(
     app: tauri::AppHandle,
@@ -78,7 +142,7 @@ pub async fn update_machine(
 
 #[cfg(test)]
 mod tests {
-    use super::{arguments, summary, valid_name};
+    use super::{Activity, arguments, parse_activity, summary, valid_name};
 
     #[test]
     fn a_name_that_could_be_an_option_is_refused() {
@@ -102,6 +166,17 @@ mod tests {
         let said = arguments("box", false, true);
         assert!(said.contains(&"--wait".to_string()));
         assert!(!said.contains(&"--restart".to_string()));
+    }
+
+    #[test]
+    fn the_activity_line_is_read_and_anything_else_is_unknown() {
+        assert_eq!(
+            parse_activity("banner\nactivity: sessions=3 busy=1\n"),
+            Some(Activity { sessions: 3, busy: 1 })
+        );
+        assert_eq!(parse_activity("activity: unknown"), None);
+        assert_eq!(parse_activity("activity: sessions=3"), None);
+        assert_eq!(parse_activity(""), None);
     }
 
     #[test]
