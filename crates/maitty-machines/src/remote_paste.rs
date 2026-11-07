@@ -89,7 +89,7 @@ pub fn pasted_path(stdout: &str) -> Result<String, String> {
 
 /// The last thing ssh said, as one clean line. It came from another machine, so it is cut short
 /// first and then loses every control and invisible character, as a remote's snapshot does.
-fn said_by(stderr: &str) -> String {
+pub(crate) fn said_by(stderr: &str) -> String {
     let line = stderr
         .lines()
         .map(str::trim)

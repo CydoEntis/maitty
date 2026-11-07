@@ -14,6 +14,7 @@ mod machine;
 pub mod machine_config;
 pub mod machine_ids;
 pub mod machine_probe;
+mod remote_get;
 pub mod remote_paste;
 pub mod remote_policy;
 mod remote_scripts;
@@ -33,6 +34,7 @@ pub use machine::{
     CONNECT_BUDGET, Dial, Machine, NO_DAEMON_EXIT, OtherVersion, PROXY_ATTACH_ONLY_FLAG,
     SSH_PROGRAM, hello, open_remote, other_version,
 };
+pub use remote_get::{MAX_GET_BYTES, get_file, local_name};
 pub use remote_scripts::{
     GET_MARKER, GET_MISSING, GET_NOT_A_FILE, GET_READ_FAILED, GET_SCRIPT, GET_TOO_BIG,
     GET_UNREADABLE, INSTALL_SCRIPT, PASTE_MARKER, PASTE_SCRIPT, PLATFORM_SCRIPT, WHERE_SCRIPT,
