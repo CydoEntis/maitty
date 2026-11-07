@@ -51,6 +51,10 @@ describe('machine groups', () => {
     expect(machineGroups([], [LOCAL_HEAD], '')).toEqual([])
   })
 
+  it('keeps every machine header with no sessions anywhere once there is another machine', () => {
+    expect(machineGroups([], [LOCAL_HEAD, devbox], '').map((group) => [group.head.key, group.sessions.length])).toEqual([['machine-0', 0], ['machine-2', 0]])
+  })
+
   it('leaves out a machine with nothing that matches the filter', () => {
     const groups = machineGroups([session(1, { cwd: '/home/me/alpha', folder: '/home/me/alpha' }), session(2, { machine: 2, machineName: 'devbox' })], [LOCAL_HEAD, devbox], 'alpha')
     expect(groups.map((group) => group.head.key)).toEqual(['machine-0'])

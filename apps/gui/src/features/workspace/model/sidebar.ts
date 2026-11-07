@@ -69,11 +69,13 @@ export type MachineGroup = { head: MachineHead; sessions: SessionView[] }
 /**
  * The sidebar's groups: one per machine (this computer first), each with its sessions that match
  * the filter, most urgent first. With a filter, a machine with nothing matching is left out; with no
- * sessions anywhere there are no groups, only the note that says how to start one.
+ * sessions anywhere and no other machine there are no groups, only the note that says how to start
+ * one. Another machine keeps its header with no sessions, as a machine with no app yet has none and
+ * its header is where it says so.
  */
 export function machineGroups(sessions: readonly SessionView[], heads: readonly MachineHead[], query: string): MachineGroup[] {
   const filtering = query.trim() !== ''
-  if (sessions.length === 0) return []
+  if (sessions.length === 0 && heads.length <= 1) return []
   return heads
     .map((head) => ({ head, sessions: byUrgency(sessions.filter((session) => session.machine === head.machine && matchesFilter(session, query))) }))
     .filter((group) => !filtering || group.sessions.length > 0)
