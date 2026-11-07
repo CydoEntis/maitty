@@ -568,6 +568,19 @@ In the desktop app, right-click a session that is on another machine and choose 
 path (the box starts with the session's folder), and it is saved in `Downloads/maitty/<machine>/` with a progress
 toast you can cancel and an **Open folder** button when it is done. It is the same pull as the command.
 
+### Moving text between machines
+
+Text needs no special command.
+
+- **From this computer to a machine:** paste into the session as you would anywhere. The text is typed into that
+  machine's session. A paste of text never sends a file, even when the text is a path.
+- **From a machine to this computer:** copy in the session as you would here (select text, or an agent's `/copy`),
+  and it reaches your clipboard. The machine's clipboard switch is on unless you turned it off (Settings › Machines, or
+  `clipboard = false` in its entry in `config.local.toml`).
+- **A long text, or one you want to keep as a file:** save it as a file. To bring it here, use
+  `maitty machine get` or **Get a file…** (see *Getting a file from a machine*). To send a file there, drop it on the
+  session.
+
 ### Agents on a machine
 
 An agent can reach a machine from your `[[machines]]` list through the same MCP tools it uses here
