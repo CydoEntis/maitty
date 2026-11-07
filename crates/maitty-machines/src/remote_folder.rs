@@ -16,7 +16,7 @@ use crate::{
     FOLDER_MARKER, FOLDER_MISSING, FOLDER_NOT_A_FOLDER, FOLDER_UNREADABLE, Machine,
 };
 use maitty_shared::hidden::{is_invisible, sanitize};
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::Ordering;
@@ -134,9 +134,32 @@ fn run_tar(args: &[&std::ffi::OsStr]) -> Result<String, String> {
     }
 }
 
+/// The blocks tar ends an archive with: two of 512 zero bytes.
+const END_OF_ARCHIVE_BYTES: usize = 1024;
+
+/// Refuse an archive that was cut off. GNU tar lists and unpacks one that stops in the middle of a
+/// header without an error, so the end-of-archive blocks are checked here instead.
+fn check_complete(archive: &Path) -> Result<(), String> {
+    let unreadable = |e: std::io::Error| format!("could not read the saved folder: {e}");
+    let mut file = std::fs::File::open(archive).map_err(unreadable)?;
+    let len = file.metadata().map_err(unreadable)?.len();
+    let cut = || "the folder was cut off before its end".to_owned();
+    if len < END_OF_ARCHIVE_BYTES as u64 || len % 512 != 0 {
+        return Err(cut());
+    }
+    file.seek(SeekFrom::End(-(END_OF_ARCHIVE_BYTES as i64))).map_err(unreadable)?;
+    let mut tail = [0u8; END_OF_ARCHIVE_BYTES];
+    file.read_exact(&mut tail).map_err(unreadable)?;
+    if tail.iter().any(|b| *b != 0) {
+        return Err(cut());
+    }
+    Ok(())
+}
+
 /// Check the archive at `archive`, unpack it into the fresh folder `staging`, and move its one
 /// folder to `dest_dir` under `wanted`, numbered if that name is taken. Returns the final path.
 pub(crate) fn unpack(archive: &Path, staging: &Path, dest_dir: &Path, wanted: &str) -> Result<PathBuf, String> {
+    check_complete(archive)?;
     let list = |flags: &str| run_tar(&[flags.as_ref(), archive.as_os_str()]);
     let top = check_listing(&list("-tf")?, &list("-tvf")?)?;
     std::fs::create_dir(staging).map_err(|e| format!("could not make a folder to unpack in: {e}"))?;
