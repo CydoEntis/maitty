@@ -37,6 +37,19 @@ as untrusted. Each rule below is a requirement of the tickets.
 12. **Browsing is not limited to the session's folder.** The person may go up to any folder their
     own account can read; only the search index is limited to the session's folder and below.
 
+13. **A tar from a machine is unpacked only after its listing is checked, into a fresh temp folder.**
+    It is refused whole, naming the first bad entry, when any entry is absolute, has a `..` part,
+    contains a backslash, a colon, a control or invisible character, ends a part in a dot or space, is
+    a Windows reserved name, is anything but a regular file or folder (no link, hard link, device,
+    fifo or sparse file), lies outside the single top-level folder, or when there are more than
+    50000 entries or a path deeper than 64 parts. Nothing is extracted with absolute-path options or
+    with the machine's owners. The final folder name is made here and numbered; nothing is overwritten.
+14. **The machine makes the archive with `tar -h`**, so symlinks arrive as the files and folders they
+    point to and the archive holds no links. The cap is the same 1 GB, on bytes received: an
+    uncompressed tar cannot unpack to more.
+15. **A folder sent to a machine is archived here** with links stored as links, into a hidden temp
+    file that is removed on every path, and lands in the machine's private cache folder.
+
 ## Requirements
 
 - R1: a fixed script prints a marker line, the file's size, and then exactly that many bytes;
@@ -64,5 +77,7 @@ as untrusted. Each rule below is a requirement of the tickets.
 - R4: MAITTY-229
 - R5, host half: MAITTY-230; window half: MAITTY-231
 - Text how-to (intent, phase 3): MAITTY-232
+- R9, R10 (stream a folder): MAITTY-239; receiving and unpacking, concern 13 and 14: MAITTY-240
+- R11 (send a folder), concern 15: MAITTY-241; command line: MAITTY-242; window: MAITTY-243
 - R6: MAITTY-233; R7: MAITTY-234; concerns 8 to 11 and the parsing: MAITTY-235
 - R8, host half: MAITTY-236; matching: MAITTY-237; window half: MAITTY-238

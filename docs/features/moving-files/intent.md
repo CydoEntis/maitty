@@ -78,4 +78,11 @@ Phase 1b, in the same module:
 11. MAITTY-237 a fuzzy matcher for file paths
 12. MAITTY-238 browse and search in the Get a file dialog (blocked by 10 and 11)
 
-Phase 2 (folders both ways) is ticketed after phase 1 lands.
+Phase 2, folders both ways, in the same module (no new library: the system `tar` is used and its
+listing is checked before anything is unpacked, as the release installer already does):
+
+13. MAITTY-239 the fixed script and ssh line that stream a folder as a tar
+14. MAITTY-240 receive a folder tar, check its listing, unpack it safely (blocked by 13)
+15. MAITTY-241 send a folder to a machine as a tar
+16. MAITTY-242 `machine get` pulls a folder, `machine put` sends a file or folder (blocked by 14 and 15)
+17. MAITTY-243 drop a folder on a remote session, and Get this folder in the dialog (blocked by 14 and 15)
