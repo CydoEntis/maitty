@@ -1,7 +1,6 @@
 //! The one key overlay. The prefix opens the key map (what each key does after it; pressing one
 //! runs it). Ctrl+K (or Space in the map) is Search commands: a fuzzy search over every command,
-//! keyed or not, and over the sessions. `?` lists every key, the ones that need no prefix and
-//! the commands that have no key.
+//! keyed or not, and over the sessions. `?` is the keys help: three columns of the keys that matter.
 
 use super::*;
 use crate::client::design::{keycap, long_key};
@@ -750,7 +749,134 @@ pub(in crate::client) fn draw_keymap(
     }
     match km.view {
         KeyView::Search => draw_search(app, buf, area, t, km),
-        view => draw_grid(app, buf, area, t, km, view == KeyView::All),
+        KeyView::All => draw_keys_help(app, buf, area, t),
+        KeyView::Map => draw_grid(app, buf, area, t, km, false),
+    }
+}
+
+/// The Keys dialog's widest, and the cells a key takes before its words.
+const HELP_W: u16 = 92;
+const HELP_KEY_W: u16 = 13;
+const HELP_NOTE: &str = "Keys only work in key mode ({lead}). Everything else goes to the pane.";
+
+/// A column of the keys help: its title, then each row's words and the actions its key runs.
+type HelpColumn = (&'static str, Vec<(&'static str, Vec<Action>)>);
+
+/// The keys help's three columns. `1–9` stands for the nine session keys, `j / k` for the pair.
+fn help_columns() -> [HelpColumn; 3] {
+    use Action as A;
+    [
+        (
+            "sessions",
+            vec![
+                ("new session", vec![A::PickSession]),
+                ("next / previous", vec![A::NextSession, A::PrevSession]),
+                ("jump to session", vec![A::SelectTab(1), A::SelectTab(9)]),
+                ("rename", vec![A::RenameWorkspace]),
+                ("filter", vec![A::FilterSessions]),
+                ("inbox", vec![A::Jump]),
+            ],
+        ),
+        (
+            "panes",
+            vec![
+                ("split right", vec![A::SplitRight]),
+                ("split down", vec![A::SplitDown]),
+                ("focus next pane", vec![A::FocusNext]),
+                ("zoom pane", vec![A::ZoomPane]),
+                ("close pane", vec![A::ClosePane]),
+                ("move pane", vec![A::SwapNext]),
+            ],
+        ),
+        (
+            "window",
+            vec![
+                ("files", vec![A::Files]),
+                ("changes", vec![A::Changes]),
+                ("usage and cost", vec![A::Usage]),
+                ("settings", vec![A::Settings]),
+                ("toggle sidebar", vec![A::ToggleSidebar]),
+                ("this help", vec![A::Help]),
+            ],
+        ),
+    ]
+}
+
+/// A row's key as bound now: `j / k` for a pair, `1–9` for the jump keys; empty when unbound.
+fn help_key(app: &App, acts: &[Action]) -> String {
+    let keys: Vec<String> = acts
+        .iter()
+        .filter_map(|a| {
+            app.keymap
+                .prefixed_order
+                .iter()
+                .find(|k| app.keymap.prefixed.get(k) == Some(a))
+                .map(super::mode_bar::short_key)
+        })
+        .collect();
+    match (acts.first(), keys.as_slice()) {
+        (Some(Action::SelectTab(_)), [first, last]) => format!("{first}–{last}"),
+        (_, [one]) => one.clone(),
+        (_, [a, b]) => format!("{a} / {b}"),
+        _ => String::new(),
+    }
+}
+
+/// `?`: the keys that matter, three columns (sessions, panes, window) of each key as bound and
+/// what it does, on the panel ground in an accent box; `keys` on the top border at the left and
+/// `esc close` at the right. Search commands (Ctrl+K) holds every other command.
+fn draw_keys_help(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme) {
+    dim_all(app, buf, area, t);
+    hit(app, area, ScreenHit::Close);
+    let columns = help_columns();
+    let rows = columns.iter().map(|(_, r)| r.len()).max().unwrap_or(0) as u16;
+    let w = HELP_W.min(area.width.saturating_sub(4));
+    let h = (rows + 6).min(area.height.saturating_sub(2));
+    let r = Rect {
+        x: area.x + (area.width - w) / 2,
+        y: area.y + area.height.saturating_sub(h) / 2,
+        width: w,
+        height: h,
+    };
+    let mut c = Card::new(t, "").lit(t.accent);
+    c.bg = t.sidebar_bg;
+    let inside = card(app, buf, r, &c, t);
+    fill(buf, inside, t.sidebar_bg);
+    hit(app, r, ScreenHit::Noop);
+    let ground = Style::default().bg(t.sidebar_bg);
+    let title = [seg(" keys ", ground.fg(t.strong).add_modifier(Modifier::BOLD))];
+    put(buf, r.x + 2, r.y, &title, r.right().saturating_sub(2));
+    let close = " esc close ";
+    let cx = r.right().saturating_sub(2 + close.width() as u16);
+    put(buf, cx, r.y, &[seg(close, ground.fg(t.muted))], r.right().saturating_sub(2));
+    hit(app, Rect { x: cx, y: r.y, width: close.width() as u16, height: 1 }, ScreenHit::Close);
+    let (x0, end) = (inside.x + 2, inside.right().saturating_sub(2));
+    let gap = 4u16;
+    let col_w = end.saturating_sub(x0).saturating_sub(2 * gap) / 3;
+    // As wide as the design's key column, or as the widest key and a cell where room is short.
+    let widest = columns
+        .iter()
+        .flat_map(|(_, rows)| rows.iter().map(|(_, acts)| help_key(app, acts).width() as u16))
+        .max()
+        .unwrap_or(1);
+    let key_w = if col_w >= HELP_KEY_W + 16 { HELP_KEY_W } else { widest + 1 };
+    for (i, (label, items)) in columns.iter().enumerate() {
+        let x = x0 + i as u16 * (col_w + gap);
+        let col_end = x + col_w;
+        put(buf, x, inside.y + 1, &[seg(*label, ground.fg(t.muted))], col_end);
+        for (j, (words, acts)) in items.iter().enumerate() {
+            let y = inside.y + 2 + j as u16;
+            if y >= inside.bottom() {
+                break;
+            }
+            put(buf, x, y, &[seg(help_key(app, acts), ground.fg(t.accent).add_modifier(Modifier::BOLD))], x + key_w);
+            put(buf, x + key_w + 1, y, &[seg(*words, ground.fg(t.text))], col_end);
+        }
+    }
+    let note = HELP_NOTE.replace("{lead}", &long_key(&app.keymap.prefix));
+    let ny = inside.y + 3 + rows;
+    if ny < inside.bottom() {
+        put(buf, x0, ny, &[seg(note, ground.fg(t.muted))], end);
     }
 }
 

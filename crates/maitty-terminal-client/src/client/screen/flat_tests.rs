@@ -656,13 +656,33 @@ fn the_row_menu_lists_what_the_design_does() {
 }
 
 #[test]
-fn the_status_bar_says_where_the_keys_go_and_who_needs_you() {
+fn a_narrow_status_bar_drops_pieces_instead_of_running_them_together() {
+    for w in 40..=140u16 {
+        let mut app = reference_fixture::world(Stage::None);
+        let rows = text(&mut app, w, 24);
+        let bar = &rows[23];
+        let help = bar.find("? help").unwrap_or_else(|| panic!("{w}: the way out stays: {bar}"));
+        assert!(bar[..help].ends_with("  "), "{w}: a gap before the hints: {bar}");
+        assert!(bar.trim_start().starts_with("PANE"), "{w}: {bar}");
+    }
+}
+
+#[test]
+fn the_status_bar_says_the_mode_the_session_and_the_keys_worth_knowing() {
     let mut app = reference_fixture::world(Stage::None);
+    let buf = cells(&mut app, 140, 36);
     let rows = text(&mut app, 140, 36);
+    let t = app.theme.clone();
     let bar = &rows[35];
-    assert!(
-        bar.contains("TYPING") && bar.contains("keys go to"),
-        "{bar}"
-    );
-    assert!(bar.contains("needs you") && bar.contains("CPU"), "{bar}");
+    assert!(bar.starts_with("  PANE  fix-footer · "), "{bar}");
+    assert!(bar.ends_with("j/k sessions  ^space keys  ? help"), "{bar}");
+    assert_eq!((buf[(2, 35)].bg, buf[(2, 35)].fg), (t.accent, t.acc_ink), "the PANE chip");
+    assert_eq!(buf[(100, 35)].bg, t.sidebar_bg, "the bar is on the panel ground");
+    app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+    let rows = text(&mut app, 140, 36);
+    let buf = cells(&mut app, 140, 36);
+    let bar = &rows[35];
+    assert!(bar.starts_with("  KEYS  fix-footer · "), "{bar}");
+    assert!(bar.ends_with("n new  s split  x close  tab pane  ? help  esc back"), "{bar}");
+    assert_eq!(buf[(2, 35)].bg, t.blocked, "the KEYS chip is yellow");
 }

@@ -80,32 +80,33 @@ name, such as the MCP server (`maitty integrate mcp` renames it) or another agen
 ## Quick start
 
 1. Open a terminal in your project and run `maitty`.
-2. Press `Ctrl+T` (or click **+ New**) and a shell opens at once in your current fleet; type
-   `claude` (or any agent) in it. The Menu's **Session...** picks another folder or machine.
-3. Watch the sidebar. In the default theme, teal means working, amber means it needs you,
-   green means it finished and dim means idle. Click a row to go to that session.
-4. Press `Ctrl+A`, then `q` to step away. Your agents keep running; run `maitty`
+2. Press `Ctrl+T` (or click a machine's **+** in the sidebar) and a shell opens at once where
+   you are; type `claude` (or any agent) in it. `Ctrl+Space` then `n` opens **New session** for
+   another folder or machine.
+3. Watch the sidebar. Each machine lists its sessions with a status mark: teal spinner working,
+   yellow needs you, green finished, red stopped, grey idle. Click a row to go to that session.
+4. Press `Ctrl+Space`, then `q` to step away. Your agents keep running; run `maitty`
    to come back.
 5. Run `maitty doctor` to check your setup and connect agents for exact status.
 
 ## Shortcuts
 
-The bar along the bottom always shows the mode. It reads `TYPING · keys go to claude ·
-Ctrl+A then ← sidebar …` while keys go to the terminal. Press `Ctrl+A` (or click the bar) to enter
-**shortcut mode**: the bar turns sky blue and lists keys to press (`n shell`, `f files`,
-`? all keys`, `Esc type`, …; click one to run it), and each key runs an action until you press
-`Esc`, `Ctrl+A` again or click into a pane, or start a new shell, session, tab or split
-to type into. While the sidebar, a popup or a panel has the
-keys, the bar names it and its keys (`SETTINGS · ↑↓ move · ←→ change · Tab section · Esc
-close`), and a key that isn't a shortcut says "Shortcut mode — Esc to type". Every key is a single key, and only `?`, `_` and `|` need Shift. Press `?` to see them all.
+The bar along the bottom always shows the mode. It reads ` PANE ` with the session you are on
+and `j/k sessions  ^space keys  ? help` while keys go to the terminal. Press `Ctrl+Space` (or
+click ` PANE `) for **key mode**: the chip turns to a yellow ` KEYS ` and the bar lists keys to
+press (`n new  s split  x close  tab pane  ? help  esc back`; click one to run it), and each key
+runs an action until you press `Esc`, `Ctrl+Space` again or click into a pane, or start a new
+shell, session or split to type into. While the sidebar, a popup or a panel has the keys, the bar
+names it and its keys (` SETTINGS ` … `j/k move  tab section  enter change  esc close`), and a key
+that isn't a shortcut says "Shortcut mode — Esc to type". Every key is a single key, and only `?`,
+`S` and `_` need Shift. Press `?` to see them.
 
 | | |
 |---|---|
-| **Sessions** | `t` new shell · `Enter` message the agent · `k` stop it · `i` inbox · `y` why this status |
-| **Panes** | arrows move · `v` split side by side · `h` split stacked · `x` close · `Ctrl`+arrows resize · `z` collapse the sidebar |
-| **Tabs** | `Ctrl+Tab` or `n` / `p` next / previous · `1`–`9` go to tab (one tab per ship of the fleet) |
-| **Project** | `f` files · `o` find a file · `/` search code · `c` changes · `g` worktrees · `b` branches · `e` the sidebar |
-| **Maitty** | `Space` search commands · `m` menu · `,` settings · `?` all keys · `l` history · `Ctrl+V` paste an image · `q` step away |
+| **Sessions** | `n` new session · `t` new shell · `j` / `k` next / previous · `1`–`9` jump to session · `r` rename · `/` filter · `i` inbox |
+| **Panes** | `s` split right · `S` split down · `tab` focus next pane · `z` zoom · `x` close · `m` move · `Ctrl`+arrows resize |
+| **Window** | `f` files · `c` changes · `u` usage and cost · `,` settings · `b` toggle the sidebar · `?` keys help |
+| **Maitty** | `Space` search commands · `.` menu · `h` history · `Ctrl+V` paste an image · `q` step away |
 
 Scrolled up in a pane? Click **↓ Back to bottom**. Every screen's own keys are in
 [shortcuts](docs/shortcuts.md).
@@ -145,7 +146,7 @@ maitty handoff 3 --to codex            # hand a task to another agent
 
 ## Configure
 
-Open **Settings** with `Ctrl+A`, then `,`. Changes save to your config file with its
+Open **Settings** with `Ctrl+Space`, then `,`. Changes save to your config file with its
 comments kept.
 
 ```sh

@@ -52,7 +52,7 @@ impl Closing {
         }
         let undo = self.undo.as_ref().filter(|u| u.at.elapsed() < UNDO_FOR)?;
         let left = seconds_left(UNDO_FOR, undo.at.elapsed());
-        Some(Banner { text: format!("Closed {} · {undo_key} then z undo {left}s", undo.name), warn: false })
+        Some(Banner { text: format!("Closed {} · {undo_key} undo {left}s", undo.name), warn: false })
     }
 
     /// Drop what has run out; true when the banner changed and the screen needs drawing.
@@ -135,8 +135,15 @@ impl App {
         if let Some(bar) = self.service_banner() {
             return Some(bar);
         }
-        let lead = crate::client::design::long_key(&self.keymap.prefix);
-        self.closing.banner(&lead)
+        let long = crate::client::design::long_key;
+        let lead = long(&self.keymap.prefix);
+        let undo = self
+            .keymap
+            .prefixed_order
+            .iter()
+            .find(|k| self.keymap.prefixed.get(k) == Some(&crate::keys::Action::UndoClose))
+            .map_or_else(|| format!("{lead} then search \"undo\""), |k| format!("{lead} then {}", long(k)));
+        self.closing.banner(&undo)
     }
 
     /// Everything the banner line can say, the most pressing first.
@@ -152,7 +159,8 @@ pub(in crate::client) fn draw_banner(app: &mut App, f: &mut Frame, t: &Theme) {
         return;
     };
     let (fg, bg) = if banner.warn { (t.acc_ink, t.blocked) } else { (t.strong, t.card2) };
-    let row = Rect { x: pane.x, y: pane.y, width: pane.width, height: 1 };
+    // Inside the box, on the row under its top border with the title chip.
+    let row = Rect { x: pane.x + 1, y: pane.y + 1, width: pane.width.saturating_sub(2), height: 1 };
     let buf = f.buffer_mut();
     fill(buf, row, bg);
     put(buf, row.x + 1, row.y, &[seg(banner.text.clone(), Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD))], row.right());
@@ -176,7 +184,7 @@ mod tests {
         assert_eq!(c.banner("Ctrl+A"), None);
         c.undo = Some(Undo { term, name: "pacman".into(), at: Instant::now() });
         let b = c.banner("Ctrl+A").unwrap();
-        assert_eq!(b.text, "Closed pacman · Ctrl+A then z undo 6s");
+        assert_eq!(b.text, "Closed pacman · Ctrl+A undo 6s");
         assert!(!b.warn);
         c.confirm = Some((term, "claude".into(), Instant::now()));
         let b = c.banner("Ctrl+A").unwrap();

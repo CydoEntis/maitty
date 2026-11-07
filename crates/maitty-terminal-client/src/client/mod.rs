@@ -168,6 +168,8 @@ enum Mode {
     /// Switch branch.
     Branch(Box<branch::BranchView>),
     /// Notification history (the selected row, newest first).
+    /// Usage and cost: what each agent reported using, and the plan limits.
+    Usage,
     History {
         sel: usize,
     },

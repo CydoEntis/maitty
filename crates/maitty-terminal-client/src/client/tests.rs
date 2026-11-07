@@ -376,7 +376,7 @@ mod screen_tests {
         }
         // Duplicate keys are gone: one key per action.
         for dropped in [
-            "M", "S", "Z", "H", "J", "K", "L", "X", "F", "B", "W", "R", "V", "N", "{", "}", ":",
+            "M", "Z", "H", "J", "K", "L", "X", "F", "B", "W", "R", "V", "N", "{", "}", ":",
         ] {
             let spec: crate::keys::KeySpec = dropped.parse().unwrap();
             assert!(
@@ -440,23 +440,17 @@ mod screen_tests {
                 o.contains("run it") && o.contains("show all") && !o.contains("[Esc]"),
                 "{o}"
             );
-            // ? lists every key, with the keys that need no leader and the commands with none.
+            // ? is the keys help: three columns of the keys that matter, as bound now.
             key(&mut app, KeyCode::Char('?'));
             assert!(matches!(&app.mode, Mode::KeyMap(km) if km.view == screen::KeyView::All));
-            let mut seen = String::new();
-            for _ in 0..80 {
-                seen += &draw(&mut app, w, h);
-                app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+            let o = draw(&mut app, w, h);
+            show(&o);
+            for words in ["keys", "esc close", "sessions", "panes", "window", "new session", "split right", "files"] {
+                assert!(o.contains(words), "{w}x{h}: the keys help has {words}\n{o}");
             }
-            show(&seen);
-            assert!(
-                seen.contains("All keys")
-                    && seen.contains("WITHOUT THE LEADER")
-                    && seen.contains("press directly")
-                    && seen.contains("SEARCH ONLY")
-                    && seen.contains("Clean up worktrees"),
-                "{w}x{h}: scrolling reaches every part of the list"
-            );
+            if w >= 100 {
+                assert!(o.contains("Keys only work in key mode"), "{w}x{h}\n{o}");
+            }
             // Typing from there searches; Tab goes back to the map.
             key(&mut app, KeyCode::Char('s'));
             assert!(
@@ -608,7 +602,7 @@ mod screen_tests {
         );
         let top = (0..45)
             .map(|y| (0..160).map(|x| buffer[(x, y)].symbol()).collect::<String>())
-            .find(|r| r.contains("Ctrl+A ─"))
+            .find(|r| r.contains("Ctrl+Space ─"))
             .expect("the title row");
         assert!(top.contains('×'), "the close on the top border: {top}");
     }
@@ -2011,8 +2005,8 @@ mod screen_tests {
                     }
                     // Typing says so on the mode bar at every width.
                     let (_, bar) = bar_text(&app, &buf);
-                    if mode == "off" && !bar.contains(" TYPING ") {
-                        failures.push(format!("{layout} split {split} {mode} update {update} {w}: no TYPING on the bar: {bar}"));
+                    if mode == "off" && !bar.contains(" PANE ") {
+                        failures.push(format!("{layout} split {split} {mode} update {update} {w}: no PANE on the bar: {bar}"));
                     }
                 }
             }
@@ -2858,8 +2852,8 @@ mod screen_tests {
         );
         let (row, text) = bar_text(&app, &buf);
         assert!(
-            text.starts_with("  ⌃A  ") && buf[(row.right() - 1, row.y)].bg == app.theme.sky(),
-            "the mode bar lit, its tag a column in: {text}"
+            text.starts_with("  KEYS  ") && buf[(row.x + 2, row.y)].bg == app.theme.blocked,
+            "the bar's KEYS chip, a column in: {text}"
         );
         // The delayed overview groups common commands; ? opens the full reference instead.
         app.open_keymap(None);
@@ -3187,8 +3181,8 @@ mod screen_tests {
         let key = |c: &str| c.parse::<crate::keys::KeySpec>().unwrap();
         let (_, app) = super::design_tests::render_with(100, 30);
         assert_eq!(app.keymap.prefixed.get(&key("t")), Some(&Action::ShellHere));
-        assert_eq!(app.keymap.prefixed.get(&key("n")), Some(&Action::NextTab));
-        assert_eq!(app.keymap.prefixed.get(&key("p")), Some(&Action::PrevTab));
+        assert_eq!(app.keymap.prefixed.get(&key("n")), Some(&Action::PickSession), "n is the New session dialog");
+        assert_eq!(app.keymap.prefixed.get(&key("j")), Some(&Action::NextSession));
         assert_eq!(
             app.keymap.global.get(&key("ctrl+t")),
             Some(&Action::ShellHere),
@@ -3859,7 +3853,7 @@ mod screen_tests {
     }
 
     #[test]
-    fn closing_sends_a_close_with_undo_and_z_undoes_it() {
+    fn closing_sends_a_close_with_undo_and_the_undo_key_undoes_it() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let (tx, mut rx) = mpsc::unbounded_channel();
         app.out = tx;
@@ -3875,11 +3869,12 @@ mod screen_tests {
         };
         assert!(sent(&mut rx).iter().any(|c| matches!(c, Command::CloseSession { term: 3 })));
         let banner = app.closing_banner().expect("the undo offer").text;
-        assert!(banner.ends_with("undo 6s") && banner.contains("Ctrl+A then z"), "{banner}");
-        leader(&mut app, 'z');
+        assert!(banner.ends_with("undo 6s") && banner.contains("Ctrl+Space then Ctrl+Z"), "{banner}");
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        app.on_key(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::CONTROL));
         assert!(
             matches!(sent(&mut rx).as_slice(), [Command::UndoClose { term: 3 }]),
-            "prefix z undoes it"
+            "the leader then Ctrl+Z undoes it"
         );
         assert!(app.closing_banner().is_none(), "and the offer goes");
     }
@@ -4674,7 +4669,7 @@ second line
     }
 
     #[test]
-    fn the_tabs_load_is_said_at_the_bottom_bars_right_end() {
+    fn the_load_is_said_nowhere() {
         let gb = |n: u64| n << 30;
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let on = app.focused().unwrap();
@@ -4683,17 +4678,7 @@ second line
             app.snap.terms.get_mut(&on.term).unwrap().mem,
         ) = (62.0, gb(5));
         let o = draw(&mut app, 160, 45);
-        show(&o);
-        let bar = o.lines().last().expect("a bar");
-        assert!(
-            bar.contains("▲ 62% CPU · 5.0 GB"),
-            "said on the bottom bar: {bar}"
-        );
-        assert!(
-            !o.lines().take(44).any(|l| l.contains("CPU")),
-            "and nowhere else: not on a pane's title, not under a sidebar row"
-        );
-        assert!(!o.contains("subagents"), "no subagent heading to fold");
+        assert!(!o.contains("CPU"), "the status bar has the mode, the session and keys only:\n{o}");
     }
 
     /// What the client sent as helper answers, in order.
@@ -6138,7 +6123,7 @@ second line
             assert!(matches!(app.mode, Mode::Prefix { .. }), "leader waits");
             assert_eq!(
                 shortcut_tag(&mut app).map(|(tag, _)| tag).as_deref(),
-                Some("⌃A"),
+                Some("KEYS"),
                 "the mode bar says so"
             );
             app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
@@ -6251,7 +6236,7 @@ second line
 
     #[test]
     fn a_new_pane_ends_shortcut_mode_and_the_next_key_types_into_it() {
-        for c in ['t', '-', '|', '_', '\\'] {
+        for c in ['t', 's', 'S', '_', '\\'] {
             let mut app = shortcut_mode();
             let (tx, mut rx) = mpsc::unbounded_channel();
             app.out = tx;
@@ -6495,22 +6480,22 @@ second line
         let buf = drawn(app, 160, 45);
         let (row, text) = bar_text(app, &buf);
         let tag = text.trim().split("  ").next().unwrap_or_default();
-        (tag != "TYPING").then(|| (tag.into(), buf[(row.right() - 1, row.y)].bg))
+        (tag != "PANE").then(|| (tag.into(), buf[(row.x + 2, row.y)].bg))
     }
 
     #[test]
     fn the_shortcut_pill_shows_after_the_leader_and_stays_lit_after_an_action() {
         let mut app = shortcut_mode();
-        let sky = app.theme.sky();
+        let sky = app.theme.blocked;
         assert_eq!(
             shortcut_tag(&mut app),
-            Some(("⌃A".into(), sky)),
+            Some(("KEYS".into(), sky)),
             "after the leader"
         );
         tap(&mut app, 'b');
         assert_eq!(
             shortcut_tag(&mut app),
-            Some(("⌃A".into(), sky)),
+            Some(("KEYS".into(), sky)),
             "still lit after an action that opens nothing"
         );
     }
@@ -6518,7 +6503,7 @@ second line
     #[test]
     fn the_bar_names_the_popup_that_has_the_keys_and_lights_again_when_it_closes() {
         let mut app = shortcut_mode();
-        let sky = app.theme.sky();
+        let sky = app.theme.blocked;
         hold(&mut app);
         assert!(
             matches!(app.mode, Mode::Compose(_)),
@@ -6531,7 +6516,7 @@ second line
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         assert_eq!(
             shortcut_tag(&mut app),
-            Some(("⌃A".into(), sky)),
+            Some(("KEYS".into(), sky)),
             "lit again once it closes"
         );
     }
@@ -6561,7 +6546,7 @@ second line
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         assert_eq!(
             shortcut_tag(&mut app),
-            Some(("⌃A".into(), app.theme.sky())),
+            Some(("KEYS".into(), app.theme.blocked)),
             "Files closed: lit again"
         );
     }
@@ -6911,14 +6896,14 @@ second line
             let buf = drawn(&mut app, 160, 45);
             let (row, bar) = bar_text(&app, &buf);
             show(&format!("{at}: |{bar}|"));
-            assert_eq!(bar.trim(), want, "{at}");
+            assert_eq!(bar_parts(&bar), designed(want), "{at}");
             assert!(!bar.contains("paused"), "{at}: {bar}");
             assert_ne!(
                 buf[(row.right() - 1, row.y)].bg,
                 app.theme.sky(),
                 "{at}: sky is for shortcut mode lit"
             );
-            let label = on_bar(&app, &buf, want.split("  ").next().unwrap()).expect("the label");
+            let label = on_bar(&app, &buf, &designed(want).0).expect("the label");
             assert_eq!(
                 buf[(label, row.y)].bg,
                 app.theme.btn,
@@ -6934,33 +6919,43 @@ second line
         let buf = drawn(&mut app, 160, 45);
         let (_, bar) = bar_text(&app, &buf);
         assert!(
-            bar.trim().starts_with("⌃A") && bar.contains("f files"),
+            bar.trim().starts_with("KEYS") && bar.contains("s split"),
             "its keys still run shortcuts: {bar}"
         );
     }
 
     /// The bar's words, split: the label, then each hint and the way out.
     fn bar_parts(bar: &str) -> (String, Vec<String>) {
-        let mut halves = bar.trim().splitn(2, "  ");
-        let label = halves.next().unwrap_or_default().to_string();
-        let rest = halves
-            .next()
-            .unwrap_or_default()
+        let mut parts = bar
             .trim()
-            .trim_start_matches("· ");
-        (
-            label,
-            rest.split(" · ")
-                .filter(|s| !s.is_empty())
-                .map(str::to_string)
-                .collect(),
-        )
+            .split("  ")
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        let label = parts.next().unwrap_or_default();
+        (label, parts.collect())
+    }
+
+    /// What `WHO` says a holder shows, as the bar spells it: the label, then each hint with its
+    /// key in lower case.
+    fn designed(want: &str) -> (String, Vec<String>) {
+        let mut parts = want.split(" · ").map(str::trim);
+        let label = parts.next().unwrap_or_default().to_string();
+        let hints = parts
+            .map(|h| match h.split_once(' ') {
+                Some((key, words)) if !key.chars().all(|c| c.is_lowercase()) => {
+                    format!("{} {words}", key.to_lowercase())
+                }
+                _ => h.to_string(),
+            })
+            .collect();
+        (label, hints)
     }
 
     #[test]
     fn a_narrow_bar_drops_who_has_the_keys_hints_from_the_right_and_the_way_out_last() {
         for (what, held, want) in WHO {
-            let (label, parts) = bar_parts(want);
+            let (label, parts) = designed(want);
             let (hints, out) = parts.split_at(parts.len() - 1);
             for w in 40..=160u16 {
                 let (mut app, _rx) = super::check_settings_tests::app_with_channel();
@@ -7086,7 +7081,7 @@ second line
         );
         assert_eq!(
             shortcut_tag(&mut app),
-            Some(("⌃A".into(), app.theme.sky())),
+            Some(("KEYS".into(), app.theme.blocked)),
             "and the pill lit"
         );
     }
@@ -7206,7 +7201,7 @@ second line
         );
         assert_eq!(
             shortcut_tag(&mut app),
-            Some(("⌃A".into(), app.theme.sky())),
+            Some(("KEYS".into(), app.theme.blocked)),
             "and the pill lit"
         );
     }
@@ -7325,9 +7320,9 @@ second line
     /// What the bar starts with in each mode.
     fn bar_words(mode: &str) -> &'static str {
         match mode {
-            "typing" => "TYPING",
-            "lit" => "⌃A",
-            _ => "MESSAGE  · Enter send",
+            "typing" => "PANE",
+            "lit" => "KEYS",
+            _ => "MESSAGE",
         }
     }
 
@@ -7366,15 +7361,14 @@ second line
                         "{at}: the bar is the bottom row (no padding here)"
                     );
                     assert!(bar.trim().starts_with(bar_words(mode)), "{at}: {bar}");
-                    let sky = buf[(row.right() - 1, row.y)].bg == app.theme.sky();
                     assert_eq!(
-                        sky,
-                        mode == "lit",
-                        "{at}: the whole bar is sky only while lit"
+                        buf[(row.right() - 1, row.y)].bg,
+                        app.theme.sidebar_bg,
+                        "{at}: the bar is on the panel ground in every mode"
                     );
                     let row0: String = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
                     assert!(
-                        !row0.contains("TYPING") && !row0.contains("⌃A"),
+                        !row0.contains("PANE") && !row0.contains("KEYS"),
                         "{at}: no tag in the corner: {row0}"
                     );
                     assert!(
@@ -7440,17 +7434,14 @@ second line
         assert!(failures.is_empty(), "{}", failures.join("\n"));
     }
 
-    /// The suggestions in the order they are dropped last to first.
-    const SUGGESTED: [&str; 9] = [
-        "t shell",
-        "n next tab",
-        ". menu",
-        "i inbox",
-        "c changes",
-        "f files",
-        ", settings",
-        "? all keys",
-        "Esc type",
+    /// The key mode hints in the order they are dropped last to first; `esc back` goes last.
+    const SUGGESTED: [&str; 6] = [
+        "n new",
+        "s split",
+        "x close",
+        "tab pane",
+        "? help",
+        "esc back",
     ];
 
     #[test]
@@ -7463,16 +7454,16 @@ second line
             .map(|s| bar.find(s).unwrap_or_else(|| panic!("{s}: {bar}")))
             .collect();
         assert!(at.is_sorted(), "in order: {bar}");
-        app.cfg.keys.prefix.insert("f".into(), "none".into());
-        app.cfg.keys.prefix.insert("w".into(), "files".into());
+        app.cfg.keys.prefix.insert("s".into(), "none".into());
+        app.cfg.keys.prefix.insert("w".into(), "split-right".into());
         app.keymap = app.cfg.keymap();
         let buf = drawn(&mut app, 160, 45);
         let (_, bar) = bar_text(&app, &buf);
         assert!(
-            bar.contains("w files") && !bar.contains("f files"),
+            bar.contains("w split") && !bar.contains("s split"),
             "the rebound key: {bar}"
         );
-        let key = on_bar(&app, &buf, "w files").expect("w files");
+        let key = on_bar(&app, &buf, "w split").expect("w split");
         let y = screen::mode_bar_row(&app, buf.area).y;
         let bold = |x: u16| {
             buf[(x, y)]
@@ -7488,7 +7479,7 @@ second line
         let buf = drawn(&mut app, 160, 45);
         let (_, bar) = bar_text(&app, &buf);
         assert!(
-            !bar.contains("files"),
+            !bar.contains("split"),
             "an unbound action is not suggested: {bar}"
         );
     }
@@ -7505,22 +7496,18 @@ second line
                 let (_, bar) = bar_text(&app, &buf);
                 let at = format!("{w} update {update}: {bar}");
                 let shown: Vec<bool> = SUGGESTED.iter().map(|s| bar.contains(s)).collect();
-                let (suggestions, tail) = shown.split_at(7);
-                assert!(bar.contains("⌃A"), "the tag stays: {at}");
+                let (suggestions, tail) = shown.split_at(5);
+                assert!(bar.contains("KEYS"), "the tag stays: {at}");
                 assert!(
                     suggestions.windows(2).all(|p| p[0] || !p[1]),
                     "dropped from the right: {at}"
                 );
                 assert!(
-                    !suggestions[0] || tail.iter().all(|s| *s),
-                    "all keys and Esc go after every suggestion: {at}"
+                    !suggestions[0] || tail[0],
+                    "esc back goes after every hint: {at}"
                 );
-                assert!(!tail[0] || tail[1], "Esc goes last: {at}");
                 if w >= 80 {
-                    assert!(
-                        tail.iter().all(|s| *s),
-                        "from 80 columns, all keys and Esc always show: {at}"
-                    );
+                    assert!(tail[0], "from 80 columns, esc back always shows: {at}");
                 }
                 if w >= 120 && update {
                     assert!(
@@ -7545,37 +7532,34 @@ second line
         let mut app = shortcut_mode();
         let buf = drawn(&mut app, 160, 45);
         let y = screen::mode_bar_row(&app, buf.area).y;
-        let files = on_bar(&app, &buf, "f files").expect("f files");
-        click_at(&mut app, files + 2, y);
+        let new = on_bar(&app, &buf, "n new").expect("n new");
+        click_at(&mut app, new + 2, y);
         assert!(
-            matches!(app.view, Some(View::Files(_))) && screen::shortcut_waits(&app),
-            "f opened Files and the mode is held"
-        );
-        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        assert!(
-            matches!(app.mode, Mode::Prefix { .. }),
-            "Files closed: lit again"
-        );
-        let buf = drawn(&mut app, 160, 45);
-        let shell = on_bar(&app, &buf, "t shell").expect("t shell");
-        click_at(&mut app, shell, y);
-        assert_eq!(
-            app.mode,
-            Mode::Normal,
-            "a new shell is typed into: the mode ends"
-        );
-        let mut app = shortcut_mode();
-        let buf = drawn(&mut app, 160, 45);
-        let all = on_bar(&app, &buf, "? all keys").expect("? all keys");
-        click_at(&mut app, all + 3, y);
-        assert!(
-            matches!(&app.mode, Mode::KeyMap(km) if km.view == screen::KeyView::All),
-            "? opens All keys: {:?}",
+            matches!(app.mode, Mode::NewSession(_)),
+            "n opened New session: {:?}",
             std::mem::discriminant(&app.mode)
         );
         let mut app = shortcut_mode();
         let buf = drawn(&mut app, 160, 45);
-        let esc = on_bar(&app, &buf, "Esc type").expect("Esc type");
+        let split = on_bar(&app, &buf, "s split").expect("s split");
+        click_at(&mut app, split, y);
+        assert_eq!(
+            app.mode,
+            Mode::Normal,
+            "a new pane is typed into: the mode ends"
+        );
+        let mut app = shortcut_mode();
+        let buf = drawn(&mut app, 160, 45);
+        let help = on_bar(&app, &buf, "? help").expect("? help");
+        click_at(&mut app, help + 3, y);
+        assert!(
+            matches!(&app.mode, Mode::KeyMap(km) if km.view == screen::KeyView::All),
+            "? opens the keys help: {:?}",
+            std::mem::discriminant(&app.mode)
+        );
+        let mut app = shortcut_mode();
+        let buf = drawn(&mut app, 160, 45);
+        let esc = on_bar(&app, &buf, "esc back").expect("esc back");
         click_at(&mut app, esc + 4, y);
         assert_eq!(app.mode, Mode::Normal, "Esc goes back to typing");
         assert_eq!(shortcut_tag(&mut app), None, "and the bar says typing");
@@ -7587,20 +7571,20 @@ second line
         app.cfg.ui.which_key = false;
         let buf = drawn(&mut app, 160, 45);
         let y = screen::mode_bar_row(&app, buf.area).y;
-        let x = on_bar(&app, &buf, "TYPING").expect("TYPING");
+        let x = on_bar(&app, &buf, "PANE").expect("PANE");
         click_at(&mut app, x, y);
         assert!(
             matches!(app.mode, Mode::Prefix { .. }),
-            "it starts shortcut mode: {:?}",
+            "it starts key mode: {:?}",
             std::mem::discriminant(&app.mode)
         );
         assert_eq!(
             shortcut_tag(&mut app).map(|(tag, _)| tag).as_deref(),
-            Some("⌃A")
+            Some("KEYS")
         );
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         let buf = drawn(&mut app, 160, 45);
-        let x = on_bar(&app, &buf, "then ←").expect("the hint");
+        let x = on_bar(&app, &buf, "^space keys").expect("the hint");
         click_at(&mut app, x, y);
         assert!(matches!(app.mode, Mode::Prefix { .. }), "so does its hint");
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
@@ -7653,7 +7637,7 @@ second line
         let buf = drawn(&mut app, 160, 45);
         let (row, bar) = bar_text(&app, &buf);
         assert!(
-            bar.trim().starts_with("PALETTE  · type to search"),
+            bar.trim().starts_with("PALETTE") && bar.contains("type to search"),
             "the search has the keys: {bar}"
         );
         assert!(
@@ -7733,10 +7717,10 @@ second line
         use screen::ScreenHit as S;
         type SetUp = fn(&mut App);
         let states: [(&str, Option<S>, SetUp); 3] = [
-            ("TYPING", Some(S::ShortcutMode), |app| {
+            ("PANE", Some(S::ShortcutMode), |app| {
                 app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
             }),
-            ("⌃A", Some(S::Leader), |_| {}),
+            ("KEYS", Some(S::Leader), |_| {}),
             ("INBOX", None, |app| tap(app, 'i')),
         ];
         for (words, kind, set_up) in states {
@@ -7921,7 +7905,7 @@ second line
             since: crate::clock::ago(std::time::Duration::from_secs(10)),
             acted: false,
         };
-        tap(&mut app, 'j');
+        tap(&mut app, 'y');
         assert!(
             matches!(app.mode, Mode::KeyMap(_)),
             "before any shortcut, a letter with the map up searches it"
@@ -7930,7 +7914,7 @@ second line
             since: crate::clock::ago(std::time::Duration::from_secs(10)),
             acted: true,
         };
-        tap(&mut app, 'j');
+        tap(&mut app, 'y');
         assert!(
             matches!(app.mode, Mode::Prefix { .. }),
             "after one, the mode just stays"
@@ -12493,8 +12477,8 @@ mod side_panel_width_tests {
             .map(|x| buf[(x, bar.y)].symbol().to_string())
             .collect();
         assert!(
-            text.trim_start().starts_with("TYPING"),
-            "the bar says typing, not CHANGES: {text}"
+            text.trim_start().starts_with("PANE"),
+            "the bar says PANE, not CHANGES: {text}"
         );
         assert!(
             typed_into_a_pane(&mut app, &mut rx, 'm'),

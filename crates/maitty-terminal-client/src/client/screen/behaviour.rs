@@ -677,6 +677,21 @@ impl App {
             Action::Worktrees => self.open_keymap(Some(Step::Worktrees)),
             // The tabs of the fleet you are in, one per ship, in creation order.
             Action::ZoomPane => self.toggle_zoom(),
+            Action::SwapNext => {
+                let shown: Vec<ClientTerm> =
+                    self.screen.leaf_rects.iter().map(|(id, _)| *id).collect();
+                if let Some(f) = focused
+                    && let Some(i) = shown.iter().position(|x| *x == f)
+                    && shown.len() > 1
+                {
+                    self.swap_panes(f, shown[(i + 1) % shown.len()]);
+                }
+            }
+            Action::FilterSessions => {
+                self.sidebar = true;
+                self.start_side_filter();
+            }
+            Action::Usage => self.mode = Mode::Usage,
             // There is no tab row: a tab key steps through the sidebar's sessions.
             Action::NextTab | Action::PrevTab => self.step_session(*a == Action::NextTab),
             Action::SelectTab(n) => self.jump_to_session(n.saturating_sub(1)),
@@ -817,7 +832,7 @@ impl App {
                 None => return,
             },
         };
-        self.screen_focus(to);
+        self.focus_keeping_keys(to);
     }
 
     /// Keys while the sidebar has them: ↑↓ move, → or Enter open (a subagent's row its chat),
@@ -946,6 +961,15 @@ impl App {
         }
     }
 
+    /// Show a session and stay in key mode when it was on, so `j` `j` `k` walks the sessions.
+    fn focus_keeping_keys(&mut self, term: ClientTerm) {
+        let keys = matches!(self.mode, Mode::Prefix { .. }).then(|| self.mode.clone());
+        self.screen_focus(term);
+        if let Some(mode) = keys {
+            self.mode = mode;
+        }
+    }
+
     /// Open the `n`th session of the sidebar (counting from 0, top to bottom).
     pub(in crate::client) fn jump_to_session(&mut self, n: usize) {
         let model = self.screen_model();
@@ -953,7 +977,7 @@ impl App {
             return;
         };
         if let Some(term) = self.open_session_term(key) {
-            self.screen_focus(term);
+            self.focus_keeping_keys(term);
         }
     }
 

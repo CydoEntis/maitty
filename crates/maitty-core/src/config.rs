@@ -1395,9 +1395,9 @@ pub struct CompiledAgent {
 }
 
 /// The key that opens shortcut mode unless the config says otherwise.
-pub const DEFAULT_PREFIX: &str = "ctrl+a";
+pub const DEFAULT_PREFIX: &str = "ctrl+space";
 /// The previous release's default, still accepted for one release beside `DEFAULT_PREFIX`.
-pub const LEGACY_PREFIX: &str = "ctrl+space";
+pub const LEGACY_PREFIX: &str = "ctrl+a";
 
 pub struct Keymap {
     pub prefix: KeySpec,

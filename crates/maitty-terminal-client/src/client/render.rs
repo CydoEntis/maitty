@@ -203,6 +203,7 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
         Mode::GoTo { .. } => {}
         // Popovers beside a sidebar row (drawn with the screen).
         Mode::Compose(_) | Mode::Helpers { .. } | Mode::Secret { .. } => {}
+        Mode::Usage => super::screen::draw_usage(app, f, area, &t),
         Mode::History { sel } => {
             let sel = *sel;
             super::screen::draw_history(app, f, area, &t, sel);
