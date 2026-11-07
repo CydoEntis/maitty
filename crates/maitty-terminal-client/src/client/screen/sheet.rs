@@ -25,6 +25,8 @@ pub(in crate::client) enum SheetKind {
 
 /// Its width beside the panes, before you size it (Changes takes half the screen).
 pub(super) const SHEET_W: u16 = 72;
+/// The Inbox's width: a panel over the workspace, from the sidebar's side. Fixed.
+pub(super) const INBOX_W: u16 = 62;
 /// The narrowest it gets.
 pub(in crate::client) const SHEET_MIN: u16 = 32;
 /// The columns the panes keep beside it; with less, it takes the whole pane column.
@@ -63,6 +65,7 @@ impl SheetKind {
     /// Its width before you size it, on a screen `screen_w` wide.
     fn default_w(self, screen_w: u16) -> u16 {
         match self {
+            SheetKind::Inbox => INBOX_W,
             SheetKind::Changes => screen_w / 2,
             SheetKind::Files => (u32::from(screen_w) * FILES_SHARE / 100) as u16,
             SheetKind::Branch => screen_w * 3 / 10,

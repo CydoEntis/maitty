@@ -1217,11 +1217,8 @@ mod screen_tests {
             o.contains("↑↓") && o.contains("select") && o.contains("Esc") && o.contains("close"),
             "the sheet's keys"
         );
-        // It's docked beside the panes, not over them: the session's card is still there.
-        assert!(
-            o.contains("fix the flaky checkout test"),
-            "the panes reflow beside it"
-        );
+        // It floats over the workspace from the sidebar's side, 62 columns wide.
+        assert_eq!(app.screen.sheet_rect.width, 62);
         // 2 answers the selected question without going there.
         app.on_key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE));
         assert!(matches!(app.mode, Mode::GoTo { .. }), "still in the Inbox");
@@ -12345,8 +12342,16 @@ mod side_panel_width_tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
-    /// The Inbox open in the side sheet on a screen `w` columns wide, drawn once.
+    /// The Changes drawer open on a screen `w` columns wide, drawn once.
     fn inbox_open(w: u16, h: u16) -> App {
+        let (_, mut app) = super::design_tests::render_with(w, h);
+        app.show_view(changes_view());
+        draw(&mut app, w, h);
+        app
+    }
+
+    /// The Inbox open on a screen `w` columns wide, drawn once.
+    fn real_inbox_open(w: u16, h: u16) -> App {
         let (_, mut app) = super::design_tests::render_with(w, h);
         app.act(Action::Jump);
         draw(&mut app, w, h);
@@ -12372,26 +12377,22 @@ mod side_panel_width_tests {
     #[test]
     fn brackets_narrow_and_widen_the_sheet_and_equals_puts_its_default_back() {
         let mut app = inbox_open(200, 50);
-        assert_eq!(app.screen.sheet_rect.width, 72, "the Inbox starts 72 wide");
+        assert_eq!(app.screen.sheet_rect.width, 60, "the drawer starts 60 wide");
         key(&mut app, '[');
         draw(&mut app, 200, 50);
-        assert_eq!(app.screen.sheet_rect.width, 68, "[ narrows it 4");
+        assert_eq!(app.screen.sheet_rect.width, 56, "[ narrows it 4");
         key(&mut app, ']');
         key(&mut app, ']');
         draw(&mut app, 200, 50);
-        assert_eq!(app.screen.sheet_rect.width, 76, "] widens it 4 each");
+        assert_eq!(app.screen.sheet_rect.width, 64, "] widens it 4 each");
         assert_eq!(
-            app.screen.saved.sheet_w.get("inbox"),
-            Some(&76),
+            app.screen.saved.sheet_w.get("drawer"),
+            Some(&64),
             "kept in the saved UI state"
         );
         key(&mut app, '=');
         draw(&mut app, 200, 50);
-        assert_eq!(app.screen.sheet_rect.width, 72, "= puts the default back");
-        assert!(
-            matches!(&app.mode, Mode::GoTo { query, .. } if query.is_empty()),
-            "the keys sized the sheet, not the search"
-        );
+        assert_eq!(app.screen.sheet_rect.width, 60, "= puts the default back");
     }
 
     #[test]
@@ -12413,7 +12414,27 @@ mod side_panel_width_tests {
             app.screen.sheet_rect.right() - (at.x - 10),
             "the sheet's edge follows the pointer"
         );
-        assert!(app.screen.sheet_rect.width > 72, "wider than before");
+        assert!(app.screen.sheet_rect.width > 60, "wider than before");
+    }
+
+    #[test]
+    fn the_inbox_is_62_wide_over_the_workspace_from_the_sidebars_side_and_keeps_its_width() {
+        let mut app = real_inbox_open(200, 50);
+        let col = app.screen.sheet_rect;
+        assert_eq!(col.width, 62);
+        let side = app.screen.side_rect;
+        assert!(col.x >= side.right(), "left sidebar: the Inbox starts beside it, not at the right edge");
+        assert!(col.right() < 200 - 62, "it is not docked on the right");
+        key(&mut app, ']');
+        draw(&mut app, 200, 50);
+        assert_eq!(app.screen.sheet_rect.width, 62, "it has no width to change");
+        assert!(edge(&app).is_none(), "and no edge to drag");
+        app.cfg.ui.sidebar_position = "right".into();
+        draw(&mut app, 200, 50);
+        assert!(
+            app.screen.sheet_rect.right() <= app.screen.side_rect.x,
+            "right sidebar: the Inbox ends where the sidebar begins"
+        );
     }
 
     #[test]
@@ -12434,7 +12455,7 @@ mod side_panel_width_tests {
         // Mid-slide, or left from another view: the drawn rectangle says nothing about the width.
         app.screen.sheet_rect.width = 22;
         key(&mut app, '[');
-        assert_eq!(app.screen.saved.sheet_w.get("inbox"), Some(&68));
+        assert_eq!(app.screen.saved.sheet_w.get("drawer"), Some(&56));
     }
 
     #[test]

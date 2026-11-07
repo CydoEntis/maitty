@@ -154,6 +154,14 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
         }
     };
     let (sheet, panes) = match open_sheet(app) {
+        // The Inbox floats over the workspace from the sidebar's side; the panes keep the column.
+        Some(SheetKind::Inbox) => {
+            let w = ((INBOX_W.min(col.width) as f32 * app.sheet_frac.clamp(0.0, 1.0)).round()
+                as u16)
+                .min(col.width);
+            let x = if side.x > col.x { col.right() - w } else { col.x };
+            (Rect { x, width: w, ..col }, col)
+        }
         // A tool floats over the panes' right side: the panes keep the whole column.
         Some(kind) if overlaid(app, kind) => {
             let full = wanted_w(app, kind, area.width).clamp(SHEET_MIN, overlay_widest(col).max(SHEET_MIN));
@@ -198,7 +206,9 @@ fn note_sheet(app: &mut App, g: &Grid, screen_w: u16) {
         Some(kind) if overlaid(app, kind) => overlay_widest(g.panes),
         _ => widest(col, look),
     };
-    let sizable = open_sheet(app).is_some() && screen_w >= NARROW && room >= SHEET_MIN;
+    let sizable = open_sheet(app).is_some_and(|k| k != SheetKind::Inbox)
+        && screen_w >= NARROW
+        && room >= SHEET_MIN;
     app.screen.sheet_rect = g.sheet;
     app.screen.sheet_widest = if sizable { room } else { 0 };
     app.screen.sheet_screen_w = screen_w;
@@ -307,7 +317,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     }
     if let Some(kind) = open_sheet(app).filter(|_| g.sheet.width >= SHEET_DRAWN_FROM) {
         // A floating drawer clears what it covers first.
-        if overlaid(app, kind) {
+        if overlaid(app, kind) || kind == SheetKind::Inbox {
             fill(f.buffer_mut(), g.sheet, t.bg);
         }
         draw_sheet(app, f.buffer_mut(), g.sheet, kind, t);

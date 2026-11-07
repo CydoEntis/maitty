@@ -285,6 +285,9 @@ pub(super) struct Screen {
     /// Quiet agents you marked seen in the Inbox, by when they went quiet: listed again only
     /// once they go quiet anew.
     pub quiet_seen: std::collections::HashMap<ClientTerm, u64>,
+    /// Exits you cleared in the Inbox, by when the command ended: listed again only once
+    /// another command fails.
+    pub exit_seen: std::collections::HashMap<ClientTerm, u64>,
     /// A follow-up left unsent with Esc, kept per session until it is sent or cleared.
     pub drafts: std::collections::HashMap<ClientTerm, String>,
     /// What you changed on Settings › Check and have not saved.
@@ -520,6 +523,10 @@ pub(super) struct Session {
     pub quiet_since: Option<u64>,
     /// You marked this quiet spell seen in the Inbox.
     pub quiet_seen: bool,
+    /// How its last command ended, when it ended in failure (`TermInfo.exit`).
+    pub exit: Option<crate::protocol::ExitInfo>,
+    /// You cleared this exit from the Inbox.
+    pub exit_seen: bool,
     pub question: Option<String>,
     pub is_agent: bool,
     /// The latest check the app ran after its turn: the headline of `checks`.
@@ -938,6 +945,10 @@ impl App {
                     quiet_seen: t
                         .quiet_since
                         .is_some_and(|at| self.screen.quiet_seen.get(&term) == Some(&at)),
+                    exit: t.exit,
+                    exit_seen: t
+                        .exit
+                        .is_some_and(|e| self.screen.exit_seen.get(&term) == Some(&e.at)),
                     question,
                     is_agent: t.agent.is_some(),
                     check: t.check().cloned(),
@@ -1004,6 +1015,8 @@ impl App {
                 since: now_secs(),
                 quiet_since: None,
                 quiet_seen: false,
+                exit: None,
+                exit_seen: false,
                 question: None,
                 is_agent: true,
                 check,

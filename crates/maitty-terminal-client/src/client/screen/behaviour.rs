@@ -1632,13 +1632,18 @@ impl App {
                 self.mode = Mode::GoTo { query, sel };
                 return;
             }
-            // c clears what finished: each card leaves, its session stays.
+            // c clears what finished and what exited: each card leaves, its session stays.
             KeyCode::Char('c') if query.is_empty() => {
                 for row in &rows {
-                    if let GoRow::Done(term) = row {
-                        self.cmd_on(term.machine, Command::MarkSeen { term: term.term });
+                    match row {
+                        GoRow::Done(term) => {
+                            self.cmd_on(term.machine, Command::MarkSeen { term: term.term });
+                        }
+                        GoRow::Exited(term) => self.clear_exit(*term),
+                        _ => {}
                     }
                 }
+                self.screen_fresh();
             }
             // Any item: its session.
             KeyCode::Char('o') if query.is_empty() && sel_item.is_some() => {
@@ -1670,6 +1675,7 @@ impl App {
                     self.cmd_on(term.machine, Command::MarkSeen { term: term.term });
                 }
             }
+            KeyCode::Delete if let Some(GoRow::Exited(term)) = sel_row => self.clear_exit(term),
             KeyCode::Delete if let Some(GoRow::Quiet(term)) = sel_row => {
                 if let Some(at) = self.term_info(term).and_then(|i| i.quiet_since) {
                     self.screen.quiet_seen.insert(term, at);
@@ -1709,7 +1715,13 @@ impl App {
                         self.do_check_key(t, None, 'r');
                         self.mode = Mode::GoTo { query, sel };
                     }
-                    Some(GoRow::Ask(t) | GoRow::Done(t) | GoRow::Quiet(t) | GoRow::Sess(_, t)) => {
+                    Some(
+                        GoRow::Ask(t)
+                        | GoRow::Done(t)
+                        | GoRow::Quiet(t)
+                        | GoRow::Exited(t)
+                        | GoRow::Sess(_, t),
+                    ) => {
                         self.mode = Mode::Normal;
                         self.screen_focus(t);
                     }
@@ -1743,6 +1755,14 @@ impl App {
             sel = land(sel, true);
         }
         self.mode = Mode::GoTo { query, sel };
+    }
+
+    /// Take an exit off the Inbox; it comes back only once another command fails.
+    fn clear_exit(&mut self, term: ClientTerm) {
+        if let Some(exit) = self.term_info(term).and_then(|i| i.exit) {
+            self.screen.exit_seen.insert(term, exit.at);
+            self.screen_fresh();
+        }
     }
 
     pub(in crate::client) fn on_history_key(&mut self, sel: usize, k: &KeyEvent) {

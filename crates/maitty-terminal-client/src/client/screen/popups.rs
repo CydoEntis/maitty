@@ -757,6 +757,8 @@ pub(in crate::client) enum GoRow {
     Approve(ClientTerm),
     /// A working agent gone silent: it may be stuck.
     Quiet(ClientTerm),
+    /// One whose last command ended in failure (`TermInfo.exit`).
+    Exited(ClientTerm),
     Sess(usize, ClientTerm),
 }
 
@@ -769,6 +771,7 @@ impl GoRow {
             | GoRow::NotRun(t)
             | GoRow::Approve(t)
             | GoRow::Quiet(t)
+            | GoRow::Exited(t)
             | GoRow::Sess(_, t) => Some(*t),
             GoRow::Head(_) | GoRow::Heads(_) => None,
         }

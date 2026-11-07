@@ -9,6 +9,7 @@ pub(super) const NEEDS_HEAD: &str = "NEEDS YOU";
 pub(super) const FAILED_HEAD: &str = "FAILED CHECKS";
 pub(super) const NOT_RUN_HEAD: &str = "COULD NOT RUN";
 pub(super) const FINISHED_HEAD: &str = "FINISHED";
+pub(super) const EXITED_HEAD: &str = "EXITED";
 const EXIT_NOT_EXECUTABLE: i32 = 126;
 const EXIT_NOT_FOUND: i32 = 127;
 
@@ -237,6 +238,7 @@ fn buttons(row: &GoRow, info: Option<&CheckInfo>) -> Vec<Button> {
         GoRow::Done(_) if info.is_some_and(|i| i.state == CheckState::Stale) => vec![RERUN, OUTPUT],
         // A plain finish: what it said is on the row, so the answer to it is too.
         GoRow::Done(_) if info.is_none() => vec![REPLY, OPEN],
+        GoRow::Exited(_) => vec![OPEN],
         _ => Vec::new(),
     }
 }
@@ -258,6 +260,14 @@ fn last_said(app: &App, s: &Session) -> String {
         .join(" ")
 }
 
+/// "exited with code 1": how a command ended in failure.
+fn exit_words(exit: Option<crate::protocol::ExitInfo>) -> String {
+    match exit.and_then(|e| e.code) {
+        Some(code) => format!("exited with code {code}"),
+        None => "exited with an error".to_string(),
+    }
+}
+
 /// The item for an Inbox row of a session, or None for a heading, a heads-up or a search hit.
 pub(super) fn item(app: &App, model: &[Proj], row: &GoRow, t: &Theme) -> Option<Item> {
     if matches!(row, GoRow::Head(_) | GoRow::Heads(_) | GoRow::Sess(..)) {
@@ -266,7 +276,12 @@ pub(super) fn item(app: &App, model: &[Proj], row: &GoRow, t: &Theme) -> Option<
     let (p, _, s) = find(model, row.term()?)?;
     let g = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons);
     let info = check::shown(s);
-    let mark = glyphs::Kind::of(s.status, info, false).mark(g, t, 0, "");
+    let kind = if matches!(row, GoRow::Exited(_)) {
+        glyphs::Kind::Failed
+    } else {
+        glyphs::Kind::of(s.status, info, false)
+    };
+    let mark = kind.mark(g, t, 0, "");
     let checks = s
         .native_term
         .and_then(|id| app.term_info(id))
@@ -284,6 +299,10 @@ pub(super) fn item(app: &App, model: &[Proj], row: &GoRow, t: &Theme) -> Option<
             }
             None => (vec![("waiting on you".into(), t.blocked, false)], None),
         },
+        (GoRow::Exited(_), _) => (
+            vec![(exit_words(s.exit), t.err, false)],
+            None,
+        ),
         (GoRow::Quiet(_), _) => (
             vec![(
                 format!(
