@@ -3,6 +3,8 @@
 //! (writing the config, probing, the first login) is in `machine_flow`; a machine is
 //! reconnected or removed from its line in the sidebar.
 
+use super::chips::{Chip, chip};
+use super::machine_group::AppFix;
 use super::*;
 use crate::client::ssh_hosts::SshHost;
 use crate::hidden::sanitize;
@@ -110,6 +112,8 @@ pub struct MachineRow {
     pub color: Color,
     /// Why it is down and what to do, in full.
     pub detail: Option<String>,
+    /// The app is missing or another version there: `u` installs or updates it.
+    pub fix: Option<AppFix>,
 }
 
 impl App {
@@ -147,6 +151,7 @@ impl App {
             .remotes
             .iter()
             .find(|(_, remote)| remote.name.eq_ignore_ascii_case(&def.name));
+        let fix = found.and_then(|(id, _)| self.machine_fix(*id));
         let (glyph, word, color, detail) = match found {
             Some((id, _)) if self.refused.contains_key(id) => (
                 "✕",
@@ -178,6 +183,7 @@ impl App {
             color,
             // The fix texts name the machine as `<name>`: say which one.
             detail: detail.map(|why| why.replace("<name>", &def.name)),
+            fix,
         }
     }
 }
@@ -619,7 +625,12 @@ pub(in crate::client) fn draw_machines(
             );
         }
     }
-    panel_bar(buf, r, t, &bar_keys(v));
+    let chosen_fix = v.machine_sel.and_then(|sel| {
+        let rows = app.machine_rows(t);
+        rows.get(sel.min(rows.len().saturating_sub(1)))
+            .and_then(|row| row.fix)
+    });
+    panel_bar(buf, r, t, &bar_keys(v, chosen_fix));
 }
 
 fn heading(buf: &mut Buffer, inner: Rect, y: u16, text: &str, t: &Theme) {
@@ -820,7 +831,13 @@ fn draw_your_machines(
         let st = list_row(app, buf, rr, on, t);
         let state = format!("{} {}", row.glyph, row.word);
         let state_w = state.width();
-        let target_w = (inner.width as usize).saturating_sub(name_w + state_w + 12);
+        let hint = row.fix.map_or_else(Vec::new, |fix| {
+            let ground = st.bg.unwrap_or(t.card);
+            chip(app, &format!("u {}", fix.verb()), Chip::Action, ground, t)
+        });
+        let hint_w = segs_width(&hint) as usize;
+        let target_w =
+            (inner.width as usize).saturating_sub(name_w + state_w + hint_w + 13);
         put(
             buf,
             rr.x + 2,
@@ -849,6 +866,10 @@ fn draw_your_machines(
             &[seg(state, st.fg(row.color).add_modifier(Modifier::BOLD))],
             rr.right(),
         );
+        if !hint.is_empty() {
+            let hx = rr.right().saturating_sub((state_w + hint_w) as u16 + 3);
+            put(buf, hx, y, &hint, rr.right());
+        }
         y += 1;
     }
     if let Some(detail) = sel.and_then(|s| rows[s].detail.as_deref()) {
@@ -1042,11 +1063,12 @@ fn draw_checklist(
     }
 }
 
-fn bar_keys(v: &MachinesView) -> Vec<(&'static str, &'static str)> {
+/// The keys under the dialog. `fix`: what `u` does for the chosen machine, when it needs it.
+fn bar_keys(v: &MachinesView, fix: Option<AppFix>) -> Vec<(&'static str, &'static str)> {
     match &v.step {
         MachineStep::Browse if v.machine_sel.is_some() => vec![
             ("r", "reconnect"),
-            ("u", "update"),
+            ("u", fix.map_or("update", AppFix::verb)),
             ("e", "edit"),
             ("x", "remove"),
             ("↑↓", "move"),

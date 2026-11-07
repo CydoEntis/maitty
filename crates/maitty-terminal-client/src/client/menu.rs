@@ -84,6 +84,13 @@ pub enum Act {
     UndoOverride(ClientTerm),
     /// Delete a reference: (the project root, the file, its name in the references).
     RemoveReference(PathBuf, PathBuf, String),
+    /// A shell on this machine at once.
+    MachineShell(MachineId),
+    /// `machine update` for this machine in a popup: install or update the app there.
+    MachineUpdate(MachineId),
+    MachineReconnect(MachineId),
+    /// The Machines dialog with this machine chosen.
+    MachineOpen(MachineId),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -337,16 +344,48 @@ impl App {
     /// Menu is the leader's `.`.
     pub(super) fn sidebar_menu(&mut self) {
         use crate::keys::Action;
-        let items = vec![
+        let mut items = self.machine_fix_items();
+        items.extend([
             ("Filter sessions".to_string(), Act::Tool(Action::FilterSessions)),
             ("Inbox".to_string(), Act::Tool(Action::Jump)),
             ("Usage and cost".to_string(), Act::Tool(Action::Usage)),
             ("Settings".to_string(), Act::Tool(Action::Settings)),
             ("Keys".to_string(), Act::Tool(Action::Help)),
-        ];
+        ]);
         let side = self.screen.side_rect;
         let x = side.right().saturating_sub(SIDEBAR_MENU_W + 1);
         self.menu("menu".into(), items, (x, side.bottom().saturating_sub(1)));
+    }
+
+    /// Right-click on a machine heading in the sidebar. A machine whose app is missing or old
+    /// has the fix first.
+    pub(super) fn menu_for_machine(&mut self, machine: MachineId, at: (u16, u16)) {
+        let mut items = Vec::new();
+        if let Some(fix) = self.machine_fix(machine) {
+            items.push((fix.label(), Act::MachineUpdate(machine)));
+        }
+        items.push(("New shell here".to_string(), Act::MachineShell(machine)));
+        let title = match self.remotes.get(&machine) {
+            Some(remote) => {
+                items.push(("Reconnect".to_string(), Act::MachineReconnect(machine)));
+                items.push(("Machines…".to_string(), Act::MachineOpen(machine)));
+                crate::hidden::sanitize(&remote.name, false)
+            }
+            None => "This computer".to_string(),
+        };
+        self.menu(title, items, at);
+    }
+
+    /// The machines whose app is missing or old, each as the item that fixes it.
+    fn machine_fix_items(&self) -> Vec<(String, Act)> {
+        self.remotes
+            .iter()
+            .filter_map(|(id, remote)| {
+                let fix = self.machine_fix(*id)?;
+                let name = crate::hidden::sanitize(&remote.name, false);
+                Some((format!("{} on {name}", fix.label()), Act::MachineUpdate(*id)))
+            })
+            .collect()
     }
 
     /// Right-click on a pane's content.
@@ -779,6 +818,15 @@ impl App {
             }
         }
         match a {
+            Act::MachineShell(machine) => self.new_ship_on(machine),
+            Act::MachineUpdate(machine) => self.machine_update_from_side(machine),
+            Act::MachineReconnect(machine) => {
+                if let Some(name) = self.remotes.get(&machine).map(|r| r.name.clone()) {
+                    let said = self.machine_retry(&name);
+                    self.notify(said.text, said.error);
+                }
+            }
+            Act::MachineOpen(machine) => self.open_machines_on(machine),
             // A terminal that belongs to a chat is named through the chat, so every client
             // shows the same name.
             Act::RenamePane(t)

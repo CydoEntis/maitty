@@ -456,3 +456,53 @@ fn a_paste_goes_into_the_input_not_the_pane_behind() {
     assert_eq!(v.query, "dev@kingdom.lan", "the first line, in the input");
     assert!(!v.in_list);
 }
+
+/// `kingdom` with no app, `build` on another version and `gpu` connected, as their
+/// supervisors said.
+fn app_needing_fixes() -> App {
+    use crate::client::link::ConnectionState;
+    use crate::link_failure::{FIX_INSTALL, FIX_UPDATE};
+    let mut app = app_with(&[
+        ("build", "dev@build.lan"),
+        ("gpu", "gpu"),
+        ("kingdom", "dev@kingdom.lan"),
+    ]);
+    let states = [
+        ("build", ConnectionState::NeedsUpdate { why: FIX_UPDATE.into() }),
+        ("gpu", ConnectionState::Connected),
+        ("kingdom", ConnectionState::NeedsUpdate { why: FIX_INSTALL.into() }),
+    ];
+    for (n, (name, state)) in states.into_iter().enumerate() {
+        app.on_link_state(MachineId(40 + n as u16), name.into(), state);
+    }
+    app
+}
+
+#[test]
+fn a_machine_that_needs_the_app_shows_the_key_that_installs_or_updates_it() {
+    for (w, h) in SIZES {
+        let mut app = app_needing_fixes();
+        let v = MachinesView {
+            machine_sel: app.machine_listed_at("kingdom"),
+            ..view(Some(hosts()))
+        };
+        let (text, r, buf) = shown(&mut app, v, w, h);
+        assert_box_whole(&text, r, &buf);
+        let rows: Vec<&str> = text.lines().collect();
+        let row = |name: &str| {
+            rows.iter()
+                .find(|l| l.contains(&format!("⇄ {name}")))
+                .copied()
+                .unwrap_or_else(|| panic!("{w}x{h}: no row for {name}\n{text}"))
+        };
+        assert!(row("kingdom").contains(" u install "), "{w}x{h}\n{text}");
+        assert!(row("build").contains(" u update "), "{w}x{h}\n{text}");
+        assert!(!row("gpu").contains(" u "), "a connected machine needs nothing: {w}x{h}\n{text}");
+        let said = words(&text, r);
+        assert!(said.contains("u install"), "the bar names what u does: {w}x{h}\n{text}");
+        assert!(
+            said.contains("run `maitty machine update kingdom --install`"),
+            "the fix under the chosen one names the machine: {w}x{h}\n{text}"
+        );
+    }
+}

@@ -80,6 +80,8 @@ pub(super) struct MachineSection {
     pub id: MachineId,
     pub label: String,
     pub down: bool,
+    /// The app there is missing or another version: the heading offers the fix.
+    pub fix: Option<super::machine_group::AppFix>,
     pub rows: Vec<SideRow>,
 }
 
@@ -210,6 +212,7 @@ impl SideModel {
                     app.machine_label_of(m.id)
                 },
                 down: app.machine_down(m.id),
+                fix: app.machine_fix(m.id),
                 rows: all
                     .iter()
                     .filter(|r| r.key.machine == m.id && r.matches(&query))
@@ -517,10 +520,12 @@ fn draw_list(
 }
 
 /// A machine heading: its name chip with the number of sessions, a `+` chip that starts a shell
-/// there at once, and the connection dot at the right.
+/// there at once (` install ` or ` update ` instead while the app there needs it), and the
+/// connection dot at the right.
 fn draw_machine(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, m: &MachineSection, t: &Theme) {
     let x = r.x + 1;
     let end = r.right().saturating_sub(1);
+    hit(app, Rect { x, y, width: end.saturating_sub(x), height: 1 }, ScreenHit::MachineHead(m.id));
     let name = chip(app, &m.label, Chip::Title { focused: false }, t.sidebar_bg, t);
     // The count sits inside the chip, quieter than the name.
     let mut segs = name;
@@ -530,12 +535,16 @@ fn draw_machine(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, m: &MachineSec
         segs.push(last);
     }
     let after = put(buf, x, y, &segs, end.saturating_sub(4));
-    let plus = chip(app, "+", Chip::Action, t.sidebar_bg, t);
+    let (text, act) = match m.fix {
+        Some(fix) => (fix.verb(), ScreenHit::MachineFix(m.id)),
+        None => ("+", ScreenHit::MachinePlus(m.id)),
+    };
+    let plus = chip(app, text, Chip::Action, t.sidebar_bg, t);
     let pw = segs_width(&plus);
     let px = after + 1;
     if px + pw < end.saturating_sub(2) {
         put(buf, px, y, &plus, end);
-        hit(app, Rect { x: px, y, width: pw, height: 1 }, ScreenHit::MachinePlus(m.id));
+        hit(app, Rect { x: px, y, width: pw, height: 1 }, act);
     }
     let (dot, colour) = if m.down {
         (RECONNECTING_MARK, t.idle)

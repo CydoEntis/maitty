@@ -893,6 +893,11 @@ impl App {
                 .map(|(_, h)| *h);
             let at = (m.column, m.row);
             match hit {
+                Some(Hit::Screen(
+                    screen::ScreenHit::MachineHead(machine)
+                    | screen::ScreenHit::MachineFix(machine)
+                    | screen::ScreenHit::MachinePlus(machine),
+                )) => self.menu_for_machine(machine, at),
                 Some(Hit::Screen(screen::ScreenHit::Session(key))) => {
                     if let Some(id) = self.bare_conversation(key) {
                         self.menu_for_conversation(id, at);

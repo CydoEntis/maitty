@@ -4,6 +4,7 @@
 //! takes the machine out of the config, the sidebar and the window's records, and leaves the
 //! machine itself, its sessions and its saved layout alone.
 
+use super::screen::machine_group::AppFix;
 use super::screen::machines::{
     MachineNotice, MachineStep, MachinesView, Outcome, connect_target, parse_target, removal_note,
 };
@@ -85,6 +86,16 @@ impl App {
         ssh_hosts::load_in_background(self, |app, hosts| {
             app.with_machines_view(|v| v.hosts = Some(hosts));
         });
+    }
+
+    /// The dialog with one of your machines chosen, its fix under it and its keys in the bar.
+    pub(super) fn open_machines_on(&mut self, machine: MachineId) {
+        let at = self
+            .remotes
+            .get(&machine)
+            .and_then(|r| self.machine_listed_at(&r.name));
+        self.open_machines();
+        self.with_machines_view(|v| v.machine_sel = at);
     }
 
     pub(super) fn with_machines_view(&mut self, f: impl FnOnce(&mut MachinesView)) {
@@ -303,6 +314,9 @@ impl App {
         let Some(def) = self.configured(name) else {
             return say(format!("{name} is not in your machines."), true);
         };
+        let fix = self
+            .machine_id_named(&def.name)
+            .and_then(|id| self.machine_fix(id));
         let program = std::env::current_exe()
             .ok()
             .and_then(|exe| exe.to_str().map(str::to_string))
@@ -330,13 +344,26 @@ impl App {
         // A popup has the keys only in plain typing mode, as the first login's does.
         self.leave_shortcut_mode();
         self.cmd_on(MachineId::LOCAL, Command::Popup { cmd, cwd: None });
+        let doing = match fix {
+            Some(AppFix::Install) => format!("Installing {} on", crate::brand::APP_NAME),
+            _ => format!("Updating {} on", crate::brand::APP_NAME),
+        };
         say(
             format!(
-                "Updating {}: answer in the popup. It reconnects when the popup closes.",
+                "{doing} {}: answer in the popup. It reconnects when the popup closes.",
                 def.name
             ),
             false,
         )
+    }
+
+    /// The sidebar's install or update chip, or its menu item: the same popup, told in a toast.
+    pub(in crate::client) fn machine_update_from_side(&mut self, machine: MachineId) {
+        let Some(name) = self.remotes.get(&machine).map(|r| r.name.clone()) else {
+            return;
+        };
+        let said = self.machine_update(&name);
+        self.notify(said.text, said.error);
     }
 
     fn popup_terms(&self) -> HashSet<TermId> {

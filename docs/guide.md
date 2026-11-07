@@ -418,8 +418,8 @@ machine*). `config.example.toml` lists every key.
 
 Adding a machine starts maitty there if it is not running, so you can create the first session from this
 computer. If the connection drops later, maitty only reconnects to a maitty that is still running there; it
-never starts one you stopped. Right-click the machine's line in the sidebar and choose Reconnect to start it there again. If maitty is not
-installed there, see *Install or update maitty on a machine*.
+never starts one you stopped. Right-click the machine's heading in the sidebar and choose Reconnect to start it there again. If maitty is not
+installed there, its heading has an **install** button: see *Install or update maitty on a machine*.
 
 ### What you see
 
@@ -434,12 +434,12 @@ need shows in the Inbox with `· on build`.
 | `connected` | The line is up. |
 | `reconnecting #2` | A line that was up dropped. maitty tries again at once, then after 250 ms, doubling up to 30 s; three tries in a row without an answer make it `unreachable`. |
 | `needs login` | ssh cannot log in without asking you. Make plain `ssh` to that machine work in a terminal (load your key, accept its host key), then right-click the machine and choose Reconnect. |
-| `needs update` | The machine runs another version of maitty, or has none on its PATH. Run `maitty machine update <name>` (add `--install` when there is none, or set `remote_cmd` to its path), then right-click the machine and choose Reconnect. |
+| `needs update` | The machine runs another version of maitty, or has none on its PATH. Click **install** (none there) or **update** (another version) on the machine's heading in the sidebar, or right-click the heading and choose Install Maitty / Update Maitty: it asks in a popup, then reconnects. From a terminal: `maitty machine update <name>` (add `--install` when there is none, or set `remote_cmd` to its path). |
 | `unreachable` | No answer, or maitty is not running there. The reason is written under it (ssh's last line, or "maitty is not running on that machine; retry to start it there"); maitty keeps trying in the background. |
 | `refused` | A different computer now answers at that name. If you replaced the machine, remove it and add it again; otherwise check the host name and DNS. |
 
 When a machine drops, its cards give way to one item saying how it stands, such as `needs update · click for the fix` (click it for the
-Machines dialog, which says what to do and can reconnect, update or remove it; right-click it for the same three). They come back by themselves when the line does, each pane showing
+Machines dialog, which says what to do and can reconnect, install or update, edit or remove it; right-click the machine's heading for Install / Update Maitty, a new shell, Reconnect and the Machines dialog). They come back by themselves when the line does, each pane showing
 its screen again. Its needs-you and failed marks leave the Inbox while it is down. Typing sent to a machine while it
 was down is dropped, never queued (replaying keystrokes into a pane that moved on could run commands you no
 longer meant); when the machine is back, maitty says how much was not sent.
@@ -538,6 +538,13 @@ build: maitty 0.60.0 installed to ~/.local/bin/maitty
   not saved is never restarted.
 - **Not supported: a Windows machine as the remote.** In v1 Windows is never the remote; the command says so
   and exits. Linux and macOS (x86_64 and aarch64) are supported.
+
+**From the terminal app.** You do not need the command or its flags: a machine that `needs update` has an
+**install** or **update** button on its heading in the sidebar (also in its right-click menu, the sidebar's
+**menu**, and `u` on it in Machines, leader `w`). It runs the same command in a popup on this computer, which
+says what it found and asks before it installs or replaces anything; your `y` is the consent. When it is done
+the popup shows how it ended (installed, already up to date, not confirmed, refused because a newer version is
+there, or why the machine could not be reached) until you press Enter, then the machine reconnects.
 
 Exit status: 0 done or already up to date, 2 a mistake in how it was asked (an unknown machine, a flag
 missing), 1 a step that did not work.

@@ -87,7 +87,7 @@ Press the prefix for key mode, then the key. Only `?`, `S` and `_` need Shift, a
 | `u` | Usage and cost: what each agent reported using, and the plan limits |
 | `,` | Settings |
 | `?` | Keys help |
-| `w` | Machines: the computers reached over ssh; add, retry or remove one |
+| `w` | Machines: the computers reached over ssh; add one, or on one of yours `r` reconnect, `u` install or update maitty there, `e` edit, `x` remove |
 | `Ctrl+V` | Paste the clipboard's image |
 | `d` | In a pane on another machine: send a file from this computer (type or drop its path; again while it sends stops it) |
 | `q` | Step away (agents keep running) |
@@ -186,6 +186,8 @@ menu runs its items by letter while it is open.
 | Enter | Open the selected session; opening a sleeping session wakes it. On a session whose check failed, could not run, was overridden, went stale or is never run for its repo, open its evidence sheet instead; on one whose repo command waits for approval, open the approval |
 | Menu key (`.` after the prefix), right-click | The session's menu |
 | `+` on a machine heading | A shell on that machine at once |
+| `install` / `update` on a machine heading | Shown instead of `+` while the machine needs maitty installed or updated: runs it in a popup that asks first |
+| Right-click a machine heading | Install or Update Maitty (when it needs it), New shell here, Reconnect, Machines… |
 | Enter on a row of an agent a restart stopped | Types its resume command, then opens the session |
 | Esc | Return keyboard focus to the active pane |
 

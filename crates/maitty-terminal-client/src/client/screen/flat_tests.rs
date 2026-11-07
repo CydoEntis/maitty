@@ -297,6 +297,102 @@ fn a_machine_that_is_offline_gets_a_warning_and_no_shell() {
     assert!(app.notice.as_ref().is_some_and(|(m, _, err)| *err && m.contains("offline")));
 }
 
+/// The world with `kingdom` configured, its supervisor saying the app is not there.
+fn with_kingdom_needing_the_app() -> (App, MachineId) {
+    use crate::client::link::ConnectionState;
+    let mut app = reference_fixture::world(Stage::None);
+    app.cfg.machines.push(maitty_settings::config::MachineDef {
+        name: "kingdom".into(),
+        target: "dev@kingdom.lan".into(),
+        ..Default::default()
+    });
+    let id = MachineId(9);
+    let why = crate::link_failure::FIX_INSTALL.into();
+    app.on_link_state(id, "kingdom".into(), ConnectionState::NeedsUpdate { why });
+    (app, id)
+}
+
+fn right_click(app: &mut App, x: u16, y: u16) {
+    app.on_mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Right),
+        column: x,
+        row: y,
+        modifiers: KeyModifiers::NONE,
+    });
+}
+
+fn menu_labels(app: &App) -> Vec<String> {
+    let Mode::ScreenMenu(m) = &app.mode else {
+        panic!("no menu: {:?}", app.mode)
+    };
+    m.items.iter().map(|(l, _)| l.clone()).collect()
+}
+
+#[test]
+fn a_machine_with_no_app_has_an_install_chip_on_its_heading_that_opens_the_popup() {
+    let (mut app, _) = with_kingdom_needing_the_app();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    app.out = tx;
+    let rows = text(&mut app, 140, 36);
+    show(&rows, "kingdom needs the app");
+    let y = rows
+        .iter()
+        .position(|r| side(std::slice::from_ref(r), 0).contains(" kingdom 0 "))
+        .expect("kingdom's heading");
+    let head = side(&rows, y);
+    assert!(head.contains(" install ") && !head.contains(" + "), "{head}");
+    let x = head.find(" install ").expect("the chip") as u16 + 2;
+    click(&mut app, x, y as u16);
+    let popups: Vec<String> = std::iter::from_fn(|| rx.try_recv().ok())
+        .filter_map(|o| match o.msg {
+            ClientMsg::Command(crate::protocol::Command::Popup { cmd, .. }) => Some(cmd),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        popups.len() == 1 && popups[0].ends_with(" machine update kingdom --hold"),
+        "{popups:?}"
+    );
+    let said = app.notice.as_ref().map(|(m, ..)| m.clone()).unwrap_or_default();
+    assert!(said.starts_with(&format!("Installing {} on kingdom", crate::brand::APP_NAME)), "{said}");
+}
+
+#[test]
+fn a_machine_heading_s_right_click_menu_offers_the_fix_first() {
+    use super::machine_group::AppFix;
+    let (mut app, _) = with_kingdom_needing_the_app();
+    let rows = text(&mut app, 140, 36);
+    let y = rows
+        .iter()
+        .position(|r| side(std::slice::from_ref(r), 0).contains(" kingdom 0 "))
+        .expect("kingdom's heading");
+    right_click(&mut app, 4, y as u16);
+    assert_eq!(
+        menu_labels(&app),
+        [AppFix::Install.label().as_str(), "New shell here", "Reconnect", "Machines…"]
+    );
+    let rows = text(&mut app, 140, 36);
+    show(&rows, "kingdom's menu");
+    assert!(rows.iter().any(|r| r.contains(&AppFix::Install.label())), "drawn");
+
+    // This computer's heading has no fix and no machine to reconnect.
+    app.mode = Mode::Normal;
+    text(&mut app, 140, 36);
+    right_click(&mut app, 4, 3);
+    assert_eq!(menu_labels(&app), ["New shell here"]);
+}
+
+#[test]
+fn the_sidebar_menu_lists_each_machine_that_needs_the_app_first() {
+    use super::machine_group::AppFix;
+    let (mut app, _) = with_kingdom_needing_the_app();
+    text(&mut app, 140, 36);
+    app.sidebar_menu();
+    let labels = menu_labels(&app);
+    assert_eq!(labels[0], format!("{} on kingdom", AppFix::Install.label()));
+    assert_eq!(labels[1], "Filter sessions");
+}
+
 #[test]
 fn hiding_the_sidebar_leaves_a_show_chip_that_brings_it_back() {
     let mut app = reference_fixture::world(Stage::None);

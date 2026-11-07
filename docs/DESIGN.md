@@ -78,7 +78,10 @@ Each machine with its sessions under it, on the panel ground, 34 columns by defa
 resizable). On the top border the ` maitty ` chip at the left and ` « ` (hide) at the right; hidden,
 a ` » ` chip beside the panes brings it back. Row 2 is the filter field, `/ filter sessions` on the
 darker ground. A machine is a heading chip with its count (` This computer 5 `), an accent ` + `
-chip (a shell there at once) and a green `●` at the right while it is up. A session is two lines:
+chip (a shell there at once) and a green `●` at the right while it is up. While its app is missing
+or on another version the ` + ` gives way to an accent ` install ` or ` update ` chip, the fix one
+click from where it shows; the Machines dialog marks that row ` u install ` / ` u update ` beside its
+state. A session is two lines:
 the status mark and the name (bold and bright for an agent with something going on), then `■` in
 the project's colour, the project and the branch in violet. No status words anywhere. Agents come
 first, then shells, each in the order they started, so a row never moves when its status changes.

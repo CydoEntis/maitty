@@ -140,7 +140,7 @@ impl App {
     }
 
     /// The `+` on a machine heading: a shell at once in that machine's first workspace.
-    pub(super) fn new_ship_on(&mut self, machine: MachineId) {
+    pub(in crate::client) fn new_ship_on(&mut self, machine: MachineId) {
         let first = self
             .snap_of(machine)
             .and_then(|s| s.workspaces.first())
