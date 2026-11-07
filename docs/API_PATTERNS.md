@@ -522,6 +522,11 @@ gets `ServerMsg::SettingsChanged`. Keys, values and limits are in
 out of range answers `ServerMsg::Error` and leaves the file as it was. A peer that predates the
 variants cannot decode them (a test), and another machine's `SettingsChanged` is ignored.
 
+Protocol 75 adds `Command::NewFleet { name, cwd, colors }` and `Command::NewShip { ws, cwd, cmd }`. A fleet is a
+workspace on a machine's daemon: `NewFleet` names it (trimmed, 1 to 80 bytes, no control characters), starts it
+with one shell and takes the first unused colour from the list the client wants; `NewShip` adds a shell to an
+existing fleet. `SetWorkspaceColor` now answers an error for an index past the palette.
+
 Protocol 74 adds `Command::CloseSession { term }` and `Command::UndoClose { term }`, the shared settings
 messages above, and, without a bump of their own, the defaulted `TermInfo` fields `diff_added`,
 `diff_removed` and `exit`. `CloseSession` hides a session from the snapshot and its layouts for six seconds
