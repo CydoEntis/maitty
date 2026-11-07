@@ -49,21 +49,20 @@ needs you never looks like failed. See UI › *design system*.
 
 The terminal's own font. Bold marks names and states worth a look; italic only the splash
 tagline and a toast's preview. Status glyphs come from Settings › Appearance › Status glyphs:
-**Dots** (the default: a coloured `●` for what wants you, `○` at rest) or **Unicode**,
-where each state has a glyph of its own (`✓` passed, `✕` failed,
-`●` needs you, `◷` stale, `⊘` overridden, `?` could not run). Working is the spinner you
+**Dots** (the default: a `●` told apart by colour alone, amber needs you, green done, red problem,
+`idle` colour at rest, `┆` for an unreachable machine) or **Unicode**, where each state has a
+shape of its own (`●` needs you, `✓` done, `✕` problem, `○` idle). Working is the spinner you
 pick; checking is a sweeping ring. An agent's own mark is `✻` Claude, `◆` Codex, `✦` Gemini,
-`◇` OpenCode. See UI › *sidebar check result* and *working spinner picker*.
+`◇` OpenCode. See UI › *the sidebar* and *working spinner picker*.
 
 ## Layouts
 
-There is one look, **Floating**: each pane a
-box, `ui.gap` between them. **Pane colours** (`ui.pane_colors`) gives each pane's border its own
-colour by its place in the tab.
+There is one look, drawn to the v26 TUI design: two separate frames, the sidebar and the
+workspace, `ui.gap` apart (one column by default). A lone pane is one frame; a split is one frame
+cut by single lines with proper joints. Exactly one frame, or one pane's lines, is in the accent.
 
-`ui.padding` is `small` by default: one empty cell all round the screen, so nothing touches the
-terminal's own edge; `medium` is two, `large` three. `ui.gap` takes the same three sizes between
-panes. See UI › *layout and navigation* and *the frame*.
+`ui.padding` is the blank space inside the terminal round both frames: `small` none, `medium` (the
+default) 1 row and 2 columns, `large` 2 rows and 4 columns. See UI › *layout and navigation* and *the frame*.
 
 ## Chips, rounding and padding
 
@@ -74,60 +73,31 @@ accent fill. See UI › *UI conventions*.
 
 ## Sidebar
 
-Two halves in one card. The
-top is `LOCAL`, a title chip on the card's border: this computer's sessions. The bottom half
-starts at a rule that joins the sides (`├ REMOTE 2 ──── m add ┤`) and holds the other machines;
-`m add` opens the Add Machine dialog. Each half scrolls on its own, and with no other machine Remote
-says `no remote machines`; the `m add` chip is the one way to add. A ` + ` chip (orange on `btn`) a cell after the LOCAL title and after each online
-machine's badge opens the New Session picker on that machine; a machine that is down has none. There are no folder rows and no machine headers.
+One flat list of sessions in creation order, in its own frame (46 columns by default, 24 to 60
+resizable). The title chip ` SESSIONS ` sits on the top border with ` inbox N ` (amber while
+anything needs you) and ` « ` at the right; under it a `/ filter` row; at the foot the version (or
+the update marker), a rule, and the ` + New ` and ` Menu ` chips.
 
-Inside a half, projects are rows that fold: `▾` open or `▸` closed, the
-name in `strong` bold, and at the right `⎇ branch` in `muted` and a `✓` in `done`, or a `✕` in `err`
-when one of its sessions failed a check; `no git` outside a repo. A folded project reads
-`n hidden`, with an amber `●` before it when one of them needs you. Remote starts each machine with
-a header: ` ⇄ build ` as a badge on `btn` and its
-connection at the right as one dot: `done` when it is up, amber while it connects or reconnects, `err`
-when it cannot be reached. The words live in the Machines dialog.
+A session is two lines with no gap between sessions: its status glyph, its name in bold (idle ones
+dim), a `•` when unread, a `⌖` when pinned, and at the right `+N −N` in green and red; under it its
+project in `muted` and, at the right, where it runs: `local`, `⇄ build` or, while that machine
+is down, `┆ build` in the quietest ink (the whole row is dim then). The selected row (the sidebar
+has the keys) has the `sel` ground on both lines, the session open in the workspace the `raise`
+ground, and a new row's accent `▌` flashes for half a second. Rows never move when a status
+changes. Collapsed (under 110 columns, or by the toggle), the sidebar is a 10-column column of
+status glyphs and initials; see UI › *collapsed sidebar*. The Machines dialog and its states are
+described in UI › *Machines dialog*.
 
-A session is a **card** of two rows:
-1. its mark, its name in its state's colour (shimmering while it works, pulsing when it needs you),
-   and at the right the agent's mark and the age its state began, or `● you` in amber when it needs
-   you;
-2. what it is doing in `muted` (a check result, a plan-limit wait, `2 agents`), or in amber when it
-   asks something.
+## Pane titles
 
-Its other tabs follow it, one row each (`○ shell  2`), in line with it; a `muted` `▎` line down the left of the session and its tabs, as thick as the selection bar, groups them: the tab's state glyph
-before the name and its number at the right, so only the tab doing the work shows the working mark; the tab on screen is lit as the selected card is and one that needs
-you is in amber. One highlight serves a session, a tab and a project: the same cells and the same ends, for the selection and for the pointer. It runs from the left edge, with the accent bar there, and only its right end is rounded. A blank row follows each project, and one separates the Remote rule from the first machine. The selected card is a neutral tint on both rows
-with an accent `▎` bar. A machine whose line is not up, or that has no sessions, is its header and
-one line of how it stands: `no sessions yet`, `connecting…`, `reconnecting…`, or `needs update · click for the fix` (and so for `needs login`, `unreachable`, `refused`); a click opens the
-Machines dialog on that machine and a right-click its menu. The foot holds **+ New** and **Menu**. Collapsed, the sessions become a narrow
-column; hidden, the panes take everything. See UI › *sidebar check result* and *collapsed sidebar*.
-
-The **Add Machine dialog** (leader `w`, or `m add`) is a standard modal: one input typed like scp on
-`card2` with a parse line under it, the hosts of `~/.ssh/config` to complete it from, and a
-dim line for Windows; after Enter a checklist of the steps connecting takes. Its behaviour is in [UI](UI.md#project-specific-machines-dialog).
-
-## Pane titles and tabs
-
-The session's tabs sit on the first
-pane's top border, as the sidebar's `LOCAL` chip sits on its own,
-the border running on between the chips (`ui.tab_gap`, on by default, leaves a cell of it between one tab and the next; off, they touch). A chip's ends follow `ui.rounded`: square, rounded corners, or a pill. Each chip is led by its state's glyph (on screen or
-not) and ended by its ×, the current one in the accent and the others one `btn` chip with a muted
-number, then a **+** chip for a new tab. At the right, in the first stretch of plain border that
-fits it, a badge names where the focused session runs: `⌂ Local` or `⇄ build`.
-is named the same everywhere: its own name, else its focused session's. Panes are titled as an
-editor's are: a tab's only pane has no
-title of its own (its border carries the tabs), its tab naming it, showing its state (the glyph opens why) and
-closing it. A split's panes have no title at all:
-the tab names where you are, and a pane's top edge says its state, teal when focused and amber
-when it needs you. The tabs list the session's tabs, numbered 1–n, each with
-a × on the open one only, and ends in `◫` (split) and `⤢` (zoom the
-focused pane). A pane closes with Alt+x, leader `x` or its menu. Closing always
-asks first, naming the pane (`Close pane 2 · claude`) and lighting its lines in the
-red until you answer. Unfocused panes fade;
-the focused border is the accent, or `sky()` in shortcut mode. See UI › *the frame* and *pane
-focus*.
+There is no tab row. A lone pane's top border carries its status glyph, a title chip (the accent
+when focused), then at the right ` ▾ Project `, its folder, `⎇ branch` in violet, the machine chip
+(` ⌂ This computer ` or ` ⇄ build `) and a red `×` that closes the session; the path chips go first
+when the border is short. A split's panes each have a two-row header: the glyph and title centred
+with `⋯ ×` at the right (`⊞ ⊟ ⤢ ⋯ ×` from 60 columns), then the folder and branch. A pane closes
+with Alt+x, leader `x` or its `×`; closing always asks first, naming the pane (`Close pane 2 ·
+claude`) and lighting its lines in red until you answer. Unfocused panes fade; the focused pane's
+lines are the accent, or `sky()` in shortcut mode. See UI › *the frame* and *pane focus*.
 
 ## Side panel
 

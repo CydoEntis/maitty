@@ -99,8 +99,7 @@ fn bare_title_cell(app: &App, term: ClientTerm) -> (u16, u16) {
         app.screen.leaf_rects
     );
     let r = app
-        .screen
-        .leaf_rects
+        .pane_frames
         .iter()
         .find(|(id, _)| *id == term)
         .map(|(_, r)| *r)
@@ -179,89 +178,6 @@ fn text(buf: &Buffer) -> String {
         .collect()
 }
 
-/// `r`'s title row as text.
-fn title_of(buf: &Buffer, r: Rect) -> String {
-    (r.x..r.right()).map(|x| buf[(x, r.y)].symbol()).collect()
-}
-
-/// Every look at 80×24 and 160×45 (and Compact wide enough to split) with 1, 2 and 3 panes:
-/// the label, the app and its frame.
-fn every_split() -> impl Iterator<Item = (String, App, Buffer)> {
-    LOOKS.into_iter().flat_map(|look| {
-        [1, 2, 3].into_iter().flat_map(move |panes| {
-            [(80, 24), (160, 45), wide(look)]
-                .into_iter()
-                .collect::<std::collections::BTreeSet<_>>()
-                .into_iter()
-                .map(move |(w, h)| {
-                    let mut app = split_world(look, panes);
-                    let buf = draw(&mut app, w, h);
-                    (format!("{look}, {panes} pane(s), {w}x{h}"), app, buf)
-                })
-        })
-    })
-}
-
-#[test]
-fn no_pane_has_a_title_in_any_look() {
-    for (label, app, buf) in every_split() {
-        // A lone pane's top row is its terminal's first line; a split's is its edge. In Floating the
-        // first pane's top border carries the tabs, which are words.
-        let first = app
-            .screen
-            .leaf_rects
-            .iter()
-            .min_by_key(|(_, r)| (r.y, r.x))
-            .map(|(term, _)| *term);
-        for (term, r) in app
-            .screen
-            .leaf_rects
-            .iter()
-            .filter(|(term, _)| app.screen.leaf_rects.len() > 1 && Some(*term) != first)
-        {
-            let top = title_of(&buf, *r);
-            assert!(
-                !top.chars().any(char::is_alphanumeric),
-                "{label}: pane {}'s top edge carries no words, its tab names it: {top}\n{}",
-                term.term,
-                text(&buf)
-            );
-        }
-    }
-}
-
-#[test]
-fn a_named_tab_keeps_its_name_on_its_tab() {
-    let mut app = split_world("floating", 2);
-    app.screen.tabs[0].name = "build".into();
-    let buf = draw(&mut app, 160, 45);
-    let first = |app: &App| {
-        app.screen
-            .leaf_rects
-            .iter()
-            .min_by_key(|(_, r)| (r.y, r.x))
-            .map(|(_, r)| *r)
-            .expect("a pane")
-    };
-    // The tabs are on the first pane's top border.
-    let tabs = |app: &App, buf: &Buffer| title_of(buf, first(app));
-    assert!(
-        tabs(&app, &buf).contains(" build "),
-        "the tab's name is on its tab: {}",
-        tabs(&app, &buf)
-    );
-    let mut second = app.screen.tabs[0].clone();
-    (second.layout, second.focus, second.name) =
-        (Node::Leaf(5), ClientTerm::local(5), String::new());
-    app.screen.tabs.push(second);
-    let buf = draw(&mut app, 160, 45);
-    assert!(
-        tabs(&app, &buf).contains(" 1 ") && tabs(&app, &buf).contains(" build "),
-        "with several tabs the tab adds its number: {}",
-        tabs(&app, &buf)
-    );
-}
-
 #[test]
 fn closing_a_pane_hides_it_and_offers_undo_in_every_look() {
     for look in LOOKS {
@@ -301,14 +217,9 @@ fn a_lone_session_closes_at_once_and_the_banner_names_it() {
     );
 }
 
-/// The cell that carries a pane's focus in `look`: a box's corner, Compact's `│` rule, or
-/// Hairline's rule.
-fn focus_cell(look: &str, r: Rect) -> (u16, u16) {
-    match look {
-        "hairline" => (r.x + 1, r.y + 1),
-        "compact" => (r.x, r.y + 1),
-        _ => (r.x, r.y),
-    }
+/// The cell that carries a pane's focus: its frame's top left corner.
+fn focus_cell(_look: &str, r: Rect) -> (u16, u16) {
+    (r.x, r.y)
 }
 
 #[test]
@@ -507,32 +418,4 @@ fn pressing_a_shown_key_runs_its_item() {
     pane_menu(&mut app);
     press(&mut app, KeyCode::Char('x'), KeyModifiers::NONE);
     assert!(app.closing_banner().is_some(), "x closes this pane with an undo: {:?}", app.mode);
-}
-
-#[test]
-fn a_sessions_only_tab_split_still_has_a_close_that_asks_for_all_its_panes() {
-    for look in ["floating", "hairline"] {
-        let mut app = split_world(look, 3);
-        draw(&mut app, 160, 45);
-        let close = app.hits.iter().find_map(|(r, h)| {
-            matches!(
-                h,
-                Hit::Screen(crate::client::screen::ScreenHit::CloseTab(_))
-            )
-            .then_some(*r)
-        });
-        let close = close.unwrap_or_else(|| panic!("{look}: the tab has a ✕"));
-        app.on_mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: close.x,
-            row: close.y,
-            modifiers: KeyModifiers::NONE,
-        });
-        let leaves = app.screen.tabs[app.screen.tab].leaves();
-        assert!(
-            matches!(&app.mode, Mode::Confirm(c) if matches!(&c.act, crate::client::menu::Act::End(ts) if *ts == leaves)),
-            "{look}: asks to close every pane: {:?}",
-            app.mode
-        );
-    }
 }

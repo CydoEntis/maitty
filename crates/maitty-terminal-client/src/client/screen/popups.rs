@@ -736,31 +736,6 @@ pub(in crate::client) fn list_row(
     st
 }
 
-/// A working agent's name: the working colour with a bright band sweeping across it.
-pub(in crate::client) fn shimmer(
-    text: &str,
-    frame: u64,
-    base: Color,
-    bright: Color,
-    st: Style,
-) -> Vec<Seg> {
-    const WIDTH: f32 = 3.0;
-    let chars: Vec<char> = text.chars().collect();
-    let span = chars.len() as u64 + 8;
-    let pos = (frame % span) as f32 - 4.0;
-    chars
-        .iter()
-        .enumerate()
-        .map(|(i, ch)| {
-            let k = (1.0 - (i as f32 - pos).abs() / WIDTH).max(0.0);
-            seg(
-                ch.to_string(),
-                st.fg(crate::client::render::blend(base, bright, k * 0.8)),
-            )
-        })
-        .collect()
-}
-
 /// Go to's rows. With nothing typed it opens on what needs you (the Inbox): agents asking,
 /// ones that finished, pull requests that need you; then every session by project. Typing
 /// finds any session.

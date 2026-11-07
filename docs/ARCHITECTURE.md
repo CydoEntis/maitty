@@ -113,12 +113,12 @@ src/
     remote_status_tests.rs a remote agent's row is the status its own daemon reported, against a real daemon behind the shim
     remote_image.rs sends the clipboard image to the machine a pane is on over its ssh line and gives the path it is kept at there; `remote_image_tests.rs` runs it against the fake remote
     machine_update_tests.rs `machine update` against the shim's `remote-sh` mode (the real install script on a temporary filesystem)
-    screen/machine_group_tests.rs, screen/machines_tests.rs frames of a machine's group in the sidebar, rail and Inbox, and of the Machines dialog
+    screen/flat_tests.rs the flat sidebar, the collapsed column, the status glyphs and the workspace frames; screen/machines_tests.rs frames of the Machines dialog
     view_keys.rs keys inside full-pane views and the remaining popups
-    screen/      the layout: mod.rs (state, model, click targets), draw.rs (grid, pane cards
-                 with the tabs in their title), side.rs (the sidebar card and its rows), side_tabs.rs (a session's tab lines, both looks), card.rs (cards, pills, fading; the Look from
+    screen/      the layout: mod.rs (state, model, click targets), draw.rs (grid, the sidebar overlay, the toast),
+                 workspace.rs (the lone pane's framed border, a split's lines and pane headers), side.rs (the flat sidebar: one row per pane, in id order), rail.rs (the 10-column collapsed sidebar), status_mark.rs (the status glyph and spinner pace), chips.rs (the chips on a border), card.rs (cards, pills, fading; the Look from
                  settings), leader.rs (key map, actions list, new tab), popups.rs,
-                 machine_group.rs (a machine's header, its notes and the grey of a down machine's rows, in the sidebar and the rail),
+                 machine_group.rs (a machine's label, state mark and whether its line is down),
                  machines.rs (the Machines dialog: view, keys, drawing),
                  dialogs.rs, glyphs.rs (session and check marks), splash.rs, popover.rs (follow-up and why, beside a row), heads.rs (same-file heads-ups,
                  both diffs), sheet.rs (the card docked right of the panes:

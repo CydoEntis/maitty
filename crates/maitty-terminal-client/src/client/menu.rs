@@ -23,14 +23,8 @@ pub(super) const RESTORE_WHILE_WORKING: &str =
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Act {
-    /// Dial a machine again.
-    ReconnectMachine(String),
-    /// Install or update the app on a machine, in a popup that asks first.
-    UpdateMachine(String),
-    /// Change where a machine is: the dialog, on its address.
-    EditMachine(MachineId),
-    /// Take a machine out of the list; its sessions keep running there.
-    RemoveMachine(String),
+    /// Run a command, as its key would: an item of the Project menu.
+    Tool(crate::keys::Action),
     /// Show this session in a split of the focused one, on that side.
     Beside(ClientTerm, crate::layout::Dir),
     /// Pin a session to the top of the list, or let it go.
@@ -296,7 +290,6 @@ impl App {
                 Act::End(_)
                     | Act::CloseProject(_)
                     | Act::ArchiveConversation(_)
-                    | Act::RemoveMachine(_)
             )
         });
         self.mode = Mode::ScreenMenu(Box::new(ScreenMenu {
@@ -416,9 +409,10 @@ impl App {
                 items.push(("Snapshots…".to_string(), Act::Snapshots(d, term)));
             }
         }
-        if !s.queued.is_empty() {
+        let queued = info.map_or(0, |t| t.queued.len());
+        if queued > 0 {
             items.push((
-                format!("Drop queued follow-ups ({})", s.queued.len()),
+                format!("Drop queued follow-ups ({queued})"),
                 Act::ClearQueue(term),
             ));
         }
@@ -476,49 +470,65 @@ impl App {
         );
     }
 
-    /// Right-click on a project row.
-    /// Right-click on a remote machine's line.
-    pub(super) fn menu_for_machine(&mut self, machine: MachineId, at: (u16, u16)) {
-        let name = self.machine_name(machine).to_string();
-        if name.is_empty() {
-            return;
+    /// The ` ▾ Project ` chip: the tools that look at the project the pane is in, then what else
+    /// the project's folder offers (worktrees, its checks, snapshots, closing it).
+    pub(super) fn menu_for_project_tools(&mut self, term: ClientTerm, at: (u16, u16)) {
+        if Some(term) != self.focused() {
+            self.cmd_on(term.machine, Command::FocusPane { term: term.term });
         }
-        let items = vec![
-            ("Reconnect".to_string(), Act::ReconnectMachine(name.clone())),
-            ("Update…".to_string(), Act::UpdateMachine(name.clone())),
-            ("Edit…".to_string(), Act::EditMachine(machine)),
-            ("Remove".to_string(), Act::RemoveMachine(name.clone())),
-        ];
-        self.menu(name, items, at);
+        let items = self.project_items(term);
+        self.menu("Project".into(), items, at);
     }
 
-    pub(super) fn menu_for_project(&mut self, pi: usize, at: (u16, u16)) {
-        if let Some((title, items)) = self.project_items(pi) {
-            self.menu(title, items, at);
-        }
-    }
-
-    pub(super) fn project_items(&self, pi: usize) -> Option<(String, Vec<(String, Act)>)> {
+    /// The items of `term`'s Project menu, in order.
+    pub(super) fn project_items(&self, term: ClientTerm) -> Vec<(String, Act)> {
+        use crate::keys::Action;
+        let mut items: Vec<(String, Act)> = [
+            ("Files", Action::Files),
+            ("Changes", Action::Changes),
+            ("Branches", Action::Branches),
+            ("History", Action::History),
+            ("References", Action::References),
+        ]
+        .into_iter()
+        .map(|(label, action)| (label.to_string(), Act::Tool(action)))
+        .collect();
         let model = self.screen_model();
-        let p = model.get(pi)?;
-        let mut items = vec![
-            (
-                "Rename".to_string(),
-                Act::RenameProject(p.key.clone(), p.name.clone()),
-            ),
-            ("Close".to_string(), Act::CloseProject(pi)),
-        ];
-        if p.git {
-            items.push(("New worktree".to_string(), Act::NewWorktree(pi)));
-            items.push(("Open worktree…".to_string(), Act::OpenWorktree(pi)));
-            items.push(("Clean up worktrees…".to_string(), Act::TidyOpen(pi)));
-        } else if self.files_are_here(p.machine) {
+        if let Some(pi) = model
+            .iter()
+            .position(|p| p.sessions().any(|s| s.native_term == Some(term)))
+        {
+            let p = &model[pi];
+            if p.git {
+                items.push(("New worktree".to_string(), Act::NewWorktree(pi)));
+                items.push(("Open worktree…".to_string(), Act::OpenWorktree(pi)));
+                items.push(("Tidy worktrees…".to_string(), Act::TidyOpen(pi)));
+            } else if self.files_are_here(p.machine) {
+                items.push((
+                    "Make it a git repo…".to_string(),
+                    Act::GitInit(p.path.clone()),
+                ));
+            }
             items.push((
-                "Make it a git repo…".to_string(),
-                Act::GitInit(p.path.clone()),
+                "Rename project…".to_string(),
+                Act::RenameProject(p.key.clone(), p.name.clone()),
             ));
+            items.push(("Close project".to_string(), Act::CloseProject(pi)));
         }
-        Some((p.name.clone(), items))
+        let dir = self
+            .term_info(term)
+            .map(|i| i.top.clone().unwrap_or_else(|| i.cwd.clone()));
+        if let Some(d) = dir.filter(|d| {
+            self.cfg.snapshots.enabled
+                && self.is_local_pane(term)
+                && crate::gitfs::head(d).is_some()
+        }) {
+            items.push(("Snapshots…".to_string(), Act::Snapshots(d, term)));
+        }
+        if let Some(check) = self.term_info(term).and_then(|t| t.check()) {
+            items.extend(super::screen::check_menu_items(term, check));
+        }
+        items
     }
 
     pub(super) fn on_hy_menu_key(&mut self, mut m: ScreenMenu, k: &KeyEvent) {
@@ -674,24 +684,6 @@ impl App {
                 Some(c) => Some(c),
                 None => return,
             },
-            Act::RemoveMachine(name) => Some(Confirm {
-                title: "Remove machine".into(),
-                sub: String::new(),
-                what: name.clone(),
-                detail: self
-                    .cfg
-                    .machines
-                    .iter()
-                    .find(|m| m.name == *name)
-                    .map(|m| m.target.clone())
-                    .unwrap_or_default(),
-                note: "It's taken off this list. Its sessions keep running on it, and you can add it again.".into(),
-                list: Vec::new(),
-                yes: "Remove".into(),
-                key: '\n',
-                danger: true,
-                act: a.clone(),
-            }),
             Act::CloseProject(pi) => model.get(*pi).map(|p| {
                 let n = p.sessions().count();
                 Confirm {
@@ -904,19 +896,7 @@ impl App {
                     );
                 }
             }
-            Act::ReconnectMachine(name) => {
-                let said = self.machine_retry(&name);
-                self.notify(said.text, said.error);
-            }
-            Act::EditMachine(machine) => self.open_machine_edit(machine),
-            Act::UpdateMachine(name) => {
-                let said = self.machine_update(&name);
-                self.notify(said.text, said.error);
-            }
-            Act::RemoveMachine(name) => {
-                let said = self.machines_remove(&name);
-                self.notify(said.text, said.error);
-            }
+            Act::Tool(action) => self.act(action),
             Act::RenameProject(key, name) => {
                 self.mode = Mode::Prompt {
                     kind: super::PromptKind::RenameProject(key),

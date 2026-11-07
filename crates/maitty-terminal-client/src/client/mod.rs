@@ -54,7 +54,9 @@ use crate::theme::Theme;
 use anyhow::Result;
 use connections::{Burst, Connections, NotConnected, SERVER_BURST};
 use futures_util::{FutureExt, StreamExt};
-use ids::{ClientSession, ClientTerm, MachineId, MachineSnap, Outgoing, Remote};
+#[cfg(test)]
+use ids::ClientSession;
+use ids::{ClientTerm, MachineId, MachineSnap, Outgoing, Remote};
 use ratatui::crossterm::event::{
     self, Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton,
     MouseEvent, MouseEventKind,
@@ -989,6 +991,10 @@ impl App {
                     self.settle_alerts();
                     if frame != last_frame && ((self.motion_on() && (self.any_working() || self.any_checking() || self.any_calling())) || matches!(self.mode, Mode::Spinners(_))) {
                         last_frame = frame;
+                        self.dirty = true;
+                    }
+                    // A new sidebar row's accent bar is showing for a moment.
+                    if !self.screen.flash.is_empty() {
                         self.dirty = true;
                     }
                     if matches!(self.mode, Mode::Prefix { .. }) || screen::splash_animating(self) {
@@ -2134,8 +2140,6 @@ fn same_dir(a: &std::path::Path, b: &std::path::Path) -> bool {
 
 #[cfg(test)]
 mod reference_fixture;
-#[cfg(test)]
-mod reference_frames_tests;
 #[cfg(test)]
 mod site_frames;
 #[cfg(test)]

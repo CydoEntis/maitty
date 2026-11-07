@@ -28,7 +28,7 @@ pub(super) const SHEET_W: u16 = 72;
 /// The narrowest it gets.
 pub(in crate::client) const SHEET_MIN: u16 = 32;
 /// The columns the panes keep beside it; with less, it takes the whole pane column.
-pub(in crate::client) const PANES_KEEP: u16 = 52;
+pub(in crate::client) const PANES_KEEP: u16 = 40;
 /// How far `[` and `]` move its edge.
 const SHEET_STEP: u16 = 4;
 /// The percent of the screen Files takes before you size it: the tree and a readable file.
@@ -36,7 +36,7 @@ const FILES_SHARE: u32 = 55;
 /// Narrower than this, Files shows the tree or the open file, not both side by side.
 const FILES_BOTH_FROM: u16 = 60;
 /// The drawer's width, one for all four tools, before you size it.
-pub(super) const DRAWER_W: u16 = 84;
+pub(super) const DRAWER_W: u16 = 60;
 /// The widest it floats, and the columns of the terminal it always leaves.
 const DRAWER_MAX: u16 = 110;
 const OVERLAY_KEEP: u16 = 24;
@@ -94,10 +94,11 @@ pub(in crate::client) fn widest(col: Rect, look: Look) -> u16 {
     col.width.saturating_sub(look.gap + PANES_KEEP)
 }
 
-/// Whether `kind` floats over the panes: a tool of the drawer that is not pinned. The terminal
-/// is then never resized by opening, closing or sizing it.
-pub(in crate::client) fn overlaid(app: &App, kind: SheetKind) -> bool {
-    drawer_tab(kind).is_some() && app.screen.saved.drawer_floats
+/// Whether `kind` floats over the panes: every tool of the drawer does (the Project menu's
+/// panel, 60 columns by default). The terminal is then never resized by opening, closing or
+/// sizing it.
+pub(in crate::client) fn overlaid(_app: &App, kind: SheetKind) -> bool {
+    drawer_tab(kind).is_some()
 }
 
 /// The widest a floating drawer gets over `col`: the terminal keeps `OVERLAY_KEEP` columns.

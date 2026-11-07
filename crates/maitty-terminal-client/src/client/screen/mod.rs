@@ -18,7 +18,7 @@ use crate::brand::APP_COMMAND;
 use crate::client::ids::{ClientSession, ClientTerm, MachineId, MachineSnap};
 use crate::keys::Action;
 use crate::protocol::{
-    CheckInfo, SecretText, SessionKey, Status, SubagentActivity, TermId, TermInfo,
+    CheckInfo, SecretText, SessionKey, Status, TermId, TermInfo,
 };
 use crate::theme::Theme;
 use ratatui::Frame;
@@ -74,10 +74,6 @@ pub(super) struct Saved {
     pub recent: Vec<String>,
     /// The side sheet's width per kind of view (`SheetKind::key`), as you sized it.
     pub sheet_w: HashMap<String, u16>,
-    /// The tool drawer floats over the terminal instead of being a column beside it (which
-    /// shrinks the terminal, so nothing is hidden under it).
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub drawer_floats: bool,
     /// `session_order` and `placed` of every other machine, by its configured name. The top-level
     /// ones are this machine's, so a file from before machines reads as it always did. A machine
     /// that is no longer configured keeps its entry.
@@ -224,10 +220,15 @@ pub(super) struct Screen {
     pub side_scroll: u16,
     pub follow: bool,
     pub side_rect: Rect,
-    /// The sidebar's Remote half (its header row and list) as last drawn, and how far its list is
-    /// scrolled; empty while the sidebar is too short to split.
-    pub remote_rect: Rect,
-    pub remote_scroll: u16,
+    /// The sidebar's filter: what is typed, and whether the keys are going into it.
+    pub filter: String,
+    pub filtering: bool,
+    /// The full sidebar is open over the workspace (a screen too narrow to have room for it).
+    pub overlay_open: bool,
+    /// The sessions the sidebar has listed so far, and the ones that appeared since, with when
+    /// (their accent bar flashes for a moment).
+    pub rows_known: Option<HashSet<ClientSession>>,
+    pub flash: HashMap<ClientSession, Instant>,
     /// The sidebar drew the Update or Restart chip this frame.
     pub release_in_side: bool,
     /// Where the side sheet was drawn, and the widest it could be there (its edge's drag and
@@ -238,7 +239,6 @@ pub(super) struct Screen {
     pub sheet_screen_w: u16,
     /// Drawn this frame: sidebar sessions in order, project keys, worktree and branch rows.
     pub visible: Vec<ClientSession>,
-    pub proj_keys: Vec<String>,
     pub wt_keys: Vec<(String, PathBuf)>,
     /// The keys the mode bar's suggestions press, drawn this frame.
     pub bar_keys: Vec<crate::keys::KeySpec>,
@@ -264,8 +264,6 @@ pub(super) struct Screen {
     pub lines_at: HashMap<PathBuf, Instant>,
     /// Dragging the sidebar edge or the split divider.
     pub drag: Option<Drag>,
-    /// The group being dragged in the sidebar (its key).
-    pub drag_key: Option<String>,
     /// The splash's selected button.
     pub splash_sel: usize,
     /// The wide splash: the away box holds the keys, its chosen session, and whether the last
@@ -279,8 +277,6 @@ pub(super) struct Screen {
     pub bar: Option<(ClientTerm, Rect, usize)>,
     /// Where each agent row was drawn in the sidebar (for the follow-up box beside it).
     pub row_y: std::collections::HashMap<ClientTerm, u16>,
-    /// What was just sent or queued to each session, shown on its row for a few seconds.
-    pub receipts: std::collections::HashMap<ClientTerm, popover::Receipt>,
     /// Quiet agents you marked seen in the Inbox, by when they went quiet: listed again only
     /// once they go quiet anew.
     pub quiet_seen: std::collections::HashMap<ClientTerm, u64>,
@@ -401,14 +397,6 @@ pub(super) enum Drag {
     Divider(usize),
     /// A pane's scrollbar.
     Scroll(ClientTerm),
-    /// A group's header in the sidebar (its index when pressed; moved yet?): dragged onto
-    /// another group it takes that place, released where it was it folds.
-    Group(usize, bool),
-    /// A session's row (moved yet?; what was pressed, the row or its `+N −N`): dragged onto
-    /// another in its group it takes that place, released where it was the press acts.
-    Session(ClientSession, bool, ScreenHit),
-    /// A tab's pill (its index now): dragged onto another tab it takes that place.
-    Tab(usize),
     /// A pane pressed by its title: the pane it would swap with if let go now, and where the
     /// pointer is (its name follows it).
     Pane {
@@ -522,25 +510,10 @@ pub(super) struct Session {
     pub since: u64,
     /// Working with no output or report since then (unix seconds): it may be stuck.
     pub quiet_since: Option<u64>,
-    /// Working, and its last calls repeat: how many calls the repeat has reached.
-    pub repeats: Option<u32>,
     /// You marked this quiet spell seen in the Inbox.
     pub quiet_seen: bool,
     pub question: Option<String>,
     pub is_agent: bool,
-    pub asleep: bool,
-    /// Subagents it's running right now.
-    pub subagents: Vec<String>,
-    pub subagent_activity: Vec<SubagentActivity>,
-    /// Stopped by a plan limit: the app says "continue" then (unix seconds).
-    pub resume_at: Option<u64>,
-    /// The session whose agent started this one, if one did.
-    pub started_by: Option<ClientTerm>,
-    /// Helpers it wants to start and is waiting on you for (0: not asking).
-    pub helpers_wanted: usize,
-    pub secret_ask: Option<String>,
-    /// Follow-ups waiting for its turn to end, next first.
-    pub queued: Vec<String>,
     /// The latest check the app ran after its turn: the headline of `checks`.
     pub check: Option<CheckInfo>,
     /// Every checkpoint, in the project's order.
@@ -571,7 +544,6 @@ pub(super) struct Proj {
     pub name: String,
     pub color: Color,
     pub wts: Vec<Wt>,
-    pub fresh: bool,
     /// A git repo (worktrees are possible).
     pub git: bool,
     /// Recent local branches not checked out anywhere.
@@ -606,69 +578,6 @@ pub(super) fn side_focused(app: &App) -> bool {
     )
 }
 
-/// A split is one session: the pane it was split from keeps its row, the panes opened
-/// beside it don't get rows of their own. The row shows the most urgent of the panes in its own
-/// tab, so an agent in a split that needs you still says so (and what it asks). Another tab of
-/// the session has a row of its own in the sidebar and says its own state there.
-pub(super) fn fold_splits(projs: &mut [Proj], tabs: &[ScreenTab]) {
-    let mut owners: Vec<ClientTerm> = tabs.iter().map(|t| t.owner).collect();
-    owners.sort_unstable();
-    owners.dedup();
-    for owner in owners {
-        // Everything in the session's tabs, besides the session itself.
-        let beside: Vec<ClientTerm> = tabs
-            .iter()
-            .filter(|t| t.owner == owner)
-            .flat_map(|t| t.leaves())
-            .filter(|id| *id != owner)
-            .collect();
-        // The panes sharing the session's own tab.
-        let own: Vec<ClientTerm> = tabs
-            .iter()
-            .filter(|t| t.owner == owner && t.contains(owner))
-            .flat_map(|t| t.leaves())
-            .collect();
-        let has_row = projs
-            .iter()
-            .flat_map(|p| p.sessions())
-            .any(|s| s.native_term == Some(owner));
-        if beside.is_empty() || !has_row {
-            continue;
-        }
-        let mut members: Vec<Session> = Vec::new();
-        for p in projs.iter_mut() {
-            for w in &mut p.wts {
-                w.sessions.retain(|s| {
-                    let gone = matches!(s.key.key, SessionKey::Pane(_))
-                        && s.native_term.is_some_and(|id| beside.contains(&id));
-                    if gone {
-                        members.push(s.clone());
-                    }
-                    !gone
-                });
-            }
-        }
-        let Some(row) = projs
-            .iter_mut()
-            .flat_map(|p| p.wts.iter_mut())
-            .flat_map(|w| w.sessions.iter_mut())
-            .find(|s| s.native_term == Some(owner))
-        else {
-            continue;
-        };
-        if let Some(m) = members
-            .into_iter()
-            .filter(|m| m.native_term.is_some_and(|id| own.contains(&id)))
-            .filter(|m| rank(m.status) < rank(row.status))
-            .min_by_key(|m| rank(m.status))
-        {
-            row.status = m.status;
-            row.since = m.since;
-            row.question = m.question;
-        }
-    }
-}
-
 pub(super) fn folder_name(p: &Path) -> String {
     p.file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -699,18 +608,6 @@ pub(super) fn age(since: u64) -> String {
     match s {
         0..=59 => format!("{s}s"),
         60..=3599 => format!("{}m", s / 60),
-        3600..=86_399 => format!("{}h", s / 3600),
-        _ => format!("{}d", s / 86_400),
-    }
-}
-
-/// How long until `at` (unix seconds): "1h20m", "5m", "now".
-pub(super) fn until(at: u64) -> String {
-    let s = at.saturating_sub(now_secs());
-    match s {
-        0..=59 => "now".into(),
-        60..=3599 => format!("{}m", s / 60),
-        3600..=86_399 if (s % 3600) / 60 > 0 => format!("{}h{}m", s / 3600, (s % 3600) / 60),
         3600..=86_399 => format!("{}h", s / 3600),
         _ => format!("{}d", s / 86_400),
     }
@@ -899,7 +796,6 @@ impl App {
                     .unwrap_or_else(|| folder_name(path)),
                 color: self.theme.project(ci, &fallback),
                 wts: Vec::new(),
-                fresh: self.screen.fresh.contains(&key),
                 git,
                 branches: Vec::new(),
             });
@@ -1031,35 +927,11 @@ impl App {
                     status: t.status,
                     since: t.since,
                     quiet_since: t.quiet_since,
-                    repeats: t.repeats,
                     quiet_seen: t
                         .quiet_since
                         .is_some_and(|at| self.screen.quiet_seen.get(&term) == Some(&at)),
                     question,
                     is_agent: t.agent.is_some(),
-                    asleep: t.asleep,
-                    subagents: t.subagents.clone(),
-                    subagent_activity: t
-                        .subagent_activity
-                        .iter()
-                        .filter(|activity| {
-                            activity
-                                .parent
-                                .as_deref()
-                                .is_none_or(|parent| Some(parent) == t.session.as_deref())
-                        })
-                        .filter(|activity| activity.state.active())
-                        .cloned()
-                        .collect(),
-                    resume_at: t.resume_at,
-                    started_by: t.started_by.map(|id| ClientTerm::on(m.id, id)),
-                    helpers_wanted: t.helper_ask.len(),
-                    secret_ask: snap
-                        .secret_requests
-                        .iter()
-                        .find(|r| r.term == *id)
-                        .map(|r| r.label.clone()),
-                    queued: t.queued.clone(),
                     check: t.check().cloned(),
                     checks: t.checks.clone(),
                     down: self.machine_down(m.id),
@@ -1123,26 +995,14 @@ impl App {
                 status: c.status,
                 since: now_secs(),
                 quiet_since: None,
-                repeats: None,
                 quiet_seen: false,
                 question: None,
                 is_agent: true,
-                asleep: false,
-                subagents: Vec::new(),
-                subagent_activity: Vec::new(),
-                resume_at: None,
-                started_by: None,
-                helpers_wanted: 0,
-                secret_ask: None,
-                queued: Vec::new(),
                 check,
                 checks,
                 down: self.machine_down(m.id),
             });
         }
-        fold_splits(&mut projs, &self.screen.tabs);
-        // Groups come from where sessions are: one left with none (its only pane is inside a
-        // split elsewhere) goes.
         projs.retain(|p| p.sessions().next().is_some());
         for p in &mut projs {
             p.wts.sort_by_key(|w| (!w.main, w.name.clone()));
@@ -1570,28 +1430,24 @@ fn session_title(t: &TermInfo, name: &str, top: &Path) -> String {
 pub(super) enum ScreenHit {
     /// The toast's ✕.
     ToastClose,
-    /// Fold / unfold a project.
-    ToggleProj(usize),
+    /// The sidebar's ` inbox N ` chip.
+    OpenInbox,
+    /// The sidebar's `/ filter` row.
+    SideFilter,
+    /// A button on a split pane's header.
+    PaneBtn(ClientTerm, PaneBtn),
+    /// A pane's ` ▾ Project ` chip: the project tools.
+    ProjectMenu(ClientTerm),
+    /// The project on a sidebar row: filter the list to it.
+    SideProject(ClientSession),
     /// The sidebar's "+ new": a plain shell in the selected project.
     Session(ClientSession),
     /// A button on the selected Inbox item: the key it stands for (`\n` Enter, `\x1b` Esc).
     InboxKey(char),
     CloseSplit(ClientTerm),
     Divider(usize),
-    /// The ⋯ on a hovered sidebar row: its menu.
-    RowMenuSess(ClientSession),
-    /// Start a shell in this project (its "nothing running" line).
-    ShellIn(usize),
-    RowMenuProj(usize),
     ConfirmYes,
     ConfirmNo,
-    TabPick(usize),
-    CloseTab(usize),
-    NewTab,
-    /// The tab row's `◫`: split the focused pane.
-    TabSplit,
-    /// The tab row's `⤢`: the focused pane fills the tab, or goes back.
-    TabZoom,
     /// Outside an overlay: closes it.
     Close,
     /// Inside an overlay's panel: nothing.
@@ -1599,9 +1455,6 @@ pub(super) enum ScreenHit {
     FinderPick(usize),
     /// A row of the New session dialog: a project in step 1, a machine in step 2.
     NsRow(usize),
-    /// A ` + ` chip on this computer's title or an online machine's badge, or a connected machine
-    /// with nothing running: opens the dialog on that machine.
-    NsMachine(MachineId),
     NpProj(usize),
     NpRun(usize),
     NpBeside(usize),
@@ -1622,10 +1475,6 @@ pub(super) enum ScreenHit {
     SplashKey(char),
     /// A splash card: a click chooses it, a click on the chosen one opens it.
     SplashCard(usize),
-    /// A chip on the tool rail: the drawer's tab at that place in `DRAWER_TABS`.
-    Tool(usize),
-    /// A remote machine's line in the sidebar: a right-click offers to reconnect or remove it.
-    MachineRow(MachineId),
     /// A recent project on the wide splash (its index among them).
     SplashProject(usize),
     /// A session in the wide splash's away list.
@@ -1651,10 +1500,6 @@ pub(super) enum ScreenHit {
     Update,
     /// Restart the daemon onto the installed version (after an update).
     Restart,
-    /// The sidebar's Remote half, empty: open the Machines dialog to add one.
-    AddMachine,
-    /// A click on the Local (`false`) or Remote (`true`) title: fold or unfold that half.
-    ToggleRegion(bool),
     NewShell,
     /// A row of the worktree clean-up list (tick or untick it), and its Remove button.
     TidyRow(usize),
@@ -1683,8 +1528,6 @@ pub(super) enum ScreenHit {
     BranchChoice(usize),
     /// A button of the repo-command approval.
     Approve(check_approve::ApproveHit),
-    /// A row's "wants to start N helpers" line: opens the question.
-    HelperAsk(ClientTerm),
     /// A choice in that question.
     HelperAnswer(ClientTerm, crate::protocol::HelperChoice),
     SecretGive(ClientTerm),
@@ -1740,6 +1583,7 @@ mod behaviour;
 mod branch_sheet;
 mod card;
 mod check;
+mod chips;
 mod check_actions;
 mod check_approve;
 mod check_inbox;
@@ -1752,6 +1596,7 @@ mod draw;
 mod failure_note;
 pub(in crate::client) mod glyphs;
 mod hairline;
+pub(in crate::client) mod status_mark;
 mod heads;
 mod helpers_ask;
 mod keyoverlay;
@@ -1781,12 +1626,10 @@ mod references_sheet;
 mod secret_ask;
 pub(in crate::client) use self::hairline::{flat_theme, plain, plain_on, set_plain};
 #[cfg(test)]
-pub(in crate::client) use self::rail::RAIL_W;
+mod flat_tests;
 #[cfg(test)]
 mod frame_tests;
 mod inbox;
-#[cfg(test)]
-mod machine_group_tests;
 mod mode_bar;
 #[cfg(test)]
 mod panes_apart_tests;
@@ -1794,13 +1637,12 @@ mod panes_apart_tests;
 mod reference;
 mod sheet;
 mod side;
-mod side_tabs;
 mod splash;
-mod tools;
+mod workspace;
 mod splash_wide;
 mod tidy;
 pub(in crate::client) use self::{
     branch_sheet::*, card::*, check_actions::*, check_approve::*, check_sheet::*, dialogs::*,
     draw::*, heads::*, helpers_ask::*, keyoverlay::*, leader::*, mode_bar::*, popover::*,
-    popups::*, references_sheet::*, secret_ask::*, sheet::*, side::*, splash::*, tidy::*,
+    popups::*, references_sheet::*, secret_ask::*, sheet::*, side::*, splash::*, tidy::*, workspace::*,
 };

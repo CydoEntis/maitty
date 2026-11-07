@@ -72,7 +72,8 @@ fn ctrl_k_opens_search_commands_and_it_lists_commands_then_sessions() {
     println!("{shown}");
     assert!(shown.contains("Search commands") && shown.contains("type what you want to do"));
     let commands = shown.find("COMMANDS").expect("COMMANDS");
-    let sessions = shown.find("SESSIONS").expect("SESSIONS");
+    // The sidebar's own title also says SESSIONS, ahead of the palette: look after COMMANDS.
+    let sessions = commands + shown[commands..].find("SESSIONS").expect("SESSIONS");
     assert!(commands < sessions, "commands first");
     assert!(shown.contains("↑ ↓") && shown.contains("Enter") && shown.contains("Esc"));
     assert!(shown.contains("General") || shown.contains("Panes") || shown.contains("Find"), "a category column");
