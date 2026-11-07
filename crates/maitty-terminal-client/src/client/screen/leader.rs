@@ -14,18 +14,16 @@ pub(in crate::client) type MenuItem = (&'static str, Action);
 /// the rows.
 pub(in crate::client) type MenuGroup = (&'static str, Vec<MenuItem>);
 
-/// The Menu's sections in order, each under its title. "Shell here" starts a plain shell (what
-/// `n` does); "Session" starts an agent straight away (`s`). The tools are here because the
-/// rail that also opens them is hidden unless asked for (`ui.tool_rail`).
+/// The Menu's sections in order, each under its title. "Shell here" starts a plain shell in the
+/// folder you are in; "Session..." opens the New session dialog for any project and machine.
 pub(in crate::client) fn menu_groups() -> Vec<MenuGroup> {
     vec![
         (
             "NEW",
             vec![
                 ("Shell here", Action::ShellHere),
-                ("Session", Action::StartSession),
+                ("Session...", Action::PickSession),
                 ("Pane beside this", Action::SplitRight),
-                ("Tab", Action::NewTab),
             ],
         ),
         (
@@ -33,7 +31,8 @@ pub(in crate::client) fn menu_groups() -> Vec<MenuGroup> {
             vec![
                 ("Files", Action::Files),
                 ("Changes", Action::Changes),
-                ("Branch", Action::Branches),
+                ("Branches", Action::Branches),
+                ("History", Action::History),
                 ("References", Action::References),
             ],
         ),
@@ -45,13 +44,7 @@ pub(in crate::client) fn menu_groups() -> Vec<MenuGroup> {
                 ("All keys", Action::Help),
             ],
         ),
-        (
-            "SIDEBAR",
-            vec![
-                ("Collapse sidebar", Action::ToggleSidebar),
-                ("Hide sidebar", Action::HideSidebar),
-            ],
-        ),
+        ("SIDEBAR", vec![("Collapse sidebar", Action::ToggleSidebar)]),
         ("", vec![("Settings", Action::Settings)]),
     ]
 }
@@ -103,7 +96,6 @@ const MENU_FRAME_ROWS: u16 = 4;
 fn menu_label(app: &App, a: &Action, label: &'static str) -> &'static str {
     match a {
         Action::ToggleSidebar if !app.sidebar => "Expand sidebar",
-        Action::HideSidebar if app.side_hidden => "Show sidebar",
         _ => label,
     }
 }
@@ -182,6 +174,13 @@ pub(in crate::client) fn draw_actions(
             let on = i == sel || hovered(app, rr);
             if on {
                 row_pill(look, buf, rr.x, yy, rr.width, t.sel_on(t.bg), t.bg);
+                put(
+                    buf,
+                    rr.x + 1,
+                    yy,
+                    &[seg("▌", Style::default().fg(t.accent).bg(t.sel_on(t.bg)))],
+                    rr.right(),
+                );
             }
             let bg = if on { t.sel_on(t.bg) } else { t.bg };
             let st = Style::default().bg(bg);

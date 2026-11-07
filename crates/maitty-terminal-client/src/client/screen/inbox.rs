@@ -604,7 +604,7 @@ pub(super) fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, ground: 
             &[
                 seg("✓ ", Style::default().bg(ground).fg(t.done)),
                 seg(
-                    "Nothing is waiting on you.",
+                    "You're all caught up",
                     Style::default().bg(ground).fg(t.text),
                 ),
             ],
@@ -1235,6 +1235,53 @@ mod tests {
             app.mode == Mode::Normal && focused(&sent, 4),
             "finished, no check: the session"
         );
+    }
+
+    #[test]
+    fn y_a_and_n_answer_the_selected_question_in_its_session() {
+        for (key, byte) in [('y', b'y'), ('a', b'a'), ('n', b'n')] {
+            let mut app = inbox_world(Stage::Failed, 3);
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+            app.out = tx;
+            app.on_key(KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE));
+            let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).collect();
+            assert!(
+                sent.iter().any(|m| matches!(m, ClientMsg::Input { term: 3, data } if data == &[byte])),
+                "{key} goes to the session's PTY: {sent:?}"
+            );
+            assert!(matches!(app.mode, Mode::GoTo { .. }), "and the Inbox stays");
+        }
+    }
+
+    #[test]
+    fn c_clears_the_finished_cards_and_leaves_the_rest() {
+        let mut app = inbox_world(Stage::Failed, 4);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.out = tx;
+        app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE));
+        let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).collect();
+        assert!(
+            sent.iter().any(|m| matches!(m, ClientMsg::Command(Command::MarkSeen { term: 4 }))),
+            "the finished session is marked seen: {sent:?}"
+        );
+        assert!(
+            !sent.iter().any(|m| matches!(m, ClientMsg::Command(Command::ClosePane { .. } | Command::CloseSession { .. }))),
+            "no session is closed"
+        );
+    }
+
+    #[test]
+    fn an_empty_inbox_says_you_are_all_caught_up() {
+        let mut app = world(Stage::None);
+        app.snap.questions.clear();
+        for t in app.snap.terms.values_mut() {
+            t.status = crate::protocol::Status::Idle;
+        }
+        app.screen_sync();
+        app.mode = Mode::GoTo { query: String::new(), sel: 0 };
+        let area = Rect::new(0, 0, 62, 12);
+        let rows = draw(&mut app, area, 62, 12);
+        assert!(rows.iter().any(|r| r.contains("✓ You're all caught up")), "{rows:?}");
     }
 
     #[test]

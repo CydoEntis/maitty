@@ -571,7 +571,7 @@ fn the_bar_keeps_shortcut_mode_and_names_what_has_the_keys() {
             .collect::<String>()
     };
     assert!(
-        row(&buf).contains("SHORTCUT") && row(&buf).contains("shell"),
+        row(&buf).contains("⌃A") && row(&buf).contains("shell"),
         "{}",
         row(&buf)
     );
@@ -616,7 +616,8 @@ fn the_bar_counts_who_needs_you_and_keeps_update_at_its_end() {
         .collect::<String>()
         .trim_end()
         .to_string();
-    assert!(row.starts_with(" TYPING  tab 1/1 · 1 split"), "{row}");
+    assert!(row.starts_with(" TYPING"), "{row}");
+    assert!(row.contains("keys go to codex"), "where the keys go: {row}");
     assert!(
         row.contains("● warm-finch needs you") && row.ends_with("↑ Update 9.9.9"),
         "Update keeps the right end, needs you before it: {row}"

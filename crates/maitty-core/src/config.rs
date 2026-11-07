@@ -388,7 +388,7 @@ fn add_agent_to(file: &std::path::Path, def: &AgentDef) -> Result<()> {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            prefix: "ctrl+space".into(),
+            prefix: DEFAULT_PREFIX.into(),
             editor: String::new(),
             teach_agents: true,
             mcp: Mcp::default(),
@@ -1253,8 +1253,13 @@ impl Config {
         let mut warnings = Vec::new();
         let prefix = self.prefix.parse::<KeySpec>().unwrap_or_else(|e| {
             warnings.push(format!("prefix: {e}"));
-            "ctrl+space".parse().unwrap()
+            DEFAULT_PREFIX.parse().unwrap()
         });
+        // For one release the old prefix still works, unless the new one was changed on purpose
+        // or something else is bound to it.
+        let legacy_prefix = (self.prefix == DEFAULT_PREFIX)
+            .then(|| LEGACY_PREFIX.parse::<KeySpec>().ok())
+            .flatten();
         let mut build = |defaults: &[(&str, &str)], user: &BTreeMap<String, String>| {
             let mut map: HashMap<KeySpec, Action> = HashMap::new();
             let mut order: Vec<KeySpec> = Vec::new();
@@ -1298,8 +1303,10 @@ impl Config {
             .copied()
             .collect();
         let (global, _) = build(&globals, &self.keys.global);
+        let legacy_prefix = legacy_prefix.filter(|k| !global.contains_key(k));
         Keymap {
             prefix,
+            legacy_prefix,
             prefixed,
             prefixed_order,
             global,
@@ -1385,13 +1392,28 @@ pub struct CompiledAgent {
     pub resume_last: Option<String>,
 }
 
+/// The key that opens shortcut mode unless the config says otherwise.
+pub const DEFAULT_PREFIX: &str = "ctrl+a";
+/// The previous release's default, still accepted for one release beside `DEFAULT_PREFIX`.
+pub const LEGACY_PREFIX: &str = "ctrl+space";
+
 pub struct Keymap {
     pub prefix: KeySpec,
+    /// The previous release's prefix, accepted for one release when it collides with nothing;
+    /// None when the prefix was changed on purpose.
+    pub legacy_prefix: Option<KeySpec>,
     pub prefixed: HashMap<KeySpec, Action>,
     /// Prefix bindings in definition order, for the which-key and help screens.
     pub prefixed_order: Vec<KeySpec>,
     pub global: HashMap<KeySpec, Action>,
     pub warnings: Vec<String>,
+}
+
+impl Keymap {
+    /// Whether `key` opens shortcut mode: the prefix, or the previous release's while it works.
+    pub fn is_prefix(&self, key: &KeySpec) -> bool {
+        *key == self.prefix || self.legacy_prefix.as_ref() == Some(key)
+    }
 }
 
 pub fn default_shell() -> String {

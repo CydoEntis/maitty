@@ -1597,11 +1597,10 @@ pub(super) enum ScreenHit {
     /// Inside an overlay's panel: nothing.
     Noop,
     FinderPick(usize),
-    /// A row of the New Session popup, and one of its machine chips.
+    /// A row of the New session dialog: a project in step 1, a machine in step 2.
     NsRow(usize),
-    NsChip(usize),
     /// A ` + ` chip on this computer's title or an online machine's badge, or a connected machine
-    /// with nothing running: opens the popup on that machine's home folder.
+    /// with nothing running: opens the dialog on that machine.
     NsMachine(MachineId),
     NpProj(usize),
     NpRun(usize),
@@ -1761,12 +1760,20 @@ mod machine_group;
 pub(in crate::client) mod machines;
 #[cfg(test)]
 mod machines_tests;
-mod newsession;
-pub(in crate::client) mod quick_new;
-mod session_popup;
-mod session_popup_ui;
-pub(in crate::client) use session_popup::NewSession;
-pub(in crate::client) use session_popup_ui::draw_session_popup;
+mod service;
+pub(in crate::client) use service::{Service, draw_service_down};
+mod updates;
+pub(in crate::client) use updates::draw_updates;
+mod closing;
+pub(in crate::client) use closing::{Closing, draw_banner};
+mod new_session;
+mod new_session_ui;
+#[cfg(test)]
+mod new_session_tests;
+#[cfg(test)]
+mod keys_tests;
+pub(in crate::client) use new_session::NewSession;
+pub(in crate::client) use new_session_ui::draw_new_session;
 mod popover;
 mod popups;
 mod rail;

@@ -80,24 +80,24 @@ name, such as the MCP server (`maitty integrate mcp` renames it) or another agen
 ## Quick start
 
 1. Open a terminal in your project and run `maitty`.
-2. Click **+ new** for a shell and type `claude` (or any agent), or press `Ctrl+Space`, then
-   `s` to start your default agent straight away.
+2. Press `Ctrl+T` (or click **+ new**), pick a folder and a machine, and a shell opens there; type
+   `claude` (or any agent) in it.
 3. Watch the sidebar. In the default theme, teal means working, amber means it needs you,
    green means it finished and dim means idle. Click a row to go to that session.
-4. Press `Ctrl+Space`, then `q` to step away. Your agents keep running; run `maitty`
+4. Press `Ctrl+A`, then `q` to step away. Your agents keep running; run `maitty`
    to come back.
 5. Run `maitty doctor` to check your setup and connect agents for exact status.
 
 ## Shortcuts
 
-The bar along the bottom always shows the mode. It reads `TYPING · Ctrl+Space for
-shortcuts` while keys go to the terminal. Press `Ctrl+Space` (or click the bar) to enter
+The bar along the bottom always shows the mode. It reads `TYPING · keys go to claude ·
+Ctrl+A then ← sidebar …` while keys go to the terminal. Press `Ctrl+A` (or click the bar) to enter
 **shortcut mode**: the bar turns sky blue and lists keys to press (`n shell`, `f files`,
 `? all keys`, `Esc type`, …; click one to run it), and each key runs an action until you press
-`Esc`, `Ctrl+Space` again or click into a pane, or start a new shell, session, tab or split
+`Esc`, `Ctrl+A` again or click into a pane, or start a new shell, session, tab or split
 to type into. While the sidebar, a popup or a panel has the
 keys, the bar names it and its keys (`SETTINGS · ↑↓ move · ←→ change · Tab section · Esc
-close`), and a key that isn't a shortcut says "Shortcut mode — Esc to type". Every key is a single key, and only `?` needs Shift. Press `?` to see them all.
+close`), and a key that isn't a shortcut says "Shortcut mode — Esc to type". Every key is a single key, and only `?`, `_` and `|` need Shift. Press `?` to see them all.
 
 | | |
 |---|---|
@@ -145,7 +145,7 @@ maitty handoff 3 --to codex            # hand a task to another agent
 
 ## Configure
 
-Open **Settings** with `Ctrl+Space`, then `,`. Changes save to your config file with its
+Open **Settings** with `Ctrl+A`, then `,`. Changes save to your config file with its
 comments kept.
 
 ```sh

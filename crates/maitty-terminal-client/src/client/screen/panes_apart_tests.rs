@@ -262,80 +262,42 @@ fn a_named_tab_keeps_its_name_on_its_tab() {
     );
 }
 
-/// The cells of `r` drawn in exactly `colour`.
-fn cells_in(buf: &Buffer, r: Rect, colour: Color) -> usize {
-    r.positions()
-        .filter(|p| buf[(p.x, p.y)].fg == colour)
-        .count()
-}
-
 #[test]
-fn closing_a_pane_names_it_and_lights_it_in_every_look() {
+fn closing_a_pane_hides_it_and_offers_undo_in_every_look() {
     for look in LOOKS {
         let mut app = split_world(look, 2);
         let (w, h) = wide(look);
         draw(&mut app, w, h);
-        let [first, second] = [0, 1].map(|i| app.screen.tabs[0].leaves()[i]);
+        let [_, second] = [0, 1].map(|i| app.screen.tabs[0].leaves()[i]);
         app.menu_act(crate::client::menu::Act::End(vec![second]));
-        let buf = draw(&mut app, w, h);
-        let screen = text(&buf);
+        // A working agent asks for the same press again; nothing else is asked, a close can be undone.
+        if app.closing_banner().is_some_and(|b| b.warn) {
+            app.menu_act(crate::client::menu::Act::End(vec![second]));
+        }
+        assert_eq!(app.mode, Mode::Normal, "{look}: no dialog opens");
+        let banner = app.closing_banner().unwrap_or_else(|| panic!("{look}: the undo offer"));
         assert!(
-            screen.contains("Close pane 2 · warm-finch"),
-            "{look}: the confirm names the pane:\n{screen}"
+            banner.text.starts_with("Closed ") && banner.text.contains("then z undo 6s"),
+            "{look}: {}",
+            banner.text
         );
-        assert!(
-            screen.contains("pixls"),
-            "{look}: and its folder:\n{screen}"
-        );
-        let rect = |term: ClientTerm| {
-            app.screen
-                .leaf_rects
-                .iter()
-                .find(|(id, _)| *id == term)
-                .map(|(_, r)| *r)
-                .expect("the pane is on screen")
-        };
-        let (closing, kept) = (rect(second), rect(first));
-        let t = app.theme.clone();
-        let line = |r: Rect| {
-            if look == "hairline" {
-                (r.x + 1, r.y)
-            } else if look == "compact" {
-                (r.x, r.y + 1)
-            } else {
-                (r.x, r.y)
-            }
-        };
-        assert_eq!(
-            buf[line(closing)].fg,
-            t.err,
-            "{look}: the pane being closed is lit, bright over the dimmed screen:\n{screen}"
-        );
-        // Compact lights its zone's `│` rule, as it does for focus; the others their border or rule.
-        assert!(
-            cells_in(&buf, closing, t.err) > 20,
-            "{look}: its lines, not a cell"
-        );
-        assert_ne!(buf[line(kept)].fg, t.err, "{look}: only that pane");
-        app.on_key(crossterm::event::KeyEvent::new(
-            crossterm::event::KeyCode::Esc,
-            crossterm::event::KeyModifiers::NONE,
-        ));
-        let buf = draw(&mut app, w, h);
-        assert_eq!(cells_in(&buf, closing, t.err), 0, "{look}: Esc puts it out");
+        let screen = text(&draw(&mut app, w, h));
+        assert!(screen.contains("then z undo"), "{look}: the banner is drawn:\n{screen}");
     }
 }
 
+
 #[test]
-fn a_lone_pane_s_confirm_says_close_pane_and_its_name() {
+fn a_lone_session_closes_at_once_and_the_banner_names_it() {
     let mut app = split_world("floating", 1);
     let focus = app.focused().expect("a focused pane");
     draw(&mut app, 160, 45);
     app.menu_act(crate::client::menu::Act::End(vec![focus]));
-    let screen = text(&draw(&mut app, 160, 45));
+    let banner = app.closing_banner().expect("the undo offer");
     assert!(
-        screen.contains("Close pane · fix-footer"),
-        "no number for a lone pane:\n{screen}"
+        banner.text.starts_with("Closed fix-footer"),
+        "the banner names the session: {}",
+        banner.text
     );
 }
 
@@ -363,11 +325,7 @@ fn the_focused_pane_stays_lit_under_a_menu_popover_or_confirm_in_every_look() {
             |app, _, _| app.mode = Mode::Actions { sel: 0 },
             true,
         ),
-        (
-            "a close confirm",
-            |app, _, other| app.menu_act(crate::client::menu::Act::End(vec![other])),
-            true,
-        ),
+        ("the Updates box", |app, _, _| app.mode = Mode::Updates, true),
     ];
     for look in LOOKS {
         for (what, open, dims) in overlays {
@@ -460,18 +418,17 @@ fn press(app: &mut App, code: KeyCode, mods: KeyModifiers) {
 fn the_pane_menu_shows_the_real_bound_keys() {
     let mut app = split_world("floating", 2);
     let rows = pane_menu(&mut app);
-    assert_eq!(key_of(&app, "Split right"), "h");
-    assert_eq!(key_of(&app, "Split down"), "v");
+    assert_eq!(key_of(&app, "Split right"), "|");
+    assert_eq!(key_of(&app, "Split down"), "-");
     assert_eq!(key_of(&app, "Close pane"), "x");
-    assert_eq!(key_of(&app, "Move pane right"), "Alt+→");
     let split = rows
         .iter()
         .find(|r| r.contains("Split right"))
         .expect("drawn");
     assert!(!split.contains(" h "), "the key isn't drawn: {split}");
-    let rename = key_of(&app, "Rename pane");
+    let rename = key_of(&app, "Rename");
     assert!(
-        rename.len() == 1 && !["v", "h", "x"].contains(&rename.as_str()),
+        rename.len() == 1 && !["-", "|", "x"].contains(&rename.as_str()),
         "no binding: a letter of its own, clear of the bound keys: {rename}"
     );
 }
@@ -492,11 +449,7 @@ fn the_pane_menu_follows_a_rebinding() {
     pane_menu(&mut app);
     assert_eq!(key_of(&app, "Close pane"), "w");
     press(&mut app, KeyCode::Char('w'), KeyModifiers::NONE);
-    assert!(
-        matches!(&app.mode, Mode::Confirm(c) if c.title.starts_with("Close pane")),
-        "the new key runs it: {:?}",
-        app.mode
-    );
+    assert!(app.closing_banner().is_some(), "the new key runs it: {:?}", app.mode);
 }
 
 #[test]
@@ -553,22 +506,7 @@ fn pressing_a_shown_key_runs_its_item() {
     let mut app = split_world("floating", 2);
     pane_menu(&mut app);
     press(&mut app, KeyCode::Char('x'), KeyModifiers::NONE);
-    assert!(
-        matches!(&app.mode, Mode::Confirm(c) if c.title == "Close pane 1"),
-        "x closes this pane, after asking: {:?}",
-        app.mode
-    );
-    let mut app = split_world("floating", 2);
-    let before = app.screen.tabs[0].leaves();
-    pane_menu(&mut app);
-    press(&mut app, KeyCode::Right, KeyModifiers::ALT);
-    assert_eq!(app.mode, Mode::Normal);
-    let after = app.screen.tabs[0].leaves();
-    assert_eq!(
-        after,
-        before.iter().rev().copied().collect::<Vec<_>>(),
-        "Alt+→ moves the pane right"
-    );
+    assert!(app.closing_banner().is_some(), "x closes this pane with an undo: {:?}", app.mode);
 }
 
 #[test]

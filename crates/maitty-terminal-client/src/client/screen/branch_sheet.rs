@@ -308,7 +308,7 @@ impl App {
         k: &KeyEvent,
     ) -> bool {
         match k.code {
-            KeyCode::Esc | KeyCode::Char('b') => return false,
+            KeyCode::Esc | KeyCode::Char('g') => return false,
             KeyCode::Down | KeyCode::Char('j') => {
                 v.sel = (v.sel + 1).min(v.rows().saturating_sub(1))
             }

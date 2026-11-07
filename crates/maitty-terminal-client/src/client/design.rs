@@ -1333,6 +1333,8 @@ fn single_label(a: &crate::keys::Action) -> &'static str {
         A::ScrollDown => "Scroll down",
         A::PrevPrompt => "Previous command",
         A::NextPrompt => "Next command",
+        A::NextSession => "Next session",
+        A::PrevSession => "Previous session",
         _ => "",
     }
 }
@@ -1385,6 +1387,20 @@ fn direct_key_rows() -> Vec<(&'static str, Vec<crate::keys::Action>)> {
         .filter_map(|(_, name)| name.parse::<A>().ok())
         .map(|a| (label_of(&a), vec![a]))
         .collect();
+    let listed: Vec<A> = rows.iter().flat_map(|(_, acts)| acts.clone()).collect();
+    // The keys that need no prefix and no Alt letter: new session, the palette, the inbox,
+    // changing session, renaming.
+    rows.extend(
+        crate::keys::DEFAULT_GLOBAL_KEYS
+            .iter()
+            .filter_map(|(_, name)| name.parse::<A>().ok())
+            .filter(|a| !matches!(a, A::SelectTab(_)))
+            .filter(|a| !listed.contains(a))
+            .map(|a| {
+                let label = Some(label_of(&a)).filter(|l| !l.is_empty()).unwrap_or_else(|| single_label(&a));
+                (label, vec![a])
+            }),
+    );
     rows.push(("Go to tab 1–9", (1..=9).map(A::SelectTab).collect()));
     rows.extend([Left, Up, Down, Right].map(|d| (single_label(&A::Focus(d)), vec![A::Focus(d)])));
     rows
@@ -1404,6 +1420,11 @@ fn direct_key_text(app: &App, acts: &[crate::keys::Action]) -> String {
                 .map(|(k, _)| *k)
                 .collect();
             keys.sort_by_key(|k| k.to_config());
+            // One action on one row lists every key it has (Alt+A and Ctrl+T both start a session).
+            if acts.len() == 1 {
+                return (!keys.is_empty())
+                    .then(|| keys.iter().map(long_key).collect::<Vec<_>>().join(" · "));
+            }
             keys.first().map(long_key)
         })
         .collect();
@@ -1853,6 +1874,10 @@ pub(super) fn long_key(k: &crate::keys::KeySpec) -> String {
     }
     let code = match k.code {
         crossterm::event::KeyCode::Char(' ') => "Space".to_string(),
+        // A letter under a modifier is written as a capital, the way a keycap reads: `Ctrl+A`.
+        crossterm::event::KeyCode::Char(c) if c.is_ascii_lowercase() && !k.mods.is_empty() => {
+            c.to_ascii_uppercase().to_string()
+        }
         crossterm::event::KeyCode::Char(c) => c.to_string(),
         _ => {
             let bare = crate::keys::KeySpec {
