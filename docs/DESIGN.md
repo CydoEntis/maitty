@@ -217,7 +217,8 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   their key at the right in mono, separators between groups. A danger row is red; one that stops something running
   asks a second click ("Stop claude? Click again"). Arrow keys, Home and End move, Esc or a click outside closes and
   gives focus back. **Session**: Open, Open in split right, Open in split down (not for the one in front), Open
-  terminal here (agents), Rename… (F2), Copy folder path, Show changes (agents), Stop session or Close shell.
+  terminal here (agents), Rename… (F2), Copy folder path, Get a file… (another machine's sessions), Show changes
+  (agents), Stop session or Close shell.
   **Subagent**: Open, Open in split right, Copy summary, Stop subagent (disabled: the agent stops its own subagents).
   **Machine**: New agent chat here, New shell here, Collapse or Expand, Group by project or Show as one list, Machine
   settings…. **Pane** (⋯ or a right-click in the pane): Split right, Split down, Maximize pane, Show chat or Show

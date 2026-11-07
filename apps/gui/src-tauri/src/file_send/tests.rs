@@ -90,7 +90,10 @@ fn what_is_not_one_regular_file_is_refused_before_anything_is_sent() {
     let dir = folder("kinds");
     let good = file(&dir, "a.log", b"a");
     assert!(error_of(&[]).contains("no file"));
-    assert!(error_of(&[good.clone(), dir.display().to_string()]).contains("is not a file"));
+    assert!(
+        plan_for(&[good.clone(), dir.display().to_string()]).is_ok(),
+        "a folder may be sent too"
+    );
     let missing = dir.join("nope").display().to_string();
     assert!(error_of(&[good.clone(), missing]).starts_with("could not read nope"));
     assert!(error_of(&["relative/a.log".into()]).contains("full path"));
@@ -416,4 +419,57 @@ fn through_the_shim_the_files_really_land_privately_in_the_far_homes_cache() {
         events.last(),
         Some(SendEvent::Done { sent: 2, .. })
     ));
+}
+
+/// A dropped folder is planned like a file, and sent through the fake `ssh` shim in `remote-sh`
+/// mode, where the real put-folder script keeps it in a fake remote's private cache.
+#[test]
+fn a_dropped_folder_is_planned_and_sent_whole() {
+    use maitty_machines::MachineDef as Def;
+    let has_sh = std::process::Command::new("sh")
+        .args(["-c", "command -v tar wc cat tr mktemp mv find >/dev/null"])
+        .stdin(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success());
+    if !has_sh {
+        eprintln!("skipped: no POSIX sh with the put-folder script's tools on this host");
+        return;
+    }
+    let root = folder("drop-folder");
+    let dropped = root.join("my project");
+    std::fs::create_dir_all(dropped.join("src")).unwrap();
+    std::fs::write(dropped.join("src").join("main.rs"), "fn main() {}").unwrap();
+    let home = root.join("home");
+    std::fs::create_dir_all(&home).unwrap();
+
+    let mut job = plan(
+        &[Def { name: "box".into(), target: "box.example".into(), ..Def::default() }],
+        &["ssh".to_owned()],
+        "box",
+        "t-1",
+        &[dropped.display().to_string()],
+    )
+    .expect("a folder may be dropped");
+    job.machine = Machine::ssh(
+        "box",
+        vec![
+            maitty_test_support::fake_ssh().to_string_lossy().into_owned(),
+            "--mode=remote-sh".into(),
+            format!("--home={}", home.display()),
+        ],
+        "maitty",
+    );
+    let events = std::sync::Mutex::new(Vec::new());
+    run(&job, &Arc::new(AtomicBool::new(false)), &|event| events.lock().unwrap().push(event));
+    let events = events.into_inner().unwrap();
+
+    assert!(
+        matches!(events.last(), Some(SendEvent::Done { sent: 1, count: 1, .. })),
+        "{events:?}"
+    );
+    let cache = home.join(".cache").join(maitty_machines::APP_COMMAND).join("pastes");
+    let kept: Vec<_> = std::fs::read_dir(&cache).unwrap().map(|e| e.unwrap().path()).collect();
+    assert_eq!(kept.len(), 1, "{kept:?}");
+    assert_eq!(std::fs::read_to_string(kept[0].join("src").join("main.rs")).unwrap(), "fn main() {}");
+    let _ = std::fs::remove_dir_all(&root);
 }

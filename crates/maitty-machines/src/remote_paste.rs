@@ -89,7 +89,7 @@ pub fn pasted_path(stdout: &str) -> Result<String, String> {
 
 /// The last thing ssh said, as one clean line. It came from another machine, so it is cut short
 /// first and then loses every control and invisible character, as a remote's snapshot does.
-fn said_by(stderr: &str) -> String {
+pub(crate) fn said_by(stderr: &str) -> String {
     let line = stderr
         .lines()
         .map(str::trim)
@@ -107,6 +107,7 @@ pub fn paste_failure(what: &str, machine: &str, code: Option<i32>, stderr: &str)
     match code {
         Some(70) => format!("{what} reached {machine} incomplete; try again"),
         Some(72) => format!("{machine} could not keep {what} (no writable cache folder there)"),
+        Some(73) => format!("{machine} could not unpack {what}"),
         None => format!("{machine} did not take {what} in time"),
         _ if said.is_empty() => format!("could not send {what} to {machine}"),
         _ => format!("could not send {what} to {machine}: {said}"),

@@ -27,7 +27,7 @@ function show(sessions: SessionView[], more: Partial<SidebarProps> = {}) {
     sessions, machines: [LOCAL_HEAD], focusedId: null, openSubagent: null, mode: 'docked', online: true, canStart: true, renamingId: null, portalContainer: null,
     onToggleRail: none, side: 'left', width: 264, onResize: none, onResizeEnd: none, inboxCount: 0, inboxNeeds: false, onOpenInbox: none,
     onNewAgentChat: none, onNewShell: none, onAddMachine: none, onMachineSettings: none, onShowSession: none, onShowSubagent: none, onRenameSession: none,
-    onSetName: none, onSplitSession: none, onSplitSubagent: none, onOpenTerminal: none, onCopyPath: none, onCopyText: none, onShowChanges: none,
+    onSetName: none, onSplitSession: none, onSplitSubagent: none, onOpenTerminal: none, onCopyPath: none, onCopyText: none, onShowChanges: none, onGetFile: none,
     onEndSession: none, onOpenSettings: none, updateSlot: null, railUpdateSlot: null,
     ...more,
   }
@@ -128,6 +128,27 @@ describe('a session row', () => {
     show([session(1, { agent: 'claude' })], { onRenameSession })
     await user.dblClick(screen.getByRole('button', { name: /^claude,/ }))
     expect(onRenameSession).toHaveBeenCalledWith('t1')
+  })
+
+  it('offers no Get a file on a session of this computer', () => {
+    show([session(1, { agent: 'claude' })])
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^claude,/ }))
+    expect(screen.queryByRole('menuitem', { name: /Get a file/ })).toBeNull()
+  })
+
+  it('offers Get a file on a session of another machine, and asks for that session', async () => {
+    const user = userEvent.setup()
+    const onGetFile = vi.fn()
+    show([session(2, { machine: 4, machineName: 'devbox', agent: 'claude', named: true, title: 'There' })], { machines: [LOCAL_HEAD, DEVBOX], onGetFile })
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^There,/ }))
+    await user.click(screen.getByRole('menuitem', { name: 'Get a file…' }))
+    expect(onGetFile).toHaveBeenCalledWith('t2')
+  })
+
+  it('cannot get a file while the daemon is offline', () => {
+    show([session(2, { machine: 4, machineName: 'devbox', agent: 'claude', named: true, title: 'There' })], { machines: [LOCAL_HEAD, DEVBOX], online: false })
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^There,/ }))
+    expect(screen.getByRole('menuitem', { name: 'Get a file…' })).toBeDisabled()
   })
 
   it('types the name in place while renaming, Enter saves and Escape cancels', async () => {

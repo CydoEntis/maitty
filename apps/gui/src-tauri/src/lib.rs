@@ -1,4 +1,6 @@
 mod add_machine;
+mod browse;
+mod file_get;
 mod file_send;
 mod attachment;
 mod image_paste;
@@ -781,6 +783,10 @@ pub fn run() {
             add_machine::add_machine,
             add_machine::cancel_add_machine,
             file_send::send_files_to_machine,
+            browse::list_remote_folder,
+            browse::index_remote_files,
+            file_get::get_file_from_machine,
+            file_get::open_pulled_folder,
             file_send::cancel_file_send,
             attachment::attach_local_file,
             attachment::attachments_exist,

@@ -5,8 +5,8 @@
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// How often a running ssh is looked at for its end and the deadline.
@@ -106,6 +106,100 @@ pub fn run_watched(
         cancelled,
         stdout: out.join().unwrap_or_default(),
         stderr,
+    })
+}
+
+/// What came of a line whose stdout was read as it arrived.
+pub struct Streamed<T> {
+    /// `None` when a signal ended it, or the limit did, or `Watch::cancel` did.
+    pub code: Option<i32>,
+    /// Ended because `Watch::cancel` was set.
+    pub cancelled: bool,
+    pub stderr: String,
+    /// What `consume` made of the stream.
+    pub result: Result<T, String>,
+}
+
+/// Run `argv` and hand its stdout to `consume` as it arrives, instead of collecting it. The line
+/// is ended (killed) when `limit` passes, when `watch.cancel` is set, or when `consume` fails; a
+/// read in progress then ends with the pipe. `consume` should stop at the end of what it wants:
+/// the exit status is still waited for.
+pub fn run_reading<T>(
+    argv: &[String],
+    limit: Duration,
+    watch: &Watch,
+    consume: impl FnOnce(&mut dyn Read) -> Result<T, String>,
+) -> Result<Streamed<T>, String> {
+    let mut command = Command::new(&argv[0]);
+    command
+        .args(&argv[1..])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(crate::CREATE_NO_WINDOW);
+    }
+    let mut child = command
+        .spawn()
+        .map_err(|e| format!("running {} (is OpenSSH installed?): {e}", argv[0]))?;
+    let mut stdout = child.stdout.take();
+    let err = drain(child.stderr.take());
+    let child = Arc::new(Mutex::new(child));
+    let finished = Arc::new(AtomicBool::new(false));
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let watcher = {
+        let (child, finished, cancelled, cancel) = (
+            Arc::clone(&child),
+            Arc::clone(&finished),
+            Arc::clone(&cancelled),
+            Arc::clone(&watch.cancel),
+        );
+        let deadline = Instant::now() + limit;
+        std::thread::spawn(move || {
+            while !finished.load(Ordering::Relaxed) {
+                let cancel_now = cancel.load(Ordering::Relaxed);
+                if cancel_now || Instant::now() >= deadline {
+                    cancelled.store(cancel_now, Ordering::Relaxed);
+                    if let Ok(mut child) = child.lock() {
+                        let _ = child.kill();
+                    }
+                    return;
+                }
+                std::thread::sleep(POLL);
+            }
+        })
+    };
+
+    let result = match stdout.as_mut() {
+        Some(pipe) => consume(pipe),
+        None => Err("the line gave no output to read".to_owned()),
+    };
+    if result.is_err()
+        && let Ok(mut child) = child.lock()
+    {
+        let _ = child.kill();
+    }
+    drop(stdout);
+    let code = loop {
+        let status = child.lock().map_err(|_| "waiting for ssh failed".to_owned())?.try_wait();
+        match status {
+            Ok(Some(status)) => break status.code(),
+            Ok(None) => std::thread::sleep(POLL),
+            Err(e) => {
+                finished.store(true, Ordering::Relaxed);
+                return Err(format!("waiting for {}: {e}", argv[0]));
+            }
+        }
+    };
+    finished.store(true, Ordering::Relaxed);
+    let _ = watcher.join();
+    Ok(Streamed {
+        code,
+        cancelled: cancelled.load(Ordering::Relaxed),
+        stderr: err.join().unwrap_or_default(),
+        result,
     })
 }
 
@@ -226,5 +320,84 @@ mod tests {
         )
         .unwrap();
         assert!(ran.stdout.len() as u64 <= MOST_OUTPUT_BYTES);
+    }
+}
+
+#[cfg(test)]
+mod reading_tests {
+    use super::*;
+
+    fn sh(script: &str) -> Option<Vec<String>> {
+        let has_sh = Command::new("sh")
+            .arg("-c")
+            .arg("true")
+            .status()
+            .is_ok_and(|status| status.success());
+        has_sh.then(|| vec!["sh".into(), "-c".into(), script.into()])
+    }
+
+    #[test]
+    fn the_output_is_read_as_it_arrives_and_the_status_is_kept() {
+        let Some(argv) = sh("printf 'one\ntwo\n'; echo said >&2; exit 3") else {
+            return;
+        };
+        let got = run_reading(&argv, ASK_LIMIT, &Watch::default(), |out| {
+            let mut text = String::new();
+            out.read_to_string(&mut text).map_err(|e| e.to_string())?;
+            Ok(text.replace("\r\n", "\n"))
+        })
+        .unwrap();
+        assert_eq!(got.result, Ok("one\ntwo\n".to_owned()));
+        assert_eq!(got.code, Some(3));
+        assert_eq!(got.stderr.trim(), "said");
+        assert!(!got.cancelled);
+    }
+
+    #[test]
+    fn a_cancel_ends_a_line_that_is_still_sending() {
+        let Some(argv) = sh("echo started; exec sleep 3") else {
+            return;
+        };
+        let watch = Watch::default();
+        let cancel = Arc::clone(&watch.cancel);
+        let got = run_reading(&argv, ASK_LIMIT, &watch, |out| {
+            let mut first = [0u8; 1];
+            out.read_exact(&mut first).map_err(|e| e.to_string())?;
+            cancel.store(true, Ordering::Relaxed);
+            let mut rest = Vec::new();
+            out.read_to_end(&mut rest).map_err(|e| e.to_string())?;
+            Ok(rest.len())
+        })
+        .unwrap();
+        assert!(got.cancelled);
+        assert_ne!(got.code, Some(0), "it was ended, not finished");
+    }
+
+    #[test]
+    fn the_time_limit_ends_a_line_that_never_finishes() {
+        let Some(argv) = sh("exec sleep 3") else {
+            return;
+        };
+        let got = run_reading(&argv, Duration::from_millis(300), &Watch::default(), |out| {
+            let mut rest = Vec::new();
+            out.read_to_end(&mut rest).map_err(|e| e.to_string())?;
+            Ok(())
+        })
+        .unwrap();
+        assert_ne!(got.code, Some(0), "it was ended, not finished");
+        assert!(!got.cancelled, "the limit is not a cancel");
+    }
+
+    #[test]
+    fn a_consumer_that_fails_ends_the_line_at_once() {
+        let Some(argv) = sh("echo go; exec sleep 3") else {
+            return;
+        };
+        let got = run_reading(&argv, ASK_LIMIT, &Watch::default(), |_| -> Result<(), String> {
+            Err("not wanted".into())
+        })
+        .unwrap();
+        assert_eq!(got.result, Err("not wanted".to_owned()));
+        assert_ne!(got.code, Some(0), "the line was ended, not left to finish");
     }
 }

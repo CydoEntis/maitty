@@ -63,6 +63,8 @@ import { useIdleUpdate } from '@/features/updates/useIdleUpdate'
 import { routeDrop } from '@/features/terminal/dropRoute'
 import { dropOnComposer } from '@/features/chat/composerDrop'
 import { useFileDrop } from '@/features/terminal/useFileDrop'
+import { indexRemoteFiles, listRemoteFolder } from '@/api/fileGets'
+import { useFileGets } from '@/features/terminal/useFileGets'
 import { useFileSends } from '@/features/terminal/useFileSends'
 import { useImagePaste } from '@/features/terminal/useImagePaste'
 import { updaterSummary, useUpdater } from '@/features/updates/useUpdater'
@@ -88,6 +90,7 @@ import { usePaneViews } from './usePaneViews'
 import { chatAvailability, chatSourceOf, effectiveView, type ChatAgent, type PaneView } from './model/chatView'
 import { NewSessionHost } from './components/NewSessionHost'
 import type { NewSessionRequest } from './components/NewSessionModal'
+import { GetFileDialog } from './components/GetFileDialog'
 import { RenameDialog } from './components/RenameDialog'
 import { Sidebar, type OpenSubagent } from './components/Sidebar'
 import { EmptyState, Toast, type RestartOffer } from './components/states'
@@ -271,6 +274,7 @@ export function DesktopApp() {
   const [openSubagent, setOpenSubagent] = useState<OpenSubagent | null>(null)
   // The shell opened beside an agent with "Open terminal here", by the agent's session id.
   const [agentTerminals, setAgentTerminals] = useState<ReadonlyMap<string, string>>(new Map())
+  const [getFileId, setGetFileId] = useState<string | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [inboxOpen, setInboxOpen] = useState(false)
   const [focusMode, setFocusMode] = useState(false)
@@ -483,6 +487,7 @@ export function DesktopApp() {
     return true
   }
   const { sendFiles, sendImage } = useFileSends({ typeInto: typeIntoPane })
+  const { getFile } = useFileGets()
   // A pasted image goes the same two ways (ticket 19): saved here and its path typed, or sent to the pane's machine.
   const pasteImage = useImagePaste({
     sendImage,
@@ -1350,7 +1355,7 @@ export function DesktopApp() {
   const sidebarMode = compact || preferences.compactSidebar ? 'rail' : 'docked'
   // A name is typed in its row where the full sidebar shows; the rail and Focus mode ask in a dialog.
   const renameInline = !focusMode && (sidebarMode === 'docked' || drawerShown)
-  const dialogOpen = settingsSection !== null || (renameId !== null && !renameInline) || newSessionMachine !== null
+  const dialogOpen = settingsSection !== null || (renameId !== null && !renameInline) || getFileId !== null || newSessionMachine !== null
   const modalOpen = dialogOpen || overlayOpen
   const shortcutState = useRef({ runShortcut, canUndoClose: () => lastClose !== null, settingsOpen: dialogOpen, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
   useEffect(() => { shortcutState.current = { runShortcut, canUndoClose: () => lastClose !== null, settingsOpen: dialogOpen, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
@@ -1853,6 +1858,7 @@ export function DesktopApp() {
       onCopyPath={copyPathOf}
       onCopyText={copyText}
       onShowChanges={(id) => { afterPick(); showChangesOf(id) }}
+      onGetFile={setGetFileId}
       onEndSession={endSession}
       onOpenSettings={() => { afterPick(); setSettingsSection('appearance') }}
       updateSlot={updateSlot('footer')}
@@ -2028,6 +2034,21 @@ export function DesktopApp() {
                 portalContainer={root}
                 onStart={startFromModal}
                 onCancel={() => { setNewSessionMachine(null) }}
+              />
+            )}
+            {getFileId !== null && sessionMap.get(getFileId)?.machineName != null && (
+              <GetFileDialog
+                session={sessionMap.get(getFileId) as SessionView}
+                browse={{
+                  list: (path) => listRemoteFolder(sessionMap.get(getFileId)?.machineName ?? '', path),
+                  index: (folder) => indexRemoteFiles(sessionMap.get(getFileId)?.machineName ?? '', folder),
+                }}
+                onGet={(path) => {
+                  const target = sessionMap.get(getFileId)
+                  setGetFileId(null)
+                  if (target?.machineName != null) getFile(target.machineName, path)
+                }}
+                onCancel={() => { setGetFileId(null) }}
               />
             )}
             {renameId !== null && !renameInline && sessionMap.get(renameId) && (

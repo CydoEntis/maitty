@@ -198,7 +198,7 @@ still has them loads, and they are ignored.
   ssh to that machine (not a custom transport) and a login that works without a prompt.
 - **Files to another machine:** in a pane on another machine, `Ctrl+Space`, then `d`, asks for a
   file's path (type it, or drop the file on the terminal: the path is pasted into the box). The
-  file (up to 100 MB; one file, not a folder) goes to that machine over ssh the same way as an image,
+  file (up to 100 MB; a folder is sent too, up to 1 GB, see *Sending a file or a folder to a machine*) goes to that machine over ssh the same way as an image,
   into the same private folder (`~/.cache/maitty/pastes`), and its path there is typed into the pane.
   The name there is `paste-<time>-<id>-<your file's name>`, so two files never overwrite each other.
   A toast shows the percentage; `Ctrl+Space`, `d` again (or the toast's close mark) stops it.
@@ -542,6 +542,68 @@ build: maitty 0.60.0 installed to ~/.local/bin/maitty
 Exit status: 0 done or already up to date, 2 a mistake in how it was asked (an unknown machine, a flag
 missing), 1 a step that did not work.
 
+### Getting a file or a folder from a machine
+
+```sh
+maitty machine get build ~/out.log          # saved in the folder you are in
+maitty machine get build /srv/app/app.zip ~/Downloads   # saved in that folder (made if missing)
+```
+
+`maitty machine get <machine> <path> [folder]` pulls one file or one folder from a machine you added, over ssh,
+and prints the path it was saved to. A `~/` at the start of the path is the machine's home folder.
+
+- **One file or one folder, up to 1 GB.** A folder arrives as a folder, with its sub-folders. A `.zip` you already
+  have is just a file, so it travels like any other. Symlinks inside a folder arrive as the files they point to.
+- **The name is made here.** The file keeps the last part of the remote path with anything but letters, digits,
+  `.`, `_`, `-` and spaces changed to `_`. Windows reserved names (`CON`, `NUL`, ...) get a leading `_`.
+- **Nothing is overwritten.** If the name is taken the file is called `out-1.log`, `out-2.log`, and so on.
+- **All or nothing.** The file or folder appears under its name only when everything arrived. A failed or stopped
+  pull leaves nothing; a hidden `.<name>...` file or folder can stay only if the program itself is killed mid-pull,
+  and is safe to delete.
+- **A folder is checked before it is unpacked.** The machine is not trusted, so a folder is refused whole, with the
+  first bad entry named, if it holds a link, a device or any special file, a path that leaves the folder, a name
+  this computer could not store safely (a backslash or colon, a Windows reserved name such as `CON`, a name ending
+  in a dot or space, odd or invisible characters), more than 50000 entries or a path deeper than 64 parts.
+- A pulled file can hold secrets that were on the machine. It is saved with your normal file permissions.
+
+Exit status: 0 saved, 2 a mistake in how it was asked, 1 the pull did not work (the message says why).
+
+### Sending a file or a folder to a machine
+
+```sh
+maitty machine put build ./report.pdf     # one file, up to 100 MB
+maitty machine put build ./my-project     # one folder, up to 1 GB
+```
+
+`maitty machine put <machine> <path>` sends one file or one folder from this computer to a machine you added, over
+ssh, and prints where it is there. It is kept in that machine's private cache folder (`~/.cache/maitty/pastes`, readable
+only by you, cleared after a week) under a name like `paste-<time>-<id>-my-project`, so nothing there is overwritten.
+Dropping a file on a session of another machine does the same thing for a file. A pulled or sent file can hold secrets,
+so do not send one you would not leave in that cache.
+
+Exit status: 0 sent, 2 a mistake in how it was asked, 1 the send did not work.
+
+In the desktop app, right-click a session that is on another machine and choose **Get a file…**. The box lists the
+session's folder: click a folder to open it, **Up** to go back, or a file to get it. Type a few letters of a name to
+search the session's folder and everything below it (not `.git`, `node_modules` or build folders; the first 5000
+files), and use the arrow keys and Enter. If the file is somewhere else, browse up to it or type the path in the box
+under the list. The file is saved in `Downloads/maitty/<machine>/` with a progress toast you can cancel and an
+**Open folder** button when it is done. It is the same pull as the command. Names with unusual characters are left
+out of the list, and the dialog says how many.
+
+### Moving text between machines
+
+Text needs no special command.
+
+- **From this computer to a machine:** paste into the session as you would anywhere. The text is typed into that
+  machine's session. A paste of text never sends a file, even when the text is a path.
+- **From a machine to this computer:** copy in the session as you would here (select text, or an agent's `/copy`),
+  and it reaches your clipboard. The machine's clipboard switch is on unless you turned it off (Settings › Machines, or
+  `clipboard = false` in its entry in `config.local.toml`).
+- **A long text, or one you want to keep as a file:** save it as a file. To bring it here, use
+  `maitty machine get` or **Get a file…** (see *Getting a file or a folder from a machine*). To send a file there, drop it on the
+  session.
+
 ### Agents on a machine
 
 An agent can reach a machine from your `[[machines]]` list through the same MCP tools it uses here
@@ -648,10 +710,10 @@ folder there, starting at `~`, because the folder picker is this computer's; a f
 opens in the machine's home folder. Files, Changes, worktrees and the other features that read a pane's files
 are for this computer's sessions only.
 
-**Dropping files on a session of another machine** sends them there: drag up to 10 files from your file
-manager onto the pane. Each goes over ssh (not a custom transport) into `~/.cache/maitty/pastes` on that
-machine (private, cleared after a week), and its path there is typed into the pane. Only files are sent, up
-to 100 MB each; a folder is refused. A toast shows the file, how far it has got, and a **Cancel** button; if a
+**Dropping files or folders on a session of another machine** sends them there: drag up to 10 files or folders from
+your file manager onto the pane. Each goes over ssh (not a custom transport) into `~/.cache/maitty/pastes` on that
+machine (private, cleared after a week), and its path there is typed into the pane. A file is sent up to
+100 MB, a folder (as one archive) up to 1 GB. A toast shows the file or folder, how far it has got, and a **Cancel** button; if a
 file fails, the ones after it are not tried. The machine has to be `connected`. A file stays on the machine for
 a week, readable by you only, so do not send a secret you would not leave there. Dropping on a session of this
 computer types the file's path, as before.

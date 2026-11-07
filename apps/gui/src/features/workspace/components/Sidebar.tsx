@@ -55,6 +55,8 @@ export type SidebarProps = {
   onCopyPath: (id: string) => void
   onCopyText: (text: string, what: string) => void
   onShowChanges: (id: string) => void
+  /** Asks for a file to pull from the machine of session `id`. */
+  onGetFile: (id: string) => void
   onEndSession: (id: string) => void
   onOpenSettings: () => void
   /** The footer's left slot (the update button). The caller owns the updater. */
@@ -142,6 +144,7 @@ function Expanded(props: SidebarProps) {
       'separator',
       { label: 'Rename…', hint: 'F2', run: () => { props.onRenameSession(session.id) } },
       { label: 'Copy folder path', run: () => { props.onCopyPath(session.id) } },
+      ...(session.machineName === null ? [] : [{ label: 'Get a file…', disabled: !props.online, run: () => { props.onGetFile(session.id) } }]),
       ...(agent ? [{ label: 'Show changes', run: () => { props.onShowChanges(session.id) } }] : []),
       'separator',
       // Stopping an agent asks a second click; a plain shell has nothing running to lose.
