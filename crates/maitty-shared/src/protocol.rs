@@ -461,7 +461,23 @@ pub enum Command {
     PaneToWorkspace {
         term: TermId,
     },
-    /// Index into the configured workspace colour palette.
+    /// Start a named fleet (a workspace) on this machine, holding one new shell in `cwd` (the
+    /// home folder when absent or not a folder). Its colour is the first of `colors` (indexes
+    /// into the workspace palette) that no workspace uses, else the first free colour of any
+    /// index; `colors` empty means any.
+    NewFleet {
+        name: String,
+        cwd: Option<PathBuf>,
+        colors: Vec<u8>,
+    },
+    /// Start a new session in an existing fleet: a shell, or `cmd`, in `cwd` (the fleet's
+    /// folder when absent or not a folder). It joins the fleet as a new tab.
+    NewShip {
+        ws: WsId,
+        cwd: Option<PathBuf>,
+        cmd: Option<String>,
+    },
+    /// Index into the configured workspace colour palette; an index past the palette is refused.
     SetWorkspaceColor {
         ws: WsId,
         color: u8,
@@ -2151,6 +2167,41 @@ mod tests {
             Command::ArchivePane {
                 term: 3,
                 archived: true,
+            },
+        ] {
+            let bytes = encode(&command).unwrap();
+            assert!(decode::<OldCommand>(&bytes).is_err());
+            assert!(decode::<Command>(&bytes).is_ok());
+        }
+    }
+
+    /// Starting a fleet or a ship are new commands: a peer built before them can't read them.
+    #[test]
+    fn a_peer_from_before_fleets_and_ships_cannot_read_them() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldCommand {
+            NewWorkspace {
+                cwd: Option<PathBuf>,
+                name: Option<String>,
+                cmd: Option<String>,
+            },
+            NewTab {
+                ws: WsId,
+                name: Option<String>,
+                cmd: Option<String>,
+            },
+        }
+        for command in [
+            Command::NewFleet {
+                name: "api".into(),
+                cwd: None,
+                colors: vec![3, 0],
+            },
+            Command::NewShip {
+                ws: 2,
+                cwd: Some(PathBuf::from("/srv")),
+                cmd: None,
             },
         ] {
             let bytes = encode(&command).unwrap();

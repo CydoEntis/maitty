@@ -7862,3 +7862,160 @@ fn soft_closing_the_only_pane_hides_its_workspace_until_it_ends() {
     d.finish_closes();
     assert!(d.workspaces.is_empty() && d.terms.is_empty());
 }
+
+fn new_fleet(d: &mut Daemon, name: &str, colors: Vec<u8>) -> Result<bool> {
+    d.command(
+        0,
+        Command::NewFleet {
+            name: name.into(),
+            cwd: Some(std::env::temp_dir()),
+            colors,
+        },
+    )
+}
+
+#[test]
+fn a_new_fleet_is_named_holds_one_shell_and_takes_a_wanted_free_colour() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    new_fleet(&mut d, "  api  ", vec![3, 0]).unwrap();
+    new_fleet(&mut d, "web", vec![3, 0]).unwrap();
+    new_fleet(&mut d, "docs", vec![3, 0]).unwrap();
+    let fleets = &d.snapshot().workspaces;
+    assert_eq!(fleets.len(), 3);
+    assert_eq!(fleets[0].name, "api", "the name is trimmed");
+    assert_eq!(fleets[0].tabs[0].layout.leaves().len(), 1);
+    assert_eq!(fleets[0].color, 3);
+    assert_eq!(fleets[1].color, 0, "the wanted colour in use is skipped");
+    assert!(
+        !matches!(fleets[2].color, 3 | 0),
+        "with every wanted colour taken, any free colour is used"
+    );
+    let terms: Vec<_> = d.terms.keys().copied().collect();
+    close(&mut d, &terms);
+}
+
+#[test]
+fn a_fleet_needs_a_plain_name_and_a_colour_in_the_palette() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    assert!(new_fleet(&mut d, "   ", vec![]).is_err());
+    assert!(new_fleet(&mut d, "a\u{7}b", vec![]).is_err());
+    assert!(new_fleet(&mut d, &"x".repeat(81), vec![]).is_err());
+    assert!(
+        d.workspaces.is_empty() && d.terms.is_empty(),
+        "nothing started"
+    );
+    new_fleet(&mut d, "api", vec![200]).unwrap();
+    let ws = d.workspaces[0].id;
+    assert!(
+        d.workspaces[0].color < 8,
+        "a colour past the palette is ignored"
+    );
+    d.command(0, Command::SetWorkspaceColor { ws, color: 5 })
+        .unwrap();
+    assert_eq!(d.workspaces[0].color, 5);
+    assert!(d
+        .command(0, Command::SetWorkspaceColor { ws, color: 8 })
+        .is_err());
+    assert_eq!(d.workspaces[0].color, 5, "a refused colour changes nothing");
+    d.command(
+        0,
+        Command::RenameWorkspace {
+            ws,
+            name: "core".into(),
+        },
+    )
+    .unwrap();
+    assert_eq!(d.workspaces[0].name, "core");
+    let terms: Vec<_> = d.terms.keys().copied().collect();
+    close(&mut d, &terms);
+}
+
+#[test]
+fn a_new_ship_joins_its_fleet_in_the_fleets_folder_or_a_given_one() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    new_fleet(&mut d, "api", vec![]).unwrap();
+    let ws = d.workspaces[0].id;
+    let first = d.workspaces[0].tabs[0].focus;
+    d.command(
+        0,
+        Command::NewShip {
+            ws,
+            cwd: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
+    let elsewhere = std::env::temp_dir().join("maitty-ship-folder");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    d.command(
+        0,
+        Command::NewShip {
+            ws,
+            cwd: Some(elsewhere.clone()),
+            cmd: None,
+        },
+    )
+    .unwrap();
+    d.command(
+        0,
+        Command::NewShip {
+            ws,
+            cwd: Some(std::env::temp_dir().join("maitty-no-such-folder")),
+            cmd: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(d.workspaces.len(), 1, "ships join; they start no fleet");
+    let ships: Vec<TermId> = d.workspace_panes(ws);
+    assert_eq!(ships.len(), 4);
+    assert!(ships.contains(&first));
+    assert!(same_path(&d.terms[&ships[2]].cwd, &elsewhere));
+    assert!(same_path(&d.terms[&ships[3]].cwd, &d.workspaces[0].cwd));
+    assert!(d
+        .command(
+            0,
+            Command::NewShip {
+                ws: 9999,
+                cwd: None,
+                cmd: None
+            }
+        )
+        .is_err());
+    close(&mut d, &ships);
+    let _ = std::fs::remove_dir(&elsewhere);
+}
+
+#[test]
+fn a_session_moves_to_another_fleet_of_the_same_machine() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    new_fleet(&mut d, "api", vec![]).unwrap();
+    new_fleet(&mut d, "web", vec![]).unwrap();
+    let (from, to) = (d.workspaces[0].id, d.workspaces[1].id);
+    d.command(
+        0,
+        Command::NewShip {
+            ws: from,
+            cwd: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
+    let ship = *d.workspace_panes(from).last().unwrap();
+    d.command(
+        0,
+        Command::MovePane {
+            term: ship,
+            to: Some(to),
+            name: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(d.workspace_panes(from).len(), 1);
+    assert!(d.workspace_panes(to).contains(&ship));
+    let terms: Vec<_> = d.terms.keys().copied().collect();
+    close(&mut d, &terms);
+}

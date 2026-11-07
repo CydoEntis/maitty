@@ -7,6 +7,9 @@ use crate::brand::APP_COMMAND;
 /// exits anyway. A Claude provider is given its own two seconds to leave on a closed stdin.
 const PROVIDER_STOP_WAIT: Duration = Duration::from_secs(5);
 
+/// The longest name a fleet may have, in bytes.
+const MOST_FLEET_NAME_BYTES: usize = 80;
+
 impl Daemon {
     /// Apply a command. `Ok(false)` means the reply is sent later (background git work).
     pub(super) fn command(&mut self, client: ClientId, cmd: Command) -> Result<bool> {
@@ -131,7 +134,64 @@ impl Daemon {
             Command::SetGroup { ws, group } => {
                 self.ws_mut(ws)?.group = group.filter(|g| !g.trim().is_empty())
             }
-            Command::SetWorkspaceColor { ws, color } => self.ws_mut(ws)?.color = color,
+            Command::SetWorkspaceColor { ws, color } => {
+                anyhow::ensure!(
+                    color < self.palette_len(),
+                    "colour {color} is not in the palette"
+                );
+                self.ws_mut(ws)?.color = color
+            }
+            Command::NewFleet { name, cwd, colors } => {
+                let name = name.trim().to_string();
+                anyhow::ensure!(
+                    !name.is_empty()
+                        && name.len() <= MOST_FLEET_NAME_BYTES
+                        && !name.chars().any(char::is_control),
+                    "a fleet needs a name of up to {MOST_FLEET_NAME_BYTES} bytes"
+                );
+                let color = self.free_color_among(&colors);
+                self.command(
+                    client,
+                    Command::NewWorkspace {
+                        cwd,
+                        name: Some(name),
+                        cmd: None,
+                    },
+                )?;
+                if let Some(fleet) = self.workspaces.last_mut() {
+                    fleet.color = color;
+                }
+            }
+            Command::NewShip { ws, cwd, cmd } => {
+                let fleet_cwd = self.ws_mut(ws)?.cwd.clone();
+                let cwd = cwd
+                    .map(clean_path)
+                    .filter(|p| p.is_dir())
+                    .unwrap_or(fleet_cwd);
+                // A fleet belongs to one app, so its new ship does too.
+                let owner = self
+                    .workspace_panes(ws)
+                    .first()
+                    .and_then(|t| self.terms.get(t))
+                    .map_or_else(|| self.surface_of(client), |t| t.owner);
+                let (cols, rows) = self.guess_size();
+                let by = self.starting(client, &helpers::task_label(cmd.as_deref(), None))?;
+                let term = self.spawn(cmd.as_deref(), &cwd, cols, rows)?;
+                self.started(term, by);
+                if let Some(t) = self.terms.get_mut(&term) {
+                    t.owner = owner;
+                }
+                let id = self.next();
+                let w = self.ws_mut(ws)?;
+                w.tabs.push(TabInfo {
+                    id,
+                    name: String::new(),
+                    layout: Node::Leaf(term),
+                    focus: term,
+                });
+                w.active_tab = id;
+                self.active_ws = Some(ws);
+            }
             Command::SelectWorkspace { ws } => {
                 self.ws_mut(ws)?.is_new = false;
                 self.active_ws = Some(ws);

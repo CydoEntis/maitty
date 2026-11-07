@@ -763,6 +763,8 @@ impl Daemon {
                 Command::ConversationStart { .. }
                     | Command::NewWorkspace { .. }
                     | Command::NewTab { .. }
+                    | Command::NewFleet { .. }
+                    | Command::NewShip { .. }
                     | Command::Split { .. }
                     | Command::NewWorktree { .. }
                     | Command::Popup { .. }
@@ -863,6 +865,8 @@ impl Daemon {
             }
             Command::NewWorkspace { .. }
             | Command::NewTab { .. }
+            | Command::NewFleet { .. }
+            | Command::NewShip { .. }
             | Command::Split { .. }
             | Command::NewWorktree { .. }
             | Command::Popup { .. } => self.may(client, Grant::Start, None),
@@ -1319,9 +1323,25 @@ impl Daemon {
 
     /// The first palette colour no workspace is using (cycling once all are taken).
     fn free_color(&self) -> u8 {
-        let n = self.cfg.ui.workspace_colors.len().clamp(1, 255) as u8;
-        (0..n)
-            .find(|c| !self.workspaces.iter().any(|w| w.color == *c))
+        self.free_color_among(&[])
+    }
+
+    /// How many colours the workspace palette has (at least one).
+    fn palette_len(&self) -> u8 {
+        self.cfg.ui.workspace_colors.len().clamp(1, 255) as u8
+    }
+
+    /// The first of `wanted` (palette indexes; empty means the whole palette) that no workspace
+    /// uses, else the first free colour of the whole palette, else cycling.
+    fn free_color_among(&self, wanted: &[u8]) -> u8 {
+        let n = self.palette_len();
+        let free = |c: &u8| !self.workspaces.iter().any(|w| w.color == *c);
+        wanted
+            .iter()
+            .copied()
+            .filter(|c| *c < n)
+            .find(free)
+            .or_else(|| (0..n).find(free))
             .unwrap_or((self.workspaces.len() % n as usize) as u8)
     }
 
