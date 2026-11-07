@@ -116,10 +116,9 @@ export function PaneCard(props: PaneCardProps) {
         onDragEnd={props.onDragEnd}
         onDoubleClick={() => { props.onToggleMaximize(pane.id) }}
       >
-        {props.onViewChange && <PaneViewSwitch view={view} onChange={props.onViewChange} />}
         <span className="mx-pane-icon">
           <AppIcon process={session.process} size={26} dimmed={status === 'unknown'} />
-          <StatusBadge status={status} rail />
+          <StatusBadge status={status} />
         </span>
         <span className="mx-pane-title">
           <span className="mx-pane-proc">{rowName(session)}</span>
@@ -131,6 +130,7 @@ export function PaneCard(props: PaneCardProps) {
         {props.broadcast && <span className="mx-broadcast-pill">◉ Broadcast</span>}
         {usageParts(session.usage).length > 0 && <span className="mx-pill mx-usage-pill" title="What the agent reports this session has used">{usageParts(session.usage).join(' · ')}</span>}
         <span className="mx-pane-controls">
+          {props.onViewChange && <><PaneViewSwitch view={view} onChange={props.onViewChange} /><span className="mx-pane-divider" aria-hidden="true" /></>}
           <button type="button" className="mx-pane-control is-foldable" aria-label={tip('Split right', 'split-right')} title={tip('Split right', 'split-right')} disabled={full} onMouseDown={stop} onClick={() => { props.onSplit(pane.id, 'right') }}><Icon name="splitRight" /></button>
           <button type="button" className="mx-pane-control is-foldable" aria-label={tip('Split down', 'split-down')} title={tip('Split down', 'split-down')} disabled={full} onMouseDown={stop} onClick={() => { props.onSplit(pane.id, 'down') }}><Icon name="splitDown" /></button>
           <button type="button" className="mx-pane-control is-foldable" aria-label={maximized ? 'Restore layout' : 'Maximize pane'} title={maximized ? 'Restore layout' : 'Maximize pane'} disabled={!multi && !maximized} onMouseDown={stop} onClick={() => { props.onToggleMaximize(pane.id) }}>{maximized ? <Icon name="restore" /> : <Icon name="maximize" />}</button>

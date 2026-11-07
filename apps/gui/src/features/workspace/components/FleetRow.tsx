@@ -2,17 +2,17 @@ import { useState } from 'react'
 import type { Fleet } from '@/api/fleets'
 import { iconStack, initialsOf, needsCount, type FleetColor } from '../model/fleets'
 import type { SessionView } from '../model/session'
-import { AppIcon } from './glyphs'
+import { AppIcon, Icon } from './glyphs'
 import { fleetStyle, MAX_FLEET_NAME_LENGTH } from './fleetStyle'
 import { SESSION_DRAG_TYPE } from './dragSession'
 import { useFleetMenu } from './FleetMenu'
 import { InlineName } from './InlineName'
 
-/** A fleet's tile: its initials in its colour, with the number of its ships that need you. */
+/** A fleet's tile: a sailboat (the rail: its initials) in its colour, with the number of its ships that need you. */
 export function FleetTile({ fleet, needs, size = 'row' }: { fleet: Fleet; needs: number; size?: 'row' | 'rail' }) {
   return (
     <span className={`mx-fleet-tile is-${size}`} style={fleetStyle(fleet)} aria-hidden="true">
-      {initialsOf(fleet.name)}
+      {size === 'rail' ? initialsOf(fleet.name) : <Icon name="fleets" size={13} />}
       {needs > 0 && <span className="mx-fleet-badge">{needs}</span>}
     </span>
   )

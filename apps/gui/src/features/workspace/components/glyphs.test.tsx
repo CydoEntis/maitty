@@ -21,19 +21,24 @@ describe('app icons', () => {
 })
 
 describe('status marks', () => {
-  it('gives idle, done, needs you, exited and unknown each their own shape', () => {
-    const shapes = (['idle', 'done', 'needs', 'error', 'unknown'] as const).map((status) => {
-      const { container } = render(<StatusBadge status={status} rail />)
+  it('gives working, done, needs you, exited and unknown each their own shape', () => {
+    const shapes = (['working', 'done', 'needs', 'error', 'unknown'] as const).map((status) => {
+      const { container } = render(<StatusBadge status={status} />)
       return container.firstElementChild?.className ?? ''
     })
-    expect(shapes).toEqual(['mx-badge is-idle', 'mx-badge is-done', 'mx-badge is-needs', 'mx-badge is-error', 'mx-badge is-unknown'])
+    expect(shapes).toEqual(['mx-badge is-working', 'mx-badge is-done', 'mx-badge is-needs', 'mx-badge is-error', 'mx-badge is-unknown'])
   })
 
-  it('draws idle as two z\'s and exited as a bang, with no word in the mark itself', () => {
-    const idle = render(<StatusBadge status="idle" />)
-    expect(idle.container.querySelector('.mx-zz')?.textContent).toBe('zz')
+  it('draws needs you as a chevron and exited as a bang, with no word in the mark itself', () => {
+    const needs = render(<StatusBadge status="needs" />)
+    expect(needs.container.textContent).toBe('›')
     const exited = render(<StatusBadge status="error" />)
     expect(exited.container.querySelector('svg')).not.toBeNull()
+  })
+
+  it('draws nothing for an idle session', () => {
+    const { container } = render(<StatusBadge status="idle" />)
+    expect(container).toBeEmptyDOMElement()
   })
 
   it('still draws unknown in a row, not only in the rail', () => {

@@ -3,7 +3,7 @@ import type { Fleet } from '@/api/fleets'
 import { displayName, MAX_SESSION_NAME_LENGTH, rowName, STATUS_WORD, type SessionView } from '../model/session'
 import type { SessionTrack } from '../model/tracking'
 import type { PaneView } from '../model/chatView'
-import { AppIcon, Icon, Spinner, StatusBadge } from './glyphs'
+import { AppIcon, Icon, StatusBadge } from './glyphs'
 import { SESSION_DRAG_TYPE } from './dragSession'
 import { InlineName } from './InlineName'
 import { useSessionMenu } from './SessionMenu'
@@ -61,7 +61,6 @@ export function ShipRow(props: ShipRowProps) {
           {editing
             ? <InlineName value={session.name ?? ''} placeholder={session.process} label={`Name for ${displayName(session)}`} maxLength={MAX_SESSION_NAME_LENGTH} onCommit={(name) => { setEditing(false); props.onSetName(name) }} onCancel={() => { setEditing(false) }} />
             : <span className="mx-ship-title">{rowName(session)}</span>}
-          {session.status === 'working' && <Spinner />}
           {session.pinned && <span className="mx-row-pin" role="img" aria-label="Pinned" title="Pinned"><Icon name="pin" size={11} /></span>}
           {unread && <span className="mx-unread" role="img" aria-label="Unread" />}
         </span>
@@ -83,7 +82,7 @@ export function ShipRow(props: ShipRowProps) {
           : (
             <button
               type="button"
-              className={`mx-ship${selected ? ' is-selected' : ''}${agent ? '' : ' is-shell'}`}
+              className={`mx-ship${selected ? ' is-selected' : ''}${agent ? '' : ' is-shell'}${session.status === 'idle' ? ' is-idle' : ''}`}
               {...hoverHandlers(props.hover, session.id)}
               draggable
               onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData(SESSION_DRAG_TYPE, session.id) }}

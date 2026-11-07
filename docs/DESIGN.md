@@ -206,9 +206,9 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   extra line on its header.
 - **Window style: Flat or Glass** (Settings › Appearance › Window style, `style`, shared with the terminal app as
   `window_style`; the root carries `data-style` and `data-finish`). The finish only; layout, features and status
-  colours do not change. **Flat** is the default for a fresh install: the window is `--bg` with no glow, cards are
-  flat `--main` with radius 8 (Settings 10), no blur or resting shadow, flat top-bar buttons and status pills (no
-  gradient, lift or entrance), no outline on the selected row. **Glass** adds floating opaque cards, colour icons and a glow. Tiled is gone: a saved
+  colours do not change. **Glass** is the default for a fresh install: floating opaque cards, colour icons and a glow.
+  **Flat** is the window on `--bg` with no glow, cards flat `--main` with radius 8 (Settings 10), no blur or
+  resting shadow, flat top-bar buttons and status pills (no gradient, lift or entrance), no outline on the selected row. Tiled is gone: a saved
   `tiled` reads as Flat, `minimal` as Flat and `expressive` as Glass. The styles differ only in CSS variables set
   on the app root (`--rk` radius multiplier, `--r14`/`--r16`, `--pg` pane gap, `--ptop`, and a few more beside them in `workspace.css`); the layout rules read
   them, so a style is a block of values, not a second set of rules. The focused pane's ring and the needs-you amber
@@ -249,7 +249,7 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   the kind in use, and "All themes in Settings…"), the **layout style** (Flat or Glass), the terminal
   **text size** (−, the size which resets it to 14px, +; Ctrl+= and Ctrl+− do the same) and the shortcuts
   keycaps, which open the shortcut overlay. Hidden in Focus mode and by Settings › General › Window ›
-  Status bar (on by default).
+  Status bar (off by default).
 - **Sidebar.** Two sections under the header and the filter, in a 264px card (208 to 440px by dragging
   its inner edge). The header holds the collapse button (⌘B), then **New agent chat** (⌘⇧A, Ctrl+Shift+A),
   **New shell** (⌘⇧T, Ctrl+Alt+T), **Add a remote machine** (opens Settings › Machines) and the **Inbox** with
@@ -259,7 +259,7 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   gives the keyboard back. **FLEETS** lists each machine as a heading (laptop or server, name, a status dot,
   and a + that adds a fleet on it with an inline name field: Enter creates and selects it, Esc cancels, a name
   already used there is refused; a machine that is away is dimmed with its + disabled) and under it a 34px row
-  per fleet: a 22px initials tile in the fleet's colour with an amber needs-you count, the name and up to three
+  per fleet: a 22px sailboat tile in the fleet's colour with an amber needs-you count at its bottom-right corner, the name and up to three
   stacked 18px app icons (Claude first, then Codex, then shells, ringed and overlapping 5px) then `+N`. The
   selected fleet is tinted with its colour; double-click or F2 renames it, and a right-click opens its menu: Rename and a Colour row of the six fleet swatches (teal, violet, blue, green, pink, orange; the chosen one ringed, never amber or red). A ship dragged over a fleet row on the same machine tints the row with its colour and a 1.5px ring, and dropping moves the ship there; the ship menu's Move to fleet list does the same from the keyboard. There is no Close fleet: the window offers no way to end every ship of a fleet at once. **SHIPS** (with a count and the
   Fleets | Priority switch) shows the selected fleet's ships in **Agents · N** (the app tile with its status
@@ -278,17 +278,26 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   spells out the exact request of each ship that needs you (three, then "and N more"). **Hover cards** open beside a ship row on hover or keyboard focus after 280ms
   (instantly once one is open), 10px to its right with an arrow, and close 160ms after the pointer leaves
   both: the folder and name, the status word, the path, the machine and the exact request when the ship asks,
-  else its state. Choosing a ship focuses its pane where it is shown, else it gets a tab of its own. The
-  Crewmates mode of the design is not built.
+  else its state. Choosing a ship focuses its pane where it is shown, else it gets a tab of its own.
+- **Crewmates.** A **Fleets | Crewmates** pill under the filter swaps the sidebar list. Crewmates mode lists the
+  Captain first (tagged CAPTAIN), then the other crewmates (agent mark with a status badge, name, role), then
+  the crews (stacked avatars, "N aboard · M people"). Choosing a row opens its chat over the workspace card and
+  hides the tab bar: a header (avatar or stack, name, subtitle; crews add **Add crewmate** and **Invite**),
+  the lines, and a composer where Enter sends and Shift+Enter adds a line. In a crew, `@name` asks one
+  crewmate; otherwise one answers. The replier shows "is typing" for about a second before its line lands.
+  The switch shows an amber count of crewmates that need you while Fleets is showing. Crewmates, crews and
+  chats are sample data held in memory (`features/crew/model/crew.ts`, marked `shortcut:`); nothing is saved
+  or sent to an agent, and Invite shows a toast, because crews with other people need a sync service that
+  does not exist yet.
 - **Tabs.** A rounded tray (`--well`, radius 12) at the top of the workspace card holds one tab per ship of
   the selected fleet in the ships' creation order: the app icon with its status badge, the name, the pane
-  count when there are two or more, and a ×. The active tab is a raised pill (`--raise`). × ends the tab's
+  count when there are two or more, and a ×. The active tab is a raised pill (`--raise`), and every tab keeps a quiet ×. The tray hugs its tabs, and a + after it starts a shell in the fleet. × ends the tab's
   sessions (with the 6 second Undo) and asks a second click while an agent runs; double-click or F2 renames;
   the arrow keys, Home and End move between tabs. A ship split beside another's pane is part of that tab. The
   window controls stay in the title bar.
-- **Pane header.** 42px, no line under it. From the left: the Terminal | Chat switch (for an agent the app
-  reads), the 26px app icon with its status badge, the name (13px, 600) over the folder (dim) and the branch
-  in `--ansi-mag`, then split right, split down, maximize, ⋯ (broadcast, splits, maximize, inspect) and close.
+- **Pane header.** 42px, no line under it. From the left: the 26px app icon with its status badge, the name
+  (13px, 600) over the folder (dim) and the branch in `--ansi-mag`; at the right the Terminal | Chat switch (for an
+  agent the app reads), a hairline, then split right, split down, maximize, ⋯ (broadcast, splits, maximize, inspect) and close.
   **Focus** is one border: with several panes the focused one gets a 1.5px inset `--accent-line`; with one
   pane the workspace card's border turns accent instead. Never both.
 - **First-run welcome.** On the first launch (no saved settings and no earlier welcome) a 560px dialog opens
@@ -515,8 +524,8 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   that marks its prompts, each prompt and command with its exit code.
 - **Inbox detail.** A needs-you card shows what the agent is asking, the exact command or file and its
   choices as the agent printed them, instead of its last prompt.
-- **Status is shape and word.** Working is the TUI spinner, Needs you an amber tile with two pause
-  bars, Done a green check, Exited a red `!`, Unknown a dashed square, Idle a small dot. Every pane
+- **Status is shape and word.** Working is the user's spinner, Needs you an amber tile with a dark `›`,
+  Done a green check, Exited a red `!`, Unknown a dashed square, and Idle nothing. Every pane
   but an idle one shows its status as a chip in its bottom-right corner, and hovering or focusing
   the chip opens a popover that says what the state means. An idle pane has no chip, and an idle
   session's sidebar row has no state line: idle is the default and says nothing. Amber still means needs you and only
@@ -525,11 +534,10 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   expressions over the active theme's tokens (`--accent`, `--ansi-*`, `--warn`, `--danger`,
   `--on-accent`), never fixed hex values, so switching theme recolours all of them.
 - **Status marks, not effects.** Every state has its own shape on a row's or rail icon (`StatusBadge`), so colour
-  is never the only signal: **working** is the user's spinner in `--accent`; **needs you** an amber tile with
-  pause bars, popping once on arrival; **done** a dark green tile with a ✓; **exited** a dark red tile with a !
+  is never the only signal: **working** is the user's spinner in `--accent`, on the icon's corner; **needs you** an amber tile with
+  a dark `›`, popping once on arrival; **done** a dark green tile with a ✓; **exited** a dark red tile with a !
   (the daemon's `TermInfo.exit`, a non-zero exit code of the last command, shown while nothing is working or
-  waiting); **idle** a neutral `--raise` tile with a ring in `--line2` and a sleeping `zz` (two italic mono z's,
-  the second smaller and raised, in `--muted`); **unknown** (the daemon is gone) a dashed outlined square, with the
+  waiting); **idle** no badge at all; **unknown** (the daemon is gone) a dashed outlined square, with the
   row dimmed. The window only displays these; the daemon decides them. There are no waves, sweeps, shimmer or glow
   on rows and tabs, and no setting for them; the only looping motion is the spinner. Reduce motion (the setting or
   the system's) removes the pulses, slides and size animations, and the spinner holds one frame. The needs-you badge and the Inbox count pop once with a ring (.6s) and

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { Icon } from './glyphs'
 
 /**
@@ -25,12 +25,13 @@ type HeadProps = {
   /** Controls at the right edge; they sit beside the toggle, not inside it. */
   children?: ReactNode
   className?: string
+  style?: CSSProperties | undefined
 }
 
 /** A section heading: the caret turns a quarter when it folds. */
-export function SectionHead({ label, open, onToggle, count, icon, children, className = '' }: HeadProps) {
+export function SectionHead({ label, open, onToggle, count, icon, children, className = '', style }: HeadProps) {
   return (
-    <div className={`mx-section-head ${className}`}>
+    <div className={`mx-section-head ${className}`} style={style}>
       <button type="button" className="mx-section-toggle" aria-expanded={open} onClick={onToggle}>
         <span className={`mx-caret-wrap${open ? ' is-open' : ''}`}><Icon name="caret" /></span>
         {icon && <span className="mx-section-icon" aria-hidden="true">{icon}</span>}

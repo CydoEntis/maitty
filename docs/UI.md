@@ -197,7 +197,8 @@ Rules for `apps/gui/` (the look is in [DESIGN](DESIGN.md#desktop-app)).
    The workspace is a second card: a **tab tray** on top holds one tab per ship of the selected fleet
    (`model/tabs.ts`; a ship split beside another's pane is part of that tab, and the tab shows the pane
    count), then the panes. Split layouts are this window's own state (`model/layout.ts`), up to four
-   panes per tab; a session closes with a 6 second Undo. The Crewmates mode is not built.
+   panes per tab; a session closes with a 6 second Undo. A Fleets | Crewmates switch swaps the sidebar;
+   Crewmates mode (`features/crew/`) is sample-data chat only and covers the workspace card with a chat.
 3. A new surface that sits on the terminal's ground uses `--term`, not `--main`,
    so a terminal pane reads as one surface.
 

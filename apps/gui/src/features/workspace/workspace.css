@@ -102,10 +102,11 @@
 .mx-sidebar.is-resizing { transition: none; }
 .mx-sidebar-expanded { flex: 1; min-height: 0; min-width: var(--sidebar-w, 264px); display: flex; flex-direction: column; animation: v7fade .24s ease-out; }
 .mx-sidebar-head { flex: none; height: calc(48px * var(--pad, 1)); display: flex; align-items: center; gap: 8px; padding: 0 10px 0 16px; }
-.mx-sidebar-head .mx-collapse { width: 28px; height: 28px; border-radius: 8px; color: var(--muted); }
+.mx-sidebar-head .mx-collapse { width: 26px; height: 26px; border-radius: calc(7px * var(--rk)); color: var(--muted); }
 .mx-spacer { flex: 1; }
-.mx-new-button { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--fg); background: rgba(255, 255, 255, .05); box-shadow: inset 0 0 0 1px var(--line2); transition: background-color .14s ease, color .14s ease, transform .12s ease; }
-.mx-new-button:not(:disabled):hover { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); color: var(--accent); }
+/* Header starters are plain icons: no resting chrome, a quiet fill on hover. */
+.mx-new-button { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: calc(7px * var(--rk)); color: var(--muted); transition: background-color .14s ease, color .14s ease, transform .12s ease; }
+.mx-new-button:not(:disabled):hover { background: rgba(255, 255, 255, .06); color: var(--fg); }
 .mx-new-button:disabled { opacity: .4; }
 .mx-new-button:active { transform: scale(.95); }
 .mx-sidebar-list { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 0 8px 12px; display: flex; flex-direction: column; gap: calc(6px * var(--pad, 1)); }
@@ -182,7 +183,7 @@
 
 .mx-badge { position: absolute; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px var(--card-ring); }
 .mx-badge { animation: v9pop .26s var(--ease-out); }
-.mx-badge.is-needs { gap: 1.5px; background: var(--warn); }
+.mx-badge.is-needs { background: var(--warn); }
 /* A pulse is a ring on a pseudo-element that scales out and fades once, then rests. An animated
    box-shadow, or any endless animation, repaints the card on every frame for as long as the state lasts
    (docs/PERFORMANCE.md). */
@@ -294,7 +295,8 @@
 .mx-pane-icon .mx-badge.is-working { width: 15px; height: 15px; border-radius: 50%; background: var(--well); font-family: var(--mono); font-size: 11px; line-height: 1; color: var(--accent); }
 .mx-pane-icon .mx-badge.is-unknown { width: 12px; height: 12px; border-radius: 3.5px; background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
 .mx-pill { height: 22px; display: flex; align-items: center; gap: 6px; padding: 0 9px; border-radius: 999px; font-size: 11.5px; white-space: nowrap; flex: none; }
-.mx-pane-controls { display: flex; align-items: center; gap: 0; margin-left: 2px; }
+.mx-pane-controls { display: flex; align-items: center; gap: 0; margin-left: auto; }
+.mx-pane-divider { width: 1px; height: 16px; margin: 0 8px; background: var(--pane-line); }
 .mx-pane-control { width: 28px; height: 28px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--dim); transition: background-color .14s ease, color .14s ease, transform .12s ease; }
 .mx-pane-control:not(:disabled):hover { background: rgba(255, 255, 255, .09); color: var(--fg); }
 .mx-pane-control:not(:disabled):active { transform: scale(.88); }
@@ -538,13 +540,11 @@
 .mx-inbox-empty { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; font-size: 12.5px; color: var(--dim); }
 .mx-inbox-empty strong { font-size: 15px; color: var(--fg); }
 .mx-inbox-check { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: color-mix(in oklab, var(--ok) 20%, var(--bg)); }
-.mx-inbox-button { position: relative; height: var(--ibh); min-width: var(--ibh); display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 7px; border-radius: calc(9px * var(--rk)); border-left: var(--tabbr); background: linear-gradient(180deg, rgba(255, 255, 255, .055), rgba(255, 255, 255, .015)); box-shadow: inset 0 0 0 1px var(--pane-line); font-size: 12.5px; color: var(--fg2); cursor: pointer; transition: background-color .16s ease, box-shadow .16s ease, color .14s ease, transform .16s var(--ease-out); }
-.mx-inbox-button svg { transition: transform .2s var(--ease-out); }
-.mx-inbox-button:hover { background: linear-gradient(180deg, rgba(255, 255, 255, .09), rgba(255, 255, 255, .03)); color: var(--fg); transform: translateY(-1px); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, var(--pane-line)), 0 6px 16px -6px color-mix(in srgb, var(--accent) 40%, transparent); }
-.mx-inbox-button:hover svg { transform: scale(1.1); }
+.mx-inbox-button { position: relative; height: 28px; min-width: 28px; display: flex; align-items: center; justify-content: center; border-radius: calc(7px * var(--rk)); color: var(--muted); cursor: pointer; transition: background-color .14s ease, color .14s ease, transform .12s ease; }
+.mx-inbox-button:hover { background: rgba(255, 255, 255, .06); color: var(--fg); }
 .mx-inbox-button:active { transform: scale(.95); }
-.mx-inbox-button.is-open { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
-.mx-inbox-count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; background: var(--sel); color: var(--fg2); font-variant-numeric: tabular-nums; animation: v9pop .28s var(--ease-out); }
+.mx-inbox-button.is-open { background: rgba(255, 255, 255, .09); color: var(--fg); }
+.mx-inbox-count { position: absolute; top: -3px; right: -4px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 700; background: var(--sel); color: var(--fg2); font-variant-numeric: tabular-nums; animation: v9pop .28s var(--ease-out); }
 .mx-inbox-count.is-needs { background: var(--warn); color: var(--on-warn); }
 
 /* Focus mode */
@@ -562,17 +562,6 @@
 .mx-sidebar .mx-app-icon.size-28 { width: calc(28px * var(--icon-scale, 1)); height: calc(28px * var(--icon-scale, 1)); font-size: calc(12px * var(--icon-scale, 1)); }
 .mx-sidebar .mx-app-icon.size-24 { width: calc(24px * var(--icon-scale, 1)); height: calc(24px * var(--icon-scale, 1)); font-size: calc(11px * var(--icon-scale, 1)); }
 .mx-sidebar .mx-app-icon.size-18 { width: calc(18px * var(--icon-scale, 1)); height: calc(18px * var(--icon-scale, 1)); font-size: calc(8.5px * var(--icon-scale, 1)); }
-
-/* Expressive: every icon button is a bordered square that lights up in the accent on hover, like the Projects +. */
-:root:not([data-finish="flat"]) :is(.mx-collapse,
-.mx-rail-button,
-.mx-inbox-button,
-.mx-pane-control:not(.is-on)) { background: rgba(255, 255, 255, .05); box-shadow: inset 0 0 0 1px var(--line2); color: var(--fg2); }
-:root:not([data-finish="flat"]) :is(.mx-collapse,
-.mx-rail-button,
-.mx-inbox-button,
-.mx-pane-control:not(.is-on)):not(:disabled):hover,
-:root:not([data-finish="flat"]) .mx-inbox-button.is-open { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); color: var(--accent); transform: none; }
 
 /* Rail popovers: they open on a short hover, stay while the pointer is on them, and point at their item. */
 @keyframes v9railpop { from { opacity: 0; transform: translate(-4px, -50%) scale(.97); } to { opacity: 1; transform: translate(0, -50%) scale(1); } }
@@ -728,10 +717,6 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 /* No outlines on the selected row, hovered rows or the open tab: the fill says it. */
 
 /* Top-bar buttons and status badges stay flat: no gradient, glow, lift or entrance. */
-:root[data-finish="flat"] .mx-inbox-button { background: var(--strip-bg, rgba(255, 255, 255, .025)); box-shadow: var(--strip-ring, inset 0 0 0 1px var(--pane-line)); }
-:root[data-finish="flat"] .mx-inbox-button:hover { background: var(--strip-hover, rgba(255, 255, 255, .06)); box-shadow: var(--strip-ring, inset 0 0 0 1px var(--pane-line)); transform: none; }
-:root[data-finish="flat"] .mx-inbox-button:hover svg { transform: none; }
-:root[data-finish="flat"] .mx-inbox-button.is-open { background: rgba(255, 255, 255, .09); color: var(--fg); box-shadow: var(--strip-ring, inset 0 0 0 1px var(--pane-line)); }
 :root[data-finish="flat"] .mx-inbox-count:not(.is-needs) { animation: none; }
 :root[data-finish="flat"] .mx-pane-status,
 :root[data-finish="flat"] .mx-pane-status:hover { animation: none; backdrop-filter: none; box-shadow: inset 0 0 0 1px var(--pane-line); transform: none; }
@@ -908,15 +893,12 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 /* Flat sidebar: one list of two-line rows, a filter field, and a 60px rail. Status is the badge and nothing else
    moves a row, so none of these animates. */
 .mx-sidebar-head { padding: 0 10px; }
-.mx-sidebar-head .mx-inbox-button { height: 28px; min-width: 28px; gap: 5px; padding: 0 6px; }
-.mx-inbox-button.is-needs { color: var(--warn); }
-.mx-filter { flex: none; height: 30px; margin: 0 10px 8px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 8px; background: var(--well); box-shadow: inset 0 0 0 1px var(--line); color: var(--dim); transition: box-shadow .14s ease; }
+.mx-filter { flex: none; height: 30px; margin: 0 10px 8px; display: flex; align-items: center; gap: 7px; padding: 0 6px 0 9px; border-radius: calc(8px * var(--rk)); background: var(--g-well, rgba(255, 255, 255, .04)); box-shadow: inset 0 0 0 1px var(--line); color: var(--dim); transition: box-shadow .14s ease; }
 .mx-filter:focus-within { box-shadow: inset 0 0 0 1px var(--accent-line); }
 .mx-filter input { flex: 1; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--fg); font-size: 12.5px; }
-.mx-filter-hint { flex: none; padding: 0 5px; border-radius: 4px; border: 1px solid var(--line2); font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--dim); }
+.mx-filter-hint { flex: none; min-width: 18px; height: 18px; padding: 0 4px; display: inline-flex; align-items: center; justify-content: center; border-radius: calc(4px * var(--rk)); border: 1px solid var(--line2); font-family: inherit; font-size: 10.5px; color: var(--dim); }
 .mx-filter-clear { flex: none; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--dim); }
 .mx-filter-clear:hover { color: var(--fg); background: var(--hover, rgba(255, 255, 255, .06)); }
-.mx-sidebar-list { gap: 2px; }
 .mx-sidebar.is-rail { width: 60px; }
 .mx-app-icon.size-32 { width: 32px; height: 32px; border-radius: 9px; font-size: 13px; }
 .mx-sc-phrase { margin: 8px 0 0; font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--fg2); overflow-wrap: anywhere; }

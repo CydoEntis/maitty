@@ -6,7 +6,14 @@ import type { Conversation } from '@/data/preview'
 import { LOCAL_HEAD } from '../model/fleets'
 import type { MachineHead } from '../model/machines'
 import { toSessionView, type SessionView } from '../model/session'
+import { useCrew } from '@/features/crew/useCrew'
 import { Sidebar, type SidebarProps } from './Sidebar'
+
+/** The sidebar with a real crew hook, which the window owns. */
+function WithCrew(props: Omit<SidebarProps, 'crew'>) {
+  const crew = useCrew()
+  return <Sidebar {...props} crew={crew} />
+}
 
 vi.mock('@/api/daemon', () => ({ terminalOf: (id: string) => Number(id.slice(1)) }))
 
@@ -32,7 +39,7 @@ const DEVBOX_FLEET = fleet(1, 'build', 2, 4)
 function show(sessions: SessionView[], more: Partial<SidebarProps> = {}) {
   const none = vi.fn()
   render(
-    <Sidebar
+    <WithCrew
       sessions={sessions} fleets={[MAIN, GROWTH]} machines={[LOCAL_HEAD]} selectedFleet={MAIN.key} focusedId={null} tracks={new Map()} mode="docked" online canStart portalContainer={null} onToggleRail={none}
       side="left" width={264} onResize={none} onResizeEnd={none} inboxCount={0} inboxNeeds={false} onOpenInbox={none}
       onNewAgentChat={none} onNewShell={none} onAddMachine={none} onSelectFleet={none} onAddFleet={none} onRenameFleet={none} onRecolorFleet={none} onMoveShip={none} viewOf={() => 'terminal'}

@@ -9,12 +9,15 @@ import { SidebarResizer } from './SidebarResizer'
 import { Icon } from './glyphs'
 import { Collapse, SectionHead } from './Collapse'
 import { FleetRow, FleetTile } from './FleetRow'
-import { MAX_FLEET_NAME_LENGTH } from './fleetStyle'
+import { fleetStyle, MAX_FLEET_NAME_LENGTH } from './fleetStyle'
 import { InlineName } from './InlineName'
 import { ShipRow } from './ShipRow'
 import { RailPopoverLayer } from './RailPopovers'
 import { fleetHoverId, hoverHandlers, useRailHover } from './railHover'
 import { useTipWithKeys } from '@/features/shortcuts/platform'
+import type { CrewApi } from '@/features/crew/useCrew'
+import { CrewmatesPanel } from '@/features/crew/components/CrewmatesPanel'
+import { CrewModeSwitch } from '@/features/crew/components/CrewModeSwitch'
 
 export type SidebarProps = {
   /** Every ship of every machine, in creation order. The filter narrows what shows; it never reorders. */
@@ -65,6 +68,8 @@ export type SidebarProps = {
   onSplitSession: (id: string, direction: 'right' | 'down') => void
   onCopyPath: (id: string) => void
   onOpenSettings: () => void
+  /** Crewmates and crews: the mode switch under the filter, and what the sidebar lists in Crewmates mode. */
+  crew: CrewApi
   /** The footer's left slot (version, update). The caller owns the updater. */
   updateSlot: ReactNode
   /** The update button in the rail's foot. */
@@ -210,7 +215,9 @@ function Expanded(props: SidebarProps) {
         />
         {query === '' ? <kbd className="mx-filter-hint" aria-hidden="true">/</kbd> : <button type="button" className="mx-filter-clear" aria-label="Clear filter" onClick={() => { setQuery(''); input.current?.focus() }}><Icon name="close" size={11} /></button>}
       </div>
+      <CrewModeSwitch crew={props.crew} />
       <div className="mx-sidebar-list">
+        {props.crew.state.mode === 'crew' ? <CrewmatesPanel crew={props.crew} /> : <>
         <section aria-label="Fleets" className="mx-group">
           <SectionHead label="FLEETS" open={folds.isOpen('fleets')} onToggle={() => { folds.toggle('fleets') }} />
           <Collapse open={folds.isOpen('fleets')}>
@@ -271,8 +278,9 @@ function Expanded(props: SidebarProps) {
           </Collapse>
         </section>
 
+        <div className="mx-sidebar-rule" aria-hidden="true" />
         <section aria-label="Ships" className="mx-group">
-          <SectionHead label="SHIPS" count={shipCount} open={folds.isOpen('ships')} onToggle={() => { folds.toggle('ships') }}>
+          <SectionHead label="SHIPS" count={shipCount} className="is-counted" open={folds.isOpen('ships')} onToggle={() => { folds.toggle('ships') }}>
             <span className="mx-view-switch" role="radiogroup" aria-label="Ships view">
               <button type="button" role="radio" aria-checked={view === 'fleets'} aria-label="Selected fleet" title="Ships of the selected fleet" className={view === 'fleets' ? 'is-on' : ''} onClick={() => { setView('fleets') }}><Icon name="fleets" /></button>
               <button type="button" role="radio" aria-checked={view === 'priority'} aria-label="Priority" title="Every agent, most urgent first" className={view === 'priority' ? 'is-on' : ''} onClick={() => { setView('priority') }}><Icon name="priority" /></button>
@@ -283,13 +291,13 @@ function Expanded(props: SidebarProps) {
               <>
                 {agents.length > 0 && (
                   <div className="mx-ship-group">
-                    <SectionHead label="Agents" count={agents.length} open={folds.isOpen('agents')} onToggle={() => { folds.toggle('agents') }} className="is-sub" />
+                    <SectionHead label="Agents" count={agents.length} icon={<Icon name="fleets" size={10} />} open={folds.isOpen('agents')} onToggle={() => { folds.toggle('agents') }} className="is-sub" style={selected ? fleetStyle(selected) : undefined} />
                     <Collapse open={folds.isOpen('agents')}><div className="mx-ship-list" role="list" aria-label="Agents">{agents.map((ship) => row(ship))}</div></Collapse>
                   </div>
                 )}
                 {shells.length > 0 && (
                   <div className="mx-ship-group">
-                    <SectionHead label="Shells" count={shells.length} open={folds.isOpen('shells')} onToggle={() => { folds.toggle('shells') }} className="is-sub" />
+                    <SectionHead label="Shells" count={shells.length} icon={<Icon name="fleets" size={10} />} open={folds.isOpen('shells')} onToggle={() => { folds.toggle('shells') }} className="is-sub is-shells" style={selected ? fleetStyle(selected) : undefined} />
                     <Collapse open={folds.isOpen('shells')}><div className="mx-ship-list" role="list" aria-label="Shells">{shells.map((ship) => row(ship))}</div></Collapse>
                   </div>
                 )}
@@ -311,6 +319,7 @@ function Expanded(props: SidebarProps) {
             )}
           </Collapse>
         </section>
+        </>}
       </div>
       <div className="mx-sidebar-foot">
         {online

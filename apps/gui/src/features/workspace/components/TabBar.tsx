@@ -45,7 +45,7 @@ function TabItem({ tab, head, running, focusable, onSelect, onClose, onSetName }
           >
             <span className="mx-tab-icon">
               <AppIcon process={head.process} size={18} dimmed={head.status === 'unknown'} />
-              <StatusBadge status={head.status} rail />
+              <StatusBadge status={head.status} />
             </span>
             <span className="mx-tab-name">{rowName(head)}</span>
             {tab.paneCount > 1 && <span className="mx-tab-panes" title={`${String(tab.paneCount)} panes`}>{tab.paneCount}</span>}
@@ -66,10 +66,13 @@ type Props = {
   onSelect: (tab: Tab) => void
   onClose: (tab: Tab) => void
   onSetName: (sessionId: string, name: string) => void
+  /** The + after the tray: a new shell in the selected fleet. */
+  onNew: () => void
+  canStart: boolean
 }
 
 /** The tray of the selected fleet's tabs: one per ship, the active one raised. Arrow keys move between tabs. */
-export function TabBar({ tabs, sessions, fleetName, onSelect, onClose, onSetName }: Props) {
+export function TabBar({ tabs, sessions, fleetName, onSelect, onClose, onSetName, onNew, canStart }: Props) {
   const tray = useRef<HTMLDivElement>(null)
   const active = tabs.findIndex((tab) => tab.active)
   const onKeyDown = (event: KeyboardEvent) => {
@@ -102,6 +105,7 @@ export function TabBar({ tabs, sessions, fleetName, onSelect, onClose, onSetName
           )
         })}
       </div>
+      <button type="button" className="mx-tab-new" aria-label="New shell in this fleet" title="New shell in this fleet" disabled={!canStart} onClick={onNew}><Icon name="plus" size={14} /></button>
     </div>
   )
 }

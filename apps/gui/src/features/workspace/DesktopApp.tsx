@@ -1,6 +1,8 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { useCrew } from '@/features/crew/useCrew'
+import { CrewChat } from '@/features/crew/components/CrewChat'
 import { z } from 'zod'
 import {
   closeChatSession,
@@ -140,6 +142,7 @@ import { activeThemeName, findTheme, terminalMinimumContrast, themeStyle, THEMES
 import { COMPACT_WIDTH_PX, NARROW_WIDTH_PX } from './model/windowSize'
 import './workspace.css'
 import './fleets.css'
+import '@/features/crew/crew.css'
 
 /** The daemon pushes every change (`sessions-changed`); this slow poll only catches a stream that went quiet. */
 const SESSION_REFRESH_MS = 15_000
@@ -607,6 +610,7 @@ export function DesktopApp() {
   }, [ordered, startedFrom, openIds])
 
   // Fleets and ships: the daemon's workspaces group the sessions, the selected fleet's ships are the tabs.
+  const crew = useCrew()
   const { fleets, fleetOfShip, selected: selectedFleet, selectedMachine: selectedFleetMachine, selectedName: selectedFleetName, pick: setPickedFleet, shipsIn, tabs, rememberedShip } = useFleets({ daemonFleets, sessions, sidebarSessions, layout, focusedId })
   const sidebarMachineHeads = useMemo(() => (heads.length === 0 ? [LOCAL_HEAD] : heads), [heads])
 
@@ -1740,7 +1744,8 @@ export function DesktopApp() {
       onNewAgentChat={() => { afterPick(); runShortcut('new-agent-chat') }}
       onNewShell={() => { afterPick(); newTerminal(selectedFleetMachine) }}
       onAddMachine={() => { afterPick(); setSettingsSection('machines') }}
-      onSelectFleet={(key) => { afterPick(); selectFleet(key) }}
+      crew={crew}
+      onSelectFleet={(key) => { afterPick(); crew.setMode('fleets'); selectFleet(key) }}
       onAddFleet={addFleet}
       onRenameFleet={renameFleetNamed}
       onRecolorFleet={recolorFleetTo}
@@ -1774,6 +1779,7 @@ export function DesktopApp() {
             )}
             <div className="mx-main-wrap">
               <main className={`mx-main mx-card${tab && tab.panes.length === 1 && !outsidePanes ? ' is-focused-alone' : ''}`} aria-label="Terminals">
+                {crew.state.mode === 'crew' && <CrewChat crew={crew} />}
                 <TabBar
                   tabs={tabs}
                   sessions={paneSessions}
@@ -1781,6 +1787,8 @@ export function DesktopApp() {
                   onSelect={selectTab}
                   onClose={(closing) => { endSessions(closing.sessionIds, closing.sessionIds.length > 1 ? 'Tab' : 'Session') }}
                   onSetName={saveName}
+                  onNew={() => { newTerminal(selectedFleetMachine) }}
+                  canStart={online}
                 />
                 {findOpen && (
                   <FindBar
