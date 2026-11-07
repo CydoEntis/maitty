@@ -355,6 +355,14 @@ enum MachineCmd {
         /// The folder to save it in (created if missing).
         folder: Option<PathBuf>,
     },
+    /// Send one file (up to 100 MB) or one folder (up to 1 GB) to a machine. It is kept in the
+    /// machine's private cache folder; prints where it is there.
+    Put {
+        /// The machine's name in config.
+        name: String,
+        /// The file or folder on this computer.
+        path: PathBuf,
+    },
     /// Say how many sessions are open on a machine and how many are mid-turn. It changes
     /// nothing. A machine running an older version cannot say.
     Activity {
@@ -470,6 +478,17 @@ fn machine_update(
 fn machine_get(name: &str, path: &str, folder: Option<&std::path::Path>) -> anyhow::Result<()> {
     use cli::machine_update::Failure;
     match cli::machine_get::run(name, path, folder, &machines_config()) {
+        Ok(()) => Ok(()),
+        Err(Failure::Usage(message)) => usage_error(message),
+        Err(Failure::Failed(message)) => Err(anyhow::anyhow!(message)),
+    }
+}
+
+/// `machine put`: where it landed on the machine is the one line on stdout; a mistake in how it
+/// was asked is a usage error, a send that did not work exits 1 with why.
+fn machine_put(name: &str, path: &std::path::Path) -> anyhow::Result<()> {
+    use cli::machine_update::Failure;
+    match cli::machine_put::run(name, path, &machines_config()) {
         Ok(()) => Ok(()),
         Err(Failure::Usage(message)) => usage_error(message),
         Err(Failure::Failed(message)) => Err(anyhow::anyhow!(message)),
@@ -658,6 +677,9 @@ pub(crate) fn run() {
         Some(Cmd::Machine {
             cmd: MachineCmd::Get { name, path, folder },
         }) => machine_get(&name, &path, folder.as_deref()),
+        Some(Cmd::Machine {
+            cmd: MachineCmd::Put { name, path },
+        }) => machine_put(&name, &path),
         Some(Cmd::Machine {
             cmd: MachineCmd::Activity { name },
         }) => machine_activity(&name),

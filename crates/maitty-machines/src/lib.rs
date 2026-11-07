@@ -39,7 +39,7 @@ pub use machine::{
 pub use brand::APP_COMMAND;
 pub use remote_browse::{Index, Listing, index_files, list_folder, parse_index, parse_listing};
 pub use remote_folder::get_folder;
-pub use remote_get::{MAX_GET_BYTES, get_file, local_name};
+pub use remote_get::{MAX_GET_BYTES, get_file, get_path, local_name};
 pub use remote_scripts::{
     GET_MARKER, GET_MISSING, GET_NOT_A_FILE, GET_READ_FAILED, GET_SCRIPT, GET_TOO_BIG,
     GET_UNREADABLE, PUT_FOLDER_SCRIPT, FOLDER_MARKER, FOLDER_MISSING, FOLDER_NOT_A_FOLDER, FOLDER_SCRIPT,

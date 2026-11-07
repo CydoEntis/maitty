@@ -542,27 +542,48 @@ build: maitty 0.60.0 installed to ~/.local/bin/maitty
   and exits. Linux and macOS (x86_64 and aarch64) are supported.
 
 Exit status: 0 done or already up to date, 2 a mistake in how it was asked (an unknown machine, a flag
-missing), 1 a step that did not work.
-
-### Getting a file from a machine
+missing), 1 a step that did not work.
+
+### Getting a file or a folder from a machine
 
 ```sh
 maitty machine get build ~/out.log          # saved in the folder you are in
 maitty machine get build /srv/app/app.zip ~/Downloads   # saved in that folder (made if missing)
 ```
 
-`maitty machine get <machine> <path> [folder]` pulls one file from a machine you added, over ssh, and prints
-the path it was saved to. A `~/` at the start of the path is the machine's home folder.
+`maitty machine get <machine> <path> [folder]` pulls one file or one folder from a machine you added, over ssh,
+and prints the path it was saved to. A `~/` at the start of the path is the machine's home folder.
 
-- **One file, up to 1 GB.** A folder is refused ("is not a file"); zip it on the machine first. Folders come later.
+- **One file or one folder, up to 1 GB.** A folder arrives as a folder, with its sub-folders. A `.zip` you already
+  have is just a file, so it travels like any other. Symlinks inside a folder arrive as the files they point to.
 - **The name is made here.** The file keeps the last part of the remote path with anything but letters, digits,
   `.`, `_`, `-` and spaces changed to `_`. Windows reserved names (`CON`, `NUL`, ...) get a leading `_`.
 - **Nothing is overwritten.** If the name is taken the file is called `out-1.log`, `out-2.log`, and so on.
-- **All or nothing.** The file appears under its name only when every byte arrived. A failed or stopped pull leaves
-  no half file; a hidden `.<name>.<n>.part` can stay only if the program itself is killed mid-pull, and is safe to delete.
+- **All or nothing.** The file or folder appears under its name only when everything arrived. A failed or stopped
+  pull leaves nothing; a hidden `.<name>...` file or folder can stay only if the program itself is killed mid-pull,
+  and is safe to delete.
+- **A folder is checked before it is unpacked.** The machine is not trusted, so a folder is refused whole, with the
+  first bad entry named, if it holds a link, a device or any special file, a path that leaves the folder, a name
+  this computer could not store safely (a backslash or colon, a Windows reserved name such as `CON`, a name ending
+  in a dot or space, odd or invisible characters), more than 50000 entries or a path deeper than 64 parts.
 - A pulled file can hold secrets that were on the machine. It is saved with your normal file permissions.
 
 Exit status: 0 saved, 2 a mistake in how it was asked, 1 the pull did not work (the message says why).
+
+### Sending a file or a folder to a machine
+
+```sh
+maitty machine put build ./report.pdf     # one file, up to 100 MB
+maitty machine put build ./my-project     # one folder, up to 1 GB
+```
+
+`maitty machine put <machine> <path>` sends one file or one folder from this computer to a machine you added, over
+ssh, and prints where it is there. It is kept in that machine's private cache folder (`~/.cache/maitty/pastes`, readable
+only by you, cleared after a week) under a name like `paste-<time>-<id>-my-project`, so nothing there is overwritten.
+Dropping a file on a session of another machine does the same thing for a file. A pulled or sent file can hold secrets,
+so do not send one you would not leave in that cache.
+
+Exit status: 0 sent, 2 a mistake in how it was asked, 1 the send did not work.
 
 In the desktop app, right-click a session that is on another machine and choose **Get a file…**. The box lists the
 session's folder: click a folder to open it, **Up** to go back, or a file to get it. Type a few letters of a name to
@@ -582,7 +603,7 @@ Text needs no special command.
   and it reaches your clipboard. The machine's clipboard switch is on unless you turned it off (Settings › Machines, or
   `clipboard = false` in its entry in `config.local.toml`).
 - **A long text, or one you want to keep as a file:** save it as a file. To bring it here, use
-  `maitty machine get` or **Get a file…** (see *Getting a file from a machine*). To send a file there, drop it on the
+  `maitty machine get` or **Get a file…** (see *Getting a file or a folder from a machine*). To send a file there, drop it on the
   session.
 
 ### Agents on a machine

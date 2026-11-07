@@ -100,6 +100,20 @@ pub fn send_file(
     transfer(machine, name, path, Kind::File, &remote_name, watch)
 }
 
+/// Send what is at `path`, a file or a folder, to `machine` and return its path there.
+pub fn send_path(
+    machine: &Machine,
+    name: &str,
+    path: &Path,
+    watch: &Watch,
+) -> Result<String, String> {
+    if std::fs::metadata(path).is_ok_and(|meta| meta.is_dir()) {
+        send_folder(machine, name, path, watch)
+    } else {
+        send_file(machine, name, path, watch)
+    }
+}
+
 /// The most bytes of a folder (as a tar archive) that are sent (ADR 0007).
 pub const MAX_SEND_FOLDER_BYTES: u64 = crate::remote_get::MAX_GET_BYTES;
 

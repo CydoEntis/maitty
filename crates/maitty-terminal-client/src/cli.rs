@@ -8,6 +8,7 @@ pub(crate) mod handoff;
 pub(crate) mod integrations;
 mod jsonc;
 pub(crate) mod machine_get;
+pub(crate) mod machine_put;
 pub(crate) mod machine_update;
 pub(crate) mod machines_ls;
 pub(crate) mod mcp;

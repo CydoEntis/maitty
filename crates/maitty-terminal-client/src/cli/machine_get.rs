@@ -1,4 +1,4 @@
-//! `<app> machine get <name> <remote path> [folder]`: pull one file from a configured machine
+//! `<app> machine get <name> <remote path> [folder]`: pull one file or folder from a configured machine
 //! to this computer over ssh (ADR 0007). The file is saved in `folder` (the current folder when
 //! none is given) under a name made here from the remote path, never overwriting; the line on
 //! stdout is where it landed. Progress goes to stderr, and only when a person is watching.
@@ -7,7 +7,7 @@ use crate::cli::machine_update::Failure;
 use crate::cli::target::resolve_machine;
 use crate::config::Config;
 use crate::ipc::{Machine, SSH_PROGRAM};
-use maitty_machines::get_file;
+use maitty_machines::get_path;
 use maitty_machines::ssh_run::Watch;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
@@ -55,7 +55,7 @@ pub(crate) fn pull(
 ) -> Result<PathBuf, Failure> {
     let watch = Watch::default();
     let drawing = show_progress.then(|| draw_progress(machine.name().to_string(), watch.clone()));
-    let result = get_file(machine, machine.name(), remote_path, folder, &watch);
+    let result = get_path(machine, machine.name(), remote_path, folder, &watch);
     if let Some((stop, thread)) = drawing {
         stop.store(true, Ordering::Relaxed);
         let _ = thread.join();
@@ -64,7 +64,7 @@ pub(crate) fn pull(
 }
 
 /// A thread that redraws `name: 12.0 of 100.0 MB` until told to stop, then ends the line.
-fn draw_progress(
+pub(crate) fn draw_progress(
     name: String,
     watch: Watch,
 ) -> (Arc<AtomicBool>, std::thread::JoinHandle<()>) {

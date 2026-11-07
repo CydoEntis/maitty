@@ -374,10 +374,9 @@ fn get_pulls_a_file_from_the_fake_remote_and_says_where_it_landed() {
 }
 
 #[test]
-fn get_says_why_a_file_cannot_be_pulled_and_leaves_nothing() {
+fn get_says_why_a_path_cannot_be_pulled_and_leaves_nothing() {
     needs_sh!();
     let remote = Remote::new(LINUX);
-    std::fs::create_dir(remote.home.join("folder")).unwrap();
     let dest = remote.dir.join("downloads");
     let pull = |path: &str| {
         match crate::cli::machine_get::pull(&remote.machine(AT_HOME), path, &dest, false) {
@@ -386,7 +385,6 @@ fn get_says_why_a_file_cannot_be_pulled_and_leaves_nothing() {
         }
     };
     assert_eq!(pull("~/nope.log"), "~/nope.log does not exist on box");
-    assert!(pull("~/folder").contains("is not a file"), "a folder is refused");
     assert!(
         std::fs::read_dir(&dest).map_or(true, |mut d| d.next().is_none()),
         "nothing was saved"
@@ -493,6 +491,54 @@ fn a_folder_is_sent_to_the_fake_remote_and_lands_whole_in_its_private_cache() {
     assert_eq!(std::fs::read_to_string(landed.join("README.md")).unwrap(), "hello");
     assert_eq!(std::fs::read_to_string(landed.join("src/deep/lib.rs")).unwrap(), "fn x() {}");
     assert!(landed.join("empty").is_dir());
+}
+
+#[test]
+fn get_takes_a_folder_by_itself_and_leaves_a_file_as_it_was() {
+    needs_sh!();
+    let remote = Remote::new(LINUX);
+    std::fs::create_dir_all(remote.home.join("app/src")).unwrap();
+    std::fs::write(remote.home.join("app/src/main.rs"), "fn main() {}").unwrap();
+    std::fs::write(remote.home.join("notes.txt"), "plain").unwrap();
+    let machine = remote.machine(AT_HOME);
+    let dest = remote.dir.join("downloads");
+
+    let folder = crate::cli::machine_get::pull(&machine, "~/app", &dest, false).unwrap();
+    let file = crate::cli::machine_get::pull(&machine, "~/notes.txt", &dest, false).unwrap();
+
+    assert_eq!(folder, dest.join("app"));
+    assert_eq!(std::fs::read_to_string(folder.join("src/main.rs")).unwrap(), "fn main() {}");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "plain");
+    match crate::cli::machine_get::pull(&machine, "~/nope", &dest, false) {
+        Err(Failure::Failed(why)) => assert_eq!(why, "~/nope does not exist on box"),
+        other => panic!("expected a plain failure: {other:?}"),
+    }
+}
+
+#[test]
+fn put_sends_a_file_and_a_folder_and_says_where_each_landed() {
+    needs_sh!();
+    let remote = Remote::new(LINUX);
+    let local = remote.dir.join("local");
+    std::fs::create_dir_all(local.join("tree/inner")).unwrap();
+    std::fs::write(local.join("tree/inner/leaf.txt"), "leaf").unwrap();
+    std::fs::write(local.join("single.log"), "one file").unwrap();
+    let machine = remote.machine(AT_HOME);
+
+    let file = crate::cli::machine_put::push(&machine, &local.join("single.log"), false).unwrap();
+    let folder = crate::cli::machine_put::push(&machine, &local.join("tree"), false).unwrap();
+
+    assert!(file.contains("/pastes/paste-") && file.ends_with("-single.log"), "{file}");
+    assert!(folder.contains("/pastes/paste-") && folder.ends_with("-tree"), "{folder}");
+    let cache = remote.home.join(".cache").join(APP_COMMAND).join("pastes");
+    let names: Vec<String> = std::fs::read_dir(&cache).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    let tree = names.iter().find(|n| n.ends_with("-tree")).expect("the folder landed");
+    assert_eq!(std::fs::read_to_string(cache.join(tree).join("inner/leaf.txt")).unwrap(), "leaf");
+    assert!(names.iter().any(|n| n.ends_with("-single.log")));
+    match crate::cli::machine_put::push(&machine, &local.join("missing"), false) {
+        Err(Failure::Failed(why)) => assert!(why.starts_with("could not read"), "{why}"),
+        other => panic!("expected a plain failure: {other:?}"),
+    }
 }
 
 #[test]

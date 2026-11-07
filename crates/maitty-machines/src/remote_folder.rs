@@ -219,6 +219,11 @@ pub(crate) fn receive_archive(reader: &mut dyn Read, archive: &Path, cap: u64, w
     Ok(got)
 }
 
+/// The words for a path that is there but is not a folder.
+pub(crate) fn not_a_folder(machine: &str, path: &str) -> String {
+    failure(machine, path, Some(FOLDER_NOT_A_FOLDER), "")
+}
+
 /// What went wrong, in words, from how the folder script ended.
 fn failure(machine: &str, path: &str, code: Option<i32>, stderr: &str) -> String {
     let path = sanitize(path, false);

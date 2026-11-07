@@ -266,8 +266,15 @@ fn get_failure(machine: &str, path: &str, code: Option<i32>, stderr: &str) -> St
     }
 }
 
-/// Pull `remote_path` from `machine` (called `name` in words for the person) into `dest_dir`
-/// and return where it landed. `watch` reports bytes received and can end it.
+/// Why a try at pulling a file did not give one.
+enum Tried {
+    /// The path is there but is not a regular file: it may be a folder.
+    NotAFile,
+    Failed(String),
+}
+
+/// Pull the file `remote_path` from `machine` (called `name` in words for the person) into
+/// `dest_dir` and return where it landed. `watch` reports bytes received and can end it.
 pub fn get_file(
     machine: &Machine,
     name: &str,
@@ -275,25 +282,67 @@ pub fn get_file(
     dest_dir: &Path,
     watch: &Watch,
 ) -> Result<PathBuf, String> {
+    try_file(machine, name, remote_path, dest_dir, watch).map_err(|tried| match tried {
+        Tried::NotAFile => get_failure(name, remote_path, Some(GET_NOT_A_FILE), ""),
+        Tried::Failed(message) => message,
+    })
+}
+
+/// Pull whatever `remote_path` is, a file or a folder, into `dest_dir` and return where it
+/// landed. A file is tried first; a path that is not a file is pulled as a folder.
+pub fn get_path(
+    machine: &Machine,
+    name: &str,
+    remote_path: &str,
+    dest_dir: &Path,
+    watch: &Watch,
+) -> Result<PathBuf, String> {
+    match try_file(machine, name, remote_path, dest_dir, watch) {
+        Ok(path) => Ok(path),
+        Err(Tried::Failed(message)) => Err(message),
+        Err(Tried::NotAFile) => crate::remote_folder::get_folder(machine, name, remote_path, dest_dir, watch)
+            .map_err(|message| {
+                if message == crate::remote_folder::not_a_folder(name, remote_path) {
+                    format!("{} on {name} is not a file or a folder", sanitize(remote_path, false))
+                } else {
+                    message
+                }
+            }),
+    }
+}
+
+fn try_file(
+    machine: &Machine,
+    name: &str,
+    remote_path: &str,
+    dest_dir: &Path,
+    watch: &Watch,
+) -> Result<PathBuf, Tried> {
     let argv = machine
         .get_argv(remote_path, MAX_GET_BYTES)
-        .map_err(|e| format!("getting a file from {name} needs ssh: {e}"))?;
+        .map_err(|e| Tried::Failed(format!("getting a file from {name} needs ssh: {e}")))?;
     std::fs::create_dir_all(dest_dir)
-        .map_err(|e| format!("could not create {}: {e}", dest_dir.display()))?;
+        .map_err(|e| Tried::Failed(format!("could not create {}: {e}", dest_dir.display())))?;
     let streamed = ssh_run::run_reading(&argv, GET_LIMIT, watch, |out| {
         receive(out, dest_dir, remote_path, MAX_GET_BYTES, watch)
-    })?;
+    })
+    .map_err(Tried::Failed)?;
     if streamed.cancelled {
-        return Err(format!("stopped getting {} from {name}", sanitize(remote_path, false)));
+        return Err(Tried::Failed(format!("stopped getting {} from {name}", sanitize(remote_path, false))));
     }
     match (streamed.code, streamed.result) {
         (Some(0), Ok(path)) => Ok(path),
-        (Some(0), Err(why)) => Err(format!("{name}: {why}")),
-        (code, Ok(path)) => {
-            let _ = std::fs::remove_file(&path);
-            Err(get_failure(name, remote_path, code, &streamed.stderr))
+        (Some(0), Err(why)) => Err(Tried::Failed(format!("{name}: {why}"))),
+        (code, result) => {
+            if let Ok(path) = result {
+                let _ = std::fs::remove_file(&path);
+            }
+            if code == Some(GET_NOT_A_FILE) {
+                Err(Tried::NotAFile)
+            } else {
+                Err(Tried::Failed(get_failure(name, remote_path, code, &streamed.stderr)))
+            }
         }
-        (code, Err(_)) => Err(get_failure(name, remote_path, code, &streamed.stderr)),
     }
 }
 
