@@ -717,6 +717,23 @@ impl App {
         }
     }
 
+    /// Fold every machine and fleet heading; with all of them folded already, unfold them all.
+    pub(in crate::client) fn fold_all(&mut self) {
+        let keys: Vec<String> = self
+            .fleet_groups()
+            .iter()
+            .flat_map(|g| {
+                std::iter::once(g.fold_key())
+                    .chain(g.fleets.iter().map(|f| f.fold_key(&g.key)))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        let open = keys.iter().any(|k| !self.screen.saved.closed.contains(k));
+        for key in &keys {
+            self.screen_fold(key, Some(!open));
+        }
+    }
+
     /// Actions that work differently in this layout. Returns true if handled.
     pub(in crate::client) fn screen_act(&mut self, a: &Action) -> bool {
         let focused = self.selected_term();
@@ -786,6 +803,14 @@ impl App {
                     self.menu_for_session(term, (self.screen.side_rect.x + 8, y + 1));
                 }
             }
+            // From the sidebar, on a fleet: its menu.
+            Action::Menu if self.screen.cursor_fleet.is_some() => {
+                if let Some(fleet) = self.screen.cursor_fleet {
+                    self.screen_side_leave();
+                    let at = (self.screen.side_rect.x + 8, self.screen.side_rect.y + 3);
+                    self.menu_for_fleet(fleet, at);
+                }
+            }
             Action::Menu => self.mode = Mode::Actions { sel: 0 },
             Action::Help => self.open_key_view(KeyView::All),
             Action::Palette => self.open_key_view(KeyView::Search),
@@ -809,6 +834,12 @@ impl App {
                 self.screen.follow = true;
                 if self.side_hidden && self.mode == Mode::Side {
                     self.screen_side_leave();
+                }
+            }
+            Action::RenameWorkspace if self.screen.cursor_fleet.is_some() => {
+                if let Some(fleet) = self.screen.cursor_fleet {
+                    self.screen_side_leave();
+                    self.rename_fleet_start(fleet);
                 }
             }
             Action::RenameWorkspace => {
@@ -1010,6 +1041,8 @@ impl App {
             // [: full, then the narrow column, then hidden, then full again.
             KeyCode::Char('[') if plain => self.cycle_sidebar(),
             KeyCode::Char('/') if plain => self.start_side_filter(),
+            // z folds every heading, or opens them all again when all are folded.
+            KeyCode::Char('z') if plain => self.fold_all(),
             // A shell at once in the fleet under the cursor, else the one you are in.
             KeyCode::Char('n' | 'N') if plain => {
                 let fleet = fleet.or_else(|| {
@@ -2049,7 +2082,7 @@ impl App {
                 Some(SideItem::Fleet(f)) => self.open_fleet(f),
                 _ => {}
             },
-            ScreenHit::MachinePlus(machine) => self.new_ship_on(machine),
+            ScreenHit::MachinePlus(machine) => self.machine_plus(machine),
             ScreenHit::Tab(ship) => {
                 self.screen_focus(ship);
             }

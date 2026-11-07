@@ -376,13 +376,18 @@ fn prefix_dot_on_a_ship_opens_its_row_menu_and_anywhere_else_the_menu() {
 }
 
 #[test]
-fn the_plus_on_a_machine_heading_starts_a_shell_in_its_first_fleet() {
+fn the_plus_on_a_machine_heading_asks_a_name_and_left_empty_starts_a_shell_in_its_first_fleet() {
     let mut app = reference_fixture::world(Stage::None);
     let (tx, mut rx) = mpsc::unbounded_channel();
     app.out = tx;
     let rows = text(&mut app, 140, 36);
     let plus = side(&rows, 6).chars().collect::<Vec<_>>().iter().rposition(|c| *c == '+').unwrap() as u16;
     click(&mut app, plus, 6);
+    assert!(matches!(
+        &app.mode,
+        Mode::Prompt { kind: crate::client::PromptKind::NewFleet(MachineId::LOCAL), .. }
+    ));
+    key(&mut app, KeyCode::Enter);
     let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
     assert!(
         sent.iter()
@@ -392,6 +397,72 @@ fn the_plus_on_a_machine_heading_starts_a_shell_in_its_first_fleet() {
     );
     let flash = app.notice.as_ref().map(|(m, _, _)| m.clone()).unwrap_or_default();
     assert!(flash.starts_with("New shell in affiliate-site · "), "{flash}");
+}
+
+#[test]
+fn a_name_typed_for_the_machine_plus_starts_a_fleet_with_the_four_fleet_colours() {
+    let mut app = reference_fixture::world(Stage::None);
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    app.out = tx;
+    app.machine_plus(MachineId::LOCAL);
+    for c in "Training".chars() {
+        key(&mut app, KeyCode::Char(c));
+    }
+    key(&mut app, KeyCode::Enter);
+    let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+    assert!(
+        sent.iter().any(|o| o.machine == MachineId::LOCAL
+            && matches!(&o.msg, ClientMsg::Command(Command::NewFleet { name, colors, .. })
+                if name == "Training" && colors == &[0, 1, 2, 3])),
+        "{sent:?}"
+    );
+}
+
+#[test]
+fn a_fleet_row_menu_renames_and_recolours_through_the_daemons_commands() {
+    let mut app = reference_fixture::world(Stage::None);
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    app.out = tx;
+    let fleet = app.fleet_groups()[0].fleets[0].id;
+    app.menu_for_fleet(fleet, (4, 4));
+    let Mode::ScreenMenu(menu) = &app.mode else { panic!("a menu") };
+    let labels: Vec<_> = menu.items.iter().map(|(l, _)| l.clone()).collect();
+    assert!(labels.iter().any(|l| l == "Rename") && labels.iter().any(|l| l.contains("violet")), "{labels:?}");
+    app.menu_do(crate::client::menu::Act::FleetColour(fleet, 1));
+    app.menu_do(crate::client::menu::Act::RenameFleet(fleet));
+    for _ in 0..40 {
+        key(&mut app, KeyCode::Backspace);
+    }
+    for c in "Renamed".chars() {
+        key(&mut app, KeyCode::Char(c));
+    }
+    key(&mut app, KeyCode::Enter);
+    let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+    assert!(
+        sent.iter().any(|o| matches!(&o.msg, ClientMsg::Command(Command::SetWorkspaceColor { ws, color: 1 }) if *ws == fleet.ws)),
+        "{sent:?}"
+    );
+    assert!(
+        sent.iter().any(|o| matches!(&o.msg, ClientMsg::Command(Command::RenameWorkspace { ws, name }) if *ws == fleet.ws && name == "Renamed")),
+        "{sent:?}"
+    );
+}
+
+#[test]
+fn z_in_the_sidebar_folds_every_heading_and_again_opens_them_all() {
+    let mut app = reference_fixture::world(Stage::None);
+    text(&mut app, 140, 36);
+    app.mode = Mode::Side;
+    key(&mut app, KeyCode::Char('z'));
+    let groups = app.fleet_groups();
+    assert!(groups.iter().all(|g| app.screen.saved.closed.contains(&g.fold_key())));
+    assert!(groups
+        .iter()
+        .flat_map(|g| g.fleets.iter().map(move |f| f.fold_key(&g.key)))
+        .all(|k| app.screen.saved.closed.contains(&k)));
+    app.mode = Mode::Side;
+    key(&mut app, KeyCode::Char('z'));
+    assert!(app.screen.saved.closed.is_empty());
 }
 
 #[test]
