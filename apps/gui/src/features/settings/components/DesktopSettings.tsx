@@ -1,11 +1,8 @@
 import type { UpdaterState } from '@/features/updates/useUpdater'
-import { Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
-import { styleUnderCap, type EffectStyle } from '@/lib/animation-level'
-import { EffectsContext, type AppliedEffect, type StatusEffectKey } from '@/features/workspace/components/motion'
-import { StatusEffect } from '@/features/workspace/components/StatusEffect'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
 import { THEMES } from '@/features/workspace/theme/themes'
 import { ThemePicker } from './ThemePicker'
-import { SpinnerPicker, SpinnerPreview } from './SpinnerPicker'
+import { SpinnerPicker } from './SpinnerPicker'
 import { PerformanceSection } from './PerformanceSection'
 import { hotkeyRows, type Platform } from '@/features/workspace/model/shortcuts'
 import { CHAT_AGENTS } from '@/features/workspace/model/chatView'
@@ -523,30 +520,12 @@ function TerminalSection({ preferences, update }: { preferences: SettingsPrefere
 }
 
 
-const EFFECT_STYLE_OPTIONS = [['waves', 'Waves'], ['sweep', 'Sweep']] as const
-const ANIMATION_OPTIONS = [['auto', 'Auto'], ['full', 'Full'], ['light', 'Light'], ['off', 'Off']] as const
-const WORKING_SCOPE_OPTIONS = [['all', 'All'], ['selected', 'Selected'], ['off', 'Off']] as const
-
-/** What the preview says: the chosen style, or why a cheaper one (or none) is showing. */
-function effectNote(wanted: EffectStyle, shown: EffectStyle | null, on: boolean): string {
-  if (!on) return 'Off'
-  if (shown === null) return 'Off: animations are turned down'
-  if (shown !== wanted) return 'Shown as Sweep: the Animations level does not allow Waves'
-  return shown === 'waves' ? 'Soft bands drift while it lasts' : 'One band crosses as it starts, then rests'
-}
-
 const MODE_OPTIONS = [['system', 'System'], ['dark', 'Dark'], ['light', 'Light']] as const
 
 function AppearanceSection({ preferences, update, systemReducedMotion, systemDark, onPreviewTheme }: { preferences: SettingsPreferences; update: Update; systemReducedMotion: boolean; systemDark: boolean; onPreviewTheme: (name: string | null) => void }) {
   const reduced = preferences.reduceMotion || systemReducedMotion
   const darkInUse = preferences.themeMode === 'dark' || (preferences.themeMode === 'system' && systemDark)
   const modeNote = preferences.themeMode === 'system' ? `Follows your OS. Right now: ${systemDark ? 'dark' : 'light'}.` : `Always uses your ${preferences.themeMode} theme.`
-  const { cap } = useContext(EffectsContext)
-  const effects: Array<{ key: 'effectWorking' | 'effectNeedsYou' | 'effectDone'; styleKey: 'effectStyleWorking' | 'effectStyleNeedsYou' | 'effectStyleDone'; status: StatusEffectKey; label: string; color: string; glyph: ReactNode; short: string }> = [
-    { key: 'effectWorking', styleKey: 'effectStyleWorking', status: 'working', label: 'Working', color: 'var(--accent)', glyph: <SpinnerPreview spinner={preferences.spinner} reduced={reduced} />, short: '0:42' },
-    { key: 'effectNeedsYou', styleKey: 'effectStyleNeedsYou', status: 'needs', label: 'Needs you', color: 'var(--warn)', glyph: '◆', short: 'Allow?' },
-    { key: 'effectDone', styleKey: 'effectStyleDone', status: 'done', label: 'Done', color: 'var(--ok)', glyph: '✓', short: 'Done' },
-  ]
   return (
     <>
       <Card title="Window style" color="var(--accent)" iconPath={<><rect x="4" y="5" width="16" height="14" rx="3" /><path d="M4 10h16" /></>} meta={<span className="mx-scard-meta">Same features, different finish</span>}
@@ -619,34 +598,8 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
         </Row>
       </Card>
       <Card title="Motion" color="var(--ansi-blue)" iconPath={<><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 0 0 16" /></>}>
-        <Row label="Reduce motion" detail="Turns off the shimmer, pulses and slide-ins. Your system setting is always respected.">
+        <Row label="Reduce motion" detail="Turns off pulses, slide-ins and size animations. Your system setting is always respected.">
           <Switch label="Reduce motion" checked={preferences.reduceMotion} onChange={(value) => { update('reduceMotion', value) }} />
-        </Row>
-        <Row label="Animations" detail="Auto starts with what this window can draw, and steps down if frames run slow. Full always allows Waves, Light only Sweep, Off no status effects. Reduce motion wins over all of them.">
-          <Segmented label="Animations" value={preferences.animations} options={ANIMATION_OPTIONS} onChange={(value) => { update('animations', value) }} />
-        </Row>
-        <div className={`mx-effects${reduced ? ' is-locked' : ''}`}>
-          <div className="mx-scard-text"><span>Status effects</span><span>{reduced ? 'Off while Reduce motion is on.' : 'Choose which states animate on sidebar rows and tabs, and how. Icons and words always show.'}</span></div>
-          {effects.map((effect) => {
-            const on = preferences[effect.key] && !reduced
-            const wanted = preferences[effect.styleKey]
-            const shown = on ? styleUnderCap(wanted, cap) : null
-            const applied: AppliedEffect = { className: `mx-fx-${effect.status} mx-fx-strong`, status: effect.status, style: shown }
-            return (
-              <div key={effect.key} className="mx-effect-row">
-                <span className={`mx-effect-chip${shown ? ` ${applied.className}` : ''}`} style={{ color: effect.color }} aria-hidden="true"><StatusEffect effect={applied} />{effect.glyph}<span>{effect.short}</span></span>
-                <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  <span style={{ fontSize: 12.5, color: 'var(--fg)' }}>{effect.label}</span>
-                  <span style={{ fontSize: 11.5, color: 'var(--dim)' }}>{effectNote(wanted, shown, on)}</span>
-                </span>
-                <Segmented label={`${effect.label} style`} value={wanted} options={EFFECT_STYLE_OPTIONS} onChange={(value) => { update(effect.styleKey, value) }} />
-                <Switch label={effect.label} checked={on} disabled={reduced} onChange={(value) => { update(effect.key, value) }} />
-              </div>
-            )
-          })}
-        </div>
-        <Row label="Working effect" detail="Which working rows and tabs animate: all of them, only the one you are in, or none.">
-          <Segmented label="Working effect" value={preferences.workingScope} options={WORKING_SCOPE_OPTIONS} onChange={(value) => { update('workingScope', value) }} />
         </Row>
       </Card>
     </>

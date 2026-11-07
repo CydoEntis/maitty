@@ -173,3 +173,17 @@ describe('start folder', () => {
     expect(truncatePrompt('compare a < b and c > d')).toBe('compare a < b and c > d')
   })
 })
+
+describe('an exited session', () => {
+  const failed = { code: 2, at: 10 }
+  it('reads as exited when the daemon reports a failed last command and nothing is running', () => {
+    expect(toSessionView(conversation(1, `${HOME}/a`, { status: 'idle', details: { asking: '', interrupted: null, exit: failed, timeline: [], usage: { context: null, cost: null, tokens: null } } }), HOME).status).toBe('error')
+    expect(toSessionView(conversation(1, `${HOME}/a`, { status: 'done', details: { asking: '', interrupted: null, exit: failed, timeline: [], usage: { context: null, cost: null, tokens: null } } }), HOME).status).toBe('error')
+  })
+  it('shows working or needs you before a failure, and idle when nothing failed', () => {
+    const details = { asking: '', interrupted: null, exit: failed, timeline: [], usage: { context: null, cost: null, tokens: null } }
+    expect(toSessionView(conversation(1, `${HOME}/a`, { status: 'working', details }), HOME).status).toBe('working')
+    expect(toSessionView(conversation(1, `${HOME}/a`, { status: 'needs-you', details }), HOME).status).toBe('needs')
+    expect(toSessionView(conversation(1, `${HOME}/a`, { status: 'idle', details: { ...details, exit: null } }), HOME).status).toBe('idle')
+  })
+})

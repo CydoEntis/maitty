@@ -16,7 +16,6 @@ export function environmentOf(preferences: SettingsPreferences, appVersion: stri
     gpu: document.documentElement.dataset.gpu ?? 'unknown',
     style: preferences.style,
     reduceMotion: preferences.reduceMotion,
-    statusEffects: preferences.effectWorking || preferences.effectNeedsYou || preferences.effectDone,
     animations,
     terminalFontSize: preferences.terminalFontSize,
   }

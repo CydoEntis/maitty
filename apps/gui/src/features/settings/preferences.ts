@@ -1,6 +1,5 @@
 import { isSpinnerStyle, type SpinnerStyle } from '@/lib/spinner-clock'
 import { prefersPlainDrawing } from '@/lib/gpu'
-import type { EffectStyle } from '@/lib/animation-level'
 import type { AnimationMode } from '@/lib/animation-auto'
 import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, isFontFamily, isFontWeight, type TerminalFontWeight } from '@/lib/terminalFont'
 import { readThemePreference, type ThemePreference } from '@/data/themePreference'
@@ -14,8 +13,6 @@ export type Density = 'compact' | 'comfortable' | 'spacious'
 export const DENSITIES: readonly Density[] = ['compact', 'comfortable', 'spacious']
 /** How big the sidebar's and the rail's icons and tiles are. */
 export type IconSize = 'small' | 'medium' | 'large'
-/** Which working rows and tabs show the working effect: every one, only the one you are in, or none. */
-export type WorkingScope = 'all' | 'selected' | 'off'
 /** How a project's other sessions sit under its main row in the sidebar. */
 export type TrayStyle = 'tree' | 'names' | 'icons' | 'stacked'
 /** Which side of the window the sidebar sits on. */
@@ -72,16 +69,7 @@ export type SettingsPreferences = {
   scrollSpeed: ScrollSpeed
   /** Mirror the terminal's text into the page for screen readers. It makes every pane much heavier to draw. */
   terminalScreenReader: boolean
-  /** Status effects on sidebar rows and tabs, each off by itself; Reduce motion turns all off. */
-  effectWorking: boolean
-  effectNeedsYou: boolean
-  effectDone: boolean
-  /** Waves or Sweep for each status; the animation level can only make it cheaper. */
-  effectStyleWorking: EffectStyle
-  effectStyleNeedsYou: EffectStyle
-  effectStyleDone: EffectStyle
-  workingScope: WorkingScope
-  /** How much the status effects may move: Auto measures, the others fix the level. Reduce motion wins over all of them. */
+  /** Left over from the status effects, which are gone: the value is still read so a saved one loads, and the Performance page reports it. */
   animations: AnimationMode
   density: Density
   /** Text size of the sidebar's folder names and session rows, in px. */
@@ -180,13 +168,6 @@ function defaults(): SettingsPreferences {
     terminalScreenReader: false,
     style: 'glass',
     // Glass runs the status sweeps; Flat and Tiled start with them off. A choice made in Settings wins either way.
-    effectWorking: true,
-    effectNeedsYou: true,
-    effectDone: true,
-    effectStyleWorking: 'waves',
-    effectStyleNeedsYou: 'sweep',
-    effectStyleDone: 'sweep',
-    workingScope: 'all',
     animations: 'auto',
     density: 'comfortable',
     sidebarTextSize: UI_TEXT_SIZE_DEFAULT,
@@ -260,13 +241,6 @@ export function readSettingsPreferences(): SettingsPreferences {
       scrollback: isScrollback(preferences.scrollback) ? preferences.scrollback : fallback.scrollback,
       scrollSpeed: isScrollSpeed(preferences.scrollSpeed) ? preferences.scrollSpeed : fallback.scrollSpeed,
       terminalScreenReader: bool(preferences.terminalScreenReader, fallback.terminalScreenReader),
-      effectWorking: bool(preferences.effectWorking, fallback.effectWorking),
-      effectNeedsYou: bool(preferences.effectNeedsYou, fallback.effectNeedsYou),
-      effectDone: bool(preferences.effectDone, fallback.effectDone),
-      effectStyleWorking: effectStyle(preferences.effectStyleWorking, fallback.effectStyleWorking),
-      effectStyleNeedsYou: effectStyle(preferences.effectStyleNeedsYou, fallback.effectStyleNeedsYou),
-      effectStyleDone: effectStyle(preferences.effectStyleDone, fallback.effectStyleDone),
-      workingScope: preferences.workingScope === 'all' || preferences.workingScope === 'selected' || preferences.workingScope === 'off' ? preferences.workingScope : fallback.workingScope,
       animations: isAnimationMode(preferences.animations) ? preferences.animations : fallback.animations,
       density: isDensity(preferences.density) ? preferences.density : fallback.density,
       sidebarTextSize: clampNumber(preferences.sidebarTextSize, UI_TEXT_SIZE_MIN, UI_TEXT_SIZE_MAX, fallback.sidebarTextSize),
@@ -314,10 +288,6 @@ function terminalFontSize(value: unknown, fallback: number): number {
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
   return Math.min(max, Math.max(min, value))
-}
-
-function effectStyle(value: unknown, fallback: EffectStyle): EffectStyle {
-  return value === 'waves' || value === 'sweep' ? value : fallback
 }
 
 function isAnimationMode(value: unknown): value is AnimationMode {

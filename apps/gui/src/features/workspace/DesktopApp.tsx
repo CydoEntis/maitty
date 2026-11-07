@@ -33,13 +33,12 @@ import { errorMessage } from '@/lib/error-message'
 import { guardLocal } from '@/lib/localOnly'
 import { markGpu } from '@/lib/gpu'
 import { isWindowShown, subscribeWindowActivity } from '@/lib/window-activity'
-import { styleUnderCap, type EffectStyle } from '@/lib/animation-level'
 import { levelFor, useAutoState } from '@/lib/animation-auto'
 import { useAdaptiveAnimations } from './useAdaptiveAnimations'
 import { PerfOverlay } from './components/PerfOverlay'
 import { setSpinnerStyle } from '@/lib/spinner-clock'
 import { TerminalView } from '@/TerminalView'
-import { EffectsContext, ReducedMotionContext } from './components/motion'
+import { ReducedMotionContext } from './components/motion'
 import { ColumnHandle } from './components/ColumnHandle'
 import { CommandPalette } from './components/CommandPalette'
 import { ActivityBar } from './components/ActivityBar'
@@ -623,20 +622,7 @@ export function DesktopApp() {
   const look = useMemo(() => ({ fontFamily: preferences.terminalFontFamily, fontWeight: preferences.terminalFontWeight, fontWeightBold: preferences.terminalFontWeightBold, cursorStyle: preferences.cursorStyle, scrollback: preferences.scrollback, scrollSpeed: preferences.scrollSpeed, screenReader: preferences.terminalScreenReader, seeThrough: preferences.terminalSeeThrough, cursorBlink: preferences.cursorBlink, plainDrawing: preferences.terminalPlainDrawing, theme: xtermTheme(theme.tokens), minimumContrast: terminalMinimumContrast(theme) }), [preferences.terminalFontFamily, preferences.terminalFontWeight, preferences.terminalFontWeightBold, preferences.cursorStyle, preferences.cursorBlink, preferences.scrollback, preferences.scrollSpeed, preferences.terminalScreenReader, preferences.terminalSeeThrough, preferences.terminalPlainDrawing, theme])
   const auto = useAutoState()
   const cap = levelFor(preferences.animations, auto)
-  const effects = useMemo(() => {
-    const allowed = online && !reducedMotion
-    const styled = (on: boolean, style: EffectStyle) => (allowed && on ? styleUnderCap(style, cap) : null)
-    return {
-      working: styled(preferences.effectWorking, preferences.effectStyleWorking),
-      needs: styled(preferences.effectNeedsYou, preferences.effectStyleNeedsYou),
-      done: styled(preferences.effectDone, preferences.effectStyleDone),
-      workingScope: preferences.workingScope,
-      cap,
-    }
-  }, [online, reducedMotion, cap, preferences.effectWorking, preferences.effectNeedsYou, preferences.effectDone, preferences.effectStyleWorking, preferences.effectStyleNeedsYou, preferences.effectStyleDone, preferences.workingScope])
-  // Waves are running when a session in a status that has a Waves effect is listed.
-  const wavesRunning = useMemo(() => sessions.some((session) => (session.status === 'working' || session.status === 'needs' || session.status === 'done') && effects[session.status] === 'waves'), [sessions, effects])
-  useAdaptiveAnimations(preferences.animations === 'auto' && !reducedMotion && cap !== 'none', wavesRunning)
+  useAdaptiveAnimations(preferences.animations === 'auto' && !reducedMotion && cap !== 'none', false)
 
   const flash = useCallback((text: string) => { setToastMessage({ text, key: Date.now() }) }, [])
   useEffect(() => {
@@ -1762,7 +1748,6 @@ export function DesktopApp() {
 
   return (
     <ReducedMotionContext.Provider value={reducedMotion}>
-      <EffectsContext.Provider value={effects}>
         <div ref={setRoot} className={`mx-app${narrow ? ' is-narrow' : ''}`} style={rootStyle} data-motion={reducedMotion ? 'reduced' : 'full'} data-theme-kind={theme.light ? 'light' : 'dark'} data-side={preferences.sidebarSide}>
           <TitleBar />
           <div className="mx-window" role="application" aria-label="Maitty">
@@ -2078,7 +2063,6 @@ export function DesktopApp() {
           <Toaster position={preferences.toastPosition} theme={theme.light ? 'light' : 'dark'} />
           <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">{machineSaid}</div>
         </div>
-      </EffectsContext.Provider>
     </ReducedMotionContext.Provider>
   )
 }

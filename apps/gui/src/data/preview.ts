@@ -15,6 +15,8 @@ export type TerminalDetails = {
   interrupted: { agent: string; resume: string } | null
   /** The latest turn events, oldest first; `at` is unix seconds. */
   timeline: Array<{ at: number; kind: TurnKind; detail: string }>
+  /** The last command ended in failure, as the shell reported it (a non-zero exit code); null when nothing failed. Only the daemon sets it. */
+  exit?: { code: number | null; at: number } | null
   /** What the provider reports the session has used; each is null when it did not say. */
   usage: { context: number | null; cost: number | null; tokens: number | null }
 }

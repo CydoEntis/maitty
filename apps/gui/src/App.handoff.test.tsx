@@ -1237,27 +1237,20 @@ describe('desktop terminal multiplexer', () => {
     expect(root()?.style.getPropertyValue('--accent')).toBe('#88C0D0')
   })
 
-  it('runs status effects only while they are switched on and motion is allowed', async () => {
+  it('draws no wave or sweep behind a working row or tab, and Reduce motion stops the rest', async () => {
     const user = userEvent.setup()
-    // Glass keeps the sweeps on until they are switched off; Flat and Tiled start with them off.
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'glass', effectWorking: true, effectNeedsYou: true, effectDone: true }))
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`, { status: 'working', agent: 'codex' })])
     renderDesktopApp()
     const row = await screen.findByRole('button', { name: '~/a, codex, working' })
-    expect(row).toHaveClass('mx-fx-working')
-    // jsdom has no WebGL 2, so the web view counts as software and Waves fall back to Sweep.
-    expect(row.querySelector('.mx-fx')).toHaveAttribute('data-style', 'sweep')
-    expect(screen.getByRole('tab', { selected: true })).toHaveClass('mx-fx-working', 'mx-fx-strong')
+    expect(row.querySelector('.mx-fx')).toBeNull()
+    expect(row.className).not.toMatch(/mx-fx/)
+    expect(screen.getByRole('tab', { selected: true }).className).not.toMatch(/mx-fx/)
 
     await user.keyboard('{Control>},{/Control}')
     await user.keyboard('a')
-    await user.click(screen.getByRole('switch', { name: 'Working' }))
-    expect(screen.getByRole('button', { name: '~/a, codex, working' })).not.toHaveClass('mx-fx-working')
-
+    expect(screen.queryByRole('switch', { name: 'Working' })).toBeNull()
     await user.click(screen.getByRole('switch', { name: 'Reduce motion' }))
     expect(document.querySelector('.mx-app')).toHaveAttribute('data-motion', 'reduced')
-    expect(screen.getByRole('switch', { name: 'Needs you' })).toBeDisabled()
-    expect(screen.getByText('Off while Reduce motion is on.')).toBeInTheDocument()
   })
 
   it('checks the start folder as it is typed and saves only a folder that exists', async () => {

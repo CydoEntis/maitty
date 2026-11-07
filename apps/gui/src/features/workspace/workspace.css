@@ -298,8 +298,11 @@
 .mx-badge.is-needs::after, .mx-inbox-count.is-needs::after, .mx-upd-dot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 2px rgba(242, 182, 90, .45); opacity: 0; pointer-events: none; animation: v7pulse .6s ease-out 1; }
 .mx-upd-dot::after { animation-duration: .7s; }
 .mx-badge.is-done { background: color-mix(in oklab, var(--ok) 24%, var(--bg)); }
+.mx-badge.is-idle { background: var(--raise); box-shadow: 0 0 0 2px var(--card-ring), inset 0 0 0 1px var(--line2); color: var(--muted); }
+.mx-zz { display: inline-flex; align-items: flex-start; font-family: var(--mono); font-style: italic; font-size: 8.5px; font-weight: 600; line-height: 1; }
+.mx-zz small { font-size: 6px; margin-top: -2px; }
 .mx-badge.is-error { background: color-mix(in oklab, var(--danger) 24%, var(--bg)); }
-.mx-row-icon .mx-badge.is-unknown { width: 12px; height: 12px; border-radius: 3.5px; background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
+.mx-rail-row .mx-badge.is-unknown, .mx-row-icon .mx-badge.is-unknown { width: 12px; height: 12px; border-radius: 3.5px; background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
 .mx-rail-row .mx-badge.is-working { width: 16px; height: 16px; border-radius: 50%; background: var(--well); font-family: var(--mono); font-size: 11px; line-height: 1; color: var(--accent); }
 .mx-rail-unread { position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--card-ring); }
 .mx-ov-pulse { animation: mx-ov-pulse .5s ease-out 1; }
@@ -532,11 +535,6 @@
 .mx-swatch i { height: 3px; border-radius: 2px; display: block; }
 .mx-theme-name { font-size: 12.5px; font-weight: 500; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-theme-sub { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-effects { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 14px; border-top: 1px solid var(--pane-line); transition: opacity .2s ease; }
-.mx-effects.is-locked { opacity: .45; }
-.mx-effect-row { display: flex; align-items: center; gap: 12px; min-height: 36px; }
-.mx-effect-chip { width: 84px; height: 26px; flex: none; border-radius: 7px; background-color: var(--raise); background-repeat: no-repeat; box-shadow: inset 0 0 0 1px var(--pane-line); display: flex; align-items: center; gap: 6px; padding: 0 8px; font-size: 11.5px; }
-.mx-effect-chip > span:not(.mx-fx) { color: var(--fg2); }
 .mx-hotkey { font-family: var(--mono); font-size: 11.5px; color: var(--fg); padding: 3px 8px; border-radius: 6px; background: var(--well); box-shadow: inset 0 0 0 1px var(--pane-line); white-space: pre; }
 .mx-hotkey-row { display: flex; align-items: center; gap: 12px; min-height: 38px; padding: 0 16px; border-top: 1px solid var(--pane-line); font-size: 13px; }
 .mx-hotkey-row > span:first-child { flex: 1; color: var(--fg2); }
@@ -552,42 +550,13 @@
 .mx-menu-hint { margin-left: auto; padding-left: 18px; font-family: var(--mono); font-size: 11px; color: var(--dim); }
 .mx-menu-sep { height: 1px; margin: 4px 2px; background: var(--line2); }
 
-/* Status effects on rows and tabs, after the row and tab rules so their layer sits behind the
-   content. The app renders a `.mx-fx` child only for effects that are switched on and allowed (see
-   EffectsContext, StatusEffect). The child is clipped to its host, paints once and then only moves
-   with `transform` on its own layer: never box-shadow, filter or background-position, which would
-   repaint the card every frame (docs/PERFORMANCE.md).
-   Sweep crosses once when the status appears and rests. Waves drift forever, which is the one
-   deliberate loop; they stop with the window (data-window) and the app drops them to Sweep where
-   frames run slow (lib/animation-level.ts). */
-.mx-fx-working, .mx-fx-needs, .mx-fx-done { position: relative; overflow: hidden; isolation: isolate; }
-.mx-fx { position: absolute; inset: 0; z-index: -1; overflow: hidden; contain: paint; pointer-events: none; border-radius: inherit; }
-.mx-fx[data-status="working"] { color: var(--accent); }
-.mx-fx[data-status="needs"] { color: var(--warn); }
-.mx-fx[data-status="done"] { color: var(--ok); }
-.mx-fx-strong { --fx-k: 1; }
-.mx-fx-band { position: absolute; top: 0; bottom: 0; left: 0; width: 30%; will-change: transform; transform: translate3d(-110%, 0, 0); background: linear-gradient(90deg, transparent, color-mix(in srgb, currentColor calc(20% * var(--fx-k, .6)), transparent) 50%, transparent); animation: mx-fx-sweep 1.4s cubic-bezier(.4, 0, .2, 1) 1 forwards; }
-.mx-fx-wave { position: absolute; top: 0; bottom: 0; left: 0; width: 200%; will-change: transform; animation: mx-fx-drift 18s linear infinite; }
-.mx-fx-wave.is-reverse { animation-duration: 28s; animation-direction: reverse; }
-.mx-fx-wave svg { display: block; width: 100%; height: 100%; }
-.mx-fx-wave path { fill: currentColor; fill-opacity: calc(.11 * var(--fx-k, .6)); }
-.mx-fx-wave.is-reverse path { fill-opacity: calc(.08 * var(--fx-k, .6)); }
-:root[data-window="inactive"] .mx-fx-wave { animation-play-state: paused; }
-@keyframes mx-fx-sweep { from { transform: translate3d(-110%, 0, 0); } to { transform: translate3d(330%, 0, 0); } }
-@keyframes mx-fx-drift { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-50%, 0, 0); } }
-/* The Settings preview repeats the one-pass sweep so there is something to see. */
-.mx-effect-chip .mx-fx-band { animation: mx-fx-sweep-preview 3.2s cubic-bezier(.4, 0, .2, 1) infinite; }
-@keyframes mx-fx-sweep-preview { 0% { transform: translate3d(-110%, 0, 0); } 45%, 100% { transform: translate3d(330%, 0, 0); } }
-
-
-/* Reduce motion (the setting or the system's) stops slides, lifts, pulses and sweeps; spinners
+/* Reduce motion (the setting or the system's) stops slides, lifts and pulses; spinners
    show one frame. */
 .mx-app[data-motion="reduced"] *, .mx-app[data-motion="reduced"] *::before, .mx-app[data-motion="reduced"] *::after { animation: none !important; transition: none !important; }
 .mx-app[data-motion="reduced"] .mx-row:hover, .mx-app[data-motion="reduced"] .mx-tab:hover, .mx-app[data-motion="reduced"] .mx-rail-row:hover, .mx-app[data-motion="reduced"] .mx-theme-card:hover { transform: none; }
 @media (prefers-reduced-motion: reduce) {
   .mx-app *, .mx-app *::before, .mx-app *::after { animation: none !important; transition: none !important; }
   .mx-app .mx-row:hover, .mx-app .mx-tab:hover, .mx-app .mx-rail-row:hover, .mx-app .mx-theme-card:hover { transform: none; }
-  .mx-app .mx-fx-working, .mx-app .mx-fx-needs, .mx-app .mx-fx-done { background-image: none; }
 }
 
 /* A session's state in the pane's bottom-right corner; the popover says what it means. */

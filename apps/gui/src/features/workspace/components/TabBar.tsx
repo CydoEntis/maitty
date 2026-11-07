@@ -6,8 +6,6 @@ import { iconSaysProcess, MAX_SESSION_NAME_LENGTH, worstSession, type SessionVie
 import { InlineName } from './InlineName'
 import { AppIcon, Icon, PauseBars, Spinner } from './glyphs'
 import { STATUS_LABEL } from '../model/statusText'
-import { useStatusEffect } from './motion'
-import { StatusEffect } from './StatusEffect'
 import { runsProgram, useArmed } from './useArmed'
 import { useShortcutText, useTipWithKeys } from '@/features/shortcuts/platform'
 
@@ -295,7 +293,6 @@ function TabButton({ tab, active, sessions, canStart, otherTabs, othersRun, port
   })
   const worst = worstSession(shown) ?? focused
   const status = worst?.status ?? 'idle'
-  const effect = useStatusEffect(status, active)
   const process = focused?.process ?? 'shell'
   const path = focused?.promptPath ?? ''
   const multi = tab.panes.length > 1
@@ -318,7 +315,7 @@ function TabButton({ tab, active, sessions, canStart, otherTabs, othersRun, port
       role="tab"
       tabIndex={active ? 0 : -1}
       aria-selected={active}
-      className={`mx-tab${active ? ' is-active' : ''} ${effect.className}`}
+      className={`mx-tab${active ? ' is-active' : ''}`}
       onMouseEnter={(event) => { holdPopover(); setAnchor(event.currentTarget.getBoundingClientRect()) }}
       onMouseLeave={letPopoverGo}
       onFocus={(event) => { setAnchor(event.currentTarget.getBoundingClientRect()) }}
@@ -331,7 +328,6 @@ function TabButton({ tab, active, sessions, canStart, otherTabs, othersRun, port
         }
       }}
     >
-      <StatusEffect effect={effect} />
       <span className="mx-tab-icons" aria-hidden="true">
         {(shown.length > 0 ? shown : focused ? [focused] : []).slice(0, TAB_ICON_LIMIT).map((session) => <AppIcon key={session.id} process={session.process} size={20} />)}
         {shown.length === 0 && !focused && <AppIcon process={process} size={20} />}

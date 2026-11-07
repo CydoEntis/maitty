@@ -24,10 +24,10 @@ const DEFAULTS: SettingsPreferences = {
   lightTheme: 'Paper',
   cursorStyle: 'block',
   scrollback: 10000, scrollSpeed: 1,
-  effectWorking: true,
-  effectNeedsYou: true,
+  
+  
   defaultAgent: 'claude', newSessionView: 'chat',
-  effectDone: true, effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all', animations: 'auto', density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, monthlyBudget: null, iconSize: 'medium', trayStyle: 'tree', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, chatFullAccessDefault: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass',
+  animations: 'auto', density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, monthlyBudget: null, iconSize: 'medium', trayStyle: 'tree', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, chatFullAccessDefault: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass',
 }
 
 describe('settings preferences', () => {
@@ -60,7 +60,7 @@ describe('settings preferences', () => {
   })
 
   it('restores every saved choice', () => {
-    const saved: SettingsPreferences = { ...DEFAULTS, accent: 'violet', spinner: 'snake', restoreTabs: false, reduceMotion: true, toastPosition: 'top-left', notifyNeedsYou: false, notificationSound: true, terminalFontSize: 15, themeMode: 'dark', darkTheme: 'Nord', cursorStyle: 'underline', scrollback: 50000, effectNeedsYou: false }
+    const saved: SettingsPreferences = { ...DEFAULTS, accent: 'violet', spinner: 'snake', restoreTabs: false, reduceMotion: true, toastPosition: 'top-left', notifyNeedsYou: false, notificationSound: true, terminalFontSize: 15, themeMode: 'dark', darkTheme: 'Nord', cursorStyle: 'underline', scrollback: 50000, }
     writeSettingsPreferences(saved)
 
     expect(readSettingsPreferences()).toEqual(saved)
@@ -93,23 +93,15 @@ describe('settings preferences', () => {
   it('reads preferences saved before the terminal settings existed', () => {
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ accent: 'blue', spinner: 'bars', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: true, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: false, notificationSound: false, terminalFontSize: 10, startFolder: '~/code', groupBy: 'folder' }))
 
-    expect(readSettingsPreferences()).toEqual({ ...DEFAULTS, style: 'glass', effectWorking: true, effectNeedsYou: true, effectDone: true, accent: 'blue', spinner: 'bars', compactSidebar: true, toastPosition: 'bottom-right', notifyFinished: false, terminalFontSize: 12, startFolder: '~/code', groupBy: 'folder' })
+    expect(readSettingsPreferences()).toEqual({ ...DEFAULTS, style: 'glass', accent: 'blue', spinner: 'bars', compactSidebar: true, toastPosition: 'bottom-right', notifyFinished: false, terminalFontSize: 12, startFolder: '~/code', groupBy: 'folder' })
   })
 
   it('starts a fresh install in Glass with the sweeps on, and Flat or Tiled with them off', () => {
-    expect(readSettingsPreferences()).toMatchObject({ style: 'glass', effectWorking: true, effectNeedsYou: true, effectDone: true })
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'flat', effectWorking: false, effectNeedsYou: false, effectDone: false }))
-    expect(readSettingsPreferences()).toMatchObject({ style: 'flat', effectWorking: false, effectNeedsYou: false, effectDone: false })
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'flat', effectWorking: true }))
-    expect(readSettingsPreferences()).toMatchObject({ style: 'flat', effectWorking: true, effectDone: true })
-  })
-
-  it('defaults to Waves for working and Sweep for the rest, and ignores nonsense', () => {
-    expect(readSettingsPreferences()).toMatchObject({ effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all' })
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ effectStyleWorking: 'sweep', effectStyleDone: 'waves', effectStyleNeedsYou: 'glitter', workingScope: 'selected' }))
-    expect(readSettingsPreferences()).toMatchObject({ effectStyleWorking: 'sweep', effectStyleDone: 'waves', effectStyleNeedsYou: 'sweep', workingScope: 'selected' })
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ workingScope: 'some' }))
-    expect(readSettingsPreferences().workingScope).toBe('all')
+    expect(readSettingsPreferences()).toMatchObject({ style: 'glass', })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'flat', }))
+    expect(readSettingsPreferences()).toMatchObject({ style: 'flat', })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'flat', }))
+    expect(readSettingsPreferences()).toMatchObject({ style: 'flat', })
   })
 
   it('defaults Animations to Auto and ignores a value it does not know', () => {
