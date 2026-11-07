@@ -305,7 +305,7 @@ fn send_all(
 pub struct Transfers(Mutex<HashMap<String, Arc<AtomicBool>>>);
 
 impl Transfers {
-    fn begin(&self, transfer: &str) -> Result<Arc<AtomicBool>, String> {
+    pub(crate) fn begin(&self, transfer: &str) -> Result<Arc<AtomicBool>, String> {
         let mut running = self.0.lock().map_err(|_| "the send list is unusable")?;
         if !running.is_empty() {
             return Err("files are already being sent; wait for them or cancel".into());
@@ -330,10 +330,16 @@ impl Transfers {
     }
 }
 
-/// Takes a finished send off the list when it goes out of scope.
-struct Ending {
+/// Takes a finished transfer off the list when it goes out of scope.
+pub(crate) struct Ending {
     handle: tauri::AppHandle,
     transfer: String,
+}
+
+impl Ending {
+    pub(crate) fn new(handle: tauri::AppHandle, transfer: String) -> Ending {
+        Ending { handle, transfer }
+    }
 }
 
 impl Drop for Ending {
