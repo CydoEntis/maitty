@@ -130,6 +130,11 @@ export function AppIcon({ process, size, dimmed = false }: { process: string; si
   return <span className={`${className} is-tinted`} style={programStyle(program)} aria-hidden="true">{program.charAt(0).toUpperCase()}</span>
 }
 
+/** Two italic z's, the second smaller and raised: the shape of an idle session. */
+function SleepingZ() {
+  return <span className="mx-zz" aria-hidden="true">z<small>z</small></span>
+}
+
 /** The badge on a sidebar row's icon: a shape per status, so colour is never the only signal. */
 export function StatusBadge({ status, rail = false }: { status: SessionStatus; rail?: boolean }) {
   switch (status) {
@@ -143,8 +148,8 @@ export function StatusBadge({ status, rail = false }: { status: SessionStatus; r
     case 'error':
       return <span className="mx-badge is-error"><Icon name="bang" /></span>
     case 'unknown':
-      return rail ? null : <span className="mx-badge is-unknown" />
+      return <span className="mx-badge is-unknown" />
     case 'idle':
-      return null
+      return <span className="mx-badge is-idle"><SleepingZ /></span>
   }
 }

@@ -5,11 +5,10 @@ import { type Chord } from '../model/shortcuts'
 import { THEMES, type ThemeMode } from '../theme/themes'
 import { Icon } from './glyphs'
 
-export type WindowStyle = 'flat' | 'tiled' | 'glass'
+export type WindowStyle = 'flat' | 'glass'
 
 const WINDOW_STYLES: readonly { id: WindowStyle; label: string }[] = [
   { id: 'flat', label: 'Flat' },
-  { id: 'tiled', label: 'Tiled' },
   { id: 'glass', label: 'Glass' },
 ]
 const THEME_MODES: readonly { id: ThemeMode; label: string }[] = [

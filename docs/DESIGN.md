@@ -220,23 +220,15 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   ground; the colours, radii, layout, focus ring and status colours stay ([PERFORMANCE](PERFORMANCE.md)). The
   focused pane has one even `--accent-line` border all the way round, flashed once when focus arrives, and no
   extra line on its header.
-- **Window style: Flat, Tiled or Glass** (Settings › Appearance › Window style, `style`, stored with the other
-  preferences; the root carries `data-style` and `data-finish`). The finish and the layout only; features and
-  status colours do not change. The text above is **Glass**, the default for a fresh install: floating opaque cards, colour icons and the status sweeps.
-  **Flat** makes the window `--bg` with no glow, cards flat `--main` with
-  radius 8 (Settings 10), no blur or resting shadow, flat top-bar buttons and status pills (no gradient, lift or
-  entrance) and no outline on the selected row. **Tiled** is Flat's finish as a hairline grid: no gap between panes or at the window's edge, every region
-  divided by a 1px `--pane-line`, radius 0 and no shadows. The sidebar is flush with a hairline; the title bar is
-  `--main` with a 1px `--line` under it; each pane draws its own right and bottom line and a line under its
-  header; and a static 9px `+` tick (`--tick`, `--line2`) marks each of the four corners of the pane area.
-  Popovers, menus and dialogs are hairline-only (`0 0 0 1px var(--line2)`), square and with no blur. Chrome type
-  (pane process names, the status bar) is Geist Mono, uppercase, letter-spacing
-  .1em, 11 to 11.5px, through `--ch-ff`, `--ch-tt`, `--ch-ls`, `--ch-fs-sm` and `--ch-fs-md`, which only Tiled
-  sets (the rules fall back to the old values elsewhere); terminal text and session names are unchanged.
-  Flat and Tiled share `data-finish="flat"`;
-  The styles differ only in CSS variables set on the app root (`--rk` radius multiplier, `--r14`/`--r16`, `--pg` pane gap (0 in Tiled), `--ptop`, and a few more beside them in `workspace.css`); the layout rules read them, so a style is a block of values, not a second set of rules. The focused pane's ring and the needs-you amber
-  stay in all three. Glass starts with the three status sweeps on and Flat and Tiled with them off; a choice made
-  in Settings wins. Settings saved as `minimal` read as Flat and `expressive` as Glass. **Icons** (Settings › Appearance › Icons, `iconColor`, set on the root as
+- **Window style: Flat or Glass** (Settings › Appearance › Window style, `style`, shared with the terminal app as
+  `window_style`; the root carries `data-style` and `data-finish`). The finish only; layout, features and status
+  colours do not change. **Flat** is the default for a fresh install: the window is `--bg` with no glow, cards are
+  flat `--main` with radius 8 (Settings 10), no blur or resting shadow, flat top-bar buttons and status pills (no
+  gradient, lift or entrance), no outline on the selected row. **Glass** adds floating opaque cards, colour icons and a glow. Tiled is gone: a saved
+  `tiled` reads as Flat, `minimal` as Flat and `expressive` as Glass. The styles differ only in CSS variables set
+  on the app root (`--rk` radius multiplier, `--r14`/`--r16`, `--pg` pane gap, `--ptop`, and a few more beside them in `workspace.css`); the layout rules read
+  them, so a style is a block of values, not a second set of rules. The focused pane's ring and the needs-you amber
+  stay in both. **Icons** (Settings › Appearance › Icons, `iconColor`, set on the root as
   `data-icons`) is separate from the style: `color` keeps app icons in their own colours in every
   style; `grayscale` makes them neutral `--raise` tiles with the glyph in `--fg2`. Project tiles are always neutral.
 - **Title bar and terminal surface.** The title bar (32px) has a colour of its own, apart from the ground,
@@ -270,7 +262,7 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
 - **Status bar.** A 28px line at the bottom of the main area under a hairline, 11.5px muted, one line.
   The left is empty, except "Reconnecting to maittyd…" in amber with a dashed dot when the daemon is
   unreachable. The right holds quick controls: a **theme** menu (Dark, Light or System, a few themes of
-  the kind in use, and "All themes in Settings…"), the **layout style** (Flat, Tiled or Glass), the terminal
+  the kind in use, and "All themes in Settings…"), the **layout style** (Flat or Glass), the terminal
   **text size** (−, the size which resets it to 14px, +; Ctrl+= and Ctrl+− do the same) and the shortcuts
   keycaps, which open the shortcut overlay. Hidden in Focus mode and by Settings › General › Window ›
   Status bar (on by default).
@@ -526,24 +518,15 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
 - **Colours follow the theme.** Agent tiles, badges and the folder text are
   expressions over the active theme's tokens (`--accent`, `--ansi-*`, `--warn`, `--danger`,
   `--on-accent`), never fixed hex values, so switching theme recolours all of them.
-- **Status effects.** Settings › Appearance › Motion has, for Working, Needs you and Done, an on/off switch, a
-  **Waves / Sweep** choice and a live preview chip clipped to the chip. **Waves** are two layers of soft sine
-  bands (SVG paths in the status colour at low alpha) that drift at different speeds and in opposite directions
-  (a 200%-wide layer translating -50% over 18 s and 28 s, linear). It is the default for Working and the one
-  deliberate loop in the window; it stops while the window is hidden or in the background (`data-window` on
-  `<html>`). **Sweep** is one soft band that crosses once in 1.4 s when the status appears and then rests; the
-  default for Needs you and Done. Both are an absolutely positioned `.mx-fx` child of the row or tab
-  (`StatusEffect`), `overflow: hidden; contain: paint`, with `will-change: transform` on the moving layers; only
-  `transform` (`translate3d`) animates, never `box-shadow`, `filter` or `background-position`. A **Working
-  effect** setting (All / Selected / Off) limits which working rows and tabs animate; Selected means only the
-  one you are in. A style is capped by the animation level (`lib/animation-level.ts`), set by **Animations**
-  (Settings › Appearance › Motion, `animations`): **Auto** (default) starts at Waves with WebGL 2 and at Sweep
-  without it (`data-gpu="software"`), then samples animation-frame times for 3 s starting 2 s after launch and
-  again each time Waves begin to run (`lib/frame-monitor.ts`, `useAdaptiveAnimations`); if a quarter of the
-  frames take over 40 ms it steps down one level (Waves, Sweep, none) and never steps up within a run, and the
-  monitor stops itself after each verdict. **Full** always allows Waves, **Light** only Sweep, **Off** none.
-  Settings › Performance says what Auto chose and why (`describeAnimations`). Reduce motion (the setting or the
-  system's) and a disconnected daemon remove every layer, and a fixed choice is never measured. The needs-you badge and the Inbox count pop once with a ring (.6s) and
+- **Status marks, not effects.** Every state has its own shape on a row's or rail icon (`StatusBadge`), so colour
+  is never the only signal: **working** is the user's spinner in `--accent`; **needs you** an amber tile with
+  pause bars, popping once on arrival; **done** a dark green tile with a ✓; **exited** a dark red tile with a !
+  (the daemon's `TermInfo.exit`, a non-zero exit code of the last command, shown while nothing is working or
+  waiting); **idle** a neutral `--raise` tile with a ring in `--line2` and a sleeping `zz` (two italic mono z's,
+  the second smaller and raised, in `--muted`); **unknown** (the daemon is gone) a dashed outlined square, with the
+  row dimmed. The window only displays these; the daemon decides them. There are no waves, sweeps, shimmer or glow
+  on rows and tabs, and no setting for them; the only looping motion is the spinner. Reduce motion (the setting or
+  the system's) removes the pulses, slides and size animations, and the spinner holds one frame. The needs-you badge and the Inbox count pop once with a ring (.6s) and
   the update dot once (.7s), as `transform` and `opacity` on a pseudo-element. The terminal caret is steady
   (blinking is Settings › Text › Blink, xterm's own option, off by default), and nothing animates `box-shadow`,
   `filter` or `backdrop-filter` ([PERFORMANCE](PERFORMANCE.md)). The working spinner steps every 160 ms and

@@ -15,6 +15,7 @@
 use maitty_machines::MachineId;
 use maitty_machines::remote_snapshot::sanitize_snapshot;
 use maitty_shared::protocol::{FolderListing, Reply, ServerMsg, Snapshot, Status, TermId};
+use maitty_shared::settings_view::SharedSettings;
 use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, Instant};
 
@@ -74,6 +75,8 @@ pub enum Out {
     Clipboard { machine: MachineId, text: String },
     /// Ask the machine's daemon for the pane's replay.
     WantReplay { machine: MachineId, term: TermId },
+    /// The shared settings of this computer's daemon, as asked for or as they just changed.
+    Settings(SharedSettings),
     /// A machine's answer to a question about a folder, already cleaned.
     Folders {
         machine: MachineId,
@@ -157,6 +160,12 @@ impl Streams {
                 out.push(Out::Notice { machine, text });
             }
             ServerMsg::Attention { term, status } => out.push(Out::Attention { machine, term, status }),
+            // This computer's only: the settings shown are never another machine's.
+            ServerMsg::Reply(Reply::Settings(settings)) | ServerMsg::SettingsChanged(settings)
+                if machine == MachineId::LOCAL =>
+            {
+                out.push(Out::Settings(settings));
+            }
             ServerMsg::Reply(Reply::Folders { tag, listing }) => {
                 out.push(Out::Folders { machine, tag, listing });
             }

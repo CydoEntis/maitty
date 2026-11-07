@@ -162,6 +162,9 @@ describe('desktop terminal multiplexer', () => {
     daemon.loadConversations.mockResolvedValue([term(5, HOME)])
 
     await user.keyboard('{Control>}{Shift>}t{/Shift}{/Control}')
+    // The shortcut opens the New session modal; Enter takes the start folder, this computer and the default agent.
+    await screen.findByRole('dialog', { name: 'New session' })
+    await user.keyboard('{Enter}{Enter}{Enter}')
 
     await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalledWith(HOME) })
     await waitFor(() => { expect(daemon.sendTerminalInput).toHaveBeenCalledWith({ id: 't5', generation: 0 }, 'claude\r') })
@@ -178,6 +181,8 @@ describe('desktop terminal multiplexer', () => {
     daemon.loadConversations.mockResolvedValue([term(5, HOME)])
 
     await user.keyboard('{Control>}{Shift>}t{/Shift}{/Control}')
+    await screen.findByRole('dialog', { name: 'New session' })
+    await user.keyboard('{Enter}{Enter}{Enter}')
 
     await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalledWith(HOME) })
     await waitFor(() => { expect(daemon.sendTerminalInput).toHaveBeenCalledWith({ id: 't5', generation: 0 }, 'codex\r') })
@@ -847,8 +852,9 @@ describe('desktop terminal multiplexer', () => {
 
     await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
 
-    expect(await screen.findByText('Disconnected from maittyd.')).toBeInTheDocument()
-    expect(screen.getByText(/What you see is the last known screen\. Retrying in 1s\./)).toBeInTheDocument()
+    expect(await screen.findByText('Reconnecting to maittyd')).toBeInTheDocument()
+    expect(screen.getByText(/Try 1 of 5 · next in 1s/)).toBeInTheDocument()
+    // The row says only that it is unknown; "last seen working" now lives in its tooltip and hover card.
     expect(screen.getByRole('button', { name: '~/a, codex, unknown' })).toBeInTheDocument()
     expect(screen.getAllByText('Reconnecting to maittyd…')).toHaveLength(2)
     expect(within(screen.getByLabelText('Status')).getByRole('status')).toHaveTextContent('Reconnecting to maittyd…')
@@ -858,7 +864,37 @@ describe('desktop terminal multiplexer', () => {
 
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
     await userEvent.setup().click(screen.getByRole('button', { name: 'Retry now' }))
-    await waitFor(() => { expect(screen.queryByText('Disconnected from maittyd.')).not.toBeInTheDocument() })
+    await waitFor(() => { expect(screen.queryByText('Reconnecting to maittyd')).not.toBeInTheDocument() })
+  })
+
+  it('calls the service down after five failed tries, and Start maittyd tries again', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockResolvedValueOnce([term(2, `${HOME}/a`)]).mockRejectedValue(new Error('connection refused'))
+    const { client } = renderDesktopApp()
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+    for (let attempt = 0; attempt < 5; attempt += 1) await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
+
+    const card = await screen.findByRole('alertdialog', { name: "maittyd isn't responding" })
+    expect(within(card).getAllByRole('listitem')).toHaveLength(3)
+    expect(within(card).getByText('Details')).toBeInTheDocument()
+    expect(screen.queryByText('Reconnecting to maittyd')).not.toBeInTheDocument()
+
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
+    await user.click(within(card).getByRole('button', { name: 'Start maittyd' }))
+    await waitFor(() => { expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument() })
+  })
+
+  it('asks to restart an older service in an amber card, and Not now leaves the read-only bar', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockRejectedValue('connecting to the local daemon: the running maitty service uses protocol v49, while this GUI needs v62')
+    daemon.loadDaemonRestartStatus.mockResolvedValue({ daemonProtocol: 49, guiProtocol: 62, canRestart: true, sessionCount: 2, activeTurnCount: 0 })
+    renderDesktopApp()
+
+    const card = await screen.findByRole('alertdialog', { name: 'Restart the background service to finish updating' })
+    await user.click(within(card).getByRole('button', { name: 'Not now' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(screen.getByText('Disconnected from maittyd.')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Restart and restore 2 sessions' })).toBeInTheDocument()
   })
 
   it('leaves an older daemon running while it owns sessions it is not saving', async () => {
@@ -930,7 +966,7 @@ describe('desktop terminal multiplexer', () => {
     const { client } = renderDesktopApp()
     await screen.findByRole('region', { name: 'Shell in ~/a' })
     await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
-    await screen.findByText('Disconnected from maittyd.')
+    await screen.findByText('Reconnecting to maittyd')
     document.elementFromPoint = vi.fn(() => null)
 
     act(() => { terminal.drop.current?.([`${HOME}/b.png`], { x: 1, y: 1 }) })
@@ -1229,7 +1265,9 @@ describe('desktop overlays and pane tools', () => {
 
     await user.click(within(set).getByRole('button', { name: 'Start a session' }))
     expect(screen.queryByRole('dialog', { name: "You're set" })).not.toBeInTheDocument()
-    expect(daemon.startShellSession).toHaveBeenCalled()
+    await screen.findByRole('dialog', { name: 'New session' })
+    await user.keyboard('{Enter}{Enter}{Enter}')
+    await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalled() })
 
     app.unmount()
     renderDesktopApp({ firstRun: true })

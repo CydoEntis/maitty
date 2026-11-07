@@ -114,14 +114,29 @@ name, never by where it points. A session of another machine has the id `build/t
 saved layout survives a restart; this computer's stay `t12`). **Settings › Machines** retries, removes and
 adds machines (the behaviour is the terminal app's [Machines dialog](#project-specific-machines-dialog),
 with the host list read off the UI thread, the look at the machine ended by a 12 s limit or Cancel, and a
-login that needs a person run in a session named `ssh <name>`); **New session** on a pane of another machine
-opens the **folder dialog** for it: a mono field starting at the machine's `~` with **Up** and **Home**, a live
-check against the machine (`N items` when the folder is there, `Folder not found on <machine>` with a red ring when
-it is not), the matching subfolders and that machine's recent folders as suggestions (↑ ↓ highlight, Enter picks,
-Tab completes), and **Open terminal ↵**, which stays disabled until the machine says the folder exists. The
-listing is `Query::ListFolders` ([API_PATTERNS](API_PATTERNS.md)); a machine that does not answer in 8 seconds is
-reported in place of the count. To choose the machine, press the **+** on its sidebar header (disabled
-while its line is not connected) or run `New session on <name>` in ⌘K; both open the same folder dialog. A screen reader is told when a machine goes down (`build disconnected: unreachable`) and when it is back, once each and not for every retry, through a polite live region; every state is a word as well as a shape and a colour, nothing about machines animates, and the Machines page works with the keyboard alone (Tab, Enter, Esc ends a look in progress without closing Settings). Features that read a pane's files (Inspect, worktreesFeatures that read a pane's files (Inspect, worktrees, opening a file from the output, dropping files, the screen text) are for this computer's panes only: each says `<Feature> is local-only in v1: the files are on <machine>, not on this computer.` and the Repository button shows disabled with that text.
+login that needs a person run in a session named `ssh <name>`); **New session** (⌘T, Ctrl+Shift+T, the sidebar +, ⌘K) always opens the **New session modal**: one 560px dialog of fixed height
+whose header reads "Start in `<project>` on `<machine>` as `<agent>` in `[>_ | chat]`". Each part is a pill that jumps to its
+step; the toggle locks to the terminal for a plain shell ("Shells always open in Terminal") and for another machine ("Chat
+runs on this computer"). **1 Project:** Browse… (⌘O, Ctrl+O; this computer's folder picker) comes first, then the recent
+projects (the focused session's folder is highlighted, so Enter takes it); the field completes in grey after what is typed
+(Tab or → accepts) from known projects for a name and from the folders that exist on the machine for a path starting with `~`
+or `/` (`Query::ListFolders`, [API_PATTERNS](API_PATTERNS.md)), and a folder that is not there shows a red "No such folder on
+`<machine>`" and blocks Enter. **2 Machine:** this computer, then each machine with how its line is; one that is down is greyed
+out with "Reconnecting…" and cannot be picked. **3 Start as:** Terminal, Claude, Codex, and a disabled "Crew (soon)", with the
+default agent highlighted. Enter goes on, Esc goes back and then cancels; the dialog traps focus and gives it back on close.
+Starting on another machine opens its shell there and, for an agent, types the agent's name into it. `NewSessionModal` is
+presentation only; the window starts the session through the same paths as before (`startShellSession`, an agent typed into the
+new shell, `startSessionOnMachine`). The **+** on a machine's sidebar header (disabled while its line is not connected) and `New session on <name>` in ⌘K open the same modal on that machine. A screen reader is told when a machine goes down (`build disconnected: unreachable`) and when it is back, once each and not for every retry, through a polite live region; every state is a word as well as a shape and a colour, nothing about machines animates, and the Machines page works with the keyboard alone (Tab, Enter, Esc ends a look in progress without closing Settings). Features that read a pane's files (Inspect, worktreesFeatures that read a pane's files (Inspect, worktrees, opening a file from the output, dropping files, the screen text) are for this computer's panes only: each says `<Feature> is local-only in v1: the files are on <machine>, not on this computer.` and the Repository button shows disabled with that text.
+
+**Desktop service states** (`ServiceStatus`, `model/serviceState.ts`). While maittyd does not answer, every status reads
+Unknown, spinners stop and input waits. The first four failed tries show a thin bar under the pane header, "Reconnecting to
+maittyd · your sessions are still running", with "Try N of 5 · next in Ns" (it ticks each second) and **Retry now**. After the
+fifth the bar becomes a centred red card, "maittyd isn't responding": three things to try, the error under Details, and
+**Start maittyd** and **Retry**. The desktop's connection starts maittyd itself on every try (`open_or_spawn_for_user`), so
+both buttons try again at once; there is no separate start-service command. A running service of another protocol gets an
+amber card, "Restart the background service to finish updating", with what a restart keeps and stops and a **Restart
+service** button that asks for a second click (`restart_mismatched_daemon`, then "Service restarted · N sessions back");
+**Not now** leaves the read-only bar. Agents that were mid-turn offer **Resume** in the restore banner; nothing resumes by itself.
 
 A terminal UI (ratatui). Colours come only from the theme (`theme.rs`): semantic
 slots `bg`, `card`, `card2`, `hov`, `accent`/`acc_ink`, `text`/`strong`/`muted`,
@@ -840,7 +855,14 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   stops the agent when closed (`closeChatSession`: end, then put away; if the stop fails it stays open).
 - **Choosing the agent for one session.** A small chevron beside the sidebar's + opens **New Claude chat** / **New Codex chat**
   (the default is marked); the + still starts the default from Settings. It starts the chosen agent in the start folder and
-  opens in the view Settings names. Beside a session on another machine it opens that machine's folder dialog, as + does.
+  opens in the view Settings names. Beside a session on another machine it opens the New session modal on that machine, as + does.
+- **Agent, model and reasoning.** Under the composer a button reads `Claude · Sonnet · Medium` and opens one popover with
+  three radio columns (`AgentPicker`): Agent (the other agent is greyed out with "Fixed for this chat · start a new chat
+  to use Codex"), Model (the agent's list, a one-line description each) and Reasoning (Low, Medium, High, Max with a
+  four-bar meter). Picking ticks the choice and leaves the popover open; Esc or a click outside closes it; the footer says
+  "Changes apply from your next message". The choice is kept per conversation in this window's storage
+  (`agentChoice.ts`). The model lists are placeholders (`PLACEHOLDER_MODELS`) until the adapters report their own, and
+  nothing yet sends the choice to the agent.
 - **Switching changes the window, not the session.** The choice is per session (`usePaneViews`), the terminal stays
   mounted and its pane keeps its size, and no daemon command is sent. The shortcut is `chat-toggle`
   (Ctrl+Shift+E, Cmd+Shift+E) on the focused pane.

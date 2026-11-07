@@ -226,8 +226,11 @@
 .mx-badge.is-needs::after, .mx-inbox-count.is-needs::after, .mx-upd-dot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 2px rgba(242, 182, 90, .45); opacity: 0; pointer-events: none; animation: v7pulse .6s ease-out 1; }
 .mx-upd-dot::after { animation-duration: .7s; }
 .mx-badge.is-done { background: color-mix(in oklab, var(--ok) 24%, var(--bg)); }
+.mx-badge.is-idle { background: var(--raise); box-shadow: 0 0 0 2px var(--card-ring), inset 0 0 0 1px var(--line2); color: var(--muted); }
+.mx-zz { display: inline-flex; align-items: flex-start; font-family: var(--mono); font-style: italic; font-size: 8.5px; font-weight: 600; line-height: 1; }
+.mx-zz small { font-size: 6px; margin-top: -2px; }
 .mx-badge.is-error { background: color-mix(in oklab, var(--danger) 24%, var(--bg)); }
-.mx-row-icon .mx-badge.is-unknown { width: 12px; height: 12px; border-radius: 3.5px; background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
+.mx-rail-row .mx-badge.is-unknown, .mx-row-icon .mx-badge.is-unknown { width: 12px; height: 12px; border-radius: 3.5px; background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
 .mx-rail-row .mx-badge.is-working { width: 16px; height: 16px; border-radius: 50%; background: var(--well); font-family: var(--mono); font-size: 11px; line-height: 1; color: var(--accent); }
 .mx-rail-unread { position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--card-ring); }
 .mx-ov-pulse { animation: mx-ov-pulse .5s ease-out 1; }
@@ -248,6 +251,20 @@
 .mx-offline-button { height: 26px; padding: 0 10px; display: flex; align-items: center; border-radius: 7px; background: var(--raise); border: 1px solid var(--line2); font-size: 12px; flex: none; white-space: nowrap; }
 .mx-offline-button:not(:disabled):hover { background: var(--sel); }
 .mx-offline-button:disabled { opacity: .55; }
+.mx-offline-count { flex: none; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.mx-service-layer { position: fixed; inset: 0; z-index: 35; display: flex; align-items: center; justify-content: center; padding: 24px; pointer-events: none; }
+.mx-service-card { pointer-events: auto; width: 440px; max-width: 100%; padding: 20px; border-radius: 16px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); display: flex; flex-direction: column; gap: 10px; color: var(--fg2); font-size: 13px; }
+.mx-service-card h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--fg); }
+.mx-service-card p, .mx-service-card ol { margin: 0; }
+.mx-service-card ol { padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.mx-service-card.is-down { border-color: var(--danger-line); box-shadow: inset 0 0 0 1px var(--danger-line), var(--sh-pop); }
+.mx-service-card.is-down h2 { color: var(--danger); }
+.mx-service-card.is-update { border-color: var(--warn-line); }
+.mx-service-card.is-update h2 { color: var(--warn); }
+.mx-service-card pre { margin: 6px 0 0; padding: 8px; max-height: 120px; overflow: auto; border-radius: 8px; background: var(--well); font-size: 11.5px; white-space: pre-wrap; }
+.mx-service-card summary { cursor: pointer; color: var(--muted); }
+.mx-service-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+.mx-text-button.is-armed { color: var(--warn); }
 .mx-offline-button.is-armed { color: var(--warn); border-color: var(--warn-line); }
 
 /* Empty state */
@@ -419,11 +436,6 @@
 .mx-swatch i { height: 3px; border-radius: 2px; display: block; }
 .mx-theme-name { font-size: 12.5px; font-weight: 500; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-theme-sub { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-effects { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 14px; border-top: 1px solid var(--pane-line); transition: opacity .2s ease; }
-.mx-effects.is-locked { opacity: .45; }
-.mx-effect-row { display: flex; align-items: center; gap: 12px; min-height: 36px; }
-.mx-effect-chip { width: 84px; height: 26px; flex: none; border-radius: 7px; background-color: var(--raise); background-repeat: no-repeat; box-shadow: inset 0 0 0 1px var(--pane-line); display: flex; align-items: center; gap: 6px; padding: 0 8px; font-size: 11.5px; }
-.mx-effect-chip > span:not(.mx-fx) { color: var(--fg2); }
 .mx-hotkey { font-family: var(--mono); font-size: 11.5px; color: var(--fg); padding: 3px 8px; border-radius: 6px; background: var(--well); box-shadow: inset 0 0 0 1px var(--pane-line); white-space: pre; }
 .mx-hotkey-row { display: flex; align-items: center; gap: 12px; min-height: 38px; padding: 0 16px; border-top: 1px solid var(--pane-line); font-size: 13px; }
 .mx-hotkey-row > span:first-child { flex: 1; color: var(--fg2); }
@@ -439,34 +451,7 @@
 .mx-menu-hint { margin-left: auto; padding-left: 18px; font-family: var(--mono); font-size: 11px; color: var(--dim); }
 .mx-menu-sep { height: 1px; margin: 4px 2px; background: var(--line2); }
 
-/* Status effects on rows and tabs, after the row and tab rules so their layer sits behind the
-   content. The app renders a `.mx-fx` child only for effects that are switched on and allowed (see
-   EffectsContext, StatusEffect). The child is clipped to its host, paints once and then only moves
-   with `transform` on its own layer: never box-shadow, filter or background-position, which would
-   repaint the card every frame (docs/PERFORMANCE.md).
-   Sweep crosses once when the status appears and rests. Waves drift forever, which is the one
-   deliberate loop; they stop with the window (data-window) and the app drops them to Sweep where
-   frames run slow (lib/animation-level.ts). */
-.mx-fx-working, .mx-fx-needs, .mx-fx-done { position: relative; overflow: hidden; isolation: isolate; }
-.mx-fx { position: absolute; inset: 0; z-index: -1; overflow: hidden; contain: paint; pointer-events: none; border-radius: inherit; }
-.mx-fx[data-status="working"] { color: var(--accent); }
-.mx-fx[data-status="needs"] { color: var(--warn); }
-.mx-fx[data-status="done"] { color: var(--ok); }
-.mx-fx-strong { --fx-k: 1; }
-.mx-fx-band { position: absolute; top: 0; bottom: 0; left: 0; width: 30%; will-change: transform; transform: translate3d(-110%, 0, 0); background: linear-gradient(90deg, transparent, color-mix(in srgb, currentColor calc(20% * var(--fx-k, .6)), transparent) 50%, transparent); animation: mx-fx-sweep 1.4s cubic-bezier(.4, 0, .2, 1) 1 forwards; }
-.mx-fx-wave { position: absolute; top: 0; bottom: 0; left: 0; width: 200%; will-change: transform; animation: mx-fx-drift 18s linear infinite; }
-.mx-fx-wave.is-reverse { animation-duration: 28s; animation-direction: reverse; }
-.mx-fx-wave svg { display: block; width: 100%; height: 100%; }
-.mx-fx-wave path { fill: currentColor; fill-opacity: calc(.11 * var(--fx-k, .6)); }
-.mx-fx-wave.is-reverse path { fill-opacity: calc(.08 * var(--fx-k, .6)); }
-:root[data-window="inactive"] .mx-fx-wave { animation-play-state: paused; }
-@keyframes mx-fx-sweep { from { transform: translate3d(-110%, 0, 0); } to { transform: translate3d(330%, 0, 0); } }
-@keyframes mx-fx-drift { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-50%, 0, 0); } }
-/* The Settings preview repeats the one-pass sweep so there is something to see. */
-.mx-effect-chip .mx-fx-band { animation: mx-fx-sweep-preview 3.2s cubic-bezier(.4, 0, .2, 1) infinite; }
-@keyframes mx-fx-sweep-preview { 0% { transform: translate3d(-110%, 0, 0); } 45%, 100% { transform: translate3d(330%, 0, 0); } }
-
-/* Reduce motion (the setting or the system's) stops slides, lifts, pulses and sweeps; spinners
+/* Reduce motion (the setting or the system's) stops slides, lifts and pulses; spinners
    show one frame. */
 .mx-app[data-motion="reduced"] *, .mx-app[data-motion="reduced"] *::before, .mx-app[data-motion="reduced"] *::after { animation: none !important; transition: none !important; }
 .mx-app[data-motion="reduced"] .mx-row:hover,
@@ -474,10 +459,7 @@
 .mx-app[data-motion="reduced"] .mx-theme-card:hover { transform: none; }
 @media (prefers-reduced-motion: reduce) {
   .mx-app *, .mx-app *::before, .mx-app *::after { animation: none !important; transition: none !important; }
-  .mx-app .mx-row:hover,
-.mx-app .mx-rail-row:hover,
-.mx-app .mx-theme-card:hover { transform: none; }
-  .mx-app .mx-fx-working, .mx-app .mx-fx-needs, .mx-app .mx-fx-done { background-image: none; }
+  .mx-app .mx-row:hover, .mx-app .mx-rail-row:hover, .mx-app .mx-theme-card:hover { transform: none; }
 }
 
 /* A session's state in the pane's bottom-right corner; the popover says what it means. */
@@ -791,7 +773,7 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 .mx-confirm-button.is-danger { background: var(--danger); color: #fff; box-shadow: none; font-weight: 600; }
 .mx-confirm-button.is-danger:hover { background: color-mix(in srgb, var(--danger) 85%, #fff); }
 
-/* Finish: Flat (also under Tiled). Flat surfaces, no glow, no resting rings and smaller radii.
+/* Finish: Flat. Flat surfaces, no glow, no resting rings and smaller radii.
    Glass is the rules above; these only take things away. Accent and warn rings (the
    focused pane, needs-you) and every status colour stay. */
 :root[data-finish="flat"] .mx-window { background: var(--bg); }
@@ -849,60 +831,8 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 }
 .mx-app[data-theme-kind="light"] { --tbar: var(--main); --sh: none; --sh-pop: 0 12px 32px rgba(17, 24, 32, .14), 0 0 0 1px rgba(17, 22, 27, .08); --glow-accent: 9%; --glow-mag: 6%; }
 :root[data-style="flat"] .mx-app { --r14: 8px; --r16: 10px; }
-:root[data-style="tiled"] .mx-app {
-  --rk: 0; --r14: 0px; --r16: 0px; --pg: 0px; --ptop: 0px; --tbh: 40px; --tbp: 0; --tbg: 0px; --tbb: 1px solid var(--pane-line);
-  --tabh: 40px; --tabbr: 1px solid var(--pane-line); --tbar: var(--main); --tbar-b: 1px solid var(--line); --sh: none; --sh-pop: 0 0 0 1px var(--line2); --blur-pop: none;
-  --sbm: 0; --sbw: 0 1px 0 0; --tba: stretch; --tl: 0px; --edge: 0px; --tsh: 40px; --tsw: 40px; --ibh: 40px;
-  --strip-bg: transparent; --strip-ring: none; --strip-hover: rgba(255, 255, 255, .06);
-  --tick: var(--line2); --ch-ff: var(--mono); --ch-tt: uppercase; --ch-ls: .1em; --ch-fs-sm: 11px; --ch-fs-md: 11.5px;
-}
 
-/* Tiled: a hairline grid. The variables above zero the gaps and radii; these rules draw the lines between
-   regions and take away what the flat finish still shadows. Each pane owns its right and bottom hairline, and
-   the tab bar, sidebar and title bar own the top and left, so no line is drawn twice. */
 .mx-app .title-bar { background: var(--tbar); border-bottom: var(--tbar-b); }
-:root[data-style="tiled"] .mx-pane { border-width: 0 1px 1px 0; }
-:root[data-style="tiled"] .mx-pane-head { border-bottom: 1px solid var(--pane-line); }
-:root[data-style="tiled"] .mx-pane.is-focused,
-:root[data-style="tiled"] .mx-pane.is-focused:hover { box-shadow: inset 0 0 0 1px var(--accent-line); }
-:root[data-style="tiled"] .mx-inspect { border-width: 0 0 0 1px; box-shadow: none; }
-/* Popovers carry a hairline and no blur, and sit square. */
-:root[data-style="tiled"] :is(.mx-menu,
-.mx-tip,
-.mx-rail-popover,
-.mx-status-pop,
-.mx-palette,
-.mx-sessionmenu,
-.mx-picker-menu,
-.mx-notice,
-.mx-toast,
-.mx-upd-card,
-.mx-rename,
-.mx-settings,
-.mx-inbox) {
-  border-radius: 0; box-shadow: var(--sh-pop); backdrop-filter: none;
-}
-:root[data-style="tiled"] :is(.mx-menu-item,
-.mx-palette-row,
-.mx-keycap,
-.mx-pane-control,
-.mx-new-button,
-.mx-sb-modes,
-.mx-sb-mode) { border-radius: 0; }
-/* The four corners of the pane area carry a static 9px "+", drawn as two 1px bars each in one pseudo-element. */
-:root[data-style="tiled"] .mx-panes { position: relative; }
-:root[data-style="tiled"] .mx-panes::after {
-  content: ""; position: absolute; inset: 0; z-index: 4; pointer-events: none;
-  background:
-    linear-gradient(var(--tick), var(--tick)) left 0 top 4px / 9px 1px no-repeat,
-    linear-gradient(var(--tick), var(--tick)) left 4px top 0 / 1px 9px no-repeat,
-    linear-gradient(var(--tick), var(--tick)) right 0 top 4px / 9px 1px no-repeat,
-    linear-gradient(var(--tick), var(--tick)) right 4px top 0 / 1px 9px no-repeat,
-    linear-gradient(var(--tick), var(--tick)) left 0 bottom 4px / 9px 1px no-repeat,
-    linear-gradient(var(--tick), var(--tick)) left 4px bottom 0 / 1px 9px no-repeat,
-    linear-gradient(var(--tick), var(--tick)) right 0 bottom 4px / 9px 1px no-repeat,
-    linear-gradient(var(--tick), var(--tick)) right 4px bottom 0 / 1px 9px no-repeat;
-}
 
 /* Settings › Appearance › Window style cards. */
 .mx-style-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; padding: 0 14px 14px; }
@@ -916,7 +846,6 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 .mx-sp-pane b:nth-child(1) { width: 40%; background: var(--accent); }
 .mx-sp-pane b:nth-child(2) { width: 92%; }
 .mx-sp-pane b:nth-child(3) { width: 66%; }
-.mx-style-preview.is-tiled { --g: 0; --r: 0; overflow: hidden; }
 .mx-style-preview.is-glass { --r: 8px; background: radial-gradient(90px 50px at 8% 0, var(--accent-soft), transparent), var(--well); }
 .mx-style-preview.is-glass .mx-sp-side, .mx-style-preview.is-glass .mx-sp-pane { background: var(--main); box-shadow: inset 0 0 0 1px var(--pane-line); }
 .mx-style-name { display: flex; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 600; color: var(--fg); }
@@ -1007,7 +936,6 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
    for a right-hand sidebar puts it on the far left without a rule of its own. */
 .mx-activity { flex: none; align-self: stretch; width: 48px; margin: var(--sbm-activity, var(--pg) var(--pg) var(--pg) 0); display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; border-radius: var(--r14); background: var(--card, var(--pane)); border: 1px solid var(--pane-line); box-shadow: var(--sh); }
 .mx-app[data-side="right"] .mx-activity { margin: var(--pg) 0 var(--pg) var(--pg); }
-:root[data-finish="tiled"] .mx-activity, :root[data-finish="flat"] .mx-activity { border-radius: 0; }
 
 /* What a stopped agent asks, above the message box: a question with its choices as rows, or a permission with its buttons. */
 .mx-ask { flex: none; margin: 0 16px 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; border-radius: var(--r14); background: color-mix(in srgb, var(--warn) 7%, var(--pane)); border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--pane-line)); }

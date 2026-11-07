@@ -35,13 +35,12 @@ import { useLatest } from '@/lib/useLatest'
 import { guardLocal } from '@/lib/localOnly'
 import { markGpu } from '@/lib/gpu'
 import { isWindowShown, subscribeWindowActivity } from '@/lib/window-activity'
-import { styleUnderCap, type EffectStyle } from '@/lib/animation-level'
 import { levelFor, useAutoState } from '@/lib/animation-auto'
 import { useAdaptiveAnimations } from './useAdaptiveAnimations'
 import { PerfOverlay } from './components/PerfOverlay'
 import { setSpinnerStyle } from '@/lib/spinner-clock'
 import { TerminalView } from '@/TerminalView'
-import { EffectsContext, ReducedMotionContext } from './components/motion'
+import { ReducedMotionContext } from './components/motion'
 import { ColumnHandle } from './components/ColumnHandle'
 import { CommandPalette } from './components/CommandPalette'
 import { InboxPanel, type Answer, type InboxEntry } from './components/InboxPanel'
@@ -88,11 +87,13 @@ import { rememberConversationPermissions } from '@/data/conversationPermissions'
 import { reserveOperation } from '@/features/chat/sendOperation'
 import { usePaneViews } from './usePaneViews'
 import { chatAvailability, chatSourceOf, effectiveView, type ChatAgent, type PaneView } from './model/chatView'
-import { listFolders } from '@/api/folders'
-import { RemoteSessionDialog } from './components/RemoteSessionDialog'
+import { NewSessionHost } from './components/NewSessionHost'
+import type { NewSessionRequest } from './components/NewSessionModal'
 import { RenameDialog } from './components/RenameDialog'
 import { Sidebar } from './components/Sidebar'
-import { EmptyState, OfflineBanner, Toast, type RestartOffer } from './components/states'
+import { EmptyState, Toast, type RestartOffer } from './components/states'
+import { ServiceStatus } from './components/ServiceStatus'
+import { useSharedSettings } from '@/features/settings/sharedSettings'
 import {
   activeArrangement,
   dropSession,
@@ -285,7 +286,8 @@ export function DesktopApp() {
   // The sessions there were when a start began: one the daemon lists before its tab is placed is kept off the sidebar until it is.
   const [startedFrom, setStartedFrom] = useState<ReadonlySet<string> | null>(null)
   // A new session on another machine asks for a folder there first.
-  const [remoteStart, setRemoteStart] = useState<{ machine: number; name: string } | null>(null)
+  // The machine the New session modal opened on; null while it is closed.
+  const [newSessionMachine, setNewSessionMachine] = useState<number | null>(null)
   const [failures, setFailures] = useState(0)
   const [restartPending, setRestartPending] = useState(false)
   const [root, setRoot] = useState<HTMLDivElement | null>(null)
@@ -587,20 +589,8 @@ export function DesktopApp() {
   const look = useMemo(() => ({ fontFamily: preferences.terminalFontFamily, fontWeight: preferences.terminalFontWeight, fontWeightBold: preferences.terminalFontWeightBold, cursorStyle: preferences.cursorStyle, scrollback: preferences.scrollback, scrollSpeed: preferences.scrollSpeed, screenReader: preferences.terminalScreenReader, seeThrough: preferences.terminalSeeThrough, cursorBlink: preferences.cursorBlink, plainDrawing: preferences.terminalPlainDrawing, theme: xtermTheme(theme.tokens), minimumContrast: terminalMinimumContrast(theme) }), [preferences.terminalFontFamily, preferences.terminalFontWeight, preferences.terminalFontWeightBold, preferences.cursorStyle, preferences.cursorBlink, preferences.scrollback, preferences.scrollSpeed, preferences.terminalScreenReader, preferences.terminalSeeThrough, preferences.terminalPlainDrawing, theme])
   const auto = useAutoState()
   const cap = levelFor(preferences.animations, auto)
-  const effects = useMemo(() => {
-    const allowed = online && !reducedMotion
-    const styled = (on: boolean, style: EffectStyle) => (allowed && on ? styleUnderCap(style, cap) : null)
-    return {
-      working: styled(preferences.effectWorking, preferences.effectStyleWorking),
-      needs: styled(preferences.effectNeedsYou, preferences.effectStyleNeedsYou),
-      done: styled(preferences.effectDone, preferences.effectStyleDone),
-      workingScope: preferences.workingScope,
-      cap,
-    }
-  }, [online, reducedMotion, cap, preferences.effectWorking, preferences.effectNeedsYou, preferences.effectDone, preferences.effectStyleWorking, preferences.effectStyleNeedsYou, preferences.effectStyleDone, preferences.workingScope])
-  // Waves are running when a session in a status that has a Waves effect is listed.
-  const wavesRunning = useMemo(() => sessions.some((session) => (session.status === 'working' || session.status === 'needs' || session.status === 'done') && effects[session.status] === 'waves'), [sessions, effects])
-  useAdaptiveAnimations(preferences.animations === 'auto' && !reducedMotion && cap !== 'none', wavesRunning)
+  useAdaptiveAnimations(preferences.animations === 'auto' && !reducedMotion && cap !== 'none', false)
+  useSharedSettings(preferences, setPreferences, online)
 
   const flash = useCallback((text: string) => { setToastMessage({ text, key: Date.now() }) }, [])
   useEffect(() => {
@@ -633,7 +623,6 @@ export function DesktopApp() {
   }, [])
 
   useEffect(() => {
-    // Flat and Tiled share one finish (neutral, no glow); Tiled changes the layout on top of it.
     document.documentElement.dataset.style = preferences.style
     document.documentElement.dataset.finish = preferences.style === 'glass' ? 'glass' : 'flat'
   }, [preferences.style])
@@ -814,8 +803,7 @@ export function DesktopApp() {
   // A new session is the default agent, running in a terminal the daemon owns, shown as its chat or
   // as its terminal as Settings says. It is one session either way: the view can be switched at any
   // time without restarting the agent (ADR 0003). A plain shell is `runStart` and has no chat view.
-  const startAgentSession = useCallback((folder: () => Promise<string>, agent: ChatAgent = preferences.defaultAgent) => {
-    const view = preferences.newSessionView
+  const startAgentSession = useCallback((folder: () => Promise<string>, agent: ChatAgent = preferences.defaultAgent, view: PaneView = preferences.newSessionView) => {
     runStart(folder, (id) => {
       // The daemon learns which agent runs from the agent's own hook, a moment after the command is typed; until then the
       // session is known to be this agent, so it never shows as a shell.
@@ -827,59 +815,59 @@ export function DesktopApp() {
     })
   }, [preferences.defaultAgent, preferences.newSessionView, runStart, paneViews])
 
+  // New session (the shortcut, the sidebar's +, the palette) always opens the modal, on the focused session's machine.
   const newSession = useCallback(() => {
     setSettingsSection(null)
-    // A new session goes where the focused one is: on another machine the folder is typed there,
-    // because the folder picker and the start folder are this computer's.
-    const remote = remoteTargetOf(focusedSession)
-    if (remote !== null) {
-      setRemoteStart(remote)
-      return
-    }
-    startAgentSession(async () => resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())))
-  }, [startAgentSession, preferences.startFolder, home, focusedSession])
+    setNewSessionMachine(remoteTargetOf(focusedSession)?.machine ?? LOCAL_MACHINE)
+  }, [focusedSession])
 
   // A plain shell in the start folder: terminal view only, whatever the default agent is.
   const newTerminal = useCallback(() => {
     setSettingsSection(null)
     const remote = remoteTargetOf(focusedSession)
     if (remote !== null) {
-      setRemoteStart(remote)
+      setNewSessionMachine(remote.machine)
       return
     }
     runStart(async () => resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => { setLayout((current) => openArrangement(current, id, makeId)) })
   }, [runStart, preferences.startFolder, home, focusedSession])
 
   // The sidebar's header for a machine and the palette both choose where the session goes.
-  const newSessionOn = useCallback((machine: number, name: string) => {
+  const newSessionOn = useCallback((machine: number) => {
     setSettingsSection(null)
-    setRemoteStart({ machine, name })
+    setNewSessionMachine(machine)
   }, [])
 
-  // What the folder dialog asks the machine, and the folders its sessions are in.
-  const remoteMachine = remoteStart?.machine ?? LOCAL_MACHINE
-  const listOnRemote = useCallback((path: string) => listFolders(remoteMachine, path), [remoteMachine])
-  const recentOnRemote = useMemo(() => {
-    const folders = (machines.get(remoteMachine)?.conversations ?? []).flatMap((item) => (item.kind === 'terminal' && item.cwd ? [item.cwd] : []))
-    return [...new Set(folders)].reverse()
-  }, [machines, remoteMachine])
-
-  const startOnMachine = useCallback(async (target: { machine: number; name: string }, folder: string) => {
+  // Starts a shell on another machine and opens it once the machine lists it; resolves to its id.
+  const startOnMachine = useCallback(async (target: { machine: number; name: string }, folder: string): Promise<string | null> => {
     const known = new Set((machinesRef.current.get(target.machine)?.conversations ?? []).map((item) => item.id))
     await startSessionOnMachine(target.machine, folder)
-    setRemoteStart(null)
     // The machine tells its new session in its next list; its layout opens when it does.
     const deadline = Date.now() + REMOTE_START_WAIT_MS
     while (Date.now() < deadline) {
       const fresh = machinesRef.current.get(target.machine)?.conversations.find((item) => item.kind === 'terminal' && !known.has(item.id))
       if (fresh) {
         setLayout((current) => openArrangement(current, fresh.id, makeId))
-        return
+        return fresh.id
       }
       await new Promise((resolve) => { setTimeout(resolve, REMOTE_START_POLL_MS) })
     }
     toast.error(`${target.name} did not report the new session`)
+    return null
   }, [])
+
+  // What the New session modal asks for: a shell or an agent, here or on another machine. The modal closes once it is started.
+  const startFromModal = useCallback(async (request: NewSessionRequest) => {
+    if (request.machine !== LOCAL_MACHINE) {
+      const id = await startOnMachine({ machine: request.machine, name: request.machineName }, request.folder)
+      if (id !== null && request.startAs !== 'terminal') await sendTerminalInput({ id, generation: 0 }, `${request.startAs}\r`)
+    } else if (request.startAs === 'terminal') {
+      runStart(() => Promise.resolve(request.folder), (id) => { setLayout((current) => openArrangement(current, id, makeId)) })
+    } else {
+      startAgentSession(() => Promise.resolve(request.folder), request.startAs, request.view)
+    }
+    setNewSessionMachine(null)
+  }, [startOnMachine, runStart, startAgentSession])
 
   const split = useCallback((paneId: string | null, direction: SplitDirection) => {
     const tab = activeArrangement(layout)
@@ -1281,7 +1269,7 @@ export function DesktopApp() {
 
   // Captured on the window before xterm sees the key, so only these few keys leave the shell.
   const overlayOpen = paletteOpen || inboxOpen
-  const dialogOpen = settingsSection !== null || renameId !== null || remoteStart !== null
+  const dialogOpen = settingsSection !== null || renameId !== null || newSessionMachine !== null
   const modalOpen = dialogOpen || overlayOpen
   const drawerShown = compact && drawerOpen
   const shortcutState = useRef({ runShortcut, canUndoClose: () => lastClose !== null, settingsOpen: dialogOpen, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
@@ -1551,7 +1539,7 @@ export function DesktopApp() {
     const items: PaletteItem[] = [
       action('new-session', 'New session', newSession, keys('new-session')),
       action('new-terminal', 'New terminal (a plain shell)', newTerminal),
-      ...heads.filter((head) => head.name !== null && head.chip?.tone === 'ok' && online).map((head) => action(`new-on-${head.key}`, `New terminal on ${head.label}…`, () => { newSessionOn(head.machine, head.label) })),
+      ...heads.filter((head) => head.name !== null && head.chip?.tone === 'ok' && online).map((head) => action(`new-on-${head.key}`, `New terminal on ${head.label}…`, () => { newSessionOn(head.machine) })),
       action('sidebar-side', preferences.sidebarSide === 'left' ? 'Move sidebar to the right' : 'Move sidebar to the left', () => { setPreferences((current) => ({ ...current, sidebarSide: current.sidebarSide === 'left' ? 'right' : 'left' })) }),
       action('split-right', 'Split right', () => { split(null, 'right') }, keys('split-right')),
       action('split-down', 'Split down', () => { split(null, 'down') }, keys('split-down')),
@@ -1593,7 +1581,10 @@ export function DesktopApp() {
         onRestart: () => {
           setRestartPending(true)
           void restartMismatchedDaemon(mismatch.daemonProtocol)
-            .then(async () => { await refetchSessions() })
+            .then(async () => {
+              await refetchSessions()
+              toast.success(`Service restarted · ${String(restartStatusQuery.data?.sessionCount ?? 0)} sessions back`)
+            })
             .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not restart the Maitty service')) })
             .finally(() => { setRestartPending(false) })
         },
@@ -1645,7 +1636,6 @@ export function DesktopApp() {
 
   return (
     <ReducedMotionContext.Provider value={reducedMotion}>
-      <EffectsContext.Provider value={effects}>
         <div ref={setRoot} className={`mx-app${narrow ? ' is-narrow' : ''}`} style={rootStyle} data-motion={reducedMotion ? 'reduced' : 'full'} data-theme-kind={theme.light ? 'light' : 'dark'} data-side={preferences.sidebarSide}>
           <TitleBar />
           <div className="mx-window" role="application" aria-label="Maitty">
@@ -1676,7 +1666,7 @@ export function DesktopApp() {
                   onResume={resumeInterrupted}
                   onDismiss={(id) => { setDismissedRestores((current) => new Set(current).add(id)) }}
                 />
-                {!online && <OfflineBanner retryAt={retryAt} detail={offlineDetail} restart={restartOffer} onRetry={() => { void refetchSessions() }} />}
+                <ServiceStatus online={online} failures={failures} mismatch={Boolean(mismatch)} retryAt={retryAt} detail={offlineDetail ?? (sessionsQuery.isError ? daemonConnectionError(sessionsQuery.error) : null)} restart={restartOffer} onRetry={() => { void refetchSessions() }} />
                 {tab ? (
                   <div className="mx-panes">
                     {paneColumns(tab, narrow).map((column, columnIndex, columns) => (
@@ -1877,13 +1867,17 @@ export function DesktopApp() {
                 onCancel={() => { setWorktreeFrom(null) }}
               />
             )}
-            {remoteStart !== null && (
-              <RemoteSessionDialog
-                machineName={remoteStart.name}
-                list={listOnRemote}
-                recent={recentOnRemote}
-                onStart={(folder) => startOnMachine(remoteStart, folder)}
-                onCancel={() => { setRemoteStart(null) }}
+            {newSessionMachine !== null && (
+              <NewSessionHost
+                machine={newSessionMachine}
+                heads={heads}
+                sessions={sessions}
+                focused={focusedSession}
+                startFolder={resolveStartFolder(preferences.startFolder, home)}
+                defaultAgent={preferences.defaultAgent}
+                defaultView={preferences.newSessionView}
+                onStart={startFromModal}
+                onCancel={() => { setNewSessionMachine(null) }}
               />
             )}
             {renameId !== null && sessionMap.get(renameId) && (
@@ -1924,7 +1918,6 @@ export function DesktopApp() {
           <Toaster position={preferences.toastPosition} theme={theme.light ? 'light' : 'dark'} />
           <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">{machineSaid}</div>
         </div>
-      </EffectsContext.Provider>
     </ReducedMotionContext.Provider>
   )
 }

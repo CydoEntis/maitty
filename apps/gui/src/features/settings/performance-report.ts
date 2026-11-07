@@ -9,7 +9,6 @@ export type PerformanceEnvironment = {
   gpu: string
   style: string
   reduceMotion: boolean
-  statusEffects: boolean
   /** What the animation level is and why (`describeAnimations`). */
   animations: string
   terminalFontSize: number
@@ -56,7 +55,7 @@ export function buildPerformanceReport(environment: PerformanceEnvironment, samp
     `Web view: ${environment.userAgent}`,
     `GPU: ${environment.gpu}`,
     `Animations: ${environment.animations}`,
-    `Window style: ${environment.style}; status effects ${environment.statusEffects ? 'on' : 'off'}; reduce motion ${environment.reduceMotion ? 'on' : 'off'}; terminal ${String(environment.terminalFontSize)}px`,
+    `Window style: ${environment.style}; reduce motion ${environment.reduceMotion ? 'on' : 'off'}; terminal ${String(environment.terminalFontSize)}px`,
     '',
   ]
   if (sample === null) {

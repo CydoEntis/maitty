@@ -7,16 +7,23 @@ import { pickFromClipboard, unsupportedMessage } from '@/features/terminal/clipb
 import type { ChatAgent } from '@/features/workspace/model/chatView'
 import { registerComposerDrop } from '../composerDrop'
 import type { ChatComposer } from '../useChatComposer'
+import { useAgentChoice } from '../agentChoice'
 import { DraftAttachments } from './Attachments'
+import { AgentPicker } from './AgentPicker'
 
-type Props = { agent: ChatAgent; composer: ChatComposer }
+type Props = {
+  agent: ChatAgent
+  composer: ChatComposer
+  /** The chat's conversation number; with it the composer offers the agent, model and reasoning picker. */
+  conversation?: number
+}
 
 /**
  * The composer (v18 B.3, C.1). Enter sends, Shift+Enter adds a line, Esc or Stop interrupts the
  * running turn. While the agent works, sending queues the message; while a request waits for an
  * answer, or the daemon is offline, the composer is off and says why.
  */
-export function Composer({ agent, composer }: Props) {
+export function Composer({ agent, composer, conversation }: Props) {
   const { draft, setDraft, attachments, attach, readOnly, queue, removeQueued, submit, stop, running, sending, disabledReason, error } = composer
   const off = disabledReason !== null
   const box = useRef<HTMLDivElement>(null)
@@ -112,11 +119,22 @@ export function Composer({ agent, composer }: Props) {
           </Button>
           </div>
         </div>
+        {conversation !== undefined && !readOnly && <ComposerOptions agent={agent} conversation={conversation} />}
         <p className="m-0 mt-1.5 text-[11.5px] text-dim">
           {running ? `Enter queues it · Esc interrupts ${agent}` : `Same session as the terminal · switching views never restarts ${agent}`}
         </p>
         {error !== null && <p role="alert" className="m-0 mt-1 text-[12px] text-[var(--danger)]">{error}. Your message is kept; send it again to retry.</p>}
       </div>
+    </div>
+  )
+}
+
+/** The bottom row under the text box: which agent, model and reasoning the next message uses. */
+function ComposerOptions({ agent, conversation }: { agent: ChatAgent; conversation: number }) {
+  const [choice, change] = useAgentChoice(conversation, agent)
+  return (
+    <div className="mt-1.5 flex items-center">
+      <AgentPicker agent={agent} choice={choice} onChange={change} />
     </div>
   )
 }

@@ -98,6 +98,17 @@ const STATUS_FROM_CONVERSATION: Record<Conversation['status'], SessionStatus> = 
   unknown: 'unknown',
 }
 
+/**
+ * The daemon's status for a session, with a failed last command shown as exited. The daemon sets
+ * `exit` (a non-zero code from the shell) and clears it when work starts again, so the window only
+ * displays it; a session that is working or needs you shows that instead.
+ */
+function statusOf(conversation: Conversation): SessionStatus {
+  const status = STATUS_FROM_CONVERSATION[conversation.status]
+  const failed = conversation.details?.exit != null
+  return failed && (status === 'idle' || status === 'done') ? 'error' : status
+}
+
 export const STATUS_WORD: Record<SessionStatus, string> = {
   working: 'working',
   needs: 'needs you',
@@ -147,7 +158,7 @@ export function toSessionView(conversation: Conversation, home: string): Session
   const branch = repoName !== null && conversation.branch && conversation.branch !== 'working tree' ? conversation.branch : null
   // At a checkout's root the row says its branch; deeper in, the folder is what tells sessions apart.
   const title = repoName === null ? cwdLabel : inside === '' ? branch ?? repoName : inside.split('/').slice(-TITLE_PARTS).join('/')
-  const status = STATUS_FROM_CONVERSATION[conversation.status]
+  const status = statusOf(conversation)
   const lastKnown = conversation.lastKnownStatus ? STATUS_FROM_CONVERSATION[conversation.lastKnownStatus] : null
   return {
     id: conversation.id,

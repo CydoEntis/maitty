@@ -49,6 +49,8 @@ const TerminalSessionSchema = z.object({
   // The agent's own hook said what its permission prompt asks (not read off the screen).
   ask: z.object({ tool: z.string(), detail: z.string(), answerable: z.boolean().default(false), choices: z.array(z.string()).default([]) }).nullable().default(null),
   interrupted: z.object({ agent: z.string(), resume: z.string() }).nullable().default(null),
+  // How the last command ended, when it ended in failure (the daemon's `TermInfo.exit`); absent from an older daemon.
+  exit: z.object({ code: z.number().int().nullable().default(null), at: z.number().default(0) }).nullable().default(null),
   timeline: z.array(z.object({
     at: z.number().int().nonnegative(),
     kind: z.enum(['Working', 'NeedsYou', 'Done', 'Idle', 'Prompt', 'CommandStarted', 'CommandFinished']),
@@ -919,7 +921,7 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
     agent: term.agent,
     process: term.process,
     summary: term.summary,
-    details: { asking: term.asking, ask: term.ask, interrupted: term.interrupted, timeline: term.timeline, usage: term.usage },
+    details: { asking: term.asking, ask: term.ask, interrupted: term.interrupted, exit: term.exit, timeline: term.timeline, usage: term.usage },
     ...(chat ? { chat } : {}),
   }
 }
