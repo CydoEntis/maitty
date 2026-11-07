@@ -1145,6 +1145,12 @@ pub struct TermInfo {
     pub branch: Option<String>,
     /// The pane is in a linked worktree.
     pub linked: bool,
+    /// Lines added and removed in its checkout against HEAD (untracked files not counted); zero
+    /// outside git. Shared by every pane in the same checkout.
+    #[serde(default)]
+    pub diff_added: u32,
+    #[serde(default)]
+    pub diff_removed: u32,
     /// Subagents running right now (their kinds).
     pub subagents: Vec<String>,
     /// Persistent lifecycle records reported by the runtime.
@@ -2078,6 +2084,15 @@ mod tests {
             .unwrap()
             .extend(extra.as_object().unwrap().clone());
         decode(&rmp_serde::to_vec_named(&v).unwrap()).expect("a pane")
+    }
+
+    /// A peer from before diff counts sends none: the pane reads as having no changes.
+    #[test]
+    fn a_pane_from_before_diff_counts_reads_as_zero() {
+        let old = pane_from(serde_json::json!({}));
+        assert_eq!((old.diff_added, old.diff_removed), (0, 0));
+        let new = pane_from(serde_json::json!({"diff_added": 7, "diff_removed": 2}));
+        assert_eq!((new.diff_added, new.diff_removed), (7, 2));
     }
 
     /// Pin and archive are new commands: a peer built before them can't read them.

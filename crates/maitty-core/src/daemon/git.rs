@@ -237,6 +237,27 @@ pub fn ahead_of(dir: &Path, base: &str) -> u32 {
         .unwrap_or(0)
 }
 
+/// Lines added and removed in the working tree against HEAD, for the sidebar's `+N -N`.
+/// Untracked files are not counted, as with any `git diff`. `None`: not a repository, or no
+/// commit to compare with.
+pub fn diff_counts(dir: &Path) -> Option<(u32, u32)> {
+    git(dir, &["diff", "--numstat", "--no-ext-diff", "HEAD", "--"])
+        .ok()
+        .map(|out| parse_numstat(&out))
+}
+
+/// Sum `git diff --numstat` lines. A binary file shows `-` for both counts and adds nothing.
+fn parse_numstat(out: &str) -> (u32, u32) {
+    out.lines().fold((0, 0), |(added, removed), line| {
+        let mut cols = line.split('\t');
+        let count = |c: Option<&str>| c.and_then(|c| c.parse::<u32>().ok()).unwrap_or(0);
+        (
+            added.saturating_add(count(cols.next())),
+            removed.saturating_add(count(cols.next())),
+        )
+    })
+}
+
 /// Read the current working-tree diff for a conversation's checkout.
 pub fn conversation_diff(dir: &Path) -> Result<crate::conversation::ConversationDiff> {
     git(dir, &["rev-parse", "--show-toplevel"]).context("opening the project Git repository")?;
@@ -569,6 +590,13 @@ pub fn remove_worktree(path: &Path, force: bool, delete_branch: bool) -> Result<
 mod tests {
     use super::*;
 
+    #[test]
+    fn numstat_lines_add_up_and_a_binary_file_counts_for_nothing() {
+        assert_eq!(parse_numstat(""), (0, 0));
+        assert_eq!(parse_numstat("3\t1\tsrc/a.rs\n10\t0\tb.rs"), (13, 1));
+        assert_eq!(parse_numstat("-\t-\timage.png\n2\t2\tc.rs"), (2, 2));
+    }
+
     fn git_at(dir: &Path, args: &[&str]) {
         let output = Command::new("git")
             .arg("-C")
@@ -581,6 +609,27 @@ mod tests {
             "git command failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
+    }
+
+    #[test]
+    fn diff_counts_count_tracked_changes_only_and_say_nothing_outside_a_repository() {
+        let repository = crate::daemon::persist::scratch_dir();
+        std::fs::create_dir_all(repository.path()).expect("repository directory");
+        assert_eq!(diff_counts(repository.path()), None);
+        git_at(repository.path(), &["init", "--quiet"]);
+        git_at(repository.path(), &["config", "user.name", "Test User"]);
+        git_at(
+            repository.path(),
+            &["config", "user.email", "test@example.invalid"],
+        );
+        std::fs::write(repository.path().join("a.txt"), "one\ntwo\n").expect("file");
+        git_at(repository.path(), &["add", "--all"]);
+        git_at(repository.path(), &["commit", "--quiet", "-m", "baseline"]);
+        assert_eq!(diff_counts(repository.path()), Some((0, 0)));
+
+        std::fs::write(repository.path().join("a.txt"), "one\nthree\nfour\n").expect("edit");
+        std::fs::write(repository.path().join("untracked.txt"), "x\n").expect("untracked");
+        assert_eq!(diff_counts(repository.path()), Some((2, 1)));
     }
 
     #[test]

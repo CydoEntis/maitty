@@ -143,6 +143,8 @@ pub enum Ev {
     ProcessExited(TermId),
     Scan(Vec<scan::Found>),
     Git(Vec<(WsId, Option<GitInfo>)>),
+    /// Lines added and removed per checkout, read beside the git poll.
+    Diffs(HashMap<PathBuf, (u32, u32)>),
     Prs(Vec<(pr::Place, pr::Read)>),
     WorktreeCreated {
         client: ClientId,
@@ -359,6 +361,8 @@ struct Daemon {
     prs: pr::Prs,
     last_secret_files: Instant,
     git_busy: bool,
+    /// Lines added and removed against HEAD, by checkout (`git::diff_counts`).
+    diff_counts: HashMap<PathBuf, (u32, u32)>,
     last_git: Instant,
     last_save: Instant,
     last_output_save: Instant,
@@ -1024,6 +1028,7 @@ impl Daemon {
             prs: pr::Prs::default(),
             last_secret_files: Instant::now(),
             git_busy: false,
+            diff_counts: HashMap::new(),
             last_git: crate::clock::ago(GIT_POLL_EVERY),
             last_save: Instant::now(),
             last_output_save: Instant::now(),
@@ -1319,6 +1324,16 @@ impl Daemon {
             .map(|w| (w.id, w.cwd.clone()))
             .collect();
         let dir_of: HashMap<WsId, PathBuf> = dirs.iter().cloned().collect();
+        let checkouts: Vec<PathBuf> = {
+            let mut tops: Vec<PathBuf> = self
+                .terms
+                .values()
+                .filter_map(|t| t.head.as_ref().map(|h| h.top.clone()))
+                .collect();
+            tops.sort();
+            tops.dedup();
+            tops
+        };
         let tx = self.tx.clone();
         let stale_probes = self.stale_probes();
         let conversation_stale_probes = self.conversation_stale_probes();
@@ -1353,6 +1368,11 @@ impl Daemon {
                 }
             }
             let _ = tx.blocking_send(Ev::Git(res));
+            let diffs: HashMap<PathBuf, (u32, u32)> = checkouts
+                .into_iter()
+                .filter_map(|dir| git::diff_counts(&dir).map(|counts| (dir, counts)))
+                .collect();
+            let _ = tx.blocking_send(Ev::Diffs(diffs));
         });
     }
 
@@ -1746,6 +1766,12 @@ impl Daemon {
                         w.git = info;
                         self.dirty = true;
                     }
+                }
+            }
+            Ev::Diffs(counts) => {
+                if self.diff_counts != counts {
+                    self.diff_counts = counts;
+                    self.dirty = true;
                 }
             }
             Ev::Prs(reads) => self.prs_read(reads),
@@ -2656,6 +2682,15 @@ impl Daemon {
         snap
     }
 
+    /// Lines added and removed in the checkout `t` is in; zero outside git or before the first read.
+    fn diff_of(&self, t: &Term) -> (u32, u32) {
+        t.head
+            .as_ref()
+            .and_then(|h| self.diff_counts.get(&h.top))
+            .copied()
+            .unwrap_or((0, 0))
+    }
+
     fn snapshot(&self) -> Snapshot {
         let terms: BTreeMap<TermId, TermInfo> = self
             .terms
@@ -2697,6 +2732,8 @@ impl Daemon {
                         said: t.said.clone(),
                         last_lines: t.last_lines.clone(),
                         branch: t.head.as_ref().map(|h| h.branch.clone()),
+                        diff_added: self.diff_of(t).0,
+                        diff_removed: self.diff_of(t).1,
                         linked: t.head.as_ref().is_some_and(|h| h.linked),
                         root: t.head.as_ref().map(|h| h.main_root.clone()),
                         top: t.head.as_ref().map(|h| h.top.clone()),
