@@ -695,16 +695,21 @@ export async function resizeTerminal(conversation: Pick<Conversation, 'id'> & { 
 
 export type QueuedReceipt = z.infer<typeof QueuedReceiptSchema>
 
+/** The model and reasoning effort picked in the composer, sent with a message. Only what was picked is present. */
+export type MessageChoice = { readonly model?: string; readonly effort?: string }
+
 /**
  * Sends a message. A conversation that is mid-turn does not refuse it: the daemon holds it and sends it
  * when the turn ends, in order, even if this window closes, and answers with a `QueuedReceipt`.
  */
-export async function submitMessage(conversation: Pick<Conversation, 'id' | 'generation'>, operation: number, text: string): Promise<ConversationReceipt | QueuedReceipt> {
+export async function submitMessage(conversation: Pick<Conversation, 'id' | 'generation'>, operation: number, text: string, choice?: MessageChoice): Promise<ConversationReceipt | QueuedReceipt> {
   return invokeParsed('send_conversation', z.union([ConversationReceiptSchema, QueuedReceiptSchema]), {
     id: Number(conversation.id),
     generation: conversation.generation,
     operation,
     text,
+    ...(choice?.model === undefined ? {} : { model: choice.model }),
+    ...(choice?.effort === undefined ? {} : { effort: choice.effort }),
   })
 }
 

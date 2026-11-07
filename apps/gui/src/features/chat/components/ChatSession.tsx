@@ -109,7 +109,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   const answersPrompt = stoppedOnPrompt && typeInto !== undefined && (ask?.answerable === true || (ask?.choices?.length ?? 0) > 0)
   const answerPrompt = typeInto === undefined ? undefined : (choice: AskChoice) => typeInto(ANSWER_KEYS[choice]).then(refresh)
   const pickChoice = typeInto === undefined ? undefined : (index: number) => typeInto(choiceKey(index)).then(refresh)
-  const composer = useChatComposer({ link, feed, online, refresh, answersPrompt, paneWorking, ...(typeInto ? { typeInto } : {}) })
+  const composer = useChatComposer({ link, agent, feed, online, refresh, answersPrompt, paneWorking, ...(typeInto ? { typeInto } : {}) })
   const { sendText, setDraft: setComposerDraft, disabledReason, sending, echo } = composer
   // A message just sent shows at once, with the agent taken to be at work on it, until the history has it.
   const echoText = echo !== null && countUserMessages(events, echo.text) <= echo.baseline ? echo.text : null
