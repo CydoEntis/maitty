@@ -162,7 +162,9 @@ pub const FOLDER_UNREADABLE: i32 = 75;
 /// Prints one folder of the far side as an uncompressed tar archive, and changes nothing. `$1` is
 /// the folder (a leading `~/` is the far side's home). Output: `FOLDER_MARKER` and a line break,
 /// then the archive, whose one top-level entry is the folder's own name. `tar -h` follows
-/// symlinks, so the archive holds only files and folders. The size is not known first: the
+/// symlinks, and GNU tar's `--hard-dereference` keeps a link to a file that is also in the folder
+/// from becoming a hard link entry, which the receiver refuses, so the archive holds only files and
+/// folders. The size is not known first: the
 /// receiver enforces its cap on the bytes that arrive. The root folder is refused.
 pub const FOLDER_SCRIPT: &str = concat!(
     "dir=$1\n",
@@ -180,7 +182,9 @@ pub const FOLDER_SCRIPT: &str = concat!(
     "printf '%s\\n' '",
     env!("APP_COMMAND"),
     "-folder'\n",
-    "exec tar -chf - -C \"$parent\" -- \"$name\"\n",
+    "opts=\n",
+    "tar --help 2>/dev/null | grep -q -e --hard-dereference && opts=--hard-dereference\n",
+    "exec tar -chf - $opts -C \"$parent\" -- \"$name\"\n",
 );
 
 /// The line the paste script prints before the path, so text a login shell prints first (a
@@ -700,6 +704,7 @@ mod folder_script_tests {
         }
         assert!(FOLDER_SCRIPT.contains("dir=$1"));
         assert!(FOLDER_SCRIPT.contains("-chf"), "links are followed, so the archive holds no links");
+        assert!(FOLDER_SCRIPT.contains("--hard-dereference"), "a link to a file in the folder is a copy, not a hard link");
         assert!(FOLDER_SCRIPT.contains("-- \"$name\""), "a folder named like an option is a folder");
     }
 
