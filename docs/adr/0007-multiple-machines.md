@@ -25,6 +25,11 @@ People run agents on more than one computer and want one window over all of them
 - **A remote daemon is untrusted.** Its clipboard writes, notices and sounds are off unless that
   machine opts in. Every string it supplies is cleaned before display. Only the line after a
   marker, and only an absolute path, is taken from a script's output.
+- **Updating a machine replaces its daemon.** `maitty machine update <name>` installs the new file
+  and restarts the far daemon so the two ends match. Without `--restart` it restarts only an idle
+  daemon; with it (the window's Update button always passes it, after asking) it restarts a daemon
+  whose sessions are saved. They come back on the new daemon with their agents resumed; a turn in
+  progress is lost. A daemon whose sessions are not saved is left running and the update says so.
 - The machine list is local-only and never synced. A daemon id in the snapshot lets the client
   refuse an alias that now answers as a different machine.
 - A Windows client may reach Linux and macOS remotes. A Windows remote is out.

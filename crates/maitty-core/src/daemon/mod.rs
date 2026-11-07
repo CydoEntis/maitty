@@ -996,6 +996,11 @@ pub fn forget_session() {
     persist::forget();
 }
 
+/// Whether a saved session exists for the next daemon to restore.
+pub fn session_is_saved() -> bool {
+    persist::load().is_some()
+}
+
 /// Agents in the saved session: what a restart of a server that can't be asked would resume.
 pub fn saved_agent_count() -> usize {
     persist::load().map_or(0, |s| {

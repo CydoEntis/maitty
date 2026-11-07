@@ -203,16 +203,22 @@ const INSTALL: Flags = Flags {
     install: true,
     yes: false,
     force: false,
+    restart: false,
+    wait: false,
 };
 const YES: Flags = Flags {
     install: false,
     yes: true,
     force: false,
+    restart: false,
+    wait: false,
 };
 const NO_FLAGS: Flags = Flags {
     install: false,
     yes: false,
     force: false,
+    restart: false,
+    wait: false,
 };
 
 fn run(
@@ -312,6 +318,42 @@ fn a_person_is_asked_and_a_no_changes_nothing() {
     let mut yes = Person::says(true);
     run(&remote, AT_HOME, NO_FLAGS, &new_build(&remote), &mut yes).unwrap();
     assert!(remote.home.join(".local/bin/maitty").is_file());
+}
+
+#[test]
+fn wait_installs_then_asks_the_far_daemon_to_restart_when_idle() {
+    needs_sh!();
+    let remote = Remote::new(LINUX);
+    remote.install(".local/bin/maitty", "0.1.0");
+    let flags = Flags {
+        wait: true,
+        ..YES
+    };
+    let mut person = Person::absent();
+    run(&remote, AT_HOME, flags, &new_build(&remote), &mut person).unwrap();
+    assert!(person.heard("waiting for"), "{:?}", person.said);
+    let commands = remote.commands();
+    assert!(
+        commands.last().unwrap().ends_with("restart-if-idle"),
+        "{commands:?}"
+    );
+}
+
+#[test]
+fn restart_asks_the_far_daemon_to_restart_even_with_sessions_open() {
+    needs_sh!();
+    let remote = Remote::new(LINUX);
+    remote.install(".local/bin/maitty", "0.1.0");
+    let flags = Flags {
+        restart: true,
+        ..YES
+    };
+    run(&remote, AT_HOME, flags, &new_build(&remote), &mut Person::absent()).unwrap();
+    let commands = remote.commands();
+    assert!(
+        commands.last().unwrap().ends_with("restart-if-idle --now"),
+        "{commands:?}"
+    );
 }
 
 #[test]

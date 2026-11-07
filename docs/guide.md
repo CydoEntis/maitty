@@ -505,6 +505,7 @@ maitty machine update build --install   # not installed there yet: install this 
 maitty machine update build --yes       # an older version there: replace it
 maitty machine update build             # asks, when you are at a keyboard
 maitty machine update build --force     # a newer version there: put this one on instead (a downgrade)
+maitty machine update build --yes --restart  # also restart its daemon now, even with sessions open
 ```
 
 ```
@@ -514,7 +515,7 @@ sending 14.2 MB (sha256 3f2a9c1b7d04)…
 verified: it arrived whole and runs there
 installed to ~/.local/bin/maitty
 asking the daemon on build to restart if no session is open…
-daemon: left running: 3 open session(s); it keeps them
+daemon: left running: 3 open session(s); it keeps them   (with --restart: restarted, sessions come back)
 build: maitty 0.60.0 installed to ~/.local/bin/maitty
 ```
 
@@ -531,9 +532,11 @@ build: maitty 0.60.0 installed to ~/.local/bin/maitty
 - **Where.** At the machine's `remote_cmd` when that is an absolute path or starts with `~/`; otherwise at
   `~/.local/bin/maitty`. If `maitty` is not found on that machine's PATH afterwards, the command says to set
   `remote_cmd = "~/.local/bin/maitty"` for it in `config.local.toml` (it does not edit your config).
-- **Running sessions survive.** Nothing is killed. The old daemon keeps running on the old file. The new
-  maitty then restarts it only when it has no session open; otherwise it says it left it running, and the
-  daemon takes the new version the next time it restarts (when its sessions are closed).
+- **Running sessions survive an ordinary update.** The old daemon keeps running on the old file. The new
+  maitty restarts it only when it has no session open; otherwise it says it left it running. Add `--restart`
+  (the desktop app's Update button does, after asking) to restart it anyway: its sessions are saved, so the
+  new daemon restores them and resumes their agents. A turn in progress is lost. A daemon whose sessions are
+  not saved is never restarted.
 - **Not supported: a Windows machine as the remote.** In v1 Windows is never the remote; the command says so
   and exits. Linux and macOS (x86_64 and aarch64) are supported.
 

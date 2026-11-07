@@ -200,6 +200,8 @@ pub(crate) fn ssh_argv_probe(
 
 /// The subcommand that restarts the far side's daemon when no session is open.
 const RESTART_IF_IDLE: &str = "restart-if-idle";
+/// Added to it to restart even with sessions open, when they are saved.
+const RESTART_NOW: &str = "--now";
 
 /// A fixed script for the remote shell, run as `sh -c <script> sh <args>`. The script is a
 /// constant of the app; whatever varies is an argument, quoted as one literal word, so it
@@ -288,15 +290,21 @@ pub(crate) fn ssh_argv_paste(
     Ok(build(ssh, target, remote, Shape::PROXY))
 }
 
-/// `<program> restart-if-idle` on the far side: the installed app restarts its daemon only
-/// when no session is open. `program` is the path it was installed to.
+/// `<program> restart-if-idle` on the far side: the installed app restarts its daemon when no
+/// session is open, or with `now` also when its sessions are saved. `program` is the path it
+/// was installed to.
 pub(crate) fn ssh_argv_restart_if_idle(
     ssh: &[String],
     target: &str,
     program: &str,
+    now: bool,
 ) -> Result<Vec<String>, SshCommandError> {
     validate_target(target)?;
-    let remote = format!("{} {RESTART_IF_IDLE}", remote_program(program)?);
+    let mut remote = format!("{} {RESTART_IF_IDLE}", remote_program(program)?);
+    if now {
+        remote.push(' ');
+        remote.push_str(RESTART_NOW);
+    }
     Ok(build(ssh, target, remote, Shape::PROBE))
 }
 
@@ -878,12 +886,12 @@ mod tests {
 
     #[test]
     fn restart_if_idle_runs_the_installed_path_with_a_home_shorthand_kept() {
-        let argv = ssh_argv_restart_if_idle(&args(&["ssh"]), "box", "~/.local/bin/maitty").unwrap();
+        let argv = ssh_argv_restart_if_idle(&args(&["ssh"]), "box", "~/.local/bin/maitty", false).unwrap();
         assert_eq!(
             argv.last().unwrap(),
             "~/'.local/bin/maitty' restart-if-idle"
         );
-        assert!(ssh_argv_restart_if_idle(&args(&["ssh"]), "box", "").is_err());
+        assert!(ssh_argv_restart_if_idle(&args(&["ssh"]), "box", "", false).is_err());
     }
 
     /// A POSIX shell reads the popup line back as exactly the argv it was built from.
@@ -959,5 +967,13 @@ mod tests {
         assert!(name("paste-1.png").is_ok());
         assert!(name("a_b-c.9").is_ok());
         assert!(ssh_argv_paste(&args(&["ssh"]), "-oProxyCommand=x", "p.png", 1).is_err());
+    }
+
+    #[test]
+    fn restart_now_adds_one_fixed_flag_and_nothing_else() {
+        let idle = ssh_argv_restart_if_idle(&args(&["ssh"]), "box", "~/.local/bin/maitty", false).unwrap();
+        let now = ssh_argv_restart_if_idle(&args(&["ssh"]), "box", "~/.local/bin/maitty", true).unwrap();
+        assert_eq!(now.last().unwrap(), &format!("{} --now", idle.last().unwrap()));
+        assert_eq!(now[..now.len() - 1], idle[..idle.len() - 1]);
     }
 }

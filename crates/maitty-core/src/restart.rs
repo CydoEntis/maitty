@@ -114,6 +114,17 @@ pub fn idle_enough_to_restart(published: Option<&Activity>) -> bool {
     published.is_some_and(|a| a.sessions == 0)
 }
 
+/// Whether a daemon may be restarted even with sessions open: they are saved, so the next
+/// daemon restores them and resumes their agents. Only a turn in progress is lost.
+pub fn may_restart_now(published: Option<&Activity>, session_saved: bool) -> bool {
+    session_saved || published.is_some_and(|a| a.sessions == 0)
+}
+
+/// Whether a saved session exists for the next daemon to restore.
+pub fn session_is_saved() -> bool {
+    crate::daemon::session_is_saved()
+}
+
 /// The agents in the saved session.
 pub fn saved_agents() -> usize {
     crate::daemon::saved_agent_count()
@@ -240,5 +251,15 @@ mod tests {
         );
         assert!(!idle_enough_to_restart(Some(&activity(2, 0))));
         assert!(!idle_enough_to_restart(None), "unknown is left running");
+    }
+
+    #[test]
+    fn a_restart_now_needs_saved_sessions_or_none_open() {
+        let busy = activity(2, 1);
+        assert!(may_restart_now(Some(&busy), true), "saved sessions come back");
+        assert!(!may_restart_now(Some(&busy), false), "unsaved sessions would be lost");
+        assert!(!may_restart_now(None, false), "a server that said nothing is left alone");
+        let empty = Activity { sessions: 0, ..activity(0, 0) };
+        assert!(may_restart_now(Some(&empty), false));
     }
 }

@@ -1170,15 +1170,22 @@ pub fn kill_server(t: &Target, forget: bool) -> Result<()> {
 }
 
 /// What `machine update` asks of the server it leaves running (it runs this over ssh): stop
-/// it only when no session is open, so the next start is the new version. A server with
-/// sessions, or one that cannot say, is left alone: an update never ends anyone's work.
-pub fn restart_if_idle() -> Result<()> {
+/// it so the next start is the new version. Without `now` only when no session is open; with
+/// `now` also when sessions are open but saved, because the next server restores them and
+/// resumes their agents (a turn in progress is lost). A server whose sessions are not saved is
+/// always left alone.
+pub fn restart_if_idle(now: bool) -> Result<()> {
     if !server_running() {
         println!("no server is running");
         return Ok(());
     }
     let published = crate::restart::read();
-    if !crate::restart::idle_enough_to_restart(published.as_ref()) {
+    let may_restart = if now {
+        crate::restart::may_restart_now(published.as_ref(), crate::restart::session_is_saved())
+    } else {
+        crate::restart::idle_enough_to_restart(published.as_ref())
+    };
+    if !may_restart {
         match published {
             Some(a) => println!(
                 "left running: {} open session(s); it keeps them",
@@ -1189,7 +1196,14 @@ pub fn restart_if_idle() -> Result<()> {
         return Ok(());
     }
     kill_server(&Target::current(), false)?;
-    println!("restarted: no session was open");
+    println!(
+        "{}",
+        if now {
+            "restarted: sessions were saved and come back with the new version"
+        } else {
+            "restarted: no session was open"
+        }
+    );
     Ok(())
 }
 
