@@ -82,12 +82,107 @@ pub fn ensure_shared_daemon(bundled: &Path, app_version: &str) -> Result<PathBuf
     crate::stop_running_daemon_for_update()?;
     replace_file(bundled, &target)?;
     match installed_version(&target) {
-        Some(version) if version == app_version => Ok(target),
+        Some(version) if version == app_version => {}
         found => bail!(
             "installed {} but it reports {found:?}, not {app_version}",
             target.display()
         ),
     }
+    // A convenience for typing the command in a terminal: it must not stop the app starting.
+    if let Err(error) = put_folder_on_path(&target) {
+        tracing::warn!("couldn't add the install folder to your PATH: {error:#}");
+    }
+    Ok(target)
+}
+
+/// The user PATH with `directory` added, or `None` when it is already there. Windows compares
+/// folders without case and ignores a trailing separator.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn path_with(existing: &str, directory: &str) -> Option<String> {
+    let same = |entry: &str| {
+        entry
+            .trim()
+            .trim_end_matches(['\\', '/'])
+            .eq_ignore_ascii_case(directory.trim_end_matches(['\\', '/']))
+    };
+    if existing.split(';').any(same) {
+        return None;
+    }
+    let kept = existing.trim().trim_end_matches(';');
+    Some(if kept.is_empty() {
+        directory.to_string()
+    } else {
+        format!("{kept};{directory}")
+    })
+}
+
+/// Like `install.ps1`: add the folder to the user's PATH so `maitty` works in a new terminal.
+/// `<APP>_NO_PATH=1` leaves PATH alone. Other systems keep their shell startup files to
+/// themselves; `install.sh` tells the person what to add.
+fn put_folder_on_path(target: &Path) -> Result<()> {
+    #[cfg(windows)]
+    {
+        if std::env::var(format!("{APP_ENV}_NO_PATH")).as_deref() == Ok("1") {
+            return Ok(());
+        }
+        let directory = target
+            .parent()
+            .and_then(Path::to_str)
+            .context("the install folder is not plain text")?;
+        let read = windows_user_path()?;
+        if let Some(updated) = path_with(&read, directory) {
+            set_windows_user_path(&updated)?;
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = target;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn windows_powershell(script: &str) -> Result<std::process::Output> {
+    use std::os::windows::process::CommandExt;
+    let output = Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .creation_flags(0x0800_0000)
+        .output()
+        .context("running PowerShell")?;
+    anyhow::ensure!(
+        output.status.success(),
+        "PowerShell said: {}",
+        String::from_utf8_lossy(&output.stderr).trim()
+    );
+    Ok(output)
+}
+
+#[cfg(windows)]
+fn windows_user_path() -> Result<String> {
+    let output =
+        windows_powershell("[Environment]::GetEnvironmentVariable('Path','User')")?;
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// The new value reaches PowerShell as an environment variable, never as part of the script.
+#[cfg(windows)]
+fn set_windows_user_path(value: &str) -> Result<()> {
+    use std::os::windows::process::CommandExt;
+    let output = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "[Environment]::SetEnvironmentVariable('Path',$env:MAITTY_NEW_USER_PATH,'User')",
+        ])
+        .env("MAITTY_NEW_USER_PATH", value)
+        .creation_flags(0x0800_0000)
+        .output()
+        .context("running PowerShell")?;
+    anyhow::ensure!(
+        output.status.success(),
+        "PowerShell said: {}",
+        String::from_utf8_lossy(&output.stderr).trim()
+    );
+    Ok(())
 }
 
 /// Windows locks a running exe but lets it be renamed, so a terminal app still open from the
@@ -120,7 +215,7 @@ fn replace_file(source: &Path, target: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Plan, parse_version, plan, replace_file};
+    use super::{Plan, parse_version, path_with, plan, replace_file};
 
     #[test]
     fn installs_when_nothing_is_installed() {
@@ -170,5 +265,15 @@ mod tests {
         assert_eq!(std::fs::read(&target).unwrap(), b"new");
         assert!(!directory.join(concat!(".", env!("MAITTY_APP_COMMAND"), ".new")).exists());
         std::fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[test]
+    fn the_folder_is_added_once_and_matched_loosely() {
+        assert_eq!(
+            path_with(r"C:\bin;C:\tools\", r"C:\Apps\maitty"),
+            Some(r"C:\bin;C:\tools\;C:\Apps\maitty".to_string())
+        );
+        assert_eq!(path_with(r"C:\bin;c:\apps\MAITTY\", r"C:\Apps\maitty"), None);
+        assert_eq!(path_with("", r"C:\Apps\maitty"), Some(r"C:\Apps\maitty".to_string()));
     }
 }

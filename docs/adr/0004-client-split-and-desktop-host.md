@@ -30,7 +30,10 @@ without the desktop app dragging daemon code or a webview into the terminal-only
   a newer one, and asks its user to update instead of downgrading. Replacing the file stops a
   running daemon first, but only when its sessions are saved or absent, so no agent state is
   silently lost; otherwise the daemon is left running and the app says why. A development
-  build runs the daemon it just built and never touches the installed file.
+  build runs the daemon it just built and never touches the installed file. On Windows the
+  install also adds the folder to the user's PATH, as `install.ps1` does (`MAITTY_NO_PATH=1`
+  skips it), so `maitty` works in a new terminal; elsewhere the person adds the folder, as
+  `install.sh` says.
 
 ## Alternatives considered
 
