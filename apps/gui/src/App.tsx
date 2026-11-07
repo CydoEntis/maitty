@@ -304,12 +304,12 @@ function PreviewApp() {
   )
   const [selectedId, setSelectedId] = useState(
     () =>
-      (readSettingsPreferences().restoreTabs
+      (readSettingsPreferences().restoreLayout
         ? readSelectedConversation()
         : null) ?? (desktop ? '' : 'codex-43'),
   )
   const [savedOpenTabIds, setSavedOpenTabIds] = useState(() =>
-    readSettingsPreferences().restoreTabs ? readOpenConversationTabs() : [],
+    readSettingsPreferences().restoreLayout ? readOpenConversationTabs() : [],
   )
   const [messagesById, setMessagesById] = useState<Record<string, Message[]>>(
     () => structuredClone(previewMessages),

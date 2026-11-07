@@ -90,8 +90,8 @@ function SettingsDialog({ open, onClose, theme, onThemeChange, preferences, onPr
           {section === 'general' && <>
             <div className="settings-section-title"><h3>General</h3><p>How Maitty opens and what happens when you close it.</p></div>
             <div className="settings-row"><span><strong>On launch</strong><small>Reopen the tabs you had open, or start with only the selected conversation.</small></span><div className="segmented" role="group" aria-label="On launch">
-              <button type="button" className={preferences.restoreTabs ? 'is-selected' : ''} aria-pressed={preferences.restoreTabs} onClick={() => { updatePreference('restoreTabs', true) }}>Restore tabs</button>
-              <button type="button" className={!preferences.restoreTabs ? 'is-selected' : ''} aria-pressed={!preferences.restoreTabs} onClick={() => { updatePreference('restoreTabs', false) }}>Start empty</button>
+              <button type="button" className={preferences.restoreLayout ? 'is-selected' : ''} aria-pressed={preferences.restoreLayout} onClick={() => { updatePreference('restoreLayout', true) }}>Restore tabs</button>
+              <button type="button" className={!preferences.restoreLayout ? 'is-selected' : ''} aria-pressed={!preferences.restoreLayout} onClick={() => { updatePreference('restoreLayout', false) }}>Start empty</button>
             </div></div>
             <label className="settings-row"><span><strong>Start folder</strong><small>New sessions open a shell here. Leave empty for your home folder, then cd anywhere.</small></span><input type="text" className="settings-text-input" placeholder="Home folder" value={preferences.startFolder} onChange={(event) => { updatePreference('startFolder', event.target.value) }} /></label>
             <div className="settings-row"><span><strong>Closing this window</strong><small>Conversations belong to maittyd, so closing the window or a tab never stops an agent.</small></span><span className="settings-value">Always keeps running</span></div>

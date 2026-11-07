@@ -9,14 +9,13 @@ export function useProcessSample() {
   return useQuery({ queryKey: ['performance-sample'], queryFn: loadPerformanceSample, enabled: isDesktop(), refetchInterval: SAMPLE_EVERY_MS, retry: false })
 }
 
-export function environmentOf(preferences: SettingsPreferences, appVersion: string | null, animations: string): PerformanceEnvironment {
+export function environmentOf(preferences: SettingsPreferences, appVersion: string | null): PerformanceEnvironment {
   return {
     version: appVersion,
     userAgent: navigator.userAgent,
     gpu: document.documentElement.dataset.gpu ?? 'unknown',
     style: preferences.style,
     reduceMotion: preferences.reduceMotion,
-    animations,
     terminalFontSize: preferences.terminalFontSize,
   }
 }

@@ -1,6 +1,5 @@
 import { isSpinnerStyle, type SpinnerStyle } from '@/lib/spinner-clock'
 import { prefersPlainDrawing } from '@/lib/gpu'
-import type { AnimationMode } from '@/lib/animation-auto'
 import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, isFontFamily, isFontWeight, type TerminalFontWeight } from '@/lib/terminalFont'
 import { readThemePreference, type ThemePreference } from '@/data/themePreference'
 import { THEMES, type ThemeMode } from '@/features/workspace/theme/themes'
@@ -36,7 +35,8 @@ export type ScrollSpeed = (typeof SCROLL_SPEED_CHOICES)[number]
 export type SettingsPreferences = {
   accent: 'teal' | 'blue' | 'violet'
   spinner: SpinnerStyle
-  restoreTabs: boolean
+  /** Reopen the panes and splits of last time at launch. Saved as `restoreTabs` before fleets; that name is still read. */
+  restoreLayout: boolean
   reduceMotion: boolean
   animateSidebarActivity: boolean
   /** The desktop sidebar is collapsed to its rail. */
@@ -66,8 +66,6 @@ export type SettingsPreferences = {
   scrollSpeed: ScrollSpeed
   /** Mirror the terminal's text into the page for screen readers. It makes every pane much heavier to draw. */
   terminalScreenReader: boolean
-  /** Left over from the status effects, which are gone: the value is still read so a saved one loads, and the Performance page reports it. */
-  animations: AnimationMode
   density: Density
   /** Text size of the sidebar's folder names and session rows, in px. */
   sidebarTextSize: number
@@ -139,7 +137,7 @@ function defaults(): SettingsPreferences {
   return {
     accent: 'teal',
     spinner: 'braille',
-    restoreTabs: true,
+    restoreLayout: true,
     reduceMotion: false,
     animateSidebarActivity: true,
     compactSidebar: false,
@@ -162,7 +160,6 @@ function defaults(): SettingsPreferences {
     scrollSpeed: SCROLL_NORMAL,
     terminalScreenReader: false,
     style: 'flat',
-    animations: 'auto',
     density: 'comfortable',
     sidebarTextSize: UI_TEXT_SIZE_DEFAULT,
     tabTextSize: UI_TEXT_SIZE_DEFAULT,
@@ -211,10 +208,11 @@ export function readSettingsPreferences(): SettingsPreferences {
     if (typeof value !== 'object' || value === null) return fresh
     const preferences = value as Partial<Record<keyof SettingsPreferences, unknown>>
     const fallback = fresh
+    const saved = value as { restoreTabs?: unknown }
     return {
       accent: isAccent(preferences.accent) ? preferences.accent : fallback.accent,
       spinner: isSpinnerStyle(preferences.spinner) ? preferences.spinner : fallback.spinner,
-      restoreTabs: bool(preferences.restoreTabs, fallback.restoreTabs),
+      restoreLayout: bool(preferences.restoreLayout ?? saved.restoreTabs, fallback.restoreLayout),
       reduceMotion: bool(preferences.reduceMotion, fallback.reduceMotion),
       animateSidebarActivity: bool(preferences.animateSidebarActivity, fallback.animateSidebarActivity),
       compactSidebar: bool(preferences.compactSidebar, fallback.compactSidebar),
@@ -233,7 +231,6 @@ export function readSettingsPreferences(): SettingsPreferences {
       scrollback: isScrollback(preferences.scrollback) ? preferences.scrollback : fallback.scrollback,
       scrollSpeed: isScrollSpeed(preferences.scrollSpeed) ? preferences.scrollSpeed : fallback.scrollSpeed,
       terminalScreenReader: bool(preferences.terminalScreenReader, fallback.terminalScreenReader),
-      animations: isAnimationMode(preferences.animations) ? preferences.animations : fallback.animations,
       density: isDensity(preferences.density) ? preferences.density : fallback.density,
       sidebarTextSize: clampNumber(preferences.sidebarTextSize, UI_TEXT_SIZE_MIN, UI_TEXT_SIZE_MAX, fallback.sidebarTextSize),
       tabTextSize: clampNumber(preferences.tabTextSize, UI_TEXT_SIZE_MIN, UI_TEXT_SIZE_MAX, fallback.tabTextSize),
@@ -279,10 +276,6 @@ function terminalFontSize(value: unknown, fallback: number): number {
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
   return Math.min(max, Math.max(min, value))
-}
-
-function isAnimationMode(value: unknown): value is AnimationMode {
-  return value === 'auto' || value === 'full' || value === 'light' || value === 'off'
 }
 
 function isDensity(value: unknown): value is Density {

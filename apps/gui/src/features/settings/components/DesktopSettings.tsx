@@ -340,8 +340,8 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
         </Card>
       )}
       <Card title="Sessions" color="var(--ansi-mag)" iconPath={<><rect x="4" y="4" width="16" height="7" rx="2" /><rect x="4" y="13" width="16" height="7" rx="2" /><path d="M8 7.5h.01M8 16.5h.01" /></>}>
-        <Row label="Reopen tabs on launch" detail="Restore the tabs and splits you had last time.">
-          <Switch label="Reopen tabs on launch" checked={preferences.restoreTabs} onChange={(value) => { update('restoreTabs', value) }} />
+        <Row label="Reopen layout on launch" detail="Restore the panes and splits you had last time.">
+          <Switch label="Reopen layout on launch" checked={preferences.restoreLayout} onChange={(value) => { update('restoreLayout', value) }} />
         </Row>
         <Row label="Closing the window" detail="Sessions are owned by maittyd and keep running.">
           <span style={{ fontSize: 12, color: 'var(--dim)' }}>Always keeps running</span>

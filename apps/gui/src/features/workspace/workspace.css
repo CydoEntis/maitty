@@ -4,7 +4,6 @@
 @keyframes v7fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @keyframes v7scrim { from { opacity: 0; } to { opacity: 1; } }
 @keyframes v7pulse { 0% { opacity: .9; transform: scale(1); } 70%, 100% { opacity: 0; transform: scale(1.7); } }
-@keyframes mx-ov-pulse { 0% { transform: scale(.97); } 50% { transform: scale(1.015); } 100% { transform: none; } }
 @keyframes v14focus { from { opacity: 1; } to { opacity: 0; } }
 @keyframes v7moved { 0% { background-color: rgba(95, 212, 191, .16); } 100% { background-color: transparent; } }
 @keyframes v8tabin { from { opacity: 0; transform: translateY(-3px) scale(.97); } to { opacity: 1; transform: none; } }
@@ -159,8 +158,6 @@
 .mx-rail-divider { width: calc(28px * var(--icon-scale, 1)); height: 1px; background: var(--pane-line); flex: none; }
 .mx-rail-list { flex: 1; min-height: 0; width: 100%; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 0 12px; }
 
-/* What a collapsed folder is, beside it: fixed to the window so the rail's scrolling cannot clip it. */
-.mx-rail-popover { position: fixed; z-index: 50; transform: translateY(-50%); min-width: 200px; max-width: 300px; padding: 10px 12px; border-radius: 12px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); backdrop-filter: var(--blur-pop); pointer-events: none; animation: v7fade .14s ease-out; }
 .mx-rail-bottom { flex: none; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 0 12px; border-top: 1px solid var(--pane-line); }
 .mx-rail-bottom .mx-daemon-dot { width: 8px; height: 8px; }
 
@@ -197,7 +194,6 @@
 .mx-zz { display: inline-flex; align-items: flex-start; font-family: var(--mono); font-style: italic; font-size: 8.5px; font-weight: 600; line-height: 1; }
 .mx-zz small { font-size: 6px; margin-top: -2px; }
 .mx-badge.is-error { background: color-mix(in oklab, var(--danger) 24%, var(--bg)); }
-.mx-ov-pulse { animation: mx-ov-pulse .5s ease-out 1; }
 .mx-pause-bar { width: 2px; height: 5px; border-radius: 1px; background: var(--on-warn); }
 
 /* Tab bar */
@@ -298,12 +294,6 @@
 .mx-pane-icon .mx-badge.is-working { width: 15px; height: 15px; border-radius: 50%; background: var(--well); font-family: var(--mono); font-size: 11px; line-height: 1; color: var(--accent); }
 .mx-pane-icon .mx-badge.is-unknown { width: 12px; height: 12px; border-radius: 3.5px; background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
 .mx-pill { height: 22px; display: flex; align-items: center; gap: 6px; padding: 0 9px; border-radius: 999px; font-size: 11.5px; white-space: nowrap; flex: none; }
-.mx-status-pill { font-weight: 500; font-variant-numeric: tabular-nums; }
-.mx-status-pill.is-working { background: var(--accent-soft); color: var(--accent); }
-.mx-status-pill.is-needs { background: var(--warn-soft); color: var(--warn); }
-.mx-status-pill.is-done { background: rgba(141, 184, 155, .12); color: var(--ok); }
-.mx-status-pill.is-error { background: var(--danger-soft); color: var(--danger); }
-.mx-status-pill.is-unknown { background: rgba(255, 255, 255, .05); color: var(--muted); }
 .mx-pane-controls { display: flex; align-items: center; gap: 0; margin-left: 2px; }
 .mx-pane-control { width: 28px; height: 28px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--dim); transition: background-color .14s ease, color .14s ease, transform .12s ease; }
 .mx-pane-control:not(:disabled):hover { background: rgba(255, 255, 255, .09); color: var(--fg); }
@@ -461,23 +451,13 @@
 .mx-text-button:not(:disabled):hover { background: var(--sel); color: var(--fg); }
 .mx-text-button:disabled { opacity: .4; }
 
-/* A collapsed session's popover: the agent, its state and what that means, and where it is. */
-.mx-rail-popover.is-session { width: 270px; max-width: 270px; }
 
-/* A tab's popover: below the tab, listing every pane in it. */
-.mx-rail-popover.is-tab { transform: none; width: 320px; max-width: 320px; }
 
 /* Naming a session. */
 .mx-rename { width: 100%; max-width: 420px; padding: 20px; border-radius: 16px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); backdrop-filter: var(--blur-pop); display: flex; flex-direction: column; gap: 10px; animation: v8pane .3s var(--ease-out); }
-.mx-folder-dialog { max-width: 480px; }
 .mx-folder-row { display: flex; gap: 8px; align-items: center; }
 .mx-folder-row input { flex: 1; min-width: 0; height: 38px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--pane-line); background: var(--well, var(--raise)); color: var(--fg); font-family: var(--mono, monospace); font-size: 13px; }
 .mx-folder-row input.is-missing { border-color: var(--danger-line, var(--danger)); box-shadow: 0 0 0 3px var(--danger-soft, transparent); }
-.mx-folder-bad { color: var(--danger) !important; }
-.mx-folder-suggestions { list-style: none; margin: 0; padding: 4px; max-height: 210px; overflow-y: auto; border-radius: 9px; border: 1px solid var(--pane-line); display: flex; flex-direction: column; gap: 1px; }
-.mx-folder-suggestions li { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 8px; border-radius: 6px; font-family: var(--mono, monospace); font-size: 12.5px; color: var(--fg2); cursor: pointer; }
-.mx-folder-suggestions li.is-on, .mx-folder-suggestions li:hover { background: var(--raise); color: var(--fg); }
-.mx-folder-suggestions li small { margin-left: auto; color: var(--dim); font-family: inherit; }
 .mx-rename h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--fg); }
 .mx-rename p { margin: 0; font-size: 12.5px; color: var(--muted); }
 .mx-rename input { height: 38px; padding: 0 12px; border-radius: 10px; background: var(--well); border: 1px solid var(--pane-line); color: var(--fg); font-size: 14px; outline: none; }
@@ -488,7 +468,6 @@
 
 
 /* Every session of a project, beside the sidebar */
-.mx-menu-scrim { position: fixed; inset: 0; z-index: 34; }
 
 /* Hotkeys as keycaps */
 .mx-keys { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
@@ -565,9 +544,6 @@
 .mx-inbox-button:hover svg { transform: scale(1.1); }
 .mx-inbox-button:active { transform: scale(.95); }
 .mx-inbox-button.is-open { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
-.mx-inspect-stat { font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; }
-.mx-inspect-stat .is-add { color: var(--ok); }
-.mx-inspect-stat .is-remove { color: var(--danger); }
 .mx-inbox-count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; background: var(--sel); color: var(--fg2); font-variant-numeric: tabular-nums; animation: v9pop .28s var(--ease-out); }
 .mx-inbox-count.is-needs { background: var(--warn); color: var(--on-warn); }
 
@@ -690,8 +666,6 @@
 @keyframes mx-notice-count { to { transform: scaleX(0); } }
 
 /* Update offer; it reuses the interrupted-agents banner's frame. */
-.mx-update { background: color-mix(in oklab, var(--accent) 12%, var(--pane)); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 40%, transparent); }
-.mx-update-notes { margin: 0; padding: 0 0 0 18px; font-size: 12px; color: var(--muted); }
 
 /* Status bar. */
 .mx-statusbar { flex: none; height: 28px; display: flex; align-items: center; gap: 14px; padding: 0 14px; border-top: 1px solid var(--pane-line); font-size: var(--ch-fs-sm, 11.5px); color: var(--muted); white-space: nowrap; overflow: hidden; }
@@ -731,11 +705,6 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 @media (prefers-reduced-motion: reduce) { .mx-tip { animation: none; } }
 
 /* Confirm before ending sessions. */
-.mx-confirm-scrim { position: fixed; inset: 0; z-index: 80; background: rgba(0, 0, 0, .5); animation: v7scrim .2s ease-out; }
-.mx-confirm { position: fixed; z-index: 81; top: 50%; left: 50%; width: min(400px, calc(100% - 32px)); transform: translate(-50%, -50%); display: flex; flex-direction: column; gap: 8px; padding: 18px; border-radius: 14px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); animation: v9dialog .22s var(--ease-out); }
-.mx-confirm-title { margin: 0; font-size: 15px; font-weight: 600; color: var(--fg); overflow-wrap: anywhere; }
-.mx-confirm-text { margin: 0; font-size: 13px; line-height: 1.5; color: var(--fg2); }
-.mx-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 .mx-confirm-button { height: 32px; padding: 0 14px; border-radius: 9px; font-size: 13px; color: var(--fg2); background: rgba(255, 255, 255, .05); box-shadow: inset 0 0 0 1px var(--pane-line); cursor: pointer; transition: background-color .14s ease, transform .12s ease; }
 .mx-confirm-button:hover { background: rgba(255, 255, 255, .09); color: var(--fg); }
 .mx-confirm-button:active { transform: scale(.96); }
@@ -754,7 +723,6 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 :root[data-finish="flat"] .mx-sidebar { box-shadow: none; }
 :root[data-finish="flat"] .mx-settings { background: var(--main); box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
 :root[data-finish="flat"] .mx-settings-scrim { backdrop-filter: none; }
-:root[data-finish="flat"] .mx-rail-popover { box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
 /* Settings › Appearance › Icons: Grayscale. Neutral app icons in either style; status badges on them keep their colours. */
 :root[data-icons="grayscale"] .mx-app-icon { background: var(--raise); box-shadow: none; color: var(--fg2); }
 /* No outlines on the selected row, hovered rows or the open tab: the fill says it. */
@@ -936,8 +904,6 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 }
 @container panehead (max-width: 420px) { .mx-pane-cwd { display: none; } }
 
-/* The tab's hover card is live: a pane row jumps to its pane and its × closes it. */
-.mx-rail-popover.is-live { pointer-events: auto; }
 
 /* Flat sidebar: one list of two-line rows, a filter field, and a 60px rail. Status is the badge and nothing else
    moves a row, so none of these animates. */

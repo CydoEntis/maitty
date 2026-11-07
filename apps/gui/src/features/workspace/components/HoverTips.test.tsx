@@ -141,7 +141,7 @@ describe('hover tips', () => {
     })
 
     it('shows no tip while a hover card is open', () => {
-      render(<><HoverTips /><div role="tooltip" className="mx-rail-popover">card</div><button type="button" title="One">x</button></>)
+      render(<><HoverTips /><div role="tooltip" className="mx-railpop">card</div><button type="button" title="One">x</button></>)
       fireEvent.pointerOver(screen.getByRole('button'))
       wait(500)
       expect(screen.getAllByRole('tooltip')).toHaveLength(1)

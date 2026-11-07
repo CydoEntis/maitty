@@ -41,8 +41,6 @@ import { useLatest } from '@/lib/useLatest'
 import { guardLocal } from '@/lib/localOnly'
 import { markGpu } from '@/lib/gpu'
 import { isWindowShown, subscribeWindowActivity } from '@/lib/window-activity'
-import { levelFor, useAutoState } from '@/lib/animation-auto'
-import { useAdaptiveAnimations } from './useAdaptiveAnimations'
 import { PerfOverlay } from './components/PerfOverlay'
 import { setSpinnerStyle } from '@/lib/spinner-clock'
 import { TerminalView } from '@/TerminalView'
@@ -262,7 +260,7 @@ export function DesktopApp() {
   const [preferences, setPreferences] = useState(readSettingsPreferences)
   const paneViews = usePaneViews()
   const [saved] = useState(readLayout)
-  const [layout, setLayout] = useState<Layout>(() => (preferences.restoreTabs ? saved.layout : EMPTY_LAYOUT))
+  const [layout, setLayout] = useState<Layout>(() => (preferences.restoreLayout ? saved.layout : EMPTY_LAYOUT))
   // A tab layout from an older version was dropped: say so once.
   useEffect(() => { if (saved.reset) toast.message(LAYOUT_RESET_NOTICE) }, [saved.reset])
   // The width while the sidebar's edge is being dragged; it is saved when the pointer is released.
@@ -615,9 +613,6 @@ export function DesktopApp() {
   const reducedMotion = preferences.reduceMotion || systemReducedMotion
   const theme = findTheme(previewTheme ?? activeThemeName(preferences, systemDark))
   const look = useMemo(() => ({ fontFamily: preferences.terminalFontFamily, fontWeight: preferences.terminalFontWeight, fontWeightBold: preferences.terminalFontWeightBold, cursorStyle: preferences.cursorStyle, scrollback: preferences.scrollback, scrollSpeed: preferences.scrollSpeed, screenReader: preferences.terminalScreenReader, seeThrough: preferences.terminalSeeThrough, cursorBlink: preferences.cursorBlink, plainDrawing: preferences.terminalPlainDrawing, theme: xtermTheme(theme.tokens), minimumContrast: terminalMinimumContrast(theme) }), [preferences.terminalFontFamily, preferences.terminalFontWeight, preferences.terminalFontWeightBold, preferences.cursorStyle, preferences.cursorBlink, preferences.scrollback, preferences.scrollSpeed, preferences.terminalScreenReader, preferences.terminalSeeThrough, preferences.terminalPlainDrawing, theme])
-  const auto = useAutoState()
-  const cap = levelFor(preferences.animations, auto)
-  useAdaptiveAnimations(preferences.animations === 'auto' && !reducedMotion && cap !== 'none', false)
   useSharedSettings(preferences, setPreferences, online)
 
   const flash = useCallback((text: string) => { setToastMessage({ text, key: Date.now() }) }, [])

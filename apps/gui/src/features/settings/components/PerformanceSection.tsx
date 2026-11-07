@@ -1,12 +1,9 @@
-import { useContext } from 'react'
 import { toast } from 'sonner'
-import { describeAnimations, useAutoState } from '@/lib/animation-auto'
 import type { ProcessLoad } from '@/api/daemon'
 import { usePerfSample, type PerfSample } from '@/lib/perf-meter'
 import type { SettingsPreferences } from '../preferences'
 import { buildPerformanceReport, formatCpu, formatMemory, formatRate, sumCpu, sumMemory } from '../performance-report'
 import { environmentOf, useProcessSample } from '../performance-sample'
-import { ReducedMotionContext } from '@/features/workspace/components/motion'
 import { Card, Row, Switch } from './DesktopSettings'
 
 type Update = <K extends keyof SettingsPreferences>(key: K, value: SettingsPreferences[K]) => void
@@ -40,13 +37,10 @@ const OVERLAY_ICON = <path d="M3 17l5-6 4 4 5-8 4 5" />
 
 export function PerformanceSection({ preferences, update, appVersion }: PerformanceSectionProps) {
   const sample = usePerfSample()
-  const auto = useAutoState()
-  const reduced = useContext(ReducedMotionContext)
-  const animations = describeAnimations(preferences.animations, auto, reduced)
   const processes = useProcessSample()
   const loads = processes.data ?? null
   const copyReport = () => {
-    const report = buildPerformanceReport(environmentOf(preferences, appVersion, animations), sample, loads)
+    const report = buildPerformanceReport(environmentOf(preferences, appVersion), sample, loads)
     navigator.clipboard.writeText(report).then(
       () => toast.success('Copied the performance report', { id: 'performance-report', duration: 1500 }),
       () => toast.error('Could not copy the report', { id: 'performance-report' }),
@@ -64,9 +58,6 @@ export function PerformanceSection({ preferences, update, appVersion }: Performa
         </Row>
         <Row label="Draw terminals without the GPU" detail="Use this if typed letters show late or the cursor covers the last one. It applies to terminals opened after you change it: restart the app, or reopen the pane.">
           <Switch label="Draw terminals without the GPU" checked={preferences.terminalPlainDrawing} onChange={(value) => { update('terminalPlainDrawing', value) }} />
-        </Row>
-        <Row label="Animations" detail="What the status effects are allowed to do, and why. Change it in Settings › Appearance › Motion.">
-          <Value>{animations}</Value>
         </Row>
         <Row label="Animations running" detail="Each one repaints its card every frame, even while nothing else happens.">
           <Value>{sample === null ? PENDING : `${String(sample.animations)} · ${String(sample.domNodes)} elements`}</Value>

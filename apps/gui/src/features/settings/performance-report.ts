@@ -9,8 +9,6 @@ export type PerformanceEnvironment = {
   gpu: string
   style: string
   reduceMotion: boolean
-  /** What the animation level is and why (`describeAnimations`). */
-  animations: string
   terminalFontSize: number
 }
 
@@ -54,7 +52,6 @@ export function buildPerformanceReport(environment: PerformanceEnvironment, samp
     `Maitty desktop ${environment.version ?? '(version unknown)'}`,
     `Web view: ${environment.userAgent}`,
     `GPU: ${environment.gpu}`,
-    `Animations: ${environment.animations}`,
     `Window style: ${environment.style}; reduce motion ${environment.reduceMotion ? 'on' : 'off'}; terminal ${String(environment.terminalFontSize)}px`,
     '',
   ]
