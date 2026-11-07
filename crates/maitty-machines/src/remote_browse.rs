@@ -26,7 +26,8 @@ pub const MOST_INDEX_FILES: usize = 5000;
 const PREFACE_MAX: u64 = 64 * 1024;
 
 /// What is in one folder.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Listing {
     /// The folder as the machine resolved it.
     pub folder: String,
@@ -41,7 +42,8 @@ pub struct Listing {
 }
 
 /// The files below a folder.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Index {
     /// The folder as the machine resolved it.
     pub folder: String,
