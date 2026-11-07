@@ -125,6 +125,7 @@ fn an_event_reaches_the_window_in_the_shape_it_reads() {
 #[test]
 fn a_pull_that_cannot_start_ssh_ends_with_one_failed_event_that_says_why() {
     let mut job = plan_for("/x/out.log").unwrap();
+    job.folder = folder("no-ssh");
     job.machine = Machine::ssh("build", vec!["ssh-that-must-not-run".into()], "maitty");
     let events = events_of(&job, &Arc::new(AtomicBool::new(false)));
     let ends: Vec<_> = events.iter().filter(|e| is_end(e)).collect();
