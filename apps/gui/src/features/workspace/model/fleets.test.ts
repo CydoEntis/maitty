@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Fleet } from '@/api/fleets'
 import type { Conversation } from '@/data/preview'
-import { aboard, emptyShipsNote, fleetColorOf, FLEET_COLORS, fleetKeyOf, iconStack, initialsOf, isFreeFleetName, NO_FLEET_ID, priorityGroups, shipsOf, sidebarMachines, visibleFleets, withHomeFleets, LOCAL_HEAD } from './fleets'
+import { aboard, daemonColorOf, emptyShipsNote, fleetColorOf, FLEET_COLORS, fleetKeyOf, iconStack, initialsOf, isFreeFleetName, NO_FLEET_ID, priorityGroups, shipsOf, sidebarMachines, visibleFleets, withHomeFleets, LOCAL_HEAD } from './fleets'
 import { toSessionView, type SessionView } from './session'
 
 vi.mock('@/api/daemon', () => ({ terminalOf: (id: string) => Number(id.slice(1)) }))
@@ -24,9 +24,12 @@ const B = fleet(2, 'AeVox launch')
 describe('fleet colours and initials', () => {
   it('never offers amber or red, and wraps the daemon palette onto six colours', () => {
     expect(FLEET_COLORS).toEqual(['teal', 'violet', 'blue', 'green', 'pink', 'orange'])
-    expect(fleetColorOf(0)).toBe('teal')
+    // The indexes the host accepts for a recolour read back as the colour that was chosen.
+    for (const name of FLEET_COLORS) expect(fleetColorOf(daemonColorOf(name))).toBe(name)
+    expect(daemonColorOf('teal')).toBe(3)
+    // An index saved before fleets wraps onto the six.
     expect(fleetColorOf(6)).toBe('teal')
-    expect(fleetColorOf(8)).toBe('blue')
+    expect(fleetColorOf(4)).toBe('pink')
   })
 
   it('takes two letters: one from each of two words, else the first two', () => {

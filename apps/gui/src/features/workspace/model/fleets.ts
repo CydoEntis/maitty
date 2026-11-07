@@ -1,4 +1,4 @@
-import { fleetKey, type Fleet } from '@/api/fleets'
+import { FLEET_COLORS as DAEMON_COLORS, fleetKey, type Fleet } from '@/api/fleets'
 import { LOCAL_MACHINE } from '@/api/machines'
 import { THIS_COMPUTER, type MachineHead } from './machines'
 import { matchesFilter, SHELL_PROCESS, type SessionStatus, type SessionView } from './session'
@@ -13,9 +13,18 @@ import { matchesFilter, SHELL_PROCESS, type SessionStatus, type SessionView } fr
 export const FLEET_COLORS = ['teal', 'violet', 'blue', 'green', 'pink', 'orange'] as const
 export type FleetColor = (typeof FLEET_COLORS)[number]
 
-/** The daemon keeps a palette index per workspace; it wraps onto the six fleet colours. */
+/**
+ * The colour a daemon palette index shows as. The six indexes the host accepts for a recolour map to
+ * their names; any other index (a colour saved before fleets) wraps onto the six.
+ */
 export function fleetColorOf(index: number): FleetColor {
-  return FLEET_COLORS[index % FLEET_COLORS.length] ?? 'teal'
+  const named = FLEET_COLORS.find((name) => DAEMON_COLORS[name] === index)
+  return named ?? FLEET_COLORS[index % FLEET_COLORS.length] ?? 'teal'
+}
+
+/** The daemon palette index that recolours a fleet to `color`. */
+export function daemonColorOf(color: FleetColor): number {
+  return DAEMON_COLORS[color]
 }
 
 const INITIALS_LENGTH = 2

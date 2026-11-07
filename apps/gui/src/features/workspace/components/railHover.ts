@@ -62,3 +62,9 @@ export function hoverHandlers(hover: RailHover, id: string) {
     onBlur: hover.leave,
   }
 }
+
+/** The hover id of a fleet tile; a ship's is its session id. */
+export const FLEET_HOVER_PREFIX = 'fleet:'
+export function fleetHoverId(fleetKey: string): string {
+  return `${FLEET_HOVER_PREFIX}${fleetKey}`
+}

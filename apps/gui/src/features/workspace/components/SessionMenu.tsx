@@ -1,4 +1,5 @@
 import { useState, type MouseEvent } from 'react'
+import type { Fleet } from '@/api/fleets'
 import type { SessionView } from '../model/session'
 import { SessionMenuPopup } from './SessionMenuPopup'
 
@@ -13,6 +14,9 @@ export type SessionMenuActions = {
   onRename: () => void
   onPin: (pinned: boolean) => void
   onEnd: () => void
+  /** The other fleets on the session's machine it can move to; none leaves the section out. */
+  moveTargets: readonly Fleet[]
+  onMove: (fleet: Fleet) => void
 }
 
 /** A right-click menu for a session: name it, pin it, open it in a split, copy its path, or end it. */

@@ -36,6 +36,8 @@ const TerminalSessionSchema = z.object({
   cwd: z.string(),
   root: z.string().nullable().default(null),
   branch: z.string().nullable().default(null),
+  // The pane runs in a linked worktree rather than the main checkout (the daemon's `TermInfo.linked`).
+  linked: z.boolean().default(false),
   label: z.string().default(''),
   pinned: z.boolean().default(false),
   archived: z.boolean().default(false),
@@ -875,12 +877,6 @@ export async function startShellSession(folder: string): Promise<void> {
  */
 const machineOnly = (machine: number): { machine?: number } => (machine === LOCAL_MACHINE ? {} : { machine })
 
-/**
- * The daemon's palette indexes a fleet may be coloured with: teal, violet, blue, green, pink, orange.
- * They are positions in the default workspace colours, so colours saved before fleets keep their meaning.
- */
-export const FLEET_COLORS = { teal: 3, violet: 0, blue: 1, green: 7, pink: 2, orange: 5 } as const
-
 /** Starts a named fleet holding one shell; the daemon gives it the first unused fleet colour. */
 export async function createFleet(machine: number, name: string): Promise<void> {
   await invokeParsed('create_fleet', NullSchema, { name, ...machineOnly(machine) })
@@ -890,7 +886,7 @@ export async function renameFleet(machine: number, fleet: number, name: string):
   await invokeParsed('rename_fleet', NullSchema, { fleet, name, ...machineOnly(machine) })
 }
 
-/** `color` is one of the `FLEET_COLORS` values. */
+/** `color` is one of the `FLEET_COLORS` values (`api/fleets.ts`). */
 export async function recolorFleet(machine: number, fleet: number, color: number): Promise<void> {
   await invokeParsed('recolor_fleet', NullSchema, { fleet, color, ...machineOnly(machine) })
 }
@@ -950,6 +946,7 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
     context: null,
     nativePane: term.id,
     ...(machine ? { machine: machine.id, machineName: machine.name } : {}),
+    linked: term.linked,
     hasDiff: term.diff_added + term.diff_removed > 0,
     diffAdded: term.diff_added,
     diffRemoved: term.diff_removed,

@@ -29,6 +29,10 @@ describe('session view', () => {
     expect(toSessionView(repo(1, `${HOME}/maitty`, `${HOME}/maitty`), HOME)).toMatchObject({ title: 'main', promptPath: 'maitty', repoName: 'maitty', branch: 'main', process: 'shell' })
     expect(toSessionView(repo(1, `${HOME}/maitty`, `${HOME}/maitty/crates/maitty-core/src`), HOME)).toMatchObject({ title: 'maitty-core/src', promptPath: 'maitty/crates/maitty-core/src' })
     expect(toSessionView(conversation(1, `${HOME}/Downloads`, { agent: 'codex' }), HOME)).toMatchObject({ title: '~/Downloads', repoName: null, branch: null, process: 'codex' })
+    // The worktree mark follows the pane the daemon says is in a linked worktree, or a fleet made as one.
+    expect(toSessionView(conversation(1, `${HOME}/wt`, { linked: true }), HOME).worktree).toBe(true)
+    expect(toSessionView(conversation(1, `${HOME}/wt`), HOME, { fleet: '0:1', worktree: true }).worktree).toBe(true)
+    expect(toSessionView(conversation(1, `${HOME}/wt`), HOME, { fleet: '0:1', worktree: false }).worktree).toBe(false)
   })
 
   it('calls a session by the name you gave it, else by where it is', () => {

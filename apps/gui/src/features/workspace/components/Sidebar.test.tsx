@@ -35,7 +35,7 @@ function show(sessions: SessionView[], more: Partial<SidebarProps> = {}) {
     <Sidebar
       sessions={sessions} fleets={[MAIN, GROWTH]} machines={[LOCAL_HEAD]} selectedFleet={MAIN.key} focusedId={null} tracks={new Map()} mode="docked" online canStart portalContainer={null} onToggleRail={none}
       side="left" width={264} onResize={none} onResizeEnd={none} inboxCount={0} inboxNeeds={false} onOpenInbox={none}
-      onNewAgentChat={none} onNewShell={none} onAddMachine={none} onSelectFleet={none} onAddFleet={none} onRenameFleet={none} viewOf={() => 'terminal'}
+      onNewAgentChat={none} onNewShell={none} onAddMachine={none} onSelectFleet={none} onAddFleet={none} onRenameFleet={none} onRecolorFleet={none} onMoveShip={none} viewOf={() => 'terminal'}
       onShowSession={none} onEndSession={none} onSetName={none} onRenameSession={none} onPinSession={none}
       onSplitSession={none} onCopyPath={none} onOpenSettings={none} updateSlot={null} railUpdateSlot={null}
       {...more}
@@ -257,7 +257,7 @@ describe('the row menu', () => {
     show([ship(1, MAIN), ship(2, MAIN)], { onPinSession, onSplitSession })
     fireEvent.contextMenu(rowAt(1))
     const names = screen.getAllByRole('menuitem').map((item) => item.textContent)
-    expect(names).toEqual(['RenameF2', 'Pin', 'Open in split right', 'Open in split down', 'Copy path', 'Close sessionends it'])
+    expect(names).toEqual(['RenameF2', 'Pin', 'Open in split right', 'Open in split down', 'Copy path', 'AeVox launch', 'Close sessionends it'])
     fireEvent.click(screen.getByRole('menuitem', { name: 'Pin' }))
     expect(onPinSession).toHaveBeenCalledWith('t2', true)
     fireEvent.contextMenu(rowAt(0))
@@ -292,6 +292,71 @@ describe('the row menu', () => {
   })
 })
 
+describe('moving a ship between fleets', () => {
+  it('offers the other fleets of the ship\'s own machine in the ship menu, never another machine\'s', () => {
+    const onMoveShip = vi.fn()
+    show([ship(1, MAIN)], { fleets: [MAIN, GROWTH, DEVBOX_FLEET], machines: [LOCAL_HEAD, DEVBOX], onMoveShip })
+    fireEvent.contextMenu(rowAt(0))
+    const group = within(screen.getByRole('group', { name: 'Move to fleet' }))
+    expect(group.getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['AeVox launch'])
+    fireEvent.click(group.getByRole('menuitem', { name: 'AeVox launch' }))
+    expect(onMoveShip).toHaveBeenCalledWith('t1', GROWTH)
+  })
+
+  it('moves a ship dropped on a fleet row, shows the row as a target while it is over it, and ignores other drags', () => {
+    const onMoveShip = vi.fn()
+    show([ship(1, MAIN)], { onMoveShip })
+    const target = screen.getByRole('button', { name: /^AeVox launch/ })
+    const data = new Map([['application/x-maitty-session', 't1']])
+    const transfer = { types: [...data.keys()], getData: (type: string) => data.get(type) ?? '', dropEffect: 'none' }
+    fireEvent.dragOver(target, { dataTransfer: transfer })
+    expect(target.className).toContain('is-drop')
+    fireEvent.drop(target, { dataTransfer: transfer })
+    expect(target.className).not.toContain('is-drop')
+    expect(onMoveShip).toHaveBeenCalledWith('t1', GROWTH)
+    fireEvent.dragOver(target, { dataTransfer: { types: ['text/plain'], getData: () => '', dropEffect: 'none' } })
+    expect(target.className).not.toContain('is-drop')
+  })
+
+  it('leaves the Main group out of drops and menus', () => {
+    const home: Fleet = { ...MAIN, id: -1, key: '0:-1', name: 'Main' }
+    const onMoveShip = vi.fn()
+    show([ship(1, home)], { fleets: [home, GROWTH], selectedFleet: home.key, onMoveShip })
+    const row = screen.getByRole('button', { name: /^Main/ })
+    const transfer = { types: ['application/x-maitty-session'], getData: () => 't1', dropEffect: 'none' }
+    fireEvent.dragOver(row, { dataTransfer: transfer })
+    expect(row.className).not.toContain('is-drop')
+    fireEvent.contextMenu(row)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    fireEvent.contextMenu(rowAt(0))
+    expect(screen.queryByRole('group', { name: 'Move to fleet' })).not.toBeNull()
+  })
+})
+
+describe('the fleet menu', () => {
+  it('offers rename and the six colours with the current one checked, and recolours', () => {
+    const onRecolorFleet = vi.fn()
+    show([], { onRecolorFleet })
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^AeVox launch/ }))
+    const swatches = screen.getAllByRole('menuitemradio')
+    expect(swatches.map((item) => item.getAttribute('aria-label'))).toEqual(['teal', 'violet', 'blue', 'green', 'pink', 'orange'])
+    expect(swatches.filter((item) => item.getAttribute('aria-checked') === 'true').map((item) => item.getAttribute('aria-label'))).toEqual(['blue'])
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'pink' }))
+    expect(onRecolorFleet).toHaveBeenCalledWith(GROWTH, 'pink')
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('renames from the menu', async () => {
+    const user = userEvent.setup()
+    const onRenameFleet = vi.fn()
+    show([], { onRenameFleet })
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^AeVox launch/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Rename/ }))
+    await user.type(screen.getByRole('textbox', { name: /Name for AeVox launch/ }), '{Control>}a{/Control}Launch two{Enter}')
+    expect(onRenameFleet).toHaveBeenCalledWith(GROWTH, 'Launch two')
+  })
+})
+
 describe('the rail', () => {
   it('has one tile per fleet, the three starters, the Inbox, an expand button and Settings, and no filter', async () => {
     const user = userEvent.setup()
@@ -304,5 +369,17 @@ describe('the rail', () => {
     expect(screen.queryByRole('textbox')).toBeNull()
     await user.click(screen.getByRole('button', { name: /^AeVox launch/ }))
     expect(onSelectFleet).toHaveBeenCalledWith(GROWTH.key)
+  })
+
+  it('shows a hover card on a fleet tile with its machine, ship count and the exact request of a ship that needs you', async () => {
+    const asking = ship(1, GROWTH, { status: 'needs-you', details: { asking: 'Run rm -rf build?', ask: null, interrupted: null, exit: null, timeline: [], usage: { context: null, cost: null, tokens: null } } })
+    show([asking, ship(2, GROWTH)], { mode: 'rail', portalContainer: document.body })
+    fireEvent.mouseEnter(screen.getByRole('button', { name: /^AeVox launch/ }))
+    const card = await screen.findByRole('tooltip')
+    expect(card.textContent).toContain('AeVox launch')
+    expect(card.textContent).toContain('This computer')
+    expect(card.textContent).toContain('2 ships')
+    expect(card.textContent).toContain('1 need you')
+    expect(card.textContent).toContain('Run rm -rf build?')
   })
 })

@@ -33,8 +33,8 @@ vi.mock('@/api/daemon', () => ({
   createFleet: fleetApi.createFleet,
   renameFleet: fleetApi.renameFleet,
   startShellInFleet: fleetApi.startShellInFleet,
-  recolorFleet: vi.fn(),
-  moveSessionToFleet: vi.fn(),
+  recolorFleet: fleetApi.recolorFleet,
+  moveSessionToFleet: fleetApi.moveSessionToFleet,
   isDesktop: () => true,
   terminalOf: (id: string) => {
     const match = /^t(\d+)$/.exec(id)
@@ -47,6 +47,8 @@ const fleetApi = vi.hoisted(() => ({
   createFleet: vi.fn<(machine: number, name: string) => Promise<void>>(),
   renameFleet: vi.fn<(machine: number, fleet: number, name: string) => Promise<void>>(),
   startShellInFleet: vi.fn<(machine: number, fleet: number, folder?: string) => Promise<void>>(),
+  recolorFleet: vi.fn<(machine: number, fleet: number, color: number) => Promise<void>>(),
+  moveSessionToFleet: vi.fn<(machine: number, session: number, fleet: number) => Promise<void>>(),
 }))
 
 vi.mock('@/api/fleets', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/api/fleets')>()), loadFleets: fleetApi.loadFleets }))
@@ -103,6 +105,8 @@ describe('fleets and ships in the window', () => {
     fleetApi.startShellInFleet.mockResolvedValue(undefined)
     fleetApi.createFleet.mockResolvedValue(undefined)
     fleetApi.renameFleet.mockResolvedValue(undefined)
+    fleetApi.recolorFleet.mockResolvedValue(undefined)
+    fleetApi.moveSessionToFleet.mockResolvedValue(undefined)
     daemon.loadConversations.mockResolvedValue([
       term(1, `${HOME}/a`, { agent: 'claude', status: 'needs-you' }),
       term(2, `${HOME}/b`),
@@ -199,5 +203,19 @@ describe('fleets and ships in the window', () => {
     await user.dblClick(await within(sidebar).findByRole('button', { name: /^AeVox launch/ }))
     await user.type(within(sidebar).getByRole('textbox', { name: /Name for AeVox launch/ }), '{Control>}a{/Control}Launch{Enter}')
     await waitFor(() => { expect(fleetApi.renameFleet).toHaveBeenCalledWith(0, 2, 'Launch') })
+  })
+
+  it('moves a ship to another fleet from its menu, and recolours a fleet from its menu', async () => {
+    const user = userEvent.setup()
+    renderApp()
+    const sidebar = await screen.findByRole('navigation', { name: 'Sessions' })
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+    await user.pointer({ keys: '[MouseRight]', target: within(sidebar).getByRole('button', { name: '~/b, shell, idle' }) })
+    await user.click(await screen.findByRole('menuitem', { name: 'AeVox launch' }))
+    expect(fleetApi.moveSessionToFleet).toHaveBeenCalledWith(0, 2, GROWTH.id)
+
+    await user.pointer({ keys: '[MouseRight]', target: within(sidebar).getByRole('button', { name: /^AeVox launch/ }) })
+    await user.click(await screen.findByRole('menuitemradio', { name: 'orange' }))
+    expect(fleetApi.recolorFleet).toHaveBeenCalledWith(0, GROWTH.id, 5)
   })
 })

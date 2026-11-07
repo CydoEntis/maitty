@@ -118,3 +118,15 @@
 .mx-tab-close:hover { background: var(--danger-soft); color: var(--danger); }
 .mx-tab-close.is-armed { background: var(--danger-soft); box-shadow: inset 0 0 0 1px var(--danger-line); color: var(--danger); }
 .mx-app-icon.size-26 { width: 26px; height: 26px; border-radius: 8px; font-size: 11.5px; }
+
+/* Drop target: a ship dragged over a fleet row */
+.mx-fleet.is-drop { background: color-mix(in oklab, var(--fleet, var(--accent)) 22%, transparent); box-shadow: inset 0 0 0 1.5px var(--fleet, var(--accent)); }
+
+/* Menu sections: the move-to-fleet list and the colour swatches */
+.mx-menu-label { padding: 2px 8px 4px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+.mx-menu-swatch { flex: none; width: 10px; height: 10px; border-radius: 3px; }
+.mx-menu-swatches { display: flex; gap: 8px; padding: 2px 8px 6px; }
+.mx-swatch { width: 22px; height: 22px; border-radius: 7px; outline: none; }
+.mx-swatch.is-on { box-shadow: 0 0 0 2px var(--raise), 0 0 0 3.5px var(--fg); }
+.mx-swatch:focus-visible { box-shadow: 0 0 0 2px var(--raise), 0 0 0 3.5px var(--accent); }
+.mx-sessionmenu { max-height: calc(100vh - 16px); overflow-y: auto; }

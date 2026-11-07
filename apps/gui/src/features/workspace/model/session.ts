@@ -25,7 +25,7 @@ export type SessionView = {
   name: string | null
   /** The key of the fleet the daemon holds this session in (`machine:workspace`); null when it lists it in none. */
   fleet: string | null
-  /** The fleet it is in was made as a worktree. */
+  /** It runs in a linked worktree: the daemon says so for the pane, or its fleet was made as a worktree. */
   worktree: boolean
   /** Marked with a pin glyph. A pin never reorders the list. */
   pinned: boolean
@@ -180,7 +180,7 @@ export function toSessionView(conversation: Conversation, home: string, placemen
     title,
     name: conversation.named ? conversation.title.trim() || null : null,
     fleet: placement?.fleet ?? null,
-    worktree: placement?.worktree ?? false,
+    worktree: (placement?.worktree ?? false) || (conversation.linked ?? false),
     pinned: conversation.pinned ?? false,
     diffAdded: conversation.diffAdded ?? 0,
     diffRemoved: conversation.diffRemoved ?? 0,

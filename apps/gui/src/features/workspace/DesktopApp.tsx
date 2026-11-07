@@ -15,7 +15,9 @@ import {
   loadConversations,
   loadDaemonRestartStatus,
   renameConversationOnDaemon,
+  recolorFleet,
   renameFleet,
+  moveSessionToFleet,
   restartMismatchedDaemon,
   sendTerminalInput,
   submitMessage,
@@ -126,7 +128,7 @@ import {
 import { LAYOUT_RESET_NOTICE, readLayout, writeLayout } from './model/layoutStorage'
 import { byPriority } from './model/inboxOrder'
 import { displayName, folderNameOf, inCreationOrder, tildePath, toSessionView, type SessionView } from './model/session'
-import { LOCAL_HEAD, NO_FLEET_ID } from './model/fleets'
+import { daemonColorOf, isDaemonFleet, LOCAL_HEAD, NO_FLEET_ID, type FleetColor } from './model/fleets'
 import type { Tab } from './model/tabs'
 import { useFleets } from './useFleets'
 import { Keycaps } from '@/features/shortcuts/Keycaps'
@@ -1063,6 +1065,32 @@ export function DesktopApp() {
     )
   }, [queryClient])
 
+  const recolorFleetTo = useCallback((fleet: Fleet, color: FleetColor) => {
+    if (!isDaemonFleet(fleet)) return
+    recolorFleet(fleet.machine, fleet.id, daemonColorOf(color)).then(
+      async () => { await queryClient.invalidateQueries({ queryKey: ['fleets'] }) },
+      (error: unknown) => { toast.error(errorMessage(error, `Could not recolour ${fleet.name}`)) },
+    )
+  }, [queryClient])
+
+  // A ship stays on its machine: its terminal runs there, so only a fleet of the same machine takes it.
+  const moveShip = useCallback((sessionId: string, target: Fleet) => {
+    const ship = sessions.find((item) => item.id === sessionId)
+    if (!ship || fleetOfShip.get(ship.id) === target.key) return
+    if (!isDaemonFleet(target)) {
+      toast.message('This group holds sessions the daemon lists in no fleet. Add a fleet to move a ship into it.')
+      return
+    }
+    if (ship.machine !== target.machine) {
+      toast.message(`${displayName(ship)} runs on ${ship.machineName ?? 'this computer'} and cannot move to ${target.name} on another machine.`)
+      return
+    }
+    moveSessionToFleet(ship.machine, ship.pane, target.id).then(
+      async () => { await queryClient.invalidateQueries({ queryKey: ['fleets'] }) },
+      (error: unknown) => { toast.error(errorMessage(error, `Could not move ${displayName(ship)} to ${target.name}`)) },
+    )
+  }, [sessions, fleetOfShip, queryClient])
+
   const selectTab = useCallback((tab: Tab) => {
     if (tab.arrangementId !== null) setLayout((current) => activateArrangement(current, tab.arrangementId))
     else setLayout((current) => showSession(current, tab.sessionId, makeId))
@@ -1720,6 +1748,8 @@ export function DesktopApp() {
       onSelectFleet={(key) => { afterPick(); selectFleet(key) }}
       onAddFleet={addFleet}
       onRenameFleet={renameFleetNamed}
+      onRecolorFleet={recolorFleetTo}
+      onMoveShip={moveShip}
       viewOf={(session) => chatOf(session).view}
       onShowSession={(id) => { afterPick(); showSessionById(id) }}
       onEndSession={endSession}

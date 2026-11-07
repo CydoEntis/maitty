@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Fleet } from '@/api/fleets'
-import { aboard, emptyShipsNote, fleetKeyOf, fleetsOfMachine, isFreeFleetName, machineTitle, needsCount, priorityGroups, shipsOf, visibleFleets } from '../model/fleets'
+import { aboard, emptyShipsNote, fleetKeyOf, fleetsOfMachine, isDaemonFleet, isFreeFleetName, machineTitle, needsCount, priorityGroups, type FleetColor, shipsOf, visibleFleets } from '../model/fleets'
 import type { PaneView } from '../model/chatView'
 import type { MachineHead } from '../model/machines'
 import { matchesFilter, type SessionView } from '../model/session'
@@ -13,7 +13,7 @@ import { MAX_FLEET_NAME_LENGTH } from './fleetStyle'
 import { InlineName } from './InlineName'
 import { ShipRow } from './ShipRow'
 import { RailPopoverLayer } from './RailPopovers'
-import { useRailHover } from './railHover'
+import { fleetHoverId, hoverHandlers, useRailHover } from './railHover'
 import { useTipWithKeys } from '@/features/shortcuts/platform'
 
 export type SidebarProps = {
@@ -50,6 +50,9 @@ export type SidebarProps = {
   /** Makes a fleet on a machine; the sidebar waits for it so a failed name stays in the field. */
   onAddFleet: (machine: number, name: string) => void
   onRenameFleet: (fleet: Fleet, name: string) => void
+  onRecolorFleet: (fleet: Fleet, color: FleetColor) => void
+  /** Moves a ship to a fleet (the drag target and the ship menu). The caller refuses a move across machines. */
+  onMoveShip: (sessionId: string, fleet: Fleet) => void
   /** The view a ship shows, for the terminal or chat mark on its row. */
   viewOf: (session: SessionView) => PaneView
   onShowSession: (id: string) => void
@@ -149,6 +152,12 @@ function Expanded(props: SidebarProps) {
   const shipCount = view === 'fleets' ? matching.length : priorityTotal
   const fleetNameOf = (ship: SessionView) => fleets.find((fleet) => fleet.key === fleetKeyOf(ship.machine, ship.fleet, fleets))?.name
 
+  // The other fleets of the ship's own machine; a ship cannot leave its machine, and `Main` is no daemon fleet.
+  const moveTargetsOf = (ship: SessionView) => {
+    const own = fleetKeyOf(ship.machine, ship.fleet, fleets)
+    return fleets.filter((fleet) => fleet.machine === ship.machine && fleet.key !== own && isDaemonFleet(fleet))
+  }
+
   const row = (session: SessionView, fleetName?: string) => (
     <ShipRow
       key={session.id}
@@ -160,6 +169,8 @@ function Expanded(props: SidebarProps) {
       {...(fleetName === undefined ? {} : { fleetName })}
       portalContainer={props.portalContainer}
       hover={hover}
+      moveTargets={moveTargetsOf(session)}
+      onMove={(fleet) => { props.onMoveShip(session.id, fleet) }}
       onShow={() => { props.onShowSession(session.id) }}
       onSetName={(name) => { props.onSetName(session.id, name) }}
       onPin={(pinned) => { props.onPinSession(session.id, pinned) }}
@@ -171,7 +182,7 @@ function Expanded(props: SidebarProps) {
 
   return (
     <div className="mx-sidebar-expanded">
-      <RailPopoverLayer hover={hover} sessions={sessions} tracks={props.tracks} portalContainer={props.portalContainer} />
+      <RailPopoverLayer hover={hover} fleets={fleets} machines={machines} sessions={sessions} tracks={props.tracks} portalContainer={props.portalContainer} />
       <div className="mx-sidebar-head">
         <button type="button" className="mx-icon-button mx-collapse" aria-label="Collapse sidebar" title={tip('Collapse sidebar', 'toggle-sidebar')} onClick={props.onToggleRail}><Icon name="collapse" /></button>
         <span className="mx-spacer" />
@@ -229,8 +240,12 @@ function Expanded(props: SidebarProps) {
                           ships={aboard(sessions, fleets, fleet.key)}
                           selected={fleet.key === selected?.key}
                           dimmed={away}
+                          portalContainer={props.portalContainer}
+                          editable={isDaemonFleet(fleet)}
                           onSelect={() => { props.onSelectFleet(fleet.key) }}
                           onRename={(name) => { props.onRenameFleet(fleet, name) }}
+                          onRecolor={(color) => { props.onRecolorFleet(fleet, color) }}
+                          onDropShip={(sessionId) => { props.onMoveShip(sessionId, fleet) }}
                         />
                       ))}
                       {adding === head.machine && (
@@ -317,8 +332,10 @@ function Rail(props: SidebarProps) {
   const { sessions, fleets, machines, online } = props
   const tip = useTipWithKeys()
   const label = online ? `maittyd · ${String(sessions.length)} sessions` : 'Reconnecting to maittyd…'
+  const hover = useRailHover()
   return (
     <div className="mx-rail">
+      <RailPopoverLayer hover={hover} fleets={fleets} machines={machines} sessions={sessions} tracks={props.tracks} portalContainer={props.portalContainer} />
       <div className="mx-rail-top">
         <button type="button" className="mx-icon-button mx-rail-button" aria-label="Expand sidebar" title={tip('Expand sidebar', 'toggle-sidebar')} onClick={props.onToggleRail}><Icon name="expand" /></button>
         <StartButtons props={props} rail />
@@ -338,8 +355,8 @@ function Rail(props: SidebarProps) {
               className={`mx-rail-fleet${fleet.key === props.selectedFleet ? ' is-selected' : ''}${head?.down ? ' is-dimmed' : ''}`}
               aria-label={words}
               aria-current={fleet.key === props.selectedFleet ? 'true' : undefined}
-              title={words}
-              onClick={() => { props.onSelectFleet(fleet.key) }}
+              {...hoverHandlers(hover, fleetHoverId(fleet.key))}
+              onClick={() => { hover.close(); props.onSelectFleet(fleet.key) }}
             >
               <FleetTile fleet={fleet} needs={needs} size="rail" />
             </button>

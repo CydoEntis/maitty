@@ -2,6 +2,7 @@ import { useRef, useState, type KeyboardEvent } from 'react'
 import type { Tab } from '../model/tabs'
 import { displayName, MAX_SESSION_NAME_LENGTH, rowName, STATUS_WORD, type SessionView } from '../model/session'
 import { AppIcon, Icon, StatusBadge } from './glyphs'
+import { SESSION_DRAG_TYPE } from './dragSession'
 import { InlineName } from './InlineName'
 import { runsProgram, useArmed } from './useArmed'
 
@@ -36,6 +37,8 @@ function TabItem({ tab, head, running, focusable, onSelect, onClose, onSetName }
             aria-selected={tab.active}
             aria-label={`${displayName(head)}, ${head.process}, ${STATUS_WORD[head.status]}${tab.paneCount > 1 ? `, ${String(tab.paneCount)} panes` : ''}`}
             tabIndex={focusable ? 0 : -1}
+            draggable
+            onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData(SESSION_DRAG_TYPE, head.id) }}
             onClick={onSelect}
             onDoubleClick={() => { setEditing(true) }}
             onKeyDown={(event) => { if (event.key === 'F2') { event.preventDefault(); setEditing(true) } }}

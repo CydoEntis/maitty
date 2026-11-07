@@ -47,6 +47,8 @@ export type Conversation = {
   machineName?: string
   hasDiff: boolean
   /** Lines added and removed in the session's checkout against HEAD, from the daemon; absent when unknown. */
+  /** The terminal runs in a linked worktree. */
+  linked?: boolean
   diffAdded?: number
   diffRemoved?: number
   isGitRepository?: boolean

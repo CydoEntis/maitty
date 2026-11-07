@@ -38,6 +38,12 @@ export type Fleet = {
   sessionIds: string[]
 }
 
+/**
+ * The daemon's palette indexes a fleet may be coloured with: teal, violet, blue, green, pink, orange.
+ * They are positions in the default workspace colours, so colours saved before fleets keep their meaning.
+ */
+export const FLEET_COLORS = { teal: 3, violet: 0, blue: 1, green: 7, pink: 2, orange: 5 } as const
+
 export function fleetKey(machine: number, id: number): string {
   return `${String(machine)}:${String(id)}`
 }
