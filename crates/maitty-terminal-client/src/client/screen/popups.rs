@@ -170,6 +170,8 @@ pub(in crate::client) fn flatten_modals(app: &App, buf: &mut Buffer, t: &Theme) 
             for x in r.left()..r.right() {
                 let c = &mut buf[(x, y)];
                 c.bg = match c.bg {
+                    // A keycap or chip keeps its ground where a theme's chips share `card2`.
+                    b if b == t.btn => b,
                     b if b == t.card || b == t.card2 => t.bg,
                     b if b == t.sel_on(t.card) || b == t.sel_on(t.card2) => t.sel_on(t.bg),
                     b if b == t.hover_on(t.card) || b == t.hover_on(t.card2) => t.hover_on(t.bg),
