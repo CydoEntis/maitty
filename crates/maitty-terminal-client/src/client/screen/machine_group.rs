@@ -5,8 +5,10 @@
 //! is drawn normally again with nothing to reset.
 
 use super::*;
+use crate::brand::APP_NAME;
 use crate::client::link::ConnectionState;
 use crate::hidden::sanitize;
+use crate::link_failure::FIX_INSTALL;
 
 /// This computer's mark on the pane badge, and another machine's (here and on the sidebar).
 pub(super) const LOCAL_ICON: &str = "⌂";
@@ -21,6 +23,51 @@ pub(super) struct StateMark {
     pub glyph: &'static str,
     pub word: String,
     pub color: Color,
+}
+
+/// What `machine update` does for a machine that needs it: put the app there, or replace the
+/// version it has. Told apart by the fix text the connection carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::client) enum AppFix {
+    Install,
+    Update,
+}
+
+impl AppFix {
+    pub fn of(state: &ConnectionState) -> Option<AppFix> {
+        match state {
+            ConnectionState::NeedsUpdate { why } if why == FIX_INSTALL => Some(AppFix::Install),
+            ConnectionState::NeedsUpdate { .. } => Some(AppFix::Update),
+            _ => None,
+        }
+    }
+
+    /// The one word on a chip or a key hint.
+    pub fn verb(self) -> &'static str {
+        match self {
+            AppFix::Install => "install",
+            AppFix::Update => "update",
+        }
+    }
+
+    /// The item of a menu.
+    pub fn label(self) -> String {
+        match self {
+            AppFix::Install => format!("Install {APP_NAME}"),
+            AppFix::Update => format!("Update {APP_NAME}"),
+        }
+    }
+
+    /// The toast when a machine is found in need: what it lacks and where the fix is.
+    pub fn notice(self, name: &str) -> String {
+        let (lacks, item) = match self {
+            AppFix::Install => (format!("has no {APP_NAME}"), "install"),
+            AppFix::Update => (format!("runs another version of {APP_NAME}"), "update"),
+        };
+        format!(
+            "{name} {lacks}: click {item} on its sidebar heading, or press u on it in Machines"
+        )
+    }
 }
 
 pub(super) fn state_mark(state: &ConnectionState, ascii: bool, t: &Theme) -> StateMark {
@@ -85,6 +132,33 @@ impl App {
     pub(super) fn machine_mark(&self, machine: MachineId, t: &Theme) -> Option<StateMark> {
         let remote = self.remotes.get(&machine)?;
         Some(state_mark(&remote.state, self.ascii_marks(), t))
+    }
+
+    /// The app needs installing or updating there. A refused machine is about a different daemon
+    /// answering, which `machine update` does not fix.
+    pub(in crate::client) fn machine_fix(&self, machine: MachineId) -> Option<AppFix> {
+        if self.refused.contains_key(&machine) {
+            return None;
+        }
+        AppFix::of(&self.remotes.get(&machine)?.state)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::link_failure::FIX_UPDATE;
+
+    #[test]
+    fn the_fix_text_tells_an_install_from_an_update_and_nothing_else_needs_one() {
+        let needs = |why: &str| ConnectionState::NeedsUpdate { why: why.into() };
+        assert_eq!(AppFix::of(&needs(FIX_INSTALL)), Some(AppFix::Install));
+        assert_eq!(AppFix::of(&needs(FIX_UPDATE)), Some(AppFix::Update));
+        assert_eq!(AppFix::of(&ConnectionState::Connected), None);
+        assert_eq!(
+            AppFix::of(&ConnectionState::NeedsLogin { why: FIX_INSTALL.into() }),
+            None
+        );
     }
 }
 

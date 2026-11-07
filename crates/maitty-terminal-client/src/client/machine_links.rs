@@ -62,8 +62,12 @@ impl App {
                 format!("Lost the connection to {name}; reconnecting"),
                 false,
             ),
-            ConnectionState::NeedsLogin { why } | ConnectionState::NeedsUpdate { why } => {
-                self.notify(format!("{name}: {why}"), true)
+            ConnectionState::NeedsLogin { why } => self.notify(format!("{name}: {why}"), true),
+            // The fix text names a command; the window has a click for it.
+            ConnectionState::NeedsUpdate { .. } => {
+                if let Some(fix) = self.machine_fix(machine) {
+                    self.notify(fix.notice(&name), true);
+                }
             }
             ConnectionState::Unreachable { why, .. } => {
                 self.notify(format!("{name} is unreachable: {why}"), true)

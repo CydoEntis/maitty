@@ -1849,6 +1849,9 @@ impl App {
             ScreenHit::NoPaneNew => self.open_new_session(None),
             // A shell on that machine at once.
             ScreenHit::MachinePlus(machine) => self.new_ship_on(machine),
+            ScreenHit::MachineHead(MachineId::LOCAL) => self.act(Action::BrowseTree),
+            ScreenHit::MachineHead(machine) => self.open_machines_on(machine),
+            ScreenHit::MachineFix(machine) => self.machine_update_from_side(machine),
             ScreenHit::FilesChip => {
                 if matches!(self.view, Some(crate::client::View::Files(_))) {
                     self.view = None;

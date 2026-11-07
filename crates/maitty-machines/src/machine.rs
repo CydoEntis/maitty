@@ -341,19 +341,18 @@ impl Machine {
         Ok(ssh_command::popup_command(&argv)?)
     }
 
-    /// `<program> machine update <name>` as one line for a pane's shell, where it can say what
-    /// it found and ask before it installs. `install`: the app is not on the machine at all.
-    pub fn update_command(&self, program: &str, install: bool) -> Result<String> {
+    /// `<program> machine update <name> --hold` as one line for a popup pane. No `--install` or
+    /// `--yes`: the person answers its question there, which is the consent. `--hold` keeps the
+    /// result on screen until Enter, because the popup closes the moment the command ends.
+    pub fn update_command(&self, program: &str) -> Result<String> {
         self.ssh_route()?;
-        let mut argv = vec![
+        let argv = [
             program.to_string(),
             "machine".to_string(),
             "update".to_string(),
             self.name.clone(),
+            "--hold".to_string(),
         ];
-        if install {
-            argv.push("--install".to_string());
-        }
         Ok(ssh_command::popup_command(&argv)?)
     }
 

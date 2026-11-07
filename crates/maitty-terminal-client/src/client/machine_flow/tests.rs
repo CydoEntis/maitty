@@ -9,6 +9,7 @@ use crate::client::ids::Outgoing;
 use crate::client::link::{Backoff, LinkEvent, Links, Timing};
 use crate::client::reference_fixture::term;
 use crate::client::remote_status_tests::{Runtime, Sandbox};
+use crate::client::screen::machine_group::AppFix;
 use crate::client::screen::machines::{MachinesView, Outcome};
 use crate::client::ssh_hosts::SshHost;
 use crate::link_failure::{FIX_INSTALL, FIX_LOGIN};
@@ -548,6 +549,12 @@ fn a_missing_app_adds_the_machine_so_its_state_can_say_what_to_install() {
                 why: FIX_INSTALL.into()
             })
         );
+        let toast = h.app.notice.as_ref().map(|(text, ..)| text.clone());
+        assert_eq!(
+            toast.as_deref(),
+            Some(AppFix::Install.notice("box").as_str()),
+            "the toast names the click, not a command to type"
+        );
         assert!(h.popups().is_empty());
         assert_eq!(machine_entries(&h.local_config().unwrap()).len(), 1);
     });
@@ -826,20 +833,26 @@ fn the_dialog_lists_your_machines_and_its_keys_update_and_remove_the_chosen_one(
         h.type_text("r");
         assert_eq!(h.view().query, "r", "in the input a letter is typed");
 
-        // `u` runs the update in a popup on this computer, with --install for a machine that
-        // has no app, and the machine is dialled when the popup closes.
+        // `u` runs the update in a popup on this computer, and the machine is dialled when the
+        // popup closes. No --install: its question there is the consent, and --hold keeps the
+        // result on screen until Enter.
         h.open(Vec::new());
         h.key(KeyCode::Up);
         h.type_text("u");
         let popups = h.popups();
         let (machine, cmd) = popups.last().expect("a popup");
         assert_eq!(*machine, MachineId::LOCAL);
-        assert!(cmd.ends_with(" machine update box --install"), "{cmd}");
+        assert!(cmd.ends_with(" machine update box --hold"), "{cmd}");
         assert!(
             !matches!(h.app.mode, Mode::Machines(_)),
             "the popup takes the keys, so the dialog is closed"
         );
-        assert!(h.notice().starts_with("Updating box"), "{}", h.notice());
+        assert!(
+            h.notice()
+                .starts_with(&format!("Installing {} on box", crate::brand::APP_NAME)),
+            "{}",
+            h.notice()
+        );
         assert!(h.app.machine_login_waiting("box"));
 
         // `r` dials it again and says so in the dialog.

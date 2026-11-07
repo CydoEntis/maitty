@@ -1427,6 +1427,10 @@ pub(super) enum ScreenHit {
     NoPaneNew,
     /// The `+` on a machine heading: a shell on that machine at once.
     MachinePlus(MachineId),
+    /// A machine heading in the sidebar: a click opens Machines on it, a right-click its menu.
+    MachineHead(MachineId),
+    /// The `install` or `update` chip on a machine heading: `machine update` in a popup.
+    MachineFix(MachineId),
     /// The `files` and `changes` chips on a pane's top border.
     FilesChip,
     ChangesChip,
@@ -1588,7 +1592,7 @@ mod heads;
 mod helpers_ask;
 mod keyoverlay;
 mod leader;
-mod machine_group;
+pub(in crate::client) mod machine_group;
 pub(in crate::client) mod machines;
 #[cfg(test)]
 mod machines_tests;

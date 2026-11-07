@@ -4,6 +4,7 @@
 //! takes the machine out of the config, the sidebar and the window's records, and leaves the
 //! machine itself, its sessions and its saved layout alone.
 
+use super::screen::machine_group::AppFix;
 use super::screen::machines::{
     MachineNotice, MachineStep, MachinesView, Outcome, connect_target, parse_target, removal_note,
 };
@@ -11,7 +12,7 @@ use super::*;
 use crate::client::link::ConnectionState;
 use crate::client::machine_config;
 use crate::client::machine_ids;
-use crate::link_failure::{FIX_INSTALL, FailureClass};
+use crate::link_failure::FailureClass;
 use crate::machine_probe::{self, Probe};
 use maitty_settings::config::MachineDef;
 use std::collections::HashSet;
@@ -85,6 +86,16 @@ impl App {
         ssh_hosts::load_in_background(self, |app, hosts| {
             app.with_machines_view(|v| v.hosts = Some(hosts));
         });
+    }
+
+    /// The dialog with one of your machines chosen, its fix under it and its keys in the bar.
+    pub(super) fn open_machines_on(&mut self, machine: MachineId) {
+        let at = self
+            .remotes
+            .get(&machine)
+            .and_then(|r| self.machine_listed_at(&r.name));
+        self.open_machines();
+        self.with_machines_view(|v| v.machine_sel = at);
     }
 
     pub(super) fn with_machines_view(&mut self, f: impl FnOnce(&mut MachinesView)) {
@@ -296,24 +307,22 @@ impl App {
         Ok(())
     }
 
-    /// Run `machine update` for a configured machine in a popup on this computer, where it asks
-    /// before it installs. The machine is dialled again when the popup closes.
+    /// Run `machine update` for a configured machine in a popup on this computer, where it says
+    /// what it found and asks before it installs or replaces anything; the result stays there
+    /// until Enter. The machine is dialled again when the popup closes.
     pub(in crate::client) fn machine_update(&mut self, name: &str) -> MachineNotice {
         let Some(def) = self.configured(name) else {
             return say(format!("{name} is not in your machines."), true);
         };
-        let install = self.machine_id_named(&def.name).is_some_and(|id| {
-            matches!(
-                self.remotes.get(&id).map(|r| &r.state),
-                Some(ConnectionState::NeedsUpdate { why }) if why == FIX_INSTALL
-            )
-        });
+        let fix = self
+            .machine_id_named(&def.name)
+            .and_then(|id| self.machine_fix(id));
         let program = std::env::current_exe()
             .ok()
             .and_then(|exe| exe.to_str().map(str::to_string))
             .unwrap_or_else(|| env!("APP_COMMAND").to_string());
         let machine = ipc::Machine::from_def_via(&def, &self.machine_flow.ssh);
-        let cmd = match machine.update_command(&program, install) {
+        let cmd = match machine.update_command(&program) {
             Ok(cmd) => cmd,
             Err(e) => {
                 return say(
@@ -335,13 +344,26 @@ impl App {
         // A popup has the keys only in plain typing mode, as the first login's does.
         self.leave_shortcut_mode();
         self.cmd_on(MachineId::LOCAL, Command::Popup { cmd, cwd: None });
+        let doing = match fix {
+            Some(AppFix::Install) => format!("Installing {} on", crate::brand::APP_NAME),
+            _ => format!("Updating {} on", crate::brand::APP_NAME),
+        };
         say(
             format!(
-                "Updating {}: answer in the popup. It reconnects when the popup closes.",
+                "{doing} {}: answer in the popup. It reconnects when the popup closes.",
                 def.name
             ),
             false,
         )
+    }
+
+    /// The sidebar's install or update chip, or its menu item: the same popup, told in a toast.
+    pub(in crate::client) fn machine_update_from_side(&mut self, machine: MachineId) {
+        let Some(name) = self.remotes.get(&machine).map(|r| r.name.clone()) else {
+            return;
+        };
+        let said = self.machine_update(&name);
+        self.notify(said.text, said.error);
     }
 
     fn popup_terms(&self) -> HashSet<TermId> {
