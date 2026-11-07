@@ -1,8 +1,8 @@
 import { useEffect, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react'
 import { ContextMenu as ContextMenuPrimitive, DropdownMenu } from 'radix-ui'
 import { MAX_PANES, type PaneSlot, type SplitDirection } from '../model/layout'
-import type { SessionView } from '../model/session'
-import { AppIcon, Icon } from './glyphs'
+import { rowName, type SessionView } from '../model/session'
+import { AppIcon, Icon, StatusBadge } from './glyphs'
 import { SESSION_DRAG_TYPE } from './dragSession'
 import { runsProgram, useArmed } from './useArmed'
 import { PaneStatus } from './PaneStatus'
@@ -91,7 +91,7 @@ export function PaneCard(props: PaneCardProps) {
     <ContextMenuPrimitive.Root>
       <ContextMenuPrimitive.Trigger asChild>
     <section
-      className={`mx-pane${view === 'chat' ? '' : ' is-terminal'}${focused ? ' is-focused' : ''}${props.broadcast ? ' is-broadcast' : ''}${props.dropTarget ? ' is-drop-target' : ''}`}
+      className={`mx-pane${view === 'chat' ? '' : ' is-terminal'}${focused && multi ? ' is-focused' : ''}${props.broadcast ? ' is-broadcast' : ''}${props.dropTarget ? ' is-drop-target' : ''}`}
       aria-label={`Terminal ${String(props.index + 1)}: ${session.cwdLabel}${focused ? ', focused' : ''}`}
       data-session-id={session.id}
       data-pane={pane.id}
@@ -116,18 +116,21 @@ export function PaneCard(props: PaneCardProps) {
         onDragEnd={props.onDragEnd}
         onDoubleClick={() => { props.onToggleMaximize(pane.id) }}
       >
-        <AppIcon process={session.process} size={20} dimmed={status === 'unknown'} />
+        {props.onViewChange && <PaneViewSwitch view={view} onChange={props.onViewChange} />}
+        <span className="mx-pane-icon">
+          <AppIcon process={session.process} size={26} dimmed={status === 'unknown'} />
+          <StatusBadge status={status} rail />
+        </span>
         <span className="mx-pane-title">
-          <span className="mx-pane-proc">{session.process}</span>
-          {session.name && <span className="mx-pane-name">{session.name}</span>}
-          <span className="mx-pane-cwd">{session.cwdLabel}</span>
+          <span className="mx-pane-proc">{rowName(session)}</span>
+          <span className="mx-pane-where">
+            <span className="mx-pane-cwd" title={session.cwd}>{session.cwdLabel}</span>
+            {session.branch && <span className="mx-pane-branch" title={`Branch ${session.branch}`}><Icon name="branch" size={10} />{session.branch}</span>}
+          </span>
         </span>
         {props.broadcast && <span className="mx-broadcast-pill">◉ Broadcast</span>}
         {usageParts(session.usage).length > 0 && <span className="mx-pill mx-usage-pill" title="What the agent reports this session has used">{usageParts(session.usage).join(' · ')}</span>}
-        {session.repoName && <span className="mx-pill mx-repo-pill" title={session.repoRoot ?? undefined}><Icon name="branch" />{session.repoName}</span>}
         <span className="mx-pane-controls">
-          {props.onViewChange && <PaneViewSwitch view={view} onChange={props.onViewChange} />}
-          <button type="button" className={`mx-pane-control is-foldable${props.broadcast ? ' is-on' : ''}`} aria-label={props.broadcast ? 'Stop broadcasting' : 'Broadcast typing to this tab'} aria-pressed={props.broadcast} title={tip('Broadcast to idle panes in this tab', 'broadcast')} disabled={!multi} onMouseDown={stop} onClick={props.onToggleBroadcast}><Icon name="broadcast" /></button>
           <button type="button" className="mx-pane-control is-foldable" aria-label={tip('Split right', 'split-right')} title={tip('Split right', 'split-right')} disabled={full} onMouseDown={stop} onClick={() => { props.onSplit(pane.id, 'right') }}><Icon name="splitRight" /></button>
           <button type="button" className="mx-pane-control is-foldable" aria-label={tip('Split down', 'split-down')} title={tip('Split down', 'split-down')} disabled={full} onMouseDown={stop} onClick={() => { props.onSplit(pane.id, 'down') }}><Icon name="splitDown" /></button>
           <button type="button" className="mx-pane-control is-foldable" aria-label={maximized ? 'Restore layout' : 'Maximize pane'} title={maximized ? 'Restore layout' : 'Maximize pane'} disabled={!multi && !maximized} onMouseDown={stop} onClick={() => { props.onToggleMaximize(pane.id) }}>{maximized ? <Icon name="restore" /> : <Icon name="maximize" />}</button>

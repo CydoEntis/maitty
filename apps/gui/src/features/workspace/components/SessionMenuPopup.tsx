@@ -58,7 +58,7 @@ export function SessionMenuPopup({ session, actions, at, onClose }: Props) {
     <div ref={root} role="dialog" aria-label={`Menu for ${displayName(session)}`} className="mx-sessionmenu" style={style}>
       <button type="button" role="menuitem" className="mx-menu-item" onClick={run(actions.onRename)}><Icon name="pencil" size={13} />Rename<span className="mx-menu-hint" aria-hidden="true">F2</span></button>
       <button type="button" role="menuitem" className="mx-menu-item" onClick={run(() => { actions.onPin(!session.pinned) })}>
-        <Icon name="pin" size={13} />{session.pinned ? 'Unpin' : 'Pin to top'}
+        <Icon name="pin" size={13} />{session.pinned ? 'Unpin' : 'Pin'}
       </button>
       <button type="button" role="menuitem" className="mx-menu-item" onClick={run(() => { actions.onSplit('right') })}><Icon name="splitRight" size={13} />Open in split right</button>
       <button type="button" role="menuitem" className="mx-menu-item" onClick={run(() => { actions.onSplit('down') })}><Icon name="splitDown" size={13} />Open in split down</button>

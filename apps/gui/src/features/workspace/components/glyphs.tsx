@@ -79,6 +79,13 @@ const ICON_DRAWINGS = {
   layout: ({ size = 12 }: IconProps) => <Svg size={size} strokeWidth={1.8}><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M3 10h18M10 10v10" /></Svg>,
   prompt: ({ size = 18 }: IconProps) => <Svg size={size}><path d="m5 8 4 4-4 4M12 17h7" /></Svg>,
   check: ({ size = 9, stroke = 'var(--ok)', strokeWidth = 3.5 }: IconProps) => <Svg size={size} strokeWidth={strokeWidth} stroke={stroke}><path d="M5 12.5 10 17 19 7" /></Svg>,
+  chatPlus: ({ size = 15 }: IconProps) => <Svg size={size} strokeWidth={1.8}><path d="M20 12v4a2 2 0 0 1-2 2H9l-5 4V6a2 2 0 0 1 2-2h8" /><path d="M18 3v6M15 6h6" /></Svg>,
+  terminal: ({ size = 15 }: IconProps) => <Svg size={size} strokeWidth={1.9}><path d="m5 8 4 4-4 4M12 17h7" /></Svg>,
+  serverPlus: ({ size = 15 }: IconProps) => <Svg size={size} strokeWidth={1.7}><rect x="3" y="4" width="14" height="6" rx="1.8" /><rect x="3" y="13.5" width="14" height="6" rx="1.8" /><path d="M6.5 7h.01M6.5 16.5h.01M20 7v6M17 10h6" /></Svg>,
+  chat: ({ size = 13 }: IconProps) => <Svg size={size} strokeWidth={1.8}><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" /></Svg>,
+  fleets: ({ size = 14 }: IconProps) => <Svg size={size} strokeWidth={1.8}><path d="M12 3v13M12 5l6 9H12M12 8l-5 6h5M4 18c2 2.5 5 3 8 1 3 2 6 1.5 8-1" /></Svg>,
+  priority: ({ size = 14 }: IconProps) => <Svg size={size} strokeWidth={1.9}><path d="M4 7h16M4 12h11M4 17h6" /></Svg>,
+  caret: () => <Svg className="mx-caret" size={10} strokeWidth={2.5} stroke="currentColor"><path d="m9 6 6 6-6 6" /></Svg>,
   bang: () => <Svg size={9} strokeWidth={3.5} stroke="var(--danger)"><path d="M12 6v7" /><path d="M12 18h.01" /></Svg>,
 } satisfies Record<string, (props: IconProps) => ReactNode>
 
@@ -119,7 +126,7 @@ const ICONS: Record<string, IconKind> = {
 }
 const SHELL_ICON: IconKind = { kind: 'shell', glyph: '>_' }
 
-type IconSize = 18 | 20 | 22 | 24 | 28 | 32
+type IconSize = 18 | 20 | 22 | 24 | 26 | 28 | 32
 
 export function AppIcon({ process, size, dimmed = false }: { process: string; size: IconSize; dimmed?: boolean }) {
   const program = process.split(/\s+/)[0] ?? ''

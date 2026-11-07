@@ -203,8 +203,8 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   style; `grayscale` makes them neutral `--raise` tiles with the glyph in `--fg2`. Project tiles are always neutral.
 - **Title bar and terminal surface.** The title bar (32px) has a colour of its own, apart from the ground,
   through `--tbar` and `--tbar-b` on the app root: on dark themes a veil of `rgba(10,12,12,.35)` over the ground, on
-  light themes `--main`, no border; Tiled uses `--main` and a hairline. There is no tab bar: the workspace shows the
-  focused session, and the sidebar is where sessions are switched. A terminal pane is one surface: its header
+  light themes `--main`, no border; Tiled uses `--main` and a hairline. The workspace is a second card beside the
+  sidebar, 12px from it and from the window edges, with the tab tray on top (see **Tabs** below). A terminal pane is one surface: its header
   and its text sit on the theme's `--term` ground (`.mx-pane.is-terminal`), so the terminal does not read as a box
   inside the card; a pane in chat view stays on `--main`.
 - **Small windows.** The window is never narrower than 720px (`minWidth`). Under **1100px** the sidebar is the
@@ -221,8 +221,8 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   Panes, Find & jump and Window with each action and its keycaps (several chords stack). It is generated
   from the same table (`hotkeyRows`, each row has a group) that Settings › Hotkeys reads, so the two never
   differ. Other shortcuts are ignored while it is open; ⌘/ and Esc close it.
-- **Session menu.** Right-click a sidebar row or a rail icon for a 260px menu: **Rename** (F2; the row's
-  name becomes a field, the program is its placeholder, Enter saves and an empty name clears it), **Pin to top**
+- **Session menu.** Right-click a ship row for a 260px menu: **Rename** (F2; the row's
+  name becomes a field, the program is its placeholder, Enter saves and an empty name clears it), **Pin**
   or **Unpin**, **Open in split right**, **Open in split down** (the session joins the layout beside the focused
   pane, up to four panes), **Copy path**, then **Close session**, which asks a second click ("Close and stop
   claude? Click again") when an agent runs. A name replaces the program on the row and the pane header.
@@ -236,25 +236,46 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   **text size** (−, the size which resets it to 14px, +; Ctrl+= and Ctrl+− do the same) and the shortcuts
   keycaps, which open the shortcut overlay. Hidden in Focus mode and by Settings › General › Window ›
   Status bar (on by default).
-- **Sidebar.** One flat list of sessions in creation order (the daemon's pane number, which only counts up):
-  no projects, folders or machine headers, and a status change, a pin or the focus never moves a row. The
-  header holds the collapse button (⌘B), **+** (New session) and the **Inbox** button with a count badge, amber
-  while anything needs you (⌘J on macOS, Ctrl+Shift+J elsewhere). Under it a 30px **Filter sessions** field with a `/`
-  hint: `/` focuses it from anywhere outside a pane or another field, it matches the name, folder, process and
-  machine, **×** clears it and Esc clears it and gives the keyboard back. A row is two lines: the app icon with
-  its status badge; the name (the name you gave the session, else the program) in 600 weight, an unread dot,
-  a pin and, at the right, `+N` in green and `−N` in red when the checkout has changes (the daemon's
-  `diff_added` and `diff_removed`); then a folder badge (the folder of the repo root or the shell, its path in
-  the tooltip; clicking it puts the folder in the filter) and, at the right, a laptop for this computer or a
-  server for another machine (its name in the tooltip, a dashed outline while that machine is away). The
-  selected row is `--raise`; hover tints it; a press scales it to .985. The footer holds the version and the
-  update button, and the Settings gear. Rows drag onto a pane.
-  The rail (60px) holds the expand button, **+**, the Inbox and one 32px icon per session with its badge, then
-  the update button and the Settings gear. **Rail cards** open beside an icon on hover or keyboard focus after
-  280ms (instantly once one is open), 10px to its right with an arrow pointing at it, and close 160ms after the
-  pointer leaves both, so the card can be used. A card (300px) shows the folder and name, the status word, the
-  path, the machine and the exact request when the session asks, else its state. The docked sidebar's rows open
-  the same card. Picking a session focuses its pane where it is shown, else it gets a layout of its own.
+- **Sidebar.** Two sections under the header and the filter, in a 264px card (208 to 440px by dragging
+  its inner edge). The header holds the collapse button (⌘B), then **New agent chat** (⌘⇧A, Ctrl+Shift+A),
+  **New shell** (⌘⇧T, Ctrl+Alt+T), **Add a remote machine** (opens Settings › Machines) and the **Inbox** with
+  a count badge, amber while anything needs you (⌘J on macOS, Ctrl+Shift+J elsewhere). The 30px **Filter
+  sessions** field has a `/` hint: `/` focuses it from anywhere outside a pane or another field, it matches
+  fleet names and a ship's name, folder, process, branch and machine, **×** clears it and Esc clears it and
+  gives the keyboard back. **FLEETS** lists each machine as a heading (laptop or server, name, a status dot,
+  and a + that adds a fleet on it with an inline name field: Enter creates and selects it, Esc cancels, a name
+  already used there is refused; a machine that is away is dimmed with its + disabled) and under it a 34px row
+  per fleet: a 22px initials tile in the fleet's colour with an amber needs-you count, the name and up to three
+  stacked 18px app icons (Claude first, then Codex, then shells, ringed and overlapping 5px) then `+N`. The
+  selected fleet is tinted with its colour; double-click or F2 renames it. **SHIPS** (with a count and the
+  Fleets | Priority switch) shows the selected fleet's ships in **Agents · N** (the app tile with its status
+  badge, the name, a branch line in `--ansi-mag` mono 10.5, and at the right a terminal or chat mark with
+  "worktree" under it when the fleet is one) and **Shells · N** (a grey tile, the name, a folder line in dim
+  mono, never a branch). Priority lists every agent across fleets under Needs you, Exited, Working, Done and
+  Idle, each row naming its fleet. A ship row is 40px; the selected one is `--raise`. Rows show no diff counts
+  and no folder badge. An empty fleet says "Nothing aboard yet. Use + to start a session."; a filter that finds
+  nothing in the selected fleet says "Nothing in <fleet> matches “<query>”. Try <fleet> above." Every section
+  folds with `grid-template-rows` 1fr to 0fr over .3s (`cubic-bezier(.2,.8,.2,1)`) and a .22s fade, the carets
+  turn 90° in .2s, folded content is `inert` and `aria-hidden`, and Reduce motion removes the movement; groups
+  of ships sit 16px apart. The footer holds the version or the update button and the Settings gear. Ships drag
+  onto a pane. The **rail** (60px) holds the expand button, the three starters and the Inbox stacked, one 36px
+  tile per fleet (its initials, its colour, the needs-you count; the selected one is tinted), then the update
+  button and the Settings gear. **Hover cards** open beside a ship row on hover or keyboard focus after 280ms
+  (instantly once one is open), 10px to its right with an arrow, and close 160ms after the pointer leaves
+  both: the folder and name, the status word, the path, the machine and the exact request when the ship asks,
+  else its state. Choosing a ship focuses its pane where it is shown, else it gets a tab of its own. The
+  Crewmates mode of the design is not built.
+- **Tabs.** A rounded tray (`--well`, radius 12) at the top of the workspace card holds one tab per ship of
+  the selected fleet in the ships' creation order: the app icon with its status badge, the name, the pane
+  count when there are two or more, and a ×. The active tab is a raised pill (`--raise`). × ends the tab's
+  sessions (with the 6 second Undo) and asks a second click while an agent runs; double-click or F2 renames;
+  the arrow keys, Home and End move between tabs. A ship split beside another's pane is part of that tab. The
+  window controls stay in the title bar.
+- **Pane header.** 42px, no line under it. From the left: the Terminal | Chat switch (for an agent the app
+  reads), the 26px app icon with its status badge, the name (13px, 600) over the folder (dim) and the branch
+  in `--ansi-mag`, then split right, split down, maximize, ⋯ (broadcast, splits, maximize, inspect) and close.
+  **Focus** is one border: with several panes the focused one gets a 1.5px inset `--accent-line`; with one
+  pane the workspace card's border turns accent instead. Never both.
 - **First-run welcome.** On the first launch (no saved settings and no earlier welcome) a 560px dialog opens
   over a blurred scrim with a progress bar per step: **Welcome** (the same sessions as the TUI, closing never
   stops an agent, and the **New sessions start in** folder, checked before it continues) and **You're set**
