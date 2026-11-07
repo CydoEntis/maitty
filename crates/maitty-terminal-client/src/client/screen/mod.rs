@@ -184,10 +184,6 @@ pub(super) struct Screen {
     pub tab: usize,
     /// The tab whose focused pane fills it (`⤢`).
     pub zoom: Option<usize>,
-    /// A new tab was asked for in this session: the shell that answers it goes in it. Starting
-    /// any other session clears it (`App::cmd`), so a session you start instead is never
-    /// taken for the tab. A `RefCell` because `cmd` only borrows the app.
-    pub new_tab: std::cell::RefCell<Option<PendingTab>>,
     /// Where the toast is drawn this frame (empty: none). It sits over the panes, so a click
     /// there is the toast's, never the program's under it.
     pub toast_rect: Rect,
@@ -309,15 +305,6 @@ pub(super) enum SideItem {
     /// A fleet row.
     Fleet(fleets::FleetId),
     Sess(ClientSession),
-}
-
-/// A tab asked for and not yet answered: whose it is, and the panes that existed when it was
-/// asked for, none of which can be its shell.
-#[derive(Debug, Clone, PartialEq)]
-pub(super) struct PendingTab {
-    pub at: Instant,
-    pub owner: ClientTerm,
-    pub known: HashSet<ClientTerm>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1515,8 +1502,6 @@ pub(super) enum ScreenHit {
     MenuPick(usize),
     /// The ✕ of a view in the sheet (Changes): it closes.
     ViewClose,
-    /// A tab of the side panel's strip (Files, Changes, Branch): it switches to that view.
-    DrawerTab(usize),
     /// The sidebar's edge (drag to resize).
     SideEdge,
     /// The side sheet's left edge: drag it to resize the sheet.
@@ -1626,7 +1611,6 @@ mod draw;
 mod failure_note;
 pub(in crate::client) mod fleets;
 pub(in crate::client) mod glyphs;
-mod hairline;
 pub(in crate::client) mod status_mark;
 mod heads;
 mod helpers_ask;
@@ -1655,7 +1639,6 @@ mod popups;
 mod rail;
 mod references_sheet;
 mod secret_ask;
-pub(in crate::client) use self::hairline::{flat_theme, plain, plain_on, set_plain};
 #[cfg(test)]
 mod flat_tests;
 #[cfg(test)]

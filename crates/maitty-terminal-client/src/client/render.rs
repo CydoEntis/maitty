@@ -23,15 +23,9 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     app.pane_frames.clear();
     app.screen.modal_rects.clear();
     let area = f.area();
-    let hairline = super::screen::Look::of(&app.cfg.ui).hairline;
-    let t = if hairline {
-        super::screen::flat_theme(&app.theme)
-    } else {
-        app.theme.clone()
-    };
+    let t = app.theme.clone();
     set_palette(t.ansi, t.ansi.map(|_| t.card2));
     super::screen::set_round(super::screen::Look::of(&app.cfg.ui).caps);
-    super::screen::set_plain(hairline.then_some(&t));
     // The terminal's own background (its window padding) matches ours while we run.
     let terminal_bg = app.cfg.ui.background != "solid";
     if let Color::Rgb(r, g, b) = t.bg

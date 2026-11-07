@@ -170,8 +170,6 @@ mod design_tests {
         cfg.ui.glyphs = "unicode".into();
         // The reference has no padding round the screen; its frames are compared cell for cell.
         cfg.ui.padding = "0".into();
-        // The reference has no tool rail, and its sheets sit beside the panes.
-        cfg.ui.tool_rail = false;
         let mut app = App::new(cfg, tx, None, bg_tx);
         app.splash = false;
         let layout = Node::Leaf(1);
@@ -2350,96 +2348,17 @@ mod screen_tests {
     }
 
     #[test]
-    fn a_session_started_after_asking_for_a_tab_is_its_own_session() {
+    fn the_new_tab_key_starts_a_shell_in_the_fleet_you_are_in() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        let rows = |app: &App| {
-            app.screen_model()
-                .iter()
-                .flat_map(|p| p.sessions().filter_map(|s| s.native_term))
-                .collect::<Vec<_>>()
-        };
-        let (tx, _rx) = mpsc::unbounded_channel();
+        let (tx, mut rx) = mpsc::unbounded_channel();
         app.out = tx;
-        app.screen.tabs.clear();
-        app.screen_place(ClientTerm::local(1), None);
-        // A tab is asked for in claude's session, then a session is started instead.
         app.act(Action::NewTab);
+        let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
         assert!(
-            app.screen.new_tab.borrow().is_some(),
-            "armed for the shell that answers it"
+            sent.iter()
+                .any(|o| matches!(&o.msg, ClientMsg::Command(Command::NewShip { cmd: None, .. }))),
+            "a shell joins the fleet as a tab: {sent:?}"
         );
-        app.screen_new_session(PathBuf::from("/tmp"), Some("claude".into()), false);
-        app.screen_place(ClientTerm::local(3), Some(ClientTerm::local(1)));
-        app.screen_fresh();
-        let own = app
-            .screen
-            .tabs
-            .iter()
-            .find(|t| t.layout.contains(3))
-            .expect("it has a tab");
-        assert_eq!(
-            own.owner,
-            ClientTerm::local(3),
-            "its own session, not a tab of claude's"
-        );
-        assert!(
-            rows(&app).contains(&ClientTerm::local(3)),
-            "with its own sidebar row: {:?}",
-            rows(&app)
-        );
-    }
-
-    #[test]
-    fn a_pending_tab_takes_only_the_new_shell_not_another_pane_that_gets_the_focus() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        let (tx, _rx) = mpsc::unbounded_channel();
-        app.out = tx;
-        app.screen.tabs.clear();
-        app.screen_place(ClientTerm::local(1), None);
-        app.act(Action::NewTab);
-        // You pick another session before the shell arrives: it stays its own, and the tab waits.
-        app.screen_place(ClientTerm::local(2), Some(ClientTerm::local(1)));
-        assert!(
-            app.screen
-                .tabs
-                .iter()
-                .find(|t| t.layout.contains(2))
-                .is_some_and(|t| t.owner == ClientTerm::local(2)),
-            "an existing session is not a tab"
-        );
-        assert!(
-            app.screen.new_tab.borrow().is_some(),
-            "the request is still waiting"
-        );
-        // A pane an agent started is not it either.
-        let mut helper = app.snap.terms[&3].clone();
-        helper.id = 40;
-        helper.started_by = Some(2);
-        app.snap.terms.insert(40, helper);
-        app.screen_place(ClientTerm::local(40), Some(ClientTerm::local(2)));
-        assert!(
-            app.screen
-                .tabs
-                .iter()
-                .find(|t| t.layout.contains(40))
-                .is_some_and(|t| t.owner == ClientTerm::local(40)),
-            "a helper keeps its own place"
-        );
-        // The shell the request is for: new, and nobody's helper.
-        let mut shell = app.snap.terms[&3].clone();
-        shell.id = 41;
-        shell.started_by = None;
-        app.snap.terms.insert(41, shell);
-        app.screen_place(ClientTerm::local(41), Some(ClientTerm::local(40)));
-        assert!(
-            app.screen
-                .tabs
-                .iter()
-                .find(|t| t.layout.contains(41))
-                .is_some_and(|t| t.owner == ClientTerm::local(1)),
-            "the new shell is claude's tab"
-        );
-        assert!(app.screen.new_tab.borrow().is_none(), "answered once");
     }
 
     #[test]
@@ -2449,14 +2368,11 @@ mod screen_tests {
         app.out = tx;
         app.screen.tabs.clear();
         app.screen_place(ClientTerm::local(1), None);
-        app.act(Action::NewTab);
+        // Claude has a shell tab of its own.
         app.screen
-            .new_tab
-            .borrow_mut()
-            .as_mut()
-            .expect("armed")
-            .known
-            .remove(&ClientTerm::local(3));
+            .tabs
+            .push(screen::ScreenTab::single(ClientTerm::local(3), ClientTerm::local(1)));
+        app.screen.tab = app.screen.tabs.len() - 1;
         app.screen_place(ClientTerm::local(3), Some(ClientTerm::local(1)));
         assert_eq!(
             app.screen.tabs[app.screen.tab].focus,
@@ -3049,7 +2965,6 @@ mod screen_tests {
                 && o.contains("Search commands"),
             "{o}"
         );
-        assert!(!app.cfg.ui.tool_rail, "the tool rail is off unless asked for");
 
         // A short window keeps every row that does something: the blank rows and then the
         // titles give way first.
@@ -6234,9 +6149,8 @@ second line
     }
 
     #[test]
-    fn pane_colours_show_shortcut_mode_on_the_focused_border_too() {
+    fn shortcut_mode_lights_the_focused_border_sky() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.cfg.ui.pane_colors = true;
         let border = |app: &mut App| {
             let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
             term.draw(|f| render::draw(app, f)).unwrap();
@@ -14507,8 +14421,8 @@ mod leader_key_tests {
     }
 }
 
-/// The tool rail on the right edge and the drawer that floats over the terminal.
-mod tool_rail_tests {
+/// The drawer that floats over the terminal.
+mod drawer_tests {
     use super::*;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
@@ -14517,10 +14431,9 @@ mod tool_rail_tests {
     const W: u16 = 172;
     const H: u16 = 56;
 
-    /// The main screen with the rail on, the drawer floating, and the focused pane in a git repo.
+    /// The main screen with the drawer floating, and the focused pane in a git repo.
     fn app() -> App {
         let (_, mut app) = super::design_tests::render_with(W, H);
-        app.cfg.ui.tool_rail = true;
         static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let dir = std::env::temp_dir().join(format!("{APP_COMMAND}-rail-{}-{n}", std::process::id()));

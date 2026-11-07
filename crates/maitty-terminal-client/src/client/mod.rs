@@ -304,9 +304,6 @@ fn settle_retired_layout(app: &mut App) {
     if r.gap {
         writes.push(("ui.gap", "0".into()));
     }
-    if r.pane_colors {
-        writes.push(("ui.pane_colors", true.into()));
-    }
     for (path, value) in writes {
         if let Err(e) = modal::write(path, value) {
             app.notify(format!("{} (could not save it: {e:#})", r.note()), true);
@@ -1534,17 +1531,6 @@ impl App {
     fn cmd_on(&self, machine: MachineId, c: Command) {
         if routing::moves_focus(&c) {
             self.route.set_focus(machine);
-        }
-        if matches!(
-            c,
-            Command::NewWorkspace { .. }
-                | Command::NewTab { .. }
-                | Command::NewShip { .. }
-                | Command::NewFleet { .. }
-                | Command::NewWorktree { .. }
-                | Command::AgentWorktree { .. }
-        ) {
-            *self.screen.new_tab.borrow_mut() = None;
         }
         self.send(machine, ClientMsg::Command(c));
     }

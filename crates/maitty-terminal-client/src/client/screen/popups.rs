@@ -204,7 +204,7 @@ fn header_chip(look: Look, segs: Vec<Seg>, ground: Color) -> Vec<Seg> {
     if look.caps {
         round_ends(segs, ground)
     } else {
-        plain(segs)
+        segs
     }
 }
 
@@ -259,8 +259,6 @@ pub(in crate::client) fn action_bar(
     ground: Color,
     keys: &[(&str, &str)],
 ) {
-    // Hairline has no raised band: the keys are words on the panel's own ground.
-    let ground = if plain_on() { t.bg } else { ground };
     let row = Rect { height: 1, ..bar };
     fill(buf, row, ground);
     let room = row.width.saturating_sub(2);

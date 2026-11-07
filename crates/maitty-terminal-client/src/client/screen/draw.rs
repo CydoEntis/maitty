@@ -59,13 +59,11 @@ fn padded(app: &App, area: Rect) -> Rect {
     }
 }
 
-/// The room the screen is laid out in: inside the padding, above the mode bar and, in
-/// Hairline, above the rule over it.
+/// The room the screen is laid out in: inside the padding, above the mode bar.
 pub(in crate::client) fn framed(app: &App, area: Rect) -> Rect {
     let r = padded(app, area);
-    let bar = if Look::of(&app.cfg.ui).hairline { 2 } else { 1 };
     Rect {
-        height: r.height.saturating_sub(bar),
+        height: r.height.saturating_sub(1),
         ..r
     }
 }
@@ -436,7 +434,7 @@ pub(super) fn draw_pane_drag(app: &App, buf: &mut Buffer, model: &[Proj], t: &Th
     };
     let look = Look::of(&app.cfg.ui);
     if let Some((_, r)) = over.and_then(|o| app.pane_frames.iter().find(|(id, _)| *id == o)) {
-        light_lines(buf, *r, look.hairline, t.accent);
+        light_lines(buf, *r, t.accent);
         let pill = pill(
             look,
             vec![seg(
@@ -470,15 +468,11 @@ pub(super) fn draw_pane_drag(app: &App, buf: &mut Buffer, model: &[Proj], t: &Th
     put(buf, at.x.saturating_add(1), at.y, &ghost, buf.area.right());
 }
 
-/// Light the frame lines of the pane at `r` (its border, or Hairline's rule under the title).
-fn light_lines(buf: &mut Buffer, r: Rect, hairline: bool, colour: Color) {
+/// Light the frame lines of the pane at `r` (its border).
+fn light_lines(buf: &mut Buffer, r: Rect, colour: Color) {
     let r = r.intersection(buf.area);
     let edge = |x: u16, y: u16| {
-        y == r.y
-            || (hairline && y == r.y + 1)
-            || y + 1 == r.bottom()
-            || x == r.x
-            || x + 1 == r.right()
+        y == r.y || y + 1 == r.bottom() || x == r.x || x + 1 == r.right()
     };
     for y in r.top()..r.bottom() {
         for x in r.left()..r.right() {
@@ -701,10 +695,9 @@ const TOAST_ABOVE_INPUT: u16 = 5;
 const TOAST_TITLE_LINES: usize = 3;
 const TOAST_DETAIL_LINES: usize = 3;
 const TOAST_PREVIEW_LINES: usize = 2;
-/// Where a toast's rows after the title start, from its left edge, per look; the close and the
-/// bar leave two cells on the right.
-const TOAST_TEXT_X_FLOATING: usize = 2;
-const TOAST_TEXT_X_HAIRLINE: usize = 4;
+/// Where a toast's rows after the title start, from its left edge; the close leaves two cells
+/// on the right.
+const TOAST_TEXT_X: usize = 2;
 
 /// `text` wrapped on at most `max` lines of `width` cells, none when there is no text.
 fn toast_lines(text: Option<&str>, width: usize, max: usize) -> Vec<String> {
@@ -793,11 +786,7 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
         .min((area.width as usize).saturating_sub(4)) as u16;
     // Wrapped against the settled width, not the sliding one, so the text does not reflow while
     // the toast slides in. What the window cannot hold is left out, the title first kept.
-    let text_x = if look.hairline {
-        TOAST_TEXT_X_HAIRLINE
-    } else {
-        TOAST_TEXT_X_FLOATING
-    };
+    let text_x = TOAST_TEXT_X;
     let text_room = (w as usize).saturating_sub(text_x + 2);
     let mut rows_left = area.height.saturating_sub(TOAST_ABOVE_INPUT + 2) as usize;
     let title_w = (w as usize).saturating_sub(TOAST_TEXT_PAD + 1);
@@ -833,68 +822,43 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     };
     app.screen.toast_rect = r;
     let ink = |c: Color, bg: Color| if fade > 0.0 { blend(c, bg, fade) } else { c };
-    // Floating: framed like a pane (a box on the plain ground, round corners whatever
-    // `ui.rounded` says, no fill of its own), its border and a kind chip on the top border in the
-    // notice's colour. Hairline, which has no boxes: a solid block in `card2` (its `card` is the
-    // ground), its left edge a heavy rule.
-    let bg = if look.hairline { t.card2 } else { t.bg };
-    let bar = Style::default().fg(ink(colour, bg)).bg(bg);
+    // Framed like a pane (a box on the plain ground, round corners whatever `ui.rounded` says,
+    // no fill of its own), its border and a kind chip on the top border in the notice's colour.
+    let bg = t.bg;
     // A box's outline keeps the ground behind it, as a modal's does: a border cell on the
     // toast's own ground would show a band of it outside the line.
     let behind_top = top_ground(buf, r);
-    if look.hairline {
-        fill(buf, r, bg);
-        for yy in r.y..r.bottom() {
-            buf[(r.x, yy)].set_symbol("┃").set_style(bar);
-        }
-    } else {
-        fill(buf, inside_outline(r), bg);
-        panel_box(
-            buf,
-            r,
-            Look {
-                rounded: true,
-                ..look
-            },
-            Style::default().fg(ink(colour, bg)),
-        );
-        // The kind chip carries the notice's mark, as a modal's title chip carries its title.
-        let chip = pill(
-            look,
-            vec![seg(
-                format!("{mark} {kind}"),
-                Style::default()
-                    .fg(ink(t.ink_on(colour), colour))
-                    .add_modifier(Modifier::BOLD),
-            )],
-            ink(colour, bg),
-            bg,
-        );
-        put(buf, r.x + 2, r.y, &chip, r.right().saturating_sub(1));
-    }
-    // Floating: every row starts under the chip; Hairline puts the mark in front of the title and
-    // indents what follows it. The title also leaves room for the close.
-    let tx = if look.hairline { r.x + 4 } else { r.x + 2 };
+    fill(buf, inside_outline(r), bg);
+    panel_box(
+        buf,
+        r,
+        Look {
+            rounded: true,
+            ..look
+        },
+        Style::default().fg(ink(colour, bg)),
+    );
+    // The kind chip carries the notice's mark, as a modal's title chip carries its title.
+    let chip = pill(
+        look,
+        vec![seg(
+            format!("{mark} {kind}"),
+            Style::default()
+                .fg(ink(t.ink_on(colour), colour))
+                .add_modifier(Modifier::BOLD),
+        )],
+        ink(colour, bg),
+        bg,
+    );
+    put(buf, r.x + 2, r.y, &chip, r.right().saturating_sub(1));
+    // Every row starts under the chip.
+    let tx = r.x + 2;
     let title_style = Style::default()
         .fg(ink(t.strong, bg))
         .bg(bg)
         .add_modifier(Modifier::BOLD);
     let title_seg = seg(title_lines[0].clone(), title_style);
-    let head = if look.hairline {
-        vec![
-            seg(
-                format!("{mark} "),
-                Style::default()
-                    .fg(ink(colour, bg))
-                    .bg(bg)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            title_seg,
-        ]
-    } else {
-        vec![title_seg]
-    };
-    put(buf, r.x + 2, r.y + 1, &head, r.right() - 1);
+    put(buf, r.x + 2, r.y + 1, &[title_seg], r.right() - 1);
     for (i, line) in title_lines.iter().enumerate().skip(1) {
         put(
             buf,
@@ -904,27 +868,22 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
             r.right() - 1,
         );
     }
-    // Floating: the close is the red chip modals wear on their top border; Hairline keeps a
-    // quiet × on the title row.
-    let close_chip = if look.hairline {
-        vec![seg("×", Style::default().fg(ink(t.muted, bg)).bg(bg))]
-    } else {
-        pill(
-            look,
-            vec![seg(
-                "×",
-                Style::default()
-                    .fg(ink(t.ink_on(t.err), t.err))
-                    .add_modifier(Modifier::BOLD),
-            )],
-            ink(t.err, bg),
-            bg,
-        )
-    };
+    // The close is the red chip modals wear on their top border.
+    let close_chip = pill(
+        look,
+        vec![seg(
+            "×",
+            Style::default()
+                .fg(ink(t.ink_on(t.err), t.err))
+                .add_modifier(Modifier::BOLD),
+        )],
+        ink(t.err, bg),
+        bg,
+    );
     let close_w = segs_width(&close_chip);
     let close = Rect {
         x: r.right().saturating_sub(close_w + 1),
-        y: if look.hairline { r.y + 1 } else { r.y },
+        y: r.y,
         width: close_w,
         height: 1,
     };
@@ -957,7 +916,6 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     // A question waiting on you gets its two answers as buttons on the bottom border: go and
     // answer it, or leave it for later (Esc does the same).
     if needs
-        && !look.hairline
         && let Some(term) = about
     {
         let on = |c: Color| pill_label(look, ink(c, bg), bg, ink(t.ink_on(c), c));
@@ -982,9 +940,7 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
         hit(app, rect(lx, segs_width(&later)), ScreenHit::ToastClose);
     }
     hit(app, close, ScreenHit::ToastClose);
-    if !look.hairline {
-        border_on_ground(buf, r, bg, &behind_top);
-    }
+    border_on_ground(buf, r, bg, &behind_top);
 }
 
 /// A bold label on a pill of `bg`, ends rounded on `outer` when the look rounds them.

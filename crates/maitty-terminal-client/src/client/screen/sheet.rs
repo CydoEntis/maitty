@@ -318,21 +318,12 @@ pub(in crate::client) fn draw_sheet(
         }
         SheetKind::Check => ("CHECK".to_string(), check_title(app), ScreenHit::ViewClose),
     };
-    // Hairline puts the tab strip on the title row, over the rule; what the title said goes
-    // to the right, dim.
-    let tabs_on_title = Look::of(&app.cfg.ui).hairline && drawer_tab(kind).is_some();
     // Lit while it has the keys; a click into a pane sets it aside, unlit, still open.
-    let mut c = Card::new(
-        t,
-        if tabs_on_title { "" } else { &title },
-    );
+    let mut c = Card::new(t, &title);
     if sheet_has_keys(app) {
         c = c.lit(t.accent);
     }
     c.sub = &sub;
-    if tabs_on_title && !title.is_empty() {
-        c.right = vec![seg(format!("{title}  "), Style::default().fg(t.muted))];
-    }
     // The read-while-working sheets and Changes sit on the desk's ground, like the panes.
     c.bg = if kind == SheetKind::Both {
         t.card
@@ -341,33 +332,9 @@ pub(in crate::client) fn draw_sheet(
     };
     c.close = Some(close);
     c.docked = true;
-    // With tabs on the title row the rule is `line` and only the open tab's stretch of it lights.
-    let keys = c.bold;
-    if tabs_on_title {
-        (c.bold, c.border) = (false, t.line);
-    }
     let inside = card(app, buf, r, &c, t);
     // Clicks inside it stay in it.
     hit(app, inside, ScreenHit::Noop);
-    let inside = match drawer_tab(kind) {
-        Some(cur) if tabs_on_title => {
-            let taken =
-                segs_width(&c.right) + close_width(Look::of(&app.cfg.ui), !c.right.is_empty()) + 4;
-            let row = Rect {
-                y: r.y,
-                height: 1,
-                width: inside.width.saturating_sub(taken),
-                ..inside
-            };
-            if let Some(tab) = draw_drawer_tabs(app, buf, row, cur, t.bg, t) {
-                for x in tab.x + 1..tab.right().saturating_sub(1) {
-                    buf[(x, r.y + 1)].set_fg(if keys { t.accent } else { t.muted });
-                }
-            }
-            inside
-        }
-        _ => inside,
-    };
     let body = inside;
     match kind {
         SheetKind::Inbox => draw_inbox(app, buf, body, c.bg, t),
@@ -424,108 +391,6 @@ pub(in crate::client) fn draw_sheet(
             }
         }
     }
-}
-
-/// A tab's width: its name and key (with its trailing space) between the pill's ends and pads.
-fn tab_w(name: &str, key: &str) -> u16 {
-    (name.width() + key.width()) as u16 + 2
-}
-
-/// Each tab's (name, key) in the widest form whose strip fits `room` columns: names and keys,
-/// names alone, then short names.
-fn drawer_tab_labels(app: &App, room: u16) -> Vec<(String, String)> {
-    let key = |act: &Action| {
-        let k = crate::client::design::key_text(app, std::slice::from_ref(act));
-        let k = k.split("  ").next().unwrap_or_default().replace(' ', "");
-        if k.is_empty() { k } else { format!("{k} ") }
-    };
-    let full: Vec<(String, String)> = DRAWER_TABS
-        .iter()
-        .map(|(_, name, _, act)| (name.to_string(), key(act)))
-        .collect();
-    let names: Vec<(String, String)> = DRAWER_TABS
-        .iter()
-        .map(|(_, name, ..)| (name.to_string(), String::new()))
-        .collect();
-    let short: Vec<(String, String)> = DRAWER_TABS
-        .iter()
-        .map(|(_, _, short, _)| (short.to_string(), String::new()))
-        .collect();
-    // The strip's lead column, then each tab and the ` · ` between them.
-    let strip_w = |tabs: &[(String, String)]| {
-        1 + tabs.iter().map(|(n, k)| tab_w(n, k)).sum::<u16>() + 3 * (tabs.len() as u16 - 1)
-    };
-    [full, names]
-        .into_iter()
-        .find(|tabs| strip_w(tabs) <= room)
-        .unwrap_or(short)
-}
-
-/// The tab strip across the top of Files, Changes and Branch: `Files f · Changes c · Branch b`
-/// with each one's leader key from the keymap, the open one a pill like Settings' tabs (lit
-/// while the panel has the keys). A click switches. Where the whole strip does not fit, the
-/// keys go, then the long names, so every tab stays on screen.
-fn draw_drawer_tabs(
-    app: &mut App,
-    buf: &mut Buffer,
-    row: Rect,
-    cur: usize,
-    ground: Color,
-    t: &Theme,
-) -> Option<Rect> {
-    let look = Look::of(&app.cfg.ui);
-    // Hairline names the open tab in teal whether or not the panel has the keys; its rule says that.
-    let (pill_bg, pill_ink) = if sheet_has_keys(app) || look.hairline {
-        (t.accent, t.acc_ink)
-    } else {
-        (t.btn, t.strong)
-    };
-    let tabs = drawer_tab_labels(app, row.width);
-    // Hairline keeps the accent for the open tab: the others' keys are dim.
-    let key_fg = if look.hairline { t.muted } else { t.accent };
-    let mut x = row.x + 1;
-    let mut open = None;
-    for (i, (name, key)) in tabs.into_iter().enumerate() {
-        if i > 0 {
-            put(
-                buf,
-                x,
-                row.y,
-                &[seg("·", Style::default().fg(t.muted).bg(ground))],
-                row.right(),
-            );
-            x += 2;
-        }
-        let w = tab_w(&name, &key);
-        let tr = Rect {
-            x,
-            y: row.y,
-            width: w.min(row.right().saturating_sub(x)),
-            height: 1,
-        };
-        let segs = if i == cur {
-            open = Some(tr);
-            let st = Style::default().fg(pill_ink).add_modifier(Modifier::BOLD);
-            pill(
-                look,
-                vec![seg(format!(" {name} "), st), seg(key, st)],
-                pill_bg,
-                ground,
-            )
-        } else {
-            let bg = if hovered(app, tr) { t.hov } else { ground };
-            let st = Style::default().bg(bg);
-            vec![
-                seg(format!("  {name} "), st.fg(t.text)),
-                seg(key, st.fg(key_fg).add_modifier(Modifier::BOLD)),
-                seg(" ", st),
-            ]
-        };
-        put(buf, x, row.y, &segs, row.right());
-        hit(app, tr, ScreenHit::DrawerTab(i));
-        x += w + 1;
-    }
-    open
 }
 
 /// Settings is a modal so it does not take width away from the workspace.

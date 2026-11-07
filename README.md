@@ -159,9 +159,7 @@ A few examples:
 theme = "tokyo-night"
 
 [ui]
-pane_colors = true         # floating: each pane's border in its own colour
 rounded = true             # rounded card corners
-tab_gap = true             # a cell between one tab and the next; false: they touch
 padding = "small"          # small | medium | large: space round the screen
 
 [keys.prefix]

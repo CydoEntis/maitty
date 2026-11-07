@@ -173,8 +173,6 @@ pub struct Ui {
     /// "left" or "right". The desktop app's spelling, `sidebar_side`, is read too.
     #[serde(alias = "sidebar_side")]
     pub sidebar_position: String,
-    /// The column of tool chips (Files, Changes, Branch, References) on the right edge.
-    pub tool_rail: bool,
     /// Milliseconds after the prefix before the which-key popup shows (0 = immediately).
     pub which_key_delay_ms: u64,
     pub which_key: bool,
@@ -227,10 +225,6 @@ pub struct Ui {
     pub focus_border: String,
     /// How round the shapes are: `full` (pills), `corners` (rounded boxes, square chips) or `off`.
     pub rounded: Rounding,
-    /// Floating: each pane's border in its own colour, by its place in the tab.
-    pub pane_colors: bool,
-    /// Leave a cell of border between tab chips.
-    pub tab_gap: bool,
     /// What `fold_retired_layout` changed, to say once and write back: the retired look's name
     /// and the settings that stand for it now. Never read from or written to the file.
     #[serde(skip)]
@@ -704,16 +698,13 @@ pub struct RetiredLayout {
     pub kind: LayoutKind,
     /// `gap = 0` stands for it (Tiled).
     pub gap: bool,
-    /// `pane_colors = true` stands for it (Grid).
-    pub pane_colors: bool,
 }
 
 impl RetiredLayout {
     /// What the app says once when it starts with it.
     pub fn note(&self) -> String {
-        let now = match (self.kind, self.gap, self.pane_colors) {
-            (_, true, _) => "Floating with no gap",
-            (_, _, true) => "Floating with Pane colours on",
+        let now = match (self.kind, self.gap) {
+            (_, true) => "Floating with no gap",
             _ => "Floating",
         };
         format!(
@@ -762,7 +753,6 @@ impl Ui {
             self.gap = "0".into();
             Some("Tiled")
         } else if self.layout == "grid" {
-            self.pane_colors = true;
             Some("Grid")
         } else if matches!(self.layout.as_str(), "compact" | "flat") {
             Some("Compact")
@@ -777,7 +767,6 @@ impl Ui {
             name,
             kind,
             gap: tiled,
-            pane_colors: name == "Grid",
         });
     }
 
@@ -850,7 +839,6 @@ impl Default for Ui {
         Ui {
             sidebar: true,
             sidebar_position: "left".into(),
-            tool_rail: false,
             which_key_delay_ms: 600,
             which_key: false,
             mouse: true,
@@ -878,8 +866,6 @@ impl Default for Ui {
             dim: "normal".into(),
             focus_border: "accent".into(),
             rounded: Rounding::Off,
-            pane_colors: false,
-            tab_gap: true,
             retired_layout: None,
             subagent_count: true,
             cursor: "block".into(),
@@ -960,8 +946,14 @@ mod tests {
         assert_eq!(ui.padding, "medium");
         assert_eq!(ui.gap, "small");
         assert_eq!(ui.dim, "normal");
-        assert!(ui.tab_gap);
         assert_eq!(ui.spinner.first().map(String::as_str), Some("⣾"));
+    }
+
+    #[test]
+    fn a_config_that_still_names_a_removed_ui_key_loads() {
+        let ui: Ui = toml::from_str("pane_colors = true\ntab_gap = false\ntool_rail = true\ngap = 'medium'")
+            .expect("removed keys are ignored, not errors");
+        assert_eq!(ui.gap, "medium", "and the keys around them are still read");
     }
 
     #[test]

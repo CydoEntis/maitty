@@ -56,7 +56,7 @@ const SHOTS: &[Shot] = &[
         name: "grid",
         cols: 160,
         rows: 45,
-        caption: "Pane colours: four agents in one tab, each in its own colour.",
+        caption: "Four agents in one tab.",
         setup: grid,
     },
     Shot {
@@ -86,20 +86,6 @@ const SHOTS: &[Shot] = &[
         rows: 34,
         caption: "Floating: a box per pane, with room between them.",
         setup: floating,
-    },
-    Shot {
-        name: "layout-hairline",
-        cols: 120,
-        rows: 34,
-        caption: "Hairline: no boxes, only lines, the most room for output.",
-        setup: hairline,
-    },
-    Shot {
-        name: "layout-colours",
-        cols: 120,
-        rows: 34,
-        caption: "Pane colours: each pane in its own colour.",
-        setup: grid_look,
     },
     Shot {
         name: "shortcut",
@@ -425,17 +411,8 @@ fn floating(app: &mut App) {
     app.cfg.ui.layout = "floating".into();
 }
 
-fn hairline(app: &mut App) {
-    app.cfg.ui.layout = "hairline".into();
-}
-
-fn grid_look(app: &mut App) {
-    app.cfg.ui.pane_colors = true;
-}
-
-/// Pane colours on a tab of four: Claude asking, Codex at work, Gemini and Codex done.
+/// A tab of four: Claude asking, Codex at work, Gemini and Codex done.
 fn grid(app: &mut App) {
-    grid_look(app);
     let store = app.snap.workspaces[0].cwd.clone();
     add(
         app,

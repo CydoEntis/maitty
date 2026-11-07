@@ -305,20 +305,6 @@ pub const SETTINGS: &[Setting] = &[
         help: "Space between floating panes, in rows stacked and columns side by side.",
     },
     Setting {
-        path: "ui.tab_gap",
-        label: "Tab gap",
-        kind: Kind::Bool,
-        cat: Cat::Appearance,
-        help: "Leave a cell of border between tabs.",
-    },
-    Setting {
-        path: "ui.pane_colors",
-        label: "Pane colours",
-        kind: Kind::Bool,
-        cat: Cat::Appearance,
-        help: "Floating: each pane's border in its own colour, by its place in the tab.",
-    },
-    Setting {
         path: "ui.rounded",
         label: "Rounded",
         kind: Kind::Choice(crate::config::Rounding::NAMES),
@@ -352,13 +338,6 @@ pub const SETTINGS: &[Setting] = &[
         kind: Kind::Bool,
         cat: Cat::Appearance,
         help: "Blink that caret. No effect with your terminal's own cursor.",
-    },
-    Setting {
-        path: "ui.tool_rail",
-        label: "Tool rail",
-        kind: Kind::Bool,
-        cat: Cat::Appearance,
-        help: "A column of f, c, b and a chips on the right edge that opens Files, Changes, Branch and References. They are in the Menu too.",
     },
     Setting {
         path: "ui.glyphs",

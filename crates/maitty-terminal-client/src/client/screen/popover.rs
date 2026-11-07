@@ -385,7 +385,7 @@ pub(in crate::client) fn draw_compose_pop(
             Style::default().fg(t.muted).bg(t.card),
         ),
     ];
-    put(buf, r.x + 2, r.y, &plain(title.clone()), r.right() - 2);
+    put(buf, r.x + 2, r.y, &title, r.right() - 2);
     let bold = Modifier::BOLD;
     let state = if blocked {
         vec![seg(
@@ -602,10 +602,7 @@ pub(in crate::client) fn frame_beside_row(
 
     let look = Look::of(&app.cfg.ui);
     fill(buf, r, t.card);
-    // Hairline frames it in `line` like every other popup; the `◂` keeps the accent.
-    let edge = Style::default()
-        .fg(if look.hairline { t.line } else { t.accent })
-        .bg(t.card);
+    let edge = Style::default().fg(t.accent).bg(t.card);
     let pointer = Style::default().fg(t.accent).bg(t.card);
     let [tl, tr, bl, br] = corners(look);
     for xx in r.x + 1..r.right() - 1 {

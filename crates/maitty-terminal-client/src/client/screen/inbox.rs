@@ -154,7 +154,7 @@ fn chip_head(
     if let Some(n) = n {
         segs.push(seg(format!(" {n} "), b.bg(mix(color, t.bg, COUNT_FADE))));
     }
-    put(buf, x, y, &plain(segs), right);
+    put(buf, x, y, &segs, right);
 }
 
 fn head_color(name: &str, t: &Theme) -> Color {
