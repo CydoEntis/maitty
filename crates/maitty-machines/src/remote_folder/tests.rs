@@ -22,7 +22,9 @@ fn folder(label: &str) -> PathBuf {
 fn entry(name: &str, kind: u8, data: &[u8], link: &str) -> Vec<u8> {
     let mut header = [0u8; 512];
     header[..name.len()].copy_from_slice(name.as_bytes());
-    header[100..108].copy_from_slice(b"0000644\0");
+    // A folder needs its execute bits, or a user other than root cannot enter what is unpacked in it.
+    let mode: &[u8] = if kind == DIR { b"0000755\0" } else { b"0000644\0" };
+    header[100..108].copy_from_slice(mode);
     header[108..116].copy_from_slice(b"0000000\0");
     header[116..124].copy_from_slice(b"0000000\0");
     header[124..136].copy_from_slice(format!("{:011o}\0", data.len()).as_bytes());
