@@ -283,7 +283,6 @@ impl App {
         self.screen.saved.recent_paths.truncate(RECENT_KEEP);
         self.screen.save();
         self.screen_new_session_on(machine, PathBuf::from(path), None, false);
-        self.screen.cursor_proj = None;
         self.screen.follow = true;
         let line = format!("+ shell · {} on {}", folder_name(path), self.dialog_machine_name(machine));
         self.bar_flash = Some((line.clone(), Instant::now()));

@@ -892,19 +892,6 @@ impl App {
                 .map(|(_, h)| *h);
             let at = (m.column, m.row);
             match hit {
-                // A tab of the tab row has the menu of its ship.
-                Some(Hit::Screen(screen::ScreenHit::Tab(ship) | screen::ScreenHit::TabClose(ship))) => {
-                    self.menu_for_session(ship, at);
-                }
-                Some(Hit::Screen(screen::ScreenHit::SideRow(i)))
-                    if matches!(self.screen.side_items.get(i), Some(screen::SideItem::Fleet(_))) =>
-                {
-                    if let Some(screen::SideItem::Fleet(fleet)) =
-                        self.screen.side_items.get(i).cloned()
-                    {
-                        self.menu_for_fleet(fleet, at);
-                    }
-                }
                 Some(Hit::Screen(screen::ScreenHit::Session(key))) => {
                     if let Some(id) = self.bare_conversation(key) {
                         self.menu_for_conversation(id, at);

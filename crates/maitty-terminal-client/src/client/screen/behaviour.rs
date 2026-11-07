@@ -232,10 +232,6 @@ impl App {
 
     /// Show a session: it becomes the focused one.
     pub(in crate::client) fn screen_focus(&mut self, term: ClientTerm) {
-        // A sidebar opened over the workspace (a narrow screen) puts itself away once you pick.
-        if self.screen.overlay_open {
-            self.sidebar = false;
-        }
         self.screen.show_own = Some(term);
         self.screen.cursor = None;
         self.mode = Mode::Normal;
@@ -471,16 +467,11 @@ impl App {
         if items.is_empty() {
             return;
         }
-        let cur = match (
-            self.cursor_head(),
-            self.screen
-                .cursor
-                .or(self.focused().map(|id| self.session_key(id))),
-        ) {
-            (Some(item), _) => items.iter().position(|i| *i == item),
-            (None, Some(t)) => items.iter().position(|i| *i == SideItem::Sess(t)),
-            _ => None,
-        };
+        let cur = self
+            .screen
+            .cursor
+            .or(self.focused().map(|id| self.session_key(id)))
+            .and_then(|t| items.iter().position(|i| *i == SideItem::Sess(t)));
         let next = match (cur, d) {
             (None, _) => 0,
             (Some(i), 0) => i,
@@ -494,25 +485,14 @@ impl App {
     /// before.
     pub(in crate::client) fn side_after_close(&self) -> Option<SideItem> {
         let items = &self.screen.side_items;
-        let cur = match (self.cursor_head(), self.screen.cursor) {
-            (Some(item), _) => items.iter().position(|i| *i == item),
-            (None, Some(t)) => items.iter().position(|i| *i == SideItem::Sess(t)),
-            _ => None,
-        }?;
+        let t = self.screen.cursor?;
+        let cur = items.iter().position(|i| *i == SideItem::Sess(t))?;
         items
             .get(cur + 1)
             .or_else(|| cur.checked_sub(1).and_then(|i| items.get(i)))
             .cloned()
     }
 
-    /// The heading or fleet row the sidebar cursor is on, if it is on one.
-    pub(in crate::client) fn cursor_head(&self) -> Option<SideItem> {
-        self.screen
-            .cursor_proj
-            .clone()
-            .map(SideItem::Proj)
-            .or(self.screen.cursor_fleet.map(SideItem::Fleet))
-    }
 
     /// A confirm answered (`act` when yes): do it, and go back to the sidebar if it was
     /// asked from there.
@@ -547,19 +527,7 @@ impl App {
         // into a pane does, so the leader's x closes the cursor's row and not the panel.
         self.view_set_aside = self.view_kind();
         match item {
-            SideItem::Proj(k) => {
-                self.screen.cursor_proj = Some(k);
-                self.screen.cursor_fleet = None;
-                self.screen.cursor = None;
-            }
-            SideItem::Fleet(f) => {
-                self.screen.cursor_proj = None;
-                self.screen.cursor_fleet = Some(f);
-                self.screen.cursor = None;
-            }
             SideItem::Sess(t) => {
-                self.screen.cursor_proj = None;
-                self.screen.cursor_fleet = None;
                 self.screen.cursor = Some(t);
                 // Resting on a finished agent counts as seeing it.
                 if let Some(term) = self.session_term(t)
@@ -575,32 +543,17 @@ impl App {
 
     pub(in crate::client) fn screen_side_leave(&mut self) {
         self.screen.cursor = None;
-        self.screen.cursor_proj = None;
-        self.screen.cursor_fleet = None;
         self.mode = Mode::Normal;
     }
 
-    /// A button on a split pane's header acts on that pane, which takes the focus first.
-    fn pane_button(&mut self, term: ClientTerm, button: PaneBtn) {
-        if Some(term) != self.focused() {
-            self.cmd_on(term.machine, Command::FocusPane { term: term.term });
-        }
-        match button {
-            PaneBtn::SplitRight => self.act(Action::SplitRight),
-            PaneBtn::SplitDown => self.act(Action::SplitDown),
-            PaneBtn::Zoom => {
-                let tab = self.screen.tab;
-                self.screen.zoom = if self.screen.zoom == Some(tab) {
-                    None
-                } else {
-                    Some(tab)
-                };
-            }
-            PaneBtn::Menu => {
-                let at = self.hover.map(|p| (p.x, p.y + 1)).unwrap_or((0, 0));
-                self.menu_for_pane(term, at);
-            }
-        }
+    /// The focused pane fills its view, or goes back to its split.
+    fn toggle_zoom(&mut self) {
+        let tab = self.screen.tab;
+        self.screen.zoom = if self.screen.zoom == Some(tab) {
+            None
+        } else {
+            Some(tab)
+        };
     }
 
     /// Put the keys in the sidebar's filter: what is typed narrows the list.
@@ -649,37 +602,6 @@ impl App {
         true
     }
 
-    /// Fold or unfold a heading by its key (`m:<machine>` or `c:<fleet>`); `open` forces a side.
-    pub(in crate::client) fn screen_fold(&mut self, key: &str, open: Option<bool>) {
-        let is_open = !self.screen.saved.closed.iter().any(|c| c == key);
-        let want = open.unwrap_or(!is_open);
-        if want != is_open {
-            if want {
-                self.screen.saved.closed.retain(|c| c != key);
-            } else {
-                self.screen.saved.closed.push(key.to_string());
-            }
-            self.screen.save();
-        }
-    }
-
-    /// Fold every machine and fleet heading; with all of them folded already, unfold them all.
-    pub(in crate::client) fn fold_all(&mut self) {
-        let keys: Vec<String> = self
-            .fleet_groups()
-            .iter()
-            .flat_map(|g| {
-                std::iter::once(g.fold_key())
-                    .chain(g.fleets.iter().map(|f| f.fold_key(&g.key)))
-                    .collect::<Vec<_>>()
-            })
-            .collect();
-        let open = keys.iter().any(|k| !self.screen.saved.closed.contains(k));
-        for key in &keys {
-            self.screen_fold(key, Some(!open));
-        }
-    }
-
     /// Actions that work differently in this layout. Returns true if handled.
     pub(in crate::client) fn screen_act(&mut self, a: &Action) -> bool {
         let focused = self.selected_term();
@@ -709,7 +631,7 @@ impl App {
             {
                 Some(to) => self.cmd_on(to.machine, Command::FocusPane { term: to.term }),
                 // Past the left edge: the sidebar.
-                None if *d == crate::layout::Dir::Left && !self.side_hidden => {
+                None if *d == crate::layout::Dir::Left && self.sidebar => {
                     self.screen_side_move(0)
                 }
                 None => {}
@@ -749,43 +671,22 @@ impl App {
                     self.menu_for_session(term, (self.screen.side_rect.x + 8, y + 1));
                 }
             }
-            // From the sidebar, on a fleet: its menu.
-            Action::Menu if self.screen.cursor_fleet.is_some() => {
-                if let Some(fleet) = self.screen.cursor_fleet {
-                    self.screen_side_leave();
-                    let at = (self.screen.side_rect.x + 8, self.screen.side_rect.y + 3);
-                    self.menu_for_fleet(fleet, at);
-                }
-            }
             Action::Menu => self.mode = Mode::Actions { sel: 0 },
             Action::Help => self.open_key_view(KeyView::All),
             Action::Palette => self.open_key_view(KeyView::Search),
             Action::Worktrees => self.open_keymap(Some(Step::Worktrees)),
             // The tabs of the fleet you are in, one per ship, in creation order.
-            Action::NextTab | Action::PrevTab => self.step_tab(*a == Action::NextTab),
-            Action::SelectTab(n) => self.select_tab(*n),
+            Action::ZoomPane => self.toggle_zoom(),
+            // There is no tab row: a tab key steps through the sidebar's sessions.
+            Action::NextTab | Action::PrevTab => self.step_session(*a == Action::NextTab),
+            Action::SelectTab(n) => self.jump_to_session(n.saturating_sub(1)),
             Action::CloseTab => self.close_tab(self.screen.tab),
-            // z: the sessions move into the top strip, or back into the sidebar.
-            Action::ToggleSidebar => {
-                self.side_auto = false;
+            // b: hide the sidebar, or bring it back.
+            Action::ToggleSidebar | Action::HideSidebar => {
                 self.sidebar = !self.sidebar;
-                self.side_hidden = false;
                 self.screen.follow = true;
-            }
-            // Z: no sessions at all; the same key brings the sidebar back.
-            Action::HideSidebar => {
-                self.side_auto = false;
-                self.side_hidden = self.sidebar || !self.side_hidden;
-                self.sidebar = !self.side_hidden;
-                self.screen.follow = true;
-                if self.side_hidden && self.mode == Mode::Side {
+                if !self.sidebar && self.mode == Mode::Side {
                     self.screen_side_leave();
-                }
-            }
-            Action::RenameWorkspace if self.screen.cursor_fleet.is_some() => {
-                if let Some(fleet) = self.screen.cursor_fleet {
-                    self.screen_side_leave();
-                    self.rename_fleet_start(fleet);
                 }
             }
             Action::RenameWorkspace => {
@@ -899,13 +800,12 @@ impl App {
         self.screen.saved.side_w = Some(w.clamp(SIDE_MIN, SIDE_MAX));
     }
 
-    /// Alt+Down / Alt+Up: the next or previous session in the sidebar's order, wrapping.
+    /// The next or previous session in the sidebar's order, wrapping.
     fn step_session(&mut self, next: bool) {
-        let terms: Vec<ClientTerm> = self
-            .screen_model()
-            .iter()
-            .flat_map(|p| p.sessions())
-            .filter_map(|s| s.native_term)
+        let model = self.screen_model();
+        let terms: Vec<ClientTerm> = super::side::side_keys(self, &model)
+            .into_iter()
+            .filter_map(|k| self.session_term(k))
             .collect();
         let at = self.focused().and_then(|f| terms.iter().position(|t| *t == f));
         let n = terms.len();
@@ -920,33 +820,10 @@ impl App {
         self.screen_focus(to);
     }
 
-    /// Keys while the sidebar cursor is up: arrows move, Enter opens, other keys act as
-    /// if the leader had been pressed.
-    /// Keys while the sidebar has them: ↑↓ move, →← open or fold (← from a session goes to
-    /// its project), Enter opens, Space messages, Esc goes back to the pane. Anything you
-    /// type goes to the pane you're on.
-    /// Full, then the narrow column, then hidden, then full again.
-    pub(in crate::client) fn cycle_sidebar(&mut self) {
-        self.side_auto = false;
-        if self.side_hidden {
-            (self.side_hidden, self.sidebar) = (false, true);
-        } else if self.sidebar {
-            self.sidebar = false;
-        } else {
-            self.side_hidden = true;
-            if self.mode == Mode::Side {
-                self.screen_side_leave();
-            }
-        }
-        self.screen.follow = true;
-    }
-
+    /// Keys while the sidebar has them: ↑↓ move, → or Enter open (a subagent's row its chat),
+    /// `/` filters, Esc goes back to the pane. Anything you type goes to the pane you're on.
     pub(in crate::client) fn on_side_key(&mut self, k: &KeyEvent) {
         let spec = KeySpec::from_event(k);
-        let proj = self.screen.cursor_proj.clone();
-        let fleet = self.screen.cursor_fleet;
-        let on_head = proj.is_some() || fleet.is_some();
-        let model = self.screen_model();
         if self.on_filter_key(k) {
             return;
         }
@@ -967,7 +844,6 @@ impl App {
             .modifiers
             .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
         if k.code == KeyCode::Enter
-            && !on_head
             && let Some(c) = self.screen.cursor.and_then(|key| self.session_term(key))
             && self.asks_you(c)
         {
@@ -975,7 +851,6 @@ impl App {
             return;
         }
         if k.code == KeyCode::Enter
-            && !on_head
             && let Some(c) = self.screen.cursor.and_then(|key| self.session_term(key))
             && self.approval_waits(c)
         {
@@ -984,21 +859,7 @@ impl App {
             return;
         }
         match spec.code {
-            // [: full, then the narrow column, then hidden, then full again.
-            KeyCode::Char('[') if plain => self.cycle_sidebar(),
             KeyCode::Char('/') if plain => self.start_side_filter(),
-            // z folds every heading, or opens them all again when all are folded.
-            KeyCode::Char('z') if plain => self.fold_all(),
-            // A shell at once in the fleet under the cursor, else the one you are in.
-            KeyCode::Char('n' | 'N') if plain => {
-                let fleet = fleet.or_else(|| {
-                    self.screen
-                        .cursor
-                        .and_then(|c| self.session_term(c))
-                        .and_then(|t| self.fleet_of(t))
-                });
-                self.new_ship(fleet);
-            }
             KeyCode::Up | KeyCode::Char('k') if !k.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.screen_side_move(-1)
             }
@@ -1015,56 +876,18 @@ impl App {
                     self.screen_side_set(last);
                 }
             }
-            // The collapsed column: ↑ ↓ ← → and 1–9 (only while it has the keys) switch sessions.
-            KeyCode::Up
-            | KeyCode::Down
-            | KeyCode::Left
-            | KeyCode::Right
-            | KeyCode::Char('1'..='9')
-                if super::draw::strip_on(self) && plain =>
-            {
-                self.strip_switch(spec.code)
+            KeyCode::Char(c @ '1'..='9') if plain => self.jump_to_session(c as usize - '1' as usize),
+            KeyCode::Right => {
+                // Into the pane.
+                if let Some(c) = self.screen.cursor
+                    && let Some(term) = self.open_session_term(c)
+                {
+                    self.screen_focus(term);
+                }
+                self.screen_side_leave();
             }
-            KeyCode::Right => match (&proj, fleet) {
-                (Some(key), _) => self.screen_fold(key, Some(true)),
-                (None, Some(f)) => self.open_fleet(f),
-                (None, None) => {
-                    // Into the pane.
-                    if let Some(c) = self.screen.cursor {
-                        if let Some(term) = self.open_session_term(c) {
-                            self.screen_focus(term);
-                            self.screen_side_leave();
-                        }
-                    } else {
-                        self.screen_side_leave();
-                    }
-                }
-            },
-            KeyCode::Left => match (&proj, self.screen.cursor) {
-                (Some(key), _) => self.screen_fold(key, Some(false)),
-                // From a ship to its group's heading.
-                (None, Some(t)) => {
-                    let head = super::side::SideModel::build(self, &model)
-                        .lists(self, false)
-                        .ships
-                        .into_iter()
-                        .rev()
-                        .skip_while(|(_, i)| *i != SideItem::Sess(t))
-                        .find_map(|(_, i)| matches!(i, SideItem::Proj(_)).then_some(i));
-                    if let Some(head) = head {
-                        self.screen_side_set(head);
-                    }
-                }
-                _ => {}
-            },
-            KeyCode::Enter if fleet.is_some() && proj.is_none() => {
-                if let Some(f) = fleet {
-                    self.open_fleet(f);
-                }
-            }
-            KeyCode::Enter => match (&proj, self.screen.cursor) {
-                (Some(key), _) => self.screen_fold(key, None),
-                (None, Some(c))
+            KeyCode::Enter => match self.screen.cursor {
+                Some(c)
                     if self
                         .session_term(c)
                         .is_some_and(|id| self.check_wants_a_look(id)) =>
@@ -1074,7 +897,7 @@ impl App {
                         self.open_check_sheet(term);
                     }
                 }
-                (None, c) => {
+                c => {
                     if let Some(c) = c {
                         if let Some(term) = self.open_session_term(c) {
                             // An agent the restart stopped: Enter brings its conversation back.
@@ -1123,41 +946,14 @@ impl App {
         }
     }
 
-    /// A key on the collapsed strip: ← → step to the neighbouring session, 1–9 jump to that one.
-    /// The session opens in the pane, and the keys stay on the strip.
-    fn strip_switch(&mut self, code: KeyCode) {
-        let sessions: Vec<ClientSession> = self
-            .screen
-            .side_items
-            .iter()
-            .filter_map(|i| {
-                if let SideItem::Sess(t) = i {
-                    Some(*t)
-                } else {
-                    None
-                }
-            })
-            .collect();
-        let here = sessions.iter().position(|t| {
-            Some(*t)
-                == self
-                    .screen
-                    .cursor
-                    .or(self.focused().map(|id| self.session_key(id)))
-        });
-        let to = match code {
-            KeyCode::Left | KeyCode::Up => here.map_or(0, |i| i.saturating_sub(1)),
-            KeyCode::Right | KeyCode::Down => {
-                here.map_or(0, |i| (i + 1).min(sessions.len().saturating_sub(1)))
-            }
-            KeyCode::Char(c) => c.to_digit(10).map_or(0, |d| d as usize - 1),
-            _ => return,
+    /// Open the `n`th session of the sidebar (counting from 0, top to bottom).
+    pub(in crate::client) fn jump_to_session(&mut self, n: usize) {
+        let model = self.screen_model();
+        let Some(key) = super::side::side_keys(self, &model).get(n).copied() else {
+            return;
         };
-        if let Some(&term) = sessions.get(to) {
-            self.screen_side_set(SideItem::Sess(term));
-            if let Some(term) = self.session_term(term) {
-                self.cmd_on(term.machine, Command::FocusPane { term: term.term });
-            }
+        if let Some(term) = self.open_session_term(key) {
+            self.screen_focus(term);
         }
     }
 
@@ -2014,28 +1810,21 @@ impl App {
                 self.splash = false;
                 self.ask_restart();
             }
-            ScreenHit::OpenInbox => self.act(Action::Jump),
             ScreenHit::SideFilter => self.start_side_filter(),
             ScreenHit::ClearFilter => {
                 self.screen.filter.clear();
                 self.screen.filtering = false;
                 self.screen.side_scroll = 0;
-                self.screen.ships_scroll = 0;
             }
-            // A machine heading or a ship group folds; a fleet opens its last active session.
-            ScreenHit::SideRow(i) => match self.screen.side_items.get(i).cloned() {
-                Some(SideItem::Proj(key)) => self.screen_fold(&key, None),
-                Some(SideItem::Fleet(f)) => self.open_fleet(f),
-                _ => {}
-            },
-            ScreenHit::MachinePlus(machine) => self.machine_plus(machine),
-            ScreenHit::Tab(ship) => {
-                self.screen_focus(ship);
+            ScreenHit::Subagent(i) => {
+                if let Some(term) = self.screen.sub_rows.get(i).copied() {
+                    self.screen_focus(term);
+                }
             }
-            ScreenHit::TabClose(ship) => {
-                let panes = self.tab_panes(ship);
-                self.menu_act(crate::client::menu::Act::End(panes));
-            }
+            ScreenHit::ReleaseMenu => self.release_menu(),
+            ScreenHit::NoPaneNew => self.open_new_session(None),
+            // A shell on that machine at once.
+            ScreenHit::MachinePlus(machine) => self.new_ship_on(machine),
             ScreenHit::FilesChip => {
                 if matches!(self.view, Some(crate::client::View::Files(_))) {
                     self.view = None;
@@ -2050,7 +1839,6 @@ impl App {
                     self.act(Action::Changes);
                 }
             }
-            ScreenHit::PaneBtn(term, button) => self.pane_button(term, button),
             ScreenHit::TidyRow(i) => self.tidy_click(i),
             ScreenHit::TidyGo => {
                 if let Mode::Tidy(v) = std::mem::replace(&mut self.mode, Mode::Normal) {
@@ -2079,7 +1867,6 @@ impl App {
             ScreenHit::ExpandSidebar | ScreenHit::CollapseSidebar => {
                 self.act(Action::ToggleSidebar)
             }
-            ScreenHit::NewShell => self.new_ship(None),
             ScreenHit::Actions => self.act(Action::Menu),
             ScreenHit::ActionRow(i) => self.actions_run(i),
             ScreenHit::Leader => self.open_keymap(None),

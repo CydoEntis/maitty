@@ -207,6 +207,18 @@ pub(super) fn workspace(
     }
 }
 
+/// Focus pane `term` as the daemon would: its workspace and its tab become the active ones.
+pub(super) fn focus(app: &mut App, term: TermId) {
+    for w in &mut app.snap.workspaces {
+        if let Some(tab) = w.tabs.iter_mut().find(|t| t.layout.contains(term)) {
+            tab.focus = term;
+            w.active_tab = tab.id;
+            app.snap.active_ws = Some(w.id);
+        }
+    }
+    app.screen_sync();
+}
+
 pub(super) fn git(root: &Path, branch: &str, worktrees: Vec<WorktreeEntry>) -> GitInfo {
     let repo = super::screen::folder_name(root);
     GitInfo {

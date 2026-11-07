@@ -649,6 +649,11 @@ impl Theme {
 
     /// The selected row's ground: the background a step toward the text, so it reads on any
     /// theme without a colour of its own.
+    /// Tree lines and line numbers: half way from the quiet text to the ground.
+    pub fn faint(&self) -> Color {
+        mix(self.muted, self.bg, 0.5)
+    }
+
     pub fn sel_bg(&self) -> Color {
         mix(self.bg, self.text, 0.12)
     }

@@ -96,9 +96,7 @@ impl App {
         let name = session_name(self, &model, term);
         self.closing.confirm = None;
         // Closed from the sidebar, the keys stay there, on the next row.
-        let from_side = self.mode == Mode::Side
-            || self.screen.cursor.is_some()
-            || self.screen.cursor_proj.is_some();
+        let from_side = self.mode == Mode::Side || self.screen.cursor.is_some();
         let next = if from_side { self.side_after_close() } else { None };
         // Out of its split first: the pane beside it takes the room and the focus.
         self.screen_unshow(term);

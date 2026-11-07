@@ -432,10 +432,6 @@ enum PromptKind {
     RenameConversation(crate::conversation::ConversationId),
     RenameProject(String),
     RenameTab(WsId, TabId),
-    /// A fleet's name on its machine's daemon.
-    RenameFleet(screen::fleets::FleetId),
-    /// A new named fleet on this machine (empty: a shell in its first fleet instead).
-    NewFleet(MachineId),
     NewWorkspace,
     ConfirmCloseWorkspace(WsId),
     ConfirmKillServer,
@@ -453,8 +449,6 @@ impl PromptKind {
             PromptKind::RenameConversation(_) => "Rename chat (empty: automatic)",
             PromptKind::RenameProject(_) => "Rename project (empty: its folder name)",
             PromptKind::RenameTab(..) => "Rename session",
-            PromptKind::RenameFleet(_) => "Rename fleet",
-            PromptKind::NewFleet(_) => "New fleet: name it (empty: a shell in the first fleet)",
             PromptKind::NewWorkspace => "New fleet: name it (empty = its folder)",
             PromptKind::ConfirmCloseWorkspace(_) => "Close workspace and all its panes? (y/n)",
             PromptKind::ConfirmKillServer => "Kill the server and every pane? (y/n)",
@@ -578,13 +572,8 @@ pub struct App {
     marks: HashMap<ClientTerm, marks::Marks>,
     sizes: HashMap<ClientTerm, (u16, u16)>,
     mode: Mode,
+    /// The sidebar shows; hidden, a `»` chip brings it back.
     sidebar: bool,
-    /// With the full sidebar off: the sessions are hidden completely, not shown as the top strip.
-    side_hidden: bool,
-    /// No sidebar key was pressed yet, so a narrow window may fold the sessions into the strip by itself (`screen::draw`).
-    side_auto: bool,
-    /// The sessions were folded into the strip by the rule above, not by a key, so they come back when there is room.
-    side_folded: bool,
     /// The last alert per agent (its status, when) and for any agent: the same news again
     /// soon doesn't ring twice.
     alerted: HashMap<ClientTerm, (Status, Instant)>,
@@ -818,9 +807,6 @@ impl App {
             reattached: None,
             theme: cfg.theme(),
             sidebar: cfg.ui.sidebar,
-            side_hidden: false,
-            side_auto: true,
-            side_folded: false,
             alerted: HashMap::new(),
             last_alert: None,
             settling: HashMap::new(),
@@ -994,10 +980,6 @@ impl App {
                     self.settle_alerts();
                     if frame != last_frame && ((self.motion_on() && (self.any_working() || self.any_checking() || self.any_calling())) || matches!(self.mode, Mode::Spinners(_))) {
                         last_frame = frame;
-                        self.dirty = true;
-                    }
-                    // A new sidebar row's accent bar is showing for a moment.
-                    if !self.screen.flash.is_empty() {
                         self.dirty = true;
                     }
                     if matches!(self.mode, Mode::Prefix { .. }) || screen::splash_animating(self) {

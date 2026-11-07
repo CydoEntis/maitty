@@ -328,7 +328,11 @@ pub(in crate::client) fn draw_compose_pop(
     let (quote_max, input_max) = size_tier(screen.height);
     // Beside the sidebar; with the sidebar hidden, inside the padding round the screen, which
     // stays empty.
-    let x0 = (side.right() + 1).max(framed(app, screen).x + 1);
+    // A narrow screen leaves too little beside the sidebar: the popover reaches over it far
+    // enough to keep its narrow width.
+    let x0 = (side.right() + 1)
+        .min(screen.right().saturating_sub(POPOVER_NARROW_W + 1))
+        .max(framed(app, screen).x + 1);
     let w = POPOVER_W.min(screen.right().saturating_sub(x0 + 1));
     if w < 20 {
         return;

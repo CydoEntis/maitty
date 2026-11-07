@@ -1,5 +1,5 @@
-//! The sidebar (fleets above, ships below), the collapsed column, the status glyphs, the tab row
-//! and the workspace frames, held to the TUI design (v27). `MAITTY_SHOW=1 cargo test <name> -- --nocapture` prints the frames.
+//! The sidebar (each machine with its sessions), the status glyphs, the tab row and the workspace
+//! frames, held to the TUI redesign. `MAITTY_SHOW=1 cargo test <name> -- --nocapture` prints the frames.
 use super::status_mark::State;
 use super::*;
 use crate::client::reference_fixture::{self, Stage};
@@ -48,7 +48,7 @@ fn key(app: &mut App, code: KeyCode) {
 
 /// The sidebar's columns of row `y` of a frame with the full sidebar.
 fn side(rows: &[String], y: usize) -> String {
-    rows[y].chars().take(46).collect()
+    rows[y].chars().take(34).collect()
 }
 
 fn click(app: &mut App, x: u16, y: u16) {
@@ -83,143 +83,39 @@ fn split_world(n: usize) -> App {
 
 // ---- the sidebar ---------------------------------------------------------------------------
 
-#[test]
-fn the_sidebar_lists_machines_and_fleets_above_and_agent_ships_below() {
-    let mut app = reference_fixture::world(Stage::None);
-    let rows = text(&mut app, 140, 36);
-    show(&rows, "140x36");
-    // The top half: the machine, then its fleets, the one that needs you with its count.
-    assert!(side(&rows, 4).contains("FLEETS"), "{}", side(&rows, 4));
-    assert!(side(&rows, 6).contains("▾ ⌂ This computer"), "{}", side(&rows, 6));
-    assert!(side(&rows, 6).trim_end().ends_with("●  + │"), "{}", side(&rows, 6));
-    for (y, name, tail) in [
-        (7, "affiliate-site", "✻ 2"),
-        (8, "pixls", "✻ 1"),
-        (9, "orbit", "✻ 2"),
-    ] {
-        let line = side(&rows, y);
-        assert!(line.contains(name) && line.contains(tail), "row {y}: {line}");
-    }
-    assert!(side(&rows, 8).contains("1 pixls"), "the amber count: {}", side(&rows, 8));
-    assert!(side(&rows, 7).contains("◆ affiliate-site"), "{}", side(&rows, 7));
-    assert!(side(&rows, 7).starts_with("│▌"), "the current fleet wears the bar");
-    // The divider at the middle, and the ships grouped under their fleets.
-    assert!(side(&rows, 17).contains("SHIPS 5"), "{}", side(&rows, 17));
-    assert!(side(&rows, 19).contains("▾ ◆ affiliate-site"));
-    assert!(side(&rows, 20).contains("fix-footer") && side(&rows, 20).trim_end().ends_with(">_ │"));
-    assert!(side(&rows, 21).contains("⎇ fix-footer") && side(&rows, 21).trim_end().ends_with("worktree │"));
-    assert!(side(&rows, 24).contains("▾ ◆ pixls"));
-    assert!(side(&rows, 25).contains("warm-finch"));
-    assert!(
-        side(&rows, 26).contains("pixls") && !side(&rows, 26).contains('⎇'),
-        "no repo: the folder: {}",
-        side(&rows, 26)
-    );
+/// The row a session's first line is drawn on.
+fn row_of(app: &App, term: u32) -> usize {
+    app.screen.row_y[&ClientTerm::local(term)] as usize
 }
 
 #[test]
-fn each_half_clips_at_its_own_divider_and_the_divider_sits_at_the_middle() {
-    for h in [24u16, 30, 36, 50] {
-        let mut app = reference_fixture::world(Stage::None);
-        let rows = text(&mut app, 140, h);
-        let bar = usize::from(h) - 1;
-        let ships = rows.iter().position(|r| side_of(r).contains("SHIPS")).expect("a divider");
-        let fleets = rows.iter().position(|r| side_of(r).contains("FLEETS")).expect("a divider");
-        // The sidebar is h-1 rows tall (the status bar has the last): MID = floor((4 + H - 5) / 2).
-        let sidebar_h = usize::from(h) - 1;
-        if sidebar_h >= 14 {
-            assert_eq!(fleets, 4, "{h}");
-            assert_eq!(ships, (4 + sidebar_h - 5) / 2, "{h}");
-        }
-        assert!(ships > fleets && ships < bar, "{h}");
-        // Nothing of a ship's two lines hangs above its divider, nothing of a fleet below it.
-        for (y, row) in rows.iter().enumerate().take(bar) {
-            let line = side_of(row);
-            if y > fleets && y < ships {
-                assert!(!line.contains("⎇") && !line.contains("▾ ◆"), "{h} row {y}: {line}");
-            }
-            if y > ships {
-                assert!(!line.contains("▾ ⌂") && !line.contains("✻"), "{h} row {y}: {line}");
-            }
-        }
+fn the_sidebar_lists_each_machine_with_its_sessions_two_lines_each() {
+    let mut app = reference_fixture::world(Stage::None);
+    let rows = text(&mut app, 140, 36);
+    show(&rows, "140x36");
+    let head = side(&rows, 3);
+    assert!(head.contains(" This computer 5 ") && head.contains(" + "), "{head}");
+    assert!(head.trim_end().ends_with("● │"), "the connection dot: {head}");
+    let y = row_of(&app, 1);
+    assert!(side(&rows, y).contains("● fix-footer"), "{}", side(&rows, y));
+    assert!(
+        side(&rows, y + 1).contains("■ affiliate-site fix-footer"),
+        "the project square, the project and the branch: {}",
+        side(&rows, y + 1)
+    );
+    let finch = row_of(&app, 3);
+    assert!(
+        side(&rows, finch + 1).trim_end_matches(['│', ' ']).ends_with("■ pixls"),
+        "no repo, no branch: {}",
+        side(&rows, finch + 1)
+    );
+    for word in ["FLEETS", "SHIPS", "inbox", "worktree", ">_", "needs you", "working"] {
+        assert!(!rows.iter().any(|r| side_of(r).contains(word)), "no {word} in the sidebar");
     }
 }
 
 fn side_of(row: &str) -> String {
-    row.chars().take(46).collect()
-}
-
-#[test]
-fn folding_a_machine_or_a_fleets_ship_group_hides_its_rows_and_keeps_the_count() {
-    let mut app = reference_fixture::world(Stage::None);
-    let (tx, _rx) = mpsc::unbounded_channel();
-    app.out = tx;
-    text(&mut app, 140, 36);
-    // Click the ship group heading of pixls (needs you): it folds and says so.
-    let y = 24;
-    click(&mut app, 12, y);
-    assert!(app.screen.saved.closed.iter().any(|k| k.starts_with("c:local/")), "{:?}", app.screen.saved.closed);
-    let rows = text(&mut app, 140, 36);
-    show(&rows, "pixls folded");
-    assert!(side(&rows, 24).contains("▸ ◆ pixls") && side(&rows, 24).contains("1 need you"), "{}", side(&rows, 24));
-    assert!(!rows.iter().any(|r| side_of(r).contains("warm-finch")), "its ship is folded away");
-    // The machine heading folds its fleets and shows how many.
-    click(&mut app, 12, 6);
-    let rows = text(&mut app, 140, 36);
-    assert!(side(&rows, 6).contains("▸ ⌂ This computer  3"), "{}", side(&rows, 6));
-    assert!(!side(&rows, 7).contains("affiliate-site"), "{}", side(&rows, 7));
-    assert!(app.screen.saved.closed.iter().any(|k| k == "m:local"));
-}
-
-#[test]
-fn up_and_down_walk_the_one_ordered_list_and_skip_what_is_folded_away() {
-    let mut app = reference_fixture::world(Stage::None);
-    let (tx, _rx) = mpsc::unbounded_channel();
-    app.out = tx;
-    text(&mut app, 140, 36);
-    app.screen_fold("c:local/20", Some(false));
-    text(&mut app, 140, 36);
-    let items = app.screen.side_items.clone();
-    assert!(items.contains(&SideItem::Proj("m:local".into())));
-    assert!(items.contains(&SideItem::Proj("c:local/20".into())));
-    assert!(!items.contains(&SideItem::Sess(app.session_key(ClientTerm::local(3)))), "folded away");
-    // Fleets come before ships, whatever the order of their ids.
-    let first_ship = items.iter().position(|i| matches!(i, SideItem::Sess(_))).unwrap();
-    let last_fleet = items.iter().rposition(|i| matches!(i, SideItem::Fleet(_))).unwrap();
-    assert!(last_fleet < first_ship);
-    app.screen_side_set(items[0].clone());
-    for expected in &items[1..] {
-        key(&mut app, KeyCode::Down);
-        let at = match expected {
-            SideItem::Proj(k) => app.screen.cursor_proj.as_ref() == Some(k),
-            SideItem::Fleet(f) => app.screen.cursor_fleet == Some(*f),
-            SideItem::Sess(s) => app.screen.cursor == Some(*s),
-        };
-        assert!(at, "{expected:?}");
-    }
-}
-
-#[test]
-fn enter_on_a_fleet_opens_its_last_active_session_and_on_a_heading_folds_it() {
-    let mut app = reference_fixture::world(Stage::None);
-    let (tx, mut rx) = mpsc::unbounded_channel();
-    app.out = tx;
-    text(&mut app, 140, 36);
-    // Remember that add-payments (2) was the one you were last on in affiliate-site.
-    app.note_fleet_active(ClientTerm::local(2));
-    let fleet = app.fleet_of(ClientTerm::local(1)).unwrap();
-    app.screen_side_set(SideItem::Fleet(fleet));
-    key(&mut app, KeyCode::Enter);
-    let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
-    assert!(
-        sent.iter()
-            .any(|o| matches!(&o.msg, ClientMsg::Command(Command::FocusPane { term: 2 }))),
-        "{} messages, none a focus on pane 2",
-        sent.len()
-    );
-    app.screen_side_set(SideItem::Proj("m:local".into()));
-    key(&mut app, KeyCode::Enter);
-    assert!(app.screen.saved.closed.iter().any(|k| k == "m:local"));
+    row.chars().take(34).collect()
 }
 
 #[test]
@@ -238,71 +134,70 @@ fn a_row_keeps_its_place_whatever_its_status() {
 }
 
 #[test]
-fn a_ship_row_ends_in_its_view_mark_and_shows_no_diff_counts() {
+fn a_row_shows_no_diff_counts() {
     let mut app = reference_fixture::world(Stage::None);
     let info = app.snap.terms.get_mut(&1).unwrap();
     (info.diff_added, info.diff_removed) = (104, 61);
     let rows = text(&mut app, 140, 36);
-    let line = side(&rows, 20);
-    assert!(!line.contains("+104") && !line.contains("−61"), "{line}");
-    assert!(line.trim_end().ends_with(">_ │"), "the terminal view mark: {line}");
+    assert!(!rows.iter().any(|r| side_of(r).contains("+104")));
 }
 
 #[test]
-fn idle_names_are_dimmed_and_the_open_session_has_the_raised_ground() {
+fn busy_agents_are_bold_idle_ones_plain_and_the_open_session_has_the_row_ground_and_bar() {
     let mut app = reference_fixture::world(Stage::None);
     let buf = cells(&mut app, 140, 50);
     let t = app.theme.clone();
     let y = |term: u32| app.screen.row_y[&ClientTerm::local(term)];
-    // old-moth (5) is idle: its name is muted, not the strong ink.
-    assert_eq!(buf[(6, y(5))].fg, t.muted);
-    assert_ne!(buf[(6, y(1))].fg, t.muted, "a session with work keeps the bright name");
-    // fix-footer (1) is the one open in the workspace: raised ground and the bar on both lines.
+    // old-moth (5) is idle: plain text. add-payments (2) is working: bold and strong.
+    assert_eq!(buf[(4, y(5))].fg, t.text);
+    assert!(!buf[(4, y(5))].modifier.contains(Modifier::BOLD));
+    assert_eq!(buf[(4, y(2))].fg, t.strong);
+    assert!(buf[(4, y(2))].modifier.contains(Modifier::BOLD));
+    // fix-footer (1) is open in the workspace: the row ground and the accent bar on both lines.
     for dy in 0..2 {
-        assert_eq!(buf[(10, y(1) + dy)].bg, t.card);
-        assert_eq!(buf[(1, y(1) + dy)].symbol(), "▌");
+        assert_eq!(buf[(10, y(1) + dy)].bg, t.hov);
+        assert_eq!((buf[(1, y(1) + dy)].symbol(), buf[(1, y(1) + dy)].fg), ("▎", t.accent));
     }
-    assert_eq!(buf[(10, y(3))].bg, t.bg, "the others sit on the ground");
+    assert_eq!(buf[(10, y(3))].bg, t.sidebar_bg, "the others sit on the panel");
 }
 
 #[test]
-fn the_current_fleet_has_the_raised_ground_and_a_needs_count_is_amber() {
-    let mut app = reference_fixture::world(Stage::None);
-    let buf = cells(&mut app, 140, 36);
-    let t = app.theme.clone();
-    assert_eq!(buf[(20, 7)].bg, t.card, "affiliate-site is the current fleet");
-    assert_eq!(buf[(1, 7)].symbol(), "▌");
-    assert_eq!(buf[(20, 9)].bg, t.bg);
-    assert_eq!((buf[(4, 8)].symbol(), buf[(4, 8)].fg), ("1", t.blocked), "pixls needs you");
-    assert_eq!(buf[(4, 9)].symbol(), "◆");
-}
-
-#[test]
-fn the_top_border_search_field_and_footer_carry_the_designs_chips() {
+fn the_borders_carry_the_title_hide_release_and_menu_chips() {
     let mut app = reference_fixture::world(Stage::None);
     let rows = text(&mut app, 140, 36);
     let top = side(&rows, 0);
-    assert!(
-        top.contains(" « ") && top.contains(" + ") && top.contains(" inbox 1 "),
-        "{top}"
-    );
-    assert!(top.find(" « ").unwrap() < top.find(" + ").unwrap());
-    assert!(side(&rows, 2).contains("⌕ Filter sessions") && side(&rows, 2).contains(" / "), "{}", side(&rows, 2));
-    let foot = side(&rows, 33);
-    assert!(
-        foot.contains(" + New ") && foot.contains(" Menu "),
-        "{foot}"
-    );
-    assert!(side(&rows, 32).contains('─'), "a rule over the buttons");
-    assert!(
-        side(&rows, 31).contains("Maitty"),
-        "the version, dim: {}",
-        side(&rows, 31)
-    );
+    assert!(top.contains(" maitty ") && top.contains(" « "), "{top}");
+    assert!(top.find(" maitty ").unwrap() < top.find(" « ").unwrap());
+    assert!(side(&rows, 1).contains("/ filter sessions"), "{}", side(&rows, 1));
+    let foot = side(&rows, 34);
+    let version = format!(" v{} ", crate::brand::APP_VERSION);
+    assert!(foot.contains(&version) && foot.contains(" menu "), "{foot}");
+    app.update_available = Some("0.99.0".into());
+    let rows = text(&mut app, 140, 36);
+    assert!(side(&rows, 34).contains(" ↑ v0.99.0 "), "{}", side(&rows, 34));
 }
 
 #[test]
-fn the_filter_matches_fleets_and_sessions_and_the_x_chip_and_esc_clear_it() {
+fn the_release_chip_opens_its_menu_upward() {
+    let mut app = reference_fixture::world(Stage::None);
+    app.update_available = Some("0.99.0".into());
+    let rows = text(&mut app, 140, 36);
+    let x = side(&rows, 34).find('↑').unwrap() as u16;
+    click(&mut app, x, 34);
+    let Mode::ScreenMenu(menu) = &app.mode else {
+        panic!("{:?}", app.mode)
+    };
+    let labels: Vec<&str> = menu.items.iter().map(|(l, _)| l.as_str()).collect();
+    assert_eq!(labels[0], "Update to v0.99.0");
+    assert!(labels.contains(&"Release notes"), "{labels:?}");
+    let rows = text(&mut app, 140, 36);
+    show(&rows, "release menu");
+    let top = rows.iter().position(|r| r.contains("Update to v0.99.0")).unwrap();
+    assert!(top < 34, "it opens above the chip");
+}
+
+#[test]
+fn the_filter_matches_sessions_and_the_cross_and_esc_clear_it() {
     let mut app = reference_fixture::world(Stage::None);
     app.screen_side_set(SideItem::Sess(app.session_key(ClientTerm::local(1))));
     key(&mut app, KeyCode::Char('/'));
@@ -311,28 +206,27 @@ fn the_filter_matches_fleets_and_sessions_and_the_x_chip_and_esc_clear_it() {
     }
     let rows = text(&mut app, 140, 36);
     show(&rows, "filtered");
-    assert!(side(&rows, 2).contains("pixls") && side(&rows, 2).contains(" x "), "{}", side(&rows, 2));
-    assert!(side(&rows, 7).contains("pixls") && !side(&rows, 8).contains("orbit"), "only the fleet: {}", side(&rows, 8));
+    assert!(side(&rows, 1).contains("pixls"), "{}", side(&rows, 1));
     assert!(rows.iter().any(|r| side_of(r).contains("warm-finch")));
     assert!(!rows.iter().any(|r| side_of(r).contains("fix-footer")), "only the match");
     key(&mut app, KeyCode::Esc);
     let rows = text(&mut app, 140, 36);
-    assert!(side(&rows, 2).contains("Filter sessions") && side(&rows, 2).contains(" / "));
+    assert!(side(&rows, 1).contains("filter sessions"));
     assert!(rows.iter().any(|r| side_of(r).contains("fix-footer")));
-    // A session's folder matches too, and the x chip clears what is typed.
+    // A session's project matches too, and the cross clears what is typed.
     app.screen.filter = "affiliate".into();
     let rows = text(&mut app, 140, 36);
     assert!(rows.iter().any(|r| side_of(r).contains("add-payments")));
-    let x = side(&rows, 2).chars().collect::<Vec<_>>().windows(3).position(|w| w == [' ', 'x', ' ']).unwrap() as u16;
-    click(&mut app, x + 1, 2);
+    let x = side(&rows, 1).chars().position(|c| c == '×').unwrap() as u16;
+    click(&mut app, x, 1);
     assert!(app.screen.filter.is_empty());
 }
 
 #[test]
-fn the_default_width_is_46_and_a_dragged_one_stays_between_24_and_60() {
+fn the_default_width_is_34_and_a_dragged_one_stays_between_24_and_60() {
     let mut app = reference_fixture::world(Stage::None);
     cells(&mut app, 140, 36);
-    assert_eq!(app.screen.side_rect.width, 46);
+    assert_eq!(app.screen.side_rect.width, 34);
     app.screen.saved.side_w = Some(80);
     cells(&mut app, 140, 36);
     assert_eq!(app.screen.side_rect.width, 60);
@@ -342,12 +236,11 @@ fn the_default_width_is_46_and_a_dragged_one_stays_between_24_and_60() {
 }
 
 #[test]
-fn clicking_a_ship_focuses_that_sessions_pane_wherever_the_daemon_holds_it() {
+fn clicking_a_session_focuses_its_pane_wherever_the_daemon_holds_it() {
     let mut app = reference_fixture::world(Stage::None);
     let (tx, mut rx) = mpsc::unbounded_channel();
     app.out = tx;
     cells(&mut app, 140, 36);
-    // warm-finch (3): its first line.
     let y = app.screen.row_y[&ClientTerm::local(3)];
     click(&mut app, 8, y);
     let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
@@ -360,7 +253,7 @@ fn clicking_a_ship_focuses_that_sessions_pane_wherever_the_daemon_holds_it() {
 }
 
 #[test]
-fn prefix_dot_on_a_ship_opens_its_row_menu_and_anywhere_else_the_menu() {
+fn prefix_dot_on_a_session_opens_its_row_menu_and_anywhere_else_the_menu() {
     let mut app = reference_fixture::world(Stage::None);
     text(&mut app, 140, 36);
     app.screen_side_set(SideItem::Sess(app.session_key(ClientTerm::local(3))));
@@ -376,18 +269,13 @@ fn prefix_dot_on_a_ship_opens_its_row_menu_and_anywhere_else_the_menu() {
 }
 
 #[test]
-fn the_plus_on_a_machine_heading_asks_a_name_and_left_empty_starts_a_shell_in_its_first_fleet() {
+fn the_plus_on_a_machine_heading_starts_a_shell_there_at_once() {
     let mut app = reference_fixture::world(Stage::None);
     let (tx, mut rx) = mpsc::unbounded_channel();
     app.out = tx;
     let rows = text(&mut app, 140, 36);
-    let plus = side(&rows, 6).chars().collect::<Vec<_>>().iter().rposition(|c| *c == '+').unwrap() as u16;
-    click(&mut app, plus, 6);
-    assert!(matches!(
-        &app.mode,
-        Mode::Prompt { kind: crate::client::PromptKind::NewFleet(MachineId::LOCAL), .. }
-    ));
-    key(&mut app, KeyCode::Enter);
+    let plus = side(&rows, 3).chars().position(|c| c == '+').unwrap() as u16;
+    click(&mut app, plus, 3);
     let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
     assert!(
         sent.iter()
@@ -395,74 +283,7 @@ fn the_plus_on_a_machine_heading_asks_a_name_and_left_empty_starts_a_shell_in_it
         "{} messages",
         sent.len()
     );
-    let flash = app.notice.as_ref().map(|(m, _, _)| m.clone()).unwrap_or_default();
-    assert!(flash.starts_with("New shell in affiliate-site · "), "{flash}");
-}
-
-#[test]
-fn a_name_typed_for_the_machine_plus_starts_a_fleet_with_the_four_fleet_colours() {
-    let mut app = reference_fixture::world(Stage::None);
-    let (tx, mut rx) = mpsc::unbounded_channel();
-    app.out = tx;
-    app.machine_plus(MachineId::LOCAL);
-    for c in "Training".chars() {
-        key(&mut app, KeyCode::Char(c));
-    }
-    key(&mut app, KeyCode::Enter);
-    let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
-    assert!(
-        sent.iter().any(|o| o.machine == MachineId::LOCAL
-            && matches!(&o.msg, ClientMsg::Command(Command::NewFleet { name, colors, .. })
-                if name == "Training" && colors == &[0, 1, 2, 3])),
-        "{sent:?}"
-    );
-}
-
-#[test]
-fn a_fleet_row_menu_renames_and_recolours_through_the_daemons_commands() {
-    let mut app = reference_fixture::world(Stage::None);
-    let (tx, mut rx) = mpsc::unbounded_channel();
-    app.out = tx;
-    let fleet = app.fleet_groups()[0].fleets[0].id;
-    app.menu_for_fleet(fleet, (4, 4));
-    let Mode::ScreenMenu(menu) = &app.mode else { panic!("a menu") };
-    let labels: Vec<_> = menu.items.iter().map(|(l, _)| l.clone()).collect();
-    assert!(labels.iter().any(|l| l == "Rename") && labels.iter().any(|l| l.contains("violet")), "{labels:?}");
-    app.menu_do(crate::client::menu::Act::FleetColour(fleet, 1));
-    app.menu_do(crate::client::menu::Act::RenameFleet(fleet));
-    for _ in 0..40 {
-        key(&mut app, KeyCode::Backspace);
-    }
-    for c in "Renamed".chars() {
-        key(&mut app, KeyCode::Char(c));
-    }
-    key(&mut app, KeyCode::Enter);
-    let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
-    assert!(
-        sent.iter().any(|o| matches!(&o.msg, ClientMsg::Command(Command::SetWorkspaceColor { ws, color: 1 }) if *ws == fleet.ws)),
-        "{sent:?}"
-    );
-    assert!(
-        sent.iter().any(|o| matches!(&o.msg, ClientMsg::Command(Command::RenameWorkspace { ws, name }) if *ws == fleet.ws && name == "Renamed")),
-        "{sent:?}"
-    );
-}
-
-#[test]
-fn z_in_the_sidebar_folds_every_heading_and_again_opens_them_all() {
-    let mut app = reference_fixture::world(Stage::None);
-    text(&mut app, 140, 36);
-    app.mode = Mode::Side;
-    key(&mut app, KeyCode::Char('z'));
-    let groups = app.fleet_groups();
-    assert!(groups.iter().all(|g| app.screen.saved.closed.contains(&g.fold_key())));
-    assert!(groups
-        .iter()
-        .flat_map(|g| g.fleets.iter().map(move |f| f.fold_key(&g.key)))
-        .all(|k| app.screen.saved.closed.contains(&k)));
-    app.mode = Mode::Side;
-    key(&mut app, KeyCode::Char('z'));
-    assert!(app.screen.saved.closed.is_empty());
+    assert_eq!(app.mode, Mode::Normal, "no name is asked");
 }
 
 #[test]
@@ -476,97 +297,85 @@ fn a_machine_that_is_offline_gets_a_warning_and_no_shell() {
     assert!(app.notice.as_ref().is_some_and(|(m, _, err)| *err && m.contains("offline")));
 }
 
-// ---- the collapsed column ------------------------------------------------------------------
-
 #[test]
-fn below_110_columns_the_sidebar_is_the_ten_column_column_with_initials() {
+fn hiding_the_sidebar_leaves_a_show_chip_that_brings_it_back() {
     let mut app = reference_fixture::world(Stage::None);
-    let rows = text(&mut app, 100, 30);
-    show(&rows, "100x30");
-    let col = |y: usize| rows[y].chars().take(10).collect::<String>();
-    assert_eq!(col(0), "┌── » ───┐");
-    assert!(
-        col(1).starts_with("│   1    │"),
-        "the inbox count: {}",
-        col(1)
-    );
-    assert_eq!(col(2), "├─ FLT ──┤");
-    // The fleets: a needs count or a diamond, then initials.
-    for (y, mark, initials) in [(3, "◆", "AS"), (4, "1", "PI"), (5, "◆", "OR")] {
-        assert!(col(y).contains(mark) && col(y).contains(initials), "{}", col(y));
-    }
-    assert!(
-        col(3).starts_with("│▌"),
-        "the current fleet wears the bar: {}",
-        col(3)
-    );
-    // The agent ships under SHP at the middle.
-    let shp = (0..30).find(|y| col(*y).contains("SHP")).expect("the SHP divider");
-    for (i, initials) in ["FF", "AP", "WF", "QF", "OM"].iter().enumerate() {
-        assert!(col(shp + 1 + i).contains(initials), "{}", col(shp + 1 + i));
-    }
-    assert!(
-        col(26).contains('+') && col(27).contains('≡'),
-        "{} {}",
-        col(26),
-        col(27)
-    );
-}
-
-#[test]
-fn an_offline_machines_fleets_show_the_dashed_mark_in_the_column() {
-    let mut app = reference_fixture::world(Stage::None);
-    app.service_lost();
-    let rows = text(&mut app, 100, 30);
-    let col = |y: usize| rows[y].chars().take(10).collect::<String>();
-    assert!(col(3).contains('┆') && col(4).contains('┆'), "{} {}", col(3), col(4));
-}
-
-#[test]
-fn at_110_columns_and_up_it_is_the_full_sidebar() {
-    let mut app = reference_fixture::world(Stage::None);
-    assert!(text(&mut app, 109, 30)[0].starts_with("┌── » ───┐"));
-    assert!(side(&text(&mut app, 110, 30), 4).contains(" FLEETS "));
-}
-
-#[test]
-fn the_toggle_opens_the_full_sidebar_over_the_workspace_when_narrow_and_picking_closes_it() {
-    let mut app = reference_fixture::world(Stage::None);
-    let (tx, _rx) = mpsc::unbounded_channel();
-    app.out = tx;
-    text(&mut app, 100, 30);
-    app.act(Action::ToggleSidebar);
-    let rows = text(&mut app, 100, 30);
-    show(&rows, "overlay 100x30");
-    assert!(app.screen.overlay_open);
-    assert!(
-        side(&rows, 4).contains(" FLEETS "),
-        "the full sidebar is over the workspace"
-    );
-    assert_eq!(app.screen.side_rect.width, 46);
-    // Picking a ship puts it away again.
-    let y = app.screen.row_y[&ClientTerm::local(3)];
-    click(&mut app, 8, y);
-    text(&mut app, 100, 30);
-    assert!(!app.screen.overlay_open);
-    // And the toggle closes it by itself.
-    app.act(Action::ToggleSidebar);
-    text(&mut app, 100, 30);
-    assert!(app.screen.overlay_open);
-    app.act(Action::ToggleSidebar);
-    text(&mut app, 100, 30);
-    assert!(!app.screen.overlay_open);
-}
-
-#[test]
-fn the_toggle_collapses_and_expands_a_wide_screen() {
-    let mut app = reference_fixture::world(Stage::None);
+    app.cfg.ui.motion = false;
     text(&mut app, 140, 36);
     app.act(Action::ToggleSidebar);
     let rows = text(&mut app, 140, 36);
-    assert!(rows[0].starts_with("┌── » ───┐"), "{}", rows[0]);
-    app.act(Action::ToggleSidebar);
-    assert!(side(&text(&mut app, 140, 36), 4).contains(" FLEETS "));
+    show(&rows, "hidden");
+    assert!(rows[0].starts_with(" » "), "{}", rows[0]);
+    assert!(!rows.iter().any(|r| r.contains("This computer")));
+    click(&mut app, 1, 0);
+    let rows = text(&mut app, 140, 36);
+    assert!(side(&rows, 3).contains("This computer"));
+}
+
+/// The world with three subagents reported in add-payments' (2) current turn.
+fn with_subagents() -> App {
+    use crate::protocol::{SubagentActivity, SubagentState};
+    let mut app = reference_fixture::world(Stage::None);
+    let info = app.snap.terms.get_mut(&2).unwrap();
+    let since = info.since;
+    info.subagent_activity = [
+        ("Check migration order", SubagentState::Completed),
+        ("Write drafts tests", SubagentState::Working),
+        ("Lint the routes", SubagentState::AwaitingApproval),
+    ]
+    .into_iter()
+    .map(|(name, state)| SubagentActivity {
+        id: name.into(),
+        name: name.into(),
+        parent: None,
+        state,
+        task: None,
+        model: None,
+        effort: None,
+        started_at: Some(since + 1),
+        updated_at: since + 1,
+        latest_activity: None,
+        result: None,
+    })
+    .collect();
+    app.screen_fresh();
+    app
+}
+
+#[test]
+fn a_session_shows_its_subagents_as_marks_or_when_open_one_row_each() {
+    let mut app = with_subagents();
+    let rows = text(&mut app, 140, 36);
+    show(&rows, "subagents, not open");
+    let y = row_of(&app, 2);
+    let peek = side(&rows, y + 2);
+    assert!(peek.trim_start_matches('│').trim_start().starts_with('└'), "{peek}");
+    assert_eq!(peek.matches('●').count(), 2, "done and needs you are dots, working spins: {peek}");
+    assert!(!rows.iter().any(|r| side_of(r).contains("Lint the routes")));
+    reference_fixture::focus(&mut app, 2);
+    let rows = text(&mut app, 140, 36);
+    show(&rows, "subagents, open");
+    let y = row_of(&app, 2);
+    assert!(side(&rows, y + 2).contains("├ ● Check migration order"), "{}", side(&rows, y + 2));
+    assert!(side(&rows, y + 4).contains("└ ● Lint the routes"), "{}", side(&rows, y + 4));
+}
+
+#[test]
+fn clicking_a_subagent_opens_its_parents_pane() {
+    let mut app = with_subagents();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    app.out = tx;
+    reference_fixture::focus(&mut app, 2);
+    text(&mut app, 140, 36);
+    let y = app.screen.row_y[&ClientTerm::local(2)] + 3;
+    // Another pane is focused first, so the click has something to change.
+    reference_fixture::focus(&mut app, 1);
+    click(&mut app, 12, y);
+    let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+    assert!(
+        sent.iter().any(|o| matches!(&o.msg, ClientMsg::Command(Command::FocusPane { term: 2 }))),
+        "{sent:?}"
+    );
 }
 
 // ---- the status glyphs ---------------------------------------------------------------------
@@ -631,8 +440,8 @@ fn a_failed_command_is_the_problem_state_and_its_row_says_so_in_red() {
     let buf = cells(&mut app, 140, 50);
     let t = app.theme.clone();
     let y = app.screen.row_y[&ClientTerm::local(5)];
-    assert_eq!(buf[(4, y)].symbol(), "●");
-    assert_eq!(buf[(4, y)].fg, t.err);
+    assert_eq!(buf[(2, y)].symbol(), "●");
+    assert_eq!(buf[(2, y)].fg, t.err);
 }
 
 #[test]
@@ -644,128 +453,48 @@ fn the_working_spinner_is_still_with_reduce_motion_and_turns_with_it() {
 
 // ---- the workspace -------------------------------------------------------------------------
 
-#[test]
-fn a_lone_pane_has_no_header_and_the_top_border_is_the_tab_row() {
-    let mut app = reference_fixture::world(Stage::None);
-    let rows = text(&mut app, 200, 40);
-    show(&rows, "lone pane");
-    let top: String = rows[0].chars().skip(47).collect();
-    assert!(top.starts_with("┌"), "{top}");
-    // One tab per ship of the fleet: status glyph, title, ×; no app icon. Then + and the tools.
-    for chip in ["fix-footer ×", "add-payments ×", " + ", " Files ", " Changes "] {
-        assert!(top.contains(chip), "{chip} in {top}");
-    }
-    let (first, second, plus, files, changes) = (
-        top.find("fix-footer").unwrap(),
-        top.find("add-payments").unwrap(),
-        top.find(" + ").unwrap(),
-        top.find(" Files ").unwrap(),
-        top.find(" Changes ").unwrap(),
-    );
-    assert!(first < second && second < plus && plus < files && files < changes, "{top}");
-    assert!(top.trim_end().ends_with("┐"), "{top}");
-    // The program starts on the row under the border: no header.
-    let second_row: String = rows[1].chars().skip(47).collect();
-    assert!(second_row.contains("rename the footer copyright"), "{second_row}");
+/// The workspace's columns of row `y`: everything right of the sidebar and its gap.
+fn work(rows: &[String], y: usize) -> String {
+    rows[y].chars().skip(35).collect()
 }
 
 #[test]
-fn the_active_tab_is_the_accent_when_the_workspace_has_the_keys_and_the_chip_ground_when_not() {
+fn a_pane_is_a_box_with_its_title_chip_and_files_changes_and_close_at_the_right() {
     let mut app = reference_fixture::world(Stage::None);
+    let rows = text(&mut app, 140, 36);
+    show(&rows, "a lone pane");
+    let top = work(&rows, 0);
+    assert!(top.starts_with("╭─ ● fix-footer "), "the mark and the name in the chip: {top}");
+    assert!(top.contains("affiliate-site-worktrees") && top.contains(" fix-footer "), "the folder and the branch: {top}");
+    assert!(top.trim_end().ends_with(" files ─ changes ─ × ─╮"), "{top}");
+    assert!(rows[1].contains("rename the footer copyright"), "the program starts under the border");
+    for word in ["add-payments ×", "Files", "Changes", " + "] {
+        assert!(!top.contains(word), "no tab row: {word} in {top}");
+    }
+}
+
+#[test]
+fn the_focused_panes_box_and_title_chip_are_the_accent() {
+    let mut app = reference_fixture::world(Stage::None);
+    let buf = cells(&mut app, 140, 36);
     let t = app.theme.clone();
-    let buf = cells(&mut app, 200, 40);
-    let tab = app
-        .hits
-        .iter()
-        .find_map(|(r, h)| matches!(h, Hit::Screen(ScreenHit::Tab(s)) if s.term == 1).then_some(*r))
-        .expect("fix-footer's tab");
-    assert_eq!(buf[(tab.x + 3, 0)].bg, t.accent);
-    assert_eq!(buf[(tab.x + 3, 0)].fg, t.acc_ink);
-    let other = app
-        .hits
-        .iter()
-        .find_map(|(r, h)| matches!(h, Hit::Screen(ScreenHit::Tab(s)) if s.term == 2).then_some(*r))
-        .expect("add-payments' tab");
-    assert_eq!(buf[(other.x + 3, 0)].bg, t.btn);
-    assert_eq!(buf[(other.x + 3, 0)].fg, t.text);
-    // The sidebar has the keys: the workspace is not focused, so no tab is the accent.
+    assert_eq!(buf[(35, 0)].fg, t.accent, "the corner");
+    assert_eq!(buf[(38, 0)].bg, t.accent, "the title chip");
+    assert_eq!(buf[(40, 0)].fg, t.acc_ink);
+    // With the sidebar holding the keys the pane is quiet.
     app.screen_side_set(SideItem::Sess(app.session_key(ClientTerm::local(1))));
-    let buf = cells(&mut app, 200, 40);
-    assert_eq!(buf[(tab.x + 3, 0)].bg, t.btn);
+    let buf = cells(&mut app, 140, 36);
+    assert_eq!(buf[(35, 0)].fg, t.line);
+    assert_eq!(buf[(38, 0)].bg, t.btn);
 }
 
 #[test]
-fn clicking_a_tab_opens_it_the_cross_closes_it_and_right_click_opens_its_menu() {
+fn the_title_is_cut_short_before_the_chips_at_the_right() {
     let mut app = reference_fixture::world(Stage::None);
-    let (tx, mut rx) = mpsc::unbounded_channel();
-    app.out = tx;
-    cells(&mut app, 200, 40);
-    let find = |app: &App, term: u32, close: bool| {
-        app.hits.iter().find_map(|(r, h)| match h {
-            Hit::Screen(ScreenHit::Tab(s)) if !close && s.term == term => Some(*r),
-            Hit::Screen(ScreenHit::TabClose(s)) if close && s.term == term => Some(*r),
-            _ => None,
-        })
-    };
-    let tab = find(&app, 2, false).expect("a tab");
-    click(&mut app, tab.x + 3, 0);
-    let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
-    assert!(
-        sent.iter()
-            .any(|o| matches!(&o.msg, ClientMsg::Command(Command::FocusPane { term: 2 }))),
-        "it opens the ship"
-    );
-    // The × closes the session (with an undo), or asks again when an agent is running in it.
-    let cross = find(&app, 2, true).expect("its ×");
-    click(&mut app, cross.x + 1, 0);
-    click(&mut app, cross.x + 1, 0);
-    let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
-    assert!(
-        sent.iter().any(|o| matches!(
-            &o.msg,
-            ClientMsg::Command(Command::CloseSession { term: 2 })
-        )),
-        "the second press closes the running agent: {} messages",
-        sent.len()
-    );
-    app.mode = Mode::Normal;
-    app.on_mouse(MouseEvent {
-        kind: MouseEventKind::Down(MouseButton::Right),
-        column: tab.x + 3,
-        row: 0,
-        modifiers: KeyModifiers::NONE,
-    });
-    assert!(matches!(app.mode, Mode::ScreenMenu(_)), "the ship's menu");
-}
-
-#[test]
-fn a_tab_with_two_or_more_panes_shows_the_count_and_too_many_tabs_overflow() {
-    let mut app = split_world(3);
-    let rows = text(&mut app, 200, 40);
-    let top: String = rows[0].chars().skip(47).collect();
-    assert!(top.contains("fix-footer 3 ×"), "{top}");
-    // Six more ships in the fleet, on a narrow workspace: the active tab stays, the rest fold
-    // into ` …N `.
-    let mut app = reference_fixture::world(Stage::None);
-    for id in 20..26u32 {
-        let mut extra = app.snap.terms[&2].clone();
-        extra.id = id;
-        extra.label = format!("ship-{id}");
-        app.snap.terms.insert(id, extra);
-        let tab = id + 100;
-        app.snap.workspaces[0].tabs.push(crate::protocol::TabInfo {
-            id: tab,
-            name: String::new(),
-            layout: Node::Leaf(id),
-            focus: id,
-        });
-    }
-    app.screen_fresh();
-    let rows = text(&mut app, 120, 30);
-    show(&rows, "overflow");
-    let top: String = rows[0].chars().skip(11).collect();
-    assert!(top.contains("fix-footer") && top.contains(" …"), "{top}");
-    assert!(top.contains(" + ") && top.contains(" Files "), "{top}");
+    let rows = text(&mut app, 90, 24);
+    let top = work(&rows, 0);
+    show(&rows, "90x24");
+    assert!(top.contains('…') && top.contains(" × "), "{top}");
 }
 
 #[test]
@@ -778,7 +507,7 @@ fn the_files_and_changes_chips_open_the_project_panels_and_light_while_open() {
             _ => None,
         })
     };
-    let files = find(&app, |h| matches!(h, ScreenHit::FilesChip)).expect("the Files chip");
+    let files = find(&app, |h| matches!(h, ScreenHit::FilesChip)).expect("the files chip");
     assert_eq!(files.y, 0, "on the top border");
     let t = app.theme.clone();
     let buf = cells(&mut app, 140, 36);
@@ -786,70 +515,51 @@ fn the_files_and_changes_chips_open_the_project_panels_and_light_while_open() {
     click(&mut app, files.x + 2, 0);
     assert!(matches!(app.view, Some(crate::client::View::Files(_))), "it opens Files");
     let buf = cells(&mut app, 140, 36);
-    let files = find(&app, |h| matches!(h, ScreenHit::FilesChip)).expect("the Files chip");
+    let files = find(&app, |h| matches!(h, ScreenHit::FilesChip)).expect("the files chip");
     assert_eq!(buf[(files.x + 1, 0)].bg, t.accent, "the accent while open");
     click(&mut app, files.x + 2, 0);
     assert!(app.view.is_none(), "a second click closes it");
 }
 
 #[test]
-fn the_project_tools_open_as_a_panel_over_the_workspace_sixty_columns_wide() {
+fn the_close_chip_closes_its_pane() {
     let mut app = reference_fixture::world(Stage::None);
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    app.out = tx;
     cells(&mut app, 140, 36);
-    let panes_before = grid(&app, Rect::new(0, 0, 140, 36)).panes;
-    app.act(Action::Branches);
-    cells(&mut app, 140, 36);
-    let g = grid(&app, Rect::new(0, 0, 140, 36));
-    assert_eq!(g.sheet.width, 60);
-    assert_eq!(
-        g.sheet.right(),
-        g.panes.right(),
-        "over the right side of the workspace"
+    let close = app
+        .hits
+        .iter()
+        .find_map(|(r, h)| matches!(h, Hit::Screen(ScreenHit::CloseSplit(t)) if t.term == 1).then_some(*r))
+        .expect("the × chip");
+    click(&mut app, close.x + 1, close.y);
+    let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+    assert!(
+        sent.iter().any(|o| matches!(&o.msg, ClientMsg::Command(Command::CloseSession { .. } | Command::ClosePane { .. })))
+            || matches!(app.mode, Mode::Confirm(_)),
+        "{sent:?}"
     );
-    assert_eq!(g.panes, panes_before, "the workspace is not narrowed");
 }
 
 #[test]
-fn a_split_is_one_frame_cut_by_single_lines_with_proper_joints() {
+fn split_panes_are_boxes_of_their_own_a_column_apart() {
+    let mut app = split_world(2);
+    let rows = text(&mut app, 140, 36);
+    show(&rows, "2 panes");
+    let top = work(&rows, 0);
+    assert_eq!(top.matches('╭').count(), 2, "{top}");
+    assert!(top.contains("╮ ╭"), "a column of ground between the boxes: {top}");
+    assert!(top.contains("fix-footer") && top.contains("add-payments"), "each has its title");
+    assert_eq!(top.matches(" × ").count(), 2);
+    let all: String = rows.concat();
+    for joint in ['┬', '┴', '┼'] {
+        assert!(!all.contains(joint), "no joints: {joint}");
+    }
     let mut app = split_world(4);
     let rows = text(&mut app, 140, 36);
     show(&rows, "4 panes");
-    let all: String = rows.concat();
-    for joint in ['┬', '┴', '├', '┤', '┼'] {
-        assert!(all.contains(joint), "{joint}");
-    }
-    // One outer frame: a single top left corner in the workspace column.
-    let corners: usize = rows
-        .iter()
-        .map(|r| r.chars().skip(47).filter(|c| *c == '┌').count())
-        .sum();
-    assert_eq!(corners, 1);
-}
-
-#[test]
-fn each_pane_of_a_split_has_a_two_row_header_with_its_buttons() {
-    let mut app = split_world(2);
-    let rows = text(&mut app, 140, 36);
-    assert!(
-        rows[1].contains('⋯') && rows[1].contains('×'),
-        "{}",
-        rows[1]
-    );
-    assert!(rows[1].contains("fix-footer") && rows[1].contains("add-payments"));
-    assert!(
-        rows[2].contains('⎇'),
-        "the path and the branch: {}",
-        rows[2]
-    );
-    // Each is under 60 columns wide: no split or zoom buttons yet.
-    assert!(!rows[1].contains('⊞'));
-    let mut app = split_world(2);
-    let wide = text(&mut app, 200, 40);
-    assert!(
-        wide[1].contains('⊞') && wide[1].contains('⊟') && wide[1].contains('⤢'),
-        "{}",
-        wide[1]
-    );
+    let corners: usize = (0..rows.len()).map(|y| work(&rows, y).matches('╭').count()).sum();
+    assert_eq!(corners, 4);
 }
 
 #[test]
@@ -857,29 +567,16 @@ fn exactly_one_pane_has_the_accent_border() {
     let mut app = split_world(4);
     let buf = cells(&mut app, 140, 36);
     let t = app.theme.clone();
-    let line = |c: &ratatui::buffer::Cell| "│─┌┐└┘├┤┬┴┼".contains(c.symbol());
-    let area = Rect::new(47, 0, 93, 35);
+    let line = |c: &ratatui::buffer::Cell| "│─╭╮╰╯".contains(c.symbol());
+    let area = Rect::new(35, 0, 105, 35);
     let accent: Vec<(u16, u16)> = area
         .positions()
         .filter(|p| line(&buf[(p.x, p.y)]) && buf[(p.x, p.y)].fg == t.accent)
         .map(|p| (p.x, p.y))
         .collect();
     assert!(!accent.is_empty(), "the focused pane's lines");
-    // The focused pane is the top left one: nothing past the middle is accent, but the cross.
-    let (mid_x, mid_y) = (area.x + area.width / 2 + 2, area.height / 2 + 2);
-    assert!(
-        accent.iter().all(|(x, y)| *x < mid_x && *y < mid_y),
-        "{accent:?}"
-    );
-    assert_ne!(buf[(area.right() - 1, area.bottom() - 1)].fg, t.accent);
-    // Focus in the sidebar: the workspace has none, the sidebar frame is the accent one.
-    app.screen_side_set(SideItem::Sess(app.session_key(ClientTerm::local(1))));
-    let buf = cells(&mut app, 140, 36);
-    assert!(
-        area.positions()
-            .all(|p| !line(&buf[(p.x, p.y)]) || buf[(p.x, p.y)].fg != t.accent)
-    );
-    assert_eq!(buf[(0, 0)].fg, t.accent);
+    let (mid_x, mid_y) = (area.x + area.width / 2, area.height / 2);
+    assert!(accent.iter().all(|(x, y)| *x < mid_x && *y < mid_y), "{accent:?}");
 }
 
 #[test]
@@ -909,6 +606,32 @@ fn a_view_holds_four_panes_and_the_split_commands_say_which_side_the_new_one_goe
         app.notice
             .as_ref()
             .is_some_and(|(m, _, _)| m.contains("4 panes"))
+    );
+}
+
+#[test]
+fn zoom_fills_the_view_with_the_focused_pane_and_again_brings_the_split_back() {
+    let mut app = split_world(2);
+    text(&mut app, 140, 36);
+    app.act(Action::ZoomPane);
+    let rows = text(&mut app, 140, 36);
+    assert_eq!(work(&rows, 0).matches('╭').count(), 1);
+    app.act(Action::ZoomPane);
+    let rows = text(&mut app, 140, 36);
+    assert_eq!(work(&rows, 0).matches('╭').count(), 2);
+}
+
+#[test]
+fn tab_keys_step_through_the_sidebars_sessions() {
+    let mut app = reference_fixture::world(Stage::None);
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    app.out = tx;
+    text(&mut app, 140, 36);
+    app.act(Action::SelectTab(3));
+    let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+    assert!(
+        sent.iter().any(|o| matches!(&o.msg, ClientMsg::Command(Command::FocusPane { term: 3 }))),
+        "the third row is warm-finch: {sent:?}"
     );
 }
 

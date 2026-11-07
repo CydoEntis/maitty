@@ -54,12 +54,6 @@ pub enum Act {
     Split(ClientTerm, crate::layout::Dir),
     RightClicks(ClientTerm),
     RenameProject(String, String),
-    /// Ask a new name for a fleet (a workspace).
-    RenameFleet(super::screen::fleets::FleetId),
-    /// Give a fleet the colour at this index of the fleet palette.
-    FleetColour(super::screen::fleets::FleetId, u8),
-    /// A shell at once in a fleet.
-    NewShip(super::screen::fleets::FleetId),
     /// End everything in a project and forget it.
     CloseProject(usize),
     NewWorktree(usize),
@@ -306,6 +300,35 @@ impl App {
             sel: 0,
             at,
         }));
+    }
+
+    /// The release chip at the sidebar's foot: what is on offer, what runs, and the notes. It
+    /// opens upward from the chip.
+    pub(super) fn release_menu(&mut self) {
+        use crate::keys::Action;
+        let running = format!("Running v{}", crate::brand::APP_VERSION);
+        let notes = ("Release notes".to_string(), Act::Tool(Action::Updates));
+        let items = if let Some(v) = self.update_available.clone() {
+            vec![
+                (format!("Update to v{}", v.trim_start_matches('v')), Act::Tool(Action::Update)),
+                (running, Act::Tool(Action::Updates)),
+                notes,
+            ]
+        } else if self.restart_needed() {
+            vec![
+                ("Restart onto the new version".to_string(), Act::Tool(Action::Restart)),
+                (running, Act::Tool(Action::Updates)),
+                notes,
+            ]
+        } else {
+            vec![
+                (running, Act::Tool(Action::Updates)),
+                ("Check for updates".to_string(), Act::Tool(Action::CheckUpdate)),
+                notes,
+            ]
+        };
+        let side = self.screen.side_rect;
+        self.menu("maitty".into(), items, (side.x + 2, side.bottom().saturating_sub(1)));
     }
 
     /// Right-click on a pane's content.
@@ -716,9 +739,7 @@ impl App {
                 // one asked about is going), or the same row when it stays.
                 // The cursor is still on a row when the leader key or the actions list was
                 // opened from the sidebar: that's the sidebar too.
-                let from_side = self.mode == Mode::Side
-                    || self.screen.cursor.is_some()
-                    || self.screen.cursor_proj.is_some();
+                let from_side = self.mode == Mode::Side || self.screen.cursor.is_some();
                 self.screen.side_return = match &c.act {
                     _ if !from_side => None,
                     Act::Restore(_, _, _, t) | Act::OverrideCheck(t, ..) => {
@@ -760,12 +781,6 @@ impl App {
                     input: cur,
                 };
             }
-            Act::RenameFleet(fleet) => self.rename_fleet_start(fleet),
-            Act::FleetColour(fleet, color) => self.cmd_on(
-                fleet.machine,
-                Command::SetWorkspaceColor { ws: fleet.ws, color },
-            ),
-            Act::NewShip(fleet) => self.new_ship(Some(fleet)),
             Act::RenameConversation(id) => {
                 let cur = self
                     .snap_of(self.conversation_machine(id))

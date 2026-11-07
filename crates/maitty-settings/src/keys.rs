@@ -188,6 +188,8 @@ pub enum Action {
     ClosePane,
     Focus(crate::layout::Dir),
     FocusNext,
+    /// The focused pane fills its view, or goes back to its split.
+    ZoomPane,
     FocusPrev,
     Resize(crate::layout::Dir),
     /// Trade places with the neighbouring pane that way.
@@ -309,6 +311,7 @@ impl Action {
             Action::ClosePane => "Close pane".into(),
             Action::Focus(d) => format!("Focus the pane {}", dir(d)),
             Action::FocusNext => "Next pane".into(),
+            Action::ZoomPane => "Zoom pane".into(),
             Action::FocusPrev => "Previous pane".into(),
             Action::Resize(d) => format!("Resize the pane {}", dir(d)),
             Action::Swap(d) => format!("Swap with the pane {}", dir(d)),
@@ -399,6 +402,7 @@ impl Action {
             Action::ClosePane => "close-pane".into(),
             Action::Focus(dir) => format!("focus-{}", d(dir)),
             Action::FocusNext => "focus-next".into(),
+            Action::ZoomPane => "zoom-pane".into(),
             Action::FocusPrev => "focus-prev".into(),
             Action::Resize(dir) => format!("resize-{}", d(dir)),
             Action::Swap(dir) => format!("swap-{}", d(dir)),
@@ -501,6 +505,7 @@ impl FromStr for Action {
             "focus-up" => Action::Focus(Up),
             "focus-down" => Action::Focus(Down),
             "focus-next" => Action::FocusNext,
+            "zoom-pane" => Action::ZoomPane,
             "focus-prev" => Action::FocusPrev,
             "resize-left" => Action::Resize(Left),
             "resize-right" => Action::Resize(Right),

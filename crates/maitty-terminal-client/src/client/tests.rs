@@ -677,8 +677,8 @@ mod screen_tests {
         );
         assert_eq!(
             buf[(x + 8, active_y)].bg,
-            app.theme.card,
-            "and the session open in the workspace keeps the raised ground"
+            app.theme.hov,
+            "and the session open in the workspace keeps the row ground"
         );
         app.on_mouse(MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
@@ -702,8 +702,8 @@ mod screen_tests {
         assert_eq!(app.focused(), Some(ClientTerm::local(2)));
         assert_eq!(
             terminal.backend().buffer()[(x + 8, hover_y)].bg,
-            app.theme.card,
-            "the session now open has the raised ground"
+            app.theme.hov,
+            "the session now open has the row ground"
         );
     }
 
@@ -2004,9 +2004,9 @@ mod screen_tests {
                         if !split || mode != "off" || !row.starts_with(['┌', '╭']) {
                             continue;
                         }
-                        if ![app.theme.blocked, app.theme.accent].contains(&buf[(r.x + 1, r.y)].fg)
+                        if ![app.theme.blocked, app.theme.accent, app.theme.acc_ink].contains(&buf[(r.x + 3, r.y)].fg)
                         {
-                            failures.push(format!("{layout} split {split} {mode} update {update} {w}: {row} {:?} want {:?}", buf[(r.x + 1, r.y)].fg, app.theme.blocked));
+                            failures.push(format!("{layout} split {split} {mode} update {update} {w}: {row} {:?} want {:?}", buf[(r.x + 3, r.y)].fg, app.theme.blocked));
                         }
                     }
                     // Typing says so on the mode bar at every width.
@@ -2524,8 +2524,8 @@ mod screen_tests {
         );
         assert_eq!(
             o.matches("Doing something").count(),
-            2,
-            "on its row and on its tab, not in a second line"
+            1,
+            "on its row, not in a second line"
         );
     }
 
@@ -2853,7 +2853,7 @@ mod screen_tests {
         let top = app.pane_frames[0].1.y;
         assert_eq!(
             (buf[(159, top)].symbol(), buf[(159, top)].fg),
-            ("┐", app.theme.sky()),
+            ("╮", app.theme.sky()),
             "the focused border turns sky"
         );
         let (row, text) = bar_text(&app, &buf);
@@ -2912,7 +2912,7 @@ mod screen_tests {
     fn actions_list_every_command_with_its_key() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains("Menu"));
+        assert!(o.contains(" menu "));
         let at = app
             .hits
             .iter()
@@ -3021,11 +3021,14 @@ mod screen_tests {
                     modifiers: KeyModifiers::NONE,
                 });
             };
+            // Hidden, the sidebar leaves its `»` chip: that brings it back, and its menu chip.
+            click(&mut app, screen::ScreenHit::ExpandSidebar);
+            assert!(app.sidebar, "» brings the sidebar back");
+            draw(&mut app, w, h);
             click(&mut app, screen::ScreenHit::Actions);
             assert!(matches!(app.mode, Mode::Actions { .. }));
             let screen = draw(&mut app, w, h);
             show(&screen);
-            assert!(screen.contains("Expand sidebar"));
             let index = screen::action_items()
                 .iter()
                 .position(|(_, a)| *a == Action::Palette)
@@ -3112,9 +3115,9 @@ mod screen_tests {
             .hits
             .iter()
             .find_map(|(r, h)| {
-                (*h == Hit::Screen(screen::ScreenHit::NewShell)).then_some((r.x + 1, r.y))
+                matches!(h, Hit::Screen(screen::ScreenHit::MachinePlus(_))).then_some((r.x + 1, r.y))
             })
-            .expect("+ new is clickable");
+            .expect("the machine plus is clickable");
         app.on_mouse(MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
             column: at.0,
@@ -3139,7 +3142,7 @@ mod screen_tests {
                 let screen = draw(&mut app, 140, 30);
                 show(&screen);
                 if by_mouse {
-                    assert!(screen.contains("+ New"), "a visible new chip");
+                    assert!(screen.contains(" + "), "a visible plus chip");
                     click_new_chip(&mut app);
                 } else {
                     leader(&mut app, 't');
@@ -3666,8 +3669,8 @@ mod screen_tests {
         // A row's keys are in its menu; the status line has the global ones.
         let rows: Vec<&str> = o.lines().collect();
         assert!(
-            !rows[2].contains("Menu") && o.contains("+ New") && o.contains("Menu"),
-            "new and Actions are at the foot"
+            !rows[2].contains(" menu ") && o.contains(" menu "),
+            "the menu chip is at the foot"
         );
         let actions_y = app
             .hits
@@ -3789,11 +3792,11 @@ mod screen_tests {
     }
 
     #[test]
-    fn an_update_appears_in_the_tab_bar_only_when_available() {
+    fn an_update_appears_at_the_sidebars_foot_only_when_available() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let initial = draw(&mut app, 160, 45);
         assert!(
-            !initial.contains("Update") && initial.contains("Menu"),
+            !initial.contains("↑ v") && initial.contains(" menu "),
             "actions stay in the sidebar, no update when current"
         );
         assert!(
@@ -3805,8 +3808,8 @@ mod screen_tests {
         app.update_notes = vec!["Fixed: copying".into(), "New: update button".into()];
         let updated = draw(&mut app, 160, 45);
         assert!(
-            updated.contains("↑ Update 9.9.9"),
-            "the mode bar announces an available update"
+            updated.contains("↑ v9.9.9"),
+            "the sidebar's foot announces an available update"
         );
         // One notice in the working area: the Menu's Settings row carries no dot for it.
         app.act(Action::Menu);
@@ -3822,12 +3825,6 @@ mod screen_tests {
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         draw(&mut app, 160, 45);
         assert!(
-            app.hits
-                .iter()
-                .any(|(_, hit)| *hit == Hit::Screen(screen::ScreenHit::Update)),
-            "the update is clickable"
-        );
-        assert!(
             app.palette_commands().contains(&Action::Update),
             "and remains in the command palette"
         );
@@ -3835,15 +3832,17 @@ mod screen_tests {
             .hits
             .iter()
             .find_map(|(rect, hit)| {
-                (*hit == Hit::Screen(screen::ScreenHit::Update)).then_some((rect.x, rect.y))
+                (*hit == Hit::Screen(screen::ScreenHit::ReleaseMenu)).then_some((rect.x, rect.y))
             })
-            .unwrap();
+            .expect("the update chip is clickable");
         app.on_mouse(MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
             column: x,
             row: y,
             modifiers: KeyModifiers::NONE,
         });
+        // Its menu opens with the update first.
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         let confirm = draw(&mut app, 160, 45);
         assert!(matches!(&app.mode, Mode::Confirm(c) if c.act == menu::Act::Update));
         assert!(
@@ -4738,6 +4737,8 @@ second line
             .lines()
             .find(|l| l.contains("General") && l.contains("Sessions"))
             .expect("the tab strip");
+        // The strip itself, not the sidebar row beside it.
+        let tabs = &tabs[tabs.find("General").unwrap()..];
         assert!(
             !tabs.contains('●'),
             "the pill and the splash say so; the tabs do not: {tabs}"
@@ -5544,10 +5545,10 @@ second line
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(
-            o.contains("Changes") && o.contains("fix the flaky checkout test"),
+            o.contains(" changes ") && o.contains("fix the flaky checkout test"),
             "Changes docks beside the panes"
         );
-        assert!(o.contains("─ Changes "), "the drawer's title names it");
+        assert!(o.contains("│  changes "), "the panel's title chip names it");
         let _ = std::fs::remove_dir_all(&repo);
     }
 
@@ -5795,7 +5796,7 @@ second line
                 .contains("settings")
         );
         assert!(
-            cards.contains("+ New") && cards.contains("Menu"),
+            cards.contains(" menu ") && cards.contains(" + "),
             "sidebar controls remain in the sidebar"
         );
     }
@@ -6020,18 +6021,19 @@ second line
         let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = term.backend().buffer().clone();
-        // Square corners (the default): a line round the card on the desk's ground, the
-        // card's inside on the same ground.
+        // Round corners (the default): a line round the sidebar on the desk's ground, its
+        // inside on the panel's.
         let side = app.screen.side_rect;
         let y = side.y + side.height / 2;
         assert_eq!(buf[(side.x, y)].symbol(), "│", "the card's line");
-        assert_eq!(
-            buf[(side.x, y)].bg,
-            buf[(side.x + 1, y)].bg,
-            "one ground: the line, not a second grey, marks the card"
-        );
-        assert_eq!(buf[(side.x, side.y)].symbol(), "┌", "a square corner");
-        // Rounded keeps the centred line.
+        assert_eq!(buf[(side.x, y)].bg, app.theme.bg);
+        assert_eq!(buf[(side.x + 1, y)].bg, app.theme.sidebar_bg, "the panel");
+        assert_eq!(buf[(side.x, side.y)].symbol(), "╭", "a round corner");
+        // Off makes it square; Full keeps the centred line.
+        app.cfg.ui.rounded = crate::config::Rounding::Off;
+        let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+        term.draw(|f| render::draw(&mut app, f)).unwrap();
+        assert_eq!(term.backend().buffer()[(side.x, side.y)].symbol(), "┌");
         app.cfg.ui.rounded = crate::config::Rounding::Full;
         let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
         term.draw(|f| render::draw(&mut app, f)).unwrap();
@@ -7251,15 +7253,14 @@ second line
         app.cfg.ui.fold_retired_layout();
         match side {
             "right" => app.cfg.ui.sidebar_position = "right".into(),
-            "collapsed" => app.sidebar = false,
-            "hidden" => (app.sidebar, app.side_hidden) = (false, true),
+            "hidden" => app.sidebar = false,
             _ => {}
         }
         app
     }
 
     const LOOKS: [&str; 3] = ["floating", "tiled", "grid"];
-    const SIDES: [&str; 4] = ["left", "right", "collapsed", "hidden"];
+    const SIDES: [&str; 3] = ["left", "right", "hidden"];
 
     #[test]
     fn no_mode_draws_a_frame_round_the_window() {
@@ -7498,7 +7499,7 @@ second line
             for w in 40..=200u16 {
                 let (_, mut app) = super::design_tests::render_with(w, 24);
                 app.update_available = update.then(|| "0.44.0".into());
-                (app.sidebar, app.side_hidden) = (false, true); // the sidebar would take the chip; this checks the bar
+                app.sidebar = false; // the sidebar would take the chip; this checks the bar
                 into_mode(&mut app, "lit");
                 let buf = drawn(&mut app, w, 24);
                 let (_, bar) = bar_text(&app, &buf);
@@ -7802,7 +7803,7 @@ second line
     fn update_sits_at_the_bar_s_right_end_and_clicks_except_while_held() {
         let mut app = shortcut_mode();
         app.update_available = Some("9.9.9".into());
-        (app.sidebar, app.side_hidden) = (false, true); // the sidebar would take the chip; this checks the bar
+        app.sidebar = false; // the sidebar would take the chip; this checks the bar
         for mode in ["lit", "held", "typing"] {
             match mode {
                 "held" => hold(&mut app),
@@ -7905,8 +7906,8 @@ second line
         let sheet = app.screen.sheet_rect;
         let close = (sheet.x..sheet.right())
             .rev()
-            .find(|&x| buf[(x, sheet.y)].symbol() == "×")
-            .expect("the sheet's ✕");
+            .find(|&x| buf[(x, sheet.y)].symbol() == "»")
+            .expect("the panel's »");
         assert!(close + 5 >= sheet.right(), "at the corner");
         click_at(&mut app, close, sheet.y);
         assert!(app.view.is_none(), "a click on it closes Files");
@@ -8302,7 +8303,7 @@ mod settings_v8_tests {
             "Connect agents…",
             "HELPERS",
             "Sessions may start helpers",
-            "Count on the session row",
+            "Subagents in the sidebar",
             "LIMITS",
         ] {
             assert!(o.contains(want), "Agents shows {want}: {o}");
@@ -8391,7 +8392,7 @@ mod settings_v8_tests {
         open(
             &mut app,
             Cat::Agents,
-            row_of(Cat::Agents, "Count on the session row"),
+            row_of(Cat::Agents, "Subagents in the sidebar"),
         );
         let o = draw(&mut app, 100, 30);
         let help = modal::SETTINGS
@@ -8415,7 +8416,7 @@ mod settings_v8_tests {
             (Cat::Agents, "Sessions may start helpers"),
             (Cat::Sessions, "Bring sessions back after restart"),
             (Cat::Alerts, "Phone: say what it's doing"),
-            (Cat::Agents, "Count on the session row"),
+            (Cat::Agents, "Subagents in the sidebar"),
         ] {
             open(&mut app, cat, row_of(cat, label));
             let o = draw(&mut app, 80, 24);
@@ -9210,7 +9211,7 @@ mod check_sheet_tests {
     fn the_sheet_keeps_the_sidebars_foot_and_waits_for_output_it_has_not_got() {
         let mut app = open(160, 45, |_| {}, check(CheckState::Failed, Some(1)), None);
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains("+ New") && o.contains("Menu"), "the foot stays");
+        assert!(o.contains(" menu "), "the foot stays");
         assert!(o.contains("OUTPUT  reading…"), "no output yet:\n{o}");
     }
 
@@ -9601,7 +9602,6 @@ mod check_sheet_tests {
         draw(&mut app, 160, 45);
         app.mode = Mode::Side;
         app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(TERM)));
-        app.screen.cursor_proj = None;
         press(&mut app, KeyCode::Enter);
         app
     }
@@ -11764,12 +11764,6 @@ mod restart_tests {
         })
     }
 
-    fn pill_hit(app: &App, h: u16) -> Option<ratatui::layout::Rect> {
-        app.hits.iter().find_map(|(r, k)| {
-            (*k == Hit::Screen(screen::ScreenHit::Restart) && is_pill(app, h, r)).then_some(*r)
-        })
-    }
-
     fn click(app: &mut App, r: ratatui::layout::Rect) {
         app.on_mouse(MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
@@ -12050,18 +12044,18 @@ mod restart_tests {
         app.update_available = Some("9.9.9".into());
         let top = row0(&mut app);
         assert!(
-            top.contains("↑ Update 9.9.9") && !top.contains("↻ Restart"),
+            top.contains("↑ v9.9.9") && !top.contains("↻ restart"),
             "a release is out: {top}"
         );
         app.update_available = None;
         let top = row0(&mut app);
         assert!(
-            top.contains("↻ Restart") && !top.contains("Update"),
+            top.contains("↻ restart") && !top.contains("↑ v"),
             "installed but not running: {top}"
         );
         app.daemon_restart_requested = true;
         assert!(
-            !row0(&mut app).contains("↻ Restart"),
+            !row0(&mut app).contains("↻ restart"),
             "not while a restart is under way"
         );
         app.daemon_restart_requested = false;
@@ -12069,7 +12063,7 @@ mod restart_tests {
         app.installed_version = Some(Ok(env!("APP_VERSION").into()));
         let top = row0(&mut app);
         assert!(
-            !top.contains("Restart") && !top.contains("Update"),
+            !top.contains("restart") && !top.contains("↑ v"),
             "everything runs the installed version: {top}"
         );
     }
@@ -12080,10 +12074,18 @@ mod restart_tests {
             let (mut app, mut rx) = scene(100, 30, layout);
             app.snap.terms.retain(|id, _| *id == 3);
             let out = draw(&mut app, 100, 30);
-            assert!(out.contains("↻ Restart"), "{layout:?}\n{out}");
-            let r = pill_hit(&app, 30)
-                .expect("the pill is clickable, at the sidebar's foot or on the mode bar");
+            assert!(out.contains("↻ restart"), "{layout:?}\n{out}");
+            let r = app
+                .hits
+                .iter()
+                .find_map(|(r, k)| (*k == Hit::Screen(screen::ScreenHit::ReleaseMenu)).then_some(*r))
+                .expect("the chip at the sidebar's foot is clickable");
             click(&mut app, r);
+            let Mode::ScreenMenu(menu) = &app.mode else {
+                panic!("the chip opens its menu: {:?}", app.mode)
+            };
+            assert_eq!(menu.items[0].0, "Restart onto the new version");
+            app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
             assert!(
                 matches!(
                     sent(&mut rx).as_slice(),
@@ -12291,22 +12293,22 @@ mod side_panel_width_tests {
     #[test]
     fn brackets_narrow_and_widen_the_sheet_and_equals_puts_its_default_back() {
         let mut app = inbox_open(200, 50);
-        assert_eq!(app.screen.sheet_rect.width, 60, "the drawer starts 60 wide");
+        assert_eq!(app.screen.sheet_rect.width, 54, "Changes starts 54 wide");
         key(&mut app, '[');
         draw(&mut app, 200, 50);
-        assert_eq!(app.screen.sheet_rect.width, 56, "[ narrows it 4");
+        assert_eq!(app.screen.sheet_rect.width, 50, "[ narrows it 4");
         key(&mut app, ']');
         key(&mut app, ']');
         draw(&mut app, 200, 50);
-        assert_eq!(app.screen.sheet_rect.width, 64, "] widens it 4 each");
+        assert_eq!(app.screen.sheet_rect.width, 58, "] widens it 4 each");
         assert_eq!(
             app.screen.saved.sheet_w.get("drawer"),
-            Some(&64),
+            Some(&58),
             "kept in the saved UI state"
         );
         key(&mut app, '=');
         draw(&mut app, 200, 50);
-        assert_eq!(app.screen.sheet_rect.width, 60, "= puts the default back");
+        assert_eq!(app.screen.sheet_rect.width, 54, "= puts the default back");
     }
 
     #[test]
@@ -12369,7 +12371,7 @@ mod side_panel_width_tests {
         // Mid-slide, or left from another view: the drawn rectangle says nothing about the width.
         app.screen.sheet_rect.width = 22;
         key(&mut app, '[');
-        assert_eq!(app.screen.saved.sheet_w.get("drawer"), Some(&56));
+        assert_eq!(app.screen.saved.sheet_w.get("drawer"), Some(&50));
     }
 
     #[test]
@@ -12614,7 +12616,7 @@ mod side_panel_width_tests {
         ))));
         draw(&mut app, 200, 50);
         let (_, pane) = *app.pane_frames.first().unwrap();
-        click(&mut app, pane.x + pane.width / 2, pane.y + pane.height / 2);
+        click(&mut app, pane.x + 4, pane.y + pane.height / 2);
         assert!(!app.view_has_keys(), "set aside");
         app
     }
@@ -13030,7 +13032,7 @@ mod files_panel_tests {
             .find(|l| l.contains('‹'))
             .expect("the file's header");
         assert!(
-            header.contains("i edit") && header.contains("1–16 of 60 "),
+            header.contains("1–15 of 60 "),
             "the title and the mode bar take a row each: {header}"
         );
         let _ = std::fs::remove_dir_all(&dir);
@@ -13314,7 +13316,7 @@ mod files_panel_tests {
             o.contains("SENTINEL"),
             "the same file, width and theme reuse it:\n{o}"
         );
-        let (o, _) = frame(&mut app, 180, 50);
+        let (o, _) = frame(&mut app, 150, 50);
         assert!(
             !o.contains("SENTINEL"),
             "a new width lays it out again:\n{o}"
@@ -13322,7 +13324,7 @@ mod files_panel_tests {
         mark(&mut app);
         select(&mut app, "notes.txt");
         select(&mut app, "GUIDE.md");
-        let (o, _) = frame(&mut app, 180, 50);
+        let (o, _) = frame(&mut app, 150, 50);
         assert!(
             !o.contains("SENTINEL") && o.contains("Guide"),
             "a new preview lays it out again:\n{o}"
@@ -14866,16 +14868,12 @@ mod references_view_tests {
             let o = draw(&mut app, w, h);
             show(&o);
             assert!(
-                o.contains("References"),
+                o.contains(" references "),
                 "in the side panel at {w}✕{h}:\n{o}"
             );
             assert!(
                 o.contains("No references yet · paste an image or add a file"),
                 "the empty state at {w}✕{h}:\n{o}"
-            );
-            assert!(
-                o.contains("Refs") || o.contains("References"),
-                "its tab in the strip at {w}✕{h}"
             );
             key(&mut app, KeyCode::Char('e'));
             assert!(sheet(&app).is_none(), "e closes it again");

@@ -40,10 +40,6 @@ pub(super) enum Release {
     Hidden,
 }
 
-pub(super) fn release_segs(app: &App, shown: Release, t: &Theme) -> Option<(Vec<Seg>, ScreenHit)> {
-    release_pill(app, shown, t).and_then(|piece| Some((piece.segs, piece.hit?)))
-}
-
 /// Update when a newer release is out, else Restart once a newer one is installed but not
 /// running, as much of it as `shown`.
 fn release_pill(app: &App, shown: Release, t: &Theme) -> Option<Piece> {

@@ -116,17 +116,19 @@ fn fold_legacy_helpers(value: &mut toml::Table) {
     }
 }
 
-/// An old `ui.corners = "rounded"` is `ui.rounded = "corners"` unless the file sets that itself,
-/// now that one setting rounds everything. The file itself is not rewritten.
+/// An old `ui.corners` is `ui.rounded` unless the file sets that itself, now that one setting
+/// rounds everything: `rounded` is `corners`, anything else (square, flush) is `off`, since
+/// round corners are the default now. The file itself is not rewritten.
 fn fold_legacy_corners(value: &mut toml::Table) {
     let Some(ui) = value.get_mut("ui").and_then(toml::Value::as_table_mut) else {
         return;
     };
-    let corners = ui.remove("corners");
-    if !ui.contains_key("rounded")
-        && corners.as_ref().and_then(toml::Value::as_str) == Some("rounded")
-    {
-        ui.insert("rounded".into(), toml::Value::String("corners".into()));
+    let Some(corners) = ui.remove("corners") else {
+        return;
+    };
+    if !ui.contains_key("rounded") {
+        let rounded = if corners.as_str() == Some("rounded") { "corners" } else { "off" };
+        ui.insert("rounded".into(), toml::Value::String(rounded.into()));
     }
 }
 
@@ -1863,9 +1865,9 @@ mod tests {
     }
 
     #[test]
-    fn rounded_default_off_and_read_from_the_file_old_switch_or_name() {
+    fn rounded_default_corners_and_read_from_the_file_old_switch_or_name() {
         use super::Rounding;
-        assert_eq!(super::Ui::default().rounded, Rounding::Off);
+        assert_eq!(super::Ui::default().rounded, Rounding::Corners);
         for (written, read) in [
             ("true", Rounding::Corners),
             ("false", Rounding::Off),
@@ -1936,7 +1938,7 @@ mod tests {
             read("[ui]\ncorners = \"rounded\"\nrounded = true\n"),
             Rounding::Corners
         );
-        assert_eq!(read(""), Rounding::Off);
+        assert_eq!(read(""), Rounding::Corners);
     }
 
     #[test]

@@ -197,15 +197,11 @@ pub(super) struct Screen {
     pub dividers: Vec<(Rect, bool, Vec<bool>)>,
     /// Sidebar cursor (keyboard browsing; bare keys work while it's set).
     pub cursor: Option<ClientSession>,
-    /// The sidebar cursor on a heading instead (its fold key, `m:<machine>` or `c:<fleet>`).
-    pub cursor_proj: Option<String>,
-    /// The sidebar cursor on a fleet row.
-    pub cursor_fleet: Option<fleets::FleetId>,
+    /// The parent pane of each subagent row drawn this frame, for their clicks
+    /// (`ScreenHit::Subagent`).
+    pub sub_rows: Vec<ClientTerm>,
     /// The session you were last on in each fleet: what picking the fleet opens.
     pub fleet_active: HashMap<fleets::FleetId, ClientTerm>,
-    /// The ships half's scroll, and the row the divider between the halves was drawn on.
-    pub ships_scroll: u16,
-    pub mid_y: u16,
     /// What the sidebar cursor walks over, top to bottom.
     pub side_items: Vec<SideItem>,
     /// Projects opened this run that haven't been looked at (NEW chip).
@@ -226,12 +222,6 @@ pub(super) struct Screen {
     /// The sidebar's filter: what is typed, and whether the keys are going into it.
     pub filter: String,
     pub filtering: bool,
-    /// The full sidebar is open over the workspace (a screen too narrow to have room for it).
-    pub overlay_open: bool,
-    /// The sessions the sidebar has listed so far, and the ones that appeared since, with when
-    /// (their accent bar flashes for a moment).
-    pub rows_known: Option<HashSet<ClientSession>>,
-    pub flash: HashMap<ClientSession, Instant>,
     /// The sidebar drew the Update or Restart chip this frame.
     pub release_in_side: bool,
     /// Where the side sheet was drawn, and the widest it could be there (its edge's drag and
@@ -300,10 +290,6 @@ pub(super) struct Screen {
 /// A row the sidebar cursor can rest on.
 #[derive(Debug, Clone, PartialEq)]
 pub(super) enum SideItem {
-    /// A heading that folds: its key (`m:<machine>` or `c:<fleet>`).
-    Proj(String),
-    /// A fleet row.
-    Fleet(fleets::FleetId),
     Sess(ClientSession),
 }
 
@@ -1183,22 +1169,11 @@ impl App {
         if changed {
             self.screen.save();
         }
-        // You closed the last session: a shell in your home folder takes its place, so there's
-        // always somewhere to type (and closing a project never closes the app).
-        if focus.is_none()
-            && self.screen.last_focus.is_some()
-            && self.snap.terms.is_empty()
-            && self.snap.conversations.is_empty()
-        {
+        // You closed the last session: the workspace says no pane is open and offers a new
+        // session; closing a project never closes the app.
+        if focus.is_none() && self.screen.last_focus.is_some() && self.snap.terms.is_empty() {
             self.screen.last_focus = None;
             self.splash = false;
-            let home = self
-                .cfg
-                .start_dir()
-                .or_else(|| directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf()))
-                .unwrap_or_else(std::env::temp_dir);
-            self.screen_start_pane_on(MachineId::LOCAL, home, None, false);
-            return;
         }
         let proj_of = |t: ClientTerm| {
             model
@@ -1439,25 +1414,23 @@ fn session_title(t: &TermInfo, name: &str, top: &Path) -> String {
 pub(super) enum ScreenHit {
     /// The toast's ✕.
     ToastClose,
-    /// The sidebar's ` inbox N ` chip.
-    OpenInbox,
     /// The sidebar's search field.
     SideFilter,
-    /// The ` x ` on the search field: clear what is typed.
+    /// The `×` on the filter field: clear what is typed.
     ClearFilter,
-    /// A machine, fleet or ship-group row of the sidebar: its place in `Screen::side_items`.
-    SideRow(usize),
-    /// The `+` on a machine heading: a shell in that machine's first fleet.
+    /// A subagent row of the sidebar (its place in `Screen::sub_rows`): it opens its parent's
+    /// pane, where the agent shows its subagents itself.
+    Subagent(usize),
+    /// The release chip on the sidebar's foot: its menu, opening upward.
+    ReleaseMenu,
+    /// The `n new session` chip in a workspace with no pane open.
+    NoPaneNew,
+    /// The `+` on a machine heading: a shell on that machine at once.
     MachinePlus(MachineId),
-    /// A tab of the workspace's tab row (its ship), and the `×` on it.
-    Tab(ClientTerm),
-    TabClose(ClientTerm),
-    /// The ` Files ` and ` Changes ` chips on the tab row.
+    /// The `files` and `changes` chips on a pane's top border.
     FilesChip,
     ChangesChip,
-    /// A button on a split pane's header.
-    PaneBtn(ClientTerm, PaneBtn),
-    /// The sidebar's "+ new": a plain shell in the selected project.
+    /// A session row of the sidebar.
     Session(ClientSession),
     /// A button on the selected Inbox item: the key it stands for (`\n` Enter, `\x1b` Esc).
     InboxKey(char),
@@ -1515,7 +1488,6 @@ pub(super) enum ScreenHit {
     Update,
     /// Restart the daemon onto the installed version (after an update).
     Restart,
-    NewShell,
     /// A row of the worktree clean-up list (tick or untick it), and its Remove button.
     TidyRow(usize),
     TidyGo,
@@ -1636,7 +1608,6 @@ pub(in crate::client) use new_session::NewSession;
 pub(in crate::client) use new_session_ui::draw_new_session;
 mod popover;
 mod popups;
-mod rail;
 mod references_sheet;
 mod secret_ask;
 #[cfg(test)]
@@ -1654,7 +1625,6 @@ mod side;
 mod splash;
 mod workspace;
 mod splash_wide;
-mod tabs;
 mod tidy;
 pub(in crate::client) use self::{
     branch_sheet::*, card::*, check_actions::*, check_approve::*, check_sheet::*, dialogs::*,

@@ -67,9 +67,7 @@ fn structured_only_conversation_renders_without_any_workspace_or_terminal() {
             "attaching does not implicitly open a terminal"
         );
         let text = draw(&mut app, width, height);
-        // Narrow, the collapsed column holds its initials.
-        let name = if width < 110 { "C4" } else { "Codex 41" };
-        assert!(text.contains(name), "{text}");
+        assert!(text.contains("Codex 41"), "{text}");
         assert!(app.snap.workspaces.is_empty() && app.snap.terms.is_empty());
         assert_eq!(
             app.screen

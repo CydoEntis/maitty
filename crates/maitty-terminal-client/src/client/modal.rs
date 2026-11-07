@@ -547,10 +547,10 @@ pub const SETTINGS: &[Setting] = &[
     },
     Setting {
         path: "ui.subagent_count",
-        label: "Count on the session row",
+        label: "Subagents in the sidebar",
         kind: Kind::Bool,
         cat: Cat::Agents,
-        help: "Shows \"· 4 agents\" on a working row only when the agent reports helpers. Claude does; Codex doesn't.",
+        help: "Lists the subagents of an agent's current turn under its row, as its hooks report them.",
     },
     Setting {
         path: "auto_continue",

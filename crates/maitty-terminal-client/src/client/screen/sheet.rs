@@ -37,11 +37,14 @@ const SHEET_STEP: u16 = 4;
 const FILES_SHARE: u32 = 55;
 /// Narrower than this, Files shows the tree or the open file, not both side by side.
 const FILES_BOTH_FROM: u16 = 60;
-/// The drawer's width, one for all four tools, before you size it.
+/// The drawer's width, one for all four tools once you size it; Files (a tree beside the file)
+/// and Changes (the diffs) start at the design's widths.
 pub(super) const DRAWER_W: u16 = 60;
+const FILES_DRAWER_W: u16 = 96;
+const CHANGES_DRAWER_W: u16 = 54;
 /// The widest it floats, and the columns of the terminal it always leaves.
 const DRAWER_MAX: u16 = 110;
-const OVERLAY_KEEP: u16 = 24;
+const OVERLAY_KEEP: u16 = 12;
 
 impl SheetKind {
     /// Its name in the saved UI state, where its width is kept.
@@ -83,12 +86,11 @@ pub(in crate::client) fn wanted_w(app: &App, kind: SheetKind, screen_w: u16) -> 
     } else {
         kind.width_key()
     };
-    app.screen.saved.sheet_w.get(key).copied().unwrap_or_else(|| {
-        if overlaid(app, kind) {
-            DRAWER_W
-        } else {
-            kind.default_w(screen_w)
-        }
+    app.screen.saved.sheet_w.get(key).copied().unwrap_or_else(|| match kind {
+        SheetKind::Files => FILES_DRAWER_W,
+        SheetKind::Changes => CHANGES_DRAWER_W,
+        _ if overlaid(app, kind) => DRAWER_W,
+        _ => kind.default_w(screen_w),
     })
 }
 
@@ -107,6 +109,17 @@ pub(in crate::client) fn overlaid(_app: &App, kind: SheetKind) -> bool {
 /// The widest a floating drawer gets over `col`: the terminal keeps `OVERLAY_KEEP` columns.
 pub(in crate::client) fn overlay_widest(col: Rect) -> u16 {
     col.width.saturating_sub(OVERLAY_KEEP).min(DRAWER_MAX)
+}
+
+/// The share of the panes a panel may cover, so the program beside it stays readable: Files
+/// 80%, Changes 70%, the others 80%.
+pub(in crate::client) fn drawer_cap(kind: SheetKind, col: Rect) -> u16 {
+    let share = |pc: u32| (u32::from(col.width) * pc / 100) as u16;
+    match kind {
+        SheetKind::Files => share(80),
+        SheetKind::Changes => share(70),
+        _ => share(80),
+    }
 }
 
 /// The side panel's tabs, in Tab's order: the view, its name, its name where room is short and
@@ -300,8 +313,11 @@ pub(in crate::client) fn draw_sheet(
     kind: SheetKind,
     t: &Theme,
 ) {
-    // Files, Changes, Branch and References are named by their title; the rail on the right
-    // edge is where the others are.
+    if overlaid(app, kind) {
+        let body = draw_panel_frame(app, buf, r, kind, t);
+        draw_panel_body(app, buf, body, kind, t);
+        return;
+    }
     let (title, sub, close) = match kind {
         SheetKind::Inbox => (
             "INBOX".to_string(),
@@ -310,11 +326,7 @@ pub(in crate::client) fn draw_sheet(
         ),
         SheetKind::Both => ("Changes".to_string(), String::new(), ScreenHit::ViewClose),
         SheetKind::Changes | SheetKind::Files | SheetKind::Branch | SheetKind::References => {
-            let name = DRAWER_TABS
-                .iter()
-                .find(|(k, ..)| *k == kind)
-                .map_or("", |(_, name, ..)| *name);
-            (name.to_string(), String::new(), ScreenHit::ViewClose)
+            (String::new(), String::new(), ScreenHit::ViewClose)
         }
         SheetKind::Check => ("CHECK".to_string(), check_title(app), ScreenHit::ViewClose),
     };
@@ -338,17 +350,6 @@ pub(in crate::client) fn draw_sheet(
     let body = inside;
     match kind {
         SheetKind::Inbox => draw_inbox(app, buf, body, c.bg, t),
-        SheetKind::Changes => {
-            let inner = Rect {
-                x: inside.x + 1,
-                width: inside.width.saturating_sub(2),
-                ..inside
-            };
-            if let Some(crate::client::View::Changes(v)) = app.view.take() {
-                crate::client::design::draw_changes(app, buf, inner, t, &v);
-                app.view = Some(crate::client::View::Changes(v));
-            }
-        }
         SheetKind::Both => {
             if let Some(crate::client::View::Both(v)) = &app.view {
                 draw_both(buf, inside, t, v);
@@ -360,36 +361,69 @@ pub(in crate::client) fn draw_sheet(
                 app.view = Some(crate::client::View::Check(v));
             }
         }
-        SheetKind::Files => {
-            let inner = Rect {
-                x: inside.x + 1,
-                width: inside.width.saturating_sub(2),
-                ..inside
-            };
-            if let Some(crate::client::View::Files(mut v)) = app.view.take() {
-                crate::client::design::draw_files(
-                    app,
-                    buf,
-                    inner,
-                    t,
-                    &mut v,
-                    r.width < FILES_BOTH_FROM,
-                );
-                app.view = Some(crate::client::View::Files(v));
-            }
+        // The panel kinds are drawn above, inside the pane.
+        SheetKind::Changes | SheetKind::Files | SheetKind::Branch | SheetKind::References => {}
+    }
+}
+
+/// The side panel's frame inside the pane: the panel ground, a line down its left edge, and on
+/// its first row the title chip (lit while the panel has the keys) and `»`, which closes it.
+/// Returns the room under the title row.
+fn draw_panel_frame(app: &mut App, buf: &mut Buffer, r: Rect, kind: SheetKind, t: &Theme) -> Rect {
+    fill(buf, r, t.sidebar_bg);
+    for y in r.top()..r.bottom() {
+        put(buf, r.x, y, &[seg("│", Style::default().fg(t.line).bg(t.sidebar_bg))], r.x + 1);
+    }
+    hit(app, r, ScreenHit::Noop);
+    let title = match kind {
+        SheetKind::Changes => match &app.view {
+            Some(crate::client::View::Changes(v)) => match v.review.as_ref() {
+                Some(review) => format!("changes {}", review.files.len()),
+                None => "changes".into(),
+            },
+            _ => "changes".into(),
+        },
+        SheetKind::Files => "files".into(),
+        SheetKind::Branch => "branch".into(),
+        _ => "references".into(),
+    };
+    let lit = sheet_has_keys(app);
+    let chip_ = chips::chip(app, &title, chips::Chip::Title { focused: lit }, t.sidebar_bg, t);
+    put(buf, r.x + 2, r.y, &chip_, r.right().saturating_sub(1));
+    let close = chips::chip(app, SHOW, chips::Chip::Title { focused: false }, t.sidebar_bg, t);
+    let cw = segs_width(&close);
+    let cx = r.right().saturating_sub(cw + 1);
+    put(buf, cx, r.y, &close, r.right());
+    hit(app, Rect { x: cx, y: r.y, width: cw, height: 1 }, ScreenHit::ViewClose);
+    Rect {
+        x: r.x + 1,
+        y: r.y + 1,
+        width: r.width.saturating_sub(1),
+        height: r.height.saturating_sub(1),
+    }
+}
+
+/// What the side panel shows: Files, Changes, Branch or References.
+fn draw_panel_body(app: &mut App, buf: &mut Buffer, body: Rect, kind: SheetKind, t: &Theme) {
+    let ground = t.sidebar_bg;
+    match (kind, app.view.take()) {
+        (SheetKind::Changes, Some(crate::client::View::Changes(v))) => {
+            crate::client::design::draw_changes(app, buf, body, t, &v);
+            app.view = Some(crate::client::View::Changes(v));
         }
-        SheetKind::Branch => {
-            if let Some(crate::client::View::Branch(mut v)) = app.view.take() {
-                draw_branch(app, buf, body, c.bg, t, &mut v);
-                app.view = Some(crate::client::View::Branch(v));
-            }
+        (SheetKind::Files, Some(crate::client::View::Files(mut v))) => {
+            crate::client::design::draw_files(app, buf, body, t, &mut v, body.width < FILES_BOTH_FROM);
+            app.view = Some(crate::client::View::Files(v));
         }
-        SheetKind::References => {
-            if let Some(crate::client::View::References(mut v)) = app.view.take() {
-                draw_references(app, buf, body, c.bg, t, &mut v);
-                app.view = Some(crate::client::View::References(v));
-            }
+        (SheetKind::Branch, Some(crate::client::View::Branch(mut v))) => {
+            draw_branch(app, buf, body, ground, t, &mut v);
+            app.view = Some(crate::client::View::Branch(v));
         }
+        (SheetKind::References, Some(crate::client::View::References(mut v))) => {
+            draw_references(app, buf, body, ground, t, &mut v);
+            app.view = Some(crate::client::View::References(v));
+        }
+        (_, view) => app.view = view,
     }
 }
 

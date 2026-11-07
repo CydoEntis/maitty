@@ -218,7 +218,7 @@ fn drawn_in(app: &mut App, layout: &str) -> Buffer {
     term.backend().buffer().clone()
 }
 
-/// Rounded shapes reach every chip and floating card: the FLEETS chip, + New and Menu on the
+/// Rounded shapes reach every chip and floating card: the sidebar's title, machine and menu chips on the
 /// plain ground, and the Menu.
 #[test]
 fn rounded_shapes_round_cards_and_give_chips_pill_ends() {
@@ -226,7 +226,7 @@ fn rounded_shapes_round_cards_and_give_chips_pill_ends() {
         let mut app = world(Stage::None);
         app.cfg.ui.rounded = crate::config::Rounding::Full;
         let text = reference_fixture::raw_text(&mut app, layout, 140, 36, "unicode");
-        for chip in ["FLEETS", "+ New", "Menu"] {
+        for chip in ["maitty", "This computer", "menu"] {
             assert!(
                 text.contains(chip),
                 "{chip} stays visible: {layout:?}\n{text}"
