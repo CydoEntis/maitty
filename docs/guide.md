@@ -105,38 +105,36 @@ and your configured custom ones; rows click and the wheel scrolls.
 - Nothing moves in the sidebar by itself: a session that needs you or finishes keeps its row (its mark and name say so, and the Inbox lists what needs you). Idle agents stay running; no sleep screen is shown for sessions saved by older releases.
 - A session taking a real share of the machine says so in its pane's title, beside its state
   (`▲ 38% CPU · 2.1 GB`, from a fifth of the CPU or two gigabytes).
-- The sidebar footer keeps **+ new** and **Menu** available. `Ctrl+T`, `Ctrl+A t`, **+ New** and a machine's **+** start a shell at once in the fleet you are in (a new tab); the Menu's **Session...** opens the New session dialog (a project, then a machine). Type your agent in the shell.
+- The sidebar lists each machine with its sessions. `Ctrl+T`, `Ctrl+Space t` and a machine's **+** start a shell at once where you are; `Ctrl+Space n` (or the **n new session** chip when no pane is open) opens the New session dialog (a project, then a machine). Type your agent in the shell.
 - `⇆` under a row names a file that this checkout and another have each changed since their
   branches parted (a merge conflict waiting to happen); more than two are one line with a count.
 - Drag a project, or a session within its project, up or down to reorder it. Click a project to fold or open it. With the sidebar focused
-  (`Ctrl+A` then `←`), a row's menu letters work directly (a row's menu lists them): `x` (or
+  (`Ctrl+Space` then `←`), a row's menu letters work directly (a row's menu lists them): `x` (or
   Delete) asks to close, `r` renames. Settings › General › UPDATES shows the version; Settings warns at the top when the installed, window and daemon versions differ.
 
-The bar along the bottom always says which mode you are in: `TYPING` while keys go to the
-pane. The leader key is `Ctrl+A`. Press it (or click the bar) for **shortcut mode**: the
-bar turns sky blue and suggests keys (`n shell`, `f files`, `? all keys`, `Esc type`, …; a click
-on one runs it), the pane you're in turns sky too, each key below runs its action, and the mode
-stays for the next key. A key
-that does nothing says "Shortcut mode — Esc to type". `Esc`, `Ctrl+A` again or a click into a pane
-go back to typing, and so does a new shell, session, tab or split: the next key goes to the
-new pane. Closing a popup returns to shortcut mode. While the sidebar, a popup or a panel has
-the keys, the bar names it and says how to use and leave it (`FILES · / filter · i edit · Enter
-insert path · Esc close`). With **Leader waits for next key** on (Settings › General; off by default), a pause after the leader shows the compact key map: a key runs its
-command, Tab (or typing a letter that is no key) searches every command, `?` shows all keys,
-and keys marked `›` open a second step (`g` worktrees: new, switch, merge, delete; Backspace
-goes back). No default but `?` needs Shift, and each key does one thing; no letter acts by itself in
-the sidebar. Every default shortcut, and every screen's own keys, are in
-[shortcuts](shortcuts.md).
+The bar along the bottom always says which mode you are in: ` PANE ` while keys go to the
+pane, with the session you are on. The leader key is `Ctrl+Space`. Press it (or click ` PANE `) for
+**key mode**: the chip turns to a yellow ` KEYS ` and the bar lists keys (`n new  s split  x close
+tab pane  ? help  esc back`; a click on one runs it), the pane you're in turns sky, each key below
+runs its action, and the mode stays for the next key, so `j j k` walks the sessions. A key that does
+nothing says "Shortcut mode — Esc to type". `Esc`, `Ctrl+Space` again or a click into a pane go back to
+the pane, and so does a new shell, session or split: the next key goes to the new pane. Closing a
+popup returns to key mode. While the sidebar, a popup or a panel has the keys, the bar names it and
+lists its keys (` FILES ` … `/ filter  i edit  enter insert path  esc close`). With **Leader waits for
+next key** on (Settings › General; off by default), a pause after the leader shows the compact key map:
+a key runs its command, Tab (or typing a letter that is no key) searches every command, and keys marked
+`›` open a second step (`g` worktrees: new, switch, merge, delete; Backspace goes back). `?` is the
+keys help. Only `?`, `S` and `_` need Shift, and each key does one thing; no letter acts by itself in
+the sidebar. Every default shortcut, and every screen's own keys, are in [shortcuts](shortcuts.md).
 
-Without the leader: **Alt+1–9** selects tabs; **Alt+arrows** moves pane focus
-when enabled in Settings (after the leader, Alt+arrows swaps panes instead). All keys shows changes to these bindings too.
+Without the leader: **Alt+1–9** opens that session of the sidebar; **Alt+arrows** moves pane focus
+when enabled in Settings (after the leader, Alt+arrows swaps panes instead).
 
-**Files**, **Changes**, **Branch** and **References** share the side panel docked beside
-your panes. A tab strip at its top names each with its key (`Files f · Changes c · Branch b ·
-References a`), the open one lit
-while the panel has the keys; Tab / Shift+Tab (or a click on a tab) moves between them for the
-same checkout. A click into a pane gives that pane the keys and leaves the panel open beside
-it; a click in the panel, or its key again, gives the keys back.
+**Files**, **Changes**, **Branch** and **References** share the side panel that slides in from
+the pane's right edge, inside its box: its title chip names the open one (lit while the panel has
+the keys) and `»` or Esc closes it. A pane's `files` and `changes` chips open those two; Tab / Shift+Tab
+moves between the four for the same checkout. A click into the pane gives it the keys and leaves the
+panel open; a click in the panel, or its key again, gives the keys back.
 
 **Files** shows the project's tree and the file you pick beside it (on a narrow panel the
 file takes the panel, `‹` goes back). `f` again or Esc closes it; Ctrl+click on a `path:line`
@@ -188,22 +186,22 @@ still has them loads, and they are ignored.
 - **Mouse:** programs that use it (vim, lazygit, htop, full-screen agents) get clicks, wheel and
   drags. Hold Shift to select text yourself.
 - **Move:** drag a pane by its title onto another pane of the tab and the two swap places
-  (each takes the other's size); Esc cancels. `Ctrl+A` then `Alt`+an arrow swaps the pane
+  (each takes the other's size); Esc cancels. `Ctrl+Space` then `Alt`+an arrow swaps the pane
   you're in with the one that way, and the pane's right-click menu has "Move pane left" and so
   on.
 - **Copy:** drag to select; double-click copies a word, path or link. Programs that copy (OSC 52,
   e.g. Claude's `/copy`, nvim) put it on your clipboard. Ctrl+click opens a link.
-- **Images:** `Ctrl+A`, then `Ctrl+V` (or a paste while an image is on the
+- **Images:** `Ctrl+Space`, then `Ctrl+V` (or a paste while an image is on the
   clipboard) saves the image and pastes its path; Claude Code and Codex attach it. In a pane on
   another machine the image is sent to that machine over ssh (up to 25 MB), kept there in
   `~/.cache/maitty/pastes` (private, cleared after a week), and its path there is pasted. It needs
   ssh to that machine (not a custom transport) and a login that works without a prompt.
-- **Files to another machine:** in a pane on another machine, `Ctrl+A`, then `d`, asks for a
+- **Files to another machine:** in a pane on another machine, `Ctrl+Space`, then `d`, asks for a
   file's path (type it, or drop the file on the terminal: the path is pasted into the box). The
   file (up to 100 MB; one file, not a folder) goes to that machine over ssh the same way as an image,
   into the same private folder (`~/.cache/maitty/pastes`), and its path there is typed into the pane.
   The name there is `paste-<time>-<id>-<your file's name>`, so two files never overwrite each other.
-  A toast shows the percentage; `Ctrl+A`, `d` again (or the toast's close mark) stops it.
+  A toast shows the percentage; `Ctrl+Space`, `d` again (or the toast's close mark) stops it.
   A sent file stays on that machine for a week, readable by you only, so do not send a secret you
   would not leave there. A paste of text never sends a file, even when the text is a path.
 - **Keys:** on Windows, combos plain terminals can't send (Ctrl+Shift+letter, Ctrl+Enter, Ctrl+Tab)

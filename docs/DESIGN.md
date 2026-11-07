@@ -138,16 +138,18 @@ two answers as buttons on the bottom border: a green `Answer` that goes to the s
 red `Later esc` that dismisses it. Always round corners. It slides in and fades out
 with motion on. See UI › *the frame* (Toast).
 
-## Mode bar
+## Status bar
 
-The one full-width row, along the bottom.
-Typing: a quiet ` TYPING ` chip and the leader key. Shortcut mode: the whole row in `sky()`, a
-` SHORTCUT ` chip and the next keys you can press; starting a pane ends it. When something other than the panes
-has the keys, the bar stays on `bg`, never sky: a calm chip (`strong` bold on `btn`) names the
-holder, then its keys and the way out (`SIDEBAR · ↑↓ move · Enter open · n new in maitty · Esc back`, the `n` hint computed from what `n` would do), with
-`· shortcut mode waits` while the mode is held. Under a popup the bar is words only and takes
-no click. **Update** or **Restart** sits at its right end when waiting, unless the sidebar shows it at its foot. See UI › *the frame*
-(Mode bar).
+The one full-width row, along the bottom, on the panel ground. Typing: a ` PANE ` chip in the accent,
+the session the keys go to (`name · ~/folder`), and at the right `j/k sessions  ^space keys  ? help`.
+Key mode: a yellow ` KEYS ` chip and `n new  s split  x close  tab pane  ? help  esc back`, each a click
+that presses it; starting a pane ends it. When something other than the panes has the keys, a calm chip
+(`strong` bold on `btn`) names the holder and its keys sit at the right with the way out last
+(` SIDEBAR ` … `↑↓ move  enter open  n new  esc back`), with `shortcut mode waits` while the mode is held.
+Keys are bold in the accent, their words muted. Under a popup the bar is words only and takes no click.
+**Update** or **Restart** sits at its right end when waiting, unless the sidebar shows it at its foot.
+See UI › *the frame* (Status bar).
+
 
 ## Splash
 
