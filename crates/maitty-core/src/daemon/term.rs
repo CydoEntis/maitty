@@ -259,6 +259,9 @@ pub struct Term {
     pub pending_move: Option<PathBuf>,
     /// A prewarmed agent waiting in a spare worktree: not shown anywhere until it's used.
     pub spare: bool,
+    /// Closed with an undo window: when, and by which client. Hidden from snapshots and saves
+    /// while its process keeps running, until `finish_closes` ends it or `UndoClose` clears this.
+    pub closing: Option<(Instant, super::ClientId)>,
     /// Memory used by what runs in it (bytes), from the process scan.
     pub mem: u64,
     /// CPU used by what runs in it, as a share of the whole machine (0 to 100).
@@ -887,6 +890,7 @@ impl Term {
             continued: None,
             pending_move: None,
             spare: false,
+            closing: None,
             mem: 0,
             cpu: 0.0,
             born: Instant::now(),

@@ -228,6 +228,8 @@ impl Daemon {
                 self.close_term(term);
                 self.cleanup_worktrees(client, tops);
             }
+            Command::CloseSession { term } => self.soft_close(client, term),
+            Command::UndoClose { term } => self.undo_close(term),
             Command::PaneToWorkspace { term } => {
                 let (ws, _) = self
                     .locate(term)

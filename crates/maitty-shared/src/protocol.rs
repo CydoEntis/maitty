@@ -338,6 +338,16 @@ pub enum Command {
     ClosePane {
         term: TermId,
     },
+    /// End a session with an undo window: it leaves the snapshot at once but its process runs
+    /// on until `UNDO_WINDOW` passes, then it is closed as `ClosePane` closes it.
+    CloseSession {
+        term: TermId,
+    },
+    /// Bring back a session `CloseSession` hid, still inside the window. After the window, or
+    /// for a session that isn't closing, it does nothing.
+    UndoClose {
+        term: TermId,
+    },
     /// Focus a pane anywhere: switches workspace and tab as needed.
     FocusPane {
         term: TermId,
@@ -2131,6 +2141,24 @@ mod tests {
                 term: 3,
                 archived: true,
             },
+        ] {
+            let bytes = encode(&command).unwrap();
+            assert!(decode::<OldCommand>(&bytes).is_err());
+            assert!(decode::<Command>(&bytes).is_ok());
+        }
+    }
+
+    /// Soft close and undo are new commands: a peer built before them can't read them.
+    #[test]
+    fn a_peer_from_before_soft_close_cannot_read_it() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldCommand {
+            ClosePane { term: TermId },
+        }
+        for command in [
+            Command::CloseSession { term: 3 },
+            Command::UndoClose { term: 3 },
         ] {
             let bytes = encode(&command).unwrap();
             assert!(decode::<OldCommand>(&bytes).is_err());

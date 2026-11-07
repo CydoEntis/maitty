@@ -78,6 +78,8 @@ const HELPER_SETTLES: Duration = Duration::from_secs(45);
 /// the server starts the first check is.
 const VANISHED_CHECK_EVERY: Duration = Duration::from_secs(10 * 60);
 const VANISHED_CHECK_FIRST: Duration = Duration::from_secs(60);
+/// How long a closed session can still be brought back; its process runs until then.
+pub(crate) const UNDO_WINDOW: Duration = Duration::from_secs(6);
 /// A daemon nothing ever used (no panes, no clients) exits after this.
 const EXIT_WHEN_UNUSED_FOR: Duration = Duration::from_secs(30);
 /// How long a pane or agent ending on its own is kept out of the saved session. A shutdown
@@ -854,7 +856,9 @@ impl Daemon {
             | Command::Split { .. }
             | Command::NewWorktree { .. }
             | Command::Popup { .. } => self.may(client, Grant::Start, None),
-            Command::ClosePane { term } => {
+            Command::ClosePane { term }
+            | Command::CloseSession { term }
+            | Command::UndoClose { term } => {
                 self.may_use_terminal(client, *term)?;
                 self.may(client, Grant::Admin, Some(*term)).or_else(|e| {
                     // Closing itself is fine.
@@ -1111,6 +1115,7 @@ impl Daemon {
                 }
                 _ = tick.tick() => {
                     self.sync_scan_interval();
+                    self.finish_closes();
                     self.update_statuses();
                     self.settled_alerts();
                     self.phone_alerts();
@@ -1166,7 +1171,11 @@ impl Daemon {
     }
 
     fn activity(&self) -> crate::restart::Activity {
-        let live = || self.terms.values().filter(|t| !t.spare);
+        let live = || {
+            self.terms
+                .values()
+                .filter(|t| !t.spare && t.closing.is_none())
+        };
         let structured: Vec<_> = self
             .conversation_summaries()
             .into_iter()
@@ -1603,6 +1612,7 @@ impl Daemon {
                     if let Some(t) = self.terms.get_mut(&tid)
                         && !seen
                         && !t.bell
+                        && t.closing.is_none()
                     {
                         t.bell = true;
                         self.dirty = true;
@@ -2695,7 +2705,7 @@ impl Daemon {
         let terms: BTreeMap<TermId, TermInfo> = self
             .terms
             .values()
-            .filter(|t| !t.spare)
+            .filter(|t| !t.spare && t.closing.is_none())
             .map(|t| {
                 (
                     t.id,
@@ -2781,12 +2791,17 @@ impl Daemon {
                 )
             })
             .collect();
+        let workspaces = self.visible_workspaces();
+        let active_ws = self
+            .active_ws
+            .filter(|id| workspaces.iter().any(|w| w.id == *id))
+            .or_else(|| workspaces.first().map(|w| w.id));
         Snapshot {
             conversations: self.conversation_summaries(),
             daemon_version: env!("APP_VERSION").into(),
             daemon_id: Some(self.id.clone()),
-            workspaces: self.workspaces.clone(),
-            active_ws: self.active_ws,
+            workspaces,
+            active_ws,
             terms,
             questions: self.questions.iter().map(|(q, ..)| q.clone()).collect(),
             secret_requests: self.secrets.requests(),
@@ -3013,6 +3028,87 @@ impl Daemon {
                 .find(|t| t.layout.contains(term))
                 .map(|t| (w.id, t.id))
         })
+    }
+
+    /// The workspaces as clients and saves should see them: sessions closing with an undo
+    /// window are left out of every layout, and tabs and workspaces they leave empty with them.
+    /// The real tree keeps the pane, so an undo puts it back where it was.
+    pub(super) fn visible_workspaces(&self) -> Vec<WorkspaceInfo> {
+        let hidden = |id: &TermId| self.terms.get(id).is_some_and(|t| t.closing.is_some());
+        if !self.terms.values().any(|t| t.closing.is_some()) {
+            return self.workspaces.clone();
+        }
+        let mut out = Vec::new();
+        for w in &self.workspaces {
+            let mut w = w.clone();
+            w.tabs = std::mem::take(&mut w.tabs)
+                .into_iter()
+                .filter_map(|mut tab| {
+                    for id in tab.layout.leaves().into_iter().filter(hidden) {
+                        tab.layout =
+                            std::mem::replace(&mut tab.layout, Node::Leaf(0)).remove(id)?;
+                    }
+                    if hidden(&tab.focus) {
+                        tab.focus = tab.layout.first_leaf();
+                    }
+                    Some(tab)
+                })
+                .collect();
+            if w.tabs.is_empty() {
+                continue;
+            }
+            if !w.tabs.iter().any(|t| t.id == w.active_tab) {
+                w.active_tab = w.tabs[0].id;
+            }
+            out.push(w);
+        }
+        out
+    }
+
+    /// Start ending a session: hide it, keep it running for `UNDO_WINDOW`.
+    fn soft_close(&mut self, client: ClientId, term: TermId) {
+        let Some(t) = self.terms.get_mut(&term) else {
+            return;
+        };
+        // A conversation-backed terminal belongs to a conversation that outlives the window
+        // and is listed on its own, so hiding the terminal would leave the two disagreeing.
+        if t.conversation_id.is_some() {
+            let tops = self.worktrees_of(&[term]);
+            self.close_term(term);
+            self.cleanup_worktrees(client, tops);
+            return;
+        }
+        // A second close keeps the first one's clock.
+        if t.closing.is_none() {
+            t.closing = Some((Instant::now(), client));
+            self.dirty = true;
+        }
+    }
+
+    fn undo_close(&mut self, term: TermId) {
+        if let Some(t) = self.terms.get_mut(&term)
+            && t.closing.take().is_some()
+        {
+            self.dirty = true;
+        }
+    }
+
+    /// End the sessions whose undo window has passed, as `ClosePane` ends one.
+    fn finish_closes(&mut self) {
+        let due: Vec<(TermId, ClientId)> = self
+            .terms
+            .values()
+            .filter_map(|t| {
+                t.closing
+                    .filter(|(at, _)| at.elapsed() >= UNDO_WINDOW)
+                    .map(|(_, by)| (t.id, by))
+            })
+            .collect();
+        for (term, client) in due {
+            let tops = self.worktrees_of(&[term]);
+            self.close_term(term);
+            self.cleanup_worktrees(client, tops);
+        }
     }
 
     fn close_term(&mut self, term: TermId) {

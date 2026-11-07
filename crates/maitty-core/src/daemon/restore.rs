@@ -298,8 +298,9 @@ impl Daemon {
                 .filter_map(|p| Some((p.latest.info.name.clone(), p.tree.clone()?)))
                 .collect(),
         };
-        let workspaces = self
-            .workspaces
+        // A session still inside its undo window is saved as closed: a restart ends it.
+        let visible = self.visible_workspaces();
+        let workspaces = visible
             .iter()
             .map(|w| persist::SavedWs {
                 name: w.name.clone(),
@@ -330,8 +331,7 @@ impl Daemon {
                     .collect(),
             })
             .collect();
-        let active = self
-            .workspaces
+        let active = visible
             .iter()
             .position(|w| Some(w.id) == self.active_ws)
             .unwrap_or(0);

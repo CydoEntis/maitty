@@ -7750,3 +7750,115 @@ fn a_pane_reports_its_question_only_while_it_needs_you() {
     assert!(d.terms[&t].ask_now().is_none(), "a question left over from before is not shown");
     close(&mut d, &[t]);
 }
+
+/// A workspace with one shell, and a second shell split beside it.
+fn two_panes(d: &mut Daemon) -> (TermId, TermId) {
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
+    let a = *d.terms.keys().next().unwrap();
+    d.command(
+        0,
+        Command::Split {
+            term: a,
+            dir: crate::layout::Dir::Right,
+            cmd: None,
+            cwd: None,
+        },
+    )
+    .unwrap();
+    let b = *d.terms.keys().find(|t| **t != a).unwrap();
+    (a, b)
+}
+
+/// Pretend the undo window opened `ago` back.
+fn closed_ago(d: &mut Daemon, term: TermId, ago: Duration) {
+    let t = d.terms.get_mut(&term).unwrap();
+    t.closing = t.closing.map(|(_, by)| (crate::clock::ago(ago), by));
+}
+
+#[test]
+fn a_soft_closed_session_leaves_the_snapshot_but_keeps_running() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (a, b) = two_panes(&mut d);
+    d.command(0, Command::CloseSession { term: b }).unwrap();
+    let snap = d.snapshot();
+    assert!(!snap.terms.contains_key(&b) && snap.terms.contains_key(&a));
+    for ws in &snap.workspaces {
+        for tab in &ws.tabs {
+            assert_eq!(tab.layout.leaves(), vec![a], "no hole for clients to draw");
+        }
+    }
+    assert!(d.terms.contains_key(&b) && !d.terms[&b].process_exited);
+    assert!(
+        d.saved().workspaces[0].tabs[0]
+            .panes
+            .keys()
+            .all(|t| *t != b),
+        "a restart inside the window does not bring it back"
+    );
+    assert_eq!(d.activity().sessions, 1, "it is not counted as a session");
+    d.finish_closes();
+    assert!(d.terms.contains_key(&b), "not before the window ends");
+    let terms: Vec<TermId> = d.terms.keys().copied().collect();
+    close(&mut d, &terms);
+}
+
+#[test]
+fn undo_within_the_window_brings_back_the_same_session() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (a, b) = two_panes(&mut d);
+    d.command(0, Command::CloseSession { term: b }).unwrap();
+    closed_ago(&mut d, b, UNDO_WINDOW - Duration::from_secs(1));
+    d.command(0, Command::UndoClose { term: b }).unwrap();
+    d.finish_closes();
+    let snap = d.snapshot();
+    assert!(snap.terms.contains_key(&b));
+    assert_eq!(snap.workspaces[0].tabs[0].layout.leaves(), vec![a, b]);
+    close(&mut d, &[a, b]);
+}
+
+#[test]
+fn a_soft_closed_session_ends_when_the_window_passes() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (a, b) = two_panes(&mut d);
+    d.command(0, Command::CloseSession { term: b }).unwrap();
+    // A second close doesn't restart the clock.
+    closed_ago(&mut d, b, UNDO_WINDOW);
+    d.command(0, Command::CloseSession { term: b }).unwrap();
+    d.finish_closes();
+    assert!(!d.terms.contains_key(&b), "closed once the window passed");
+    assert_eq!(d.snapshot().workspaces[0].tabs[0].layout.leaves(), vec![a]);
+    // Undo after that, or for a session that isn't closing, does nothing.
+    d.command(0, Command::UndoClose { term: b }).unwrap();
+    d.command(0, Command::UndoClose { term: a }).unwrap();
+    assert!(!d.terms.contains_key(&b) && d.terms.contains_key(&a));
+    close(&mut d, &[a]);
+}
+
+#[test]
+fn soft_closing_the_only_pane_hides_its_workspace_until_it_ends() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (a, b) = two_panes(&mut d);
+    d.command(0, Command::ClosePane { term: b }).unwrap();
+    d.command(0, Command::CloseSession { term: a }).unwrap();
+    let snap = d.snapshot();
+    assert!(snap.workspaces.is_empty() && snap.active_ws.is_none());
+    assert_eq!(d.workspaces.len(), 1, "the tree keeps it for an undo");
+    d.command(0, Command::UndoClose { term: a }).unwrap();
+    assert_eq!(d.snapshot().workspaces.len(), 1);
+    d.command(0, Command::CloseSession { term: a }).unwrap();
+    closed_ago(&mut d, a, UNDO_WINDOW);
+    d.finish_closes();
+    assert!(d.workspaces.is_empty() && d.terms.is_empty());
+}
