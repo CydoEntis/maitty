@@ -1844,7 +1844,7 @@ impl App {
             ScreenHit::NoPaneNew => self.new_ship(None),
             // A shell on that machine at once.
             ScreenHit::MachinePlus(machine) => self.new_ship_on(machine),
-            ScreenHit::AddMachine => self.open_machines(),
+            ScreenHit::NewMenu => self.new_menu(),
             ScreenHit::Fold(i) | ScreenHit::FoldMachine(i, _) => {
                 if let Some(key) = self.screen.fold_keys.get(i).cloned() {
                     let closed = &mut self.screen.saved.closed;

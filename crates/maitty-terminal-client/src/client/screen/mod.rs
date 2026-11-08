@@ -229,6 +229,8 @@ pub(super) struct Screen {
     pub side_rect: Rect,
     /// Where the sidebar's group-by menu opens: under its chip.
     pub group_at: (u16, u16),
+    /// Where the top `+`'s menu opens.
+    pub new_at: (u16, u16),
     /// The sidebar's filter: what is typed, and whether the keys are going into it.
     pub filter: String,
     pub filtering: bool,
@@ -1436,8 +1438,8 @@ pub(super) enum ScreenHit {
     Fold(usize),
     /// The same on a machine heading, which also keeps its right-click menu: the machine it is.
     FoldMachine(usize, MachineId),
-    /// The `+` on the `Remote machines` row: the dialog that adds one.
-    AddMachine,
+    /// The sidebar's top `+`: a menu to start a session or add a remote machine.
+    NewMenu,
     /// The `+` on a machine heading: a shell on that machine at once.
     MachinePlus(MachineId),
     /// A machine heading in the sidebar: a click opens Machines on it, a right-click its menu.

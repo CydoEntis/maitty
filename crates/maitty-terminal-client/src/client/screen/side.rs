@@ -203,8 +203,6 @@ pub(super) struct SideModel {
     pub filtering: bool,
     /// Each machine's sessions are kept together by folder, under a heading for each.
     pub grouped: bool,
-    /// The `Remote machines` heading is folded: the machines under it are hidden.
-    pub remote_folded: bool,
 }
 
 /// `rows` with the sessions of one folder together, folders in the order they first appear and
@@ -224,7 +222,6 @@ impl SideModel {
         let query = app.screen.filter.trim().to_lowercase();
         let all = side_rows(app, model);
         let grouped = app.screen.saved.group_folders;
-        let remote_folded = query.is_empty() && app.screen.saved.closed.contains(&REMOTE_FOLD_KEY.to_string());
         let machines = app
             .machines()
             .into_iter()
@@ -251,7 +248,7 @@ impl SideModel {
                 }
                 // A closed machine or folder hides its sessions; a filter shows every match.
                 if query.is_empty() {
-                    let machine_closed = (remote_folded && m.id != MachineId::LOCAL) || app.screen.saved.closed.contains(&machine_fold_key(&m.label));
+                    let machine_closed = app.screen.saved.closed.contains(&machine_fold_key(&m.label));
                     m.folded = machine_closed;
                     for r in &mut m.rows {
                         r.hidden = machine_closed || (grouped && app.screen.saved.closed.contains(&folder_fold_key(&m.label, &r.project)));
@@ -264,7 +261,6 @@ impl SideModel {
             machines,
             filtering: !query.is_empty(),
             grouped,
-            remote_folded,
         }
     }
 
@@ -341,7 +337,6 @@ enum Block {
     Folder(usize, usize),
     Session(usize, usize),
     /// The `Remote machines` row with its `+` that adds one; above the first remote machine, or at the end when there is none.
-    RemoteHead,
     Gap,
 }
 
@@ -352,7 +347,7 @@ fn open_session(app: &App) -> Option<ClientSession> {
 
 fn block_h(sm: &SideModel, b: Block, open: Option<ClientSession>) -> u16 {
     match b {
-        Block::Machine(_) | Block::Folder(..) | Block::RemoteHead | Block::Gap => 1,
+        Block::Machine(_) | Block::Folder(..) | Block::Gap => 1,
         Block::Session(mi, ri) => {
             let r = &sm.machines[mi].rows[ri];
             let subs = match r.subs.len() {
@@ -373,27 +368,11 @@ fn capitalised(word: &str) -> String {
 
 fn blocks(sm: &SideModel) -> Vec<Block> {
     let mut out = Vec::new();
-    let mut remote_head = sm.filtering;
     for (mi, m) in sm.machines.iter().enumerate() {
-        let remote = m.id != MachineId::LOCAL;
-        if remote && sm.remote_folded && remote_head {
-            continue;
-        }
         if mi > 0 {
             out.push(Block::Gap);
         }
-        if remote && !remote_head {
-            out.push(Block::RemoteHead);
-            remote_head = true;
-            if sm.remote_folded {
-                continue;
-            }
-        }
         out.push(Block::Machine(mi));
-        // One blank row sets the first session off from its machine; sessions sit tight against each other.
-        if !m.rows.is_empty() && !m.folded {
-            out.push(Block::Gap);
-        }
         for ri in 0..m.rows.len() {
             if m.folded {
                 break;
@@ -406,18 +385,8 @@ fn blocks(sm: &SideModel) -> Vec<Block> {
             }
         }
     }
-    // With no remote machine yet there is still a place to add one.
-    if !remote_head {
-        if !out.is_empty() {
-            out.push(Block::Gap);
-        }
-        out.push(Block::RemoteHead);
-    }
     out
 }
-
-/// The key the `Remote machines` fold is kept under in the saved state.
-pub(super) const REMOTE_FOLD_KEY: &str = "remote";
 
 /// Columns a nested heading or row sits to the right of the one above it.
 const NEST: u16 = 2;
@@ -536,6 +505,16 @@ fn draw_top_chips(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme) {
         put(buf, hx, r.y, &hide, r.right().saturating_sub(2));
         hit(app, Rect { x: hx, y: r.y, width: hw, height: 1 }, ScreenHit::CollapseSidebar);
     }
+    // The plus chip opens a small menu: a new session, or a new remote machine.
+    let plus = chip(app, "+", Chip::Action, t.bg, t);
+    let pw = segs_width(&plus);
+    let group_w = segs_width(&chip(app, &format!("{} \u{25be}", app.cfg.icons.filter), Chip::Title { focused: false }, t.bg, t));
+    let px = hx.saturating_sub(1 + group_w + 1 + pw);
+    if px > x + tw {
+        put(buf, px, r.y, &plus, hx);
+        hit(app, Rect { x: px, y: r.y, width: pw, height: 1 }, ScreenHit::NewMenu);
+        app.screen.new_at = (px, r.y + 1);
+    }
     // The group-by chip opens a small menu under it: priority or folder. Dropped when the
     // sidebar is too narrow to hold it.
     let label = format!("{} \u{25be}", app.cfg.icons.filter);
@@ -649,13 +628,13 @@ fn draw_list(
         match *b {
             Block::Machine(mi) => {
                 let machine = &sm.machines[mi];
-                draw_machine(app, buf, nested(r, level(machine)), y, machine, t);
+                draw_machine(app, buf, r, y, machine, t);
             }
             Block::Folder(mi, ri) => {
                 let machine = &sm.machines[mi];
                 let project = &machine.rows[ri].project;
                 let folded = !sm.filtering && app.screen.saved.closed.contains(&folder_fold_key(&machine.label, project));
-                let shift = level(machine) + NEST;
+                let shift = NEST;
                 let room = r.width.saturating_sub(10 + shift) as usize;
                 let name = truncate(project, room);
                 let quiet = Style::default().fg(t.muted).bg(t.bg);
@@ -675,12 +654,11 @@ fn draw_list(
                 let n = app.screen.fold_keys.len() - 1;
                 hit(app, Rect { x: r.x + 1 + shift, y, width: r.width.saturating_sub(3 + shift), height: 1 }, ScreenHit::Fold(n));
             }
-            Block::RemoteHead => draw_remote_head(app, buf, r, y, sm, t),
             Block::Session(mi, ri) => {
                 let machine = &sm.machines[mi];
                 let row = &machine.rows[ri];
                 // Sessions sit one level in from their folder's heading, or from the machine's when not grouped.
-                let by = level(machine) + if sm.grouped { NEST } else { 0 };
+                let by = if sm.grouped { NEST } else { 0 };
                 draw_session(app, buf, nested(r, by), y, row, Some(row.key) == open, t);
             }
             Block::Gap => {}
@@ -694,38 +672,6 @@ fn draw_list(
         (first > 0, first + shown < list.len()),
         Style::default().bg(t.bg).fg(t.muted),
     );
-}
-
-/// How far in a machine's heading sits: machines reached over ssh are under the `Remote machines` heading.
-fn level(m: &MachineSection) -> u16 {
-    if m.id == MachineId::LOCAL { 0 } else { NEST }
-}
-
-/// The `Remote machines` heading, drawn as a machine's is: a fold arrow, a title chip with how many machines are
-/// under it, and a `+` chip that opens the dialog to add one.
-fn draw_remote_head(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, sm: &SideModel, t: &Theme) {
-    let x = r.x + 1;
-    let end = r.right().saturating_sub(1);
-    let name = chip(app, "Remote machines", Chip::Title { focused: false }, t.bg, t);
-    let mut segs = vec![seg(format!("{} ", if sm.remote_folded { FOLDED } else { OPEN }), Style::default().fg(t.accent).bg(t.bg))];
-    segs.extend(name);
-    let count = sm.machines.iter().filter(|m| m.id != MachineId::LOCAL).count();
-    let tint = Style::default().fg(t.muted).bg(t.btn);
-    if let Some(last) = segs.pop() {
-        segs.push(seg(format!(" {count}"), tint));
-        segs.push(last);
-    }
-    let after = put(buf, x, y, &segs, end.saturating_sub(4));
-    app.screen.fold_keys.push(REMOTE_FOLD_KEY.to_string());
-    let n = app.screen.fold_keys.len() - 1;
-    hit(app, Rect { x, y, width: after.saturating_sub(x), height: 1 }, ScreenHit::Fold(n));
-    let plus = chip(app, "+", Chip::Action, t.bg, t);
-    let pw = segs_width(&plus);
-    let px = after + 1;
-    if px + pw < end {
-        put(buf, px, y, &plus, end);
-        hit(app, Rect { x: px, y, width: pw, height: 1 }, ScreenHit::AddMachine);
-    }
 }
 
 /// A machine heading: its name chip with the number of sessions, a `+` chip that starts a shell

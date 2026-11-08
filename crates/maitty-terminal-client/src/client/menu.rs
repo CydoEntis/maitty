@@ -360,6 +360,16 @@ impl App {
         self.menu("menu".into(), items, (x, side.bottom().saturating_sub(1)));
     }
 
+    /// The sidebar's top `+`: start a session here, or add a remote machine.
+    pub(super) fn new_menu(&mut self) {
+        let items = vec![
+            ("New session".to_string(), Act::Tool(crate::keys::Action::PickSession)),
+            ("Add remote machine\u{2026}".to_string(), Act::Tool(crate::keys::Action::Machines)),
+        ];
+        let at = self.screen.new_at;
+        self.menu("new".into(), items, at);
+    }
+
     /// The sidebar's group-by chip: how sessions are listed, the current choice ticked.
     pub(super) fn group_menu(&mut self) {
         let by_folder = self.screen.saved.group_folders;

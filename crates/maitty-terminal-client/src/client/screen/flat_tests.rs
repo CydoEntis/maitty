@@ -825,15 +825,14 @@ fn the_status_bar_says_the_mode_the_session_and_the_keys_worth_knowing() {
 }
 
 #[test]
-fn a_blank_row_sets_the_first_session_off_from_its_machine() {
+fn the_first_session_follows_its_machine_heading_with_no_blank_row_between() {
     let mut app = reference_fixture::world(Stage::None);
     let rows = text(&mut app, 140, 36);
     let ink = |y: usize| side(&rows, y).chars().filter(|c| c.is_alphanumeric()).count();
     let at = (0..rows.len())
         .find(|&y| side(&rows, y).to_lowercase().contains("this computer"))
         .expect("a machine heading");
-    assert_eq!(ink(at + 1), 0, "blank under the heading: {:?}", side(&rows, at + 1));
-    assert!(ink(at + 2) > 0, "the first session follows: {:?}", side(&rows, at + 2));
+    assert!(ink(at + 1) > 0, "the first row follows the heading at once: {:?}", side(&rows, at + 1));
 }
 
 #[test]
@@ -889,45 +888,6 @@ fn a_machine_heading_has_a_fold_arrow_and_a_click_on_its_name_folds_it_and_opens
 }
 
 #[test]
-fn the_sidebar_has_a_remote_machines_row_whose_plus_opens_the_dialog_that_adds_one() {
-    let mut app = reference_fixture::world(Stage::None);
-    let rows = text(&mut app, 140, 36);
-    show(&rows, "remote machines row");
-    let y = rows.iter().position(|r| side(std::slice::from_ref(r), 0).contains("Remote machines")).expect("a place for remote machines, even with none");
-    let row = side(&rows, y);
-    // The column, in characters (the frame's border is wider than a byte).
-    let x = row[..row.find(" + ").expect("the + chip")].chars().count() as u16 + 1;
-    click(&mut app, x, y as u16);
-    assert!(matches!(app.mode, Mode::Machines(_)), "the + opens Machines to add one: {:?}", std::mem::discriminant(&app.mode));
-}
-
-#[test]
-fn the_remote_machines_row_sits_above_the_first_remote_machine() {
-    let (mut app, _) = with_kingdom_needing_the_app();
-    let rows = text(&mut app, 140, 36);
-    let remote = rows.iter().position(|r| side(std::slice::from_ref(r), 0).contains("Remote machines")).expect("the row");
-    let kingdom = rows.iter().position(|r| side(std::slice::from_ref(r), 0).contains(" kingdom ")).expect("kingdom");
-    assert!(remote < kingdom, "the row {remote} names the machines under it, kingdom at {kingdom}");
-    assert_eq!(rows.iter().filter(|r| side(std::slice::from_ref(r), 0).contains("Remote machines")).count(), 1);
-}
-
-#[test]
-fn a_remote_machine_sits_one_level_in_under_the_remote_machines_heading_and_a_click_on_it_folds_them() {
-    let (mut app, _) = with_kingdom_needing_the_app();
-    let rows = text(&mut app, 140, 36);
-    let head = rows.iter().position(|r| side(std::slice::from_ref(r), 0).contains("Remote machines")).expect("the heading");
-    let kingdom = rows.iter().position(|r| side(std::slice::from_ref(r), 0).contains(" kingdom ")).expect("kingdom");
-    let arrow_of = |y: usize| side(&rows, y).chars().position(|c| c == '▾').expect("an open arrow");
-    assert!(arrow_of(kingdom) > arrow_of(head), "the machine's arrow is further in than the heading's");
-
-    let x = side(&rows, head).chars().position(|c| c == 'R').expect("the name") as u16;
-    click(&mut app, x, head as u16);
-    let rows = text(&mut app, 140, 36);
-    assert!(side(&rows, head).contains('▸'), "folded: {}", side(&rows, head));
-    assert!(!rows.iter().any(|r| side(std::slice::from_ref(r), 0).contains(" kingdom ")), "the machines under it are hidden");
-}
-
-#[test]
 fn a_folder_sits_one_level_in_under_its_machine_and_its_sessions_one_more() {
     let mut app = reference_fixture::world(Stage::None);
     app.screen.saved.group_folders = true;
@@ -936,4 +896,19 @@ fn a_folder_sits_one_level_in_under_its_machine_and_its_sessions_one_more() {
     let arrow = |y: usize| side(&rows, y).chars().position(|c| c == '▾').expect("an arrow");
     let folder = (machine + 1..rows.len()).find(|y| side(&rows, *y).contains('▾')).expect("a folder heading");
     assert!(arrow(folder) > arrow(machine), "{} vs {}", side(&rows, folder), side(&rows, machine));
+}
+
+#[test]
+fn the_top_plus_offers_a_new_session_or_a_remote_machine_and_there_is_no_remote_machines_heading() {
+    let (mut app, _) = with_kingdom_needing_the_app();
+    let rows = text(&mut app, 140, 36);
+    assert!(!rows.iter().any(|r| side(std::slice::from_ref(r), 0).contains("Remote machines")), "a remote machine is a heading of its own");
+    assert!(rows.iter().any(|r| side(std::slice::from_ref(r), 0).contains(" kingdom ")), "kingdom is a top-level heading");
+
+    let top = side(&rows, 0);
+    let x = top.chars().position(|c| c == '+').expect("a + chip in the top border") as u16;
+    click(&mut app, x, 0);
+    let rows = text(&mut app, 140, 36);
+    let menu = rows.join("\n");
+    assert!(menu.contains("New session") && menu.contains("Add remote machine"), "{menu}");
 }
