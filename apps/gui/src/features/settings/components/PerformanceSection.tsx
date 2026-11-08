@@ -4,7 +4,8 @@ import { usePerfSample, type PerfSample } from '@/lib/perf-meter'
 import type { SettingsPreferences } from '../preferences'
 import { buildPerformanceReport, formatCpu, formatMemory, formatRate, sumCpu, sumMemory } from '../performance-report'
 import { environmentOf, useProcessSample } from '../performance-sample'
-import { Card, Row, Switch } from './DesktopSettings'
+import { Card, Row } from './DesktopSettings'
+import { Switch } from '@/components/ui/switch'
 
 type Update = <K extends keyof SettingsPreferences>(key: K, value: SettingsPreferences[K]) => void
 
@@ -57,7 +58,7 @@ export function PerformanceSection({ preferences, update, appVersion }: Performa
           <Value>{sample === null ? PENDING : `${gpu} · ${String(sample.renderers.webgl)} WebGL, ${String(sample.renderers.dom)} DOM`}</Value>
         </Row>
         <Row label="Draw terminals without the GPU" detail="Use this if typed letters show late or the cursor covers the last one. It applies to terminals opened after you change it: restart the app, or reopen the pane.">
-          <Switch label="Draw terminals without the GPU" checked={preferences.terminalPlainDrawing} onChange={(value) => { update('terminalPlainDrawing', value) }} />
+          <Switch aria-label="Draw terminals without the GPU" checked={preferences.terminalPlainDrawing} onCheckedChange={(value) => { update('terminalPlainDrawing', value) }} />
         </Row>
         <Row label="Animations running" detail="Each one repaints its card every frame, even while nothing else happens.">
           <Value>{sample === null ? PENDING : `${String(sample.animations)} · ${String(sample.domNodes)} elements`}</Value>
@@ -92,7 +93,7 @@ export function PerformanceSection({ preferences, update, appVersion }: Performa
       </Card>
       <Card title="Overlay" color="var(--ansi-mag)" iconPath={OVERLAY_ICON}>
         <Row label="Show the readout over the window" detail="Frames and process load in a corner while you work, so a lag spike can be matched with what caused it.">
-          <Switch label="Show the performance overlay" checked={preferences.perfOverlay} onChange={(value) => { update('perfOverlay', value) }} />
+          <Switch aria-label="Show the performance overlay" checked={preferences.perfOverlay} onCheckedChange={(value) => { update('perfOverlay', value) }} />
         </Row>
       </Card>
     </>

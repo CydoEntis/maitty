@@ -2,7 +2,10 @@ import type { UpdaterState } from '@/features/updates/useUpdater'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
 import { THEMES } from '@/features/workspace/theme/themes'
 import { ThemePicker } from './ThemePicker'
-import { StyleCards } from './StyleCards'
+import { WINDOW_STYLES, isWindowStyle, type WindowStyle, type WindowStyleEntry } from '@/features/workspace/theme/windowStyles'
+import { PickerSelect, type PickerGroup, type PickerItem } from './PickerSelect'
+import { Segmented, SegmentedItem } from '@/components/ui/radio-group'
+import { Switch } from '@/components/ui/switch'
 import { SpinnerPicker } from './SpinnerPicker'
 import { PerformanceSection } from './PerformanceSection'
 import { hotkeyRows, type Platform } from '@/features/workspace/model/shortcuts'
@@ -10,7 +13,7 @@ import { CHAT_AGENTS } from '@/features/workspace/model/chatView'
 import { Keycaps } from '@/features/shortcuts/Keycaps'
 import { Icon } from '@/features/workspace/components/glyphs'
 import { errorMessage } from '@/lib/error-message'
-import { BUNDLED_FONT_NAME, fontStackFor, installedMonospaceFamilies, isFontFamily, WEIGHT_BOLD, WEIGHT_EXTRA_BOLD, WEIGHT_LIGHT, WEIGHT_MEDIUM, WEIGHT_REGULAR, WEIGHT_SEMIBOLD, type TerminalFontWeight } from '@/lib/terminalFont'
+import { BUNDLED_FONT_NAME, fontStackFor, installedMonospaceFamilies, WEIGHT_BOLD, WEIGHT_EXTRA_BOLD, WEIGHT_LIGHT, WEIGHT_MEDIUM, WEIGHT_REGULAR, WEIGHT_SEMIBOLD, type TerminalFontWeight } from '@/lib/terminalFont'
 import type { Added, Grant, HostChoice } from '@/api/machines'
 import { DisconnectedSince } from '@/features/workspace/components/times'
 import { installNote, UPDATE_WORDS, updateWarning, type MachineHead, type UpdateAction } from '@/features/workspace/model/machines'
@@ -261,21 +264,19 @@ export function Row({ label, detail, children }: { label: string; detail?: strin
   )
 }
 
-export function Switch({ label, checked, disabled = false, onChange }: { label: string; checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void }) {
+function SegmentedChoice<T extends string | number>({ label, value, options, onChange, tall = false }: { label: string; value: T; options: ReadonlyArray<readonly [T, ReactNode]>; onChange: (value: T) => void; tall?: boolean }) {
   return (
-    <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} className="mx-switch" onClick={() => { onChange(!checked) }}>
-      <span className="mx-switch-knob" />
-    </button>
-  )
-}
-
-function Segmented<T extends string | number>({ label, value, options, onChange, tall = false }: { label: string; value: T; options: ReadonlyArray<readonly [T, string]>; onChange: (value: T) => void; tall?: boolean }) {
-  return (
-    <div role="radiogroup" aria-label={label} className={`mx-segmented${tall ? ' is-tall' : ''}`}>
-      {options.map(([option, text]) => (
-        <button key={String(option)} type="button" role="radio" aria-checked={option === value} onClick={() => { onChange(option) }}>{text}</button>
-      ))}
-    </div>
+    <Segmented
+      aria-label={label}
+      tall={tall}
+      value={String(value)}
+      onValueChange={(next) => {
+        const picked = options.find(([option]) => String(option) === next)
+        if (picked) onChange(picked[0])
+      }}
+    >
+      {options.map(([option, text]) => <SegmentedItem key={String(option)} value={String(option)}>{text}</SegmentedItem>)}
+    </Segmented>
   )
 }
 
@@ -333,7 +334,7 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
       </Card>
       <Card title="Window" color="var(--ansi-blue)" iconPath={<><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M3 16h18" /></>}>
         <Row label="Status bar" detail="A line at the bottom with quick controls for theme, layout, text size and shortcuts.">
-          <Switch label="Status bar" checked={preferences.statusBar} onChange={(value) => { update('statusBar', value) }} />
+          <Switch aria-label="Status bar" checked={preferences.statusBar} onCheckedChange={(value) => { update('statusBar', value) }} />
         </Row>
       </Card>
       {updates && (
@@ -343,16 +344,16 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
             <button type="button" className="mx-text-button" disabled={updates.status === 'checking' || updates.status === 'downloading'} onClick={updateAction(updates).run}>{updateAction(updates).label}</button>
           </Row>
           <Row label="Download updates automatically" detail="A new release is fetched in the background. Installing waits until you restart.">
-            <Switch label="Download updates automatically" checked={preferences.autoDownloadUpdates} onChange={(value) => { update('autoDownloadUpdates', value) }} />
+            <Switch aria-label="Download updates automatically" checked={preferences.autoDownloadUpdates} onCheckedChange={(value) => { update('autoDownloadUpdates', value) }} />
           </Row>
           <Row label="Install updates when idle" detail="Never while an agent is working.">
-            <Switch label="Install updates when idle" checked={preferences.restartWhenIdle} onChange={(value) => { update('restartWhenIdle', value) }} />
+            <Switch aria-label="Install updates when idle" checked={preferences.restartWhenIdle} onCheckedChange={(value) => { update('restartWhenIdle', value) }} />
           </Row>
         </Card>
       )}
       <Card title="Sessions" color="var(--ansi-mag)" iconPath={<><rect x="4" y="4" width="16" height="7" rx="2" /><rect x="4" y="13" width="16" height="7" rx="2" /><path d="M8 7.5h.01M8 16.5h.01" /></>}>
         <Row label="Reopen layout on launch" detail="Restore the panes and splits you had last time.">
-          <Switch label="Reopen layout on launch" checked={preferences.restoreLayout} onChange={(value) => { update('restoreLayout', value) }} />
+          <Switch aria-label="Reopen layout on launch" checked={preferences.restoreLayout} onCheckedChange={(value) => { update('restoreLayout', value) }} />
         </Row>
         <Row label="Closing the window" detail="Sessions are owned by maittyd and keep running.">
           <span style={{ fontSize: 12, color: 'var(--dim)' }}>Always keeps running</span>
@@ -363,17 +364,17 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
       </Card>
       <Card title="Chat view" color="var(--accent)" iconPath={<path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-7l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" />}>
         <Row label="Default agent" detail="The agent a new session starts. A plain terminal is always one click away.">
-          <Segmented label="Default agent" value={preferences.defaultAgent} options={AGENT_OPTIONS} onChange={(value) => { update('defaultAgent', value) }} />
+          <SegmentedChoice label="Default agent" value={preferences.defaultAgent} options={AGENT_OPTIONS} onChange={(value) => { update('defaultAgent', value) }} />
         </Row>
         <Row label="New sessions open as" detail="Which view a new session opens in. The agent runs in a terminal either way, so you can switch between its chat and its terminal at any time.">
-          <Segmented label="New sessions open as" value={preferences.newSessionView} options={VIEW_OPTIONS} onChange={(value) => { update('newSessionView', value) }} />
+          <SegmentedChoice label="New sessions open as" value={preferences.newSessionView} options={VIEW_OPTIONS} onChange={(value) => { update('newSessionView', value) }} />
         </Row>
         <Row label="Full access in new chats" detail="Start new chats with the agent's skip-permissions mode: no sandbox and no approval prompts, so the agent can change files and run commands without asking. Each chat can still turn it off or on when it starts.">
-          <Switch label="Full access in new chats" checked={preferences.chatFullAccessDefault} onChange={(value) => { update('chatFullAccessDefault', value) }} />
+          <Switch aria-label="Full access in new chats" checked={preferences.chatFullAccessDefault} onCheckedChange={(value) => { update('chatFullAccessDefault', value) }} />
         </Row>
         {CHAT_AGENTS.map((agent) => (
           <Row key={agent} label={`${agent === 'claude' ? 'Claude' : 'Codex'} sessions open in`} detail="Only a session with a chat opens in it; the switch on each pane changes one session.">
-            <Segmented label={`${agent === 'claude' ? 'Claude' : 'Codex'} sessions open in`} value={preferences.chatViewDefault[agent]} options={CHAT_VIEW_OPTIONS} onChange={(value) => { update('chatViewDefault', { ...preferences.chatViewDefault, [agent]: value }) }} />
+            <SegmentedChoice label={`${agent === 'claude' ? 'Claude' : 'Codex'} sessions open in`} value={preferences.chatViewDefault[agent]} options={CHAT_VIEW_OPTIONS} onChange={(value) => { update('chatViewDefault', { ...preferences.chatViewDefault, [agent]: value }) }} />
           </Row>
         ))}
       </Card>
@@ -411,7 +412,7 @@ const WEIGHT_NAMES: Readonly<Record<TerminalFontWeight, string>> = { [WEIGHT_LIG
 const weightOptions = (weights: readonly TerminalFontWeight[]) => weights.map((weight) => [weight, WEIGHT_NAMES[weight]] as const)
 const NORMAL_WEIGHTS = weightOptions([WEIGHT_LIGHT, WEIGHT_REGULAR, WEIGHT_MEDIUM, WEIGHT_SEMIBOLD])
 const BOLD_WEIGHTS = weightOptions([WEIGHT_SEMIBOLD, WEIGHT_BOLD, WEIGHT_EXTRA_BOLD])
-const CURSORS: ReadonlyArray<readonly [CursorStyle, string]> = [['block', 'Block'], ['bar', 'Bar'], ['underline', 'Underline']]
+const CURSORS: ReadonlyArray<readonly [CursorStyle, ReactNode]> = (['block', 'bar', 'underline'] as const).map((shape) => [shape, <><span className={`mx-cursor-glyph is-${shape}`} aria-hidden="true" />{shape === 'bar' ? 'Bar' : shape === 'block' ? 'Block' : 'Underline'}</>] as const)
 const THOUSAND = 1000
 const SCROLLBACKS: ReadonlyArray<readonly [ScrollbackLines, string]> = SCROLLBACK_CHOICES.map((lines) => [lines, `${String(lines / THOUSAND)}k`] as const)
 const SCROLL_SPEEDS: ReadonlyArray<readonly [ScrollSpeed, string]> = SCROLL_SPEED_CHOICES.map((speed) => [speed, speed === 1 ? 'Normal' : `${String(speed)}×`] as const)
@@ -424,42 +425,29 @@ function PromptPrefix() {
   return <><span style={{ color: 'var(--accent)', fontWeight: 600 }}>maitty</span><span style={{ color: 'var(--ansi-mag)' }}> (main)</span><span style={{ color: 'var(--dim)' }}> ❯ </span></>
 }
 
-/** The family field: a draft saved on Enter or leaving the field, so half-typed names never reach the terminals. */
+/** The font picker: Geist Mono (saved as empty) and the monospace families installed here, each set in its own face. */
 function FontFamilyField({ value, onCommit }: { value: string; onCommit: (family: string) => void }) {
-  // null while the field shows the saved value; text only while it is being edited.
-  const [edit, setEdit] = useState<string | null>(null)
-  const draft = edit ?? value
   const [installed, setInstalled] = useState<string[]>([])
   // Measured after the first paint so opening the page is not held up by it.
   useEffect(() => {
     const timer = window.setTimeout(() => { setInstalled(installedMonospaceFamilies()) }, 0)
     return () => { window.clearTimeout(timer) }
   }, [])
-  const invalid = !isFontFamily(draft)
-  const commit = () => {
-    if (!invalid && draft.trim() !== value) onCommit(draft.trim())
-    if (!invalid) setEdit(null)
-  }
-  return (
-    <div className="mx-font-field">
-      <input
-        className={`mx-scard-input${invalid ? ' is-invalid' : ''}`}
-        aria-label="Terminal font family"
-        aria-invalid={invalid}
-        list="mx-font-families"
-        value={draft}
-        placeholder={BUNDLED_FONT_NAME}
-        spellCheck={false}
-        onChange={(event) => { setEdit(event.target.value) }}
-        onBlur={commit}
-        onKeyDown={(event) => { if (event.key === 'Enter') commit() }}
-      />
-      <datalist id="mx-font-families">
-        {installed.map((name) => <option key={name} value={name} />)}
-      </datalist>
-      {invalid && <span className="mx-font-error" role="alert">Use one font name: letters, numbers, spaces and . _ + - only.</span>}
-    </div>
-  )
+  const item = (name: string, sub: string): PickerItem => ({
+    value: name,
+    label: name,
+    sub,
+    tile: <span className="mx-font-tile" style={{ fontFamily: fontStackFor(name) }} aria-hidden="true">Aa</span>,
+    labelStyle: { fontFamily: fontStackFor(name) },
+  })
+  const names = installed.filter((name) => name !== BUNDLED_FONT_NAME)
+  // A family saved earlier that this computer no longer reports still shows as the current choice.
+  const saved = value !== '' && value !== BUNDLED_FONT_NAME && !names.includes(value) ? [item(value, 'Saved choice')] : []
+  const groups: PickerGroup[] = [
+    { items: [item(BUNDLED_FONT_NAME, 'Default, bundled with Maitty')] },
+    ...(saved.length + names.length > 0 ? [{ label: 'Installed here', items: [...saved, ...names.map((name) => item(name, 'Monospace'))] }] : []),
+  ]
+  return <PickerSelect label="Terminal font family" value={value === '' ? BUNDLED_FONT_NAME : value} groups={groups} onPick={(next) => { onCommit(next === BUNDLED_FONT_NAME ? '' : next) }} width={240} />
 }
 
 function TerminalSection({ preferences, update }: { preferences: SettingsPreferences; update: Update }) {
@@ -471,7 +459,7 @@ function TerminalSection({ preferences, update }: { preferences: SettingsPrefere
         <div style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <span className="mx-field-label">Size</span>
-            <Segmented label="Terminal text size" value={preferences.terminalFontSize} options={FONT_SIZES} onChange={(value) => { update('terminalFontSize', value) }} />
+            <SegmentedChoice label="Terminal text size" value={preferences.terminalFontSize} options={FONT_SIZES} onChange={(value) => { update('terminalFontSize', value) }} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <span className="mx-field-label">Font</span>
@@ -479,36 +467,36 @@ function TerminalSection({ preferences, update }: { preferences: SettingsPrefere
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <span className="mx-field-label">Weight</span>
-            <Segmented label="Terminal text weight" value={preferences.terminalFontWeight} options={NORMAL_WEIGHTS} onChange={(value) => { update('terminalFontWeight', value) }} />
+            <SegmentedChoice label="Terminal text weight" value={preferences.terminalFontWeight} options={NORMAL_WEIGHTS} onChange={(value) => { update('terminalFontWeight', value) }} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <span className="mx-field-label">Bold</span>
-            <Segmented label="Terminal bold weight" value={preferences.terminalFontWeightBold} options={BOLD_WEIGHTS} onChange={(value) => { update('terminalFontWeightBold', value) }} />
+            <SegmentedChoice label="Terminal bold weight" value={preferences.terminalFontWeightBold} options={BOLD_WEIGHTS} onChange={(value) => { update('terminalFontWeightBold', value) }} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <span className="mx-field-label">Cursor</span>
-            <Segmented label="Cursor" value={preferences.cursorStyle} options={CURSORS} onChange={(value) => { update('cursorStyle', value) }} />
+            <SegmentedChoice label="Cursor" value={preferences.cursorStyle} options={CURSORS} onChange={(value) => { update('cursorStyle', value) }} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <span className="mx-field-label">Blink</span>
-            <Switch label="Blinking cursor" checked={preferences.cursorBlink} onChange={(value) => { update('cursorBlink', value) }} />
+            <Switch aria-label="Blinking cursor" checked={preferences.cursorBlink} onCheckedChange={(value) => { update('cursorBlink', value) }} />
           </div>
           <div className="mx-preview" style={{ fontSize: preferences.terminalFontSize, fontFamily: fontStackFor(preferences.terminalFontFamily), fontWeight: preferences.terminalFontWeight }} aria-label="Terminal preview" role="img">
             <div><PromptPrefix /><span style={{ fontWeight: preferences.terminalFontWeightBold }}>cargo</span> test <span style={{ color: 'var(--ansi-blue)' }}>-p</span> maitty-core</div>
             <div style={{ color: 'var(--fg2)' }}>test pane_terminal::replay_then_stream ... <span style={{ color: 'var(--ok)' }}>ok</span></div>
-            <div style={{ display: 'flex', alignItems: 'center' }}><PromptPrefix /><span className="mx-caret" style={caretStyle(preferences.cursorStyle)} /></div>
+            <div style={{ display: 'flex', alignItems: 'center' }}><PromptPrefix /><span className={`mx-caret${preferences.cursorBlink ? ' is-blinking' : ''}`} style={caretStyle(preferences.cursorStyle)} /></div>
           </div>
         </div>
       </Card>
       <Card title="Scrollback" color="var(--ansi-green)" iconPath={<path d="m5 8 4 4-4 4M12 17h7" />}>
         <Row label="Lines kept per pane" detail="Older output is dropped from the GUI. maittyd keeps the full history.">
-          <Segmented label="Lines kept per pane" value={preferences.scrollback} options={SCROLLBACKS} onChange={(value) => { update('scrollback', value) }} />
+          <SegmentedChoice label="Lines kept per pane" value={preferences.scrollback} options={SCROLLBACKS} onChange={(value) => { update('scrollback', value) }} />
         </Row>
         <Row label="Scroll speed" detail="Lines per wheel notch. Normal is xterm's own pace, which feels slow at this line height.">
-          <Segmented label="Scroll speed" value={preferences.scrollSpeed} options={SCROLL_SPEEDS} onChange={(value) => { update('scrollSpeed', value) }} />
+          <SegmentedChoice label="Scroll speed" value={preferences.scrollSpeed} options={SCROLL_SPEEDS} onChange={(value) => { update('scrollSpeed', value) }} />
         </Row>
         <Row label="Screen reader support" detail="Mirrors each terminal's text into the page so a screen reader can read it. It makes every pane much heavier to draw, so leave it off unless you use one.">
-          <Switch label="Screen reader support" checked={preferences.terminalScreenReader} onChange={(value) => { update('terminalScreenReader', value) }} />
+          <Switch aria-label="Screen reader support" checked={preferences.terminalScreenReader} onCheckedChange={(value) => { update('terminalScreenReader', value) }} />
         </Row>
       </Card>
     </>
@@ -518,29 +506,40 @@ function TerminalSection({ preferences, update }: { preferences: SettingsPrefere
 
 const MODE_OPTIONS = [['system', 'System'], ['dark', 'Dark'], ['light', 'Light']] as const
 
+/** A window style as the picker shows it: its panel colour, accent and line as a small window, then its name and line. */
+function windowStyleItem(style: WindowStyleEntry, dark: boolean): PickerItem {
+  const [ground, accent, line] = dark ? style.preview.dark : style.preview.light
+  return {
+    value: style.id,
+    label: style.name,
+    sub: STYLE_META[style.id],
+    tile: <span className="mx-style-tile" style={{ background: ground, borderColor: line }} aria-hidden="true"><i style={{ background: accent }} /></span>,
+    labelStyle: { fontFamily: style.font },
+  }
+}
+
+/** One line each, under the style's name. */
+const STYLE_META: Readonly<Record<WindowStyle, string>> = {
+  glass: 'Soft frosted glass',
+  mono: 'One width, greyscale',
+  console: 'IDE panels, true black',
+  pixel: '8-bit, hard edges',
+}
+
 function AppearanceSection({ preferences, update, systemReducedMotion, systemDark, onPreviewTheme }: { preferences: SettingsPreferences; update: Update; systemReducedMotion: boolean; systemDark: boolean; onPreviewTheme: (name: string | null) => void }) {
   const reduced = preferences.reduceMotion || systemReducedMotion
   const darkInUse = preferences.themeMode === 'dark' || (preferences.themeMode === 'system' && systemDark)
   const modeNote = preferences.themeMode === 'system' ? `Follows your OS. Right now: ${systemDark ? 'dark' : 'light'}.` : `Always uses your ${preferences.themeMode} theme.`
   return (
     <>
-      <Card title="Window style" color="var(--accent)" iconPath={<><rect x="4" y="5" width="16" height="14" rx="3" /><path d="M4 10h16" /></>} meta={<span className="mx-scard-meta">Same features, different finish</span>}>
-        <StyleCards value={preferences.style} choice={preferences} systemDark={systemDark} onPick={(style) => { update('style', style) }} />
-        <Row label="Icons" detail="Agent and folder icons in their own colours, or neutral gray tiles.">
-          <Segmented label="Icons" value={preferences.iconColor} options={ICON_COLOR_OPTIONS} onChange={(value) => { update('iconColor', value) }} />
-        </Row>
-        <Row label="Background glow" detail="Two faint tints of the theme behind the cards. Off is a flat ground; a web view without WebGL always uses the flat one.">
-          <Switch label="Background glow" checked={preferences.backgroundGlow} onChange={(value) => { update('backgroundGlow', value) }} />
-        </Row>
-        <Row label="See-through terminal" detail="Lets the card show behind a pane's text when WebGL draws it. Programs that paint their own backgrounds, like Claude Code under its prompt, then show as boxes.">
-          <Switch label="See-through terminal" checked={preferences.terminalSeeThrough} onChange={(value) => { update('terminalSeeThrough', value) }} />
-        </Row>
-      </Card>
-      <Card title="Theme" color="var(--ansi-mag)" iconPath={<><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 0 0 16" /></>} meta={<span className="mx-scard-meta">{THEMES.length} installed</span>}
+      <Card title="Look" color="var(--accent)" iconPath={<><rect x="4" y="5" width="16" height="14" rx="3" /><path d="M4 10h16" /></>} meta={<span className="mx-scard-meta">{THEMES.length} themes installed</span>}
         foot="Amber and red keep their meaning in every theme."
       >
+        <Row label="Window style" detail="Same features, different finish.">
+          <PickerSelect label="Window style" value={preferences.style} groups={[{ items: WINDOW_STYLES.map((style) => windowStyleItem(style, darkInUse)) }]} onPick={(style) => { if (isWindowStyle(style)) update('style', style) }} />
+        </Row>
         <Row label="Appearance" detail={modeNote}>
-          <Segmented label="Appearance" value={preferences.themeMode} options={MODE_OPTIONS} onChange={(value) => { update('themeMode', value) }} />
+          <SegmentedChoice label="Appearance" value={preferences.themeMode} options={MODE_OPTIONS} onChange={(value) => { update('themeMode', value) }} />
         </Row>
         <Row label="Dark theme" detail="Used when the window is dark.">
           <ThemePicker kind="dark" value={preferences.darkTheme} inUse={darkInUse} dimmed={!darkInUse && preferences.themeMode !== 'system'} onPick={(name) => { update('darkTheme', name) }} onPreview={onPreviewTheme} />
@@ -552,25 +551,36 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
           <SpinnerPicker value={preferences.spinner} reduced={reduced} onPick={(spinner) => { update('spinner', spinner) }} />
         </Row>
       </Card>
+      <Card title="Surfaces" color="var(--ansi-mag)" iconPath={<><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 0 0 16" /></>}>
+        <Row label="Icons" detail="Agent and folder icons in their own colours, or neutral gray tiles.">
+          <SegmentedChoice label="Icons" value={preferences.iconColor} options={ICON_COLOR_OPTIONS} onChange={(value) => { update('iconColor', value) }} />
+        </Row>
+        <Row label="Background glow" detail="Two faint tints of the theme behind the cards. Off is a flat ground; a web view without WebGL always uses the flat one.">
+          <Switch aria-label="Background glow" checked={preferences.backgroundGlow} onCheckedChange={(value) => { update('backgroundGlow', value) }} />
+        </Row>
+        <Row label="See-through terminal" detail="Lets the card show behind a pane's text when WebGL draws it. Programs that paint their own backgrounds, like Claude Code under its prompt, then show as boxes.">
+          <Switch aria-label="See-through terminal" checked={preferences.terminalSeeThrough} onCheckedChange={(value) => { update('terminalSeeThrough', value) }} />
+        </Row>
+      </Card>
       <Card title="Sidebar" color="var(--accent)" iconPath={<><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M9 4v16" /></>}
         foot="Sessions keep the order they were created in."
       >
         <Row label="Sidebar position" detail="Which side of the window the sidebar sits on. Inspect and the inbox open from the other side.">
-          <Segmented label="Sidebar position" value={preferences.sidebarSide} options={SIDE_OPTIONS} onChange={(value) => { update('sidebarSide', value) }} />
+          <SegmentedChoice label="Sidebar position" value={preferences.sidebarSide} options={SIDE_OPTIONS} onChange={(value) => { update('sidebarSide', value) }} />
         </Row>
       </Card>
       <Card title="Interface size" color="var(--ansi-green)" iconPath={<path d="M4 7h16M4 12h10M4 17h13" />}>
         <Row label="Density" detail="How much room the sidebar rows, tabs and panes get.">
-          <Segmented label="Density" value={preferences.density} options={DENSITY_OPTIONS} onChange={(value) => { update('density', value) }} />
+          <SegmentedChoice label="Density" value={preferences.density} options={DENSITY_OPTIONS} onChange={(value) => { update('density', value) }} />
         </Row>
         <Row label="Sidebar icons" detail="The project tiles, session icons and the collapsed rail.">
-          <Segmented label="Sidebar icon size" value={preferences.iconSize} options={ICON_OPTIONS} onChange={(value) => { update('iconSize', value) }} />
+          <SegmentedChoice label="Sidebar icon size" value={preferences.iconSize} options={ICON_OPTIONS} onChange={(value) => { update('iconSize', value) }} />
         </Row>
         <Row label="Sidebar text" detail="Folder names and session rows.">
-          <Segmented label="Sidebar text size" value={preferences.sidebarTextSize} options={UI_TEXT_OPTIONS} onChange={(value) => { update('sidebarTextSize', value) }} />
+          <SegmentedChoice label="Sidebar text size" value={preferences.sidebarTextSize} options={UI_TEXT_OPTIONS} onChange={(value) => { update('sidebarTextSize', value) }} />
         </Row>
         <Row label="Tab text" detail="The names on the tab bar.">
-          <Segmented label="Tab text size" value={preferences.tabTextSize} options={UI_TEXT_OPTIONS} onChange={(value) => { update('tabTextSize', value) }} />
+          <SegmentedChoice label="Tab text size" value={preferences.tabTextSize} options={UI_TEXT_OPTIONS} onChange={(value) => { update('tabTextSize', value) }} />
         </Row>
         <Row label="Sidebar width" detail="Drag the sidebar's edge to change it, or focus the edge and use the arrow keys.">
           <span className="mono" style={{ fontSize: 12, color: 'var(--fg2)' }}>{preferences.sidebarWidth}px</span>
@@ -579,7 +589,7 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
       </Card>
       <Card title="Motion" color="var(--ansi-blue)" iconPath={<><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 0 0 16" /></>}>
         <Row label="Reduce motion" detail="Turns off pulses, slide-ins and size animations. Your system setting is always respected.">
-          <Switch label="Reduce motion" checked={preferences.reduceMotion} onChange={(value) => { update('reduceMotion', value) }} />
+          <Switch aria-label="Reduce motion" checked={preferences.reduceMotion} onCheckedChange={(value) => { update('reduceMotion', value) }} />
         </Row>
       </Card>
     </>
@@ -625,13 +635,13 @@ function NotificationsSection({ preferences, update, onTestNotice }: { preferenc
       foot="Clicking a notification brings the window forward and shows that session. A notification names the session and where it is; it never shows what the agent asked, so nothing private appears on a locked screen. The system asks once whether Maitty may send them."
     >
       <Row label="Needs you" detail="An agent stopped for an answer or an approval.">
-        <Switch label="Notify when a session needs you" checked={preferences.notifyNeedsYou} onChange={(value) => { update('notifyNeedsYou', value) }} />
+        <Switch aria-label="Notify when a session needs you" checked={preferences.notifyNeedsYou} onCheckedChange={(value) => { update('notifyNeedsYou', value) }} />
       </Row>
       <Row label="Done" detail="An agent finished its turn.">
-        <Switch label="Notify when a session finishes" checked={preferences.notifyFinished} onChange={(value) => { update('notifyFinished', value) }} />
+        <Switch aria-label="Notify when a session finishes" checked={preferences.notifyFinished} onCheckedChange={(value) => { update('notifyFinished', value) }} />
       </Row>
       <Row label="Error" detail="A session's program exited with an error.">
-        <Switch label="Notify when a session errors" checked={preferences.notifyError} onChange={(value) => { update('notifyError', value) }} />
+        <Switch aria-label="Notify when a session errors" checked={preferences.notifyError} onCheckedChange={(value) => { update('notifyError', value) }} />
       </Row>
       <Row label="Position" detail="Where notification cards appear in the window. Done is green, needs you amber and an error red.">
         <div className="mx-pos-grid" role="group" aria-label="Notification position">
@@ -868,10 +878,10 @@ function MachineList({ machines }: { machines: MachinesInfo }) {
               )}
           </div>
           <Row label={`Copy to your clipboard`} detail={`Let ${name} put text on your clipboard.`}>
-            <Switch label={`Allow ${name} to copy to your clipboard`} checked={head.grants.clipboard} onChange={(on) => { machines.onGrant(name, 'clipboard', on) }} />
+            <Switch aria-label={`Allow ${name} to copy to your clipboard`} checked={head.grants.clipboard} onCheckedChange={(on) => { machines.onGrant(name, 'clipboard', on) }} />
           </Row>
           <Row label="Notifications" detail={`Let ${name} raise notices, and tell you when its sessions need you or finish.`}>
-            <Switch label={`Allow ${name} to notify you`} checked={head.grants.notices} onChange={(on) => { machines.onGrant(name, 'notices', on) }} />
+            <Switch aria-label={`Allow ${name} to notify you`} checked={head.grants.notices} onCheckedChange={(on) => { machines.onGrant(name, 'notices', on) }} />
           </Row>
           </Fragment>
         )

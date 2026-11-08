@@ -156,6 +156,10 @@ Rules for `apps/gui/`. Owner-approved 2026-11-04.
 2. Every popup (menu, dropdown, dialog, tooltip, popover, listbox) is a
    shadcn/Radix primitive from `src/components/ui/`. No hand-rolled focus, Esc
    or arrow-key handling.
+   The same goes for the controls inside a page: a switch, a segmented or radio
+   choice, a select or picker, a dialog. Each one exists once in `components/ui/`
+   and every feature uses it ([shadcn-tailwind](stack/shadcn-tailwind.md#primitives),
+   "One component per control").
 3. New components use Tailwind utilities on those tokens. Heavy animation and
    per-style rules (the four window styles, `data-gpu`) stay in `material.css` and `workspace.css`.
 4. Old CSS moves to these rules only when a ticket touches that area. There is
@@ -165,6 +169,12 @@ Rules for `apps/gui/`. Owner-approved 2026-11-04.
 `rgb()` or `hsl()` literal in `apps/gui/src`. Exempt: test files, the theme
 files in `features/workspace/theme/`, and `TerminalView.tsx` (the xterm.js
 palette takes literal colours). Don't widen the exemptions to pass a change.
+
+`pnpm lint` also enforces the one-component-per-control rule: a hand-built
+`role="switch"`, `radiogroup`, `radio`, `dialog`, `alertdialog`, `menu`, `menuitem`,
+`listbox` or `option`, or a `createPortal` import, outside `components/ui/` is an
+error. The files still carrying one are listed in the ratchet block of
+`eslint.config.ts`; the list only shrinks.
 
 ## Project-specific: desktop window sizes and sidebar order
 

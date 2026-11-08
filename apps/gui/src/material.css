@@ -278,33 +278,6 @@
 :root[data-style="glass"] .mx-app [role="dialog"] { border-radius: 18px; }
 :root[data-style="glass"] .mx-app .mx-settings { border-radius: 22px; }
 
-/* ---- Settings › Window style: a card's mini preview ----
-   Each preview carries the tokens of the style it shows (set inline by StyleCards), so it paints
-   with the same variables as the app and needs no colours of its own. Only the geometry differs. */
-.mx-sp { --sp-gap: 6px; --sp-r: 7px; --sp-outer: 10px; --sp-small: 5px; --sp-dot: 50%; --sp-bw: 1px; position: relative; height: 104px; display: flex; gap: var(--sp-gap); padding: var(--sp-gap); border-radius: var(--sp-outer); background: var(--bg); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; font-family: var(--ui); color: var(--fg); }
-.mx-sp[data-sp="glass"] { --sp-r: 10px; }
-.mx-sp[data-sp="mono"], .mx-sp[data-sp="pixel"] { --sp-gap: 4px; --sp-r: 0; --sp-outer: 0; --sp-small: 0; --sp-dot: 0; }
-.mx-sp[data-sp="pixel"] { --sp-bw: 2px; }
-.mx-sp i { font-style: normal; display: flex; flex-direction: column; background: var(--main); border-radius: var(--sp-r); box-shadow: inset 0 0 0 var(--sp-bw) var(--pane-line); }
-.mx-sp b { display: block; font-weight: inherit; }
-.mx-sp-side { width: 31%; flex: none; gap: 5px; padding: 7px 5px; }
-.mx-sp-pane { flex: 1; min-width: 0; gap: 5px; padding: 8px 8px 7px; }
-.mx-sp-row { display: flex !important; align-items: center; gap: 4px; padding: 3px; border-radius: var(--sp-small); }
-.mx-sp-row.is-current { background: var(--sel); }
-.mx-sp-dot { width: 6px; height: 6px; flex: none; border-radius: var(--sp-dot); }
-.mx-sp-dot.is-accent { background: var(--accent); }
-.mx-sp-dot.is-warn { background: var(--warn); }
-.mx-sp-dot.is-dim { background: var(--dim); }
-.mx-sp-bar { flex: 1; height: 3px; background: var(--dim); opacity: .6; }
-.mx-sp-bar.is-fg2 { background: var(--fg2); opacity: .7; }
-.mx-sp-aa { font-size: 14px; font-weight: 600; line-height: 1; color: var(--fg); }
-.mx-sp-line { height: 3px; background: var(--fg2); opacity: .55; }
-.mx-sp-line.is-long { width: 86%; }
-.mx-sp-line.is-short { width: 58%; }
-.mx-sp-fill { flex: 1; }
-.mx-sp-box { height: 18px; display: flex !important; align-items: center; justify-content: flex-end; padding: 0 3px; border-radius: var(--sp-small); background: var(--raise); box-shadow: inset 0 0 0 1px var(--line2); }
-.mx-sp-send { width: 11px; height: 11px; border-radius: var(--sp-dot); background: var(--accent); }
-
 /* The notification card's own glass: a heavier blur and a deeper shadow than the other floats, and Glass rounds it more. */
 :root[data-finish="glass"] .mx-app .mx-notice {
   background: linear-gradient(180deg, rgba(var(--hl), calc(.09 * var(--hk))), rgba(var(--hl), calc(.035 * var(--hk)))), color-mix(in srgb, var(--main) 88%, transparent);

@@ -646,17 +646,6 @@ button.mx-sb-item:hover { background: rgba(var(--hl), calc(.07 * var(--hk))); co
 .mx-app .title-bar { background: var(--tbar); border-bottom: var(--tbar-b); }
 
 /* Settings › Appearance › Window style cards. The preview's own colours are in material.css (`.mx-sp`). */
-.mx-style-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 10px; padding: 2px 14px 14px; }
-.mx-style-card { display: flex; flex-direction: column; gap: 9px; padding: 7px 7px 11px; border-radius: 14px; text-align: left; background: transparent; box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.08 * var(--hk))); transition: box-shadow .15s, background .15s; }
-.mx-style-card:hover { background: rgba(var(--hl), calc(.05 * var(--hk))); }
-.mx-style-card.is-selected { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent-line); }
-.mx-style-foot { display: flex; align-items: center; gap: 8px; padding: 0 4px; }
-.mx-style-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.mx-style-name { font-size: 13.5px; font-weight: 600; color: var(--fg2); }
-.mx-style-card.is-selected .mx-style-name { color: var(--fg); }
-.mx-style-blurb { font-size: 11.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-style-check { width: 18px; height: 18px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--on-accent); box-shadow: inset 0 0 0 1.5px rgba(var(--hl), calc(.18 * var(--hk))); }
-.mx-style-card.is-selected .mx-style-check { background: var(--accent); box-shadow: 0 2px 8px -2px color-mix(in srgb, var(--accent) 60%, transparent); }
 
 /* Updates: the sidebar footer's left slot, its card, and the restart screen. */
 .mx-foot-slot { flex: 1; min-width: 0; display: flex; align-items: center; }
@@ -746,3 +735,14 @@ button.mx-sb-item:hover { background: rgba(var(--hl), calc(.07 * var(--hk))); co
 
 /* The window ground is opaque on every platform, as in the design: a translucent Mica ground showed the desktop through
    a light theme as a dark grey. */
+
+.mx-font-tile { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: 7px; background: var(--c-track-bg); font-size: 13px; color: var(--fg); }
+.mx-cursor-glyph { display: inline-block; margin-right: 6px; background: currentColor; vertical-align: -2px; }
+.mx-cursor-glyph.is-block { width: 7px; height: 12px; }
+.mx-cursor-glyph.is-bar { width: 2px; height: 12px; margin-right: 8px; margin-left: 2px; }
+.mx-cursor-glyph.is-underline { width: 8px; height: 2px; vertical-align: -3px; }
+.mx-caret.is-blinking { animation: mx-caret-blink 1.06s steps(1, end) infinite; }
+@keyframes mx-caret-blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .mx-caret.is-blinking { animation: none; } }
+.mx-style-tile { width: 30px; height: 24px; flex: none; display: flex; align-items: flex-end; justify-content: flex-end; padding: 4px; border: 1px solid; border-radius: 6px; }
+.mx-style-tile i { width: 10px; height: 4px; border-radius: 2px; }

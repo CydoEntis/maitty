@@ -1,3 +1,4 @@
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { useState, type ReactNode } from 'react'
 import { Popover } from 'radix-ui'
 import { PopupContent } from '@/components/ui/popup'
@@ -85,17 +86,17 @@ function ChipRow({ item, onPick }: { item: ChipItem; onPick: (item: ChipItem) =>
 /** The reasoning levels as a row of segments under the model list: Auto sends nothing. */
 export function ReasoningMeter<T extends string>({ levels, value, labels, onPick }: { levels: readonly T[]; value: T; labels: Readonly<Record<T, string>>; onPick: (level: T) => void }) {
   return (
-    <div className="mx-chip-meter" role="radiogroup" aria-label="Reasoning">
+    <RadioGroup className="mx-chip-meter" aria-label="Reasoning" orientation="horizontal" value={value} onValueChange={(next) => { const picked = levels.find((level) => level === next); if (picked !== undefined) onPick(picked) }}>
       <p className="mx-chip-meter-head"><strong>Reasoning</strong><span>{labels[value]}</span></p>
       <div className="mx-chip-meter-bars">
         {levels.map((level) => (
-          <button key={level} type="button" role="radio" aria-checked={level === value} className={`mx-chip-meter-step${level === value ? ' is-on' : ''}`} onClick={() => { onPick(level) }}>
+          <RadioGroupItem key={level} value={level} className={`mx-chip-meter-step${level === value ? ' is-on' : ''}`}>
             <span className="mx-chip-meter-bar" aria-hidden="true" />
             <span>{labels[level]}</span>
-          </button>
+          </RadioGroupItem>
         ))}
       </div>
-    </div>
+    </RadioGroup>
   )
 }
 

@@ -1,3 +1,4 @@
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import type { PaneView } from '../model/chatView'
 import { useTipWithKeys } from '@/features/shortcuts/platform'
 import { Icon } from './glyphs'
@@ -19,13 +20,13 @@ export function PaneViewSwitch({ view, onChange }: Props) {
     { value: 'chat', label: tip('Chat view', 'chat-toggle') },
   ]
   return (
-    <div role="radiogroup" aria-label="Pane view" className={`mx-view-switch${view === 'chat' ? ' is-chat' : ''}`} onMouseDown={(event) => { event.stopPropagation() }}>
+    <RadioGroup aria-label="Pane view" orientation="horizontal" value={view} onValueChange={(next) => { if (next === 'terminal' || next === 'chat') onChange(next) }} className={`mx-view-switch${view === 'chat' ? ' is-chat' : ''}`} onMouseDown={(event) => { event.stopPropagation() }}>
       <span aria-hidden="true" className="mx-view-thumb" />
       {choices.map(({ value, label }) => (
-        <button key={value} type="button" role="radio" aria-checked={view === value} aria-label={label} title={label} className="mx-view-option" onClick={() => { if (view !== value) onChange(value) }}>
+        <RadioGroupItem key={value} value={value} aria-label={label} title={label} className="mx-view-option">
           <Icon name={value === 'terminal' ? 'prompt' : 'chat'} size={14} strokeWidth={2} />
-        </button>
+        </RadioGroupItem>
       ))}
-    </div>
+    </RadioGroup>
   )
 }

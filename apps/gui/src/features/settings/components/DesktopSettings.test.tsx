@@ -208,7 +208,7 @@ describe('desktop settings', () => {
   it('picks a dark and a light theme separately, from searchable dropdowns that list the one in use first', async () => {
     const user = userEvent.setup()
     const { onChange } = renderSettings('appearance', { preferences: { ...PREFS, darkTheme: 'Nord' } })
-    expect(screen.getByText('28 installed')).toBeInTheDocument()
+    expect(screen.getByText('28 themes installed')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Dark theme: Nord' }))
     const dark = screen.getByRole('listbox', { name: 'Dark themes' })
@@ -279,22 +279,17 @@ describe('desktop settings', () => {
     expect(screen.queryByText('Socket')).not.toBeInTheDocument()
   })
 
-  it('saves the terminal font family when the field is left, and refuses an unsafe name', async () => {
+  it('picks the terminal font from a list that starts with the bundled one, and keeps a saved family that is not installed', async () => {
     const user = userEvent.setup()
-    const { onChange } = renderSettings('terminal')
-    const field = screen.getByRole('combobox', { name: 'Terminal font family' })
+    const { onChange } = renderSettings('terminal', { preferences: { ...PREFS, terminalFontFamily: 'Fira Code' } })
+    const button = screen.getByRole('button', { name: 'Terminal font family: Fira Code' })
+    expect(button).toHaveTextContent('Saved choice')
 
-    await user.type(field, 'Fira Code')
-    expect(onChange).not.toHaveBeenCalled()
-    await user.tab()
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ terminalFontFamily: 'Fira Code' }))
-
-    onChange.mockClear()
-    await user.clear(field)
-    await user.type(field, 'a;b')
-    expect(screen.getByRole('alert')).toBeInTheDocument()
-    await user.tab()
-    expect(onChange).not.toHaveBeenCalled()
+    await user.click(button)
+    const list = await screen.findByRole('menu', { name: /^Terminal font family/ })
+    expect(within(list).getByRole('menuitemradio', { name: /Fira Code/ })).toHaveAttribute('aria-checked', 'true')
+    await user.click(within(list).getByRole('menuitemradio', { name: /Geist Mono/ }))
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ terminalFontFamily: '' }))
   })
 
   it('sets the normal and the bold weight of the terminal text', async () => {
@@ -316,20 +311,22 @@ describe('desktop settings', () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ iconSize: 'small' }))
   })
 
-  it('offers the four window styles, with the current one checked', async () => {
+  it('offers the four window styles in one dropdown, with the current one checked', async () => {
     const user = userEvent.setup()
     const { onChange } = renderSettings('appearance', { preferences: { ...PREFS, style: 'glass' } })
-    const styles = screen.getByRole('radiogroup', { name: 'Window style' })
+    const button = screen.getByRole('button', { name: 'Window style: Glass' })
 
-    expect(within(styles).getAllByRole('radio').map((radio) => radio.textContent)).toEqual([
+    await user.click(button)
+    const list = await screen.findByRole('menu', { name: /^Window style/ })
+    expect(within(list).getAllByRole('menuitemradio').map((item) => item.textContent)).toEqual([
       expect.stringContaining('Glass'),
       expect.stringContaining('Mono Type'),
       expect.stringContaining('Console'),
       expect.stringContaining('Retro Pixel'),
     ])
-    expect(within(styles).getByRole('radio', { name: /Glass/ })).toBeChecked()
+    expect(within(list).getByRole('menuitemradio', { name: /Glass/ })).toHaveAttribute('aria-checked', 'true')
 
-    await user.click(within(styles).getByRole('radio', { name: /Retro Pixel/ }))
+    await user.click(within(list).getByRole('menuitemradio', { name: /Retro Pixel/ }))
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ style: 'pixel' }))
   })
 
