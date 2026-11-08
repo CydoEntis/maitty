@@ -13,9 +13,11 @@ export const DEFAULT_WINDOW_STYLE: WindowStyle = 'glass'
 
 export const isWindowStyle = (value: unknown): value is WindowStyle => WINDOW_STYLE_IDS.some((id) => id === value)
 
-/** The two themes a style's palette replaces. Any other theme keeps its own colours and takes only the style's fonts, dials and shapes. */
-const PALETTE_DARK_THEME = 'Midnight'
-const PALETTE_LIGHT_THEME = 'Day'
+/**
+ * The themes a style's palette replaces: Midnight, and Day with Paper (the light theme a fresh install
+ * starts on). Any other theme keeps its own colours and takes only the style's fonts, dials and shapes.
+ */
+const PALETTE_THEMES: readonly string[] = ['Midnight', 'Paper', 'Day']
 
 type Palette = Partial<ThemeTokens>
 
@@ -157,14 +159,14 @@ export function findWindowStyle(id: WindowStyle): WindowStyleEntry {
 
 /**
  * The theme as a window style draws it. The style's palette replaces the colours of Midnight and Day
- * (the themes the design defines); every other theme keeps its own colours and takes the style's
+ * (the themes the design defines, Day also standing in for Paper); every other theme keeps its own colours and takes the style's
  * fonts, dials and shapes only. The status colours (amber, red, green) stay the theme's unless the
  * style names its own, so "needs you" keeps its meaning.
  */
 export function withWindowStyle(theme: ThemeEntry, id: WindowStyle): ThemeEntry {
   const style = findWindowStyle(id)
   const side = theme.light ? style.light : style.dark
-  const owns = theme.name === (theme.light ? PALETTE_LIGHT_THEME : PALETTE_DARK_THEME)
+  const owns = PALETTE_THEMES.includes(theme.name)
   const tokens: ThemeTokens = owns ? { ...theme.tokens, ...side.palette } : theme.tokens
   return { ...theme, tokens, cardRing: composite(tokens.pane, tokens.bg), look: side.look }
 }

@@ -154,7 +154,7 @@ Rules for `apps/gui/`. Owner-approved 2026-11-04.
    shadcn/Radix primitive from `src/components/ui/`. No hand-rolled focus, Esc
    or arrow-key handling.
 3. New components use Tailwind utilities on those tokens. Heavy animation and
-   per-style rules (Flat, Tiled, Glass, `data-gpu`) stay in `workspace.css`.
+   per-style rules (the five window styles, `data-gpu`) stay in `material.css` and `workspace.css`.
 4. Old CSS moves to these rules only when a ticket touches that area. There is
    no big-bang rewrite.
 

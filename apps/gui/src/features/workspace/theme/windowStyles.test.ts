@@ -46,6 +46,10 @@ describe('window styles', () => {
     expect(withWindowStyle(MIDNIGHT, 'pixel').cardRing).toBe('#222538')
   })
 
+  it('draws Paper, the default light theme, with the style palette too', () => {
+    expect(withWindowStyle(findTheme('Paper'), 'console').tokens.bg).toBe('#EBEBEB')
+  })
+
   it("keeps another theme's own colours and gives it only the style's fonts, dials and shapes", () => {
     const dracula = findTheme('Dracula')
     const styled = withWindowStyle(dracula, 'pixel')

@@ -194,8 +194,8 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   xterm's background and ANSI black are `--main`, so a program that paints with black leaves no box. On a web view
   without WebGL 2 (`data-gpu="software"`) the same rules use cheaper values: no blur, a 1px ring for the popover
   shadow ([PERFORMANCE](PERFORMANCE.md)).
-- **One material, three roles (`apps/gui/src/material.css`).** Glass and Flat are told apart in that file and nowhere
-  else. Every surface is a *panel* (sidebar, main card, Inbox, inspector), a *float* (menus, popovers, dialogs, the
+- **One material, three roles (`apps/gui/src/material.css`).** The two finishes and the five styles are told apart in
+  that file and nowhere else. Every surface is a *panel* (sidebar, main card, Inbox, inspector), a *float* (menus, popovers, dialogs, the
   palette, find, toasts) or a *field* (the message box and its tray), and takes its fill, hairline, highlight, shadow
   and blur from that role's `--m-*` tokens. **Glass**: translucent fills over a blur, a hairline and top highlight, soft
   shadows, and two tints of the theme behind the window (on Windows the window is Mica and the desktop shows through).
@@ -210,11 +210,25 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   Glass reads in light and dark alike. `src/material.test.ts` fails when a stylesheet reads a solid surface colour or
   a fixed white. Left on purpose: terminal grounds (`--term`, `--main` under a terminal), scrims, brand and status
   colours, the switch knob, and the legacy `App.css` shell outside the window root.
-- **Window style: Flat or Glass** (Settings › Appearance › Window style, `style`, shared with the terminal app as
-  `window_style`; the root carries `data-style` and `data-finish`). The finish only; layout, features and status
-  colours do not change. **Glass** is the default: the gradients, highlights and shadows above. **Flat** sets `--gk`
-  to 0, which turns every glass gradient and shadow off, and radius 8 (Settings 10). Tiled is gone: a saved `tiled`
-  reads as Flat, `minimal` as Flat and `expressive` as Glass. **Icons** (Settings › Appearance › Icons, `iconColor`,
+- **Window style: five looks, one set of tokens** (Settings › Appearance › Window style, `style`; the root carries
+  `data-style` and `data-finish`). **Glass** (the default: Geist, teal, floating frosted cards), **Frosted** (darker,
+  quieter glass, 22px corners, a rose accent, Inter and JetBrains Mono), **Mono Type** (Space Mono everywhere,
+  greyscale, square corners), **Console** (IBM Plex Sans and JetBrains Mono on true black, a teal marker on the
+  selected row) and **Retro Pixel** (Pixelify Sans, square corners, 3px borders, hard offset shadows, scanlines). Each
+  has a Midnight (dark) and a Day (light) side; layout, features and status colours never change. A style is data in
+  `theme/windowStyles.ts` (palette overrides, fonts, the glass dials `--hk`/`--sk`); `withWindowStyle` lays it over the
+  theme in use. The palette replaces the colours of Midnight, Paper and Day; any other theme keeps its own colours and
+  takes the style's fonts, dials and shapes. **Components are built once and read tokens, never the style.** Besides the
+  base tokens, the shared pieces read the component tokens declared in `material.css`: `--c-sel-*` (every selected
+  state: a sidebar row, a settings nav item, a chosen segment, a palette row), `--c-field-*` (dropdown buttons, pickers,
+  the new-session segments, inputs), `--c-track-*` (the tray behind a segmented control), `--c-sw-*` and `--c-knob-*`
+  (the switch), `--c-tile-ring` (agent and shell tiles) and `--c-head-bg` (sticky headers). Glass and Frosted use the
+  defaults; Mono, Console and Pixel override them. What tokens cannot say (square corners, Pixel's borders and
+  scanlines, Frosted's panels, no blur outside Glass and Frosted) is the one `[data-style]` block at the end of
+  `material.css`. `data-finish` is derived (`finishOf`): Glass and Frosted are `glass`, the others `flat`. The style is
+  the desktop app's own: it is not in the shared `window_style` setting, which stays Flat or Glass for the config file. A
+  saved Flat or Tiled reads as Console. A new control gets tokens first and is checked in all five styles and both
+  themes (Settings › Appearance shows each style live). **Icons** (Settings › Appearance › Icons, `iconColor`,
   `data-icons`): `color` keeps app icons in their own colours; `grayscale` makes them neutral `--raise` tiles.
 - **Title bar.** 32px, `--tbar` (on dark themes a veil of `rgba(10,12,12,.35)` over the ground, on light ones
   `--main`): the 18px logo, "Maitty" in 12px `--muted`, and the platform's window buttons (46px captions on Windows).
@@ -248,7 +262,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
 - **Status bar.** A 28px line at the bottom of the main area under a hairline, 11.5px muted, one line.
   The left is empty, except "Reconnecting to maittyd…" in amber with a dashed dot when the daemon is
   unreachable. The right holds quick controls: a **theme** menu (Dark, Light or System, a few themes of
-  the kind in use, and "All themes in Settings…"), the **layout style** (Flat or Glass), the terminal
+  the kind in use, and "All themes in Settings…"), the **window style** (the five styles), the terminal
   **text size** (−, the size which resets it to 14px, +; Ctrl+= and Ctrl+− do the same) and the shortcuts
   keycaps, which open the shortcut overlay. Hidden in Focus mode and by Settings › General › Window ›
   Status bar (off by default).
