@@ -14,22 +14,22 @@ const open = () => render(<StartingChat agent="codex" sessionId="s1" onBackToTer
 describe('the chat of a session that is still starting', () => {
   it('is there at once, with a message box for the agent that was chosen', () => {
     open()
-    expect(screen.getByText('Starting codex…')).toBeInTheDocument()
+    expect(screen.getByText(/Type below: it is sent as soon as codex is ready/)).toBeInTheDocument()
+    expect(screen.queryByText('Starting codex…')).not.toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Message codex' })).toBeEnabled()
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
   })
 
-  it('holds a message sent now, shows it as waiting, and lets it be taken back', async () => {
+  it('holds a message sent now and shows it in the conversation, where it stays when the chat takes over', async () => {
     const user = userEvent.setup()
     open()
     await user.type(screen.getByRole('textbox', { name: 'Message codex' }), 'fix the build{Enter}')
 
     expect(heldFirstMessage('s1')).toBe('fix the build')
-    expect(screen.getByRole('list', { name: 'Queued messages' })).toHaveTextContent('fix the build')
+    expect(screen.queryByRole('list', { name: 'Queued messages' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Sending')).toHaveTextContent('fix the build')
+    expect(screen.getByText('codex is starting…')).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Message codex' })).toHaveValue('')
-
-    await user.click(screen.getByRole('button', { name: /Remove/ }))
-    expect(heldFirstMessage('s1')).toBeNull()
   })
 
   it('carries a half-typed message over to the chat that replaces it', async () => {

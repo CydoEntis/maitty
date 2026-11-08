@@ -102,6 +102,8 @@ describe('how the chat feels while it waits', () => {
     await settle(ACTIVE_POLL_MS + 1)
     daemon.upsert(daemon.message('t1', 'a1', 'Assistant', 'the answer'))
     await settle(700)
+    // The reply arrived live, so it is typed in; give the typing time to catch up.
+    await settle(1500)
 
     expect(screen.getByText('the answer')).toBeInTheDocument()
   })

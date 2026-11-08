@@ -604,6 +604,7 @@ export function DesktopApp() {
   // How far each machine's update has got. A machine is in it from the moment its update starts until it ends.
   const [updateProgress, setUpdateProgress] = useState<Readonly<Record<string, number>>>({})
   useEffect(() => {
+    if (!isDesktop()) return undefined
     let stopped = false
     let unlisten: (() => void) | undefined
     listenMachineUpdateProgress((progress) => {
@@ -938,8 +939,7 @@ export function DesktopApp() {
     else if (request.branch) await switchBranch(folder, request.branch.name, request.branch.create)
     startAgentSession(() => Promise.resolve(folder), request.agent, 'chat', request.message, launchFlags(request.agent, request.model, request.reasoning))
     setNewChatOpen(false)
-    flash(`${request.agent} chat started`)
-  }, [online, startAgentSession, flash])
+  }, [online, startAgentSession])
 
   // New session (the shortcut, the palette, the sidebar's chat button): on this computer it is the new chat page.
   // Chats are this computer's, so another machine's session is asked for in the dialog, on that machine.
@@ -1647,20 +1647,26 @@ export function DesktopApp() {
 
   const { notifyNeedsYou, notifyFinished, notifyError, notificationSound } = preferences
 
-  // A chat session that just started needing you, finished or failed. A terminal session's alert comes from
-  // the daemon (below), which decides it once per event; diffing statuses here as well would alert twice.
+  // A session that just started needing you, finished or failed, and that you are not looking at. A chat session's
+  // alert is raised here. A terminal session's sound and system notice come from the daemon (below), which decides
+  // them once per event; but it tells only one window, and only sometimes, so the window also raises the card
+  // itself for a session it can see change. The card is keyed by its session, so the two never stack.
   useEffect(() => {
     const previousStatuses = lastStatuses.current
     // What another machine's agents do raises no system notice unless its entry says notices = true.
     const mine = sessions.filter((item) => item.machine === LOCAL_MACHINE || machines.get(item.machine)?.state.notices === true)
-    const chats = mine.filter((item) => isChatSession(item.conversation))
     const notices = online
-      ? noticesFor(lastStatuses.current, chats, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError }, document.hasFocus() ? focusedId : null)
+      ? noticesFor(lastStatuses.current, mine, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError }, document.hasFocus() ? focusedId : null)
       : []
     lastStatuses.current = new Map(mine.map((item) => [item.id, item.status]))
     // A card that said "Needs you" goes when the session stops needing you.
     for (const item of sessions) if (item.status !== 'needs' && previousStatuses?.get(item.id) === 'needs') dismissSessionNotice(item.id)
-    for (const notice of notices) raiseNotice(notice)
+    for (const notice of notices) {
+      const target = mine.find((item) => item.id === notice.sessionId)
+      // Away from the window, a terminal session's system notice is the daemon's; raising it here too would say it twice.
+      if (target !== undefined && !isChatSession(target.conversation) && !document.hasFocus()) continue
+      raiseNotice(notice)
+    }
   }, [sessions, online, focusedId, notifyNeedsYou, notifyFinished, notifyError, machines, raiseNotice])
 
   // A terminal session the daemon says needs you, or finished. Kept in a ref so the one listener below always

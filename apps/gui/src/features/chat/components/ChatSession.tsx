@@ -18,6 +18,7 @@ import { ANSWER_KEY, ANSWER_KEYS, choiceKey, type AskChoice } from '../permissio
 import { releaseFirstMessage, takeCarriedDraft, useHeldFirstMessage } from '../firstMessage'
 import { Composer } from './Composer'
 import { ChatItem } from './ChatItems'
+import { KnownRowsContext } from '../knownRows'
 import { ChatSkeleton } from './ChatSkeleton'
 import { ApprovalTray, PromptTray } from './QuestionTray'
 import { SubagentBar, SubagentChat } from './SubagentChat'
@@ -129,6 +130,9 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   const echoThinking = echo !== null && !echo.quiet
   const allRows = useMemo(() => buildRows(events, working, root, echoText, echoThinking), [events, working, root, echoText, echoThinking])
   const rows = useMemo(() => allRows.filter((row) => !isPendingApproval(row)), [allRows])
+  // The rows the history had when it loaded: what arrives after them is live, and is typed in rather than shown whole.
+  const [known, setKnown] = useState<ReadonlySet<string> | null>(null)
+  if (feed.loaded && known === null) setKnown(new Set(rows.map(rowKey)))
   const pending = useMemo(() => allRows.find((row): row is Extract<ChatRow, { kind: 'approval' }> => isPendingApproval(row))?.event ?? null, [allRows])
   // A draft typed while the agent started comes over once, and a message sent then goes out as soon as the agent takes input.
   const held = useHeldFirstMessage(sessionId)
@@ -216,7 +220,9 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
       ) : feed.loaded && rows.length === 0 ? (
         <p className="mx-chat-empty">{hasTerminal ? 'No messages yet. Send one below, or type in the terminal.' : 'No messages yet. Send one below.'}</p>
       ) : feed.loaded ? (
-        <VirtualList items={rows} getKey={rowKey} estimate={ESTIMATED_ROW_PX} renderItem={renderRow} label={`Conversation with ${agent}`} scrollTarget={scrollTarget} />
+        <KnownRowsContext.Provider value={known}>
+          <VirtualList items={rows} getKey={rowKey} estimate={ESTIMATED_ROW_PX} renderItem={renderRow} label={`Conversation with ${agent}`} scrollTarget={scrollTarget} />
+        </KnownRowsContext.Provider>
       ) : (
         <ChatSkeleton />
       )}

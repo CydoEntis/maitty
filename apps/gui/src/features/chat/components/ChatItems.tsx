@@ -4,6 +4,7 @@ import { ElapsedSince } from '@/features/workspace/components/times'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
 import { dividerText, paragraphsOf, splitLead, streamingParagraphs, type ChatRow } from '../chatRows'
 import type { ItemStatus } from '../chatEvents'
+import { KnownRowsContext } from '../knownRows'
 import { useTypedText } from '../useTypedText'
 import { ReducedMotionContext } from '@/features/workspace/components/motion'
 import { parseAttachmentMessage } from '../attachmentMessage'
@@ -78,10 +79,11 @@ function sameProps(a: RowProps, b: RowProps): boolean {
  * An agent's reply. One still arriving is read in its finished form, so a half-typed mark does not flash, and is typed in
  * as it comes rather than appearing in chunks; a finished one is read as written, once the typing has caught up.
  */
-function AgentMessage({ paragraphs, status }: { paragraphs: readonly string[]; status: ItemStatus }) {
+function AgentMessage({ rowKey, paragraphs, status }: { rowKey: string; paragraphs: readonly string[]; status: ItemStatus }) {
   const reduced = useContext(ReducedMotionContext)
+  const known = useContext(KnownRowsContext)
   const target = (status === 'running' ? streamingParagraphs(paragraphs) : paragraphs).join('\n\n')
-  const typed = useTypedText(target, !reduced)
+  const typed = useTypedText(target, !reduced, known !== null && !known.has(rowKey))
   const { lead, rest } = splitLead(typed === target ? (status === 'running' ? streamingParagraphs(paragraphs) : paragraphs) : paragraphsOf(typed))
   const empty = lead === '' && rest.length === 0
   return (
@@ -122,7 +124,7 @@ export const ChatItem = memo(function ChatItem({ row, agent, workingSince, appro
         </Frame>
       )
     case 'agent':
-      return <Frame><AgentMessage paragraphs={row.paragraphs} status={row.status} /></Frame>
+      return <Frame><AgentMessage rowKey={row.key} paragraphs={row.paragraphs} status={row.status} /></Frame>
     case 'step':
       return (
         <Frame>

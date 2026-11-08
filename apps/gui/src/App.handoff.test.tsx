@@ -963,12 +963,11 @@ describe('desktop overlays and pane tools', () => {
       daemon.loadConversations.mockResolvedValue([at(2), at(3, { status: 'needs-you', details: { asking: '$ git push origin main', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null } } })])
       await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
 
-      // The poll alone raises nothing for a terminal session: the daemon decides the alert and says so.
-      expect(screen.queryByText(/needs you$/)).not.toBeInTheDocument()
-      act(() => { alerts.emit?.({ machine: LOCAL_MACHINE, term: 3, status: 'blocked' }) })
-
+      // The window sees the status change and raises the card itself; the daemon's own alert for the same event replaces it, never stacks.
       const card = (await screen.findByText(/needs you$/)).closest('.mx-notice')
       expect(card).not.toBeNull()
+      act(() => { alerts.emit?.({ machine: LOCAL_MACHINE, term: 3, status: 'blocked' }) })
+      expect(screen.getAllByText(/needs you$/)).toHaveLength(1)
       expect(card).toHaveTextContent('$ git push origin main')
       expect(card).toHaveTextContent('just now')
       expect(within(card as HTMLElement).getAllByRole('button').map((button) => button.textContent)).toEqual(['', 'Allow', 'Open session'])
@@ -989,8 +988,6 @@ describe('desktop overlays and pane tools', () => {
       await screen.findByRole('navigation', { name: 'Sessions' })
       daemon.loadConversations.mockResolvedValue([at(2), at(3, { status: 'needs-you', agent: 'claude', details: { asking: '', ask: { tool: 'Bash', detail: 'git push origin main', answerable: true }, interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null } } })])
       await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
-      // The daemon decides the alert and says so; the poll alone raises nothing for a terminal session.
-      act(() => { alerts.emit?.({ machine: LOCAL_MACHINE, term: 3, status: 'blocked' }) })
 
       const card = (await screen.findByText(/needs you$/)).closest('.mx-notice')
       expect(card).not.toBeNull()

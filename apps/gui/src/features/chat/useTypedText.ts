@@ -9,10 +9,11 @@ const CATCH_UP_DIVISOR = 14
  * The text as if it were being typed. A reply arrives in chunks (the history is read every second or so), and
  * showing each chunk whole makes the text flash in. This shows only what was on screen when the row first
  * appeared, then types toward whatever arrives after it; a row that mounts already full (an old message, a
- * session you switched to) shows all of it at once. With `enabled` off everything shows at once.
+ * session you switched to) shows all of it at once, unless `fromStart` says it arrived live, which types it from its
+ * first letter. With `enabled` off everything shows at once.
  */
-export function useTypedText(target: string, enabled: boolean): string {
-  const [shown, setShown] = useState(target.length)
+export function useTypedText(target: string, enabled: boolean, fromStart = false): string {
+  const [shown, setShown] = useState(fromStart ? 0 : target.length)
   const latest = useRef(target)
   useEffect(() => { latest.current = target })
   useEffect(() => {

@@ -302,9 +302,9 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   check done), no text; under the selected session, a 28px row each on a guide line. Clicking one opens its own chat.
   The foot holds the update slot (or "Reconnecting to maittyd…") and the Settings gear. The edge drags (208 to 440px;
   double-click resets). The **rail** of a narrow window is the starters, then one tile per session.
-- **Replies are typed in.** An agent's reply that is still arriving types toward the text that came in (`useTypedText`),
-  so a chunk eases in instead of flashing; a message that mounts already full shows at once, and Reduce motion shows
-  everything at once. A helper agent reporting back (the harness's `<task-notification>` block, which the history keeps as a
+- **Replies are typed in.** An agent's reply types toward the text that came in (`useTypedText`), so a chunk eases in instead
+  of flashing. A reply that arrives after the history has loaded types from its first letter even when it arrives whole; what
+  the history already held shows at once (`knownRows.ts`), and Reduce motion shows everything at once. A helper agent reporting back (the harness's `<task-notification>` block, which the history keeps as a
   user message) is one quiet line, "Agent "name" finished · 11s · 50.5k tokens", never the markup; once it has reported,
   its row leaves the sidebar (one that stopped or still needs something stays).
 - **Panes swap with a glide.** Dropping a pane on another swaps them through a View Transition (`paneTransition.ts`): only the
@@ -318,6 +318,11 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   2px accent line runs under the header (indented 26px left, 10px right); both go when it ends. The percentage is the stage
   the update has finished (probed 5, found 15, build fetched 55, sent and verified 85, reachable 95), not a byte count: the
   download and upload have none to report.
+- **A chat that starts does not jump.** The message you send from the new chat page is drawn in the conversation at once,
+  where it will stay, with "claude is starting…" under it; there is no queued row above the box and no bar that comes and goes.
+  The needs-you card is raised by the window from the status change as well as by the daemon's own alert (one card per
+  session, so they never stack). The theme's tokens are on the page root, so a menu or popover that renders outside the window
+  reads the same colours and is never see-through.
 - **Typing while an agent works.** A chat run by the daemon queues what you send, and the daemon sends it when the turn
   ends. A chat that follows an agent in a terminal does the same on this side: the message is held in the composer store
   (shown under the box in the queue, removable) and typed into the agent's prompt, one at a time, once it is ready for a
