@@ -880,14 +880,22 @@ export function DesktopApp() {
     setNewChatOpen(false)
   }
 
-  const runStart = useCallback((folder: () => Promise<string>, place: (sessionId: string) => void, launch?: (folder: string) => Promise<void>) => {
-    if (!online || starting) return
+  // Resolves once the session is placed (true) or the start did not happen or failed (false).
+  const runStart = useCallback((folder: () => Promise<string>, place: (sessionId: string) => void, launch?: (folder: string) => Promise<void>): Promise<boolean> => {
+    if (!online || starting) return Promise.resolve(false)
     setStarting(true)
     setStartedFrom(new Set(sessionMap.keys()))
-    void folder()
+    return folder()
       .then((path) => startShell(path, launch))
-      .then((id) => { if (id) place(id) })
-      .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not start a shell')) })
+      .then((id) => {
+        if (!id) return false
+        place(id)
+        return true
+      })
+      .catch((error: unknown) => {
+        toast.error(errorMessage(error, 'Could not start a shell'))
+        return false
+      })
       .finally(() => { setStarting(false); setStartedFrom(null) })
   }, [online, starting, startShell, sessionMap])
 
@@ -902,8 +910,8 @@ export function DesktopApp() {
     await launchAgentSession(folder, agent, flags.split(' ').filter((word) => word !== ''))
   }, [])
 
-  const startAgentSession = useCallback((folder: () => Promise<string>, agent: ChatAgent, view: PaneView, firstMessage = '', flags = '') => {
-    runStart(folder, (id) => {
+  const startAgentSession = useCallback((folder: () => Promise<string>, agent: ChatAgent, view: PaneView, firstMessage = '', flags = '', afterPlace?: () => void): Promise<boolean> => {
+    return runStart(folder, (id) => {
       // A first message waits under the session and goes out once the agent takes input; its words name the session.
       if (firstMessage !== '') {
         holdFirstMessage(id, firstMessage)
@@ -915,6 +923,8 @@ export function DesktopApp() {
       window.setTimeout(() => { setExpectedAgents((current) => omitKey(current, id)) }, EXPECTED_AGENT_MS)
       setLayout((current) => openArrangement(current, id, makeId))
       if (view === 'chat') paneViews.choose(id, 'chat')
+      // In the same update as the new session opens, so the window never shows the page between the two.
+      afterPlace?.()
     }, launchAgent(agent, flags))
   }, [runStart, paneViews, launchAgent])
 
@@ -928,7 +938,7 @@ export function DesktopApp() {
     if (!online || starting) return
     // Gemini has no structured chat: it starts as a terminal session shown as its chat.
     if (agent === 'gemini') {
-      startAgentSession(() => Promise.resolve(from.cwd), agent, 'chat')
+      void startAgentSession(() => Promise.resolve(from.cwd), agent, 'chat')
       return
     }
     setStarting(true)
@@ -945,8 +955,9 @@ export function DesktopApp() {
     let folder = request.folder
     if (request.branch?.worktree) folder = await addWorktree(folder, request.branch.name, request.branch.create)
     else if (request.branch) await switchBranch(folder, request.branch.name, request.branch.create)
-    startAgentSession(() => Promise.resolve(folder), request.agent, 'chat', request.message, launchFlags(request.agent, request.model, request.reasoning))
-    setNewChatOpen(false)
+    // The page stays, with the message in it, until the chat that replaces it is there: closing it first showed the
+    // empty window (or the last chat) for a moment between the two.
+    await startAgentSession(() => Promise.resolve(folder), request.agent, 'chat', request.message, launchFlags(request.agent, request.model, request.reasoning), () => { setNewChatOpen(false) })
   }, [online, startAgentSession])
 
   // New session (the shortcut, the palette, the sidebar's chat button): on this computer it is the new chat page.
@@ -970,7 +981,7 @@ export function DesktopApp() {
       setNewSessionMachine(target)
       return
     }
-    runStart(async () => resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => { setLayout((current) => openArrangement(current, id, makeId)) })
+    void runStart(async () => resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => { setLayout((current) => openArrangement(current, id, makeId)) })
   }, [runStart, preferences.startFolder, home, focusedSession])
 
   // The sidebar's header for a machine and the palette both choose where the session goes.
@@ -1006,9 +1017,9 @@ export function DesktopApp() {
         await sendTerminalInput({ id, generation: 0 }, `${request.startAs}\r`)
       }
     } else if (request.startAs === 'terminal') {
-      runStart(() => Promise.resolve(request.folder), (id) => { setLayout((current) => openArrangement(current, id, makeId)) })
+      void runStart(() => Promise.resolve(request.folder), (id) => { setLayout((current) => openArrangement(current, id, makeId)) })
     } else {
-      startAgentSession(() => Promise.resolve(request.folder), request.startAs, preferences.newSessionView, request.message)
+      void startAgentSession(() => Promise.resolve(request.folder), request.startAs, preferences.newSessionView, request.message)
     }
     setNewSessionMachine(null)
   }, [startOnMachine, runStart, startAgentSession, preferences.newSessionView])
@@ -1028,7 +1039,7 @@ export function DesktopApp() {
       return
     }
     const cwd = sourceSession?.cwd
-    runStart(async () => cwd ?? resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => {
+    void runStart(async () => cwd ?? resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => {
       // If the layout changed or filled up while the shell started, the shell still gets a layout: it must not be left with no pane.
       setLayout((current) => {
         const next = splitPane(current, source?.id ?? null, direction, id, makeId)
@@ -1150,7 +1161,7 @@ export function DesktopApp() {
       toast.message(refusal)
       return
     }
-    runStart(() => Promise.resolve(old.cwd), (id) => { setLayout((current) => dropSession(current, paneId, id)) })
+    void runStart(() => Promise.resolve(old.cwd), (id) => { setLayout((current) => dropSession(current, paneId, id)) })
   }, [layout, paneSessions, runStart])
 
   const endSession = useCallback((sessionId: string) => { askToClose([sessionId], () => { endSessions([sessionId], 'Session') }) }, [askToClose, endSessions])
@@ -1393,7 +1404,7 @@ export function DesktopApp() {
         // A chat with the default agent in the start folder, without the dialog. On another machine the dialog asks for its folder.
         setSettingsSection(null)
         if (focusedMachineNumber !== LOCAL_MACHINE) newSession(focusedMachineNumber)
-        else startAgentSession(async () => resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), preferences.defaultAgent, 'chat')
+        else void startAgentSession(async () => resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), preferences.defaultAgent, 'chat')
         return
       case 'split-right':
         split(null, 'right')
@@ -1764,7 +1775,7 @@ export function DesktopApp() {
       toast.message(refusal)
       return
     }
-    runStart(() => Promise.resolve(agent.cwd), (id) => {
+    void runStart(() => Promise.resolve(agent.cwd), (id) => {
       setAgentTerminals((current) => new Map(current).set(agentId, id))
       setLayout((current) => {
         const shown = showSession(current, agentId, makeId)
@@ -1781,7 +1792,7 @@ export function DesktopApp() {
       return
     }
     setSettingsSection(null)
-    runStart(async () => focusedSession?.cwd ?? resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => {
+    void runStart(async () => focusedSession?.cwd ?? resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => {
       setLayout((current) => openArrangement(current, id, makeId))
       void sendTerminalInput({ id, generation: 0 }, `${program}\r`).catch((error: unknown) => { toast.error(errorMessage(error, `Could not start ${program}`)) })
     })
