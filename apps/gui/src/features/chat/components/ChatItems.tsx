@@ -1,8 +1,11 @@
-import { memo, type ReactNode } from 'react'
+import { memo, useContext, type ReactNode } from 'react'
 import { Icon, Spinner } from '@/features/workspace/components/glyphs'
 import { ElapsedSince } from '@/features/workspace/components/times'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
-import { dividerText, splitLead, streamingParagraphs, type ChatRow } from '../chatRows'
+import { dividerText, paragraphsOf, splitLead, streamingParagraphs, type ChatRow } from '../chatRows'
+import type { ItemStatus } from '../chatEvents'
+import { useTypedText } from '../useTypedText'
+import { ReducedMotionContext } from '@/features/workspace/components/motion'
 import { parseAttachmentMessage } from '../attachmentMessage'
 import { AgentsCard } from './AgentsCard'
 import { SentAttachments } from './Attachments'
@@ -71,6 +74,25 @@ function sameProps(a: RowProps, b: RowProps): boolean {
   return a.agent === b.agent && a.workingSince === b.workingSince && a.approval === b.approval && a.root === b.root && a.openDiff === b.openDiff && a.goToStep === b.goToStep && sameRow(a.row, b.row)
 }
 
+/**
+ * An agent's reply. One still arriving is read in its finished form, so a half-typed mark does not flash, and is typed in
+ * as it comes rather than appearing in chunks; a finished one is read as written, once the typing has caught up.
+ */
+function AgentMessage({ paragraphs, status }: { paragraphs: readonly string[]; status: ItemStatus }) {
+  const reduced = useContext(ReducedMotionContext)
+  const target = (status === 'running' ? streamingParagraphs(paragraphs) : paragraphs).join('\n\n')
+  const typed = useTypedText(target, !reduced)
+  const { lead, rest } = splitLead(typed === target ? (status === 'running' ? streamingParagraphs(paragraphs) : paragraphs) : paragraphsOf(typed))
+  const empty = lead === '' && rest.length === 0
+  return (
+    <div className="mx-msg-agent">
+      {lead !== '' && <p className="mx-msg-lead"><InlineMarkdown text={lead} /></p>}
+      {rest.length > 0 && <Markdown text={rest.join('\n\n')} className="mx-msg-rest" />}
+      {empty && <p className="mx-msg-empty">{status === 'running' ? 'Writing…' : 'An empty reply.'}</p>}
+    </div>
+  )
+}
+
 /** One row of the list. Memoised: a streamed update re-renders only the rows whose events changed. */
 export const ChatItem = memo(function ChatItem({ row, agent, workingSince, approval, root, openDiff, goToStep }: RowProps) {
   switch (row.kind) {
@@ -99,20 +121,8 @@ export const ChatItem = memo(function ChatItem({ row, agent, workingSince, appro
           <div className="mx-msg-user is-echo" aria-label="Sending"><p>{row.text}</p></div>
         </Frame>
       )
-    case 'agent': {
-      // A reply still arriving is read in its finished form, so a half-typed mark does not flash; a finished one is read as written.
-      const { lead, rest } = splitLead(row.status === 'running' ? streamingParagraphs(row.paragraphs) : row.paragraphs)
-      const empty = lead === '' && rest.length === 0
-      return (
-        <Frame>
-          <div className="mx-msg-agent">
-            {lead !== '' && <p className="mx-msg-lead"><InlineMarkdown text={lead} /></p>}
-            {rest.length > 0 && <Markdown text={rest.join('\n\n')} className="mx-msg-rest" />}
-            {empty && <p className="mx-msg-empty">{row.status === 'running' ? 'Writing…' : 'An empty reply.'}</p>}
-          </div>
-        </Frame>
-      )
-    }
+    case 'agent':
+      return <Frame><AgentMessage paragraphs={row.paragraphs} status={row.status} /></Frame>
     case 'step':
       return (
         <Frame>

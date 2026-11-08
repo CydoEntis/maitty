@@ -274,7 +274,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   Changes, Close pane.
 - **Status bar.** A 28px line at the bottom of the main area under a hairline, 11.5px muted, one line.
   The left is empty, except "Reconnecting to maittyd…" in amber with a dashed dot when the daemon is
-  unreachable. The right holds quick controls: a **theme** menu (Dark, Light or System, a few themes of
+  unreachable (the sidebar foot says "Service stopped" or "Restart needed" beside a red dot). The right holds quick controls: a **theme** menu (Dark, Light or System, a few themes of
   the kind in use, and "All themes in Settings…"), the **window style** (the four styles), the terminal
   **text size** (−, the size which resets it to 14px, +; Ctrl+= and Ctrl+− do the same) and the shortcuts
   keycaps, which open the shortcut overlay. Hidden in Focus mode and by Settings › General › Window ›
@@ -302,6 +302,19 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   check done), no text; under the selected session, a 28px row each on a guide line. Clicking one opens its own chat.
   The foot holds the update slot (or "Reconnecting to maittyd…") and the Settings gear. The edge drags (208 to 440px;
   double-click resets). The **rail** of a narrow window is the starters, then one tile per session.
+- **Replies are typed in.** An agent's reply that is still arriving types toward the text that came in (`useTypedText`),
+  so a chunk eases in instead of flashing; a message that mounts already full shows at once, and Reduce motion shows
+  everything at once. A helper agent reporting back (the harness's `<task-notification>` block, which the history keeps as a
+  user message) is one quiet line, "Agent "name" finished · 11s · 50.5k tokens", never the markup; once it has reported,
+  its row leaves the sidebar (one that stopped or still needs something stays).
+- **Panes swap with a glide.** Dropping a pane on another swaps them through a View Transition (`paneTransition.ts`): only the
+  browser's pictures of the panes move, so text never reflows on the way. Without View Transitions, or with Reduce motion,
+  the swap just happens.
+- **Toasts are cards.** The notification card is the one design; a plain toast (Sonner) is laid out the same way: icon tile,
+  title and detail, the close at the top right and the action on its own row under the text, 96px below the top edge and 36px
+  in from the side.
+- **A remote machine that needs the app** has no row of its own: its dot turns amber and an amber **↑ Update** (or Install)
+  text button sits in its header before the folder button.
 - **Typing while an agent works.** A chat run by the daemon queues what you send, and the daemon sends it when the turn
   ends. A chat that follows an agent in a terminal does the same on this side: the message is held in the composer store
   (shown under the box in the queue, removable) and typed into the agent's prompt, one at a time, once it is ready for a

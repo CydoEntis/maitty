@@ -102,6 +102,7 @@ import { GetFileDialog } from './components/GetFileDialog'
 import { MachineUpdateDialog } from './components/MachineUpdateDialog'
 import { runMachineUpdate } from './machineUpdate'
 import { ConfirmCloseDialog } from './components/ConfirmCloseDialog'
+import { movePanes } from './components/paneTransition'
 import { RenameDialog } from './components/RenameDialog'
 import { Sidebar, type OpenSubagent } from './components/Sidebar'
 import { EmptyState, Toast, type RestartOffer } from './components/states'
@@ -652,7 +653,7 @@ export function DesktopApp() {
       if (source.kind === 'session') {
         setLayout((current) => dropSession(current, paneId, source.id))
         flash('Session moved into this pane')
-      } else if (source.id !== paneId) setLayout((current) => swapSessions(current, source.id, paneId))
+      } else if (source.id !== paneId) movePanes(() => { setLayout((current) => swapSessions(current, source.id, paneId)) })
     },
     end: () => { setDragId(null); setDropId(null) },
   }), [flash])

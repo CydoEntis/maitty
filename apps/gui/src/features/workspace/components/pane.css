@@ -103,3 +103,8 @@
 
 /* The label that follows the pointer while a pane or a sidebar session is dragged (dragSession.ts). */
 .mx-drag-ghost { position: fixed; left: 0; top: 0; z-index: 1000; pointer-events: none; max-width: 240px; padding: 6px 12px; border-radius: 10px; font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fg); background: var(--main); border: 1px solid var(--accent-line); box-shadow: 0 10px 28px rgba(0, 0, 0, .35); }
+
+/* Panes that swap places glide there (`paneTransition.ts`): only the browser's pictures of them move, so the text never reflows on the way.
+   The window itself does not cross-fade. */
+::view-transition-group(*) { animation-duration: .3s; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }

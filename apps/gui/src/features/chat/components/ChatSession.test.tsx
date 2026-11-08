@@ -101,6 +101,8 @@ describe('the chat history', () => {
 
     daemon.upsert(daemon.message('t1', 'm2', 'Assistant', 'a new reply'))
     await settle(IDLE_POLL_MS)
+    // A reply that arrives is typed in, not shown whole; give the typing time to catch up.
+    await settle(1500)
 
     expect(screen.getAllByText('a new reply')).toHaveLength(1)
     expect(screen.getAllByText('message 1')).toHaveLength(1)

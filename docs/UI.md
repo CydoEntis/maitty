@@ -127,12 +127,15 @@ machine's New shell here) starts a plain shell in the start folder with no dialo
 **Desktop service states** (`ServiceStatus`, `model/serviceState.ts`). While maittyd does not answer, every status reads
 Unknown, spinners stop and input waits. The first four failed tries show a thin bar under the pane header, "Reconnecting to
 maittyd · your sessions are still running", with "Try N of 5 · next in Ns" (it ticks each second) and **Retry now**. After the
-fifth the bar becomes a centred red card, "maittyd isn't responding": three things to try, the error under Details, and
-**Start maittyd** and **Retry**. The desktop's connection starts maittyd itself on every try (`open_or_spawn_for_user`), so
-both buttons try again at once; there is no separate start-service command. A running service of another protocol gets an
-amber card, "Restart the background service to finish updating", with what a restart keeps and stops and a **Restart
-service** button that asks for a second click (`restart_mismatched_daemon`, then "Service restarted · N sessions back");
-**Not now** leaves the read-only bar. Agents that were mid-turn offer **Resume** in the restore banner; nothing resumes by itself.
+fifth a veil (the main card under `color-mix(--main 55%)` and a 3px blur) and one glass card take over: **Maitty service
+stopped**, a line saying how many sessions are saved, the technical details under a Details disclosure, and **Start service**
+and **Try again**. The desktop's connection starts maittyd itself on every try (`open_or_spawn_for_user`), so both buttons try
+again at once; there is no separate start-service command. A running service of another protocol gets the same veil and card,
+**Restart Maitty to finish updating**, "The app updated to v76, but the service is still on v75.", a tray of what a restart
+keeps and stops (sessions that reopen, agents that will offer Resume, shells that stop; a line with a count of 0 is left out)
+and a **Restart and restore** button that asks for a second click (`restart_mismatched_daemon`, then "Service restarted · N
+sessions back"), with `v75 → v76` beside it. **Later** leaves a slim bar. The sidebar foot says "Service stopped" or "Restart
+needed" in muted grey beside a red dot, never a red banner, and no needs-you toast shows while the service is not connected. Agents that were mid-turn offer **Resume** in the restore banner; nothing resumes by itself.
 
 A terminal UI (ratatui). Colours come only from the theme (`theme.rs`): semantic
 slots `bg`, `card`, `card2`, `hov`, `accent`/`acc_ink`, `text`/`strong`/`muted`,
