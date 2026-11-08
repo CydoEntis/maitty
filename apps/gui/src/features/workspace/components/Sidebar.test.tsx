@@ -245,6 +245,22 @@ describe('a machine heading', () => {
   })
 })
 
+describe('a draft chat', () => {
+  it('is listed first on its machine while it waits for a first message, and the empty note steps aside', () => {
+    show([], { draft: { machine: 0 } })
+    const draft = screen.getByRole('status', { name: 'New chat, waiting for the first message' })
+    expect(within(screen.getByRole('button', { name: /^This computer/ }).closest('.mx-machine') as HTMLElement).getByText('New chat')).toBeTruthy()
+    expect(draft).toBeTruthy()
+    expect(screen.queryByText('No agents running. Use the buttons above to start one.')).toBeNull()
+  })
+
+  it('is not listed once there is no draft, nor on another machine', () => {
+    show([session(2, { machine: 4, machineName: 'devbox', agent: 'claude', named: true, title: 'There' })], { machines: [LOCAL_HEAD, DEVBOX], draft: { machine: 0 } })
+    expect(screen.getAllByRole('status', { name: /New chat/ })).toHaveLength(1)
+    expect(within(screen.getByRole('list', { name: 'Sessions on devbox' })).queryByText('New chat')).toBeNull()
+  })
+})
+
 describe('the filter', () => {
   it('narrows the list by name and says when nothing matches', async () => {
     const user = userEvent.setup()

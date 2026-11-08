@@ -1957,6 +1957,7 @@ export function DesktopApp() {
       onOpenSettings={() => { afterPick(); setSettingsSection('appearance') }}
       updateSlot={updateSlot('footer')}
       railUpdateSlot={updateSlot('rail')}
+      draft={newChatOpen ? { machine: LOCAL_MACHINE } : null}
     />
   )
 

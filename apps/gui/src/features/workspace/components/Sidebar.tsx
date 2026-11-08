@@ -65,7 +65,11 @@ export type SidebarProps = {
   updateSlot: ReactNode
   /** The update button in the rail's foot. */
   railUpdateSlot: ReactNode
+  /** A chat that is being written but has no first message yet: listed on its machine so it is not lost. */
+  draft?: DraftChat | null | undefined
 }
+
+export type DraftChat = { machine: number }
 
 type OpenMenu = { title: string; at: { x: number; y: number }; items: MenuEntry[] }
 
@@ -128,8 +132,9 @@ function Expanded(props: SidebarProps) {
   const [menu, setMenu] = useState<OpenMenu | null>(null)
   const views = useMachineViews()
   useSlashFocus(input)
-  const groups = machineGroups(props.sessions, props.machines, query)
   const filtering = query.trim() !== ''
+  const draft = filtering ? null : props.draft ?? null
+  const groups = machineGroups(props.sessions, props.machines, query, draft !== null)
   const openMenu = (event: MouseEvent, title: string, items: MenuEntry[]) => {
     event.preventDefault()
     event.stopPropagation()
@@ -254,7 +259,8 @@ function Expanded(props: SidebarProps) {
             <MachineSection
               key={group.head.key}
               group={group}
-              open={filtering || views.isOpen(group.head.key)}
+              open={filtering || views.isOpen(group.head.key) || draft?.machine === group.head.machine}
+              draft={draft?.machine === group.head.machine}
               byProject={views.isByProject(group.head.key)}
               canStart={props.canStart}
               onToggle={() => { views.toggle(group.head.key) }}
@@ -267,7 +273,7 @@ function Expanded(props: SidebarProps) {
             />
           ))}
           {filtering && groups.length === 0 && <div className="mx-empty-note">No agent matches “{query.trim()}”.</div>}
-          {!filtering && props.sessions.length === 0 && <div className="mx-empty-note">No agents running. Use the buttons above to start one.</div>}
+          {!filtering && props.sessions.length === 0 && draft === null && <div className="mx-empty-note">No agents running. Use the buttons above to start one.</div>}
         </section>
       </div>
       <div className="mx-sidebar-foot">
@@ -282,6 +288,8 @@ function Expanded(props: SidebarProps) {
 }
 
 type SectionProps = {
+  /** A draft chat is listed first in this machine. */
+  draft: boolean
   group: MachineGroup
   open: boolean
   byProject: boolean
@@ -298,7 +306,7 @@ type SectionProps = {
 }
 
 /** One machine: its heading (name, count, group-by-project, its line's dot, +) and its sessions. */
-function MachineSection({ group, open, byProject, canStart, onToggle, onToggleByProject, onAdd, onAddMenu, onUpdate, onContextMenu, renderRow }: SectionProps) {
+function MachineSection({ draft, group, open, byProject, canStart, onToggle, onToggleByProject, onAdd, onAddMenu, onUpdate, onContextMenu, renderRow }: SectionProps) {
   const { head, sessions } = group
   const title = machineTitle(head)
   const projects = byProject ? projectGroups(sessions) : []
@@ -317,6 +325,7 @@ function MachineSection({ group, open, byProject, canStart, onToggle, onToggleBy
       </div>
       {head.name !== null && head.updateAction !== null && <UpdateNote name={head.name} action={head.updateAction} onUpdate={onUpdate} />}
       <Collapse open={open}>
+        {draft && <DraftRow />}
         {byProject ? (
           <div className="mx-projects">
             {projects.map((project) => <ProjectSection key={project.name} name={project.name} color={project.color} needs={project.needs} sessions={project.sessions} renderRow={renderRow} />)}
@@ -325,6 +334,19 @@ function MachineSection({ group, open, byProject, canStart, onToggle, onToggleBy
           <div className="mx-rows" role="list" aria-label={`Sessions on ${title}`}>{sessions.map((session) => renderRow(session, true))}</div>
         )}
       </Collapse>
+    </div>
+  )
+}
+
+/** The chat that has not been sent yet: a placeholder row on its machine, with dots that move while it waits for the first message. */
+function DraftRow() {
+  return (
+    <div className="mx-draft" role="status" aria-label="New chat, waiting for the first message">
+      <span className="mx-draft-tile" aria-hidden="true"><Icon name="chat" size={13} /></span>
+      <span className="mx-draft-text">
+        <span className="mx-draft-name">New chat</span>
+        <span className="mx-draft-sub">waiting for your first message<span className="mx-draft-dots" aria-hidden="true"><i /><i /><i /></span></span>
+      </span>
     </div>
   )
 }

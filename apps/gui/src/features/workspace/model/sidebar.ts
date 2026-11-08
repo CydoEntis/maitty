@@ -73,9 +73,10 @@ export type MachineGroup = { head: MachineHead; sessions: SessionView[] }
  * one. Another machine keeps its header with no sessions, as a machine with no app yet has none and
  * its header is where it says so.
  */
-export function machineGroups(sessions: readonly SessionView[], heads: readonly MachineHead[], query: string): MachineGroup[] {
+export function machineGroups(sessions: readonly SessionView[], heads: readonly MachineHead[], query: string, keepEmpty = false): MachineGroup[] {
   const filtering = query.trim() !== ''
-  if (sessions.length === 0 && heads.length <= 1) return []
+  // A lone machine with nothing on it has no heading, unless something (a draft chat) is waiting there.
+  if (!keepEmpty && sessions.length === 0 && heads.length <= 1) return []
   return heads
     .map((head) => ({ head, sessions: byUrgency(sessions.filter((session) => session.machine === head.machine && matchesFilter(session, query))) }))
     .filter((group) => !filtering || group.sessions.length > 0)
