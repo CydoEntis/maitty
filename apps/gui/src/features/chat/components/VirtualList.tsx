@@ -1,3 +1,4 @@
+import { flushSync } from 'react-dom'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type WheelEvent } from 'react'
 import { ArrowDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -42,27 +43,26 @@ export function VirtualList<T>({ items, getKey, estimate, renderItem, label, ove
   const layout = useMemo(() => buildLayout(keys, heights, estimate), [keys, heights, estimate])
   const range = visibleRange(layout, scrollTop, viewport, overscan)
 
-  // Measures arrive from the observer in bursts; they are applied once a frame.
+  // Measures are applied before the browser paints, so a row that has just come in is never drawn at its estimate for a
+  // frame and then moved: the ref callbacks note heights while React commits and the layout effect below applies them;
+  // the observer's reports (a row that grew) are applied at once, outside React's commit.
   const pending = useRef(new Map<string, number>())
-  const frame = useRef(0)
-  const flush = useCallback(() => {
-    if (frame.current !== 0) return
-    frame.current = window.requestAnimationFrame(() => {
-      frame.current = 0
-      const batch = pending.current
-      pending.current = new Map()
-      setHeights((current) => {
-        let changed = false
-        const next = new Map(current)
-        for (const [key, height] of batch) {
-          if (next.get(key) === height) continue
-          next.set(key, height)
-          changed = true
-        }
-        return changed ? next : current
-      })
+  const apply = useCallback(() => {
+    const batch = pending.current
+    if (batch.size === 0) return
+    pending.current = new Map()
+    setHeights((current) => {
+      let changed = false
+      const next = new Map(current)
+      for (const [key, height] of batch) {
+        if (next.get(key) === height) continue
+        next.set(key, height)
+        changed = true
+      }
+      return changed ? next : current
     })
   }, [])
+  useLayoutEffect(() => { apply() })
 
   const record = useCallback((element: HTMLElement) => {
     const key = element.dataset.key
@@ -70,25 +70,24 @@ export function VirtualList<T>({ items, getKey, estimate, renderItem, label, ove
     // A row with no height has not been laid out (or there is no layout engine): its estimate stands.
     if (key === undefined || height === 0) return
     pending.current.set(key, height)
-    flush()
-  }, [flush])
+  }, [])
 
   // One observer for every drawn row; a row reports its own height when it changes (an expanded card, a streamed message).
   const observer = useRef<ResizeObserver | null>(null)
   const measure = useCallback((element: HTMLDivElement | null) => {
     if (element === null) return
     if (observer.current === null && typeof ResizeObserver !== 'undefined') {
-      observer.current = new ResizeObserver((entries) => { for (const entry of entries) record(entry.target as HTMLElement) })
+      observer.current = new ResizeObserver((entries) => {
+        for (const entry of entries) record(entry.target as HTMLElement)
+        flushSync(apply)
+      })
     }
     observer.current?.observe(element)
     record(element)
-  }, [record])
+  }, [record, apply])
   useEffect(() => () => {
     observer.current?.disconnect()
     observer.current = null
-    window.cancelAnimationFrame(frame.current)
-    // A remount (React's development double effects) must be able to schedule a frame again.
-    frame.current = 0
   }, [])
 
   useLayoutEffect(() => {
