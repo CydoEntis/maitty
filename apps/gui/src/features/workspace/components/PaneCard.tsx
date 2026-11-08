@@ -5,7 +5,6 @@ import { headerFit } from '../model/paneHeader'
 import { rowTitle } from '../model/sidebar'
 import { AppIcon, Icon, StatusBadge } from './glyphs'
 import { beginPointerDrag } from './dragSession'
-import { runsProgram, useArmed } from './useArmed'
 import { PaneViewSwitch } from './PaneViewSwitch'
 import { MenuPopup, type MenuEntry } from './MenuPopup'
 import { menuPoint } from './menuPoint'
@@ -100,12 +99,11 @@ export function PaneCard(props: PaneCardProps) {
   const multi = paneCount > 1
   const full = paneCount >= MAX_PANES
   const ended = session.ended
-  const closing = useArmed(runsProgram(session))
   const view = props.view ?? 'terminal'
   const returning = useReturning(view)
   const fit = headerFit(width)
   const title = rowTitle(session)
-  const closeLabel = closing.armed ? `Click again to close and stop ${session.process}` : 'Close pane · ends its session'
+  const closeLabel = 'Close pane · ends its session'
   const toggleTool = (tool: PaneTool) => { props.onTool(tool) }
 
   const menuItems: MenuEntry[] = [
@@ -122,7 +120,7 @@ export function PaneCard(props: PaneCardProps) {
     { label: 'Files', run: () => { toggleTool('files') } },
     { label: 'Changes', run: () => { toggleTool('changes') } },
     'separator',
-    { label: 'Close pane', danger: true, ...(runsProgram(session) ? { armedLabel: `Close and stop ${session.process}? Click again` } : {}), run: () => { props.onClose(pane.id) } },
+    { label: 'Close pane', danger: true, run: () => { props.onClose(pane.id) } },
   ]
 
   return (
@@ -181,7 +179,7 @@ export function PaneCard(props: PaneCardProps) {
             </>
           )}
           <button type="button" className="mx-pane-control mx-pane-more" aria-label="More pane actions" title="More pane actions" aria-haspopup="menu" onMouseDown={stop} onClick={(event) => { setMenuAt(menuPoint(event, true)) }}>⋯</button>
-          <button type="button" className={`mx-pane-control is-close${closing.armed ? ' is-armed' : ''}`} aria-label={closeLabel} title={closeLabel} onMouseDown={stop} onBlur={closing.disarm} onClick={() => { if (closing.press()) props.onClose(pane.id) }}><Icon name="close" /></button>
+          <button type="button" className="mx-pane-control is-close" aria-label={closeLabel} title={closeLabel} onMouseDown={stop} onClick={() => { props.onClose(pane.id) }}><Icon name="close" /></button>
         </span>
       </div>
       <div

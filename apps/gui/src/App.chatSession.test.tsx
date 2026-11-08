@@ -169,9 +169,10 @@ describe('a chat session in the desktop window', () => {
     await within(chat).findByText('On it.')
 
     const pane = screen.getByRole('region', { name: /^Terminal 1/ })
-    // An agent is running in it, so the first press arms the close and the second ends it.
+    // An agent is running in it, so closing asks first.
     await user.click(within(pane).getByRole('button', { name: 'Close pane · ends its session' }))
-    await user.click(within(pane).getByRole('button', { name: 'Click again to close and stop claude' }))
+    expect(daemon.closeChatSession).not.toHaveBeenCalled()
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Stop claude' }))
     await waitFor(() => { expect(daemon.closeChatSession).toHaveBeenCalledTimes(1) })
     expect(daemon.archiveConversationOnDaemon).not.toHaveBeenCalled()
   })

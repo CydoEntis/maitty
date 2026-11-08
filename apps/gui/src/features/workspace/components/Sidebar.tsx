@@ -158,7 +158,7 @@ function Expanded(props: SidebarProps) {
       ...(agent ? [{ label: 'Show changes', run: () => { props.onShowChanges(session.id) } }] : []),
       'separator',
       // Stopping an agent asks a second click; a plain shell has nothing running to lose.
-      { label: agent ? 'Stop session' : 'Close shell', danger: true, ...(agent ? { armedLabel: `Stop ${session.process}? Click again` } : {}), disabled: !props.online, run: () => { props.onEndSession(session.id) } },
+      { label: agent ? 'Stop session' : 'Close shell', danger: true, disabled: !props.online, run: () => { props.onEndSession(session.id) } },
     ]
   }
 

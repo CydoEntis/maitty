@@ -255,7 +255,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
 - **Menus** (`components/MenuPopup.tsx`, `menu.css`). One look for every right-click and ⋯ menu: 228px or wider,
   5px inside, radius 12, glass like the cards, a dim 11px heading that names what it is for, 30px rows of 13px text with
   their key at the right in mono, separators between groups. A danger row is red; one that stops something running
-  asks a second click ("Stop claude? Click again"). Arrow keys, Home and End move, Esc or a click outside closes and
+  is handled by the app, which asks in a dialog first (see Close ends the session). Arrow keys, Home and End move, Esc or a click outside closes and
   gives focus back. **Session**: Open, Open in split right, Open in split down (not for the one in front), Open
   terminal here (agents), Rename… (F2), Copy folder path, Get a file… (another machine's sessions), Show changes
   (agents), Stop session or Close shell.
@@ -344,8 +344,10 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   session in the sidebar shows the layout it is in, else one of its own. Split right adds a column beside the focused
   pane, taking half its width; split down a pane under it, taking half its height; they mix. Right-click a pane for its
   menu.
-- **Close ends the session, with Undo.** The pane's **×**, the pane menu's Close session, a row's Close
-  session and Ctrl+Shift+W (⌘W) all send the daemon `CloseSession`: the session leaves the list at once and
+- **Close ends the session, asking first, with Undo.** The pane's **×**, the pane menu's Close session, a row's Close
+  session and Ctrl+Shift+W (⌘W) first open the confirm dialog (`ConfirmCloseDialog`: "Close name?", Cancel and a red
+  Close, or "Stop claude" for a running agent; Enter confirms, Esc cancels) unless every session in question has already
+  ended. Confirming sends the daemon `CloseSession`: the session leaves the list at once and
   its process runs on for 6 seconds. A toast "Closed name" with **Undo** stays for the same 6 seconds;
   the button or ⌘Z (Ctrl+Shift+Z elsewhere; passed to the terminal when nothing was just closed, and left to a
   text field inside one) sends `UndoClose` and puts the pane back in its place. A chat session has no terminal to

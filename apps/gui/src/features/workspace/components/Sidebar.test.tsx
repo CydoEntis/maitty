@@ -207,7 +207,7 @@ describe('a session row', () => {
     expect(onSetName).toHaveBeenCalledWith('t1', 'Login fix')
   })
 
-  it('offers the session menu on right-click, and arms Stop session before it stops an agent', async () => {
+  it('offers the session menu on right-click, and hands Stop session to the app, which asks first', async () => {
     const user = userEvent.setup()
     const onEndSession = vi.fn()
     show([session(1, { agent: 'claude', named: true, title: 'Growth' }), session(2)], { focusedId: 't2', onEndSession })
@@ -215,8 +215,6 @@ describe('a session row', () => {
     const menu = screen.getByRole('menu', { name: 'Growth' })
     expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Open', 'Open in split right', 'Open in split down', 'Open terminal here', 'Rename…F2', 'Copy folder path', 'Show changes', 'Stop session'])
     await user.click(within(menu).getByRole('menuitem', { name: 'Stop session' }))
-    expect(onEndSession).not.toHaveBeenCalled()
-    await user.click(within(menu).getByRole('menuitem', { name: 'Stop claude? Click again' }))
     expect(onEndSession).toHaveBeenCalledWith('t1')
   })
 

@@ -100,6 +100,7 @@ import { launchFlags } from './model/newChatHost'
 import { GetFileDialog } from './components/GetFileDialog'
 import { MachineUpdateDialog } from './components/MachineUpdateDialog'
 import { runMachineUpdate } from './machineUpdate'
+import { ConfirmCloseDialog } from './components/ConfirmCloseDialog'
 import { RenameDialog } from './components/RenameDialog'
 import { Sidebar, type OpenSubagent } from './components/Sidebar'
 import { EmptyState, Toast, type RestartOffer } from './components/states'
@@ -172,8 +173,6 @@ const TOAST_MS = 2600
 const UNDO_CLOSE_MS = 6000
 /** What clicking the status bar's size resets the terminal text to. */
 const DEFAULT_TEXT_SIZE = 14
-/** How long a second ⌘W confirms closing a session that is running a program. */
-const CLOSE_ARM_MS = 4000
 /** How long a closing pane shrinks before its session ends (matches `.mx-pane-cell.is-closing` in pane.css), and how long it is kept marked if the close did not happen. */
 const PANE_EXIT_MS = 240
 const PANE_CLOSE_SETTLE_MS = 1500
@@ -1009,8 +1008,8 @@ export function DesktopApp() {
   }, [layout, sessionMap, runStart, preferences.startFolder, home])
 
   // Closing a pane or session ends it, with a few seconds to take it back: the daemon hides the session and
-  // stops its program only when the window passes. A program that is running asks for a second click first.
-  const [armedClose, setArmedClose] = useState<{ key: string; at: number } | null>(null)
+  // stops its program only when the window passes. A session that is still running asks first, in a dialog.
+  const [closeAsk, setCloseAsk] = useState<{ title: string; body: string; confirmLabel: string; run: () => void } | null>(null)
   // The last close, while it can still be undone: the layout it came out of is put back with it.
   const [lastClose, setLastClose] = useState<{ toastId: string | number; sessions: SessionView[]; before: Layout; after: Layout } | null>(null)
   const undoLastClose = useCallback(() => {
@@ -1059,10 +1058,30 @@ export function DesktopApp() {
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not end the session')) })
   }, [sessions, flash, queryClient, layout, undoNow])
 
+  /** Runs `close` now when every session in `ids` has already ended; otherwise asks first. */
+  const askToClose = useCallback((ids: string[], close: () => void) => {
+    const live = ids.flatMap((id) => paneSessions.get(id) ?? []).filter((session) => !session.ended)
+    const first = live[0]
+    if (!first) {
+      close()
+      return
+    }
+    const only = live.length === 1
+    const name = only ? displayName(first) : `${String(live.length)} sessions`
+    setCloseAsk({
+      title: `Close ${name}?`,
+      body: only && runsProgram(first)
+        ? `This stops ${first.process}. You can undo it for a few seconds afterwards.`
+        : 'This ends the session. You can undo it for a few seconds afterwards.',
+      confirmLabel: runsProgram(first) ? `Stop ${first.process}` : 'Close',
+      run: close,
+    })
+  }, [paneSessions])
+
   // A pane that is closing shrinks away first (its neighbours grow into the room as it goes); the session ends
   // when that is done. If the close does not happen it grows back.
   const [closingPanes, setClosingPanes] = useState<ReadonlySet<string>>(() => new Set())
-  const closePaneById = useCallback((paneId: string) => {
+  const closePaneNow = useCallback((paneId: string) => {
     const tab = layout.arrangements.find((candidate) => candidate.panes.some((pane) => pane.id === paneId))
     const pane = tab?.panes.find((candidate) => candidate.id === paneId)
     if (!tab || !pane) return
@@ -1082,6 +1101,11 @@ export function DesktopApp() {
       }, PANE_CLOSE_SETTLE_MS)
     }, PANE_EXIT_MS)
   }, [endSessions, layout])
+  const closePaneById = useCallback((paneId: string) => {
+    const pane = layout.arrangements.flatMap((tab) => tab.panes).find((candidate) => candidate.id === paneId)
+    if (!pane) return
+    askToClose([pane.sessionId], () => { closePaneNow(paneId) })
+  }, [layout, askToClose, closePaneNow])
 
   const restartPane = useCallback((paneId: string) => {
     const pane = layout.arrangements.flatMap((tab) => tab.panes).find((candidate) => candidate.id === paneId)
@@ -1099,7 +1123,7 @@ export function DesktopApp() {
     runStart(() => Promise.resolve(old.cwd), (id) => { setLayout((current) => dropSession(current, paneId, id)) })
   }, [layout, paneSessions, runStart])
 
-  const endSession = useCallback((sessionId: string) => { endSessions([sessionId], 'Session') }, [endSessions])
+  const endSession = useCallback((sessionId: string) => { askToClose([sessionId], () => { endSessions([sessionId], 'Session') }) }, [askToClose, endSessions])
 
   const saveName = useCallback((sessionId: string, name: string) => {
     setRenameId(null)
@@ -1357,20 +1381,8 @@ export function DesktopApp() {
         if (!tab) return
         const single = tab.panes.length > 1
         const targets = single ? tab.panes.filter((pane) => pane.id === tab.focus) : tab.panes
-        const shown = targets.flatMap((pane) => paneSessions.get(pane.sessionId) ?? [])
-        const agent = shown.find((session) => runsProgram(session))
-        // Ctrl+W is also a shell's delete-a-word, and closing ends the session, so the key asks twice,
-        // for this pane or tab only. Panes that already ended have nothing to lose.
-        const key = targets.map((pane) => pane.id).join(' ')
-        const confirmed = armedClose !== null && armedClose.key === key && Date.now() - armedClose.at <= CLOSE_ARM_MS
-        if (shown.some((session) => !session.ended) && !confirmed) {
-          setArmedClose({ key, at: Date.now() })
-          const chord = shortcutText('close', platform)
-          flash(agent ? `Press ${chord} again to close and stop ${agent.process}` : `Press ${chord} again to close this ${single ? 'pane' : 'session'}`)
-          return
-        }
-        setArmedClose(null)
-        endSessions(targets.map((pane) => pane.sessionId), single ? 'Pane' : 'Session')
+        const ids = targets.map((pane) => pane.sessionId)
+        askToClose(ids, () => { endSessions(ids, single ? 'Pane' : 'Session') })
         return
       }
       case 'toggle-sidebar':
@@ -1442,7 +1454,7 @@ export function DesktopApp() {
         }
         return
     }
-  }, [newSession, newTerminal, focusedMachineNumber, startAgentSession, preferences.startFolder, preferences.defaultAgent, home, split, layout, flash, toggleSidebar, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, platform, paneSessions, armedClose, toggleInspect, sessions, showSessionById, chatOf, paneViews, undoLastClose])
+  }, [newSession, newTerminal, focusedMachineNumber, startAgentSession, preferences.startFolder, preferences.defaultAgent, home, split, layout, flash, toggleSidebar, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, askToClose, toggleInspect, sessions, showSessionById, chatOf, paneViews, undoLastClose])
 
   // Captured on the window before xterm sees the key, so only these few keys leave the shell.
   const overlayOpen = paletteOpen || inboxOpen
@@ -2154,6 +2166,9 @@ export function DesktopApp() {
                 onUpdate={(whenIdle) => { setUpdateAsk(null); void updateNamed(updateAsk.name, updateAsk.action, whenIdle) }}
                 onCancel={() => { setUpdateAsk(null) }}
               />
+            )}
+            {closeAsk && (
+              <ConfirmCloseDialog title={closeAsk.title} body={closeAsk.body} confirmLabel={closeAsk.confirmLabel} onCancel={() => { setCloseAsk(null) }} onConfirm={() => { const run = closeAsk.run; setCloseAsk(null); run() }} />
             )}
             {renameId !== null && !renameInline && sessionMap.get(renameId) && (
               <RenameDialog session={sessionMap.get(renameId) as SessionView} onSave={(name) => { saveName(renameId, name) }} onCancel={() => { setRenameId(null) }} />
