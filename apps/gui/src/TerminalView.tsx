@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CircleAlert, LoaderCircle, TerminalSquare } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import type { ITheme, Terminal as XtermTerminal } from '@xterm/xterm'
 import type { WebglAddon } from '@xterm/addon-webgl'
 import { Button } from '@/components/ui/button'

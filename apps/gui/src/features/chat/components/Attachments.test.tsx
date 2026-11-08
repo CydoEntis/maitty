@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MOST_ATTACHMENTS, type Attached } from '@/api/attachments'
 import { FAKE_CONVERSATION, FakeDaemonHistory } from '../fakeDaemonHistory'

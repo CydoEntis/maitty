@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import {
   listenSharedSettings, requestSharedSettings, setSharedSetting, type SharedSettingKey, type SharedSettings,
 } from '@/api/sharedSettings'

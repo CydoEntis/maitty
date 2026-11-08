@@ -31,7 +31,7 @@ const toasts = vi.hoisted(() => ({
   error: vi.fn(),
   message: vi.fn(),
 }))
-vi.mock('sonner', () => ({ toast: toasts }))
+vi.mock('@/lib/toast', () => ({ toast: toasts }))
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 

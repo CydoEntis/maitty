@@ -1,4 +1,4 @@
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import type { ProcessLoad } from '@/api/daemon'
 import { usePerfSample, type PerfSample } from '@/lib/perf-meter'
 import type { SettingsPreferences } from '../preferences'

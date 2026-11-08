@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { cancelFileSend } from '@/api/fileSends'
 import { getFileFromMachine, listenFileGets, newGetId, openPulledFolder, type GetEvent } from '@/api/fileGets'
 import { errorMessage } from '@/lib/error-message'

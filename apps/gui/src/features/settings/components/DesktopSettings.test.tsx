@@ -163,21 +163,21 @@ describe('desktop settings', () => {
   it('picks a working spinner from a dropdown of TUI and web spinners', async () => {
     const user = userEvent.setup()
     const { onChange } = renderSettings('appearance')
-    const button = screen.getByRole('button', { name: 'Working spinner' })
+    const button = screen.getByRole('button', { name: /^Working spinner: / })
     expect(button).toHaveTextContent('Braille')
     expect(button).toHaveTextContent('From the Maitty TUI')
 
     await user.click(button)
-    const list = await screen.findByRole('menu', { name: 'Working spinner' })
+    const list = await screen.findByRole('menu', { name: /^Working spinner/ })
     const choices = within(list).getAllByRole('menuitemradio')
     // The preview glyph is Braille text inside the item; the name is what is left.
-    expect(choices.map((choice) => choice.textContent.replace(/[\u2800-\u28FF]/g, ''))).toEqual(['Braille', 'Snake', 'Bars', 'Circle', 'Dots', 'Equalizer', 'Spokes', 'Ping'])
+    expect(choices.map((choice) => choice.textContent.replace(/[\u2800-\u28FF]/g, '').replace(/(From the Maitty TUI|Web icon)$/, ''))).toEqual(['Braille', 'Snake', 'Bars', 'Circle', 'Dots', 'Equalizer', 'Spokes', 'Ping'])
     expect(list).toHaveTextContent('Maitty TUI')
     expect(list).toHaveTextContent('Web')
-    expect(within(list).getByRole('menuitemradio', { name: 'Braille' })).toHaveAttribute('aria-checked', 'true')
+    expect(within(list).getByRole('menuitemradio', { name: /Braille/ })).toHaveAttribute('aria-checked', 'true')
     expect(list.querySelectorAll('.mx-wspin')).toHaveLength(5)
 
-    await user.click(within(list).getByRole('menuitemradio', { name: 'Circle' }))
+    await user.click(within(list).getByRole('menuitemradio', { name: /Circle/ }))
     expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, spinner: 'circle' })
     expect(screen.queryByRole('menu')).toBeNull()
   })
@@ -186,12 +186,12 @@ describe('desktop settings', () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
     renderSettings('appearance', { preferences: { ...PREFS, spinner: 'ping' }, onClose })
-    const button = screen.getByRole('button', { name: 'Working spinner' })
+    const button = screen.getByRole('button', { name: /^Working spinner: / })
     expect(button).toHaveTextContent('Ping')
     expect(button).toHaveTextContent('Web icon')
 
     await user.click(button)
-    await screen.findByRole('menu', { name: 'Working spinner' })
+    await screen.findByRole('menu', { name: /^Working spinner/ })
     await user.keyboard('{Escape}')
 
     await waitFor(() => { expect(screen.queryByRole('menu')).toBeNull() })

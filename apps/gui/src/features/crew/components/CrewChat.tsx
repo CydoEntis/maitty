@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Link2, UserPlus } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Icon } from '@/features/workspace/components/glyphs'
 import type { CrewApi } from '../useCrew'
 import { chatSubtitle, isCrew, mateAgentWord, notAboard, whoIs, type CrewState } from '../model/crew'

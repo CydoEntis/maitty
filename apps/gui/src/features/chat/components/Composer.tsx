@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { pickFromClipboard, unsupportedMessage } from '@/features/terminal/clipboardImage'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
 import { AppIcon, Icon } from '@/features/workspace/components/glyphs'

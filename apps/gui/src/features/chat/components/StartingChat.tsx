@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Spinner } from '@/features/workspace/components/glyphs'
 import { connectAgent } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'

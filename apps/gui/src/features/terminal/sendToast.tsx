@@ -1,4 +1,4 @@
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { cancelFileSend } from '@/api/fileSends'
 import { errorMessage } from '@/lib/error-message'
 import { SendProgress } from './SendProgress'

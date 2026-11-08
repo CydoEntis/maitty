@@ -25,7 +25,7 @@ vi.mock('@/api/fileSends', async (importOriginal) => ({
 }))
 
 const toasts = vi.hoisted(() => ({ loading: vi.fn(), success: vi.fn(), error: vi.fn(), message: vi.fn() }))
-vi.mock('sonner', () => ({ toast: toasts }))
+vi.mock('@/lib/toast', () => ({ toast: toasts }))
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 const emit = (event: GetEvent) => { host.emit.current?.(event) }

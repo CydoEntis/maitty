@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { forgetComposers, peekComposer } from './composerStore'
 import { useAttachmentIntake } from './useAttachmentIntake'

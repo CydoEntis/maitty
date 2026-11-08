@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { answerUserInput, approveRequest } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
 import { readConversationPermissions } from '@/data/conversationPermissions'

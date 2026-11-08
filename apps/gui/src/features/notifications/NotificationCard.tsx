@@ -8,6 +8,8 @@ export type NotificationAction = {
   onClick: () => void
   /** The one button that answers the card; filled in the card's colour. */
   primary?: boolean
+  /** Asked after the click: true leaves the card up (a progress card's Cancel). */
+  keepOpen?: () => boolean
 }
 
 export type NotificationCardProps = {
@@ -24,6 +26,8 @@ export type NotificationCardProps = {
   onClose: () => void
   /** When set, a thin line along the bottom shrinks over this many milliseconds. */
   countdownMs?: number
+  /** False takes the close button away (a send that only Cancel can stop). */
+  closable?: boolean
 }
 
 /**
@@ -31,7 +35,7 @@ export type NotificationCardProps = {
  * the app (a session that needs you, one that finished, a failure, a plain message) is drawn with it,
  * on the float material, so they cannot drift apart.
  */
-export function NotificationCard({ tone, icon, title, state, body, actions = [], time, onClose, countdownMs }: NotificationCardProps) {
+export function NotificationCard({ tone, icon, title, state, body, actions = [], time, onClose, countdownMs, closable = true }: NotificationCardProps) {
   return (
     <div className={`mx-notice is-${tone}`} role="status">
       <span className="mx-notice-icon">{icon}</span>
@@ -39,9 +43,11 @@ export function NotificationCard({ tone, icon, title, state, body, actions = [],
         <div className="mx-notice-head">
           <span className="mx-notice-title">{title}</span>
           {state !== undefined && state !== '' && <span className="mx-notice-state">{state}</span>}
-          <button type="button" className="mx-notice-close" aria-label="Dismiss notification" onClick={onClose}>
-            <X size={14} />
-          </button>
+          {closable && (
+            <button type="button" className="mx-notice-close" aria-label="Dismiss notification" onClick={onClose}>
+              <X size={14} />
+            </button>
+          )}
         </div>
         {body !== undefined && <div className="mx-notice-body">{body}</div>}
         <div className="mx-notice-foot">
@@ -52,7 +58,7 @@ export function NotificationCard({ tone, icon, title, state, body, actions = [],
               className={action.primary ? 'is-primary' : undefined}
               onClick={() => {
                 action.onClick()
-                onClose()
+                if (action.keepOpen?.() !== true) onClose()
               }}
             >
               {action.label}

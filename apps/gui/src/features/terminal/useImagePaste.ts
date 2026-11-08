@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { machineNameOf } from '@/api/machines'
 import { oversizeMessage, saveImageLocally } from '@/api/imagePaste'
 import { errorMessage } from '@/lib/error-message'
