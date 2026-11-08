@@ -60,11 +60,10 @@
 .mx-machine-add:not(:disabled):hover { background: rgba(var(--hl), calc(.06 * var(--hk))); color: var(--fg); opacity: 1; }
 .mx-machine-add:disabled { opacity: .3; }
 /* A machine that needs the app: its state and the one-click fix, under the heading, lined up with its mark. */
-/* A machine that needs the app is a small notification of its own: what is wrong, and a real button that fixes it. */
-.mx-machine-note { display: flex; align-items: center; gap: 8px; margin: 2px 4px 6px 8px; padding: 7px 7px 7px 10px; border-radius: 10px; font-size: 12px; background: var(--warn-soft); box-shadow: inset 0 0 0 1px var(--warn-line); }
-.mx-machine-state { flex: 1; min-width: 0; color: var(--warn); font-weight: 500; }
-.mx-machine-fix-button { flex: none; height: 26px; padding: 0 12px; border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--on-accent); background: var(--accent); box-shadow: 0 2px 10px -2px color-mix(in srgb, var(--accent) 60%, transparent); transition: filter .14s ease; }
-.mx-machine-fix-button:hover { filter: brightness(1.08); }
+/* A machine that needs the app: an amber text button in its header, and its dot turns amber. */
+.mx-machine-update { flex: none; height: 20px; display: flex; align-items: center; gap: 3px; padding: 0 6px; border-radius: 6px; font-size: 11px; font-weight: 500; color: var(--warn); }
+.mx-machine-update:hover { background: rgba(var(--hl), calc(.06 * var(--hk))); }
+.mx-machine-dot.is-warn { background: var(--warn); border: 0; }
 
 .mx-rows { display: flex; flex-direction: column; gap: 2px; }
 .mx-projects { display: flex; flex-direction: column; gap: 8px; }

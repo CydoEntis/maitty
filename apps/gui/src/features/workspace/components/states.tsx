@@ -37,6 +37,12 @@ export type RestartOffer = {
   canRestart: boolean
   pending: boolean
   onRestart: () => void
+  /** The service's protocol and the one this app needs, for "v75 → v76". */
+  from: number
+  to: number
+  /** What a restart touches: the sessions the service owns, and how many of them have an agent mid-turn. */
+  sessions: number
+  working: number
 }
 
 const SECOND_MS = 1000
@@ -54,7 +60,7 @@ export function OfflineBanner({ retryAt, detail, restart, onRetry }: { retryAt: 
     <div className="mx-offline" role="status">
       <span className="mx-offline-dot" aria-hidden="true" />
       <span className="mx-offline-text">
-        <strong>Disconnected from maittyd.</strong> Sessions keep running in the daemon. What you see is the last known screen.{seconds !== null && ` Retrying in ${String(seconds)}s.`}
+        <strong>Restart needed.</strong> The service is on an older version; your sessions keep running.{seconds !== null && ` Retrying in ${String(seconds)}s.`}
         {detail && <> {detail}</>}
       </span>
       {restart && (

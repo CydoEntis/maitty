@@ -31,6 +31,7 @@ import { DesktopSettings, type DesktopSettingsSection, type UsageInfo } from '@/
 import { readSettingsPreferences, TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN, writeSettingsPreferences, type SettingsPreferences } from '@/features/settings/preferences'
 import type { Conversation } from '@/data/preview'
 import { sizeVariables } from './model/layoutSize'
+import { serviceStateOf } from './model/serviceState'
 import { daemonConnectionError, daemonProtocolMismatch } from '@/lib/daemon-connection'
 import { errorMessage } from '@/lib/error-message'
 import { useLatest } from '@/lib/useLatest'
@@ -1605,6 +1606,8 @@ export function DesktopApp() {
 
   // In the window but on another pane: a toast you can click. Away from the window: the system's.
   const raiseNotice = useCallback((notice: Notice) => {
+    // Never while reconnecting, with the service down or a restart needed: the status itself is the message, and a card could not be answered.
+    if (!online) return
     if (document.hasFocus()) {
       const target = sessionMap.get(notice.sessionId)
       const card = target && sessionNoticeFor(target, projectOf.get(target.id), {
@@ -1805,6 +1808,10 @@ export function DesktopApp() {
         label: restartStatusQuery.isPending ? 'Checking service…' : restartStatusQuery.isError ? 'Restart check failed' : restartStatusQuery.data.canRestart ? (restartStatusQuery.data.sessionCount > 0 ? `Restart and restore ${String(restartStatusQuery.data.sessionCount)} session${restartStatusQuery.data.sessionCount === 1 ? '' : 's'}` : 'Restart service') : 'Service in use',
         canRestart: Boolean(restartStatusQuery.data?.canRestart),
         pending: restartPending,
+        from: mismatch.daemonProtocol,
+        to: mismatch.guiProtocol,
+        sessions: restartStatusQuery.data?.sessionCount ?? 0,
+        working: restartStatusQuery.data?.activeTurnCount ?? 0,
         onRestart: () => {
           setRestartPending(true)
           void restartMismatchedDaemon(mismatch.daemonProtocol)
@@ -1817,6 +1824,8 @@ export function DesktopApp() {
         },
       }
     : null
+  const serviceState = serviceStateOf({ online, failures, mismatch: Boolean(mismatch) })
+  const serviceFooterText = serviceState === 'down' ? 'Service stopped' : serviceState === 'update' ? 'Restart needed' : undefined
   const offlineDetail = mismatch ? `${daemonConnectionError(sessionsQuery.error)}${olderServiceNote(restartStatusQuery.data)}` : null
 
   const tab = activeArrangement(layout)
@@ -1958,6 +1967,7 @@ export function DesktopApp() {
       updateSlot={updateSlot('footer')}
       railUpdateSlot={updateSlot('rail')}
       draft={newChatOpen ? { machine: LOCAL_MACHINE } : null}
+      serviceText={serviceFooterText}
     />
   )
 
@@ -2005,7 +2015,7 @@ export function DesktopApp() {
                   onResume={resumeInterrupted}
                   onDismiss={(id) => { setDismissedRestores((current) => new Set(current).add(id)) }}
                 />
-                <ServiceStatus online={online} failures={failures} mismatch={Boolean(mismatch)} retryAt={retryAt} detail={offlineDetail ?? (sessionsQuery.isError ? daemonConnectionError(sessionsQuery.error) : null)} restart={restartOffer} onRetry={() => { void refetchSessions() }} />
+                <ServiceStatus online={online} failures={failures} mismatch={Boolean(mismatch)} retryAt={retryAt} detail={offlineDetail ?? (sessionsQuery.isError ? daemonConnectionError(sessionsQuery.error) : null)} restart={restartOffer} sessions={sessions.length} onRetry={() => { void refetchSessions() }} />
                 {tab ? (
                   <div className={`mx-panes${tab.panes.length > 1 && tab.max === null ? ' is-split' : ''}`}>
                     {paneColumns(tab, narrow).map((column, columnIndex, columns) => (

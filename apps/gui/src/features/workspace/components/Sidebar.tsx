@@ -65,6 +65,8 @@ export type SidebarProps = {
   updateSlot: ReactNode
   /** The update button in the rail's foot. */
   railUpdateSlot: ReactNode
+  /** What the footer says while the service is not connected; a red dot and this, in muted grey, never a banner. */
+  serviceText?: string | undefined
   /** A chat that is being written but has no first message yet: listed on its machine so it is not lost. */
   draft?: DraftChat | null | undefined
 }
@@ -279,7 +281,7 @@ function Expanded(props: SidebarProps) {
       <div className="mx-sidebar-foot">
         {props.online
           ? <span className="mx-foot-slot">{props.updateSlot}</span>
-          : <><span className="mx-daemon-dot is-offline" aria-hidden="true" /><span className="mx-daemon-text is-offline" role="status">Reconnecting to maittyd…</span></>}
+          : <><span className="mx-daemon-dot is-offline" aria-hidden="true" /><span className="mx-daemon-text is-offline" role="status">{props.serviceText ?? 'Reconnecting to maittyd…'}</span></>}
         <button type="button" className="mx-head-button mx-settings-button" aria-label="Settings" title={tip('Settings', 'settings')} onClick={props.onOpenSettings}><Icon name="gear" size={15} /></button>
       </div>
       {menu && <MenuPopup title={menu.title} at={menu.at} items={menu.items} portalContainer={props.portalContainer} onClose={() => { setMenu(null) }} />}
@@ -319,11 +321,11 @@ function MachineSection({ draft, group, open, byProject, canStart, onToggle, onT
           <span className="mx-machine-name">{title}</span>
           <span className="mx-machine-count">{sessions.length}</span>
         </button>
+        {head.name !== null && head.updateAction !== null && <UpdateButton name={head.name} action={head.updateAction} onUpdate={onUpdate} />}
         <button type="button" className={`mx-machine-group${byProject ? ' is-on' : ''}`} aria-pressed={byProject} aria-label={byProject ? 'Show one list, most urgent first' : 'Group by project'} title={byProject ? 'Show one list, most urgent first' : 'Group by project'} onClick={onToggleByProject}><Icon name="folder" /></button>
-        <span className={`mx-machine-dot${head.down ? ' is-offline' : ''}`} role="img" aria-label={head.down ? `${title} is ${head.chip?.word ?? 'not reachable'}` : `${title} is connected`} title={head.why ?? (head.down ? head.chip?.word ?? 'not reachable' : `${title} is connected`)} />
+        <span className={`mx-machine-dot${head.updateAction !== null ? ' is-warn' : head.down ? ' is-offline' : ''}`} role="img" aria-label={head.down ? `${title} is ${head.chip?.word ?? 'not reachable'}` : `${title} is connected`} title={head.why ?? (head.down ? head.chip?.word ?? 'not reachable' : `${title} is connected`)} />
         <button type="button" className="mx-machine-add" aria-label={`New agent chat on ${title}`} title={`New agent chat on ${title} (right-click for more)`} disabled={!canStart || head.down} onClick={onAdd} onContextMenu={onAddMenu}><Icon name="plus" size={13} /></button>
       </div>
-      {head.name !== null && head.updateAction !== null && <UpdateNote name={head.name} action={head.updateAction} onUpdate={onUpdate} />}
       <Collapse open={open}>
         {draft && <DraftRow />}
         {byProject ? (
@@ -351,14 +353,14 @@ function DraftRow() {
   )
 }
 
-/** What a machine without the app, or with another version of it, needs, and the button that does it. */
-function UpdateNote({ name, action, onUpdate }: { name: string; action: UpdateAction; onUpdate: (name: string, action: UpdateAction) => void }) {
+/** What a machine without the app, or with another version of it, needs: an amber text button in its header, no row of its own. */
+function UpdateButton({ name, action, onUpdate }: { name: string; action: UpdateAction; onUpdate: (name: string, action: UpdateAction) => void }) {
   const words = UPDATE_WORDS[action]
   return (
-    <div className="mx-machine-note">
-      <span className="mx-machine-state"><span aria-hidden="true">▲ </span>{words.state}</span>
-      <button type="button" className="mx-machine-fix-button" aria-label={`${words.verb} Maitty on ${name}`} title={words.need(name)} onClick={() => { onUpdate(name, action) }}>{words.verb}</button>
-    </div>
+    <button type="button" className="mx-machine-update" aria-label={`${words.verb} Maitty on ${name}`} title={words.need(name)} onClick={() => { onUpdate(name, action) }}>
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></svg>
+      {words.verb}
+    </button>
   )
 }
 

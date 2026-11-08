@@ -679,33 +679,35 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     await waitFor(() => { expect(screen.queryByText('Reconnecting to maittyd')).not.toBeInTheDocument() })
   })
 
-  it('calls the service down after five failed tries, and Start maittyd tries again', async () => {
+  it('calls the service stopped after five failed tries, and Start service tries again', async () => {
     const user = userEvent.setup()
     daemon.loadConversations.mockResolvedValueOnce([term(2, `${HOME}/a`)]).mockRejectedValue(new Error('connection refused'))
     const { client } = renderDesktopApp()
     await screen.findByRole('region', { name: 'Shell in ~/a' })
     for (let attempt = 0; attempt < 5; attempt += 1) await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
 
-    const card = await screen.findByRole('alertdialog', { name: "maittyd isn't responding" })
-    expect(within(card).getAllByRole('listitem')).toHaveLength(3)
+    const card = await screen.findByRole('alertdialog', { name: 'Maitty service stopped' })
+    expect(within(card).getByText('Your session is saved. Start the service to pick up where it left off.')).toBeInTheDocument()
     expect(within(card).getByText('Details')).toBeInTheDocument()
+    expect(within(screen.getByLabelText('Status')).queryByText('Service stopped')).toBeNull()
     expect(screen.queryByText('Reconnecting to maittyd')).not.toBeInTheDocument()
 
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
-    await user.click(within(card).getByRole('button', { name: 'Start maittyd' }))
+    await user.click(within(card).getByRole('button', { name: 'Start service' }))
     await waitFor(() => { expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument() })
   })
 
-  it('asks to restart an older service in an amber card, and Not now leaves the read-only bar', async () => {
+  it('asks to restart an older service, and Later leaves a slim bar', async () => {
     const user = userEvent.setup()
     daemon.loadConversations.mockRejectedValue('connecting to the local daemon: the running maitty service uses protocol v49, while this GUI needs v62')
     daemon.loadDaemonRestartStatus.mockResolvedValue({ daemonProtocol: 49, guiProtocol: 62, canRestart: true, sessionCount: 2, activeTurnCount: 0 })
     renderDesktopApp()
 
-    const card = await screen.findByRole('alertdialog', { name: 'Restart the background service to finish updating' })
-    await user.click(within(card).getByRole('button', { name: 'Not now' }))
+    const card = await screen.findByRole('alertdialog', { name: 'Restart Maitty to finish updating' })
+    expect(within(card).getByText('The app updated to v62, but the service is still on v49.')).toBeInTheDocument()
+    await user.click(within(card).getByRole('button', { name: 'Later' }))
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
-    expect(screen.getByText('Disconnected from maittyd.')).toBeInTheDocument()
+    expect(screen.getByText('Restart needed.')).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: 'Restart and restore 2 sessions' })).toBeInTheDocument()
   })
 
@@ -714,7 +716,7 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     renderDesktopApp()
 
     expect(await screen.findByRole('button', { name: 'Service in use' })).toBeDisabled()
-    expect(screen.getByText(/service uses protocol v49, but this GUI needs v59/)).toBeInTheDocument()
+    expect(screen.getByText('The app updated to v59, but the service is still on v49.')).toBeInTheDocument()
     expect(screen.getByText(/owns 2 sessions but is not saving them, so Maitty leaves it running/)).toBeInTheDocument()
     expect(daemon.restartMismatchedDaemon).not.toHaveBeenCalled()
   })
@@ -727,7 +729,9 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     renderDesktopApp()
 
     await user.click(await screen.findByRole('button', { name: 'Restart and restore 4 sessions' }))
-    expect(screen.getByText(/They reopen in the same folders\. 1 working or waiting agent will offer a Resume\./)).toBeInTheDocument()
+    expect(screen.getByText('4 sessions reopen in the same folders')).toBeInTheDocument()
+    expect(screen.getByText('1 agent was working. It will offer Resume.')).toBeInTheDocument()
+    expect(screen.getByText('Running shells and commands stop')).toBeInTheDocument()
     expect(daemon.restartMismatchedDaemon).not.toHaveBeenCalled()
     await user.click(screen.getByRole('button', { name: 'Click again to restart' }))
     expect(daemon.restartMismatchedDaemon).toHaveBeenCalledWith(49)

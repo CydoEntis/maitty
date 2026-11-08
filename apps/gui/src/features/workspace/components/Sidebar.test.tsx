@@ -93,11 +93,11 @@ describe('a machine that needs maitty installed or updated', () => {
     return within(screen.getByRole('menu', { name: 'devbox' })).getAllByRole('menuitem').map((item) => item.textContent)
   }
 
-  it('says not installed under its header, with an Install button there', async () => {
+  it('offers Install in its header, and its dot says it is not installed', async () => {
     const user = userEvent.setup()
     const onUpdateMachine = vi.fn()
     show([], { machines: [LOCAL_HEAD, needing('install')], onUpdateMachine })
-    expect(screen.getByText('not installed')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /^devbox is / })).toHaveClass('is-warn')
     await user.click(screen.getByRole('button', { name: 'Install Maitty on devbox' }))
     expect(onUpdateMachine).toHaveBeenCalledWith('devbox', 'install')
   })
@@ -111,11 +111,11 @@ describe('a machine that needs maitty installed or updated', () => {
     expect(onUpdateMachine).toHaveBeenCalledWith('devbox', 'install')
   })
 
-  it('says needs update under its header and offers Update Maitty for another version', async () => {
+  it('offers Update in its header for another version, and offers Update Maitty in its menu', async () => {
     const user = userEvent.setup()
     const onUpdateMachine = vi.fn()
     show([session(1)], { machines: [LOCAL_HEAD, needing('update')], onUpdateMachine })
-    expect(screen.getByText('needs update')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'devbox is needs update' })).toHaveClass('is-warn')
     expect(screen.getByRole('button', { name: 'Update Maitty on devbox' })).toBeInTheDocument()
     expect(machineMenuItems()).toContain('Update Maitty')
     await user.click(screen.getByRole('menuitem', { name: 'Update Maitty' }))
@@ -127,7 +127,7 @@ describe('a machine that needs maitty installed or updated', () => {
     expect(machineMenuItems().filter((item) => item.endsWith('Maitty'))).toEqual([])
     fireEvent.contextMenu(screen.getByRole('button', { name: /^This computer/ }))
     expect(screen.queryByRole('menuitem', { name: /Maitty$/ })).toBeNull()
-    expect(screen.queryByText(/needs update|not installed/)).toBeNull()
+    expect(screen.queryByRole('img', { name: /needs update|not installed/ })).toBeNull()
     expect(screen.queryByRole('button', { name: /Maitty on/ })).toBeNull()
   })
 })
