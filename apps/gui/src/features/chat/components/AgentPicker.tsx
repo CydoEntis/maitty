@@ -1,11 +1,12 @@
 import { useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Check } from 'lucide-react'
 import { Popover } from 'radix-ui'
+import { PopupContent } from '@/components/ui/popup'
 import { CHAT_AGENTS, type ChatAgent } from '@/features/workspace/model/chatView'
 import { AppIcon, Icon } from '@/features/workspace/components/glyphs'
 import { AGENT_LABEL, modelName } from '../modelName'
 import {
-  DEFAULT_PICK, KNOWN_MODELS, REASONING_LABEL, REASONING_LEVELS, REASONING_PICKS, type AgentChoice, type Reasoning, type ReasoningPick,
+  DEFAULT_PICK, REASONING_LABEL, useAgentModels, useDiscoveredModels, REASONING_LEVELS, REASONING_PICKS, type AgentChoice, type Reasoning, type ReasoningPick,
 } from '../agentChoice'
 
 /** The shortest bar of the meter, and how much taller each next one is, in px. */
@@ -43,7 +44,7 @@ function Column({ title, options, value, onPick }: { title: string; options: rea
     }
   }
   return (
-    <div role="radiogroup" aria-label={title} onKeyDown={onKeyDown} className="flex min-w-0 flex-1 flex-col gap-1">
+    <div role="radiogroup" aria-label={title} onKeyDown={onKeyDown} className="flex max-h-[280px] min-w-0 flex-1 flex-col gap-1 overflow-y-auto">
       <h3 className="m-0 px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-dim">{title}</h3>
       {options.map((option) => {
         const checked = option.value === value
@@ -56,14 +57,13 @@ function Column({ title, options, value, onPick }: { title: string; options: rea
             aria-checked={checked}
             aria-disabled={off}
             tabIndex={checked ? 0 : -1}
-            title={option.disabledReason}
+            title={option.disabledReason ?? option.blurb}
             className={`flex items-start gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${checked ? 'bg-hover text-fg' : 'text-fg2 hover:bg-hover'} ${off ? 'cursor-not-allowed opacity-45' : ''}`}
             onClick={() => { if (!off) onPick(option.value) }}
           >
             <Check aria-hidden="true" className={`mt-0.5 size-3.5 shrink-0 ${checked ? 'text-[var(--accent)]' : 'opacity-0'}`} />
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="font-medium">{option.label}</span>
-              {option.blurb !== undefined && <span className="text-[11.5px] text-dim">{option.blurb}</span>}
             </span>
             {option.extra}
           </button>
@@ -86,16 +86,19 @@ type PickerProps = {
   onChange: (change: Partial<AgentChoice>) => void
   /** The model the agent's own file says it runs; null when it has not said. */
   currentModel?: string | null
+  /** Given where the agent is still to be chosen (a chat that has not started): the other agent can be picked. */
+  onAgent?: (agent: ChatAgent) => void
 }
 
-export function AgentPicker({ agent, choice, onChange, currentModel = null }: PickerProps) {
+export function AgentPicker({ agent, choice, onChange, currentModel = null, onAgent }: PickerProps) {
   const [open, setOpen] = useState(false)
-  const models = KNOWN_MODELS[agent]
+  useDiscoveredModels(agent)
+  const models = useAgentModels(agent)
   const model = models.find((option) => option.id === choice.model) ?? models[0]
   const agentOptions: Option[] = CHAT_AGENTS.map((name) => ({
     value: name,
     label: AGENT_LABEL[name],
-    ...(name === agent ? {} : { disabledReason: `Fixed for this chat · start a new chat to use ${AGENT_LABEL[name]}` }),
+    ...(name === agent || onAgent !== undefined ? {} : { disabledReason: `Fixed for this chat · start a new chat to use ${AGENT_LABEL[name]}` }),
   }))
   const summary = `${AGENT_LABEL[agent]} · ${model?.label ?? ''} · ${REASONING_LABEL[choice.reasoning]}`
   const shownModel = modelName(agent, model, currentModel)
@@ -109,16 +112,9 @@ export function AgentPicker({ agent, choice, onChange, currentModel = null }: Pi
           <Icon name="chevronDown" />
         </button>
       </Popover.Trigger>
-      <Popover.Portal>
-        <Popover.Content
-          side="top"
-          align="end"
-          sideOffset={8}
-          aria-label="Agent, model and reasoning"
-          className="z-50 w-[min(640px,calc(100vw-32px))] rounded-[14px] border border-line2 bg-[var(--pane)] p-2 shadow-[var(--sh-pop)]"
-        >
+      <PopupContent side="top" align="end" aria-label="Agent, model and reasoning" className="w-[min(640px,calc(100vw-32px))]">
           <div className="flex gap-2">
-            <Column title="Agent" options={agentOptions} value={agent} onPick={() => undefined} />
+            <Column title="Agent" options={agentOptions} value={agent} onPick={(value) => { onAgent?.(value as ChatAgent) }} />
             <Column
               title="Model"
               options={models.map((option) => ({ value: option.id, label: option.label, blurb: option.blurb }))}
@@ -136,8 +132,7 @@ export function AgentPicker({ agent, choice, onChange, currentModel = null }: Pi
             <span>Changes apply from your next message</span>
             <span>Esc</span>
           </p>
-        </Popover.Content>
-      </Popover.Portal>
+      </PopupContent>
     </Popover.Root>
   )
 }

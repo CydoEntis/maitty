@@ -873,6 +873,52 @@ export async function startChatSession(folder: string, agent: 'claude' | 'codex'
   })
 }
 
+/** Connects an agent's status hooks (`maitty integrate <agent>`), so its chat sees when it works, needs you or is done. */
+export async function connectAgent(agent: 'claude' | 'codex' | 'gemini'): Promise<void> {
+  await invokeParsed('connect_agent', NullSchema, { agent })
+}
+
+const AgentModelsSchema = z.array(z.object({ id: z.string(), label: z.string(), blurb: z.string() }))
+
+/** The models an agent offers on this computer; empty when it has no list to read. */
+export async function loadAgentModels(agent: 'claude' | 'codex'): Promise<{ id: string; label: string; blurb: string }[]> {
+  return invokeParsed('agent_models', AgentModelsSchema, { agent })
+}
+
+const InstalledAgentsSchema = z.array(z.string())
+
+/** The agent programs found on this computer's PATH (`claude`, `codex`, `gemini`, `opencode`, `cursor-agent`). */
+export async function agentsInstalled(): Promise<string[]> {
+  return invokeParsed('agents_installed', InstalledAgentsSchema, {})
+}
+
+const FolderBranchesSchema = z.object({
+  current: z.string().nullable(),
+  branches: z.array(z.object({ name: z.string(), current: z.boolean(), when: z.number().nullable() })),
+  worktrees: z.array(z.object({ path: z.string(), branch: z.string().nullable(), main: z.boolean(), when: z.number().nullable() })),
+}).nullable()
+export type FolderBranches = NonNullable<z.infer<typeof FolderBranchesSchema>>
+
+/** A folder's branches (newest commit first) and worktrees; null when the folder is not in a git repository. */
+export async function folderBranches(folder: string): Promise<FolderBranches | null> {
+  return invokeParsed('git_branches', FolderBranchesSchema, { folder })
+}
+
+/** Switches the folder's checkout to a branch, made first when `create`. */
+export async function switchBranch(folder: string, branch: string, create: boolean): Promise<void> {
+  await invokeParsed('git_switch_branch', NullSchema, { folder, branch, create })
+}
+
+/** Adds a worktree of the folder's repository for a branch (made first when `create`); resolves to its folder. */
+export async function addWorktree(folder: string, branch: string, create: boolean): Promise<string> {
+  return invokeParsed('git_add_worktree', z.string(), { folder, branch, create })
+}
+
+/** Opens an agent's official setup page in the browser. */
+export async function openAgentDocs(agent: string): Promise<void> {
+  await invokeParsed('open_agent_docs', NullSchema, { agent })
+}
+
 /** Starts a plain shell in a folder; the user types what to run. */
 export async function startShellSession(folder: string): Promise<void> {
   await invokeParsed('start_shell_session', NullSchema, { cwd: folder })

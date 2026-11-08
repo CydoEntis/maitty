@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
+import { connectAgent } from '@/api/daemon'
+import { errorMessage } from '@/lib/error-message'
 import { NO_EVENTS_HINT_AFTER_MS, noEventsHint, type ChatAgent } from '@/features/workspace/model/chatView'
 import { carryDraft, holdFirstMessage, releaseFirstMessage, useHeldFirstMessage } from '../firstMessage'
 import type { AttachmentIntake } from '../useAttachmentIntake'
@@ -30,10 +33,19 @@ export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', 
   const [draft, setDraftState] = useState('')
   const held = useHeldFirstMessage(sessionId)
   const [late, setLate] = useState(false)
+  const [connecting, setConnecting] = useState(false)
   useEffect(() => {
     const timer = window.setTimeout(() => { setLate(true) }, NO_EVENTS_HINT_AFTER_MS)
     return () => { window.clearTimeout(timer) }
   }, [])
+
+  const connect = () => {
+    setConnecting(true)
+    connectAgent(agent)
+      .then(() => { toast.success(`${agent} is connected. Restart it in the terminal to load the hooks.`) })
+      .catch((failure: unknown) => { toast.error(errorMessage(failure, `Could not connect ${agent}`)) })
+      .finally(() => { setConnecting(false) })
+  }
 
   const composer = useMemo<ChatComposer>(() => ({
     draft,
@@ -66,6 +78,7 @@ export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', 
         <span className="mx-chat-starting">Starting {agent}…</span>
         {late && <span role="note" className="is-warn">{noEventsHint(agent)}</span>}
         <span className="mx-spacer" />
+        {late && <button type="button" className="mx-sub-back" disabled={connecting} onClick={connect}>{connecting ? 'Connecting…' : `Connect ${agent}`}</button>}
         <button type="button" className="mx-sub-back" onClick={onBackToTerminal}>Back to terminal</button>
       </div>
       <p className="mx-chat-empty">No messages yet. Type below: it is sent as soon as {agent} is ready.</p>

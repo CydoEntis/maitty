@@ -5,6 +5,7 @@ import '@fontsource-variable/geist/wght.css'
 import '@fontsource-variable/geist-mono/wght.css'
 import './index.css'
 import './App.css'
+import './material.css'
 import { Root } from './Root.tsx'
 import ErrorBoundary from './components/ErrorBoundary.tsx'
 

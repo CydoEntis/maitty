@@ -85,7 +85,7 @@ export function SpinnerPicker({ value, reduced, onPick }: { value: SpinnerStyle;
         container={container}
         align="start"
         aria-label="Working spinner"
-        className="max-h-[min(340px,var(--radix-dropdown-menu-content-available-height))] w-[260px] bg-raise text-fg shadow-pop! ring-pane-line [backdrop-filter:var(--blur-pop)]"
+        className="max-h-[min(340px,var(--radix-dropdown-menu-content-available-height))] w-[260px] text-fg"
         onEscapeKeyDown={(event) => { event.stopPropagation() }}
       >
         <DropdownMenuRadioGroup value={value} onValueChange={(next) => { if (isSpinnerStyle(next)) onPick(next) }}>

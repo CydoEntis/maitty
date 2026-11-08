@@ -2,7 +2,7 @@ import type { ChatAgent } from '@/features/workspace/model/chatView'
 import { DEFAULT_PICK, type ModelOption } from './agentChoice'
 import { modelLabel } from './chatMeta'
 
-export const AGENT_LABEL: Readonly<Record<ChatAgent, string>> = { claude: 'Claude', codex: 'Codex' }
+export const AGENT_LABEL: Readonly<Record<ChatAgent, string>> = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini' }
 
 /** "Sonnet 5.5" from the agent's own words for its model. */
 function titleCase(text: string): string {

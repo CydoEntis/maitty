@@ -13,6 +13,8 @@ import { forgetOperations } from './features/chat/sendOperation'
 // beside terminal sessions, with a chat that can be written to and no terminal.
 
 const daemon = vi.hoisted(() => ({
+  connectAgent: vi.fn(() => Promise.resolve()),
+  loadAgentModels: vi.fn(() => Promise.resolve([] as { id: string; label: string; blurb: string }[])),
   loadConversations: vi.fn<() => Promise<Conversation[]>>(),
   loadPerformanceSample: vi.fn<() => Promise<never>>(() => new Promise(() => {})),
   listenSessionsChanged: vi.fn(() => Promise.resolve(() => {})),

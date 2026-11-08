@@ -145,6 +145,13 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
     }
     const operation = retry.current?.text === text ? retry.current.operation : reserveOperation(conversation, feed)
     retry.current = { text, operation }
+    // Drawn at once, as the agent's own history only has it once the turn has begun. A message that
+    // is queued behind a running turn shows in the queue instead, so it is not drawn twice.
+    const drawn = !running
+    if (drawn) {
+      setEcho({ text, baseline: countUserMessages(selectChatEvents(feed.projection), text), quiet: true })
+      window.setTimeout(() => { setEcho((current) => (current?.text === text ? null : current)) }, ECHO_MAX_MS)
+    }
     try {
       const picked = agent === undefined ? null : wireChoice(conversation, agent)
       const target = { id: String(conversation), generation: link.generation }
@@ -155,6 +162,7 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
     } catch (failure) {
       const message = errorMessage(failure, 'Could not send the message')
       setError(message)
+      if (drawn) setEcho((current) => (current?.text === text ? null : current))
       // A number the daemon has passed (another window sent in between) is not tried again; read, then pick a new one.
       if (STALE_OPERATION.test(message)) {
         retry.current = null
@@ -164,7 +172,7 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
     } finally {
       setSending(false)
     }
-  }, [conversation, link.generation, agent, feed, refresh, typeText])
+  }, [conversation, link.generation, agent, feed, refresh, typeText, running])
 
   const submit = useCallback(() => {
     const text = draft.trim()

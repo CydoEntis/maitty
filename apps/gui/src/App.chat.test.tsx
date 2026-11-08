@@ -9,6 +9,8 @@ import { forgetChatFeeds } from './features/chat/useChatFeed'
 import { forgetComposers } from './features/chat/composerStore'
 
 const daemon = vi.hoisted(() => ({
+  connectAgent: vi.fn(() => Promise.resolve()),
+  loadAgentModels: vi.fn(() => Promise.resolve([] as { id: string; label: string; blurb: string }[])),
   loadConversations: vi.fn<() => Promise<Conversation[]>>(),
   loadPerformanceSample: vi.fn<() => Promise<never>>(() => new Promise(() => {})),
   listenSessionsChanged: vi.fn(() => Promise.resolve(() => {})),
@@ -179,12 +181,12 @@ describe('the Terminal | Chat view of a pane', () => {
 
   it('leaves an agent without an event stream terminal-only and says so', async () => {
     const user = userEvent.setup()
-    daemon.loadConversations.mockResolvedValue([term(4, { agent: 'gemini', process: 'gemini' })])
+    daemon.loadConversations.mockResolvedValue([term(4, { agent: 'opencode', process: 'opencode' })])
     renderDesktopApp()
     const pane = await screen.findByRole('region', { name: /^Terminal 1/ })
 
     await user.keyboard('{Control>}{Shift>}e{/Shift}{/Control}')
-    expect(within(pane).getByText(/gemini has no event stream/)).toBeInTheDocument()
+    expect(within(pane).getByText(/opencode has no event stream/)).toBeInTheDocument()
     expect(within(pane).queryByRole('button', { name: /Start claude here/ })).not.toBeInTheDocument()
   })
 

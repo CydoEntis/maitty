@@ -7,6 +7,7 @@ mod image_paste;
 pub mod hub;
 mod machine_update;
 mod machines;
+mod new_chat;
 mod output_socket;
 mod performance;
 mod project_files;
@@ -83,6 +84,42 @@ fn first_existing_daemon(candidates: &[PathBuf]) -> Option<PathBuf> {
     candidates.iter().find(|path| path.is_file()).cloned()
 }
 
+/// The agents whose status hooks the window may connect. Only these names ever reach
+/// `maitty integrate`; the webview cannot choose what the host runs.
+const CONNECTABLE_AGENTS: [&str; 3] = ["claude", "codex", "gemini"];
+
+/// Connect an agent's status hooks (`maitty integrate <agent>`), so its chat sees when it works,
+/// needs you or is done.
+#[tauri::command]
+async fn connect_agent(app: tauri::AppHandle, agent: String) -> Result<(), String> {
+    if !CONNECTABLE_AGENTS.contains(&agent.as_str()) {
+        return Err(format!("{agent} cannot be connected from here"));
+    }
+    let executable = daemon_executable(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut command = std::process::Command::new(executable);
+        command
+            .args(["integrate", agent.as_str()])
+            .stdin(std::process::Stdio::null());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x0800_0000);
+        }
+        let output = command
+            .output()
+            .map_err(|error| format!("Could not connect {agent}: {error}"))?;
+        if output.status.success() {
+            return Ok(());
+        }
+        let text = String::from_utf8_lossy(&output.stderr);
+        let reason = text.lines().rev().find(|line| !line.trim().is_empty());
+        Err(reason.map_or_else(|| format!("Could not connect {agent}."), str::to_string))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 #[tauri::command]
 async fn list_sessions(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     maitty_desktop_client::list_sessions(daemon_executable(&app)?)
@@ -111,6 +148,63 @@ async fn conversation_diff(
     maitty_desktop_client::conversation_diff(id, generation, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
+}
+
+/// One model an agent offers, as its own cache of them lists it.
+#[derive(Debug, PartialEq, serde::Serialize)]
+struct AgentModel {
+    id: String,
+    label: String,
+    blurb: String,
+}
+
+/// The models listed in Codex's own cache (`models_cache.json`, which Codex refreshes from the
+/// account), the picker's ones first. Hidden models are left out.
+fn codex_models_from(cache: &str) -> Result<Vec<AgentModel>, String> {
+    let value: serde_json::Value =
+        serde_json::from_str(cache).map_err(|error| format!("Codex's model list is unreadable: {error}"))?;
+    let mut listed: Vec<(i64, AgentModel)> = value
+        .get("models")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|model| model.get("visibility").and_then(serde_json::Value::as_str) == Some("list"))
+        .filter_map(|model| {
+            let text = |key: &str| model.get(key).and_then(serde_json::Value::as_str);
+            let id = text("slug")?;
+            let priority = model.get("priority").and_then(serde_json::Value::as_i64).unwrap_or(i64::MAX);
+            Some((
+                priority,
+                AgentModel {
+                    id: id.to_string(),
+                    label: text("display_name").unwrap_or(id).to_string(),
+                    blurb: text("description").unwrap_or_default().to_string(),
+                },
+            ))
+        })
+        .collect();
+    listed.sort_by_key(|(priority, _)| *priority);
+    Ok(listed.into_iter().map(|(_, model)| model).collect())
+}
+
+/// The models an agent offers on this computer. Codex keeps a list under its own folder; Claude
+/// has none to read, so its answer is empty and the window keeps its fixed aliases.
+#[tauri::command]
+async fn agent_models(app: tauri::AppHandle, agent: String) -> Result<Vec<AgentModel>, String> {
+    if agent != "codex" {
+        return Ok(Vec::new());
+    }
+    let folder = match std::env::var_os("CODEX_HOME") {
+        Some(path) => PathBuf::from(path),
+        None => app.path().home_dir().map_err(|error| error.to_string())?.join(".codex"),
+    };
+    let cache = folder.join("models_cache.json");
+    match std::fs::read_to_string(&cache) {
+        Ok(text) => codex_models_from(&text),
+        // Codex has not fetched its list yet: nothing to show beyond its default.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(error) => Err(format!("Could not read {}: {error}", cache.display())),
+    }
 }
 
 /// Where a new session starts when no folder is chosen: your home folder, as the terminal app does.
@@ -771,6 +865,13 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             list_sessions,
+            connect_agent,
+            agent_models,
+            new_chat::agents_installed,
+            new_chat::git_branches,
+            new_chat::git_switch_branch,
+            new_chat::git_add_worktree,
+            new_chat::open_agent_docs,
             machines::list_machines,
             terminal_stream::list_machines_overview,
             terminal_stream::retry_machine,
@@ -854,6 +955,19 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn codex_models_come_in_priority_order_without_the_hidden_ones() {
+        let cache = r#"{"models":[
+            {"slug":"b","display_name":"B","description":"second","visibility":"list","priority":2},
+            {"slug":"hidden","display_name":"H","visibility":"hide","priority":0},
+            {"slug":"a","display_name":"A","description":"first","visibility":"list","priority":1}]}"#;
+        let models = super::codex_models_from(cache).unwrap();
+        let ids: Vec<&str> = models.iter().map(|model| model.id.as_str()).collect();
+        assert_eq!(ids, ["a", "b"]);
+        assert_eq!(models[0].label, "A");
+        assert!(super::codex_models_from("not json").is_err());
+    }
+
     use super::first_existing_daemon;
     use std::sync::atomic::{AtomicU64, Ordering};
 

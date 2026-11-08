@@ -32,7 +32,7 @@ type Props = {
   portalContainer: HTMLElement | null
 }
 
-const AGENT_TITLE: Readonly<Record<ChatAgent, string>> = { claude: 'Claude Code', codex: 'Codex' }
+const AGENT_TITLE: Readonly<Record<ChatAgent, string>> = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini CLI' }
 
 /** A row of options in the sunken segmented tray the dialog uses for its choices. */
 function Segments<T extends string>({ label, value, options, onPick }: { label: string; value: T; options: ReadonlyArray<{ value: T; label: string; disabled?: string }>; onPick: (value: T) => void }) {

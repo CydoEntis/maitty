@@ -317,7 +317,7 @@ const paneView = (value: unknown, fallback: PaneView): PaneView => (value === 'c
 function chatViewDefault(value: unknown, fallback: ChatViewDefaults): ChatViewDefaults {
   if (typeof value !== 'object' || value === null) return fallback
   const saved = value as Partial<Record<keyof ChatViewDefaults, unknown>>
-  return { claude: paneView(saved.claude, fallback.claude), codex: paneView(saved.codex, fallback.codex) }
+  return { claude: paneView(saved.claude, fallback.claude), codex: paneView(saved.codex, fallback.codex), gemini: paneView(saved.gemini, fallback.gemini) }
 }
 
 function isCursorStyle(value: unknown): value is CursorStyle {

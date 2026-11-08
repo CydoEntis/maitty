@@ -27,6 +27,8 @@ describe('the chat card of a shell pane', () => {
     expect(onStartChat).toHaveBeenCalledWith('claude', false)
     await user.click(screen.getByRole('button', { name: 'Start a Codex chat' }))
     expect(onStartChat).toHaveBeenCalledWith('codex', false)
+    await user.click(screen.getByRole('button', { name: 'Start a Gemini chat' }))
+    expect(onStartChat).toHaveBeenCalledWith('gemini', false)
     // The full-access switch is labelled, warns when on, and goes with the start.
     await user.click(screen.getByRole('checkbox', { name: 'Full access (skip permission prompts)' }))
     expect(screen.getByRole('note')).toHaveTextContent(/No sandbox and no approval prompts/)
@@ -38,7 +40,7 @@ describe('the chat card of a shell pane', () => {
 
   it('offers neither start while the daemon is offline', () => {
     render(<ChatPane availability={shell} process="shell" online={false} onBackToTerminal={noop} onStartAgent={noop} onStartChat={noop} />)
-    for (const name of ['Start claude here', 'Start a Claude chat', 'Start a Codex chat']) {
+    for (const name of ['Start claude here', 'Start a Claude chat', 'Start a Codex chat', 'Start a Gemini chat']) {
       expect(screen.getByRole('button', { name })).toBeDisabled()
     }
   })

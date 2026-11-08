@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { MAX_PANES, type PaneSlot, type SplitDirection } from '../model/layout'
 import type { SessionView } from '../model/session'
 import { headerFit } from '../model/paneHeader'
 import { rowTitle } from '../model/sidebar'
 import { AppIcon, Icon, StatusBadge } from './glyphs'
-import { SESSION_DRAG_TYPE } from './dragSession'
+import { beginPointerDrag } from './dragSession'
 import { runsProgram, useArmed } from './useArmed'
 import { PaneViewSwitch } from './PaneViewSwitch'
 import { MenuPopup, type MenuEntry } from './MenuPopup'
@@ -51,12 +51,6 @@ export type PaneCardProps = {
   onCopyPath: () => void
   /** Starts a new shell in an ended pane's folder, in its place. */
   onRestart: (paneId: string) => void
-  onDragStart: (paneId: string) => void
-  onDragEnd: () => void
-  /** `fromSidebar` is true when a session from the sidebar is being dragged over, not another pane. */
-  onDragOver: (paneId: string, fromSidebar: boolean) => void
-  /** `sessionId` is set when a session from the sidebar was dropped. */
-  onDrop: (paneId: string, sessionId: string | null) => void
 }
 
 /** How long the terminal's slide back in lasts; a little longer than its animation. */
@@ -140,29 +134,19 @@ export function PaneCard(props: PaneCardProps) {
       data-pane={pane.id}
       onMouseDown={() => { props.onFocus(pane.id) }}
       onContextMenu={(event) => {
-        if (event.target instanceof Element && event.target.closest('textarea, input, .xterm')) return
+        // The terminal's own area opens the pane menu too; only the chat's text boxes keep the system menu.
+        if (event.target instanceof Element && event.target.closest('textarea:not(.xterm-helper-textarea), input')) return
         event.preventDefault()
         setMenuAt(menuPoint(event, false))
-      }}
-      onDragOver={(event: DragEvent) => {
-        event.preventDefault()
-        props.onDragOver(pane.id, event.dataTransfer.types.includes(SESSION_DRAG_TYPE))
-      }}
-      onDrop={(event: DragEvent) => {
-        event.preventDefault()
-        props.onDrop(pane.id, event.dataTransfer.getData(SESSION_DRAG_TYPE) || null)
       }}
     >
       <div
         className={`mx-pane-head${multi ? ' is-draggable' : ''}`}
-        draggable={multi}
         title={multi ? 'Drag to move this pane' : undefined}
-        onDragStart={(event) => {
-          event.dataTransfer.effectAllowed = 'move'
-          event.dataTransfer.setData('text/plain', pane.id)
-          props.onDragStart(pane.id)
+        onPointerDown={(event) => {
+          // Buttons in the header keep their own clicks; only the bar itself starts a drag.
+          if (multi && !(event.target instanceof Element && event.target.closest('button, input'))) beginPointerDrag(event, { kind: 'pane', id: pane.id, label: title })
         }}
-        onDragEnd={props.onDragEnd}
         onDoubleClick={() => { props.onToggleMaximize(pane.id) }}
       >
         <span className="mx-pane-icon">

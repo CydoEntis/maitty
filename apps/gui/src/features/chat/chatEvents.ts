@@ -6,7 +6,7 @@
  * (`status: 'unavailable'` or `null`) instead of holding a guess.
  */
 
-export type ChatProvider = 'claude' | 'codex'
+export type ChatProvider = 'claude' | 'codex' | 'gemini'
 
 /** The daemon's item state, lower-cased. */
 export type ItemStatus = 'running' | 'completed' | 'failed' | 'interrupted'

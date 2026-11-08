@@ -1,0 +1,177 @@
+/*
+ * The window's material: the one place Glass and Flat are told apart.
+ *
+ * Every surface in the app is one of three roles, and reads its look from the role's tokens, never
+ * from its own colours:
+ *   panel  the big resting surfaces (the sidebar, the main card, the Inbox, the inspector)
+ *   float  what opens over them (menus, popovers, dialogs, the palette, find)
+ *   field  what you type into or press (the message box and its tray)
+ * A component picks its role by being listed below, or by carrying `mx-pop` (a popover or menu
+ * from a library) or `mx-field`. A new surface joins a list here; it does not set a background of
+ * its own. Terminal panes stay solid in both finishes: the terminal draws its own ground.
+ *
+ * Glass: translucent fills with a blur behind them, a hairline and a top highlight that catch the
+ * light (`--hl`), and soft shadows (`--sd`). The window behind carries two soft tints of the theme
+ * so there is something to see through the glass; on Windows the window itself is Mica and the
+ * desktop shows through instead.
+ * Flat: solid fills, a hairline, no blur, no highlight, no shadow. Floats keep one plain shadow so
+ * they stay apart from what is under them.
+ */
+
+/* ---- tokens ---- */
+/* Portalled content can sit outside the window root, so the light and shade have defaults here. */
+:root { --hl: 255, 255, 255; --hs: 255, 255, 255; --hk: 1; --sd: 0, 0, 0; --sk: 1; --gk: 1; }
+/* The theme's own solid colours, under the role names. Flat uses them as they are; Glass replaces
+   them below. Declared on the window root as well, because the theme colours are set inline there. */
+:root, .mx-app, .app-shell {
+  --m-well: var(--well);
+  --m-raise: var(--raise);
+  --m-sel: var(--sel);
+  --m-hover: var(--hover);
+  --m-pane: var(--pane);
+}
+:root[data-finish="glass"],
+:root[data-finish="glass"] .mx-app {
+  --m-panel: color-mix(in srgb, var(--main, var(--popover)) 68%, transparent);
+  --m-float: color-mix(in srgb, var(--main, var(--popover)) 84%, transparent);
+  --m-field: color-mix(in srgb, var(--main, var(--popover)) 60%, transparent);
+  --m-line: rgba(var(--hl), calc(.2 * var(--hk)));
+  --m-sheen: linear-gradient(180deg, rgba(var(--hs), calc(.12 * var(--hk))), rgba(var(--hs), calc(.03 * var(--hk))));
+  --m-edge: inset 0 1px 0 rgba(var(--hs), calc(.22 * var(--hk)));
+  /* Sunken controls, and rows that are hovered, picked or raised, are tints of the light and shade. */
+  --m-well: rgba(var(--sd), calc(.22 * var(--sk)));
+  --m-raise: rgba(var(--hl), calc(.1 * var(--hk)));
+  --m-sel: rgba(var(--hl), calc(.14 * var(--hk)));
+  --m-hover: rgba(var(--hl), calc(.07 * var(--hk)));
+  --m-pane: var(--m-float);
+  --m-shadow: 0 18px 48px -18px rgba(var(--sd), calc(.65 * var(--sk)));
+  --m-blur: blur(28px) saturate(1.35);
+}
+:root[data-finish="flat"],
+:root[data-finish="flat"] .mx-app {
+  --m-panel: var(--main, var(--popover));
+  --m-float: var(--main, var(--popover));
+  --m-field: var(--main, var(--popover));
+  --m-line: var(--line);
+  --m-sheen: none;
+  --m-edge: none;
+  --m-shadow: none;
+  --m-blur: none;
+  /* Gradients and lift (every rule that multiplies by --gk) take nothing in Flat; hover tints stay. */
+  --gk: 0;
+}
+/* Without a GPU the blur is dropped (workspace.css), and the fills turn solid with it. */
+:root[data-gpu="software"],
+:root[data-gpu="software"] .mx-app { --m-panel: var(--main, var(--popover)); --m-float: var(--main, var(--popover)); --m-field: var(--main, var(--popover)); --m-blur: none; }
+
+/* ---- the window behind the glass ---- */
+:root[data-finish="glass"]:not([data-material="mica"]) .mx-window {
+  background:
+    radial-gradient(700px 520px at 8% 4%, color-mix(in oklab, var(--accent) 22%, transparent), transparent 70%),
+    radial-gradient(760px 560px at 96% 96%, color-mix(in oklab, var(--ansi-mag) 16%, transparent), transparent 70%),
+    radial-gradient(620px 460px at 60% 40%, color-mix(in oklab, var(--ansi-blue, var(--accent)) 10%, transparent), transparent 70%),
+    var(--bg);
+}
+:root[data-finish="flat"] .mx-window { background: var(--bg); }
+
+/* ---- panel ---- */
+.mx-app .mx-card,
+.mx-app .mx-main,
+.mx-app .mx-sidebar,
+.mx-app .mx-inbox,
+.mx-app .mx-inspect,
+.mx-app .mx-activity {
+  background: var(--m-sheen), var(--m-panel);
+  border: 1px solid var(--m-line);
+  box-shadow: var(--m-edge), var(--m-shadow);
+  backdrop-filter: var(--m-blur);
+}
+
+/* ---- float ---- */
+.mx-app .mx-ctx,
+.mx-app .mx-palette,
+.mx-app .mx-find,
+.mx-app .mx-settings,
+.mx-app .mx-crew-menu,
+.mx-app .mx-ns-dialog,
+.mx-app .mx-service-card,
+.mx-app .mx-rename,
+.mx-app .mx-welcome,
+.mx-app .mx-notice,
+.mx-app .mx-menu,
+.mx-app .mx-picker-menu,
+.mx-app .mx-toast,
+.mx-app .mx-tip,
+.mx-app .mx-upd-card,
+.mx-app .mx-perf-hud,
+.mx-app .mx-pane-ended,
+.mx-app .mx-focus-pill,
+.mx-pop {
+  background: var(--m-sheen), var(--m-float);
+  border: 1px solid var(--m-line);
+  box-shadow: var(--m-edge), var(--m-shadow);
+  backdrop-filter: var(--m-blur);
+}
+/* One plain shadow keeps a flat float apart from what is under it. */
+:root[data-finish="flat"] .mx-ctx,
+:root[data-finish="flat"] .mx-palette,
+:root[data-finish="flat"] .mx-find,
+:root[data-finish="flat"] .mx-settings,
+:root[data-finish="flat"] .mx-crew-menu,
+:root[data-finish="flat"] .mx-ns-dialog,
+:root[data-finish="flat"] .mx-service-card,
+:root[data-finish="flat"] .mx-rename,
+:root[data-finish="flat"] .mx-welcome,
+:root[data-finish="flat"] .mx-notice,
+:root[data-finish="flat"] .mx-menu,
+:root[data-finish="flat"] .mx-picker-menu,
+:root[data-finish="flat"] .mx-toast,
+:root[data-finish="flat"] .mx-tip,
+:root[data-finish="flat"] .mx-upd-card,
+:root[data-finish="flat"] .mx-pane-ended,
+:root[data-finish="flat"] .mx-focus-pill,
+:root[data-finish="flat"] .mx-pop { box-shadow: 0 10px 28px rgba(0, 0, 0, .35); }
+:root[data-finish="flat"] .mx-settings-scrim { backdrop-filter: none; }
+
+/* ---- field ---- */
+.mx-app .mx-box,
+.mx-app .mx-settings-tray,
+.mx-field {
+  background: var(--m-sheen), var(--m-field);
+  border: 1px solid var(--m-line);
+  box-shadow: var(--m-edge);
+  backdrop-filter: var(--m-blur);
+}
+.mx-app .mx-settings-tray { border-top: 0; box-shadow: none; }
+
+/* The new chat page sits over the panes, so it stays opaque in both finishes. */
+.mx-app .mx-newchat { background: var(--main, var(--popover)); }
+
+/* ---- the same roles in the older conversation shell (App.css) ---- */
+:root .main-card, :root .context-panel, :root .empty-workspace {
+  background: var(--m-sheen), var(--m-panel);
+  border-color: var(--m-line);
+  box-shadow: var(--m-edge), var(--m-shadow);
+  backdrop-filter: var(--m-blur);
+}
+:root .settings-dialog {
+  background: var(--m-sheen), var(--m-float);
+  border-color: var(--m-line);
+  box-shadow: var(--m-edge), var(--m-shadow);
+  backdrop-filter: var(--m-blur);
+}
+:root .composer-box, :root .user-bubble, :root .activity-row, :root .approval-request {
+  background: var(--m-sheen), var(--m-field);
+  border-color: var(--m-line);
+  box-shadow: var(--m-edge);
+}
+
+/* ---- inside a float: the settings dialog's own parts take the material, not fills of their own ---- */
+.mx-app .mx-settings-nav,
+.mx-app .mx-settings-header { background: transparent; }
+.mx-app .mx-settings-nav { border-right-color: var(--m-line); }
+.mx-app .mx-settings-header { border-bottom-color: var(--m-line); }
+.mx-app .mx-settings-nav-item.is-current { background: var(--m-well); box-shadow: inset 0 0 0 1px var(--m-line); }
+.mx-app .mx-segmented,
+.mx-app .mx-style-card,
+.mx-app .mx-style-preview { background: var(--m-well); box-shadow: inset 0 0 0 1px var(--m-line); }

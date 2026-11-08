@@ -1,15 +1,10 @@
 import type { ReactNode } from 'react'
-import { X } from 'lucide-react'
 import { StatusMark, type StatusMarkState } from '@/components/StatusMark'
+import { NotificationCard, type NotificationAction, type NotificationTone } from './NotificationCard'
 
 export type NoticeKind = 'needs' | 'recovery' | 'finished' | 'error' | 'info'
 
-export type NoticeAction = {
-  label: string
-  onClick: () => void
-  /** The one button that answers the notice; filled in the notice's color. */
-  primary?: boolean
-}
+export type NoticeAction = NotificationAction
 
 export type NoticeProps = {
   kind: NoticeKind
@@ -21,70 +16,28 @@ export type NoticeProps = {
   countdownMs?: number
 }
 
-const KIND: Record<NoticeKind, { label: string; mark: StatusMarkState }> = {
-  needs: { label: 'Needs you', mark: 'needs-you' },
-  recovery: { label: 'Needs recovery', mark: 'recovery' },
-  finished: { label: 'Finished', mark: 'done' },
-  error: { label: 'Error', mark: 'recovery' },
-  info: { label: 'Notice', mark: 'idle' },
+const KIND: Record<NoticeKind, { tone: NotificationTone; mark: StatusMarkState; verb: string }> = {
+  needs: { tone: 'needs', mark: 'needs-you', verb: 'needs you' },
+  recovery: { tone: 'error', mark: 'recovery', verb: 'needs recovery' },
+  finished: { tone: 'done', mark: 'done', verb: 'finished' },
+  error: { tone: 'error', mark: 'recovery', verb: 'failed' },
+  info: { tone: 'info', mark: 'idle', verb: '' },
 }
 
-/** One notification card: kind and project, a title, optional details and buttons. */
-export function NoticeToast({
-  kind,
-  project,
-  title,
-  body,
-  actions = [],
-  countdownMs,
-  onDismiss,
-}: NoticeProps & { onDismiss: () => void }) {
-  const { label, mark } = KIND[kind]
+/** A card for the conversation views: the same card as every other notification, with a status mark for its icon. */
+export function NoticeToast({ kind, project, title, body, actions = [], countdownMs, onDismiss }: NoticeProps & { onDismiss: () => void }) {
+  const { tone, mark, verb } = KIND[kind]
+  const heading = verb === '' ? title : `${title} ${verb}`
   return (
-    <div className={`notice-toast is-${kind}`} role="status">
-      <span className="notice-tile">
-        <StatusMark status={mark} />
-      </span>
-      <div className="notice-main">
-        <div className="notice-head">
-          <span className="notice-kind">{label}</span>
-          {project && <span className="notice-project">· {project}</span>}
-          <span className="notice-age">now</span>
-          <button
-            type="button"
-            className="notice-dismiss"
-            aria-label="Dismiss notification"
-            onClick={onDismiss}
-          >
-            <X size={12} />
-          </button>
-        </div>
-        <div className="notice-title">{title}</div>
-        {body && <div className="notice-body">{body}</div>}
-        {actions.length > 0 && (
-          <div className="notice-actions">
-            {actions.map((action) => (
-              <button
-                key={action.label}
-                type="button"
-                className={action.primary ? 'is-primary' : undefined}
-                onClick={() => {
-                  action.onClick()
-                  onDismiss()
-                }}
-              >
-                {action.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-      {countdownMs !== undefined && (
-        <span
-          className="notice-countdown"
-          style={{ animationDuration: `${String(countdownMs)}ms` }}
-        />
-      )}
-    </div>
+    <NotificationCard
+      tone={tone}
+      icon={<span className="mx-notice-mark"><StatusMark status={mark} /></span>}
+      title={heading}
+      {...(project || body ? { body: <>{project && <span className="mx-notice-project">{project}</span>}{body}</> } : {})}
+      actions={actions}
+      time="just now"
+      onClose={onDismiss}
+      {...(countdownMs === undefined ? {} : { countdownMs })}
+    />
   )
 }

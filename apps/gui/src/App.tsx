@@ -168,6 +168,7 @@ import { shortcutModifier } from '@/lib/shortcut-modifier'
 import { errorMessage } from '@/lib/error-message'
 import { daemonConnectionError, daemonProtocolMismatch } from '@/lib/daemon-connection'
 import './App.css'
+import './material.css'
 
 const OTHER_FOLDERS = 'Other folders'
 

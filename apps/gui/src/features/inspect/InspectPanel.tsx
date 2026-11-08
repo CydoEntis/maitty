@@ -19,6 +19,9 @@ const VIEWS: readonly { id: InspectView; label: string }[] = [
   { id: 'references', label: 'References' },
 ]
 
+/** Opened from a pane, the drawer offers its two tools; another view shows its tab only while it is the one open. */
+const TRAY_VIEWS: readonly InspectView[] = ['files', 'changes']
+
 /** The drawer opens at this width on every tab, so tabs never jump; the edge can be dragged and the width is remembered. */
 const DEFAULT_WIDTH_PX = 680
 const MIN_WIDTH_PX = 420
@@ -119,7 +122,7 @@ export function InspectPanel({ term, project, branch, changedFiles, view, agentW
           <button type="button" className="mx-icon-button" aria-label="Close" title="Close (esc)" onClick={close}>×</button>
         </header>
         <div role="tablist" aria-label="Repository views" className={`mx-inspect-tabs is-${towards}`}>
-          {VIEWS.map((item) => (
+          {VIEWS.filter((item) => item.id === view || TRAY_VIEWS.includes(item.id)).map((item) => (
             <button key={item.id} type="button" role="tab" aria-selected={view === item.id} className={view === item.id ? 'is-current' : undefined} onClick={() => { onView(item.id) }}>
               {item.label}
               {item.id === 'changes' && changedFiles > 0 && <span className="mx-inspect-count">{changedFiles}</span>}

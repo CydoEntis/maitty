@@ -6,6 +6,7 @@ import type { PermissionAsk } from '@/data/preview'
 import type { SessionStatus } from '@/features/workspace/model/session'
 import type { SubagentView } from '@/features/workspace/model/subagents'
 import { FULL_ACCESS_LABEL, FULL_ACCESS_WARNING } from '../fullAccess'
+import { AGENT_LABEL } from '../modelName'
 import { ChatSession } from './ChatSession'
 import { StartingChat } from './StartingChat'
 
@@ -106,7 +107,7 @@ function NoChat({ availability, process, online, onBackToTerminal, onStartAgent,
           ))}
           {availability.kind === 'shell' && onStartChat !== undefined && CHAT_AGENTS.map((agent) => (
             <Button key={`chat-${agent}`} type="button" variant="outline" size="sm" disabled={!online} onClick={() => { onStartChat(agent, fullAccess) }}>
-              Start a {agent === 'claude' ? 'Claude' : 'Codex'} chat
+              Start a {AGENT_LABEL[agent]} chat
             </Button>
           ))}
           <Button type="button" size="sm" onClick={onBackToTerminal}>Back to terminal</Button>

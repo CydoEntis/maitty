@@ -42,15 +42,15 @@
   --foreground: var(--fg);
   --card: var(--main);
   --card-foreground: var(--fg);
-  --popover: var(--raise);
+  --popover: var(--m-raise);
   --popover-foreground: var(--fg);
   --primary: #5fd4bf;
   --primary-foreground: #06110f;
-  --secondary: var(--raise);
+  --secondary: var(--m-raise);
   --secondary-foreground: var(--fg2);
-  --muted: var(--hover);
+  --muted: var(--m-hover);
   --muted-foreground: var(--muted-text);
-  --accent: var(--hover);
+  --accent: var(--m-hover);
   --accent-foreground: var(--fg);
   --destructive: var(--danger);
   --border: var(--line);
@@ -61,7 +61,7 @@
   --sidebar-foreground: var(--fg);
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--primary-foreground);
-  --sidebar-accent: var(--sel);
+  --sidebar-accent: var(--m-sel);
   --sidebar-accent-foreground: var(--fg);
   --sidebar-border: var(--line);
   --sidebar-ring: var(--primary);
@@ -153,8 +153,8 @@
   --color-ring: var(--ring);
   /* The window's own theme tokens, set per theme on .mx-app. The shadcn names above resolve on :root
      (and --accent is the hover surface there but the brand teal in the app), so feature components use these. */
-  --color-raise: var(--raise);
-  --color-hover: var(--hover);
+  --color-raise: var(--m-raise);
+  --color-hover: var(--m-hover);
   --color-term: var(--term);
   --color-fg: var(--fg);
   --color-fg2: var(--fg2);

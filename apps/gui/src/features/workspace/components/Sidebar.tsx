@@ -136,6 +136,14 @@ function Expanded(props: SidebarProps) {
     setMenu({ title, at: { x: event.clientX, y: event.clientY }, items })
   }
 
+  // The heading's +: what can start on that machine, as a short list under the button.
+  const addMenu = (head: MachineHead): MenuEntry[] => [
+    { label: 'New agent chat', hint: shortcutText('new-agent-chat'), disabled: !props.canStart || head.down, run: () => { props.onNewAgentChat(head.machine) } },
+    { label: 'New shell', hint: shortcutText('new-terminal'), disabled: !props.canStart || head.down, run: () => { props.onNewShell(head.machine) } },
+    'separator',
+    { label: 'Add a remote machine…', run: props.onAddMachine },
+  ]
+
   const sessionMenu = (session: SessionView): MenuEntry[] => {
     const agent = !isShell(session)
     const other = session.id !== props.focusedId
@@ -215,6 +223,7 @@ function Expanded(props: SidebarProps) {
         <button type="button" className="mx-head-button is-small" aria-label="Collapse sidebar" title={tip('Collapse sidebar', 'toggle-sidebar')} onClick={props.onToggleRail}><Icon name="collapse" /></button>
         <span className="mx-spacer" />
         <button type="button" className="mx-head-button" aria-label="New agent chat" title={tip('New agent chat', 'new-agent-chat')} disabled={!props.canStart} onClick={() => { props.onNewAgentChat(props.machines[0]?.machine ?? 0) }}><Icon name="chatPlus" size={15} /></button>
+        <button type="button" className="mx-head-button" aria-label="New shell" title={tip('New shell', 'new-terminal')} disabled={!props.canStart} onClick={() => { props.onNewShell(props.machines[0]?.machine ?? 0) }}><Icon name="terminal" size={15} /></button>
         <button type="button" className="mx-head-button" aria-label="Add a remote machine" title="Add a remote machine" onClick={props.onAddMachine}><Icon name="serverPlus" size={15} /></button>
         <InboxButton count={props.inboxCount} needs={props.inboxNeeds} onClick={props.onOpenInbox} />
       </div>
@@ -250,7 +259,7 @@ function Expanded(props: SidebarProps) {
               canStart={props.canStart}
               onToggle={() => { views.toggle(group.head.key) }}
               onToggleByProject={() => { views.toggleByProject(group.head.key) }}
-              onNewAgentChat={() => { props.onNewAgentChat(group.head.machine) }}
+              onAdd={(event) => { openMenu(event, `New on ${machineTitle(group.head)}`, addMenu(group.head)) }}
               onUpdate={props.onUpdateMachine}
               onContextMenu={(event) => { openMenu(event, machineTitle(group.head), machineMenu(group.head)) }}
               renderRow={renderRow}
@@ -278,14 +287,14 @@ type SectionProps = {
   canStart: boolean
   onToggle: () => void
   onToggleByProject: () => void
-  onNewAgentChat: () => void
+  onAdd: (event: MouseEvent) => void
   onUpdate: (name: string, action: UpdateAction) => void
   onContextMenu: (event: MouseEvent) => void
   renderRow: (session: SessionView, showProject: boolean) => ReactNode
 }
 
 /** One machine: its heading (name, count, group-by-project, its line's dot, +) and its sessions. */
-function MachineSection({ group, open, byProject, canStart, onToggle, onToggleByProject, onNewAgentChat, onUpdate, onContextMenu, renderRow }: SectionProps) {
+function MachineSection({ group, open, byProject, canStart, onToggle, onToggleByProject, onAdd, onUpdate, onContextMenu, renderRow }: SectionProps) {
   const { head, sessions } = group
   const title = machineTitle(head)
   const projects = byProject ? projectGroups(sessions) : []
@@ -300,7 +309,7 @@ function MachineSection({ group, open, byProject, canStart, onToggle, onToggleBy
         </button>
         <button type="button" className={`mx-machine-group${byProject ? ' is-on' : ''}`} aria-pressed={byProject} aria-label={byProject ? 'Show one list, most urgent first' : 'Group by project'} title={byProject ? 'Show one list, most urgent first' : 'Group by project'} onClick={onToggleByProject}><Icon name="folder" /></button>
         <span className={`mx-machine-dot${head.down ? ' is-offline' : ''}`} role="img" aria-label={head.down ? `${title} is ${head.chip?.word ?? 'not reachable'}` : `${title} is connected`} title={head.why ?? (head.down ? head.chip?.word ?? 'not reachable' : `${title} is connected`)} />
-        <button type="button" className="mx-machine-add" aria-label={`New agent on ${title}`} title={`New agent on ${title}`} disabled={!canStart || head.down} onClick={onNewAgentChat}><Icon name="plus" size={13} /></button>
+        <button type="button" className="mx-machine-add" aria-haspopup="menu" aria-label={`New on ${title}`} title={`New on ${title}`} disabled={!canStart || head.down} onClick={onAdd}><Icon name="plus" size={13} /></button>
       </div>
       {head.name !== null && head.updateAction !== null && <UpdateNote name={head.name} action={head.updateAction} onUpdate={onUpdate} />}
       <Collapse open={open}>
@@ -354,6 +363,7 @@ function Rail(props: SidebarProps) {
       <div className="mx-rail-top">
         <button type="button" className="mx-head-button is-rail" aria-label="Expand sidebar" title={tip('Expand sidebar', 'toggle-sidebar')} onClick={props.onToggleRail}><Icon name="expand" /></button>
         <button type="button" className="mx-head-button is-rail" aria-label="New agent chat" title={tip('New agent chat', 'new-agent-chat')} disabled={!props.canStart} onClick={() => { props.onNewAgentChat(props.machines[0]?.machine ?? 0) }}><Icon name="chatPlus" size={15} /></button>
+        <button type="button" className="mx-head-button is-rail" aria-label="New shell" title={tip('New shell', 'new-terminal')} disabled={!props.canStart} onClick={() => { props.onNewShell(props.machines[0]?.machine ?? 0) }}><Icon name="terminal" size={15} /></button>
         <InboxButton rail count={props.inboxCount} needs={props.inboxNeeds} onClick={props.onOpenInbox} />
       </div>
       <div className="mx-rail-divider" />

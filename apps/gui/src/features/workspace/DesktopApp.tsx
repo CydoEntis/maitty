@@ -7,6 +7,7 @@ import {
   closeSessionWithUndo,
   markSeenOnDaemon,
   defaultSessionFolder,
+  connectAgent,
   conversationsFromSnapshot,
   isDesktop,
   listenSessionsChanged,
@@ -17,6 +18,8 @@ import {
   sendTerminalInput,
   submitMessage,
   startChatSession,
+  addWorktree,
+  switchBranch,
   startShellSession,
   undoCloseSession,
 } from '@/api/daemon'
@@ -79,17 +82,21 @@ import { newWorktreeSession } from '@/features/worktrees/api'
 import type { TerminalHandle } from '@/features/terminal/handle'
 import type { LookAt } from '@/features/inspect/FilesTab'
 import { PaneCard, type PaneTool } from './components/PaneCard'
+import { registerDragHandlers } from './components/dragSession'
 import { ChatPane } from '@/features/chat/components/ChatPane'
 import { ANSWER_KEYS } from '@/features/chat/permissionAsk'
 import { NoTerminalNote } from '@/features/chat/components/NoTerminalNote'
 import { rememberConversationPermissions } from '@/data/conversationPermissions'
 import { reserveOperation } from '@/features/chat/sendOperation'
 import { holdFirstMessage } from '@/features/chat/firstMessage'
-import { nameFromMessage } from './model/newSession'
+import { machineProjects, nameFromMessage } from './model/newSession'
 import { usePaneViews } from './usePaneViews'
-import { chatAvailability, chatSourceOf, effectiveView, type ChatAgent, type PaneView } from './model/chatView'
+import { chatAvailability, chatSourceOf, effectiveView, type ChatAgent, type PaneView, type StructuredAgent } from './model/chatView'
 import { NewSessionHost } from './components/NewSessionHost'
 import type { NewSessionRequest } from './components/NewSessionModal'
+import { NewChatPage, type NewChatRequest } from './components/NewChatPage'
+import { type WireChoice } from '@/features/chat/agentChoice'
+import { launchFlags } from './model/newChatHost'
 import { GetFileDialog } from './components/GetFileDialog'
 import { MachineUpdateDialog } from './components/MachineUpdateDialog'
 import { runMachineUpdate } from './machineUpdate'
@@ -166,6 +173,9 @@ const UNDO_CLOSE_MS = 6000
 const DEFAULT_TEXT_SIZE = 14
 /** How long a second ⌘W confirms closing a session that is running a program. */
 const CLOSE_ARM_MS = 4000
+/** How long a closing pane shrinks before its session ends (matches `.mx-pane-cell.is-closing` in pane.css), and how long it is kept marked if the close did not happen. */
+const PANE_EXIT_MS = 240
+const PANE_CLOSE_SETTLE_MS = 1500
 /** How long "Restarting Maitty" shows before the window relaunches. */
 const RESTART_SCREEN_MS = 1200
 const ABSOLUTE_PATH = /^(\/|[A-Za-z]:[\\/])/
@@ -309,6 +319,8 @@ export function DesktopApp() {
   // A new session on another machine asks for a folder there first.
   // The machine the New session modal opened on; null while it is closed.
   const [newSessionMachine, setNewSessionMachine] = useState<number | null>(null)
+  // The page a new agent chat starts from (agent, folder, model, effort), over the panes.
+  const [newChatOpen, setNewChatOpen] = useState(false)
   const [failures, setFailures] = useState(0)
   const [restartPending, setRestartPending] = useState(false)
   const [root, setRoot] = useState<HTMLDivElement | null>(null)
@@ -631,6 +643,18 @@ export function DesktopApp() {
   useSharedSettings(preferences, setPreferences, online)
 
   const flash = useCallback((text: string) => { setToastMessage({ text, key: Date.now() }) }, [])
+  useEffect(() => registerDragHandlers({
+    start: (source) => { if (source.kind === 'pane') setDragId(source.id) },
+    over: setDropId,
+    drop: (source, paneId) => {
+      if (!paneId) return
+      if (source.kind === 'session') {
+        setLayout((current) => dropSession(current, paneId, source.id))
+        flash('Session moved into this pane')
+      } else if (source.id !== paneId) setLayout((current) => swapSessions(current, source.id, paneId))
+    },
+    end: () => { setDragId(null); setDropId(null) },
+  }), [flash])
   useEffect(() => {
     if (!toastMessage) return
     const timer = window.setTimeout(() => { setToastMessage(null) }, TOAST_MS)
@@ -663,6 +687,8 @@ export function DesktopApp() {
   useEffect(() => {
     document.documentElement.dataset.style = preferences.style
     document.documentElement.dataset.finish = preferences.style === 'glass' ? 'glass' : 'flat'
+    // Only Windows has a translucent window (Mica); see workspace.css.
+    document.documentElement.dataset.material = /Windows NT/.test(navigator.userAgent) ? 'mica' : 'none'
   }, [preferences.style])
 
   useEffect(() => {
@@ -796,7 +822,7 @@ export function DesktopApp() {
   }, [sessions, newSessionSince, flash])
 
   // Lists again and opens the chat session the daemon just started, with its first prompt if there is one.
-  const openStartedChat = useCallback(async (started: { id: number; generation: number }, prompt: string) => {
+  const openStartedChat = useCallback(async (started: { id: number; generation: number }, prompt: string, choice: WireChoice | null = null) => {
     const id = String(started.id)
     await queryClient.invalidateQueries({ queryKey: ['conversations'] })
     await queryClient.query({ queryKey: ['conversations'], queryFn: loadConversations, staleTime: 0 })
@@ -804,30 +830,26 @@ export function DesktopApp() {
     if (prompt !== '') {
       // The start has answered, so the agent is up: the first prompt is an ordinary send, number 1.
       const operation = reserveOperation(started.id, { receipt: null, queued: [] })
-      await submitMessage({ id, generation: started.generation }, operation, prompt)
+      await submitMessage({ id, generation: started.generation }, operation, prompt, choice ?? undefined)
     }
   }, [queryClient])
 
   // A chat session in `path`, opened in a layout of its own. Chats are this computer's: another machine's shell asks first.
-  const startChat = useCallback((path: string, agent: ChatAgent, fullAccess: boolean) =>
+  const startChat = useCallback((path: string, agent: StructuredAgent, fullAccess: boolean) =>
     startChatSession(path, agent, null, fullAccess).then((started) => {
       if (fullAccess) rememberConversationPermissions(String(started.id), 'full-access')
       return openStartedChat(started, '')
     }).then(() => { flash(`${agent} chat started`) }), [openStartedChat, flash])
 
-  // "Start a Claude chat" on a shell's empty chat card: a chat session in that shell's folder.
-  const startChatHere = useCallback((from: SessionView, agent: ChatAgent, fullAccess: boolean) => {
-    const refusal = remoteStartRefusal(from.machine !== LOCAL_MACHINE, from.machineName, 'A chat session')
-    if (refusal) {
-      toast.message(refusal)
-      return
-    }
-    if (!online || starting) return
-    setStarting(true)
-    startChat(from.cwd, agent, fullAccess)
-      .catch((error: unknown) => { toast.error(errorMessage(error, `Could not start a ${agent} chat`)) })
-      .finally(() => { setStarting(false) })
-  }, [online, starting, startChat])
+
+  // What the new chat page asks for: a structured chat in the folder, with the model and effort picked, and its first message.
+  // Choosing another session (the sidebar, a shortcut) leaves the new chat page for it.
+  const focusedSessionKey = focusedSession?.id
+  const [seenFocusKey, setSeenFocusKey] = useState(focusedSessionKey)
+  if (seenFocusKey !== focusedSessionKey) {
+    setSeenFocusKey(focusedSessionKey)
+    setNewChatOpen(false)
+  }
 
   const runStart = useCallback((folder: () => Promise<string>, place: (sessionId: string) => void) => {
     if (!online || starting) return
@@ -843,7 +865,7 @@ export function DesktopApp() {
   // A new session is the default agent, running in a terminal the daemon owns, shown as its chat or
   // as its terminal as Settings says. It is one session either way: the view can be switched at any
   // time without restarting the agent (ADR 0003). A plain shell is `runStart` and has no chat view.
-  const startAgentSession = useCallback((folder: () => Promise<string>, agent: ChatAgent, view: PaneView, firstMessage = '') => {
+  const startAgentSession = useCallback((folder: () => Promise<string>, agent: ChatAgent, view: PaneView, firstMessage = '', flags = '') => {
     runStart(folder, (id) => {
       // A first message waits under the session and goes out once the agent takes input; its words name the session.
       if (firstMessage !== '') {
@@ -856,14 +878,57 @@ export function DesktopApp() {
       window.setTimeout(() => { setExpectedAgents((current) => omitKey(current, id)) }, EXPECTED_AGENT_MS)
       setLayout((current) => openArrangement(current, id, makeId))
       if (view === 'chat') paneViews.choose(id, 'chat')
-      void sendTerminalInput({ id, generation: 0 }, `${agent}\r`).catch((error: unknown) => { toast.error(errorMessage(error, `Could not start ${agent}`)) })
+      // Its status hooks are connected before it starts: an agent that is already running never loads
+      // them, and its chat would wait on them until it was restarted. Connecting is idempotent.
+      void connectAgent(agent)
+        .catch((error: unknown) => { console.warn(`Could not connect ${agent}'s status hooks`, error) })
+        .then(() => sendTerminalInput({ id, generation: 0 }, `${agent}${flags}\r`))
+        .catch((error: unknown) => { toast.error(errorMessage(error, `Could not start ${agent}`)) })
     })
   }, [runStart, paneViews])
 
-  // New session (the shortcut, the palette) always opens the modal, on the machine of the session in front.
+  // "Start a Claude chat" on a shell's empty chat card: a chat session in that shell's folder.
+  const startChatHere = useCallback((from: SessionView, agent: ChatAgent, fullAccess: boolean) => {
+    const refusal = remoteStartRefusal(from.machine !== LOCAL_MACHINE, from.machineName, 'A chat session')
+    if (refusal) {
+      toast.message(refusal)
+      return
+    }
+    if (!online || starting) return
+    // Gemini has no structured chat: it starts as a terminal session shown as its chat.
+    if (agent === 'gemini') {
+      startAgentSession(() => Promise.resolve(from.cwd), agent, 'chat')
+      return
+    }
+    setStarting(true)
+    startChat(from.cwd, agent, fullAccess)
+      .catch((error: unknown) => { toast.error(errorMessage(error, `Could not start a ${agent} chat`)) })
+      .finally(() => { setStarting(false) })
+  }, [online, starting, startChat, startAgentSession])
+
+  // The new chat is the agent in a terminal the daemon owns, shown as its chat: one session whose view
+  // switches to the terminal at any time (ADR 0003), the same for every agent.
+  const startNewChat = useCallback(async (request: NewChatRequest): Promise<void> => {
+    if (!online) throw new Error('The daemon is not reachable')
+    // The branch is settled before the agent starts, and a failure stays on the page with its words.
+    let folder = request.folder
+    if (request.branch?.worktree) folder = await addWorktree(folder, request.branch.name, request.branch.create)
+    else if (request.branch) await switchBranch(folder, request.branch.name, request.branch.create)
+    startAgentSession(() => Promise.resolve(folder), request.agent, 'chat', request.message, launchFlags(request.agent, request.model, request.reasoning))
+    setNewChatOpen(false)
+    flash(`${request.agent} chat started`)
+  }, [online, startAgentSession, flash])
+
+  // New session (the shortcut, the palette, the sidebar's chat button): on this computer it is the new chat page.
+  // Chats are this computer's, so another machine's session is asked for in the dialog, on that machine.
   const newSession = useCallback((machine?: number) => {
     setSettingsSection(null)
-    setNewSessionMachine(machine ?? remoteTargetOf(focusedSession)?.machine ?? LOCAL_MACHINE)
+    const target = machine ?? remoteTargetOf(focusedSession)?.machine ?? LOCAL_MACHINE
+    if (target === LOCAL_MACHINE) {
+      setNewChatOpen(true)
+      return
+    }
+    setNewSessionMachine(target)
   }, [focusedSession])
 
   // A plain shell in the start folder: terminal view only, whatever the default agent is.
@@ -993,9 +1058,28 @@ export function DesktopApp() {
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not end the session')) })
   }, [sessions, flash, queryClient, layout, undoNow])
 
+  // A pane that is closing shrinks away first (its neighbours grow into the room as it goes); the session ends
+  // when that is done. If the close does not happen it grows back.
+  const [closingPanes, setClosingPanes] = useState<ReadonlySet<string>>(() => new Set())
   const closePaneById = useCallback((paneId: string) => {
-    const pane = layout.arrangements.flatMap((tab) => tab.panes).find((candidate) => candidate.id === paneId)
-    if (pane) endSessions([pane.sessionId], 'Pane')
+    const tab = layout.arrangements.find((candidate) => candidate.panes.some((pane) => pane.id === paneId))
+    const pane = tab?.panes.find((candidate) => candidate.id === paneId)
+    if (!tab || !pane) return
+    if (tab.panes.length <= 1) {
+      endSessions([pane.sessionId], 'Pane')
+      return
+    }
+    setClosingPanes((current) => new Set(current).add(paneId))
+    window.setTimeout(() => {
+      endSessions([pane.sessionId], 'Pane')
+      window.setTimeout(() => {
+        setClosingPanes((current) => {
+          const next = new Set(current)
+          next.delete(paneId)
+          return next
+        })
+      }, PANE_CLOSE_SETTLE_MS)
+    }, PANE_EXIT_MS)
   }, [endSessions, layout])
 
   const restartPane = useCallback((paneId: string) => {
@@ -1154,9 +1238,11 @@ export function DesktopApp() {
   const showTestNotice = useCallback(() => {
     showSessionNotice('test', {
       kind: 'done',
-      title: 'Finished · a test',
+      process: 'claude',
+      status: 'done',
+      title: 'A test session finished',
       body: 'A card like this appears when a session you are not looking at finishes.',
-      actions: [{ label: 'Open', primary: true, onClick: () => undefined }],
+      actions: [{ label: 'Open session', primary: true, onClick: () => undefined }],
       countdownMs: TEST_NOTICE_MS,
     })
   }, [])
@@ -1363,7 +1449,7 @@ export function DesktopApp() {
   const sidebarMode = compact || preferences.compactSidebar ? 'rail' : 'docked'
   // A name is typed in its row where the full sidebar shows; the rail and Focus mode ask in a dialog.
   const renameInline = !focusMode && (sidebarMode === 'docked' || drawerShown)
-  const dialogOpen = settingsSection !== null || (renameId !== null && !renameInline) || getFileId !== null || newSessionMachine !== null
+  const dialogOpen = settingsSection !== null || (renameId !== null && !renameInline) || getFileId !== null || newSessionMachine !== null || newChatOpen
   const modalOpen = dialogOpen || overlayOpen
   const shortcutState = useRef({ runShortcut, canUndoClose: () => lastClose !== null, settingsOpen: dialogOpen, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
   useEffect(() => { shortcutState.current = { runShortcut, canUndoClose: () => lastClose !== null, settingsOpen: dialogOpen, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
@@ -1372,7 +1458,8 @@ export function DesktopApp() {
     const closers: Partial<Record<EscLayer, () => void>> = {
       palette: () => { setPaletteOpen(false) },
       inbox: () => { setInboxOpen(false) },
-      settings: () => { setSettingsSection(null) },
+      // The new chat page counts as a dialog here, so this layer is the one that closes it too.
+      settings: () => { setSettingsSection(null); setNewChatOpen(false) },
       drawer: () => { setDrawerOpen(false) },
       'focus-mode': () => { setFocusMode(false) },
     }
@@ -1674,7 +1761,7 @@ export function DesktopApp() {
     const items: PaletteItem[] = [
       ...sessionItems,
       ...projectItems,
-      action('new-session', 'New session…', () => { newSession(focusedMachineNumber) }, keys('new-session')),
+      action('new-session', 'New agent chat…', () => { newSession(focusedMachineNumber) }, keys('new-session')),
       action('new-terminal', 'New shell', () => { newTerminal(focusedMachineNumber) }, keys('new-terminal')),
       ...(focusedSession && !isShell(focusedSession) ? [action('open-terminal', 'Open terminal here', () => { toggleAgentTerminal(focusedSession.id) })] : []),
       action('new-agent-chat', 'New agent chat', () => { runShortcut('new-agent-chat') }, keys('new-agent-chat')),
@@ -1811,20 +1898,6 @@ export function DesktopApp() {
         onClear={() => { void sendTo(session, CLEAR_SCREEN).catch((error: unknown) => { toast.error(errorMessage(error, 'Could not clear the screen')) }) }}
         onCopyPath={() => { copyPathOf(session.id) }}
         onRestart={restartPane}
-        onDragStart={setDragId}
-        onDragEnd={() => {
-          setDragId(null)
-          setDropId(null)
-        }}
-        onDragOver={(paneId, fromSidebar) => { if (dragId || fromSidebar) setDropId(paneId) }}
-        onDrop={(paneId, sessionId) => {
-          if (sessionId) {
-            setLayout((current) => dropSession(current, paneId, sessionId))
-            flash('Session moved into this pane')
-          } else if (dragId && dragId !== paneId) setLayout((current) => swapSessions(current, dragId, paneId))
-          setDragId(null)
-          setDropId(null)
-        }}
       />
     )
   }
@@ -1890,6 +1963,18 @@ export function DesktopApp() {
             )}
             <div className="mx-main-wrap">
               <main className="mx-main" aria-label="Terminals">
+                {newChatOpen && (
+                  <NewChatPage
+                    machines={sidebarMachineHeads.filter((head) => head.machine === LOCAL_MACHINE || head.chip?.tone === 'ok').map((head) => ({ machine: head.machine, label: head.label, local: head.machine === LOCAL_MACHINE }))}
+                    onOtherMachine={(machine) => { setNewChatOpen(false); setNewSessionMachine(machine) }}
+                    projects={machineProjects(sessions, LOCAL_MACHINE, focusedSession, resolveStartFolder(preferences.startFolder, home))}
+                    defaultAgent={preferences.defaultAgent}
+                    browse={() => chooseProjectFolder()}
+                    onStart={startNewChat}
+                    onAddMachine={() => { setNewChatOpen(false); setSettingsSection('machines') }}
+                    onCancel={() => { setNewChatOpen(false) }}
+                  />
+                )}
                 {findOpen && (
                   <FindBar
                     online={online}
@@ -1920,7 +2005,7 @@ export function DesktopApp() {
                             onReset={() => { setLayout((current) => setColumnWidths(current, tab.id, null)) }}
                           />
                         )}
-                      <div className="mx-pane-column" style={tab.widths && tab.max === null && !narrow && tab.widths.length === columns.length ? { flexGrow: tab.widths[columnIndex] } : undefined}>
+                      <div className={`mx-pane-column${column.every((pane) => closingPanes.has(pane.id)) ? ' is-closing' : ''}`} style={tab.widths && tab.max === null && !narrow && tab.widths.length === columns.length ? { flexGrow: tab.widths[columnIndex] } : undefined}>
                         {column.map((pane, rowIndex) => (
                           <Fragment key={pane.id}>
                             {rowIndex > 0 && tab.max === null && !narrow && (
@@ -1931,7 +2016,7 @@ export function DesktopApp() {
                                 onReset={() => { setLayout((current) => setPaneHeights(current, tab.id, pane.col, null)) }}
                               />
                             )}
-                            <div className="mx-pane-cell" style={pane.h !== undefined && tab.max === null && !narrow ? { flexGrow: pane.h } : undefined}>
+                            <div className={`mx-pane-cell${closingPanes.has(pane.id) ? ' is-closing' : ''}`} style={pane.h !== undefined && tab.max === null && !narrow ? { flexGrow: pane.h } : undefined}>
                               {renderPane(tab, pane)}
                             </div>
                           </Fragment>

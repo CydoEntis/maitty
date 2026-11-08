@@ -226,11 +226,12 @@ export function findTheme(name: string): ThemeEntry {
 
 /**
  * The glass finish's light and shade: the highlight colour (`--hl`, as `r,g,b`) and its strength, and
- * the shadow colour (`--sd`) and its strength. Dark themes catch white light and cast black shadows;
+ * the shadow colour (`--sd`) and its strength. `--hs` is the colour of the sheen and the top edge: white in
+ * both, because a light theme's glass is frosted by white light while its hairlines are drawn in ink. Dark themes catch white light and cast black shadows;
  * light themes are lit and shaded by their own ink, more faintly.
  */
-const DARK_GLASS = { '--hl': '255,255,255', '--hk': '1', '--sd': '0,0,0', '--sk': '1' }
-const LIGHT_GLASS = { '--hl': '20,32,46', '--hk': '.85', '--sd': '20,32,46', '--sk': '.3' }
+const DARK_GLASS = { '--hl': '255,255,255', '--hs': '255,255,255', '--hk': '1', '--sd': '0,0,0', '--sk': '1' }
+const LIGHT_GLASS = { '--hl': '20,32,46', '--hs': '255,255,255', '--hk': '.85', '--sd': '20,32,46', '--sk': '.3' }
 
 /** The theme as CSS custom properties, for the app root's style. */
 export function themeStyle(theme: ThemeEntry): Record<string, string> {
