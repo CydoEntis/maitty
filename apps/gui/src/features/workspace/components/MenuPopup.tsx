@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 
 import { EDGE_PX, MENU_WIDTH_PX } from './menuPoint'
@@ -12,9 +12,8 @@ export type MenuEntry =
       /** A key or a word shown dim at the right. */
       hint?: string
       run?: () => void
-      /** Red, and asks for a second click before it runs (`armedLabel` says what the second click does). */
+      /** Red. */
       danger?: boolean
-      armedLabel?: string
       disabled?: boolean
       /** Why it is disabled, as its tooltip. */
       why?: string
@@ -38,7 +37,6 @@ type Props = {
 export function MenuPopup({ title, at, items, portalContainer, onClose }: Props) {
   const root = useRef<HTMLDivElement>(null)
   const close = useRef(onClose)
-  const [armed, setArmed] = useState<string | null>(null)
   useEffect(() => { close.current = onClose })
 
   // The menu's height depends on its items, so it is placed once it is measured.
@@ -81,10 +79,6 @@ export function MenuPopup({ title, at, items, portalContainer, onClose }: Props)
   }, [])
 
   const choose = (entry: Exclude<MenuEntry, 'separator'>) => {
-    if (entry.danger === true && entry.armedLabel !== undefined && armed !== entry.label) {
-      setArmed(entry.label)
-      return
-    }
     onClose()
     entry.run?.()
   }
@@ -99,13 +93,13 @@ export function MenuPopup({ title, at, items, portalContainer, onClose }: Props)
             key={entry.label}
             type="button"
             role="menuitem"
-            className={`mx-ctx-item${entry.danger === true ? ' is-danger' : ''}${armed === entry.label ? ' is-armed' : ''}`}
+            className={`mx-ctx-item${entry.danger === true ? ' is-danger' : ''}`}
             disabled={entry.disabled === true}
             title={entry.disabled === true ? entry.why : undefined}
             onClick={() => { choose(entry) }}
           >
-            <span className="mx-ctx-label">{armed === entry.label ? entry.armedLabel : entry.label}</span>
-            {entry.hint !== undefined && armed !== entry.label && <span className="mx-ctx-hint" aria-hidden="true">{entry.hint}</span>}
+            <span className="mx-ctx-label">{entry.label}</span>
+            {entry.hint !== undefined && <span className="mx-ctx-hint" aria-hidden="true">{entry.hint}</span>}
           </button>
         ))}
     </div>,

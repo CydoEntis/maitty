@@ -14,7 +14,6 @@
 .mx-ctx-item:not(:disabled):hover, .mx-ctx-item:focus-visible { background: rgba(var(--hl), calc(.08 * var(--hk))); color: var(--fg); }
 .mx-ctx-item.is-danger { color: var(--danger); }
 .mx-ctx-item.is-danger:not(:disabled):hover { color: var(--danger); }
-.mx-ctx-item.is-armed { background: var(--danger-soft); box-shadow: inset 0 0 0 1px var(--danger-line); }
 .mx-ctx-item:disabled { opacity: .4; cursor: default; }
 .mx-ctx-label { flex: 1; white-space: nowrap; }
 .mx-ctx-hint { font-family: var(--mono); font-size: 11px; color: var(--dim); }

@@ -74,7 +74,7 @@
   background: var(--bg);
 }
 :root[data-glow="on"]:not([data-gpu="software"]) .mx-window,
-/* Frosted panels are see-through, so Frosted always has its soft atmosphere behind them. */
+/* Glass panels are see-through, so Glass always has its soft atmosphere behind them. */
 :root[data-style="glass"]:not([data-gpu="software"]) .mx-window {
   background:
     radial-gradient(1000px 600px at 15% 0%, color-mix(in oklab, var(--accent) var(--glow-accent), transparent), transparent 70%),

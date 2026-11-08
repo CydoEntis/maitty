@@ -10,8 +10,8 @@
  * from a library) or `mx-field`. A new surface joins a list here; it does not set a background of
  * its own. Terminal panes stay solid in both finishes: the terminal draws its own ground.
  *
- * The five window styles (Glass, Frosted, Mono Type, Console, Retro Pixel) sit on two finishes, chosen by
- * `data-finish` (Glass and Frosted are `glass`; the other three are `flat`), and differ in the component
+ * The four window styles (Glass, Mono Type, Console, Retro Pixel) sit on two finishes, chosen by
+ * `data-finish` (Glass is `glass`; the other three are `flat`), and differ in the component
  * tokens (`--c-*`) and the few shape rules keyed by `data-style` at the end of this file. A component
  * never asks which style is on; it reads the tokens.
  *
@@ -94,7 +94,7 @@
      --c-tile-ring  agent and shell icon tiles
      --c-head-bg  sticky headers
    Declared on the window root, where the theme's `--hl`/`--hk` and `--sd`/`--sk` are set, so the
-   defaults (Glass and Frosted) see them. The flat styles override them below. */
+   defaults (Glass) see them. The flat styles override them below. */
 .mx-app {
   --c-sel-bg: linear-gradient(180deg, rgba(var(--hl), calc(.085 * var(--hk))), rgba(var(--hl), calc(.045 * var(--hk))));
   --c-sel-sh: inset 0 0 0 1px rgba(var(--hl), calc(.11 * var(--hk))), inset 0 1px 0 rgba(var(--hl), calc(.07 * var(--hk))), 0 2px 8px -2px rgba(var(--sd), calc(.5 * var(--sk)));
@@ -305,7 +305,7 @@
 .mx-sp-box { height: 18px; display: flex !important; align-items: center; justify-content: flex-end; padding: 0 3px; border-radius: var(--sp-small); background: var(--raise); box-shadow: inset 0 0 0 1px var(--line2); }
 .mx-sp-send { width: 11px; height: 11px; border-radius: var(--sp-dot); background: var(--accent); }
 
-/* The notification card's own glass: a heavier blur and a deeper shadow than the other floats, and Frosted rounds it more. */
+/* The notification card's own glass: a heavier blur and a deeper shadow than the other floats, and Glass rounds it more. */
 :root[data-finish="glass"] .mx-app .mx-notice {
   background: linear-gradient(180deg, rgba(var(--hl), calc(.09 * var(--hk))), rgba(var(--hl), calc(.035 * var(--hk)))), color-mix(in srgb, var(--main) 88%, transparent);
   border-color: rgba(var(--hl), calc(.13 * var(--hk)));
