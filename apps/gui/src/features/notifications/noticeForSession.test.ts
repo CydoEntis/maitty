@@ -8,9 +8,9 @@ function session(status: SessionStatus, asking = '', extra: Partial<SessionView>
 const project = { name: 'maitty' }
 
 describe('session notice', () => {
-  it('names the session and what happened in the title, and what it is asking in the body', () => {
+  it('names the session in the title, what happened beside it, and what it is asking in the body', () => {
     const notice = sessionNoticeFor(session('needs', '$ git push origin main'), project, { open: vi.fn(), allow: vi.fn() })
-    expect(notice).toMatchObject({ kind: 'needs', title: '(root) needs you', body: 'Wants to run $ git push origin main' })
+    expect(notice).toMatchObject({ kind: 'needs', title: '(root)', state: 'needs you', body: 'Wants to run $ git push origin main' })
   })
 
   it('offers Allow, then Open session, for a session stopped on a choice, and waits for you', () => {

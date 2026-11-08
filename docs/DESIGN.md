@@ -194,6 +194,13 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   xterm's background and ANSI black are `--main`, so a program that paints with black leaves no box. On a web view
   without WebGL 2 (`data-gpu="software"`) the same rules use cheaper values: no blur, a 1px ring for the popover
   shadow ([PERFORMANCE](PERFORMANCE.md)).
+- **The notification card (`features/notifications/NotificationCard.tsx`).** 340px wide, radius 14 (18 in Frosted), padding
+  12/12/12/14. A 26px app icon with its 11px status badge, the session's name (13px, 600) with what happened beside it
+  ("needs you" amber, "finished" green, "failed" red; 12px, 500), a 22px close, the body (12.5px, `--fg2`, code in 12px
+  mono), then 28px buttons (the answer filled in the card's colour) and "just now" (11.5px, `--dim`). In Glass it has its
+  own heavier glass: `.09` to `.035` highlight over `--main` at 88%, a `.13` hairline, a 22px blur and a
+  `0 18px 48px -12px` shadow. Toasts sit 96px below the top edge and 36px in from the side, clear of the title bar's
+  controls. The window ground is opaque on every platform (no Mica), as in the redesign.
 - **One material, three roles (`apps/gui/src/material.css`).** The two finishes and the five styles are told apart in
   that file and nowhere else. Every surface is a *panel* (sidebar, main card, Inbox, inspector), a *float* (menus,
   popovers, dialogs, the palette, find, toasts) or a *field* (the message box and its tray), and takes its fill,

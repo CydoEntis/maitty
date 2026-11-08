@@ -15,6 +15,8 @@ export type NotificationCardProps = {
   /** The agent's icon with its status badge, or any mark that says who this is about. */
   icon: ReactNode
   title: string
+  /** What happened to it, in words ("needs you"), set after the title in the card's colour. */
+  state?: string
   body?: ReactNode
   actions?: readonly NotificationAction[]
   /** How long ago, in words ("just now"). */
@@ -29,13 +31,14 @@ export type NotificationCardProps = {
  * the app (a session that needs you, one that finished, a failure, a plain message) is drawn with it,
  * on the float material, so they cannot drift apart.
  */
-export function NotificationCard({ tone, icon, title, body, actions = [], time, onClose, countdownMs }: NotificationCardProps) {
+export function NotificationCard({ tone, icon, title, state, body, actions = [], time, onClose, countdownMs }: NotificationCardProps) {
   return (
     <div className={`mx-notice is-${tone}`} role="status">
       <span className="mx-notice-icon">{icon}</span>
       <div className="mx-notice-main">
         <div className="mx-notice-head">
           <span className="mx-notice-title">{title}</span>
+          {state !== undefined && state !== '' && <span className="mx-notice-state">{state}</span>}
           <button type="button" className="mx-notice-close" aria-label="Dismiss notification" onClick={onClose}>
             <X size={14} />
           </button>

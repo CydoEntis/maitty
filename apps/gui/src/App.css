@@ -8,45 +8,48 @@
 }
 
 .maitty-toaster[data-sonner-toaster] {
-  --width: min(356px, calc(100vw - 32px));
+  --width: min(340px, calc(100vw - 32px));
   --normal-bg: transparent;
   --normal-border: transparent;
-  --normal-text: var(--popover-foreground);
-  --border-radius: 16px;
-  font-family: "Geist Variable", "Segoe UI", sans-serif;
+  --normal-text: var(--fg);
+  --border-radius: 14px;
+  font-family: var(--ui);
 }
-/* A plain toast is the notification card without an icon or buttons: the same float material. */
+/* A plain toast is the notification card without an icon or buttons. Its surface is the float material
+   (material.css lists it); this sets the text, which reads the window's tokens, not the :root aliases. */
 .maitty-toaster[data-sonner-toaster] [data-sonner-toast][data-styled="true"] {
-  background: var(--m-sheen, none), var(--m-float, var(--popover));
-  border: 1px solid var(--m-line, var(--border));
-  box-shadow: var(--m-edge, none), var(--m-shadow, 0 10px 28px rgb(0 0 0 / 22%));
-  backdrop-filter: var(--m-blur, none);
+  color: var(--fg);
   gap: 9px;
-  padding: 14px 14px 12px;
+  padding: 12px 12px 12px 14px;
 }
 .maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-title] {
-  color: var(--foreground);
-  font-size: 12px;
-  font-weight: 650;
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 600;
   line-height: 1.4;
 }
 .maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-description] {
-  color: var(--muted-foreground);
-  font-size: 11px;
+  color: var(--fg2);
+  font-size: 12.5px;
   line-height: 1.45;
 }
-.maitty-toaster [data-sonner-toast][data-type="success"] [data-icon] { color: var(--done); }
-.maitty-toaster [data-sonner-toast][data-type="warning"] [data-icon] { color: var(--needs-you); }
-.maitty-toaster [data-sonner-toast][data-type="error"] [data-icon] { color: var(--destructive); }
-.maitty-toaster [data-sonner-toast][data-type="info"] [data-icon] { color: var(--primary); }
+.maitty-toaster [data-sonner-toast][data-type="success"] [data-icon] { color: var(--ok); }
+.maitty-toaster [data-sonner-toast][data-type="warning"] [data-icon] { color: var(--warn); }
+.maitty-toaster [data-sonner-toast][data-type="error"] [data-icon] { color: var(--danger); }
+.maitty-toaster [data-sonner-toast][data-type="info"] [data-icon] { color: var(--accent); }
 .maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-close-button] {
-  background: var(--card);
-  border-color: var(--border);
-  color: var(--muted-foreground);
+  background: var(--m-raise);
+  border-color: var(--line2);
+  color: var(--dim);
 }
 .maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-close-button]:hover {
-  background: var(--secondary);
-  color: var(--foreground);
+  background: var(--m-hover);
+  color: var(--fg);
+}
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-action] {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
 }
 
 .skip-link { background: var(--primary); border-radius: 7px; color: var(--primary-foreground); font-size: 12px; font-weight: 650; left: 10px; padding: 9px 12px; position: fixed; top: 8px; transform: translateY(calc(-100% - 16px)); transition: transform .14s ease; z-index: 1000; }

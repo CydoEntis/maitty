@@ -27,12 +27,12 @@ const KIND: Record<NoticeKind, { tone: NotificationTone; mark: StatusMarkState; 
 /** A card for the conversation views: the same card as every other notification, with a status mark for its icon. */
 export function NoticeToast({ kind, project, title, body, actions = [], countdownMs, onDismiss }: NoticeProps & { onDismiss: () => void }) {
   const { tone, mark, verb } = KIND[kind]
-  const heading = verb === '' ? title : `${title} ${verb}`
   return (
     <NotificationCard
       tone={tone}
       icon={<span className="mx-notice-mark"><StatusMark status={mark} /></span>}
-      title={heading}
+      title={title}
+      state={verb}
       {...(project || body ? { body: <>{project && <span className="mx-notice-project">{project}</span>}{body}</> } : {})}
       actions={actions}
       time="just now"

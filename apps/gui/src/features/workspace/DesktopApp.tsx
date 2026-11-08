@@ -687,8 +687,6 @@ export function DesktopApp() {
   useEffect(() => {
     document.documentElement.dataset.style = preferences.style
     document.documentElement.dataset.finish = finishOf(preferences.style)
-    // Only Windows has a translucent window (Mica); see workspace.css.
-    document.documentElement.dataset.material = /Windows NT/.test(navigator.userAgent) ? 'mica' : 'none'
   }, [preferences.style])
 
   useEffect(() => {
@@ -1265,7 +1263,8 @@ export function DesktopApp() {
       kind: 'done',
       process: 'claude',
       status: 'done',
-      title: 'A test session finished',
+      title: 'A test session',
+      state: 'finished',
       body: 'A card like this appears when a session you are not looking at finishes.',
       actions: [{ label: 'Open session', primary: true, onClick: () => undefined }],
       countdownMs: TEST_NOTICE_MS,

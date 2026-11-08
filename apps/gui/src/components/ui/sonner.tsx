@@ -5,7 +5,8 @@ type MaittyToasterProps = {
   theme: NonNullable<ToasterProps['theme']>
 }
 
-const TOAST_OFFSETS = { top: 16, right: 16, bottom: 16, left: 16 }
+// The design puts a toast 96px below the top edge and 36px in from the side, clear of the title bar's controls.
+const TOAST_OFFSETS = { top: 96, right: 36, bottom: 36, left: 36 }
 // The newest toast is in front; older ones collapse behind it and fan out on hover.
 const VISIBLE_TOASTS = 3
 

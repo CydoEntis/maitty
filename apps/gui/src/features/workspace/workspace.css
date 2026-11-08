@@ -159,6 +159,7 @@
 .mx-app-icon { display: flex; align-items: center; justify-content: center; flex: none; font-family: var(--mono); font-weight: 600; letter-spacing: -.04em; box-shadow: var(--c-tile-ring); transition: transform .2s var(--ease-out); }
 .mx-app-icon.is-dimmed { opacity: .5; }
 .mx-app-icon.size-28 { width: 28px; height: 28px; border-radius: 8px; font-size: 12px; }
+.mx-app-icon.size-26 { width: 26px; height: 26px; border-radius: 7px; font-size: 11.5px; }
 .mx-app-icon.size-24 { width: 24px; height: 24px; border-radius: 7px; font-size: 11px; }
 .mx-app-icon.size-22 { width: 22px; height: 22px; border-radius: 6px; font-size: 10px; }
 .mx-app-icon.size-14 { width: 14px; height: 14px; border-radius: 4px; font-size: 6.5px; }
@@ -512,29 +513,36 @@
 
 /* The one notification card (NotificationCard): an agent icon, a title with a close, what it wants, the buttons, and when.
    It is a float, so it takes the material roles from material.css and sets no colours of its own beyond the tone. */
-.mx-notice { --notice: var(--ok); --notice-ink: var(--on-accent); position: relative; width: 356px; max-width: calc(100vw - 32px); display: flex; gap: 12px; padding: 14px 14px 12px 12px; border-radius: 16px; overflow: hidden; color: var(--fg); background: var(--m-sheen, none), var(--m-float, var(--popover)); border: 1px solid var(--m-line, var(--pane-line)); box-shadow: var(--m-edge, none), var(--m-shadow, var(--sh-pop)); backdrop-filter: var(--m-blur, none); animation: v7fade .18s ease-out; }
-.mx-notice.is-needs { --notice: var(--accent); --notice-ink: var(--on-accent); }
-.mx-notice.is-error { --notice: var(--danger); --notice-ink: var(--on-accent); }
-.mx-notice.is-info { --notice: var(--accent); --notice-ink: var(--on-accent); }
+.mx-notice { --notice: var(--ok); --notice-ink: var(--on-accent); --state: var(--ok); position: relative; width: 340px; max-width: calc(100vw - 32px); display: flex; gap: 10px; padding: 12px 12px 12px 14px; border-radius: 14px; overflow: hidden; color: var(--fg); background: var(--m-sheen, none), var(--m-float, var(--popover)); border: 1px solid var(--m-line, var(--pane-line)); box-shadow: var(--m-edge, none), var(--m-shadow, var(--sh-pop)); backdrop-filter: var(--m-blur, none); animation: v9toast .32s cubic-bezier(.2, .8, .2, 1); }
+.mx-notice.is-needs { --notice: var(--accent); --notice-ink: var(--on-accent); --state: var(--warn); }
+.mx-notice.is-error { --notice: var(--danger); --notice-ink: var(--on-accent); --state: var(--danger); }
+.mx-notice.is-info { --notice: var(--accent); --notice-ink: var(--on-accent); --state: var(--muted); }
 .mx-notice-icon { flex: none; display: flex; align-items: flex-start; }
-.mx-notice-app { position: relative; display: block; width: 32px; height: 32px; }
-.mx-notice-app .mx-badge { right: -4px; bottom: -4px; }
-.mx-notice-mark { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: var(--m-well); box-shadow: inset 0 0 0 1px var(--m-line, var(--pane-line)); }
-.mx-notice-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.mx-notice-head { display: flex; align-items: flex-start; gap: 8px; }
-.mx-notice-title { flex: 1; min-width: 0; font-size: 14px; line-height: 20px; font-weight: 600; overflow-wrap: anywhere; }
-.mx-notice-close { flex: none; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--dim); transition: background-color .14s ease, color .14s ease; }
-.mx-notice-close:hover { background: var(--m-hover); color: var(--fg); }
-.mx-notice-body { font-size: 13px; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
+.mx-notice-app { position: relative; display: block; width: 26px; height: 26px; }
+.mx-notice-app .mx-badge { right: -3px; bottom: -3px; width: 11px; height: 11px; border-radius: 3.5px; font-size: 8px; font-weight: 800; line-height: 1; color: var(--on-warn); }
+.mx-notice-app .mx-badge.is-working { border-radius: 50%; background: var(--m-well); overflow: hidden; color: var(--accent); font-family: var(--mono); }
+.mx-notice-app .mx-badge.is-working .mx-spin { font-size: 8px; line-height: 1; }
+.mx-notice-app .mx-badge.is-done svg { width: 7px; height: 7px; }
+.mx-notice-app .mx-badge.is-unknown { background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
+.mx-notice-mark { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 7px; background: var(--m-well); box-shadow: inset 0 0 0 1px var(--m-line, var(--pane-line)); }
+.mx-notice-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.mx-notice-head { display: flex; align-items: flex-start; gap: 6px; }
+.mx-notice-title { min-width: 0; font-size: 13px; line-height: 20px; font-weight: 600; overflow-wrap: anywhere; }
+.mx-notice-state { flex: 1; min-width: 0; font-size: 12px; line-height: 20px; font-weight: 500; color: var(--state); }
+.mx-notice-title:has(+ .mx-notice-close) { flex: 1; }
+.mx-notice-close { flex: none; width: 22px; height: 22px; margin: -2px -2px 0 0; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--dim); transition: background-color .14s ease, color .14s ease; }
+.mx-notice-close:hover { background: rgba(var(--hl), calc(.06 * var(--hk))); color: var(--fg); }
+.mx-notice-body { font-size: 12.5px; line-height: 1.45; color: var(--fg2); overflow-wrap: anywhere; text-wrap: pretty; }
 .mx-notice-project { display: block; color: var(--dim); }
-.mx-notice-body code { font-family: var(--mono); font-weight: 600; color: var(--fg); }
-.mx-notice-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-.mx-notice-foot button { height: 30px; padding: 0 14px; border-radius: 9px; font-size: 13px; font-weight: 500; color: var(--fg); background: var(--m-well); box-shadow: inset 0 0 0 1px var(--m-line, var(--pane-line)); transition: background-color .14s ease, color .14s ease; }
-.mx-notice-foot button:hover { background: var(--m-hover); }
-.mx-notice-foot button.is-primary { font-weight: 600; color: var(--notice-ink); background: var(--notice); box-shadow: none; }
-.mx-notice-foot button.is-primary:hover { background: color-mix(in oklab, var(--notice) 88%, white 12%); }
-.mx-notice-time { margin-left: auto; align-self: flex-end; font-size: 12px; color: var(--dim); }
+.mx-notice-body code { font-family: var(--mono); font-size: 12px; color: var(--fg); }
+.mx-notice-foot { display: flex; align-items: center; gap: 6px; margin-top: 7px; }
+.mx-notice-foot button { height: 28px; padding: 0 12px; border-radius: 8px; font-size: 12.5px; font-weight: 500; color: var(--fg); background: rgba(var(--hl), calc(.06 * var(--hk))); box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.1 * var(--hk))), inset 0 1px 0 rgba(var(--hl), calc(.06 * var(--hk))); transition: background-color .14s ease, filter .14s ease; }
+.mx-notice-foot button:hover { background: rgba(var(--hl), calc(.1 * var(--hk))); }
+.mx-notice-foot button.is-primary { font-weight: 600; color: var(--notice-ink); background: var(--notice); box-shadow: 0 2px 10px -2px color-mix(in srgb, var(--notice) 60%, transparent); }
+.mx-notice-foot button.is-primary:hover { background: var(--notice); filter: brightness(1.08); }
+.mx-notice-time { margin-left: auto; align-self: center; font-size: 11.5px; color: var(--dim); }
 .mx-notice-countdown { position: absolute; left: 0; bottom: 0; width: 100%; height: 2px; background: var(--notice); transform-origin: left; animation: mx-notice-count linear forwards; }
+@keyframes v9toast { from { opacity: 0; transform: translateY(-8px) scale(.97); } to { opacity: 1; transform: none; } }
 @keyframes mx-notice-count { to { transform: scaleX(0); } }
 
 /* Status bar. */
@@ -721,12 +729,5 @@ button.mx-sb-item:hover { background: rgba(var(--hl), calc(.07 * var(--hk))); co
 .mx-app[data-side="right"] .mx-drawer { left: auto; right: 0; }
 .mx-palette-input input:focus-visible { outline: none; }
 
-/* Glass: on Windows the window itself is Mica (tauri.windows.conf.json), so the ground and the cards
-   are partly see-through and the desktop's blur shows through them. `data-material` is set only where
-   the window really is translucent; elsewhere Glass keeps its solid look. Terminal panes stay solid. */
-:root[data-material="mica"][data-finish="glass"], :root[data-material="mica"][data-finish="glass"] body { background: transparent; }
-:root[data-material="mica"][data-finish="glass"] .mx-app { background: transparent; }
-:root[data-material="mica"][data-finish="glass"] .mx-window,
-:root[data-material="mica"][data-finish="glass"][data-glow="on"]:not([data-gpu="software"]) .mx-window {
-  background: color-mix(in srgb, var(--bg) 35%, transparent);
-}
+/* The window ground is opaque on every platform, as in the design: a translucent Mica ground showed the desktop through
+   a light theme as a dark grey. */

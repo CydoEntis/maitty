@@ -10,6 +10,8 @@ export type SessionNoticeProps = {
   process: string
   status: SessionStatus
   title: string
+  /** What happened to it: "needs you", "finished", "failed". */
+  state: string
   body: string
   actions: readonly NotificationAction[]
   /** When set, a thin line along the bottom shrinks over this many milliseconds. */
@@ -17,12 +19,13 @@ export type SessionNoticeProps = {
 }
 
 /** The card for a session you are not looking at: its icon and status, what happened, and what you can do about it. */
-export function SessionNotice({ kind, process, status, title, body, actions, countdownMs, onDismiss }: SessionNoticeProps & { onDismiss: () => void }) {
+export function SessionNotice({ kind, process, status, title, state, body, actions, countdownMs, onDismiss }: SessionNoticeProps & { onDismiss: () => void }) {
   return (
     <NotificationCard
       tone={kind}
-      icon={<span className="mx-notice-app"><AppIcon process={process} size={32} /><StatusBadge status={status} /></span>}
+      icon={<span className="mx-notice-app"><AppIcon process={process} size={26} /><StatusBadge status={status} /></span>}
       title={title}
+      state={state}
       body={body}
       actions={actions}
       time="just now"
