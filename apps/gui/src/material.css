@@ -265,7 +265,8 @@
     var(--bg);
 }
 :root[data-style="glass"]:not([data-gpu="software"]) .mx-app .mx-window { background: transparent; }
-:root[data-style="glass"] .mx-app .mx-main,
+/* The main card is the ground the terminal and the panes draw: one solid colour, so no band shows where a terminal ends. */
+:root[data-style="glass"] .mx-app .mx-main { background: var(--main); backdrop-filter: none; }
 :root[data-style="glass"] .mx-app .mx-sidebar {
   background: linear-gradient(180deg, rgba(var(--hl), calc(.07 * var(--hk))), rgba(var(--hl), calc(.03 * var(--hk)))), color-mix(in srgb, var(--main) 64%, transparent);
   backdrop-filter: blur(24px) saturate(1.4);
@@ -280,7 +281,7 @@
 
 /* The notification card's own glass: a heavier blur and a deeper shadow than the other floats, and Glass rounds it more. */
 :root[data-finish="glass"] .mx-app .mx-notice {
-  background: linear-gradient(180deg, rgba(var(--hl), calc(.09 * var(--hk))), rgba(var(--hl), calc(.035 * var(--hk)))), color-mix(in srgb, var(--main) 88%, transparent);
+  background: linear-gradient(180deg, rgba(var(--hl), calc(.09 * var(--hk))), rgba(var(--hl), calc(.035 * var(--hk)))), var(--main);
   border-color: rgba(var(--hl), calc(.13 * var(--hk)));
   box-shadow: inset 0 1px 0 rgba(var(--hl), calc(.1 * var(--hk))), 0 18px 48px -12px rgba(var(--sd), calc(.75 * var(--sk)));
   backdrop-filter: blur(22px) saturate(1.3);

@@ -203,6 +203,8 @@ pub(super) struct SideModel {
     pub filtering: bool,
     /// Each machine's sessions are kept together by folder, under a heading for each.
     pub grouped: bool,
+    /// The `Remote machines` heading is folded: the machines under it are hidden.
+    pub remote_folded: bool,
 }
 
 /// `rows` with the sessions of one folder together, folders in the order they first appear and
@@ -222,6 +224,7 @@ impl SideModel {
         let query = app.screen.filter.trim().to_lowercase();
         let all = side_rows(app, model);
         let grouped = app.screen.saved.group_folders;
+        let remote_folded = query.is_empty() && app.screen.saved.closed.contains(&REMOTE_FOLD_KEY.to_string());
         let machines = app
             .machines()
             .into_iter()
@@ -248,7 +251,7 @@ impl SideModel {
                 }
                 // A closed machine or folder hides its sessions; a filter shows every match.
                 if query.is_empty() {
-                    let machine_closed = app.screen.saved.closed.contains(&machine_fold_key(&m.label));
+                    let machine_closed = (remote_folded && m.id != MachineId::LOCAL) || app.screen.saved.closed.contains(&machine_fold_key(&m.label));
                     m.folded = machine_closed;
                     for r in &mut m.rows {
                         r.hidden = machine_closed || (grouped && app.screen.saved.closed.contains(&folder_fold_key(&m.label, &r.project)));
@@ -261,6 +264,7 @@ impl SideModel {
             machines,
             filtering: !query.is_empty(),
             grouped,
+            remote_folded,
         }
     }
 
@@ -371,12 +375,19 @@ fn blocks(sm: &SideModel) -> Vec<Block> {
     let mut out = Vec::new();
     let mut remote_head = sm.filtering;
     for (mi, m) in sm.machines.iter().enumerate() {
+        let remote = m.id != MachineId::LOCAL;
+        if remote && sm.remote_folded && remote_head {
+            continue;
+        }
         if mi > 0 {
             out.push(Block::Gap);
         }
-        if m.id != MachineId::LOCAL && !remote_head {
+        if remote && !remote_head {
             out.push(Block::RemoteHead);
             remote_head = true;
+            if sm.remote_folded {
+                continue;
+            }
         }
         out.push(Block::Machine(mi));
         // One blank row sets the first session off from its machine; sessions sit tight against each other.
@@ -403,6 +414,17 @@ fn blocks(sm: &SideModel) -> Vec<Block> {
         out.push(Block::RemoteHead);
     }
     out
+}
+
+/// The key the `Remote machines` fold is kept under in the saved state.
+pub(super) const REMOTE_FOLD_KEY: &str = "remote";
+
+/// Columns a nested heading or row sits to the right of the one above it.
+const NEST: u16 = 2;
+
+/// `r` moved `by` columns to the right, for a level that sits under another.
+fn nested(r: Rect, by: u16) -> Rect {
+    Rect { x: r.x + by, width: r.width.saturating_sub(by), ..r }
 }
 
 /// The key a machine's fold is kept under in the saved state.
@@ -625,18 +647,22 @@ fn draw_list(
     let mut y = top;
     for (b, h) in list.iter().zip(&heights).skip(first).take(shown) {
         match *b {
-            Block::Machine(mi) => draw_machine(app, buf, r, y, &sm.machines[mi], t),
+            Block::Machine(mi) => {
+                let machine = &sm.machines[mi];
+                draw_machine(app, buf, nested(r, level(machine)), y, machine, t);
+            }
             Block::Folder(mi, ri) => {
                 let machine = &sm.machines[mi];
                 let project = &machine.rows[ri].project;
                 let folded = !sm.filtering && app.screen.saved.closed.contains(&folder_fold_key(&machine.label, project));
-                let room = r.width.saturating_sub(10) as usize;
+                let shift = level(machine) + NEST;
+                let room = r.width.saturating_sub(10 + shift) as usize;
                 let name = truncate(project, room);
                 let quiet = Style::default().fg(t.muted).bg(t.bg);
                 // The arrow says the folder folds; a click on its name does it.
                 put(
                     buf,
-                    r.x + MARK_X.saturating_sub(2),
+                    r.x + 1 + shift,
                     y,
                     &[
                         seg(if folded { FOLDED } else { OPEN }, quiet.fg(t.accent)),
@@ -647,12 +673,15 @@ fn draw_list(
                 );
                 app.screen.fold_keys.push(folder_fold_key(&machine.label, project));
                 let n = app.screen.fold_keys.len() - 1;
-                hit(app, Rect { x: r.x + 1, y, width: r.width.saturating_sub(3), height: 1 }, ScreenHit::Fold(n));
+                hit(app, Rect { x: r.x + 1 + shift, y, width: r.width.saturating_sub(3 + shift), height: 1 }, ScreenHit::Fold(n));
             }
-            Block::RemoteHead => draw_remote_head(app, buf, r, y, t),
+            Block::RemoteHead => draw_remote_head(app, buf, r, y, sm, t),
             Block::Session(mi, ri) => {
-                let row = &sm.machines[mi].rows[ri];
-                draw_session(app, buf, r, y, row, Some(row.key) == open, t);
+                let machine = &sm.machines[mi];
+                let row = &machine.rows[ri];
+                // Sessions sit one level in from their folder's heading, or from the machine's when not grouped.
+                let by = level(machine) + if sm.grouped { NEST } else { 0 };
+                draw_session(app, buf, nested(r, by), y, row, Some(row.key) == open, t);
             }
             Block::Gap => {}
         }
@@ -667,12 +696,29 @@ fn draw_list(
     );
 }
 
-/// The `Remote machines` row: where machines reached over ssh are, with a `+` that opens the dialog to add one.
-fn draw_remote_head(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, t: &Theme) {
+/// How far in a machine's heading sits: machines reached over ssh are under the `Remote machines` heading.
+fn level(m: &MachineSection) -> u16 {
+    if m.id == MachineId::LOCAL { 0 } else { NEST }
+}
+
+/// The `Remote machines` heading, drawn as a machine's is: a fold arrow, a title chip with how many machines are
+/// under it, and a `+` chip that opens the dialog to add one.
+fn draw_remote_head(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, sm: &SideModel, t: &Theme) {
     let x = r.x + 1;
     let end = r.right().saturating_sub(1);
-    let quiet = Style::default().fg(t.muted).bg(t.bg);
-    let after = put(buf, x + 2, y, &[seg("Remote machines", quiet.add_modifier(Modifier::BOLD))], end);
+    let name = chip(app, "Remote machines", Chip::Title { focused: false }, t.bg, t);
+    let mut segs = vec![seg(format!("{} ", if sm.remote_folded { FOLDED } else { OPEN }), Style::default().fg(t.accent).bg(t.bg))];
+    segs.extend(name);
+    let count = sm.machines.iter().filter(|m| m.id != MachineId::LOCAL).count();
+    let tint = Style::default().fg(t.muted).bg(t.btn);
+    if let Some(last) = segs.pop() {
+        segs.push(seg(format!(" {count}"), tint));
+        segs.push(last);
+    }
+    let after = put(buf, x, y, &segs, end.saturating_sub(4));
+    app.screen.fold_keys.push(REMOTE_FOLD_KEY.to_string());
+    let n = app.screen.fold_keys.len() - 1;
+    hit(app, Rect { x, y, width: after.saturating_sub(x), height: 1 }, ScreenHit::Fold(n));
     let plus = chip(app, "+", Chip::Action, t.bg, t);
     let pw = segs_width(&plus);
     let px = after + 1;

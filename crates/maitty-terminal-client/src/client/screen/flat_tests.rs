@@ -910,3 +910,30 @@ fn the_remote_machines_row_sits_above_the_first_remote_machine() {
     assert!(remote < kingdom, "the row {remote} names the machines under it, kingdom at {kingdom}");
     assert_eq!(rows.iter().filter(|r| side(std::slice::from_ref(r), 0).contains("Remote machines")).count(), 1);
 }
+
+#[test]
+fn a_remote_machine_sits_one_level_in_under_the_remote_machines_heading_and_a_click_on_it_folds_them() {
+    let (mut app, _) = with_kingdom_needing_the_app();
+    let rows = text(&mut app, 140, 36);
+    let head = rows.iter().position(|r| side(std::slice::from_ref(r), 0).contains("Remote machines")).expect("the heading");
+    let kingdom = rows.iter().position(|r| side(std::slice::from_ref(r), 0).contains(" kingdom ")).expect("kingdom");
+    let arrow_of = |y: usize| side(&rows, y).chars().position(|c| c == '▾').expect("an open arrow");
+    assert!(arrow_of(kingdom) > arrow_of(head), "the machine's arrow is further in than the heading's");
+
+    let x = side(&rows, head).chars().position(|c| c == 'R').expect("the name") as u16;
+    click(&mut app, x, head as u16);
+    let rows = text(&mut app, 140, 36);
+    assert!(side(&rows, head).contains('▸'), "folded: {}", side(&rows, head));
+    assert!(!rows.iter().any(|r| side(std::slice::from_ref(r), 0).contains(" kingdom ")), "the machines under it are hidden");
+}
+
+#[test]
+fn a_folder_sits_one_level_in_under_its_machine_and_its_sessions_one_more() {
+    let mut app = reference_fixture::world(Stage::None);
+    app.screen.saved.group_folders = true;
+    let rows = text(&mut app, 140, 36);
+    let machine = rows.iter().position(|r| side(std::slice::from_ref(r), 0).contains("This computer")).expect("machine");
+    let arrow = |y: usize| side(&rows, y).chars().position(|c| c == '▾').expect("an arrow");
+    let folder = (machine + 1..rows.len()).find(|y| side(&rows, *y).contains('▾')).expect("a folder heading");
+    assert!(arrow(folder) > arrow(machine), "{} vs {}", side(&rows, folder), side(&rows, machine));
+}
