@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { cancelTurn, dequeueMessage, submitMessage } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
 import type { ChatAgent, ChatLink } from '@/features/workspace/model/chatView'
@@ -7,6 +7,7 @@ import { buildAttachmentMessage } from './attachmentMessage'
 import { selectChatEvents } from './projection'
 import { countUserMessages } from './workPhase'
 import { peekComposer, updateComposer, useComposerState, type DraftAttachment } from './composerStore'
+
 import { revokePreviews, useAttachmentIntake, type AttachmentIntake } from './useAttachmentIntake'
 import { wireChoice } from './agentChoice'
 import { reserveOperation, STALE_OPERATION } from './sendOperation'
@@ -28,6 +29,12 @@ const ECHO_MAX_MS = 20_000
 const ECHO_THINKING_MS = 4_000
 /** A second read soon after a send, because a quiet chat is read only every few seconds. */
 const FOLLOW_UP_REFRESH_MS = 700
+
+/** Held messages count down from -1, so they never share a number with the daemon's own operations. */
+let heldCounter = 0
+const nextHeldId = (): number => { heldCounter -= 1; return heldCounter }
+/** After a held message is typed in, the next waits this long for the agent to start on it, so two never go at once. */
+const HELD_GAP_MS = 4_000
 
 /** What was just sent into the terminal, and how many times those words were already in the history. */
 export type SentEcho = { readonly text: string; readonly baseline: number; readonly quiet: boolean }
@@ -76,6 +83,8 @@ export type ChatComposer = {
   sending: boolean
   /** Why the composer is off, or `null` when it takes input. */
   disabledReason: string | null
+  /** The agent can take a message this moment: the box is on and nothing is running (a held message waits for this). */
+  ready: boolean
   /** The last send that failed, or `null`. Cleared by the next send. */
   error: string | null
   /** Sends this text now, as `submit` would send the draft; true when it went. For a message held while the agent started. */
@@ -92,7 +101,7 @@ export type ChatComposer = {
  * until it is sent. While an approval waits, nothing is sent.
  */
 export function useChatComposer({ link, agent, feed, online, refresh, typeInto, answersPrompt = false, paneWorking = false }: Input): ChatComposer {
-  const { draft, attachments } = useComposerState(link.conversation)
+  const { draft, attachments, held } = useComposerState(link.conversation)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [echo, setEcho] = useState<SentEcho | null>(null)
@@ -110,12 +119,14 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
   // Typed text answers a prompt the agent is showing, and the chat cannot tell the difference, so
   // it types only while the agent is known to be waiting for a message.
   const waitingForMessage = feed.status === 'Idle' || feed.status === 'Done'
+  // A terminal agent that is working still takes a message: it is held here and typed in once the agent is ready, so
+  // nothing reaches a prompt the agent might be showing meanwhile.
   const disabledReason = typing
-    ? (!online ? 'The daemon is offline' : busy ? TYPING_BUSY_NOTE : awaitingAnswer || feed.status === 'Blocked' ? (answersPrompt ? PENDING_APPROVAL_NOTE : TYPING_ASKING_NOTE) :!waitingForMessage ? 'Waiting for the agent to be ready' : null)
+    ? (!online ? 'The daemon is offline' : awaitingAnswer || feed.status === 'Blocked' ? (answersPrompt ? PENDING_APPROVAL_NOTE : TYPING_ASKING_NOTE) : !busy && !waitingForMessage ? 'Waiting for the agent to be ready' : null)
     : readOnly ? READ_ONLY_NOTE : !online ? 'The daemon is offline' : awaitingAnswer ? PENDING_APPROVAL_NOTE : null
   const conversation = link.conversation
   const attach = useAttachmentIntake({ conversation, blocked: disabledReason, machine: link.machine ?? null })
-  const queue = useMemo<readonly QueuedItem[]>(() => feed.queued.map((message) => ({ id: message.operation, text: message.text })), [feed.queued])
+  const queue = useMemo<readonly QueuedItem[]>(() => [...feed.queued.map((message) => ({ id: message.operation, text: message.text })), ...held], [feed.queued, held])
 
   const setDraft = useCallback((text: string) => {
     updateComposer(conversation, (state) => (state.draft === text ? state : { ...state, draft: text }))
@@ -179,6 +190,11 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
     // A message may be only attachments; the block naming them is then the whole text.
     if ((text === '' && attachments.length === 0) || disabledReason !== null || sending) return
     const files = attachments
+    if (typing && busy) {
+      // Held until the agent is ready for a message; shown in the queue meanwhile.
+      updateComposer(conversation, (state) => ({ ...state, draft: '', attachments: [], held: [...state.held, { id: nextHeldId(), text: buildAttachmentMessage(text, files) }] }))
+      return
+    }
     updateComposer(conversation, (state) => ({ ...state, draft: '', attachments: [] }))
     void send(buildAttachmentMessage(text, files)).then((delivered) => {
       if (delivered) {
@@ -191,11 +207,15 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
         revokePreviews(files)
         return
       }
-      updateComposer(conversation, () => ({ draft: text, attachments: files }))
+      updateComposer(conversation, (state) => ({ ...state, draft: text, attachments: files }))
     })
-  }, [draft, attachments, disabledReason, sending, conversation, send])
+  }, [draft, attachments, disabledReason, sending, conversation, send, typing, busy])
 
   const removeQueued = useCallback((operation: number) => {
+    if (operation < 0) {
+      updateComposer(conversation, (state) => ({ ...state, held: state.held.filter((message) => message.id !== operation) }))
+      return
+    }
     dequeueMessage({ id: String(conversation), generation: link.generation }, operation)
       .then(refresh)
       .catch((failure: unknown) => {
@@ -216,5 +236,22 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
       .catch((failure: unknown) => { setError(errorMessage(failure, 'Could not interrupt the turn')) })
   }, [running, feed.cancelling, conversation, link.generation, refresh, typeText])
 
-  return { draft, setDraft, attachments, attach, readOnly, queue, removeQueued, submit, stop, running, sending, disabledReason, error, sendText: send, echo }
+  // The agent is ready for a message: type in the oldest held one, then give the agent time to start on it.
+  const heldSentAt = useRef(0)
+  const first = held[0]
+  useEffect(() => {
+    if (!typing || first === undefined || !online || !waitingForMessage || awaitingAnswer || sending) return
+    const wait = Math.max(0, heldSentAt.current + HELD_GAP_MS - Date.now())
+    const timer = window.setTimeout(() => {
+      heldSentAt.current = Date.now()
+      updateComposer(conversation, (state) => ({ ...state, held: state.held.filter((message) => message.id !== first.id) }))
+      void send(first.text).then((delivered) => {
+        // One that did not go is put back at the front, to be tried again.
+        if (!delivered) updateComposer(conversation, (state) => ({ ...state, held: [first, ...state.held] }))
+      })
+    }, wait)
+    return () => { window.clearTimeout(timer) }
+  }, [typing, first, online, waitingForMessage, awaitingAnswer, sending, conversation, send])
+
+  return { draft, setDraft, attachments, attach, readOnly, queue, removeQueued, submit, stop, running, sending, disabledReason, ready: disabledReason === null && !(typing && busy), error, sendText: send, echo }
 }

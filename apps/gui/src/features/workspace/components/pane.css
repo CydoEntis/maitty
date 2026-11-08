@@ -22,7 +22,6 @@
   /* Repaints inside a pane stay inside it. */
   contain: paint;
 }
-.mx-pane.is-card { background: rgba(var(--hl), calc(.018 * var(--hk))); border-color: rgba(var(--hl), calc(.08 * var(--hk))); }
 .mx-pane.is-drop-target { outline: 2px dashed var(--accent); outline-offset: -2px; }
 .mx-pane-ring { position: absolute; inset: 0; z-index: 30; pointer-events: none; border-radius: var(--r14); box-shadow: inset 0 0 0 1.5px transparent; transition: box-shadow .15s; }
 .mx-pane.is-focused .mx-pane-ring { box-shadow: inset 0 0 0 1.5px var(--accent-line), 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent); }
@@ -72,8 +71,14 @@
 
 .mx-pane-body { position: relative; flex: 1; min-height: 0; padding: 4px 10px 6px; font-family: var(--mono); line-height: 1.6; cursor: text; display: flex; }
 .mx-pane-body > * { flex: 1; min-width: 0; min-height: 0; }
-/* The terminal draws the theme's ground, so the room around it takes the same one: no box inside the card. */
+/* The terminal draws the theme's ground, so the whole terminal pane, header included, takes the same one: one
+   surface, no band where the header ends. */
 .mx-pane-body:not(.is-chat) { background: var(--main); }
+.mx-pane.is-terminal { background: var(--main); }
+/* Two or more panes are separate cards on the window's ground with a gap between them, not boxes inside one big card. */
+.mx-pane.is-card { background: var(--main); border: 1px solid var(--m-line); box-shadow: var(--m-edge), var(--m-shadow); }
+.mx-main:has(> .mx-panes.is-split) { background: none; border-color: transparent; box-shadow: none; backdrop-filter: none; overflow: visible; }
+.mx-panes.is-split { padding: 0; }
 
 /* The gap between two columns, or two panes of a column, is the handle: it lights while hovered or dragged. */
 .mx-split-handle { flex: none; position: relative; z-index: 6; touch-action: none; }
@@ -92,13 +97,9 @@
 .mx-pane-body .terminal-input-error p { margin: 0; color: var(--danger); }
 .mx-pane.is-broadcast { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--ansi-mag) 60%, transparent), 0 14px 34px rgba(0, 0, 0, .3); }
 
-/* Splits move smoothly: a new pane grows in from nothing, and a closing one shrinks away while its
-   neighbours take its room. Dragging a handle must follow the pointer, so it switches the easing off. */
-@keyframes mx-cell-in { from { flex-grow: .0001; opacity: 0; } }
-.mx-pane-cell, .mx-pane-column { transition: flex-grow .24s var(--ease-out), opacity .2s ease; animation: mx-cell-in .26s var(--ease-out); }
-.mx-pane-cell.is-closing, .mx-pane-column.is-closing { flex-grow: .0001 !important; opacity: 0; pointer-events: none; }
-.mx-panes:has(.mx-split-handle.is-dragging) .mx-pane-cell, .mx-panes:has(.mx-split-handle.is-dragging) .mx-pane-column { transition: none; animation: none; }
-@media (prefers-reduced-motion: reduce) { .mx-pane-cell, .mx-pane-column { transition: none; animation: none; } }
+/* A pane that appears, or goes, takes its room at once. Easing a split's size made the terminal re-fit on every
+   frame, so its text reflowed and jumped until it settled; a pane that is closing only stops taking pointer input. */
+.mx-pane-cell.is-closing, .mx-pane-column.is-closing { pointer-events: none; }
 
 /* The label that follows the pointer while a pane or a sidebar session is dragged (dragSession.ts). */
 .mx-drag-ghost { position: fixed; left: 0; top: 0; z-index: 1000; pointer-events: none; max-width: 240px; padding: 6px 12px; border-radius: 10px; font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fg); background: var(--main); border: 1px solid var(--accent-line); box-shadow: 0 10px 28px rgba(0, 0, 0, .35); }

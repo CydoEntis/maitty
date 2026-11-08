@@ -123,7 +123,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   const answerPrompt = typeInto === undefined ? undefined : (choice: AskChoice) => typeInto(ANSWER_KEYS[choice]).then(refresh)
   const pickChoice = typeInto === undefined ? undefined : (index: number) => typeInto(choiceKey(index)).then(refresh)
   const composer = useChatComposer({ link, agent, feed, online, refresh, answersPrompt, paneWorking, ...(typeInto ? { typeInto } : {}) })
-  const { sendText, setDraft: setComposerDraft, disabledReason, sending, echo } = composer
+  const { sendText, setDraft: setComposerDraft, ready, sending, echo } = composer
   // A message just sent shows at once, with the agent taken to be at work on it, until the history has it.
   const echoText = echo !== null && countUserMessages(events, echo.text) <= echo.baseline ? echo.text : null
   const echoThinking = echo !== null && !echo.quiet
@@ -138,10 +138,10 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
     if (carried !== null) setComposerDraft(carried)
   }, [sessionId, setComposerDraft])
   useEffect(() => {
-    if (sessionId === undefined || held === null || disabledReason !== null || sending) return
+    if (sessionId === undefined || held === null || !ready || sending) return
     releaseFirstMessage(sessionId)
     void sendText(held).then((delivered) => { if (!delivered) setComposerDraft(held) })
-  }, [sessionId, held, disabledReason, sending, sendText, setComposerDraft])
+  }, [sessionId, held, ready, sending, sendText, setComposerDraft])
   // The held message shows as waiting until it goes, like a message queued behind a running turn.
   const shownComposer = useMemo(() => (held === null ? composer : { ...composer, queue: [...composer.queue, { id: HELD_MESSAGE_ID, text: held }], removeQueued: (id: number) => { if (id === HELD_MESSAGE_ID) { if (sessionId !== undefined) releaseFirstMessage(sessionId) } else composer.removeQueued(id) } }), [composer, held, sessionId])
   // The daemon does not report how a session was started, so the window remembers the sessions it started with full access.

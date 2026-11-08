@@ -302,6 +302,10 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   check done), no text; under the selected session, a 28px row each on a guide line. Clicking one opens its own chat.
   The foot holds the update slot (or "Reconnecting to maittyd…") and the Settings gear. The edge drags (208 to 440px;
   double-click resets). The **rail** of a narrow window is the starters, then one tile per session.
+- **Typing while an agent works.** A chat run by the daemon queues what you send, and the daemon sends it when the turn
+  ends. A chat that follows an agent in a terminal does the same on this side: the message is held in the composer store
+  (shown under the box in the queue, removable) and typed into the agent's prompt, one at a time, once it is ready for a
+  message; nothing is typed while it is asking something.
 - **Pane** (`components/PaneCard.tsx`, `pane.css`). Agents and shells share one 42px header: the 26px app icon with its
   status badge, the name (15px, 600) over the folder (11px `--dim`) and the branch (mono 10.5px `--ansi-mag`), then at
   the right the terminal | chat switch (agents with a chat), the **Files** and **Changes** tray, a hairline, split right,
@@ -354,6 +358,10 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   session in the sidebar shows the layout it is in, else one of its own. Split right adds a column beside the focused
   pane, taking half its width; split down a pane under it, taking half its height; they mix. Right-click a pane for its
   menu.
+  One pane fills the workspace card; two or more are **separate cards** on the window's ground with a gap between them
+  (the workspace card drops its own fill). A pane that is added, closed or resized takes its room at once, with no easing:
+  easing a split made the terminal re-fit every frame and its text jumped. A terminal pane, header included, is one
+  surface (`--main`), with no band where the header ends.
 - **Close ends the session, asking first, with Undo.** The pane's **×**, the pane menu's Close session, a row's Close
   session and Ctrl+Shift+W (⌘W) first open the confirm dialog (`ConfirmCloseDialog`: "Close name?", Cancel and a red
   Close, or "Stop claude" for a running agent; Enter confirms, Esc cancels) unless every session in question has already
@@ -382,6 +390,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   folder beside it ("Close its terminal" ends it). Settings › General › Chat view picks the view each of Claude and
   Codex opens in (Chat by default). A shell, an unsupported agent or a session on another machine shows the chat
   card's empty state, "Chat view is for agent sessions", with the reason and the ways to start one.
+  Changing the view, or switching between sessions, plays no animation.
 - **Chat session ([ADR 0003](adr/0003-status-and-conversation-trust.md)).** A row and pane like any session, with the
   agent's mark and its branch line. Its pane has no terminal | chat switch; the pane is the chat. The approvals
   (y / a / n), user-input form, Stop and the daemon's queue are the chat's own.

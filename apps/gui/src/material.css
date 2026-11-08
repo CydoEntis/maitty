@@ -119,7 +119,7 @@
   --c-knob: var(--bg); --c-knob-sh: inset 0 0 0 1px var(--fg2);
 }
 :root[data-style="console"] .mx-app {
-  --c-sel-bg: var(--sel); --c-sel-sh: inset 2px 0 0 var(--accent), inset 0 0 0 1px var(--line2);
+  --c-sel-bg: var(--sel); --c-sel-sh: none;
   --c-field-bg: var(--well); --c-field-sh: inset 0 0 0 1px var(--line2);
   --c-tile-ring: inset 0 0 0 1px var(--line2); --c-head-bg: var(--main);
   --c-track-bg: var(--well); --c-track-sh: inset 0 0 0 1px var(--line2);

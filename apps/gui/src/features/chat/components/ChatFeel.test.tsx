@@ -6,7 +6,6 @@ import { forgetComposers } from '../composerStore'
 import { forgetFirstMessages } from '../firstMessage'
 import { ACTIVE_POLL_MS, forgetChatFeeds, IDLE_POLL_MS } from '../useChatFeed'
 import type { SessionStatus } from '@/features/workspace/model/session'
-import { TYPING_BUSY_NOTE } from '../useChatComposer'
 import { ChatSession } from './ChatSession'
 
 const fake = vi.hoisted(() => ({ current: null as null | { read: (cursor: never) => Promise<unknown> } }))
@@ -117,7 +116,7 @@ describe('how the chat feels while it waits', () => {
     await settle()
 
     expect(screen.getByText(/claude is thinking/)).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: 'Message claude' })).toHaveAttribute('placeholder', TYPING_BUSY_NOTE)
+    expect(screen.getByRole('textbox', { name: 'Message claude' })).toHaveAttribute('placeholder', 'Queue a message for when claude finishes')
 
     // And the chat read the conversation at that moment, not at its next idle poll.
     daemon.upsert(daemon.message('t1', 'u3', 'User', 'asked in the terminal'))

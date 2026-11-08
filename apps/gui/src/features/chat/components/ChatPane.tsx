@@ -55,7 +55,7 @@ export type ChatPaneProps = {
 export function ChatPane(props: ChatPaneProps) {
   const { availability } = props
   return (
-    <section className="mx-chat-layer mx-chat-in" aria-label="Chat">
+    <section className="mx-chat-layer" aria-label="Chat">
       {availability.kind === 'ready'
         ? (
           <ChatSession

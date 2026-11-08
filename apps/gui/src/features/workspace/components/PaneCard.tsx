@@ -52,25 +52,6 @@ export type PaneCardProps = {
   onRestart: (paneId: string) => void
 }
 
-/** How long the terminal's slide back in lasts; a little longer than its animation. */
-const RETURN_MS = 460
-
-/** True for a moment after the pane goes from the chat back to the terminal, so the terminal plays its slide in once. */
-function useReturning(view: PaneView): boolean {
-  const [seen, setSeen] = useState(view)
-  const [returning, setReturning] = useState(false)
-  if (seen !== view) {
-    setSeen(view)
-    setReturning(view === 'terminal')
-  }
-  useEffect(() => {
-    if (!returning) return
-    const timer = window.setTimeout(() => { setReturning(false) }, RETURN_MS)
-    return () => { window.clearTimeout(timer) }
-  }, [returning])
-  return returning
-}
-
 /** The pane's width as it is laid out, so its header can give up controls as it narrows. */
 function useWidth(): [React.RefObject<HTMLElement | null>, number | null] {
   const element = useRef<HTMLElement>(null)
@@ -100,7 +81,6 @@ export function PaneCard(props: PaneCardProps) {
   const full = paneCount >= MAX_PANES
   const ended = session.ended
   const view = props.view ?? 'terminal'
-  const returning = useReturning(view)
   const fit = headerFit(width)
   const title = rowTitle(session)
   const closeLabel = 'Close pane · ends its session'
@@ -183,7 +163,7 @@ export function PaneCard(props: PaneCardProps) {
         </span>
       </div>
       <div
-        className={`mx-pane-body${view === 'chat' ? ' is-chat' : ''}${returning ? ' mx-term-in' : ''}`}
+        className={`mx-pane-body${view === 'chat' ? ' is-chat' : ''}`}
         onMouseDown={(event) => {
           // A click on the pane's padding still puts the cursor in its terminal.
           if (event.target !== event.currentTarget) return

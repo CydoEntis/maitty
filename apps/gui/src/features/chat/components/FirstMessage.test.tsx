@@ -1,4 +1,5 @@
 import { act, cleanup, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FAKE_CONVERSATION, FakeDaemonHistory } from '../fakeDaemonHistory'
 import { forgetComposers } from '../composerStore'
@@ -75,5 +76,24 @@ describe('a message typed while the agent was starting', () => {
     await settle()
 
     expect(screen.getByRole('textbox', { name: 'Message claude' })).toHaveValue('half a thou')
+  })
+})
+
+describe('a message written while a terminal agent works', () => {
+  it('is held in the queue, and typed in once the agent is ready, exactly once', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const { daemon, typeInto } = open('Working')
+    await settle()
+
+    await user.type(screen.getByRole('textbox', { name: 'Message claude' }), 'and then add tests')
+    await user.click(screen.getByRole('button', { name: 'Queue message' }))
+    expect(typeInto).not.toHaveBeenCalled()
+    expect(screen.getByRole('list', { name: 'Queued messages' })).toHaveTextContent('and then add tests')
+
+    daemon.status = 'Idle'
+    await settle(ACTIVE_POLL_MS + 1)
+    await settle(10)
+    expect(typeInto).toHaveBeenCalledExactlyOnceWith(`${PASTE_START}and then add tests${PASTE_END}\r`)
+    expect(screen.queryByRole('list', { name: 'Queued messages' })).not.toBeInTheDocument()
   })
 })
