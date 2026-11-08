@@ -414,6 +414,19 @@ async fn start_shell_session(
         .map_err(|error| format!("{error:#}"))
 }
 
+/// Start an agent as the first command of a new terminal session (see `maitty_desktop_client::start_agent_session`).
+#[tauri::command]
+async fn start_agent_session(
+    app: tauri::AppHandle,
+    cwd: PathBuf,
+    agent: String,
+    flags: Vec<String>,
+) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::start_agent_session(cwd, agent, flags, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
 #[tauri::command]
 async fn start_terminal_session(
     app: tauri::AppHandle,
@@ -920,6 +933,7 @@ pub fn run() {
             usage_report,
             new_worktree_session,
             restore_snapshot,
+            start_agent_session,
             start_terminal_session,
             start_shell_session,
             rename_terminal_session,

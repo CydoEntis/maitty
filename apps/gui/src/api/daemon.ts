@@ -930,6 +930,11 @@ export async function startShellSession(folder: string): Promise<void> {
   await invokeParsed('start_shell_session', NullSchema, { cwd: folder })
 }
 
+/** Starts an agent as the first command of a new terminal session; its flags are separate words. */
+export async function startAgentSession(folder: string, agent: 'claude' | 'codex' | 'gemini', flags: readonly string[]): Promise<void> {
+  await invokeParsed('start_agent_session', NullSchema, { cwd: folder, agent, flags })
+}
+
 export async function startTerminalSession(folder: string, provider: 'Codex' | 'Claude'): Promise<void> {
   await invokeParsed('start_terminal_session', NullSchema, { cwd: folder, provider })
 }

@@ -8,7 +8,6 @@ import {
   closeSessionWithUndo,
   markSeenOnDaemon,
   defaultSessionFolder,
-  connectAgent,
   conversationsFromSnapshot,
   isDesktop,
   listenSessionsChanged,
@@ -22,6 +21,7 @@ import {
   startChatSession,
   addWorktree,
   switchBranch,
+  startAgentSession as launchAgentSession,
   startShellSession,
   undoCloseSession,
 } from '@/api/daemon'
@@ -92,6 +92,7 @@ import { NoTerminalNote } from '@/features/chat/components/NoTerminalNote'
 import { rememberConversationPermissions } from '@/data/conversationPermissions'
 import { reserveOperation } from '@/features/chat/sendOperation'
 import { holdFirstMessage } from '@/features/chat/firstMessage'
+import { connectAgentOnce } from './model/agentHooks'
 import { machineProjects, nameFromMessage } from './model/newSession'
 import { usePaneViews } from './usePaneViews'
 import { chatAvailability, chatSourceOf, effectiveView, type ChatAgent, type PaneView, type StructuredAgent } from './model/chatView'
@@ -325,6 +326,10 @@ export function DesktopApp() {
   const [newSessionMachine, setNewSessionMachine] = useState<number | null>(null)
   // The page a new agent chat starts from (agent, folder, model, effort), over the panes.
   const [newChatOpen, setNewChatOpen] = useState(false)
+  // Opening the new chat page is the moment to connect the default agent's hooks, so starting it does not wait for that.
+  useEffect(() => {
+    if (newChatOpen) connectAgentOnce(preferences.defaultAgent).catch(() => { /* the start itself reports a failure */ })
+  }, [newChatOpen, preferences.defaultAgent])
   const [failures, setFailures] = useState(0)
   const [restartPending, setRestartPending] = useState(false)
   const [root, setRoot] = useState<HTMLDivElement | null>(null)
@@ -830,9 +835,9 @@ export function DesktopApp() {
     return created?.id ?? null
   }, [queryClient])
 
-  const startShell = useCallback(async (folder: string): Promise<string | null> => {
+  const startShell = useCallback(async (folder: string, launch?: (folder: string) => Promise<void>): Promise<string | null> => {
     const known = new Set(sessions.map((session) => session.id))
-    await startShellSession(folder)
+    await (launch ?? startShellSession)(folder)
     return newSessionSince(known)
   }, [sessions, newSessionSince])
 
@@ -875,12 +880,12 @@ export function DesktopApp() {
     setNewChatOpen(false)
   }
 
-  const runStart = useCallback((folder: () => Promise<string>, place: (sessionId: string) => void) => {
+  const runStart = useCallback((folder: () => Promise<string>, place: (sessionId: string) => void, launch?: (folder: string) => Promise<void>) => {
     if (!online || starting) return
     setStarting(true)
     setStartedFrom(new Set(sessionMap.keys()))
     void folder()
-      .then((path) => startShell(path))
+      .then((path) => startShell(path, launch))
       .then((id) => { if (id) place(id) })
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not start a shell')) })
       .finally(() => { setStarting(false); setStartedFrom(null) })
@@ -889,6 +894,14 @@ export function DesktopApp() {
   // A new session is the default agent, running in a terminal the daemon owns, shown as its chat or
   // as its terminal as Settings says. It is one session either way: the view can be switched at any
   // time without restarting the agent (ADR 0003). A plain shell is `runStart` and has no chat view.
+  // The agent is the new session's first command, so it starts as soon as the shell does instead of being typed in once the
+  // shell is ready. Its status hooks are connected first: an agent already running never loads them, and its chat would
+  // wait on them until it was restarted.
+  const launchAgent = useCallback((agent: ChatAgent, flags: string) => async (folder: string): Promise<void> => {
+    await connectAgentOnce(agent).catch((error: unknown) => { console.warn(`Could not connect ${agent}'s status hooks`, error) })
+    await launchAgentSession(folder, agent, flags.split(' ').filter((word) => word !== ''))
+  }, [])
+
   const startAgentSession = useCallback((folder: () => Promise<string>, agent: ChatAgent, view: PaneView, firstMessage = '', flags = '') => {
     runStart(folder, (id) => {
       // A first message waits under the session and goes out once the agent takes input; its words name the session.
@@ -896,20 +909,14 @@ export function DesktopApp() {
         holdFirstMessage(id, firstMessage)
         void renameConversationOnDaemon({ id }, nameFromMessage(firstMessage)).catch((error: unknown) => { console.warn('Could not name the new session', error) })
       }
-      // The daemon learns which agent runs from the agent's own hook, a moment after the command is typed; until then the
+      // The daemon learns which agent runs from the agent's own hook, a moment after it starts; until then the
       // session is known to be this agent, so it never shows as a shell.
       setExpectedAgents((current) => ({ ...current, [id]: agent }))
       window.setTimeout(() => { setExpectedAgents((current) => omitKey(current, id)) }, EXPECTED_AGENT_MS)
       setLayout((current) => openArrangement(current, id, makeId))
       if (view === 'chat') paneViews.choose(id, 'chat')
-      // Its status hooks are connected before it starts: an agent that is already running never loads
-      // them, and its chat would wait on them until it was restarted. Connecting is idempotent.
-      void connectAgent(agent)
-        .catch((error: unknown) => { console.warn(`Could not connect ${agent}'s status hooks`, error) })
-        .then(() => sendTerminalInput({ id, generation: 0 }, `${agent}${flags}\r`))
-        .catch((error: unknown) => { toast.error(errorMessage(error, `Could not start ${agent}`)) })
-    })
-  }, [runStart, paneViews])
+    }, launchAgent(agent, flags))
+  }, [runStart, paneViews, launchAgent])
 
   // "Start a Claude chat" on a shell's empty chat card: a chat session in that shell's folder.
   const startChatHere = useCallback((from: SessionView, agent: ChatAgent, fullAccess: boolean) => {
