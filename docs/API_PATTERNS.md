@@ -530,6 +530,8 @@ gets `ServerMsg::SettingsChanged`. Keys, values and limits are in
 out of range answers `ServerMsg::Error` and leaves the file as it was. A peer that predates the
 variants cannot decode them (a test), and another machine's `SettingsChanged` is ignored.
 
+Protocol 76 adds `Provider::Gemini` (a conversation's provider on the wire). A Gemini CLI agent in a pane gets the same read-only, transcript-following conversation as Claude and Codex (`follow_transcript.rs`, `Format::Gemini`); the file is the one its hook's `transcript_path` names, and its name must start `session-` and end with the first 8 characters of the hook's session id. Gemini has no structured runtime: starting one is refused. A peer that predates the variant cannot decode it (a test decodes the old provider names).
+
 Protocol 75 adds `Command::NewFleet { name, cwd, colors }` and `Command::NewShip { ws, cwd, cmd }`. A fleet is a
 workspace on a machine's daemon: `NewFleet` names it (trimmed, 1 to 80 bytes, no control characters), starts it
 with one shell and takes the first unused colour from the list the client wants; `NewShip` adds a shell to an

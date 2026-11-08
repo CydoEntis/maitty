@@ -41,7 +41,7 @@ themes fill the same roles; [theme sources](theme-credits.md) lists where they c
 | `blocked` | needs you, and only that | `#f5c542` | `#674100` |
 | `done`, `err` | passed or finished; failed | `#7fd99a`, `#ff7b72` | `#2e8b57`, `#c93c37` |
 
-`sky()` (checking, shortcut mode, copy selection) and `violet()` (could not run) are derived
+`sky()` (checking, copy selection) and `violet()` (could not run) are derived
 from the theme, not roles of their own. Every built-in theme passes a contrast audit, and
 needs you never looks like failed. See UI › *design system*.
 
@@ -76,8 +76,8 @@ accent fill. See UI › *UI conventions*.
 
 Each machine with its sessions under it, on the panel ground, 34 columns by default (24 to 60
 resizable). On the top border the ` maitty ` chip at the left and ` « ` (hide) at the right; hidden,
-a ` » ` chip beside the panes brings it back. Row 2 is the filter field, `/ filter sessions` on the
-darker ground. A machine is a heading chip with its count (` This computer 5 `), an accent ` + `
+a ` » ` chip beside the panes brings it back. Filtering is a command (`/`) with its own modal,
+no field; the folder button groups sessions by folder. A machine is a heading chip with its count (` This computer 5 `), an accent ` + `
 chip (a shell there at once) and a green `●` at the right while it is up. While its app is missing
 or on another version the ` + ` gives way to an accent ` install ` or ` update ` chip, the fix one
 click from where it shows; the Machines dialog marks that row ` u install ` / ` u update ` beside its
@@ -94,13 +94,13 @@ are in UI › *Machines dialog*.
 ## Pane titles
 
 Every pane's top border carries its **title chip** at the left: the status mark, the name in bold,
-then the folder and branch quieter (`mark name ~/cwd branch`, cut with `…`), the accent with dark
-ink while the pane has the keys. At the right ` files `, ` changes N ` (accent while their panel is
-open) and ` × `. The program starts on the row under the border: an agent's pane is its own
+(`mark name`), the accent with dark ink while the pane has the keys, and ` × ` at the right. Its
+folder and branch are quiet chips on the **bottom** border (cut with `…`); a click on them opens the
+Project menu, where Files and Changes are. Labels are capitalised. The program starts on the row under the border: an agent's pane is its own
 terminal, and the TUI draws no chat of its own. With no pane open, a dashed box says `No pane open`
 over an ` n new session ` chip. A pane closes with Alt+x, leader `x` or its `×`, with an undo, and a
 running agent asks first, its box red until you answer. Unfocused panes fade; the focused pane's
-box is the accent, or `sky()` in shortcut mode. See UI › *the frame* and *pane focus*.
+box is the accent, or the KEYS yellow (`blocked`) in key mode. See UI › *the frame* and *pane focus*.
 
 ## Side panel
 
@@ -119,7 +119,7 @@ groups* and *check evidence sheet*.
 ## Modals and popovers
 
 Everything that floats over the screen (menus, Settings, the keys help, confirms) is a box in the accent
-on the panel ground (`sidebar_bg`), corners by `ui.rounded`; what sits on its top border stands on the ground
+on the panel ground, corners by `ui.rounded`; what sits on its top border stands on the ground
 behind. Deciding is a modal: centred, its title as an accent chip on the top border (` settings `), a ` × `
 chip on `btn` a cell in from the corner, no shadow. Settings has its sections down the left and the
 chosen section's rows at the right (label, then the value bold in the accent with `‹ ›` and `2/3`), and a
@@ -143,8 +143,10 @@ with motion on. See UI › *the frame* (Toast).
 
 ## Status bar
 
-The one full-width row, along the bottom, on the panel ground. Typing: a ` PANE ` chip in the accent,
-the session the keys go to (`name · ~/folder`), and at the right `j/k sessions  ^space keys  ? help`.
+The one full-width row, along the bottom, on the panel ground. It is hidden while keys go to the pane
+(no row, no gap; the focused frame turns the KEYS yellow in key mode instead) and shows for key mode,
+for whatever holds the keys, for a flashed line and while Update or Restart waits. Typing with it up: a ` PANE ` chip in the accent,
+and at the right `j/k sessions  ^space keys  ? help`.
 Key mode: a yellow ` KEYS ` chip and `n new  s split  x close  tab pane  ? help  esc back`, each a click
 that presses it; starting a pane ends it. When something other than the panes has the keys, a calm chip
 (`strong` bold on `btn`) names the holder and its keys sit at the right with the way out last
@@ -192,6 +194,22 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   xterm's background and ANSI black are `--main`, so a program that paints with black leaves no box. On a web view
   without WebGL 2 (`data-gpu="software"`) the same rules use cheaper values: no blur, a 1px ring for the popover
   shadow ([PERFORMANCE](PERFORMANCE.md)).
+- **One material, three roles (`apps/gui/src/material.css`).** Glass and Flat are told apart in that file and nowhere
+  else. Every surface is a *panel* (sidebar, main card, Inbox, inspector), a *float* (menus, popovers, dialogs, the
+  palette, find, toasts) or a *field* (the message box and its tray), and takes its fill, hairline, highlight, shadow
+  and blur from that role's `--m-*` tokens. **Glass**: translucent fills over a blur, a hairline and top highlight, soft
+  shadows, and two tints of the theme behind the window (on Windows the window is Mica and the desktop shows through).
+  **Flat**: solid fills, a hairline, no blur, no highlight (`--gk` is 0, which turns off every gradient and lift that multiplies by it; hover tints stay), one plain shadow on floats. A new surface is added to a role's list in
+  `material.css`; it does not set a background of its own. A popover opens through `PopupContent`
+  (`components/ui/popup.tsx`) or carries `mx-pop`, so it is portalled into the window root and takes the float role.
+  **Inside a surface**, nothing reads the theme's solid colours directly: a sunken control is `--m-well`, a raised or
+  current row `--m-raise`, a picked row `--m-sel`, a hovered one `--m-hover`, a dialog's own ground `--m-pane`. Flat
+  maps them to the theme's `--well`/`--raise`/`--sel`/`--hover`/`--pane`; Glass maps them to tints of the light
+  (`--hl`) and shade (`--sd`). Tints are written `rgba(var(--hl), calc(.06 * var(--hk)))`, never a fixed white.
+  The sheen and top edge use `--hs` (white in every theme) and the hairline uses `--hl` (ink on a light theme), so
+  Glass reads in light and dark alike. `src/material.test.ts` fails when a stylesheet reads a solid surface colour or
+  a fixed white. Left on purpose: terminal grounds (`--term`, `--main` under a terminal), scrims, brand and status
+  colours, the switch knob, and the legacy `App.css` shell outside the window root.
 - **Window style: Flat or Glass** (Settings › Appearance › Window style, `style`, shared with the terminal app as
   `window_style`; the root carries `data-style` and `data-finish`). The finish only; layout, features and status
   colours do not change. **Glass** is the default: the gradients, highlights and shadows above. **Flat** sets `--gk`
@@ -542,3 +560,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   in the accent, then **Copy command** with the command under the text as the secondary way, **Retry**, a
   confirmed **Remove**) and an **Add a machine** card (a field, then the `~/.ssh/config` hosts as rows); its
   states are loading, empty, error and checking, and it works with the keyboard alone.
+
+### Notification cards
+
+Every toast is drawn by one component, `NotificationCard` (`apps/gui/src/features/notifications/`): the agent's icon with its status badge on the left, a bold title with a close button, a muted line saying what it wants (a command in mono), the buttons, and "just now" at the bottom right. It is a float, so it takes the material roles from `material.css` and sets only its tone colour (`needs`, `done`, `error`, `info`). `SessionNotice` (terminal sessions) and `NoticeToast` (conversation views) only map their data onto it; plain Sonner toasts (messages, errors) wear the same float material without the icon and buttons. Allow appears only when the session is stopped on a choice the GUI can answer.
