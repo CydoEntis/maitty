@@ -12,6 +12,8 @@
 @keyframes v8insp { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
 @keyframes v9pop { from { opacity: 0; transform: scale(.6); } 60% { opacity: 1; transform: scale(1.08); } to { opacity: 1; transform: none; } }
 @keyframes v9dialog { from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)) scale(.97); } to { opacity: 1; transform: translate(-50%, -50%); } }
+@keyframes mxDrop { 0% { transform: translateY(-120%); opacity: 0; } 25% { opacity: 1; } 60% { transform: translateY(0); opacity: 1; } 85% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(120%); opacity: 0; } }
+@keyframes mxSheen { 0% { transform: translateX(-120%); } 55%, 100% { transform: translateX(260%); } }
 @keyframes v8row { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: none; } }
 
 .mx-app {
@@ -601,14 +603,14 @@ button.mx-sb-item:hover { background: rgba(var(--hl), calc(.07 * var(--hk))); co
   --proj-1: #2BB8A6; --proj-2: #4C8DF6; --proj-3: #E86FA8; --proj-4: #8B7CF6; --proj-5: #4CC38A; --pg: 12px; --ptop: 0px; --tbh: 56px; --tbp: 0 10px; --tbg: 6px; --tbb: 0;
   --tabh: 36px; --tabbr: 0; --tick: transparent;
   /* The title bar: a dark veil over the ground on dark themes, the card colour on light ones. Tiled sets a card colour and a hairline. */
-  --tbar: rgba(10, 12, 12, .35); --tbar-b: 0;
+  --tbar: transparent; --tbar-b: 0;
   /* Glass surfaces: opaque cards with a hairline and, on dark themes, a 1px top highlight; blur and a soft
      shadow only on short-lived popovers. */
   --card: var(--main); --sh: inset 0 1px 0 rgba(var(--hl), calc(.045 * var(--hk))); --blur-pop: blur(14px) saturate(1.2); --sh-pop: 0 16px 40px rgba(0, 0, 0, .45);
   --glow-accent: 10%; --glow-mag: 7%;
   --sbm: 12px 0 12px 12px; --sbw: 1px; --tba: center; --tl: 4px; --edge: 8px; --tsh: 32px; --tsw: 26px; --ibh: 30px;
 }
-.mx-app[data-theme-kind="light"] { --tbar: var(--main); --sh: none; --sh-pop: 0 12px 32px rgba(17, 24, 32, .14), 0 0 0 1px rgba(17, 22, 27, .08); --glow-accent: 9%; --glow-mag: 6%; }
+.mx-app[data-theme-kind="light"] { --sh: none; --sh-pop: 0 12px 32px rgba(17, 24, 32, .14), 0 0 0 1px rgba(17, 22, 27, .08); --glow-accent: 9%; --glow-mag: 6%; }
 
 .mx-app .title-bar { background: var(--tbar); border-bottom: var(--tbar-b); }
 
@@ -628,10 +630,16 @@ button.mx-sb-item:hover { background: rgba(var(--hl), calc(.07 * var(--hk))); co
 /* Updates: the sidebar footer's left slot, its card, and the restart screen. */
 .mx-foot-slot { flex: 1; min-width: 0; display: flex; align-items: center; }
 .mx-version { font-size: 11.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-upd-pill { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-line); transition: background-color .14s ease; }
-.mx-upd-pill:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
-.mx-upd-pill.is-ready { background: var(--accent); color: var(--on-accent); box-shadow: none; }
-.mx-upd-pill.is-failed { background: var(--danger-soft); color: var(--danger); box-shadow: inset 0 0 0 1px var(--danger-line); }
+.mx-upd-pill { position: relative; overflow: hidden; display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px 0 8px; border-radius: 9px; font-size: 12.5px; font-weight: 600; white-space: nowrap; cursor: pointer; color: var(--fg); background: linear-gradient(180deg, rgba(var(--hl), calc(.085 * var(--hk))), rgba(var(--hl), calc(.035 * var(--hk)))); border: 1px solid rgba(var(--hl), calc(.13 * var(--hk))); box-shadow: inset 0 1px 0 rgba(var(--hl), calc(.08 * var(--hk))), 0 1px 3px rgba(var(--sd), calc(.45 * var(--sk))); transition: background-color .14s ease, border-color .14s ease; }
+.mx-upd-pill:hover { border-color: var(--accent-line); background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 16%, transparent), color-mix(in srgb, var(--accent) 6%, transparent)); }
+.mx-upd-pill.is-downloading { background: var(--accent-soft); color: var(--accent); border: 0; box-shadow: inset 0 0 0 1px var(--accent-line); }
+.mx-upd-pill.is-failed { background: var(--danger-soft); color: var(--danger); border: 0; box-shadow: inset 0 0 0 1px var(--danger-line); }
+.mx-upd-shimmer { position: absolute; top: 0; bottom: 0; left: 0; width: 40%; background: linear-gradient(90deg, transparent, rgba(var(--hs), calc(.1 * var(--hk))), transparent); animation: mxSheen 3.2s ease-in-out infinite; pointer-events: none; }
+.mx-upd-tile { position: relative; width: 18px; height: 18px; flex: none; border-radius: 6px; display: flex; align-items: center; justify-content: center; background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); overflow: hidden; color: var(--accent); }
+.mx-upd-arrow { display: flex; flex-direction: column; align-items: center; animation: mxDrop 1.6s cubic-bezier(.4, 0, .2, 1) infinite; }
+.mx-upd-arrow-bar { width: 9px; height: 2px; border-radius: 1px; background: currentColor; margin-top: 1px; opacity: .8; }
+.mx-upd-word { position: relative; }
+.mx-upd-version { position: relative; font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--muted); }
 .mx-upd-pill.is-rail { width: 36px; height: 28px; padding: 0; justify-content: center; border-radius: 8px; }
 .mx-upd-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
 .mx-upd-ring { width: 14px; height: 14px; border-radius: 50%; background: conic-gradient(var(--accent) var(--p, 0%), color-mix(in srgb, var(--accent) 22%, transparent) 0); -webkit-mask: radial-gradient(circle, transparent 4px, #000 4.5px); mask: radial-gradient(circle, transparent 4px, #000 4.5px); }

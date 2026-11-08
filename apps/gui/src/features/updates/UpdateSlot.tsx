@@ -81,6 +81,8 @@ export function UpdateSlot({ variant, state, version, skipped, portalContainer, 
     : offer.status === 'downloading' ? (percent === null ? 'Downloading…' : `${String(percent)}%`)
     : offer.status === 'ready' ? 'Restart to update'
     : 'Update failed'
+  // An update that is ready to install is the glass button with the falling arrow; a download and a failure keep their own pills.
+  const glass = variant !== 'rail' && (offer.status === 'available' || offer.status === 'ready')
   const cardBody = (() => {
     switch (offer.status) {
       case 'available': {
@@ -144,15 +146,23 @@ export function UpdateSlot({ variant, state, version, skipped, portalContainer, 
         className={`mx-upd-pill is-${offer.status} is-${variant}`}
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label={variant === 'rail' ? `${label}. Open update details` : undefined}
+        aria-label={variant === 'rail' ? `${label}. Open update details` : glass ? label : undefined}
         style={percent === null ? undefined : { '--p': `${String(percent)}%` } as CSSProperties}
         onClick={() => { setOpen((current) => !current) }}
       >
         {variant === 'rail' ? <Icon name="download" /> : (
           <>
-            {offer.status === 'available' && <span className="mx-upd-dot" aria-hidden="true" />}
+            {glass && <span className="mx-upd-shimmer" aria-hidden="true" />}
+            {glass && (
+              <span className="mx-upd-tile" aria-hidden="true">
+                <span className="mx-upd-arrow">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v12M6.5 10.5 12 16l5.5-5.5" /></svg>
+                  <span className="mx-upd-arrow-bar" />
+                </span>
+              </span>
+            )}
             {offer.status === 'downloading' && <span className="mx-upd-ring" aria-hidden="true" />}
-            {label}
+            {offer.status === 'available' ? <><span className="mx-upd-word">Update</span><span className="mx-upd-version">{offer.version}</span></> : glass ? <span className="mx-upd-word">Restart</span> : label}
           </>
         )}
       </button>

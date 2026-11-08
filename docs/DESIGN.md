@@ -230,8 +230,8 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   saved Flat or Tiled reads as Console. A new control gets tokens first and is checked in all five styles and both
   themes (Settings › Appearance shows each style live). **Icons** (Settings › Appearance › Icons, `iconColor`,
   `data-icons`): `color` keeps app icons in their own colours; `grayscale` makes them neutral `--raise` tiles.
-- **Title bar.** 32px, `--tbar` (on dark themes a veil of `rgba(10,12,12,.35)` over the ground, on light ones
-  `--main`): the 18px logo, "Maitty" in 12px `--muted`, and the platform's window buttons (46px captions on Windows).
+- **Title bar.** 32px with no background of its own, so it sits on the window ground (`--tbar` is `transparent`): the
+  18px logo, "Maitty" in 12px `--muted`, and the platform's window buttons (46px captions on Windows).
   There is no activity bar, no middle column and no tab bar: the window is the sidebar and the workspace.
 - **Small windows.** The window is never narrower than 720px (`minWidth`). Under **1100px** the sidebar is the
   60px rail, and its expand button opens the full sidebar as an overlay from the sidebar's side, over a scrim;
@@ -464,8 +464,9 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   from <machine> · N ms**, a 2 px progress line on its top edge) that sits in the flow, never over the
   terminal, and goes when the stream is live. A real failure keeps its banner; it is not a loading state.
 - **Sidebar footer and updates.** The footer's left slot shows the version, or what an update needs
-  from you: a pill (**Update to x**, the download's percent, **Restart to update**, **Update failed**) that
-  opens a card upward with the matching actions. The updater downloads first and installs only on
+  from you: a pill that opens a card upward with the matching actions. An update waiting to be downloaded or
+  installed is a glass button, a sheen sweeping across it, a tile with an arrow falling into a tray, **Update** and the
+  version in mono (**Restart to update** once downloaded); the download's percent and **Update failed** keep a tinted pill. The updater downloads first and installs only on
   **Restart now**, or by itself when the app is idle, so sessions keep running either way. Settings › General › Updates shows the state with
   one fitting button and two switches: download automatically (on) and **Install updates when idle** (on, helper
   "Never while an agent is working"). Idle means no agent working or waiting on an answer, no keyboard input
