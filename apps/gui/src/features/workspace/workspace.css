@@ -73,7 +73,9 @@
   overflow: hidden;
   background: var(--bg);
 }
-:root[data-glow="on"]:not([data-gpu="software"]):not([data-finish="flat"]) .mx-window {
+:root[data-glow="on"]:not([data-gpu="software"]) .mx-window,
+/* Frosted panels are see-through, so Frosted always has its soft atmosphere behind them. */
+:root[data-style="frosted"]:not([data-gpu="software"]) .mx-window {
   background:
     radial-gradient(1000px 600px at 15% 0%, color-mix(in oklab, var(--accent) var(--glow-accent), transparent), transparent 70%),
     radial-gradient(900px 560px at 100% 100%, color-mix(in oklab, var(--ansi-mag) var(--glow-mag), transparent), transparent 70%),

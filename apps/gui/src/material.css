@@ -35,22 +35,33 @@
   --m-hover: var(--hover);
   --m-pane: var(--pane);
 }
+/* Glass, as the redesign draws it: opaque cards on the window ground, each with a faint top highlight,
+   a hairline and a soft drop shadow (panel); what opens over them gets a stronger highlight, a hairline and
+   a long shadow (float); the message box sits between (field). The light and shade are the theme's. */
 :root[data-finish="glass"],
 :root[data-finish="glass"] .mx-app {
-  --m-panel: color-mix(in srgb, var(--main, var(--popover)) 68%, transparent);
-  --m-float: color-mix(in srgb, var(--main, var(--popover)) 84%, transparent);
-  --m-field: color-mix(in srgb, var(--main, var(--popover)) 60%, transparent);
-  --m-line: rgba(var(--hl), calc(.2 * var(--hk)));
-  --m-sheen: linear-gradient(180deg, rgba(var(--hs), calc(.12 * var(--hk))), rgba(var(--hs), calc(.03 * var(--hk))));
-  --m-edge: inset 0 1px 0 rgba(var(--hs), calc(.22 * var(--hk)));
+  --m-panel: var(--main, var(--popover));
+  --m-float: var(--main, var(--popover));
+  --m-field: var(--main, var(--popover));
+  --m-line: rgba(var(--hl), calc(.09 * var(--hk)));
+  --m-sheen: linear-gradient(180deg, rgba(var(--hl), calc(.035 * var(--hk))), rgba(var(--hl), calc(.012 * var(--hk))) 120px);
+  --m-edge: inset 0 1px 0 rgba(var(--hl), calc(.05 * var(--hk)));
+  --m-shadow: 0 10px 30px -12px rgba(var(--sd), calc(.7 * var(--sk)));
+  --m-blur: none;
+  --m-sheen-main: linear-gradient(rgba(var(--hl), calc(.018 * var(--hk))), rgba(var(--hl), calc(.018 * var(--hk))));
+  --m-line-float: rgba(var(--hl), calc(.12 * var(--hk)));
+  --m-sheen-float: linear-gradient(180deg, rgba(var(--hl), calc(.07 * var(--hk))), rgba(var(--hl), calc(.03 * var(--hk))));
+  --m-edge-float: inset 0 1px 0 rgba(var(--hl), calc(.07 * var(--hk)));
+  --m-shadow-float: 0 18px 44px -12px rgba(var(--sd), calc(.75 * var(--sk)));
+  --m-blur-float: blur(14px) saturate(1.2);
+  --m-line-field: rgba(var(--hl), calc(.12 * var(--hk)));
+  --m-sheen-field: linear-gradient(180deg, rgba(var(--hl), calc(.075 * var(--hk))), rgba(var(--hl), calc(.035 * var(--hk))));
   /* Sunken controls, and rows that are hovered, picked or raised, are tints of the light and shade. */
   --m-well: rgba(var(--sd), calc(.22 * var(--sk)));
   --m-raise: rgba(var(--hl), calc(.1 * var(--hk)));
   --m-sel: rgba(var(--hl), calc(.14 * var(--hk)));
   --m-hover: rgba(var(--hl), calc(.07 * var(--hk)));
   --m-pane: var(--m-float);
-  --m-shadow: 0 18px 48px -18px rgba(var(--sd), calc(.65 * var(--sk)));
-  --m-blur: blur(28px) saturate(1.35);
 }
 :root[data-finish="flat"],
 :root[data-finish="flat"] .mx-app {
@@ -59,9 +70,17 @@
   --m-field: var(--main, var(--popover));
   --m-line: var(--line);
   --m-sheen: none;
+  --m-sheen-main: none;
   --m-edge: none;
   --m-shadow: none;
   --m-blur: none;
+  --m-line-float: var(--line);
+  --m-sheen-float: none;
+  --m-edge-float: none;
+  --m-shadow-float: none;
+  --m-blur-float: none;
+  --m-line-field: var(--line);
+  --m-sheen-field: none;
   /* Gradients and lift (every rule that multiplies by --gk) take nothing in Flat; hover tints stay. */
   --gk: 0;
 }
@@ -117,17 +136,10 @@
 
 /* Without a GPU the blur is dropped (workspace.css), and the fills turn solid with it. */
 :root[data-gpu="software"],
-:root[data-gpu="software"] .mx-app { --m-panel: var(--main, var(--popover)); --m-float: var(--main, var(--popover)); --m-field: var(--main, var(--popover)); --m-blur: none; }
+:root[data-gpu="software"] .mx-app { --m-panel: var(--main, var(--popover)); --m-float: var(--main, var(--popover)); --m-field: var(--main, var(--popover)); --m-blur: none; --m-blur-float: none; }
 
-/* ---- the window behind the glass ---- */
-:root[data-finish="glass"]:not([data-material="mica"]) .mx-window {
-  background:
-    radial-gradient(700px 520px at 8% 4%, color-mix(in oklab, var(--accent) 22%, transparent), transparent 70%),
-    radial-gradient(760px 560px at 96% 96%, color-mix(in oklab, var(--ansi-mag) 16%, transparent), transparent 70%),
-    radial-gradient(620px 460px at 60% 40%, color-mix(in oklab, var(--ansi-blue, var(--accent)) 10%, transparent), transparent 70%),
-    var(--bg);
-}
-:root[data-finish="flat"] .mx-window { background: var(--bg); }
+/* ---- the window behind the cards: the theme's ground; Settings › Background glow adds its tints (workspace.css) ---- */
+.mx-window { background: var(--bg); }
 
 /* ---- panel ---- */
 .mx-app .mx-card,
@@ -141,6 +153,8 @@
   box-shadow: var(--m-edge), var(--m-shadow);
   backdrop-filter: var(--m-blur);
 }
+/* The workspace card carries a flat highlight, the sidebar one that fades out over its first 120px. */
+.mx-app .mx-main { background: var(--m-sheen-main), var(--m-panel); }
 
 /* ---- float ---- */
 .mx-app .mx-ctx,
@@ -162,10 +176,10 @@
 .mx-app .mx-pane-ended,
 .mx-app .mx-focus-pill,
 .mx-pop {
-  background: var(--m-sheen), var(--m-float);
-  border: 1px solid var(--m-line);
-  box-shadow: var(--m-edge), var(--m-shadow);
-  backdrop-filter: var(--m-blur);
+  background: var(--m-sheen-float), var(--m-float);
+  border: 1px solid var(--m-line-float);
+  box-shadow: var(--m-edge-float), var(--m-shadow-float);
+  backdrop-filter: var(--m-blur-float);
 }
 /* One plain shadow keeps a flat float apart from what is under it. */
 :root[data-finish="flat"] .mx-ctx,
@@ -192,10 +206,10 @@
 .mx-app .mx-box,
 .mx-app .mx-settings-tray,
 .mx-field {
-  background: var(--m-sheen), var(--m-field);
-  border: 1px solid var(--m-line);
-  box-shadow: var(--m-edge);
-  backdrop-filter: var(--m-blur);
+  background: var(--m-sheen-field), var(--m-field);
+  border: 1px solid var(--m-line-field);
+  box-shadow: var(--m-edge-float);
+  backdrop-filter: none;
 }
 .mx-app .mx-settings-tray { border-top: 0; box-shadow: none; }
 
@@ -210,10 +224,10 @@
   backdrop-filter: var(--m-blur);
 }
 :root .settings-dialog {
-  background: var(--m-sheen), var(--m-float);
-  border-color: var(--m-line);
-  box-shadow: var(--m-edge), var(--m-shadow);
-  backdrop-filter: var(--m-blur);
+  background: var(--m-sheen-float), var(--m-float);
+  border-color: var(--m-line-float);
+  box-shadow: var(--m-edge-float), var(--m-shadow-float);
+  backdrop-filter: var(--m-blur-float);
 }
 :root .composer-box, :root .user-bubble, :root .activity-row, :root .approval-request {
   background: var(--m-sheen), var(--m-field);

@@ -195,21 +195,26 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   without WebGL 2 (`data-gpu="software"`) the same rules use cheaper values: no blur, a 1px ring for the popover
   shadow ([PERFORMANCE](PERFORMANCE.md)).
 - **One material, three roles (`apps/gui/src/material.css`).** The two finishes and the five styles are told apart in
-  that file and nowhere else. Every surface is a *panel* (sidebar, main card, Inbox, inspector), a *float* (menus, popovers, dialogs, the
-  palette, find, toasts) or a *field* (the message box and its tray), and takes its fill, hairline, highlight, shadow
-  and blur from that role's `--m-*` tokens. **Glass**: translucent fills over a blur, a hairline and top highlight, soft
-  shadows, and two tints of the theme behind the window (on Windows the window is Mica and the desktop shows through).
-  **Flat**: solid fills, a hairline, no blur, no highlight (`--gk` is 0, which turns off every gradient and lift that multiplies by it; hover tints stay), one plain shadow on floats. A new surface is added to a role's list in
-  `material.css`; it does not set a background of its own. A popover opens through `PopupContent`
-  (`components/ui/popup.tsx`) or carries `mx-pop`, so it is portalled into the window root and takes the float role.
-  **Inside a surface**, nothing reads the theme's solid colours directly: a sunken control is `--m-well`, a raised or
-  current row `--m-raise`, a picked row `--m-sel`, a hovered one `--m-hover`, a dialog's own ground `--m-pane`. Flat
-  maps them to the theme's `--well`/`--raise`/`--sel`/`--hover`/`--pane`; Glass maps them to tints of the light
-  (`--hl`) and shade (`--sd`). Tints are written `rgba(var(--hl), calc(.06 * var(--hk)))`, never a fixed white.
-  The sheen and top edge use `--hs` (white in every theme) and the hairline uses `--hl` (ink on a light theme), so
-  Glass reads in light and dark alike. `src/material.test.ts` fails when a stylesheet reads a solid surface colour or
-  a fixed white. Left on purpose: terminal grounds (`--term`, `--main` under a terminal), scrims, brand and status
-  colours, the switch knob, and the legacy `App.css` shell outside the window root.
+  that file and nowhere else. Every surface is a *panel* (sidebar, main card, Inbox, inspector), a *float* (menus,
+  popovers, dialogs, the palette, find, toasts) or a *field* (the message box and its tray), and takes its fill,
+  hairline, highlight, shadow and blur from that role's `--m-*` tokens. **Glass** (and **Frosted**, which then lays its
+  own translucent panels on top) is drawn as the redesign draws it: opaque `--main` cards on the window ground. A panel
+  has a faint top highlight (`rgba(--hl, .035)` fading to `.012` over 120px on the sidebar, a flat `.018` on the
+  workspace card), a `rgba(--hl, .09)` hairline, an inner top edge and a `0 10px 30px -12px` shadow; a float has a
+  stronger highlight (`.07` to `.03`), a `.12` hairline and a `0 18px 44px -12px` shadow, with a 14px blur behind it; a
+  field sits between (`.075` to `.035`). **Flat** (Mono Type, Console, Retro Pixel): solid fills, a hairline, no blur, no
+  highlight (`--gk` is 0, which turns off every gradient and lift that multiplies by it; hover tints stay), one plain
+  shadow on floats. A new surface is added to a role's list in `material.css`; it does not set a background of its
+  own. A popover opens through `PopupContent` (`components/ui/popup.tsx`) or carries `mx-pop`, so it is portalled into
+  the window root and takes the float role. **Inside a surface**, nothing reads the theme's solid colours directly: a
+  sunken control is `--m-well`, a raised or current row `--m-raise`, a picked row `--m-sel`, a hovered one
+  `--m-hover`, a dialog's own ground `--m-pane`. Flat maps them to the theme's `--well`/`--raise`/`--sel`/`--hover`/
+  `--pane`; Glass maps them to tints of the light (`--hl`) and shade (`--sd`). Tints are written
+  `rgba(var(--hl), calc(.06 * var(--hk)))`, never a fixed white. The hairline uses `--hl` (ink on a light theme).
+  `src/material.test.ts` fails when a stylesheet reads a solid surface colour or a fixed white. Left on purpose:
+  terminal grounds (`--term`, `--main` under a terminal), scrims, brand and status colours, the switch knob, and the
+  legacy `App.css` shell outside the window root. **Background glow** (Settings › Appearance, `backgroundGlow`) is the
+  only tint behind the cards, and Frosted always has it.
 - **Window style: five looks, one set of tokens** (Settings › Appearance › Window style, `style`; the root carries
   `data-style` and `data-finish`). **Glass** (the default: Geist, teal, floating frosted cards), **Frosted** (darker,
   quieter glass, 22px corners, a rose accent, Inter and JetBrains Mono), **Mono Type** (Space Mono everywhere,
