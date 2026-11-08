@@ -13,6 +13,7 @@ import {
   listenSessionsChanged,
   loadConversations,
   loadDaemonRestartStatus,
+  openDaemonLog,
   renameConversationOnDaemon,
   restartMismatchedDaemon,
   sendTerminalInput,
@@ -23,7 +24,7 @@ import {
   startShellSession,
   undoCloseSession,
 } from '@/api/daemon'
-import { LOCAL_MACHINE, addMachine, cancelAddMachine, listSshHosts, listenAttention, listenMachineClipboard, listenMachineError, listenMachineNotice, listenMachineRemoved, listenMachineSessions, listenMachineState, loadMachinesOverview, machineActivity, removeMachine, retryMachine, setMachineGrant, startSessionOnMachine, terminalOf, unregisterMachine, type Attention, type Grant, type MachineState } from '@/api/machines'
+import { LOCAL_MACHINE, addMachine, cancelAddMachine, listSshHosts, listenAttention, listenMachineClipboard, listenMachineError, listenMachineNotice, listenMachineRemoved, listenMachineSessions, listenMachineState, listenMachineUpdateProgress, loadMachinesOverview, machineActivity, removeMachine, retryMachine, setMachineGrant, startSessionOnMachine, terminalOf, unregisterMachine, type Attention, type Grant, type MachineState } from '@/api/machines'
 import { TitleBar } from '@/components/TitleBar'
 import { Toaster } from '@/components/ui/sonner'
 import { markConversationsDisconnected } from '@/data/connection'
@@ -600,16 +601,28 @@ export function DesktopApp() {
   // The restarted daemon is dialled again once the update is in: the state moves on by itself.
   // One update per machine at a time: two would race to replace the same file there.
   const updatingRef = useRef<Set<string>>(new Set())
+  // How far each machine's update has got. A machine is in it from the moment its update starts until it ends.
+  const [updateProgress, setUpdateProgress] = useState<Readonly<Record<string, number>>>({})
+  useEffect(() => {
+    let stopped = false
+    let unlisten: (() => void) | undefined
+    listenMachineUpdateProgress((progress) => {
+      setUpdateProgress((current) => (progress.name in current ? { ...current, [progress.name]: progress.percent } : current))
+    }).then((stop) => { if (stopped) stop(); else unlisten = stop }, (error: unknown) => { console.warn('Could not listen for update progress', error) })
+    return () => { stopped = true; unlisten?.() }
+  }, [])
   const updateNamed = useCallback(async (name: string, action: UpdateAction, whenIdle: boolean) => {
     if (updatingRef.current.has(name)) {
       toast.message(`${name} is already being updated.`)
       return
     }
     updatingRef.current.add(name)
+    setUpdateProgress((current) => ({ ...current, [name]: 0 }))
     try {
       await runMachineUpdate(name, action, whenIdle, () => { retryNamed(name) })
     } finally {
       updatingRef.current.delete(name)
+      setUpdateProgress((current) => Object.fromEntries(Object.entries(current).filter(([key]) => key !== name)))
     }
   }, [retryNamed])
   const copyCommand = useCallback((command: string) => {
@@ -1969,6 +1982,7 @@ export function DesktopApp() {
       railUpdateSlot={updateSlot('rail')}
       draft={newChatOpen ? { machine: LOCAL_MACHINE } : null}
       serviceText={serviceFooterText}
+      updateProgress={updateProgress}
     />
   )
 
@@ -2016,7 +2030,7 @@ export function DesktopApp() {
                   onResume={resumeInterrupted}
                   onDismiss={(id) => { setDismissedRestores((current) => new Set(current).add(id)) }}
                 />
-                <ServiceStatus online={online} failures={failures} mismatch={Boolean(mismatch)} retryAt={retryAt} detail={offlineDetail ?? (sessionsQuery.isError ? daemonConnectionError(sessionsQuery.error) : null)} restart={restartOffer} sessions={sessions.length} onRetry={() => { void refetchSessions() }} />
+                <ServiceStatus online={online} failures={failures} mismatch={Boolean(mismatch)} retryAt={retryAt} detail={offlineDetail ?? (sessionsQuery.isError ? daemonConnectionError(sessionsQuery.error) : null)} restart={restartOffer} sessions={sessions.length} onRetry={() => { void refetchSessions() }} onOpenLog={() => { openDaemonLog().catch((error: unknown) => { toast.error(errorMessage(error, 'Could not open the log')) }) }} />
                 {tab ? (
                   <div className={`mx-panes${tab.panes.length > 1 && tab.max === null ? ' is-split' : ''}`}>
                     {paneColumns(tab, narrow).map((column, columnIndex, columns) => (

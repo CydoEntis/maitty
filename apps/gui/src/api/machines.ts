@@ -181,6 +181,22 @@ export async function updateMachine(name: string, install: boolean, whenIdle: bo
   return z.string().parse(await invoke('update_machine', { name, install, whenIdle }))
 }
 
+const PERCENT_MAX = 100
+const UpdateProgressSchema = z.object({ name: z.string(), percent: z.number().int().min(0).max(PERCENT_MAX) })
+export type UpdateProgress = z.infer<typeof UpdateProgressSchema>
+
+/** Calls back as the host says how far a machine's install or update has got: the stage it just finished, as a percent. */
+export function listenMachineUpdateProgress(onProgress: (progress: UpdateProgress) => void): Promise<() => void> {
+  return listen<unknown>('machine-update-progress', (event) => {
+    const parsed = UpdateProgressSchema.safeParse(event.payload)
+    if (!parsed.success) {
+      console.warn('The host sent an update progress this window cannot read', parsed.error.issues)
+      return
+    }
+    onProgress(parsed.data)
+  })
+}
+
 /**
  * Take a machine out of the list. Its sessions keep running on it and the layout saved under its
  * name is kept. Rejects with the host's words when the entry could not be removed.

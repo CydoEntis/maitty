@@ -271,6 +271,12 @@ export async function restartMismatchedDaemon(expectedProtocol: number): Promise
   await invoke('restart_mismatched_daemon', { expectedProtocol })
 }
 
+/** Shows the service's log in the system's file manager. Rejects with the host's words, such as "There is no log yet." */
+export async function openDaemonLog(): Promise<void> {
+  if (!isDesktop()) throw new Error('The log is available in the desktop app')
+  await invoke('open_daemon_log')
+}
+
 const ProcessLoadSchema = z.object({
   pid: z.number().int().nonnegative(),
   name: z.string(),

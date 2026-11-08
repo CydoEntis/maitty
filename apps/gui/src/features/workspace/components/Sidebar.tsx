@@ -65,6 +65,8 @@ export type SidebarProps = {
   updateSlot: ReactNode
   /** The update button in the rail's foot. */
   railUpdateSlot: ReactNode
+  /** How far an install or update of each remote machine has got, by machine name, 0 to 100; absent when none runs. */
+  updateProgress?: Readonly<Record<string, number>> | undefined
   /** What the footer says while the service is not connected; a red dot and this, in muted grey, never a banner. */
   serviceText?: string | undefined
   /** A chat that is being written but has no first message yet: listed on its machine so it is not lost. */
@@ -263,6 +265,7 @@ function Expanded(props: SidebarProps) {
               group={group}
               open={filtering || views.isOpen(group.head.key) || draft?.machine === group.head.machine}
               draft={draft?.machine === group.head.machine}
+              progress={group.head.name === null ? undefined : props.updateProgress?.[group.head.name]}
               byProject={views.isByProject(group.head.key)}
               canStart={props.canStart}
               onToggle={() => { views.toggle(group.head.key) }}
@@ -292,6 +295,8 @@ function Expanded(props: SidebarProps) {
 type SectionProps = {
   /** A draft chat is listed first in this machine. */
   draft: boolean
+  /** How far this machine's update has got, while one runs. */
+  progress: number | undefined
   group: MachineGroup
   open: boolean
   byProject: boolean
@@ -308,7 +313,7 @@ type SectionProps = {
 }
 
 /** One machine: its heading (name, count, group-by-project, its line's dot, +) and its sessions. */
-function MachineSection({ draft, group, open, byProject, canStart, onToggle, onToggleByProject, onAdd, onAddMenu, onUpdate, onContextMenu, renderRow }: SectionProps) {
+function MachineSection({ draft, progress, group, open, byProject, canStart, onToggle, onToggleByProject, onAdd, onAddMenu, onUpdate, onContextMenu, renderRow }: SectionProps) {
   const { head, sessions } = group
   const title = machineTitle(head)
   const projects = byProject ? projectGroups(sessions) : []
@@ -321,11 +326,16 @@ function MachineSection({ draft, group, open, byProject, canStart, onToggle, onT
           <span className="mx-machine-name">{title}</span>
           <span className="mx-machine-count">{sessions.length}</span>
         </button>
-        {head.name !== null && head.updateAction !== null && <UpdateButton name={head.name} action={head.updateAction} onUpdate={onUpdate} />}
+        {progress !== undefined
+          ? <span className="mx-machine-pct mono">{String(progress)}%</span>
+          : head.name !== null && head.updateAction !== null && <UpdateButton name={head.name} action={head.updateAction} onUpdate={onUpdate} />}
         <button type="button" className={`mx-machine-group${byProject ? ' is-on' : ''}`} aria-pressed={byProject} aria-label={byProject ? 'Show one list, most urgent first' : 'Group by project'} title={byProject ? 'Show one list, most urgent first' : 'Group by project'} onClick={onToggleByProject}><Icon name="folder" /></button>
         <span className={`mx-machine-dot${head.updateAction !== null ? ' is-warn' : head.down ? ' is-offline' : ''}`} role="img" aria-label={head.down ? `${title} is ${head.chip?.word ?? 'not reachable'}` : `${title} is connected`} title={head.why ?? (head.down ? head.chip?.word ?? 'not reachable' : `${title} is connected`)} />
         <button type="button" className="mx-machine-add" aria-label={`New agent chat on ${title}`} title={`New agent chat on ${title} (right-click for more)`} disabled={!canStart || head.down} onClick={onAdd} onContextMenu={onAddMenu}><Icon name="plus" size={13} /></button>
       </div>
+      {progress !== undefined && head.name !== null && (
+        <span className="mx-machine-progress" role="progressbar" aria-label={`Updating ${head.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><span style={{ width: `${String(progress)}%` }} /></span>
+      )}
       <Collapse open={open}>
         {draft && <DraftRow />}
         {byProject ? (

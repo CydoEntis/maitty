@@ -53,7 +53,7 @@ function ServiceLayer({ children }: { children: ReactNode }) {
 const plural = (count: number, one: string, many: string): string => `${String(count)} ${count === 1 ? one : many}`
 
 /** After every try failed: the service stopped. A line on what is saved, the technical details tucked away, and how to start it again. */
-function ServiceDownCard({ detail, sessions, onStart, onRetry }: { detail: string | null; sessions: number; onStart: () => void; onRetry: () => void }) {
+function ServiceDownCard({ detail, sessions, onStart, onRetry, onOpenLog }: { detail: string | null; sessions: number; onStart: () => void; onRetry: () => void; onOpenLog: () => void }) {
   const first = useRef<HTMLButtonElement>(null)
   useEffect(() => { first.current?.focus() }, [])
   return (
@@ -73,6 +73,7 @@ function ServiceDownCard({ detail, sessions, onStart, onRetry }: { detail: strin
         <div className="mx-service-actions">
           <button ref={first} type="button" className="mx-svc-primary" onClick={onStart}>Start service</button>
           <button type="button" className="mx-svc-secondary" onClick={onRetry}>Try again</button>
+          <button type="button" className="mx-svc-text" onClick={onOpenLog}>Open log</button>
         </div>
       </section>
     </ServiceLayer>
@@ -143,7 +144,7 @@ function ServiceUpdateCard({ restart, onLater }: { restart: RestartOffer | null;
  * Service down card after the last one, or the update card (then a bar) when the service is another
  * version. Nothing when it is connected.
  */
-export function ServiceStatus({ online, failures, mismatch, retryAt, detail, restart, sessions, onRetry }: {
+export function ServiceStatus({ online, failures, mismatch, retryAt, detail, restart, sessions, onRetry, onOpenLog }: {
   online: boolean
   failures: number
   mismatch: boolean
@@ -154,12 +155,14 @@ export function ServiceStatus({ online, failures, mismatch, retryAt, detail, res
   sessions: number
   /** Tries to reach maittyd again now. The window's connection starts the service when it is not running, so this is also how it is started. */
   onRetry: () => void
+  /** Shows the service's log, the only record of why it stopped. */
+  onOpenLog: () => void
 }) {
   const [notNow, setNotNow] = useState(false)
   const state = serviceStateOf({ online, failures, mismatch })
   if (state === 'ok') return null
   if (state === 'reconnecting') return <ReconnectingBar failures={failures} retryAt={retryAt} onRetry={onRetry} />
-  if (state === 'down') return <ServiceDownCard detail={detail} sessions={sessions} onStart={onRetry} onRetry={onRetry} />
+  if (state === 'down') return <ServiceDownCard detail={detail} sessions={sessions} onStart={onRetry} onRetry={onRetry} onOpenLog={onOpenLog} />
   if (notNow) return <OfflineBanner retryAt={retryAt} detail={detail} restart={restart} onRetry={onRetry} />
   return <ServiceUpdateCard restart={restart} onLater={() => { setNotNow(true) }} />
 }

@@ -128,8 +128,8 @@ machine's New shell here) starts a plain shell in the start folder with no dialo
 Unknown, spinners stop and input waits. The first four failed tries show a thin bar under the pane header, "Reconnecting to
 maittyd · your sessions are still running", with "Try N of 5 · next in Ns" (it ticks each second) and **Retry now**. After the
 fifth a veil (the main card under `color-mix(--main 55%)` and a 3px blur) and one glass card take over: **Maitty service
-stopped**, a line saying how many sessions are saved, the technical details under a Details disclosure, and **Start service**
-and **Try again**. The desktop's connection starts maittyd itself on every try (`open_or_spawn_for_user`), so both buttons try
+stopped**, a line saying how many sessions are saved, the technical details under a Details disclosure, and **Start service**,
+**Try again** and **Open log** (shows `daemon.log` selected in the data folder; the only record of why it stopped). The desktop's connection starts maittyd itself on every try (`open_or_spawn_for_user`), so both buttons try
 again at once; there is no separate start-service command. A running service of another protocol gets the same veil and card,
 **Restart Maitty to finish updating**, "The app updated to v76, but the service is still on v75.", a tray of what a restart
 keeps and stops (sessions that reopen, agents that will offer Resume, shells that stop; a line with a count of 0 is left out)

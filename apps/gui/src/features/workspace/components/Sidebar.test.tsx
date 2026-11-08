@@ -122,6 +122,19 @@ describe('a machine that needs maitty installed or updated', () => {
     expect(onUpdateMachine).toHaveBeenCalledWith('devbox', 'update')
   })
 
+  it('shows how far its update has got in the header, in place of the Update button', () => {
+    show([], { machines: [LOCAL_HEAD, needing('update')], updateProgress: { devbox: 55 } })
+    expect(screen.getByText('55%')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Update Maitty on devbox' })).toBeNull()
+    expect(screen.getByRole('progressbar', { name: 'Updating devbox' })).toHaveAttribute('aria-valuenow', '55')
+  })
+
+  it('shows no progress for a machine that is not updating', () => {
+    show([], { machines: [LOCAL_HEAD, needing('update')], updateProgress: { other: 55 } })
+    expect(screen.queryByRole('progressbar')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Update Maitty on devbox' })).toBeInTheDocument()
+  })
+
   it('offers neither on a machine that is up to date, nor on this computer', () => {
     show([session(1)], { machines: [LOCAL_HEAD, DEVBOX] })
     expect(machineMenuItems().filter((item) => item.endsWith('Maitty'))).toEqual([])

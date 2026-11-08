@@ -243,6 +243,7 @@ it reads:
 | `MAITTY_SOCKET` | name of a separate server (like `tmux -L`); used for nested test servers | user |
 | `MAITTY_REMOTE` | the SSH host this client works on (from `--remote`) | maitty |
 | `MAITTY_SSH`, `MAITTY_REMOTE_CMD` | replace `ssh` / the remote `maitty` command (`MAITTY_REMOTE_CMD` is one program path); removed from every pane's environment, like `MAITTY_REMOTE` | user |
+| `MAITTY_UPDATE_PROGRESS` | `1` makes `maitty machine update` print a `progress: N` line on stderr as each stage ends (the desktop app sets it; a person at a terminal never sees it) | desktop app |
 | `MAITTY_TERM_ID`, `MAITTY_PANE_TOKEN` | the pane's id and secret, set inside every pane | daemon |
 | `MAITTY_SHOW` | tests print rendered frames | developer |
 | `MAITTY_NO_INTEGRATE` | `1`: the installers and `maitty update` leave agents' config alone instead of running `maitty integrate` | user |

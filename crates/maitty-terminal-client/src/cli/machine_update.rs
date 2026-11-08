@@ -67,6 +67,8 @@ impl Outcome {
 /// Where progress goes and who answers a question: the terminal, or a test.
 pub(crate) trait Talk {
     fn say(&mut self, line: &str);
+    /// How far along the update is, 0 to 100, at each stage it finishes. Nothing by default: only the desktop app asks for it.
+    fn progress(&mut self, _percent: u8) {}
     /// Whether a person is there to answer `confirm`.
     fn can_ask(&self) -> bool;
     fn confirm(&mut self, question: &str) -> bool;
@@ -117,9 +119,11 @@ pub(crate) fn update(
     }
     let remote_cmd = machine.remote_cmd().unwrap_or(APP_COMMAND).to_string();
     talk.say(&format!("probing {name}…"));
+    talk.progress(stage::PROBING);
     let platform = probe_platform(machine, &name)?;
     let installed = probe_installed(machine, &name)?;
     talk.say(&found_line(&name, &platform, &installed));
+    talk.progress(stage::FOUND);
     let state = state_of(&installed, APP_VERSION).ok_or_else(|| {
         let Installed::Broken(why) = &installed else {
             return failed("the version there could not be compared");
@@ -153,6 +157,7 @@ pub(crate) fn update(
     let binary = sources
         .binary(&platform, &mut |line| talk.say(line))
         .map_err(|why| failed(format!("{why}: nothing was sent to {name}")))?;
+    talk.progress(stage::FETCHED);
     let to = destination(&remote_cmd);
     talk.say(&format!(
         "sending {:.1} MB (sha256 {})…",
@@ -162,7 +167,9 @@ pub(crate) fn update(
     send(machine, &name, &to, &binary, had_old)?;
     talk.say("verified: it arrived whole and runs there");
     talk.say(&format!("installed to {to}"));
+    talk.progress(stage::SENT);
     check_reachable(machine, &remote_cmd, &to, &name, talk);
+    talk.progress(stage::REACHABLE);
     if had_old {
         if flags.wait {
             restart_when_idle(machine, &to, &name, IDLE_POLL, talk);
@@ -390,9 +397,26 @@ fn activity_line(code: Option<i32>, stdout: &str) -> String {
     "activity: unknown".into()
 }
 
+/// Where the update stands as each stage ends, for the desktop app's progress line. The numbers are the stages
+/// themselves, not a measurement: the download and the upload have no byte count to report.
+mod stage {
+    pub const PROBING: u8 = 5;
+    pub const FOUND: u8 = 15;
+    pub const FETCHED: u8 = 55;
+    pub const SENT: u8 = 85;
+    pub const REACHABLE: u8 = 95;
+}
+
+/// The line the desktop app reads, on stderr beside the human lines; printed only when it asks for it.
+fn progress_line(percent: u8) -> String {
+    format!("progress: {percent}")
+}
+
 /// The real terminal: progress on stderr, a question answered on stdin when there is a person.
 struct Terminal {
     interactive: bool,
+    /// The desktop app asked for `progress:` lines (it sets `<APP>_UPDATE_PROGRESS=1`).
+    machine_readable: bool,
 }
 
 impl Terminal {
@@ -400,6 +424,7 @@ impl Terminal {
         use std::io::IsTerminal;
         Terminal {
             interactive: std::io::stdin().is_terminal() && std::io::stderr().is_terminal(),
+            machine_readable: std::env::var(concat!(env!("APP_ENV"), "_UPDATE_PROGRESS")).as_deref() == Ok("1"),
         }
     }
 }
@@ -407,6 +432,12 @@ impl Terminal {
 impl Talk for Terminal {
     fn say(&mut self, line: &str) {
         eprintln!("{line}");
+    }
+
+    fn progress(&mut self, percent: u8) {
+        if self.machine_readable {
+            eprintln!("{}", progress_line(percent));
+        }
     }
 
     fn can_ask(&self) -> bool {
@@ -438,5 +469,22 @@ mod activity_tests {
         assert_eq!(activity_line(Some(2), "error: unrecognized subcommand"), "activity: unknown");
         assert_eq!(activity_line(Some(0), "something else"), "activity: unknown");
         assert_eq!(activity_line(None, ""), "activity: unknown");
+    }
+}
+
+#[cfg(test)]
+mod progress_tests {
+    use super::{progress_line, stage};
+
+    #[test]
+    fn the_line_the_desktop_app_reads_is_one_number() {
+        assert_eq!(progress_line(55), "progress: 55");
+    }
+
+    #[test]
+    fn the_stages_only_go_forward_and_leave_room_for_the_restart() {
+        let stages = [stage::PROBING, stage::FOUND, stage::FETCHED, stage::SENT, stage::REACHABLE];
+        assert!(stages.windows(2).all(|pair| pair[0] < pair[1]));
+        assert!(stages.last().copied().unwrap_or(0) < 100);
     }
 }

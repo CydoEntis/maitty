@@ -25,6 +25,7 @@ const daemon = vi.hoisted(() => ({
   markSeenOnDaemon: vi.fn<(conversation: { id: string }) => Promise<void>>(),
   loadDaemonRestartStatus: vi.fn(),
   restartMismatchedDaemon: vi.fn<(protocol: number) => Promise<void>>(),
+  openDaemonLog: vi.fn<() => Promise<void>>(),
   suggestProjectFolders: vi.fn<(typed: string) => Promise<string[]>>(),
   sendTerminalInput: vi.fn<(conversation: { id: string; generation: number }, input: string | Uint8Array) => Promise<void>>(),
   loadMachines: vi.fn(() => Promise.resolve({ names: [], error: null })),
@@ -691,6 +692,10 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     expect(within(card).getByText('Details')).toBeInTheDocument()
     expect(within(screen.getByLabelText('Status')).queryByText('Service stopped')).toBeNull()
     expect(screen.queryByText('Reconnecting to maittyd')).not.toBeInTheDocument()
+
+    daemon.openDaemonLog.mockResolvedValue(undefined)
+    await user.click(within(card).getByRole('button', { name: 'Open log' }))
+    expect(daemon.openDaemonLog).toHaveBeenCalledOnce()
 
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
     await user.click(within(card).getByRole('button', { name: 'Start service' }))

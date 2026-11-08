@@ -314,7 +314,10 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   title and detail, the close at the top right and the action on its own row under the text, 96px below the top edge and 36px
   in from the side.
 - **A remote machine that needs the app** has no row of its own: its dot turns amber and an amber **↑ Update** (or Install)
-  text button sits in its header before the folder button.
+  text button sits in its header before the folder button. While it updates, a mono percentage replaces the button and a
+  2px accent line runs under the header (indented 26px left, 10px right); both go when it ends. The percentage is the stage
+  the update has finished (probed 5, found 15, build fetched 55, sent and verified 85, reachable 95), not a byte count: the
+  download and upload have none to report.
 - **Typing while an agent works.** A chat run by the daemon queues what you send, and the daemon sends it when the turn
   ends. A chat that follows an agent in a terminal does the same on this side: the message is held in the composer store
   (shown under the box in the queue, removable) and typed into the agent's prompt, one at a time, once it is ready for a

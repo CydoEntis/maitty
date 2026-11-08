@@ -139,3 +139,8 @@
 @keyframes mx-draft-dot { 0%, 80%, 100% { opacity: .25; transform: scale(.8); } 40% { opacity: 1; transform: scale(1.15); } }
 :root:has(.mx-app[data-motion="reduced"]) .mx-draft-dots i { animation: none; opacity: .7; }
 @media (prefers-reduced-motion: reduce) { .mx-draft-dots i { animation: none; opacity: .7; } }
+
+/* While a machine updates: its percentage replaces the Update button, and a 2px line runs under the header. */
+.mx-machine-pct { flex: none; padding: 0 4px; font-size: 11px; color: var(--dim); }
+.mx-machine-progress { display: block; margin: -1px 10px 3px 26px; height: 2px; border-radius: 1px; background: rgba(var(--hl), calc(.06 * var(--hk))); overflow: hidden; }
+.mx-machine-progress > span { display: block; height: 100%; background: var(--accent); transition: width .25s ease; }
