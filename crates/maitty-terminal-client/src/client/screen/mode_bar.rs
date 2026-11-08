@@ -74,6 +74,17 @@ fn bound(app: &App, a: &Action) -> Option<KeySpec> {
         .copied()
 }
 
+/// The key that runs `a` with no leader, if it has one (`Alt+↓` for the next session): the one to show while typing,
+/// since it works from where you are. When there are several, the same one every time.
+fn bound_global(app: &App, a: &Action) -> Option<KeySpec> {
+    app.keymap
+        .global
+        .iter()
+        .filter(|(_, action)| *action == a)
+        .map(|(key, _)| *key)
+        .min_by_key(crate::client::design::long_key)
+}
+
 /// A key as the bar spells it: lower case, Ctrl as `^` (`^space`, `tab`, `esc`, `S`).
 pub(in crate::client) fn short_key(k: &KeySpec) -> String {
     let long = crate::client::design::long_key(k).replace("Ctrl+", "^");
@@ -109,14 +120,17 @@ fn mode_chip(label: &str, ground: Color, ink: Color, hit: Option<ScreenHit>) -> 
     }
 }
 
-/// Typing: every key here is a leader key, so each is shown with the leader in front (`^space j/k sessions`): the
-/// bare `j/k` would be typed into the pane. The leader alone starts key mode (a click starts it), and `? help` lists
+/// Typing: a key that needs the leader is shown with it in front (`^space ? help`): the bare key would be typed into the
+/// pane. The session keys are the ones that need none (`alt+↓/alt+↑`). The leader alone starts key mode (a click starts it), and `? help` lists
 /// the keys.
 fn pane_hints(app: &App, t: &Theme) -> Vec<Piece> {
     let lead = short_key(&app.keymap.prefix);
     let mut hints = Vec::new();
     hints.push(hint(lead.clone(), "keys", Some(ScreenHit::ShortcutMode), t));
-    if let (Some(next), Some(prev)) = (bound(app, &Action::NextSession), bound(app, &Action::PrevSession)) {
+    // Changing session without the leader (Alt+↓ / Alt+↑) when it has such keys, since they work from the pane; else the leader keys.
+    if let (Some(next), Some(prev)) = (bound_global(app, &Action::NextSession), bound_global(app, &Action::PrevSession)) {
+        hints.push(hint(format!("{}/{}", short_key(&next), short_key(&prev)), "sessions", None, t));
+    } else if let (Some(next), Some(prev)) = (bound(app, &Action::NextSession), bound(app, &Action::PrevSession)) {
         hints.push(hint(format!("{lead} {}/{}", short_key(&next), short_key(&prev)), "sessions", None, t));
     }
     if let Some(help) = bound(app, &Action::Help) {

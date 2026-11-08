@@ -92,7 +92,7 @@ name, such as the MCP server (`maitty integrate mcp` renames it) or another agen
 ## Shortcuts
 
 The bar along the bottom always shows the mode. It reads ` PANE ` with the session you are on
-and `^space keys  ^space j/k sessions  ^space ? help` (each leader key is shown with the leader, since the bare key would be typed into the pane) while keys go to the terminal. Press `Ctrl+Space` (or
+and `^space keys  alt+↓/alt+↑ sessions  ^space ? help` (a key that needs the leader is shown with it, since the bare key would be typed into the pane; the session keys need none) while keys go to the terminal. Press `Ctrl+Space` (or
 click ` PANE `) for **key mode**: the chip turns to a yellow ` KEYS ` and the bar lists keys to
 press (`n new  s split  x close  tab pane  ? help  esc back`; click one to run it), and each key
 runs an action until you press `Esc`, `Ctrl+Space` again or click into a pane, or start a new

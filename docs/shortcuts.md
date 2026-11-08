@@ -104,7 +104,7 @@ back to the pane, where keys type into the program. So does an action that start
 type into: `t` a shell, `s` / `S` a split, and the dialog once it starts the session; the next key goes
 to the new pane. An action that opens a popup or panel hands it the keys, and closing it returns to key
 mode; `Enter` (message the agent) is one of those. The status bar along the bottom always says which
-mode you are in: ` PANE ` (accent), the session and its folder, then `^space keys  ^space j/k sessions  ^space ? help` (each leader key is shown with the leader, since the bare key would be typed into the pane);
+mode you are in: ` PANE ` (accent), the session and its folder, then `^space keys  alt+↓/alt+↑ sessions  ^space ? help` (a key that needs the leader is shown with it, since the bare key would be typed into the pane; the session keys need none);
 in key mode ` KEYS ` (yellow) and `n new  s split  x close  tab pane  ? help  esc back`, each a click
 that presses it, and a click on ` PANE ` starts key mode. While something other than the panes has the
 keys (the sidebar, a popup, Files, …) the chip names it and its keys sit at the right with the way
@@ -190,6 +190,21 @@ menu runs its items by letter while it is open.
 | Right-click a machine heading | Install or Update Maitty (when it needs it), New shell here, Reconnect, Machines… |
 | Enter on a row of an agent a restart stopped | Types its resume command, then opens the session |
 | Esc | Return keyboard focus to the active pane |
+
+## Machines dialog
+
+Leader `w`, or a click on a remote machine's heading in the sidebar. These keys act inside the dialog, without the leader.
+
+| Keys | Action |
+| --- | --- |
+| Type, Backspace | The machine to add, like `user@host` (the host list below it is `~/.ssh/config`); Enter connects |
+| Up, Down | Walk from the input onto your machines, and back |
+| `r` or Enter | On one of your machines: reconnect |
+| `u` | Install or update maitty there (the bar says which) |
+| `n`, `s` | Turn that machine's toasts, then its alert sounds, on or off. Both are off until you turn them on; the line under the chosen machine says where they stand |
+| `e` | Edit where it is |
+| `x` or Delete | Remove it (Enter confirms, Esc keeps it) |
+| Esc | Close |
 
 ## Text prompts and worktree picker
 
