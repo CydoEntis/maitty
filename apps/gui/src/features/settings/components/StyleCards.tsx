@@ -4,8 +4,7 @@ import { WINDOW_STYLES, withWindowStyle, type WindowStyle, type WindowStyleEntry
 
 /** One line each, under the style's name. */
 const STYLE_META: Readonly<Record<WindowStyle, string>> = {
-  glass: 'Floating glass cards',
-  frosted: 'Darker, softer frost',
+  glass: 'Soft frosted glass',
   mono: 'One width, greyscale',
   console: 'IDE panels, true black',
   pixel: '8-bit, hard edges',

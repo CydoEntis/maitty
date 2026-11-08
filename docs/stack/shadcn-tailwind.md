@@ -53,7 +53,7 @@ pnpm dlx shadcn@latest add button dialog form
 
 ## Project-specific: shadcn-tailwind
 
-Follow the approved `Maitty Desktop specification` handoff and the redesign handoff (five window styles, see [DESIGN](../DESIGN.md#desktop-app)) in
+Follow the approved `Maitty Desktop specification` handoff and the redesign handoff (four window styles, see [DESIGN](../DESIGN.md#desktop-app)) in
 `docs/features/chat-gui/design-brief.md`. Use Geist Variable for interface text
 and Geist Mono Variable for code, paths, shortcuts and diff numbers. Use the
 4-pixel spacing scale, 6–8-pixel control and row radii, 9–10-pixel card radii,

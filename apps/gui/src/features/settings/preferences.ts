@@ -15,7 +15,7 @@ export const DENSITIES: readonly Density[] = ['compact', 'comfortable', 'spaciou
 export type IconSize = 'small' | 'medium' | 'large'
 /** Which side of the window the sidebar sits on. */
 export type SidebarSide = 'left' | 'right'
-/** The window style: one of five looks that share one layout (`theme/windowStyles.ts`). Kept by this window alone. */
+/** The window style: one of four looks that share one layout (`theme/windowStyles.ts`). Kept by this window alone. */
 export type StyleChoice = WindowStyle
 /** App and folder icons keep their colours, or drop to neutral gray tiles. Independent of the style. */
 export type IconColor = 'color' | 'grayscale'
@@ -289,11 +289,11 @@ function isAccent(value: unknown): value is SettingsPreferences['accent'] {
 
 /**
  * "minimal" and "expressive" were the names before the window styles; they read as Flat and Glass, and
- * Flat (like the retired Tiled) reads as Console, the five styles' flat, solid-panel look.
+ * Flat (like the retired Tiled) reads as Console, the flat, solid-panel look.
  */
 function styleOf(value: unknown): StyleChoice | null {
   if (value === 'flat' || value === 'tiled' || value === 'minimal') return 'console'
-  if (value === 'expressive') return 'glass'
+  if (value === 'expressive' || value === 'frosted') return 'glass'
   return isWindowStyle(value) ? value : null
 }
 

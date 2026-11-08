@@ -194,18 +194,18 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   xterm's background and ANSI black are `--main`, so a program that paints with black leaves no box. On a web view
   without WebGL 2 (`data-gpu="software"`) the same rules use cheaper values: no blur, a 1px ring for the popover
   shadow ([PERFORMANCE](PERFORMANCE.md)).
-- **The notification card (`features/notifications/NotificationCard.tsx`).** 340px wide, radius 14 (18 in Frosted), padding
+- **The notification card (`features/notifications/NotificationCard.tsx`).** 340px wide, radius 14 (18 in Glass), padding
   12/12/12/14. A 26px app icon with its 11px status badge, the session's name (13px, 600) with what happened beside it
   ("needs you" amber, "finished" green, "failed" red; 12px, 500), a 22px close, the body (12.5px, `--fg2`, code in 12px
   mono), then 28px buttons (the answer filled in the card's colour) and "just now" (11.5px, `--dim`). In Glass it has its
   own heavier glass: `.09` to `.035` highlight over `--main` at 88%, a `.13` hairline, a 22px blur and a
   `0 18px 48px -12px` shadow. Toasts sit 96px below the top edge and 36px in from the side, clear of the title bar's
   controls. The window ground is opaque on every platform (no Mica), as in the redesign.
-- **One material, three roles (`apps/gui/src/material.css`).** The two finishes and the five styles are told apart in
+- **One material, three roles (`apps/gui/src/material.css`).** The two finishes and the four styles are told apart in
   that file and nowhere else. Every surface is a *panel* (sidebar, main card, Inbox, inspector), a *float* (menus,
   popovers, dialogs, the palette, find, toasts) or a *field* (the message box and its tray), and takes its fill,
-  hairline, highlight, shadow and blur from that role's `--m-*` tokens. **Glass** (and **Frosted**, which then lays its
-  own translucent panels on top) is drawn as the redesign draws it: opaque `--main` cards on the window ground. A panel
+  hairline, highlight, shadow and blur from that role's `--m-*` tokens. The `glass` finish is the base for **Glass**, which
+  then lays its own translucent panels on top (below); the finish's own recipe is opaque `--main` cards on the window ground. A panel
   has a faint top highlight (`rgba(--hl, .035)` fading to `.012` over 120px on the sidebar, a flat `.018` on the
   workspace card), a `rgba(--hl, .09)` hairline, an inner top edge and a `0 10px 30px -12px` shadow; a float has a
   stronger highlight (`.07` to `.03`), a `.12` hairline and a `0 18px 44px -12px` shadow, with a 14px blur behind it; a
@@ -221,10 +221,11 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   `src/material.test.ts` fails when a stylesheet reads a solid surface colour or a fixed white. Left on purpose:
   terminal grounds (`--term`, `--main` under a terminal), scrims, brand and status colours, the switch knob, and the
   legacy `App.css` shell outside the window root. **Background glow** (Settings › Appearance, `backgroundGlow`) is the
-  only tint behind the cards, and Frosted always has it.
-- **Window style: five looks, one set of tokens** (Settings › Appearance › Window style, `style`; the root carries
-  `data-style` and `data-finish`). **Glass** (the default: Geist, teal, floating frosted cards), **Frosted** (darker,
-  quieter glass, 22px corners, a rose accent, Inter and JetBrains Mono), **Mono Type** (Space Mono everywhere,
+  only tint behind the cards, and Glass always has it, painted on the whole window so no seam shows under the title bar.
+- **Window style: four looks, one set of tokens** (Settings › Appearance › Window style, `style`; the root carries
+  `data-style` and `data-finish`). **Glass** (the default: the redesign's Frosted look, clear frosted panels with 22px corners over a soft
+  atmosphere, a rose accent, Inter and JetBrains Mono; the redesign's own opaque Glass was dropped, and a saved
+  `frosted` reads as Glass), **Mono Type** (Space Mono everywhere,
   greyscale, square corners), **Console** (IBM Plex Sans and JetBrains Mono on true black, a teal marker on the
   selected row) and **Retro Pixel** (Pixelify Sans, square corners, 3px borders, hard offset shadows, scanlines). Each
   has a Midnight (dark) and a Day (light) side; layout, features and status colours never change. A style is data in
@@ -234,12 +235,12 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   base tokens, the shared pieces read the component tokens declared in `material.css`: `--c-sel-*` (every selected
   state: a sidebar row, a settings nav item, a chosen segment, a palette row), `--c-field-*` (dropdown buttons, pickers,
   the new-session segments, inputs), `--c-track-*` (the tray behind a segmented control), `--c-sw-*` and `--c-knob-*`
-  (the switch), `--c-tile-ring` (agent and shell tiles) and `--c-head-bg` (sticky headers). Glass and Frosted use the
+  (the switch), `--c-tile-ring` (agent and shell tiles) and `--c-head-bg` (sticky headers). Glass uses the
   defaults; Mono, Console and Pixel override them. What tokens cannot say (square corners, Pixel's borders and
-  scanlines, Frosted's panels, no blur outside Glass and Frosted) is the one `[data-style]` block at the end of
-  `material.css`. `data-finish` is derived (`finishOf`): Glass and Frosted are `glass`, the others `flat`. The style is
+  scanlines, Glass's panels, no blur outside Glass) is the one `[data-style]` block at the end of
+  `material.css`. `data-finish` is derived (`finishOf`): Glass is `glass`, the others `flat`. The style is
   the desktop app's own: it is not in the shared `window_style` setting, which stays Flat or Glass for the config file. A
-  saved Flat or Tiled reads as Console. A new control gets tokens first and is checked in all five styles and both
+  saved Flat or Tiled reads as Console. A new control gets tokens first and is checked in all four styles and both
   themes (Settings › Appearance shows each style live). **Icons** (Settings › Appearance › Icons, `iconColor`,
   `data-icons`): `color` keeps app icons in their own colours; `grayscale` makes them neutral `--raise` tiles.
 - **Title bar.** 32px with no background of its own, so it sits on the window ground (`--tbar` is `transparent`): the
@@ -274,7 +275,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
 - **Status bar.** A 28px line at the bottom of the main area under a hairline, 11.5px muted, one line.
   The left is empty, except "Reconnecting to maittyd…" in amber with a dashed dot when the daemon is
   unreachable. The right holds quick controls: a **theme** menu (Dark, Light or System, a few themes of
-  the kind in use, and "All themes in Settings…"), the **window style** (the five styles), the terminal
+  the kind in use, and "All themes in Settings…"), the **window style** (the four styles), the terminal
   **text size** (−, the size which resets it to 14px, +; Ctrl+= and Ctrl+− do the same) and the shortcuts
   keycaps, which open the shortcut overlay. Hidden in Focus mode and by Settings › General › Window ›
   Status bar (off by default).

@@ -860,7 +860,7 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     const app = renderDesktopApp()
     await screen.findByRole('heading', { name: 'No sessions running' })
     const root = () => document.querySelector<HTMLElement>('.mx-app')
-    expect(root()?.style.getPropertyValue('--bg')).toBe('#090C10')
+    expect(root()?.style.getPropertyValue('--bg')).toBe('#040509')
 
     await user.keyboard('{Control>},{/Control}')
     await user.keyboard('a')

@@ -2,12 +2,12 @@ import { composite } from './color'
 import type { StyleLook, ThemeEntry, ThemeTokens } from './themes'
 
 /**
- * The five window styles of the desktop redesign. A style is data: a set of token overrides for the
+ * The four window styles of the desktop. Glass is the redesign's Frosted look (the redesign's own opaque Glass was dropped). A style is data: a set of token overrides for the
  * dark (Midnight) and light (Day) theme, the fonts, and the two glass dials. No component branches on
  * the style; the shape rules keyed by `[data-style]` live in `material.css`, and the component tokens
  * (`--c-*`) each style sets live there too. Values are copied from the design's `STYLES` object.
  */
-export const WINDOW_STYLE_IDS = ['glass', 'frosted', 'mono', 'console', 'pixel'] as const
+export const WINDOW_STYLE_IDS = ['glass', 'mono', 'console', 'pixel'] as const
 export type WindowStyle = (typeof WINDOW_STYLE_IDS)[number]
 export const DEFAULT_WINDOW_STYLE: WindowStyle = 'glass'
 
@@ -36,8 +36,6 @@ export type WindowStyleEntry = {
   light: Side
 }
 
-const GEIST_UI = "'Geist Variable','Geist',system-ui,sans-serif"
-const GEIST_MONO = "'Geist Mono Variable','Geist Mono',ui-monospace,'Cascadia Code',Consolas,monospace"
 const SPACE_MONO = "'Space Mono',monospace"
 const INTER = "'Inter Variable','Inter',system-ui,sans-serif"
 const JETBRAINS_MONO = "'JetBrains Mono Variable','JetBrains Mono',monospace"
@@ -48,23 +46,13 @@ const NO_SHEEN = 'none'
 // Light themes dim the glass dials of the flat styles by the same amounts.
 const LIGHT_FLAT = { hk: '.55', sk: '.25', sh: NO_SHEEN }
 
-const GLASS: Pick<WindowStyleEntry, 'dark' | 'light'> = {
-  dark: { palette: {}, look: { ui: GEIST_UI, mono: GEIST_MONO } },
-  light: { palette: {}, look: { ui: GEIST_UI, mono: GEIST_MONO } },
-}
-
 export const WINDOW_STYLES: readonly WindowStyleEntry[] = [
   {
-    id: 'glass', name: 'Glass', blurb: 'Frosted floating cards. The default.',
-    preview: { dark: ['#0D1116', '#5FD4BF', '#26303B'], light: ['#FFFFFF', '#0A6F86', '#CCD6E0'] },
-    font: GEIST_UI, ...GLASS,
-  },
-  {
-    id: 'frosted', name: 'Frosted', blurb: 'One soft atmosphere behind clear frosted panels. Rose accent.',
+    id: 'glass', name: 'Glass', blurb: 'One soft atmosphere behind clear frosted panels. Rose accent.',
     preview: { dark: ['rgba(30,30,44,.7)', '#FF8FB3', 'rgba(255,255,255,.14)'], light: ['rgba(255,255,255,.7)', '#C2386B', 'rgba(30,20,45,.14)'] },
     font: INTER,
     dark: {
-      look: { ui: INTER, mono: JETBRAINS_MONO, hk: '.7', sk: '1', glowAccent: '6%', glowMag: '4%' },
+      look: { ui: INTER, mono: JETBRAINS_MONO, hk: '.7', sk: '1', glowAccent: '16%', glowMag: '11%' },
       palette: {
         bg: '#040509', main: '#0B0C12', raise: '#12131A', hover: '#101117', sel: '#16171F', line: 'rgba(255,255,255,.06)', line2: 'rgba(255,255,255,.1)',
         well: 'rgba(3,4,7,.6)', term: '#090A0F', pane: '#0B0C12', paneLine: 'rgba(255,255,255,.07)', fg: '#F1F0F5', fg2: '#C4C3CF', muted: '#9796A6',
@@ -72,7 +60,7 @@ export const WINDOW_STYLES: readonly WindowStyleEntry[] = [
       },
     },
     light: {
-      look: { ui: INTER, mono: JETBRAINS_MONO, hk: '1', sk: '.35', sh: NO_SHEEN },
+      look: { ui: INTER, mono: JETBRAINS_MONO, hk: '1', sk: '.35', sh: NO_SHEEN, glowAccent: '14%', glowMag: '10%' },
       palette: {
         bg: '#ECE8F0', main: '#FBFAFD', raise: '#F4F1F7', hover: '#F1EEF5', sel: '#EAE5F0', line: 'rgba(30,20,45,.08)', line2: 'rgba(30,20,45,.14)',
         well: 'rgba(255,255,255,.5)', term: '#FBFAFD', pane: '#FBFAFD', paneLine: 'rgba(30,20,45,.1)', fg: '#16141C', fg2: '#3A3645', muted: '#5C5768',
@@ -146,10 +134,10 @@ export const WINDOW_STYLES: readonly WindowStyleEntry[] = [
 ]
 
 /**
- * Which of the two material finishes a style is built on (`material.css`): Glass and Frosted are
+ * Which of the two material finishes a style is built on (`material.css`): Glass is
  * translucent fills over a blur; Mono, Console and Pixel are solid fills with their own shape rules.
  */
-export const finishOf = (style: WindowStyle): 'glass' | 'flat' => (style === 'glass' || style === 'frosted' ? 'glass' : 'flat')
+export const finishOf = (style: WindowStyle): 'glass' | 'flat' => (style === 'glass' ? 'glass' : 'flat')
 
 export function findWindowStyle(id: WindowStyle): WindowStyleEntry {
   const found = WINDOW_STYLES.find((style) => style.id === id) ?? WINDOW_STYLES[0]

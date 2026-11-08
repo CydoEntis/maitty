@@ -104,7 +104,7 @@ describe('settings preferences', () => {
 
   it('starts a fresh install in Glass and keeps any saved window style', () => {
     expect(readSettingsPreferences()).toMatchObject({ style: 'glass' })
-    for (const style of ['glass', 'frosted', 'mono', 'console', 'pixel']) {
+    for (const style of ['glass', 'mono', 'console', 'pixel']) {
       localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style }))
       expect(readSettingsPreferences()).toMatchObject({ style })
     }
@@ -115,7 +115,7 @@ describe('settings preferences', () => {
       localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: value }))
       return readSettingsPreferences().style
     }
-    expect([style('minimal'), style('expressive'), style('tiled'), style('flat'), style('glass')]).toEqual(['console', 'glass', 'console', 'console', 'glass'])
+    expect([style('minimal'), style('expressive'), style('tiled'), style('flat'), style('glass'), style('frosted')]).toEqual(['console', 'glass', 'console', 'console', 'glass', 'glass'])
     expect(style('neon')).toBe('glass')
   })
 

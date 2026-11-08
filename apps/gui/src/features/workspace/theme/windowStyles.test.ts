@@ -6,14 +6,9 @@ const MIDNIGHT = findTheme('Midnight')
 const DAY = findTheme('Day')
 
 describe('window styles', () => {
-  it('defines the five styles, each with a dark and a light side', () => {
+  it('defines the four styles, each with a dark and a light side', () => {
     expect(WINDOW_STYLES.map((style) => style.id)).toEqual([...WINDOW_STYLE_IDS])
-    expect(WINDOW_STYLE_IDS).toEqual(['glass', 'frosted', 'mono', 'console', 'pixel'])
-  })
-
-  it('leaves Midnight and Day exactly as they are in Glass, apart from the fonts', () => {
-    expect(withWindowStyle(MIDNIGHT, 'glass').tokens).toEqual(MIDNIGHT.tokens)
-    expect(withWindowStyle(DAY, 'glass').tokens).toEqual(DAY.tokens)
+    expect(WINDOW_STYLE_IDS).toEqual(['glass', 'mono', 'console', 'pixel'])
   })
 
   it('swaps only tokens: every style fills the same set of CSS variables, in both themes', () => {
@@ -24,9 +19,9 @@ describe('window styles', () => {
     }
   })
 
-  it("takes the design's values: Frosted is rose, Mono Type greyscale, Retro Pixel green on navy", () => {
-    expect(withWindowStyle(MIDNIGHT, 'frosted').tokens.accent).toBe('#E89AB4')
-    expect(withWindowStyle(DAY, 'frosted').tokens.accent).toBe('#C2386B')
+  it("takes the design's values: Glass is rose, Mono Type greyscale, Retro Pixel green on navy", () => {
+    expect(withWindowStyle(MIDNIGHT, 'glass').tokens.accent).toBe('#E89AB4')
+    expect(withWindowStyle(DAY, 'glass').tokens.accent).toBe('#C2386B')
     expect(withWindowStyle(MIDNIGHT, 'mono').tokens.accent).toBe('#F0F0F0')
     expect(withWindowStyle(MIDNIGHT, 'pixel').tokens).toMatchObject({ bg: '#1A1C2C', accent: '#A7F070', warn: '#FFEC27' })
     expect(withWindowStyle(DAY, 'pixel').tokens).toMatchObject({ bg: '#E4E6EE', accent: '#2E8B1E', danger: '#D0003C' })
@@ -39,7 +34,7 @@ describe('window styles', () => {
     expect(mono['--sk']).toBe('.5')
     expect(themeStyle(withWindowStyle(DAY, 'mono'))['--hk']).toBe('.55')
     expect(themeStyle(withWindowStyle(MIDNIGHT, 'console'))['--mono']).toContain('JetBrains Mono')
-    expect(themeStyle(withWindowStyle(MIDNIGHT, 'glass'))['--hk']).toBe('1')
+    expect(themeStyle(withWindowStyle(MIDNIGHT, 'glass'))['--hk']).toBe('.7')
   })
 
   it("rings a status badge with the style's own card colour", () => {
@@ -57,7 +52,7 @@ describe('window styles', () => {
     expect(themeStyle(styled)['--ui']).toContain('Pixelify')
   })
 
-  it('builds Glass and Frosted on the glass finish and the rest on the flat one', () => {
-    expect(WINDOW_STYLE_IDS.map(finishOf)).toEqual(['glass', 'glass', 'flat', 'flat', 'flat'])
+  it('builds Glass on the glass finish and the rest on the flat one', () => {
+    expect(WINDOW_STYLE_IDS.map(finishOf)).toEqual(['glass', 'flat', 'flat', 'flat'])
   })
 })

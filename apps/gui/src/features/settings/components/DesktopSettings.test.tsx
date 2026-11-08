@@ -316,14 +316,13 @@ describe('desktop settings', () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ iconSize: 'small' }))
   })
 
-  it('offers the five window styles, with the current one checked', async () => {
+  it('offers the four window styles, with the current one checked', async () => {
     const user = userEvent.setup()
     const { onChange } = renderSettings('appearance', { preferences: { ...PREFS, style: 'glass' } })
     const styles = screen.getByRole('radiogroup', { name: 'Window style' })
 
     expect(within(styles).getAllByRole('radio').map((radio) => radio.textContent)).toEqual([
       expect.stringContaining('Glass'),
-      expect.stringContaining('Frosted'),
       expect.stringContaining('Mono Type'),
       expect.stringContaining('Console'),
       expect.stringContaining('Retro Pixel'),
