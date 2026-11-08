@@ -135,9 +135,9 @@ describe('a machine that needs maitty installed or updated', () => {
 describe('subagents', () => {
   const parent = (extra: Partial<Conversation> = {}) => session(1, { agent: 'claude', named: true, title: 'Growth', status: 'working', details: { asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, subagents: [child('a', 'Check migration order', 'Completed'), child('b', 'Write drafts tests', 'Working'), child('c', 'Load test', 'AwaitingApproval')] }, ...extra })
 
-  it('shows small icons under a session that is not selected, saying each one’s state', () => {
+  it('shows small icons under a session that is not selected, saying each one’s state; a finished one has reported back and is gone', () => {
     show([parent()])
-    expect(screen.getByRole('img', { name: 'Subagents: Check migration order done, Write drafts tests working, Load test needs you' })).toBeTruthy()
+    expect(screen.getByRole('img', { name: 'Subagents: Write drafts tests working, Load test needs you' })).toBeTruthy()
     expect(screen.queryByRole('group', { name: 'Subagents' })).toBeNull()
   })
 
@@ -151,8 +151,8 @@ describe('subagents', () => {
   })
 
   it('marks the subagent whose chat is open', () => {
-    show([parent()], { focusedId: 't1', openSubagent: { sessionId: 't1', subagentId: 'a' } })
-    expect(screen.getByRole('button', { name: 'Check migration order, done' })).toHaveAttribute('aria-current', 'page')
+    show([parent()], { focusedId: 't1', openSubagent: { sessionId: 't1', subagentId: 'b' } })
+    expect(screen.getByRole('button', { name: 'Write drafts tests, working' })).toHaveAttribute('aria-current', 'page')
   })
 
   it('offers Open, Open in split right, Copy summary and a Stop it cannot do yet on right-click', async () => {

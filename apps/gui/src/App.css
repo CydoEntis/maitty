@@ -38,19 +38,27 @@
 .maitty-toaster [data-sonner-toast][data-type="error"] [data-icon] { color: var(--danger); }
 .maitty-toaster [data-sonner-toast][data-type="info"] [data-icon] { color: var(--accent); }
 .maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-close-button] {
-  background: var(--m-raise);
-  border-color: var(--line2);
   color: var(--dim);
 }
-.maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-close-button]:hover {
-  background: var(--m-hover);
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-button]:hover {
+  background: rgba(var(--hl), calc(.06 * var(--hk)));
   color: var(--fg);
 }
+/* A toast is laid out as the notification card is: the icon tile, the title and detail, the close at the top right,
+   and the action button on a row of its own under the text (never squeezed beside it, where it was cut off). */
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast][data-styled="true"] { flex-wrap: wrap; align-items: flex-start; gap: 7px 10px; }
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-icon] { width: 26px; height: 26px; margin: 0; flex: none; border-radius: 7px; display: flex; align-items: center; justify-content: center; background: var(--m-well); }
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-content] { flex: 1 1 0; min-width: 0; padding-right: 22px; gap: 3px; }
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-button] { order: 3; flex: none; height: 28px; margin: 0 0 0 36px; padding: 0 12px; border-radius: 8px; font-size: 12.5px; }
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast]:not(:has([data-icon])) [data-button] { margin-left: 0; }
 .maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-action] {
   background: var(--accent);
   color: var(--on-accent);
   font-weight: 600;
+  box-shadow: 0 2px 10px -2px color-mix(in srgb, var(--accent) 60%, transparent);
 }
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-cancel] { background: rgba(var(--hl), calc(.06 * var(--hk))); color: var(--fg); font-weight: 500; box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.1 * var(--hk))); }
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-button] { top: 8px; right: 8px; left: auto; width: 22px; height: 22px; transform: none; border: 0; border-radius: 6px; background: transparent; opacity: 1; }
 
 .skip-link { background: var(--primary); border-radius: 7px; color: var(--primary-foreground); font-size: 12px; font-weight: 650; left: 10px; padding: 9px 12px; position: fixed; top: 8px; transform: translateY(calc(-100% - 16px)); transition: transform .14s ease; z-index: 1000; }
 .skip-link:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; transform: translateY(0); }

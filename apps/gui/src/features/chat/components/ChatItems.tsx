@@ -1,5 +1,5 @@
 import { memo, type ReactNode } from 'react'
-import { Spinner } from '@/features/workspace/components/glyphs'
+import { Icon, Spinner } from '@/features/workspace/components/glyphs'
 import { ElapsedSince } from '@/features/workspace/components/times'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
 import { dividerText, splitLead, streamingParagraphs, type ChatRow } from '../chatRows'
@@ -58,6 +58,8 @@ function sameRow(a: ChatRow, b: ChatRow): boolean {
       return b.kind === 'working' && a.phrase === b.phrase
     case 'echo':
       return b.kind === 'echo' && a.text === b.text
+    case 'report':
+      return b.kind === 'report' && a.text === b.text
     case 'user':
     case 'step':
     case 'divider':
@@ -89,6 +91,8 @@ export const ChatItem = memo(function ChatItem({ row, agent, workingSince, appro
         </Frame>
       )
     }
+    case 'report':
+      return <Frame><p className="mx-report"><Icon name="check" size={11} />{row.text}</p></Frame>
     case 'echo':
       return (
         <Frame>

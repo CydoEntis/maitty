@@ -1613,7 +1613,7 @@ export function DesktopApp() {
       const card = target && sessionNoticeFor(target, projectOf.get(target.id), {
         open: () => { showSessionById(notice.sessionId) },
         // A chat session's approval is answered in its chat, by the request's id, never by typing a letter.
-        allow: online && !isChatSession(target.conversation) ? () => { answerSession(notice.sessionId, 'y') } : null,
+        allow: !isChatSession(target.conversation) ? () => { answerSession(notice.sessionId, 'y') } : null,
       })
       if (card) showSessionNotice(notice.sessionId, card)
       return
