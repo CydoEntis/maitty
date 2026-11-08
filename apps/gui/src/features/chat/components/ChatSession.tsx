@@ -15,6 +15,7 @@ import { BYPASS_MODE, modeLabel } from '../chatMeta'
 import type { ApprovalDecision } from '../chatEvents'
 import type { PermissionAsk } from '@/data/preview'
 import { ANSWER_KEY, ANSWER_KEYS, choiceKey, type AskChoice } from '../permissionAsk'
+import { keepComposerFocus } from '../keepComposerFocus'
 import { releaseFirstMessage, takeCarriedDraft, useHeldFirstMessage } from '../firstMessage'
 import { Composer } from './Composer'
 import { ChatItem } from './ChatItems'
@@ -221,7 +222,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   ].filter((notice): notice is string => notice !== null)
 
   return (
-    <div className="mx-chat" onKeyDown={onKeyDown}>
+    <div className="mx-chat" onKeyDown={onKeyDown} onClick={keepComposerFocus}>
       {(notices.length > 0 || fullAccess) && (
         <div className="mx-chat-notices" role={offline ? 'status' : undefined}>
           {notices.map((notice) => <span key={notice}>{notice}</span>)}

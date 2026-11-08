@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FAKE_CONVERSATION, FakeDaemonHistory } from '../fakeDaemonHistory'
@@ -144,6 +144,18 @@ describe('how the chat feels while it waits', () => {
     // And it does not stay for good: with no answer it gives way after a moment.
     await settle(1000)
     expect(screen.queryByText(/claude is thinking/)).not.toBeInTheDocument()
+  })
+
+  it('gives the focus back to the message box when you click the conversation, so one click is enough to type again', async () => {
+    open('Idle')
+    await settle(IDLE_POLL_MS)
+    const box = screen.getByRole('textbox', { name: 'Message claude' })
+    box.blur()
+    expect(box).not.toHaveFocus()
+
+    fireEvent.click(screen.getByText('earlier'))
+
+    expect(box).toHaveFocus()
   })
 
   it('says under the message box how the agent is set up, from its own file', async () => {

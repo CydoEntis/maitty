@@ -4,6 +4,7 @@ import { Spinner } from '@/features/workspace/components/glyphs'
 import { connectAgent } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
 import { NO_EVENTS_HINT_AFTER_MS, noEventsHint, type ChatAgent } from '@/features/workspace/model/chatView'
+import { keepComposerFocus } from '../keepComposerFocus'
 import { carryDraft, holdFirstMessage, useHeldFirstMessage } from '../firstMessage'
 import type { AttachmentIntake } from '../useAttachmentIntake'
 import type { ChatComposer } from '../useChatComposer'
@@ -73,7 +74,7 @@ export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', 
   }), [draft, sessionId])
 
   return (
-    <div className="mx-chat">
+    <div className="mx-chat" onClick={keepComposerFocus}>
       {/* A bar that comes and goes would push the conversation down and up as the chat takes over, so it shows only when the agent is late. */}
       {late && (
         <div className="mx-chat-notices">
