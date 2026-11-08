@@ -7,6 +7,8 @@ import { useTipWithKeys, useShortcutText } from '@/features/shortcuts/platform'
 import { SidebarResizer } from './SidebarResizer'
 import { AppIcon, Icon, StatusBadge } from './glyphs'
 import { Collapse } from './Collapse'
+import { useReducedMotion } from './motion'
+import { useFlip } from './useFlip'
 import { MenuPopup, type MenuEntry } from './MenuPopup'
 import { SessionRow } from './SessionRow'
 import { SubagentList, SubagentPeek } from './SubagentRows'
@@ -132,9 +134,11 @@ function Expanded(props: SidebarProps) {
   const tip = useTipWithKeys()
   const shortcutText = useShortcutText()
   const input = useRef<HTMLInputElement>(null)
+  const list = useRef<HTMLDivElement>(null)
   const [query, setQuery] = useState('')
   const [menu, setMenu] = useState<OpenMenu | null>(null)
   const views = useMachineViews()
+  useFlip(list, useReducedMotion())
   useSlashFocus(input)
   const filtering = query.trim() !== ''
   const draft = filtering ? null : props.draft ?? null
@@ -200,7 +204,7 @@ function Expanded(props: SidebarProps) {
     const selected = session.id === props.focusedId
     const subagents = session.subagents
     return (
-      <div key={session.id} className="mx-row-wrap" role="listitem">
+      <div key={session.id} className="mx-row-wrap" role="listitem" data-flip={session.id}>
         <SessionRow
           session={session}
           selected={selected}
@@ -257,7 +261,7 @@ function Expanded(props: SidebarProps) {
         />
         {query === '' ? <kbd className="mx-filter-hint" aria-hidden="true">/</kbd> : <button type="button" className="mx-filter-clear" aria-label="Clear filter" onClick={() => { setQuery(''); input.current?.focus() }}><Icon name="close" size={11} /></button>}
       </div>
-      <div className="mx-sidebar-list">
+      <div ref={list} className="mx-sidebar-list">
         <section aria-label="Agents" className="mx-machines">
           {groups.map((group) => (
             <MachineSection
@@ -353,7 +357,7 @@ function MachineSection({ draft, progress, group, open, byProject, canStart, onT
 /** The chat that has not been sent yet: a grey box on its machine with three dots bouncing one after the other, until it has a first message. */
 function DraftRow() {
   return (
-    <div className="mx-draft" role="status" aria-label="New chat, waiting for the first message">
+    <div className="mx-draft" role="status" aria-label="New chat, waiting for the first message" data-flip="draft">
       <span className="mx-draft-dots" aria-hidden="true"><i /><i /><i /></span>
     </div>
   )
