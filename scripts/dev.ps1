@@ -12,9 +12,10 @@ $dirty = if (git status --porcelain) { '*' } else { '' }
 Write-Host "worktree: $root  commit: $commit$dirty" -ForegroundColor Cyan
 
 # Windows will not replace a program that is running, so say so instead of failing halfway.
-$running = Get-Process maitty, maitty-gui -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$root*" }
+# The desktop app starts its own service (maitty-gui-daemon-*), which outlives the window and locks its file, so it counts too.
+$running = Get-Process maitty*, maitty-gui* -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$root*" }
 if ($running) {
-    Write-Host 'A build from this worktree is still running; close it first:' -ForegroundColor Yellow
+    Write-Host 'A build from this worktree is still running; stop it first (Stop-Process -Id <pid>):' -ForegroundColor Yellow
     $running | ForEach-Object { Write-Host "  $($_.Name) (pid $($_.Id))" }
     exit 1
 }
