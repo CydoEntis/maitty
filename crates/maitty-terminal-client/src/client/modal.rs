@@ -792,6 +792,19 @@ mod tests {
         app.on_bg(bg_rx.blocking_recv().unwrap());
         assert_eq!(app.cfg.ui.spinner, ["|", "/", "-", "\\"]);
         assert_eq!(Config::load().unwrap().ui.spinner, app.cfg.ui.spinner);
+        // An arrow on a theme row applies the next theme at once and keeps it in the file.
+        let dark = super::super::themes::matching("", false);
+        let before = dark.iter().position(|n| *n == app.cfg.theme_dark || crate::theme::canonical(&app.cfg.theme_dark) == *n).unwrap_or(0);
+        app.step_theme(false, 1);
+        assert_eq!(app.cfg.theme_dark, dark[(before + 1) % dark.len()]);
+        assert_eq!(app.theme.bg, crate::theme::Theme::named(&app.cfg.theme_dark).bg);
+        assert_eq!(Config::load().unwrap().theme_dark, app.cfg.theme_dark);
+        // An arrow on the spinner row applies the next spinner at once, wrapping at the ends.
+        let at = crate::config::SPINNERS.iter().position(|(n, _)| *n == crate::config::spinner_name(&app.cfg.ui.spinner)).unwrap();
+        app.step_spinner(1);
+        let want: Vec<String> = crate::config::SPINNERS[(at + 1) % crate::config::SPINNERS.len()].1.iter().map(|f| (*f).into()).collect();
+        assert_eq!(app.cfg.ui.spinner, want);
+        assert_eq!(Config::load().unwrap().ui.spinner, want);
         let saved_spinner = app.cfg.ui.spinner.clone();
         // SAFETY: the spinner save job completed before changing this test's isolated path.
         unsafe { std::env::set_var(concat!(env!("APP_ENV"), "_CONFIG"), &dir) };

@@ -1,6 +1,7 @@
 //! The workspace: one pane, or up to four side by side and stacked, each in a box of its own a
-//! column or row apart. A pane's title chip sits on its top border at the left (`mark name
-//! ~/folder branch`) and its `files`, `changes` and `×` chips at the right. Exactly one box, the
+//! column or row apart. A pane's title chip sits on its top border at the left (`mark name`) with
+//! its `×` at the right; its folder and branch chips sit on the bottom border. Files and Changes
+//! are in the menu, not on the border. Exactly one box, the
 //! focused pane's, is in the accent. The program's own output is drawn as it is: an agent's pane
 //! is its own terminal.
 
@@ -12,8 +13,10 @@ use crate::layout::{Dir, Node};
 
 /// Most panes one view holds.
 pub(in crate::client) const MAX_PANES: usize = 4;
-/// Narrower than this a box keeps its title and `×` and leaves out `files` and `changes`.
-const TOOL_CHIPS_FROM: u16 = 40;
+/// Blank cells between a pane's frame and its program: columns each side (the right side also
+/// holds the scrollbar's column) and rows above and below.
+const PANE_PAD_X: u16 = 3;
+const PANE_PAD_Y: u16 = 2;
 
 // ---- the workspace -------------------------------------------------------------------------
 
@@ -144,6 +147,23 @@ pub(super) fn pane_title(app: &App, model: &[Proj], term: ClientTerm) -> String 
     display_name(app.term_info(term), &fallback)
 }
 
+/// The host terminal's tab title: the focused session's state mark (the working spinner while it
+/// works) and its name, so the tab says what you are on and whether it needs you.
+pub(in crate::client) fn window_title(app: &App) -> String {
+    let brand = crate::brand::APP_NAME;
+    let Some(term) = app.focused() else {
+        return brand.to_string();
+    };
+    let Some(info) = app.term_info(term) else {
+        return brand.to_string();
+    };
+    let name = display_name(Some(info), "");
+    let mark = app.state_mark(pane_state(app, info, term), &app.theme);
+    // A name comes from the session; control characters in it would end the title early or act on the host terminal.
+    let line = format!("{} {} - {brand}", mark.glyph, name);
+    line.chars().filter(|c| !c.is_control()).collect()
+}
+
 /// The state glyph of a pane, from the daemon's report.
 pub(super) fn pane_state(app: &App, info: &TermInfo, term: ClientTerm) -> State {
     let failed = super::status_mark::failed(info.exit.is_some(), info.status, info.check());
@@ -159,7 +179,8 @@ fn border_of(app: &mut App, term: ClientTerm, focused: bool, t: &Theme) -> Color
     } else if !focused {
         return t.line;
     } else if armed(app) {
-        t.sky()
+        // The same orange as the KEYS chip: the frame is how key mode shows now the bar is hidden in pane mode.
+        t.blocked
     } else {
         match app.cfg.ui.focus_border.as_str() {
             "bright" => t.strong,
@@ -192,7 +213,7 @@ pub(in crate::client) fn draw_pane(
     f: &mut Frame,
     r: Rect,
     term: ClientTerm,
-    (focused, popup): (bool, bool),
+    (focused, _popup): (bool, bool),
     model: &[Proj],
     t: &Theme,
 ) {
@@ -213,20 +234,27 @@ pub(in crate::client) fn draw_pane(
     }
     let inside = card(app, f.buffer_mut(), r, &c, t);
     if r.width >= 12 {
-        let chips_x = draw_right_chips(app, f.buffer_mut(), r, term, popup, t);
+        let chips_x = draw_right_chips(app, f.buffer_mut(), r, term, t);
         let lit = focused && border != t.line;
         let title = title_segs(app, model, term, &info, lit, t);
         let start = r.x + 2;
         let room = chips_x.saturating_sub(start + 1);
         put(f.buffer_mut(), start, r.y, &fit(title, room), chips_x.saturating_sub(1));
         app.hits.push((Rect { x: start, y: r.y, width: room, height: 1 }, Hit::Pane(term)));
+        // Where the program runs: its folder and branch, on the bottom border.
+        let at = Rect { x: start, y: r.bottom().saturating_sub(1), width: r.width.saturating_sub(4), height: 1 };
+        let place = where_segs(app, &info, border, t);
+        put(f.buffer_mut(), at.x, at.y, &fit(place, at.width), at.right());
+        hit(app, at, ScreenHit::PaneProject(term));
     }
     let below = if ask { 2 } else { 0 };
+    // The program sits a blank row under the title border and above the bottom one, and two
+    // columns in from each side, so it does not touch the frame.
     let inner = Rect {
-        x: r.x + 2,
-        y: r.y + 1,
-        width: r.width.saturating_sub(5),
-        height: r.height.saturating_sub(2 + below),
+        x: r.x + PANE_PAD_X,
+        y: r.y + PANE_PAD_Y,
+        width: r.width.saturating_sub(2 * PANE_PAD_X + 1),
+        height: r.height.saturating_sub(2 * PANE_PAD_Y + below),
     };
     render_pane(
         app,
@@ -240,28 +268,41 @@ pub(in crate::client) fn draw_pane(
     );
 }
 
-/// The title chip: the status mark, the name in bold, then the folder and the branch quieter.
-/// Lit (the accent) while the pane has the keys.
+/// The title chip: the status mark and name, lit (the accent) while the pane has the keys.
 fn title_segs(app: &App, model: &[Proj], term: ClientTerm, info: &TermInfo, lit: bool, t: &Theme) -> Vec<Seg> {
-    let (ground, ink, quiet) = if lit {
-        (t.accent, t.acc_ink, t.acc_ink)
-    } else {
-        (t.btn, t.strong, t.muted)
-    };
+    let look = Look::of(&app.cfg.ui);
+    let (ground, ink) = if lit { (t.accent, t.acc_ink) } else { (t.btn, t.strong) };
     let base = Style::default().bg(ground);
     let mark = app.state_mark(pane_state(app, info, term), t);
-    let mut where_ = tilde(&info.cwd);
+    pill(
+        look,
+        vec![
+            seg(mark.glyph, base.fg(if lit { t.acc_ink } else { mark.color }).add_modifier(Modifier::BOLD)),
+            seg(" ", base),
+            seg(pane_title(app, model, term), base.fg(ink).add_modifier(Modifier::BOLD)),
+        ],
+        ground,
+        t.bg,
+    )
+}
+
+/// The folder and then the branch, as quiet chips a cell of border apart. A narrow pane cuts from
+/// the right, so the folder outlasts the branch.
+fn where_segs(app: &App, info: &TermInfo, border: Color, t: &Theme) -> Vec<Seg> {
+    let look = Look::of(&app.cfg.ui);
+    let quiet = Style::default().bg(t.btn);
+    let mut chips = vec![(tilde(&info.cwd), t.muted)];
     if let Some(b) = info.branch.as_deref().filter(|b| !b.is_empty()) {
-        where_.push(' ');
-        where_.push_str(b);
+        chips.push((b.to_string(), t.violet()));
     }
-    vec![
-        seg(" ", base),
-        seg(mark.glyph, base.fg(if lit { t.acc_ink } else { mark.color }).add_modifier(Modifier::BOLD)),
-        seg(" ", base),
-        seg(pane_title(app, model, term), base.fg(ink).add_modifier(Modifier::BOLD)),
-        seg(format!(" {where_} "), base.fg(quiet)),
-    ]
+    let mut out = Vec::new();
+    for (i, (text, colour)) in chips.into_iter().enumerate() {
+        if i > 0 {
+            out.push(seg("─", Style::default().fg(border).bg(t.bg)));
+        }
+        out.extend(pill(look, vec![seg(text, quiet.fg(colour))], t.btn, t.bg));
+    }
+    out
 }
 
 /// `segs` cut to `room` cells: the last piece that does not fit ends in `…` and a cell of its
@@ -286,41 +327,17 @@ fn fit(segs: Vec<Seg>, room: u16) -> Vec<Seg> {
     out
 }
 
-/// `files`, `changes` and `×` at the right of the top border, a cell of border between them;
-/// returns where the leftmost starts. `files` and `changes` are lit while their panel is open.
-fn draw_right_chips(app: &mut App, buf: &mut Buffer, r: Rect, term: ClientTerm, popup: bool, t: &Theme) -> u16 {
-    let mut chips: Vec<(Vec<Seg>, ScreenHit)> = Vec::new();
-    if !popup && r.width >= TOOL_CHIPS_FROM {
-        let files_on = matches!(app.view, Some(crate::client::View::Files(_)));
-        let changes_on = matches!(app.view, Some(crate::client::View::Changes(_)));
-        chips.push((chip(app, "files", Chip::Title { focused: files_on }, t.bg, t), ScreenHit::FilesChip));
-        let changes = match changed_files(app) {
-            Some(n) => format!("changes {n}"),
-            None => "changes".to_string(),
-        };
-        chips.push((chip(app, &changes, Chip::Title { focused: changes_on }, t.bg, t), ScreenHit::ChangesChip));
+/// `×` at the right of the top border; returns where it starts.
+fn draw_right_chips(app: &mut App, buf: &mut Buffer, r: Rect, term: ClientTerm, t: &Theme) -> u16 {
+    let segs = chip(app, "×", Chip::Title { focused: false }, t.bg, t);
+    let w = segs_width(&segs);
+    let x = r.right().saturating_sub(2 + w);
+    if x < r.x + w + 4 {
+        return r.right().saturating_sub(1);
     }
-    chips.push((chip(app, "×", Chip::Title { focused: false }, t.bg, t), ScreenHit::CloseSplit(term)));
-    let mut x = r.right().saturating_sub(2);
-    for (segs, h) in chips.into_iter().rev() {
-        let w = segs_width(&segs);
-        if x < r.x + w + 4 {
-            break;
-        }
-        x -= w;
-        put(buf, x, r.y, &segs, x + w);
-        hit(app, Rect { x, y: r.y, width: w, height: 1 }, h);
-        x -= 1;
-    }
-    x + 1
-}
-
-/// How many files the open Changes panel lists, once it has read them.
-fn changed_files(app: &App) -> Option<usize> {
-    match &app.view {
-        Some(crate::client::View::Changes(v)) => v.review.as_ref().map(|r| r.files.len()),
-        _ => None,
-    }
+    put(buf, x, r.y, &segs, x + w);
+    hit(app, Rect { x, y: r.y, width: w, height: 1 }, ScreenHit::CloseSplit(term));
+    x
 }
 
 /// The program's output in `inner`, its scrollbar and the answer bar; the pane not in focus

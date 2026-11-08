@@ -63,6 +63,17 @@ impl App {
         };
     }
 
+    /// Move a tab's theme one step along that tab's list and apply it at once, so the whole
+    /// screen shows the change as the arrow keys go.
+    pub(super) fn step_theme(&mut self, light: bool, dir: i64) {
+        let list = matching("", light);
+        if list.is_empty() {
+            return;
+        }
+        let next = (self.slot_row(light) as i64 + dir).rem_euclid(list.len() as i64) as usize;
+        self.save_setting(slot_path(light), list[next].into());
+    }
+
     /// Where a tab's chosen theme sits in that tab's list (the top when it is not there).
     fn slot_row(&self, light: bool) -> usize {
         let current = self.slot_theme(light);

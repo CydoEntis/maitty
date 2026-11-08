@@ -2995,18 +2995,22 @@ fn needs_statusline() -> bool {
     hooked && !maitty_provider_claude::is_our_statusline(cmd, &app_hook_names())
 }
 
-/// Point the app's Claude hooks at this the app if they name another one. A hook from a
-/// different version can't talk to this server, and hooks fail silently by design, so
-/// every agent would look idle. Run when the server starts.
-pub fn refresh_claude_hooks() {
-    // A side server (<APP>_SOCKET) or a build in a source checkout mustn't take your
-    // hooks from the copy of the app you use.
+/// False for a side server (<APP>_SOCKET) or a build in a source checkout: neither may take
+/// your hooks from the copy of the app you use.
+pub fn hooks_belong_to_this_build() -> bool {
     let side = std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).is_ok_and(|s| s != "default");
     let dev_build = std::env::current_exe().is_ok_and(|exe| {
         let exe = exe.to_string_lossy().replace('\\', "/");
         exe.contains("/target/debug/") || exe.contains("/target/release/")
     });
-    if side || dev_build {
+    !(side || dev_build)
+}
+
+/// Point the app's Claude hooks at this the app if they name another one. A hook from a
+/// different version can't talk to this server, and hooks fail silently by design, so
+/// every agent would look idle. Run when the server starts.
+pub fn refresh_claude_hooks() {
+    if !hooks_belong_to_this_build() {
         return;
     }
     if !stale_claude_hooks().is_empty() || needs_statusline() {

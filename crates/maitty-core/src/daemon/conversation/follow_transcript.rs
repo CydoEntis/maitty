@@ -1,5 +1,5 @@
 //! Turns the lines of an agent's own transcript (Claude's `<session>.jsonl`, Codex's
-//! `rollout-….jsonl`) into the provider notifications the structured runtimes produce, so the
+//! `rollout-….jsonl`, Gemini's `session-….jsonl`) into the provider notifications the structured runtimes produce, so the
 //! history of an agent running in a pane goes through the same projection as a conversation the
 //! daemon started (`history_provider::notification`).
 //!
@@ -32,6 +32,7 @@ pub(in crate::daemon) struct Note {
 pub(in crate::daemon) enum Format {
     Claude,
     Codex,
+    Gemini,
 }
 
 struct PendingTool {
@@ -87,6 +88,7 @@ impl Transcript {
         match self.format {
             Format::Claude => self.claude(offset, &value, &mut notes),
             Format::Codex => self.codex(offset, &value, &mut notes),
+            Format::Gemini => self.gemini(offset, &value, &mut notes),
         }
         notes
     }
@@ -323,6 +325,94 @@ impl Transcript {
             "aggregatedOutput": bounded_content_text(block.get("content")),
         });
         notes.push(self.note("item/completed", item_params(&turn, item, at_ms)));
+    }
+
+    // ---- Gemini: one JSON object per message; a tool call carries its own result ----
+
+    /// `user` and `gemini` messages; the header, `$set` updates, `info` and `error` lines are not
+    /// the conversation. A reply with no tool call is the end of the turn.
+    fn gemini(&mut self, offset: u64, line: &Value, notes: &mut Vec<Note>) {
+        let at_ms = line
+            .get("timestamp")
+            .and_then(Value::as_str)
+            .and_then(iso_ms);
+        let id = line
+            .get("id")
+            .and_then(Value::as_str)
+            .map_or_else(|| format!("o{offset}"), str::to_owned);
+        match line.get("type").and_then(Value::as_str) {
+            Some("user") => {
+                let text = line
+                    .get("content")
+                    .and_then(Value::as_array)
+                    .map(|parts| {
+                        parts
+                            .iter()
+                            .filter_map(|part| part.get("text").and_then(Value::as_str))
+                            .collect::<String>()
+                    })
+                    .unwrap_or_default();
+                self.user_message(&id, &text, at_ms, notes);
+            }
+            Some("gemini") => {
+                if let Some(model) = line.get("model").and_then(Value::as_str) {
+                    self.meta.model = Some(model.to_owned());
+                }
+                if let Some(text) = line.get("content").and_then(Value::as_str) {
+                    self.agent_message(&id, text, at_ms, notes);
+                }
+                let calls = line.get("toolCalls").and_then(Value::as_array);
+                for call in calls.into_iter().flatten() {
+                    self.gemini_call(call, at_ms, notes);
+                }
+                if calls.is_none_or(|calls| calls.is_empty()) {
+                    self.close_turn("completed", at_ms, notes);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// A finished tool call, as the started and completed items a command has. Gemini writes the
+    /// call and its result in one message, so nothing is kept waiting.
+    fn gemini_call(&mut self, call: &Value, at_ms: Option<u64>, notes: &mut Vec<Note>) {
+        let (Some(call_id), Some(name)) = (
+            call.get("id").and_then(Value::as_str),
+            call.get("name").and_then(Value::as_str),
+        ) else {
+            return;
+        };
+        let input = call.get("args").cloned().unwrap_or(Value::Null);
+        let command = input
+            .get("command")
+            .and_then(Value::as_str)
+            .map_or_else(|| format!("{name} "), str::to_owned);
+        let turn = self.turn_id(at_ms, notes);
+        let started = json!({
+            "id": call_id,
+            "type": "commandExecution",
+            "command": command,
+            "input": input,
+            "status": "inProgress",
+            "aggregatedOutput": "",
+        });
+        notes.push(self.note("item/started", item_params(&turn, started, at_ms)));
+        let status = call.get("status").and_then(Value::as_str);
+        let finished = json!({
+            "id": call_id,
+            "type": "commandExecution",
+            "command": command,
+            "input": input,
+            "status": match status {
+                Some("success") => "completed",
+                Some("error" | "cancelled") => "failed",
+                _ => "inProgress",
+            },
+            "aggregatedOutput": bounded_output(&gemini_output(call)),
+        });
+        if status.is_some() {
+            notes.push(self.note("item/completed", item_params(&turn, finished, at_ms)));
+        }
     }
 
     // ---- Codex: response items and event messages ----
@@ -677,6 +767,21 @@ fn patch_changes(patch: &str) -> Vec<Value> {
             |(path, kind, diff)| json!({ "path": path, "kind": kind, "diff": bounded_text(&diff) }),
         )
         .collect()
+}
+
+/// What a Gemini tool call printed: the text it displayed, else the output of its function response.
+fn gemini_output(call: &Value) -> String {
+    if let Some(shown) = call.get("resultDisplay").and_then(Value::as_str) {
+        return shown.to_owned();
+    }
+    call.get("result")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|part| part.pointer("/functionResponse/response/output")?.as_str())
+        .collect::<Vec<_>>()
+        .join("
+")
 }
 
 fn bounded_output(text: &str) -> String {

@@ -581,8 +581,10 @@ impl App {
                 self.screen.filter.clear();
                 self.screen.filtering = false;
             }
+            // The session on the cursor opens next; the filter goes so the list is whole again.
             KeyCode::Enter => {
                 self.screen.filtering = false;
+                self.screen.filter.clear();
                 return false;
             }
             KeyCode::Backspace => {
@@ -1834,12 +1836,6 @@ impl App {
                 self.splash = false;
                 self.ask_restart();
             }
-            ScreenHit::SideFilter => self.start_side_filter(),
-            ScreenHit::ClearFilter => {
-                self.screen.filter.clear();
-                self.screen.filtering = false;
-                self.screen.side_scroll = 0;
-            }
             ScreenHit::Subagent(i) => {
                 if let Some(term) = self.screen.sub_rows.get(i).copied() {
                     self.screen_focus(term);
@@ -1852,19 +1848,9 @@ impl App {
             ScreenHit::MachineHead(MachineId::LOCAL) => self.act(Action::BrowseTree),
             ScreenHit::MachineHead(machine) => self.open_machines_on(machine),
             ScreenHit::MachineFix(machine) => self.machine_update_from_side(machine),
-            ScreenHit::FilesChip => {
-                if matches!(self.view, Some(crate::client::View::Files(_))) {
-                    self.view = None;
-                } else {
-                    self.act(Action::Files);
-                }
-            }
-            ScreenHit::ChangesChip => {
-                if matches!(self.view, Some(crate::client::View::Changes(_))) {
-                    self.view = None;
-                } else {
-                    self.act(Action::Changes);
-                }
+            ScreenHit::PaneProject(term) => {
+                let at = self.hover.map_or((0, 0), |p| (p.x, p.y.saturating_sub(1)));
+                self.menu_for_project_tools(term, at);
             }
             ScreenHit::TidyRow(i) => self.tidy_click(i),
             ScreenHit::TidyGo => {
@@ -1895,6 +1881,9 @@ impl App {
                 self.act(Action::ToggleSidebar)
             }
             ScreenHit::Actions => self.sidebar_menu(),
+            ScreenHit::GroupFolders => self.group_menu(),
+            ScreenHit::MachineRow(i) => self.machines_pick(i, None),
+            ScreenHit::MachineButton(i, key) => self.machines_pick(i, Some(key)),
             ScreenHit::ActionRow(i) => self.actions_run(i),
             ScreenHit::Leader => self.open_keymap(None),
             ScreenHit::ShortcutMode => {

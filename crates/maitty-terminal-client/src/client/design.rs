@@ -1673,17 +1673,21 @@ pub(super) fn control(
                         format!(" {} ", theme_label(crate::theme::canonical(name))),
                         Style::default().fg(t.strong),
                     ),
-                    seg("Enter browse", Style::default().fg(t.accent)),
+                    seg("←→ change  Enter search", Style::default().fg(t.accent)),
                 ];
             }
             let cur = super::modal::current(cfg, s.path);
             match s.kind {
                 Kind::Spinner => vec![
                     seg(
-                        format!(" {} ", super::modal::display(cfg, s)),
+                        format!("{} ", super::render::spinner_preview(app)),
+                        Style::default().fg(t.accent),
+                    ),
+                    seg(
+                        format!("{}  ", super::modal::display(cfg, s)),
                         Style::default().fg(t.strong),
                     ),
-                    seg("Enter browse", Style::default().fg(t.accent)),
+                    seg("←→ change  Enter browse", Style::default().fg(t.accent)),
                 ],
                 Kind::Bool => {
                     if cur.and_then(|v| v.as_bool()).unwrap_or(false) {

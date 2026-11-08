@@ -652,6 +652,7 @@ pub async fn start_terminal_session(
     let program = match provider {
         Provider::Codex => "codex",
         Provider::Claude => "claude",
+        Provider::Gemini => "gemini",
     };
     let reply = request(
         ClientMsg::Command(Command::NewWorkspace {
@@ -1134,6 +1135,8 @@ pub async fn create_conversation(
     let (executable, config_root) = match provider {
         Provider::Codex => (codex_app_server_executable()?, codex_config_dir()),
         Provider::Claude => (claude_executable()?, claude_config_dir()?),
+        // Gemini runs in a terminal and its chat is read from the transcript; it has no structured runtime.
+        Provider::Gemini => bail!("Gemini has no structured chat; start it in a terminal"),
     };
     let (sandbox, approval_policy) = permissions.launch_policy();
     let settings = LaunchSettings {

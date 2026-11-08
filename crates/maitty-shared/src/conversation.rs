@@ -274,6 +274,7 @@ pub enum Provider {
     #[default]
     Codex,
     Claude,
+    Gemini,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -561,6 +562,15 @@ pub mod tests {
         }))
         .unwrap();
         assert!(read.answered_approvals.is_empty());
+    }
+
+    #[test]
+    fn a_peer_that_predates_gemini_still_reads_the_providers_it_knew() {
+        for (wire, provider) in [("\"Codex\"", Provider::Codex), ("\"Claude\"", Provider::Claude)] {
+            assert_eq!(serde_json::from_str::<Provider>(wire).unwrap(), provider);
+        }
+        assert_eq!(serde_json::to_string(&Provider::Gemini).unwrap(), "\"Gemini\"");
+        assert_eq!(serde_json::from_str::<Provider>("\"Gemini\"").unwrap(), Provider::Gemini);
     }
 
     #[test]

@@ -17,20 +17,19 @@ const BAR_X: u16 = 1;
 const MARK_X: u16 = 2;
 const NAME_X: u16 = 4;
 const TREE_X: u16 = 6;
-/// The project's colour square on a session's second line.
-const PROJECT_SQUARE: &str = "■";
-/// What the field says when nothing is typed.
-const FILTER_HINT: &str = " filter sessions";
 const ONLINE_DOT: &str = "●";
 const RECONNECTING_MARK: &str = "┆";
 /// What the machine heading calls the computer the window runs on.
 const THIS_COMPUTER: &str = "This computer";
 /// The sidebar's title chip, and the chips that hide it and bring it back.
-const TITLE: &str = "maitty";
+const TITLE: &str = "Maitty";
 pub(in crate::client) const HIDE: &str = "«";
 pub(in crate::client) const SHOW: &str = "»";
+/// The collapsed sidebar's width: its frame, a margin and a mark with an initial.
+pub(in crate::client) const RAIL_W: u16 = 7;
+/// The chip that opens the Add Machine dialog.
 /// The footer's menu chip.
-const MENU: &str = "menu";
+const MENU: &str = "Menu";
 
 /// A subagent as its parent's row lists it.
 #[derive(Debug, Clone, PartialEq)]
@@ -47,7 +46,6 @@ pub(super) struct SideRow {
     /// Your name for it, else what runs in it.
     pub name: String,
     pub project: String,
-    pub colour: Color,
     pub branch: String,
     pub state: State,
     /// An agent (its name is bold while it has something going on), not a shell.
@@ -171,7 +169,6 @@ fn side_rows(app: &App, model: &[Proj]) -> Vec<SideRow> {
                 term: s.native_term,
                 name,
                 project: p.name.clone(),
-                colour: p.color,
                 branch: info.and_then(|i| i.branch.clone()).unwrap_or_default(),
                 state: State::of(s.status, failed, s.down),
                 agent: s.is_agent,
@@ -195,12 +192,27 @@ fn side_rows(app: &App, model: &[Proj]) -> Vec<SideRow> {
 pub(super) struct SideModel {
     pub machines: Vec<MachineSection>,
     pub filtering: bool,
+    /// Each machine's sessions are kept together by folder, under a heading for each.
+    pub grouped: bool,
+}
+
+/// `rows` with the sessions of one folder together, folders in the order they first appear and
+/// each folder's sessions in theirs.
+fn by_folder(rows: &mut [SideRow]) {
+    let mut seen: Vec<String> = Vec::new();
+    for r in rows.iter() {
+        if !seen.contains(&r.project) {
+            seen.push(r.project.clone());
+        }
+    }
+    rows.sort_by_key(|r| seen.iter().position(|p| *p == r.project));
 }
 
 impl SideModel {
     pub fn build(app: &App, model: &[Proj]) -> SideModel {
         let query = app.screen.filter.trim().to_lowercase();
         let all = side_rows(app, model);
+        let grouped = app.screen.saved.group_folders;
         let machines = app
             .machines()
             .into_iter()
@@ -220,10 +232,17 @@ impl SideModel {
                     .collect(),
             })
             .filter(|m| query.is_empty() || !m.rows.is_empty())
+            .map(|mut m| {
+                if grouped {
+                    by_folder(&mut m.rows);
+                }
+                m
+            })
             .collect();
         SideModel {
             machines,
             filtering: !query.is_empty(),
+            grouped,
         }
     }
 
@@ -296,6 +315,8 @@ pub(super) fn window(heights: &[u16], scroll: usize, want: Option<usize>, room: 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Block {
     Machine(usize),
+    /// A folder's heading (grouped by folder): the machine, and the first of its sessions.
+    Folder(usize, usize),
     Session(usize, usize),
     Gap,
 }
@@ -307,7 +328,7 @@ fn open_session(app: &App) -> Option<ClientSession> {
 
 fn block_h(sm: &SideModel, b: Block, open: Option<ClientSession>) -> u16 {
     match b {
-        Block::Machine(_) | Block::Gap => 1,
+        Block::Machine(_) | Block::Folder(..) | Block::Gap => 1,
         Block::Session(mi, ri) => {
             let r = &sm.machines[mi].rows[ri];
             let subs = match r.subs.len() {
@@ -320,6 +341,12 @@ fn block_h(sm: &SideModel, b: Block, open: Option<ClientSession>) -> u16 {
     }
 }
 
+/// `word` with its first letter in capitals, for a label.
+fn capitalised(word: &str) -> String {
+    let mut chars = word.chars();
+    chars.next().map_or_else(String::new, |first| first.to_uppercase().chain(chars).collect())
+}
+
 fn blocks(sm: &SideModel) -> Vec<Block> {
     let mut out = Vec::new();
     for (mi, m) in sm.machines.iter().enumerate() {
@@ -327,7 +354,16 @@ fn blocks(sm: &SideModel) -> Vec<Block> {
             out.push(Block::Gap);
         }
         out.push(Block::Machine(mi));
-        out.extend((0..m.rows.len()).map(|ri| Block::Session(mi, ri)));
+        // One blank row sets the first session off from its machine; sessions sit tight against each other.
+        if !m.rows.is_empty() {
+            out.push(Block::Gap);
+        }
+        for ri in 0..m.rows.len() {
+            if sm.grouped && (ri == 0 || m.rows[ri].project != m.rows[ri - 1].project) {
+                out.push(Block::Folder(mi, ri));
+            }
+            out.push(Block::Session(mi, ri));
+        }
     }
     out
 }
@@ -346,7 +382,7 @@ pub(in crate::client) fn draw_side(
         c = c.lit(t.accent);
     }
     let inside = card(app, buf, r, &c, t);
-    fill(buf, inside, t.sidebar_bg);
+    fill(buf, inside, t.bg);
     app.screen.side_rect = r;
     hit(app, r, ScreenHit::SideFocus);
     if r.width < 12 || r.height < 5 {
@@ -354,7 +390,6 @@ pub(in crate::client) fn draw_side(
     }
     draw_top_chips(app, buf, r, t);
     draw_foot_chips(app, buf, r, t);
-    draw_filter(app, buf, r, r.y + 1, t);
     let sm = SideModel::build(app, model);
     let open = open_session(app);
     app.screen.side_items = sm.items();
@@ -365,10 +400,54 @@ pub(in crate::client) fn draw_side(
         .collect();
     app.screen.row_y.clear();
     app.screen.sub_rows.clear();
-    let top = r.y + 3;
+    let top = r.y + 2;
     let bottom = r.bottom().saturating_sub(1);
     draw_list(app, buf, r, (top, bottom), &sm, open, t);
     app.screen.follow = false;
+}
+
+/// The sidebar collapsed to a narrow column: `»` (`«` on the right) opens it again, then a row
+/// for each session with its status mark and the first letter of its name. A click opens it.
+pub(in crate::client) fn draw_rail(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme) {
+    let inside = card(app, buf, r, &Card::new(t, ""), t);
+    fill(buf, inside, t.bg);
+    if r.width < 5 || r.height < 5 {
+        return;
+    }
+    let right = app.cfg.ui.sidebar_position == "right";
+    let expand = chip(app, if right { HIDE } else { SHOW }, Chip::Title { focused: false }, t.bg, t);
+    let ew = segs_width(&expand);
+    let ex = r.x + r.width.saturating_sub(ew) / 2;
+    put(buf, ex, r.y, &expand, r.right());
+    hit(app, Rect { x: ex, y: r.y, width: ew, height: 1 }, ScreenHit::ExpandSidebar);
+    let open = open_session(app);
+    let sm = SideModel::build(app, model);
+    let mut y = r.y + 2;
+    // A blank row between sessions, as in the full sidebar.
+    for row in sm.machines.iter().flat_map(|m| &m.rows) {
+        if y + 1 >= r.bottom() {
+            break;
+        }
+        let ground = if Some(row.key) == open { t.hov } else { t.bg };
+        let line = Rect { x: r.x + 1, y, width: r.width - 2, height: 1 };
+        fill(buf, line, ground);
+        let base = Style::default().bg(ground);
+        let mark = app.state_mark(row.state, t);
+        let initial = row.name.chars().next().map(String::from).unwrap_or_default();
+        put(
+            buf,
+            line.x + 1,
+            y,
+            &[
+                seg(mark.glyph, base.fg(mark.color).add_modifier(Modifier::BOLD)),
+                seg(" ", base),
+                seg(initial, base.fg(t.text)),
+            ],
+            line.right(),
+        );
+        hit(app, line, ScreenHit::Session(row.key));
+        y += 2;
+    }
 }
 
 /// The top border: the `maitty` chip at the left and `«` (hide the sidebar) at the right.
@@ -384,6 +463,17 @@ fn draw_top_chips(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme) {
     if hx > x + tw {
         put(buf, hx, r.y, &hide, r.right().saturating_sub(2));
         hit(app, Rect { x: hx, y: r.y, width: hw, height: 1 }, ScreenHit::CollapseSidebar);
+    }
+    // The group-by chip opens a small menu under it: priority or folder. Dropped when the
+    // sidebar is too narrow to hold it.
+    let label = format!("{} \u{25be}", app.cfg.icons.filter);
+    let group = chip(app, &label, Chip::Title { focused: false }, t.bg, t);
+    let gw = segs_width(&group);
+    let gx = hx.saturating_sub(1 + gw);
+    if gx > x + tw {
+        put(buf, gx, r.y, &group, hx);
+        hit(app, Rect { x: gx, y: r.y, width: gw, height: 1 }, ScreenHit::GroupFolders);
+        app.screen.group_at = (gx, r.y + 1);
     }
 }
 
@@ -416,40 +506,24 @@ fn release_chip(app: &App) -> (String, Chip) {
     } else if app.restart_needed() {
         ("↻ restart".into(), Chip::Action)
     } else {
-        (format!("v{}", crate::brand::APP_VERSION), Chip::Quiet)
+        (format!("v{}{}", crate::brand::APP_VERSION, build_note()), Chip::Quiet)
     }
 }
 
-/// The filter field: `/` in the accent, then what is typed or the hint, on the darker ground.
-fn draw_filter(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, t: &Theme) {
-    let bar = Rect {
-        x: r.x + 2,
-        y,
-        width: r.width.saturating_sub(4),
-        height: 1,
-    };
-    let typing = app.screen.filtering;
-    let typed = app.screen.filter.clone();
-    fill(buf, bar, t.bg);
-    let base = Style::default().bg(t.bg);
-    let mut segs = vec![seg(" /", base.fg(t.accent).add_modifier(Modifier::BOLD))];
-    if typed.is_empty() && !typing {
-        segs.push(seg(FILTER_HINT, base.fg(t.muted)));
-    } else {
-        segs.push(seg(format!(" {typed}"), base.fg(t.strong)));
-        if typing {
-            segs.push(seg("▏", base.fg(t.accent)));
-        }
+/// ` abc1234* 12m` for a build that is not a clean release: the commit, `*` for uncommitted
+/// changes and how long ago it was built. Empty for a release, and in tests.
+fn build_note() -> String {
+    let build = env!("APP_BUILD");
+    if build.is_empty() || cfg!(test) {
+        return String::new();
     }
-    let clear = !typed.is_empty();
-    let text_end = bar.right().saturating_sub(if clear { 3 } else { 0 });
-    put(buf, bar.x, y, &segs, text_end);
-    hit(app, bar, ScreenHit::SideFilter);
-    if clear {
-        let kx = bar.right().saturating_sub(2);
-        put(buf, kx, y, &[seg("×", base.fg(t.muted))], bar.right());
-        hit(app, Rect { x: kx, y, width: 2, height: 1 }, ScreenHit::ClearFilter);
-    }
+    let built: u64 = env!("APP_BUILT_UNIX").parse().unwrap_or(0);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs());
+    let minutes = now.saturating_sub(built) / 60;
+    let age = if minutes < 60 { format!("{minutes}m") } else { format!("{}h", minutes / 60) };
+    format!(" {build} {age}")
 }
 
 /// The block the cursor, or failing that the open session, sits in.
@@ -484,7 +558,7 @@ fn draw_list(
             buf,
             r.x + NAME_X,
             top,
-            &[seg(msg, Style::default().fg(t.muted).bg(t.sidebar_bg))],
+            &[seg(msg, Style::default().fg(t.muted).bg(t.bg))],
             r.right().saturating_sub(1),
         );
         return;
@@ -502,6 +576,21 @@ fn draw_list(
     for (b, h) in list.iter().zip(&heights).skip(first).take(shown) {
         match *b {
             Block::Machine(mi) => draw_machine(app, buf, r, y, &sm.machines[mi], t),
+            Block::Folder(mi, ri) => {
+                let room = r.width.saturating_sub(8) as usize;
+                let name = truncate(&sm.machines[mi].rows[ri].project, room);
+                let quiet = Style::default().fg(t.muted).bg(t.bg);
+                put(
+                    buf,
+                    r.x + MARK_X,
+                    y,
+                    &[
+                        seg(format!("{} ", app.cfg.icons.folder), quiet),
+                        seg(name, quiet.fg(t.text).add_modifier(Modifier::BOLD)),
+                    ],
+                    r.right().saturating_sub(2),
+                );
+            }
             Block::Session(mi, ri) => {
                 let row = &sm.machines[mi].rows[ri];
                 draw_session(app, buf, r, y, row, Some(row.key) == open, t);
@@ -515,7 +604,7 @@ fn draw_list(
         r.right().saturating_sub(2),
         (top, room),
         (first > 0, first + shown < list.len()),
-        Style::default().bg(t.sidebar_bg).fg(t.muted),
+        Style::default().bg(t.bg).fg(t.muted),
     );
 }
 
@@ -526,7 +615,7 @@ fn draw_machine(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, m: &MachineSec
     let x = r.x + 1;
     let end = r.right().saturating_sub(1);
     hit(app, Rect { x, y, width: end.saturating_sub(x), height: 1 }, ScreenHit::MachineHead(m.id));
-    let name = chip(app, &m.label, Chip::Title { focused: false }, t.sidebar_bg, t);
+    let name = chip(app, &m.label, Chip::Title { focused: false }, t.bg, t);
     // The count sits inside the chip, quieter than the name.
     let mut segs = name;
     let count = Style::default().fg(t.muted).bg(t.btn);
@@ -536,10 +625,10 @@ fn draw_machine(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, m: &MachineSec
     }
     let after = put(buf, x, y, &segs, end.saturating_sub(4));
     let (text, act) = match m.fix {
-        Some(fix) => (fix.verb(), ScreenHit::MachineFix(m.id)),
-        None => ("+", ScreenHit::MachinePlus(m.id)),
+        Some(fix) => (capitalised(fix.verb()), ScreenHit::MachineFix(m.id)),
+        None => ("+".to_string(), ScreenHit::MachinePlus(m.id)),
     };
-    let plus = chip(app, text, Chip::Action, t.sidebar_bg, t);
+    let plus = chip(app, &text, Chip::Action, t.bg, t);
     let pw = segs_width(&plus);
     let px = after + 1;
     if px + pw < end.saturating_sub(2) {
@@ -552,7 +641,7 @@ fn draw_machine(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, m: &MachineSec
         (ONLINE_DOT, t.done)
     };
     let dx = end.saturating_sub(2);
-    put(buf, dx, y, &[seg(dot, Style::default().fg(colour).bg(t.sidebar_bg))], dx + 1);
+    put(buf, dx, y, &[seg(dot, Style::default().fg(colour).bg(t.bg))], dx + 1);
 }
 
 /// One session's two lines and its subagents.
@@ -563,7 +652,7 @@ fn draw_session(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, row: &SideRow,
     } else if open {
         t.hov
     } else {
-        t.sidebar_bg
+        t.bg
     };
     let lines = Rect {
         x: r.x + 1,
@@ -572,6 +661,15 @@ fn draw_session(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, row: &SideRow,
         height: SESSION_H,
     };
     fill(buf, lines, ground);
+    // A lit row is one soft-cornered block when shapes are rounded, as the pointer's tint is.
+    if ground != t.bg && lines.width >= 2 && Look::of(&app.cfg.ui).caps {
+        let edge = Style::default().fg(ground).bg(t.bg);
+        for dy in 0..SESSION_H {
+            let (l, e) = block_ends(dy, SESSION_H);
+            put(buf, lines.x, y + dy, &[seg(l, edge)], lines.x + 1);
+            put(buf, lines.right() - 1, y + dy, &[seg(e, edge)], lines.right());
+        }
+    }
     let base = Style::default().bg(ground);
     let end = r.right().saturating_sub(2);
     if open {
@@ -603,12 +701,14 @@ fn draw_session(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, row: &SideRow,
     let room = end.saturating_sub(r.x + NAME_X) as usize;
     put(buf, r.x + NAME_X, y, &[seg(truncate(&row.name, room.max(1)), name_style)], end);
 
-    let mut second = vec![
-        seg(PROJECT_SQUARE, base.fg(if unknown { t.idle } else { row.colour })),
-        seg(format!(" {}", row.project), base.fg(t.muted)),
-    ];
+    // Under its folder's heading a session says only its branch; otherwise the folder first.
+    let mut second = Vec::new();
+    if !app.screen.saved.group_folders {
+        second.push(seg(row.project.clone(), base.fg(t.muted)));
+    }
     if !row.branch.is_empty() {
-        second.push(seg(format!(" {}", row.branch), base.fg(t.violet())));
+        let lead = if second.is_empty() { "" } else { " " };
+        second.push(seg(format!("{lead}{}", row.branch), base.fg(t.violet())));
     }
     put_cut(buf, r.x + NAME_X, y + 1, second, end);
     if let Some(term) = row.term {
@@ -645,7 +745,7 @@ fn draw_subs(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, row: &SideRow, op
     if row.subs.is_empty() {
         return;
     }
-    let base = Style::default().bg(t.sidebar_bg);
+    let base = Style::default().bg(t.bg);
     let end = r.right().saturating_sub(2);
     let tree = base.fg(t.faint());
     if !open {
@@ -663,7 +763,7 @@ fn draw_subs(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, row: &SideRow, op
     };
     for (i, s) in row.subs.iter().enumerate() {
         let yy = y + i as u16;
-        let ground = t.sidebar_bg;
+        let ground = t.bg;
         let line = Rect {
             x: r.x + 1,
             y: yy,
@@ -698,7 +798,6 @@ mod tests {
             term: None,
             name: "Growth Tests".into(),
             project: "AeVoxGrowth".into(),
-            colour: Color::Reset,
             branch: "agent/grow-025".into(),
             state: State::Idle,
             agent: true,

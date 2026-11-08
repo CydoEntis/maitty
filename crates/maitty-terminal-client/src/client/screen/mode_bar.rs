@@ -86,7 +86,7 @@ pub(in crate::client) fn short_key(k: &KeySpec) -> String {
 
 /// A hint: its key bold in the accent, what it does muted.
 fn hint(key: String, words: &str, hit: Option<ScreenHit>, t: &Theme) -> Piece {
-    let base = Style::default().bg(t.sidebar_bg);
+    let base = Style::default().bg(t.bg);
     Piece {
         segs: vec![
             seg(key, base.fg(t.accent).add_modifier(Modifier::BOLD)),
@@ -142,23 +142,15 @@ fn key_hints(app: &mut App, t: &Theme) -> Vec<Piece> {
     hints
 }
 
-/// The session the keys go to: its name and folder, bright; or a line that just happened.
+/// A line that just happened. The session's name and folder are not repeated here: the pane's
+/// own title already shows them.
 fn where_piece(app: &App, t: &Theme) -> Option<Piece> {
-    let base = Style::default().bg(t.sidebar_bg);
-    if let Some((text, at)) = &app.bar_flash
-        && at.elapsed() < BAR_FLASH_FOR
-    {
-        return Some(Piece {
-            segs: vec![seg(text.clone(), base.fg(t.done).add_modifier(Modifier::BOLD))],
-            gap: 1,
-            hit: None,
-        });
-    }
-    let term = app.focused()?;
-    let info = app.term_info(term)?;
-    let name = pane_title(app, &app.screen_model(), term);
-    Some(Piece {
-        segs: vec![seg(format!("{name} · {}", tilde(&info.cwd)), base.fg(t.strong))],
+    let (text, at) = app.bar_flash.as_ref()?;
+    (at.elapsed() < BAR_FLASH_FOR).then(|| Piece {
+        segs: vec![seg(
+            text.clone(),
+            Style::default().bg(t.bg).fg(t.done).add_modifier(Modifier::BOLD),
+        )],
         gap: 1,
         hit: None,
     })
@@ -238,7 +230,7 @@ fn keys_holder(app: &App) -> Option<Holder> {
         }
         Mode::ScreenSettings(_) => holder(
             "SETTINGS",
-            &[("j/k", "move"), ("Tab", "section"), ("Enter", "change")],
+            &[("↑↓", "move"), ("Tab", "section"), ("Enter", "change")],
             ("Esc", "close"),
         ),
         // A merge or throw-away asked in a finished row: Enter does it, Esc only drops the question.
@@ -601,7 +593,7 @@ fn view_holder(app: &App) -> Option<Holder> {
 fn hint_piece((key, words): Hint, t: &Theme) -> Piece {
     if key.is_empty() {
         return Piece {
-            segs: vec![seg(words, Style::default().fg(t.muted).bg(t.sidebar_bg))],
+            segs: vec![seg(words, Style::default().fg(t.muted).bg(t.bg))],
             gap: GAP,
             hit: None,
         };
@@ -641,7 +633,7 @@ pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rec
     if row.height == 0 || row.width < 4 {
         return;
     }
-    fill(buf, row, t.sidebar_bg);
+    fill(buf, row, t.bg);
     let holder = keys_holder(app);
     let (tag, mut right, place) = if let Some(h) = &holder {
         let (tag, right) = holding(app, h, t);
@@ -688,7 +680,7 @@ pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rec
     let words_only = only_says(app);
     // With `ui.rounded = "full"` a chip on the bar is capped on the bar's ground.
     let round = Look::of(&app.cfg.ui).round_tabs;
-    let ground = t.sidebar_bg;
+    let ground = t.bg;
     let put_piece = |app: &mut App, buf: &mut Buffer, x: u16, p: &Piece| -> u16 {
         let chip = p.segs.first().is_some_and(|(_, s)| s.bg != Some(ground));
         let segs = if round && chip {

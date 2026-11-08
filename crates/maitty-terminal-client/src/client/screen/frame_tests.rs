@@ -228,7 +228,7 @@ fn rounded_shapes_round_cards_and_give_chips_pill_ends() {
         let mut app = world(Stage::None);
         app.cfg.ui.rounded = crate::config::Rounding::Full;
         let text = reference_fixture::raw_text(&mut app, layout, 140, 36, "unicode");
-        for chip in ["maitty", "This computer", "menu"] {
+        for chip in ["Maitty", "This computer", "Menu"] {
             assert!(
                 text.contains(chip),
                 "{chip} stays visible: {layout:?}\n{text}"

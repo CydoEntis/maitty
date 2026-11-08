@@ -93,19 +93,19 @@ fn the_sidebar_lists_each_machine_with_its_sessions_two_lines_each() {
     let mut app = reference_fixture::world(Stage::None);
     let rows = text(&mut app, 140, 36);
     show(&rows, "140x36");
-    let head = side(&rows, 3);
+    let head = side(&rows, 2);
     assert!(head.contains(" This computer 5 ") && head.contains(" + "), "{head}");
     assert!(head.trim_end().ends_with("● │"), "the connection dot: {head}");
     let y = row_of(&app, 1);
     assert!(side(&rows, y).contains("● fix-footer"), "{}", side(&rows, y));
     assert!(
-        side(&rows, y + 1).contains("■ affiliate-site fix-footer"),
-        "the project square, the project and the branch: {}",
+        side(&rows, y + 1).contains("affiliate-site fix-footer") && !side(&rows, y + 1).contains('■'),
+        "the project and the branch, no colour square: {}",
         side(&rows, y + 1)
     );
     let finch = row_of(&app, 3);
     assert!(
-        side(&rows, finch + 1).trim_end_matches(['│', ' ']).ends_with("■ pixls"),
+        side(&rows, finch + 1).trim_end_matches(['│', ' ']).ends_with("pixls"),
         "no repo, no branch: {}",
         side(&rows, finch + 1)
     );
@@ -158,7 +158,7 @@ fn busy_agents_are_bold_idle_ones_plain_and_the_open_session_has_the_row_ground_
         assert_eq!(buf[(10, y(1) + dy)].bg, t.hov);
         assert_eq!((buf[(1, y(1) + dy)].symbol(), buf[(1, y(1) + dy)].fg), ("▎", t.accent));
     }
-    assert_eq!(buf[(10, y(3))].bg, t.sidebar_bg, "the others sit on the panel");
+    assert_eq!(buf[(10, y(3))].bg, t.bg, "the others sit on the ground");
 }
 
 #[test]
@@ -166,15 +166,18 @@ fn the_borders_carry_the_title_hide_release_and_menu_chips() {
     let mut app = reference_fixture::world(Stage::None);
     let rows = text(&mut app, 140, 36);
     let top = side(&rows, 0);
-    assert!(top.contains(" maitty ") && top.contains(" « "), "{top}");
-    assert!(top.find(" maitty ").unwrap() < top.find(" « ").unwrap());
-    assert!(side(&rows, 1).contains("/ filter sessions"), "{}", side(&rows, 1));
-    let foot = side(&rows, 34);
+    assert!(top.contains(" Maitty ") && top.contains(" « "), "{top}");
+    assert!(top.find(" Maitty ").unwrap() < top.find(" « ").unwrap());
+    assert!(!top.contains("+ machine"), "adding a machine lives in the menu: {top}");
+    assert!(top.contains('\u{25be}') && top.find('\u{25be}').unwrap() < top.find(" « ").unwrap(), "the group-by chip: {top}");
+    assert!(!rows.iter().any(|r| side_of(r).contains("filter sessions")), "the filter is a command, not a field");
+    // No mode bar in pane mode, so the frames reach the bottom row.
+    let foot = side(&rows, 35);
     let version = format!(" v{} ", crate::brand::APP_VERSION);
-    assert!(foot.contains(&version) && foot.contains(" menu "), "{foot}");
+    assert!(foot.contains(&version) && foot.contains(" Menu "), "{foot}");
     app.update_available = Some("0.99.0".into());
     let rows = text(&mut app, 140, 36);
-    assert!(side(&rows, 34).contains(" ↑ v0.99.0 "), "{}", side(&rows, 34));
+    assert!(side(&rows, 33).contains(" ↑ v0.99.0 "), "{}", side(&rows, 33));
 }
 
 #[test]
@@ -182,8 +185,8 @@ fn the_release_chip_opens_its_menu_upward() {
     let mut app = reference_fixture::world(Stage::None);
     app.update_available = Some("0.99.0".into());
     let rows = text(&mut app, 140, 36);
-    let x = side(&rows, 34).find('↑').unwrap() as u16;
-    click(&mut app, x, 34);
+    let x = side(&rows, 33).find('↑').unwrap() as u16;
+    click(&mut app, x, 33);
     let Mode::ScreenMenu(menu) = &app.mode else {
         panic!("{:?}", app.mode)
     };
@@ -193,11 +196,11 @@ fn the_release_chip_opens_its_menu_upward() {
     let rows = text(&mut app, 140, 36);
     show(&rows, "release menu");
     let top = rows.iter().position(|r| r.contains("Update to v0.99.0")).unwrap();
-    assert!(top < 34, "it opens above the chip");
+    assert!(top < 33, "it opens above the chip");
 }
 
 #[test]
-fn the_filter_matches_sessions_and_the_cross_and_esc_clear_it() {
+fn the_filter_is_a_modal_that_narrows_the_list_as_you_type_and_esc_clears_it() {
     let mut app = reference_fixture::world(Stage::None);
     app.screen_side_set(SideItem::Sess(app.session_key(ClientTerm::local(1))));
     key(&mut app, KeyCode::Char('/'));
@@ -206,20 +209,44 @@ fn the_filter_matches_sessions_and_the_cross_and_esc_clear_it() {
     }
     let rows = text(&mut app, 140, 36);
     show(&rows, "filtered");
-    assert!(side(&rows, 1).contains("pixls"), "{}", side(&rows, 1));
+    assert!(rows.iter().any(|r| r.contains("Filter sessions") && r.contains('╭')), "the modal's title");
+    assert!(rows.iter().any(|r| r.contains("› pixls")), "what is typed");
     assert!(rows.iter().any(|r| side_of(r).contains("warm-finch")));
     assert!(!rows.iter().any(|r| side_of(r).contains("fix-footer")), "only the match");
     key(&mut app, KeyCode::Esc);
     let rows = text(&mut app, 140, 36);
-    assert!(side(&rows, 1).contains("filter sessions"));
+    assert!(!rows.iter().any(|r| r.contains("Filter sessions")), "the modal is gone");
     assert!(rows.iter().any(|r| side_of(r).contains("fix-footer")));
-    // A session's project matches too, and the cross clears what is typed.
+    // A session's project matches too.
     app.screen.filter = "affiliate".into();
     let rows = text(&mut app, 140, 36);
     assert!(rows.iter().any(|r| side_of(r).contains("add-payments")));
-    let x = side(&rows, 1).chars().position(|c| c == '×').unwrap() as u16;
-    click(&mut app, x, 1);
-    assert!(app.screen.filter.is_empty());
+}
+
+#[test]
+fn enter_in_the_filter_opens_the_match_and_leaves_the_list_whole() {
+    let mut app = reference_fixture::world(Stage::None);
+    app.act(Action::FilterSessions);
+    for c in "pixls".chars() {
+        key(&mut app, KeyCode::Char(c));
+    }
+    key(&mut app, KeyCode::Enter);
+    assert!(app.screen.filter.is_empty() && !app.screen.filtering);
+    let rows = text(&mut app, 140, 36);
+    assert!(rows.iter().any(|r| side_of(r).contains("fix-footer")), "nothing stays hidden");
+}
+
+#[test]
+fn add_machine_is_in_the_sidebar_menu() {
+    let mut app = reference_fixture::world(Stage::None);
+    text(&mut app, 140, 36);
+    app.sidebar_menu();
+    let Mode::ScreenMenu(m) = &app.mode else { panic!("{:?}", app.mode) };
+    let i = m.items.iter().position(|(label, _)| label == "Add machine…").expect("the item");
+    app.menu_pick(i);
+    assert!(matches!(app.mode, Mode::Machines(_)), "{:?}", app.mode);
+    let rows = text(&mut app, 140, 36);
+    assert!(!side(&rows, 0).contains("+ machine"), "no chip on the top border");
 }
 
 #[test]
@@ -274,8 +301,8 @@ fn the_plus_on_a_machine_heading_starts_a_shell_there_at_once() {
     let (tx, mut rx) = mpsc::unbounded_channel();
     app.out = tx;
     let rows = text(&mut app, 140, 36);
-    let plus = side(&rows, 3).chars().position(|c| c == '+').unwrap() as u16;
-    click(&mut app, plus, 3);
+    let plus = side(&rows, 2).chars().position(|c| c == '+').unwrap() as u16;
+    click(&mut app, plus, 2);
     let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
     assert!(
         sent.iter()
@@ -340,8 +367,8 @@ fn a_machine_with_no_app_has_an_install_chip_on_its_heading_that_opens_the_popup
         .position(|r| side(std::slice::from_ref(r), 0).contains(" kingdom 0 "))
         .expect("kingdom's heading");
     let head = side(&rows, y);
-    assert!(head.contains(" install ") && !head.contains(" + "), "{head}");
-    let x = head.find(" install ").expect("the chip") as u16 + 2;
+    assert!(head.contains(" Install ") && !head.contains(" + "), "{head}");
+    let x = head.find(" Install ").expect("the chip") as u16 + 2;
     click(&mut app, x, y as u16);
     let popups: Vec<String> = std::iter::from_fn(|| rx.try_recv().ok())
         .filter_map(|o| match o.msg {
@@ -378,7 +405,7 @@ fn a_machine_heading_s_right_click_menu_offers_the_fix_first() {
     // This computer's heading has no fix and no machine to reconnect.
     app.mode = Mode::Normal;
     text(&mut app, 140, 36);
-    right_click(&mut app, 4, 3);
+    right_click(&mut app, 4, 2);
     assert_eq!(menu_labels(&app), ["New shell here"]);
 }
 
@@ -401,11 +428,16 @@ fn hiding_the_sidebar_leaves_a_show_chip_that_brings_it_back() {
     app.act(Action::ToggleSidebar);
     let rows = text(&mut app, 140, 36);
     show(&rows, "hidden");
-    assert!(rows[0].starts_with(" » "), "{}", rows[0]);
+    assert!(side(&rows, 0).contains(" » "), "the narrow column's chip: {}", rows[0]);
     assert!(!rows.iter().any(|r| r.contains("This computer")));
-    click(&mut app, 1, 0);
+    assert!(
+        rows.iter().any(|r| r.chars().take(8).collect::<String>().contains("fix-footer".chars().next().unwrap())),
+        "a row for each session stays in the column"
+    );
+    let x = rows[0].chars().position(|c| c == '»').unwrap() as u16;
+    click(&mut app, x, 0);
     let rows = text(&mut app, 140, 36);
-    assert!(side(&rows, 3).contains("This computer"));
+    assert!(side(&rows, 2).contains("This computer"));
 }
 
 /// The world with three subagents reported in add-payments' (2) current turn.
@@ -555,15 +587,17 @@ fn work(rows: &[String], y: usize) -> String {
 }
 
 #[test]
-fn a_pane_is_a_box_with_its_title_chip_and_files_changes_and_close_at_the_right() {
+fn a_pane_is_a_box_with_its_title_chip_and_close_on_top_and_its_folder_and_branch_below() {
     let mut app = reference_fixture::world(Stage::None);
     let rows = text(&mut app, 140, 36);
     show(&rows, "a lone pane");
     let top = work(&rows, 0);
     assert!(top.starts_with("╭─ ● fix-footer "), "the mark and the name in the chip: {top}");
-    assert!(top.contains("affiliate-site-worktrees") && top.contains(" fix-footer "), "the folder and the branch: {top}");
-    assert!(top.trim_end().ends_with(" files ─ changes ─ × ─╮"), "{top}");
-    assert!(rows[1].contains("rename the footer copyright"), "the program starts under the border");
+    assert!(top.trim_end().ends_with(" × ─╮"), "only the close chip at the right: {top}");
+    let bottom = rows.iter().map(|r| r.chars().skip(35).collect::<String>()).find(|r| r.contains('╰')).expect("the bottom border");
+    assert!(bottom.contains("affiliate-site-worktrees") && bottom.contains(" fix-footer "), "the folder and the branch on the bottom border: {bottom}");
+    assert!(work(&rows, 1).trim_matches(['│', ' ']).is_empty(), "a blank row under the border: {}", rows[1]);
+    assert!(rows[2].contains("rename the footer copyright"), "the program starts below it: {}", rows[2]);
     for word in ["add-payments ×", "Files", "Changes", " + "] {
         assert!(!top.contains(word), "no tab row: {word} in {top}");
     }
@@ -585,36 +619,43 @@ fn the_focused_panes_box_and_title_chip_are_the_accent() {
 }
 
 #[test]
-fn the_title_is_cut_short_before_the_chips_at_the_right() {
+fn the_bottom_chips_are_cut_short_from_the_right_and_the_name_and_close_stay() {
     let mut app = reference_fixture::world(Stage::None);
     let rows = text(&mut app, 90, 24);
     let top = work(&rows, 0);
     show(&rows, "90x24");
-    assert!(top.contains('…') && top.contains(" × "), "{top}");
+    assert!(top.contains(" fix-footer ") && top.contains(" × "), "{top}");
+    let bottom = rows.iter().map(|r| r.chars().skip(35).collect::<String>()).find(|r| r.contains('╰')).expect("the bottom border");
+    assert!(bottom.contains('…'), "{bottom}");
 }
 
 #[test]
-fn the_files_and_changes_chips_open_the_project_panels_and_light_while_open() {
+fn a_panes_folder_and_branch_sit_on_its_bottom_border_and_files_and_changes_are_in_the_menu() {
+    let mut app = reference_fixture::world(Stage::None);
+    let rows = text(&mut app, 140, 36);
+    let top = rows[0].clone();
+    assert!(!top.contains("files") && !top.contains("changes"), "no tool chips on the top border: {top}");
+    assert!(top.contains(" × "), "the close chip stays: {top}");
+    let bottom = rows.iter().rev().find(|r| r.contains('╰') || r.contains('└')).cloned().expect("a bottom border");
+    assert!(bottom.contains("code") || bottom.contains('~'), "the folder is on the bottom border: {bottom}");
+    // A click on it opens the pane's Project menu, where Files and Changes now are.
+    let at = app.hits.iter().find_map(|(r, h)| matches!(h, Hit::Screen(ScreenHit::PaneProject(_))).then_some(*r)).expect("the bottom chips");
+    click(&mut app, at.x + 1, at.y);
+    let Mode::ScreenMenu(m) = &app.mode else { panic!("{:?}", app.mode) };
+    let labels: Vec<&str> = m.items.iter().map(|(label, _)| label.as_str()).collect();
+    assert!(labels.contains(&"Files") && labels.contains(&"Changes"), "{labels:?}");
+}
+
+#[test]
+fn the_host_terminals_tab_title_names_the_focused_session_with_its_state_mark() {
     let mut app = reference_fixture::world(Stage::None);
     cells(&mut app, 140, 36);
-    let find = |app: &App, f: fn(&ScreenHit) -> bool| {
-        app.hits.iter().find_map(|(r, h)| match h {
-            Hit::Screen(h) if f(h) => Some(*r),
-            _ => None,
-        })
-    };
-    let files = find(&app, |h| matches!(h, ScreenHit::FilesChip)).expect("the files chip");
-    assert_eq!(files.y, 0, "on the top border");
-    let t = app.theme.clone();
-    let buf = cells(&mut app, 140, 36);
-    assert_eq!(buf[(files.x + 1, 0)].bg, t.btn, "quiet while closed");
-    click(&mut app, files.x + 2, 0);
-    assert!(matches!(app.view, Some(crate::client::View::Files(_))), "it opens Files");
-    let buf = cells(&mut app, 140, 36);
-    let files = find(&app, |h| matches!(h, ScreenHit::FilesChip)).expect("the files chip");
-    assert_eq!(buf[(files.x + 1, 0)].bg, t.accent, "the accent while open");
-    click(&mut app, files.x + 2, 0);
-    assert!(app.view.is_none(), "a second click closes it");
+    let title = super::window_title(&app);
+    assert!(title.contains("fix-footer"), "{title}");
+    assert!(title.ends_with(crate::brand::APP_NAME), "{title}");
+    assert!(!title.chars().any(char::is_control), "{title:?}");
+    app.sync_window_title();
+    assert_eq!(app.window_title.as_deref(), Some(title.as_str()), "written once, remembered");
 }
 
 #[test]
@@ -748,30 +789,74 @@ fn the_row_menu_lists_what_the_design_does() {
 fn a_narrow_status_bar_drops_pieces_instead_of_running_them_together() {
     for w in 40..=140u16 {
         let mut app = reference_fixture::world(Stage::None);
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
         let rows = text(&mut app, w, 24);
         let bar = &rows[23];
-        let help = bar.find("? help").unwrap_or_else(|| panic!("{w}: the way out stays: {bar}"));
-        assert!(bar[..help].ends_with("  "), "{w}: a gap before the hints: {bar}");
-        assert!(bar.trim_start().starts_with("PANE"), "{w}: {bar}");
+        let out = bar.find("esc back").unwrap_or_else(|| panic!("{w}: the way out stays: {bar}"));
+        assert!(bar[..out].ends_with("  "), "{w}: a gap before the hints: {bar}");
+        assert!(bar.trim_start().starts_with("KEYS"), "{w}: {bar}");
     }
 }
 
 #[test]
 fn the_status_bar_says_the_mode_the_session_and_the_keys_worth_knowing() {
     let mut app = reference_fixture::world(Stage::None);
+    let rows = text(&mut app, 140, 36);
+    assert!(!rows[35].contains("PANE") && rows[35].contains('\u{2570}'), "no bar while keys go to the pane: {}", rows[35]);
+    // Update or Restart waiting brings the bar back, in pane mode.
+    app.update_available = Some("0.99.0".into());
     let buf = cells(&mut app, 140, 36);
     let rows = text(&mut app, 140, 36);
     let t = app.theme.clone();
     let bar = &rows[35];
-    assert!(bar.starts_with("  PANE  fix-footer · "), "{bar}");
-    assert!(bar.ends_with("j/k sessions  ^space keys  ? help"), "{bar}");
+    assert!(bar.starts_with("  PANE  "), "{bar}");
+    assert!(!bar.contains("fix-footer"), "the pane's title already says it: {bar}");
+    assert!(bar.contains("j/k sessions  ^space keys  ? help"), "{bar}");
     assert_eq!((buf[(2, 35)].bg, buf[(2, 35)].fg), (t.accent, t.acc_ink), "the PANE chip");
-    assert_eq!(buf[(100, 35)].bg, t.sidebar_bg, "the bar is on the panel ground");
+    assert_eq!(buf[(100, 35)].bg, t.bg, "the bar is on the ground");
+    app.update_available = None;
     app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
     let rows = text(&mut app, 140, 36);
     let buf = cells(&mut app, 140, 36);
     let bar = &rows[35];
-    assert!(bar.starts_with("  KEYS  fix-footer · "), "{bar}");
+    assert!(bar.starts_with("  KEYS  "), "{bar}");
     assert!(bar.ends_with("n new  s split  x close  tab pane  ? help  esc back"), "{bar}");
     assert_eq!(buf[(2, 35)].bg, t.blocked, "the KEYS chip is yellow");
+}
+
+#[test]
+fn a_blank_row_sets_the_first_session_off_from_its_machine() {
+    let mut app = reference_fixture::world(Stage::None);
+    let rows = text(&mut app, 140, 36);
+    let ink = |y: usize| side(&rows, y).chars().filter(|c| c.is_alphanumeric()).count();
+    let at = (0..rows.len())
+        .find(|&y| side(&rows, y).to_lowercase().contains("this computer"))
+        .expect("a machine heading");
+    assert_eq!(ink(at + 1), 0, "blank under the heading: {:?}", side(&rows, at + 1));
+    assert!(ink(at + 2) > 0, "the first session follows: {:?}", side(&rows, at + 2));
+}
+
+#[test]
+fn the_group_by_menu_lists_sessions_by_folder_or_by_priority() {
+    let mut app = reference_fixture::world(Stage::None);
+    let rows = text(&mut app, 140, 36);
+    let top = side(&rows, 0);
+    assert!(top.contains(&app.cfg.icons.filter), "the chip is on the border: {top}");
+    let x = rows[0].chars().position(|c| app.cfg.icons.filter.starts_with(c)).unwrap() as u16;
+    click(&mut app, x, 0);
+    let Mode::ScreenMenu(m) = &app.mode else { panic!("{:?}", app.mode) };
+    assert_eq!(m.title, "group by");
+    assert!(m.items[0].0.contains("Priority") && m.items[0].0.starts_with('\u{2713}'), "{:?}", m.items);
+    app.menu_pick(1);
+    assert!(app.screen.saved.group_folders);
+    let rows = text(&mut app, 140, 36);
+    show(&rows, "grouped by folder");
+    let heading = rows.iter().position(|r| side_of(r).contains("affiliate-site") && !side_of(r).contains("fix-footer"));
+    assert!(heading.is_some(), "a heading for the folder");
+    let y = row_of(&app, 1);
+    assert!(!side(&rows, y + 1).contains("affiliate-site"), "no folder under the name: {}", side(&rows, y + 1));
+    assert!(side(&rows, y + 1).contains("fix-footer"), "the branch stays: {}", side(&rows, y + 1));
+    click(&mut app, x, 0);
+    app.menu_pick(0);
+    assert!(!app.screen.saved.group_folders);
 }

@@ -473,8 +473,10 @@ pub(in crate::client) fn settings_help_cols(w: u16) -> u16 {
 fn draw_sections(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, cur: usize) {
     use crate::client::modal::Cat;
     let c = Style::default().bg(t.card);
+    // One row each: the list is a quick index, not a set of settings to read apart.
+    let step = 1;
     for (i, cat) in Cat::ALL.iter().enumerate() {
-        let y = r.y + 1 + i as u16;
+        let y = r.y + 1 + i as u16 * step;
         if y >= r.bottom() {
             break;
         }
@@ -567,7 +569,7 @@ fn draw_settings_footer(buf: &mut Buffer, r: Rect, t: &Theme) {
     let y = r.bottom().saturating_sub(1);
     hline(buf, r.x, y.saturating_sub(1), r.width, t, t.card);
     let mut segs = Vec::new();
-    for (key, words) in [("j/k", "move"), ("tab", "section"), ("enter", "change"), ("o", "open"), ("esc", "close")] {
+    for (key, words) in [("↑↓", "move"), ("tab", "section"), ("enter", "change"), ("o", "open"), ("esc", "close")] {
         segs.push(seg(key, c.fg(t.accent).add_modifier(Modifier::BOLD)));
         segs.push(seg(format!(" {words}  "), c.fg(t.muted)));
     }
@@ -668,20 +670,34 @@ pub(in crate::client) fn draw_settings(
     enum L {
         Head(&'static str),
         Row(usize),
-    }
-    let mut lines: Vec<L> = Vec::new();
-    let mut last = "";
-    for (i, row) in rows.iter().enumerate() {
-        let g = settings_group(row);
-        if g != last {
-            lines.push(L::Head(g));
-            last = g;
-        }
-        lines.push(L::Row(i));
+        Gap,
     }
     let top = right.y + 3 + notes;
     let help_y = body.bottom().saturating_sub(2);
     let h = help_y.saturating_sub(top + 1) as usize;
+    // Groups sit a blank row apart, unless the window is too short to spare the rows; rows get
+    // a blank row between them only when the whole list still fits that way.
+    let roomy = body.height >= 20;
+    let build = |spaced: bool| {
+        let mut lines: Vec<L> = Vec::new();
+        let mut last = "";
+        for (i, row) in rows.iter().enumerate() {
+            let g = settings_group(row);
+            if g != last {
+                if roomy && !lines.is_empty() {
+                    lines.push(L::Gap);
+                }
+                lines.push(L::Head(g));
+                last = g;
+            } else if spaced {
+                lines.push(L::Gap);
+            }
+            lines.push(L::Row(i));
+        }
+        lines
+    };
+    let spaced = build(true);
+    let lines = if spaced.len() <= h { spaced } else { build(false) };
     let at = lines
         .iter()
         .position(|l| matches!(l, L::Row(i) if *i == v.sel))
@@ -692,6 +708,7 @@ pub(in crate::client) fn draw_settings(
     for (k, line) in lines.iter().enumerate().skip(start).take(h) {
         let y = top + (k - start) as u16;
         match line {
+            L::Gap => {}
             L::Head(g) => {
                 // A dim heading and a rule out to the edge.
                 let end = put(buf, lx, y, &[seg(*g, c.fg(t.muted).add_modifier(Modifier::BOLD)), seg(" ", c)], right.right());

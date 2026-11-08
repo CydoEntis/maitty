@@ -74,6 +74,8 @@ pub enum Act {
     /// Stop the daemon so the window reconnects to the installed version.
     RestartDaemon,
     InstallStatus(String),
+    /// How the sidebar lists sessions: by folder (true) or by priority (false).
+    GroupBy(bool),
     /// Open a session's check output in the evidence sheet.
     CheckOutput(ClientTerm),
     RerunCheck(ClientTerm),
@@ -347,6 +349,7 @@ impl App {
         let mut items = self.machine_fix_items();
         items.extend([
             ("Filter sessions".to_string(), Act::Tool(Action::FilterSessions)),
+            ("Add machine…".to_string(), Act::Tool(Action::Machines)),
             ("Inbox".to_string(), Act::Tool(Action::Jump)),
             ("Usage and cost".to_string(), Act::Tool(Action::Usage)),
             ("Settings".to_string(), Act::Tool(Action::Settings)),
@@ -355,6 +358,18 @@ impl App {
         let side = self.screen.side_rect;
         let x = side.right().saturating_sub(SIDEBAR_MENU_W + 1);
         self.menu("menu".into(), items, (x, side.bottom().saturating_sub(1)));
+    }
+
+    /// The sidebar's group-by chip: how sessions are listed, the current choice ticked.
+    pub(super) fn group_menu(&mut self) {
+        let by_folder = self.screen.saved.group_folders;
+        let tick = |on: bool| if on { "\u{2713} " } else { "  " };
+        let items = vec![
+            (format!("{}Priority", tick(!by_folder)), Act::GroupBy(false)),
+            (format!("{}Folder", tick(by_folder)), Act::GroupBy(true)),
+        ];
+        let at = self.screen.group_at;
+        self.menu("group by".into(), items, at);
     }
 
     /// Right-click on a machine heading in the sidebar. A machine whose app is missing or old
@@ -449,6 +464,7 @@ impl App {
         let title = c.title.clone().unwrap_or_else(|| match c.provider {
             crate::conversation::Provider::Codex => format!("Codex {}", id.0),
             crate::conversation::Provider::Claude => format!("Claude {}", id.0),
+            crate::conversation::Provider::Gemini => format!("Gemini {}", id.0),
         });
         let items = vec![
             ("Rename".to_string(), Act::RenameConversation(id)),
@@ -877,6 +893,12 @@ impl App {
                 );
             }
             Act::Update => self.start_update(),
+            Act::GroupBy(by_folder) => {
+                self.screen.saved.group_folders = by_folder;
+                self.screen.save();
+                self.screen.side_scroll = 0;
+                self.screen.follow = true;
+            }
             Act::RestartDaemon => self.restart_daemon_now(),
             Act::InstallStatus(agent) => {
                 self.notify(format!("setting up {agent} status…"), false);

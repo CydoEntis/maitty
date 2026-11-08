@@ -323,6 +323,21 @@ impl App {
         }
     }
 
+    /// A click in the Machines dialog: choose machine `i`, and press `key` on it when a button
+    /// was clicked, so a button does exactly what its key does.
+    pub(in crate::client) fn machines_pick(&mut self, i: usize, key: Option<char>) {
+        // The dialog stays the mode: the key handler puts the changed view back only while it is.
+        let Mode::Machines(v) = &self.mode else {
+            return;
+        };
+        let mut v = (**v).clone();
+        v.machine_sel = Some(i);
+        match key {
+            Some(c) => self.on_machines_key(v, &KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)),
+            None => self.mode = Mode::Machines(Box::new(v)),
+        }
+    }
+
     /// The keys while they are on your machines: the arrows move (Down from the last one is back
     /// in the input), and a letter acts on the chosen machine.
     fn machines_list_key(&mut self, v: &mut MachinesView, sel: usize, k: &KeyEvent) {
@@ -831,13 +846,20 @@ fn draw_your_machines(
         let st = list_row(app, buf, rr, on, t);
         let state = format!("{} {}", row.glyph, row.word);
         let state_w = state.width();
-        let hint = row.fix.map_or_else(Vec::new, |fix| {
-            let ground = st.bg.unwrap_or(t.card);
-            chip(app, &format!("u {}", fix.verb()), Chip::Action, ground, t)
-        });
-        let hint_w = segs_width(&hint) as usize;
+        // One button for each thing the keys do, at the row's right end.
+        let ground = st.bg.unwrap_or(t.card);
+        let buttons: Vec<(Vec<Seg>, char)> = [
+            (row.fix.map_or("update", AppFix::verb), 'u'),
+            ("reconnect", 'r'),
+            ("edit", 'e'),
+            ("remove", 'x'),
+        ]
+        .into_iter()
+        .map(|(label, key)| (chip(app, label, Chip::Action, ground, t), key))
+        .collect();
+        let buttons_w: usize = buttons.iter().map(|(b, _)| segs_width(b) as usize + 1).sum();
         let target_w =
-            (inner.width as usize).saturating_sub(name_w + state_w + hint_w + 13);
+            (inner.width as usize).saturating_sub(name_w + state_w + buttons_w + 13);
         put(
             buf,
             rr.x + 2,
@@ -859,16 +881,20 @@ fn draw_your_machines(
             ],
             rr.right(),
         );
+        hit(app, rr, ScreenHit::MachineRow(n));
+        let mut x = rr.right().saturating_sub(buttons_w as u16 + 1);
         put(
             buf,
-            rr.right().saturating_sub(state_w as u16 + 2),
+            x.saturating_sub(state_w as u16 + 2),
             y,
             &[seg(state, st.fg(row.color).add_modifier(Modifier::BOLD))],
-            rr.right(),
+            x,
         );
-        if !hint.is_empty() {
-            let hx = rr.right().saturating_sub((state_w + hint_w) as u16 + 3);
-            put(buf, hx, y, &hint, rr.right());
+        for (button, key) in &buttons {
+            let w = segs_width(button);
+            put(buf, x, y, button, rr.right());
+            hit(app, Rect { x, y, width: w, height: 1 }, ScreenHit::MachineButton(n, *key));
+            x += w + 1;
         }
         y += 1;
     }

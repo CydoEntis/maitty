@@ -33,6 +33,16 @@ fn last() -> usize {
 }
 
 impl App {
+    /// Move the working spinner one step along the list and apply it at once, so the settings
+    /// row's preview shows it as the arrow keys go.
+    pub(super) fn step_spinner(&mut self, dir: i64) {
+        let name = crate::config::spinner_name(&self.cfg.ui.spinner);
+        let at = SPINNERS.iter().position(|(label, _)| *label == name).unwrap_or(0) as i64;
+        let next = (at + dir).rem_euclid(SPINNERS.len() as i64) as usize;
+        let value = SPINNERS[next].1.iter().copied().collect::<toml_edit::Array>();
+        self.save_setting(PATH, value.into());
+    }
+
     pub(super) fn open_spinners(&mut self) {
         let name = crate::config::spinner_name(&self.cfg.ui.spinner);
         let sel = SPINNERS

@@ -257,6 +257,33 @@ fn a_codex_rollout_is_matched_by_the_end_of_its_name() {
     assert!(codex(&wrong).is_err());
 }
 
+#[test]
+fn a_gemini_transcript_is_matched_by_the_start_of_the_session_id_in_its_name() {
+    let home = Home::new();
+    let folder = home.dir.path().join(".gemini/tmp/project/chats");
+    std::fs::create_dir_all(&folder).unwrap();
+    let good = folder.join("session-2026-11-04T10-00-aaaaaaaa.jsonl");
+    let wrong = folder.join("session-2026-11-04T10-00-bbbbbbbb.jsonl");
+    let not_a_session = folder.join("notes-aaaaaaaa.jsonl");
+    for file in [&good, &wrong, &not_a_session] {
+        std::fs::write(file, "").unwrap();
+    }
+    let gemini = |path: &Path| {
+        read_new(
+            Provider::Gemini,
+            SESSION,
+            Some(path),
+            None,
+            Transcript::new(Format::Gemini, SESSION),
+            home.dir.path(),
+        )
+    };
+
+    assert!(gemini(&good).is_ok());
+    assert!(matches!(gemini(&wrong), Err(ReadFailure::Refused(_))));
+    assert!(matches!(gemini(&not_a_session), Err(ReadFailure::Refused(_))));
+}
+
 // ---- the daemon ----
 
 fn own_data_folder() {
@@ -596,15 +623,19 @@ async fn a_new_session_in_the_pane_starts_a_new_generation_and_the_old_read_is_d
 }
 
 #[tokio::test]
-async fn only_verified_desktop_panes_running_claude_or_codex_with_a_known_session_are_followed() {
+async fn only_verified_desktop_panes_running_claude_codex_or_gemini_with_a_known_session_are_followed() {
     type Change = fn(&mut crate::daemon::term::Term);
-    let cases: [(&str, Change); 7] = [
+    let cases: [(&str, Change); 8] = [
         ("terminal app pane", |t| t.owner = Surface::Terminal),
         ("unverified status", |t| t.hooked = false),
-        ("another agent", |t| t.agent = Some("gemini".into())),
+        ("another agent", |t| t.agent = Some("opencode".into())),
         ("a shell", |t| t.agent = None),
         ("no session yet", |t| t.session = None),
         ("claude without a transcript", |t| t.transcript = None),
+        ("gemini without a transcript", |t| {
+            t.agent = Some("gemini".into());
+            t.transcript = None;
+        }),
         ("the agent has exited", |t| t.process_exited = true),
     ];
     for (name, change) in cases {
@@ -619,6 +650,10 @@ async fn only_verified_desktop_panes_running_claude_or_codex_with_a_known_sessio
     let mut world = World::new();
     world.daemon.follow_tick();
     assert_eq!(world.daemon.followed.len(), 1);
+    let mut world = World::new();
+    world.daemon.terms.get_mut(&world.pane).unwrap().agent = Some("gemini".into());
+    world.daemon.follow_tick();
+    assert_eq!(world.daemon.followed.len(), 1, "a gemini pane with its hook's transcript is followed");
 }
 
 #[tokio::test]

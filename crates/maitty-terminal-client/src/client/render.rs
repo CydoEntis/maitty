@@ -260,9 +260,15 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
             super::spinners::draw(app, f, area, &t, &view);
         }
         Mode::Prompt { kind, input } => {
-            let (label, input, confirm) =
-                (kind.label().to_string(), input.clone(), kind.is_confirm());
-            draw_prompt(app, f, area, &t, &label, &input, confirm)
+            let (label, input) = (kind.label().to_string(), input.clone());
+            let enter = (!kind.is_confirm()).then_some("save");
+            draw_prompt(app, f, area, &t, &label, &input, enter)
+        }
+        // The sidebar has no filter field: the command opens this one, and the list narrows as
+        // you type.
+        Mode::Side if app.screen.filtering => {
+            let typed = app.screen.filter.clone();
+            draw_prompt(app, f, area, &t, "Filter sessions", &typed, Some("open"));
         }
         Mode::RenameTab(tab) => {
             let name = tab.name.clone();
@@ -273,7 +279,7 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
                 &t,
                 "Rename session (empty: automatic)",
                 &name,
-                false,
+                Some("save"),
             );
         }
         Mode::Worktrees {
@@ -308,12 +314,36 @@ pub fn blend(a: Color, b: Color, t: f32) -> Color {
 
 /// Which working-spinner frame to show: it turns with motion on and rests on its
 /// third frame with motion off.
+impl App {
+    /// Write the focused session's title to the host terminal's tab when it has changed.
+    pub(super) fn sync_window_title(&mut self) {
+        use std::io::Write;
+        let title = super::screen::window_title(self);
+        if self.window_title.as_deref() == Some(title.as_str()) {
+            return;
+        }
+        let mut out = std::io::stdout();
+        if write!(out, "\x1b]0;{title}\x07").and_then(|()| out.flush()).is_ok() {
+            self.window_title = Some(title);
+        }
+    }
+}
+
 fn working_step(app: &App, len: usize) -> usize {
     if app.motion_on() {
         (app.spinner_frame() % len as u64) as usize
     } else {
         REST_FRAME.min(len - 1)
     }
+}
+
+/// The configured spinner's current frame, for the Settings row that previews it.
+pub(super) fn spinner_preview(app: &App) -> String {
+    let frames = &app.cfg.ui.spinner;
+    if frames.is_empty() {
+        return String::new();
+    }
+    frames[working_step(app, frames.len())].clone()
 }
 
 /// The frame the working spinner holds without motion (the third, as the reference frames draw it).
@@ -699,7 +729,7 @@ fn draw_prompt(
     t: &crate::theme::Theme,
     label: &str,
     input: &str,
-    confirm: bool,
+    enter: Option<&str>,
 ) {
     use super::design::{put, seg};
     let buf = f.buffer_mut();
@@ -711,10 +741,10 @@ fn draw_prompt(
         .map(|c| c.to_uppercase().collect::<String>() + chars.as_str())
         .unwrap_or_default();
     let r = super::screen::panel(app, buf, area, 64, 7, &title, &[], t);
-    if confirm {
+    let Some(enter) = enter else {
         super::screen::panel_bar(buf, r, t, &[("y", "yes"), ("n", "no")]);
         return;
-    }
+    };
     let field = Rect {
         x: r.x + 2,
         y: r.y + 2,
@@ -734,7 +764,7 @@ fn draw_prompt(
         ],
         field.right(),
     );
-    super::screen::panel_bar(buf, r, t, &[("Enter", "save"), ("Esc", "cancel")]);
+    super::screen::panel_bar(buf, r, t, &[("Enter", enter), ("Esc", "cancel")]);
 }
 
 #[cfg(test)]

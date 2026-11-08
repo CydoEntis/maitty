@@ -515,6 +515,9 @@ pub(super) fn cells(
     (app.cfg.ui.layout, app.cfg.ui.gap, app.cfg.ui.glyphs) =
         ("floating".into(), layout.gap().into(), glyphs.into());
     app.screen_fresh();
+    // The bar hides while keys go to the panes, but the reference is laid out with its row and the
+    // gap above it, so a flash holds the bar open for this one frame.
+    let flash = app.bar_flash.replace((String::new(), Instant::now()));
     let mut term = Terminal::new(TestBackend::new(w, h + 1)).expect("a test terminal");
     term.draw(|f| render::draw(app, f)).expect("a frame");
     let full = term.backend().buffer();
@@ -523,6 +526,7 @@ pub(super) fn cells(
         h,
         "the bar is the row left out"
     );
+    app.bar_flash = flash;
     let mut buf = ratatui::buffer::Buffer::empty(Rect::new(0, 0, w, h));
     for (x, y) in (0..h).flat_map(|y| (0..w).map(move |x| (x, y))) {
         buf[(x, y)] = full[(x, y)].clone();
