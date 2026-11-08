@@ -275,8 +275,8 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   Collapse sidebar, then **New agent chat** (opens the New session dialog), **Add a remote machine** (Settings ›
   Machines) and the **Inbox** with its count (amber while something needs you). Under it the 32px sunken **Filter
   sessions** field (`/` focuses it; a raised `/` keycap; its border brightens on hover). Sessions are grouped by
-  **machine**, this computer first: an uppercase 10.5px heading with a caret, a laptop or server mark, the count, a
-  group-by-project toggle, the line's 5px dot and a `+` (New agent on it); the heading folds the group. Within a
+  **machine**, this computer first: an uppercase 10.5px heading with a 12px caret (`--accent`; a project's caret is `--ansi-blue`), a laptop or server mark, the count, a
+  group-by-project toggle, the line's 5px dot and a `+` (a click starts an agent chat on it, a right-click opens the full menu); clicking the heading's name folds the group. Within a
   machine the rows are **most urgent first**: needs you, an agent that stopped, working, done, idle, then a shell whose
   last command failed; creation order within each. Grouped by project, each project is a folding heading (its colour
   square, name, needs-you count, count). A **row** (40px, radius 8) is the 20px app tile with its status badge

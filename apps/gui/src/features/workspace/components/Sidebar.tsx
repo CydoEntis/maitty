@@ -259,7 +259,8 @@ function Expanded(props: SidebarProps) {
               canStart={props.canStart}
               onToggle={() => { views.toggle(group.head.key) }}
               onToggleByProject={() => { views.toggleByProject(group.head.key) }}
-              onAdd={(event) => { openMenu(event, `New on ${machineTitle(group.head)}`, addMenu(group.head)) }}
+              onAdd={() => { props.onNewAgentChat(group.head.machine) }}
+              onAddMenu={(event) => { openMenu(event, `New on ${machineTitle(group.head)}`, addMenu(group.head)) }}
               onUpdate={props.onUpdateMachine}
               onContextMenu={(event) => { openMenu(event, machineTitle(group.head), machineMenu(group.head)) }}
               renderRow={renderRow}
@@ -287,14 +288,17 @@ type SectionProps = {
   canStart: boolean
   onToggle: () => void
   onToggleByProject: () => void
-  onAdd: (event: MouseEvent) => void
+  /** Plain click on +: an agent chat on this machine. */
+  onAdd: () => void
+  /** Right-click on +: the full menu of what can start here. */
+  onAddMenu: (event: MouseEvent) => void
   onUpdate: (name: string, action: UpdateAction) => void
   onContextMenu: (event: MouseEvent) => void
   renderRow: (session: SessionView, showProject: boolean) => ReactNode
 }
 
 /** One machine: its heading (name, count, group-by-project, its line's dot, +) and its sessions. */
-function MachineSection({ group, open, byProject, canStart, onToggle, onToggleByProject, onAdd, onUpdate, onContextMenu, renderRow }: SectionProps) {
+function MachineSection({ group, open, byProject, canStart, onToggle, onToggleByProject, onAdd, onAddMenu, onUpdate, onContextMenu, renderRow }: SectionProps) {
   const { head, sessions } = group
   const title = machineTitle(head)
   const projects = byProject ? projectGroups(sessions) : []
@@ -309,7 +313,7 @@ function MachineSection({ group, open, byProject, canStart, onToggle, onToggleBy
         </button>
         <button type="button" className={`mx-machine-group${byProject ? ' is-on' : ''}`} aria-pressed={byProject} aria-label={byProject ? 'Show one list, most urgent first' : 'Group by project'} title={byProject ? 'Show one list, most urgent first' : 'Group by project'} onClick={onToggleByProject}><Icon name="folder" /></button>
         <span className={`mx-machine-dot${head.down ? ' is-offline' : ''}`} role="img" aria-label={head.down ? `${title} is ${head.chip?.word ?? 'not reachable'}` : `${title} is connected`} title={head.why ?? (head.down ? head.chip?.word ?? 'not reachable' : `${title} is connected`)} />
-        <button type="button" className="mx-machine-add" aria-haspopup="menu" aria-label={`New on ${title}`} title={`New on ${title}`} disabled={!canStart || head.down} onClick={onAdd}><Icon name="plus" size={13} /></button>
+        <button type="button" className="mx-machine-add" aria-label={`New agent chat on ${title}`} title={`New agent chat on ${title} (right-click for more)`} disabled={!canStart || head.down} onClick={onAdd} onContextMenu={onAddMenu}><Icon name="plus" size={13} /></button>
       </div>
       {head.name !== null && head.updateAction !== null && <UpdateNote name={head.name} action={head.updateAction} onUpdate={onUpdate} />}
       <Collapse open={open}>

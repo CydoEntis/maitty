@@ -42,8 +42,12 @@
 .mx-machine-head { display: flex; align-items: center; gap: 6px; min-height: 26px; padding: 0 3px 0 0; }
 .mx-machine-toggle { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; color: var(--dim); border-radius: 6px; text-transform: uppercase; }
 .mx-machine-toggle:hover { color: var(--fg2); }
-.mx-caret-wrap { display: flex; flex: none; width: 10px; color: var(--dim); transition: transform .2s cubic-bezier(.2, .8, .2, 1); }
+.mx-caret-wrap { display: flex; flex: none; width: 12px; color: var(--dim); transition: transform .2s cubic-bezier(.2, .8, .2, 1); }
 .mx-caret-wrap.is-open { transform: rotate(90deg); }
+/* Machines and projects each get their own caret colour, so the two levels read apart at a glance. */
+.mx-machine-toggle .mx-caret-wrap { color: var(--accent); }
+.mx-project-head .mx-caret-wrap { color: var(--ansi-blue); }
+.mx-machine-toggle:hover .mx-caret-wrap, .mx-project-head:hover .mx-caret-wrap { filter: brightness(1.25); }
 .mx-machine-icon { display: flex; flex: none; }
 .mx-machine-name { flex: 1; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-machine-count { font-size: 11px; letter-spacing: 0; font-weight: 500; font-variant-numeric: tabular-nums; }

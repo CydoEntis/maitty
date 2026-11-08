@@ -228,6 +228,25 @@ describe('a session row', () => {
   })
 })
 
+describe('a machine heading', () => {
+  it('starts an agent chat on that machine when + is clicked, and opens the full menu on right-click', async () => {
+    const user = userEvent.setup()
+    const onNewAgentChat = vi.fn()
+    show([session(2, { machine: 4, machineName: 'devbox', agent: 'claude', named: true, title: 'There' })], { machines: [LOCAL_HEAD, DEVBOX], onNewAgentChat })
+    await user.click(screen.getByRole('button', { name: 'New agent chat on devbox' }))
+    expect(onNewAgentChat).toHaveBeenCalledWith(4)
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'New agent chat on devbox' }))
+    expect(await screen.findByRole('menuitem', { name: /New shell/ })).toBeTruthy()
+  })
+
+  it('collapses its sessions when the name is clicked', async () => {
+    const user = userEvent.setup()
+    show([session(1, { agent: 'claude', named: true, title: 'Here' })])
+    await user.click(screen.getByRole('button', { name: /^This computer/ }))
+    expect(screen.getByRole('button', { name: /^This computer/, expanded: false })).toBeTruthy()
+  })
+})
+
 describe('the filter', () => {
   it('narrows the list by name and says when nothing matches', async () => {
     const user = userEvent.setup()
