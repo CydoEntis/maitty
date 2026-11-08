@@ -82,10 +82,10 @@ fn run(
     let stdout_pipe = child.stdout.take();
     let stdout_reader = std::thread::spawn(move || {
         let mut text = String::new();
-        if let Some(mut pipe) = stdout_pipe {
-            if let Err(error) = pipe.read_to_string(&mut text) {
-                tracing::warn!("could not read the update's output: {error}");
-            }
+        if let Some(mut pipe) = stdout_pipe
+            && let Err(error) = pipe.read_to_string(&mut text)
+        {
+            tracing::warn!("could not read the update's output: {error}");
         }
         text
     });
