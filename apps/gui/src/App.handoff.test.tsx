@@ -687,7 +687,7 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     await screen.findByRole('region', { name: 'Shell in ~/a' })
     for (let attempt = 0; attempt < 5; attempt += 1) await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
 
-    const card = await screen.findByRole('alertdialog', { name: 'Maitty service stopped' })
+    const card = await screen.findByRole('region', { name: 'Maitty service stopped' })
     expect(within(card).getByText('Your session is saved. Start the service to pick up where it left off.')).toBeInTheDocument()
     expect(within(card).getByText('Details')).toBeInTheDocument()
     expect(within(screen.getByLabelText('Status')).queryByText('Service stopped')).toBeNull()
@@ -699,7 +699,7 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
 
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
     await user.click(within(card).getByRole('button', { name: 'Start service' }))
-    await waitFor(() => { expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument() })
+    await waitFor(() => { expect(screen.queryByRole('region', { name: 'Maitty service stopped' })).not.toBeInTheDocument() })
   })
 
   it('asks to restart an older service, and Later leaves a slim bar', async () => {
@@ -708,10 +708,10 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     daemon.loadDaemonRestartStatus.mockResolvedValue({ daemonProtocol: 49, guiProtocol: 62, canRestart: true, sessionCount: 2, activeTurnCount: 0 })
     renderDesktopApp()
 
-    const card = await screen.findByRole('alertdialog', { name: 'Restart Maitty to finish updating' })
+    const card = await screen.findByRole('region', { name: 'Restart Maitty to finish updating' })
     expect(within(card).getByText('The app updated to v62, but the service is still on v49.')).toBeInTheDocument()
     await user.click(within(card).getByRole('button', { name: 'Later' }))
-    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Restart Maitty to finish updating' })).not.toBeInTheDocument()
     expect(screen.getByText('Restart needed.')).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: 'Restart and restore 2 sessions' })).toBeInTheDocument()
   })
@@ -845,7 +845,7 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
 
     await user.keyboard('{Control>},{/Control}')
     const dialog = screen.getByRole('dialog', { name: 'Settings' })
-    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(dialog).toHaveAttribute('role', 'dialog')
     expect(within(dialog).getByRole('button', { name: /Appearance/ })).toHaveFocus()
 
     await user.keyboard('t')
@@ -875,9 +875,9 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     await user.keyboard('a')
     await user.click(screen.getByRole('button', { name: 'Dark theme: Midnight' }))
     await user.type(screen.getByRole('textbox', { name: 'Search dark themes' }), 'nord')
-    const listbox = screen.getByRole('listbox', { name: 'Dark themes' })
-    expect(within(listbox).getAllByRole('option')).toHaveLength(1)
-    await user.click(within(listbox).getByRole('option', { name: /Nord/ }))
+    const listbox = await screen.findByRole('radiogroup', { name: 'Dark themes' })
+    expect(within(listbox).getAllByRole('radio')).toHaveLength(1)
+    await user.click(within(listbox).getByRole('radio', { name: /Nord/ }))
 
     expect(root()?.style.getPropertyValue('--accent')).toBe('#88C0D0')
     app.unmount()
@@ -1034,7 +1034,8 @@ describe('desktop overlays and pane tools', () => {
     daemon.loadConversations.mockResolvedValue([at(2, { status: 'working' })])
     await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
     // The window has to see the session working before it is done again, or nothing moved on.
-    await screen.findByRole('button', { name: /, working$/ })
+    // The inbox is a modal now, so the page behind it is hidden from the accessibility tree.
+    await screen.findByRole('button', { name: /, working$/, hidden: true })
     daemon.loadConversations.mockResolvedValue([at(2, { status: 'done' })])
     await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
 

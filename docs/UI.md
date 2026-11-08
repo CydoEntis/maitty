@@ -173,8 +173,7 @@ palette takes literal colours). Don't widen the exemptions to pass a change.
 `pnpm lint` also enforces the one-component-per-control rule: a hand-built
 `role="switch"`, `radiogroup`, `radio`, `dialog`, `alertdialog`, `menu`, `menuitem`,
 `listbox` or `option`, or a `createPortal` import, outside `components/ui/` is an
-error. The files still carrying one are listed in the ratchet block of
-`eslint.config.ts`; the list only shrinks.
+error. There are no exempt files.
 
 ## Project-specific: desktop window sizes and sidebar order
 

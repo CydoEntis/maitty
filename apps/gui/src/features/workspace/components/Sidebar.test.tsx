@@ -174,7 +174,7 @@ describe('subagents', () => {
     show([parent()], { focusedId: 't1', onSplitSubagent })
     fireEvent.contextMenu(screen.getByRole('button', { name: 'Write drafts tests, working' }))
     const menu = screen.getByRole('menu', { name: 'Write drafts tests' })
-    expect(within(menu).getByRole('menuitem', { name: 'Stop subagent' })).toBeDisabled()
+    expect(within(menu).getByRole('menuitem', { name: 'Stop subagent' })).toHaveAttribute('aria-disabled', 'true')
     await user.click(within(menu).getByRole('menuitem', { name: 'Open in split right' }))
     expect(onSplitSubagent).toHaveBeenCalledWith('t1', 'b')
   })
@@ -207,7 +207,7 @@ describe('a session row', () => {
   it('cannot get a file while the daemon is offline', () => {
     show([session(2, { machine: 4, machineName: 'devbox', agent: 'claude', named: true, title: 'There' })], { machines: [LOCAL_HEAD, DEVBOX], online: false })
     fireEvent.contextMenu(screen.getByRole('button', { name: /^There,/ }))
-    expect(screen.getByRole('menuitem', { name: 'Get a file…' })).toBeDisabled()
+    expect(screen.getByRole('menuitem', { name: 'Get a file…' })).toHaveAttribute('aria-disabled', 'true')
   })
 
   it('types the name in place while renaming, Enter saves and Escape cancels', async () => {

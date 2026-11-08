@@ -77,32 +77,6 @@ export default tseslint.config(
     rules: { 'no-restricted-syntax': ['error', ...HARD_CODED_COLOR, ...HAND_BUILT_CONTROL] },
   },
   {
-    // The ratchet: these files still hold a hand-built control and are migrated to src/components/ui one at a
-    // time. Nothing is added to this list; a file leaves it when its last hand-built control is replaced.
-    files: [
-      'src/features/chat/components/AgentPicker.tsx',
-      'src/features/crew/components/CrewChat.tsx',
-      'src/features/inspect/HistoryTab.tsx',
-      'src/features/settings/components/DesktopSettings.tsx',
-      'src/features/settings/components/ThemePicker.tsx',
-      'src/features/updates/UpdateSlot.tsx',
-      'src/features/workspace/DesktopApp.tsx',
-      'src/features/workspace/components/CommandPalette.tsx',
-      'src/features/workspace/components/ConfirmCloseDialog.tsx',
-      'src/features/workspace/components/GetFileDialog.tsx',
-      'src/features/workspace/components/HoverTips.tsx',
-      'src/features/workspace/components/InboxPanel.tsx',
-      'src/features/workspace/components/MachineUpdateDialog.tsx',
-      'src/features/workspace/components/MenuPopup.tsx',
-      'src/features/workspace/components/NewChatMenus.tsx',
-      'src/features/workspace/components/NewSessionModal.tsx',
-      'src/features/workspace/components/RenameDialog.tsx',
-      'src/features/workspace/components/ServiceStatus.tsx',
-      'src/features/worktrees/NewWorktreeDialog.tsx',
-    ],
-    rules: { 'no-restricted-syntax': ['error', ...HARD_CODED_COLOR] },
-  },
-  {
     // The shared components are where the controls are built, once.
     files: ['src/components/ui/**/*.{ts,tsx}'],
     rules: { 'no-restricted-syntax': ['error', ...HARD_CODED_COLOR] },

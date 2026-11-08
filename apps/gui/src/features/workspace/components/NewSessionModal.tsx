@@ -1,3 +1,4 @@
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { useState, type KeyboardEvent } from 'react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { LOCAL_MACHINE } from '@/api/machines'
@@ -37,11 +38,11 @@ const AGENT_TITLE: Readonly<Record<ChatAgent, string>> = { claude: 'Claude Code'
 /** A row of options in the sunken segmented tray the dialog uses for its choices. */
 function Segments<T extends string>({ label, value, options, onPick }: { label: string; value: T; options: ReadonlyArray<{ value: T; label: string; disabled?: string }>; onPick: (value: T) => void }) {
   return (
-    <div role="radiogroup" aria-label={label} className="mx-ns-segments">
+    <RadioGroup aria-label={label} orientation="horizontal" value={value} onValueChange={(next) => { const picked = options.find((option) => option.value === next); if (picked) onPick(picked.value) }} className="mx-ns-segments">
       {options.map((option) => (
-        <button key={option.value} type="button" role="radio" aria-checked={value === option.value} aria-disabled={option.disabled !== undefined} title={option.disabled} className="mx-ns-segment" onClick={() => { if (option.disabled === undefined) onPick(option.value) }}>{option.label}</button>
+        <RadioGroupItem key={option.value} value={option.value} disabled={option.disabled !== undefined} title={option.disabled} className="mx-ns-segment">{option.label}</RadioGroupItem>
       ))}
-    </div>
+    </RadioGroup>
   )
 }
 
@@ -100,26 +101,26 @@ export function NewSessionModal({ machine, machineName, projects, defaultAgent, 
             {kind === 'agent' && (
               <div className="mx-ns-field">
                 <span className="mx-ns-label">AGENT</span>
-                <div role="radiogroup" aria-label="Agent" className="mx-ns-agents">
+                <RadioGroup aria-label="Agent" value={agent} onValueChange={(next) => { const picked = CHAT_AGENTS.find((candidate) => candidate === next); if (picked) setAgent(picked) }} className="mx-ns-agents">
                   {CHAT_AGENTS.map((candidate) => (
-                    <button key={candidate} type="button" role="radio" aria-checked={agent === candidate} className="mx-ns-agent" onClick={() => { setAgent(candidate) }}>
+                    <RadioGroupItem key={candidate} value={candidate} className="mx-ns-agent">
                       <AppIcon process={candidate} size={26} />
                       <span className="mx-ns-agent-text"><strong>{AGENT_TITLE[candidate]}</strong><small>{candidate === defaultAgent ? 'Your default agent' : 'Its own default model'}</small></span>
-                    </button>
+                    </RadioGroupItem>
                   ))}
-                </div>
+                </RadioGroup>
               </div>
             )}
             <div className="mx-ns-field">
               <span className="mx-ns-label">PROJECT</span>
-              <div role="radiogroup" aria-label="Project" className="mx-ns-projects">
+              <RadioGroup aria-label="Project" value={folder} onValueChange={setFolder} className="mx-ns-projects">
                 {shown.map((project) => (
-                  <button key={project.folder} type="button" role="radio" aria-checked={folder === project.folder} title={project.folder} className="mx-ns-project" onClick={() => { setFolder(project.folder) }}>
+                  <RadioGroupItem key={project.folder} value={project.folder} title={project.folder} className="mx-ns-project">
                     <span className="mx-ns-square" style={{ background: project.color }} aria-hidden="true" />{project.name}
-                  </button>
+                  </RadioGroupItem>
                 ))}
                 {browse !== null && <button type="button" className="mx-ns-project is-other" onClick={pickOther}><Icon name="folder" size={12} />Other folder…</button>}
-              </div>
+              </RadioGroup>
             </div>
             {kind === 'agent' && (
               <>

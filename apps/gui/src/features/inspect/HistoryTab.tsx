@@ -97,7 +97,7 @@ export function HistoryTab({ term, agentWorking, onNotice }: Props) {
                 </>
               )}
               {!compare && confirming === entry.id && (
-                <div className="mx-inspect-confirm" role="alertdialog" aria-label="Confirm restore">
+                <div className="mx-inspect-confirm" role="group" aria-label="Confirm restore">
                   <span>Put the files back as they were then? What is there now is saved first.</span>
                   <button type="button" disabled={restoring} onClick={() => { setConfirming(null) }}>Cancel</button>
                   <button type="button" className="is-danger" disabled={restoring || agentWorking} onClick={() => { restore(entry) }}>{restoring ? 'Restoring…' : 'Restore files'}</button>

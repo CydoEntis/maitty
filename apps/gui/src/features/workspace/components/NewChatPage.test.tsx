@@ -27,10 +27,10 @@ describe('the new chat page', () => {
   it('lists projects with their session counts and turns a pasted path into a row', async () => {
     page()
     await userEvent.click(screen.getByRole('button', { name: /^Folder/ }))
-    const menu = await screen.findByRole('menu')
-    expect(within(menu).getByRole('menuitemradio', { name: /growth/ })).toHaveTextContent('6')
+    const menu = await screen.findByRole('dialog')
+    expect(within(menu).getByRole('radio', { name: /growth/ })).toHaveTextContent('6')
     await userEvent.type(screen.getByRole('textbox', { name: 'Search projects or paste a path' }), '/srv/new-app')
-    await userEvent.click(within(menu).getByRole('menuitemradio', { name: 'Use /srv/new-app' }))
+    await userEvent.click(within(menu).getByRole('radio', { name: 'Use /srv/new-app' }))
     expect(screen.getByRole('button', { name: /^Folder: new-app/ })).toBeInTheDocument()
   })
 })

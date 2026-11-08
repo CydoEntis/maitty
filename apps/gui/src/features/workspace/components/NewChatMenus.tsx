@@ -1,4 +1,5 @@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { ChoiceItem, ChoiceList } from '@/components/ui/choice-list'
 import { useState, type ReactNode } from 'react'
 import { Popover } from 'radix-ui'
 import { PopupContent } from '@/components/ui/popup'
@@ -53,7 +54,7 @@ export function ChipMenu({ label, summary, title, icon, search, sections, footer
           </label>
         )}
         {extra}
-        <div className="mx-chip-list" role="menu">
+        <ChoiceList className="mx-chip-list" aria-label={title} current={kept.flatMap((section) => section.items).find((item) => item.checked)?.key ?? null}>
           {made && <ChipRow item={made} onPick={pick} />}
           {kept.map((section) => (
             <div key={section.heading} role="group" aria-label={section.heading}>
@@ -62,7 +63,7 @@ export function ChipMenu({ label, summary, title, icon, search, sections, footer
             </div>
           ))}
           {kept.length === 0 && !made && <p className="mx-chip-none">Nothing matches</p>}
-        </div>
+        </ChoiceList>
         {footer !== undefined && <div className="mx-chip-footer">{footer}</div>}
       </PopupContent>
     </Popover.Root>
@@ -71,7 +72,7 @@ export function ChipMenu({ label, summary, title, icon, search, sections, footer
 
 function ChipRow({ item, onPick }: { item: ChipItem; onPick: (item: ChipItem) => void }) {
   return (
-    <button type="button" role="menuitemradio" aria-checked={item.checked} disabled={item.disabled} className={`mx-chip-row${item.checked ? ' is-checked' : ''}`} onClick={() => { onPick(item) }}>
+    <ChoiceItem value={item.key} disabled={item.disabled} className={`mx-chip-row${item.checked ? ' is-checked' : ''}`} onPick={() => { onPick(item) }}>
       {item.icon}
       <span className="mx-chip-row-text">
         <span className="mx-chip-row-label">{item.label}{item.badge !== undefined && <span className="mx-chip-badge">{item.badge}</span>}</span>
@@ -79,7 +80,7 @@ function ChipRow({ item, onPick }: { item: ChipItem; onPick: (item: ChipItem) =>
       </span>
       {item.right}
       {item.checked && <Icon name="check" size={12} stroke="var(--accent)" strokeWidth={2.4} />}
-    </button>
+    </ChoiceItem>
   )
 }
 

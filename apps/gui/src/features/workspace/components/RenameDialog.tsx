@@ -1,3 +1,4 @@
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { useEffect, useRef, useState } from 'react'
 import { MAX_SESSION_NAME_LENGTH, type SessionView } from '../model/session'
 
@@ -19,10 +20,9 @@ export function RenameDialog({ session, onSave, onCancel }: { session: SessionVi
     return () => { window.clearTimeout(timer) }
   }, [])
   return (
-    <div className="mx-settings-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) onCancel() }}>
+    <Dialog open onOpenChange={(open) => { if (!open) onCancel() }}>
+      <DialogContent unstyled asChild aria-describedby={undefined}>
       <form
-        role="dialog"
-        aria-modal="true"
         aria-label="Rename session"
         className="mx-rename"
         onSubmit={(event) => {
@@ -30,12 +30,11 @@ export function RenameDialog({ session, onSave, onCancel }: { session: SessionVi
           onSave(value.trim())
         }}
         onKeyDown={(event) => {
-          if (event.key !== 'Escape') return
-          event.stopPropagation()
-          onCancel()
+          // Radix closes on Escape; this keeps the key from reaching the app's own handlers.
+          if (event.key === 'Escape') event.stopPropagation()
         }}
       >
-        <h2>Rename session</h2>
+        <DialogTitle asChild><h2>Rename session</h2></DialogTitle>
         <p>{session.process} in {session.cwdLabel}. Leave it empty to show the folder again.</p>
         <input ref={input} aria-label="Session name" value={value} maxLength={MAX_SESSION_NAME_LENGTH} placeholder={session.title} onChange={(event) => { setValue(event.target.value) }} />
         <div className="mx-rename-actions">
@@ -43,6 +42,7 @@ export function RenameDialog({ session, onSave, onCancel }: { session: SessionVi
           <button type="submit" className="mx-text-button is-primary">Save</button>
         </div>
       </form>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

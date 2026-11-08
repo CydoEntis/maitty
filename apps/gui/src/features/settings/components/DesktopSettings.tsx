@@ -1,8 +1,9 @@
 import type { UpdaterState } from '@/features/updates/useUpdater'
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
 import { THEMES } from '@/features/workspace/theme/themes'
 import { ThemePicker } from './ThemePicker'
 import { WINDOW_STYLES, isWindowStyle, type WindowStyle, type WindowStyleEntry } from '@/features/workspace/theme/windowStyles'
+import { Panel } from '@/components/ui/panel'
 import { PickerSelect, type PickerGroup, type PickerItem } from './PickerSelect'
 import { Segmented, SegmentedItem } from '@/components/ui/radio-group'
 import { Switch } from '@/components/ui/switch'
@@ -141,7 +142,11 @@ const PAGE: Record<DesktopSettingsSection, [string, string]> = {
 
 const KEY_TO_SECTION: Record<string, DesktopSettingsSection> = { g: 'general', t: 'terminal', a: 'appearance', u: 'usage', n: 'notifications', m: 'machines', '?': 'keys', d: 'daemon', p: 'performance' }
 
-const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+/** Esc ends an open theme list, or a running add-machine, first; Settings stays. A part that handles Esc itself is marked `data-owns-escape`. */
+const keepForOpenList = (event: globalThis.KeyboardEvent) => {
+  const inside = event.target instanceof Element && event.target.closest('[data-owns-escape]') !== null
+  if (inside || document.querySelector('.mx-picker-list') !== null) event.preventDefault()
+}
 
 function tint(color: string): CSSProperties {
   return { '--tint': color } as CSSProperties
@@ -150,36 +155,15 @@ function tint(color: string): CSSProperties {
 /** Settings (⌘,): a dialog in the window that holds focus until it closes, then gives it back. */
 export function DesktopSettings(props: DesktopSettingsProps) {
   const { section, preferences, onChange } = props
-  const dialog = useRef<HTMLDivElement>(null)
   const update = <K extends keyof SettingsPreferences>(key: K, value: SettingsPreferences[K]) => { onChange({ ...preferences, [key]: value }) }
 
-  useLayoutEffect(() => {
-    const restore = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    dialog.current?.querySelector<HTMLElement>('.mx-settings-nav-item.is-current')?.focus()
-    return () => { restore?.focus() }
-  }, [])
+  // Focus lands on the current section, not the first control; Radix traps it and gives it back on close.
+  const focusSection = (event: Event) => {
+    event.preventDefault()
+    if (event.currentTarget instanceof HTMLElement) event.currentTarget.querySelector<HTMLElement>('.mx-settings-nav-item.is-current')?.focus()
+  }
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      event.stopPropagation()
-      props.onClose()
-      return
-    }
-    if (event.key === 'Tab') {
-      const focusable = Array.from(dialog.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])
-      const first = focusable[0]
-      const last = focusable.at(-1)
-      if (!first || !last) return
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault()
-        first.focus()
-      }
-      return
-    }
     const typing = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement
     if (typing || event.ctrlKey || event.metaKey || event.altKey) return
     const target = KEY_TO_SECTION[event.key.toLowerCase()]
@@ -191,8 +175,8 @@ export function DesktopSettings(props: DesktopSettingsProps) {
 
   const [title, subtitle] = PAGE[section]
   return (
-    <div className="mx-settings-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) props.onClose() }}>
-      <div ref={dialog} role="dialog" aria-modal="true" aria-label="Settings" className="mx-settings" onKeyDown={onKeyDown}>
+    <Panel label="Settings" onClose={props.onClose} scrimClassName="mx-settings-scrim" className="mx-settings" onKeyDown={onKeyDown} onOpenAutoFocus={focusSection} onEscapeKeyDown={keepForOpenList}>
+      <>
         <nav aria-label="Settings sections" className="mx-settings-nav">
           <span className="mx-settings-nav-title">Settings</span>
           {NAV.map((group) => (
@@ -232,8 +216,8 @@ export function DesktopSettings(props: DesktopSettingsProps) {
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </>
+    </Panel>
   )
 }
 
@@ -740,7 +724,7 @@ function AddMachineCard({ add }: { add: MachinesInfo['add'] }) {
       {add.windows && <p className="mx-scard-note">Windows: use ssh keys or an agent. Password prompts work in the session but are not remembered.</p>}
       {checking !== null
         ? (
-          <div className="mx-scard-row" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); add.onCancel() } }}>
+          <div className="mx-scard-row" data-owns-escape onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); add.onCancel() } }}>
             <div className="mx-scard-text"><span role="status">Checking {checking}…</span><span>Esc ends ssh and adds nothing.</span></div>
             <button type="button" className="mx-scard-button" onClick={add.onCancel}>Cancel</button>
           </div>

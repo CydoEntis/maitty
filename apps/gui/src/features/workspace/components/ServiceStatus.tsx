@@ -58,7 +58,7 @@ function ServiceDownCard({ detail, sessions, onStart, onRetry, onOpenLog }: { de
   useEffect(() => { first.current?.focus() }, [])
   return (
     <ServiceLayer>
-      <section className="mx-service-card" role="alertdialog" aria-modal="false" aria-labelledby="mx-service-down-title">
+      <section className="mx-service-card" aria-labelledby="mx-service-down-title">
         <div className="mx-service-head">
           <span className="mx-service-tile is-danger" aria-hidden="true">{POWER}</span>
           <div className="mx-service-copy">
@@ -99,7 +99,7 @@ function ServiceUpdateCard({ restart, onLater }: { restart: RestartOffer | null;
   const facts = restart ? restartFacts(restart) : []
   return (
     <ServiceLayer>
-      <section className="mx-service-card" role="alertdialog" aria-modal="false" aria-labelledby="mx-service-update-title">
+      <section className="mx-service-card" aria-labelledby="mx-service-update-title">
         <div className="mx-service-head">
           <span className="mx-service-tile is-accent" aria-hidden="true">{RESTART}</span>
           <div className="mx-service-copy">

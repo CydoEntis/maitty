@@ -1,4 +1,5 @@
-import { useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Check } from 'lucide-react'
 import { Popover } from 'radix-ui'
 import { PopupContent } from '@/components/ui/popup'
@@ -30,46 +31,29 @@ type Option = { value: string; label: string; blurb?: string; disabledReason?: s
 
 /** One radio column. Arrow keys move and pick, as a radio group does; a disabled option is skipped. */
 function Column({ title, options, value, onPick }: { title: string; options: readonly Option[]; value: string; onPick: (value: string) => void }) {
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const step = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? -1 : 0
-    if (step === 0) return
-    event.preventDefault()
-    const enabled = options.filter((option) => option.disabledReason === undefined)
-    const at = enabled.findIndex((option) => option.value === value)
-    const next = enabled[(at + step + enabled.length) % enabled.length]
-    if (next) {
-      onPick(next.value)
-      const radios = event.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]')
-      radios[options.indexOf(next)]?.focus()
-    }
-  }
   return (
-    <div role="radiogroup" aria-label={title} onKeyDown={onKeyDown} className="flex max-h-[280px] min-w-0 flex-1 flex-col gap-1 overflow-y-auto">
+    <RadioGroup aria-label={title} value={value} onValueChange={onPick} className="flex max-h-[280px] min-w-0 flex-1 flex-col gap-1 overflow-y-auto">
       <h3 className="m-0 px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-dim">{title}</h3>
       {options.map((option) => {
         const checked = option.value === value
         const off = option.disabledReason !== undefined
         return (
-          <button
+          <RadioGroupItem
             key={option.value}
-            type="button"
-            role="radio"
-            aria-checked={checked}
-            aria-disabled={off}
-            tabIndex={checked ? 0 : -1}
+            value={option.value}
+            disabled={off}
             title={option.disabledReason ?? option.blurb}
             className={`flex items-start gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${checked ? 'bg-hover text-fg' : 'text-fg2 hover:bg-hover'} ${off ? 'cursor-not-allowed opacity-45' : ''}`}
-            onClick={() => { if (!off) onPick(option.value) }}
           >
             <Check aria-hidden="true" className={`mt-0.5 size-3.5 shrink-0 ${checked ? 'text-[var(--accent)]' : 'opacity-0'}`} />
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="font-medium">{option.label}</span>
             </span>
             {option.extra}
-          </button>
+          </RadioGroupItem>
         )
       })}
-    </div>
+    </RadioGroup>
   )
 }
 

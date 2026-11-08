@@ -1,3 +1,4 @@
+import { Panel } from '@/components/ui/panel'
 import { displayName, STATUS_WORD, truncatePrompt, type SessionView } from '../model/session'
 import type { SessionTrack } from '../model/tracking'
 import { Ago } from './times'
@@ -23,8 +24,8 @@ type InboxProps = {
 export function InboxPanel({ entries, tracks, online, onAnswer, onClear, onClearDone, onOpen, onClose }: InboxProps) {
   const settled = entries.some((entry) => entry.session.status !== 'needs')
   return (
-    <div className="mx-inbox-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-      <aside role="dialog" aria-label="Inbox" className="mx-inbox" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); onClose() } }}>
+    <Panel label="Inbox" onClose={onClose} scrimClassName="mx-inbox-scrim" className="mx-inbox">
+      <>
         <div className="mx-inbox-head">
           <strong>Inbox</strong>
           <span className="mx-inbox-sub">{entries.length} across all projects</span>
@@ -73,7 +74,7 @@ export function InboxPanel({ entries, tracks, online, onAnswer, onClear, onClear
             </div>
           )}
         </div>
-      </aside>
-    </div>
+      </>
+    </Panel>
   )
 }

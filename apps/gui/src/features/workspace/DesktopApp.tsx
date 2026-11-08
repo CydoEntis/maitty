@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { Panel } from '@/components/ui/panel'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from '@/lib/toast'
 import { z } from 'zod'
@@ -2008,11 +2009,9 @@ export function DesktopApp() {
           <div className="mx-window" role="application" aria-label="Maitty">
             {!focusMode && renderSidebar(sidebarMode, noop, toggleSidebar)}
             {!focusMode && drawerShown && (
-              <div className="mx-drawer-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawerOpen(false) }}>
-                <div className="mx-drawer" role="dialog" aria-label="Sessions" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setDrawerOpen(false) } }}>
-                  {renderSidebar('docked', () => { setDrawerOpen(false) }, () => { setDrawerOpen(false) })}
-                </div>
-              </div>
+              <Panel label="Sessions" onClose={() => { setDrawerOpen(false) }} scrimClassName="mx-drawer-scrim" className="mx-drawer">
+                {renderSidebar('docked', () => { setDrawerOpen(false) }, () => { setDrawerOpen(false) })}
+              </Panel>
             )}
             <div className="mx-main-wrap">
               <main className="mx-main" aria-label="Terminals">

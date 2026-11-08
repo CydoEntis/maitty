@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { forgetChoices, forgetDiscoveredModels, setDiscoveredModels, readChoice, useAgentChoice, wireChoice, writeChoice } from '../agentChoice'
@@ -37,7 +37,7 @@ describe('the agent, model and reasoning picker', () => {
     render(<Harness />)
     await user.click(screen.getByRole('button', { name: /Agent, model and reasoning/ }))
     const other = within(screen.getByRole('radiogroup', { name: 'Agent' })).getByRole('radio', { name: /Codex/ })
-    expect(other).toHaveAttribute('aria-disabled', 'true')
+    expect(other).toBeDisabled()
     expect(other).toHaveAttribute('title', 'Fixed for this chat · start a new chat to use Codex')
     await user.click(other)
     expect(within(screen.getByRole('radiogroup', { name: 'Agent' })).getByRole('radio', { name: /Claude/ })).toBeChecked()
@@ -64,8 +64,13 @@ describe('the agent, model and reasoning picker', () => {
     render(<Harness agent="claude" />)
     await user.click(screen.getByRole('button', { name: /Agent, model and reasoning/ }))
     within(screen.getByRole('radiogroup', { name: 'Reasoning' })).getByRole('radio', { name: /Default/ }).focus()
-    await user.keyboard('{ArrowDown}{ArrowDown}')
-    expect(within(screen.getByRole('radiogroup', { name: 'Reasoning' })).getByRole('radio', { name: /Medium/ })).toBeChecked()
+    // Radix picks on the frame after focus arrives, while the key is still down, as a real press is.
+    for (let press = 0; press < 2; press += 1) {
+      await user.keyboard('{ArrowDown>}')
+      await new Promise((resolve) => { setTimeout(resolve, 40) })
+      await user.keyboard('{/ArrowDown}')
+    }
+    await waitFor(() => { expect(within(screen.getByRole('radiogroup', { name: 'Reasoning' })).getByRole('radio', { name: /Medium/ })).toBeChecked() })
   })
 
   it('lists the models Codex itself offers after Default, and a stored one is kept', async () => {

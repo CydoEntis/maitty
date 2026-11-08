@@ -22,9 +22,8 @@
   `radiogroup`, `dialog`, `menu`, `listbox` or hand-opened `createPortal`
   outside `components/ui/`. A different look comes from a token or a prop on the
   shared component. If the control you need is missing, add it to `components/ui/`
-  first. ESLint enforces this (`HAND_BUILT_CONTROL` in `apps/gui/eslint.config.ts`);
-  the list of files in its "ratchet" block only shrinks, and a file leaves it
-  when its last hand-built control is replaced. Never add a file to it.
+  first. ESLint enforces this (`HAND_BUILT_CONTROL` in `apps/gui/eslint.config.ts`)
+  with no exempt files outside `components/ui/`. Never add an exemption to pass a change.
 - Use `cva` (class-variance-authority) for variants, as the primitives already
   do. Don't use conditional class soup.
 

@@ -148,7 +148,7 @@ describe('Inspect history', () => {
     const { onNotice } = renderPanel('history')
 
     fireEvent.click(await screen.findByRole('button', { name: 'Restore' }))
-    expect(screen.getByRole('alertdialog').textContent).toContain('What is there now is saved first')
+    expect(screen.getByRole('group', { name: 'Confirm restore' }).textContent).toContain('What is there now is saved first')
     expect(vi.mocked(invoke)).not.toHaveBeenCalledWith('restore_snapshot', expect.anything())
 
     fireEvent.click(screen.getByRole('button', { name: 'Restore files' }))

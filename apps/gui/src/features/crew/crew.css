@@ -110,3 +110,4 @@
 .mx-crew-send:disabled { opacity: .4; }
 .mx-crew-send:not(:disabled):active { transform: scale(.92); }
 .mx-crew-composer-hint { max-width: 760px; margin: 6px auto 0; font-size: 11px; color: var(--dim); text-align: center; }
+.mx-crew-menu { position: static; top: auto; right: auto; }

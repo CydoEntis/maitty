@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from '@/components/ui/alert-dialog'
 
 /** Asks before a session is ended. Enter confirms, Escape or a click outside cancels. */
 export function ConfirmCloseDialog({ title, body, confirmLabel, onConfirm, onCancel }: { title: string; body: string; confirmLabel: string; onConfirm: () => void; onCancel: () => void }) {
@@ -12,25 +13,22 @@ export function ConfirmCloseDialog({ title, body, confirmLabel, onConfirm, onCan
     return () => { window.clearTimeout(timer) }
   }, [])
   return (
-    <div className="mx-settings-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) onCancel() }}>
-      <div
-        role="alertdialog"
-        aria-modal="true"
+    <AlertDialog open onOpenChange={(open) => { if (!open) onCancel() }}>
+      <AlertDialogContent
         aria-label={title}
-        className="mx-rename"
+        onOpenAutoFocus={(event) => { event.preventDefault(); confirm.current?.focus() }}
         onKeyDown={(event) => {
-          if (event.key !== 'Escape') return
-          event.stopPropagation()
-          onCancel()
+          // Radix closes on Escape; this keeps the key from reaching the app's own handlers.
+          if (event.key === 'Escape') event.stopPropagation()
         }}
       >
-        <h2>{title}</h2>
-        <p>{body}</p>
+        <AlertDialogTitle asChild><h2>{title}</h2></AlertDialogTitle>
+        <AlertDialogDescription asChild><p>{body}</p></AlertDialogDescription>
         <div className="mx-rename-actions">
           <button type="button" className="mx-confirm-button" onClick={onCancel}>Cancel</button>
           <button ref={confirm} type="button" className="mx-confirm-button is-danger" onClick={onConfirm}>{confirmLabel}</button>
         </div>
-      </div>
-    </div>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }

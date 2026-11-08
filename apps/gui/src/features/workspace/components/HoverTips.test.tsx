@@ -164,13 +164,16 @@ describe('hover tips', () => {
   describe('placement', () => {
     const rectAt = (top: number, left = 400, height = 24, width = 24) => ({ top, left, bottom: top + height, right: left + width, width, height, x: left, y: top, toJSON: () => ({}) }) as DOMRect
 
+    // Radix places the tip (jsdom has no layout); what is ours is the side it is asked for.
     function show(rect: DOMRect, attributes: Record<string, string> = {}) {
       render(<><HoverTips /><button type="button" title="One" {...attributes}>x</button></>)
       const button = screen.getByRole('button')
       button.getBoundingClientRect = () => rect
       fireEvent.pointerOver(button)
       wait(430)
-      return screen.getByRole('tooltip')
+      const tip = document.querySelector('.mx-tip')
+      if (!(tip instanceof HTMLElement)) throw new Error('no tip shown')
+      return tip
     }
 
     beforeEach(() => {
@@ -179,25 +182,15 @@ describe('hover tips', () => {
     })
 
     it('puts the tip above the control by default', () => {
-      const tip = show(rectAt(300))
-      expect(tip.style.bottom).toBe('508px')
-      expect(tip.style.top).toBe('')
+      expect(show(rectAt(300))).toHaveAttribute('data-side', 'top')
     })
 
     it('puts the tip below a control within 56 px of the top', () => {
-      const tip = show(rectAt(20))
-      expect(tip.style.top).toBe('52px')
-      expect(tip.style.bottom).toBe('')
-    })
-
-    it('keeps the centre 120 px from the window edges', () => {
-      expect(show(rectAt(300, 0)).style.left).toBe('128px')
+      expect(show(rectAt(20))).toHaveAttribute('data-side', 'bottom')
     })
 
     it('puts a side tip beside the control, away from the nearer window edge', () => {
-      const tip = show(rectAt(300, 8), { 'data-tip-side': '' })
-      expect(tip.style.left).toBe('40px')
-      expect(tip.style.transform).toBe('translateY(-50%)')
+      expect(show(rectAt(300, 8), { 'data-tip-side': '' })).toHaveAttribute('data-side', 'right')
     })
   })
 })

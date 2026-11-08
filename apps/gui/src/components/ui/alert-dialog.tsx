@@ -10,12 +10,9 @@ function AlertDialog(props: React.ComponentProps<typeof AlertDialogPrimitive.Roo
 function AlertDialogContent({ className, container, ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Content> & { container?: HTMLElement | null }) {
   return (
     <AlertDialogPrimitive.Portal container={container}>
-      <AlertDialogPrimitive.Overlay data-slot="alert-dialog-overlay" className="mx-settings-scrim" />
-      <AlertDialogPrimitive.Content
-        data-slot="alert-dialog-content"
-        className={cn("mx-rename fixed top-1/2 left-1/2 z-50 -translate-x-1/2 -translate-y-1/2", className)}
-        {...props}
-      />
+      <AlertDialogPrimitive.Overlay data-slot="alert-dialog-overlay" className="mx-settings-scrim">
+        <AlertDialogPrimitive.Content data-slot="alert-dialog-content" className={cn("mx-rename", className)} {...props} />
+      </AlertDialogPrimitive.Overlay>
     </AlertDialogPrimitive.Portal>
   )
 }

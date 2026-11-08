@@ -52,12 +52,27 @@ function DialogContent({
   children,
   showCloseButton = true,
   container,
+  unstyled = false,
+  overlayClassName = "mx-settings-scrim",
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
+  /** The caller's className is the whole look: it sits on a centred scrim, with no default frame or close button. */
+  unstyled?: boolean
+  /** The scrim's class in unstyled mode. */
+  overlayClassName?: string
   /** Where the dialog mounts: the themed window root, so it reads the theme's tokens (default: the body). */
   container?: HTMLElement | null
 }) {
+  if (unstyled) {
+    return (
+      <DialogPortal container={container}>
+        <DialogPrimitive.Overlay data-slot="dialog-overlay" className={overlayClassName}>
+          <DialogPrimitive.Content data-slot="dialog-content" className={className} {...props}>{children}</DialogPrimitive.Content>
+        </DialogPrimitive.Overlay>
+      </DialogPortal>
+    )
+  }
   return (
     <DialogPortal container={container}>
       <DialogOverlay />

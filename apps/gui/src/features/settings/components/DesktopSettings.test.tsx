@@ -211,17 +211,17 @@ describe('desktop settings', () => {
     expect(screen.getByText('28 themes installed')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Dark theme: Nord' }))
-    const dark = screen.getByRole('listbox', { name: 'Dark themes' })
-    expect(within(dark).getAllByRole('option')[0]).toHaveTextContent('Nord')
-    expect(within(dark).queryByRole('option', { name: /Paper/ })).not.toBeInTheDocument()
+    const dark = (await screen.findByRole('radiogroup', { name: 'Dark themes' }))
+    expect(within(dark).getAllByRole('radio')[0]).toHaveTextContent('Nord')
+    expect(within(dark).queryByRole('radio', { name: /Paper/ })).not.toBeInTheDocument()
     await user.type(screen.getByRole('textbox', { name: 'Search dark themes' }), 'dracula')
-    expect(within(dark).getAllByRole('option')).toHaveLength(1)
-    await user.click(within(dark).getByRole('option', { name: /Dracula/ }))
+    expect(within(dark).getAllByRole('radio')).toHaveLength(1)
+    await user.click(within(dark).getByRole('radio', { name: /Dracula/ }))
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ darkTheme: 'Dracula' }))
-    expect(screen.queryByRole('listbox', { name: 'Dark themes' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('radiogroup', { name: 'Dark themes' })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Light theme: Paper' }))
-    expect(within(screen.getByRole('listbox', { name: 'Light themes' })).getByRole('option', { name: /GitHub Light/ })).toBeInTheDocument()
+    expect(within((await screen.findByRole('radiogroup', { name: 'Light themes' }))).getByRole('radio', { name: /GitHub Light/ })).toBeInTheDocument()
   })
 
   it('switches between System, Dark and Light, and says which one the system picks', async () => {
@@ -238,13 +238,13 @@ describe('desktop settings', () => {
     renderSettings('appearance')
 
     await user.click(screen.getByRole('button', { name: 'Dark theme: Midnight' }))
-    const list = screen.getByRole('listbox', { name: 'Dark themes' })
+    const list = (await screen.findByRole('radiogroup', { name: 'Dark themes' }))
     expect(list.closest('.mx-scard')).toBeNull()
-    expect(list.closest('.mx-picker-menu')).toHaveAttribute('style', expect.stringContaining('left'))
+    expect(list.closest('.mx-picker-menu')).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Search dark themes' })).toHaveFocus()
 
     await user.keyboard('{Escape}')
-    expect(screen.queryByRole('listbox', { name: 'Dark themes' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('radiogroup', { name: 'Dark themes' })).not.toBeInTheDocument()
   })
 
   it('previews a hovered theme only for the slot that is in use, and ends the preview on leaving', async () => {
@@ -252,15 +252,15 @@ describe('desktop settings', () => {
     const { onPreviewTheme } = renderSettings('appearance', { preferences: { ...PREFS, themeMode: 'dark' } })
 
     await user.click(screen.getByRole('button', { name: 'Dark theme: Midnight' }))
-    await user.hover(within(screen.getByRole('listbox', { name: 'Dark themes' })).getByRole('option', { name: /Nord/ }))
+    await user.hover(within((await screen.findByRole('radiogroup', { name: 'Dark themes' }))).getByRole('radio', { name: /Nord/ }))
     expect(onPreviewTheme).toHaveBeenLastCalledWith('Nord')
-    await user.unhover(screen.getByRole('listbox', { name: 'Dark themes' }))
+    await user.hover(screen.getByRole('textbox', { name: 'Search dark themes' }))
     expect(onPreviewTheme).toHaveBeenLastCalledWith(null)
 
     await user.keyboard('{Escape}')
     await user.click(screen.getByRole('button', { name: 'Light theme: Paper' }))
     onPreviewTheme.mockClear()
-    await user.hover(within(screen.getByRole('listbox', { name: 'Light themes' })).getByRole('option', { name: /GitHub Light/ }))
+    await user.hover(within((await screen.findByRole('radiogroup', { name: 'Light themes' }))).getByRole('radio', { name: /GitHub Light/ }))
     expect(onPreviewTheme).not.toHaveBeenCalledWith('GitHub Light')
   })
 
