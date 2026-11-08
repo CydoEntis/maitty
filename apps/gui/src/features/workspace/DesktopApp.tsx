@@ -653,7 +653,16 @@ export function DesktopApp() {
   const sidebarMachineHeads = useMemo(() => (heads.length === 0 ? [LOCAL_HEAD] : heads), [heads])
 
   const reducedMotion = preferences.reduceMotion || systemReducedMotion
-  const theme = withWindowStyle(findTheme(previewTheme ?? activeThemeName(preferences, systemDark)), preferences.style)
+  const themeName = previewTheme ?? activeThemeName(preferences, systemDark)
+  const theme = useMemo(() => withWindowStyle(findTheme(themeName), preferences.style), [themeName, preferences.style])
+  // The theme's tokens are on the page root as well as on the window: a menu or popover that renders outside the window
+  // (Radix portals to the page) then reads the same colours, and the shadcn names mapped on `:root` resolve to the theme.
+  useEffect(() => {
+    const names = Object.keys(themeStyle(theme)).filter((name) => name.startsWith('--'))
+    const values = themeStyle(theme)
+    for (const name of names) document.documentElement.style.setProperty(name, values[name] ?? '')
+    return () => { for (const name of names) document.documentElement.style.removeProperty(name) }
+  }, [theme])
   const look = useMemo(() => ({ fontFamily: preferences.terminalFontFamily, fontWeight: preferences.terminalFontWeight, fontWeightBold: preferences.terminalFontWeightBold, cursorStyle: preferences.cursorStyle, scrollback: preferences.scrollback, scrollSpeed: preferences.scrollSpeed, screenReader: preferences.terminalScreenReader, seeThrough: preferences.terminalSeeThrough, cursorBlink: preferences.cursorBlink, plainDrawing: preferences.terminalPlainDrawing, theme: xtermTheme(theme.tokens), minimumContrast: terminalMinimumContrast(theme) }), [preferences.terminalFontFamily, preferences.terminalFontWeight, preferences.terminalFontWeightBold, preferences.cursorStyle, preferences.cursorBlink, preferences.scrollback, preferences.scrollSpeed, preferences.terminalScreenReader, preferences.terminalSeeThrough, preferences.terminalPlainDrawing, theme])
   useSharedSettings(preferences, setPreferences, online)
 

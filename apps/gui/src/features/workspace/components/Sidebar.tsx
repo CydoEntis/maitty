@@ -350,15 +350,11 @@ function MachineSection({ draft, progress, group, open, byProject, canStart, onT
   )
 }
 
-/** The chat that has not been sent yet: a placeholder row on its machine, with dots that move while it waits for the first message. */
+/** The chat that has not been sent yet: a grey box on its machine with three dots bouncing one after the other, until it has a first message. */
 function DraftRow() {
   return (
     <div className="mx-draft" role="status" aria-label="New chat, waiting for the first message">
-      <span className="mx-draft-tile" aria-hidden="true"><Icon name="chat" size={13} /></span>
-      <span className="mx-draft-text">
-        <span className="mx-draft-name">New chat</span>
-        <span className="mx-draft-sub">waiting for your first message<span className="mx-draft-dots" aria-hidden="true"><i /><i /><i /></span></span>
-      </span>
+      <span className="mx-draft-dots" aria-hidden="true"><i /><i /><i /></span>
     </div>
   )
 }
