@@ -15,14 +15,13 @@ pub(in crate::client) type MenuItem = (&'static str, Action);
 pub(in crate::client) type MenuGroup = (&'static str, Vec<MenuItem>);
 
 /// The Menu's sections in order, each under its title. "Shell here" starts a plain shell in the
-/// folder you are in; "Session..." opens the New session dialog for any project and machine.
+/// folder you are in, at once, as Alt+N and the New session key do.
 pub(in crate::client) fn menu_groups() -> Vec<MenuGroup> {
     vec![
         (
             "NEW",
             vec![
                 ("Shell here", Action::ShellHere),
-                ("Session...", Action::PickSession),
                 ("Pane beside this", Action::SplitRight),
             ],
         ),

@@ -208,6 +208,10 @@ pub(super) struct Screen {
     pub fleet_active: HashMap<fleets::FleetId, ClientTerm>,
     /// What the sidebar cursor walks over, top to bottom.
     pub side_items: Vec<SideItem>,
+    /// The fold keys of the headings drawn this frame (`ScreenHit::Fold`).
+    pub fold_keys: Vec<String>,
+    /// The sessions the panes of this view show, for the sidebar's markers.
+    pub in_view: Vec<ClientSession>,
     /// Projects opened this run that haven't been looked at (NEW chip).
     pub fresh: HashSet<String>,
     /// A session about to open beside this one: pair them when it appears.
@@ -1428,6 +1432,12 @@ pub(super) enum ScreenHit {
     ReleaseMenu,
     /// The `n new session` chip in a workspace with no pane open.
     NoPaneNew,
+    /// A machine or folder heading's arrow and name: fold it or open it again (its key in `Screen::fold_keys`).
+    Fold(usize),
+    /// The same on a machine heading, which also keeps its right-click menu: the machine it is.
+    FoldMachine(usize, MachineId),
+    /// The `+` on the `Remote machines` row: the dialog that adds one.
+    AddMachine,
     /// The `+` on a machine heading: a shell on that machine at once.
     MachinePlus(MachineId),
     /// A machine heading in the sidebar: a click opens Machines on it, a right-click its menu.
@@ -1449,8 +1459,6 @@ pub(super) enum ScreenHit {
     /// Inside an overlay's panel: nothing.
     Noop,
     FinderPick(usize),
-    /// A row of the New session dialog: a project in step 1, a machine in step 2.
-    NsRow(usize),
     NpProj(usize),
     NpRun(usize),
     NpBeside(usize),
@@ -1611,14 +1619,9 @@ mod updates;
 pub(in crate::client) use updates::draw_updates;
 mod closing;
 pub(in crate::client) use closing::{Closing, draw_banner};
-mod new_session;
-mod new_session_ui;
-#[cfg(test)]
-mod new_session_tests;
 #[cfg(test)]
 mod keys_tests;
-pub(in crate::client) use new_session::NewSession;
-pub(in crate::client) use new_session_ui::draw_new_session;
+mod fuzzy;
 mod popover;
 mod popups;
 mod references_sheet;

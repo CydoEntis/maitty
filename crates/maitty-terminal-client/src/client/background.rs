@@ -274,7 +274,6 @@ impl App {
             ServerMsg::Error(e) => {
                 // The output a failure waited for may be what failed; a later reply is not its.
                 self.screen.failure_ask = None;
-                self.new_session_failed();
                 self.notify(e, true);
             }
             ServerMsg::Notice(n) if machine != MachineId::LOCAL => self.notify(n, false),
@@ -320,9 +319,6 @@ impl App {
             }
             ServerMsg::Reply(Reply::Text(text)) if self.check_asked_of(machine) => {
                 self.check_output_arrived(text)
-            }
-            ServerMsg::Reply(Reply::Folders { tag, listing }) => {
-                self.new_session_listing(machine, tag, listing);
             }
             ServerMsg::Welcome { .. } | ServerMsg::Reply(_) => {}
         }

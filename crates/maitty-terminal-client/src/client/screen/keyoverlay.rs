@@ -243,8 +243,8 @@ fn session_hits(app: &App, query: &str) -> Vec<SessionHit> {
         })
         .filter(|h| {
             q.is_empty()
-                || super::new_session::fuzzy_indices(&q, &h.name).is_some()
-                || super::new_session::fuzzy_indices(&q, &h.place).is_some()
+                || super::fuzzy::fuzzy_indices(&q, &h.name).is_some()
+                || super::fuzzy::fuzzy_indices(&q, &h.place).is_some()
         })
         .collect();
     if q.is_empty() {
@@ -502,10 +502,10 @@ fn found(app: &App, query: &str) -> Vec<Entry> {
                 0
             } else if label.contains(&q) {
                 1
-            } else if super::new_session::fuzzy_indices(&q, &label).is_some() {
+            } else if super::fuzzy::fuzzy_indices(&q, &label).is_some() {
                 2
-            } else if super::new_session::fuzzy_indices(&q, &format!("{label} {}", e.also.to_lowercase())).is_some()
-                || super::new_session::fuzzy_indices(&q, &category_of(e.act.as_ref()).to_lowercase()).is_some()
+            } else if super::fuzzy::fuzzy_indices(&q, &format!("{label} {}", e.also.to_lowercase())).is_some()
+                || super::fuzzy::fuzzy_indices(&q, &category_of(e.act.as_ref()).to_lowercase()).is_some()
             {
                 3
             } else {
@@ -1224,7 +1224,7 @@ fn draw_search(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, km: &KeyM
 
 /// `label` with the letters a fuzzy search matched in the accent.
 fn fuzzy_segs(label: &str, needle: &str, plain: Style, lit: Style) -> Vec<Seg> {
-    let Some(at) = (!needle.is_empty()).then(|| super::new_session::fuzzy_indices(needle, label)).flatten() else {
+    let Some(at) = (!needle.is_empty()).then(|| super::fuzzy::fuzzy_indices(needle, label)).flatten() else {
         return vec![seg(label, plain)];
     };
     label

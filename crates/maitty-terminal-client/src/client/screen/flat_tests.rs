@@ -860,3 +860,53 @@ fn the_group_by_menu_lists_sessions_by_folder_or_by_priority() {
     app.menu_pick(0);
     assert!(!app.screen.saved.group_folders);
 }
+
+/// How many rows of the sidebar column have anything in them.
+fn side_rows_used(rows: &[String]) -> usize {
+    (0..rows.len()).filter(|y| !side(rows, *y).trim_matches(|c: char| !c.is_alphanumeric()).is_empty()).count()
+}
+
+#[test]
+fn a_machine_heading_has_a_fold_arrow_and_a_click_on_its_name_folds_it_and_opens_it_again() {
+    let mut app = reference_fixture::world(Stage::None);
+    let rows = text(&mut app, 140, 36);
+    let y = rows.iter().position(|r| side(std::slice::from_ref(r), 0).contains("This computer")).expect("this computer's heading");
+    let head = side(&rows, y);
+    assert!(head.contains("▾"), "an open machine shows the arrow that says it folds: {head}");
+    let before = side_rows_used(&rows);
+
+    let x = head.find("This computer").expect("the name") as u16 + 2;
+    click(&mut app, x, y as u16);
+    let rows = text(&mut app, 140, 36);
+    let head = side(&rows, y);
+    assert!(head.contains("▸") && head.contains("This computer"), "folded: {head}");
+    assert!(side_rows_used(&rows) < before, "its sessions are gone from the list");
+
+    click(&mut app, x, y as u16);
+    let rows = text(&mut app, 140, 36);
+    assert!(side(&rows, y).contains("▾"), "a second click opens it again");
+    assert_eq!(side_rows_used(&rows), before);
+}
+
+#[test]
+fn the_sidebar_has_a_remote_machines_row_whose_plus_opens_the_dialog_that_adds_one() {
+    let mut app = reference_fixture::world(Stage::None);
+    let rows = text(&mut app, 140, 36);
+    show(&rows, "remote machines row");
+    let y = rows.iter().position(|r| side(std::slice::from_ref(r), 0).contains("Remote machines")).expect("a place for remote machines, even with none");
+    let row = side(&rows, y);
+    // The column, in characters (the frame's border is wider than a byte).
+    let x = row[..row.find(" + ").expect("the + chip")].chars().count() as u16 + 1;
+    click(&mut app, x, y as u16);
+    assert!(matches!(app.mode, Mode::Machines(_)), "the + opens Machines to add one: {:?}", std::mem::discriminant(&app.mode));
+}
+
+#[test]
+fn the_remote_machines_row_sits_above_the_first_remote_machine() {
+    let (mut app, _) = with_kingdom_needing_the_app();
+    let rows = text(&mut app, 140, 36);
+    let remote = rows.iter().position(|r| side(std::slice::from_ref(r), 0).contains("Remote machines")).expect("the row");
+    let kingdom = rows.iter().position(|r| side(std::slice::from_ref(r), 0).contains(" kingdom ")).expect("kingdom");
+    assert!(remote < kingdom, "the row {remote} names the machines under it, kingdom at {kingdom}");
+    assert_eq!(rows.iter().filter(|r| side(std::slice::from_ref(r), 0).contains("Remote machines")).count(), 1);
+}

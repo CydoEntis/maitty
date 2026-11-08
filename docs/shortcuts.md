@@ -22,8 +22,8 @@ in Settings › Keys or under `[keys.prefix]` in your config.
 
 **`Ctrl+A` still opens key mode for one release**, so a muscle memory or a script keeps working.
 It stops working when the prefix is set to another key on purpose or `Ctrl+A` is bound to something
-else under `[keys.global]`. The keys follow the TUI redesign: `n` is the New session dialog (`t` a
-shell at once), `j` / `k` step through the sessions (`n` / `p` stepped through tabs, and there are no
+else under `[keys.global]`. The keys follow the TUI redesign: `n` and `t` both start a shell at
+once, `j` / `k` step through the sessions (`n` / `p` stepped through tabs, and there are no
 tabs), `s` / `S` split right and down (they were `|` and `-`), `z` zooms the pane (undo close is
 `Ctrl+Z`), `/` filters the sidebar (find in the pane is `Ctrl+Shift+F`), `u` is usage and cost
 (Updates is in the release chip's menu), `k` (stop the agent) is `Ctrl+C`.
@@ -34,7 +34,7 @@ Press the prefix for key mode, then the key. Only `?`, `S` and `_` need Shift, a
 
 | Key | Action |
 |---|---|
-| `n` | New session (the dialog) |
+| `n` | New session: a shell where you are, at once (the same as `t`, `Alt+N` and `Ctrl+T`) |
 | `t` | New shell where you are, at once |
 | `j` / `k` | Next / previous session; key mode stays, so `j` `j` walks the list |
 | `1`–`9` | Open that session of the sidebar |
@@ -101,7 +101,7 @@ command in history, send the prefix itself to the program.
 The prefix is `Ctrl+Space`. Press it and you are in **key mode**: each key runs its action, and the
 mode stays for the next, so a run of actions is one key each. `Esc`, the prefix again or a click go
 back to the pane, where keys type into the program. So does an action that starts a pane for you to
-type into: `t` a shell, `s` / `S` a split, and the dialog once it starts the session; the next key goes
+type into: `t` and `n` a shell, `s` / `S` a split; the next key goes
 to the new pane. An action that opens a popup or panel hands it the keys, and closing it returns to key
 mode; `Enter` (message the agent) is one of those. The status bar along the bottom always says which
 mode you are in: ` PANE ` (accent), the session and its folder, then `^space keys  alt+↓/alt+↑ sessions  ^space ? help` (a key that needs the leader is shown with it, since the bare key would be typed into the pane; the session keys need none);
@@ -159,8 +159,7 @@ image, `d` sends a file to the pane's machine, `Ctrl`+arrows resize, `Alt`+arrow
 | Up, Down, Enter | Choose and run a row |
 | Esc | Close the Menu |
 
-"Shell here" starts a shell at once where you are (the same as `t`); "Session..." opens the New
-session dialog, for another folder or machine. Start an agent by typing `claude` (or any other) in the shell: it starts in its own worktree
+"Shell here" starts a shell at once where you are (the same as `t` and `n`). Start an agent by typing `claude` (or any other) in the shell: it starts in its own worktree
 in a git project. Section headers (NEW, TOOLS, FIND, SIDEBAR) are not rows: the arrows skip them.
 
 ## Worktrees second step
@@ -216,22 +215,9 @@ Leader `w`, or a click on a remote machine's heading in the sidebar. These keys 
 | Enter, Esc | Open the selected result / submit prompt, or cancel |
 | y / Y / Enter in close-group or remove-worktree prompt | Confirm; f / F forces worktree removal when offered; other keys cancel |
 
-## New session dialog
+## New session
 
-Leader `n`, the Menu's `Session...` and the ` n new session ` chip of an empty workspace open it (`Ctrl+T`, leader `t` and a machine's `+` start a shell at once, with
-no dialog). It starts a shell; step 1 is the project, step 2 the machine.
-
-| Keys | Action |
-| --- | --- |
-| Type, Backspace, Ctrl or Alt+Backspace | Edit the search or path; the last also deletes a path segment |
-| `~`, `/` or `.` first | A folder path on the chosen machine, completed from the real folders |
-| Tab, Right | Accept the dim completion; with none, pick the project and go to step 2 |
-| Ctrl+O | Browse: `Use <folder>`, `..` and the folders inside |
-| Up, Down | Move through the list (the machines in step 2; offline ones are skipped) |
-| Enter | Pick the project (starts the shell at once when this computer is the only machine); in step 2, start the shell on that machine. Blocked while the folder is missing |
-| Esc | Back (step 2, the picker), then close |
-
-The details are in [UI](UI.md#project-specific-new-session-dialog). Ctrl+T and leader `t` are not this dialog: they make a shell where you are at once.
+There is no dialog. Leader `n`, leader `t`, `Alt+N`, `Ctrl+T`, the ` n new session ` chip of an empty workspace and a machine's ` + ` chip all start a shell at once where you are (a machine's chip on that machine). Start an agent by typing `claude` (or any other) in the shell.
 
 ## A session wants to start helpers
 

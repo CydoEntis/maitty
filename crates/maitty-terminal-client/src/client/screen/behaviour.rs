@@ -609,9 +609,8 @@ impl App {
         let focused = self.selected_term();
         match a {
             Action::Settings => self.screen_settings(),
-            Action::PickSession => self.open_new_session(None),
-            // A shell at once in the fleet you are in: a new ship and a new tab.
-            Action::ShellHere => self.new_ship(None),
+            // New session and New shell are the same thing: a shell at once where you are, as Alt+N does. There is no dialog.
+            Action::PickSession | Action::ShellHere => self.new_ship(None),
             // One place: what needs you on top, and type to go anywhere.
             Action::Message => {
                 let side = self.mode == Mode::Side || self.screen.cursor.is_some();
@@ -1809,7 +1808,7 @@ impl App {
         self.splash = false;
         self.screen.splash_sel = 0;
         match c {
-            'n' => self.open_new_session(None),
+            'n' => self.new_ship(None),
             'o' => self.screen_open_finder(),
             ',' => self.screen_settings(),
             '?' => self.open_keymap(None),
@@ -1842,9 +1841,22 @@ impl App {
                 }
             }
             ScreenHit::ReleaseMenu => self.release_menu(),
-            ScreenHit::NoPaneNew => self.open_new_session(None),
+            ScreenHit::NoPaneNew => self.new_ship(None),
             // A shell on that machine at once.
             ScreenHit::MachinePlus(machine) => self.new_ship_on(machine),
+            ScreenHit::AddMachine => self.open_machines(),
+            ScreenHit::Fold(i) | ScreenHit::FoldMachine(i, _) => {
+                if let Some(key) = self.screen.fold_keys.get(i).cloned() {
+                    let closed = &mut self.screen.saved.closed;
+                    if let Some(at) = closed.iter().position(|k| *k == key) {
+                        closed.remove(at);
+                    } else {
+                        closed.push(key);
+                    }
+                    self.screen.save();
+                    self.dirty = true;
+                }
+            }
             ScreenHit::MachineHead(MachineId::LOCAL) => self.act(Action::BrowseTree),
             ScreenHit::MachineHead(machine) => self.open_machines_on(machine),
             ScreenHit::MachineFix(machine) => self.machine_update_from_side(machine),
@@ -1934,7 +1946,6 @@ impl App {
                 self.dismiss_notice();
             }
             ScreenHit::SettingsBody => {}
-            ScreenHit::NsRow(i) => self.new_session_row_click(i),
             ScreenHit::FinderPick(i) => {
                 if let Mode::Finder(fd) = &self.mode {
                     let mut fd = (**fd).clone();

@@ -3153,7 +3153,7 @@ mod screen_tests {
                     leader(&mut app, 't');
                 }
                 assert!(
-                    !matches!(app.mode, Mode::NewSession(_)),
+                    matches!(app.mode, Mode::Normal | Mode::Side),
                     "a shell opens no form: {:?}",
                     app.mode
                 );
@@ -3173,18 +3173,15 @@ mod screen_tests {
         }
     }
     #[test]
-    fn the_menu_starts_a_shell_or_opens_the_dialog_and_t_is_the_shell_key() {
+    fn the_menu_starts_a_shell_and_t_and_n_are_shell_keys() {
         let rows = screen::action_items();
         let labels: Vec<&str> = rows.iter().take(3).map(|(l, _)| *l).collect();
         assert_eq!(
             labels,
-            ["Shell here", "Session...", "Pane beside this"],
-            "Shell first"
+            ["Shell here", "Pane beside this", "Files"],
+            "Shell first, and no dialog row: New session is a shell too"
         );
-        assert!(
-            rows.iter()
-                .any(|(l, a)| *l == "Session..." && *a == Action::PickSession)
-        );
+        assert!(!rows.iter().any(|(l, _)| *l == "Session..."));
         assert!(
             rows.iter()
                 .any(|(l, a)| *l == "Shell here" && *a == Action::ShellHere)
@@ -3192,12 +3189,12 @@ mod screen_tests {
         let key = |c: &str| c.parse::<crate::keys::KeySpec>().unwrap();
         let (_, app) = super::design_tests::render_with(100, 30);
         assert_eq!(app.keymap.prefixed.get(&key("t")), Some(&Action::ShellHere));
-        assert_eq!(app.keymap.prefixed.get(&key("n")), Some(&Action::PickSession), "n is the New session dialog");
+        assert_eq!(app.keymap.prefixed.get(&key("n")), Some(&Action::PickSession), "n is New session, which starts a shell at once");
         assert_eq!(app.keymap.prefixed.get(&key("j")), Some(&Action::NextSession));
         assert_eq!(
             app.keymap.global.get(&key("ctrl+t")),
             Some(&Action::ShellHere),
-            "Ctrl+T makes a shell; the dialog is the Menu's Session..."
+            "Ctrl+T makes a shell"
         );
         assert_eq!(app.keymap.global.get(&key("ctrl+tab")), Some(&Action::NextTab));
         let (_, mut app) = super::design_tests::render_with(100, 30);
@@ -7618,11 +7615,7 @@ second line
         let y = screen::mode_bar_row(&app, buf.area).y;
         let new = on_bar(&app, &buf, "n new").expect("n new");
         click_at(&mut app, new + 2, y);
-        assert!(
-            matches!(app.mode, Mode::NewSession(_)),
-            "n opened New session: {:?}",
-            std::mem::discriminant(&app.mode)
-        );
+        assert_eq!(app.mode, Mode::Normal, "n starts a shell at once, so there is no dialog and the mode ends");
         let mut app = shortcut_mode();
         let buf = drawn(&mut app, 160, 45);
         let split = on_bar(&app, &buf, "s split").expect("s split");
