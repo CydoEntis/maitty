@@ -109,15 +109,18 @@ fn mode_chip(label: &str, ground: Color, ink: Color, hit: Option<ScreenHit>) -> 
     }
 }
 
-/// Typing: `j/k sessions`, the leader for key mode (a click starts it) and `? help`.
+/// Typing: every key here is a leader key, so each is shown with the leader in front (`^space j/k sessions`): the
+/// bare `j/k` would be typed into the pane. The leader alone starts key mode (a click starts it), and `? help` lists
+/// the keys.
 fn pane_hints(app: &App, t: &Theme) -> Vec<Piece> {
+    let lead = short_key(&app.keymap.prefix);
     let mut hints = Vec::new();
+    hints.push(hint(lead.clone(), "keys", Some(ScreenHit::ShortcutMode), t));
     if let (Some(next), Some(prev)) = (bound(app, &Action::NextSession), bound(app, &Action::PrevSession)) {
-        hints.push(hint(format!("{}/{}", short_key(&next), short_key(&prev)), "sessions", None, t));
+        hints.push(hint(format!("{lead} {}/{}", short_key(&next), short_key(&prev)), "sessions", None, t));
     }
-    hints.push(hint(short_key(&app.keymap.prefix), "keys", Some(ScreenHit::ShortcutMode), t));
     if let Some(help) = bound(app, &Action::Help) {
-        hints.push(hint(short_key(&help), "help", None, t));
+        hints.push(hint(format!("{lead} {}", short_key(&help)), "help", None, t));
     }
     hints
 }

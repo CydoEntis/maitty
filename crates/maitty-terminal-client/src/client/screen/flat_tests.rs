@@ -811,7 +811,7 @@ fn the_status_bar_says_the_mode_the_session_and_the_keys_worth_knowing() {
     let bar = &rows[35];
     assert!(bar.starts_with("  PANE  "), "{bar}");
     assert!(!bar.contains("fix-footer"), "the pane's title already says it: {bar}");
-    assert!(bar.contains("j/k sessions  ^space keys  ? help"), "{bar}");
+    assert!(bar.contains("^space keys  ^space j/k sessions  ^space ? help"), "{bar}");
     assert_eq!((buf[(2, 35)].bg, buf[(2, 35)].fg), (t.accent, t.acc_ink), "the PANE chip");
     assert_eq!(buf[(100, 35)].bg, t.bg, "the bar is on the ground");
     app.update_available = None;

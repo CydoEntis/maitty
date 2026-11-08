@@ -146,7 +146,7 @@ with motion on. See UI › *the frame* (Toast).
 The one full-width row, along the bottom, on the panel ground. It is hidden while keys go to the pane
 (no row, no gap; the focused frame turns the KEYS yellow in key mode instead) and shows for key mode,
 for whatever holds the keys, for a flashed line and while Update or Restart waits. Typing with it up: a ` PANE ` chip in the accent,
-and at the right `j/k sessions  ^space keys  ? help`.
+and at the right `^space keys  ^space j/k sessions  ^space ? help` (each leader key is shown with the leader, since the bare key would be typed into the pane).
 Key mode: a yellow ` KEYS ` chip and `n new  s split  x close  tab pane  ? help  esc back`, each a click
 that presses it; starting a pane ends it. When something other than the panes has the keys, a calm chip
 (`strong` bold on `btn`) names the holder and its keys sit at the right with the way out last

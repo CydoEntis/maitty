@@ -189,4 +189,4 @@ the left, menus with their leader keys, and "No pane open" when the last pane cl
 | Changes panel | Every file's diff stacked | The file list beside the selected file's diff stays (review marks, staging); the header is the handoff's |
 | New session form | Kind, agent, project, where, a message | The existing dialog (project, then machine; it starts a shell, ADR 0004) |
 | Project colours | Five of its own | The configured `ui.workspace_colors`, shared with the desktop app |
-| `j/k sessions` in the status bar | Shown while typing | Shown as is: they are key-mode keys, after `^space` |
+| `j/k sessions` in the status bar | Shown while typing | Shown with the leader in front (`^space j/k sessions`): they are key-mode keys, and the bare key would be typed into the pane |

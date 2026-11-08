@@ -104,7 +104,7 @@ back to the pane, where keys type into the program. So does an action that start
 type into: `t` a shell, `s` / `S` a split, and the dialog once it starts the session; the next key goes
 to the new pane. An action that opens a popup or panel hands it the keys, and closing it returns to key
 mode; `Enter` (message the agent) is one of those. The status bar along the bottom always says which
-mode you are in: ` PANE ` (accent), the session and its folder, then `j/k sessions  ^space keys  ? help`;
+mode you are in: ` PANE ` (accent), the session and its folder, then `^space keys  ^space j/k sessions  ^space ? help` (each leader key is shown with the leader, since the bare key would be typed into the pane);
 in key mode ` KEYS ` (yellow) and `n new  s split  x close  tab pane  ? help  esc back`, each a click
 that presses it, and a click on ` PANE ` starts key mode. While something other than the panes has the
 keys (the sidebar, a popup, Files, …) the chip names it and its keys sit at the right with the way
