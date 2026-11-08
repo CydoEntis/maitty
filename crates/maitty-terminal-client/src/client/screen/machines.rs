@@ -6,6 +6,7 @@
 use super::chips::{Chip, chip};
 use super::machine_group::AppFix;
 use super::*;
+use crate::client::machine_config::Grant;
 use crate::client::ssh_hosts::SshHost;
 use crate::hidden::sanitize;
 use maitty_settings::config::MachineDef;
@@ -114,6 +115,9 @@ pub struct MachineRow {
     pub detail: Option<String>,
     /// The app is missing or another version there: `u` installs or updates it.
     pub fix: Option<AppFix>,
+    /// Whether it may raise toasts here (`n`) and play alert sounds (`s`). Both are off until you turn them on.
+    pub notices: bool,
+    pub sounds: bool,
 }
 
 impl App {
@@ -184,6 +188,8 @@ impl App {
             // The fix texts name the machine as `<name>`: say which one.
             detail: detail.map(|why| why.replace("<name>", &def.name)),
             fix,
+            notices: def.notices,
+            sounds: def.sounds,
         }
     }
 }
@@ -353,6 +359,8 @@ impl App {
             KeyCode::Down if sel + 1 < names.len() => v.machine_sel = Some(sel + 1),
             KeyCode::Down | KeyCode::Tab | KeyCode::BackTab => v.machine_sel = None,
             KeyCode::Enter | KeyCode::Char('r') => v.notice = Some(self.machine_retry(&name)),
+            KeyCode::Char('n') => v.notice = Some(self.machine_toggle_grant(&name, Grant::Notices)),
+            KeyCode::Char('s') => v.notice = Some(self.machine_toggle_grant(&name, Grant::Sounds)),
             KeyCode::Char('u') => {
                 let said = self.machine_update(&name);
                 // The update's popup takes the keys, so the dialog is closed: say it in a toast.
@@ -898,6 +906,26 @@ fn draw_your_machines(
         }
         y += 1;
     }
+    // What the chosen machine may do to this computer, which is nothing until you say so: toasts and sounds are off by default.
+    if let Some(row) = sel.map(|s| &rows[s]) {
+        let word = |on: bool| if on { "on" } else { "off" };
+        put(
+            buf,
+            inner.x + 2,
+            y,
+            &[seg(
+                format!(
+                    "Alerts from {}: toasts {} · sounds {}.   n toasts · s sounds",
+                    row.name,
+                    word(row.notices),
+                    word(row.sounds)
+                ),
+                Style::default().bg(t.card).fg(t.muted),
+            )],
+            inner.right(),
+        );
+        y += 1;
+    }
     if let Some(detail) = sel.and_then(|s| rows[s].detail.as_deref()) {
         let room = inner.width.saturating_sub(2) as usize;
         for line in popover::wrap_capped(detail, room, DETAIL_LINES) {
@@ -1095,6 +1123,7 @@ fn bar_keys(v: &MachinesView, fix: Option<AppFix>) -> Vec<(&'static str, &'stati
         MachineStep::Browse if v.machine_sel.is_some() => vec![
             ("r", "reconnect"),
             ("u", fix.map_or("update", AppFix::verb)),
+            ("n s", "alerts"),
             ("e", "edit"),
             ("x", "remove"),
             ("↑↓", "move"),

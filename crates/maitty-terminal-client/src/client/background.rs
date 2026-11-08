@@ -142,6 +142,7 @@ impl App {
         }
         match msg {
             ServerMsg::State(s) if machine != MachineId::LOCAL => {
+                self.say_alerts_are_off(machine);
                 self.sync_terms(machine, &s);
                 self.remember_changes(machine, &s);
                 self.remotes.entry(machine).or_default().snap = s;
@@ -445,6 +446,25 @@ impl App {
         };
         self.notify(told, false);
         self.notice_term = Some(term);
+    }
+
+    /// When a machine connects with toasts off, as every machine is until you turn them on: say so once per run, so
+    /// it is never a mystery why its agents raise nothing. Said at the connection, which you caused, and not when an
+    /// agent there needs you, which would let a machine put a toast on the screen unasked. The words are this app's
+    /// own and the only name in them is the one you gave the machine.
+    fn say_alerts_are_off(&mut self, machine: MachineId) {
+        if machine == MachineId::LOCAL || self.alerts_off_told.contains(&machine) {
+            return;
+        }
+        self.alerts_off_told.insert(machine);
+        if self.machine_opts(machine).notices {
+            return;
+        }
+        let name = self.machine_name(machine);
+        self.notify(
+            format!("Toasts from {name} are off. Open Machines, pick {name} and press n to turn them on."),
+            false,
+        );
     }
 
     /// Note what changed on `machine` between two states: agents that now need you or finished.

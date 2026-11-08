@@ -481,7 +481,8 @@ mod tests {
         app.on_machine_server(MachineId(1), state_with_id(Some(BOX_A)));
         app.on_machine_server(MachineId(1), state_with_id(Some(BOX_A)));
         assert!(app.refused.is_empty());
-        assert!(app.notice.is_none());
+        // Nothing about a refusal; the one line it may say is that toasts from the machine are off until turned on.
+        assert!(app.notice.as_ref().is_none_or(|(text, ..)| text.starts_with("Toasts from ")), "{:?}", app.notice);
     }
 
     #[test]

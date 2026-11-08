@@ -581,3 +581,34 @@ fn the_reconnect_button_answers_in_the_dialog_and_a_click_on_a_row_chooses_it() 
     let Mode::Machines(v) = &app.mode else { panic!("{:?}", app.mode) };
     assert_eq!(v.machine_sel, Some(0));
 }
+
+#[test]
+fn the_n_and_s_keys_turn_toasts_and_sounds_on_and_off_and_the_chosen_machine_says_so() {
+    let mut app = app_with(&[("build", "dev@build.lan")]);
+    // The entry has to be in the file for a change to be written to it.
+    let dir = std::env::temp_dir().join(format!("grants-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    app.machine_flow.local_config = dir.join("config.local.toml");
+    crate::client::machine_config::add_machine(&app.machine_flow.local_config, "build", "dev@build.lan").unwrap();
+
+    let mut v = view(Some(hosts()));
+    v.machine_sel = Some(0);
+    let (text, ..) = shown(&mut app, v, 200, 45);
+    assert!(text.contains("Alerts from build: toasts off · sounds off"), "off until turned on:\n{text}");
+
+    app.on_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
+    assert!(app.cfg.machines[0].notices && !app.cfg.machines[0].sounds);
+    let written = std::fs::read_to_string(&app.machine_flow.local_config).unwrap();
+    assert!(written.contains("notices = true"), "{written}");
+    let (text, ..) = frame(&mut app, 200, 45);
+    assert!(text.contains("toasts on · sounds off"), "the line says it took:\n{text}");
+    assert!(text.contains("Toasts from build are now on."), "{text}");
+
+    app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
+    assert!(app.cfg.machines[0].sounds);
+
+    app.on_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
+    assert!(!app.cfg.machines[0].notices);
+    let written = std::fs::read_to_string(&app.machine_flow.local_config).unwrap();
+    assert!(!written.contains("notices"), "off is the default, so the key goes: {written}");
+}

@@ -584,6 +584,8 @@ pub struct App {
     last_alert: Option<(crate::alert::Kind, Instant)>,
     /// Only ring if the pending status still matches the latest snapshot at its deadline.
     settling: HashMap<ClientTerm, (Status, Instant)>,
+    /// The machines whose first held-back alert this run has been explained (toasts are off for a machine until you turn them on).
+    alerts_off_told: HashSet<MachineId>,
     /// What's moving, and how far the sidebar and the sheet are in this frame (0 to 1).
     motion: motion::Motion,
     side_frac: f32,
@@ -815,6 +817,7 @@ impl App {
             alerted: HashMap::new(),
             last_alert: None,
             settling: HashMap::new(),
+            alerts_off_told: HashSet::new(),
             motion: motion::Motion::default(),
             side_frac: 1.0,
             sheet_frac: 1.0,
