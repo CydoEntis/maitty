@@ -22,6 +22,15 @@ function scroller(): HTMLElement {
 const latest = () => screen.queryByRole('button', { name: 'Jump to the latest message' })
 
 describe('a conversation list that follows its newest row', () => {
+  it('offers no jump to the latest message when the whole chat is already on screen, even after a wheel move up', () => {
+    render(list(2))
+    const element = scroller()
+
+    fireEvent.wheel(element, { deltaY: -3 })
+
+    expect(latest()).toBeNull()
+  })
+
   it('stays on the newest row while the reader has not moved', () => {
     const { rerender } = render(list(20))
     const element = scroller()

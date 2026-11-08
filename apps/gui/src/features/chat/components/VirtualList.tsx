@@ -146,7 +146,8 @@ export function VirtualList<T>({ items, getKey, estimate, renderItem, label, ove
 
   // A wheel move up arrives before the scroll it causes, and a streaming commit in between would undo it.
   const onWheel = (event: WheelEvent) => {
-    if (event.deltaY >= 0 || !follow.current.following) return
+    // Nothing above to scroll to (a short chat, or the top already) is not leaving the newest row.
+    if (event.deltaY >= 0 || !follow.current.following || (scroller.current?.scrollTop ?? 0) <= 0) return
     follow.current = { ...follow.current, following: false }
     setFollowing(false)
   }
@@ -175,7 +176,7 @@ export function VirtualList<T>({ items, getKey, estimate, renderItem, label, ove
           })}
         </div>
       </div>
-      {!following && (
+      {!following && layout.total > viewport && (
         <Button type="button" variant="outline" size="icon" className="absolute right-4 bottom-3 size-8 rounded-full bg-raise" aria-label="Jump to the latest message" onClick={jumpToLatest}>
           <ArrowDown className="size-4" aria-hidden="true" />
         </Button>

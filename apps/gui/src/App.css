@@ -48,7 +48,8 @@
    and the action button on a row of its own under the text (never squeezed beside it, where it was cut off). */
 .maitty-toaster[data-sonner-toaster] [data-sonner-toast][data-styled="true"] { flex-wrap: wrap; align-items: flex-start; gap: 7px 10px; }
 .maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-icon] { width: 26px; height: 26px; margin: 0; flex: none; border-radius: 7px; display: flex; align-items: center; justify-content: center; background: var(--m-well); }
-.maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-content] { flex: 1 1 0; min-width: 0; padding-right: 22px; gap: 3px; }
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-content] { flex: 1 1 calc(100% - 36px); min-width: 0; padding-right: 22px; gap: 3px; }
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast]:not(:has([data-icon])) [data-content] { flex-basis: 100%; }
 .maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-button] { order: 3; flex: none; height: 28px; margin: 0 0 0 36px; padding: 0 12px; border-radius: 8px; font-size: 12.5px; }
 .maitty-toaster[data-sonner-toaster] [data-sonner-toast]:not(:has([data-icon])) [data-button] { margin-left: 0; }
 .maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-action] {

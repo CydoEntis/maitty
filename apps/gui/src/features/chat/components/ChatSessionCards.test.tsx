@@ -172,14 +172,20 @@ describe('approvals in the chat', () => {
     for (let index = 0; index < 60; index += 1) daemon.upsert(daemon.message('t1', `m${String(index)}`, 'Assistant', `filler ${String(index)}`))
     daemon.upsert(toolEntry('t2', 'x', 'ls', ''))
     daemon.answeredApprovals = [{ request: request('req-4', { turn_id: 't2', item_id: 'x', command: 'ls' }), decision: 'Accept' }]
-    render(<ChatSession link={link()} agent="claude" online />)
-    await settle()
-    await settle()
+    // jsdom has no layout: a short window makes the list longer than what it shows, as it would be with this much said.
+    const shortWindow = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(100)
+    try {
+      render(<ChatSession link={link()} agent="claude" online />)
+      await settle()
+      await settle()
 
-    fireEvent.click(screen.getByRole('button', { name: /Go to the step this is about: ls/ }))
-    await settle()
+      fireEvent.click(screen.getByRole('button', { name: /Go to the step this is about: ls/ }))
+      await settle()
 
-    // Following the newest row stops, so the jump-to-latest button appears.
-    expect(screen.getByRole('button', { name: 'Jump to the latest message' })).toBeInTheDocument()
+      // Following the newest row stops, so the jump-to-latest button appears.
+      expect(screen.getByRole('button', { name: 'Jump to the latest message' })).toBeInTheDocument()
+    } finally {
+      shortWindow.mockRestore()
+    }
   })
 })
