@@ -143,6 +143,7 @@ import { folderExists, resolveStartFolder } from './model/startFolder'
 import { markSeen, trackSessions, tracksEqual, type SessionTrack } from './model/tracking'
 import type { PaletteItem } from './model/palette'
 import { activeThemeName, findTheme, terminalMinimumContrast, themeStyle, THEMES, xtermTheme } from './theme/themes'
+import { finishOf, withWindowStyle } from './theme/windowStyles'
 import { COMPACT_WIDTH_PX, NARROW_WIDTH_PX } from './model/windowSize'
 import './workspace.css'
 import './components/sidebar.css'
@@ -638,7 +639,7 @@ export function DesktopApp() {
   const sidebarMachineHeads = useMemo(() => (heads.length === 0 ? [LOCAL_HEAD] : heads), [heads])
 
   const reducedMotion = preferences.reduceMotion || systemReducedMotion
-  const theme = findTheme(previewTheme ?? activeThemeName(preferences, systemDark))
+  const theme = withWindowStyle(findTheme(previewTheme ?? activeThemeName(preferences, systemDark)), preferences.style)
   const look = useMemo(() => ({ fontFamily: preferences.terminalFontFamily, fontWeight: preferences.terminalFontWeight, fontWeightBold: preferences.terminalFontWeightBold, cursorStyle: preferences.cursorStyle, scrollback: preferences.scrollback, scrollSpeed: preferences.scrollSpeed, screenReader: preferences.terminalScreenReader, seeThrough: preferences.terminalSeeThrough, cursorBlink: preferences.cursorBlink, plainDrawing: preferences.terminalPlainDrawing, theme: xtermTheme(theme.tokens), minimumContrast: terminalMinimumContrast(theme) }), [preferences.terminalFontFamily, preferences.terminalFontWeight, preferences.terminalFontWeightBold, preferences.cursorStyle, preferences.cursorBlink, preferences.scrollback, preferences.scrollSpeed, preferences.terminalScreenReader, preferences.terminalSeeThrough, preferences.terminalPlainDrawing, theme])
   useSharedSettings(preferences, setPreferences, online)
 
@@ -686,7 +687,7 @@ export function DesktopApp() {
 
   useEffect(() => {
     document.documentElement.dataset.style = preferences.style
-    document.documentElement.dataset.finish = preferences.style === 'glass' ? 'glass' : 'flat'
+    document.documentElement.dataset.finish = finishOf(preferences.style)
     // Only Windows has a translucent window (Mica); see workspace.css.
     document.documentElement.dataset.material = /Windows NT/.test(navigator.userAgent) ? 'mica' : 'none'
   }, [preferences.style])

@@ -102,18 +102,20 @@ describe('settings preferences', () => {
     expect(readSettingsPreferences().restoreLayout).toBe(true)
   })
 
-  it('starts a fresh install in Glass and keeps a saved Flat', () => {
+  it('starts a fresh install in Glass and keeps any saved window style', () => {
     expect(readSettingsPreferences()).toMatchObject({ style: 'glass' })
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'flat' }))
-    expect(readSettingsPreferences()).toMatchObject({ style: 'flat' })
+    for (const style of ['glass', 'frosted', 'mono', 'console', 'pixel']) {
+      localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style }))
+      expect(readSettingsPreferences()).toMatchObject({ style })
+    }
   })
 
-  it('reads the old style names and a saved Tiled as Flat, keeps Glass, and falls back from nonsense', () => {
+  it('reads the old style names, and a saved Flat or Tiled, as Console, and falls back from nonsense', () => {
     const style = (value: string) => {
       localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: value }))
       return readSettingsPreferences().style
     }
-    expect([style('minimal'), style('expressive'), style('tiled'), style('flat'), style('glass')]).toEqual(['flat', 'glass', 'flat', 'flat', 'glass'])
+    expect([style('minimal'), style('expressive'), style('tiled'), style('flat'), style('glass')]).toEqual(['console', 'glass', 'console', 'console', 'glass'])
     expect(style('neon')).toBe('glass')
   })
 
@@ -141,11 +143,11 @@ describe('settings preferences', () => {
     expect(readSettingsPreferences().chatViewDefault).toEqual({ claude: 'chat', codex: 'chat', gemini: 'chat' })
   })
 
-  it('keeps icons in colour unless grayscale was chosen, in either style', () => {
+  it('keeps icons in colour unless grayscale was chosen, in any style', () => {
     expect(readSettingsPreferences().iconColor).toBe('color')
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'flat', iconColor: 'grayscale' }))
-    expect(readSettingsPreferences()).toMatchObject({ style: 'flat', iconColor: 'grayscale' })
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'flat', iconColor: 'sepia' }))
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'mono', iconColor: 'grayscale' }))
+    expect(readSettingsPreferences()).toMatchObject({ style: 'mono', iconColor: 'grayscale' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'mono', iconColor: 'sepia' }))
     expect(readSettingsPreferences().iconColor).toBe('color')
   })
 

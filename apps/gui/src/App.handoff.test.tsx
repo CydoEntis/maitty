@@ -1152,10 +1152,11 @@ describe('desktop overlays and pane tools', () => {
     const bar = await screen.findByLabelText('Status')
 
     await user.click(within(bar).getByRole('button', { name: /^Layout style/ }))
-    await user.click(await screen.findByRole('menuitemradio', { name: 'Flat' }))
+    await user.click(await screen.findByRole('menuitemradio', { name: 'Mono Type' }))
 
-    expect(document.documentElement.dataset.style).toBe('flat')
-    expect(within(bar).getByRole('button', { name: 'Layout style: flat' })).toBeInTheDocument()
+    expect(document.documentElement.dataset.style).toBe('mono')
+    expect(document.documentElement.dataset.finish).toBe('flat')
+    expect(within(bar).getByRole('button', { name: 'Layout style: mono' })).toBeInTheDocument()
   })
 
   it('picks a theme from the status bar and opens the full list in Settings', async () => {

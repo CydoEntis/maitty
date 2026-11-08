@@ -1,4 +1,5 @@
 import { isSpinnerStyle, type SpinnerStyle } from '@/lib/spinner-clock'
+import { DEFAULT_WINDOW_STYLE, isWindowStyle, type WindowStyle } from '@/features/workspace/theme/windowStyles'
 import { prefersPlainDrawing } from '@/lib/gpu'
 import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, isFontFamily, isFontWeight, type TerminalFontWeight } from '@/lib/terminalFont'
 import { readThemePreference, type ThemePreference } from '@/data/themePreference'
@@ -14,8 +15,8 @@ export const DENSITIES: readonly Density[] = ['compact', 'comfortable', 'spaciou
 export type IconSize = 'small' | 'medium' | 'large'
 /** Which side of the window the sidebar sits on. */
 export type SidebarSide = 'left' | 'right'
-/** The window style: Flat is solid panels, Glass is floating frosted cards. Both share one layout. */
-export type StyleChoice = 'flat' | 'glass'
+/** The window style: one of five looks that share one layout (`theme/windowStyles.ts`). Kept by this window alone. */
+export type StyleChoice = WindowStyle
 /** App and folder icons keep their colours, or drop to neutral gray tiles. Independent of the style. */
 export type IconColor = 'color' | 'grayscale'
 
@@ -159,7 +160,7 @@ function defaults(): SettingsPreferences {
     scrollback: SCROLLBACK_DEFAULT,
     scrollSpeed: SCROLL_NORMAL,
     terminalScreenReader: false,
-    style: 'glass',
+    style: DEFAULT_WINDOW_STYLE,
     density: 'comfortable',
     sidebarTextSize: UI_TEXT_SIZE_DEFAULT,
     tabTextSize: UI_TEXT_SIZE_DEFAULT,
@@ -286,13 +287,14 @@ function isAccent(value: unknown): value is SettingsPreferences['accent'] {
   return value === 'teal' || value === 'blue' || value === 'violet'
 }
 
-/** "minimal" and "expressive" were the names before the window styles; they read as Flat and Glass. */
+/**
+ * "minimal" and "expressive" were the names before the window styles; they read as Flat and Glass, and
+ * Flat (like the retired Tiled) reads as Console, the five styles' flat, solid-panel look.
+ */
 function styleOf(value: unknown): StyleChoice | null {
-  // Tiled is gone: a saved Tiled reads as Flat.
-  if (value === 'flat' || value === 'tiled' || value === 'minimal') return 'flat'
-  if (value === 'glass') return 'glass'
+  if (value === 'flat' || value === 'tiled' || value === 'minimal') return 'console'
   if (value === 'expressive') return 'glass'
-  return null
+  return isWindowStyle(value) ? value : null
 }
 
 const isThemeMode = (value: unknown): value is ThemeMode => value === 'system' || value === 'dark' || value === 'light'

@@ -2,6 +2,7 @@ import type { UpdaterState } from '@/features/updates/useUpdater'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
 import { THEMES } from '@/features/workspace/theme/themes'
 import { ThemePicker } from './ThemePicker'
+import { StyleCards } from './StyleCards'
 import { SpinnerPicker } from './SpinnerPicker'
 import { PerformanceSection } from './PerformanceSection'
 import { hotkeyRows, type Platform } from '@/features/workspace/model/shortcuts'
@@ -16,7 +17,7 @@ import { installNote, UPDATE_WORDS, updateWarning, type MachineHead, type Update
 import { UsagePage } from '@/features/usage/UsagePage'
 import type { OpenSession } from '@/features/usage/UsageTable'
 import { FOLDER_PATH } from '@/features/workspace/components/paths'
-import { SCROLL_SPEED_CHOICES, SCROLLBACK_CHOICES, SIDEBAR_WIDTH_DEFAULT, TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN, UI_TEXT_SIZE_DEFAULT, UI_TEXT_SIZE_LARGE, UI_TEXT_SIZE_SMALL, type CursorStyle, type ScrollbackLines, type ScrollSpeed, type SettingsPreferences, type StyleChoice } from '../preferences'
+import { SCROLL_SPEED_CHOICES, SCROLLBACK_CHOICES, SIDEBAR_WIDTH_DEFAULT, TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN, UI_TEXT_SIZE_DEFAULT, UI_TEXT_SIZE_LARGE, UI_TEXT_SIZE_SMALL, type CursorStyle, type ScrollbackLines, type ScrollSpeed, type SettingsPreferences } from '../preferences'
 
 export type DesktopSettingsSection = 'general' | 'terminal' | 'appearance' | 'usage' | 'notifications' | 'machines' | 'keys' | 'daemon' | 'performance'
 
@@ -380,10 +381,6 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
   )
 }
 
-const STYLE_CARDS: ReadonlyArray<{ id: StyleChoice; name: string; blurb: string; foot: string }> = [
-  { id: 'flat', name: 'Flat', blurb: 'Solid panels, soft corners, quiet', foot: 'Solid panels and no glow.' },
-  { id: 'glass', name: 'Glass', blurb: 'Light sheen on the cards, frosted menus and dialogs', foot: 'Floating glass menus and dialogs, and a glow. The default.' },
-]
 const CHAT_VIEW_OPTIONS = [['terminal', 'Terminal'], ['chat', 'Chat']] as const
 const ICON_COLOR_OPTIONS = [['color', 'Color'], ['grayscale', 'Grayscale']] as const
 const UPDATE_CHIP: Record<UpdaterState['status'], string> = { idle: 'Not checked', checking: 'Checking…', current: 'Up to date', available: 'Update available', downloading: 'Downloading', ready: 'Ready to restart', failed: 'Failed' }
@@ -527,21 +524,8 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
   const modeNote = preferences.themeMode === 'system' ? `Follows your OS. Right now: ${systemDark ? 'dark' : 'light'}.` : `Always uses your ${preferences.themeMode} theme.`
   return (
     <>
-      <Card title="Window style" color="var(--accent)" iconPath={<><rect x="4" y="5" width="16" height="14" rx="3" /><path d="M4 10h16" /></>} meta={<span className="mx-scard-meta">Same features, different finish</span>}
-        foot={STYLE_CARDS.find((card) => card.id === preferences.style)?.foot}
-      >
-        <div role="radiogroup" aria-label="Window style" className="mx-style-cards">
-          {STYLE_CARDS.map((card) => {
-            const selected = card.id === preferences.style
-            return (
-              <button key={card.id} type="button" role="radio" aria-checked={selected} className={`mx-style-card${selected ? ' is-selected' : ''}`} onClick={() => { update('style', card.id) }}>
-                <span className={`mx-style-preview is-${card.id}`} aria-hidden="true"><i className="mx-sp-side" /><i className="mx-sp-pane"><b /><b /><b /></i></span>
-                <span className="mx-style-name">{card.name}{selected && <span aria-hidden="true">✓</span>}</span>
-                <span className="mx-style-blurb">{card.blurb}</span>
-              </button>
-            )
-          })}
-        </div>
+      <Card title="Window style" color="var(--accent)" iconPath={<><rect x="4" y="5" width="16" height="14" rx="3" /><path d="M4 10h16" /></>} meta={<span className="mx-scard-meta">Same features, different finish</span>}>
+        <StyleCards value={preferences.style} choice={preferences} systemDark={systemDark} onPick={(style) => { update('style', style) }} />
         <Row label="Icons" detail="Agent and folder icons in their own colours, or neutral gray tiles.">
           <Segmented label="Icons" value={preferences.iconColor} options={ICON_COLOR_OPTIONS} onChange={(value) => { update('iconColor', value) }} />
         </Row>

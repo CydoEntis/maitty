@@ -75,10 +75,7 @@
 .mx-row-wrap { display: flex; flex-direction: column; gap: 2px; }
 .mx-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 4px 6px 4px 10px; border-radius: 8px; text-align: left; transition: background-color .12s ease; }
 .mx-row:hover { background: rgba(var(--hl), calc(.045 * var(--hk))); }
-.mx-row.is-selected, .mx-row.is-selected:hover {
-  background: linear-gradient(180deg, rgba(var(--hl), calc(.085 * var(--hk) * var(--gk))), rgba(var(--hl), calc(.045 * var(--hk) * var(--gk))));
-  box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.11 * var(--hk) * var(--gk))), 0 2px 8px -2px rgba(var(--sd), calc(.5 * var(--sk) * var(--gk)));
-}
+.mx-row.is-selected, .mx-row.is-selected:hover { background: var(--c-sel-bg); box-shadow: var(--c-sel-sh); }
 .mx-row-icon { position: relative; flex: none; display: flex; }
 .mx-row-icon .mx-badge { right: -4px; bottom: -4px; width: 12px; height: 12px; border-radius: 3.5px; font-size: 9px; font-weight: 800; line-height: 1; color: var(--on-warn); }
 .mx-row-icon .mx-badge.is-working { border-radius: 50%; background: var(--m-well); overflow: hidden; color: var(--accent); font-family: var(--mono); }
@@ -86,7 +83,7 @@
 .mx-row-icon .mx-badge.is-done svg { width: 8px; height: 8px; }
 .mx-row-icon .mx-badge.is-unknown { width: 11px; height: 11px; background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
 /* A shell's tile in the sidebar is a flat raised square, so agents stand out among shells. */
-.mx-row.is-shell .mx-app-icon.is-shell, .mx-rail-session .mx-app-icon.is-shell { background: var(--m-raise); color: var(--accent); box-shadow: inset 0 0 0 1px var(--line2); }
+.mx-row.is-shell .mx-app-icon.is-shell, .mx-rail-session .mx-app-icon.is-shell { background: var(--m-raise); color: var(--accent); box-shadow: var(--c-tile-ring); }
 .mx-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .mx-row-name { height: 18px; font-size: 13px; line-height: 18px; font-weight: 400; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-row.is-active .mx-row-name { font-weight: 600; color: var(--fg); }
@@ -123,4 +120,4 @@
 /* The rail of a narrow window: the starters, then a tile per session. */
 .mx-rail-session { width: calc(40px * var(--icon-scale, 1)); height: calc(36px * var(--icon-scale, 1)); flex: none; display: flex; align-items: center; justify-content: center; border-radius: 9px; }
 .mx-rail-session:hover { background: rgba(var(--hl), calc(.045 * var(--hk))); }
-.mx-rail-session.is-selected { background: linear-gradient(180deg, rgba(var(--hl), calc(.085 * var(--hk) * var(--gk))), rgba(var(--hl), calc(.045 * var(--hk) * var(--gk)))); box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.11 * var(--hk) * var(--gk))); }
+.mx-rail-session.is-selected { background: var(--c-sel-bg); box-shadow: var(--c-sel-sh); }

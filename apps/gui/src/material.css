@@ -10,6 +10,11 @@
  * from a library) or `mx-field`. A new surface joins a list here; it does not set a background of
  * its own. Terminal panes stay solid in both finishes: the terminal draws its own ground.
  *
+ * The five window styles (Glass, Frosted, Mono Type, Console, Retro Pixel) sit on two finishes, chosen by
+ * `data-finish` (Glass and Frosted are `glass`; the other three are `flat`), and differ in the component
+ * tokens (`--c-*`) and the few shape rules keyed by `data-style` at the end of this file. A component
+ * never asks which style is on; it reads the tokens.
+ *
  * Glass: translucent fills with a blur behind them, a hairline and a top highlight that catch the
  * light (`--hl`), and soft shadows (`--sd`). The window behind carries two soft tints of the theme
  * so there is something to see through the glass; on Windows the window itself is Mica and the
@@ -60,6 +65,56 @@
   /* Gradients and lift (every rule that multiplies by --gk) take nothing in Flat; hover tints stay. */
   --gk: 0;
 }
+/* ---- component tokens ----
+   The shared pieces every control reads, so one component serves every style and theme:
+     --c-sel-*    every "selected" state (a focused sidebar row, a settings nav item, a chosen segment)
+     --c-field-*  dropdown buttons, pickers and inputs
+     --c-track-*  the tray behind a segmented control
+     --c-sw-* / --c-knob-*  the toggle switch
+     --c-tile-ring  agent and shell icon tiles
+     --c-head-bg  sticky headers
+   Declared on the window root, where the theme's `--hl`/`--hk` and `--sd`/`--sk` are set, so the
+   defaults (Glass and Frosted) see them. The flat styles override them below. */
+.mx-app {
+  --c-sel-bg: linear-gradient(180deg, rgba(var(--hl), calc(.085 * var(--hk))), rgba(var(--hl), calc(.045 * var(--hk))));
+  --c-sel-sh: inset 0 0 0 1px rgba(var(--hl), calc(.11 * var(--hk))), inset 0 1px 0 rgba(var(--hl), calc(.07 * var(--hk))), 0 2px 8px -2px rgba(var(--sd), calc(.5 * var(--sk)));
+  --c-field-bg: linear-gradient(180deg, rgba(var(--hl), calc(.055 * var(--hk))), rgba(var(--hl), calc(.025 * var(--hk))));
+  --c-field-sh: inset 0 0 0 1px rgba(var(--hl), calc(.1 * var(--hk))), inset 0 1px 0 rgba(var(--hl), calc(.06 * var(--hk)));
+  --c-tile-ring: inset 0 0 0 1px rgba(var(--hl), calc(.14 * var(--hk))), inset 0 1px 0 rgba(var(--hl), calc(.1 * var(--hk))), 0 1px 2px rgba(var(--sd), calc(.35 * var(--sk)));
+  --c-head-bg: color-mix(in srgb, var(--main) 72%, transparent);
+  --c-track-bg: rgba(var(--sd), calc(.22 * var(--sk)));
+  --c-track-sh: inset 0 0 0 1px rgba(var(--hl), calc(.07 * var(--hk))), inset 0 1px 2px rgba(var(--sd), calc(.3 * var(--sk)));
+  --c-sw-on: linear-gradient(180deg, color-mix(in srgb, var(--accent), #fff 14%), var(--accent));
+  --c-sw-off: rgba(var(--hl), calc(.1 * var(--hk)));
+  --c-sw-sh: inset 0 1px 2px rgba(var(--sd), calc(.35 * var(--sk))), inset 0 0 0 1px rgba(var(--hl), calc(.12 * var(--hk)));
+  --c-knob: linear-gradient(180deg, #fff, #E6EAEE);
+  --c-knob-sh: 0 1px 3px rgba(var(--sd), calc(.45 * var(--sk))), inset 0 -1px 0 rgba(0, 0, 0, .08);
+}
+:root[data-style="mono"] .mx-app {
+  --c-sel-bg: var(--sel); --c-sel-sh: inset 0 0 0 1px var(--fg2);
+  --c-field-bg: var(--main); --c-field-sh: inset 0 0 0 1px var(--line2);
+  --c-tile-ring: inset 0 0 0 1px var(--line2); --c-head-bg: var(--main);
+  --c-track-bg: var(--main); --c-track-sh: inset 0 0 0 1px var(--line2);
+  --c-sw-on: var(--fg); --c-sw-off: var(--line); --c-sw-sh: inset 0 0 0 1px var(--line2);
+  --c-knob: var(--bg); --c-knob-sh: inset 0 0 0 1px var(--fg2);
+}
+:root[data-style="console"] .mx-app {
+  --c-sel-bg: var(--sel); --c-sel-sh: inset 2px 0 0 var(--accent), inset 0 0 0 1px var(--line2);
+  --c-field-bg: var(--well); --c-field-sh: inset 0 0 0 1px var(--line2);
+  --c-tile-ring: inset 0 0 0 1px var(--line2); --c-head-bg: var(--main);
+  --c-track-bg: var(--well); --c-track-sh: inset 0 0 0 1px var(--line2);
+  --c-sw-on: var(--accent); --c-sw-off: var(--line2); --c-sw-sh: none;
+  --c-knob: var(--fg); --c-knob-sh: 0 1px 2px rgba(0, 0, 0, .4);
+}
+:root[data-style="pixel"] .mx-app {
+  --c-sel-bg: var(--sel); --c-sel-sh: inset 0 0 0 2px var(--accent);
+  --c-field-bg: var(--raise); --c-field-sh: inset 0 0 0 2px var(--line2), 2px 2px 0 rgba(var(--sd), calc(.5 * var(--sk)));
+  --c-tile-ring: inset 0 0 0 2px var(--pane-line); --c-head-bg: var(--main);
+  --c-track-bg: var(--well); --c-track-sh: inset 0 0 0 2px var(--line2);
+  --c-sw-on: var(--accent); --c-sw-off: var(--line); --c-sw-sh: inset 0 0 0 2px var(--pane-line);
+  --c-knob: var(--fg); --c-knob-sh: 2px 2px 0 rgba(var(--sd), calc(.5 * var(--sk)));
+}
+
 /* Without a GPU the blur is dropped (workspace.css), and the fills turn solid with it. */
 :root[data-gpu="software"],
 :root[data-gpu="software"] .mx-app { --m-panel: var(--main, var(--popover)); --m-float: var(--main, var(--popover)); --m-field: var(--main, var(--popover)); --m-blur: none; }
@@ -171,7 +226,57 @@
 .mx-app .mx-settings-header { background: transparent; }
 .mx-app .mx-settings-nav { border-right-color: var(--m-line); }
 .mx-app .mx-settings-header { border-bottom-color: var(--m-line); }
-.mx-app .mx-settings-nav-item.is-current { background: var(--m-well); box-shadow: inset 0 0 0 1px var(--m-line); }
-.mx-app .mx-segmented,
-.mx-app .mx-style-card,
-.mx-app .mx-style-preview { background: var(--m-well); box-shadow: inset 0 0 0 1px var(--m-line); }
+.mx-app .mx-settings-nav-item.is-current { background: var(--c-sel-bg); box-shadow: var(--c-sel-sh); }
+
+/* ---- style rules ----
+   What the tokens cannot say: corners, borders, type and the few surfaces a style draws its own way.
+   Only the flat styles lose their blur; Mono Type and Retro Pixel square every corner. */
+:root[data-style="mono"] .mx-app *, :root[data-style="pixel"] .mx-app * { border-radius: 0 !important; }
+:root:not([data-style="glass"]):not([data-style="frosted"]) .mx-app * { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+:root[data-style="mono"] .mx-app * { letter-spacing: -.01em; }
+:root[data-style="pixel"] .mx-app * { -webkit-font-smoothing: none; }
+:root[data-style="pixel"] .mx-app .mx-sidebar,
+:root[data-style="pixel"] .mx-app .mx-main { border: 3px solid var(--pane-line); box-shadow: 4px 4px 0 rgba(var(--sd), calc(.55 * var(--sk))); }
+:root[data-style="pixel"] .mx-app button[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--accent); }
+/* Faint scanlines over everything, never taking the pointer. */
+:root[data-style="pixel"] .mx-app::after { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 999; background: repeating-linear-gradient(180deg, transparent 0 2px, rgba(var(--sd), calc(.14 * var(--sk))) 2px 3px); }
+:root[data-style="frosted"] .mx-app { background: var(--bg); isolation: isolate; }
+:root[data-style="frosted"] .mx-app .mx-main,
+:root[data-style="frosted"] .mx-app .mx-sidebar {
+  background: linear-gradient(180deg, rgba(var(--hl), calc(.07 * var(--hk))), rgba(var(--hl), calc(.03 * var(--hk)))), color-mix(in srgb, var(--main) 80%, transparent);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  border: 1px solid rgba(var(--hl), calc(.12 * var(--hk)));
+  border-radius: 22px;
+  box-shadow: inset 0 1px 0 rgba(var(--hl), calc(.12 * var(--hk))), 0 40px 80px -40px rgba(var(--sd), calc(.8 * var(--sk)));
+}
+:root[data-style="frosted"] .mx-app .mx-notice,
+:root[data-style="frosted"] .mx-app [role="dialog"] { border-radius: 18px; }
+:root[data-style="frosted"] .mx-app .mx-settings { border-radius: 22px; }
+
+/* ---- Settings › Window style: a card's mini preview ----
+   Each preview carries the tokens of the style it shows (set inline by StyleCards), so it paints
+   with the same variables as the app and needs no colours of its own. Only the geometry differs. */
+.mx-sp { --sp-gap: 6px; --sp-r: 7px; --sp-outer: 10px; --sp-small: 5px; --sp-dot: 50%; --sp-bw: 1px; position: relative; height: 104px; display: flex; gap: var(--sp-gap); padding: var(--sp-gap); border-radius: var(--sp-outer); background: var(--bg); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; font-family: var(--ui); color: var(--fg); }
+.mx-sp[data-sp="frosted"] { --sp-r: 10px; }
+.mx-sp[data-sp="mono"], .mx-sp[data-sp="pixel"] { --sp-gap: 4px; --sp-r: 0; --sp-outer: 0; --sp-small: 0; --sp-dot: 0; }
+.mx-sp[data-sp="pixel"] { --sp-bw: 2px; }
+.mx-sp i { font-style: normal; display: flex; flex-direction: column; background: var(--main); border-radius: var(--sp-r); box-shadow: inset 0 0 0 var(--sp-bw) var(--pane-line); }
+.mx-sp b { display: block; font-weight: inherit; }
+.mx-sp-side { width: 31%; flex: none; gap: 5px; padding: 7px 5px; }
+.mx-sp-pane { flex: 1; min-width: 0; gap: 5px; padding: 8px 8px 7px; }
+.mx-sp-row { display: flex !important; align-items: center; gap: 4px; padding: 3px; border-radius: var(--sp-small); }
+.mx-sp-row.is-current { background: var(--sel); }
+.mx-sp-dot { width: 6px; height: 6px; flex: none; border-radius: var(--sp-dot); }
+.mx-sp-dot.is-accent { background: var(--accent); }
+.mx-sp-dot.is-warn { background: var(--warn); }
+.mx-sp-dot.is-dim { background: var(--dim); }
+.mx-sp-bar { flex: 1; height: 3px; background: var(--dim); opacity: .6; }
+.mx-sp-bar.is-fg2 { background: var(--fg2); opacity: .7; }
+.mx-sp-aa { font-size: 14px; font-weight: 600; line-height: 1; color: var(--fg); }
+.mx-sp-line { height: 3px; background: var(--fg2); opacity: .55; }
+.mx-sp-line.is-long { width: 86%; }
+.mx-sp-line.is-short { width: 58%; }
+.mx-sp-fill { flex: 1; }
+.mx-sp-box { height: 18px; display: flex !important; align-items: center; justify-content: flex-end; padding: 0 3px; border-radius: var(--sp-small); background: var(--raise); box-shadow: inset 0 0 0 1px var(--line2); }
+.mx-sp-send { width: 11px; height: 11px; border-radius: var(--sp-dot); background: var(--accent); }

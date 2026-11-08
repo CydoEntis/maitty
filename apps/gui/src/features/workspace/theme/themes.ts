@@ -38,8 +38,15 @@ export type ThemeTokens = {
 /** The six colours (and a light flag) a theme is made from; a TUI theme imports as these. */
 export type ThemeInputs = { bg: string; fg: string; accent: string; mag: string; blue: string; green: string; light: boolean }
 
-/** `cardRing` is the solid card colour that rings a status badge so it reads as cut out of the card. */
-export type ThemeEntry = { name: string; family: string; light: boolean; tokens: ThemeTokens; cardRing: string }
+/**
+ * What a window style adds to a theme besides colours: the fonts, the two glass dials (`hk` is the
+ * highlight strength, `sk` the shadow strength), the resting card sheen (`sh`) and the background glow
+ * strengths. A field left out keeps the stylesheet's default.
+ */
+export type StyleLook = { ui: string; mono: string; hk?: string; sk?: string; sh?: string; glowAccent?: string; glowMag?: string }
+
+/** `cardRing` is the solid card colour that rings a status badge so it reads as cut out of the card. `look` is set by `withWindowStyle`. */
+export type ThemeEntry = { name: string; family: string; light: boolean; tokens: ThemeTokens; cardRing: string; look?: StyleLook }
 
 /** Which theme is in use: the dark theme, the light theme, or whichever one the system's own setting asks for. */
 export type ThemeMode = 'system' | 'dark' | 'light'
@@ -237,6 +244,15 @@ const LIGHT_GLASS = { '--hl': '20,32,46', '--hs': '255,255,255', '--hk': '.85', 
 export function themeStyle(theme: ThemeEntry): Record<string, string> {
   const style: Record<string, string> = { '--card-ring': theme.cardRing, colorScheme: theme.light ? 'light' : 'dark', ...(theme.light ? LIGHT_GLASS : DARK_GLASS) }
   for (const [key, variable] of Object.entries(CSS_VARIABLES)) style[variable] = theme.tokens[key as keyof ThemeTokens]
+  const { look } = theme
+  if (look === undefined) return style
+  style['--ui'] = look.ui
+  style['--mono'] = look.mono
+  if (look.hk !== undefined) style['--hk'] = look.hk
+  if (look.sk !== undefined) style['--sk'] = look.sk
+  if (look.sh !== undefined) style['--sh'] = look.sh
+  if (look.glowAccent !== undefined) style['--glow-accent'] = look.glowAccent
+  if (look.glowMag !== undefined) style['--glow-mag'] = look.glowMag
   return style
 }
 

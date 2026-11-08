@@ -26,7 +26,6 @@ export function sharedFrom(preferences: SettingsPreferences): Partial<SharedSett
     theme_light: preferences.lightTheme,
     start_dir: preferences.startFolder,
     reduce_motion: preferences.reduceMotion,
-    window_style: preferences.style,
   }
   if (preferences.themeMode !== 'system') shared.appearance = preferences.themeMode
   if (!isWebSpinner(preferences.spinner)) shared.spinner = [...framesOfTuiSpinner(preferences.spinner)]
@@ -41,7 +40,6 @@ export function applyShared(preferences: SettingsPreferences, shared: SharedSett
     sidebarSide: shared.sidebar_side,
     startFolder: shared.start_dir,
     reduceMotion: shared.reduce_motion,
-    style: shared.window_style,
   }
   if (shared.default_agent === 'claude' || shared.default_agent === 'codex') next.defaultAgent = shared.default_agent
   if (knownTheme(shared.theme_dark)) next.darkTheme = shared.theme_dark
