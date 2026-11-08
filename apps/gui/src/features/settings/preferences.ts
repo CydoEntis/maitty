@@ -15,6 +15,8 @@ export const DENSITIES: readonly Density[] = ['compact', 'comfortable', 'spaciou
 export type IconSize = 'small' | 'medium' | 'large'
 /** Which side of the window the sidebar sits on. */
 export type SidebarSide = 'left' | 'right'
+/** How the sidebar orders sessions: as they were created (rows never move), or with what needs you first. */
+export type SidebarOrder = 'creation' | 'priority'
 /** The window style: one of four looks that share one layout (`theme/windowStyles.ts`). Kept by this window alone. */
 export type StyleChoice = WindowStyle
 /** App and folder icons keep their colours, or drop to neutral gray tiles. Independent of the style. */
@@ -75,6 +77,7 @@ export type SettingsPreferences = {
   /** The docked sidebar's width in px; dragged with the mouse. */
   sidebarWidth: number
   sidebarSide: SidebarSide
+  sidebarOrder: SidebarOrder
   iconSize: IconSize
   style: StyleChoice
   iconColor: IconColor
@@ -166,6 +169,7 @@ function defaults(): SettingsPreferences {
     tabTextSize: UI_TEXT_SIZE_DEFAULT,
     sidebarWidth: SIDEBAR_WIDTH_DEFAULT,
     sidebarSide: 'left',
+    sidebarOrder: 'creation',
     iconSize: 'medium',
     iconColor: 'color',
     chatViewDefault: DEFAULT_CHAT_VIEWS,
@@ -237,6 +241,7 @@ export function readSettingsPreferences(): SettingsPreferences {
       tabTextSize: clampNumber(preferences.tabTextSize, UI_TEXT_SIZE_MIN, UI_TEXT_SIZE_MAX, fallback.tabTextSize),
       sidebarWidth: clampNumber(preferences.sidebarWidth, SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX, fallback.sidebarWidth),
       sidebarSide: preferences.sidebarSide === 'left' || preferences.sidebarSide === 'right' ? preferences.sidebarSide : fallback.sidebarSide,
+      sidebarOrder: preferences.sidebarOrder === 'creation' || preferences.sidebarOrder === 'priority' ? preferences.sidebarOrder : fallback.sidebarOrder,
       iconSize: preferences.iconSize === 'small' || preferences.iconSize === 'medium' || preferences.iconSize === 'large' ? preferences.iconSize : fallback.iconSize,
       style: styleOf(preferences.style) ?? fallback.style,
       chatViewDefault: chatViewDefault(preferences.chatViewDefault, fallback.chatViewDefault),

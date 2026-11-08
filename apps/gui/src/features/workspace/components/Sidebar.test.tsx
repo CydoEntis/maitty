@@ -24,7 +24,7 @@ const child = (id: string, task: string, state: SubagentActivity['state']): Suba
 function show(sessions: SessionView[], more: Partial<SidebarProps> = {}) {
   const none = vi.fn()
   const props: SidebarProps = {
-    sessions, machines: [LOCAL_HEAD], focusedId: null, openSubagent: null, mode: 'docked', online: true, canStart: true, renamingId: null, portalContainer: null,
+    sessions, machines: [LOCAL_HEAD], order: 'creation', focusedId: null, openSubagent: null, mode: 'docked', online: true, canStart: true, renamingId: null, portalContainer: null,
     onToggleRail: none, side: 'left', width: 264, onResize: none, onResizeEnd: none, inboxCount: 0, inboxNeeds: false, onOpenInbox: none,
     onNewAgentChat: none, onNewShell: none, onAddMachine: none, onMachineSettings: none, onUpdateMachine: none, onShowSession: none, onShowSubagent: none, onRenameSession: none,
     onSetName: none, onSplitSession: none, onSplitSubagent: none, onOpenTerminal: none, onCopyPath: none, onCopyText: none, onShowChanges: none, onGetFile: none,
@@ -47,16 +47,23 @@ describe('the sidebar', () => {
     expect(screen.getByRole('button', { name: /^This computer/, expanded: true })).toHaveTextContent('1')
   })
 
-  it('lists the most urgent first: needs you, a stopped agent, working, done, then idle and an exited shell last', () => {
-    show([
-      session(1, { named: true, title: 'Exited shell', details: { asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, exit: { code: 1, at: 1 } } }),
-      session(2, { agent: 'claude', named: true, title: 'Idle agent' }),
-      session(3, { agent: 'claude', named: true, title: 'Working', status: 'working' }),
-      session(4, { agent: 'claude', named: true, title: 'Asking', status: 'needs-you' }),
-      session(5, { agent: 'claude', named: true, title: 'Finished', status: 'done' }),
-    ])
-    expect(names()).toEqual(['Asking', 'Working', 'Finished', 'Idle agent', 'Exited shell'])
+  const MIXED = () => [
+    session(1, { named: true, title: 'Exited shell', details: { asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, exit: { code: 1, at: 1 } } }),
+    session(2, { agent: 'claude', named: true, title: 'Idle agent' }),
+    session(3, { agent: 'claude', named: true, title: 'Working', status: 'working' }),
+    session(4, { agent: 'claude', named: true, title: 'Asking', status: 'needs-you' }),
+    session(5, { agent: 'claude', named: true, title: 'Finished', status: 'done' }),
+  ]
+
+  it('keeps sessions in the order they were created, so a row never moves when its state changes', () => {
+    show(MIXED())
+    expect(names()).toEqual(['Exited shell', 'Idle agent', 'Working', 'Asking', 'Finished'])
     expect(screen.getByRole('button', { name: /^Exited shell/ })).toHaveTextContent('exited')
+  })
+
+  it('moves only a session that needs you to the top when the order is priority', () => {
+    show(MIXED(), { order: 'priority' })
+    expect(names()).toEqual(['Asking', 'Exited shell', 'Idle agent', 'Working', 'Finished'])
   })
 
   it('shows the project and branch under the name, and names a shell by its folder', () => {

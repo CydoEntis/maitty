@@ -128,6 +128,24 @@ describe('how the chat feels while it waits', () => {
     expect(screen.queryByText(/claude is thinking/)).not.toBeInTheDocument()
   })
 
+  it('keeps the working line up for a moment after the turn ends, so the pane is not blank before the reply is read', async () => {
+    const { daemon, setPaneStatus } = open('Idle')
+    await settle()
+    setPaneStatus('working')
+    await settle()
+    daemon.upsert(daemon.message('t1', 'u3', 'User', 'a question'))
+    await settle(400)
+
+    // The turn ended on the pane, but the history has no answer yet.
+    setPaneStatus('idle')
+    await settle(50)
+    expect(screen.getByText(/claude is thinking/)).toBeInTheDocument()
+
+    // And it does not stay for good: with no answer it gives way after a moment.
+    await settle(1000)
+    expect(screen.queryByText(/claude is thinking/)).not.toBeInTheDocument()
+  })
+
   it('says under the message box how the agent is set up, from its own file', async () => {
     const { daemon } = open()
     daemon.meta = { mode: 'auto', model: 'claude-sonnet-5-5' }

@@ -1985,6 +1985,7 @@ export function DesktopApp() {
       portalContainer={root}
       onToggleRail={onToggle}
       side={preferences.sidebarSide}
+      order={preferences.sidebarOrder}
       width={sidebarWidth}
       onResize={setLiveSidebarWidth}
       onResizeEnd={(width) => {

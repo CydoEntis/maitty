@@ -183,9 +183,10 @@ Rules for `apps/gui/` (the look is in [DESIGN](DESIGN.md#desktop-app)).
    expanding it opens the full sidebar as an overlay; under 800px panes stack in one
    column. The widths are constants in `features/workspace/model/windowSize.ts`; change
    them there and in DESIGN, nowhere else.
-2. The sidebar lists **agents and shells only, grouped by machine** (this computer first), most urgent first within a
-   machine: needs you, an agent that stopped, working, done, idle, then a shell whose last command failed; creation order
-   (the daemon's pane number) within each rank, so a row moves only when its state does (`model/sidebar.ts`). A machine can
+2. The sidebar lists **agents and shells only, grouped by machine** (this computer first). Within a machine the
+   order is the **Session order** setting (`sidebarOrder`): `creation` (the default; the daemon's pane number) so a row
+   never moves when its state changes, or `priority`, where a session that needs you goes to the top and the rest keep
+   creation order (`model/sidebar.ts`, `bySidebarOrder`). The command palette still lists the most urgent first. A machine can
    be grouped by project and folded. There are no fleets, ships, tabs or tab bar: choosing a session shows the layout it
    is in (`model/layout.ts`), else one of its own. A session's **subagents** are the daemon's `TermInfo.subagent_activity`
    (`model/subagents.ts`), shown under their session (small icons when it is not selected, a row each when it is);

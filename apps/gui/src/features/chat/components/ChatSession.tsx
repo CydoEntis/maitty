@@ -26,6 +26,8 @@ import { VirtualList } from './VirtualList'
 
 /** When a turn ends the status changes at once, but the agent's last words may not be read yet: read now and again soon, instead of waiting for the idle poll. */
 const END_OF_TURN_READ_MS = 600
+/** How long the working line stays after a turn ends with no reply read yet, so the pane is never blank between the two. */
+const SETTLE_MS = 650
 
 /** The id of a held first message in the composer's list of waiting messages; real ones carry operation numbers. */
 const HELD_MESSAGE_ID = -1
@@ -107,11 +109,21 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   const workingSince = working ? runningTurnStartedAt(feed) : null
   const incomplete = incompleteReason(feed.completeness)
   const wasWorking = useRef(false)
+  // The turn has ended but its reply is not in the history yet: the working line holds until it is, or SETTLE_MS.
+  const [settling, setSettling] = useState(false)
+  const repliedRef = useRef(false)
   useEffect(() => {
     const changed = wasWorking.current !== working
     const ended = wasWorking.current && !working
     wasWorking.current = working
     if (!changed) return undefined
+    if (ended && !repliedRef.current) {
+      setSettling(true)
+      const settle = window.setTimeout(() => { setSettling(false) }, SETTLE_MS)
+      const read = window.setTimeout(refresh, END_OF_TURN_READ_MS)
+      refresh()
+      return () => { window.clearTimeout(settle); window.clearTimeout(read) }
+    }
     // Read as the turn starts (its first words) and as it ends (its last), not at the next poll.
     refresh()
     if (!ended) return undefined
@@ -128,7 +140,13 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   // A message just sent shows at once, with the agent taken to be at work on it, until the history has it.
   const echoText = echo !== null && countUserMessages(events, echo.text) <= echo.baseline ? echo.text : null
   const echoThinking = echo !== null && !echo.quiet
-  const allRows = useMemo(() => buildRows(events, working, root, echoText, echoThinking), [events, working, root, echoText, echoThinking])
+  // What the history says without the working line: whether the agent has answered what was last asked.
+  const bareRows = useMemo(() => buildRows(events, false, root, echoText, false), [events, root, echoText])
+  const lastKind = bareRows.at(-1)?.kind
+  const replied = lastKind !== undefined && lastKind !== 'user' && lastKind !== 'echo'
+  useEffect(() => { repliedRef.current = replied })
+  const holdWorking = settling && !replied
+  const allRows = useMemo(() => buildRows(events, working || holdWorking, root, echoText, echoThinking), [events, working, holdWorking, root, echoText, echoThinking])
   const rows = useMemo(() => allRows.filter((row) => !isPendingApproval(row)), [allRows])
   // The rows the history had when it loaded: what arrives after them is live, and is typed in rather than shown whole.
   const [known, setKnown] = useState<ReadonlySet<string> | null>(null)

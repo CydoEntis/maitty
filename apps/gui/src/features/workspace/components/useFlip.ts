@@ -1,16 +1,14 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react'
 
 const MOVE_MS = 240
-const ENTER_MS = 180
+const ENTER_MS = 160
 const EASE = 'cubic-bezier(.2, .8, .2, 1)'
 /** A row that moved less than this has not moved. */
 const MOVED_PX = 1
-/** A row coming in starts this far above where it settles. */
-const ENTER_FROM_PX = 6
 
 /**
  * Rows that change place slide to it instead of snapping (FLIP: the layout is settled first, then each row that
- * moved is drawn at its old place and carried to the new one). A row that is new fades and settles in. The sidebar
+ * moved is drawn at its old place and carried to the new one). A row that is new fades in where it will stay: it does not travel, so it never crosses a heading. The sidebar
  * reorders as a chat starts working, and a row that jumped there read as a flicker. Rows are found by `data-flip`;
  * nothing moves when motion is reduced.
  */
@@ -31,7 +29,7 @@ export function useFlip(container: RefObject<HTMLElement | null>, reduced: boole
         const was = previous.current.get(key)
         const at = now.get(key) ?? 0
         if (was === undefined) {
-          row.animate([{ opacity: 0, transform: `translateY(-${String(ENTER_FROM_PX)}px)` }, { opacity: 1, transform: 'none' }], { duration: ENTER_MS, easing: EASE })
+          row.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ENTER_MS, easing: EASE })
         } else if (Math.abs(was - at) > MOVED_PX) {
           row.animate([{ transform: `translateY(${String(was - at)}px)` }, { transform: 'none' }], { duration: MOVE_MS, easing: EASE })
         }

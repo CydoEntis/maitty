@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { machineTitle, UPDATE_WORDS, type MachineHead, type UpdateAction } from '../model/machines'
 import { STATUS_WORD, type SessionView } from '../model/session'
-import { isShell, machineGroups, projectGroups, rowTitle, type MachineGroup } from '../model/sidebar'
+import { isShell, machineGroups, projectGroups, rowTitle, type MachineGroup, type SidebarOrder } from '../model/sidebar'
 import type { SubagentView } from '../model/subagents'
 import { useTipWithKeys, useShortcutText } from '@/features/shortcuts/platform'
 import { SidebarResizer } from './SidebarResizer'
@@ -17,10 +17,11 @@ import { SubagentList, SubagentPeek } from './SubagentRows'
 export type OpenSubagent = { sessionId: string; subagentId: string }
 
 export type SidebarProps = {
-  /** Every session of every machine. Each machine lists its own, most urgent first. */
+  /** Every session of every machine. Each machine lists its own, in `order`. */
   sessions: readonly SessionView[]
   /** The machine groups: this computer first, then the others. */
   machines: readonly MachineHead[]
+  order: SidebarOrder
   focusedId: string | null
   openSubagent: OpenSubagent | null
   mode: 'docked' | 'rail'
@@ -142,7 +143,7 @@ function Expanded(props: SidebarProps) {
   useSlashFocus(input)
   const filtering = query.trim() !== ''
   const draft = filtering ? null : props.draft ?? null
-  const groups = machineGroups(props.sessions, props.machines, query, draft !== null)
+  const groups = machineGroups(props.sessions, props.machines, query, draft !== null, props.order)
   const openMenu = (event: MouseEvent, title: string, items: MenuEntry[]) => {
     event.preventDefault()
     event.stopPropagation()
@@ -406,7 +407,7 @@ function Rail(props: SidebarProps) {
       </div>
       <div className="mx-rail-divider" />
       <div className="mx-rail-list mx-no-scrollbar" role="list" aria-label="Sessions">
-        {machineGroups(props.sessions, props.machines, '').flatMap((group) => group.sessions).map((session) => (
+        {machineGroups(props.sessions, props.machines, '', false, props.order).flatMap((group) => group.sessions).map((session) => (
           <button
             key={session.id}
             type="button"
