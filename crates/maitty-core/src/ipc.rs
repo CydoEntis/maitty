@@ -318,6 +318,25 @@ pub fn terminal_dial(attach: bool) -> Result<maitty_machines::Dial> {
 
 /// Connect to `machine` and complete the handshake.
 pub async fn open_to(machine: &Machine, attach: bool) -> Result<(Reader, Writer)> {
+    open_accepting(machine, attach, |version| {
+        version == protocol::PROTOCOL_VERSION
+    })
+    .await
+}
+
+/// Connect to send a hook or usage report, and nothing else. Unlike `open`, a daemon older than
+/// this build is accepted while it still reads the reports (`protocol::daemon_reads_reports`): an
+/// update replaces the binary an agent's hooks run while the old daemon keeps its sessions, and
+/// their status must stay right until it restarts.
+pub async fn open_for_report() -> Result<(Reader, Writer)> {
+    open_accepting(&Machine::current(), false, protocol::daemon_reads_reports).await
+}
+
+async fn open_accepting(
+    machine: &Machine,
+    attach: bool,
+    accepts: fn(u32) -> bool,
+) -> Result<(Reader, Writer)> {
     let dial = terminal_dial(attach)?;
     if machine.is_remote() {
         return maitty_machines::open_remote(machine, dial).await;
@@ -326,7 +345,7 @@ pub async fn open_to(machine: &Machine, attach: bool) -> Result<(Reader, Writer)
     let (mut r, mut w) = framed(connect().await?);
     send(&mut w, &hello).await?;
     let version = maitty_ipc_transport::welcome_version(&mut r).await?;
-    if version == protocol::PROTOCOL_VERSION {
+    if accepts(version) {
         Ok((r, w))
     } else {
         Err(OtherVersion { daemon: version }.into())

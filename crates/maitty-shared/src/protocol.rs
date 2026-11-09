@@ -12,6 +12,21 @@ use std::path::PathBuf;
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
 pub const PROTOCOL_VERSION: u32 = 77;
 
+/// The oldest `PROTOCOL_VERSION` whose daemon reads today's `Hook` and `Usage` reports. An
+/// agent's hooks run the installed binary, which an update replaces while the old daemon keeps
+/// running: refusing every report until that daemon restarted left each pane's status wrong for
+/// as long. Set this to the current version in the change that makes either report unreadable
+/// to an older daemon: a field removed, renamed or retyped, or a new `HookStatus`. The test
+/// `todays_reports_are_read_by_the_oldest_daemon_they_are_sent_to` holds the shapes it promises.
+pub const REPORTS_READ_SINCE: u32 = 76;
+
+/// Whether a daemon at `daemon_version` reads this build's hook and usage reports: the same
+/// version, or an older one the reports have not changed shape since. A newer daemon is refused,
+/// as nothing here can know what it expects.
+pub fn daemon_reads_reports(daemon_version: u32) -> bool {
+    (REPORTS_READ_SINCE..=PROTOCOL_VERSION).contains(&daemon_version)
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StructuredIdentity {
@@ -2428,6 +2443,256 @@ mod tests {
             terms: [(3, term)].into(),
             ..Default::default()
         }));
+    }
+
+    #[test]
+    fn reports_go_to_this_version_and_the_older_ones_that_read_them_but_never_a_newer_one() {
+        assert!(daemon_reads_reports(PROTOCOL_VERSION));
+        assert!(daemon_reads_reports(REPORTS_READ_SINCE));
+        assert!(!daemon_reads_reports(REPORTS_READ_SINCE - 1));
+        assert!(!daemon_reads_reports(PROTOCOL_VERSION + 1));
+    }
+
+    /// The reports as the daemon at `REPORTS_READ_SINCE` declares them, copied from that
+    /// release. They change only together with `REPORTS_READ_SINCE`.
+    mod reports_at_oldest {
+        use super::super::TermId;
+        use serde::Deserialize;
+        use std::path::PathBuf;
+
+        #[derive(Debug, PartialEq, Deserialize)]
+        pub enum HookStatus {
+            Working,
+            Blocked,
+            Done,
+            Idle,
+            Gone,
+            Same,
+        }
+
+        #[derive(Debug, Deserialize)]
+        pub struct Subagent {
+            pub id: String,
+            pub kind: String,
+            pub start: bool,
+            #[serde(default)]
+            pub reported_at: u64,
+            #[serde(default)]
+            pub task: Option<String>,
+            #[serde(default)]
+            pub model: Option<String>,
+            #[serde(default)]
+            pub effort: Option<String>,
+            #[serde(default)]
+            pub activity: Option<String>,
+        }
+
+        #[derive(Debug, Deserialize)]
+        pub struct PermissionAsk {
+            pub tool: String,
+            pub detail: String,
+            #[serde(default)]
+            pub answerable: bool,
+            #[serde(default)]
+            pub choices: Vec<String>,
+        }
+
+        #[derive(Debug, Deserialize)]
+        pub struct Usage {
+            pub context: Option<f32>,
+            pub cost: Option<f64>,
+            #[serde(default)]
+            pub tokens: Option<u64>,
+            #[serde(default)]
+            pub tokens_in: Option<u64>,
+            #[serde(default)]
+            pub tokens_out: Option<u64>,
+        }
+
+        #[derive(Debug, Deserialize)]
+        pub struct Limit {
+            pub name: String,
+            pub used: f32,
+            pub resets_at: u64,
+        }
+
+        #[derive(Debug, Deserialize)]
+        #[allow(clippy::large_enum_variant)]
+        pub enum ClientMsg {
+            Hook {
+                term: TermId,
+                agent: String,
+                status: HookStatus,
+                session: Option<String>,
+                cwd: Option<PathBuf>,
+                prompt: Option<String>,
+                said: Option<String>,
+                subagent: Option<Subagent>,
+                event: String,
+                pid: u32,
+                #[serde(default)]
+                token: String,
+                transcript: Option<PathBuf>,
+                model: Option<String>,
+                name: Option<String>,
+                #[serde(default)]
+                background: Vec<String>,
+                #[serde(default)]
+                ask: Option<PermissionAsk>,
+                #[serde(default)]
+                call: Option<String>,
+            },
+            Usage {
+                term: TermId,
+                token: String,
+                usage: Usage,
+                limits: Vec<Limit>,
+            },
+        }
+    }
+
+    #[test]
+    fn todays_reports_are_read_by_the_oldest_daemon_they_are_sent_to() {
+        let hook = ClientMsg::Hook {
+            term: 3,
+            agent: "claude".into(),
+            status: HookStatus::Done,
+            session: Some("abc-123".into()),
+            cwd: Some(PathBuf::from("/code/api")),
+            prompt: Some("fix it".into()),
+            said: Some("done".into()),
+            subagent: Some(Subagent {
+                id: "s1".into(),
+                kind: "Explore".into(),
+                start: false,
+                reported_at: 7,
+                task: Some("look".into()),
+                model: Some("opus".into()),
+                effort: Some("high".into()),
+                activity: Some("reading".into()),
+            }),
+            event: "Stop".into(),
+            pid: 42,
+            token: "00ff".into(),
+            transcript: Some(PathBuf::from("/t.jsonl")),
+            model: Some("opus".into()),
+            name: Some("api work".into()),
+            background: vec!["b1".into(), "a2".into()],
+            background_agents: vec!["a2".into()],
+            ask: Some(PermissionAsk {
+                tool: "Bash".into(),
+                detail: "cargo test".into(),
+                answerable: false,
+                choices: vec!["Yes".into()],
+            }),
+            call: Some("00112233445566ff".into()),
+        };
+        let read: reports_at_oldest::ClientMsg =
+            decode(&encode(&hook).unwrap()).expect("the oldest daemon reads today's hook report");
+        let reports_at_oldest::ClientMsg::Hook {
+            term,
+            agent,
+            status,
+            session,
+            cwd,
+            prompt,
+            said,
+            subagent,
+            event,
+            pid,
+            token,
+            transcript,
+            model,
+            name,
+            background,
+            ask,
+            call,
+        } = read
+        else {
+            panic!("expected a hook report")
+        };
+        assert_eq!(
+            (term, agent.as_str(), pid, token.as_str()),
+            (3, "claude", 42, "00ff")
+        );
+        assert_eq!(status, reports_at_oldest::HookStatus::Done);
+        assert_eq!(event, "Stop");
+        assert_eq!(session.as_deref(), Some("abc-123"));
+        assert_eq!(cwd, Some(PathBuf::from("/code/api")));
+        assert_eq!(
+            (prompt.as_deref(), said.as_deref()),
+            (Some("fix it"), Some("done"))
+        );
+        assert_eq!(transcript, Some(PathBuf::from("/t.jsonl")));
+        assert_eq!(
+            (model.as_deref(), name.as_deref()),
+            (Some("opus"), Some("api work"))
+        );
+        assert_eq!(background, ["b1", "a2"]);
+        assert_eq!(call.as_deref(), Some("00112233445566ff"));
+        let subagent = subagent.expect("the helper it names");
+        assert_eq!(
+            (
+                subagent.id.as_str(),
+                subagent.kind.as_str(),
+                subagent.start,
+                subagent.reported_at
+            ),
+            ("s1", "Explore", false, 7)
+        );
+        assert_eq!(
+            (
+                subagent.task.as_deref(),
+                subagent.model.as_deref(),
+                subagent.effort.as_deref(),
+                subagent.activity.as_deref()
+            ),
+            (Some("look"), Some("opus"), Some("high"), Some("reading"))
+        );
+        let ask = ask.expect("the question it asks");
+        assert_eq!(
+            (ask.tool.as_str(), ask.detail.as_str(), ask.answerable),
+            ("Bash", "cargo test", false)
+        );
+        assert_eq!(ask.choices, ["Yes"]);
+
+        let usage = ClientMsg::Usage {
+            term: 3,
+            token: "00ff".into(),
+            usage: Usage {
+                context: Some(30.0),
+                cost: Some(1.5),
+                tokens: Some(900),
+                tokens_in: Some(600),
+                tokens_out: Some(300),
+            },
+            limits: vec![Limit {
+                name: "5h".into(),
+                used: 23.0,
+                resets_at: 100,
+            }],
+        };
+        let read: reports_at_oldest::ClientMsg =
+            decode(&encode(&usage).unwrap()).expect("the oldest daemon reads today's usage report");
+        let reports_at_oldest::ClientMsg::Usage {
+            term,
+            token,
+            usage,
+            limits,
+        } = read
+        else {
+            panic!("expected a usage report")
+        };
+        assert_eq!((term, token.as_str()), (3, "00ff"));
+        assert_eq!((usage.context, usage.cost), (Some(30.0), Some(1.5)));
+        assert_eq!(
+            (usage.tokens, usage.tokens_in, usage.tokens_out),
+            (Some(900), Some(600), Some(300))
+        );
+        assert_eq!(
+            (limits[0].name.as_str(), limits[0].used, limits[0].resets_at),
+            ("5h", 23.0, 100)
+        );
     }
 
     #[test]

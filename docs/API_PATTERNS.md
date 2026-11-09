@@ -108,7 +108,11 @@ refused. Bump it when a message shape changes incompatibly: a field removed, ren
 or retyped, or a new enum variant (an old decoder rejects it). An added field with
 `#[serde(default)]` is compatible (messages are named msgpack maps and unknown fields
 are ignored) and needs no bump, provided a test decodes the old shape. Hooks say Hello
-too, so every bump stops hooked panes reporting until the daemon restarts. The CLI subcommands and the MCP server (`maitty mcp`, JSON-RPC over stdio)
+too, but a hook or usage report is also accepted by an older daemon back to
+`REPORTS_READ_SINCE` (`ipc::open_for_report`), so an update does not stop hooked panes
+reporting before the daemon restarts. When `Hook`, `Usage` or `HookStatus` changes in a way an
+older daemon cannot read, set `REPORTS_READ_SINCE` to the new version in the same change; the
+test `todays_reports_are_read_by_the_oldest_daemon_they_are_sent_to` holds the shapes. The CLI subcommands and the MCP server (`maitty mcp`, JSON-RPC over stdio)
 are thin wrappers that send the same commands.
 
 A state change reaches attached clients as `ServerMsg::State` (the whole `Snapshot`) or, when only

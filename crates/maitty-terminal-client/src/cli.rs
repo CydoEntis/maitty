@@ -2129,7 +2129,7 @@ pub fn hook(agent: &str, status: Option<&str>, payload: Option<&str>) -> Result<
     );
     block_on(async move {
         tokio::time::timeout(Duration::from_secs(2), async {
-            let (_r, mut w) = ipc::open(false).await?;
+            let (_r, mut w) = ipc::open_for_report().await?;
             ipc::send(&mut w, &message).await?;
             Ok::<_, anyhow::Error>(())
         })
@@ -2809,7 +2809,7 @@ pub fn statusline() {
         // Never hold up Claude's screen for it; a report that doesn't get there is skipped.
         let sent = block_on(async {
             tokio::time::timeout(Duration::from_millis(800), async {
-                let (_r, mut w) = ipc::open(false).await?;
+                let (_r, mut w) = ipc::open_for_report().await?;
                 ipc::send(&mut w, &msg).await
             })
             .await
