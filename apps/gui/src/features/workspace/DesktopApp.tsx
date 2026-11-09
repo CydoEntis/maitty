@@ -960,7 +960,7 @@ export function DesktopApp() {
     else if (request.branch) await switchBranch(folder, request.branch.name, request.branch.create)
     // The page stays, with the message in it, until the chat that replaces it is there: closing it first showed the
     // empty window (or the last chat) for a moment between the two.
-    await startAgentSession(() => Promise.resolve(folder), request.agent, 'chat', request.message, launchFlags(request.agent, request.model, request.reasoning), () => { setNewChatOpen(false) })
+    await startAgentSession(() => Promise.resolve(folder), request.agent, 'chat', request.message, launchFlags(request.agent, request.model, request.reasoning, request.mode), () => { setNewChatOpen(false) })
   }, [online, startAgentSession])
 
   // New session (the shortcut, the palette, the sidebar's chat button): on this computer it is the new chat page.
@@ -2043,6 +2043,7 @@ export function DesktopApp() {
                     onOtherMachine={(machine) => { setNewChatOpen(false); setNewSessionMachine(machine) }}
                     projects={machineProjects(sessions, LOCAL_MACHINE, focusedSession, resolveStartFolder(preferences.startFolder, home))}
                     defaultAgent={preferences.defaultAgent}
+                    bypassAllowed={preferences.yoloClaude}
                     browse={() => chooseProjectFolder()}
                     onStart={startNewChat}
                     onAddMachine={() => { setNewChatOpen(false); setSettingsSection('machines') }}

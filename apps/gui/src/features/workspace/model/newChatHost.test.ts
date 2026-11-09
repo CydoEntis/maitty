@@ -69,3 +69,12 @@ describe('yolo launch flags', () => {
     expect(yoloFlags('gemini', { ...off, gemini: true })).toBe(' --yolo')
   })
 })
+
+describe('the starting permission mode', () => {
+  it('goes on a Claude launch line unless it is the default, and never on another agent or an unknown mode', () => {
+    expect(launchFlags('claude', 'default', 'default', 'plan')).toBe(' --permission-mode plan')
+    expect(launchFlags('claude', 'default', 'default', 'default')).toBe('')
+    expect(launchFlags('claude', 'default', 'default', 'rm -rf')).toBe('')
+    expect(launchFlags('codex', 'default', 'default', 'plan')).toBe('')
+  })
+})

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { errorMessage } from '@/lib/error-message'
 import { DEFAULT_PICK, REASONING_LABEL, REASONING_PICKS, modelsFor, useAgentModels, useDiscoveredModels, type AgentChoice, type ReasoningPick } from '@/features/chat/agentChoice'
 import { AGENT_LABEL, modelName } from '@/features/chat/modelName'
+import { BYPASS_MODE, modeLabel, PICKABLE_MODES } from '@/features/chat/chatMeta'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { openAgentDocs } from '@/api/daemon'
 import { chatAgentOf, type ChatAgent } from '../model/chatView'
 import { AGENT_CATALOG, ageOf, nowSeconds, splitRecent, useFolderBranches, useInstalledAgents } from '../model/newChatHost'
@@ -13,7 +15,7 @@ import { ChipMenu, ReasoningMeter, SegmentTabs, type ChipItem } from './NewChatM
 export type BranchChoice = { name: string; create: boolean; worktree: boolean }
 
 /** What the page asks the window to start: a chat with this agent, model and effort, in this folder, and its first message. */
-export type NewChatRequest = { folder: string; agent: ChatAgent; model: string; reasoning: AgentChoice['reasoning']; message: string; branch: BranchChoice | null }
+export type NewChatRequest = { folder: string; agent: ChatAgent; model: string; reasoning: AgentChoice['reasoning']; mode: string; message: string; branch: BranchChoice | null }
 
 /** A computer a chat could start on. Chats run on this computer; another one hands over to the dialog that starts a session there. */
 export type NewChatMachine = { machine: number; label: string; local: boolean }
@@ -23,6 +25,8 @@ type Props = {
   /** The projects this computer has sessions in, the focused one first. */
   projects: readonly NewSessionProject[]
   defaultAgent: ChatAgent
+  /** Yolo mode is on for Claude, so a Claude chat may start in Bypass permissions. */
+  bypassAllowed?: boolean
   /** The system's folder picker; null when it is cancelled. */
   browse: () => Promise<string | null>
   onStart: (request: NewChatRequest) => Promise<void>
@@ -38,8 +42,9 @@ type Props = {
  * branch). The chat it starts is the agent in a terminal the daemon owns, shown as its chat (ADR 0003).
  * Enter sends, Esc goes back.
  */
-export function NewChatPage({ machines, projects, defaultAgent, browse, onStart, onOtherMachine, onAddMachine, onCancel }: Props) {
+export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = false, browse, onStart, onOtherMachine, onAddMachine, onCancel }: Props) {
   const [agent, setAgent] = useState<ChatAgent>(defaultAgent)
+  const [mode, setMode] = useState('default')
   const [choice, setChoice] = useState<AgentChoice>({ model: DEFAULT_PICK, reasoning: DEFAULT_PICK })
   const [picked, setFolder] = useState<string | null>(null)
   const [extra, setExtra] = useState<NewSessionProject | null>(null)
@@ -73,7 +78,7 @@ export function NewChatPage({ machines, projects, defaultAgent, browse, onStart,
     if (busy || folder === '' || agentMissing) return
     setBusy(true)
     setError(null)
-    onStart({ folder, agent, model: choice.model, reasoning: choice.reasoning, message: message.trim(), branch })
+    onStart({ folder, agent, model: choice.model, reasoning: choice.reasoning, mode: agent === 'claude' ? mode : 'default', message: message.trim(), branch })
       .catch((failure: unknown) => { setError(errorMessage(failure, 'Could not start the chat')) })
       .finally(() => { setBusy(false); reloadBranches() })
   }
@@ -230,7 +235,34 @@ export function NewChatPage({ machines, projects, defaultAgent, browse, onStart,
               </div>
             </div>
             <div className="mx-ctxtray">
-              <span className="mx-tray-fact" title="This chat asks before it runs a tool">Ask before running</span>
+              {agent === 'claude' ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button type="button" className={`mx-tray-fact is-button${mode === BYPASS_MODE ? ' is-danger' : ''}`} title="The permission mode this chat starts in" aria-label={`Starting permission mode: ${modeLabel(mode) ?? mode}. Pick another.`}>
+                      {modeLabel(mode)}
+                      <Icon name="chevronDown" size={10} />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="top" align="start" aria-label="Starting permission mode" className="w-[240px] text-fg">
+                    <DropdownMenuRadioGroup value={mode} onValueChange={setMode}>
+                      {PICKABLE_MODES.map((key) => (
+                        <DropdownMenuRadioItem
+                          key={key}
+                          value={key}
+                          disabled={key === BYPASS_MODE && !bypassAllowed}
+                          title={key === BYPASS_MODE && !bypassAllowed ? 'Turn on Yolo mode for Claude in Settings, General, to start a chat in this mode.' : undefined}
+                          className="text-[12.5px] text-fg focus:bg-hover focus:text-fg"
+                        >
+                          {modeLabel(key)}
+                          {key === BYPASS_MODE && <span className="ml-auto pl-2 text-[11px] text-dim">{bypassAllowed ? 'asks nothing' : 'needs Yolo mode'}</span>}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <span className="mx-tray-fact" title="This chat asks before it runs a tool">Ask before running</span>
+              )}
               <span className="mx-spacer" />
               {folder !== '' && <span className="mx-tray-fact" title={folder}>{folder}</span>}
             </div>

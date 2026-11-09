@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { agentsInstalled, folderBranches, type FolderBranches } from '@/api/daemon'
 import { DEFAULT_PICK, type ReasoningPick } from '@/features/chat/agentChoice'
+import { PICKABLE_MODES } from '@/features/chat/chatMeta'
 import type { ChatAgent } from './chatView'
 import type { NewSessionProject } from './newSession'
 
@@ -31,8 +32,9 @@ const CODEX_EFFORT = new Set<ReasoningPick>(['low', 'medium', 'high'])
  * the `model_reasoning_effort` setting, which has no Max. A name that is not plain model-id
  * characters is dropped rather than typed into a shell, and so is any level the agent lacks.
  */
-export function launchFlags(agent: ChatAgent, model: string, effort: ReasoningPick): string {
+export function launchFlags(agent: ChatAgent, model: string, effort: ReasoningPick, mode = 'default'): string {
   const flags: string[] = []
+  if (agent === 'claude' && mode !== 'default' && PICKABLE_MODES.includes(mode)) flags.push('--permission-mode', mode)
   const named = model !== DEFAULT_PICK && MODEL_ID.test(model)
   if (agent === 'claude') {
     if (named) flags.push('--model', model)
