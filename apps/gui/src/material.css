@@ -182,6 +182,14 @@
   box-shadow: var(--m-edge-float), var(--m-shadow-float);
   backdrop-filter: var(--m-blur-float);
 }
+/* Whatever opens over the window is solid: the theme's own ground, never a tint of what is behind it. This sits after the
+   roles above and is more specific than any component's own fill, so a popup that was painted from a see-through role
+   (a hover or a raise tint) is still opaque. The finish keeps its light and shade (sheen, edge, shadow) on top. */
+.mx-app :is([data-radix-popper-content-wrapper] > *, [role="menu"], [role="listbox"], [role="dialog"], [role="alertdialog"], [role="tooltip"], .open-project-dialog, .mx-pop, .mx-menu, .mx-picker-menu, .mx-tip, .mx-ctx, .mx-palette, .mx-find, .mx-notice) {
+  background-color: var(--main);
+}
+:root :is([data-radix-popper-content-wrapper] > *) { background-color: var(--main); }
+
 /* One plain shadow keeps a flat float apart from what is under it. */
 :root[data-finish="flat"] .mx-ctx,
 :root[data-finish="flat"] .mx-palette,
