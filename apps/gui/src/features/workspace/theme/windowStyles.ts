@@ -14,10 +14,10 @@ export const DEFAULT_WINDOW_STYLE: WindowStyle = 'glass'
 export const isWindowStyle = (value: unknown): value is WindowStyle => WINDOW_STYLE_IDS.some((id) => id === value)
 
 /**
- * The themes a style's palette replaces: Midnight, and Day with Paper (the light theme a fresh install
- * starts on). Any other theme keeps its own colours and takes only the style's fonts, dials and shapes.
+ * The themes a style's palette replaces: Maitty Night and Maitty Day. Glass has no palette of its own: it wears Maitty's.
+ * Any other theme keeps its own colours and takes only the style's fonts, dials and shapes.
  */
-const PALETTE_THEMES: readonly string[] = ['Midnight', 'Paper', 'Day']
+const PALETTE_THEMES: readonly string[] = ['Maitty Night', 'Maitty Day']
 
 type Palette = Partial<ThemeTokens>
 
@@ -48,24 +48,16 @@ const LIGHT_FLAT = { hk: '.55', sk: '.25', sh: NO_SHEEN }
 
 export const WINDOW_STYLES: readonly WindowStyleEntry[] = [
   {
-    id: 'glass', name: 'Glass', blurb: 'One soft atmosphere behind clear frosted panels. Rose accent.',
-    preview: { dark: ['rgba(30,30,44,.7)', '#FF8FB3', 'rgba(255,255,255,.14)'], light: ['rgba(255,255,255,.7)', '#C2386B', 'rgba(30,20,45,.14)'] },
+    id: 'glass', name: 'Glass', blurb: 'Soft sea-glass panels with brass. Maitty’s own look.',
+    preview: { dark: ['#0A2329', '#E3A72F', '#17383C'], light: ['#F8FBFA', '#E3A72F', '#B9CCC5'] },
     font: INTER,
     dark: {
       look: { ui: INTER, mono: JETBRAINS_MONO, hk: '.7', sk: '1', glowAccent: '16%', glowMag: '11%' },
-      palette: {
-        bg: '#040509', main: '#0B0C12', raise: '#12131A', hover: '#101117', sel: '#16171F', line: 'rgba(255,255,255,.06)', line2: 'rgba(255,255,255,.1)',
-        well: 'rgba(3,4,7,.6)', term: '#090A0F', pane: '#0B0C12', paneLine: 'rgba(255,255,255,.07)', fg: '#F1F0F5', fg2: '#C4C3CF', muted: '#9796A6',
-        dim: '#82818F', accent: '#E89AB4', accentSoft: 'rgba(232,154,180,.09)', accentLine: 'rgba(232,154,180,.45)', onAccent: '#2A0A16',
-      },
+      palette: {},
     },
     light: {
       look: { ui: INTER, mono: JETBRAINS_MONO, hk: '1', sk: '.35', sh: NO_SHEEN, glowAccent: '14%', glowMag: '10%' },
-      palette: {
-        bg: '#ECE8F0', main: '#FBFAFD', raise: '#F4F1F7', hover: '#F1EEF5', sel: '#EAE5F0', line: 'rgba(30,20,45,.08)', line2: 'rgba(30,20,45,.14)',
-        well: 'rgba(255,255,255,.5)', term: '#FBFAFD', pane: '#FBFAFD', paneLine: 'rgba(30,20,45,.1)', fg: '#16141C', fg2: '#3A3645', muted: '#5C5768',
-        dim: '#6B6677', accent: '#C2386B', accentSoft: 'rgba(194,56,107,.1)', accentLine: 'rgba(194,56,107,.5)', onAccent: '#FFFFFF',
-      },
+      palette: {},
     },
   },
   {
@@ -155,6 +147,11 @@ export function withWindowStyle(theme: ThemeEntry, id: WindowStyle): ThemeEntry 
   const style = findWindowStyle(id)
   const side = theme.light ? style.light : style.dark
   const owns = PALETTE_THEMES.includes(theme.name)
-  const tokens: ThemeTokens = owns ? { ...theme.tokens, ...side.palette } : theme.tokens
+  // A palette that sets its own accent sets what the accent is read as (text, and "working") too, so brass does not show through a
+  // style that is green or white.
+  const own = side.palette.accent
+  const tokens: ThemeTokens = owns
+    ? { ...theme.tokens, ...(own === undefined ? {} : { accentText: own, working: own }), ...side.palette }
+    : theme.tokens
   return { ...theme, tokens, cardRing: composite(tokens.pane, tokens.bg), look: side.look }
 }

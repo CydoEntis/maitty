@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { findTheme, themeStyle } from './themes'
 import { finishOf, WINDOW_STYLES, WINDOW_STYLE_IDS, withWindowStyle } from './windowStyles'
 
-const MIDNIGHT = findTheme('Midnight')
-const DAY = findTheme('Day')
+const MIDNIGHT = findTheme('Maitty Night')
+const DAY = findTheme('Maitty Day')
 
 describe('window styles', () => {
   it('defines the four styles, each with a dark and a light side', () => {
@@ -19,9 +19,12 @@ describe('window styles', () => {
     }
   })
 
-  it("takes the design's values: Glass is rose, Mono Type greyscale, Retro Pixel green on navy", () => {
-    expect(withWindowStyle(MIDNIGHT, 'glass').tokens.accent).toBe('#E89AB4')
-    expect(withWindowStyle(DAY, 'glass').tokens.accent).toBe('#C2386B')
+  it("takes the design's values: Glass wears Maitty's brass, Mono Type greyscale, Retro Pixel green on navy", () => {
+    expect(withWindowStyle(MIDNIGHT, 'glass').tokens.accent).toBe('#e3a72f')
+    expect(withWindowStyle(DAY, 'glass').tokens.accent).toBe('#e3a72f')
+    expect(withWindowStyle(DAY, 'glass').tokens.accentText).toBe('#8a5a00')
+    // A style with its own accent has no brass left in what the accent is read as.
+    expect(withWindowStyle(MIDNIGHT, 'pixel').tokens).toMatchObject({ accentText: '#A7F070', working: '#A7F070' })
     expect(withWindowStyle(MIDNIGHT, 'mono').tokens.accent).toBe('#F0F0F0')
     expect(withWindowStyle(MIDNIGHT, 'pixel').tokens).toMatchObject({ bg: '#1A1C2C', accent: '#A7F070', warn: '#FFEC27' })
     expect(withWindowStyle(DAY, 'pixel').tokens).toMatchObject({ bg: '#E4E6EE', accent: '#2E8B1E', danger: '#D0003C' })
@@ -41,8 +44,8 @@ describe('window styles', () => {
     expect(withWindowStyle(MIDNIGHT, 'pixel').cardRing).toBe('#222538')
   })
 
-  it('draws Paper, the default light theme, with the style palette too', () => {
-    expect(withWindowStyle(findTheme('Paper'), 'console').tokens.bg).toBe('#EBEBEB')
+  it('draws Maitty Day, the default light theme, with the style palette too', () => {
+    expect(withWindowStyle(findTheme('Maitty Day'), 'console').tokens.bg).toBe('#EBEBEB')
   })
 
   it("keeps another theme's own colours and gives it only the style's fonts, dials and shapes", () => {

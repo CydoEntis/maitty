@@ -23,7 +23,7 @@
 .mx-inspect-tabs button.is-current::after { transform: scaleX(1); transform-origin: left; }
 .mx-inspect-tabs.is-back button.is-current::after { transform-origin: right; }
 .mx-inspect-count { min-width: 16px; height: 16px; padding: 0 5px; border-radius: 999px; font-size: 10.5px; line-height: 16px; text-align: center; color: var(--muted); background: rgba(var(--hl), calc(.06 * var(--hk))); font-variant-numeric: tabular-nums; }
-.mx-inspect-tabs button.is-current .mx-inspect-count { color: var(--accent); background: var(--accent-soft); }
+.mx-inspect-tabs button.is-current .mx-inspect-count { color: var(--accent-text); background: var(--accent-soft); }
 @keyframes mx-inspect-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes mx-inspect-fade-out { to { opacity: 0; } }
 @keyframes mx-inspect-in { from { opacity: 0; transform: translateX(36px); } to { opacity: 1; transform: none; } }
@@ -63,7 +63,7 @@ button.mx-inspect-row:hover, .mx-inspect-pick:hover { background: rgba(var(--hl)
 .mx-patch-line, .mx-preview span { display: block; padding: 0 10px; white-space: pre; }
 .mx-patch-line.is-add { background: color-mix(in oklab, var(--ok) 16%, transparent); }
 .mx-patch-line.is-remove { background: color-mix(in oklab, var(--danger) 16%, transparent); }
-.mx-patch-line.is-hunk { color: var(--accent); }
+.mx-patch-line.is-hunk { color: var(--accent-text); }
 .mx-patch-line.is-meta { color: var(--dim); }
 .mx-preview span.is-target { background: color-mix(in oklab, var(--warn) 22%, transparent); }
 .mx-inspect .is-add { color: var(--ok); }
@@ -86,6 +86,6 @@ button.mx-inspect-row:hover, .mx-inspect-pick:hover { background: rgba(var(--hl)
 .mx-inspect-fail-more:hover { color: var(--fg2); }
 .mx-inspect-fail-details { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line2); background: var(--term); text-align: left; }
 .mx-inspect-fail-details pre { margin: 0; max-width: 100%; font-family: var(--mono); font-size: 11.5px; color: var(--fg2); white-space: pre-wrap; overflow-wrap: anywhere; }
-.mx-inspect-fail-details button { font-size: 11.5px; color: var(--accent); }
+.mx-inspect-fail-details button { font-size: 11.5px; color: var(--accent-text); }
 @keyframes mx-inspect-fail-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .mx-inspect-fail-tile.is-retrying { animation: none; } }

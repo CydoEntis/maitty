@@ -3,7 +3,7 @@ import { DEFAULT_WINDOW_STYLE, isWindowStyle, type WindowStyle } from '@/feature
 import { prefersPlainDrawing } from '@/lib/gpu'
 import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, isFontFamily, isFontWeight, type TerminalFontWeight } from '@/lib/terminalFont'
 import { readThemePreference, type ThemePreference } from '@/data/themePreference'
-import { THEMES, type ThemeMode } from '@/features/workspace/theme/themes'
+import { DEFAULT_LIGHT_THEME, DEFAULT_THEME, THEMES, type ThemeMode } from '@/features/workspace/theme/themes'
 import { DEFAULT_CHAT_VIEWS, type ChatAgent, type ChatViewDefaults, type PaneView } from '@/features/workspace/model/chatView'
 
 export type ToastPosition = 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right'
@@ -134,7 +134,7 @@ const UI_TEXT_SIZE_MAX = 17
 const STORAGE_KEY = 'maitty.gui.settings.v1'
 
 // The theme was stored on its own before the desktop theme browser; carry that choice over.
-const THEME_FROM_PREFERENCE: Record<ThemePreference, string> = { night: 'Midnight', abyss: 'Abyss', day: 'Paper' }
+const THEME_FROM_PREFERENCE: Record<ThemePreference, string> = { night: DEFAULT_THEME, abyss: DEFAULT_THEME, day: DEFAULT_LIGHT_THEME }
 
 function defaults(): SettingsPreferences {
   const legacy = THEME_FROM_PREFERENCE[readThemePreference()]
@@ -156,9 +156,9 @@ function defaults(): SettingsPreferences {
     terminalFontWeightBold: DEFAULT_FONT_WEIGHT_BOLD,
     startFolder: '',
     // The theme chosen before there were two slots keeps its look; otherwise follow the system.
-    themeMode: legacy === 'Paper' ? 'light' : legacy === 'Abyss' ? 'dark' : 'system',
-    darkTheme: legacy === 'Abyss' ? 'Abyss' : 'Midnight',
-    lightTheme: 'Paper',
+    themeMode: legacy === DEFAULT_LIGHT_THEME ? 'light' : 'system',
+    darkTheme: DEFAULT_THEME,
+    lightTheme: DEFAULT_LIGHT_THEME,
     cursorStyle: 'block',
     scrollback: SCROLLBACK_DEFAULT,
     scrollSpeed: SCROLL_NORMAL,

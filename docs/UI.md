@@ -321,7 +321,7 @@ Only the area with the keyboard is lit: the focused pane's whole border, or the 
 
 Dark and light are two remembered slots and a switch. Appearance has three rows:
 **Appearance** (`appearance`: `dark` or `light`, which slot shows), **Dark theme**
-(`theme_dark`, `night` by default) and **Light theme** (`theme_light`, `day` by default).
+(`theme_dark`, `night` by default, shown as Maitty Night) and **Light theme** (`theme_light`, `day` by default, shown as Maitty Day).
 `theme` stays "the theme showing now": `Config::settle_theme` sets it from the slot
 `appearance` picks, so once a file has slots a `theme` written by hand is overwritten.
 A file with only an older `theme` is not rewritten: its theme fills the slot its ground

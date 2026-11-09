@@ -39,7 +39,7 @@ export function UpdatedNotice({ update, onDone }: Props) {
           <span aria-hidden="true" className="size-1.5 rounded-full bg-[var(--ok)]" />
           <strong className="font-semibold">Updated to {update.version}</strong>
           <span aria-hidden="true" className="text-[var(--dim)]">·</span>
-          <button type="button" className="cursor-pointer rounded-full px-1.5 py-0.5 font-semibold text-[var(--accent)] hover:underline" onClick={() => { setDialogOpen(true); setToastShown(false) }}>What's new</button>
+          <button type="button" className="cursor-pointer rounded-full px-1.5 py-0.5 font-semibold text-[var(--accent-text)] hover:underline" onClick={() => { setDialogOpen(true); setToastShown(false) }}>What's new</button>
           <button type="button" aria-label="Dismiss" className="grid size-6 cursor-pointer place-items-center rounded-full text-[var(--muted)] hover:text-[var(--fg)]" onClick={() => { setToastShown(false) }}><X size={13} aria-hidden="true" /></button>
         </div>
       )}

@@ -869,11 +869,11 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     const app = renderDesktopApp()
     await screen.findByRole('heading', { name: 'No sessions running' })
     const root = () => document.querySelector<HTMLElement>('.mx-app')
-    expect(root()?.style.getPropertyValue('--bg')).toBe('#040509')
+    expect(root()?.style.getPropertyValue('--bg')).toBe('#05131a')
 
     await user.keyboard('{Control>},{/Control}')
     await user.keyboard('a')
-    await user.click(screen.getByRole('button', { name: 'Dark theme: Midnight' }))
+    await user.click(screen.getByRole('button', { name: 'Dark theme: Maitty Night' }))
     await user.type(screen.getByRole('textbox', { name: 'Search dark themes' }), 'nord')
     const listbox = await screen.findByRole('radiogroup', { name: 'Dark themes' })
     expect(within(listbox).getAllByRole('radio')).toHaveLength(1)
@@ -945,12 +945,12 @@ describe('desktop overlays and pane tools', () => {
     await screen.findByRole('heading', { name: 'No sessions running' })
     await user.keyboard('{Control>}{Shift>}k{/Shift}{/Control}')
     const dialog = await screen.findByRole('dialog', { name: 'Command palette' })
-    expect(within(dialog).queryByRole('option', { name: /Abyss/ })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('option', { name: /Nord/ })).not.toBeInTheDocument()
 
-    await user.type(within(dialog).getByRole('combobox'), 'abyss')
+    await user.type(within(dialog).getByRole('combobox'), 'nord')
     await user.keyboard('{Enter}')
 
-    await waitFor(() => { expect(JSON.parse(window.localStorage.getItem('maitty.gui.settings.v1') ?? '{}')).toMatchObject({ themeMode: 'dark', darkTheme: 'Abyss' }) })
+    await waitFor(() => { expect(JSON.parse(window.localStorage.getItem('maitty.gui.settings.v1') ?? '{}')).toMatchObject({ themeMode: 'dark', darkTheme: 'Nord' }) })
   })
 
   it('shows a card when a session you are not in needs you, and Allow types the answer', async () => {

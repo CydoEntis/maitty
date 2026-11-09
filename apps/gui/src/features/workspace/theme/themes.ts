@@ -1,4 +1,5 @@
 import type { ITheme } from '@xterm/xterm'
+import maittyTokens from '@tokens/maitty-tokens.json'
 import { composite, contrastRatio, mixOklab, withAlpha } from './color'
 
 /** Every colour role the desktop app reads, set as CSS custom properties on the app root. */
@@ -17,6 +18,10 @@ export type ThemeTokens = {
   muted: string
   dim: string
   accent: string
+  /** The accent as text on the card: the same brass, darkened where the ground is light. */
+  accentText: string
+  /** What "working" is drawn in; nothing else is this colour. */
+  working: string
   accentSoft: string
   accentLine: string
   onAccent: string
@@ -51,12 +56,13 @@ export type ThemeEntry = { name: string; family: string; light: boolean; tokens:
 /** Which theme is in use: the dark theme, the light theme, or whichever one the system's own setting asks for. */
 export type ThemeMode = 'system' | 'dark' | 'light'
 
-export const DEFAULT_THEME = 'Midnight'
+export const DEFAULT_THEME = 'Maitty Night'
+export const DEFAULT_LIGHT_THEME = 'Maitty Day'
 export const MIN_TEXT_CONTRAST = 4.5
 
 const CSS_VARIABLES: Record<keyof ThemeTokens, string> = {
   bg: '--bg', main: '--main', raise: '--raise', hover: '--hover', sel: '--sel', line: '--line', line2: '--line2',
-  well: '--well', term: '--term', fg: '--fg', fg2: '--fg2', muted: '--muted', dim: '--dim', accent: '--accent',
+  well: '--well', term: '--term', fg: '--fg', fg2: '--fg2', muted: '--muted', dim: '--dim', accent: '--accent', accentText: '--accent-text', working: '--working',
   accentSoft: '--accent-soft', accentLine: '--accent-line', onAccent: '--on-accent', warn: '--warn',
   warnSoft: '--warn-soft', warnLine: '--warn-line', onWarn: '--on-warn', danger: '--danger',
   dangerSoft: '--danger-soft', dangerLine: '--danger-line', ok: '--ok', ansiBlue: '--ansi-blue',
@@ -66,40 +72,16 @@ const CSS_VARIABLES: Record<keyof ThemeTokens, string> = {
 const DARK_STATUS = { warn: '#F2B65A', warnSoft: 'rgba(242,182,90,.07)', warnLine: 'rgba(242,182,90,.28)', onWarn: '#151007', danger: '#F07F78', dangerSoft: 'rgba(240,127,120,.07)', dangerLine: 'rgba(240,127,120,.3)' }
 // Dark enough for AA on the grounds of every generated light theme (Gruvbox Light's cream is the tightest).
 const LIGHT_STATUS = { warn: '#8F5400', warnSoft: 'rgba(143,84,0,.07)', warnLine: 'rgba(143,84,0,.3)', onWarn: '#FFFFFF', danger: '#B8362C', dangerSoft: 'rgba(184,54,44,.06)', dangerLine: 'rgba(184,54,44,.3)' }
-// Paper and Day are darker than the generated light themes so amber and red pass AA on --term and --bg.
-const PAPER_STATUS = { warn: '#8A5000', warnSoft: 'rgba(138,80,0,.07)', warnLine: 'rgba(138,80,0,.3)', onWarn: '#FFFFFF', danger: '#B3342A', dangerSoft: 'rgba(179,52,42,.06)', dangerLine: 'rgba(179,52,42,.3)' }
-const DAY_STATUS = { warn: '#8C4F00', warnSoft: 'rgba(140,79,0,.07)', warnLine: 'rgba(140,79,0,.3)', onWarn: '#FFFFFF', danger: '#B1302A', dangerSoft: 'rgba(177,48,42,.06)', dangerLine: 'rgba(177,48,42,.3)' }
-const MIDNIGHT: ThemeTokens = {
-  ansiBlue: '#82AAFF', ansiMag: '#C3A6F2', ansiGreen: '#9FD39A', pane: '#0D1116', paneLine: 'rgba(255,255,255,.07)',
-  bg: '#090C10', main: '#0D1116', raise: '#141A21', hover: '#12171E', sel: '#1A212A', line: '#1B222B', line2: '#26303B',
-  well: '#080A0D', term: '#06080B', fg: '#E8ECEF', fg2: '#B3BCC5', muted: '#8C96A1', dim: '#75808B', accent: '#5FD4BF',
-  accentSoft: 'rgba(95,212,191,.11)', accentLine: 'rgba(95,212,191,.5)', onAccent: '#06110F', ...DARK_STATUS, ok: '#8DB89B',
-}
 
-const ABYSS: ThemeTokens = {
-  ...MIDNIGHT, pane: '#0B1724', bg: '#07111B', main: '#0B1724', raise: '#112131', hover: '#0F1C29', sel: '#162839',
-  line: '#14243A', line2: '#1E3248', well: '#06101A', term: '#050D15',
-}
 
-const PAPER: ThemeTokens = {
-  ansiBlue: '#2F5FD0', ansiMag: '#8146C9', ansiGreen: '#2F7A3B', pane: '#FFFFFF', paneLine: 'rgba(17,22,27,.1)',
-  bg: '#ECEEEA', main: '#FFFFFF', raise: '#F5F6F4', hover: '#F0F2F0', sel: '#E7EAE8', line: '#E3E6E4', line2: '#D2D7D4',
-  well: '#F2F4F2', term: '#FBFBF9', fg: '#11161B', fg2: '#353E46', muted: '#4E5862', dim: '#5B6570', accent: '#0A7564',
-  accentSoft: 'rgba(10,117,100,.1)', accentLine: 'rgba(10,117,100,.5)', onAccent: '#FFFFFF', ...PAPER_STATUS, ok: '#28713F',
-}
 
-const DAY: ThemeTokens = {
-  ansiBlue: '#2457C5', ansiMag: '#7A3FC0', ansiGreen: '#2A7A3C', pane: '#FFFFFF', paneLine: 'rgba(14,20,26,.1)',
-  bg: '#E9EEF3', main: '#FFFFFF', raise: '#F4F7FA', hover: '#EEF2F6', sel: '#E3EAF1', line: '#DDE4EB', line2: '#CCD6E0',
-  well: '#F1F5F8', term: '#FFFFFF', fg: '#0E141A', fg2: '#30404D', muted: '#4A5A68', dim: '#566573', accent: '#0A6F86',
-  accentSoft: 'rgba(10,111,134,.1)', accentLine: 'rgba(10,111,134,.5)', onAccent: '#FFFFFF', ...DAY_STATUS, ok: '#23703E',
-}
+
 
 // Pure black and white with strong lines, for readability over polish. Warn and danger keep their meaning.
 const HIGH_CONTRAST: ThemeTokens = {
   ansiBlue: '#8FB8FF', ansiMag: '#E3B5FF', ansiGreen: '#7CF29A', pane: '#000000', paneLine: 'rgba(255,255,255,.3)',
   bg: '#000000', main: '#000000', raise: '#0D0D0D', hover: '#0A0A0A', sel: '#1C1C1C', line: '#5A5A5A', line2: '#8A8A8A',
-  well: '#000000', term: '#000000', fg: '#FFFFFF', fg2: '#EDEDED', muted: '#CFCFCF', dim: '#ABABAB', accent: '#3CF2D2',
+  well: '#000000', term: '#000000', fg: '#FFFFFF', fg2: '#EDEDED', muted: '#CFCFCF', dim: '#ABABAB', accent: '#3CF2D2', accentText: '#3CF2D2', working: '#3CF2D2',
   accentSoft: 'rgba(60,242,210,.16)', accentLine: 'rgba(60,242,210,.75)', onAccent: '#000000',
   warn: '#FFC94D', warnSoft: 'rgba(255,201,77,.12)', warnLine: 'rgba(255,201,77,.6)', onWarn: '#000000',
   danger: '#FF7A7A', dangerSoft: 'rgba(255,122,122,.12)', dangerLine: 'rgba(255,122,122,.6)', ok: '#7CF29A',
@@ -111,6 +93,35 @@ const MIX = {
   raiseDark: 7, raiseLight: 5, hover: 5, sel: 10, line: 9, line2: 15, bgDark: 18, bgLight: 4, wellDark: 25, wellLight: 3,
   fg2: 80, muted: 62, dim: 52, accentSoft: 13, accentLine: 50, paneLine: 10, contrastStep: 2, full: 100,
 }
+
+/**
+ * Maitty's own pair, built from `maitty-tokens.json` (the TUI reads the same file): sea-glass and brass. Teal means
+ * only "working" (`working`), coral only "needs you" (`warn`), brass is the accent. Text uses the file's *Text colours
+ * so every pair meets AA; fills (a button's brass) use the fill colours with their *On ink.
+ */
+/** How far the tokens file's colours are mixed to make the roles it does not name (percent). */
+const MAITTY_MIX = { hover: 50, line2: 40, muted: 50, warnSoft: 7, warnLine: 30, paneLine: 8 }
+type MaittySide = typeof maittyTokens.night
+function maittyTheme(side: MaittySide, light: boolean): ThemeTokens {
+  const { bg, line, text, accent, state } = side
+  const status = light ? LIGHT_STATUS : DARK_STATUS
+  return {
+    bg: bg.page, main: bg.card, pane: bg.card, term: bg.terminal,
+    raise: bg.surface, hover: mixOklab(bg.card, bg.selected, MAITTY_MIX.hover), sel: bg.selected,
+    line: line.default, line2: mixOklab(line.default, text.dim, MAITTY_MIX.line2), well: bg.depth3,
+    fg: text.strong, fg2: text.body, muted: mixOklab(text.body, text.dim, MAITTY_MIX.muted), dim: text.dim,
+    accent: accent.brass, accentText: accent.brassText, onAccent: accent.brassOn,
+    accentSoft: withAlpha(accent.brass, MIX.accentSoft), accentLine: withAlpha(accent.brass, MIX.accentLine),
+    working: state.workingText,
+    warn: state.needsText, warnSoft: withAlpha(state.needs, MAITTY_MIX.warnSoft), warnLine: withAlpha(state.needs, MAITTY_MIX.warnLine), onWarn: state.needsOn,
+    danger: status.danger, dangerSoft: status.dangerSoft, dangerLine: status.dangerLine,
+    ok: state.doneText,
+    ansiBlue: light ? '#2F5FD0' : '#82AAFF', ansiMag: light ? '#8146C9' : '#C3A6F2', ansiGreen: state.doneText,
+    paneLine: withAlpha(text.strong, MAITTY_MIX.paneLine),
+  }
+}
+const MAITTY_NIGHT = maittyTheme(maittyTokens.night, false)
+const MAITTY_DAY = maittyTheme(maittyTokens.day, true)
 
 const SHIFT_STEP = 2
 
@@ -158,6 +169,8 @@ export function generateTheme(inputs: ThemeInputs): ThemeTokens {
     muted: readable(MIX.muted),
     dim: readable(MIX.dim),
     accent: accentText,
+    accentText,
+    working: accentText,
     accentSoft: withAlpha(accentText, MIX.accentSoft),
     accentLine: withAlpha(accentText, MIX.accentLine),
     onAccent: light ? '#FFFFFF' : bg,
@@ -209,10 +222,8 @@ const entry = (name: string, family: string, light: boolean, tokens: ThemeTokens
 })
 
 export const THEMES: readonly ThemeEntry[] = [
-  entry('Midnight', 'Maitty · default', false, MIDNIGHT),
-  entry('Abyss', 'Maitty · deeper blue', false, ABYSS),
-  entry('Paper', 'Maitty · light', true, PAPER),
-  entry('Day', 'Maitty · light, cool', true, DAY),
+  entry('Maitty Night', 'Maitty · default dark', false, MAITTY_NIGHT),
+  entry('Maitty Day', 'Maitty · default light', true, MAITTY_DAY),
   ...GENERATED.map(([name, bg, fg, accent, mag, blue, green, light, family]) =>
     entry(name, `${family} · ${light ? 'light' : 'dark'}`, light, generateTheme({ bg, fg, accent, mag, blue, green, light })),
   ),
@@ -301,7 +312,7 @@ export function xtermTheme(tokens: ThemeTokens): ITheme {
   return {
     background: tokens.main,
     foreground: tokens.fg2,
-    cursor: tokens.accent,
+    cursor: tokens.accentText,
     cursorAccent: tokens.main,
     selectionBackground: selection.background,
     selectionForeground: selection.foreground,
@@ -319,8 +330,8 @@ export function xtermTheme(tokens: ThemeTokens): ITheme {
     brightBlue: tokens.ansiBlue,
     magenta: tokens.ansiMag,
     brightMagenta: tokens.ansiMag,
-    cyan: tokens.accent,
-    brightCyan: tokens.accent,
+    cyan: tokens.accentText,
+    brightCyan: tokens.accentText,
     white: tokens.fg2,
     brightWhite: tokens.fg,
   }

@@ -8,6 +8,7 @@
 use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone)]
 pub struct Theme {
@@ -79,6 +80,8 @@ pub const DEFAULT_LIGHT: &str = "day";
 /// Names earlier dev builds gave a theme that now carries its variant, so configs that
 /// still say them keep loading.
 const ALIASES: &[(&str, &str)] = &[
+    ("maitty-night", "night"),
+    ("maitty-day", "day"),
     ("gruvbox-material", "gruvbox-material-dark"),
     ("koda", "koda-dark"),
     ("melange", "melange-dark"),
@@ -152,7 +155,6 @@ pub const BUILTIN: &[&str] = &[
     "cyberdream-light",
     "cyberdream-muted",
     "dawnfox",
-    "day",
     "dayfox",
     "dogrun",
     "doom-one",
@@ -201,6 +203,8 @@ pub const BUILTIN: &[&str] = &[
     "lackluster",
     "lucario",
     "luna",
+    "day",
+    "night",
     "melange-dark",
     "melange-light",
     "mellifluous",
@@ -218,7 +222,6 @@ pub const BUILTIN: &[&str] = &[
     "moss-day",
     "neovim-dark",
     "neovim-light",
-    "night",
     "night-owl",
     "nightfly",
     "nightfox",
@@ -331,7 +334,7 @@ pub const DESIGN: &[(&str, &str)] = &[
     ("cyberdream-light", "Cyberdream Light"),
     ("cyberdream-muted", "Cyberdream Muted"),
     ("dawnfox", "Dawnfox"),
-    ("day", "Day"),
+    ("day", "Maitty Day"),
     ("dayfox", "Dayfox"),
     ("dogrun", "Dogrun"),
     ("doom-one", "Doom One"),
@@ -396,7 +399,7 @@ pub const DESIGN: &[(&str, &str)] = &[
     ("moss-day", "Moss Day"),
     ("neovim-dark", "Neovim Dark"),
     ("neovim-light", "Neovim Light"),
-    ("night", "Night"),
+    ("night", "Maitty Night"),
     ("night-owl", "Night Owl"),
     ("nightfly", "Nightfly"),
     ("nightfox", "Nightfox"),
@@ -465,6 +468,23 @@ const RED_ORANGE: Color = Color::Rgb(0xf0, 0x78, 0x28);
 const MID_ORANGE: Color = Color::Rgb(0xff, 0x9f, 0x2e);
 const PALE_AMBER: Color = Color::Rgb(0xff, 0xd0, 0x70);
 const DEEP_AMBER_ON_LIGHT: Color = Color::Rgb(0x8f, 0x4a, 0x00);
+
+/// The Maitty colour tokens, parsed once from `maitty-tokens.json`.
+fn maitty_tokens() -> &'static serde_json::Value {
+    static TOKENS: OnceLock<serde_json::Value> = OnceLock::new();
+    TOKENS.get_or_init(|| {
+        serde_json::from_str(include_str!("../maitty-tokens.json")).expect("maitty-tokens.json is valid JSON")
+    })
+}
+
+/// One token of the Maitty file, e.g. `maitty_token("night", "bg.page")`.
+pub fn maitty_token(side: &str, path: &str) -> String {
+    let mut node = &maitty_tokens()[side];
+    for key in path.split('.') {
+        node = &node[key];
+    }
+    node.as_str().unwrap_or_else(|| panic!("maitty-tokens.json has no {side}.{path}")).to_string()
+}
 
 fn hex(s: &str) -> Color {
     parse_color(s).unwrap_or(Color::Reset)
@@ -780,6 +800,77 @@ impl Theme {
         }
     }
 
+    /// The Maitty theme for `side` (`night` or `day`), made from the tokens file so both defaults follow it.
+    /// An error red is the one colour the file does not carry: it must not read as the coral of needs-you.
+    fn maitty(side: &str) -> Theme {
+        let day = side == "day";
+        let t = |path: &str| maitty_token(side, path);
+        // Text on the ground uses the file's `*Text` tokens (the fill and its text colour differ by day).
+        let accent_text = t("accent.brassText");
+        // The accent is the brass; on the day ground the brass fill is too pale to read as text or to carry an
+        // ink, so the day accent is the file's darker `brassText` with the card colour as its ink.
+        let accent = if day { accent_text.clone() } else { t("accent.brass") };
+        let accent_ink = if day { t("bg.card") } else { t("accent.brassOn") };
+        let err = if day { "#c4003c" } else { "#e0245e" };
+        // Done is the file's green text; by day it is a shade too near the teal of working to tell them apart by
+        // colour alone, so the TUI lifts it a third of the way toward the file's green fill.
+        let done = if day {
+            let lifted = mix(hex(&t("state.doneText")), hex(&t("state.done")), 0.35);
+            match lifted {
+                Color::Rgb(r, g, b) => format!("#{r:02x}{g:02x}{b:02x}"),
+                _ => t("state.doneText"),
+            }
+        } else {
+            t("state.doneText")
+        };
+        let card2 = if day { t("bg.depth1") } else { t("bg.depth2") };
+        let mut theme = Theme::design(
+            [
+                &t("bg.page"),
+                &t("text.body"),
+                &t("bg.surface"),
+                &t("bg.card"),
+                &card2,
+                &t("line.default"),
+                &t("text.dim"),
+                &t("text.body"),
+                &t("text.strong"),
+                &accent,
+                &accent_ink,
+                &t("state.workingText"),
+                &done,
+                &t("state.needsText"),
+                &t("bg.selected"),
+                &t("bg.depth2"),
+            ],
+            [
+                if day { "#7e57c2" } else { "#c4a7ff" },
+                if day { "#2f6fbf" } else { "#6cb6ff" },
+                &accent_text,
+                &t("state.workingText"),
+            ],
+            [
+                err,
+                &done,
+                &accent_text,
+                if day { "#2f6fbf" } else { "#6cb6ff" },
+                if day { "#7e57c2" } else { "#c4a7ff" },
+                &t("state.workingText"),
+                &t("text.dim"),
+            ],
+        )
+        .with_err(err)
+        .with_selection(&t("selection.bg"))
+        .with_splash([
+            &t("text.strong"),
+            &accent_text,
+            &t("bg.depth1"),
+            &t(if day { "bg.depth2" } else { "bg.depth3" }),
+        ]);
+        theme.border_active = hex(&t("focus"));
+        theme
+    }
+
     /// Whether this theme is drawn on a light ground: its background is nearer white than black.
     /// A ground that is not a fixed colour (Mono takes the terminal's own) reads as dark.
     pub fn is_light(&self) -> bool {
@@ -790,7 +881,7 @@ impl Theme {
     pub fn named(name: &str) -> Theme {
         let name = canonical(name);
         let theme = Theme::base(name);
-        if name == "night" || name == "mono" {
+        if name == "night" || name == "day" || name == "mono" {
             return theme;
         }
         theme.with_distinct_needs()
@@ -798,35 +889,10 @@ impl Theme {
 
     fn base(name: &str) -> Theme {
         match name {
-            // The app's own pair: the sea at night, sea-glass teal for focus and working, foam
-            // for names, brass amber only for what needs you.
-            "night" => Theme::design(
-                [
-                    "#08111d", "#c9d6e3", "#0b1624", "#0f1b2b", "#15253a", "#1d2d42", "#6f8399",
-                    "#c9d6e3", "#eef5fb", "#3dd6c6", "#08111d", "#3dd6c6", "#7fd99a", "#f5c542",
-                    "#15253a", "#13233a",
-                ],
-                ["#c4a7ff", "#6cb6ff", "#e9b44c", "#3dd6c6"],
-                [
-                    "#ff7b72", "#7fd99a", "#f2c75c", "#6cb6ff", "#c4a7ff", "#3dd6c6", "#6f8399",
-                ],
-            )
-            .with_err("#ff7b72")
-            .with_selection("#1a3050")
-            .with_splash(["#e8f1f8", "#3dd6c6", "#1f6f8b", "#123049"]),
-            // The same sea by day: pale grey-blue, deep teal for focus.
-            "day" => Theme::design(
-                [
-                    "#f6f8fa", "#1f2f3f", "#eef3f6", "#ffffff", "#e0edf2", "#d3dce5", "#61748a",
-                    "#1f2f3f", "#0b1724", "#0b7a71", "#ffffff", "#0b7a71", "#2e8b57", "#b06a00",
-                    "#e4ebf1", "#e0edf2",
-                ],
-                ["#7e57c2", "#2f6fbf", "#a8741a", "#0f8f84"],
-                [
-                    "#c93c37", "#2e8b57", "#9a6700", "#2f6fbf", "#7e57c2", "#0f8f84", "#61748a",
-                ],
-            )
-            .with_err("#c93c37"),
+            // The app's own pair, Maitty Sea-glass and Brass, built from `maitty-tokens.json`: teal only
+            // means working, coral only means needs you, brass is the accent, the AI in the wordmark is gold.
+            "night" => Theme::maitty("night"),
+            "day" => Theme::maitty("day"),
             // The app's other pairs, a dark one and its day, and one loud one.
             // A harbour at night: deep navy, brass for focus.
             "harbor" => Theme::design(
@@ -2516,5 +2582,79 @@ mod audit {
             eprintln!("{b}");
         }
         assert!(bad.is_empty(), "{} theme problems", bad.len());
+    }
+}
+
+#[cfg(test)]
+mod maitty {
+    use super::{Theme, contrast, hex, maitty_token};
+
+    const AA: f64 = 4.5;
+
+    /// Text pairs the tokens file promises meet WCAG AA: its `*Text` colours and body text on its grounds.
+    fn pairs(side: &str) -> Vec<(String, String)> {
+        let grounds = ["bg.page", "bg.card", "bg.surface", "bg.terminal"];
+        let texts = ["text.strong", "text.body", "text.dim", "state.workingText", "state.needsText", "state.doneText", "accent.brassText"];
+        let mut out = Vec::new();
+        for text in texts {
+            for ground in grounds {
+                out.push((text.to_string(), ground.to_string()));
+            }
+        }
+        // The fill colours carry their own ink: brass, teal, coral and green fills each take their `*On`.
+        for (fill, on) in [("accent.brass", "accent.brassOn"), ("state.working", "state.workingOn"), ("state.needs", "state.needsOn"), ("state.done", "state.doneOn")] {
+            out.push((on.to_string(), fill.to_string()));
+        }
+        let _ = side;
+        out
+    }
+
+    #[test]
+    fn every_text_pair_the_tokens_file_names_meets_aa_by_night_and_by_day() {
+        let mut short = Vec::new();
+        for side in ["night", "day"] {
+            for (fg, bg) in pairs(side) {
+                let ratio = contrast(hex(&maitty_token(side, &fg)), hex(&maitty_token(side, &bg)));
+                if ratio < AA {
+                    short.push(format!("{side}: {fg} on {bg} is {ratio:.2}"));
+                }
+            }
+        }
+        assert!(short.is_empty(), "{}", short.join("\n"));
+    }
+
+    #[test]
+    fn the_tui_night_and_day_are_the_tokens_files_colours() {
+        for (name, side) in [("night", "night"), ("day", "day")] {
+            let theme = Theme::named(name);
+            assert_eq!(theme.bg, hex(&maitty_token(side, "bg.page")), "{name} ground");
+            assert_eq!(theme.fg, hex(&maitty_token(side, "text.body")), "{name} text");
+            assert_eq!(theme.card, hex(&maitty_token(side, "bg.card")), "{name} card");
+            assert_eq!(theme.strong, hex(&maitty_token(side, "text.strong")), "{name} strong");
+            assert_eq!(theme.working, hex(&maitty_token(side, "state.workingText")), "{name}: teal is working");
+            assert_eq!(theme.blocked, hex(&maitty_token(side, "state.needsText")), "{name}: coral is needs you");
+        }
+        // The accent is the brass on the dark ground, and its darker text colour on the light one.
+        assert_eq!(Theme::named("night").accent, hex(&maitty_token("night", "accent.brass")));
+        assert_eq!(Theme::named("day").accent, hex(&maitty_token("day", "accent.brassText")));
+    }
+
+    #[test]
+    fn working_and_needs_you_are_two_different_colours_and_neither_is_the_error_red() {
+        for name in ["night", "day"] {
+            let t = Theme::named(name);
+            assert_ne!(t.working, t.blocked, "{name}");
+            assert_ne!(t.err, t.blocked, "{name}: an error must not read as needs-you");
+            assert_ne!(t.err, t.working, "{name}");
+        }
+    }
+
+    #[test]
+    fn the_settings_list_names_them_maitty_night_and_maitty_day_and_the_old_ids_still_load() {
+        let label = |id: &str| super::DESIGN.iter().find(|(name, _)| *name == id).map(|(_, shown)| *shown);
+        assert_eq!(label("night"), Some("Maitty Night"));
+        assert_eq!(label("day"), Some("Maitty Day"));
+        assert_eq!(super::canonical("maitty-night"), "night");
+        assert_eq!(super::canonical("maitty-day"), "day");
     }
 }

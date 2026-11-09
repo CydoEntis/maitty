@@ -45,7 +45,7 @@ function Column({ title, options, value, onPick }: { title: string; options: rea
             title={option.disabledReason ?? option.blurb}
             className={`flex items-start gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${checked ? 'bg-hover text-fg' : 'text-fg2 hover:bg-hover'} ${off ? 'cursor-not-allowed opacity-45' : ''}`}
           >
-            <Check aria-hidden="true" className={`mt-0.5 size-3.5 shrink-0 ${checked ? 'text-[var(--accent)]' : 'opacity-0'}`} />
+            <Check aria-hidden="true" className={`mt-0.5 size-3.5 shrink-0 ${checked ? 'text-[var(--accent-text)]' : 'opacity-0'}`} />
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="font-medium">{option.label}</span>
             </span>

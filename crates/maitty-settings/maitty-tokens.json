@@ -1,0 +1,120 @@
+{
+  "name": "Maitty Sea-glass and Brass",
+  "rules": {
+    "teal": "Only means 'working'. Never decoration.",
+    "coral": "Only means 'needs you'. At most one coral highlight per screen.",
+    "wordmark": "The 'AI' in maitty is always gold.",
+    "contrast": "All text pairs meet WCAG AA. Use *Text tokens for text; use fill tokens for backgrounds/badges with their *On ink."
+  },
+  "night": {
+    "bg": {
+      "page": "#05131a",
+      "sky": "#0d2327",
+      "surface": "#0d2327",
+      "card": "#0a2329",
+      "terminal": "#061316",
+      "selected": "#0b2a30",
+      "depth1": "#0b2a30",
+      "depth2": "#092229",
+      "depth3": "#071a21",
+      "depth4": "#05131a"
+    },
+    "line": {
+      "default": "#17383c",
+      "strong": "#e9f0ed"
+    },
+    "text": {
+      "strong": "#eef5f2",
+      "body": "#c2d3ce",
+      "dim": "#8fa8a1"
+    },
+    "accent": {
+      "brass": "#e3a72f",
+      "brassText": "#e3a72f",
+      "brassOn": "#07161a",
+      "wordmarkAI": "#e3a72f"
+    },
+    "state": {
+      "working": "#3dd6c6",
+      "workingText": "#3dd6c6",
+      "workingOn": "#07161a",
+      "needs": "#ff6a4a",
+      "needsText": "#ff6a4a",
+      "needsOn": "#07161a",
+      "done": "#7fd99a",
+      "doneText": "#7fd99a",
+      "doneOn": "#07161a",
+      "blocked": "#f5c542",
+      "blockedText": "#f5c542",
+      "blockedOn": "#07161a",
+      "idle": "#b7c4c1",
+      "idleText": "#b7c4c1",
+      "idleOn": "#07161a"
+    },
+    "sticker": {
+      "outline": "#020a0c",
+      "edge": "#e9f0ed",
+      "hardShadow": "#1f4d52"
+    },
+    "selection": { "bg": "#3dd6c6", "fg": "#07161a" },
+    "focus": "#e3a72f"
+  },
+  "day": {
+    "bg": {
+      "page": "#e9f0ed",
+      "sky": "#f8fbfa",
+      "surface": "#f8fbfa",
+      "card": "#f8fbfa",
+      "terminal": "#ffffff",
+      "selected": "#d6e9e6",
+      "depth1": "#d6e9e6",
+      "depth2": "#c3dedb",
+      "depth3": "#afd2cf",
+      "depth4": "#9cc5c3"
+    },
+    "line": {
+      "default": "#b9ccc5",
+      "strong": "#0b1f22"
+    },
+    "text": {
+      "strong": "#0b1f22",
+      "body": "#22393b",
+      "dim": "#344845"
+    },
+    "accent": {
+      "brass": "#e3a72f",
+      "brassText": "#8a5a00",
+      "brassOn": "#0b1f22",
+      "wordmarkAI": "#e3a72f"
+    },
+    "state": {
+      "working": "#3dd6c6",
+      "workingText": "#09605a",
+      "workingOn": "#0b1f22",
+      "needs": "#ff6a4a",
+      "needsText": "#9e2e12",
+      "needsOn": "#0b1f22",
+      "done": "#7fd99a",
+      "doneText": "#226b43",
+      "doneOn": "#0b1f22",
+      "blocked": "#e3a72f",
+      "blockedText": "#8a5a00",
+      "blockedOn": "#0b1f22",
+      "idle": "#cddbd6",
+      "idleText": "#3f5552",
+      "idleOn": "#0b1f22"
+    },
+    "sticker": {
+      "outline": "#0b1f22",
+      "edge": "#ffffff",
+      "hardShadow": "#0b1f22"
+    },
+    "selection": { "bg": "#3dd6c6", "fg": "#0b1f22" },
+    "focus": "#0b1f22"
+  },
+  "shared": {
+    "sand": "#e8d6a6",
+    "sandText": "#0b1f22",
+    "wordmarkAIOnSand": "#8a5a00"
+  }
+}

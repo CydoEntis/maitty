@@ -45,7 +45,7 @@
 .mx-caret-wrap { display: flex; flex: none; width: 12px; color: var(--dim); transition: transform .2s cubic-bezier(.2, .8, .2, 1); }
 .mx-caret-wrap.is-open { transform: rotate(90deg); }
 /* Machines and projects each get their own caret colour, so the two levels read apart at a glance. */
-.mx-machine-toggle .mx-caret-wrap { color: var(--accent); }
+.mx-machine-toggle .mx-caret-wrap { color: var(--accent-text); }
 .mx-project-head .mx-caret-wrap { color: var(--ansi-blue); }
 .mx-machine-toggle:hover .mx-caret-wrap, .mx-project-head:hover .mx-caret-wrap { filter: brightness(1.25); }
 .mx-machine-icon { display: flex; flex: none; }
@@ -83,12 +83,12 @@
 .mx-row.is-selected, .mx-row.is-selected:hover { background: var(--c-sel-bg); box-shadow: var(--c-sel-sh); }
 .mx-row-icon { position: relative; flex: none; display: flex; }
 .mx-row-icon .mx-badge { right: -4px; bottom: -4px; width: 12px; height: 12px; border-radius: 3.5px; font-size: 9px; font-weight: 800; line-height: 1; color: var(--on-warn); }
-.mx-row-icon .mx-badge.is-working { border-radius: 50%; background: var(--m-well); overflow: hidden; color: var(--accent); font-family: var(--mono); }
+.mx-row-icon .mx-badge.is-working { border-radius: 50%; background: var(--m-well); overflow: hidden; color: var(--working); font-family: var(--mono); }
 .mx-row-icon .mx-badge.is-working .mx-spin, .mx-sub-mark .mx-spin { font-size: 9px; line-height: 1; }
 .mx-row-icon .mx-badge.is-done svg { width: 8px; height: 8px; }
 .mx-row-icon .mx-badge.is-unknown { width: 11px; height: 11px; background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
 /* A shell's tile in the sidebar is a flat raised square, so agents stand out among shells. */
-.mx-row.is-shell .mx-app-icon.is-shell, .mx-rail-session .mx-app-icon.is-shell { background: var(--m-raise); color: var(--accent); box-shadow: var(--c-tile-ring); }
+.mx-row.is-shell .mx-app-icon.is-shell, .mx-rail-session .mx-app-icon.is-shell { background: var(--m-raise); color: var(--accent-text); box-shadow: var(--c-tile-ring); }
 .mx-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .mx-row-name { height: 18px; font-size: 13px; line-height: 18px; font-weight: 400; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-row.is-active .mx-row-name { font-weight: 600; color: var(--fg); }
@@ -108,7 +108,7 @@
 .mx-sub-icon .mx-app-icon { box-shadow: 0 0 0 1.5px var(--card-ring); }
 .mx-sub-icon .mx-app-icon svg { width: 70%; height: 70%; }
 .mx-sub-mark { position: absolute; right: -4px; bottom: -4px; width: 10px; height: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 1.5px var(--card-ring); overflow: hidden; }
-.mx-sub-mark.is-working { border-radius: 50%; background: var(--m-well); color: var(--accent); font-family: var(--mono); }
+.mx-sub-mark.is-working { border-radius: 50%; background: var(--m-well); color: var(--working); font-family: var(--mono); }
 .mx-sub-mark.is-working .mx-spin { font-size: 7px; }
 .mx-sub-mark.is-needs { right: -3px; bottom: -3px; width: 8px; height: 8px; border-radius: 2.5px; background: var(--warn); }
 .mx-sub-mark.is-done { border-radius: 3px; background: color-mix(in oklab, var(--ok) 24%, var(--bg)); }

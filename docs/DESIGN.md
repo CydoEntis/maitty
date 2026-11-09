@@ -24,22 +24,29 @@ Most of this document describes the TUI. The desktop app's look is in
 ## Themes and colour roles
 
 Colours come only from the theme's roles, never a literal. Dark and light are two remembered
-slots (Settings › Appearance) and a switch; **Night** is the default dark theme and **Day**
-the default light one, and the browser lists each side on its own tab. **Night** is the sea
-at night, a deep navy ground, sea-glass teal for focus and working, foam for names. **Day**
-is the same sea by day: a pale grey-blue ground and a deep teal accent. The other built-in
+slots (Settings › Appearance) and a switch; **Maitty Night** (id `night`) is the default dark theme and
+**Maitty Day** (id `day`) the default light one, and the browser lists each side on its own tab. They are
+Sea-glass and Brass, built from `crates/maitty-settings/maitty-tokens.json`, the one file the colours are
+read from: brass is the accent, teal only ever means working, coral only ever means needs you, and the AI in
+the wordmark is gold. Night is a deep teal-black ground; Day a pale sea-glass one. The other built-in
 themes fill the same roles; [theme sources](theme-credits.md) lists where they come from.
 
 | Role | Used for | Night | Day |
 | --- | --- | --- | --- |
-| `bg` | the ground, and a terminal cell's default background | `#08111d` | `#f6f8fa` |
-| `card`, `card2` | panels, header strips; fields and action rows inside modals | `#0f1b2b`, `#15253a` | `#ffffff`, `#e0edf2` |
-| `btn`, `hov` | chips and buttons; the hovered row and the open session's row | `#15253a`, `#13233a` | `#e4ebf1`, `#e0edf2` |
-| `line` | borders, dividers | `#1d2d42` | `#d3dce5` |
-| `muted`, `text`, `strong` | quiet text, body text, names and titles | `#6f8399`, `#c9d6e3`, `#eef5fb` | `#61748a`, `#1f2f3f`, `#0b1724` |
-| `accent`, `acc_ink` | focus, working, the current tab; ink on the accent | `#3dd6c6`, `#08111d` | `#0b7a71`, `#ffffff` |
-| `blocked` | needs you, and only that | `#f5c542` | `#674100` |
-| `done`, `err` | passed or finished; failed | `#7fd99a`, `#ff7b72` | `#2e8b57`, `#c93c37` |
+| `bg` | the ground, and a terminal cell's default background | `#05131a` | `#e9f0ed` |
+| `card`, `card2` | panels, header strips; fields and action rows inside modals | `#0a2329`, `#092229` | `#f8fbfa`, `#d6e9e6` |
+| `btn`, `hov` | chips and buttons; the hovered row and the open session's row | `#0b2a30`, `#092229` | `#d6e9e6`, `#c3dedb` |
+| `line` | borders, dividers | `#17383c` | `#b9ccc5` |
+| `muted`, `text`, `strong` | quiet text, body text, names and titles | `#8fa8a1`, `#c2d3ce`, `#eef5f2` | `#344845`, `#22393b`, `#0b1f22` |
+| `accent`, `acc_ink` | focus, the current tab; ink on the accent (brass) | `#e3a72f`, `#07161a` | `#8a5a00`, `#f8fbfa` |
+| `working` | working, and only that (teal) | `#3dd6c6` | `#09605a` |
+| `blocked` | needs you, and only that (coral) | `#ff6a4a` | `#9e2e12` |
+| `done`, `err` | passed or finished; failed | `#7fd99a`, `#e0245e` | `#439261`, `#c4003c` |
+
+The day brass fill is too pale to read as text or carry an ink, so by day the accent is the file's `brassText`.
+The error red is not in the file; it is kept apart from the coral of needs you. Day's `done` is the file's green
+text lifted a third toward its green fill, because the file's own green and teal text colours are too close to
+tell apart by colour alone.
 
 `sky()` (checking, copy selection) and `violet()` (could not run) are derived
 from the theme, not roles of their own. Every built-in theme passes a contrast audit, and
@@ -176,7 +183,7 @@ Only one too small for the START box draws the cards.
 ## Desktop app
 
 The desktop app is drawn to the redesign handoff (`design_handoff_maitty_redesign`, "Maitty Desktop.dc.html",
-Midnight first). One model: **sessions live in the sidebar, an agent opens as a chat, a shell opens as a terminal,
+Maitty Night first). One model: **sessions live in the sidebar, an agent opens as a chat, a shell opens as a terminal,
 and a terminal for an agent exists only when you ask** ("Open terminal here"). Every session is still a shell that
 maittyd owns; Claude Code and Codex sessions have a chat view ([chat view plan](features/chat-gui/chat-view-plan.md)),
 every other agent and every plain shell stays terminal-only. The prototype is the reference for exact sizes, shadows
@@ -228,9 +235,9 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   `frosted` reads as Glass), **Mono Type** (Space Mono everywhere,
   greyscale, square corners), **Console** (IBM Plex Sans and JetBrains Mono on true black, a teal marker on the
   selected row) and **Retro Pixel** (Pixelify Sans, square corners, 3px borders, hard offset shadows, scanlines). Each
-  has a Midnight (dark) and a Day (light) side; layout, features and status colours never change. A style is data in
+  has a Maitty Night (dark) and a Maitty Day (light) side; layout, features and status colours never change. A style is data in
   `theme/windowStyles.ts` (palette overrides, fonts, the glass dials `--hk`/`--sk`); `withWindowStyle` lays it over the
-  theme in use. The palette replaces the colours of Midnight, Paper and Day; any other theme keeps its own colours and
+  theme in use. The palette replaces the colours of Maitty Night and Maitty Day (Glass has none of its own: it wears Maitty's); any other theme keeps its own colours and
   takes the style's fonts, dials and shapes. **Components are built once and read tokens, never the style.** Besides the
   base tokens, the shared pieces read the component tokens declared in `material.css`: `--c-sel-*` (every selected
   state: a sidebar row, a settings nav item, a chosen segment, a palette row), `--c-field-*` (dropdown buttons, pickers,
@@ -589,14 +596,14 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   hold still under Reduce motion and pause while the window is in the background. Text-only places (a hover
   card) show the Braille frames while a web spinner is picked.
 - **Process icons** are generic tiles, never a product's mark: `>_` shell, `✻` codex, `rs` cargo.
-- **Themes** are Midnight (default), Abyss, Paper and Day (a cool light theme), themes generated from six
+- **Themes** are **Maitty Night** and **Maitty Day** (the defaults, built from `crates/maitty-settings/maitty-tokens.json`, the same file the TUI's `night` and `day` read: sea-glass and brass; brass is the accent (`--accent` as a fill, `--accent-text` as text, darker by day), teal is only ever `--working`, coral is only ever needs-you (`--warn`)), themes generated from six
   inputs (`bg fg accent mag blue green` and a light flag) by Oklab mixing, and **High Contrast** (pure
   black and white, lines `#5A5A5A`/`#8A8A8A`, amber and red kept). Every theme's `--pane` is its opaque
   `--main`. The foreground, terminal text (`--fg2`), muted and dim text keep 4.5:1 on both `--term` and the
-  window `--bg`, and Midnight, Paper and Day also hold it for accent, amber, red, green and the ANSI blue,
+  window `--bg`, and Maitty Night and Maitty Day also hold it for the accent text, working, needs-you, red, done and the ANSI blue,
   magenta and green; the theme tests check this. Every light theme holds it too, for accent, amber, red,
   green, blue, magenta and all 15 ANSI text colours but black (the generated ones darken a published hue in
-  place until it passes). Paper and Day use a darker amber and red than the generated light themes. A pane's
+  place until it passes). Maitty Day uses the file's darker *Text colours so those hold on the light ground. A pane's
   xterm palette comes from the same tokens, and on a light theme xterm also lifts any 256-colour or truecolour
   foreground a program picks to 4.5:1 (`minimumContrastRatio`; dark themes leave them as asked). The
   scroll viewport behind the rows is painted `--term`, never xterm's black. **Settings › Appearance › Theme** has an Appearance switch (System, Dark or Light:

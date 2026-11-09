@@ -407,7 +407,7 @@ function caretStyle(cursor: CursorStyle): CSSProperties {
 }
 
 function PromptPrefix() {
-  return <><span style={{ color: 'var(--accent)', fontWeight: 600 }}>maitty</span><span style={{ color: 'var(--ansi-mag)' }}> (main)</span><span style={{ color: 'var(--dim)' }}> ❯ </span></>
+  return <><span style={{ color: 'var(--accent-text)', fontWeight: 600 }}>maitty</span><span style={{ color: 'var(--ansi-mag)' }}> (main)</span><span style={{ color: 'var(--dim)' }}> ❯ </span></>
 }
 
 /** The font picker: Geist Mono (saved as empty) and the monospace families installed here, each set in its own face. */

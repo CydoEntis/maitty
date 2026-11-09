@@ -161,7 +161,7 @@
   --color-dim: var(--dim);
   --color-pane-line: var(--pane-line);
   --color-line2: var(--line2);
-  --color-brand: var(--accent);
+  --color-brand: var(--accent-text);
   --shadow-pop: var(--sh-pop);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);

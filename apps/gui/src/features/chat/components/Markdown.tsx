@@ -33,7 +33,7 @@ function Inlines({ nodes }: { nodes: readonly Inline[] }): ReactNode {
         return <em key={index}><Inlines nodes={node.children} /></em>
       case 'link':
         return (
-          <button key={index} type="button" title={`${node.href} (click to copy)`} className="cursor-pointer border-0 bg-transparent p-0 text-left text-[var(--accent)] underline underline-offset-2 hover:opacity-80" onClick={() => { copyLink(node.href) }}>
+          <button key={index} type="button" title={`${node.href} (click to copy)`} className="cursor-pointer border-0 bg-transparent p-0 text-left text-[var(--accent-text)] underline underline-offset-2 hover:opacity-80" onClick={() => { copyLink(node.href) }}>
             <Inlines nodes={node.children} />
           </button>
         )

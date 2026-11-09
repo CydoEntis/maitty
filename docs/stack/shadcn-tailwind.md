@@ -68,9 +68,9 @@ and Geist Mono Variable for code, paths, shortcuts and diff numbers. Use the
 4-pixel spacing scale, 6–8-pixel control and row radii, 9–10-pixel card radii,
 12-pixel workspace radius and 14–16-pixel composer/dialog radius.
 
-Midnight is the default; Paper is the light theme. Sea glass teal marks focus,
-primary actions and working status. Amber is reserved for needs-you attention;
-red is reserved for errors and recovery. Use the shared CSS variables for every
+Maitty Night is the default dark theme and Maitty Day the default light one (sea-glass and brass,
+`crates/maitty-settings/maitty-tokens.json`). Brass is the accent; teal means only working; coral means only
+needs-you; red is reserved for errors and recovery. Use the shared CSS variables for every
 theme and keep shadcn primitives unchanged unless an accessibility or product
 need is documented.
 

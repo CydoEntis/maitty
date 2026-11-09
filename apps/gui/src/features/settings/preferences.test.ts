@@ -19,8 +19,8 @@ const DEFAULTS: SettingsPreferences = {
   terminalFontWeightBold: 700,
   startFolder: '',
   themeMode: 'system',
-  darkTheme: 'Midnight',
-  lightTheme: 'Paper',
+  darkTheme: 'Maitty Night',
+  lightTheme: 'Maitty Day',
   cursorStyle: 'block',
   scrollback: 10000, scrollSpeed: 1,
   
@@ -184,20 +184,20 @@ describe('settings preferences', () => {
   it('carries over the theme chosen before the theme browser', () => {
     localStorage.setItem('maitty.gui.theme.v1', 'day')
 
-    expect(readSettingsPreferences()).toMatchObject({ themeMode: 'light', lightTheme: 'Paper', darkTheme: 'Midnight' })
+    expect(readSettingsPreferences()).toMatchObject({ themeMode: 'light', lightTheme: 'Maitty Day', darkTheme: 'Maitty Night' })
   })
 
   it('moves a single saved theme into its dark or light slot and keeps using it', () => {
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ theme: 'Nord' }))
-    expect(readSettingsPreferences()).toMatchObject({ themeMode: 'dark', darkTheme: 'Nord', lightTheme: 'Paper' })
+    expect(readSettingsPreferences()).toMatchObject({ themeMode: 'dark', darkTheme: 'Nord', lightTheme: 'Maitty Day' })
 
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ theme: 'Gruvbox Light' }))
-    expect(readSettingsPreferences()).toMatchObject({ themeMode: 'light', lightTheme: 'Gruvbox Light', darkTheme: 'Midnight' })
+    expect(readSettingsPreferences()).toMatchObject({ themeMode: 'light', lightTheme: 'Gruvbox Light', darkTheme: 'Maitty Night' })
   })
 
   it('keeps each slot to its own kind of theme and the mode to its three values', () => {
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ themeMode: 'dark', darkTheme: 'Paper', lightTheme: 'Nord' }))
-    expect(readSettingsPreferences()).toMatchObject({ themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ themeMode: 'dark', darkTheme: 'Maitty Day', lightTheme: 'Nord' }))
+    expect(readSettingsPreferences()).toMatchObject({ themeMode: 'dark', darkTheme: 'Maitty Night', lightTheme: 'Maitty Day' })
 
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ themeMode: 'auto', darkTheme: 'High Contrast' }))
     expect(readSettingsPreferences()).toMatchObject({ themeMode: 'system', darkTheme: 'High Contrast' })

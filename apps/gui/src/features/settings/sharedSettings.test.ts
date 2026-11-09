@@ -9,7 +9,7 @@ const SHARED: SharedSettings = {
   new_session_view: 'terminal',
   sidebar_side: 'right',
   theme_dark: 'Nord',
-  theme_light: 'Day',
+  theme_light: 'Maitty Day',
   appearance: 'light',
   spinner: [...framesOfTuiSpinner('snake')],
   start_dir: '/srv',
@@ -21,7 +21,7 @@ describe('the settings shared with the terminal app', () => {
   it('lays what the daemon says over the preferences', () => {
     const next = applyShared({ ...readSettingsPreferences(), themeMode: 'dark' }, SHARED)
     expect(next).toMatchObject({
-      defaultAgent: 'codex', newSessionView: 'terminal', sidebarSide: 'right', darkTheme: 'Nord', lightTheme: 'Day',
+      defaultAgent: 'codex', newSessionView: 'terminal', sidebarSide: 'right', darkTheme: 'Nord', lightTheme: 'Maitty Day',
       themeMode: 'light', spinner: 'snake', startFolder: '/srv', reduceMotion: true, style: 'glass',
     })
   })
