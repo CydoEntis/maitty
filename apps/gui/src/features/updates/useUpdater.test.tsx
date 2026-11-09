@@ -17,6 +17,39 @@ beforeEach(() => {
 })
 
 describe('updater', () => {
+  it('finds a release published after launch by checking again every hour', async () => {
+    vi.useFakeTimers()
+    try {
+      check.mockResolvedValueOnce(null).mockResolvedValue(newer())
+      const { result } = renderHook(() => useUpdater())
+      await act(async () => { await Promise.resolve() })
+      expect(result.current.state.status).toBe('current')
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(60 * 60 * 1000) })
+      expect(result.current.state.status).toBe('available')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not replace a downloaded update when the hour passes', async () => {
+    vi.useFakeTimers()
+    try {
+      check.mockResolvedValue(newer())
+      const { result } = renderHook(() => useUpdater())
+      await act(async () => { await Promise.resolve() })
+      act(() => { result.current.download() })
+      await act(async () => { await Promise.resolve() })
+      expect(result.current.state.status).toBe('ready')
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(60 * 60 * 1000) })
+      expect(check).toHaveBeenCalledOnce()
+      expect(result.current.state.status).toBe('ready')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('reports the app is current when no newer release exists', async () => {
     check.mockResolvedValue(null)
     const { result } = renderHook(() => useUpdater())

@@ -16,7 +16,13 @@ function messageOf(error: unknown): string {
   return typeof error === 'string' ? error : 'Could not reach the update server.'
 }
 
-/** Checks for a newer release once on launch, and again when asked. Nothing is installed until `restart` is called. */
+/** A running app is looked at again this often, so a release published after launch is still found. */
+const MINUTES_PER_HOUR = 60
+const SECONDS_PER_MINUTE = 60
+const MS_PER_SECOND = 1000
+const RECHECK_MS = MINUTES_PER_HOUR * SECONDS_PER_MINUTE * MS_PER_SECOND
+
+/** Checks for a newer release on launch, hourly after that, and again when asked. Nothing is installed until `restart` is called. */
 export function useUpdater() {
   const [state, setState] = useState<UpdaterState>({ status: 'idle' })
   const handle = useRef<UpdateHandle | null>(null)
@@ -31,6 +37,17 @@ export function useUpdater() {
   }, [])
 
   useEffect(() => { settle(checkForUpdate()) }, [settle])
+
+  // Never while an update is being fetched or waits to be installed: a new check would replace its handle.
+  const status = useRef(state.status)
+  useEffect(() => { status.current = state.status })
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (status.current === 'downloading' || status.current === 'ready') return
+      settle(checkForUpdate())
+    }, RECHECK_MS)
+    return () => { window.clearInterval(timer) }
+  }, [settle])
 
   const check = useCallback(() => {
     // Checking again would replace the handle of an update being fetched, or already fetched.

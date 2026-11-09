@@ -726,6 +726,18 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     expect(daemon.restartMismatchedDaemon).not.toHaveBeenCalled()
   })
 
+  it('asks to update the app, not restart the service, when the service is newer than the app', async () => {
+    daemon.loadConversations.mockRejectedValue('connecting to the local daemon: the running maitty service uses protocol v77, while this GUI needs v76')
+    renderDesktopApp()
+
+    const card = await screen.findByRole('region', { name: 'Update Maitty to reconnect' })
+    expect(within(card).getByText(/The service is on v77, but this app only speaks v76\./)).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'Check again' })).toBeEnabled()
+    expect(screen.queryByRole('region', { name: 'Restart Maitty to finish updating' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Service in use' })).not.toBeInTheDocument()
+    expect(daemon.restartMismatchedDaemon).not.toHaveBeenCalled()
+  })
+
   it('offers to restart an older daemon that owns saved sessions, says what survives, and asks twice', async () => {
     const user = userEvent.setup()
     daemon.loadConversations.mockRejectedValue('connecting to the local daemon: the running maitty service uses protocol v49, while this GUI needs v62')

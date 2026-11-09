@@ -73,6 +73,7 @@ import { indexRemoteFiles, listRemoteFolder } from '@/api/fileGets'
 import { useFileGets } from '@/features/terminal/useFileGets'
 import { useFileSends } from '@/features/terminal/useFileSends'
 import { useImagePaste } from '@/features/terminal/useImagePaste'
+import { appBehindStep } from '@/features/updates/appBehind'
 import { updaterSummary, useUpdater } from '@/features/updates/useUpdater'
 import { sendNativeNotice } from '@/features/notifications/native'
 import { chooseProjectFolder } from '@/api/folderPicker'
@@ -111,7 +112,7 @@ import { RenameDialog, RenameMachineDialog } from './components/RenameDialog'
 import { readSplitShells, withSplitShell, writeSplitShells } from '@/data/splitShells'
 import { readMachineNicknames, withNickname, writeMachineNicknames } from '@/data/machineNicknames'
 import { Sidebar, type OpenSubagent } from './components/Sidebar'
-import { EmptyState, Toast, type RestartOffer } from './components/states'
+import { EmptyState, Toast, type AppBehindOffer, type RestartOffer } from './components/states'
 import { ServiceStatus } from './components/ServiceStatus'
 import { useSharedSettings } from '@/features/settings/sharedSettings'
 import {
@@ -363,6 +364,8 @@ export function DesktopApp() {
   const home = homeQuery.data ?? ''
   const online = !sessionsQuery.isError
   const mismatch = sessionsQuery.isError ? daemonProtocolMismatch(sessionsQuery.error) : null
+  // A service newer than this app cannot be restarted into agreement; only updating the app helps.
+  const serviceNewer = mismatch !== null && mismatch.daemonProtocol > mismatch.guiProtocol
   const restartStatusQuery = useQuery({ queryKey: ['daemon-restart-status', mismatch?.daemonProtocol], queryFn: loadDaemonRestartStatus, enabled: Boolean(mismatch), retry: false })
 
   // Other machines (ADR 0007): the host holds their connections and tells the window each one's state
@@ -1293,20 +1296,25 @@ export function DesktopApp() {
   const restartNow = useCallback(() => { restartInto(false) }, [restartInto])
   const installWhenIdle = useCallback(() => { restartInto(true) }, [restartInto])
 
-  // With the setting on, a new release is fetched as soon as it is found. Installing still waits for a restart.
+  // The app launched before the release that matches the service may have been published, so look again.
+  const checkForUpdateRef = useRef(updater.check)
+  useEffect(() => { checkForUpdateRef.current = updater.check })
+  useEffect(() => { if (serviceNewer) checkForUpdateRef.current() }, [serviceNewer])
+
+  // With the setting on, or while the app is behind the service, a new release is fetched as soon as it is found. Installing still waits for a restart.
   const updateStatus = updater.state.status
   const updateOffered = updater.state.status === 'available' ? updater.state.version : null
   const downloadUpdate = updater.download
   useEffect(() => {
-    if (!preferences.autoDownloadUpdates || updateStatus !== 'available' || updateOffered === skippedVersion) return
+    if (!(preferences.autoDownloadUpdates || serviceNewer) || updateStatus !== 'available' || updateOffered === skippedVersion) return
     const timer = window.setTimeout(downloadUpdate, 0)
     return () => { window.clearTimeout(timer) }
-  }, [preferences.autoDownloadUpdates, updateStatus, updateOffered, skippedVersion, downloadUpdate])
+  }, [preferences.autoDownloadUpdates, serviceNewer, updateStatus, updateOffered, skippedVersion, downloadUpdate])
 
   // With the setting on, an idle app fetches and installs an update by itself (docs/stack/tauri-updater.md).
   const busyCount = sessions.filter((session) => session.status === 'working' || session.status === 'needs').length
   useIdleUpdate({
-    enabled: preferences.restartWhenIdle && online && !restarting,
+    enabled: preferences.restartWhenIdle && (online || serviceNewer) && !restarting,
     agentBusy: busyCount > 0,
     status: updateStatus,
     offeredIsSkipped: updateOffered !== null && updateOffered === skippedVersion,
@@ -1874,7 +1882,7 @@ export function DesktopApp() {
     return items
   }, [paletteOpen, platform, layout, newSession, newTerminal, focusedMachineNumber, toggleAgentTerminal, split, runShortcut, startAgent, sessions, projectOf, focusedSession, showSessionById, preferences.sidebarSide, inspectRefusal, heads, online, newSessionOn, home])
 
-  const restartOffer: RestartOffer | null = mismatch
+  const restartOffer: RestartOffer | null = mismatch && !serviceNewer
     ? {
         label: restartStatusQuery.isPending ? 'Checking service…' : restartStatusQuery.isError ? 'Restart check failed' : restartStatusQuery.data.canRestart ? (restartStatusQuery.data.sessionCount > 0 ? `Restart and restore ${String(restartStatusQuery.data.sessionCount)} session${restartStatusQuery.data.sessionCount === 1 ? '' : 's'}` : 'Restart service') : 'Service in use',
         canRestart: Boolean(restartStatusQuery.data?.canRestart),
@@ -1895,9 +1903,23 @@ export function DesktopApp() {
         },
       }
     : null
+  const appBehindAction = appBehindStep(updater.state)
+  const appBehindOffer: AppBehindOffer | null = mismatch && serviceNewer
+    ? {
+        label: appBehindAction.label,
+        disabled: appBehindAction.action === null,
+        onPress: () => {
+          if (appBehindAction.action === 'download') updater.download()
+          else if (appBehindAction.action === 'install') restartNow()
+          else if (appBehindAction.action === 'check') updater.check()
+        },
+        serviceProtocol: mismatch.daemonProtocol,
+        appProtocol: mismatch.guiProtocol,
+      }
+    : null
   const serviceState = serviceStateOf({ online, failures, mismatch: Boolean(mismatch) })
   const serviceFooterText = serviceState === 'down' ? 'Service stopped' : serviceState === 'update' ? 'Restart needed' : undefined
-  const offlineDetail = mismatch ? `${daemonConnectionError(sessionsQuery.error)}${olderServiceNote(restartStatusQuery.data)}` : null
+  const offlineDetail = mismatch && !serviceNewer ? `${daemonConnectionError(sessionsQuery.error)}${olderServiceNote(restartStatusQuery.data)}` : null
 
   const tab = activeArrangement(layout)
   const startFolderLabel = preferences.startFolder.trim() ? tildePath(resolveStartFolder(preferences.startFolder, home), home) : '~'
@@ -2089,7 +2111,7 @@ export function DesktopApp() {
                   onResume={resumeInterrupted}
                   onDismiss={(id) => { setDismissedRestores((current) => new Set(current).add(id)) }}
                 />
-                <ServiceStatus online={online} failures={failures} mismatch={Boolean(mismatch)} retryAt={retryAt} detail={offlineDetail ?? (sessionsQuery.isError ? daemonConnectionError(sessionsQuery.error) : null)} restart={restartOffer} sessions={sessions.length} onRetry={() => { void refetchSessions() }} onOpenLog={() => { openDaemonLog().catch((error: unknown) => { toast.error(errorMessage(error, 'Could not open the log')) }) }} />
+                <ServiceStatus online={online} failures={failures} mismatch={Boolean(mismatch)} retryAt={retryAt} detail={offlineDetail ?? (sessionsQuery.isError ? daemonConnectionError(sessionsQuery.error) : null)} restart={restartOffer} appBehind={appBehindOffer} sessions={sessions.length} onRetry={() => { void refetchSessions() }} onOpenLog={() => { openDaemonLog().catch((error: unknown) => { toast.error(errorMessage(error, 'Could not open the log')) }) }} />
                 {tab ? (
                   <div className={`mx-panes${tab.panes.length > 1 && tab.max === null ? ' is-split' : ''}`}>
                     {paneColumns(tab, narrow).map((column, columnIndex, columns) => (

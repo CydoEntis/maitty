@@ -9,8 +9,10 @@
 
 - Install an update only on a click, or when **Install updates when idle** is on (the default) and the
   app is idle: no agent working or waiting on an answer, no keyboard input for 5 minutes, and the window
-  unfocused or minimized (`features/updates/idle.ts`). The GUI checks once on launch and when asked in
-  Settings › General › Updates; it offers the version and what changed, and the user chooses.
+  unfocused or minimized (`features/updates/idle.ts`). The GUI checks on launch, hourly after that (never while an update is downloading or ready),
+  and when asked in Settings › General › Updates; it offers the version and what changed, and the user chooses.
+  When the service is newer than the app, the app cannot reconnect: the "Update Maitty to reconnect" card
+  fetches the update itself, and idle installs stay on even though the service is unreachable.
   After the restart a toast and a What's new dialog say which version this is.
 - Verify every update with the project's updater key. The public key is in `tauri.conf.json`; the
   private key lives only in the `TAURI_SIGNING_PRIVATE_KEY` repository secret and the owner's
