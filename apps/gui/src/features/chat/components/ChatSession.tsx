@@ -30,9 +30,6 @@ const END_OF_TURN_READ_MS = 600
 /** How long the working line stays after a turn ends with no reply read yet, so the pane is never blank between the two. */
 const SETTLE_MS = 650
 
-/** The id of a held first message in the composer's list of waiting messages; real ones carry operation numbers. */
-const HELD_MESSAGE_ID = -1
-
 /** A row not yet measured is drawn as if it were this tall, which a message or a card usually is. */
 const ESTIMATED_ROW_PX = 72
 
@@ -139,8 +136,12 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   const composer = useChatComposer({ link, agent, feed, online, refresh, answersPrompt, paneWorking, ...(typeInto ? { typeInto } : {}) })
   const { sendText, setDraft: setComposerDraft, ready, sending, echo } = composer
   // A message just sent shows at once, with the agent taken to be at work on it, until the history has it.
-  const echoText = echo !== null && countUserMessages(events, echo.text) <= echo.baseline ? echo.text : null
-  const echoThinking = echo !== null && !echo.quiet
+  // A first message typed while the agent started is held, and shows exactly as the starting chat showed it (the bubble, then the
+  // working line) until it is sent and the history has it, so the chat never says "No messages yet" in between.
+  const held = useHeldFirstMessage(sessionId)
+  const sentText = echo !== null && countUserMessages(events, echo.text) <= echo.baseline ? echo.text : null
+  const echoText = sentText ?? held
+  const echoThinking = sentText === null ? held !== null : echo !== null && !echo.quiet
   // What the history says without the working line: whether the agent has answered what was last asked.
   const bareRows = useMemo(() => buildRows(events, false, root, echoText, false), [events, root, echoText])
   const lastKind = bareRows.at(-1)?.kind
@@ -154,7 +155,6 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   if (feed.loaded && known === null) setKnown(new Set(rows.map(rowKey)))
   const pending = useMemo(() => allRows.find((row): row is Extract<ChatRow, { kind: 'approval' }> => isPendingApproval(row))?.event ?? null, [allRows])
   // A draft typed while the agent started comes over once, and a message sent then goes out as soon as the agent takes input.
-  const held = useHeldFirstMessage(sessionId)
   useEffect(() => {
     if (sessionId === undefined) return
     const carried = takeCarriedDraft(sessionId)
@@ -165,8 +165,6 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
     releaseFirstMessage(sessionId)
     void sendText(held).then((delivered) => { if (!delivered) setComposerDraft(held) })
   }, [sessionId, held, ready, sending, sendText, setComposerDraft])
-  // The held message shows as waiting until it goes, like a message queued behind a running turn.
-  const shownComposer = useMemo(() => (held === null ? composer : { ...composer, queue: [...composer.queue, { id: HELD_MESSAGE_ID, text: held }], removeQueued: (id: number) => { if (id === HELD_MESSAGE_ID) { if (sessionId !== undefined) releaseFirstMessage(sessionId) } else composer.removeQueued(id) } }), [composer, held, sessionId])
   // The daemon does not report how a session was started, so the window remembers the sessions it started with full access.
   const fullAccess = useMemo(() => readConversationPermissions()[String(link.conversation)] === 'full-access', [link.conversation])
 
@@ -247,7 +245,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
       )}
       <Composer
         agent={agent}
-        composer={shownComposer}
+        composer={composer}
         conversation={link.conversation}
         question={question}
         facts={{ mode: modeLabel(feed.meta?.mode ?? null), modeDanger: feed.meta?.mode === BYPASS_MODE, subagents: subagentCount, folder, branch, model: feed.meta?.model ?? null, onOpenFolder }}

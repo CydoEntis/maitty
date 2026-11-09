@@ -217,6 +217,8 @@ function Expanded(props: SidebarProps) {
           onCancelRename={() => { props.onRenameSession(null) }}
           onContextMenu={(event) => { openMenu(event, rowTitle(session), sessionMenu(session)) }}
         />
+        {/* A sibling of the row, not inside it (a button cannot hold a button): it shows on hover and focus. */}
+        <button type="button" className="mx-row-close" aria-label={`${isShell(session) ? 'Close' : 'Stop'} ${rowTitle(session)}`} title={isShell(session) ? 'Close shell' : 'Stop session'} disabled={!props.online} onClick={() => { props.onEndSession(session.id) }}><Icon name="close" size={12} /></button>
         {subagents.length > 0 && !selected && <SubagentPeek process={session.process} subagents={subagents} />}
         {subagents.length > 0 && selected && (
           <SubagentList
@@ -358,13 +360,13 @@ function MachineSection({ draft, progress, group, open, byProject, canStart, onT
 
 /**
  * The chat that has not been sent yet: a copy of a session row (its icon, its name line and its project line) drawn as
- * placeholders with three dots bouncing in the icon, last in its machine. The real row takes this place when the chat starts.
+ * placeholders with a softly pulsing icon square, last in its machine. The real row takes this place when the chat starts.
  */
 function DraftRow() {
   return (
     <div className="mx-row-wrap mx-draft-wrap" role="status" aria-label="New chat, waiting for the first message" data-flip="draft">
       <div className="mx-row mx-draft">
-        <span className="mx-row-icon"><span className="mx-draft-tile"><span className="mx-draft-dots" aria-hidden="true"><i /><i /><i /></span></span></span>
+        <span className="mx-row-icon"><span className="mx-draft-tile" /></span>
         <span className="mx-row-text" aria-hidden="true">
           <span className="mx-draft-line is-name" />
           <span className="mx-draft-line is-sub" />

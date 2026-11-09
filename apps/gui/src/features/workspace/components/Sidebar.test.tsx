@@ -265,6 +265,23 @@ describe('a machine heading', () => {
   })
 })
 
+describe('closing a session from its row', () => {
+  it('has a close button on every row that asks to end that session, and a shell says Close', async () => {
+    const user = userEvent.setup()
+    const onEndSession = vi.fn()
+    show([session(1, { agent: 'claude', named: true, title: 'Growth' }), session(2, { cwd: '/home/me/a', folder: '/home/me/a' })], { onEndSession })
+
+    await user.click(screen.getByRole('button', { name: 'Stop Growth' }))
+    expect(onEndSession).toHaveBeenLastCalledWith('t1')
+    expect(screen.getByRole('button', { name: /^Close / })).toBeTruthy()
+  })
+
+  it('is off while the daemon is not reachable', () => {
+    show([session(1, { agent: 'claude', named: true, title: 'Growth' })], { online: false })
+    expect(screen.getByRole('button', { name: 'Stop Growth' })).toBeDisabled()
+  })
+})
+
 describe('a draft chat', () => {
   it('is listed last on its machine while it waits for a first message, as a twin of a session row, and the empty note steps aside', () => {
     show([], { draft: { machine: 0 } })

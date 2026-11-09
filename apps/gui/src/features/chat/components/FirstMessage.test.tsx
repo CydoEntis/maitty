@@ -57,13 +57,15 @@ describe('a message typed while the agent was starting', () => {
     expect(heldFirstMessage('s1')).toBeNull()
   })
 
-  it('waits, shown as waiting, while the agent is busy, and goes when it is ready', async () => {
+  it('waits, shown as your message with the agent at work on it, while the agent is busy, and goes when it is ready', async () => {
     holdFirstMessage('s1', 'hello there')
     const { daemon, typeInto } = open('Working')
     await settle()
 
     expect(typeInto).not.toHaveBeenCalled()
-    expect(screen.getByRole('list', { name: 'Queued messages' })).toHaveTextContent('hello there')
+    // The same bubble and working line the starting chat showed, never the empty-chat note.
+    expect(screen.getByLabelText('Sending')).toHaveTextContent('hello there')
+    expect(screen.queryByText(/No messages yet/)).not.toBeInTheDocument()
 
     daemon.status = 'Idle'
     await settle(ACTIVE_POLL_MS + 1)
