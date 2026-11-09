@@ -919,7 +919,7 @@ fn grouped_by_folder_each_folder_has_a_bar_down_its_side_and_a_line_before_the_n
     assert_eq!(divider_rows(&rows), folders - 1, "a line between folders, none before the first:
 {}", rows.join("
 "));
-    assert!(rows.iter().any(|r| side_of(r).contains('▎')), "a folder's bar");
+    assert!(rows.iter().any(|r| side_of(r).contains('▏')), "a folder's bar");
 }
 
 #[test]

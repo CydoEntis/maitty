@@ -403,7 +403,7 @@ fn folder_colour(rows: &[SideRow], ri: usize, t: &Theme) -> Color {
 /// The bar down the left of a folder's heading and sessions, `h` rows from `y`.
 fn put_folder_bar(buf: &mut Buffer, r: Rect, y: u16, h: u16, colour: Color, t: &Theme) {
     for dy in 0..h {
-        put(buf, r.x + 1, y + dy, &[seg("▎", Style::default().fg(colour).bg(t.bg))], r.x + 2);
+        put(buf, r.x + 1, y + dy, &[seg("▏", Style::default().fg(colour).bg(t.bg))], r.x + 2);
     }
 }
 
@@ -814,7 +814,7 @@ fn draw_session(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, row: &SideRow,
     }
     if !row.branch.is_empty() {
         let lead = if second.is_empty() { "" } else { " " };
-        second.push(seg(format!("{lead}{}", row.branch), base.fg(t.violet())));
+        second.push(seg(format!("{lead}{}", row.branch), base.fg(t.muted).add_modifier(Modifier::DIM)));
     }
     put_cut(buf, r.x + NAME_X, y + 1, second, end);
     if let Some(term) = row.term {
