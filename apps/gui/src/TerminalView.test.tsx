@@ -157,6 +157,48 @@ describe('terminal view', () => {
     vi.restoreAllMocks()
   })
 
+  it('writes nothing while it is paused and the whole screen once it shows', async () => {
+    const view = render(renderPaused(true))
+    await waitFor(() => { expect(terminalState.onChunk).toBeDefined() })
+    await waitFor(() => { expect(resizeTerminal).toHaveBeenCalledWith(binding, 80, 24) })
+    act(() => { terminalState.onChunk?.(chunk(4, 'world')) })
+    await new Promise((resolve) => { window.setTimeout(resolve, 20) })
+    expect(written()).toBe('')
+
+    view.rerender(renderPaused(false))
+
+    await waitFor(() => { expect(written()).toBe(`${RESET}hello world`) })
+    act(() => { terminalState.onChunk?.(chunk(5, '!')) })
+    await waitFor(() => { expect(written()).toBe(`${RESET}hello world!`) })
+  })
+
+  it('keeps what it showed and adds what came while a chat covered it', async () => {
+    const view = render(renderPaused(false))
+    await waitFor(() => { expect(written()).toBe('hello ') })
+
+    view.rerender(renderPaused(true))
+    act(() => { terminalState.onChunk?.(chunk(4, 'world')) })
+    await new Promise((resolve) => { window.setTimeout(resolve, 20) })
+    expect(written()).toBe('hello ')
+
+    view.rerender(renderPaused(false))
+
+    await waitFor(() => { expect(written()).toBe(`hello ${RESET}hello world`) })
+  })
+
+  it('asks the host for the screen when the kept one is gone', async () => {
+    const view = render(renderPaused(false))
+    await waitFor(() => { expect(written()).toBe('hello ') })
+
+    view.rerender(renderPaused(true))
+    act(() => { terminalState.onChunk?.(chunk(4, 'world')) })
+    clearScreens()
+    loadTerminalHistory.mockResolvedValue({ seq: 4, bytes: bytes('all of it') })
+    view.rerender(renderPaused(false))
+
+    await waitFor(() => { expect(written()).toBe(`hello ${RESET}all of it`) })
+  })
+
   it('writes the history, then live output once, and sends typing to the exact session', async () => {
     renderTerminal()
 
@@ -552,4 +594,8 @@ describe('terminal view', () => {
 
 function renderTerminal(selected = conversation, fontSize = 12) {
   return render(<TerminalView conversation={selected} desktop fontSize={fontSize} />)
+}
+
+function renderPaused(paused: boolean) {
+  return <TerminalView conversation={conversation} desktop fontSize={12} paused={paused} />
 }

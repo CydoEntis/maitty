@@ -132,6 +132,8 @@ type TerminalViewProps = {
   ended?: boolean
   /** Moves keyboard focus into the terminal when it becomes true. */
   focused?: boolean
+  /** Nothing shows the terminal (a chat is over it): output is kept and not drawn until it shows again. */
+  paused?: boolean
   /** Told what the user types here, so a window can mirror it to other panes. */
   onInput?: (data: string | Uint8Array) => void
   /** A file path in the output was Cmd/Ctrl-clicked. */
@@ -164,12 +166,12 @@ const RESET_SCREEN = new TextEncoder().encode('\x1bc')
 /** What Shift+Enter sends: Alt+Enter, which Claude Code and Codex take as a new line in their prompt. */
 const NEW_LINE_KEYS = '\x1b\r'
 
-export function TerminalView({ conversation, desktop, fontSize, look = {}, label, inputDisabled = false, ended = false, focused = false, onInput, onOpenPath, onHandle, onPasteImage }: TerminalViewProps) {
+export function TerminalView({ conversation, desktop, fontSize, look = {}, label, inputDisabled = false, ended = false, focused = false, paused = false, onInput, onOpenPath, onHandle, onPasteImage }: TerminalViewProps) {
   if (!desktop) return null
   if (!isDesktop()) return <div className="panel-empty"><TerminalSquare size={18} /><h2>Native terminal is not available</h2><p>Open Maitty Desktop to use the daemon-owned terminal.</p></div>
   if (!hasNativeTerminal(conversation)) return <NativeHandoffView conversation={conversation} />
 
-  return <ConnectedTerminalView conversation={conversation} fontSize={fontSize} look={look} label={label ?? `Native ${conversation.provider} terminal`} inputDisabled={inputDisabled || ended} ended={ended} focused={focused} onInput={onInput} onOpenPath={onOpenPath} onHandle={onHandle} onPasteImage={onPasteImage} />
+  return <ConnectedTerminalView conversation={conversation} fontSize={fontSize} look={look} label={label ?? `Native ${conversation.provider} terminal`} inputDisabled={inputDisabled || ended} ended={ended} focused={focused} paused={paused} onInput={onInput} onOpenPath={onOpenPath} onHandle={onHandle} onPasteImage={onPasteImage} />
 }
 
 function NativeHandoffView({ conversation }: { conversation: Conversation }) {
@@ -188,9 +190,9 @@ function NativeHandoffView({ conversation }: { conversation: Conversation }) {
   </div>
 }
 
-type ConnectedProps = { conversation: NativeConversation; fontSize: number; look: TerminalLook; label: string; inputDisabled: boolean; ended: boolean; focused: boolean; onInput: ((data: string | Uint8Array) => void) | undefined; onOpenPath: ((path: string, line?: number) => void) | undefined; onHandle: ((handle: TerminalHandle | null) => void) | undefined; onPasteImage: ((image: File) => void) | undefined }
+type ConnectedProps = { conversation: NativeConversation; fontSize: number; look: TerminalLook; label: string; inputDisabled: boolean; ended: boolean; focused: boolean; paused: boolean; onInput: ((data: string | Uint8Array) => void) | undefined; onOpenPath: ((path: string, line?: number) => void) | undefined; onHandle: ((handle: TerminalHandle | null) => void) | undefined; onPasteImage: ((image: File) => void) | undefined }
 
-function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisabled, ended, focused, onInput, onOpenPath, onHandle, onPasteImage }: ConnectedProps) {
+function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisabled, ended, focused, paused, onInput, onOpenPath, onHandle, onPasteImage }: ConnectedProps) {
   const term = conversation.nativePane
   // Each machine numbers its own panes: the stream and its history are kept by machine and pane.
   const machine = conversation.machine ?? 0
@@ -218,6 +220,8 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     onPasteImageRef.current = onPasteImage
   })
   const refitTerminal = useRef<(() => void) | null>(null)
+  const pausedRef = useRef(paused)
+  const showMissed = useRef<(() => void) | null>(null)
   const [connecting, setConnecting] = useState(true)
   const [catchUpMs, setCatchUpMs] = useState<number | null>(null)
   const [loadError, setLoadError] = useState(false)
@@ -271,6 +275,8 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     let replayWrites = 0
     let replayWait = 0
     let lastFlushAt = 0
+    // Output arrived while the terminal was paused: the emulator is behind the kept screen.
+    let missed = false
     const screen = screenKey(machine, term, binding.generation)
 
     const writeQueued = () => {
@@ -312,6 +318,11 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
       writeQueued()
     }
     const enqueue = (...parts: Uint8Array[]) => {
+      // A terminal nobody can see parses and draws nothing: the kept screen holds the output until it shows.
+      if (pausedRef.current) {
+        missed = true
+        return
+      }
       queued.push(...parts)
       // A hidden window gets no animation frames, so output would pile up and then land in one freeze.
       if (document.hidden) {
@@ -323,6 +334,10 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
 
     // A screen that replaces what the pane shows: history, a replay, the kept screen.
     const enqueueReplay = (...parts: Uint8Array[]) => {
+      if (pausedRef.current) {
+        missed = true
+        return
+      }
       queuedReplay = true
       enqueue(...parts)
     }
@@ -547,7 +562,37 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
           }, REPLAY_WAIT_MS)
         }
         caughtUp = true
-        for (const chunk of pending) apply(chunk)
+        for (const chunk of pending.splice(0)) apply(chunk)
+        showMissed.current = () => {
+          if (!missed) return
+          missed = false
+          const latest = cachedScreen(screen)
+          if (latest && latest.seq === lastSeq) {
+            queued = []
+            enqueueReplay(RESET_SCREEN, latest.bytes)
+            return
+          }
+          // The kept screen filled up or was dropped, so the host's history is the screen to show.
+          caughtUp = false
+          loadTerminalHistory(term, ...machineArg).then((held) => {
+            if (!stillMounted()) return
+            if (held) {
+              queued = []
+              lastSeq = held.seq
+              replaceScreen(screen, held.seq, held.bytes)
+              enqueueReplay(RESET_SCREEN, held.bytes)
+            } else {
+              // The host asked the daemon for a replay, whose numbering starts over.
+              lastSeq = 0
+            }
+          }, () => {
+            if (stillMounted()) setLoadError(true)
+          }).finally(() => {
+            caughtUp = true
+            for (const chunk of pending.splice(0)) apply(chunk)
+          })
+        }
+        if (!pausedRef.current) showMissed.current()
         // Without history, the replay is still on its way over the stream: attaching has not finished.
         if (history || fetched) setConnecting(false)
 
@@ -607,6 +652,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
       window.clearTimeout(flushWait)
       window.clearTimeout(replayWait)
       refitTerminal.current = null
+      showMissed.current = null
       stopListening?.()
       resizeObserver?.disconnect()
       disposeInput?.()
@@ -653,6 +699,11 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     if (emulator.options.minimumContrastRatio !== minimumContrast) emulator.options.minimumContrastRatio = minimumContrast
     setTransparent(seeThrough)
   }, [look])
+
+  useEffect(() => {
+    pausedRef.current = paused
+    if (!paused) showMissed.current?.()
+  }, [paused])
 
   useEffect(() => {
     inputDisabledRef.current = inputDisabled

@@ -1994,6 +1994,7 @@ export function DesktopApp() {
             inputDisabled={!online}
             ended={session.ended}
             focused={focused && !modalOpen && chat.view === 'terminal'}
+            paused={chat.view === 'chat'}
             onInput={(data) => { mirrorInput(session.id, data) }}
             onOpenPath={(path, line) => { openPath(session, path, line) }}
             onPasteImage={(image) => { pasteImage(session.id, image) }}
