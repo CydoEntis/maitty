@@ -267,9 +267,9 @@
 :root[data-style="glass"] .mx-app { background: var(--bg); isolation: isolate; }
 :root[data-style="glass"]:not([data-gpu="software"]) .mx-app {
   background:
-    radial-gradient(1000px 600px at 15% 0%, color-mix(in oklab, var(--accent) var(--glow-accent), transparent), transparent 70%),
-    radial-gradient(900px 560px at 100% 100%, color-mix(in oklab, var(--ansi-mag) var(--glow-mag), transparent), transparent 70%),
-    radial-gradient(700px 480px at 52% 48%, color-mix(in oklab, var(--ansi-blue) var(--glow-mag), transparent), transparent 70%),
+    radial-gradient(1000px 600px at 15% 0%, color-mix(in oklab, var(--working) var(--glow-accent), transparent), transparent 70%),
+    radial-gradient(900px 560px at 100% 100%, color-mix(in oklab, var(--ansi-blue) var(--glow-mag), transparent), transparent 70%),
+    radial-gradient(700px 480px at 52% 48%, color-mix(in oklab, var(--working) var(--glow-mag), transparent), transparent 70%),
     var(--bg);
 }
 :root[data-style="glass"]:not([data-gpu="software"]) .mx-app .mx-window { background: transparent; }

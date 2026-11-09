@@ -744,5 +744,10 @@ button.mx-sb-item:hover { background: rgba(var(--hl), calc(.07 * var(--hk))); co
 .mx-caret.is-blinking { animation: mx-caret-blink 1.06s steps(1, end) infinite; }
 @keyframes mx-caret-blink { 50% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .mx-caret.is-blinking { animation: none; } }
-.mx-style-tile { width: 30px; height: 24px; flex: none; display: flex; align-items: flex-end; justify-content: flex-end; padding: 4px; border: 1px solid; border-radius: 6px; }
-.mx-style-tile i { width: 10px; height: 4px; border-radius: 2px; }
+/* A style's tile is a small window in its shape, in the theme in use. */
+.mx-style-tile { width: 30px; height: 24px; flex: none; display: flex; align-items: flex-end; justify-content: flex-end; padding: 4px; border: 1px solid var(--line2); border-radius: 8px; background: var(--main); }
+.mx-style-tile i { width: 10px; height: 4px; border-radius: 2px; background: var(--accent); }
+.mx-style-tile[data-shape="mono"], .mx-style-tile[data-shape="pixel"] { border-radius: 0; }
+.mx-style-tile[data-shape="pixel"] { border-width: 2px; }
+.mx-style-tile[data-shape="pixel"] i, .mx-style-tile[data-shape="mono"] i { border-radius: 0; }
+.mx-style-tile[data-shape="console"] { border-radius: 3px; }

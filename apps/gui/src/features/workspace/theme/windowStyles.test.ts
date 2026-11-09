@@ -19,15 +19,12 @@ describe('window styles', () => {
     }
   })
 
-  it("takes the design's values: Glass wears Maitty's brass, Mono Type greyscale, Retro Pixel green on navy", () => {
-    expect(withWindowStyle(MIDNIGHT, 'glass').tokens.accent).toBe('#e3a72f')
-    expect(withWindowStyle(DAY, 'glass').tokens.accent).toBe('#e3a72f')
-    expect(withWindowStyle(DAY, 'glass').tokens.accentText).toBe('#8a5a00')
-    // A style with its own accent has no brass left in what the accent is read as.
-    expect(withWindowStyle(MIDNIGHT, 'pixel').tokens).toMatchObject({ accentText: '#A7F070', working: '#A7F070' })
-    expect(withWindowStyle(MIDNIGHT, 'mono').tokens.accent).toBe('#F0F0F0')
-    expect(withWindowStyle(MIDNIGHT, 'pixel').tokens).toMatchObject({ bg: '#1A1C2C', accent: '#A7F070', warn: '#FFEC27' })
-    expect(withWindowStyle(DAY, 'pixel').tokens).toMatchObject({ bg: '#E4E6EE', accent: '#2E8B1E', danger: '#D0003C' })
+  it('is shape only: whatever the style, the theme keeps its own colours', () => {
+    for (const theme of [MIDNIGHT, DAY, findTheme('Maitty Dark'), findTheme('Nord')]) {
+      for (const id of WINDOW_STYLE_IDS) expect(withWindowStyle(theme, id).tokens, `${theme.name} in ${id}`).toEqual(theme.tokens)
+    }
+    expect(withWindowStyle(MIDNIGHT, 'pixel').tokens.accent).toBe('#e3a72f')
+    expect(withWindowStyle(DAY, 'console').tokens.bg).toBe('#e9f0ed')
   })
 
   it('sets the fonts and the glass dials of a style', () => {
@@ -38,14 +35,6 @@ describe('window styles', () => {
     expect(themeStyle(withWindowStyle(DAY, 'mono'))['--hk']).toBe('.55')
     expect(themeStyle(withWindowStyle(MIDNIGHT, 'console'))['--mono']).toContain('JetBrains Mono')
     expect(themeStyle(withWindowStyle(MIDNIGHT, 'glass'))['--hk']).toBe('.7')
-  })
-
-  it("rings a status badge with the style's own card colour", () => {
-    expect(withWindowStyle(MIDNIGHT, 'pixel').cardRing).toBe('#222538')
-  })
-
-  it('draws Maitty Day, the default light theme, with the style palette too', () => {
-    expect(withWindowStyle(findTheme('Maitty Day'), 'console').tokens.bg).toBe('#EBEBEB')
   })
 
   it("keeps another theme's own colours and gives it only the style's fonts, dials and shapes", () => {

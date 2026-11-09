@@ -2,7 +2,7 @@ import type { UpdaterState } from '@/features/updates/useUpdater'
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
 import { THEMES } from '@/features/workspace/theme/themes'
 import { ThemePicker } from './ThemePicker'
-import { WINDOW_STYLES, isWindowStyle, type WindowStyle, type WindowStyleEntry } from '@/features/workspace/theme/windowStyles'
+import { WINDOW_STYLES, isWindowStyle, type WindowStyleEntry } from '@/features/workspace/theme/windowStyles'
 import { Panel } from '@/components/ui/panel'
 import { PickerSelect, type PickerGroup, type PickerItem } from './PickerSelect'
 import { Segmented, SegmentedItem } from '@/components/ui/radio-group'
@@ -491,24 +491,15 @@ function TerminalSection({ preferences, update }: { preferences: SettingsPrefere
 
 const MODE_OPTIONS = [['system', 'System'], ['dark', 'Dark'], ['light', 'Light']] as const
 
-/** A window style as the picker shows it: its panel colour, accent and line as a small window, then its name and line. */
-function windowStyleItem(style: WindowStyleEntry, dark: boolean): PickerItem {
-  const [ground, accent, line] = dark ? style.preview.dark : style.preview.light
+/** A window style as the picker shows it: a small window in the style's own shape and the theme in use, then its name and line. */
+function windowStyleItem(style: WindowStyleEntry): PickerItem {
   return {
     value: style.id,
     label: style.name,
-    sub: STYLE_META[style.id],
-    tile: <span className="mx-style-tile" style={{ background: ground, borderColor: line }} aria-hidden="true"><i style={{ background: accent }} /></span>,
+    sub: style.blurb,
+    tile: <span className="mx-style-tile" data-shape={style.id} aria-hidden="true"><i /></span>,
     labelStyle: { fontFamily: style.font },
   }
-}
-
-/** One line each, under the style's name. */
-const STYLE_META: Readonly<Record<WindowStyle, string>> = {
-  glass: 'Soft frosted glass',
-  mono: 'One width, greyscale',
-  console: 'IDE panels, true black',
-  pixel: '8-bit, hard edges',
 }
 
 function AppearanceSection({ preferences, update, systemReducedMotion, systemDark, onPreviewTheme }: { preferences: SettingsPreferences; update: Update; systemReducedMotion: boolean; systemDark: boolean; onPreviewTheme: (name: string | null) => void }) {
@@ -521,7 +512,7 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
         foot="Amber and red keep their meaning in every theme."
       >
         <Row label="Window style" detail="Same features, different finish.">
-          <PickerSelect label="Window style" value={preferences.style} groups={[{ items: WINDOW_STYLES.map((style) => windowStyleItem(style, darkInUse)) }]} onPick={(style) => { if (isWindowStyle(style)) update('style', style) }} />
+          <PickerSelect label="Window style" value={preferences.style} groups={[{ items: WINDOW_STYLES.map((style) => windowStyleItem(style)) }]} onPick={(style) => { if (isWindowStyle(style)) update('style', style) }} />
         </Row>
         <Row label="Appearance" detail={modeNote}>
           <SegmentedChoice label="Appearance" value={preferences.themeMode} options={MODE_OPTIONS} onChange={(value) => { update('themeMode', value) }} />

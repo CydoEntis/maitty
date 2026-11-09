@@ -95,7 +95,7 @@ const MIX = {
 }
 
 /**
- * Maitty's own pair, built from `maitty-tokens.json` (the TUI reads the same file): sea-glass and brass. Teal means
+ * Maitty's own themes, built from `maitty-tokens.json`: Night and Day (sea-glass green) and Dark and Light (a standard black and white ground with the same accents) (the TUI reads the same file): sea-glass and brass. Teal means
  * only "working" (`working`), coral only "needs you" (`warn`), brass is the accent. Text uses the file's *Text colours
  * so every pair meets AA; fills (a button's brass) use the fill colours with their *On ink.
  */
@@ -122,6 +122,8 @@ function maittyTheme(side: MaittySide, light: boolean): ThemeTokens {
 }
 const MAITTY_NIGHT = maittyTheme(maittyTokens.night, false)
 const MAITTY_DAY = maittyTheme(maittyTokens.day, true)
+const MAITTY_DARK = maittyTheme(maittyTokens.dark, false)
+const MAITTY_LIGHT = maittyTheme(maittyTokens.light, true)
 
 const SHIFT_STEP = 2
 
@@ -224,6 +226,8 @@ const entry = (name: string, family: string, light: boolean, tokens: ThemeTokens
 export const THEMES: readonly ThemeEntry[] = [
   entry('Maitty Night', 'Maitty · default dark', false, MAITTY_NIGHT),
   entry('Maitty Day', 'Maitty · default light', true, MAITTY_DAY),
+  entry('Maitty Dark', 'Maitty · black', false, MAITTY_DARK),
+  entry('Maitty Light', 'Maitty · white', true, MAITTY_LIGHT),
   ...GENERATED.map(([name, bg, fg, accent, mag, blue, green, light, family]) =>
     entry(name, `${family} · ${light ? 'light' : 'dark'}`, light, generateTheme({ bg, fg, accent, mag, blue, green, light })),
   ),
@@ -267,29 +271,13 @@ export function themeStyle(theme: ThemeEntry): Record<string, string> {
   return style
 }
 
-/** The selection starts as this much accent over the ground and fades until the text stays readable. */
-const SELECTION_ALPHA = 25
-const SELECTION_ALPHA_STEP = 5
-const SELECTION_ALPHA_MIN = 10
-const INK = '#000000'
-const PAPER_WHITE = '#FFFFFF'
-
 /**
- * Opaque on purpose: xterm's WebGL renderer draws the selection without its alpha, so a
- * translucent accent became a solid block with the text lost on it. The text keeps the theme's
- * foreground where it passes, else the ground colour, and the tint fades until one of them does.
+ * The selection is the accent itself, opaque (xterm's WebGL renderer draws it without alpha), with the accent's own ink for
+ * the text. A faint tint of the accent over the card was nearly invisible on a dark ground. The accent already passes as
+ * text on the card, so its ink passes on it.
  */
 function selectionColors(tokens: ThemeTokens): { background: string; foreground: string } {
-  let alpha = SELECTION_ALPHA
-  for (;;) {
-    const background = composite(withAlpha(tokens.accent, alpha), tokens.main)
-    const foreground = contrastRatio(tokens.fg, background) >= contrastRatio(tokens.main, background) ? tokens.fg : tokens.main
-    if (contrastRatio(foreground, background) >= MIN_TEXT_CONTRAST) return { background, foreground }
-    // Even the faintest tint can leave a theme's own text short (a darkened light accent over a pale
-    // ground), so the text turns to plain black or white, whichever reads better.
-    if (alpha <= SELECTION_ALPHA_MIN) return { background, foreground: contrastRatio(INK, background) >= contrastRatio(PAPER_WHITE, background) ? INK : PAPER_WHITE }
-    alpha -= SELECTION_ALPHA_STEP
-  }
+  return { background: tokens.accent, foreground: tokens.onAccent }
 }
 
 /**

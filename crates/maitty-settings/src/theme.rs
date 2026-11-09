@@ -203,7 +203,9 @@ pub const BUILTIN: &[&str] = &[
     "lackluster",
     "lucario",
     "luna",
+    "maitty-dark",
     "day",
+    "maitty-light",
     "night",
     "melange-dark",
     "melange-light",
@@ -383,6 +385,8 @@ pub const DESIGN: &[(&str, &str)] = &[
     ("lackluster", "Lackluster"),
     ("lucario", "Lucario"),
     ("luna", "Luna"),
+    ("maitty-dark", "Maitty Dark"),
+    ("maitty-light", "Maitty Light"),
     ("melange-dark", "Melange Dark"),
     ("melange-light", "Melange Light"),
     ("mellifluous", "Mellifluous"),
@@ -800,10 +804,11 @@ impl Theme {
         }
     }
 
-    /// The Maitty theme for `side` (`night` or `day`), made from the tokens file so both defaults follow it.
+    /// The Maitty theme for `side` (`night`, `day`, `dark` or `light`), made from the tokens file so every Maitty theme follows it.
     /// An error red is the one colour the file does not carry: it must not read as the coral of needs-you.
     fn maitty(side: &str) -> Theme {
-        let day = side == "day";
+        // The two light sides (the sea-glass day and the neutral light) read the same way: darker brass text, card ink.
+        let day = side == "day" || side == "light";
         let t = |path: &str| maitty_token(side, path);
         // Text on the ground uses the file's `*Text` tokens (the fill and its text colour differ by day).
         let accent_text = t("accent.brassText");
@@ -881,7 +886,7 @@ impl Theme {
     pub fn named(name: &str) -> Theme {
         let name = canonical(name);
         let theme = Theme::base(name);
-        if name == "night" || name == "day" || name == "mono" {
+        if matches!(name, "night" | "day" | "maitty-dark" | "maitty-light" | "mono") {
             return theme;
         }
         theme.with_distinct_needs()
@@ -893,6 +898,8 @@ impl Theme {
             // means working, coral only means needs you, brass is the accent, the AI in the wordmark is gold.
             "night" => Theme::maitty("night"),
             "day" => Theme::maitty("day"),
+            "maitty-dark" => Theme::maitty("dark"),
+            "maitty-light" => Theme::maitty("light"),
             // The app's other pairs, a dark one and its day, and one loud one.
             // A harbour at night: deep navy, brass for focus.
             "harbor" => Theme::design(
@@ -2610,9 +2617,9 @@ mod maitty {
     }
 
     #[test]
-    fn every_text_pair_the_tokens_file_names_meets_aa_by_night_and_by_day() {
+    fn every_text_pair_the_tokens_file_names_meets_aa_in_all_four_maitty_themes() {
         let mut short = Vec::new();
-        for side in ["night", "day"] {
+        for side in ["night", "day", "dark", "light"] {
             for (fg, bg) in pairs(side) {
                 let ratio = contrast(hex(&maitty_token(side, &fg)), hex(&maitty_token(side, &bg)));
                 if ratio < AA {
@@ -2625,7 +2632,7 @@ mod maitty {
 
     #[test]
     fn the_tui_night_and_day_are_the_tokens_files_colours() {
-        for (name, side) in [("night", "night"), ("day", "day")] {
+        for (name, side) in [("night", "night"), ("day", "day"), ("maitty-dark", "dark"), ("maitty-light", "light")] {
             let theme = Theme::named(name);
             assert_eq!(theme.bg, hex(&maitty_token(side, "bg.page")), "{name} ground");
             assert_eq!(theme.fg, hex(&maitty_token(side, "text.body")), "{name} text");
@@ -2637,11 +2644,13 @@ mod maitty {
         // The accent is the brass on the dark ground, and its darker text colour on the light one.
         assert_eq!(Theme::named("night").accent, hex(&maitty_token("night", "accent.brass")));
         assert_eq!(Theme::named("day").accent, hex(&maitty_token("day", "accent.brassText")));
+        assert_eq!(Theme::named("maitty-dark").accent, hex(&maitty_token("dark", "accent.brass")));
+        assert_eq!(Theme::named("maitty-light").accent, hex(&maitty_token("light", "accent.brassText")));
     }
 
     #[test]
     fn working_and_needs_you_are_two_different_colours_and_neither_is_the_error_red() {
-        for name in ["night", "day"] {
+        for name in ["night", "day", "maitty-dark", "maitty-light"] {
             let t = Theme::named(name);
             assert_ne!(t.working, t.blocked, "{name}");
             assert_ne!(t.err, t.blocked, "{name}: an error must not read as needs-you");
@@ -2654,7 +2663,20 @@ mod maitty {
         let label = |id: &str| super::DESIGN.iter().find(|(name, _)| *name == id).map(|(_, shown)| *shown);
         assert_eq!(label("night"), Some("Maitty Night"));
         assert_eq!(label("day"), Some("Maitty Day"));
+        assert_eq!(label("maitty-dark"), Some("Maitty Dark"));
+        assert_eq!(label("maitty-light"), Some("Maitty Light"));
         assert_eq!(super::canonical("maitty-night"), "night");
         assert_eq!(super::canonical("maitty-day"), "day");
+    }
+
+    #[test]
+    fn maitty_dark_is_a_dark_ground_and_maitty_light_a_light_one_and_the_defaults_are_unchanged() {
+        assert!(!super::is_light("maitty-dark") && !Theme::named("maitty-dark").is_light());
+        assert!(super::is_light("maitty-light") && Theme::named("maitty-light").is_light());
+        assert_eq!(super::DEFAULT, "night");
+        assert_eq!(super::DEFAULT_LIGHT, "day");
+        for id in ["maitty-dark", "maitty-light"] {
+            assert!(super::BUILTIN.contains(&id), "{id} is a built-in theme");
+        }
     }
 }

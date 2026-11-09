@@ -25,7 +25,7 @@ Most of this document describes the TUI. The desktop app's look is in
 
 Colours come only from the theme's roles, never a literal. Dark and light are two remembered
 slots (Settings › Appearance) and a switch; **Maitty Night** (id `night`) is the default dark theme and
-**Maitty Day** (id `day`) the default light one, and the browser lists each side on its own tab. They are
+**Maitty Day** (id `day`) the default light one, and the browser lists each side on its own tab. **Maitty Dark** (`maitty-dark`) and **Maitty Light** (`maitty-light`) are the same accents on a standard black and white ground, from the file's `dark` and `light` sections. They are
 Sea-glass and Brass, built from `crates/maitty-settings/maitty-tokens.json`, the one file the colours are
 read from: brass is the accent, teal only ever means working, coral only ever means needs you, and the AI in
 the wordmark is gold. Night is a deep teal-black ground; Day a pale sea-glass one. The other built-in
@@ -229,16 +229,14 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   terminal grounds (`--term`, `--main` under a terminal), scrims, brand and status colours, the switch knob, and the
   legacy `App.css` shell outside the window root. **Background glow** (Settings › Appearance, `backgroundGlow`) is the
   only tint behind the cards, and Glass always has it, painted on the whole window so no seam shows under the title bar.
-- **Window style: four looks, one set of tokens** (Settings › Appearance › Window style, `style`; the root carries
-  `data-style` and `data-finish`). **Glass** (the default: the redesign's Frosted look, clear frosted panels with 22px corners over a soft
-  atmosphere, a rose accent, Inter and JetBrains Mono; the redesign's own opaque Glass was dropped, and a saved
-  `frosted` reads as Glass), **Mono Type** (Space Mono everywhere,
-  greyscale, square corners), **Console** (IBM Plex Sans and JetBrains Mono on true black, a teal marker on the
-  selected row) and **Retro Pixel** (Pixelify Sans, square corners, 3px borders, hard offset shadows, scanlines). Each
-  has a Maitty Night (dark) and a Maitty Day (light) side; layout, features and status colours never change. A style is data in
-  `theme/windowStyles.ts` (palette overrides, fonts, the glass dials `--hk`/`--sk`); `withWindowStyle` lays it over the
-  theme in use. The palette replaces the colours of Maitty Night and Maitty Day (Glass has none of its own: it wears Maitty's); any other theme keeps its own colours and
-  takes the style's fonts, dials and shapes. **Components are built once and read tokens, never the style.** Besides the
+- **Window style: four shapes, any theme** (Settings › Appearance › Look › Window style, `style`; the root carries
+  `data-style` and `data-finish`). A style is shape and type, never colour: whatever theme is in use is what every style
+  wears. **Glass** (the default: clear frosted panels with 22px corners over a soft atmosphere tinted from the theme's teal and blue,
+  Inter and JetBrains Mono; a saved `frosted` reads as Glass), **Mono Type** (Space Mono everywhere, square corners),
+  **Console** (IBM Plex Sans and JetBrains Mono, hairline borders, a marker on the selected row) and **Retro Pixel**
+  (Pixelify Sans, square corners, 3px borders, hard offset shadows, scanlines). Layout and features never change. A style is data
+  in `theme/windowStyles.ts` (fonts and the glass dials `--hk`/`--sk`, per dark and light side); `withWindowStyle` lays it over the
+  theme in use and touches no colour. **Components are built once and read tokens, never the style.** Besides the
   base tokens, the shared pieces read the component tokens declared in `material.css`: `--c-sel-*` (every selected
   state: a sidebar row, a settings nav item, a chosen segment, a palette row), `--c-field-*` (dropdown buttons, pickers,
   the new-session segments, inputs), `--c-track-*` (the tray behind a segmented control), `--c-sw-*` and `--c-knob-*`

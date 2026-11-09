@@ -4,9 +4,9 @@ import type { ThemeEntry } from './themes'
 import { findTheme, generateTheme, MIN_TEXT_CONTRAST, terminalMinimumContrast, themeStyle, THEMES, xtermTheme } from './themes'
 
 describe('themes', () => {
-  it('ships Maitty Night and Maitty Day first, then the 23 generated themes from the design and High Contrast', () => {
-    expect(THEMES).toHaveLength(26)
-    expect(THEMES.slice(0, 2).map((theme) => theme.name)).toEqual(['Maitty Night', 'Maitty Day'])
+  it('ships the four Maitty themes first, then the 23 generated themes from the design and High Contrast', () => {
+    expect(THEMES).toHaveLength(28)
+    expect(THEMES.slice(0, 4).map((theme) => theme.name)).toEqual(['Maitty Night', 'Maitty Day', 'Maitty Dark', 'Maitty Light'])
     expect(findTheme('Nord').family).toBe('Arctic · dark')
     expect(findTheme('High Contrast')).toMatchObject({ family: 'Accessibility · dark', light: false })
     expect(findTheme('Gruvbox Light').light).toBe(true)
@@ -40,7 +40,7 @@ describe('themes', () => {
   })
 
   it('never changes what amber and red mean within a kind of theme', () => {
-    const generated = THEMES.filter((candidate) => !['High Contrast', 'Maitty Night', 'Maitty Day'].includes(candidate.name))
+    const generated = THEMES.filter((candidate) => !['High Contrast', 'Maitty Night', 'Maitty Day', 'Maitty Dark', 'Maitty Light'].includes(candidate.name))
     for (const theme of generated) {
       expect(theme.tokens.warn).toBe(theme.light ? '#8F5400' : '#F2B65A')
       const danger = theme.light ? '#B8362C' : '#F07F78'
@@ -126,7 +126,7 @@ describe('contrast audit', () => {
     }
   })
 
-  it.each(['Maitty Night', 'Maitty Day'])('%s keeps accent, status and ANSI text readable on --term and --bg', (name) => {
+  it.each(['Maitty Night', 'Maitty Day', 'Maitty Dark', 'Maitty Light'])('%s keeps accent, status and ANSI text readable on --term and --bg', (name) => {
     const { tokens } = findTheme(name)
     for (const [ground, colour] of TEXT_GROUNDS(tokens)) {
       for (const slot of [...STATUS_TEXT_SLOTS, ...ANSI_TEXT_SLOTS]) {
