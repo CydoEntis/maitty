@@ -106,16 +106,24 @@ describe('Inspect panel', () => {
     },
   )
 
-  it('opens a folder and previews a file in it', async () => {
+  it('shows the file tree with a file beside it, opens folders in place and highlights the file', async () => {
     daemonAnswers({
       Tree: [{ name: 'src', is_directory: true }, { name: 'README.md', is_directory: false }],
-      File: 'hello\nworld\n',
+      File: 'const answer = 42 // the answer\n',
     })
     renderPanel('files')
 
+    const folder = await screen.findByRole('button', { name: 'src' })
+    expect(folder).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(folder)
+    expect(folder).toHaveAttribute('aria-expanded', 'true')
+
     fireEvent.click(await screen.findByRole('button', { name: 'README.md' }))
     expect(await screen.findByLabelText('Preview of README.md')).toBeTruthy()
-    await waitFor(() => { expect(screen.getByLabelText('Preview of README.md').textContent).toContain('world') })
+    await waitFor(() => { expect(screen.getByLabelText('Preview of README.md').textContent).toContain('answer') })
+    // The tree stays on screen beside the file, and the file is read-only (no editor).
+    expect(screen.getByRole('navigation', { name: 'Files' })).toBeTruthy()
+    expect(screen.queryByRole('textbox')).toBeNull()
   })
 
   it('marks the current branch and its distance from the upstream', async () => {

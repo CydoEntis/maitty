@@ -60,12 +60,12 @@ button.mx-inspect-row:hover, .mx-inspect-pick:hover { background: rgba(var(--hl)
 .mx-inspect-confirm button.is-danger { background: var(--danger); color: #fff; }
 .mx-inspect-confirm button:disabled { opacity: .5; }
 .mx-patch, .mx-preview { margin: 0; padding: 8px 0; border-radius: 8px; background: var(--m-well); font-family: var(--mono); font-size: 11.5px; line-height: 1.5; overflow: auto; }
-.mx-patch-line, .mx-preview span { display: block; padding: 0 10px; white-space: pre; }
+.mx-patch-line, .mx-preview > span { display: block; padding: 0 10px; white-space: pre; }
 .mx-patch-line.is-add { background: color-mix(in oklab, var(--ok) 16%, transparent); }
 .mx-patch-line.is-remove { background: color-mix(in oklab, var(--danger) 16%, transparent); }
 .mx-patch-line.is-hunk { color: var(--accent-text); }
 .mx-patch-line.is-meta { color: var(--dim); }
-.mx-preview span.is-target { background: color-mix(in oklab, var(--warn) 22%, transparent); }
+.mx-preview > span.is-target { background: color-mix(in oklab, var(--warn) 22%, transparent); }
 .mx-inspect .is-add { color: var(--ok); }
 .mx-inspect .is-remove { color: var(--danger); }
 
@@ -89,3 +89,25 @@ button.mx-inspect-row:hover, .mx-inspect-pick:hover { background: rgba(var(--hl)
 .mx-inspect-fail-details button { font-size: 11.5px; color: var(--accent-text); }
 @keyframes mx-inspect-fail-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .mx-inspect-fail-tile.is-retrying { animation: none; } }
+
+/* Files: the tree on the left, the chosen file beside it; each scrolls on its own. */
+.mx-inspect-scroll:has(.mx-files) { overflow: hidden; }
+.mx-files { height: 100%; display: grid; grid-template-columns: minmax(170px, 32%) minmax(0, 1fr); gap: 10px; min-height: 0; }
+.mx-files-tree, .mx-files-view { min-height: 0; overflow: auto; }
+.mx-files-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.mx-files-row { width: 100%; min-height: 26px; display: flex; align-items: center; gap: 4px; padding-right: 8px; border-radius: 7px; font-size: 12.5px; color: var(--fg2); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mx-files-row:hover { background: var(--m-hover); color: var(--fg); }
+.mx-files-row.is-current { background: var(--c-sel-bg); box-shadow: var(--c-sel-sh); color: var(--fg); }
+.mx-files-row.is-folder { color: var(--fg); font-weight: 500; }
+.mx-files-twist { width: 12px; flex: none; display: inline-flex; justify-content: center; }
+.mx-files-twist svg { transform: rotate(-90deg); transition: transform .12s ease; }
+.mx-files-twist.is-open svg { transform: none; }
+.mx-files-view .mx-preview { min-height: 0; }
+.mx-preview > span { position: relative; }
+.mx-preview-no { display: inline-block; width: 3.2ch; margin-right: 12px; text-align: right; font-style: normal; color: var(--dim); user-select: none; }
+.mx-preview .tok-keyword { color: var(--accent-text); }
+.mx-preview .tok-string { color: var(--ok); }
+.mx-preview .tok-number { color: var(--ansi-blue); font-weight: 400; }
+.mx-preview .tok-comment { color: var(--dim); font-style: italic; }
+.mx-preview .tok-variable { color: var(--ansi-mag); }
+.mx-preview .tok-flag { color: var(--ansi-blue); }

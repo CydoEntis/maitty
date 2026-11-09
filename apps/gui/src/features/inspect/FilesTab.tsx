@@ -1,25 +1,39 @@
 import { useEffect, useState } from 'react'
+import { HighlightedLine } from '@/components/HighlightedLine'
+import { Icon } from '@/features/workspace/components/glyphs'
 import { repoFile, repoTree } from './api'
-import { joinPath, parentOf } from './format'
+import { joinPath } from './format'
 import { RepoError } from './RepoError'
 import { messageOf, useRepoQuery } from './useRepoQuery'
 
 export type LookAt = { path: string; line?: number; key: number }
 
-/** The repository's files, read-only: folders to walk, and a text preview of the one you pick. */
+/** A tree row's left padding: a base, then one step in for each folder level. */
+const ROW_PAD_PX = 8
+const LEVEL_PAD_PX = 14
+
+/** Each folder on the way to a path, so opening a file from a link shows where it is. */
+function ancestorsOf(path: string): string[] {
+  const parts = path.split('/').slice(0, -1)
+  return parts.map((_, index) => parts.slice(0, index + 1).join('/'))
+}
+
+/**
+ * The repository's files, read-only: the tree on the left (folders open in place, each read when first opened) and the chosen
+ * file beside it, highlighted for its type.
+ */
 export function FilesTab({ term, lookAt }: { term: number; lookAt: LookAt | null }) {
-  const [folder, setFolder] = useState('')
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set())
   const [file, setFile] = useState<string | null>(null)
   const [seen, setSeen] = useState<number | null>(null)
 
-  // A link clicked in the terminal opens its file: adjusting state while rendering, not in an effect.
+  // A link clicked in the terminal opens its file and the folders above it: adjusting state while rendering, not in an effect.
   if (lookAt && lookAt.key !== seen) {
     setSeen(lookAt.key)
-    setFolder(parentOf(lookAt.path))
+    setOpen((current) => new Set([...current, ...ancestorsOf(lookAt.path)]))
     setFile(lookAt.path)
   }
 
-  const tree = useRepoQuery(term, ['tree', folder], () => repoTree(term, folder || null))
   const preview = useRepoQuery(term, ['file', file], () => repoFile(term, file ?? ''), false, file !== null)
 
   useEffect(() => {
@@ -27,49 +41,78 @@ export function FilesTab({ term, lookAt }: { term: number; lookAt: LookAt | null
     document.querySelector(`[data-line="${String(lookAt.line)}"]`)?.scrollIntoView({ block: 'center' })
   }, [lookAt, preview.data])
 
-  const crumbs = folder ? folder.split('/') : []
+  const toggle = (folder: string) => {
+    setOpen((current) => {
+      const next = new Set(current)
+      if (!next.delete(folder)) next.add(folder)
+      return next
+    })
+  }
+
   return (
-    <div className="mx-inspect-split">
-      <div>
-        <nav className="mx-inspect-crumbs" aria-label="Folder">
-          <button type="button" onClick={() => { setFolder('') }}>/</button>
-          {crumbs.map((name, index) => (
-            <button key={crumbs.slice(0, index + 1).join('/')} type="button" onClick={() => { setFolder(crumbs.slice(0, index + 1).join('/')) }}>{name}</button>
-          ))}
-        </nav>
-        {tree.isPending && <p className="mx-inspect-note">Loading…</p>}
-        {tree.isError && <RepoError error={tree.error} tab="files" onRetry={() => { void tree.refetch() }} retrying={tree.isFetching} />}
-        <ul className="mx-inspect-list" aria-label="Files">
-          {tree.data?.map((entry) => {
-            const path = joinPath(folder, entry.name)
-            return (
-              <li key={entry.name}>
-                <button
-                  type="button"
-                  className={`mx-inspect-row${path === file ? ' is-current' : ''}`}
-                  onClick={() => { if (entry.is_directory) setFolder(path); else setFile(path) }}
-                >
-                  <span className="mx-inspect-main">{entry.is_directory ? `${entry.name}/` : entry.name}</span>
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-      </div>
-      {file !== null && (
-        <section aria-label={`Preview of ${file}`}>
-          <h3 className="mx-inspect-file">{file}</h3>
-          {preview.isPending && <p className="mx-inspect-note">Loading…</p>}
-          {preview.isError && <p className="mx-inspect-note is-error" role="alert">{messageOf(preview.error)}</p>}
-          {preview.data !== undefined && (
-            <pre className="mx-preview">
-              {preview.data.split('\n').map((line, index) => (
-                <span key={index} data-line={index + 1} className={lookAt?.path === file && lookAt.line === index + 1 ? 'is-target' : undefined}>{line}{'\n'}</span>
-              ))}
-            </pre>
-          )}
-        </section>
-      )}
+    <div className="mx-files">
+      <nav className="mx-files-tree" aria-label="Files">
+        <Folder term={term} folder="" depth={0} open={open} file={file} onToggle={toggle} onPick={setFile} />
+      </nav>
+      <section className="mx-files-view" aria-label={file === null ? 'File' : `Preview of ${file}`}>
+        {file === null ? (
+          <p className="mx-inspect-note">Pick a file to read it.</p>
+        ) : (
+          <>
+            <h3 className="mx-inspect-file">{file}</h3>
+            {preview.isPending && <p className="mx-inspect-note">Loading…</p>}
+            {preview.isError && <p className="mx-inspect-note is-error" role="alert">{messageOf(preview.error)}</p>}
+            {preview.data !== undefined && (
+              <pre className="mx-preview">
+                {preview.data.split('\n').map((line, index) => (
+                  <span key={index} data-line={index + 1} className={lookAt?.path === file && lookAt.line === index + 1 ? 'is-target' : undefined}>
+                    <i className="mx-preview-no" aria-hidden="true">{index + 1}</i>
+                    <HighlightedLine line={line} path={file} />
+                    {'\n'}
+                  </span>
+                ))}
+              </pre>
+            )}
+          </>
+        )}
+      </section>
     </div>
+  )
+}
+
+type FolderProps = { term: number; folder: string; depth: number; open: ReadonlySet<string>; file: string | null; onToggle: (folder: string) => void; onPick: (path: string) => void }
+
+/** One folder's entries; a folder inside it that is open reads and shows its own. */
+function Folder({ term, folder, depth, open, file, onToggle, onPick }: FolderProps) {
+  const tree = useRepoQuery(term, ['tree', folder], () => repoTree(term, folder || null))
+  if (tree.isPending) return depth === 0 ? <p className="mx-inspect-note">Loading…</p> : null
+  if (tree.isError) return <RepoError error={tree.error} tab="files" onRetry={() => { void tree.refetch() }} retrying={tree.isFetching} />
+  return (
+    <ul className="mx-files-list">
+      {tree.data.map((entry) => {
+        const path = joinPath(folder, entry.name)
+        const indent = { paddingLeft: `${String(ROW_PAD_PX + depth * LEVEL_PAD_PX)}px` }
+        if (!entry.is_directory) {
+          return (
+            <li key={entry.name}>
+              <button type="button" className={`mx-files-row${path === file ? ' is-current' : ''}`} style={indent} onClick={() => { onPick(path) }}>
+                <span className="mx-files-twist" aria-hidden="true" />
+                {entry.name}
+              </button>
+            </li>
+          )
+        }
+        const isOpen = open.has(path)
+        return (
+          <li key={entry.name}>
+            <button type="button" className="mx-files-row is-folder" style={indent} aria-expanded={isOpen} onClick={() => { onToggle(path) }}>
+              <span className={`mx-files-twist${isOpen ? ' is-open' : ''}`} aria-hidden="true"><Icon name="chevronDown" size={11} /></span>
+              {entry.name}
+            </button>
+            {isOpen && <Folder term={term} folder={path} depth={depth + 1} open={open} file={file} onToggle={onToggle} onPick={onPick} />}
+          </li>
+        )
+      })}
+    </ul>
   )
 }
