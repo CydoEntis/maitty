@@ -14,15 +14,15 @@ export type ModelOption = { readonly id: string; readonly label: string; readonl
 
 /**
  * The models each agent's command line accepts by name, as a fixed list: the daemon does not report
- * them. Claude takes these aliases (`claude --model`). Codex's models depend on the account and the
+ * them. Claude takes these aliases or a full model id (`claude --model`); an alias follows the newest model of its family. The account's extra models (Fable) are read from Claude Code's config and added after these. Codex's models depend on the account and the
  * installed version, so only the account's own default is offered until the daemon can list them.
- * The first of each list is "Default", which sends nothing.
+ * The first of each list is "Default", which sends nothing; the rest run strongest first.
  */
 export const KNOWN_MODELS: Readonly<Record<ChatAgent, readonly ModelOption[]>> = {
   claude: [
-    { id: DEFAULT_PICK, label: 'Default', blurb: 'What this chat started with' },
-    { id: 'sonnet', label: 'Sonnet', blurb: 'Fast and capable for everyday work' },
+    { id: DEFAULT_PICK, label: 'Default', blurb: 'Whatever Claude Code picks for your account' },
     { id: 'opus', label: 'Opus', blurb: 'The most capable, for hard problems' },
+    { id: 'sonnet', label: 'Sonnet', blurb: 'Fast and capable for everyday work' },
     { id: 'haiku', label: 'Haiku', blurb: 'The quickest, for small tasks' },
   ],
   codex: [
@@ -41,10 +41,18 @@ export function modelsFor(agent: ChatAgent): readonly ModelOption[] {
   return discovered[agent] ?? KNOWN_MODELS[agent]
 }
 
-/** Replaces an agent's models with the ones read from it (after "Default", which sends nothing). */
+/**
+ * Replaces an agent's models with the ones read from it (after "Default", which sends nothing). Claude's read
+ * models are only its extras, so they are added to the fixed aliases instead.
+ */
 export function setDiscoveredModels(agent: ChatAgent, models: readonly ModelOption[]): void {
   if (models.length === 0) return
-  discovered = { ...discovered, [agent]: [KNOWN_MODELS[agent][0] as ModelOption, ...models.filter((model) => model.id !== DEFAULT_PICK)] }
+  const read = models.filter((model) => model.id !== DEFAULT_PICK)
+  // A Default the agent described (the model it will run) says what it is, instead of the generic line.
+  const described = models.find((model) => model.id === DEFAULT_PICK)
+  const first = described === undefined ? KNOWN_MODELS[agent][0] as ModelOption : { ...(KNOWN_MODELS[agent][0] as ModelOption), blurb: described.blurb }
+  const fixed = agent === 'claude' ? KNOWN_MODELS.claude.slice(1).filter((model) => !read.some((r) => r.id === model.id)) : []
+  discovered = { ...discovered, [agent]: [first, ...read, ...fixed] }
   for (const listener of modelListeners) listener()
 }
 

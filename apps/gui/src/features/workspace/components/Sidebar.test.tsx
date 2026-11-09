@@ -109,6 +109,13 @@ describe('a machine that needs maitty installed or updated', () => {
     expect(onUpdateMachine).toHaveBeenCalledWith('devbox', 'install')
   })
 
+  it('says why its + is off while the machine is down', () => {
+    show([], { machines: [LOCAL_HEAD, needing('update')] })
+    const add = screen.getByRole('button', { name: 'New agent chat on devbox' })
+    expect(add).toBeDisabled()
+    expect(add).toHaveAttribute('title', expect.stringContaining('Cannot start a chat on devbox: '))
+  })
+
   it('offers Install Maitty first in its menu', async () => {
     const user = userEvent.setup()
     const onUpdateMachine = vi.fn()

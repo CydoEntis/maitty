@@ -23,13 +23,15 @@ type Props = {
   footer?: ReactNode
   /** Shown above the sections, outside the filter (a meter, a switch). */
   extra?: ReactNode
+  /** Shown under the list and above the footer, outside the filter (a meter that comes after the choice above it). */
+  below?: ReactNode
   /** A line the search can turn into a row of its own (a pasted path); null when it cannot. */
   fromQuery?: (query: string) => ChipItem | null
   width?: number
 }
 
 /** One fact of the context row over the message box, as a small chip that opens a searchable list above it. */
-export function ChipMenu({ label, summary, title, icon, search, sections, footer, extra, fromQuery, width = 340 }: Props) {
+export function ChipMenu({ label, summary, title, icon, search, sections, footer, extra, below, fromQuery, width = 340 }: Props) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const needle = query.trim().toLowerCase()
@@ -64,6 +66,7 @@ export function ChipMenu({ label, summary, title, icon, search, sections, footer
           ))}
           {kept.length === 0 && !made && <p className="mx-chip-none">Nothing matches</p>}
         </ChoiceList>
+        {below}
         {footer !== undefined && <div className="mx-chip-footer">{footer}</div>}
       </PopupContent>
     </Popover.Root>

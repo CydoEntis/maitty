@@ -85,6 +85,15 @@ describe('the agent, model and reasoning picker', () => {
     expect(models[1]).toBeChecked()
     expect(models[1]).toHaveAttribute('title', 'The newest')
   })
+
+  it('adds the extra models Claude reports to its fixed aliases, once each', async () => {
+    const user = userEvent.setup()
+    setDiscoveredModels('claude', [{ id: 'claude-fable-5-1[1m]', label: 'Fable 5.1', blurb: 'Most capable' }, { id: 'opus', label: 'Opus', blurb: 'x' }])
+    render(<Harness agent="claude" />)
+    await user.click(screen.getByRole('button', { name: /Agent, model and reasoning/ }))
+    const models = within(screen.getByRole('radiogroup', { name: 'Model' })).getAllByRole('radio')
+    expect(models.map((model) => model.textContent)).toEqual(['Default', 'Fable 5.1', 'Opus', 'Sonnet', 'Haiku'])
+  })
 })
 
 describe('what the picker sends with a message', () => {

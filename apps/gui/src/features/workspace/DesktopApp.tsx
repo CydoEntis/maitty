@@ -1918,6 +1918,7 @@ export function DesktopApp() {
             onOpenDiff={showChanges}
             typeInto={typeInto}
             ask={session.ask}
+            asking={session.asking}
             sessionId={session.id}
             paneStatus={session.status}
             process={session.process}

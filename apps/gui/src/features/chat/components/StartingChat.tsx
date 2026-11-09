@@ -3,14 +3,17 @@ import { toast } from '@/lib/toast'
 import { Spinner } from '@/features/workspace/components/glyphs'
 import { connectAgent } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
-import { NO_EVENTS_HINT_AFTER_MS, noEventsHint, type ChatAgent } from '@/features/workspace/model/chatView'
+import { NO_EVENTS_HINT_AFTER_MS, noEventsHint, waitingInTerminalHint, type ChatAgent } from '@/features/workspace/model/chatView'
 import { keepComposerFocus } from '../keepComposerFocus'
 import { carryDraft, holdFirstMessage, useHeldFirstMessage, useStartChoice } from '../firstMessage'
 import { BYPASS_MODE, modeLabel } from '../chatMeta'
 import { AGENT_LABEL } from '../modelName'
+import type { SessionStatus } from '@/features/workspace/model/session'
 import type { AttachmentIntake } from '../useAttachmentIntake'
 import type { ChatComposer } from '../useChatComposer'
 import { Composer } from './Composer'
+import { ScreenMenuTray } from './QuestionTray'
+import { parseScreenMenu } from '../screenMenu'
 
 const NO_ATTACH: AttachmentIntake = { pick: () => undefined, addPaths: () => undefined, addImage: () => undefined, remove: () => undefined }
 
@@ -22,6 +25,12 @@ type StartingChatProps = {
   /** The project folder's name and the branch, for the tray under the message box. */
   folder?: string
   branch?: string | null
+  /** What the daemon says the session is doing: Needs before any chat events means a question only the terminal shows. */
+  paneStatus?: SessionStatus
+  /** The question on the agent's screen, as the daemon read it: shown here with its choices so it can be answered without the terminal. */
+  asking?: string
+  /** Types into the agent's terminal. */
+  typeInto?: (text: string) => Promise<void>
 }
 
 /**
@@ -30,7 +39,12 @@ type StartingChatProps = {
  * box are there at once. A message sent now is held and goes out when the real chat takes over; a
  * half-typed one is carried across.
  */
-export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', branch = null }: StartingChatProps) {
+export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', branch = null, paneStatus, asking = '', typeInto }: StartingChatProps) {
+  const waiting = paneStatus === 'needs'
+  const menu = waiting && typeInto !== undefined ? parseScreenMenu(asking) : null
+  const sendKeys = async (keys: string[]) => {
+    for (const key of keys) await typeInto?.(key)
+  }
   const [draft, setDraftState] = useState('')
   const held = useHeldFirstMessage(sessionId)
   const started = useStartChoice(sessionId)
@@ -80,14 +94,15 @@ export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', 
   return (
     <div className="mx-chat is-starting" onClick={keepComposerFocus}>
       {/* It floats over the conversation (chat.css), so it comes and goes without moving anything. */}
-      {late && (
+      {(late || waiting) && (
         <div className="mx-chat-notices">
-          <span role="note" className="is-warn">{noEventsHint(agent)}</span>
+          <span role="note" className="is-warn">{waiting ? waitingInTerminalHint(agent) : noEventsHint(agent)}</span>
           <span className="mx-spacer" />
-          <button type="button" className="mx-sub-back" disabled={connecting} onClick={connect}>{connecting ? 'Connecting…' : `Connect ${agent}`}</button>
-          <button type="button" className="mx-sub-back" onClick={onBackToTerminal}>Back to terminal</button>
+          <button type="button" className="mx-sub-back" onClick={onBackToTerminal}>Open terminal</button>
+          {!waiting && <button type="button" className="mx-sub-back" disabled={connecting} onClick={connect}>{connecting ? 'Connecting…' : `Connect ${agent}`}</button>}
         </div>
       )}
+      {menu !== null && <ScreenMenuTray agent={agent} menu={menu} send={sendKeys} />}
       {held === null ? (
         <p className="mx-chat-empty">Type below: it is sent as soon as {agent} is ready.</p>
       ) : (
