@@ -44,6 +44,18 @@ export function launchFlags(agent: ChatAgent, model: string, effort: ReasoningPi
   return flags.length === 0 ? '' : ` ${flags.join(' ')}`
 }
 
+/** Each agent's own flag for yolo mode. Claude's only allows Bypass permissions (Shift+Tab reaches it); Codex and Gemini start with it on. */
+const YOLO_FLAG: Readonly<Record<ChatAgent, string>> = {
+  claude: '--allow-dangerously-skip-permissions',
+  codex: '--dangerously-bypass-approvals-and-sandbox',
+  gemini: '--yolo',
+}
+
+/** The launch flag of the agent's yolo mode, or nothing when that agent's yolo setting is off. */
+export function yoloFlags(agent: ChatAgent, on: Readonly<Record<ChatAgent, boolean>>): string {
+  return on[agent] ? ` ${YOLO_FLAG[agent]}` : ''
+}
+
 const MINUTE = 60
 const HOUR = 3600
 const DAY = 86_400

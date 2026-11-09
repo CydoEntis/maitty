@@ -89,6 +89,10 @@ export type SettingsPreferences = {
   newSessionView: PaneView
   /** A new chat starts with the agent's full-access mode (no sandbox, no permission prompts). Off until you turn it on. */
   chatFullAccessDefault: boolean
+  /** Yolo mode per agent, off by default: Claude may pick Bypass permissions; Codex and Gemini start with approvals and sandbox off. */
+  yoloClaude: boolean
+  yoloCodex: boolean
+  yoloGemini: boolean
   /** The bottom line of the window: daemon, branch, counts and the focused session. */
   statusBar: boolean
   /** A small readout of frames and process load over the window, for finding what lags. */
@@ -176,6 +180,9 @@ function defaults(): SettingsPreferences {
     defaultAgent: 'claude',
     newSessionView: 'chat',
     chatFullAccessDefault: false,
+    yoloClaude: false,
+    yoloCodex: false,
+    yoloGemini: false,
     statusBar: false,
     perfOverlay: false,
     terminalPlainDrawing: prefersPlainDrawing(),
@@ -248,6 +255,9 @@ export function readSettingsPreferences(): SettingsPreferences {
       defaultAgent: preferences.defaultAgent === 'claude' || preferences.defaultAgent === 'codex' ? preferences.defaultAgent : fallback.defaultAgent,
       newSessionView: paneView(preferences.newSessionView, fallback.newSessionView),
       chatFullAccessDefault: bool(preferences.chatFullAccessDefault, fallback.chatFullAccessDefault),
+      yoloClaude: bool(preferences.yoloClaude, fallback.yoloClaude),
+      yoloCodex: bool(preferences.yoloCodex, fallback.yoloCodex),
+      yoloGemini: bool(preferences.yoloGemini, fallback.yoloGemini),
       statusBar: bool(preferences.statusBar, fallback.statusBar),
       perfOverlay: bool(preferences.perfOverlay, fallback.perfOverlay),
       terminalPlainDrawing: bool(preferences.terminalPlainDrawing, fallback.terminalPlainDrawing),

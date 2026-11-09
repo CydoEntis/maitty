@@ -267,6 +267,12 @@ function SegmentedChoice<T extends string | number>({ label, value, options, onC
 const VALIDATE_DELAY_MS = 250
 type FolderCheck = 'saved' | 'missing' | 'checking'
 
+const YOLO_AGENTS = [
+  { key: 'yoloClaude', label: 'Claude', detail: 'Lets you pick Bypass permissions in a chat, where Claude asks about nothing. New chats still start in the mode you had.' },
+  { key: 'yoloCodex', label: 'Codex', detail: 'Starts new Codex sessions with approvals and the sandbox off, so it runs commands and edits files without asking.' },
+  { key: 'yoloGemini', label: 'Gemini', detail: 'Starts new Gemini sessions in its yolo mode, which approves every tool call without asking.' },
+] as const
+
 function GeneralSection({ preferences, update, validateFolder, onChooseFolder, onShowWelcome, updates }: { preferences: SettingsPreferences; update: Update; validateFolder: (path: string) => Promise<boolean>; onChooseFolder: ((current: string) => Promise<string | null>) | undefined; onShowWelcome: () => void; updates: DesktopSettingsProps['updates'] }) {
   const [draft, setDraft] = useState(preferences.startFolder)
   const [check, setCheck] = useState<FolderCheck>('saved')
@@ -345,6 +351,18 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
         <Row label="Welcome" detail="Replay the short intro: where sessions start and the keys to know.">
           <button type="button" className="mx-scard-button" onClick={onShowWelcome}>Show the welcome again</button>
         </Row>
+      </Card>
+      <Card
+        title="Yolo mode"
+        color="var(--danger)"
+        iconPath={<path d="M12 3 5 6v6c0 4.4 3 7.6 7 9 4-1.4 7-4.6 7-9V6z" />}
+        foot="Off for every agent by default. Applies to sessions started after you change it; a running session keeps how it started."
+      >
+        {YOLO_AGENTS.map(({ key, label, detail }) => (
+          <Row key={key} label={label} detail={detail}>
+            <Switch aria-label={`Yolo mode for ${label}`} checked={preferences[key]} onCheckedChange={(value) => { update(key, value) }} />
+          </Row>
+        ))}
       </Card>
       <Card title="Chat view" color="var(--accent)" iconPath={<path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-7l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" />}>
         <Row label="Default agent" detail="The agent a new session starts. A plain terminal is always one click away.">

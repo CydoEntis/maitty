@@ -828,10 +828,13 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   only what the history says.
 - **Mode and model.** The settings tray under the message box says how Claude is set up, from its own transcript and
   never a guess: the permission mode (`Ask before running`, `Auto`, `Plan`, `Accept edits`; `Bypass permissions` in the
-  danger colour, like Full access), "Permissions" until the file has said one. A chat that follows a terminal agent names
-  its model in the box ("Claude Sonnet 5.5") since it cannot pick one. Both are read-only: the mode cycles with Shift+Tab in
-  the terminal and the model with `/model`, and they follow at the agent's next line in its file. A Codex chat shows none
-  yet (`chatMeta.ts`, `SessionMeta` in the read result).
+  danger colour, like Full access), "Permissions" until the file has said one. A Claude chat that follows a terminal agent
+  changes both from the tray, by typing the agent's own commands into its terminal (not while it works): the mode chip is
+  a dropdown that presses Shift+Tab until the agent's screen shows the pick (`modeFromScreen`), and the model and reasoning
+  picker sends `/model` and `/effort`. Other agents show them read-only. A Codex chat shows none yet (`chatMeta.ts`,
+  `SessionMeta` in the read result). Bypass permissions is pickable only when Claude started allowing it: **Settings >
+  General > Yolo mode** has one switch per agent, off by default, that adds the agent's own launch flag to sessions started
+  afterwards (`yoloFlags`).
 - **Composer.** `useChatComposer` sends through the conversation's own send (`send_conversation`) with an operation
   number (the receipt's plus one; a failed send is retried with the same number so the daemon can tell a retry from a
   new message). Enter sends, Shift+Enter adds a line (not while an input method is composing), Esc or Stop interrupts

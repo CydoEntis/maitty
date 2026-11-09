@@ -100,7 +100,7 @@ import { NewSessionHost } from './components/NewSessionHost'
 import type { NewSessionRequest } from './components/NewSessionModal'
 import { NewChatPage, type NewChatRequest } from './components/NewChatPage'
 import { type WireChoice } from '@/features/chat/agentChoice'
-import { launchFlags } from './model/newChatHost'
+import { launchFlags, yoloFlags } from './model/newChatHost'
 import { GetFileDialog } from './components/GetFileDialog'
 import { MachineUpdateDialog } from './components/MachineUpdateDialog'
 import { runMachineUpdate } from './machineUpdate'
@@ -905,10 +905,11 @@ export function DesktopApp() {
   // The agent is the new session's first command, so it starts as soon as the shell does instead of being typed in once the
   // shell is ready. Its status hooks are connected first: an agent already running never loads them, and its chat would
   // wait on them until it was restarted.
+  const yolo = useMemo(() => ({ claude: preferences.yoloClaude, codex: preferences.yoloCodex, gemini: preferences.yoloGemini }), [preferences.yoloClaude, preferences.yoloCodex, preferences.yoloGemini])
   const launchAgent = useCallback((agent: ChatAgent, flags: string) => async (folder: string): Promise<void> => {
     await connectAgentOnce(agent).catch((error: unknown) => { console.warn(`Could not connect ${agent}'s status hooks`, error) })
-    await launchAgentSession(folder, agent, flags.split(' ').filter((word) => word !== ''))
-  }, [])
+    await launchAgentSession(folder, agent, `${flags}${yoloFlags(agent, yolo)}`.split(' ').filter((word) => word !== ''))
+  }, [yolo])
 
   const startAgentSession = useCallback((folder: () => Promise<string>, agent: ChatAgent, view: PaneView, firstMessage = '', flags = '', afterPlace?: () => void): Promise<boolean> => {
     return runStart(folder, (id) => {

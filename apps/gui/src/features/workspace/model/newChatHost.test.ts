@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ageOf, launchFlags, splitRecent } from './newChatHost'
+import { ageOf, launchFlags, splitRecent, yoloFlags } from './newChatHost'
 
 const project = (name: string) => ({ folder: `/dev/${name}`, name, color: 'red' })
 
@@ -52,5 +52,20 @@ describe('splitRecent', () => {
 
   it('has no others when there are three or fewer', () => {
     expect(splitRecent(['a', 'b'].map(project)).rest).toEqual([])
+  })
+})
+
+describe('yolo launch flags', () => {
+  const off = { claude: false, codex: false, gemini: false }
+
+  it('adds nothing while an agent\'s yolo setting is off', () => {
+    for (const agent of ['claude', 'codex', 'gemini'] as const) expect(yoloFlags(agent, off)).toBe('')
+  })
+
+  it('adds each agent\'s own flag, and only for the agent that is on', () => {
+    expect(yoloFlags('claude', { ...off, claude: true })).toBe(' --allow-dangerously-skip-permissions')
+    expect(yoloFlags('codex', { ...off, codex: true })).toBe(' --dangerously-bypass-approvals-and-sandbox')
+    expect(yoloFlags('gemini', { ...off, codex: true })).toBe('')
+    expect(yoloFlags('gemini', { ...off, gemini: true })).toBe(' --yolo')
   })
 })
