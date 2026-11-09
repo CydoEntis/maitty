@@ -6,6 +6,12 @@ import { joinPath } from './format'
 import { RepoError } from './RepoError'
 import { messageOf, useRepoQuery } from './useRepoQuery'
 
+/** The file shown before one is picked: the README when the top folder has one, else its first file. */
+function startingFile(entries: ReadonlyArray<{ name: string; is_directory: boolean }> | undefined): string | null {
+  const files = (entries ?? []).filter((entry) => !entry.is_directory)
+  return (files.find((entry) => /^readme(\.|$)/i.test(entry.name)) ?? files[0])?.name ?? null
+}
+
 export type LookAt = { path: string; line?: number; key: number }
 
 /** A tree row's left padding: a base, then one step in for each folder level. */
@@ -24,7 +30,7 @@ function ancestorsOf(path: string): string[] {
  */
 export function FilesTab({ term, lookAt }: { term: number; lookAt: LookAt | null }) {
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set())
-  const [file, setFile] = useState<string | null>(null)
+  const [picked, setFile] = useState<string | null>(null)
   const [seen, setSeen] = useState<number | null>(null)
 
   // A link clicked in the terminal opens its file and the folders above it: adjusting state while rendering, not in an effect.
@@ -34,6 +40,9 @@ export function FilesTab({ term, lookAt }: { term: number; lookAt: LookAt | null
     setFile(lookAt.path)
   }
 
+  // The top folder is read by the tree too, under the same key, so this costs no second read.
+  const top = useRepoQuery(term, ['tree', ''], () => repoTree(term, null))
+  const file = picked ?? startingFile(top.data)
   const preview = useRepoQuery(term, ['file', file], () => repoFile(term, file ?? ''), false, file !== null)
 
   useEffect(() => {

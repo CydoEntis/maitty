@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { InspectPanel, type InspectView } from './InspectPanel'
@@ -124,6 +124,17 @@ describe('Inspect panel', () => {
     // The tree stays on screen beside the file, and the file is read-only (no editor).
     expect(screen.getByRole('navigation', { name: 'Files' })).toBeTruthy()
     expect(screen.queryByRole('textbox')).toBeNull()
+  })
+
+  it('opens the README by default, or the first file when there is none', async () => {
+    daemonAnswers({ Tree: [{ name: 'src', is_directory: true }, { name: 'main.go', is_directory: false }, { name: 'README.md', is_directory: false }], File: '# hello\n' })
+    renderPanel('files')
+    expect(await screen.findByLabelText('Preview of README.md')).toBeTruthy()
+    cleanup()
+
+    daemonAnswers({ Tree: [{ name: 'src', is_directory: true }, { name: 'main.go', is_directory: false }], File: 'package main\n' })
+    renderPanel('files')
+    expect(await screen.findByLabelText('Preview of main.go')).toBeTruthy()
   })
 
   it('marks the current branch and its distance from the upstream', async () => {
