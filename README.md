@@ -59,6 +59,22 @@ updating connects them again. You can also download an archive from
 [Releases](https://github.com/CydoEntis/maitty/releases), or build from source with
 `cargo install --git https://github.com/CydoEntis/maitty maitty`.
 
+### Windows says it found a virus
+
+Maitty's Windows builds are not code-signed, and Microsoft Defender sometimes flags a new unsigned
+program it has not seen before as a threat. That is a false positive: the installer checks each
+download against the checksum published with the release, and every build is made by the public
+release workflow in this repository.
+
+If Defender removes `maitty.exe` or blocks it:
+
+1. Open **Windows Security › Virus & threat protection › Protection history**, find the item and
+   choose **Restore**, then **Allow on device**. Or, from an administrator PowerShell, exclude the
+   install folder: `Add-MpPreference -ExclusionPath "$env:LOCALAPPDATA\Programs\maitty"`
+2. Run the installer again.
+3. Optionally tell Microsoft it is safe at <https://www.microsoft.com/en-us/wdsi/filesubmission>,
+   which helps other people on the same version.
+
 ### Desktop GUI
 
 The same release also publishes desktop installers for Windows, macOS and Linux.
