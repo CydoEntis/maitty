@@ -156,8 +156,11 @@ fn an_unbound_selected_row_never_sends_typing_to_the_focused_native_pane() {
     app.screen_side_set(screen::SideItem::Sess(ClientSession::local(key)));
     app.on_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
     app.act(Action::StopAgent);
-    // Closing the row puts that chat away; nothing reaches the pane that happens to be focused.
+    // Closing the row asks first; accepted, it puts that chat away, and nothing reaches the pane that happens to be focused.
     app.act(Action::ClosePane);
+    assert!(matches!(app.mode, Mode::Confirm(_)), "closing asks first");
+    assert!(std::iter::from_fn(|| out.try_recv().map(|o| o.msg).ok()).next().is_none(), "nothing is sent before the answer");
+    app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
     let sent = std::iter::from_fn(|| out.try_recv().map(|o| o.msg).ok()).collect::<Vec<_>>();
     assert!(
         matches!(
@@ -169,8 +172,7 @@ fn an_unbound_selected_row_never_sends_typing_to_the_focused_native_pane() {
         ),
         "{sent:?}"
     );
-    assert!(matches!(app.mode, Mode::Side));
-    assert_eq!(app.screen.cursor, Some(ClientSession::local(key)));
+    assert!(!matches!(app.mode, Mode::Confirm(_)), "the question is answered");
 }
 
 fn app_with_unbound_selection() -> (App, mpsc::UnboundedReceiver<Outgoing>) {
@@ -296,11 +298,14 @@ fn a_chat_put_away_in_another_client_leaves_this_sidebar() {
 }
 
 #[test]
-fn closing_a_chat_that_has_no_terminal_puts_it_away_instead_of_refusing() {
+fn closing_a_chat_that_has_no_terminal_asks_and_then_puts_it_away_instead_of_refusing() {
     let (mut app, mut out) = app();
     let key = SessionKey::Conversation(ConversationId(41));
     app.on_hy_hit(screen::ScreenHit::Session(ClientSession::local(key)), false);
     app.act(Action::ClosePane);
+    assert!(matches!(app.mode, Mode::Confirm(_)), "closing asks first");
+    assert!(sent(&mut out).is_empty(), "nothing is sent before the answer");
+    app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
     assert!(matches!(
         sent(&mut out).as_slice(),
         [ClientMsg::Command(Command::ConversationArchive {

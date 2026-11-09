@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Link2, UserPlus } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Icon } from '@/features/workspace/components/glyphs'
 import type { CrewApi } from '../useCrew'
 import { chatSubtitle, isCrew, mateAgentWord, notAboard, whoIs, type CrewState } from '../model/crew'
@@ -10,7 +11,6 @@ const STACK_LIMIT = 4
 
 function Header({ crew, chat }: { crew: CrewApi; chat: string }) {
   const { state } = crew
-  const [picking, setPicking] = useState(false)
   const entry = state.crews.find((candidate) => candidate.id === chat)
   const mate = state.mates.find((candidate) => candidate.id === chat)
   const choices = notAboard(state, chat)
@@ -25,24 +25,23 @@ function Header({ crew, chat }: { crew: CrewApi; chat: string }) {
       </span>
       {entry && (
         <div className="mx-crew-head-actions">
-          <button type="button" className="mx-crew-pill is-strong" aria-haspopup="menu" aria-expanded={picking} onClick={() => { setPicking((on) => !on) }}><UserPlus size={13} aria-hidden="true" />Add crewmate</button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" className="mx-crew-pill is-strong"><UserPlus size={13} aria-hidden="true" />Add crewmate</button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent container={document.querySelector<HTMLElement>('.mx-app')} aria-label="Your crewmates" align="end" className="mx-crew-menu" style={{ position: 'static' }}>
+              <div className="mx-crew-menu-label">YOUR CREWMATES</div>
+              {choices.map((choice) => (
+                <DropdownMenuItem key={choice.id} className="mx-crew-menu-item" onSelect={() => { crew.bringAboard(chat, choice.id) }}>
+                  <CrewAvatar who={choice} size={22} status={choice.status} />
+                  <span className="mx-crew-menu-name">{choice.name}</span>
+                  <span className="mx-crew-menu-agent">{mateAgentWord(choice.agent)}</span>
+                </DropdownMenuItem>
+              ))}
+              {choices.length === 0 && <div className="mx-crew-menu-none">All your crewmates are aboard.</div>}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <button type="button" className="mx-crew-pill" onClick={() => { toast.message('Invites aren’t available yet', { description: 'Crews with other people need a sync service, which isn’t built.' }) }}><Link2 size={13} aria-hidden="true" />Invite</button>
-          {picking && (
-            <>
-              <div className="mx-crew-scrim" onClick={() => { setPicking(false) }} />
-              <div className="mx-crew-menu" role="menu" aria-label="Your crewmates" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setPicking(false) } }}>
-                <div className="mx-crew-menu-label">YOUR CREWMATES</div>
-                {choices.map((choice) => (
-                  <button key={choice.id} type="button" role="menuitem" className="mx-crew-menu-item" onClick={() => { crew.bringAboard(chat, choice.id); setPicking(false) }}>
-                    <CrewAvatar who={choice} size={22} status={choice.status} />
-                    <span className="mx-crew-menu-name">{choice.name}</span>
-                    <span className="mx-crew-menu-agent">{mateAgentWord(choice.agent)}</span>
-                  </button>
-                ))}
-                {choices.length === 0 && <div className="mx-crew-menu-none">All your crewmates are aboard.</div>}
-              </div>
-            </>
-          )}
         </div>
       )}
     </div>

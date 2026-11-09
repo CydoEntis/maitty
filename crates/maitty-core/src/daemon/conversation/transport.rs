@@ -127,6 +127,8 @@ impl Launch {
     pub(super) async fn validate(mut self) -> Result<Self> {
         tokio::task::spawn_blocking(move || {
             let provider = self.provider();
+            // Gemini's chat is read from its terminal's transcript (follow.rs); it has no structured runtime.
+            if provider == Provider::Gemini { bail!("Gemini has no structured chat runtime"); }
             if let LaunchIdentity::Existing(c) = &self.identity {
                 validate_registry(std::slice::from_ref(c)).map_err(|_| anyhow::anyhow!("Invalid structured conversation binding"))?;
                 if c.binding.provider != provider || c.binding.profile.is_some() {
@@ -152,6 +154,7 @@ impl Launch {
                 let config_variable = match provider {
                     Provider::Codex => "CODEX_HOME",
                     Provider::Claude => "CLAUDE_CONFIG_DIR",
+                    Provider::Gemini => unreachable!("refused above"),
                 };
                 if key.to_string_lossy().eq_ignore_ascii_case(config_variable)
                     && std::fs::canonicalize(Path::new(value)).ok().as_ref() != Some(&home) {

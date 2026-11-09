@@ -47,6 +47,8 @@ pub(super) struct Saved {
     pub order: Vec<String>,
     /// Paths a session was last started in from the New Session popup, newest first, as typed.
     pub recent_paths: Vec<String>,
+    /// Claude Code's status hooks were offered once; the answer is not asked for again.
+    pub hooks_offered: bool,
     /// Folded sidebar rows: `m:<machine>` and `c:<machine>/<fleet>`.
     pub closed: Vec<String>,
     /// Sessions in the order you dragged them to (within a group; what needs you still
@@ -61,6 +63,8 @@ pub(super) struct Saved {
     pub open_branches: Vec<String>,
     /// Sidebar width you dragged it to, and the split's share for the left (or top) half.
     pub side_w: Option<u16>,
+    /// The sidebar lists each machine's sessions under their folder instead of in one run.
+    pub group_folders: bool,
     pub split: Option<f32>,
     /// A task typed into + New and not started yet.
     pub draft: String,
@@ -204,6 +208,10 @@ pub(super) struct Screen {
     pub fleet_active: HashMap<fleets::FleetId, ClientTerm>,
     /// What the sidebar cursor walks over, top to bottom.
     pub side_items: Vec<SideItem>,
+    /// The fold keys of the headings drawn this frame (`ScreenHit::Fold`).
+    pub fold_keys: Vec<String>,
+    /// The sessions the panes of this view show, for the sidebar's markers.
+    pub in_view: Vec<ClientSession>,
     /// Projects opened this run that haven't been looked at (NEW chip).
     pub fresh: HashSet<String>,
     /// A session about to open beside this one: pair them when it appears.
@@ -219,6 +227,10 @@ pub(super) struct Screen {
     pub side_scroll: u16,
     pub follow: bool,
     pub side_rect: Rect,
+    /// Where the sidebar's group-by menu opens: under its chip.
+    pub group_at: (u16, u16),
+    /// Where the top `+`'s menu opens.
+    pub new_at: (u16, u16),
     /// The sidebar's filter: what is typed, and whether the keys are going into it.
     pub filter: String,
     pub filtering: bool,
@@ -966,6 +978,7 @@ impl App {
             let provider = match c.provider {
                 crate::conversation::Provider::Codex => "Codex",
                 crate::conversation::Provider::Claude => "Claude",
+                crate::conversation::Provider::Gemini => "Gemini",
             };
             let checks = c.checks.clone();
             let check = crate::protocol::headline(&checks).cloned();
@@ -1414,10 +1427,6 @@ fn session_title(t: &TermInfo, name: &str, top: &Path) -> String {
 pub(super) enum ScreenHit {
     /// The toast's ✕.
     ToastClose,
-    /// The sidebar's search field.
-    SideFilter,
-    /// The `×` on the filter field: clear what is typed.
-    ClearFilter,
     /// A subagent row of the sidebar (its place in `Screen::sub_rows`): it opens its parent's
     /// pane, where the agent shows its subagents itself.
     Subagent(usize),
@@ -1425,15 +1434,20 @@ pub(super) enum ScreenHit {
     ReleaseMenu,
     /// The `n new session` chip in a workspace with no pane open.
     NoPaneNew,
+    /// A machine or folder heading's arrow and name: fold it or open it again (its key in `Screen::fold_keys`).
+    Fold(usize),
+    /// The same on a machine heading, which also keeps its right-click menu: the machine it is.
+    FoldMachine(usize, MachineId),
+    /// The sidebar's top `+`: a menu to start a session or add a remote machine.
+    NewMenu,
     /// The `+` on a machine heading: a shell on that machine at once.
     MachinePlus(MachineId),
     /// A machine heading in the sidebar: a click opens Machines on it, a right-click its menu.
     MachineHead(MachineId),
     /// The `install` or `update` chip on a machine heading: `machine update` in a popup.
     MachineFix(MachineId),
-    /// The `files` and `changes` chips on a pane's top border.
-    FilesChip,
-    ChangesChip,
+    /// A pane's folder and branch on its bottom border: its Project menu (Files, Changes, Branches, …).
+    PaneProject(ClientTerm),
     /// A session row of the sidebar.
     Session(ClientSession),
     /// A button on the selected Inbox item: the key it stands for (`\n` Enter, `\x1b` Esc).
@@ -1447,8 +1461,6 @@ pub(super) enum ScreenHit {
     /// Inside an overlay's panel: nothing.
     Noop,
     FinderPick(usize),
-    /// A row of the New session dialog: a project in step 1, a machine in step 2.
-    NsRow(usize),
     NpProj(usize),
     NpRun(usize),
     NpBeside(usize),
@@ -1497,6 +1509,13 @@ pub(super) enum ScreenHit {
     TidyGo,
     /// The sidebar's "menu".
     Actions,
+    /// The sidebar's group-by chip: a menu to list sessions by priority or by folder.
+    GroupFolders,
+    /// A row of your machines in the Machines dialog: choose it.
+    MachineRow(usize),
+    /// A button on a machine's row: the key that does it (`r` reconnect, `u` update, `e` edit,
+    /// `x` remove) for the machine at that place in the list.
+    MachineButton(usize, char),
     /// A row of the actions list.
     ActionRow(usize),
     /// The mode bar's SHORTCUT tag: the key map.
@@ -1602,14 +1621,9 @@ mod updates;
 pub(in crate::client) use updates::draw_updates;
 mod closing;
 pub(in crate::client) use closing::{Closing, draw_banner};
-mod new_session;
-mod new_session_ui;
-#[cfg(test)]
-mod new_session_tests;
 #[cfg(test)]
 mod keys_tests;
-pub(in crate::client) use new_session::NewSession;
-pub(in crate::client) use new_session_ui::draw_new_session;
+mod fuzzy;
 mod popover;
 mod popups;
 mod references_sheet;

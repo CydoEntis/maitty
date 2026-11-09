@@ -16,8 +16,6 @@ const BOX_H: u16 = 22;
 const ABOVE_BOXES: u16 = 11;
 /// A column clear each side of what is drawn.
 const MARGIN: u16 = 1;
-/// The most the wordmark sits below the top of the screen.
-const LOGO_DROP: u16 = 8;
 /// Rows a menu choice's highlight takes, and the blank row between two.
 const CHOICE_ROWS: u16 = 3;
 /// Rows a session takes in the away list: its line, its activity and a blank row.
@@ -230,7 +228,7 @@ pub(in crate::client) fn draw_wide(
     let centre = |w: u16| area.x + area.width.saturating_sub(w) / 2;
     let above = if wordmark { ABOVE_BOXES } else { 0 };
     let free = area.height.saturating_sub(above + lead + BOX_H);
-    let top = area.y + (free / 2).min(LOGO_DROP);
+    let top = area.y + free / 2;
     if wordmark {
         let lw = logo_width(area.width);
         draw_logo(

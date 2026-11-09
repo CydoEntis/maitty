@@ -610,28 +610,35 @@ impl App {
         if let Some(light) = theme_row
             && matches!(
                 k.code,
-                KeyCode::Enter
-                    | KeyCode::Char(' ')
-                    | KeyCode::Left
-                    | KeyCode::Right
-                    | KeyCode::Char('h' | 'l')
+                KeyCode::Left | KeyCode::Right | KeyCode::Char('h' | 'l')
             )
+        {
+            let dir = if matches!(k.code, KeyCode::Left | KeyCode::Char('h')) { -1 } else { 1 };
+            self.step_theme(light, dir);
+            return true;
+        }
+        if let Some(light) = theme_row
+            && matches!(k.code, KeyCode::Enter | KeyCode::Char(' '))
         {
             self.open_themes_on(light);
             return true;
         }
-        if matches!(&row, Some(design::SRow::Setting(s)) if s.kind == Kind::Spinner)
-            && matches!(
-                k.code,
-                KeyCode::Enter
-                    | KeyCode::Char(' ')
-                    | KeyCode::Left
-                    | KeyCode::Right
-                    | KeyCode::Char('h' | 'l')
-            )
-        {
-            self.open_spinners();
-            return true;
+        // Any other key falls through to the shared handling below; returning false here closes Settings.
+        if matches!(&row, Some(design::SRow::Setting(s)) if s.kind == Kind::Spinner) {
+            let handled = match k.code {
+                KeyCode::Left | KeyCode::Char('h') => Some(-1),
+                KeyCode::Right | KeyCode::Char('l') => Some(1),
+                KeyCode::Enter | KeyCode::Char(' ') => Some(0),
+                _ => None,
+            };
+            if let Some(dir) = handled {
+                if dir == 0 {
+                    self.open_spinners();
+                } else {
+                    self.step_spinner(dir);
+                }
+                return true;
+            }
         }
         let step = |app: &mut App, dir: i64| {
             if let Some(design::SRow::Setting(s)) = &row

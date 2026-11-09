@@ -1,4 +1,5 @@
-import { useSyncExternalStore } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
+import { loadAgentModels } from '@/api/daemon'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
 
 /** How much the model thinks before it answers. */
@@ -27,6 +28,48 @@ export const KNOWN_MODELS: Readonly<Record<ChatAgent, readonly ModelOption[]>> =
   codex: [
     { id: DEFAULT_PICK, label: 'Default', blurb: "Your account's model. Picking another is not offered for Codex yet" },
   ],
+  gemini: [
+    { id: DEFAULT_PICK, label: 'Default', blurb: "Gemini CLI's own model. Its chat is read from the terminal, so nothing is picked here" },
+  ],
+}
+
+const modelListeners = new Set<() => void>()
+let discovered: Partial<Record<ChatAgent, readonly ModelOption[]>> = {}
+
+/** The models to offer for an agent: the ones its own list gave, else the fixed list above. */
+export function modelsFor(agent: ChatAgent): readonly ModelOption[] {
+  return discovered[agent] ?? KNOWN_MODELS[agent]
+}
+
+/** Replaces an agent's models with the ones read from it (after "Default", which sends nothing). */
+export function setDiscoveredModels(agent: ChatAgent, models: readonly ModelOption[]): void {
+  if (models.length === 0) return
+  discovered = { ...discovered, [agent]: [KNOWN_MODELS[agent][0] as ModelOption, ...models.filter((model) => model.id !== DEFAULT_PICK)] }
+  for (const listener of modelListeners) listener()
+}
+
+/** For tests. */
+export function forgetDiscoveredModels(): void {
+  discovered = {}
+}
+
+export function useAgentModels(agent: ChatAgent): readonly ModelOption[] {
+  return useSyncExternalStore(
+    (listener) => { modelListeners.add(listener); return () => { modelListeners.delete(listener) } },
+    () => modelsFor(agent),
+  )
+}
+
+const asked = new Set<ChatAgent>()
+
+/** Asks the host once per agent for the models it really offers; a failure leaves the fixed list. */
+export function useDiscoveredModels(agent: ChatAgent) {
+  useEffect(() => {
+    // Gemini has no model list to read; its chat follows the terminal.
+    if (agent === 'gemini' || asked.has(agent)) return
+    asked.add(agent)
+    loadAgentModels(agent).then((models) => { setDiscoveredModels(agent, models) }).catch((error: unknown) => { asked.delete(agent); console.warn(`Could not list ${agent}'s models`, error) })
+  }, [agent])
 }
 
 /** The reasoning levels' words for the picker. */
@@ -61,7 +104,7 @@ function table(): Stored {
 export function readChoice(conversation: number, agent: ChatAgent): AgentChoice {
   const fallback = defaultChoice()
   const saved = table()[String(conversation)]
-  const model = KNOWN_MODELS[agent].some((option) => option.id === saved?.model) ? (saved?.model ?? fallback.model) : fallback.model
+  const model = modelsFor(agent).some((option) => option.id === saved?.model) ? (saved?.model ?? fallback.model) : fallback.model
   const reasoning = REASONING_PICKS.find((level) => level === saved?.reasoning) ?? fallback.reasoning
   return { model, reasoning }
 }

@@ -517,3 +517,15 @@ chat and treat the terminal as secondary, and the one on Chromium has no Linux l
 the one on WebKitGTK calls its Linux build a preview. If the hop turns out to be the web view or
 Tauri's IPC and not this app's code, the choice is between working around WebKitGTK and moving the
 desktop app to Chromium (Electron, or a Chromium web view). That is an ADR, not a ticket.
+
+## Starting a chat (2026-11-08)
+
+A new chat used to wait on five steps one after another: start a shell, list the sessions, run
+`maitty integrate <agent>` (a process), type the agent's name into the shell once it was ready, then
+wait for the agent's first report. Now the agent is the new session's first command
+(`start_agent_session`, which accepts only a known agent and plain flag words), the status hooks are
+connected once per run of the window and ahead of time (when the new chat page opens), and an open
+chat that is working asks the daemon for news every 300 ms (`ACTIVE_POLL_MS`), not every second.
+What is left is the shell's own startup and the agent's own startup, which Maitty does not control.
+Measure it on Windows with a screen recording at 30 fps: count frames from Enter to the first
+"thinking" line.

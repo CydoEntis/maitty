@@ -5,17 +5,49 @@
 use crate::brand::APP_COMMAND;
 use crate::protocol::{self, ClientMsg, ServerMsg};
 use anyhow::{Context, Result};
-use interprocess::local_socket::tokio::{RecvHalf, SendHalf, Stream, prelude::*};
+use interprocess::local_socket::tokio::{Stream, prelude::*};
 use interprocess::local_socket::{ListenerOptions, Name};
 use maitty_ipc_transport::framed_parts;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::task::Poll;
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 pub use maitty_ipc_transport::{Reader, STREAM_MARKER, Writer, is_decode_error, send};
 pub use maitty_machines::{
     CONNECT_BUDGET, Machine, NO_DAEMON_EXIT, OtherVersion, PROXY_ATTACH_ONLY_FLAG, SSH_PROGRAM,
     other_version,
 };
 
-#[allow(dead_code)]
-type Halves = (RecvHalf, SendHalf);
+/// One end of a local-socket stream that both ends share. The library deprecated splitting a stream into halves
+/// (`interprocess` 2.4.7): a shared reference to the stream already reads and writes, so each end holds the stream
+/// itself and the socket closes when the last end is dropped.
+pub struct Shared(Arc<Stream>);
+
+/// The read end and the write end of `stream`.
+pub fn halves(stream: Stream) -> (Shared, Shared) {
+    let stream = Arc::new(stream);
+    (Shared(Arc::clone(&stream)), Shared(stream))
+}
+
+impl AsyncRead for Shared {
+    fn poll_read(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut &*self.0).poll_read(cx, buf)
+    }
+}
+
+impl AsyncWrite for Shared {
+    fn poll_write(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>, buf: &[u8]) -> Poll<std::io::Result<usize>> {
+        Pin::new(&mut &*self.0).poll_write(cx, buf)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut &*self.0).poll_flush(cx)
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut &*self.0).poll_shutdown(cx)
+    }
+}
 
 pub(crate) const STRUCTURED_ENV: [&str; 4] = [
     concat!(env!("APP_ENV"), "_CONVERSATION_ID"),
@@ -45,7 +77,7 @@ pub fn has_structured_identity() -> bool {
 }
 
 pub fn framed(stream: Stream) -> (Reader, Writer) {
-    let (read, write) = stream.split();
+    let (read, write) = halves(stream);
     framed_parts(read, write)
 }
 
@@ -164,13 +196,11 @@ pub async fn proxy(attach_only: bool) -> Result<()> {
             }
         }
     }
-    let (mut sr, mut sw) = stream
-        .context(concat!(
-            "couldn't reach or start the ",
-            env!("APP_COMMAND"),
-            " server here"
-        ))?
-        .split();
+    let (mut sr, mut sw) = halves(stream.context(concat!(
+        "couldn't reach or start the ",
+        env!("APP_COMMAND"),
+        " server here"
+    ))?);
     // Before any frame, so the client can tell the stream from login text printed ahead of it.
     let mut out = tokio::io::stdout();
     out.write_all(STREAM_MARKER).await?;

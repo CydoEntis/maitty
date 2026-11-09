@@ -30,9 +30,6 @@ pub(in crate::client) fn full_side_w(app: &App, area: Rect) -> u16 {
 /// room as well as the panes'.
 const SHEET_OVER_SIDE_BELOW: u16 = 100;
 
-/// Columns the `»` chip takes at the top left while the sidebar is hidden, its gap included.
-pub(in crate::client) const SHOW_CHIP_W: u16 = 4;
-
 /// The narrowest the sidebar (sliding) or the sheet is drawn; below it, it's only space.
 const SIDE_DRAWN_FROM: u16 = 12;
 pub(in crate::client) const SHEET_DRAWN_FROM: u16 = 24;
@@ -60,11 +57,35 @@ fn padded(app: &App, area: Rect) -> Rect {
     }
 }
 
-/// The room the screen is laid out in: inside the padding, above the mode bar.
+/// Blank rows between the frames and the mode bar, so the bar does not touch their bottom lines.
+const BAR_GAP: u16 = 1;
+
+/// Whether the bar's rows are kept. Always: opening a menu or key mode fills the bar but must not move the frames.
+pub(in crate::client) fn bar_shown(app: &App) -> bool {
+    // The bar's rows are always kept, so opening a menu or key mode never moves the panes.
+    let _ = app;
+    true
+}
+
+/// Whether the bar has anything to say. While keys go to the panes it has nothing: the pane and the sidebar already
+/// name the session, and key mode shows on the frame. It speaks for key mode, for anything that holds the keys, for a
+/// line it flashes, and while Update or Restart waits; otherwise its rows stay blank.
+pub(in crate::client) fn bar_has_words(app: &App) -> bool {
+    armed(app)
+        || shortcut_waits(app)
+        || app.mode != Mode::Normal
+        || app.view_has_keys()
+        || app.bar_flash.as_ref().is_some_and(|(_, at)| at.elapsed() < crate::client::BAR_FLASH_FOR)
+        || app.update_available.is_some()
+        || app.restart_needed()
+}
+
+/// The room the screen is laid out in: inside the padding, above the mode bar and its gap.
 pub(in crate::client) fn framed(app: &App, area: Rect) -> Rect {
     let r = padded(app, area);
+    let taken = if bar_shown(app) { 1 + BAR_GAP } else { 0 };
     Rect {
-        height: r.height.saturating_sub(1),
+        height: r.height.saturating_sub(taken),
         ..r
     }
 }
@@ -72,6 +93,9 @@ pub(in crate::client) fn framed(app: &App, area: Rect) -> Rect {
 /// The mode bar's row: the bottom row inside the padding.
 pub(in crate::client) fn mode_bar_row(app: &App, area: Rect) -> Rect {
     let r = padded(app, area);
+    if !bar_shown(app) {
+        return Rect { y: r.bottom(), height: 0, ..r };
+    }
     Rect {
         y: r.bottom().saturating_sub(1),
         height: r.height.min(1),
@@ -105,9 +129,10 @@ pub(in crate::client) struct Grid {
 pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
     let look = Look::of(&app.cfg.ui);
     let full = full_side_w(app, area);
-    let sw = (full as f32 * app.side_frac).round() as u16;
-    // Hidden, the gap holds the `»` chip that brings the sidebar back.
-    let gap = if sw == 0 { SHOW_CHIP_W } else { look.gap };
+    // Collapsed, the sidebar is the narrow column; it slides between that and its full width.
+    let rail = side::RAIL_W.min(area.width / 2);
+    let sw = rail + (full.saturating_sub(rail) as f32 * app.side_frac).round() as u16;
+    let gap = look.gap;
     let (side, col) = if app.cfg.ui.sidebar_position == "right" {
         let side = Rect {
             x: area.right().saturating_sub(sw),
@@ -294,15 +319,13 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
         }
         hit(app, g.edge, ScreenHit::SideEdge);
     } else {
-        // Hidden: nothing to point at, nothing to move a cursor over, and `»` to bring it back.
+        // The narrow column: nothing to move a cursor over, and `»` to open the sidebar again.
         app.screen.side_rect = Rect::default();
         app.screen.visible.clear();
         app.screen.side_items.clear();
         app.screen.row_y.clear();
         app.screen.sub_rows.clear();
-        if !app.sidebar {
-            draw_show_chip(app, f.buffer_mut(), room, g.panes, t);
-        }
+        side::draw_rail(app, f.buffer_mut(), g.side, &model, t);
     }
     if g.panes.width > 0 {
         draw_main(app, f, g.panes, &model, t);
@@ -315,7 +338,14 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
         draw_sheet(app, f.buffer_mut(), g.sheet, kind, t);
         draw_sheet_edge(app, f.buffer_mut(), &g, t);
     }
-    draw_mode_bar(app, f.buffer_mut(), mode_bar_row(app, area), t);
+    let bar = mode_bar_row(app, area);
+    if bar_has_words(app) {
+        draw_mode_bar(app, f.buffer_mut(), bar, t);
+    } else {
+        // Nothing to say: the rows stay where they are, blank, so the frames above never move.
+        app.screen.bar_keys.clear();
+        fill(f.buffer_mut(), bar, t.bg);
+    }
     app.screen.crumb_x = g.panes.x + 1;
     // A popup (`<app> popup`) floats over everything, the rest dimmed.
     let above = above_bar(app, area);
@@ -342,22 +372,6 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     }
     draw_toast(app, f.buffer_mut(), room, t);
     g.panes
-}
-
-/// The sidebar hidden: a `»` chip on the top row, in the gap beside the panes, brings it back
-/// (`«` when the sidebar sits on the right).
-fn draw_show_chip(app: &mut App, buf: &mut Buffer, room: Rect, panes: Rect, t: &Theme) {
-    let right = app.cfg.ui.sidebar_position == "right";
-    let text = if right { HIDE } else { SHOW };
-    let c = chips::chip(app, text, chips::Chip::Title { focused: false }, t.bg, t);
-    let w = segs_width(&c);
-    let x = if right {
-        room.right().saturating_sub(w)
-    } else {
-        room.x
-    };
-    put(buf, x, panes.y, &c, x + w);
-    hit(app, Rect { x, y: panes.y, width: w, height: 1 }, ScreenHit::ExpandSidebar);
 }
 
 pub(in crate::client) fn find(model: &[Proj], term: ClientTerm) -> Option<(&Proj, &Wt, &Session)> {

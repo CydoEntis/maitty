@@ -2,8 +2,29 @@
 //! the work, the same as `maitty machine update <name>` in a terminal, so there is one update
 //! path. The machine's saved sessions come back on the new daemon; a turn in progress is lost.
 
+use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
 use std::process::{Command, Stdio};
+use tauri::Emitter;
+
+/// What the window hears while an update runs: which machine, and how far along it is.
+const PROGRESS_EVENT: &str = "machine-update-progress";
+
+#[derive(Clone, serde::Serialize)]
+struct Progress {
+    name: String,
+    percent: u8,
+}
+
+/// The update's `progress: 55` line on stderr, which it prints only because the window asked (`<APP>_UPDATE_PROGRESS`).
+fn parse_progress(line: &str) -> Option<u8> {
+    line.trim()
+        .strip_prefix("progress: ")?
+        .trim()
+        .parse::<u8>()
+        .ok()
+        .filter(|percent| *percent <= 100)
+}
 
 /// Keeps a window-supplied name from ever being read as an option.
 fn valid_name(name: &str) -> bool {
@@ -35,10 +56,17 @@ fn summary(stdout: &str, stderr: &str) -> String {
     }
 }
 
-fn run(executable: &Path, name: &str, install: bool, when_idle: bool) -> Result<String, String> {
+fn run(
+    app: &tauri::AppHandle,
+    executable: &Path,
+    name: &str,
+    install: bool,
+    when_idle: bool,
+) -> Result<String, String> {
     let mut command = Command::new(executable);
     command
         .args(arguments(name, install, when_idle))
+        .env(format!("{}_UPDATE_PROGRESS", maitty_machines::APP_ENV), "1")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -47,12 +75,47 @@ fn run(executable: &Path, name: &str, install: bool, when_idle: bool) -> Result<
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x0800_0000);
     }
-    let output = command
-        .output()
+    let mut child = command
+        .spawn()
         .map_err(|error| format!("Could not run the update: {error}"))?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    if output.status.success() {
+    // Standard output is read on its own thread so neither pipe can fill and stall the update.
+    let stdout_pipe = child.stdout.take();
+    let stdout_reader = std::thread::spawn(move || {
+        let mut text = String::new();
+        if let Some(mut pipe) = stdout_pipe
+            && let Err(error) = pipe.read_to_string(&mut text)
+        {
+            tracing::warn!("could not read the update's output: {error}");
+        }
+        text
+    });
+    let mut stderr = String::new();
+    if let Some(pipe) = child.stderr.take() {
+        for line in BufReader::new(pipe).lines().map_while(Result::ok) {
+            match parse_progress(&line) {
+                Some(percent) => {
+                    let progress = Progress {
+                        name: name.to_string(),
+                        percent,
+                    };
+                    if let Err(error) = app.emit(PROGRESS_EVENT, progress) {
+                        tracing::warn!("could not tell the window how far the update is: {error}");
+                    }
+                }
+                None => {
+                    stderr.push_str(&line);
+                    stderr.push('\n');
+                }
+            }
+        }
+    }
+    let status = child
+        .wait()
+        .map_err(|error| format!("The update stopped unexpectedly: {error}"))?;
+    let stdout = stdout_reader
+        .join()
+        .map_err(|_| "The update's output could not be read.".to_string())?;
+    if status.success() {
         return Ok(summary(&stdout, &stderr));
     }
     Err(last_line(&stderr)
@@ -135,14 +198,14 @@ pub async fn update_machine(
         return Err("That is not a machine name.".into());
     }
     let executable = crate::daemon_executable(&app)?;
-    tauri::async_runtime::spawn_blocking(move || run(&executable, &name, install, when_idle))
+    tauri::async_runtime::spawn_blocking(move || run(&app, &executable, &name, install, when_idle))
         .await
         .map_err(|error| format!("The update stopped unexpectedly: {error}"))?
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Activity, arguments, parse_activity, summary, valid_name};
+    use super::{Activity, arguments, parse_activity, parse_progress, summary, valid_name};
 
     #[test]
     fn a_name_that_could_be_an_option_is_refused() {
@@ -188,5 +251,14 @@ mod tests {
         assert!(said.starts_with("box: maitty 1.0.0 installed"));
         assert!(said.contains("note: could not ask the daemon"));
         assert_eq!(summary("", ""), "Updated.");
+    }
+
+    #[test]
+    fn a_progress_line_is_a_number_up_to_a_hundred_and_anything_else_is_not_progress() {
+        assert_eq!(parse_progress("progress: 55"), Some(55));
+        assert_eq!(parse_progress("  progress: 100  "), Some(100));
+        assert_eq!(parse_progress("progress: 101"), None);
+        assert_eq!(parse_progress("progress: soon"), None);
+        assert_eq!(parse_progress("probing box…"), None);
     }
 }

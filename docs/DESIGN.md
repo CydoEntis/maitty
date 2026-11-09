@@ -17,31 +17,39 @@ Most of this document describes the TUI. The desktop app's look is in
 - **Shape and word carry the meaning; colour backs them.** Every state reads in the Unicode
   glyph set and without colour.
 - **Amber means needs you.** Nothing else is drawn in it: no heading, no decoration.
-- **Only what has the keys is lit.** The focused pane, the open sheet or the selected row;
+- **Only what has the keys is lit.** The focused pane, the open sheet or the selected row (a selected row's ground is the theme's accent tinted into the surface it is on, `SELECTED_ACCENT`, so it is seen on dark and light alike; in the GUI a terminal selection is the solid accent);
   everything else is quieter.
 - **Plain words.** Sentence case, no bracketed explanations, every key shown as a keycap.
 
 ## Themes and colour roles
 
 Colours come only from the theme's roles, never a literal. Dark and light are two remembered
-slots (Settings › Appearance) and a switch; **Night** is the default dark theme and **Day**
-the default light one, and the browser lists each side on its own tab. **Night** is the sea
-at night, a deep navy ground, sea-glass teal for focus and working, foam for names. **Day**
-is the same sea by day: a pale grey-blue ground and a deep teal accent. The other built-in
-themes fill the same roles; [theme sources](theme-credits.md) lists where they come from.
+slots (Settings › Appearance) and a switch; **Maitty Night** (id `night`) is the default dark theme and
+**Maitty Day** (id `day`) the default light one, and the browser lists each side on its own tab. **Maitty Dark** (`maitty-dark`) and **Maitty Light** (`maitty-light`) are the same accents on a standard black and white ground, from the file's `dark` and `light` sections. They are
+Sea-glass and Brass, built from `crates/maitty-settings/maitty-tokens.json`, the one file the colours are
+read from: brass is the accent, teal only ever means working, coral only ever means needs you, and the AI in
+the wordmark is gold. Night is a deep teal-black ground; Day a pale sea-glass one. The other twelve built-in
+themes (a dark and a light each of GitHub, One, Catppuccin, Solarized, Gruvbox and Tokyo Night, listed with Maitty's four in
+`crates/maitty-settings/themes.json`) fill the same roles; [theme sources](theme-credits.md) lists where they come from.
 
 | Role | Used for | Night | Day |
 | --- | --- | --- | --- |
-| `bg` | the ground, and a terminal cell's default background | `#08111d` | `#f6f8fa` |
-| `card`, `card2` | panels, header strips; fields and action rows inside modals | `#0f1b2b`, `#15253a` | `#ffffff`, `#e0edf2` |
-| `btn`, `hov` | chips and buttons; the hovered row and the open session's row | `#15253a`, `#13233a` | `#e4ebf1`, `#e0edf2` |
-| `line` | borders, dividers | `#1d2d42` | `#d3dce5` |
-| `muted`, `text`, `strong` | quiet text, body text, names and titles | `#6f8399`, `#c9d6e3`, `#eef5fb` | `#61748a`, `#1f2f3f`, `#0b1724` |
-| `accent`, `acc_ink` | focus, working, the current tab; ink on the accent | `#3dd6c6`, `#08111d` | `#0b7a71`, `#ffffff` |
-| `blocked` | needs you, and only that | `#f5c542` | `#674100` |
-| `done`, `err` | passed or finished; failed | `#7fd99a`, `#ff7b72` | `#2e8b57`, `#c93c37` |
+| `bg` | the ground, and a terminal cell's default background | `#05131a` | `#e9f0ed` |
+| `card`, `card2` | panels, header strips; fields and action rows inside modals | `#0a2329`, `#092229` | `#f8fbfa`, `#d6e9e6` |
+| `btn`, `hov` | chips and buttons; the hovered row and the open session's row | `#0b2a30`, `#092229` | `#d6e9e6`, `#c3dedb` |
+| `line` | borders, dividers | `#17383c` | `#b9ccc5` |
+| `muted`, `text`, `strong` | quiet text, body text, names and titles | `#8fa8a1`, `#c2d3ce`, `#eef5f2` | `#344845`, `#22393b`, `#0b1f22` |
+| `accent`, `acc_ink` | focus, the current tab; ink on the accent (brass) | `#e3a72f`, `#07161a` | `#8a5a00`, `#f8fbfa` |
+| `working` | working, and only that (teal) | `#3dd6c6` | `#09605a` |
+| `blocked` | needs you, and only that (coral) | `#ff6a4a` | `#9e2e12` |
+| `done`, `err` | passed or finished; failed | `#7fd99a`, `#e0245e` | `#439261`, `#c4003c` |
 
-`sky()` (checking, shortcut mode, copy selection) and `violet()` (could not run) are derived
+The day brass fill is too pale to read as text or carry an ink, so by day the accent is the file's `brassText`.
+The error red is not in the file; it is kept apart from the coral of needs you. Day's `done` is the file's green
+text lifted a third toward its green fill, because the file's own green and teal text colours are too close to
+tell apart by colour alone.
+
+`sky()` (checking, copy selection) and `violet()` (could not run) are derived
 from the theme, not roles of their own. Every built-in theme passes a contrast audit, and
 needs you never looks like failed. See UI › *design system*.
 
@@ -76,8 +84,8 @@ accent fill. See UI › *UI conventions*.
 
 Each machine with its sessions under it, on the panel ground, 34 columns by default (24 to 60
 resizable). On the top border the ` maitty ` chip at the left and ` « ` (hide) at the right; hidden,
-a ` » ` chip beside the panes brings it back. Row 2 is the filter field, `/ filter sessions` on the
-darker ground. A machine is a heading chip with its count (` This computer 5 `), an accent ` + `
+a ` » ` chip beside the panes brings it back. Filtering is a command (`/`) with its own modal,
+no field; the folder button groups sessions by folder. A machine is a heading chip with its count (` This computer 5 `), an accent ` + `
 chip (a shell there at once) and a green `●` at the right while it is up. While its app is missing
 or on another version the ` + ` gives way to an accent ` install ` or ` update ` chip, the fix one
 click from where it shows; the Machines dialog marks that row ` u install ` / ` u update ` beside its
@@ -94,13 +102,13 @@ are in UI › *Machines dialog*.
 ## Pane titles
 
 Every pane's top border carries its **title chip** at the left: the status mark, the name in bold,
-then the folder and branch quieter (`mark name ~/cwd branch`, cut with `…`), the accent with dark
-ink while the pane has the keys. At the right ` files `, ` changes N ` (accent while their panel is
-open) and ` × `. The program starts on the row under the border: an agent's pane is its own
+(`mark name`), the accent with dark ink while the pane has the keys, and ` × ` at the right. Its
+folder and branch are quiet chips on the **bottom** border (cut with `…`); a click on them opens the
+Project menu, where Files and Changes are. Labels are capitalised. The program starts on the row under the border: an agent's pane is its own
 terminal, and the TUI draws no chat of its own. With no pane open, a dashed box says `No pane open`
 over an ` n new session ` chip. A pane closes with Alt+x, leader `x` or its `×`, with an undo, and a
 running agent asks first, its box red until you answer. Unfocused panes fade; the focused pane's
-box is the accent, or `sky()` in shortcut mode. See UI › *the frame* and *pane focus*.
+box is the accent, or the KEYS yellow (`blocked`) in key mode. See UI › *the frame* and *pane focus*.
 
 ## Side panel
 
@@ -119,7 +127,7 @@ groups* and *check evidence sheet*.
 ## Modals and popovers
 
 Everything that floats over the screen (menus, Settings, the keys help, confirms) is a box in the accent
-on the panel ground (`sidebar_bg`), corners by `ui.rounded`; what sits on its top border stands on the ground
+on the panel ground, corners by `ui.rounded`; what sits on its top border stands on the ground
 behind. Deciding is a modal: centred, its title as an accent chip on the top border (` settings `), a ` × `
 chip on `btn` a cell in from the corner, no shadow. Settings has its sections down the left and the
 chosen section's rows at the right (label, then the value bold in the accent with `‹ ›` and `2/3`), and a
@@ -143,8 +151,10 @@ with motion on. See UI › *the frame* (Toast).
 
 ## Status bar
 
-The one full-width row, along the bottom, on the panel ground. Typing: a ` PANE ` chip in the accent,
-the session the keys go to (`name · ~/folder`), and at the right `j/k sessions  ^space keys  ? help`.
+The one full-width row, along the bottom, on the panel ground. It is hidden while keys go to the pane
+(no row, no gap; the focused frame turns the KEYS yellow in key mode instead) and shows for key mode,
+for whatever holds the keys, for a flashed line and while Update or Restart waits. Typing with it up: a ` PANE ` chip in the accent,
+and at the right `^space keys  alt+↓/alt+↑ sessions  ^space ? help` (a key that needs the leader is shown with it, since the bare key would be typed into the pane; the session keys need none).
 Key mode: a yellow ` KEYS ` chip and `n new  s split  x close  tab pane  ? help  esc back`, each a click
 that presses it; starting a pane ends it. When something other than the panes has the keys, a calm chip
 (`strong` bold on `btn`) names the holder and its keys sit at the right with the way out last
@@ -174,7 +184,7 @@ Only one too small for the START box draws the cards.
 ## Desktop app
 
 The desktop app is drawn to the redesign handoff (`design_handoff_maitty_redesign`, "Maitty Desktop.dc.html",
-Midnight first). One model: **sessions live in the sidebar, an agent opens as a chat, a shell opens as a terminal,
+Maitty Night first). One model: **sessions live in the sidebar, an agent opens as a chat, a shell opens as a terminal,
 and a terminal for an agent exists only when you ask** ("Open terminal here"). Every session is still a shell that
 maittyd owns; Claude Code and Codex sessions have a chat view ([chat view plan](features/chat-gui/chat-view-plan.md)),
 every other agent and every plain shell stays terminal-only. The prototype is the reference for exact sizes, shadows
@@ -192,14 +202,55 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   xterm's background and ANSI black are `--main`, so a program that paints with black leaves no box. On a web view
   without WebGL 2 (`data-gpu="software"`) the same rules use cheaper values: no blur, a 1px ring for the popover
   shadow ([PERFORMANCE](PERFORMANCE.md)).
-- **Window style: Flat or Glass** (Settings › Appearance › Window style, `style`, shared with the terminal app as
-  `window_style`; the root carries `data-style` and `data-finish`). The finish only; layout, features and status
-  colours do not change. **Glass** is the default: the gradients, highlights and shadows above. **Flat** sets `--gk`
-  to 0, which turns every glass gradient and shadow off, and radius 8 (Settings 10). Tiled is gone: a saved `tiled`
-  reads as Flat, `minimal` as Flat and `expressive` as Glass. **Icons** (Settings › Appearance › Icons, `iconColor`,
+- **The notification card (`features/notifications/NotificationCard.tsx`).** 340px wide, radius 14 (18 in Glass), padding
+  12/12/12/14. A 26px app icon with its 11px status badge, the session's name (13px, 600) with what happened beside it
+  ("needs you" amber, "finished" green, "failed" red; 12px, 500), a 22px close, the body (12.5px, `--fg2`, code in 12px
+  mono), then 28px buttons (the answer filled in the card's colour) and "just now" (11.5px, `--dim`). In Glass it has its
+  own heavier glass: `.09` to `.035` highlight over `--main` at 88%, a `.13` hairline, a 22px blur and a
+  `0 18px 48px -12px` shadow. Toasts sit 96px below the top edge and 36px in from the side, clear of the title bar's
+  controls. The window ground is opaque on every platform (no Mica), as in the redesign.
+- **One material, three roles (`apps/gui/src/material.css`).** The two finishes and the four styles are told apart in
+  that file and nowhere else. Every surface is a *panel* (sidebar, main card, Inbox, inspector), a *float* (menus,
+  popovers, dialogs, the palette, find, toasts) or a *field* (the message box and its tray), and takes its fill,
+  hairline, highlight, shadow and blur from that role's `--m-*` tokens. The `glass` finish is the base for **Glass**, which
+  then lays its own translucent panels on top (below); the finish's own recipe is opaque `--main` cards on the window ground. A panel
+  has a faint top highlight (`rgba(--hl, .035)` fading to `.012` over 120px on the sidebar, a flat `.018` on the
+  workspace card), a `rgba(--hl, .09)` hairline, an inner top edge and a `0 10px 30px -12px` shadow; a float has a
+  stronger highlight (`.07` to `.03`), a `.12` hairline and a `0 18px 44px -12px` shadow, with a 14px blur behind it; a
+  field sits between (`.075` to `.035`). **Flat** (Mono Type, Console, Retro Pixel): solid fills, a hairline, no blur, no
+  highlight (`--gk` is 0, which turns off every gradient and lift that multiplies by it; hover tints stay), one plain
+  shadow on floats. A new surface is added to a role's list in `material.css`; it does not set a background of its
+  own. A popover opens through `PopupContent` (`components/ui/popup.tsx`) or carries `mx-pop`, so it is portalled into
+  the window root and takes the float role. **Inside a surface**, nothing reads the theme's solid colours directly: a
+  sunken control is `--m-well`, a raised or current row `--m-raise`, a picked row `--m-sel`, a hovered one
+  `--m-hover`, a dialog's own ground `--m-pane`. Flat maps them to the theme's `--well`/`--raise`/`--sel`/`--hover`/
+  `--pane`; Glass maps them to tints of the light (`--hl`) and shade (`--sd`). Tints are written
+  `rgba(var(--hl), calc(.06 * var(--hk)))`, never a fixed white. The hairline uses `--hl` (ink on a light theme).
+  `src/material.test.ts` fails when a stylesheet reads a solid surface colour or a fixed white. Left on purpose:
+  terminal grounds (`--term`, `--main` under a terminal), scrims, brand and status colours, the switch knob, and the
+  legacy `App.css` shell outside the window root. **Background glow** (Settings › Appearance, `backgroundGlow`) is the
+  only tint behind the cards, and Glass always has it, painted on the whole window so no seam shows under the title bar.
+- **Window style: four shapes, any theme** (Settings › Appearance › Look › Window style, `style`; the root carries
+  `data-style` and `data-finish`). A style is shape and type, never colour: whatever theme is in use is what every style
+  wears. **Glass** (the default: frosted panels with 22px corners — mostly opaque, a milky sheen, a strong blur (28px, saturate 140%) and a bright edge, so what is behind them is only a soft wash of colour — over an atmosphere of three blobs (teal, brass, blue) drawn from the theme; the terminal is see-through by default so its text sits on the frost,
+  Inter and JetBrains Mono; a saved `frosted` reads as Glass), **Mono Type** (Space Mono everywhere, square corners),
+  **Console** (IBM Plex Sans and JetBrains Mono, hairline borders, a marker on the selected row) and **Retro Pixel**
+  (Pixelify Sans, square corners, 3px borders, hard offset shadows, scanlines). Layout and features never change. A style is data
+  in `theme/windowStyles.ts` (fonts and the glass dials `--hk`/`--sk`, per dark and light side); `withWindowStyle` lays it over the
+  theme in use and touches no colour. **Components are built once and read tokens, never the style.** Besides the
+  base tokens, the shared pieces read the component tokens declared in `material.css`: `--c-sel-*` (every selected
+  state: a sidebar row, a settings nav item, a chosen segment, a palette row), `--c-field-*` (dropdown buttons, pickers,
+  the new-session segments, inputs), `--c-track-*` (the tray behind a segmented control), `--c-sw-*` and `--c-knob-*`
+  (the switch), `--c-tile-ring` (agent and shell tiles) and `--c-head-bg` (sticky headers). Glass uses the
+  defaults; Mono, Console and Pixel override them. What tokens cannot say (square corners, Pixel's borders and
+  scanlines, Glass's panels, no blur outside Glass) is the one `[data-style]` block at the end of
+  `material.css`. `data-finish` is derived (`finishOf`): Glass is `glass`, the others `flat`. The style is
+  the desktop app's own: it is not in the shared `window_style` setting, which stays Flat or Glass for the config file. A
+  saved Flat or Tiled reads as Console. A new control gets tokens first and is checked in all four styles and both
+  themes (Settings › Appearance shows each style live). **Icons** (Settings › Appearance › Icons, `iconColor`,
   `data-icons`): `color` keeps app icons in their own colours; `grayscale` makes them neutral `--raise` tiles.
-- **Title bar.** 32px, `--tbar` (on dark themes a veil of `rgba(10,12,12,.35)` over the ground, on light ones
-  `--main`): the 18px logo, "Maitty" in 12px `--muted`, and the platform's window buttons (46px captions on Windows).
+- **Title bar.** 32px with no background of its own, so it sits on the window ground (`--tbar` is `transparent`): the
+  18px logo, "Maitty" in 12px `--muted`, and the platform's window buttons (46px captions on Windows).
   There is no activity bar, no middle column and no tab bar: the window is the sidebar and the workspace.
 - **Small windows.** The window is never narrower than 720px (`minWidth`). Under **1100px** the sidebar is the
   60px rail, and its expand button opens the full sidebar as an overlay from the sidebar's side, over a scrim;
@@ -218,7 +269,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
 - **Menus** (`components/MenuPopup.tsx`, `menu.css`). One look for every right-click and ⋯ menu: 228px or wider,
   5px inside, radius 12, glass like the cards, a dim 11px heading that names what it is for, 30px rows of 13px text with
   their key at the right in mono, separators between groups. A danger row is red; one that stops something running
-  asks a second click ("Stop claude? Click again"). Arrow keys, Home and End move, Esc or a click outside closes and
+  is handled by the app, which asks in a dialog first (see Close ends the session). Arrow keys, Home and End move, Esc or a click outside closes and
   gives focus back. **Session**: Open, Open in split right, Open in split down (not for the one in front), Open
   terminal here (agents), Rename… (F2), Copy folder path, Get a file… (another machine's sessions), Show changes
   (agents), Stop session or Close shell.
@@ -229,8 +280,8 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   Changes, Close pane.
 - **Status bar.** A 28px line at the bottom of the main area under a hairline, 11.5px muted, one line.
   The left is empty, except "Reconnecting to maittyd…" in amber with a dashed dot when the daemon is
-  unreachable. The right holds quick controls: a **theme** menu (Dark, Light or System, a few themes of
-  the kind in use, and "All themes in Settings…"), the **layout style** (Flat or Glass), the terminal
+  unreachable (the sidebar foot says "Service stopped" or "Restart needed" beside a red dot). The right holds quick controls: a **theme** menu (Dark, Light or System, a few themes of
+  the kind in use, and "All themes in Settings…"), the **window style** (the four styles), the terminal
   **text size** (−, the size which resets it to 14px, +; Ctrl+= and Ctrl+− do the same) and the shortcuts
   keycaps, which open the shortcut overlay. Hidden in Focus mode and by Settings › General › Window ›
   Status bar (off by default).
@@ -238,10 +289,12 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   Collapse sidebar, then **New agent chat** (opens the New session dialog), **Add a remote machine** (Settings ›
   Machines) and the **Inbox** with its count (amber while something needs you). Under it the 32px sunken **Filter
   sessions** field (`/` focuses it; a raised `/` keycap; its border brightens on hover). Sessions are grouped by
-  **machine**, this computer first: an uppercase 10.5px heading with a caret, a laptop or server mark, the count, a
-  group-by-project toggle, the line's 5px dot and a `+` (New agent on it); the heading folds the group. Within a
+  **machine**, this computer first: an uppercase 10.5px heading with a 12px caret (`--accent`; a project's caret is `--ansi-blue`), a laptop or server mark, the count, a
+  group-by-project toggle, the line's 5px dot and a `+` (a click starts an agent chat on it, a right-click opens the full menu); clicking the heading's name folds the group. Within a
   machine the rows are **most urgent first**: needs you, an agent that stopped, working, done, idle, then a shell whose
-  last command failed; creation order within each. Grouped by project, each project is a folding heading (its colour
+  last command failed; creation order within each. While the new-chat page is open, a dashed **New chat** row ("waiting
+  for your first message", three stepping dots) is listed first on this computer, so the draft is never missing from the
+  sidebar; it goes when the chat starts and the chat's own row takes its place. Grouped by project, each project is a folding heading (its colour
   square, name, needs-you count, count). A **row** (40px, radius 8) is the 20px app tile with its status badge
   (spinner, amber `›`, green check, dashed square for unknown), the name (13px; 600 and `--fg` for an agent that is
   doing anything), and under it the project's 6px colour square, the project and `·` and the branch in mono
@@ -255,6 +308,31 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   check done), no text; under the selected session, a 28px row each on a guide line. Clicking one opens its own chat.
   The foot holds the update slot (or "Reconnecting to maittyd…") and the Settings gear. The edge drags (208 to 440px;
   double-click resets). The **rail** of a narrow window is the starters, then one tile per session.
+- **Replies are typed in.** An agent's reply types toward the text that came in (`useTypedText`), so a chunk eases in instead
+  of flashing. A reply that arrives after the history has loaded types from its first letter even when it arrives whole; what
+  the history already held shows at once (`knownRows.ts`), and Reduce motion shows everything at once. A helper agent reporting back (the harness's `<task-notification>` block, which the history keeps as a
+  user message) is one quiet line, "Agent "name" finished · 11s · 50.5k tokens", never the markup; once it has reported,
+  its row leaves the sidebar (one that stopped or still needs something stays).
+- **Panes swap with a glide.** Dropping a pane on another swaps them through a View Transition (`paneTransition.ts`): only the
+  browser's pictures of the panes move, so text never reflows on the way. Without View Transitions, or with Reduce motion,
+  the swap just happens.
+- **Toasts are cards.** The notification card is the one design; a plain toast (Sonner) is laid out the same way: icon tile,
+  title and detail, the close at the top right and the action on its own row under the text, 96px below the top edge and 36px
+  in from the side.
+- **A remote machine that needs the app** has no row of its own: its dot turns amber and an amber **↑ Update** (or Install)
+  text button sits in its header before the folder button. While it updates, a mono percentage replaces the button and a
+  2px accent line runs under the header (indented 26px left, 10px right); both go when it ends. The percentage is the stage
+  the update has finished (probed 5, found 15, build fetched 55, sent and verified 85, reachable 95), not a byte count: the
+  download and upload have none to report.
+- **A chat that starts does not jump.** The message you send from the new chat page is drawn in the conversation at once,
+  where it will stay, with "claude is starting…" under it; there is no queued row above the box and no bar that comes and goes.
+  The needs-you card is raised by the window from the status change as well as by the daemon's own alert (one card per
+  session, so they never stack). The theme's tokens are on the page root, so a menu or popover that renders outside the window
+  reads the same colours and is never see-through.
+- **Typing while an agent works.** A chat run by the daemon queues what you send, and the daemon sends it when the turn
+  ends. A chat that follows an agent in a terminal does the same on this side: the message is held in the composer store
+  (shown under the box in the queue, removable) and typed into the agent's prompt, one at a time, once it is ready for a
+  message; nothing is typed while it is asking something.
 - **Pane** (`components/PaneCard.tsx`, `pane.css`). Agents and shells share one 42px header: the 26px app icon with its
   status badge, the name (15px, 600) over the folder (11px `--dim`) and the branch (mono 10.5px `--ansi-mag`), then at
   the right the terminal | chat switch (agents with a chat), the **Files** and **Changes** tray, a hairline, split right,
@@ -307,8 +385,14 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   session in the sidebar shows the layout it is in, else one of its own. Split right adds a column beside the focused
   pane, taking half its width; split down a pane under it, taking half its height; they mix. Right-click a pane for its
   menu.
-- **Close ends the session, with Undo.** The pane's **×**, the pane menu's Close session, a row's Close
-  session and Ctrl+Shift+W (⌘W) all send the daemon `CloseSession`: the session leaves the list at once and
+  One pane fills the workspace card; two or more are **separate cards** on the window's ground with a gap between them
+  (the workspace card drops its own fill). A pane that is added, closed or resized takes its room at once, with no easing:
+  easing a split made the terminal re-fit every frame and its text jumped. A terminal pane, header included, is one
+  surface (`--main`), with no band where the header ends.
+- **Close ends the session, asking first, with Undo.** The pane's **×**, the pane menu's Close session, a row's Close
+  session and Ctrl+Shift+W (⌘W) first open the confirm dialog (`ConfirmCloseDialog`: "Close name?", Cancel and a red
+  Close, or "Stop claude" for a running agent; Enter confirms, Esc cancels) unless every session in question has already
+  ended. Confirming sends the daemon `CloseSession`: the session leaves the list at once and
   its process runs on for 6 seconds. A toast "Closed name" with **Undo** stays for the same 6 seconds;
   the button or ⌘Z (Ctrl+Shift+Z elsewhere; passed to the terminal when nothing was just closed, and left to a
   text field inside one) sends `UndoClose` and puts the pane back in its place. A chat session has no terminal to
@@ -333,6 +417,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   folder beside it ("Close its terminal" ends it). Settings › General › Chat view picks the view each of Claude and
   Codex opens in (Chat by default). A shell, an unsupported agent or a session on another machine shows the chat
   card's empty state, "Chat view is for agent sessions", with the reason and the ways to start one.
+  Changing the view, or switching between sessions, plays no animation.
 - **Chat session ([ADR 0003](adr/0003-status-and-conversation-trust.md)).** A row and pane like any session, with the
   agent's mark and its branch line. Its pane has no terminal | chat switch; the pane is the chat. The approvals
   (y / a / n), user-input form, Stop and the daemon's queue are the chat's own.
@@ -432,8 +517,9 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   from <machine> · N ms**, a 2 px progress line on its top edge) that sits in the flow, never over the
   terminal, and goes when the stream is live. A real failure keeps its banner; it is not a loading state.
 - **Sidebar footer and updates.** The footer's left slot shows the version, or what an update needs
-  from you: a pill (**Update to x**, the download's percent, **Restart to update**, **Update failed**) that
-  opens a card upward with the matching actions. The updater downloads first and installs only on
+  from you: a pill that opens a card upward with the matching actions. An update waiting to be downloaded or
+  installed is a glass button, a sheen sweeping across it, a tile with an arrow falling into a tray, **Update** and the
+  version in mono (**Restart to update** once downloaded); the download's percent and **Update failed** keep a tinted pill. The updater downloads first and installs only on
   **Restart now**, or by itself when the app is idle, so sessions keep running either way. Settings › General › Updates shows the state with
   one fitting button and two switches: download automatically (on) and **Install updates when idle** (on, helper
   "Never while an agent is working"). Idle means no agent working or waiting on an answer, no keyboard input
@@ -509,14 +595,12 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   hold still under Reduce motion and pause while the window is in the background. Text-only places (a hover
   card) show the Braille frames while a web spinner is picked.
 - **Process icons** are generic tiles, never a product's mark: `>_` shell, `✻` codex, `rs` cargo.
-- **Themes** are Midnight (default), Abyss, Paper and Day (a cool light theme), themes generated from six
-  inputs (`bg fg accent mag blue green` and a light flag) by Oklab mixing, and **High Contrast** (pure
-  black and white, lines `#5A5A5A`/`#8A8A8A`, amber and red kept). Every theme's `--pane` is its opaque
+- **Themes**: sixteen, the same in the GUI and the TUI (`crates/maitty-settings/themes.json` lists them; a TUI test holds its ground and text equal to it). Four are Maitty's own, built from `crates/maitty-settings/maitty-tokens.json` (the TUI reads it too): **Maitty Night** and **Maitty Day** (sea-glass and brass, the defaults) and **Maitty Dark** and **Maitty Light** (a standard black and white ground, same accents). Brass is the accent (`--accent` as a fill, `--accent-text` as text, darker by day), teal is only ever `--working`, coral is only ever needs-you (`--warn`). The other twelve are six families, each with a dark and a light (GitHub, One, Catppuccin, Solarized, Gruvbox, Tokyo Night), generated from six inputs (`bg fg accent mag blue green` and a light flag) by Oklab mixing. A saved theme that is gone falls back to Maitty Night or Maitty Day (the TUI maps each removed id to its nearest survivor). The theme is stored as its id (`night`, `github-dark`, ...) in the shared settings. Every theme's `--pane` is its opaque
   `--main`. The foreground, terminal text (`--fg2`), muted and dim text keep 4.5:1 on both `--term` and the
-  window `--bg`, and Midnight, Paper and Day also hold it for accent, amber, red, green and the ANSI blue,
+  window `--bg`, and Maitty Night and Maitty Day also hold it for the accent text, working, needs-you, red, done and the ANSI blue,
   magenta and green; the theme tests check this. Every light theme holds it too, for accent, amber, red,
   green, blue, magenta and all 15 ANSI text colours but black (the generated ones darken a published hue in
-  place until it passes). Paper and Day use a darker amber and red than the generated light themes. A pane's
+  place until it passes). Maitty Day uses the file's darker *Text colours so those hold on the light ground. A pane's
   xterm palette comes from the same tokens, and on a light theme xterm also lifts any 256-colour or truecolour
   foreground a program picks to 4.5:1 (`minimumContrastRatio`; dark themes leave them as asked). The
   scroll viewport behind the rows is painted `--term`, never xterm's black. **Settings › Appearance › Theme** has an Appearance switch (System, Dark or Light:
@@ -542,3 +626,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   in the accent, then **Copy command** with the command under the text as the secondary way, **Retry**, a
   confirmed **Remove**) and an **Add a machine** card (a field, then the `~/.ssh/config` hosts as rows); its
   states are loading, empty, error and checking, and it works with the keyboard alone.
+
+### Notification cards
+
+Every toast is drawn by one component, `NotificationCard` (`apps/gui/src/features/notifications/`): the agent's icon with its status badge on the left, a bold title with a close button, a muted line saying what it wants (a command in mono), the buttons, and "just now" at the bottom right. It is a float, so it takes the material roles from `material.css` and sets only its tone colour (`needs`, `done`, `error`, `info`). `SessionNotice` (terminal sessions) and `NoticeToast` (conversation views) only map their data onto it; plain Sonner toasts (messages, errors) wear the same float material without the icon and buttons. Allow appears only when the session is stopped on a choice the GUI can answer.

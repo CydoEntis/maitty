@@ -1,4 +1,4 @@
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { listenFileSends, newTransferId, type SendEvent } from '@/api/fileSends'
 import { errorMessage } from '@/lib/error-message'
 import { typablePath } from '@/features/terminal/dropRoute'

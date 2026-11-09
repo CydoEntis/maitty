@@ -74,6 +74,8 @@ pub enum Act {
     /// Stop the daemon so the window reconnects to the installed version.
     RestartDaemon,
     InstallStatus(String),
+    /// How the sidebar lists sessions: by folder (true) or by priority (false).
+    GroupBy(bool),
     /// Open a session's check output in the evidence sheet.
     CheckOutput(ClientTerm),
     RerunCheck(ClientTerm),
@@ -347,6 +349,7 @@ impl App {
         let mut items = self.machine_fix_items();
         items.extend([
             ("Filter sessions".to_string(), Act::Tool(Action::FilterSessions)),
+            ("Add machine…".to_string(), Act::Tool(Action::Machines)),
             ("Inbox".to_string(), Act::Tool(Action::Jump)),
             ("Usage and cost".to_string(), Act::Tool(Action::Usage)),
             ("Settings".to_string(), Act::Tool(Action::Settings)),
@@ -355,6 +358,28 @@ impl App {
         let side = self.screen.side_rect;
         let x = side.right().saturating_sub(SIDEBAR_MENU_W + 1);
         self.menu("menu".into(), items, (x, side.bottom().saturating_sub(1)));
+    }
+
+    /// The sidebar's top `+`: start a session here, or add a remote machine.
+    pub(super) fn new_menu(&mut self) {
+        let items = vec![
+            ("New session".to_string(), Act::Tool(crate::keys::Action::PickSession)),
+            ("Add remote machine\u{2026}".to_string(), Act::Tool(crate::keys::Action::Machines)),
+        ];
+        let at = self.screen.new_at;
+        self.menu("new".into(), items, at);
+    }
+
+    /// The sidebar's group-by chip: how sessions are listed, the current choice ticked.
+    pub(super) fn group_menu(&mut self) {
+        let by_folder = self.screen.saved.group_folders;
+        let tick = |on: bool| if on { "\u{2713} " } else { "  " };
+        let items = vec![
+            (format!("{}Priority", tick(!by_folder)), Act::GroupBy(false)),
+            (format!("{}Folder", tick(by_folder)), Act::GroupBy(true)),
+        ];
+        let at = self.screen.group_at;
+        self.menu("group by".into(), items, at);
     }
 
     /// Right-click on a machine heading in the sidebar. A machine whose app is missing or old
@@ -449,6 +474,7 @@ impl App {
         let title = c.title.clone().unwrap_or_else(|| match c.provider {
             crate::conversation::Provider::Codex => format!("Codex {}", id.0),
             crate::conversation::Provider::Claude => format!("Claude {}", id.0),
+            crate::conversation::Provider::Gemini => format!("Gemini {}", id.0),
         });
         let items = vec![
             ("Rename".to_string(), Act::RenameConversation(id)),
@@ -705,17 +731,52 @@ impl App {
         }));
     }
 
+    /// A chat's title for a question about it, or a plain word when it has none.
+    fn chat_title(&self, id: crate::conversation::ConversationId) -> String {
+        self.snap_of(self.conversation_machine(id))
+            .and_then(|snap| snap.conversations.iter().find(|c| c.id == id))
+            .and_then(|c| c.title.clone())
+            .filter(|t| !t.is_empty())
+            .unwrap_or_else(|| "this chat".into())
+    }
+
     /// What a menu item does; closing things asks first, a plain shell too.
     pub(super) fn menu_act(&mut self, a: Act) {
-        // One session closes at once, with an Undo; a running agent asks for a second press.
-        if let Act::End(ts) = &a
-            && let [term] = ts.as_slice()
-        {
-            self.close_session(*term);
-            return;
-        }
         let model = self.screen_model();
         let ask: Option<Confirm> = match &a {
+            // Closing anything asks first, by whatever route it was asked for (a key, the pane's x, a menu, a click on the row).
+            Act::End(ts) if let [term] = ts.as_slice() => {
+                let name = super::screen::session_name(self, &model, *term);
+                let running = self.agent_running(*term);
+                Some(Confirm {
+                    title: if running { "Stop session".into() } else { "Close".into() },
+                    sub: String::new(),
+                    what: name,
+                    detail: String::new(),
+                    note: if running {
+                        "The agent is working: closing stops it. You can undo for a few seconds with the leader, then Ctrl+Z.".into()
+                    } else {
+                        "You can undo for a few seconds with the leader, then Ctrl+Z.".into()
+                    },
+                    list: Vec::new(),
+                    yes: "Close".into(),
+                    key: '\n',
+                    danger: true,
+                    act: a.clone(),
+                })
+            }
+            Act::ArchiveConversation(id) => Some(Confirm {
+                title: "Close".into(),
+                sub: String::new(),
+                what: self.chat_title(*id),
+                detail: String::new(),
+                note: "It keeps running in the background; every app stops listing it.".into(),
+                list: Vec::new(),
+                yes: "Close".into(),
+                key: '\n',
+                danger: true,
+                act: a.clone(),
+            }),
             Act::End(ts) => Some(Confirm {
                 title: "Close panes".into(),
                 sub: String::new(),
@@ -877,6 +938,12 @@ impl App {
                 );
             }
             Act::Update => self.start_update(),
+            Act::GroupBy(by_folder) => {
+                self.screen.saved.group_folders = by_folder;
+                self.screen.save();
+                self.screen.side_scroll = 0;
+                self.screen.follow = true;
+            }
             Act::RestartDaemon => self.restart_daemon_now(),
             Act::InstallStatus(agent) => {
                 self.notify(format!("setting up {agent} status…"), false);
@@ -1092,7 +1159,12 @@ impl App {
                     self.cmd_on(t.machine, Command::FocusPane { term: t.term });
                 }
             }
+            // One session closes with an Undo (the asking was done by `menu_act`).
             Act::End(ts) => {
+                if let [term] = ts.as_slice() {
+                    self.close_session(*term);
+                    return;
+                }
                 for t in ts {
                     // Out of its split first: the pane beside it takes the room (and the
                     // focus), so nothing else slides into its place.

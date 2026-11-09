@@ -13,6 +13,14 @@ function urgencyOf(session: SessionView): number {
   return session.status === 'error' && isShell(session) ? EXITED_SHELL : URGENCY[session.status]
 }
 
+/** The order the sidebar lists a machine's sessions in: as created, or with what needs you first and the rest as created. */
+export type SidebarOrder = 'creation' | 'priority'
+
+export function bySidebarOrder(sessions: readonly SessionView[], order: SidebarOrder): SessionView[] {
+  const created = inCreationOrder(sessions)
+  return order === 'priority' ? created.sort((a, b) => Number(b.status === 'needs') - Number(a.status === 'needs')) : created
+}
+
 export function byUrgency(sessions: readonly SessionView[]): SessionView[] {
   return inCreationOrder(sessions).sort((a, b) => urgencyOf(a) - urgencyOf(b))
 }
@@ -73,10 +81,11 @@ export type MachineGroup = { head: MachineHead; sessions: SessionView[] }
  * one. Another machine keeps its header with no sessions, as a machine with no app yet has none and
  * its header is where it says so.
  */
-export function machineGroups(sessions: readonly SessionView[], heads: readonly MachineHead[], query: string): MachineGroup[] {
+export function machineGroups(sessions: readonly SessionView[], heads: readonly MachineHead[], query: string, keepEmpty = false, order: SidebarOrder = 'creation'): MachineGroup[] {
   const filtering = query.trim() !== ''
-  if (sessions.length === 0 && heads.length <= 1) return []
+  // A lone machine with nothing on it has no heading, unless something (a draft chat) is waiting there.
+  if (!keepEmpty && sessions.length === 0 && heads.length <= 1) return []
   return heads
-    .map((head) => ({ head, sessions: byUrgency(sessions.filter((session) => session.machine === head.machine && matchesFilter(session, query))) }))
+    .map((head) => ({ head, sessions: bySidebarOrder(sessions.filter((session) => session.machine === head.machine && matchesFilter(session, query)), order) }))
     .filter((group) => !filtering || group.sessions.length > 0)
 }

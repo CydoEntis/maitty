@@ -86,7 +86,7 @@ const ICON_DRAWINGS = {
   chat: ({ size = 13, strokeWidth = 1.8 }: IconProps) => <Svg size={size} strokeWidth={strokeWidth}><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" /></Svg>,
   fleets: ({ size = 14 }: IconProps) => <Svg size={size} strokeWidth={1.8}><path d="M12 3v13M12 5l6 9H12M12 8l-5 6h5M4 18c2 2.5 5 3 8 1 3 2 6 1.5 8-1" /></Svg>,
   priority: ({ size = 14 }: IconProps) => <Svg size={size} strokeWidth={1.9}><path d="M4 7h16M4 12h11M4 17h6" /></Svg>,
-  caret: () => <Svg className="mx-caret-icon" size={10} strokeWidth={2.5} stroke="currentColor"><path d="m9 6 6 6-6 6" /></Svg>,
+  caret: () => <Svg className="mx-caret-icon" size={12} strokeWidth={2.5} stroke="currentColor"><path d="m9 6 6 6-6 6" /></Svg>,
   bang: () => <Svg size={9} strokeWidth={3.5} stroke="var(--danger)"><path d="M12 6v7" /><path d="M12 18h.01" /></Svg>,
 } satisfies Record<string, (props: IconProps) => ReactNode>
 

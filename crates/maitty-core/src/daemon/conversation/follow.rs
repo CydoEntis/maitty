@@ -106,6 +106,7 @@ fn format_of(provider: Provider) -> Format {
     match provider {
         Provider::Claude => Format::Claude,
         Provider::Codex => Format::Codex,
+        Provider::Gemini => Format::Gemini,
     }
 }
 
@@ -113,6 +114,7 @@ fn provider_of(agent: Option<&str>) -> Option<Provider> {
     match agent?.trim().to_ascii_lowercase().as_str() {
         "claude" => Some(Provider::Claude),
         "codex" => Some(Provider::Codex),
+        "gemini" => Some(Provider::Gemini),
         _ => None,
     }
 }
@@ -187,7 +189,7 @@ impl Daemon {
             .filter_map(|t| {
                 let provider = provider_of(t.agent.as_deref())?;
                 let session = t.session.clone().filter(|s| !s.trim().is_empty())?;
-                // Claude's hook names the file; without it the daemon would have to guess.
+                // Claude's and Gemini's hooks name the file; without it the daemon would have to guess.
                 (provider == Provider::Codex || t.transcript.is_some())
                     .then_some((t.id, provider, session))
             })
@@ -543,6 +545,9 @@ fn read_new(
     })
 }
 
+/// How much of a Gemini session id its transcript file name carries.
+const GEMINI_ID_CHARS: usize = 8;
+
 /// The user's home folder, the only place a followed transcript may be read from.
 fn user_home() -> Option<PathBuf> {
     directories::BaseDirs::new().map(|dirs| dirs.home_dir().to_path_buf())
@@ -587,6 +592,13 @@ fn checked_path(
     let named_for_session = match provider {
         Provider::Claude => stem == session,
         Provider::Codex => stem.starts_with("rollout-") && stem.ends_with(session),
+        // `session-<time>-<first 8 of the session id>`.
+        Provider::Gemini => {
+            stem.starts_with("session-")
+                && session
+                    .get(..GEMINI_ID_CHARS)
+                    .is_some_and(|short| stem.ends_with(short))
+        }
     };
     if !named_for_session {
         return Err(ReadFailure::Refused("The transcript is not this session's"));

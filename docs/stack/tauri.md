@@ -14,7 +14,9 @@
   Rust; do not expose generic filesystem, process, shell or IPC commands.
 - Bundle the standalone CLI as the daemon sidecar. The native host starts it
   only with the fixed `daemon` argument when no local daemon answers; the
-  webview cannot choose an executable or process arguments.
+  webview cannot choose an executable or process arguments. The one other
+  invocation is `connect_agent`: `integrate <agent>` for an agent on a fixed
+  allowlist (`claude`, `codex`), so a chat can connect its status hooks.
 - Launch the daemon as a separate detached process. It must keep sessions alive
   after the GUI exits, and must not inherit pane identity, structured runtime
   identity or remote routing variables from the GUI process.

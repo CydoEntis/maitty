@@ -652,6 +652,7 @@ pub async fn start_terminal_session(
     let program = match provider {
         Provider::Codex => "codex",
         Provider::Claude => "claude",
+        Provider::Gemini => "gemini",
     };
     let reply = request(
         ClientMsg::Command(Command::NewWorkspace {
@@ -665,6 +666,55 @@ pub async fn start_terminal_session(
     match reply {
         Reply::Ok => Ok(Value::Null),
         _ => bail!("daemon returned an unexpected terminal session reply"),
+    }
+}
+
+/// The agents a window may start by name, and the program each one runs.
+const STARTABLE_AGENTS: [&str; 3] = ["claude", "codex", "gemini"];
+
+/// The command line for an agent and its launch flags. Only a known agent runs, and a flag is one plain word
+/// (letters, digits and `. _ : = @ / + -`), so nothing the window sends can add a second command.
+pub fn agent_command(agent: &str, flags: &[String]) -> Result<String> {
+    if !STARTABLE_AGENTS.contains(&agent) {
+        bail!("{agent} cannot be started from here");
+    }
+    let plain = |word: &str| {
+        !word.is_empty()
+            && word
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "._:=@/+-".contains(c))
+    };
+    if let Some(bad) = flags.iter().find(|word| !plain(word)) {
+        bail!("{bad:?} is not a valid launch flag");
+    }
+    Ok(std::iter::once(agent).chain(flags.iter().map(String::as_str)).collect::<Vec<_>>().join(" "))
+}
+
+/// Start an agent as the first command of a new terminal session in a folder. The pane is the shell with the
+/// agent already running in it, as if it had been typed, without waiting for the shell to be ready for typing.
+pub async fn start_agent_session(
+    cwd: PathBuf,
+    agent: String,
+    flags: Vec<String>,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let command = agent_command(&agent, &flags)?;
+    let cwd = cwd.canonicalize().context("resolving the start folder")?;
+    if !cwd.is_dir() {
+        bail!("the start folder is not a directory");
+    }
+    let reply = request(
+        ClientMsg::Command(Command::NewWorkspace {
+            cwd: Some(cwd),
+            name: None,
+            cmd: Some(command),
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected agent session reply"),
     }
 }
 
@@ -1134,6 +1184,8 @@ pub async fn create_conversation(
     let (executable, config_root) = match provider {
         Provider::Codex => (codex_app_server_executable()?, codex_config_dir()),
         Provider::Claude => (claude_executable()?, claude_config_dir()?),
+        // Gemini runs in a terminal and its chat is read from the transcript; it has no structured runtime.
+        Provider::Gemini => bail!("Gemini has no structured chat; start it in a terminal"),
     };
     let (sandbox, approval_policy) = permissions.launch_policy();
     let settings = LaunchSettings {
@@ -1553,6 +1605,36 @@ mod executable_lookup_tests {
         assert!(output.status.success());
         assert_eq!(String::from_utf8_lossy(&output.stdout), expected);
         std::fs::remove_dir_all(directory).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod agent_command_tests {
+    use super::agent_command;
+
+    fn words(items: &[&str]) -> Vec<String> {
+        items.iter().map(|item| (*item).to_string()).collect()
+    }
+
+    #[test]
+    fn an_agent_and_its_flags_make_one_command_line() {
+        assert_eq!(agent_command("claude", &[]).unwrap(), "claude");
+        assert_eq!(
+            agent_command("claude", &words(&["--model", "opus", "--effort", "high"])).unwrap(),
+            "claude --model opus --effort high"
+        );
+        assert_eq!(
+            agent_command("codex", &words(&["-c", "model_reasoning_effort=high"])).unwrap(),
+            "codex -c model_reasoning_effort=high"
+        );
+    }
+
+    #[test]
+    fn an_unknown_agent_or_a_flag_that_could_add_a_command_is_refused() {
+        assert!(agent_command("rm", &[]).is_err());
+        for bad in ["a;b", "$(x)", "a b", "`x`", "a&&b", "a|b", "", "a\nb"] {
+            assert!(agent_command("claude", &words(&[bad])).is_err(), "{bad:?} was allowed");
+        }
     }
 }
 

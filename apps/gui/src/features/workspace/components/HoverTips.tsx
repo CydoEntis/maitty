@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react'
-import { createPortal } from 'react-dom'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Keycaps } from '@/features/shortcuts/Keycaps'
 import { parseTip } from './tipText'
 
@@ -9,8 +9,6 @@ const FOLLOW_ON_DELAY_MS = 40
 const FOLLOW_ON_WINDOW_MS = 400
 const GAP_PX = 8
 const EDGE_PX = 8
-/** Half the tooltip's widest size, so a tip centred near a window edge stays inside it. */
-const HALF_WIDTH_PX = 120
 /** A control this close to the top gets its tip below it, where there is room. */
 const FLIP_BELOW_PX = 56
 const CENTRE_RATIO = 0.5
@@ -106,34 +104,30 @@ export function HoverTips() {
     }
   }, [])
 
-  if (!tip) return null
-  const content = parseTip(tip.text)
-  return createPortal(
-    <div role="tooltip" className="mx-tip" style={placement(tip)}>
-      <span className="mx-tip-line">
-        <span className="mx-tip-name">{content.name}</span>
-        {content.keys && <Keycaps chord={content.keys} className="mx-tip-keys" />}
-      </span>
-      {content.hint && <span className="mx-tip-hint">{content.hint}</span>}
-    </div>,
-    document.body,
+  const content = tip ? parseTip(tip.text) : null
+  return (
+    <TooltipProvider>
+      <Tooltip open={tip !== null}>
+        {/* The tip belongs to whatever the pointer is over, so its anchor is an empty box laid over that control. */}
+        <TooltipTrigger asChild>
+          <span aria-hidden="true" style={{ position: 'fixed', pointerEvents: 'none', left: tip?.rect.left ?? 0, top: tip?.rect.top ?? 0, width: tip?.rect.width ?? 0, height: tip?.rect.height ?? 0 }} />
+        </TooltipTrigger>
+        {tip && content && (
+          <TooltipContent arrow={false} className="mx-tip" side={sideOf(tip)} sideOffset={GAP_PX} collisionPadding={EDGE_PX} style={{ '--tip-dx': '0px' } as CSSProperties}>
+            <span className="mx-tip-line">
+              <span className="mx-tip-name">{content.name}</span>
+              {content.keys && <Keycaps chord={content.keys} className="mx-tip-keys" />}
+            </span>
+            {content.hint && <span className="mx-tip-hint">{content.hint}</span>}
+          </TooltipContent>
+        )}
+      </Tooltip>
+    </TooltipProvider>
   )
 }
 
-/** The slide-in direction rides on custom properties the stylesheet reads. */
-type TipStyle = CSSProperties & Record<`--${string}`, string>
-
-/** Above by default, below near the top of the window, beside the control for a side tip; clamped to the window's width. */
-function placement({ rect, side }: Pick<Tip, 'rect' | 'side'>): TipStyle {
-  if (side) {
-    const onLeftHalf = rect.left + rect.width * CENTRE_RATIO < window.innerWidth * CENTRE_RATIO
-    const middle = rect.top + rect.height * CENTRE_RATIO
-    return onLeftHalf
-      ? { left: rect.right + GAP_PX, top: middle, transform: 'translateY(-50%)', '--tip-dx': '-4px' }
-      : { right: window.innerWidth - rect.left + GAP_PX, top: middle, transform: 'translateY(-50%)', '--tip-dx': '4px' }
-  }
-  const centre = Math.min(Math.max(rect.left + rect.width * CENTRE_RATIO, EDGE_PX + HALF_WIDTH_PX), window.innerWidth - EDGE_PX - HALF_WIDTH_PX)
-  return rect.top < FLIP_BELOW_PX
-    ? { left: centre, top: rect.bottom + GAP_PX, '--tip-dy': '-4px' }
-    : { left: centre, bottom: window.innerHeight - rect.top + GAP_PX, '--tip-dy': '4px' }
+/** Above by default, below near the top of the window, beside the control for a side tip (away from the window edge). */
+function sideOf({ rect, side }: Pick<Tip, 'rect' | 'side'>): 'top' | 'bottom' | 'left' | 'right' {
+  if (side) return rect.left + rect.width * CENTRE_RATIO < window.innerWidth * CENTRE_RATIO ? 'right' : 'left'
+  return rect.top < FLIP_BELOW_PX ? 'bottom' : 'top'
 }

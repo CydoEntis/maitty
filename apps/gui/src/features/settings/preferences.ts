@@ -1,8 +1,9 @@
 import { isSpinnerStyle, type SpinnerStyle } from '@/lib/spinner-clock'
+import { DEFAULT_WINDOW_STYLE, isWindowStyle, type WindowStyle } from '@/features/workspace/theme/windowStyles'
 import { prefersPlainDrawing } from '@/lib/gpu'
 import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, isFontFamily, isFontWeight, type TerminalFontWeight } from '@/lib/terminalFont'
 import { readThemePreference, type ThemePreference } from '@/data/themePreference'
-import { THEMES, type ThemeMode } from '@/features/workspace/theme/themes'
+import { DEFAULT_LIGHT_THEME, DEFAULT_THEME, THEMES, type ThemeMode } from '@/features/workspace/theme/themes'
 import { DEFAULT_CHAT_VIEWS, type ChatAgent, type ChatViewDefaults, type PaneView } from '@/features/workspace/model/chatView'
 
 export type ToastPosition = 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right'
@@ -14,8 +15,10 @@ export const DENSITIES: readonly Density[] = ['compact', 'comfortable', 'spaciou
 export type IconSize = 'small' | 'medium' | 'large'
 /** Which side of the window the sidebar sits on. */
 export type SidebarSide = 'left' | 'right'
-/** The window style: Flat is solid panels, Glass is floating frosted cards. Both share one layout. */
-export type StyleChoice = 'flat' | 'glass'
+/** How the sidebar orders sessions: as they were created (rows never move), or with what needs you first. */
+export type SidebarOrder = 'creation' | 'priority'
+/** The window style: one of four looks that share one layout (`theme/windowStyles.ts`). Kept by this window alone. */
+export type StyleChoice = WindowStyle
 /** App and folder icons keep their colours, or drop to neutral gray tiles. Independent of the style. */
 export type IconColor = 'color' | 'grayscale'
 
@@ -74,6 +77,7 @@ export type SettingsPreferences = {
   /** The docked sidebar's width in px; dragged with the mouse. */
   sidebarWidth: number
   sidebarSide: SidebarSide
+  sidebarOrder: SidebarOrder
   iconSize: IconSize
   style: StyleChoice
   iconColor: IconColor
@@ -85,6 +89,10 @@ export type SettingsPreferences = {
   newSessionView: PaneView
   /** A new chat starts with the agent's full-access mode (no sandbox, no permission prompts). Off until you turn it on. */
   chatFullAccessDefault: boolean
+  /** Yolo mode per agent, off by default: Claude may pick Bypass permissions; Codex and Gemini start with approvals and sandbox off. */
+  yoloClaude: boolean
+  yoloCodex: boolean
+  yoloGemini: boolean
   /** The bottom line of the window: daemon, branch, counts and the focused session. */
   statusBar: boolean
   /** A small readout of frames and process load over the window, for finding what lags. */
@@ -130,7 +138,7 @@ const UI_TEXT_SIZE_MAX = 17
 const STORAGE_KEY = 'maitty.gui.settings.v1'
 
 // The theme was stored on its own before the desktop theme browser; carry that choice over.
-const THEME_FROM_PREFERENCE: Record<ThemePreference, string> = { night: 'Midnight', abyss: 'Abyss', day: 'Paper' }
+const THEME_FROM_PREFERENCE: Record<ThemePreference, string> = { night: DEFAULT_THEME, abyss: DEFAULT_THEME, day: DEFAULT_LIGHT_THEME }
 
 function defaults(): SettingsPreferences {
   const legacy = THEME_FROM_PREFERENCE[readThemePreference()]
@@ -152,25 +160,29 @@ function defaults(): SettingsPreferences {
     terminalFontWeightBold: DEFAULT_FONT_WEIGHT_BOLD,
     startFolder: '',
     // The theme chosen before there were two slots keeps its look; otherwise follow the system.
-    themeMode: legacy === 'Paper' ? 'light' : legacy === 'Abyss' ? 'dark' : 'system',
-    darkTheme: legacy === 'Abyss' ? 'Abyss' : 'Midnight',
-    lightTheme: 'Paper',
+    themeMode: legacy === DEFAULT_LIGHT_THEME ? 'light' : 'system',
+    darkTheme: DEFAULT_THEME,
+    lightTheme: DEFAULT_LIGHT_THEME,
     cursorStyle: 'block',
     scrollback: SCROLLBACK_DEFAULT,
     scrollSpeed: SCROLL_NORMAL,
     terminalScreenReader: false,
-    style: 'glass',
+    style: DEFAULT_WINDOW_STYLE,
     density: 'comfortable',
     sidebarTextSize: UI_TEXT_SIZE_DEFAULT,
     tabTextSize: UI_TEXT_SIZE_DEFAULT,
     sidebarWidth: SIDEBAR_WIDTH_DEFAULT,
     sidebarSide: 'left',
+    sidebarOrder: 'creation',
     iconSize: 'medium',
     iconColor: 'color',
     chatViewDefault: DEFAULT_CHAT_VIEWS,
     defaultAgent: 'claude',
     newSessionView: 'chat',
     chatFullAccessDefault: false,
+    yoloClaude: false,
+    yoloCodex: false,
+    yoloGemini: false,
     statusBar: false,
     perfOverlay: false,
     terminalPlainDrawing: prefersPlainDrawing(),
@@ -236,12 +248,16 @@ export function readSettingsPreferences(): SettingsPreferences {
       tabTextSize: clampNumber(preferences.tabTextSize, UI_TEXT_SIZE_MIN, UI_TEXT_SIZE_MAX, fallback.tabTextSize),
       sidebarWidth: clampNumber(preferences.sidebarWidth, SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX, fallback.sidebarWidth),
       sidebarSide: preferences.sidebarSide === 'left' || preferences.sidebarSide === 'right' ? preferences.sidebarSide : fallback.sidebarSide,
+      sidebarOrder: preferences.sidebarOrder === 'creation' || preferences.sidebarOrder === 'priority' ? preferences.sidebarOrder : fallback.sidebarOrder,
       iconSize: preferences.iconSize === 'small' || preferences.iconSize === 'medium' || preferences.iconSize === 'large' ? preferences.iconSize : fallback.iconSize,
       style: styleOf(preferences.style) ?? fallback.style,
       chatViewDefault: chatViewDefault(preferences.chatViewDefault, fallback.chatViewDefault),
       defaultAgent: preferences.defaultAgent === 'claude' || preferences.defaultAgent === 'codex' ? preferences.defaultAgent : fallback.defaultAgent,
       newSessionView: paneView(preferences.newSessionView, fallback.newSessionView),
       chatFullAccessDefault: bool(preferences.chatFullAccessDefault, fallback.chatFullAccessDefault),
+      yoloClaude: bool(preferences.yoloClaude, fallback.yoloClaude),
+      yoloCodex: bool(preferences.yoloCodex, fallback.yoloCodex),
+      yoloGemini: bool(preferences.yoloGemini, fallback.yoloGemini),
       statusBar: bool(preferences.statusBar, fallback.statusBar),
       perfOverlay: bool(preferences.perfOverlay, fallback.perfOverlay),
       terminalPlainDrawing: bool(preferences.terminalPlainDrawing, fallback.terminalPlainDrawing),
@@ -286,13 +302,14 @@ function isAccent(value: unknown): value is SettingsPreferences['accent'] {
   return value === 'teal' || value === 'blue' || value === 'violet'
 }
 
-/** "minimal" and "expressive" were the names before the window styles; they read as Flat and Glass. */
+/**
+ * "minimal" and "expressive" were the names before the window styles; they read as Flat and Glass, and
+ * Flat (like the retired Tiled) reads as Console, the flat, solid-panel look.
+ */
 function styleOf(value: unknown): StyleChoice | null {
-  // Tiled is gone: a saved Tiled reads as Flat.
-  if (value === 'flat' || value === 'tiled' || value === 'minimal') return 'flat'
-  if (value === 'glass') return 'glass'
-  if (value === 'expressive') return 'glass'
-  return null
+  if (value === 'flat' || value === 'tiled' || value === 'minimal') return 'console'
+  if (value === 'expressive' || value === 'frosted') return 'glass'
+  return isWindowStyle(value) ? value : null
 }
 
 const isThemeMode = (value: unknown): value is ThemeMode => value === 'system' || value === 'dark' || value === 'light'
@@ -317,7 +334,7 @@ const paneView = (value: unknown, fallback: PaneView): PaneView => (value === 'c
 function chatViewDefault(value: unknown, fallback: ChatViewDefaults): ChatViewDefaults {
   if (typeof value !== 'object' || value === null) return fallback
   const saved = value as Partial<Record<keyof ChatViewDefaults, unknown>>
-  return { claude: paneView(saved.claude, fallback.claude), codex: paneView(saved.codex, fallback.codex) }
+  return { claude: paneView(saved.claude, fallback.claude), codex: paneView(saved.codex, fallback.codex), gemini: paneView(saved.gemini, fallback.gemini) }
 }
 
 function isCursorStyle(value: unknown): value is CursorStyle {

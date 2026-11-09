@@ -19,14 +19,14 @@ const DEFAULTS: SettingsPreferences = {
   terminalFontWeightBold: 700,
   startFolder: '',
   themeMode: 'system',
-  darkTheme: 'Midnight',
-  lightTheme: 'Paper',
+  darkTheme: 'Maitty Night',
+  lightTheme: 'Maitty Day',
   cursorStyle: 'block',
   scrollback: 10000, scrollSpeed: 1,
   
   
   defaultAgent: 'claude', newSessionView: 'chat',
-  density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, monthlyBudget: null, iconSize: 'medium', iconColor: 'color', statusBar: false, chatViewDefault: { claude: 'chat', codex: 'chat' }, chatFullAccessDefault: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass',
+  density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', sidebarOrder: 'creation', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, monthlyBudget: null, iconSize: 'medium', iconColor: 'color', statusBar: false, chatViewDefault: { claude: 'chat', codex: 'chat', gemini: 'chat' }, chatFullAccessDefault: false, yoloClaude: false, yoloCodex: false, yoloGemini: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass',
 }
 
 describe('settings preferences', () => {
@@ -59,7 +59,7 @@ describe('settings preferences', () => {
   })
 
   it('restores every saved choice', () => {
-    const saved: SettingsPreferences = { ...DEFAULTS, accent: 'violet', spinner: 'snake', restoreLayout: false, reduceMotion: true, toastPosition: 'top-left', notifyNeedsYou: false, notificationSound: true, terminalFontSize: 15, themeMode: 'dark', darkTheme: 'Nord', cursorStyle: 'underline', scrollback: 50000, }
+    const saved: SettingsPreferences = { ...DEFAULTS, accent: 'violet', spinner: 'snake', restoreLayout: false, reduceMotion: true, toastPosition: 'top-left', notifyNeedsYou: false, notificationSound: true, terminalFontSize: 15, themeMode: 'dark', darkTheme: 'Tokyo Night', cursorStyle: 'underline', scrollback: 50000, }
     writeSettingsPreferences(saved)
 
     expect(readSettingsPreferences()).toEqual(saved)
@@ -102,18 +102,20 @@ describe('settings preferences', () => {
     expect(readSettingsPreferences().restoreLayout).toBe(true)
   })
 
-  it('starts a fresh install in Glass and keeps a saved Flat', () => {
+  it('starts a fresh install in Glass and keeps any saved window style', () => {
     expect(readSettingsPreferences()).toMatchObject({ style: 'glass' })
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'flat' }))
-    expect(readSettingsPreferences()).toMatchObject({ style: 'flat' })
+    for (const style of ['glass', 'mono', 'console', 'pixel']) {
+      localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style }))
+      expect(readSettingsPreferences()).toMatchObject({ style })
+    }
   })
 
-  it('reads the old style names and a saved Tiled as Flat, keeps Glass, and falls back from nonsense', () => {
+  it('reads the old style names, and a saved Flat or Tiled, as Console, and falls back from nonsense', () => {
     const style = (value: string) => {
       localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: value }))
       return readSettingsPreferences().style
     }
-    expect([style('minimal'), style('expressive'), style('tiled'), style('flat'), style('glass')]).toEqual(['flat', 'glass', 'flat', 'flat', 'glass'])
+    expect([style('minimal'), style('expressive'), style('tiled'), style('flat'), style('glass'), style('frosted')]).toEqual(['console', 'glass', 'console', 'console', 'glass', 'glass'])
     expect(style('neon')).toBe('glass')
   })
 
@@ -134,18 +136,18 @@ describe('settings preferences', () => {
   })
 
   it('opens agent sessions in the chat unless a view was chosen, and ignores nonsense', () => {
-    expect(readSettingsPreferences().chatViewDefault).toEqual({ claude: 'chat', codex: 'chat' })
+    expect(readSettingsPreferences().chatViewDefault).toEqual({ claude: 'chat', codex: 'chat', gemini: 'chat' })
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ chatViewDefault: { claude: 'terminal', codex: 'sideways' } }))
-    expect(readSettingsPreferences().chatViewDefault).toEqual({ claude: 'terminal', codex: 'chat' })
+    expect(readSettingsPreferences().chatViewDefault).toEqual({ claude: 'terminal', codex: 'chat', gemini: 'chat' })
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ chatViewDefault: 'terminal' }))
-    expect(readSettingsPreferences().chatViewDefault).toEqual({ claude: 'chat', codex: 'chat' })
+    expect(readSettingsPreferences().chatViewDefault).toEqual({ claude: 'chat', codex: 'chat', gemini: 'chat' })
   })
 
-  it('keeps icons in colour unless grayscale was chosen, in either style', () => {
+  it('keeps icons in colour unless grayscale was chosen, in any style', () => {
     expect(readSettingsPreferences().iconColor).toBe('color')
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'flat', iconColor: 'grayscale' }))
-    expect(readSettingsPreferences()).toMatchObject({ style: 'flat', iconColor: 'grayscale' })
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'flat', iconColor: 'sepia' }))
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'mono', iconColor: 'grayscale' }))
+    expect(readSettingsPreferences()).toMatchObject({ style: 'mono', iconColor: 'grayscale' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'mono', iconColor: 'sepia' }))
     expect(readSettingsPreferences().iconColor).toBe('color')
   })
 
@@ -182,23 +184,23 @@ describe('settings preferences', () => {
   it('carries over the theme chosen before the theme browser', () => {
     localStorage.setItem('maitty.gui.theme.v1', 'day')
 
-    expect(readSettingsPreferences()).toMatchObject({ themeMode: 'light', lightTheme: 'Paper', darkTheme: 'Midnight' })
+    expect(readSettingsPreferences()).toMatchObject({ themeMode: 'light', lightTheme: 'Maitty Day', darkTheme: 'Maitty Night' })
   })
 
   it('moves a single saved theme into its dark or light slot and keeps using it', () => {
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ theme: 'Nord' }))
-    expect(readSettingsPreferences()).toMatchObject({ themeMode: 'dark', darkTheme: 'Nord', lightTheme: 'Paper' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ theme: 'Tokyo Night' }))
+    expect(readSettingsPreferences()).toMatchObject({ themeMode: 'dark', darkTheme: 'Tokyo Night', lightTheme: 'Maitty Day' })
 
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ theme: 'Gruvbox Light' }))
-    expect(readSettingsPreferences()).toMatchObject({ themeMode: 'light', lightTheme: 'Gruvbox Light', darkTheme: 'Midnight' })
+    expect(readSettingsPreferences()).toMatchObject({ themeMode: 'light', lightTheme: 'Gruvbox Light', darkTheme: 'Maitty Night' })
   })
 
   it('keeps each slot to its own kind of theme and the mode to its three values', () => {
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ themeMode: 'dark', darkTheme: 'Paper', lightTheme: 'Nord' }))
-    expect(readSettingsPreferences()).toMatchObject({ themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ themeMode: 'dark', darkTheme: 'Maitty Day', lightTheme: 'Tokyo Night' }))
+    expect(readSettingsPreferences()).toMatchObject({ themeMode: 'dark', darkTheme: 'Maitty Night', lightTheme: 'Maitty Day' })
 
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ themeMode: 'auto', darkTheme: 'High Contrast' }))
-    expect(readSettingsPreferences()).toMatchObject({ themeMode: 'system', darkTheme: 'High Contrast' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ themeMode: 'auto', darkTheme: 'Maitty Dark' }))
+    expect(readSettingsPreferences()).toMatchObject({ themeMode: 'system', darkTheme: 'Maitty Dark' })
   })
 
   it('has no monthly budget by default and keeps only a positive amount in range', () => {

@@ -3,7 +3,7 @@ import { updateMachine } from '@/api/machines'
 import { runMachineUpdate } from './machineUpdate'
 
 const toasts = vi.hoisted(() => ({ loading: vi.fn(() => 'toast-1'), success: vi.fn(), error: vi.fn() }))
-vi.mock('sonner', () => ({ toast: toasts }))
+vi.mock('@/lib/toast', () => ({ toast: toasts }))
 vi.mock('@/api/machines', async (importOriginal) => ({ ...await importOriginal<typeof import('@/api/machines')>(), updateMachine: vi.fn() }))
 
 beforeEach(() => { vi.clearAllMocks() })

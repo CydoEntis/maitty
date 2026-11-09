@@ -1,5 +1,5 @@
 import { createElement } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { NoticeToast, type NoticeProps } from './NoticeToast'
 import { SessionNotice, type SessionNoticeProps } from './SessionNotice'
 

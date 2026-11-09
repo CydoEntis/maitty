@@ -1,4 +1,5 @@
 import { Users } from 'lucide-react'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Icon } from '@/features/workspace/components/glyphs'
 import type { CrewApi } from '../useCrew'
 import { needsCount } from '../model/crew'
@@ -8,14 +9,14 @@ export function CrewModeSwitch({ crew }: { crew: CrewApi }) {
   const { mode } = crew.state
   const waiting = needsCount(crew.state)
   return (
-    <div className="mx-crew-modes" role="radiogroup" aria-label="Sidebar mode">
-      <button type="button" role="radio" aria-checked={mode === 'fleets'} className={`mx-crew-mode${mode === 'fleets' ? ' is-on' : ''}`} onClick={() => { crew.setMode('fleets') }}>
+    <RadioGroup className="mx-crew-modes" aria-label="Sidebar mode" orientation="horizontal" value={mode} onValueChange={(next) => { crew.setMode(next === 'crew' ? 'crew' : 'fleets') }}>
+      <RadioGroupItem value="fleets" className={`mx-crew-mode${mode === 'fleets' ? ' is-on' : ''}`}>
         <Icon name="fleets" size={13} />Fleets
-      </button>
-      <button type="button" role="radio" aria-checked={mode === 'crew'} className={`mx-crew-mode${mode === 'crew' ? ' is-on' : ''}`} onClick={() => { crew.setMode('crew') }}>
+      </RadioGroupItem>
+      <RadioGroupItem value="crew" className={`mx-crew-mode${mode === 'crew' ? ' is-on' : ''}`}>
         <Users size={13} strokeWidth={2} aria-hidden="true" />Crewmates
         {waiting > 0 && mode !== 'crew' && <span className="mx-crew-mode-count" aria-label={`${String(waiting)} need you`}>{waiting}</span>}
-      </button>
-    </div>
+      </RadioGroupItem>
+    </RadioGroup>
   )
 }

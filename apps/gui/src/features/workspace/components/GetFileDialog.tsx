@@ -1,3 +1,5 @@
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { ResultsList, ResultsOption } from '@/components/ui/results-list'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import type { RemoteIndex, RemoteListing } from '@/api/fileGets'
 import { errorMessage } from '@/lib/error-message'
@@ -171,10 +173,9 @@ export function GetFileDialog({ session, onGet, onCancel, browse }: { session: S
   }
 
   return (
-    <div className="mx-settings-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) onCancel() }}>
+    <Dialog open onOpenChange={(open) => { if (!open) onCancel() }}>
+      <DialogContent unstyled asChild aria-describedby={undefined}>
       <form
-        role="dialog"
-        aria-modal="true"
         aria-label={`Get a file from ${machine}`}
         className="mx-rename mx-getfile"
         onSubmit={(event) => {
@@ -182,12 +183,11 @@ export function GetFileDialog({ session, onGet, onCancel, browse }: { session: S
           if (ready) onGet(path)
         }}
         onKeyDown={(event) => {
-          if (event.key !== 'Escape') return
-          event.stopPropagation()
-          onCancel()
+          // Radix closes on Escape; this keeps the key from reaching the app's own handlers.
+          if (event.key === 'Escape') event.stopPropagation()
         }}
       >
-        <h2>Get a file from {machine}</h2>
+        <DialogTitle asChild><h2>Get a file from {machine}</h2></DialogTitle>
         {browse !== undefined && (
           <>
             <div className="mx-getfile-where">
@@ -204,27 +204,25 @@ export function GetFileDialog({ session, onGet, onCancel, browse }: { session: S
               onChange={(event) => { setQuery(event.target.value); setSelected(0) }}
               onKeyDown={onSearchKey}
             />
-            <div role="listbox" aria-label={searching ? 'Matches' : `Files in ${shownFolder}`} className="mx-getfile-list">
+            <ResultsList aria-label={searching ? 'Matches' : `Files in ${shownFolder}`} className="mx-getfile-list">
               {searching && index.state === 'loading' && <p role="status">Reading the folder to search it…</p>}
               {searching && index.state === 'failed' && <p role="alert">{index.why}</p>}
               {!searching && listing.state === 'loading' && <p role="status">Loading…</p>}
               {!searching && listing.state === 'failed' && <p role="alert">{listing.why}. You can still type a path below.</p>}
               {rows.map((row, at) => (
-                <button
+                <ResultsOption
                   key={`${row.kind}:${row.full}`}
-                  type="button"
-                  role="option"
-                  aria-selected={at === selected}
+                  selected={at === selected}
                   aria-label={row.kind === 'dir' ? `${row.label}, folder` : row.label}
                   className={`mx-getfile-row${at === selected ? ' is-selected' : ''}`}
                   onClick={() => { choose(row) }}
                   onMouseEnter={() => { setSelected(at) }}
                 >
                   <span aria-hidden="true">{row.kind === 'dir' ? '▸ ' : ''}<Marked text={row.label} marks={row.marks} />{row.kind === 'dir' ? '/' : ''}</span>
-                </button>
+                </ResultsOption>
               ))}
               {rows.length === 0 && ((searching && index.state === 'ready') || (!searching && listing.state === 'ready')) && <p role="status">{searching ? 'No file matches.' : 'This folder is empty.'}</p>}
-            </div>
+            </ResultsList>
             {notices.map((notice) => <p key={notice} role="status">{notice}</p>)}
           </>
         )}
@@ -235,6 +233,7 @@ export function GetFileDialog({ session, onGet, onCancel, browse }: { session: S
           <button type="submit" className="mx-text-button is-primary" disabled={!ready}>Get file</button>
         </div>
       </form>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

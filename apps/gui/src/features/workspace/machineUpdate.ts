@@ -1,4 +1,4 @@
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { updateMachine } from '@/api/machines'
 import { errorMessage } from '@/lib/error-message'
 import { UPDATE_WORDS, type UpdateAction } from './model/machines'

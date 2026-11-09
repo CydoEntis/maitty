@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { VirtualList } from './VirtualList'
 
 const ROW = 50
@@ -22,6 +22,15 @@ function scroller(): HTMLElement {
 const latest = () => screen.queryByRole('button', { name: 'Jump to the latest message' })
 
 describe('a conversation list that follows its newest row', () => {
+  it('offers no jump to the latest message when the whole chat is already on screen, even after a wheel move up', () => {
+    render(list(2))
+    const element = scroller()
+
+    fireEvent.wheel(element, { deltaY: -3 })
+
+    expect(latest()).toBeNull()
+  })
+
   it('stays on the newest row while the reader has not moved', () => {
     const { rerender } = render(list(20))
     const element = scroller()
@@ -75,5 +84,14 @@ describe('a conversation list that follows its newest row', () => {
     act(() => { element.scrollTop = 21 * ROW })
     fireEvent.scroll(element)
     expect(latest()).toBeNull()
+  })
+
+  it('places a row that has just come in at its measured height in the same commit, not a frame later', () => {
+    const measured = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(30)
+    render(list(3))
+
+    const offsets = Array.from(document.querySelectorAll<HTMLElement>('[data-key]'), (element) => element.style.transform)
+    expect(offsets).toEqual(['translateY(0px)', 'translateY(30px)', 'translateY(60px)'])
+    measured.mockRestore()
   })
 })

@@ -191,7 +191,8 @@ export function toSessionView(conversation: Conversation, home: string): Session
     interrupted: conversation.details?.interrupted ?? null,
     timeline: conversation.details?.timeline ?? [],
     usage: conversation.details?.usage ?? { context: null, cost: null, tokens: null },
-    subagents: (conversation.details?.subagents ?? []).map(toSubagentView),
+    // A helper that has finished has reported back to the agent, so its row goes; one that stopped or still needs something stays.
+    subagents: (conversation.details?.subagents ?? []).map(toSubagentView).filter((subagent) => subagent.status !== 'done'),
     status,
     lastKnownStatus: lastKnown,
     conversation,

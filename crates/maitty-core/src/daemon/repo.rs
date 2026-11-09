@@ -19,7 +19,17 @@ const RECORD: char = '\x1e';
 /// `dir` is where the pane is, which may be a folder inside the repository; paths in a request
 /// are relative to the repository's top.
 pub fn answer(dir: &Path, request: &RepoRequest) -> Result<RepoReply> {
-    let top = git(dir, &["rev-parse", "--show-toplevel"])?;
+    // Reading files needs no git: a folder that is not a repository is browsed from where the pane is. Everything
+    // else about a repository still needs one.
+    let top = match git(dir, &["rev-parse", "--show-toplevel"]) {
+        Ok(top) => top,
+        Err(error) => match request {
+            RepoRequest::Tree { .. } | RepoRequest::File { .. } if dir.is_dir() => {
+                dir.to_string_lossy().into_owned()
+            }
+            _ => return Err(error),
+        },
+    };
     let root = Path::new(&top);
     Ok(match request {
         RepoRequest::Status => RepoReply::Status(status(root)?),
@@ -277,6 +287,23 @@ mod tests {
             "git {args:?}: {}",
             String::from_utf8_lossy(&output.stderr)
         );
+    }
+
+    #[test]
+    fn a_folder_that_is_not_a_repository_can_still_be_browsed_but_not_asked_about_git() {
+        let dir = crate::daemon::persist::scratch_dir();
+        std::fs::create_dir_all(dir.path()).expect("folder");
+        std::fs::write(dir.path().join("notes.txt"), "hello").expect("file");
+
+        let RepoReply::Tree(entries) = answer(dir.path(), &RepoRequest::Tree { path: None }).expect("tree") else {
+            panic!("a tree");
+        };
+        assert_eq!(entries.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(), ["notes.txt"]);
+        let RepoReply::File(text) = answer(dir.path(), &RepoRequest::File { path: "notes.txt".into() }).expect("file") else {
+            panic!("a file");
+        };
+        assert_eq!(text, "hello");
+        assert!(answer(dir.path(), &RepoRequest::Status).is_err());
     }
 
     /// A repository with one commit on `main` holding `a.txt`.

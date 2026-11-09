@@ -20,7 +20,7 @@
 
 .mx-msg-user { display: flex; justify-content: flex-end; }
 .mx-msg-user > p, .mx-msg-user .mx-bubble { margin: 0; max-width: 85%; border-radius: 16px 16px 5px 16px; border: 1px solid rgba(var(--hl), calc(.09 * var(--hk))); background: rgba(var(--hl), calc(.05 * var(--hk))); padding: 8px 14px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--fg); }
-.mx-msg-user.is-echo > p { color: var(--fg2); opacity: .8; }
+/* The echo of a message just sent looks exactly like the message the history then returns: a dimmer echo brightened when the swap happened, and that read as a blink. */
 .mx-msg-agent { display: flex; flex-direction: column; gap: 12px; font-size: 14px; line-height: 1.55; overflow-wrap: anywhere; }
 .mx-msg-lead { margin: 0; color: var(--fg); font-weight: 500; white-space: pre-wrap; }
 .mx-msg-rest { color: var(--fg2); }
@@ -31,8 +31,8 @@
 /* Cards: a command, an edit, a checklist, helper agents. Glass on the pane, with a top highlight. */
 .mx-step-card {
   overflow: hidden; border-radius: 12px; border: 1px solid rgba(var(--hl), calc(.1 * var(--hk)));
-  background: linear-gradient(180deg, rgba(var(--hl), calc(.05 * var(--hk))), rgba(var(--hl), calc(.015 * var(--hk))));
-  box-shadow: inset 0 1px 0 rgba(var(--hl), calc(.06 * var(--hk))), 0 8px 22px -12px rgba(var(--sd), calc(.7 * var(--sk)));
+  background: linear-gradient(180deg, rgba(var(--hl), calc(.05 * var(--hk) * var(--gk))), rgba(var(--hl), calc(.015 * var(--hk) * var(--gk))));
+  box-shadow: inset 0 1px 0 rgba(var(--hl), calc(.06 * var(--hk) * var(--gk))), 0 8px 22px -12px rgba(var(--sd), calc(.7 * var(--sk) * var(--gk)));
 }
 .mx-step-head { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 10px; border-bottom: 1px solid rgba(var(--hl), calc(.07 * var(--hk))); font-size: 12.5px; color: var(--fg2); }
 .mx-step-head:is(button) { width: 100%; text-align: left; }
@@ -59,11 +59,11 @@
 .mx-tool {
   display: inline-flex; height: 28px; max-width: 100%; align-items: center; gap: 8px; padding: 0 11px; border-radius: 9px;
   border: 1px solid rgba(var(--hl), calc(.1 * var(--hk)));
-  background: linear-gradient(180deg, rgba(var(--hl), calc(.06 * var(--hk))), rgba(var(--hl), calc(.02 * var(--hk))));
-  box-shadow: inset 0 1px 0 rgba(var(--hl), calc(.07 * var(--hk))), 0 4px 12px -6px rgba(var(--sd), calc(.6 * var(--sk)));
+  background: linear-gradient(180deg, rgba(var(--hl), calc(.06 * var(--hk) * var(--gk))), rgba(var(--hl), calc(.02 * var(--hk) * var(--gk))));
+  box-shadow: inset 0 1px 0 rgba(var(--hl), calc(.07 * var(--hk) * var(--gk))), 0 4px 12px -6px rgba(var(--sd), calc(.6 * var(--sk) * var(--gk)));
   font-family: var(--mono); font-size: 12px; color: var(--fg2);
 }
-.mx-tool:hover { border-color: rgba(var(--hl), calc(.16 * var(--hk))); background: linear-gradient(180deg, rgba(var(--hl), calc(.09 * var(--hk))), rgba(var(--hl), calc(.035 * var(--hk)))); }
+.mx-tool:hover { border-color: rgba(var(--hl), calc(.16 * var(--hk) * var(--gk))); background: linear-gradient(180deg, rgba(var(--hl), calc(.09 * var(--hk) * var(--gk))), rgba(var(--hl), calc(.035 * var(--hk) * var(--gk)))); }
 .mx-tool-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-tool .mx-spin { font-size: 12px; }
 .mx-tool-detail { margin-top: 6px; }
@@ -83,9 +83,9 @@
 @keyframes mxRise { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
 .mx-question {
   width: calc(100% - 36px); margin-bottom: -18px; padding: 12px 14px 28px; border-radius: 14px 14px 0 0;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--warn) 10%, transparent), rgba(var(--hl), calc(.03 * var(--hk))) 70%), linear-gradient(180deg, rgba(var(--hl), calc(.06 * var(--hk))), rgba(var(--hl), calc(.02 * var(--hk)))), var(--main);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--warn) 10%, transparent), rgba(var(--hl), calc(.03 * var(--hk) * var(--gk))) 70%), linear-gradient(180deg, rgba(var(--hl), calc(.06 * var(--hk) * var(--gk))), rgba(var(--hl), calc(.02 * var(--hk) * var(--gk)))), var(--main);
   border: 1px solid color-mix(in srgb, var(--warn) 32%, transparent); border-bottom: 0;
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--warn) 12%, transparent), 0 -8px 24px -12px rgba(var(--sd), calc(.6 * var(--sk)));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--warn) 12%, transparent), 0 -8px 24px -12px rgba(var(--sd), calc(.6 * var(--sk) * var(--gk)));
   display: flex; flex-direction: column; gap: 9px; animation: mxRise .38s cubic-bezier(.16, 1, .3, 1) both;
 }
 .mx-question-title { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; color: var(--warn); }
@@ -95,7 +95,7 @@
 .mx-question-note { margin: 0; font-size: 12px; color: var(--dim); }
 .mx-question-code {
   display: block; max-height: 128px; overflow: auto; font-family: var(--mono); font-size: 12.5px; font-weight: 500; padding: 8px 10px; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere;
-  background: rgba(var(--sd), calc(.25 * var(--sk))); box-shadow: inset 0 1px 2px rgba(var(--sd), calc(.4 * var(--sk))), inset 0 0 0 1px rgba(var(--hl), calc(.06 * var(--hk))); color: var(--fg);
+  background: rgba(var(--sd), calc(.25 * var(--sk) * var(--gk))); box-shadow: inset 0 1px 2px rgba(var(--sd), calc(.4 * var(--sk) * var(--gk))), inset 0 0 0 1px rgba(var(--hl), calc(.06 * var(--hk) * var(--gk))); color: var(--fg);
 }
 .mx-question-answers { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .mx-answer { height: 28px; display: inline-flex; align-items: center; gap: 8px; padding: 0 5px 0 10px; border-radius: 7px; font-size: 12.5px; font-weight: 500; color: var(--fg); background: rgba(var(--hl), calc(.06 * var(--hk))); box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.1 * var(--hk))); }
@@ -112,8 +112,8 @@
 .mx-box {
   position: relative; z-index: 2; width: 100%; display: flex; flex-direction: column; gap: 6px; padding: 12px 10px 10px 14px; border-radius: 16px;
   border: 1px solid rgba(var(--hl), calc(.12 * var(--hk)));
-  background: linear-gradient(180deg, rgba(var(--hl), calc(.075 * var(--hk))), rgba(var(--hl), calc(.035 * var(--hk)))), var(--main);
-  box-shadow: inset 0 1px 0 rgba(var(--hl), calc(.07 * var(--hk))), 0 10px 28px -10px rgba(var(--sd), calc(.7 * var(--sk)));
+  background: linear-gradient(180deg, rgba(var(--hl), calc(.075 * var(--hk) * var(--gk))), rgba(var(--hl), calc(.035 * var(--hk) * var(--gk)))), var(--main);
+  box-shadow: inset 0 1px 0 rgba(var(--hl), calc(.07 * var(--hk) * var(--gk))), 0 10px 28px -10px rgba(var(--sd), calc(.7 * var(--sk) * var(--gk)));
   transition: opacity .25s, border-color .15s;
 }
 .mx-box:focus-within { border-color: var(--accent-line); }
@@ -137,12 +137,13 @@
 .mx-send.is-stop { background: rgba(var(--hl), calc(.08 * var(--hk))); color: var(--fg); box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.14 * var(--hk))); }
 .mx-stop-square { width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
 
-/* Layer three: the settings tray, narrower and darker, under the box. */
+/* Layer three: the settings tray, narrower, hanging from the box. It does not slide under the box: with a
+   see-through field the overlap would show as a seam. */
 .mx-settings-tray {
-  width: calc(100% - 28px); margin-top: -12px; padding: 18px 8px 6px; border-radius: 0 0 14px 14px; display: flex; align-items: center; gap: 2px;
-  background: linear-gradient(180deg, rgba(var(--hl), calc(.05 * var(--hk))), rgba(var(--hl), calc(.02 * var(--hk)))), var(--main);
+  width: calc(100% - 28px); margin-top: -1px; padding: 7px 8px 6px; border-radius: 0 0 14px 14px; display: flex; align-items: center; gap: 2px;
+  background: linear-gradient(180deg, rgba(var(--hl), calc(.05 * var(--hk) * var(--gk))), rgba(var(--hl), calc(.02 * var(--hk) * var(--gk)))), var(--main);
   border: 1px solid rgba(var(--hl), calc(.1 * var(--hk))); border-top: 0;
-  box-shadow: inset 0 -1px 0 rgba(var(--hl), calc(.04 * var(--hk))), 0 10px 24px -12px rgba(var(--sd), calc(.7 * var(--sk)));
+  box-shadow: inset 0 -1px 0 rgba(var(--hl), calc(.04 * var(--hk) * var(--gk))), 0 10px 24px -12px rgba(var(--sd), calc(.7 * var(--sk) * var(--gk)));
 }
 .mx-tray-fact { height: 26px; display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; border-radius: 7px; color: var(--fg2); font-size: 12.5px; white-space: nowrap; }
 .mx-tray-fact.is-button:hover { background: rgba(var(--hl), calc(.05 * var(--hk))); color: var(--fg); }
@@ -152,7 +153,11 @@
 .mx-sub-bar { flex: none; display: flex; align-items: center; gap: 8px; margin: 10px 20px 0; padding: 8px 12px; border-radius: 10px; background: rgba(var(--hl), calc(.04 * var(--hk))); border: 1px solid rgba(var(--hl), calc(.09 * var(--hk))); font-size: 12.5px; color: var(--fg2); }
 .mx-sub-bar strong { color: var(--fg); font-weight: 600; }
 .mx-sub-bar-dim { color: var(--dim); }
-.mx-sub-back { font-size: 12px; color: var(--accent); }
+.mx-sub-back { font-size: 12px; color: var(--accent-text); }
 .mx-sub-back:hover { text-decoration: underline; }
 .mx-sub-note { margin: 0; font-size: 12.5px; color: var(--dim); }
 .mx-model-button.is-static:hover { background: none; }
+
+/* A helper agent reporting back: one quiet line, never the harness's markup. */
+.mx-report { margin: 0; display: flex; align-items: center; gap: 7px; font-size: 12px; line-height: 1.5; color: var(--dim); overflow-wrap: anywhere; }
+.mx-report svg { flex: none; color: var(--ok); }

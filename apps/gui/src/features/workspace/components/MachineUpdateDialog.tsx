@@ -1,3 +1,4 @@
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { useEffect, useRef, useState } from 'react'
 import type { MachineActivity } from '@/api/machines'
 import { installNote, UPDATE_WORDS, updateWarning, type UpdateAction } from '../model/machines'
@@ -51,21 +52,19 @@ export function MachineUpdateDialog({ name, action, checkActivity, onUpdate, onC
   const dialog = useRef<HTMLDivElement>(null)
   useFocusOnOpen(dialog)
   return (
-    <div className="mx-settings-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) onCancel() }}>
+    <Dialog open onOpenChange={(open) => { if (!open) onCancel() }}>
+      <DialogContent unstyled asChild aria-describedby={undefined}>
       <div
         ref={dialog}
         tabIndex={-1}
-        role="dialog"
-        aria-modal="true"
         aria-label={title}
         className="mx-rename"
         onKeyDown={(event) => {
-          if (event.key !== 'Escape') return
-          event.stopPropagation()
-          onCancel()
+          // Radix closes on Escape; this keeps the key from reaching the app's own handlers.
+          if (event.key === 'Escape') event.stopPropagation()
         }}
       >
-        <h2>{title}</h2>
+        <DialogTitle asChild><h2>{title}</h2></DialogTitle>
         <p>{words.need(name)}</p>
         {asked.done
           ? <p>{action === 'install' ? installNote(name) : updateWarning(name, asked.activity)}</p>
@@ -76,6 +75,7 @@ export function MachineUpdateDialog({ name, action, checkActivity, onUpdate, onC
           <button type="button" className="mx-text-button is-primary" disabled={!asked.done} onClick={() => { onUpdate(false) }}>{words.verb} now</button>
         </div>
       </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

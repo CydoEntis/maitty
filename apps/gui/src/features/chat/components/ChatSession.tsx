@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { toast } from 'sonner'
-import { answerUserInput, approveRequest } from '@/api/daemon'
+import { toast } from '@/lib/toast'
+import { answerUserInput, approveRequest, loadTerminalScreen } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
 import { readConversationPermissions } from '@/data/conversationPermissions'
 import type { ChatAgent, ChatLink } from '@/features/workspace/model/chatView'
@@ -11,13 +11,16 @@ import { buildRows, type ChatRow } from '../chatRows'
 import { useChatFeed } from '../useChatFeed'
 import { useChatComposer } from '../useChatComposer'
 import { countUserMessages } from '../workPhase'
-import { BYPASS_MODE, modeLabel } from '../chatMeta'
+import { startedWithYolo } from '../yoloSessions'
+import { BYPASS_MODE, modeFromScreen, modeLabel } from '../chatMeta'
 import type { ApprovalDecision } from '../chatEvents'
 import type { PermissionAsk } from '@/data/preview'
 import { ANSWER_KEY, ANSWER_KEYS, choiceKey, type AskChoice } from '../permissionAsk'
+import { keepComposerFocus } from '../keepComposerFocus'
 import { releaseFirstMessage, takeCarriedDraft, useHeldFirstMessage } from '../firstMessage'
 import { Composer } from './Composer'
 import { ChatItem } from './ChatItems'
+import { KnownRowsContext } from '../knownRows'
 import { ChatSkeleton } from './ChatSkeleton'
 import { ApprovalTray, PromptTray } from './QuestionTray'
 import { SubagentBar, SubagentChat } from './SubagentChat'
@@ -25,9 +28,13 @@ import { VirtualList } from './VirtualList'
 
 /** When a turn ends the status changes at once, but the agent's last words may not be read yet: read now and again soon, instead of waiting for the idle poll. */
 const END_OF_TURN_READ_MS = 600
-
-/** The id of a held first message in the composer's list of waiting messages; real ones carry operation numbers. */
-const HELD_MESSAGE_ID = -1
+/** How long the working line stays after a turn ends with no reply read yet, so the pane is never blank between the two. */
+const SETTLE_MS = 650
+/** Shift+Tab, which cycles the agent's permission mode, and how long after it the new mode is read back. */
+const SHIFT_TAB = '\x1b[Z'
+const MODE_READ_MS = 400
+/** The most presses of Shift+Tab a full turn of Claude's modes takes. */
+const MODE_CYCLE_MAX = 5
 
 /** A row not yet measured is drawn as if it were this tall, which a message or a card usually is. */
 const ESTIMATED_ROW_PX = 72
@@ -106,11 +113,21 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   const workingSince = working ? runningTurnStartedAt(feed) : null
   const incomplete = incompleteReason(feed.completeness)
   const wasWorking = useRef(false)
+  // The turn has ended but its reply is not in the history yet: the working line holds until it is, or SETTLE_MS.
+  const [settling, setSettling] = useState(false)
+  const repliedRef = useRef(false)
   useEffect(() => {
     const changed = wasWorking.current !== working
     const ended = wasWorking.current && !working
     wasWorking.current = working
     if (!changed) return undefined
+    if (ended && !repliedRef.current) {
+      setSettling(true)
+      const settle = window.setTimeout(() => { setSettling(false) }, SETTLE_MS)
+      const read = window.setTimeout(refresh, END_OF_TURN_READ_MS)
+      refresh()
+      return () => { window.clearTimeout(settle); window.clearTimeout(read) }
+    }
     // Read as the turn starts (its first words) and as it ends (its last), not at the next poll.
     refresh()
     if (!ended) return undefined
@@ -122,28 +139,80 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   const answersPrompt = stoppedOnPrompt && typeInto !== undefined && (ask?.answerable === true || (ask?.choices?.length ?? 0) > 0)
   const answerPrompt = typeInto === undefined ? undefined : (choice: AskChoice) => typeInto(ANSWER_KEYS[choice]).then(refresh)
   const pickChoice = typeInto === undefined ? undefined : (index: number) => typeInto(choiceKey(index)).then(refresh)
+  // A chat that follows the agent's own terminal changes its mode, model and reasoning the way its user would: by typing the agent's commands
+  // (Shift+Tab, /model, /effort). Offered for Claude, and not while it works, when the keys would land in its turn.
+  // What it shows meanwhile is read back from its screen (mode) or taken from what was picked (model), until the agent's own file says it.
+  const [liveMode, setLiveMode] = useState<{ base: string | null; value: string } | null>(null)
+  const [liveModel, setLiveModel] = useState<{ base: string | null; value: string } | null>(null)
+  const metaMode = feed.meta?.mode ?? null
+  const metaModel = feed.meta?.model ?? null
+  const shownMode = liveMode !== null && liveMode.base === metaMode ? liveMode.value : metaMode
+  const shownModel = liveModel !== null && liveModel.base === metaModel ? liveModel.value : metaModel
+  const agentControls = useMemo(() => {
+    if (typeInto === undefined || agent !== 'claude' || link.readOnly !== true || !online || working) return {}
+    return {
+      onCommand: (text: string) => {
+        const model = /^\/model (\S+)/.exec(text)?.[1]
+        if (model !== undefined) setLiveModel({ base: metaModel, value: model })
+        void typeInto(text).then(refresh)
+      },
+      onPickMode: (target: string) => {
+        if (sessionId === undefined) return
+        // Shift+Tab only cycles, so press it until the screen shows the picked mode; a mode that never comes up is not allowed in this session.
+        // The chip shows the pick at once and the presses happen behind it; the screen has the last word when they end.
+        setLiveMode({ base: metaMode, value: target })
+        const step = async () => {
+          for (let press = 0; press <= MODE_CYCLE_MAX; press += 1) {
+            const mode = modeFromScreen(await loadTerminalScreen({ id: sessionId, generation: 0 }))
+            if (mode === target) {
+              refresh()
+              return
+            }
+            if (press === MODE_CYCLE_MAX) break
+            await typeInto(SHIFT_TAB)
+            await new Promise<void>((resolve) => { window.setTimeout(resolve, MODE_READ_MS) })
+          }
+          const now = modeFromScreen(await loadTerminalScreen({ id: sessionId, generation: 0 }))
+          setLiveMode(now === null ? null : { base: metaMode, value: now })
+          toast.error(`${modeLabel(target) ?? target} is not available in this session. Claude has to be started allowing it.`)
+          refresh()
+        }
+        void step().catch((error: unknown) => { toast.error(errorMessage(error, 'Could not change the permission mode')) })
+      },
+    }
+  }, [typeInto, agent, link.readOnly, online, working, refresh, sessionId, metaMode, metaModel])
   const composer = useChatComposer({ link, agent, feed, online, refresh, answersPrompt, paneWorking, ...(typeInto ? { typeInto } : {}) })
-  const { sendText, setDraft: setComposerDraft, disabledReason, sending, echo } = composer
+  const { sendText, setDraft: setComposerDraft, ready, sending, echo } = composer
   // A message just sent shows at once, with the agent taken to be at work on it, until the history has it.
-  const echoText = echo !== null && countUserMessages(events, echo.text) <= echo.baseline ? echo.text : null
-  const echoThinking = echo !== null && !echo.quiet
-  const allRows = useMemo(() => buildRows(events, working, root, echoText, echoThinking), [events, working, root, echoText, echoThinking])
+  // A first message typed while the agent started is held, and shows exactly as the starting chat showed it (the bubble, then the
+  // working line) until it is sent and the history has it, so the chat never says "No messages yet" in between.
+  const held = useHeldFirstMessage(sessionId)
+  const sentText = echo !== null && countUserMessages(events, echo.text) <= echo.baseline ? echo.text : null
+  const echoText = sentText ?? held
+  const echoThinking = sentText === null ? held !== null : echo !== null && !echo.quiet
+  // What the history says without the working line: whether the agent has answered what was last asked.
+  const bareRows = useMemo(() => buildRows(events, false, root, echoText, false), [events, root, echoText])
+  const lastKind = bareRows.at(-1)?.kind
+  const replied = lastKind !== undefined && lastKind !== 'user' && lastKind !== 'echo'
+  useEffect(() => { repliedRef.current = replied })
+  const holdWorking = settling && !replied
+  const allRows = useMemo(() => buildRows(events, working || holdWorking, root, echoText, echoThinking), [events, working, holdWorking, root, echoText, echoThinking])
   const rows = useMemo(() => allRows.filter((row) => !isPendingApproval(row)), [allRows])
+  // The rows the history had when it loaded: what arrives after them is live, and is typed in rather than shown whole.
+  const [known, setKnown] = useState<ReadonlySet<string> | null>(null)
+  if (feed.loaded && known === null) setKnown(new Set(rows.map(rowKey)))
   const pending = useMemo(() => allRows.find((row): row is Extract<ChatRow, { kind: 'approval' }> => isPendingApproval(row))?.event ?? null, [allRows])
   // A draft typed while the agent started comes over once, and a message sent then goes out as soon as the agent takes input.
-  const held = useHeldFirstMessage(sessionId)
   useEffect(() => {
     if (sessionId === undefined) return
     const carried = takeCarriedDraft(sessionId)
     if (carried !== null) setComposerDraft(carried)
   }, [sessionId, setComposerDraft])
   useEffect(() => {
-    if (sessionId === undefined || held === null || disabledReason !== null || sending) return
+    if (sessionId === undefined || held === null || !ready || sending) return
     releaseFirstMessage(sessionId)
     void sendText(held).then((delivered) => { if (!delivered) setComposerDraft(held) })
-  }, [sessionId, held, disabledReason, sending, sendText, setComposerDraft])
-  // The held message shows as waiting until it goes, like a message queued behind a running turn.
-  const shownComposer = useMemo(() => (held === null ? composer : { ...composer, queue: [...composer.queue, { id: HELD_MESSAGE_ID, text: held }], removeQueued: (id: number) => { if (id === HELD_MESSAGE_ID) { if (sessionId !== undefined) releaseFirstMessage(sessionId) } else composer.removeQueued(id) } }), [composer, held, sessionId])
+  }, [sessionId, held, ready, sending, sendText, setComposerDraft])
   // The daemon does not report how a session was started, so the window remembers the sessions it started with full access.
   const fullAccess = useMemo(() => readConversationPermissions()[String(link.conversation)] === 'full-access', [link.conversation])
 
@@ -199,7 +268,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   ].filter((notice): notice is string => notice !== null)
 
   return (
-    <div className="mx-chat" onKeyDown={onKeyDown}>
+    <div className="mx-chat" onKeyDown={onKeyDown} onClick={keepComposerFocus}>
       {(notices.length > 0 || fullAccess) && (
         <div className="mx-chat-notices" role={offline ? 'status' : undefined}>
           {notices.map((notice) => <span key={notice}>{notice}</span>)}
@@ -216,16 +285,18 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
       ) : feed.loaded && rows.length === 0 ? (
         <p className="mx-chat-empty">{hasTerminal ? 'No messages yet. Send one below, or type in the terminal.' : 'No messages yet. Send one below.'}</p>
       ) : feed.loaded ? (
-        <VirtualList items={rows} getKey={rowKey} estimate={ESTIMATED_ROW_PX} renderItem={renderRow} label={`Conversation with ${agent}`} scrollTarget={scrollTarget} />
+        <KnownRowsContext.Provider value={known}>
+          <VirtualList items={rows} getKey={rowKey} estimate={ESTIMATED_ROW_PX} renderItem={renderRow} label={`Conversation with ${agent}`} scrollTarget={scrollTarget} />
+        </KnownRowsContext.Provider>
       ) : (
         <ChatSkeleton />
       )}
       <Composer
         agent={agent}
-        composer={shownComposer}
+        composer={composer}
         conversation={link.conversation}
         question={question}
-        facts={{ mode: modeLabel(feed.meta?.mode ?? null), modeDanger: feed.meta?.mode === BYPASS_MODE, subagents: subagentCount, folder, branch, model: feed.meta?.model ?? null, onOpenFolder }}
+        facts={{ mode: modeLabel(shownMode), modeDanger: shownMode === BYPASS_MODE, subagents: subagentCount, folder, branch, model: shownModel, onOpenFolder, modeKey: shownMode, bypassAllowed: startedWithYolo(sessionId), ...agentControls }}
       />
     </div>
   )

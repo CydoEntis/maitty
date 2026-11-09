@@ -21,9 +21,7 @@
   border-radius: var(--r14); background: transparent; border: 1px solid transparent; overflow: hidden;
   /* Repaints inside a pane stay inside it. */
   contain: paint;
-  animation: v8pane .3s cubic-bezier(.2, .8, .2, 1);
 }
-.mx-pane.is-card { background: rgba(var(--hl), calc(.018 * var(--hk))); border-color: rgba(var(--hl), calc(.08 * var(--hk))); }
 .mx-pane.is-drop-target { outline: 2px dashed var(--accent); outline-offset: -2px; }
 .mx-pane-ring { position: absolute; inset: 0; z-index: 30; pointer-events: none; border-radius: var(--r14); box-shadow: inset 0 0 0 1.5px transparent; transition: box-shadow .15s; }
 .mx-pane.is-focused .mx-pane-ring { box-shadow: inset 0 0 0 1.5px var(--accent-line), 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent); }
@@ -33,7 +31,7 @@
 .mx-pane-icon { position: relative; width: 26px; height: 26px; flex: none; }
 .mx-pane-icon .mx-app-icon.size-26 { width: 26px; height: 26px; border-radius: 8px; font-size: 11.5px; }
 .mx-pane-icon .mx-badge { right: -4px; bottom: -4px; width: 14px; height: 14px; border-radius: 4px; font-size: 9px; font-weight: 800; line-height: 1; color: var(--on-warn); }
-.mx-pane-icon .mx-badge.is-working { border-radius: 50%; background: var(--well); overflow: hidden; color: var(--accent); font-family: var(--mono); }
+.mx-pane-icon .mx-badge.is-working { border-radius: 50%; background: var(--m-well); overflow: hidden; color: var(--working); font-family: var(--mono); }
 .mx-pane-icon .mx-badge.is-working .mx-spin { font-size: 9px; line-height: 1; }
 .mx-pane-icon .mx-badge.is-done svg { width: 8px; height: 8px; }
 .mx-pane-icon .mx-badge.is-unknown { width: 13px; height: 13px; border-radius: 3.5px; background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
@@ -59,8 +57,8 @@
 .mx-view-switch { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 2px; }
 .mx-view-thumb {
   pointer-events: none; position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc(50% - 3px); border-radius: 7px;
-  background: linear-gradient(180deg, rgba(var(--hl), calc(.12 * var(--hk))), rgba(var(--hl), calc(.06 * var(--hk))));
-  box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.14 * var(--hk))), 0 1px 3px rgba(var(--sd), calc(.4 * var(--sk)));
+  background: linear-gradient(180deg, rgba(var(--hl), calc(.12 * var(--hk) * var(--gk))), rgba(var(--hl), calc(.06 * var(--hk) * var(--gk))));
+  box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.14 * var(--hk) * var(--gk))), 0 1px 3px rgba(var(--sd), calc(.4 * var(--sk) * var(--gk)));
   transition: transform .32s cubic-bezier(.2, .8, .2, 1);
 }
 .mx-view-switch.is-chat .mx-view-thumb { transform: translateX(calc(100% + 2px)); }
@@ -69,10 +67,18 @@
 .mx-pane-tray { display: flex; align-items: center; gap: 2px; }
 .mx-tray-button { height: 24px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 7px; font-size: 12.5px; color: var(--fg2); }
 .mx-tray-button:hover { background: rgba(var(--hl), calc(.07 * var(--hk))); color: var(--fg); }
-.mx-tray-button.is-on { color: var(--fg); background: linear-gradient(180deg, rgba(var(--hl), calc(.12 * var(--hk))), rgba(var(--hl), calc(.06 * var(--hk)))); }
+.mx-tray-button.is-on { color: var(--fg); background: linear-gradient(180deg, rgba(var(--hl), calc(.12 * var(--hk) * var(--gk))), rgba(var(--hl), calc(.06 * var(--hk) * var(--gk)))); }
 
-.mx-pane-body { position: relative; flex: 1; min-height: 0; padding: 6px 18px 16px; font-family: var(--mono); line-height: 1.6; cursor: text; display: flex; }
+.mx-pane-body { position: relative; flex: 1; min-height: 0; padding: 4px 10px 6px; font-family: var(--mono); line-height: 1.6; cursor: text; display: flex; }
 .mx-pane-body > * { flex: 1; min-width: 0; min-height: 0; }
+/* The terminal draws the theme's ground, so the whole terminal pane, header included, takes the same one: one
+   surface, no band where the header ends. */
+.mx-pane-body:not(.is-chat) { background: var(--main); }
+.mx-pane.is-terminal { background: var(--main); }
+/* Two or more panes are separate cards on the window's ground with a gap between them, not boxes inside one big card. */
+.mx-pane.is-card { background: var(--main); border: 1px solid var(--m-line); box-shadow: var(--m-edge), var(--m-shadow); }
+.mx-main:has(> .mx-panes.is-split) { background: none; border-color: transparent; box-shadow: none; backdrop-filter: none; overflow: visible; }
+.mx-panes.is-split { padding: 0; }
 
 /* The gap between two columns, or two panes of a column, is the handle: it lights while hovered or dragged. */
 .mx-split-handle { flex: none; position: relative; z-index: 6; touch-action: none; }
@@ -90,3 +96,15 @@
 .mx-pane-body .terminal-input-error, .mx-pane-body .terminal-load-status { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 0; font-family: "Geist Variable", Geist, system-ui, sans-serif; font-size: 12.5px; color: var(--muted); }
 .mx-pane-body .terminal-input-error p { margin: 0; color: var(--danger); }
 .mx-pane.is-broadcast { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--ansi-mag) 60%, transparent), 0 14px 34px rgba(0, 0, 0, .3); }
+
+/* A pane that appears, or goes, takes its room at once. Easing a split's size made the terminal re-fit on every
+   frame, so its text reflowed and jumped until it settled; a pane that is closing only stops taking pointer input. */
+.mx-pane-cell.is-closing, .mx-pane-column.is-closing { pointer-events: none; }
+
+/* The label that follows the pointer while a pane or a sidebar session is dragged (dragSession.ts). */
+.mx-drag-ghost { position: fixed; left: 0; top: 0; z-index: 1000; pointer-events: none; max-width: 240px; padding: 6px 12px; border-radius: 10px; font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fg); background: var(--main); border: 1px solid var(--accent-line); box-shadow: 0 10px 28px rgba(0, 0, 0, .35); }
+
+/* Panes that swap places glide there (`paneTransition.ts`): only the browser's pictures of them move, so the text never reflows on the way.
+   The window itself does not cross-fade. */
+::view-transition-group(*) { animation-duration: .3s; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }

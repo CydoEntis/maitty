@@ -120,7 +120,7 @@ fn the_menu_has_the_v26_sections_and_skips_their_headers() {
     assert_eq!(
         labels,
         [
-            "Shell here", "Session...", "Pane beside this", "Files", "Changes", "Branches", "History",
+            "Shell here", "Pane beside this", "Files", "Changes", "Branches", "History",
             "References", "Inbox", "Search commands", "All keys", "Collapse sidebar", "Settings",
         ]
     );

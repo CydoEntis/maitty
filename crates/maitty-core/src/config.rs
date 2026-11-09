@@ -946,6 +946,10 @@ fn validate_appearance(appearance: &str) -> Result<()> {
 /// The app's own themes were once named after it ("seshi-night", ADR 0008), and the first set
 /// gave way to Night and Day: an old choice moves to the one of the same lightness.
 fn retired_theme(theme: &str) -> Option<&'static str> {
+    // A built-in theme is never retired: `maitty-dark` and `maitty-light` start with the app's name too, and are themes of their own.
+    if crate::theme::BUILTIN.contains(&theme) {
+        return None;
+    }
     let plain = theme
         .split_once('-')
         .filter(|(p, _)| {
@@ -1605,6 +1609,14 @@ mod tests {
     }
 
     #[test]
+    fn maitty_dark_and_maitty_light_are_themes_of_their_own_not_retired_names() {
+        // They start with the app's name like the old `maitty-dark`, and once loaded as `night` and `day`.
+        assert_eq!(retired_theme("maitty-dark"), None);
+        assert_eq!(retired_theme("maitty-light"), None);
+        assert_eq!(retired_theme("maitty-night"), Some("night"));
+    }
+
+    #[test]
     fn a_retired_theme_moves_to_night_or_day() {
         for (old, now) in [
             ("dark", "night"),
@@ -1828,9 +1840,9 @@ mod tests {
 
     #[test]
     fn an_old_config_with_a_team_table_and_other_removed_keys_still_loads() {
-        let old = "theme = \"nord\"\n[team]\nfamily = \"codex\"\n[[team.jobs]]\nname = \"planner\"\nclaude = \"opus\"\n[[team.projects]]\nproject = \"/a\"\nfamily = \"claude\"\n[fleet]\nsize = 3\n[mcp]\napprove = \"safe\"\nhelpers_at_once = 6\n[keys.prefix]\nstart-fleet = \"F\"\n";
+        let old = "theme = \"tokyo-night\"\n[team]\nfamily = \"codex\"\n[[team.jobs]]\nname = \"planner\"\nclaude = \"opus\"\n[[team.projects]]\nproject = \"/a\"\nfamily = \"claude\"\n[fleet]\nsize = 3\n[mcp]\napprove = \"safe\"\nhelpers_at_once = 6\n[keys.prefix]\nstart-fleet = \"F\"\n";
         let c: super::Config = toml::from_str(old).expect("removed keys are ignored, not refused");
-        assert_eq!((c.theme.as_str(), c.mcp.approve.as_str()), ("nord", "safe"));
+        assert_eq!((c.theme.as_str(), c.mcp.approve.as_str()), ("tokyo-night", "safe"));
     }
 
     #[test]
@@ -2254,7 +2266,7 @@ shell = \"pwsh\"
 
     #[test]
     fn an_older_theme_fills_the_slot_its_ground_belongs_to() {
-        let mut dark: Config = toml::from_str("theme = 'dracula'").unwrap();
+        let mut dark: Config = toml::from_str("theme = 'one-dark'").unwrap();
         dark.settle_theme([false; 3]);
         assert_eq!(
             (
@@ -2262,7 +2274,7 @@ shell = \"pwsh\"
                 dark.theme_dark.as_str(),
                 dark.appearance.as_str()
             ),
-            ("dracula", "dracula", "dark")
+            ("one-dark", "one-dark", "dark")
         );
         assert_eq!(dark.theme_light, crate::theme::DEFAULT_LIGHT);
         let mut light: Config = toml::from_str("theme = 'github-light'").unwrap();
@@ -2281,17 +2293,17 @@ shell = \"pwsh\"
     #[test]
     fn with_slots_the_appearance_picks_the_theme_showing() {
         let text = "theme = 'night'
-theme_dark = 'dracula'
-theme_light = 'vim'
+theme_dark = 'one-dark'
+theme_light = 'one-light'
 ";
-        for (appearance, shown) in [("dark", "dracula"), ("light", "vim")] {
+        for (appearance, shown) in [("dark", "one-dark"), ("light", "one-light")] {
             let mut cfg: Config =
                 toml::from_str(&format!("{text}appearance = '{appearance}'")).unwrap();
             cfg.settle_theme([true; 3]);
             assert_eq!(cfg.theme, shown, "{appearance}");
         }
         // One pick written beside an older `theme` leaves that theme in its own slot.
-        let mut cfg: Config = toml::from_str("theme = 'nord'\ntheme_light = 'vim'\n").unwrap();
+        let mut cfg: Config = toml::from_str("theme = 'tokyo-night'\ntheme_light = 'one-light'\n").unwrap();
         cfg.settle_theme([false, true, false]);
         assert_eq!(
             (
@@ -2299,7 +2311,7 @@ theme_light = 'vim'
                 cfg.theme_dark.as_str(),
                 cfg.theme_light.as_str()
             ),
-            ("nord", "nord", "vim"),
+            ("tokyo-night", "tokyo-night", "one-light"),
             "still showing the dark theme they had"
         );
         assert!(validate_appearance("dark").is_ok() && validate_appearance("light").is_ok());
@@ -2442,13 +2454,13 @@ target = '-oProxyCommand=x'
     #[test]
     fn local_settings_win() {
         let mut base: toml::Table =
-            toml::from_str("theme = 'monokai'\n[ui]\nmouse = true\nsplash = true\n").unwrap();
+            toml::from_str("theme = 'gruvbox'\n[ui]\nmouse = true\nsplash = true\n").unwrap();
         let over: toml::Table = toml::from_str("shell = 'zsh'\n[ui]\nsplash = false\n").unwrap();
         merge(&mut base, over);
         let cfg: Config = toml::Value::Table(base).try_into().unwrap();
         assert_eq!(cfg.shell.as_deref(), Some("zsh"));
         assert!(cfg.ui.mouse && !cfg.ui.splash, "tables merge key by key");
-        assert_eq!(cfg.theme, "monokai");
+        assert_eq!(cfg.theme, "gruvbox");
     }
 
     #[test]

@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { pickFromClipboard, unsupportedMessage } from '@/features/terminal/clipboardImage'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
 import { AppIcon, Icon } from '@/features/workspace/components/glyphs'
@@ -9,6 +9,8 @@ import { useAgentChoice } from '../agentChoice'
 import { DraftAttachments } from './Attachments'
 import { AgentPicker } from './AgentPicker'
 import { modelName } from '../modelName'
+import { BYPASS_MODE, modeLabel, PICKABLE_MODES } from '../chatMeta'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
 /** What the settings tray under the box says about the session. */
 export type ComposerFacts = {
@@ -22,6 +24,14 @@ export type ComposerFacts = {
   /** The model the agent's own file says it uses; null when it has not said. */
   model: string | null
   onOpenFolder: (() => void) | null
+  /** For a chat that follows the agent's terminal and can type into it: send the agent one of its own commands (`/model x`). */
+  onCommand?: ((text: string) => void) | undefined
+  /** The same, for the permission mode: moves the agent to the picked mode (by its Shift+Tab). */
+  onPickMode?: ((mode: string) => void) | undefined
+  /** The mode as the agent's file or screen wrote it, to tick it in the dropdown. */
+  modeKey?: string | null | undefined
+  /** Bypass permissions can be picked: this session started with Claude allowing it. */
+  bypassAllowed?: boolean | undefined
 }
 
 type Props = {
@@ -115,8 +125,8 @@ export function Composer({ agent, composer, conversation, question = null, facts
               </button>
             )}
             <span className="mx-spacer" />
-            {conversation !== undefined && !readOnly && <ModelPicker agent={agent} conversation={conversation} model={facts.model} />}
-            {readOnly && facts.model !== null && <ModelLabel agent={agent} model={facts.model} />}
+            {conversation !== undefined && (!readOnly || facts.onCommand !== undefined) && <ModelPicker agent={agent} conversation={conversation} model={facts.model} live={readOnly ? facts.onCommand : undefined} />}
+            {readOnly && facts.onCommand === undefined && facts.model !== null && <ModelLabel agent={agent} model={facts.model} />}
             {stopping ? (
               <button type="button" className="mx-send is-stop" aria-label={`Stop ${agent}`} title={`Stop ${agent} (Esc)`} onClick={stop}><span className="mx-stop-square" aria-hidden="true" /></button>
             ) : (
@@ -133,14 +143,46 @@ export function Composer({ agent, composer, conversation, question = null, facts
   )
 }
 
+function ModeIcon() {
+  return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3 5 6v6c0 4.4 3 7.6 7 9 4-1.4 7-4.6 7-9V6z" /></svg>
+}
+
 /** The darker tray under the box: how the agent is set up, its subagents, its folder and branch. */
 function SettingsTray({ facts }: { facts: ComposerFacts }) {
   return (
     <div className="mx-settings-tray">
-      <span className={`mx-tray-fact${facts.modeDanger ? ' is-danger' : ''}`} title={facts.mode === null ? 'Not reported by the agent yet' : "The permission mode, from the agent's own file. Cycle it in the terminal with Shift+Tab."}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3 5 6v6c0 4.4 3 7.6 7 9 4-1.4 7-4.6 7-9V6z" /></svg>
-        {facts.mode ?? 'Permissions'}
-      </span>
+      {facts.onPickMode === undefined ? (
+        <span className={`mx-tray-fact${facts.modeDanger ? ' is-danger' : ''}`} title={facts.mode === null ? 'Not reported by the agent yet' : "The permission mode, from the agent's own file. Cycle it in the terminal with Shift+Tab."}>
+          <ModeIcon />
+          {facts.mode ?? 'Permissions'}
+        </span>
+      ) : (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" className={`mx-tray-fact is-button${facts.modeDanger ? ' is-danger' : ''}`} title="Permission mode" aria-label={`Permission mode: ${facts.mode ?? 'not reported yet'}. Pick another.`}>
+              <ModeIcon />
+              {facts.mode ?? 'Permissions'}
+              <Icon name="chevronDown" size={10} />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="start" aria-label="Permission mode" className="w-[240px] text-fg">
+            <DropdownMenuRadioGroup value={facts.modeKey ?? ''} onValueChange={facts.onPickMode}>
+              {PICKABLE_MODES.map((key) => (
+                <DropdownMenuRadioItem
+                  key={key}
+                  value={key}
+                  disabled={key === BYPASS_MODE && facts.bypassAllowed !== true}
+                  title={key === BYPASS_MODE && facts.bypassAllowed !== true ? 'Claude only allows this when it starts with Yolo mode on (Settings, General). This session started without it: turn the setting on and start a new session.' : undefined}
+                  className="text-[12.5px] text-fg focus:bg-hover focus:text-fg"
+                >
+                  {modeLabel(key)}
+                  {key === BYPASS_MODE && <span className="ml-auto pl-2 text-[11px] text-dim">{facts.bypassAllowed === true ? 'asks nothing' : 'needs a new session'}</span>}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
       <span className="mx-tray-fact" title="Subagents this session started">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
         {facts.subagents > 0 ? `Subagents · ${String(facts.subagents)}` : 'Subagents'}
@@ -165,7 +207,7 @@ function ModelLabel({ agent, model }: { agent: ChatAgent; model: string }) {
 }
 
 /** The model and reasoning the next message uses, from the agent picker. */
-function ModelPicker({ agent, conversation, model }: { agent: ChatAgent; conversation: number; model: string | null }) {
+function ModelPicker({ agent, conversation, model, live }: { agent: ChatAgent; conversation: number; model: string | null; live?: ((command: string) => void) | undefined }) {
   const [choice, change] = useAgentChoice(conversation, agent)
-  return <AgentPicker agent={agent} choice={choice} onChange={change} currentModel={model} />
+  return <AgentPicker agent={agent} choice={choice} onChange={change} currentModel={model} {...(live ? { live } : {})} />
 }

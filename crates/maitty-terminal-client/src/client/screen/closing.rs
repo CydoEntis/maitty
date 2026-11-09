@@ -1,4 +1,4 @@
-//! Closing a session: a running agent asks for a second press, then the daemon hides the session
+//! Closing a session: it is always asked first (a dialog, `menu_act`); once accepted the daemon hides the session
 //! for six seconds with its process still running (`Command::CloseSession`), and the banner
 //! offers Undo until it ends the process (`Command::UndoClose`). Docs: UI.md, "Closing".
 
@@ -7,8 +7,6 @@ use std::time::Duration;
 
 /// How long the daemon keeps a closed session before it ends it (`UNDO_WINDOW` there).
 pub(in crate::client) const UNDO_FOR: Duration = Duration::from_secs(6);
-/// How long a first press on a running agent waits for the second.
-const CONFIRM_FOR: Duration = Duration::from_secs(5);
 
 /// A session closed a moment ago.
 #[derive(Debug, Clone)]
@@ -18,11 +16,10 @@ struct Undo {
     at: Instant,
 }
 
-/// What closing has pending: the undo window and a first press waiting for its second.
+/// What closing has pending: the undo window.
 #[derive(Debug, Default)]
 pub(in crate::client) struct Closing {
     undo: Option<Undo>,
-    confirm: Option<(ClientTerm, String, Instant)>,
 }
 
 /// The seconds left of `window` at `elapsed`, never below 1 while it is open.
@@ -37,19 +34,8 @@ impl Closing {
         self.undo.as_ref().map(|u| u.term)
     }
 
-    /// The running agent a first press asked about.
-    #[cfg(test)]
-    pub fn asking_about(&self) -> Option<ClientTerm> {
-        self.confirm.as_ref().map(|(t, ..)| *t)
-    }
-
-    /// The banner under the pane header: the confirm question or the undo offer.
+    /// The banner under the pane header: the undo offer.
     pub fn banner(&self, undo_key: &str) -> Option<Banner> {
-        if let Some((_, what, at)) = &self.confirm
-            && at.elapsed() < CONFIRM_FOR
-        {
-            return Some(Banner { text: format!("Close and stop {what}? press again"), warn: true });
-        }
         let undo = self.undo.as_ref().filter(|u| u.at.elapsed() < UNDO_FOR)?;
         let left = seconds_left(UNDO_FOR, undo.at.elapsed());
         Some(Banner { text: format!("Closed {} · {undo_key} undo {left}s", undo.name), warn: false })
@@ -57,15 +43,12 @@ impl Closing {
 
     /// Drop what has run out; true when the banner changed and the screen needs drawing.
     pub fn expire(&mut self) -> bool {
-        let before = (self.undo.is_some(), self.confirm.is_some());
+        let before = self.undo.is_some();
         if self.undo.as_ref().is_some_and(|u| u.at.elapsed() >= UNDO_FOR) {
             self.undo = None;
         }
-        if self.confirm.as_ref().is_some_and(|(_, _, at)| at.elapsed() >= CONFIRM_FOR) {
-            self.confirm = None;
-        }
         // The countdown changes every second while it shows.
-        before != (self.undo.is_some(), self.confirm.is_some()) || self.undo.is_some()
+        before != self.undo.is_some() || self.undo.is_some()
     }
 }
 
@@ -78,23 +61,11 @@ pub(in crate::client) struct Banner {
 }
 
 impl App {
-    /// Close a session. A running agent asks for the same press again first; the daemon then
-    /// hides it and ends it after `UNDO_FOR` unless it is undone.
+    /// Close a session, once the confirmation (`menu_act`) has been accepted: the daemon hides it and ends it after `UNDO_FOR`
+    /// unless it is undone.
     pub(in crate::client) fn close_session(&mut self, term: ClientTerm) {
-        let agent = self
-            .term_info(term)
-            .and_then(|t| t.agent.clone())
-            .filter(|_| self.agent_running(term));
-        if let Some(agent) = agent {
-            let again = self.closing.confirm.as_ref().is_some_and(|(t, _, at)| *t == term && at.elapsed() < CONFIRM_FOR);
-            if !again {
-                self.closing.confirm = Some((term, agent, Instant::now()));
-                return;
-            }
-        }
         let model = self.screen_model();
         let name = session_name(self, &model, term);
-        self.closing.confirm = None;
         // Closed from the sidebar, the keys stay there, on the next row.
         let from_side = self.mode == Mode::Side || self.screen.cursor.is_some();
         let next = if from_side { self.side_after_close() } else { None };
@@ -114,7 +85,7 @@ impl App {
     }
 
     /// Whether an agent is doing something in the session: closing it would stop that.
-    fn agent_running(&self, term: ClientTerm) -> bool {
+    pub(in crate::client) fn agent_running(&self, term: ClientTerm) -> bool {
         self.term_info(term)
             .is_some_and(|t| t.agent.is_some() && matches!(t.status, Status::Working | Status::Blocked))
     }
@@ -178,7 +149,7 @@ mod tests {
     }
 
     #[test]
-    fn a_closed_session_offers_undo_and_a_running_agent_asks_again() {
+    fn a_closed_session_offers_undo() {
         let term = ClientTerm::local(7);
         let mut c = Closing::default();
         assert_eq!(c.banner("Ctrl+A"), None);
@@ -186,9 +157,5 @@ mod tests {
         let b = c.banner("Ctrl+A").unwrap();
         assert_eq!(b.text, "Closed pacman · Ctrl+A undo 6s");
         assert!(!b.warn);
-        c.confirm = Some((term, "claude".into(), Instant::now()));
-        let b = c.banner("Ctrl+A").unwrap();
-        assert_eq!(b.text, "Close and stop claude? press again");
-        assert!(b.warn, "the question comes before the offer");
     }
 }

@@ -1,5 +1,7 @@
 import type { ITheme } from '@xterm/xterm'
-import { composite, contrastRatio, mixOklab, withAlpha } from './color'
+import maittyTokens from '@tokens/maitty-tokens.json'
+import themeManifest from '@tokens/themes.json'
+import { composite, contrastRatio, luminance, mixOklab, withAlpha } from './color'
 
 /** Every colour role the desktop app reads, set as CSS custom properties on the app root. */
 export type ThemeTokens = {
@@ -17,6 +19,10 @@ export type ThemeTokens = {
   muted: string
   dim: string
   accent: string
+  /** The accent as text on the card: the same brass, darkened where the ground is light. */
+  accentText: string
+  /** What "working" is drawn in; nothing else is this colour. */
+  working: string
   accentSoft: string
   accentLine: string
   onAccent: string
@@ -38,18 +44,26 @@ export type ThemeTokens = {
 /** The six colours (and a light flag) a theme is made from; a TUI theme imports as these. */
 export type ThemeInputs = { bg: string; fg: string; accent: string; mag: string; blue: string; green: string; light: boolean }
 
-/** `cardRing` is the solid card colour that rings a status badge so it reads as cut out of the card. */
-export type ThemeEntry = { name: string; family: string; light: boolean; tokens: ThemeTokens; cardRing: string }
+/**
+ * What a window style adds to a theme besides colours: the fonts, the two glass dials (`hk` is the
+ * highlight strength, `sk` the shadow strength), the resting card sheen (`sh`) and the background glow
+ * strengths. A field left out keeps the stylesheet's default.
+ */
+export type StyleLook = { ui: string; mono: string; hk?: string; sk?: string; sh?: string; glowAccent?: string; glowMag?: string }
+
+/** `cardRing` is the solid card colour that rings a status badge so it reads as cut out of the card. `look` is set by `withWindowStyle`. */
+export type ThemeEntry = { id: string; name: string; family: string; light: boolean; tokens: ThemeTokens; cardRing: string; look?: StyleLook }
 
 /** Which theme is in use: the dark theme, the light theme, or whichever one the system's own setting asks for. */
 export type ThemeMode = 'system' | 'dark' | 'light'
 
-export const DEFAULT_THEME = 'Midnight'
+export const DEFAULT_THEME = 'Maitty Night'
+export const DEFAULT_LIGHT_THEME = 'Maitty Day'
 export const MIN_TEXT_CONTRAST = 4.5
 
 const CSS_VARIABLES: Record<keyof ThemeTokens, string> = {
   bg: '--bg', main: '--main', raise: '--raise', hover: '--hover', sel: '--sel', line: '--line', line2: '--line2',
-  well: '--well', term: '--term', fg: '--fg', fg2: '--fg2', muted: '--muted', dim: '--dim', accent: '--accent',
+  well: '--well', term: '--term', fg: '--fg', fg2: '--fg2', muted: '--muted', dim: '--dim', accent: '--accent', accentText: '--accent-text', working: '--working',
   accentSoft: '--accent-soft', accentLine: '--accent-line', onAccent: '--on-accent', warn: '--warn',
   warnSoft: '--warn-soft', warnLine: '--warn-line', onWarn: '--on-warn', danger: '--danger',
   dangerSoft: '--danger-soft', dangerLine: '--danger-line', ok: '--ok', ansiBlue: '--ansi-blue',
@@ -59,44 +73,10 @@ const CSS_VARIABLES: Record<keyof ThemeTokens, string> = {
 const DARK_STATUS = { warn: '#F2B65A', warnSoft: 'rgba(242,182,90,.07)', warnLine: 'rgba(242,182,90,.28)', onWarn: '#151007', danger: '#F07F78', dangerSoft: 'rgba(240,127,120,.07)', dangerLine: 'rgba(240,127,120,.3)' }
 // Dark enough for AA on the grounds of every generated light theme (Gruvbox Light's cream is the tightest).
 const LIGHT_STATUS = { warn: '#8F5400', warnSoft: 'rgba(143,84,0,.07)', warnLine: 'rgba(143,84,0,.3)', onWarn: '#FFFFFF', danger: '#B8362C', dangerSoft: 'rgba(184,54,44,.06)', dangerLine: 'rgba(184,54,44,.3)' }
-// Paper and Day are darker than the generated light themes so amber and red pass AA on --term and --bg.
-const PAPER_STATUS = { warn: '#8A5000', warnSoft: 'rgba(138,80,0,.07)', warnLine: 'rgba(138,80,0,.3)', onWarn: '#FFFFFF', danger: '#B3342A', dangerSoft: 'rgba(179,52,42,.06)', dangerLine: 'rgba(179,52,42,.3)' }
-const DAY_STATUS = { warn: '#8C4F00', warnSoft: 'rgba(140,79,0,.07)', warnLine: 'rgba(140,79,0,.3)', onWarn: '#FFFFFF', danger: '#B1302A', dangerSoft: 'rgba(177,48,42,.06)', dangerLine: 'rgba(177,48,42,.3)' }
-const MIDNIGHT: ThemeTokens = {
-  ansiBlue: '#82AAFF', ansiMag: '#C3A6F2', ansiGreen: '#9FD39A', pane: '#0D1116', paneLine: 'rgba(255,255,255,.07)',
-  bg: '#090C10', main: '#0D1116', raise: '#141A21', hover: '#12171E', sel: '#1A212A', line: '#1B222B', line2: '#26303B',
-  well: '#080A0D', term: '#06080B', fg: '#E8ECEF', fg2: '#B3BCC5', muted: '#8C96A1', dim: '#75808B', accent: '#5FD4BF',
-  accentSoft: 'rgba(95,212,191,.11)', accentLine: 'rgba(95,212,191,.5)', onAccent: '#06110F', ...DARK_STATUS, ok: '#8DB89B',
-}
 
-const ABYSS: ThemeTokens = {
-  ...MIDNIGHT, pane: '#0B1724', bg: '#07111B', main: '#0B1724', raise: '#112131', hover: '#0F1C29', sel: '#162839',
-  line: '#14243A', line2: '#1E3248', well: '#06101A', term: '#050D15',
-}
 
-const PAPER: ThemeTokens = {
-  ansiBlue: '#2F5FD0', ansiMag: '#8146C9', ansiGreen: '#2F7A3B', pane: '#FFFFFF', paneLine: 'rgba(17,22,27,.1)',
-  bg: '#ECEEEA', main: '#FFFFFF', raise: '#F5F6F4', hover: '#F0F2F0', sel: '#E7EAE8', line: '#E3E6E4', line2: '#D2D7D4',
-  well: '#F2F4F2', term: '#FBFBF9', fg: '#11161B', fg2: '#353E46', muted: '#4E5862', dim: '#5B6570', accent: '#0A7564',
-  accentSoft: 'rgba(10,117,100,.1)', accentLine: 'rgba(10,117,100,.5)', onAccent: '#FFFFFF', ...PAPER_STATUS, ok: '#28713F',
-}
 
-const DAY: ThemeTokens = {
-  ansiBlue: '#2457C5', ansiMag: '#7A3FC0', ansiGreen: '#2A7A3C', pane: '#FFFFFF', paneLine: 'rgba(14,20,26,.1)',
-  bg: '#E9EEF3', main: '#FFFFFF', raise: '#F4F7FA', hover: '#EEF2F6', sel: '#E3EAF1', line: '#DDE4EB', line2: '#CCD6E0',
-  well: '#F1F5F8', term: '#FFFFFF', fg: '#0E141A', fg2: '#30404D', muted: '#4A5A68', dim: '#566573', accent: '#0A6F86',
-  accentSoft: 'rgba(10,111,134,.1)', accentLine: 'rgba(10,111,134,.5)', onAccent: '#FFFFFF', ...DAY_STATUS, ok: '#23703E',
-}
 
-// Pure black and white with strong lines, for readability over polish. Warn and danger keep their meaning.
-const HIGH_CONTRAST: ThemeTokens = {
-  ansiBlue: '#8FB8FF', ansiMag: '#E3B5FF', ansiGreen: '#7CF29A', pane: '#000000', paneLine: 'rgba(255,255,255,.3)',
-  bg: '#000000', main: '#000000', raise: '#0D0D0D', hover: '#0A0A0A', sel: '#1C1C1C', line: '#5A5A5A', line2: '#8A8A8A',
-  well: '#000000', term: '#000000', fg: '#FFFFFF', fg2: '#EDEDED', muted: '#CFCFCF', dim: '#ABABAB', accent: '#3CF2D2',
-  accentSoft: 'rgba(60,242,210,.16)', accentLine: 'rgba(60,242,210,.75)', onAccent: '#000000',
-  warn: '#FFC94D', warnSoft: 'rgba(255,201,77,.12)', warnLine: 'rgba(255,201,77,.6)', onWarn: '#000000',
-  danger: '#FF7A7A', dangerSoft: 'rgba(255,122,122,.12)', dangerLine: 'rgba(255,122,122,.6)', ok: '#7CF29A',
-}
 
 // Mix percentages from the design; `fg2`, `muted` and `dim` are raised when a theme would fall below
 // MIN_TEXT_CONTRAST against the terminal ground or the window ground.
@@ -104,6 +84,37 @@ const MIX = {
   raiseDark: 7, raiseLight: 5, hover: 5, sel: 10, line: 9, line2: 15, bgDark: 18, bgLight: 4, wellDark: 25, wellLight: 3,
   fg2: 80, muted: 62, dim: 52, accentSoft: 13, accentLine: 50, paneLine: 10, contrastStep: 2, full: 100,
 }
+
+/**
+ * Maitty's own themes, built from `maitty-tokens.json`: Night and Day (sea-glass green) and Dark and Light (a standard black and white ground with the same accents) (the TUI reads the same file): sea-glass and brass. Teal means
+ * only "working" (`working`), coral only "needs you" (`warn`), brass is the accent. Text uses the file's *Text colours
+ * so every pair meets AA; fills (a button's brass) use the fill colours with their *On ink.
+ */
+/** How far the tokens file's colours are mixed to make the roles it does not name (percent). */
+const MAITTY_MIX = { hover: 50, line2: 40, muted: 50, warnSoft: 7, warnLine: 30, paneLine: 8 }
+type MaittySide = typeof maittyTokens.night
+function maittyTheme(side: MaittySide, light: boolean): ThemeTokens {
+  const { bg, line, text, accent, state } = side
+  const status = light ? LIGHT_STATUS : DARK_STATUS
+  return {
+    bg: bg.page, main: bg.card, pane: bg.card, term: bg.terminal,
+    raise: bg.surface, hover: mixOklab(bg.card, bg.selected, MAITTY_MIX.hover), sel: bg.selected,
+    line: line.default, line2: mixOklab(line.default, text.dim, MAITTY_MIX.line2), well: bg.depth3,
+    fg: text.strong, fg2: text.body, muted: mixOklab(text.body, text.dim, MAITTY_MIX.muted), dim: text.dim,
+    accent: accent.brass, accentText: accent.brassText, onAccent: accent.brassOn,
+    accentSoft: withAlpha(accent.brass, MIX.accentSoft), accentLine: withAlpha(accent.brass, MIX.accentLine),
+    working: state.workingText,
+    warn: state.needsText, warnSoft: withAlpha(state.needs, MAITTY_MIX.warnSoft), warnLine: withAlpha(state.needs, MAITTY_MIX.warnLine), onWarn: state.needsOn,
+    danger: status.danger, dangerSoft: status.dangerSoft, dangerLine: status.dangerLine,
+    ok: state.doneText,
+    ansiBlue: light ? '#2F5FD0' : '#82AAFF', ansiMag: light ? '#8146C9' : '#C3A6F2', ansiGreen: state.doneText,
+    paneLine: withAlpha(text.strong, MAITTY_MIX.paneLine),
+  }
+}
+const MAITTY_NIGHT = maittyTheme(maittyTokens.night, false)
+const MAITTY_DAY = maittyTheme(maittyTokens.day, true)
+const MAITTY_DARK = maittyTheme(maittyTokens.dark, false)
+const MAITTY_LIGHT = maittyTheme(maittyTokens.light, true)
 
 const SHIFT_STEP = 2
 
@@ -117,9 +128,11 @@ function shiftUntilReadable(colour: string, grounds: readonly string[], toward: 
 
 /** Builds every token from a theme's six inputs, as the TUI themes import. */
 export function generateTheme(inputs: ThemeInputs): ThemeTokens {
-  const { bg, fg, accent, mag, blue, green, light } = inputs
-  const towardFg = (percent: number) => mixOklab(bg, fg, percent)
+  const { bg, accent, mag, blue, green, light } = inputs
+  const towardFg = (percent: number) => mixOklab(bg, inputs.fg, percent)
   const windowBg = light ? towardFg(MIX.bgLight) : mixOklab(bg, '#000000', MIX.bgDark)
+  // The foreground is lifted (or darkened) in place if a theme's own would fall short on the window ground (Tokyo Night Day).
+  const fg = shiftUntilReadable(inputs.fg, [bg, windowBg], light ? '#000000' : '#FFFFFF')
   // Text sits on the card and terminal ground (`bg`) and, in the sidebar's gaps and the status bar, on the window ground.
   const readable = (start: number) => {
     let percent = start
@@ -151,6 +164,8 @@ export function generateTheme(inputs: ThemeInputs): ThemeTokens {
     muted: readable(MIX.muted),
     dim: readable(MIX.dim),
     accent: accentText,
+    accentText,
+    working: accentText,
     accentSoft: withAlpha(accentText, MIX.accentSoft),
     accentLine: withAlpha(accentText, MIX.accentLine),
     onAccent: light ? '#FFFFFF' : bg,
@@ -164,36 +179,8 @@ export function generateTheme(inputs: ThemeInputs): ThemeTokens {
   }
 }
 
-// [name, bg, fg, accent, mag, blue, green, light, family]
-type GeneratedSource = readonly [string, string, string, string, string, string, string, boolean, string]
-
-const GENERATED: readonly GeneratedSource[] = [
-  ['Dracula', '#282A36', '#F8F8F2', '#8BE9FD', '#FF79C6', '#BD93F9', '#50FA7B', false, 'Vivid'],
-  ['Nord', '#2E3440', '#ECEFF4', '#88C0D0', '#B48EAD', '#81A1C1', '#A3BE8C', false, 'Arctic'],
-  ['Gruvbox Dark', '#282828', '#EBDBB2', '#8EC07C', '#D3869B', '#83A598', '#B8BB26', false, 'Retro'],
-  ['Gruvbox Light', '#FBF1C7', '#3C3836', '#427B58', '#8F3F71', '#076678', '#79740E', true, 'Retro'],
-  ['Catppuccin Mocha', '#1E1E2E', '#CDD6F4', '#94E2D5', '#CBA6F7', '#89B4FA', '#A6E3A1', false, 'Pastel'],
-  ['Catppuccin Latte', '#EFF1F5', '#4C4F69', '#179299', '#8839EF', '#1E66F5', '#40A02B', true, 'Pastel'],
-  ['Tokyo Night', '#1A1B26', '#C0CAF5', '#7DCFFF', '#BB9AF7', '#7AA2F7', '#9ECE6A', false, 'Neon'],
-  ['One Dark', '#282C34', '#ABB2BF', '#56B6C2', '#C678DD', '#61AFEF', '#98C379', false, 'Classic'],
-  ['Solarized Dark', '#002B36', '#93A1A1', '#2AA198', '#D33682', '#268BD2', '#859900', false, 'Classic'],
-  ['Solarized Light', '#FDF6E3', '#586E75', '#2AA198', '#D33682', '#268BD2', '#859900', true, 'Classic'],
-  ['Rosé Pine', '#191724', '#E0DEF4', '#9CCFD8', '#C4A7E7', '#31748F', '#9CCFD8', false, 'Muted'],
-  ['Rosé Pine Dawn', '#FAF4ED', '#575279', '#56949F', '#907AA9', '#286983', '#56949F', true, 'Muted'],
-  ['Kanagawa', '#1F1F28', '#DCD7BA', '#7AA89F', '#957FB8', '#7E9CD8', '#98BB6C', false, 'Ink'],
-  ['Everforest', '#2D353B', '#D3C6AA', '#83C092', '#D699B6', '#7FBBB3', '#A7C080', false, 'Forest'],
-  ['Monokai', '#272822', '#F8F8F2', '#66D9EF', '#AE81FF', '#66D9EF', '#A6E22E', false, 'Vivid'],
-  ['GitHub Dark', '#0D1117', '#C9D1D9', '#39C5CF', '#BC8CFF', '#58A6FF', '#3FB950', false, 'Clean'],
-  ['GitHub Light', '#FFFFFF', '#24292F', '#1B7C83', '#8250DF', '#0969DA', '#1A7F37', true, 'Clean'],
-  ['Ayu Mirage', '#1F2430', '#CBCCC6', '#95E6CB', '#D4BFFF', '#73D0FF', '#BAE67E', false, 'Soft'],
-  ['Material Ocean', '#0F111A', '#A6ACCD', '#89DDFF', '#C792EA', '#82AAFF', '#C3E88D', false, 'Deep'],
-  ['Night Owl', '#011627', '#D6DEEB', '#7FDBCA', '#C792EA', '#82AAFF', '#ADDB67', false, 'Deep'],
-  ['Horizon', '#1C1E26', '#E0E0E0', '#25B0BC', '#B877DB', '#26BBD9', '#29D398', false, 'Warm'],
-  ['Oxocarbon', '#161616', '#F2F4F8', '#3DDBD9', '#BE95FF', '#78A9FF', '#42BE65', false, 'Mono'],
-  ['Zenburn', '#3F3F3F', '#DCDCCC', '#93E0E3', '#DC8CC3', '#8CD0D3', '#7F9F7F', false, 'Low contrast'],
-]
-
-const entry = (name: string, family: string, light: boolean, tokens: ThemeTokens): ThemeEntry => ({
+const entry = (id: string, name: string, family: string, light: boolean, tokens: ThemeTokens): ThemeEntry => ({
+  id,
   name,
   family,
   light,
@@ -201,16 +188,24 @@ const entry = (name: string, family: string, light: boolean, tokens: ThemeTokens
   cardRing: composite(tokens.pane, tokens.bg),
 })
 
-export const THEMES: readonly ThemeEntry[] = [
-  entry('Midnight', 'Maitty · default', false, MIDNIGHT),
-  entry('Abyss', 'Maitty · deeper blue', false, ABYSS),
-  entry('Paper', 'Maitty · light', true, PAPER),
-  entry('Day', 'Maitty · light, cool', true, DAY),
-  ...GENERATED.map(([name, bg, fg, accent, mag, blue, green, light, family]) =>
-    entry(name, `${family} · ${light ? 'light' : 'dark'}`, light, generateTheme({ bg, fg, accent, mag, blue, green, light })),
-  ),
-  entry('High Contrast', 'Accessibility · dark', false, HIGH_CONTRAST),
-]
+const MAITTY_TOKENS = { night: MAITTY_NIGHT, day: MAITTY_DAY, dark: MAITTY_DARK, light: MAITTY_LIGHT } as const
+
+/**
+ * The themes both apps ship, in display order, from `themes.json` (the TUI reads the same list): four of Maitty's own, built
+ * from `maitty-tokens.json`, and six families with a dark and a light each, generated from six colours.
+ */
+export const THEMES: readonly ThemeEntry[] = themeManifest.themes.map((theme) => {
+  const kind = theme.light ? 'light' : 'dark'
+  if ('tokens' in theme) return entry(theme.id, theme.name, `${theme.family} · ${kind}`, theme.light, MAITTY_TOKENS[theme.tokens as keyof typeof MAITTY_TOKENS])
+  const { bg, fg, accent, mag, blue, green, light } = theme
+  return entry(theme.id, theme.name, `${theme.family} · ${kind}`, light, generateTheme({ bg, fg, accent, mag, blue, green, light }))
+})
+
+/** The id both apps store a theme under (the TUI's config name) for a theme's display name; the name itself when it is unknown. */
+export const themeIdOf = (name: string): string => THEMES.find((theme) => theme.name === name)?.id ?? name
+
+/** The display name of the theme stored under `id`, or null when no shipped theme has it. */
+export const themeNameOf = (id: string): string | null => THEMES.find((theme) => theme.id === id)?.name ?? null
 
 /** The theme in use for a mode. `systemDark` only matters in System mode. */
 export function activeThemeName(choice: { themeMode: ThemeMode; darkTheme: string; lightTheme: string }, systemDark: boolean): string {
@@ -226,42 +221,53 @@ export function findTheme(name: string): ThemeEntry {
 
 /**
  * The glass finish's light and shade: the highlight colour (`--hl`, as `r,g,b`) and its strength, and
- * the shadow colour (`--sd`) and its strength. Dark themes catch white light and cast black shadows;
+ * the shadow colour (`--sd`) and its strength. `--hs` is the colour of the sheen and the top edge: white in
+ * both, because a light theme's glass is frosted by white light while its hairlines are drawn in ink. Dark themes catch white light and cast black shadows;
  * light themes are lit and shaded by their own ink, more faintly.
  */
-const DARK_GLASS = { '--hl': '255,255,255', '--hk': '1', '--sd': '0,0,0', '--sk': '1' }
-const LIGHT_GLASS = { '--hl': '20,32,46', '--hk': '.85', '--sd': '20,32,46', '--sk': '.3' }
+const DARK_GLASS = { '--hl': '255,255,255', '--hs': '255,255,255', '--hk': '1', '--sd': '0,0,0', '--sk': '1' }
+// A light theme's tints (hovers, raised fills, tracks, hairlines) are a warm brown ink, not a blue-grey one, so they read as cream over a pale ground.
+const LIGHT_GLASS = { '--hl': '112,92,52', '--hs': '255,255,255', '--hk': '.85', '--sd': '70,52,24', '--sk': '.3' }
+
+/** A dark ground at or above this luminance (One Dark's grey) is as light as the glass's sheen can sit on without turning grey. */
+const SOFT_GROUND_LUMINANCE = 0.03
+/**
+ * The frost's sheen and edge on a dark ground, in strength: full on a deep ground (Maitty Night), a third of it on a light grey one
+ * (One Dark), where the same white would wash the panel out.
+ */
+const FROST_DEEP = { hi: 0.06, lo: 0.02, edge: 0.12 }
+const FROST_SOFT = { hi: 0.02, lo: 0.007, edge: 0.05 }
+const FROST_DIGITS = 3
+function frostOf(main: string): Record<string, string> {
+  const soft = Math.min(luminance(main) / SOFT_GROUND_LUMINANCE, 1)
+  const strength = (key: keyof typeof FROST_DEEP) => (FROST_DEEP[key] - (FROST_DEEP[key] - FROST_SOFT[key]) * soft).toFixed(FROST_DIGITS)
+  return { '--g-hi': strength('hi'), '--g-lo': strength('lo'), '--g-edge': strength('edge') }
+}
 
 /** The theme as CSS custom properties, for the app root's style. */
 export function themeStyle(theme: ThemeEntry): Record<string, string> {
   const style: Record<string, string> = { '--card-ring': theme.cardRing, colorScheme: theme.light ? 'light' : 'dark', ...(theme.light ? LIGHT_GLASS : DARK_GLASS) }
   for (const [key, variable] of Object.entries(CSS_VARIABLES)) style[variable] = theme.tokens[key as keyof ThemeTokens]
+  if (!theme.light) Object.assign(style, frostOf(theme.tokens.main))
+  const { look } = theme
+  if (look === undefined) return style
+  style['--ui'] = look.ui
+  style['--mono'] = look.mono
+  if (look.hk !== undefined) style['--hk'] = look.hk
+  if (look.sk !== undefined) style['--sk'] = look.sk
+  if (look.sh !== undefined) style['--sh'] = look.sh
+  if (look.glowAccent !== undefined) style['--glow-accent'] = look.glowAccent
+  if (look.glowMag !== undefined) style['--glow-mag'] = look.glowMag
   return style
 }
 
-/** The selection starts as this much accent over the ground and fades until the text stays readable. */
-const SELECTION_ALPHA = 25
-const SELECTION_ALPHA_STEP = 5
-const SELECTION_ALPHA_MIN = 10
-const INK = '#000000'
-const PAPER_WHITE = '#FFFFFF'
-
 /**
- * Opaque on purpose: xterm's WebGL renderer draws the selection without its alpha, so a
- * translucent accent became a solid block with the text lost on it. The text keeps the theme's
- * foreground where it passes, else the ground colour, and the tint fades until one of them does.
+ * The selection is the accent itself, opaque (xterm's WebGL renderer draws it without alpha), with the accent's own ink for
+ * the text. A faint tint of the accent over the card was nearly invisible on a dark ground. The accent already passes as
+ * text on the card, so its ink passes on it.
  */
 function selectionColors(tokens: ThemeTokens): { background: string; foreground: string } {
-  let alpha = SELECTION_ALPHA
-  for (;;) {
-    const background = composite(withAlpha(tokens.accent, alpha), tokens.main)
-    const foreground = contrastRatio(tokens.fg, background) >= contrastRatio(tokens.main, background) ? tokens.fg : tokens.main
-    if (contrastRatio(foreground, background) >= MIN_TEXT_CONTRAST) return { background, foreground }
-    // Even the faintest tint can leave a theme's own text short (a darkened light accent over a pale
-    // ground), so the text turns to plain black or white, whichever reads better.
-    if (alpha <= SELECTION_ALPHA_MIN) return { background, foreground: contrastRatio(INK, background) >= contrastRatio(PAPER_WHITE, background) ? INK : PAPER_WHITE }
-    alpha -= SELECTION_ALPHA_STEP
-  }
+  return { background: tokens.accent, foreground: tokens.onAccent }
 }
 
 /**
@@ -284,7 +290,7 @@ export function xtermTheme(tokens: ThemeTokens): ITheme {
   return {
     background: tokens.main,
     foreground: tokens.fg2,
-    cursor: tokens.accent,
+    cursor: tokens.accentText,
     cursorAccent: tokens.main,
     selectionBackground: selection.background,
     selectionForeground: selection.foreground,
@@ -302,8 +308,8 @@ export function xtermTheme(tokens: ThemeTokens): ITheme {
     brightBlue: tokens.ansiBlue,
     magenta: tokens.ansiMag,
     brightMagenta: tokens.ansiMag,
-    cyan: tokens.accent,
-    brightCyan: tokens.accent,
+    cyan: tokens.accentText,
+    brightCyan: tokens.accentText,
     white: tokens.fg2,
     brightWhite: tokens.fg,
   }

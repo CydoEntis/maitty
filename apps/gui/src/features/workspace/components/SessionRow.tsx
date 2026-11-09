@@ -2,7 +2,7 @@ import type { MouseEvent } from 'react'
 import { MAX_SESSION_NAME_LENGTH, STATUS_WORD, type SessionView } from '../model/session'
 import { isShell, projectColor, projectOf, rowTitle, rowWord } from '../model/sidebar'
 import { AppIcon, StatusBadge } from './glyphs'
-import { SESSION_DRAG_TYPE } from './dragSession'
+import { beginPointerDrag } from './dragSession'
 import { InlineName } from './InlineName'
 
 type Props = {
@@ -63,8 +63,7 @@ export function SessionRow({ session, selected, showProject, renaming, onShow, o
     <button
       type="button"
       className={className}
-      draggable
-      onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData(SESSION_DRAG_TYPE, session.id) }}
+      onPointerDown={(event) => { beginPointerDrag(event, { kind: 'session', id: session.id, label: title }) }}
       aria-label={`${title}, ${session.process}, ${STATUS_WORD[session.status]}`}
       aria-current={selected ? 'page' : undefined}
       onClick={onShow}

@@ -10,7 +10,7 @@ vi.mock('@/api/imagePaste', async (importOriginal) => ({
 }))
 
 const toasts = vi.hoisted(() => ({ loading: vi.fn(), success: vi.fn(), error: vi.fn() }))
-vi.mock('sonner', () => ({ toast: toasts }))
+vi.mock('@/lib/toast', () => ({ toast: toasts }))
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 const image = new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], { type: 'image/png' })

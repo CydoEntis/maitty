@@ -2,7 +2,7 @@ import { projectColor, projectOf } from './sidebar'
 import type { SessionView } from './session'
 
 /** A project the New session dialog offers: the folder a session starts in, its name and colour. */
-export type NewSessionProject = { folder: string; name: string; color: string }
+export type NewSessionProject = { folder: string; name: string; color: string; /** How many of the machine's sessions are in it. */ sessions?: number }
 
 /**
  * The projects a machine has sessions in, the focused session's first, then the most recent: the
@@ -17,6 +17,10 @@ export function machineProjects(sessions: readonly SessionView[], machine: numbe
     const folder = session.repoRoot ?? session.cwd
     const name = projectOf(session)
     if (!projects.has(folder)) projects.set(folder, { folder, name, color: projectColor(name) })
+  }
+  for (const session of mine) {
+    const project = projects.get(session.repoRoot ?? session.cwd)
+    if (project) project.sessions = (project.sessions ?? 0) + 1
   }
   if (projects.size === 0 && startFolder !== '') {
     const name = startFolder.split(/[/\\]/).filter(Boolean).at(-1) ?? startFolder

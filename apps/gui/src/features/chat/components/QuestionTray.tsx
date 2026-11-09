@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { errorMessage } from '@/lib/error-message'
 import type { PermissionAsk } from '@/data/preview'
 import type { ApprovalDecision, ApprovalEvent } from '../chatEvents'

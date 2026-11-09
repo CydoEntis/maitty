@@ -112,7 +112,7 @@ describe('a chat', () => {
     await user.type(screen.getByLabelText('Message'), '@tester can you run it{Enter}')
     expect(screen.getByRole('status').textContent).toContain('is typing')
     await user.click(screen.getByRole('button', { name: /Add crewmate/ }))
-    await user.click(within(screen.getByRole('menu', { name: 'Your crewmates' })).getByRole('menuitem', { name: /Tester/ }))
+    await user.click(within(await screen.findByRole('menu', { name: /Add crewmate/ })).getByRole('menuitem', { name: /Tester/ }))
     expect(screen.getByText('Tester joined')).toBeTruthy()
   })
 })

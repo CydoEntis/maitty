@@ -52,19 +52,34 @@ function DialogContent({
   children,
   showCloseButton = true,
   container,
+  unstyled = false,
+  overlayClassName = "mx-settings-scrim",
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
+  /** The caller's className is the whole look: it sits on a centred scrim, with no default frame or close button. */
+  unstyled?: boolean
+  /** The scrim's class in unstyled mode. */
+  overlayClassName?: string
   /** Where the dialog mounts: the themed window root, so it reads the theme's tokens (default: the body). */
   container?: HTMLElement | null
 }) {
+  if (unstyled) {
+    return (
+      <DialogPortal container={container}>
+        <DialogPrimitive.Overlay data-slot="dialog-overlay" className={overlayClassName}>
+          <DialogPrimitive.Content data-slot="dialog-content" className={className} {...props}>{children}</DialogPrimitive.Content>
+        </DialogPrimitive.Overlay>
+      </DialogPortal>
+    )
+  }
   return (
     <DialogPortal container={container}>
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "mx-pop fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className
         )}
         {...props}

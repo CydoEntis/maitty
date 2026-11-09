@@ -40,7 +40,7 @@ import {
   TerminalSquare,
   X,
 } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Button } from '@/components/ui/button'
 import { StatusMark } from '@/components/StatusMark'
 import { Elapsed } from '@/components/Elapsed'
@@ -168,6 +168,7 @@ import { shortcutModifier } from '@/lib/shortcut-modifier'
 import { errorMessage } from '@/lib/error-message'
 import { daemonConnectionError, daemonProtocolMismatch } from '@/lib/daemon-connection'
 import './App.css'
+import './material.css'
 
 const OTHER_FOLDERS = 'Other folders'
 

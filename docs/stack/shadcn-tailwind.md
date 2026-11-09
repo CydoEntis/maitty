@@ -15,6 +15,15 @@
 - Editing a primitive is allowed when the change applies everywhere, such as a
   design token or an accessibility fix. Note the change in the commit body, so
   it's clear the primitive now diverges from the upstream shadcn version.
+- **One component per control (hard rule).** A switch, segmented or radio
+  choice, select or picker, dialog, alert dialog, menu, context menu, popover
+  or tooltip exists once, in `src/components/ui/`, on its Radix primitive. A
+  feature composes it and never builds a second one: no `role="switch"`,
+  `radiogroup`, `dialog`, `menu`, `listbox` or hand-opened `createPortal`
+  outside `components/ui/`. A different look comes from a token or a prop on the
+  shared component. If the control you need is missing, add it to `components/ui/`
+  first. ESLint enforces this (`HAND_BUILT_CONTROL` in `apps/gui/eslint.config.ts`)
+  with no exempt files outside `components/ui/`. Never add an exemption to pass a change.
 - Use `cva` (class-variance-authority) for variants, as the primitives already
   do. Don't use conditional class soup.
 
@@ -53,15 +62,15 @@ pnpm dlx shadcn@latest add button dialog form
 
 ## Project-specific: shadcn-tailwind
 
-Follow the approved `Maitty Desktop specification` handoff in
+Follow the approved `Maitty Desktop specification` handoff and the redesign handoff (four window styles, see [DESIGN](../DESIGN.md#desktop-app)) in
 `docs/features/chat-gui/design-brief.md`. Use Geist Variable for interface text
 and Geist Mono Variable for code, paths, shortcuts and diff numbers. Use the
 4-pixel spacing scale, 6–8-pixel control and row radii, 9–10-pixel card radii,
 12-pixel workspace radius and 14–16-pixel composer/dialog radius.
 
-Midnight is the default; Paper is the light theme. Sea glass teal marks focus,
-primary actions and working status. Amber is reserved for needs-you attention;
-red is reserved for errors and recovery. Use the shared CSS variables for every
+Maitty Night is the default dark theme and Maitty Day the default light one (sea-glass and brass,
+`crates/maitty-settings/maitty-tokens.json`). Brass is the accent; teal means only working; coral means only
+needs-you; red is reserved for errors and recovery. Use the shared CSS variables for every
 theme and keep shadcn primitives unchanged unless an accessibility or product
 need is documented.
 

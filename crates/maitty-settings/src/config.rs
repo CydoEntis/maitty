@@ -51,6 +51,10 @@ pub struct Icons {
     pub active_workspace: String,
     /// Shown before a workspace's branch (default: the Nerd Font / Powerline branch glyph).
     pub branch: String,
+    /// The sidebar's group-by-folder button and a folder's heading (default: the Nerd Font folder).
+    pub folder: String,
+    /// The sidebar's group-by button (default: the Nerd Font filter funnel).
+    pub filter: String,
 }
 
 impl Default for Icons {
@@ -65,6 +69,8 @@ impl Default for Icons {
             shell: "\u{f489}".into(),
             active_workspace: "▌".into(),
             branch: "\u{e0a0} ".into(),
+            folder: "\u{f07b}".into(),
+            filter: "\u{f0b0}".into(),
         }
     }
 }

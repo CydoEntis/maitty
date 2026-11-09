@@ -178,7 +178,6 @@ impl App {
                     _ => {}
                 }
             }
-            Mode::NewSession(_) => self.new_session_paste(&s),
             Mode::Finder(fd) => {
                 fd.q.push_str(s.lines().next().unwrap_or("").trim());
                 fd.sel = 0;
@@ -389,7 +388,6 @@ impl App {
                 }
             }
             Mode::Finder(fd) => self.on_finder_key(*fd, &k),
-            Mode::NewSession(ns) => self.on_new_session_key(*ns, &k),
             Mode::ScreenPane(np) => self.on_hy_pane_key(np, &k),
             Mode::ScreenSettings(_) => self.screen_settings_key(&k),
             Mode::Themes { query, sel, saving } => self.on_theme_key(query, sel, saving, &k),
@@ -895,6 +893,7 @@ impl App {
             match hit {
                 Some(Hit::Screen(
                     screen::ScreenHit::MachineHead(machine)
+                    | screen::ScreenHit::FoldMachine(_, machine)
                     | screen::ScreenHit::MachineFix(machine)
                     | screen::ScreenHit::MachinePlus(machine),
                 )) => self.menu_for_machine(machine, at),

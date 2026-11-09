@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { attachLocalFile, chooseFilesToAttach, MOST_ATTACHMENTS } from '@/api/attachments'
 import { sendFilesToMachine } from '@/api/fileSends'
 import { oversizeMessage, saveImageLocally, sendImageToMachine } from '@/api/imagePaste'

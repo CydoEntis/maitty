@@ -205,6 +205,9 @@ fn world(theme: &str) -> App {
         false,
     );
     cfg.ui.splash_animation = "never".into();
+    // The website's frames are drawn without a Nerd Font.
+    cfg.icons.folder = "\u{25a4}".into();
+    cfg.icons.filter = "\u{2261}".into();
     let mut app = App::new(cfg, tx, None, bg_tx);
     app.splash = false;
     let (store, gateway, docs) = (

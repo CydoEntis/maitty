@@ -7,6 +7,7 @@ use crate::client::reference_fixture::{Stage, world};
 use crate::client::render;
 use crate::client::ssh_hosts::SshHost;
 use maitty_settings::config::MachineDef;
+use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 
@@ -495,9 +496,9 @@ fn a_machine_that_needs_the_app_shows_the_key_that_installs_or_updates_it() {
                 .copied()
                 .unwrap_or_else(|| panic!("{w}x{h}: no row for {name}\n{text}"))
         };
-        assert!(row("kingdom").contains(" u install "), "{w}x{h}\n{text}");
-        assert!(row("build").contains(" u update "), "{w}x{h}\n{text}");
-        assert!(!row("gpu").contains(" u "), "a connected machine needs nothing: {w}x{h}\n{text}");
+        assert!(row("kingdom").contains(" install "), "{w}x{h}\n{text}");
+        assert!(row("build").contains(" update "), "{w}x{h}\n{text}");
+        assert!(!row("gpu").contains(" install "), "a connected machine needs no install: {w}x{h}\n{text}");
         let said = words(&text, r);
         assert!(said.contains("u install"), "the bar names what u does: {w}x{h}\n{text}");
         assert!(
@@ -505,4 +506,109 @@ fn a_machine_that_needs_the_app_shows_the_key_that_installs_or_updates_it() {
             "the fix under the chosen one names the machine: {w}x{h}\n{text}"
         );
     }
+}
+
+/// Click the button named `label` on the row of `name`.
+fn click_button(app: &mut App, text: &str, name: &str, label: &str) {
+    let (y, row) = text
+        .lines()
+        .enumerate()
+        .find(|(_, l)| l.contains(&format!("⇄ {name}")))
+        .unwrap_or_else(|| panic!("no row for {name}\n{text}"));
+    let chars: Vec<char> = row.chars().collect();
+    let want: Vec<char> = format!(" {label} ").chars().collect();
+    let x = chars
+        .windows(want.len())
+        .position(|w| w == want.as_slice())
+        .unwrap_or_else(|| panic!("no {label} button on {name}: {row}"));
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.on_mouse(MouseEvent {
+            kind,
+            column: x as u16 + 2,
+            row: y as u16,
+            modifiers: KeyModifiers::NONE,
+        });
+    }
+}
+
+#[test]
+fn every_machine_row_has_its_own_buttons() {
+    for (w, h) in [(100, 30), (160, 45)] {
+        let mut app = app_with(&[("build", "dev@build.lan"), ("gpu", "gpu")]);
+        let (text, r, buf) = shown(&mut app, view(Some(hosts())), w, h);
+        assert_box_whole(&text, r, &buf);
+        for name in ["build", "gpu"] {
+            let row = text.lines().find(|l| l.contains(&format!("⇄ {name}"))).unwrap();
+            for label in ["update", "reconnect", "edit", "remove"] {
+                assert!(row.contains(&format!(" {label} ")), "{w}x{h}: {name} lacks {label}: {row}");
+            }
+        }
+    }
+}
+
+#[test]
+fn the_remove_and_edit_buttons_open_their_steps_for_the_row_they_are_on() {
+    let mut app = app_with(&[("build", "dev@build.lan"), ("gpu", "gpu")]);
+    let (text, ..) = shown(&mut app, view(Some(hosts())), 160, 45);
+    click_button(&mut app, &text, "gpu", "remove");
+    let Mode::Machines(v) = &app.mode else { panic!("{:?}", app.mode) };
+    assert!(matches!(&v.step, MachineStep::Remove { name } if name == "gpu"), "{:?}", v.step);
+
+    let mut app = app_with(&[("build", "dev@build.lan"), ("gpu", "gpu")]);
+    let (text, ..) = shown(&mut app, view(Some(hosts())), 160, 45);
+    click_button(&mut app, &text, "build", "edit");
+    let Mode::Machines(v) = &app.mode else { panic!("{:?}", app.mode) };
+    assert!(matches!(&v.step, MachineStep::Edit { name, .. } if name == "build"), "{:?}", v.step);
+}
+
+#[test]
+fn the_reconnect_button_answers_in_the_dialog_and_a_click_on_a_row_chooses_it() {
+    let mut app = app_with(&[("build", "dev@build.lan"), ("gpu", "gpu")]);
+    let (text, ..) = shown(&mut app, view(Some(hosts())), 160, 45);
+    click_button(&mut app, &text, "gpu", "reconnect");
+    let Mode::Machines(v) = &app.mode else { panic!("{:?}", app.mode) };
+    assert_eq!(v.machine_sel, Some(1));
+    assert!(v.notice.is_some(), "it answers in the dialog");
+    let (text, ..) = frame(&mut app, 160, 45);
+    let (y, row) = text.lines().enumerate().find(|(_, l)| l.contains("⇄ build")).unwrap();
+    let x = row.chars().take_while(|c| *c != '⇄').count() as u16 + 2;
+    for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
+        app.on_mouse(MouseEvent { kind, column: x, row: y as u16, modifiers: KeyModifiers::NONE });
+    }
+    let Mode::Machines(v) = &app.mode else { panic!("{:?}", app.mode) };
+    assert_eq!(v.machine_sel, Some(0));
+}
+
+#[test]
+fn the_n_and_s_keys_turn_toasts_and_sounds_on_and_off_and_the_chosen_machine_says_so() {
+    let mut app = app_with(&[("build", "dev@build.lan")]);
+    // The entry has to be in the file for a change to be written to it.
+    let dir = std::env::temp_dir().join(format!("grants-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    app.machine_flow.local_config = dir.join("config.local.toml");
+    crate::client::machine_config::add_machine(&app.machine_flow.local_config, "build", "dev@build.lan").unwrap();
+
+    let mut v = view(Some(hosts()));
+    v.machine_sel = Some(0);
+    let (text, ..) = shown(&mut app, v, 200, 45);
+    assert!(text.contains("Alerts from build: toasts off · sounds off"), "off until turned on:\n{text}");
+
+    app.on_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
+    assert!(app.cfg.machines[0].notices && !app.cfg.machines[0].sounds);
+    let written = std::fs::read_to_string(&app.machine_flow.local_config).unwrap();
+    assert!(written.contains("notices = true"), "{written}");
+    let (text, ..) = frame(&mut app, 200, 45);
+    assert!(text.contains("toasts on · sounds off"), "the line says it took:\n{text}");
+    assert!(text.contains("Toasts from build are now on."), "{text}");
+
+    app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
+    assert!(app.cfg.machines[0].sounds);
+
+    app.on_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
+    assert!(!app.cfg.machines[0].notices);
+    let written = std::fs::read_to_string(&app.machine_flow.local_config).unwrap();
+    assert!(!written.contains("notices"), "off is the default, so the key goes: {written}");
 }

@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
-import { createPortal } from 'react-dom'
+import { useState, type CSSProperties } from 'react'
+import { Popover } from 'radix-ui'
+import { PopupContent } from '@/components/ui/popup'
 import { Icon } from '@/features/workspace/components/glyphs'
 import { noteLines } from './noteLines'
 import type { UpdaterState } from './useUpdater'
@@ -7,7 +8,6 @@ import type { UpdaterState } from './useUpdater'
 const PERCENT = 100
 const CARD_GAP_PX = 8
 const CARD_EDGE_PX = 12
-const CARD_WIDTH_PX = 360
 
 type Props = {
   variant: 'footer' | 'rail'
@@ -36,40 +36,7 @@ function offerOf(state: UpdaterState, skipped: string | null): Offer | null {
 /** The sidebar footer's left slot: the version, or what an update needs from you, with a card that opens upward. */
 export function UpdateSlot({ variant, state, version, skipped, portalContainer, onInstall, onRestartNow, onCheck, onSkip }: Props) {
   const [open, setOpen] = useState(false)
-  const [place, setPlace] = useState<{ left: number; bottom: number } | null>(null)
-  const trigger = useRef<HTMLButtonElement>(null)
-  const card = useRef<HTMLDivElement>(null)
   const offer = offerOf(state, skipped)
-
-  useLayoutEffect(() => {
-    if (!open || !trigger.current) return
-    const rect = trigger.current.getBoundingClientRect()
-    const onRight = portalContainer?.dataset.side === 'right'
-    const left = onRight ? rect.right - CARD_WIDTH_PX : rect.left
-    setPlace({ left: Math.max(CARD_EDGE_PX, left), bottom: window.innerHeight - rect.top + CARD_GAP_PX })
-  }, [open, portalContainer])
-
-  useEffect(() => {
-    if (!open) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      event.stopPropagation()
-      setOpen(false)
-      trigger.current?.focus()
-    }
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target
-      if (!(target instanceof Node)) return
-      if (card.current?.contains(target) || trigger.current?.contains(target)) return
-      setOpen(false)
-    }
-    document.addEventListener('keydown', onKeyDown, true)
-    document.addEventListener('pointerdown', onPointerDown, true)
-    return () => {
-      document.removeEventListener('keydown', onKeyDown, true)
-      document.removeEventListener('pointerdown', onPointerDown, true)
-    }
-  }, [open])
 
   if (!offer) {
     if (variant === 'rail' || version === null) return null
@@ -81,6 +48,8 @@ export function UpdateSlot({ variant, state, version, skipped, portalContainer, 
     : offer.status === 'downloading' ? (percent === null ? 'Downloading…' : `${String(percent)}%`)
     : offer.status === 'ready' ? 'Restart to update'
     : 'Update failed'
+  // An update that is ready to install is the glass button with the falling arrow; a download and a failure keep their own pills.
+  const glass = variant !== 'rail' && (offer.status === 'available' || offer.status === 'ready')
   const cardBody = (() => {
     switch (offer.status) {
       case 'available': {
@@ -137,29 +106,32 @@ export function UpdateSlot({ variant, state, version, skipped, portalContainer, 
   })()
 
   return (
-    <>
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger asChild>
       <button
-        ref={trigger}
         type="button"
         className={`mx-upd-pill is-${offer.status} is-${variant}`}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-label={variant === 'rail' ? `${label}. Open update details` : undefined}
+        aria-label={variant === 'rail' ? `${label}. Open update details` : glass ? label : undefined}
         style={percent === null ? undefined : { '--p': `${String(percent)}%` } as CSSProperties}
-        onClick={() => { setOpen((current) => !current) }}
       >
         {variant === 'rail' ? <Icon name="download" /> : (
           <>
-            {offer.status === 'available' && <span className="mx-upd-dot" aria-hidden="true" />}
+            {glass && <span className="mx-upd-shimmer" aria-hidden="true" />}
+            {glass && (
+              <span className="mx-upd-tile" aria-hidden="true">
+                <span className="mx-upd-arrow">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v12M6.5 10.5 12 16l5.5-5.5" /></svg>
+                  <span className="mx-upd-arrow-bar" />
+                </span>
+              </span>
+            )}
             {offer.status === 'downloading' && <span className="mx-upd-ring" aria-hidden="true" />}
-            {label}
+            {offer.status === 'available' ? <><span className="mx-upd-word">Update</span><span className="mx-upd-version">{offer.version}</span></> : glass ? <span className="mx-upd-word">Restart</span> : label}
           </>
         )}
       </button>
-      {open && place && createPortal(
-        <div ref={card} role="dialog" aria-label="Update" className="mx-upd-card" style={{ left: place.left, bottom: place.bottom }}>{cardBody}</div>,
-        portalContainer ?? document.body,
-      )}
-    </>
+      </Popover.Trigger>
+      <PopupContent side="top" align={portalContainer?.dataset.side === 'right' ? 'end' : 'start'} sideOffset={CARD_GAP_PX} collisionPadding={CARD_EDGE_PX} aria-label="Update" className="mx-upd-card" onEscapeKeyDown={(event) => { event.stopPropagation() }}>{cardBody}</PopupContent>
+    </Popover.Root>
   )
 }

@@ -4,24 +4,33 @@ import type { ThemeEntry } from './themes'
 import { findTheme, generateTheme, MIN_TEXT_CONTRAST, terminalMinimumContrast, themeStyle, THEMES, xtermTheme } from './themes'
 
 describe('themes', () => {
-  it('ships Midnight, Abyss, Paper and Day, the 23 generated themes from the design and High Contrast', () => {
-    expect(THEMES).toHaveLength(28)
-    expect(THEMES.slice(0, 4).map((theme) => theme.name)).toEqual(['Midnight', 'Abyss', 'Paper', 'Day'])
-    expect(findTheme('Nord').family).toBe('Arctic · dark')
-    expect(findTheme('High Contrast')).toMatchObject({ family: 'Accessibility · dark', light: false })
+  it('ships sixteen themes: Maitty\'s four, then six families with a dark and a light each', () => {
+    expect(THEMES).toHaveLength(16)
+    expect(THEMES.filter((theme) => theme.light)).toHaveLength(8)
+    expect(THEMES.slice(0, 4).map((theme) => theme.name)).toEqual(['Maitty Night', 'Maitty Day', 'Maitty Dark', 'Maitty Light'])
+    expect(findTheme('Catppuccin Mocha').family).toBe('Catppuccin · dark')
+    expect(THEMES.map((theme) => theme.id)).toEqual(['night', 'day', 'maitty-dark', 'maitty-light', 'github-dark', 'github-light', 'one-dark', 'one-light', 'catppuccin-mocha', 'catppuccin-latte', 'solarized-dark', 'solarized-light', 'gruvbox', 'gruvbox-light', 'tokyo-night', 'tokyo-night-day'])
     expect(findTheme('Gruvbox Light').light).toBe(true)
-    expect(findTheme('No such theme').name).toBe('Midnight')
+    expect(findTheme('No such theme').name).toBe('Maitty Night')
   })
 
-  it('keeps the Midnight values exactly as designed', () => {
-    const style = themeStyle(findTheme('Midnight'))
-    expect(style['--bg']).toBe('#090C10')
-    expect(style['--pane']).toBe(style['--main'])
-    expect(style['--accent']).toBe('#5FD4BF')
-    expect(style['--accent-soft']).toBe('rgba(95,212,191,.11)')
-    expect(style['--muted']).toBe('#8C96A1')
-    expect(style['--dim']).toBe('#75808B')
-    expect(style['--card-ring']).toBe('#0D1116')
+  it('builds Maitty Night and Maitty Day from the tokens file exactly: brass accent, teal only for working, coral only for needs you', () => {
+    const night = themeStyle(findTheme('Maitty Night'))
+    expect(night['--bg']).toBe('#05131a')
+    expect(night['--main']).toBe('#0a2329')
+    expect(night['--pane']).toBe(night['--main'])
+    expect(night['--accent']).toBe('#e3a72f')
+    expect(night['--working']).toBe('#3dd6c6')
+    expect(night['--warn']).toBe('#ff6a4a')
+    expect(night['--fg']).toBe('#eef5f2')
+    expect(night['--dim']).toBe('#8fa8a1')
+    const day = themeStyle(findTheme('Maitty Day'))
+    expect(day['--bg']).toBe('#e9f0ed')
+    expect(day['--accent']).toBe('#e3a72f')
+    // Text uses the file's darker *Text colours so every pair passes AA on the light ground.
+    expect(day['--accent-text']).toBe('#8a5a00')
+    expect(day['--working']).toBe('#09605a')
+    expect(day['--warn']).toBe('#9e2e12')
   })
 
   it('gives every theme an opaque pane that is its main surface', () => {
@@ -32,25 +41,19 @@ describe('themes', () => {
   })
 
   it('never changes what amber and red mean within a kind of theme', () => {
-    const generated = THEMES.filter((candidate) => !['High Contrast', 'Paper', 'Day'].includes(candidate.name))
+    const generated = THEMES.filter((candidate) => !['Maitty Night', 'Maitty Day', 'Maitty Dark', 'Maitty Light'].includes(candidate.name))
     for (const theme of generated) {
       expect(theme.tokens.warn).toBe(theme.light ? '#8F5400' : '#F2B65A')
       const danger = theme.light ? '#B8362C' : '#F07F78'
-      if (contrastRatio(danger, theme.tokens.term) >= MIN_TEXT_CONTRAST) {
+      if (contrastRatio(danger, theme.tokens.term) >= MIN_TEXT_CONTRAST && contrastRatio(danger, theme.tokens.bg) >= MIN_TEXT_CONTRAST) {
         expect(theme.tokens.danger, theme.name).toBe(danger)
       } else {
-        // A pale ground (Zenburn) lifts red toward white until it reads, and it stays red.
+        // A ground the red falls short on (Tokyo Night Day's window) moves it toward white until it reads, and it stays red.
         const { r, g, b } = parseColor(theme.tokens.danger)
         expect(r, theme.name).toBeGreaterThan(g)
         expect(r, theme.name).toBeGreaterThan(b)
       }
     }
-  })
-
-  it('makes High Contrast pure black and white with strong lines, and still amber and red', () => {
-    const { tokens } = findTheme('High Contrast')
-    expect([tokens.bg, tokens.fg, tokens.line, tokens.line2]).toEqual(['#000000', '#FFFFFF', '#5A5A5A', '#8A8A8A'])
-    expect([tokens.accent, tokens.warn, tokens.danger, tokens.ok]).toEqual(['#3CF2D2', '#FFC94D', '#FF7A7A', '#7CF29A'])
   })
 
   it('derives tokens from six inputs the way color-mix in oklab does', () => {
@@ -72,15 +75,15 @@ describe('themes', () => {
   })
 
   it('maps the ANSI palette for xterm from the theme tokens', () => {
-    const { tokens } = findTheme('Midnight')
+    const { tokens } = findTheme('Maitty Night')
     const palette = xtermTheme(tokens)
-    expect(palette.cyan).toBe('#5FD4BF')
+    expect(palette.cyan).toBe('#e3a72f')
     expect(palette.magenta).toBe('#C3A6F2')
     expect(palette.blue).toBe('#82AAFF')
-    expect(palette.green).toBe('#9FD39A')
-    expect(palette.yellow).toBe('#F2B65A')
+    expect(palette.green).toBe('#7fd99a')
+    expect(palette.yellow).toBe('#ff6a4a')
     expect(palette.red).toBe('#F07F78')
-    expect(palette.brightBlack).toBe('#75808B')
+    expect(palette.brightBlack).toBe('#8fa8a1')
   })
 })
 
@@ -98,7 +101,7 @@ describe('terminal palette', () => {
 /** What the design's contrast table (GLASS_AND_TILED.md §3) measures: text on the terminal ground and on the window ground. */
 const TEXT_GROUNDS = (tokens: ThemeEntry['tokens']) => [['--term', tokens.term], ['--bg', tokens.bg]] as const
 const TERMINAL_TEXT_SLOTS = ['fg', 'fg2', 'muted', 'dim'] as const
-const STATUS_TEXT_SLOTS = ['accent', 'warn', 'danger', 'ok'] as const
+const STATUS_TEXT_SLOTS = ['accentText', 'working', 'warn', 'danger', 'ok'] as const
 const ANSI_TEXT_SLOTS = ['ansiBlue', 'ansiMag', 'ansiGreen'] as const
 // Black is left out: it is the ground on purpose, so programs that paint with it vanish into the background.
 const ANSI_TEXT_COLOURS = [
@@ -118,7 +121,7 @@ describe('contrast audit', () => {
     }
   })
 
-  it.each(['Midnight', 'Paper', 'Day'])('%s keeps accent, status and ANSI text readable on --term and --bg', (name) => {
+  it.each(['Maitty Night', 'Maitty Day', 'Maitty Dark', 'Maitty Light'])('%s keeps accent, status and ANSI text readable on --term and --bg', (name) => {
     const { tokens } = findTheme(name)
     for (const [ground, colour] of TEXT_GROUNDS(tokens)) {
       for (const slot of [...STATUS_TEXT_SLOTS, ...ANSI_TEXT_SLOTS]) {
@@ -170,12 +173,13 @@ describe('contrast audit', () => {
   })
 
   it('asks xterm to lift the colours a program picks itself on light themes only', () => {
-    expect(terminalMinimumContrast(findTheme('Paper'))).toBe(MIN_TEXT_CONTRAST)
-    expect(terminalMinimumContrast(findTheme('Midnight'))).toBe(1)
+    expect(terminalMinimumContrast(findTheme('Maitty Day'))).toBe(MIN_TEXT_CONTRAST)
+    expect(terminalMinimumContrast(findTheme('Maitty Night'))).toBe(1)
   })
 
-  it('raises a generated theme\'s derived text until it passes (Monokai dim)', () => {
-    const { tokens } = findTheme('Monokai')
+  it('raises a generated theme\'s derived text until it passes (Tokyo Night Day foreground and dim)', () => {
+    const { tokens } = findTheme('Tokyo Night Day')
+    expect(contrastRatio(tokens.fg, tokens.bg)).toBeGreaterThanOrEqual(MIN_TEXT_CONTRAST)
     expect(contrastRatio(tokens.dim, tokens.term)).toBeGreaterThanOrEqual(MIN_TEXT_CONTRAST)
   })
 })

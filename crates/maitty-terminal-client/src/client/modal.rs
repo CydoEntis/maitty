@@ -630,7 +630,8 @@ pub fn step(cfg: &Config, s: &Setting, dir: i64) -> Option<toml_edit::Value> {
                 .position(|o| Some(*o) == cur.as_str())
                 .unwrap_or(0) as i64;
             let n = opts.len() as i64;
-            opts[((i + dir).rem_euclid(n)) as usize].into()
+            // The arrows stop at the first and the last choice instead of wrapping round.
+            opts[(i + dir).clamp(0, n - 1) as usize].into()
         }
         Kind::Number { step, min, max } => {
             let v = cur.as_float().unwrap_or(0.0) + step * dir as f64;
@@ -643,7 +644,7 @@ pub fn step(cfg: &Config, s: &Setting, dir: i64) -> Option<toml_edit::Value> {
             let now = cur.as_str().unwrap_or_default().to_string();
             let opts = program_options(cands, &now);
             let i = opts.iter().position(|o| *o == now).unwrap_or(0) as i64;
-            let next = &opts[((i + dir).rem_euclid(opts.len() as i64)) as usize];
+            let next = &opts[(i + dir).clamp(0, opts.len() as i64 - 1) as usize];
             (if next == "default" { "" } else { next.as_str() }).into()
         }
         Kind::Text | Kind::Key | Kind::Folder | Kind::Spinner => return None,
@@ -721,7 +722,8 @@ mod tests {
             .find(|s| s.path == "ui.sidebar_position")
             .unwrap();
         assert_eq!(step(&cfg, side, 1).unwrap().as_str(), Some("right"));
-        assert_eq!(step(&cfg, side, -1).unwrap().as_str(), Some("right"));
+        // Left is the first choice: an arrow left stays on it instead of wrapping to the last.
+        assert_eq!(step(&cfg, side, -1).unwrap().as_str(), Some("left"));
         let leader = SETTINGS.iter().find(|s| s.path == "prefix").unwrap();
         assert_eq!(display(&cfg, leader), "C-Space");
     }
@@ -736,7 +738,7 @@ mod tests {
         let file = dir.join("config.toml");
         std::fs::write(
             &file,
-            "# my notes\ntheme = \"nord\"\n\n[ui]\n# my ui notes\nsidebar = true\n",
+            "# my notes\ntheme = \"tokyo-night\"\n\n[ui]\n# my ui notes\nsidebar = true\n",
         )
         .unwrap();
         // SAFETY: tests touching <APP>_CONFIG run in this one test only.
@@ -748,7 +750,7 @@ mod tests {
         let mut app = super::super::App::new(Config::load().unwrap(), tx, None, bg_tx);
         app.splash = false;
         app.open_themes_on(true);
-        app.on_paste("zenbones light".into());
+        app.on_paste("one light".into());
         app.on_key(super::super::KeyEvent::new(
             super::super::KeyCode::Enter,
             super::super::KeyModifiers::NONE,
@@ -758,15 +760,15 @@ mod tests {
             super::super::Mode::Themes { saving: true, .. }
         ));
         app.on_bg(bg_rx.blocking_recv().unwrap());
-        assert_eq!(app.cfg.theme_light, "zenbones-light");
+        assert_eq!(app.cfg.theme_light, "one-light");
         assert_eq!(
-            app.cfg.theme, "nord",
+            app.cfg.theme, "tokyo-night",
             "a light pick leaves the dark theme they had showing"
         );
-        assert_eq!(app.theme.bg, crate::theme::Theme::named("nord").bg);
+        assert_eq!(app.theme.bg, crate::theme::Theme::named("tokyo-night").bg);
         assert!(matches!(app.mode, super::super::Mode::ScreenSettings(_)));
         let out = std::fs::read_to_string(&file).unwrap();
-        assert!(out.contains("theme_light = \"zenbones-light\""));
+        assert!(out.contains("theme_light = \"one-light\""));
         // A directory cannot be a config file: failed saves retain the browser and applied theme.
         unsafe { std::env::set_var(concat!(env!("APP_ENV"), "_CONFIG"), &dir) };
         app.open_themes_on(false);
@@ -776,7 +778,7 @@ mod tests {
             super::super::KeyModifiers::NONE,
         ));
         app.on_bg(bg_rx.blocking_recv().unwrap());
-        assert_eq!(app.cfg.theme, "nord");
+        assert_eq!(app.cfg.theme, "tokyo-night");
         assert!(
             matches!(&app.mode, super::super::Mode::Themes { query, saving: false, .. } if query == "solarized dark")
         );
@@ -792,6 +794,35 @@ mod tests {
         app.on_bg(bg_rx.blocking_recv().unwrap());
         assert_eq!(app.cfg.ui.spinner, ["|", "/", "-", "\\"]);
         assert_eq!(Config::load().unwrap().ui.spinner, app.cfg.ui.spinner);
+        // An arrow on a theme row applies the next theme at once and keeps it in the file.
+        let dark = super::super::themes::matching("", false);
+        let before = dark.iter().position(|n| *n == app.cfg.theme_dark || crate::theme::canonical(&app.cfg.theme_dark) == *n).unwrap_or(0);
+        app.step_theme(false, 1);
+        assert_eq!(app.cfg.theme_dark, dark[(before + 1).min(dark.len() - 1)]);
+        // At the last theme an arrow right stops there; at the first an arrow left stops there.
+        let at = |app: &super::super::App| dark.iter().position(|n| crate::theme::canonical(&app.cfg.theme_dark) == *n).unwrap();
+        let mut trail = Vec::new();
+        for _ in 0..dark.len() + 2 {
+            let was = at(&app);
+            app.step_theme(false, 1);
+            trail.push(app.cfg.theme_dark.clone());
+            assert!(at(&app) == (was + 1).min(dark.len() - 1), "one step right from {was}: {trail:?}");
+        }
+        assert_eq!(at(&app), dark.len() - 1, "the list does not wrap");
+        for _ in 0..dark.len() + 2 {
+            let was = at(&app);
+            app.step_theme(false, -1);
+            assert!(at(&app) == was.saturating_sub(1), "one step left from {was} landed on {} ({}): {dark:?}", at(&app), app.cfg.theme_dark);
+        }
+        assert_eq!(at(&app), 0, "the list does not wrap");
+        assert_eq!(app.theme.bg, crate::theme::Theme::named(&app.cfg.theme_dark).bg);
+        assert_eq!(Config::load().unwrap().theme_dark, app.cfg.theme_dark);
+        // An arrow on the spinner row applies the next spinner at once, stopping at the ends.
+        let at = crate::config::SPINNERS.iter().position(|(n, _)| *n == crate::config::spinner_name(&app.cfg.ui.spinner)).unwrap();
+        app.step_spinner(1);
+        let want: Vec<String> = crate::config::SPINNERS[(at + 1).min(crate::config::SPINNERS.len() - 1)].1.iter().map(|f| (*f).into()).collect();
+        assert_eq!(app.cfg.ui.spinner, want);
+        assert_eq!(Config::load().unwrap().ui.spinner, want);
         let saved_spinner = app.cfg.ui.spinner.clone();
         // SAFETY: the spinner save job completed before changing this test's isolated path.
         unsafe { std::env::set_var(concat!(env!("APP_ENV"), "_CONFIG"), &dir) };

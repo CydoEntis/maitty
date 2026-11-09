@@ -1,11 +1,13 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
-import { forgetChoices, readChoice, useAgentChoice, wireChoice, writeChoice } from '../agentChoice'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { forgetChoices, forgetDiscoveredModels, setDiscoveredModels, readChoice, useAgentChoice, wireChoice, writeChoice } from '../agentChoice'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
 import { AgentPicker } from './AgentPicker'
 
 const writeChoiceFor = writeChoice
+
+vi.mock('@/api/daemon', () => ({ loadAgentModels: () => Promise.resolve([]) }))
 
 function Harness({ agent = 'claude' as ChatAgent, conversation = 7 }) {
   const [choice, change] = useAgentChoice(conversation, agent)
@@ -15,6 +17,7 @@ function Harness({ agent = 'claude' as ChatAgent, conversation = 7 }) {
 beforeEach(() => {
   window.localStorage.clear()
   forgetChoices()
+  forgetDiscoveredModels()
 })
 
 describe('the agent, model and reasoning picker', () => {
@@ -34,7 +37,7 @@ describe('the agent, model and reasoning picker', () => {
     render(<Harness />)
     await user.click(screen.getByRole('button', { name: /Agent, model and reasoning/ }))
     const other = within(screen.getByRole('radiogroup', { name: 'Agent' })).getByRole('radio', { name: /Codex/ })
-    expect(other).toHaveAttribute('aria-disabled', 'true')
+    expect(other).toBeDisabled()
     expect(other).toHaveAttribute('title', 'Fixed for this chat · start a new chat to use Codex')
     await user.click(other)
     expect(within(screen.getByRole('radiogroup', { name: 'Agent' })).getByRole('radio', { name: /Claude/ })).toBeChecked()
@@ -61,17 +64,26 @@ describe('the agent, model and reasoning picker', () => {
     render(<Harness agent="claude" />)
     await user.click(screen.getByRole('button', { name: /Agent, model and reasoning/ }))
     within(screen.getByRole('radiogroup', { name: 'Reasoning' })).getByRole('radio', { name: /Default/ }).focus()
-    await user.keyboard('{ArrowDown}{ArrowDown}')
-    expect(within(screen.getByRole('radiogroup', { name: 'Reasoning' })).getByRole('radio', { name: /Medium/ })).toBeChecked()
+    // Radix picks on the frame after focus arrives, while the key is still down, as a real press is.
+    for (let press = 0; press < 2; press += 1) {
+      await user.keyboard('{ArrowDown>}')
+      await new Promise((resolve) => { setTimeout(resolve, 40) })
+      await user.keyboard('{/ArrowDown}')
+    }
+    await waitFor(() => { expect(within(screen.getByRole('radiogroup', { name: 'Reasoning' })).getByRole('radio', { name: /Medium/ })).toBeChecked() })
   })
 
-  it('offers only the account default for Codex, and says why', async () => {
+  it('lists the models Codex itself offers after Default, and a stored one is kept', async () => {
     const user = userEvent.setup()
+    setDiscoveredModels('codex', [{ id: 'gpt-x', label: 'GPT-X', blurb: 'The newest' }])
+    writeChoiceFor(7, { model: 'gpt-x' })
+    expect(readChoice(7, 'codex').model).toBe('gpt-x')
     render(<Harness agent="codex" />)
     await user.click(screen.getByRole('button', { name: /Agent, model and reasoning/ }))
     const models = within(screen.getByRole('radiogroup', { name: 'Model' })).getAllByRole('radio')
-    expect(models).toHaveLength(1)
-    expect(models[0]).toHaveTextContent(/Picking another is not offered for Codex yet/)
+    expect(models.map((model) => model.textContent)).toEqual(['Default', 'GPT-X'])
+    expect(models[1]).toBeChecked()
+    expect(models[1]).toHaveAttribute('title', 'The newest')
   })
 })
 

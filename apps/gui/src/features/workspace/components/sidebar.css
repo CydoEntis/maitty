@@ -14,16 +14,16 @@
 .mx-head-button:disabled { opacity: .4; }
 .mx-head-button.is-rail { width: calc(36px * var(--icon-scale, 1)); height: calc(32px * var(--icon-scale, 1)); border-radius: 9px; }
 .mx-inbox-button { min-width: 28px; }
-.mx-inbox-count { position: absolute; top: -3px; right: -4px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 700; background: var(--raise); color: var(--fg2); font-variant-numeric: tabular-nums; animation: v9pop .28s var(--ease-out); }
+.mx-inbox-count { position: absolute; top: -3px; right: -4px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 700; background: var(--m-raise); color: var(--fg2); font-variant-numeric: tabular-nums; animation: v9pop .28s var(--ease-out); }
 .mx-inbox-count.is-needs { background: var(--warn); color: var(--on-warn); }
 .mx-settings-button { width: auto; height: 26px; padding: 0 8px; }
 
 .mx-filter {
   flex: none; height: 32px; margin: 0 10px 8px; display: flex; align-items: center; gap: 8px; padding: 0 6px 0 11px;
   border-radius: 9px;
-  background: linear-gradient(180deg, rgba(var(--hl), calc(.075 * var(--hk))), rgba(var(--hl), calc(.03 * var(--hk))));
+  background: linear-gradient(180deg, rgba(var(--hl), calc(.075 * var(--hk) * var(--gk))), rgba(var(--hl), calc(.03 * var(--hk) * var(--gk))));
   border: 1px solid rgba(var(--hl), calc(.13 * var(--hk)));
-  box-shadow: inset 0 1px 0 rgba(var(--hl), calc(.06 * var(--hk))), 0 1px 2px rgba(var(--sd), calc(.35 * var(--sk)));
+  box-shadow: inset 0 1px 0 rgba(var(--hl), calc(.06 * var(--hk) * var(--gk))), 0 1px 2px rgba(var(--sd), calc(.35 * var(--sk) * var(--gk)));
   color: color-mix(in oklab, var(--fg2) 70%, var(--muted));
   transition: border-color .14s ease;
 }
@@ -42,56 +42,63 @@
 .mx-machine-head { display: flex; align-items: center; gap: 6px; min-height: 26px; padding: 0 3px 0 0; }
 .mx-machine-toggle { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; color: var(--dim); border-radius: 6px; text-transform: uppercase; }
 .mx-machine-toggle:hover { color: var(--fg2); }
-.mx-caret-wrap { display: flex; flex: none; width: 10px; color: var(--dim); transition: transform .2s cubic-bezier(.2, .8, .2, 1); }
+.mx-caret-wrap { display: flex; flex: none; width: 12px; color: var(--dim); transition: transform .2s cubic-bezier(.2, .8, .2, 1); }
 .mx-caret-wrap.is-open { transform: rotate(90deg); }
+/* Machines and projects each get their own caret colour, so the two levels read apart at a glance. */
+.mx-machine-toggle .mx-caret-wrap { color: var(--accent-text); }
+.mx-project-head .mx-caret-wrap { color: var(--ansi-blue); }
+.mx-machine-toggle:hover .mx-caret-wrap, .mx-project-head:hover .mx-caret-wrap { filter: brightness(1.25); }
 .mx-machine-icon { display: flex; flex: none; }
 .mx-machine-name { flex: 1; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-machine-count { font-size: 11px; letter-spacing: 0; font-weight: 500; font-variant-numeric: tabular-nums; }
 .mx-machine-group { width: 22px; height: 20px; flex: none; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: var(--dim); }
 .mx-machine-group:hover { color: var(--fg); }
-.mx-machine-group.is-on { color: var(--fg); background: var(--raise); box-shadow: inset 0 0 0 1px var(--line2); }
+.mx-machine-group.is-on { color: var(--fg); background: var(--m-raise); box-shadow: inset 0 0 0 1px var(--line2); }
 .mx-machine-dot { width: 5px; height: 5px; flex: none; border-radius: 50%; opacity: .8; background: var(--ok); }
 .mx-machine-dot.is-offline { background: transparent; border: 1.5px dashed var(--dim); }
 .mx-machine-add { width: 20px; height: 20px; flex: none; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: var(--dim); opacity: .75; }
 .mx-machine-add:not(:disabled):hover { background: rgba(var(--hl), calc(.06 * var(--hk))); color: var(--fg); opacity: 1; }
 .mx-machine-add:disabled { opacity: .3; }
 /* A machine that needs the app: its state and the one-click fix, under the heading, lined up with its mark. */
-.mx-machine-note { display: flex; align-items: center; gap: 8px; min-height: 22px; padding: 0 8px 0 24px; font-size: 11.5px; }
-.mx-machine-state { flex: none; color: var(--danger); }
-.mx-machine-fix-button { height: 22px; padding: 0 8px; border-radius: 6px; font-size: 11.5px; font-weight: 600; color: var(--accent); }
-.mx-machine-fix-button:hover { background: var(--accent-soft); }
+/* A machine that needs the app: an amber text button in its header, and its dot turns amber. */
+.mx-machine-update { flex: none; height: 20px; display: flex; align-items: center; gap: 3px; padding: 0 6px; border-radius: 6px; font-size: 11px; font-weight: 500; color: var(--warn); }
+.mx-machine-update:hover { background: rgba(var(--hl), calc(.06 * var(--hk))); }
+.mx-machine-dot.is-warn { background: var(--warn); border: 0; }
 
 .mx-rows { display: flex; flex-direction: column; gap: 2px; }
 .mx-projects { display: flex; flex-direction: column; gap: 8px; }
 .mx-project { display: flex; flex-direction: column; gap: 2px; }
-.mx-project-head { display: flex; align-items: center; gap: 7px; height: 24px; padding: 0 8px 0 4px; font-size: 11.5px; color: var(--fg2); border-radius: 6px; }
+/* A project's heading lines up with its machine's: the arrow, the mark and the name start in the same columns, and its count ends where the machine's does (the right padding is the machine's controls: 68px, and the 8px inside its button). */
+.mx-project-head { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 76px 0 8px; font-size: 11.5px; color: var(--fg2); border-radius: 6px; }
 .mx-project-head:hover { color: var(--fg); }
-.mx-project-square { width: 8px; height: 8px; flex: none; border-radius: 2px; }
+.mx-project-square { width: 8px; height: 8px; margin: 0 2.5px; flex: none; border-radius: 2px; }
 .mx-project-name { flex: 1; text-align: left; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-project-needs { min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px; background: var(--warn); color: var(--on-warn); font-size: 9.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
 .mx-project-count { font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
 
 /* A session row: the app tile with its status badge, the name over the project and branch, and a word when it stopped. */
-.mx-row-wrap { display: flex; flex-direction: column; gap: 2px; }
+.mx-row-wrap { position: relative; display: flex; flex-direction: column; gap: 2px; }
+/* The close button sits at the right of the row's first line and only shows while the row is hovered or has the keys. */
+.mx-row-close { position: absolute; top: 9px; right: 8px; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; color: var(--muted); background: var(--main); opacity: 0; pointer-events: none; transition: opacity .12s ease, color .12s ease, background-color .12s ease; }
+.mx-row-wrap:hover > .mx-row-close, .mx-row-close:focus-visible { opacity: 1; pointer-events: auto; }
+.mx-row-close:hover:not(:disabled) { color: var(--danger); background: var(--hover); }
+.mx-row-close:disabled { cursor: default; }
 .mx-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 4px 6px 4px 10px; border-radius: 8px; text-align: left; transition: background-color .12s ease; }
 .mx-row:hover { background: rgba(var(--hl), calc(.045 * var(--hk))); }
-.mx-row.is-selected, .mx-row.is-selected:hover {
-  background: linear-gradient(180deg, rgba(var(--hl), calc(.085 * var(--hk))), rgba(var(--hl), calc(.045 * var(--hk))));
-  box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.11 * var(--hk))), 0 2px 8px -2px rgba(var(--sd), calc(.5 * var(--sk)));
-}
+.mx-row.is-selected, .mx-row.is-selected:hover { background: var(--c-sel-bg); box-shadow: var(--c-sel-sh); }
 .mx-row-icon { position: relative; flex: none; display: flex; }
 .mx-row-icon .mx-badge { right: -4px; bottom: -4px; width: 12px; height: 12px; border-radius: 3.5px; font-size: 9px; font-weight: 800; line-height: 1; color: var(--on-warn); }
-.mx-row-icon .mx-badge.is-working { border-radius: 50%; background: var(--well); overflow: hidden; color: var(--accent); font-family: var(--mono); }
+.mx-row-icon .mx-badge.is-working { border-radius: 50%; background: var(--m-well); overflow: hidden; color: var(--working); font-family: var(--mono); }
 .mx-row-icon .mx-badge.is-working .mx-spin, .mx-sub-mark .mx-spin { font-size: 9px; line-height: 1; }
 .mx-row-icon .mx-badge.is-done svg { width: 8px; height: 8px; }
 .mx-row-icon .mx-badge.is-unknown { width: 11px; height: 11px; background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
 /* A shell's tile in the sidebar is a flat raised square, so agents stand out among shells. */
-.mx-row.is-shell .mx-app-icon.is-shell, .mx-rail-session .mx-app-icon.is-shell { background: var(--raise); color: var(--accent); box-shadow: inset 0 0 0 1px var(--line2); }
+.mx-row.is-shell .mx-app-icon.is-shell, .mx-rail-session .mx-app-icon.is-shell { background: var(--m-raise); color: var(--accent-text); box-shadow: var(--c-tile-ring); }
 .mx-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .mx-row-name { height: 18px; font-size: 13px; line-height: 18px; font-weight: 400; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-row.is-active .mx-row-name { font-weight: 600; color: var(--fg); }
 .mx-row.is-selected .mx-row-name { color: var(--fg); }
-.mx-row .mx-inline-name { height: 20px; flex: none; width: 100%; margin-left: -5px; padding: 0 5px; border-radius: 5px; font-size: 13px; font-weight: 600; background: var(--well); border: 1px solid var(--accent-line); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.mx-row .mx-inline-name { height: 20px; flex: none; width: 100%; margin-left: -5px; padding: 0 5px; border-radius: 5px; font-size: 13px; font-weight: 600; background: var(--m-well); border: 1px solid var(--accent-line); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
 .mx-row-sub { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 10.5px; line-height: 14px; color: var(--dim); white-space: nowrap; overflow: hidden; }
 .mx-row-project { display: inline-flex; align-items: center; gap: 5px; flex: none; }
 .mx-row-square { width: 6px; height: 6px; border-radius: 2px; }
@@ -106,7 +113,7 @@
 .mx-sub-icon .mx-app-icon { box-shadow: 0 0 0 1.5px var(--card-ring); }
 .mx-sub-icon .mx-app-icon svg { width: 70%; height: 70%; }
 .mx-sub-mark { position: absolute; right: -4px; bottom: -4px; width: 10px; height: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 1.5px var(--card-ring); overflow: hidden; }
-.mx-sub-mark.is-working { border-radius: 50%; background: var(--well); color: var(--accent); font-family: var(--mono); }
+.mx-sub-mark.is-working { border-radius: 50%; background: var(--m-well); color: var(--working); font-family: var(--mono); }
 .mx-sub-mark.is-working .mx-spin { font-size: 7px; }
 .mx-sub-mark.is-needs { right: -3px; bottom: -3px; width: 8px; height: 8px; border-radius: 2.5px; background: var(--warn); }
 .mx-sub-mark.is-done { border-radius: 3px; background: color-mix(in oklab, var(--ok) 24%, var(--bg)); }
@@ -123,4 +130,21 @@
 /* The rail of a narrow window: the starters, then a tile per session. */
 .mx-rail-session { width: calc(40px * var(--icon-scale, 1)); height: calc(36px * var(--icon-scale, 1)); flex: none; display: flex; align-items: center; justify-content: center; border-radius: 9px; }
 .mx-rail-session:hover { background: rgba(var(--hl), calc(.045 * var(--hk))); }
-.mx-rail-session.is-selected { background: linear-gradient(180deg, rgba(var(--hl), calc(.085 * var(--hk))), rgba(var(--hl), calc(.045 * var(--hk)))); box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.11 * var(--hk))); }
+.mx-rail-session.is-selected { background: var(--c-sel-bg); box-shadow: var(--c-sel-sh); }
+
+/* A chat that is still a draft: a grey box on its machine with three dots bouncing one after the other, like a wave. */
+/* A draft is a session row's twin: the same box and icon square, with bars where the name and project go. */
+.mx-draft { pointer-events: none; }
+.mx-draft-tile { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 8px; background: var(--c-track-bg, var(--raise)); }
+.mx-draft-line { display: block; height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--fg) 14%, transparent); }
+.mx-draft-line.is-name { width: 62%; margin-bottom: 7px; }
+.mx-draft-line.is-sub { width: 38%; height: 6px; opacity: .7; }
+@keyframes mx-draft-pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+.mx-draft-tile, .mx-draft-line { animation: mx-draft-pulse 1.4s ease-in-out infinite; }
+:root:has(.mx-app[data-motion="reduced"]) :is(.mx-draft-tile, .mx-draft-line) { animation: none; }
+@media (prefers-reduced-motion: reduce) { :is(.mx-draft-tile, .mx-draft-line) { animation: none; } }
+
+/* While a machine updates: its percentage replaces the Update button, and a 2px line runs under the header. */
+.mx-machine-pct { flex: none; padding: 0 4px; font-size: 11px; color: var(--dim); }
+.mx-machine-progress { display: block; margin: -1px 10px 3px 26px; height: 2px; border-radius: 1px; background: rgba(var(--hl), calc(.06 * var(--hk))); overflow: hidden; }
+.mx-machine-progress > span { display: block; height: 100%; background: var(--accent); transition: width .25s ease; }

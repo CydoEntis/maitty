@@ -147,8 +147,6 @@ enum Mode {
     },
     /// The app layout: open a folder as a project.
     Finder(Box<screen::Finder>),
-    /// The New Session popup: start a session on any project or folder of any machine.
-    NewSession(Box<screen::NewSession>),
     /// The app layout: new pane (project, worktree, what to run).
     ScreenPane(screen::NewPaneHy),
     /// The app layout: the settings overlay.
@@ -492,6 +490,8 @@ pub struct App {
     update_notes: Vec<String>,
     /// When the app last asked whether a newer release is out.
     update_checked: Option<Instant>,
+    /// The title last written to the host terminal's tab, so it is only written when it changes.
+    window_title: Option<String>,
     /// An update is downloading.
     updating: bool,
     /// Why the last install failed, until it is tried again or the box is read.
@@ -582,6 +582,8 @@ pub struct App {
     last_alert: Option<(crate::alert::Kind, Instant)>,
     /// Only ring if the pending status still matches the latest snapshot at its deadline.
     settling: HashMap<ClientTerm, (Status, Instant)>,
+    /// The machines whose first held-back alert this run has been explained (toasts are off for a machine until you turn them on).
+    alerts_off_told: HashSet<MachineId>,
     /// What's moving, and how far the sidebar and the sheet are in this frame (0 to 1).
     motion: motion::Motion,
     side_frac: f32,
@@ -798,6 +800,7 @@ impl App {
             theme_tab_light: false,
             update_notes: Vec::new(),
             update_checked: None,
+            window_title: None,
             updating: false,
             update_failed: None,
             update_skipped: None,
@@ -812,6 +815,7 @@ impl App {
             alerted: HashMap::new(),
             last_alert: None,
             settling: HashMap::new(),
+            alerts_off_told: HashSet::new(),
             motion: motion::Motion::default(),
             side_frac: 1.0,
             sheet_frac: 1.0,
@@ -891,6 +895,7 @@ impl App {
         };
         app.splash = app.cfg.ui.splash;
         app.splash_cold = !cfg!(test) && app.splash && screen::first_start_of_this_version();
+        app.offer_claude_hooks();
         if !crate::theme::BUILTIN.contains(&crate::theme::canonical(&app.cfg.theme)) {
             app.keymap.warnings.push(format!(
                 "unknown theme `{}` (have: {})",
@@ -1034,6 +1039,7 @@ impl App {
                 drawn?;
                 ended?;
                 self.sync_sizes();
+                self.sync_window_title();
                 // Something's moving: the next frame too.
                 if self.motion.moving() || self.toast_moving() {
                     self.dirty = true;
@@ -1335,6 +1341,52 @@ impl App {
             && !self.daemon_restart_reconnect
             && !self.relaunch
             && (self.daemon_restartable() || self.window_stale())
+    }
+
+    /// Once, offer to connect Claude Code's status hooks when it is installed and they are not:
+    /// without them its sessions never report working, needs you or done. Reads files, so the
+    /// look is off the UI thread; it asks only if nothing else is open by then.
+    fn offer_claude_hooks(&mut self) {
+        if cfg!(test)
+            || self.machine.is_remote()
+            || self.screen.saved.hooks_offered
+            || crate::cli::update::integrate_opted_out()
+            || !crate::cli::hooks_belong_to_this_build()
+        {
+            return;
+        }
+        self.spawn_bg(|| {
+            let installed = maitty_agent_integrations::STATUS_AGENTS
+                .iter()
+                .find(|a| a.id == "claude")
+                .is_some_and(crate::cli::integrations::agent_installed);
+            let missing = installed && !crate::cli::claude_status_hooks_installed();
+            Bg::Then(Box::new(move |app: &mut App| {
+                if !missing || !matches!(app.mode, Mode::Normal) {
+                    return;
+                }
+                app.screen.saved.hooks_offered = true;
+                app.screen.save();
+                app.mode = Mode::Confirm(Box::new(menu::Confirm {
+                    title: "Connect Claude Code".into(),
+                    sub: String::new(),
+                    what: "Show when Claude is working, needs you or is done".into(),
+                    detail: String::new(),
+                    note: concat!(
+                        "Adds ",
+                        env!("APP_NAME"),
+                        "'s status hooks to ~/.claude/settings.json. Restart Claude to load them. ",
+                        "Asked once; Settings > Agents connects it later."
+                    )
+                    .into(),
+                    list: Vec::new(),
+                    yes: "Connect".into(),
+                    key: '\n',
+                    danger: false,
+                    act: menu::Act::InstallStatus("claude".into()),
+                }));
+            }))
+        });
     }
 
     /// Restart onto the installed version: the server (sessions stop and resume) and this

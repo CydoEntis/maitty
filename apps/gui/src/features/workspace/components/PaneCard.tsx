@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { MAX_PANES, type PaneSlot, type SplitDirection } from '../model/layout'
 import type { SessionView } from '../model/session'
 import { headerFit } from '../model/paneHeader'
 import { rowTitle } from '../model/sidebar'
 import { AppIcon, Icon, StatusBadge } from './glyphs'
-import { SESSION_DRAG_TYPE } from './dragSession'
-import { runsProgram, useArmed } from './useArmed'
+import { beginPointerDrag } from './dragSession'
 import { PaneViewSwitch } from './PaneViewSwitch'
 import { MenuPopup, type MenuEntry } from './MenuPopup'
 import { menuPoint } from './menuPoint'
@@ -51,31 +50,6 @@ export type PaneCardProps = {
   onCopyPath: () => void
   /** Starts a new shell in an ended pane's folder, in its place. */
   onRestart: (paneId: string) => void
-  onDragStart: (paneId: string) => void
-  onDragEnd: () => void
-  /** `fromSidebar` is true when a session from the sidebar is being dragged over, not another pane. */
-  onDragOver: (paneId: string, fromSidebar: boolean) => void
-  /** `sessionId` is set when a session from the sidebar was dropped. */
-  onDrop: (paneId: string, sessionId: string | null) => void
-}
-
-/** How long the terminal's slide back in lasts; a little longer than its animation. */
-const RETURN_MS = 460
-
-/** True for a moment after the pane goes from the chat back to the terminal, so the terminal plays its slide in once. */
-function useReturning(view: PaneView): boolean {
-  const [seen, setSeen] = useState(view)
-  const [returning, setReturning] = useState(false)
-  if (seen !== view) {
-    setSeen(view)
-    setReturning(view === 'terminal')
-  }
-  useEffect(() => {
-    if (!returning) return
-    const timer = window.setTimeout(() => { setReturning(false) }, RETURN_MS)
-    return () => { window.clearTimeout(timer) }
-  }, [returning])
-  return returning
 }
 
 /** The pane's width as it is laid out, so its header can give up controls as it narrows. */
@@ -106,12 +80,10 @@ export function PaneCard(props: PaneCardProps) {
   const multi = paneCount > 1
   const full = paneCount >= MAX_PANES
   const ended = session.ended
-  const closing = useArmed(runsProgram(session))
   const view = props.view ?? 'terminal'
-  const returning = useReturning(view)
   const fit = headerFit(width)
   const title = rowTitle(session)
-  const closeLabel = closing.armed ? `Click again to close and stop ${session.process}` : 'Close pane · ends its session'
+  const closeLabel = 'Close pane · ends its session'
   const toggleTool = (tool: PaneTool) => { props.onTool(tool) }
 
   const menuItems: MenuEntry[] = [
@@ -128,7 +100,7 @@ export function PaneCard(props: PaneCardProps) {
     { label: 'Files', run: () => { toggleTool('files') } },
     { label: 'Changes', run: () => { toggleTool('changes') } },
     'separator',
-    { label: 'Close pane', danger: true, ...(runsProgram(session) ? { armedLabel: `Close and stop ${session.process}? Click again` } : {}), run: () => { props.onClose(pane.id) } },
+    { label: 'Close pane', danger: true, run: () => { props.onClose(pane.id) } },
   ]
 
   return (
@@ -140,29 +112,19 @@ export function PaneCard(props: PaneCardProps) {
       data-pane={pane.id}
       onMouseDown={() => { props.onFocus(pane.id) }}
       onContextMenu={(event) => {
-        if (event.target instanceof Element && event.target.closest('textarea, input, .xterm')) return
+        // The terminal's own area opens the pane menu too; only the chat's text boxes keep the system menu.
+        if (event.target instanceof Element && event.target.closest('textarea:not(.xterm-helper-textarea), input')) return
         event.preventDefault()
         setMenuAt(menuPoint(event, false))
-      }}
-      onDragOver={(event: DragEvent) => {
-        event.preventDefault()
-        props.onDragOver(pane.id, event.dataTransfer.types.includes(SESSION_DRAG_TYPE))
-      }}
-      onDrop={(event: DragEvent) => {
-        event.preventDefault()
-        props.onDrop(pane.id, event.dataTransfer.getData(SESSION_DRAG_TYPE) || null)
       }}
     >
       <div
         className={`mx-pane-head${multi ? ' is-draggable' : ''}`}
-        draggable={multi}
         title={multi ? 'Drag to move this pane' : undefined}
-        onDragStart={(event) => {
-          event.dataTransfer.effectAllowed = 'move'
-          event.dataTransfer.setData('text/plain', pane.id)
-          props.onDragStart(pane.id)
+        onPointerDown={(event) => {
+          // Buttons in the header keep their own clicks; only the bar itself starts a drag.
+          if (multi && !(event.target instanceof Element && event.target.closest('button, input'))) beginPointerDrag(event, { kind: 'pane', id: pane.id, label: title })
         }}
-        onDragEnd={props.onDragEnd}
         onDoubleClick={() => { props.onToggleMaximize(pane.id) }}
       >
         <span className="mx-pane-icon">
@@ -197,11 +159,11 @@ export function PaneCard(props: PaneCardProps) {
             </>
           )}
           <button type="button" className="mx-pane-control mx-pane-more" aria-label="More pane actions" title="More pane actions" aria-haspopup="menu" onMouseDown={stop} onClick={(event) => { setMenuAt(menuPoint(event, true)) }}>⋯</button>
-          <button type="button" className={`mx-pane-control is-close${closing.armed ? ' is-armed' : ''}`} aria-label={closeLabel} title={closeLabel} onMouseDown={stop} onBlur={closing.disarm} onClick={() => { if (closing.press()) props.onClose(pane.id) }}><Icon name="close" /></button>
+          <button type="button" className="mx-pane-control is-close" aria-label={closeLabel} title={closeLabel} onMouseDown={stop} onClick={() => { props.onClose(pane.id) }}><Icon name="close" /></button>
         </span>
       </div>
       <div
-        className={`mx-pane-body${view === 'chat' ? ' is-chat' : ''}${returning ? ' mx-term-in' : ''}`}
+        className={`mx-pane-body${view === 'chat' ? ' is-chat' : ''}`}
         onMouseDown={(event) => {
           // A click on the pane's padding still puts the cursor in its terminal.
           if (event.target !== event.currentTarget) return

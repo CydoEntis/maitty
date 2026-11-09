@@ -8,11 +8,15 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
-    alias: { '@': path.resolve(fileURLToPath(new URL('.', import.meta.url)), 'src') },
+    alias: {
+      '@': path.resolve(fileURLToPath(new URL('.', import.meta.url)), 'src'),
+      // The Maitty colours live once, in the settings crate, and the TUI reads the same file.
+      '@tokens': path.resolve(fileURLToPath(new URL('.', import.meta.url)), '../../crates/maitty-settings'),
+    },
   },
   // The window loads this exact address (`devUrl` in tauri.conf.json). With strictPort a taken port is an
   // error, not a quiet move to another one, which would show the window some other project's dev server.
-  server: { port: 1420, strictPort: true },
+  server: { port: 1420, strictPort: true, fs: { allow: ['../..'] } },
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],

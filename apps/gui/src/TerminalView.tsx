@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CircleAlert, LoaderCircle, TerminalSquare } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import type { ITheme, Terminal as XtermTerminal } from '@xterm/xterm'
 import type { WebglAddon } from '@xterm/addon-webgl'
 import { Button } from '@/components/ui/button'
@@ -21,6 +21,25 @@ import '@xterm/xterm/css/xterm.css'
 const DEFAULT_SCROLLBACK_LINES = 10000
 const DEFAULT_SCROLL_SPEED = 1
 const LINE_HEIGHT = 1.6
+/** The host says this while it is still dialling the daemon, in the first moments after the window opens. */
+const NOT_CONNECTED_YET = 'not connected to the daemon'
+const CONNECT_RETRY_MS = 250
+const CONNECT_RETRIES = 24
+
+/** The screen to start from, asked again for a few seconds while the host has no daemon line yet, so a
+ *  pane restored at start-up shows its screen instead of an error toast. Any other failure is raised at once. */
+async function loadReplayOnceConnected(binding: Parameters<typeof loadTerminalReplay>[0]): Promise<Uint8Array> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await loadTerminalReplay(binding)
+    } catch (failure) {
+      const text = failure instanceof Error ? failure.message : String(failure)
+      if (attempt >= CONNECT_RETRIES || !text.includes(NOT_CONNECTED_YET)) throw failure
+      await new Promise((resolve) => { window.setTimeout(resolve, CONNECT_RETRY_MS) })
+    }
+  }
+}
+
 const DEFAULT_THEME: ITheme = { background: '#060d16', foreground: '#c9d6e3', cursor: '#3dd6c6' }
 const TRANSPARENT = 'rgba(0,0,0,0)'
 /**
@@ -498,7 +517,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         } catch {
           history = null
           if (!stillMounted()) return
-          const replay = await loadTerminalReplay(binding)
+          const replay = await loadReplayOnceConnected(binding)
           if (!stillMounted()) return
           fetched = true
           // A fetched replay has no sequence number: it is only a screen to start from.

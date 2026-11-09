@@ -623,3 +623,107 @@ fn a_followed_codex_rollout_masks_tokens_and_omits_a_secret_patch() {
     };
     assert_eq!(output, "GH=[redacted]");
 }
+
+// ---- Gemini: synthetic lines in the shape of its `session-….jsonl`; no real conversation ----
+
+fn gemini_user(id: &str, text: &str) -> String {
+    line(json!({
+        "id": id, "timestamp": "2026-11-04T09:30:00.000Z", "type": "user",
+        "content": [{ "text": text }],
+    }))
+}
+
+fn gemini_reply(id: &str, text: &str, tools: serde_json::Value) -> String {
+    let mut value = json!({
+        "id": id, "timestamp": "2026-11-04T09:30:01.000Z", "type": "gemini",
+        "content": text, "thoughts": [], "model": "gemini-synthetic",
+    });
+    if !tools.is_null() {
+        value["toolCalls"] = tools;
+    }
+    line(value)
+}
+
+#[test]
+fn gemini_messages_and_a_finished_tool_call_become_a_conversation() {
+    let lines = vec![
+        line(json!({ "sessionId": SESSION, "projectHash": "h", "startTime": "2026-11-04T09:29:00.000Z", "kind": "main" })),
+        gemini_user("u1", "list the files"),
+        gemini_reply(
+            "g1",
+            "Looking.",
+            json!([{
+                "id": "call-1", "name": "run_shell_command",
+                "args": { "command": "ls" }, "status": "success",
+                "resultDisplay": "a.txt
+b.txt",
+                "result": [{ "functionResponse": { "response": { "output": "ignored when shown" } } }],
+            }]),
+        ),
+        line(json!({ "$set": { "lastUpdated": "2026-11-04T09:30:02.000Z" } })),
+        gemini_reply("g2", "Two files.", serde_json::Value::Null),
+    ];
+
+    let history = history_of(Format::Gemini, &lines);
+
+    let items = items(&history);
+    assert_eq!(message(items[0]), (&Role::User, "list the files"));
+    assert_eq!(message(items[1]), (&Role::Assistant, "Looking."));
+    assert_eq!(
+        items[2].content,
+        Content::Tool {
+            kind: "commandExecution".into(),
+            output: "a.txt
+b.txt".into(),
+            label: "ls".into(),
+            input: Some(json!({ "command": "ls" })),
+            exit_code: None,
+            duration_ms: None,
+        }
+    );
+    assert_eq!(items[2].state, ItemState::Completed);
+    assert_eq!(message(items[3]), (&Role::Assistant, "Two files."));
+    assert_eq!(turns(&history).len(), 1, "one user message, one turn");
+}
+
+#[test]
+fn a_gemini_tool_call_that_failed_is_shown_failed_and_its_output_comes_from_the_response() {
+    let lines = vec![
+        gemini_user("u1", "run it"),
+        gemini_reply(
+            "g1",
+            "",
+            json!([{
+                "id": "call-1", "name": "read_file", "args": { "path": "x" }, "status": "error",
+                "result": [{ "functionResponse": { "response": { "output": "no such file" } } }],
+            }]),
+        ),
+    ];
+
+    let history = history_of(Format::Gemini, &lines);
+
+    let items = items(&history);
+    let tool = items.iter().find(|e| matches!(e.content, Content::Tool { .. })).unwrap();
+    assert_eq!(tool.state, ItemState::Failed);
+    let Content::Tool { label, output, .. } = &tool.content else { unreachable!() };
+    assert_eq!(label, "read_file ");
+    assert_eq!(output, "no such file");
+}
+
+#[test]
+fn gemini_info_and_error_lines_and_a_second_user_message_are_handled() {
+    let lines = vec![
+        gemini_user("u1", "first"),
+        line(json!({ "id": "i1", "timestamp": "2026-11-04T09:30:00.500Z", "type": "info", "content": "Switched model" })),
+        gemini_reply("g1", "one", serde_json::Value::Null),
+        line(json!({ "id": "e1", "timestamp": "2026-11-04T09:30:01.500Z", "type": "error", "content": "quota" })),
+        gemini_user("u2", "second"),
+        gemini_reply("g2", "two", serde_json::Value::Null),
+    ];
+
+    let history = history_of(Format::Gemini, &lines);
+
+    let said: Vec<&str> = items(&history).iter().map(|e| message(e).1).collect();
+    assert_eq!(said, ["first", "one", "second", "two"]);
+    assert_eq!(turns(&history).len(), 2);
+}

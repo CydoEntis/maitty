@@ -157,6 +157,7 @@ fn new_build(remote: &Remote) -> File {
 /// What the person at the keyboard does.
 struct Person {
     said: Vec<String>,
+    progress: Vec<u8>,
     /// `None`: nobody is there to ask.
     answer: Option<bool>,
     asked: Vec<String>,
@@ -166,6 +167,7 @@ impl Person {
     fn absent() -> Person {
         Person {
             said: Vec::new(),
+            progress: Vec::new(),
             answer: None,
             asked: Vec::new(),
         }
@@ -173,6 +175,7 @@ impl Person {
     fn says(answer: bool) -> Person {
         Person {
             said: Vec::new(),
+            progress: Vec::new(),
             answer: Some(answer),
             asked: Vec::new(),
         }
@@ -185,6 +188,9 @@ impl Person {
 impl Talk for Person {
     fn say(&mut self, line: &str) {
         self.said.push(line.to_string());
+    }
+    fn progress(&mut self, percent: u8) {
+        self.progress.push(percent);
     }
     fn can_ask(&self) -> bool {
         self.answer.is_some()
@@ -236,6 +242,17 @@ fn failure_text(result: Result<Outcome, Failure>) -> String {
         Err(Failure::Usage(m)) | Err(Failure::Failed(m)) => m,
         Ok(outcome) => panic!("expected a failure, got {outcome:?}"),
     }
+}
+
+#[test]
+fn an_install_reports_each_stage_it_finishes_in_order() {
+    needs_sh!();
+    let remote = Remote::new(LINUX);
+    let mut person = Person::absent();
+    run(&remote, AT_HOME, INSTALL, &new_build(&remote), &mut person).unwrap();
+    assert!(person.progress.len() >= 4, "{:?}", person.progress);
+    assert!(person.progress.windows(2).all(|pair| pair[0] < pair[1]), "{:?}", person.progress);
+    assert!(person.progress.iter().all(|percent| *percent < 100));
 }
 
 #[test]

@@ -6,7 +6,7 @@ import type { SettingsPreferences } from '../preferences'
 import { machineHeads, type RemoteMachine } from '@/features/workspace/model/machines'
 import { DesktopSettings, type DesktopSettingsSection, type MachinesInfo } from './DesktopSettings'
 
-const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreLayout: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, terminalFontFamily: '', terminalFontWeight: 400, terminalFontWeightBold: 700, startFolder: '', themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper', cursorStyle: 'block', scrollback: 10000, scrollSpeed: 1, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, monthlyBudget: null, iconSize: 'medium', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, defaultAgent: 'claude', newSessionView: 'chat', chatFullAccessDefault: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass' }
+const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreLayout: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, terminalFontFamily: '', terminalFontWeight: 400, terminalFontWeightBold: 700, startFolder: '', themeMode: 'dark', darkTheme: 'Maitty Night', lightTheme: 'Maitty Day', cursorStyle: 'block', scrollback: 10000, scrollSpeed: 1, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', sidebarOrder: 'creation', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, monthlyBudget: null, iconSize: 'medium', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal', gemini: 'terminal' }, defaultAgent: 'claude', newSessionView: 'chat', chatFullAccessDefault: false, yoloClaude: false, yoloCodex: false, yoloGemini: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass' }
 
 function info(overrides: Partial<MachinesInfo> = {}): MachinesInfo {
   return { known: true, list: [], onRetry: vi.fn(), onRemove: vi.fn(), onGrant: vi.fn(), onUpdate: vi.fn(() => Promise.resolve()), onCheckActivity: vi.fn(() => Promise.resolve(null)), onCopyCommand: vi.fn(), add: { windows: false, loadHosts: () => Promise.resolve([]), onAdd: vi.fn(), onCancel: vi.fn() }, ...overrides }
@@ -65,14 +65,14 @@ describe('desktop settings', () => {
     expect(onChange).not.toHaveBeenCalled()
   })
 
-  it('sets which view a Claude or Codex session opens in, one agent at a time', async () => {
+  it('sets which view a Claude, Codex or Gemini session opens in, one agent at a time', async () => {
     const user = userEvent.setup()
     const { onChange } = renderSettings('general')
 
     const claude = screen.getByRole('radiogroup', { name: 'Claude sessions open in' })
     expect(within(claude).getByRole('radio', { name: 'Terminal' })).toBeChecked()
     await user.click(within(claude).getByRole('radio', { name: 'Chat' }))
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ chatViewDefault: { claude: 'chat', codex: 'terminal' } }))
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ chatViewDefault: { claude: 'chat', codex: 'terminal', gemini: 'terminal' } }))
   })
 
   it('chooses the default agent and what a new session opens as', async () => {
@@ -88,6 +88,15 @@ describe('desktop settings', () => {
     expect(within(view).getByRole('radio', { name: 'Chat' })).toBeChecked()
     await user.click(within(view).getByRole('radio', { name: 'Terminal' }))
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ newSessionView: 'terminal' }))
+  })
+
+  it('has a yolo switch for each agent, all off, set from the settings screen', async () => {
+    const user = userEvent.setup()
+    const { onChange } = renderSettings('general')
+
+    for (const agent of ['Claude', 'Codex', 'Gemini']) expect(screen.getByRole('switch', { name: `Yolo mode for ${agent}` })).not.toBeChecked()
+    await user.click(screen.getByRole('switch', { name: 'Yolo mode for Codex' }))
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ yoloCodex: true, yoloClaude: false, yoloGemini: false }))
   })
 
   it('chooses whether new chats get full access', async () => {
@@ -163,21 +172,21 @@ describe('desktop settings', () => {
   it('picks a working spinner from a dropdown of TUI and web spinners', async () => {
     const user = userEvent.setup()
     const { onChange } = renderSettings('appearance')
-    const button = screen.getByRole('button', { name: 'Working spinner' })
+    const button = screen.getByRole('button', { name: /^Working spinner: / })
     expect(button).toHaveTextContent('Braille')
     expect(button).toHaveTextContent('From the Maitty TUI')
 
     await user.click(button)
-    const list = await screen.findByRole('menu', { name: 'Working spinner' })
+    const list = await screen.findByRole('menu', { name: /^Working spinner/ })
     const choices = within(list).getAllByRole('menuitemradio')
     // The preview glyph is Braille text inside the item; the name is what is left.
-    expect(choices.map((choice) => choice.textContent.replace(/[\u2800-\u28FF]/g, ''))).toEqual(['Braille', 'Snake', 'Bars', 'Circle', 'Dots', 'Equalizer', 'Spokes', 'Ping'])
+    expect(choices.map((choice) => choice.textContent.replace(/[\u2800-\u28FF]/g, '').replace(/(From the Maitty TUI|Web icon)$/, ''))).toEqual(['Braille', 'Snake', 'Bars', 'Circle', 'Dots', 'Equalizer', 'Spokes', 'Ping'])
     expect(list).toHaveTextContent('Maitty TUI')
     expect(list).toHaveTextContent('Web')
-    expect(within(list).getByRole('menuitemradio', { name: 'Braille' })).toHaveAttribute('aria-checked', 'true')
+    expect(within(list).getByRole('menuitemradio', { name: /Braille/ })).toHaveAttribute('aria-checked', 'true')
     expect(list.querySelectorAll('.mx-wspin')).toHaveLength(5)
 
-    await user.click(within(list).getByRole('menuitemradio', { name: 'Circle' }))
+    await user.click(within(list).getByRole('menuitemradio', { name: /Circle/ }))
     expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, spinner: 'circle' })
     expect(screen.queryByRole('menu')).toBeNull()
   })
@@ -186,12 +195,12 @@ describe('desktop settings', () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
     renderSettings('appearance', { preferences: { ...PREFS, spinner: 'ping' }, onClose })
-    const button = screen.getByRole('button', { name: 'Working spinner' })
+    const button = screen.getByRole('button', { name: /^Working spinner: / })
     expect(button).toHaveTextContent('Ping')
     expect(button).toHaveTextContent('Web icon')
 
     await user.click(button)
-    await screen.findByRole('menu', { name: 'Working spinner' })
+    await screen.findByRole('menu', { name: /^Working spinner/ })
     await user.keyboard('{Escape}')
 
     await waitFor(() => { expect(screen.queryByRole('menu')).toBeNull() })
@@ -207,21 +216,21 @@ describe('desktop settings', () => {
 
   it('picks a dark and a light theme separately, from searchable dropdowns that list the one in use first', async () => {
     const user = userEvent.setup()
-    const { onChange } = renderSettings('appearance', { preferences: { ...PREFS, darkTheme: 'Nord' } })
-    expect(screen.getByText('28 installed')).toBeInTheDocument()
+    const { onChange } = renderSettings('appearance', { preferences: { ...PREFS, darkTheme: 'Gruvbox Dark' } })
+    expect(screen.getByText('16 themes installed')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Dark theme: Nord' }))
-    const dark = screen.getByRole('listbox', { name: 'Dark themes' })
-    expect(within(dark).getAllByRole('option')[0]).toHaveTextContent('Nord')
-    expect(within(dark).queryByRole('option', { name: /Paper/ })).not.toBeInTheDocument()
-    await user.type(screen.getByRole('textbox', { name: 'Search dark themes' }), 'dracula')
-    expect(within(dark).getAllByRole('option')).toHaveLength(1)
-    await user.click(within(dark).getByRole('option', { name: /Dracula/ }))
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ darkTheme: 'Dracula' }))
-    expect(screen.queryByRole('listbox', { name: 'Dark themes' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Dark theme: Gruvbox Dark' }))
+    const dark = (await screen.findByRole('radiogroup', { name: 'Dark themes' }))
+    expect(within(dark).getAllByRole('radio')[0]).toHaveTextContent('Gruvbox Dark')
+    expect(within(dark).queryByRole('radio', { name: /Maitty Day/ })).not.toBeInTheDocument()
+    await user.type(screen.getByRole('textbox', { name: 'Search dark themes' }), 'tokyo')
+    expect(within(dark).getAllByRole('radio')).toHaveLength(1)
+    await user.click(within(dark).getByRole('radio', { name: /Tokyo Night/ }))
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ darkTheme: 'Tokyo Night' }))
+    expect(screen.queryByRole('radiogroup', { name: 'Dark themes' })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Light theme: Paper' }))
-    expect(within(screen.getByRole('listbox', { name: 'Light themes' })).getByRole('option', { name: /GitHub Light/ })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Light theme: Maitty Day' }))
+    expect(within((await screen.findByRole('radiogroup', { name: 'Light themes' }))).getByRole('radio', { name: /GitHub Light/ })).toBeInTheDocument()
   })
 
   it('switches between System, Dark and Light, and says which one the system picks', async () => {
@@ -237,30 +246,30 @@ describe('desktop settings', () => {
     const user = userEvent.setup()
     renderSettings('appearance')
 
-    await user.click(screen.getByRole('button', { name: 'Dark theme: Midnight' }))
-    const list = screen.getByRole('listbox', { name: 'Dark themes' })
+    await user.click(screen.getByRole('button', { name: 'Dark theme: Maitty Night' }))
+    const list = (await screen.findByRole('radiogroup', { name: 'Dark themes' }))
     expect(list.closest('.mx-scard')).toBeNull()
-    expect(list.closest('.mx-picker-menu')).toHaveAttribute('style', expect.stringContaining('left'))
+    expect(list.closest('.mx-picker-menu')).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Search dark themes' })).toHaveFocus()
 
     await user.keyboard('{Escape}')
-    expect(screen.queryByRole('listbox', { name: 'Dark themes' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('radiogroup', { name: 'Dark themes' })).not.toBeInTheDocument()
   })
 
   it('previews a hovered theme only for the slot that is in use, and ends the preview on leaving', async () => {
     const user = userEvent.setup()
     const { onPreviewTheme } = renderSettings('appearance', { preferences: { ...PREFS, themeMode: 'dark' } })
 
-    await user.click(screen.getByRole('button', { name: 'Dark theme: Midnight' }))
-    await user.hover(within(screen.getByRole('listbox', { name: 'Dark themes' })).getByRole('option', { name: /Nord/ }))
-    expect(onPreviewTheme).toHaveBeenLastCalledWith('Nord')
-    await user.unhover(screen.getByRole('listbox', { name: 'Dark themes' }))
+    await user.click(screen.getByRole('button', { name: 'Dark theme: Maitty Night' }))
+    await user.hover(within((await screen.findByRole('radiogroup', { name: 'Dark themes' }))).getByRole('radio', { name: /Gruvbox Dark/ }))
+    expect(onPreviewTheme).toHaveBeenLastCalledWith('Gruvbox Dark')
+    await user.hover(screen.getByRole('textbox', { name: 'Search dark themes' }))
     expect(onPreviewTheme).toHaveBeenLastCalledWith(null)
 
     await user.keyboard('{Escape}')
-    await user.click(screen.getByRole('button', { name: 'Light theme: Paper' }))
+    await user.click(screen.getByRole('button', { name: 'Light theme: Maitty Day' }))
     onPreviewTheme.mockClear()
-    await user.hover(within(screen.getByRole('listbox', { name: 'Light themes' })).getByRole('option', { name: /GitHub Light/ }))
+    await user.hover(within((await screen.findByRole('radiogroup', { name: 'Light themes' }))).getByRole('radio', { name: /GitHub Light/ }))
     expect(onPreviewTheme).not.toHaveBeenCalledWith('GitHub Light')
   })
 
@@ -279,22 +288,17 @@ describe('desktop settings', () => {
     expect(screen.queryByText('Socket')).not.toBeInTheDocument()
   })
 
-  it('saves the terminal font family when the field is left, and refuses an unsafe name', async () => {
+  it('picks the terminal font from a list that starts with the bundled one, and keeps a saved family that is not installed', async () => {
     const user = userEvent.setup()
-    const { onChange } = renderSettings('terminal')
-    const field = screen.getByRole('combobox', { name: 'Terminal font family' })
+    const { onChange } = renderSettings('terminal', { preferences: { ...PREFS, terminalFontFamily: 'Fira Code' } })
+    const button = screen.getByRole('button', { name: 'Terminal font family: Fira Code' })
+    expect(button).toHaveTextContent('Saved choice')
 
-    await user.type(field, 'Fira Code')
-    expect(onChange).not.toHaveBeenCalled()
-    await user.tab()
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ terminalFontFamily: 'Fira Code' }))
-
-    onChange.mockClear()
-    await user.clear(field)
-    await user.type(field, 'a;b')
-    expect(screen.getByRole('alert')).toBeInTheDocument()
-    await user.tab()
-    expect(onChange).not.toHaveBeenCalled()
+    await user.click(button)
+    const list = await screen.findByRole('menu', { name: /^Terminal font family/ })
+    expect(within(list).getByRole('menuitemradio', { name: /Fira Code/ })).toHaveAttribute('aria-checked', 'true')
+    await user.click(within(list).getByRole('menuitemradio', { name: /Geist Mono/ }))
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ terminalFontFamily: '' }))
   })
 
   it('sets the normal and the bold weight of the terminal text', async () => {
@@ -316,19 +320,23 @@ describe('desktop settings', () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ iconSize: 'small' }))
   })
 
-  it('offers Flat and Glass as the window style, with the current one checked, and no Tiled', async () => {
+  it('offers the four window styles in one dropdown, with the current one checked', async () => {
     const user = userEvent.setup()
     const { onChange } = renderSettings('appearance', { preferences: { ...PREFS, style: 'glass' } })
-    const styles = screen.getByRole('radiogroup', { name: 'Window style' })
+    const button = screen.getByRole('button', { name: 'Window style: Glass' })
 
-    expect(within(styles).getAllByRole('radio').map((radio) => radio.textContent)).toEqual([
-      expect.stringContaining('Flat'),
+    await user.click(button)
+    const list = await screen.findByRole('menu', { name: /^Window style/ })
+    expect(within(list).getAllByRole('menuitemradio').map((item) => item.textContent)).toEqual([
       expect.stringContaining('Glass'),
+      expect.stringContaining('Mono Type'),
+      expect.stringContaining('Console'),
+      expect.stringContaining('Retro Pixel'),
     ])
-    expect(within(styles).getByRole('radio', { name: /Glass/ })).toBeChecked()
+    expect(within(list).getByRole('menuitemradio', { name: /Glass/ })).toHaveAttribute('aria-checked', 'true')
 
-    await user.click(within(styles).getByRole('radio', { name: /Flat/ }))
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ style: 'flat' }))
+    await user.click(within(list).getByRole('menuitemradio', { name: /Retro Pixel/ }))
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ style: 'pixel' }))
   })
 
   it('replays the welcome from General', async () => {

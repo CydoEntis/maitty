@@ -1,9 +1,9 @@
 /* Right-click and ⋯ menus (README: context menus): a dim heading, rows of 30px, keys at the right. */
 .mx-ctx {
   position: fixed; z-index: 91; min-width: 228px; padding: 5px; display: flex; flex-direction: column; border-radius: 12px;
-  background: linear-gradient(180deg, rgba(var(--hl), calc(.07 * var(--hk))), rgba(var(--hl), calc(.03 * var(--hk)))), var(--main);
+  background: linear-gradient(180deg, rgba(var(--hl), calc(.07 * var(--hk) * var(--gk))), rgba(var(--hl), calc(.03 * var(--hk) * var(--gk)))), var(--main);
   border: 1px solid rgba(var(--hl), calc(.12 * var(--hk)));
-  box-shadow: inset 0 1px 0 rgba(var(--hl), calc(.07 * var(--hk))), 0 18px 44px -12px rgba(var(--sd), calc(.75 * var(--sk)));
+  box-shadow: inset 0 1px 0 rgba(var(--hl), calc(.07 * var(--hk) * var(--gk))), 0 18px 44px -12px rgba(var(--sd), calc(.75 * var(--sk) * var(--gk)));
   color: var(--fg); font-family: "Geist Variable", Geist, system-ui, sans-serif;
   animation: v7scrim .12s ease-out;
 }
@@ -14,7 +14,6 @@
 .mx-ctx-item:not(:disabled):hover, .mx-ctx-item:focus-visible { background: rgba(var(--hl), calc(.08 * var(--hk))); color: var(--fg); }
 .mx-ctx-item.is-danger { color: var(--danger); }
 .mx-ctx-item.is-danger:not(:disabled):hover { color: var(--danger); }
-.mx-ctx-item.is-armed { background: var(--danger-soft); box-shadow: inset 0 0 0 1px var(--danger-line); }
 .mx-ctx-item:disabled { opacity: .4; cursor: default; }
 .mx-ctx-label { flex: 1; white-space: nowrap; }
 .mx-ctx-hint { font-family: var(--mono); font-size: 11px; color: var(--dim); }

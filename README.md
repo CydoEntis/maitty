@@ -35,7 +35,7 @@ natively on Windows, macOS and Linux.
 - **Agents that work together.** Agents can list, read, message and start other sessions
   through MCP tools, within limits you set, and find the project's reference images there.
 - **Your look.** Floating boxes, each pane in its own colour if you like, rounded or square corners,
-  padding round the screen, your cursor's shape, 170 themes with every colour configurable,
+  padding round the screen, your cursor's shape, 16 themes (a dark and a light of each) with every colour configurable,
   and rebindable shortcuts.
 
 ## Install
@@ -92,7 +92,7 @@ name, such as the MCP server (`maitty integrate mcp` renames it) or another agen
 ## Shortcuts
 
 The bar along the bottom always shows the mode. It reads ` PANE ` with the session you are on
-and `j/k sessions  ^space keys  ? help` while keys go to the terminal. Press `Ctrl+Space` (or
+and `^space keys  alt+↓/alt+↑ sessions  ^space ? help` (a key that needs the leader is shown with it, since the bare key would be typed into the pane; the session keys need none) while keys go to the terminal. Press `Ctrl+Space` (or
 click ` PANE `) for **key mode**: the chip turns to a yellow ` KEYS ` and the bar lists keys to
 press (`n new  s split  x close  tab pane  ? help  esc back`; click one to run it), and each key
 runs an action until you press `Esc`, `Ctrl+Space` again or click into a pane, or start a new

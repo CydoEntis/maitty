@@ -1,16 +1,14 @@
 import { useEffect, useRef } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import {
   listenSharedSettings, requestSharedSettings, setSharedSetting, type SharedSettingKey, type SharedSettings,
 } from '@/api/sharedSettings'
 import { errorMessage } from '@/lib/error-message'
 import { framesOfTuiSpinner, isWebSpinner, tuiSpinnerOfFrames } from '@/lib/spinner-clock'
-import { THEMES } from '@/features/workspace/theme/themes'
+import { themeIdOf, themeNameOf } from '@/features/workspace/theme/themes'
 import type { SettingsPreferences } from './preferences'
 
 type Update = (change: (current: SettingsPreferences) => SettingsPreferences) => void
-
-const knownTheme = (name: string) => THEMES.some((theme) => theme.name === name)
 
 /**
  * The shared settings as this window's own preferences would write them. A key is left out when this
@@ -22,11 +20,10 @@ export function sharedFrom(preferences: SettingsPreferences): Partial<SharedSett
     default_agent: preferences.defaultAgent,
     new_session_view: preferences.newSessionView,
     sidebar_side: preferences.sidebarSide,
-    theme_dark: preferences.darkTheme,
-    theme_light: preferences.lightTheme,
+    theme_dark: themeIdOf(preferences.darkTheme),
+    theme_light: themeIdOf(preferences.lightTheme),
     start_dir: preferences.startFolder,
     reduce_motion: preferences.reduceMotion,
-    window_style: preferences.style,
   }
   if (preferences.themeMode !== 'system') shared.appearance = preferences.themeMode
   if (!isWebSpinner(preferences.spinner)) shared.spinner = [...framesOfTuiSpinner(preferences.spinner)]
@@ -41,11 +38,12 @@ export function applyShared(preferences: SettingsPreferences, shared: SharedSett
     sidebarSide: shared.sidebar_side,
     startFolder: shared.start_dir,
     reduceMotion: shared.reduce_motion,
-    style: shared.window_style,
   }
   if (shared.default_agent === 'claude' || shared.default_agent === 'codex') next.defaultAgent = shared.default_agent
-  if (knownTheme(shared.theme_dark)) next.darkTheme = shared.theme_dark
-  if (knownTheme(shared.theme_light)) next.lightTheme = shared.theme_light
+  const dark = themeNameOf(shared.theme_dark)
+  const light = themeNameOf(shared.theme_light)
+  if (dark !== null) next.darkTheme = dark
+  if (light !== null) next.lightTheme = light
   // The shared config has two modes; this window also has System, which stays unless the other app moved off it.
   if (preferences.themeMode !== 'system') next.themeMode = shared.appearance
   const spinner = tuiSpinnerOfFrames(shared.spinner)

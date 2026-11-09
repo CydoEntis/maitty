@@ -4,18 +4,22 @@
  *
  * The chat reads the daemon's structured events (ADR 0006), never the terminal's text. So a session
  * has a chat only when the daemon holds a conversation for it, and only for the agents that speak
- * an event stream: Claude Code and Codex. Any other agent, and a plain shell, stay terminal-only.
+ * an event stream or write a transcript the daemon follows: Claude Code, Codex and Gemini CLI. Any
+ * other agent, and a plain shell, stay terminal-only.
  */
 
 export type PaneView = 'terminal' | 'chat'
-export type ChatAgent = 'claude' | 'codex'
+export type ChatAgent = 'claude' | 'codex' | 'gemini'
 
-export const CHAT_AGENTS: readonly ChatAgent[] = ['claude', 'codex']
+export const CHAT_AGENTS: readonly ChatAgent[] = ['claude', 'codex', 'gemini']
+
+/** The agents the daemon can also run as a structured chat with no terminal (`startChatSession`); the rest are a terminal session shown as a chat. */
+export type StructuredAgent = Exclude<ChatAgent, 'gemini'>
 
 /** A per-agent choice of the view a session opens in. An agent opens as its chat unless the user changes it. */
 export type ChatViewDefaults = Readonly<Record<ChatAgent, PaneView>>
 
-export const DEFAULT_CHAT_VIEWS: ChatViewDefaults = { claude: 'chat', codex: 'chat' }
+export const DEFAULT_CHAT_VIEWS: ChatViewDefaults = { claude: 'chat', codex: 'chat', gemini: 'chat' }
 
 /** The daemon conversation that carries a session's structured events. */
 export type ChatLink = {
@@ -33,7 +37,7 @@ export type ChatLink = {
 export type ChatAvailability =
   /** The daemon holds this session's conversation: the chat can read and send. */
   | { readonly kind: 'ready'; readonly agent: ChatAgent; readonly link: ChatLink }
-  /** A Claude or Codex session the daemon has no conversation for, so there is no event stream to show. */
+  /** A Claude, Codex or Gemini session the daemon has no conversation for, so there is no event stream to show. */
   | { readonly kind: 'no-events'; readonly agent: ChatAgent }
   /** The session lives on another machine; its conversation cannot be read from here in v1. */
   | { readonly kind: 'remote'; readonly agent: ChatAgent | null; readonly machineName: string }
@@ -92,7 +96,7 @@ export function noChatReason(availability: Exclude<ChatAvailability, { kind: 're
 export const NO_EVENTS_HINT_AFTER_MS = 10_000
 
 /** Shown once a session has stayed empty past `NO_EVENTS_HINT_AFTER_MS`: the usual cause is hooks from another version. */
-export const noEventsHint = (agent: ChatAgent): string => `Still nothing. ${agent}'s status hooks may be from another version: run "maitty integrate ${agent}".`
+export const noEventsHint = (agent: ChatAgent): string => `Still nothing. ${agent}'s status hooks are not connected, or are from another version. Connect them here, or run "maitty integrate ${agent}".`
 
 /** What a session tells the chat view about itself, from the fields every session view carries. */
 export function chatSourceOf(session: { machineName: string | null; conversation: { agent?: string | null; chat?: ChatLink | undefined } }): ChatSource {

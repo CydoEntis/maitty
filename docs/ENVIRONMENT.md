@@ -150,7 +150,7 @@ config and is held to the same rule.
 | `ssh_args` | list of extra ssh arguments, one per entry; none empty, none with control characters; never split on spaces |
 | `remote_cmd` | the app's command on the far side; unset, `maitty`; not empty, no control characters |
 | `via` | optional custom transport: a list, the program then its arguments, run in place of ssh (`["fly", "ssh", "console", "-C", "{command}"]`). It must carry stdin and stdout unchanged, allocate no pty and not prompt. The element `{command}` (alone, at most once) is replaced by the remote command `'<remote_cmd>' proxy --attach-only`; without it the command is the last argument. Not empty; the program is not empty, not `{command}` and does not start with `-`; no control characters; `{command}` inside a longer entry is refused. `ssh_args` beside `via` is refused (it would be ignored). Refused on Windows. It is a program this app runs, so it is read only from `config.local.toml`. `target` stays required: it is the machine's label |
-| `clipboard`, `notices`, `sounds` | default `false`; let that machine's panes write the clipboard, raise notices (and bring the window to the front) or play sounds. A machine's own worktree prompts, replies and workspace announcements are never acted on. See [SECURITY](SECURITY.md) |
+| `clipboard`, `notices`, `sounds` | `notices` and `sounds` default `false` (clipboard is on); in the terminal app the Machines dialog turns `notices` and `sounds` on or off with `n` and `s`, and in the desktop app Settings › Machines does. They let that machine's panes write the clipboard, raise notices (and bring the window to the front) or play sounds. A machine's own worktree prompts, replies and workspace announcements are never acted on. See [SECURITY](SECURITY.md) |
 | `mcp` | default `false`; lets an agent in a pane on this computer reach this machine through its MCP tools (`machine` argument or a `machine/id` id): list, read, send, wait. Off, a call naming the machine is refused with `machine_not_enabled` and the machine is not dialled. On, the agent's own pane still needs the `read` or `write` grant. Starting, answering and interrupting stay local-only. See [SECURITY](SECURITY.md) |
 
 Validation runs when the config loads. `--remote host` is an ad-hoc machine named after the
@@ -243,6 +243,7 @@ it reads:
 | `MAITTY_SOCKET` | name of a separate server (like `tmux -L`); used for nested test servers | user |
 | `MAITTY_REMOTE` | the SSH host this client works on (from `--remote`) | maitty |
 | `MAITTY_SSH`, `MAITTY_REMOTE_CMD` | replace `ssh` / the remote `maitty` command (`MAITTY_REMOTE_CMD` is one program path); removed from every pane's environment, like `MAITTY_REMOTE` | user |
+| `MAITTY_UPDATE_PROGRESS` | `1` makes `maitty machine update` print a `progress: N` line on stderr as each stage ends (the desktop app sets it; a person at a terminal never sees it) | desktop app |
 | `MAITTY_TERM_ID`, `MAITTY_PANE_TOKEN` | the pane's id and secret, set inside every pane | daemon |
 | `MAITTY_SHOW` | tests print rendered frames | developer |
 | `MAITTY_NO_INTEGRATE` | `1`: the installers and `maitty update` leave agents' config alone instead of running `maitty integrate` | user |

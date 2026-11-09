@@ -129,7 +129,7 @@ function Budget({ period, budget, ring, onBudget }: { period: UsagePeriod; budge
   const [editing, setEditing] = useState(false)
   if (editing) return <BudgetForm initial={budget} onSave={(value) => { onBudget(value); setEditing(false) }} onCancel={() => { setEditing(false) }} />
   if (budget === null) {
-    return <button type="button" className="text-[12.5px] text-[var(--accent)] underline-offset-2 hover:underline" onClick={() => { setEditing(true) }}>Set a monthly budget</button>
+    return <button type="button" className="text-[12.5px] text-[var(--accent-text)] underline-offset-2 hover:underline" onClick={() => { setEditing(true) }}>Set a monthly budget</button>
   }
   return (
     <div className="flex items-center gap-3">
@@ -137,7 +137,7 @@ function Budget({ period, budget, ring, onBudget }: { period: UsagePeriod; budge
       <div className="text-[12px] text-dim">
         <p>{formatCost(budget)} monthly budget</p>
         {!ring && <p>{period === 'month' ? 'No cost reported to compare' : 'Choose Month to compare'}</p>}
-        <button type="button" className="text-[var(--accent)] underline-offset-2 hover:underline" onClick={() => { setEditing(true) }}>Change</button>
+        <button type="button" className="text-[var(--accent-text)] underline-offset-2 hover:underline" onClick={() => { setEditing(true) }}>Change</button>
       </div>
     </div>
   )
@@ -272,7 +272,7 @@ function RefreshFailed({ onRetry, retrying }: { onRetry: () => void; retrying: b
   return (
     <p role="alert" className="flex items-center gap-3 rounded-lg border border-[var(--warn-line)] px-3 py-2 text-[12.5px] text-fg2">
       Could not refresh usage; these figures may be out of date.
-      <button type="button" disabled={retrying} className="font-medium text-[var(--accent)] hover:underline" onClick={onRetry}>Retry</button>
+      <button type="button" disabled={retrying} className="font-medium text-[var(--accent-text)] hover:underline" onClick={onRetry}>Retry</button>
     </p>
   )
 }

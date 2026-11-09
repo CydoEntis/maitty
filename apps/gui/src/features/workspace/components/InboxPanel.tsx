@@ -1,3 +1,4 @@
+import { Panel } from '@/components/ui/panel'
 import { displayName, STATUS_WORD, truncatePrompt, type SessionView } from '../model/session'
 import type { SessionTrack } from '../model/tracking'
 import { Ago } from './times'
@@ -5,26 +6,30 @@ import { AppIcon, Icon } from './glyphs'
 
 export type InboxEntry = { session: SessionView; projectName: string }
 
-/** The keystrokes the provider's own prompt takes: allow once, allow for this session, deny. */
-export type Answer = 'y' | 'a' | 'n'
-
 type InboxProps = {
   entries: readonly InboxEntry[]
   tracks: ReadonlyMap<string, SessionTrack>
-  online: boolean
-  onAnswer: (sessionId: string, answer: Answer) => void
   onClear: (sessionId: string) => void
   onClearDone: () => void
   onOpen: (sessionId: string) => void
   onClose: () => void
 }
 
-/** ⌘⇧J: every session that needs you, failed or finished, across all projects. The GUI only types your answer into the session. */
-export function InboxPanel({ entries, tracks, online, onAnswer, onClear, onClearDone, onOpen, onClose }: InboxProps) {
+/** The one line that says why a session is here: what it is asking, else that it finished or exited. */
+function reason(session: SessionView): string {
+  if (session.status === 'needs') return session.asking.split('\n').find((line) => line.trim() !== '')?.trim() ?? (session.lastPrompt ? truncatePrompt(session.lastPrompt) : 'Needs you')
+  return session.status === 'error' ? 'Exited' : 'Finished'
+}
+
+/**
+ * ⌘⇧J: every session that needs you, failed or finished, across all projects, as a plain list. A row opens its session (where
+ * the answer is given); a session that has finished or exited can also be cleared from the list.
+ */
+export function InboxPanel({ entries, tracks, onClear, onClearDone, onOpen, onClose }: InboxProps) {
   const settled = entries.some((entry) => entry.session.status !== 'needs')
   return (
-    <div className="mx-inbox-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-      <aside role="dialog" aria-label="Inbox" className="mx-inbox" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); onClose() } }}>
+    <Panel label="Inbox" onClose={onClose} scrimClassName="mx-inbox-scrim" className="mx-inbox">
+      <>
         <div className="mx-inbox-head">
           <strong>Inbox</strong>
           <span className="mx-inbox-sub">{entries.length} across all projects</span>
@@ -32,48 +37,38 @@ export function InboxPanel({ entries, tracks, online, onAnswer, onClear, onClear
           <button type="button" className="mx-text-button" disabled={!settled} onClick={onClearDone}>Clear done</button>
           <button type="button" className="mx-icon-button mx-inbox-close" aria-label="Close" title="Close (esc)" onClick={onClose}><Icon name="close" size={12} /></button>
         </div>
-        <div className="mx-inbox-list">
+        <ul className="mx-inbox-list" aria-label="Needs you">
           {entries.map(({ session, projectName }) => {
             const track = tracks.get(session.id)
             const needs = session.status === 'needs'
             return (
-              <article key={session.id} className={`mx-inbox-card is-${session.status}`} aria-label={`${displayName(session)}, ${STATUS_WORD[session.status]}`}>
-                <div className="mx-inbox-card-head">
+              <li key={session.id} className={`mx-inbox-item is-${session.status}`}>
+                <button type="button" className="mx-inbox-open" aria-label={`${displayName(session)}, ${STATUS_WORD[session.status]}`} onClick={() => { onOpen(session.id) }}>
                   <AppIcon process={session.process} size={22} />
                   <span className="mx-inbox-text">
                     <span className="mx-inbox-title"><strong>{projectName}</strong> {displayName(session)}</span>
-                    <span className="mx-inbox-meta">{session.process}{session.machineName ? ` · on ${session.machineName}` : ''}{track?.changedAt ? <Ago at={track.changedAt} prefix=" · " /> : ''}</span>
+                    <span className="mx-inbox-reason">{reason(session)}{session.machineName ? ` · on ${session.machineName}` : ''}</span>
                   </span>
-                  <span className={`mx-inbox-word is-${session.status}`}>{needs ? 'Needs you' : session.status === 'error' ? 'Exited' : 'Done'}</span>
-                </div>
-                {needs && session.asking !== ''
-                  ? <pre className="mx-inbox-well mx-inbox-asking" aria-label="What it is asking">{session.asking}</pre>
-                  : session.lastPrompt && <div className="mx-inbox-well">{truncatePrompt(session.lastPrompt)}</div>}
-                <div className="mx-inbox-actions">
-                  {needs ? (
-                    <>
-                      <button type="button" className="mx-inbox-yes" disabled={!online} onClick={() => { onAnswer(session.id, 'y') }}>Yes, once <kbd>y</kbd></button>
-                      <button type="button" disabled={!online} onClick={() => { onAnswer(session.id, 'a') }}>This session <kbd>a</kbd></button>
-                      <button type="button" disabled={!online} onClick={() => { onAnswer(session.id, 'n') }}>No <kbd>n</kbd></button>
-                    </>
-                  ) : (
-                    <button type="button" onClick={() => { onClear(session.id) }}>Clear</button>
-                  )}
-                  <span className="mx-spacer" />
-                  <button type="button" onClick={() => { onOpen(session.id) }}>Open</button>
-                </div>
-              </article>
+                  <span className="mx-inbox-aside">
+                    <span className={`mx-inbox-word is-${session.status}`}>{needs ? 'Needs you' : session.status === 'error' ? 'Exited' : 'Done'}</span>
+                    {track?.changedAt ? <span className="mx-inbox-when"><Ago at={track.changedAt} /></span> : null}
+                  </span>
+                </button>
+                {!needs && (
+                  <button type="button" className="mx-inbox-clear" aria-label={`Clear ${displayName(session)}`} title="Clear" onClick={() => { onClear(session.id) }}><Icon name="close" size={12} /></button>
+                )}
+              </li>
             )
           })}
           {entries.length === 0 && (
-            <div className="mx-inbox-empty">
+            <li className="mx-inbox-empty">
               <span className="mx-inbox-check"><Icon name="check" size={18} /></span>
               <strong>You&apos;re all caught up</strong>
               <span>Nothing needs you, failed or just finished.</span>
-            </div>
+            </li>
           )}
-        </div>
-      </aside>
-    </div>
+        </ul>
+      </>
+    </Panel>
   )
 }

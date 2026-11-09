@@ -1,3 +1,4 @@
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { useEffect, useRef, useState } from 'react'
 import { repoBranches, repoWorktrees } from '@/features/inspect/api'
 import { messageOf, useRepoQuery } from '@/features/inspect/useRepoQuery'
@@ -48,16 +49,15 @@ export function NewWorktreeDialog({ term, repoName, onCreate, onCancel }: Props)
   }
 
   return (
-    <div className="mx-settings-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) onCancel() }}>
+    <Dialog open onOpenChange={(open) => { if (!open) onCancel() }}>
+      <DialogContent unstyled asChild aria-describedby={undefined}>
       <form
-        role="dialog"
-        aria-modal="true"
         aria-label="New worktree"
         className="mx-rename mx-worktree"
         onSubmit={(event) => { event.preventDefault(); submit() }}
-        onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); onCancel() } }}
+        onKeyDown={(event) => { if (event.key === 'Escape') event.stopPropagation() }}
       >
-        <h2>New worktree</h2>
+        <DialogTitle asChild><h2>New worktree</h2></DialogTitle>
         <p>A branch in its own folder next to {repoName}. A session opens there, and the other sessions keep working undisturbed.</p>
         <input ref={input} aria-label="Branch name" value={branch} placeholder="feat/my-change" onChange={(event) => { setBranch(event.target.value); setError(null) }} />
         {existing
@@ -85,6 +85,7 @@ export function NewWorktreeDialog({ term, repoName, onCreate, onCancel }: Props)
           <button type="submit" className="mx-text-button is-primary" disabled={working || name === '' || problem !== null}>{working ? 'Creating…' : 'Create worktree'}</button>
         </div>
       </form>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

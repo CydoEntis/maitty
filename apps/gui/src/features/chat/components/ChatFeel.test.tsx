@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FAKE_CONVERSATION, FakeDaemonHistory } from '../fakeDaemonHistory'
@@ -6,7 +6,6 @@ import { forgetComposers } from '../composerStore'
 import { forgetFirstMessages } from '../firstMessage'
 import { ACTIVE_POLL_MS, forgetChatFeeds, IDLE_POLL_MS } from '../useChatFeed'
 import type { SessionStatus } from '@/features/workspace/model/session'
-import { TYPING_BUSY_NOTE } from '../useChatComposer'
 import { ChatSession } from './ChatSession'
 
 const fake = vi.hoisted(() => ({ current: null as null | { read: (cursor: never) => Promise<unknown> } }))
@@ -103,6 +102,8 @@ describe('how the chat feels while it waits', () => {
     await settle(ACTIVE_POLL_MS + 1)
     daemon.upsert(daemon.message('t1', 'a1', 'Assistant', 'the answer'))
     await settle(700)
+    // The reply arrived live, so it is typed in; give the typing time to catch up.
+    await settle(1500)
 
     expect(screen.getByText('the answer')).toBeInTheDocument()
   })
@@ -117,7 +118,7 @@ describe('how the chat feels while it waits', () => {
     await settle()
 
     expect(screen.getByText(/claude is thinking/)).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: 'Message claude' })).toHaveAttribute('placeholder', TYPING_BUSY_NOTE)
+    expect(screen.getByRole('textbox', { name: 'Message claude' })).toHaveAttribute('placeholder', 'Queue a message for when claude finishes')
 
     // And the chat read the conversation at that moment, not at its next idle poll.
     daemon.upsert(daemon.message('t1', 'u3', 'User', 'asked in the terminal'))
@@ -125,6 +126,36 @@ describe('how the chat feels while it waits', () => {
     await settle(700)
     expect(screen.getByText('asked in the terminal')).toBeInTheDocument()
     expect(screen.queryByText(/claude is thinking/)).not.toBeInTheDocument()
+  })
+
+  it('keeps the working line up for a moment after the turn ends, so the pane is not blank before the reply is read', async () => {
+    const { daemon, setPaneStatus } = open('Idle')
+    await settle()
+    setPaneStatus('working')
+    await settle()
+    daemon.upsert(daemon.message('t1', 'u3', 'User', 'a question'))
+    await settle(400)
+
+    // The turn ended on the pane, but the history has no answer yet.
+    setPaneStatus('idle')
+    await settle(50)
+    expect(screen.getByText(/claude is thinking/)).toBeInTheDocument()
+
+    // And it does not stay for good: with no answer it gives way after a moment.
+    await settle(1000)
+    expect(screen.queryByText(/claude is thinking/)).not.toBeInTheDocument()
+  })
+
+  it('gives the focus back to the message box when you click the conversation, so one click is enough to type again', async () => {
+    open('Idle')
+    await settle(IDLE_POLL_MS)
+    const box = screen.getByRole('textbox', { name: 'Message claude' })
+    box.blur()
+    expect(box).not.toHaveFocus()
+
+    fireEvent.click(screen.getByText('earlier'))
+
+    expect(box).toHaveFocus()
   })
 
   it('says under the message box how the agent is set up, from its own file', async () => {
@@ -139,7 +170,8 @@ describe('how the chat feels while it waits', () => {
   it('marks a mode that asks about nothing, and shows nothing when the file said nothing', async () => {
     const { daemon } = open()
     await settle()
-    expect(screen.getByTitle('Not reported by the agent yet')).toHaveTextContent('Permissions')
+    // This chat can type into its terminal, so the mode is a button (it cycles the mode); it says when the agent has not reported one.
+    expect(screen.getByRole('button', { name: /not reported yet/ })).toHaveTextContent('Permissions')
 
     daemon.meta = { mode: 'bypassPermissions', model: null }
     await settle(IDLE_POLL_MS)

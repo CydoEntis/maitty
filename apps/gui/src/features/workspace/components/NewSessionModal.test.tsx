@@ -43,7 +43,7 @@ describe('the New session dialog', () => {
   it('works in a new worktree, and says why the current branch cannot be picked', () => {
     const { dialog } = open()
     expect(within(dialog).getByRole('radio', { name: 'New worktree' })).toHaveAttribute('aria-checked', 'true')
-    expect(within(dialog).getByRole('radio', { name: 'Current branch' })).toHaveAttribute('aria-disabled', 'true')
+    expect(within(dialog).getByRole('radio', { name: 'Current branch' })).toBeDisabled()
   })
 
   it('offers another folder through the folder picker, on this computer only', async () => {

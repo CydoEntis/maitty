@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { ResultsList, ResultsOption } from '@/components/ui/results-list'
 import { searchPalette, type PaletteItem } from '../model/palette'
 
 /** ⌘K: jump to a session, project, action or theme by typing a few letters of its name. */
@@ -20,9 +22,7 @@ export function CommandPalette({ items, onClose }: { items: readonly PaletteItem
   }
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === 'Escape') {
-      event.preventDefault()
       event.stopPropagation()
-      onClose()
     } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
       if (results.length > 0) setSelected((active + (event.key === 'ArrowDown' ? 1 : -1) + results.length) % results.length)
@@ -32,8 +32,9 @@ export function CommandPalette({ items, onClose }: { items: readonly PaletteItem
     }
   }
   return (
-    <div className="mx-palette-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-      <div role="dialog" aria-modal="true" aria-label="Command palette" className="mx-palette" onKeyDown={onKeyDown}>
+    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent unstyled overlayClassName="mx-palette-scrim" aria-label="Command palette" aria-describedby={undefined} className="mx-palette" onKeyDown={onKeyDown} onOpenAutoFocus={(event) => { event.preventDefault() }}>
+        <DialogTitle className="sr-only">Command palette</DialogTitle>
         <div className="mx-palette-input">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
           <input
@@ -49,20 +50,20 @@ export function CommandPalette({ items, onClose }: { items: readonly PaletteItem
           />
           <kbd className="mx-keycap">esc</kbd>
         </div>
-        <div ref={list} id="mx-palette-list" role="listbox" aria-label="Results" className="mx-palette-list">
+        <ResultsList ref={list} id="mx-palette-list" aria-label="Results" className="mx-palette-list">
           {results.map((item, index) => (
-            <div key={item.id} role="option" aria-selected={index === active} className={`mx-palette-row${index === active ? ' is-selected' : ''}`} onMouseMove={() => { setSelected(index) }} onClick={() => { run(item) }}>
+            <ResultsOption key={item.id} selected={index === active} className={`mx-palette-row${index === active ? ' is-selected' : ''}`} onMouseMove={() => { setSelected(index) }} onClick={() => { run(item) }}>
               <span className="mx-palette-label">{item.label}</span>
               {item.detail && <span className="mx-palette-detail">{item.detail}</span>}
               <span className="mx-spacer" />
               {item.shortcut && <span className="mx-palette-shortcut">{item.shortcut}</span>}
               <span className={`mx-palette-kind${item.badge ? ' is-badge' : ''}`}>{item.badge ?? item.kind}</span>
-            </div>
+            </ResultsOption>
           ))}
           {results.length === 0 && <div className="mx-palette-empty">Nothing matches “{query}”.</div>}
-        </div>
+        </ResultsList>
         <div className="mx-palette-foot"><span>↑ ↓ move</span><span>↵ open</span></div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

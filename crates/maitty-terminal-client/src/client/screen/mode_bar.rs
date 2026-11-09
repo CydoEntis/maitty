@@ -74,6 +74,17 @@ fn bound(app: &App, a: &Action) -> Option<KeySpec> {
         .copied()
 }
 
+/// The key that runs `a` with no leader, if it has one (`Alt+↓` for the next session): the one to show while typing,
+/// since it works from where you are. When there are several, the same one every time.
+fn bound_global(app: &App, a: &Action) -> Option<KeySpec> {
+    app.keymap
+        .global
+        .iter()
+        .filter(|(_, action)| *action == a)
+        .map(|(key, _)| *key)
+        .min_by_key(crate::client::design::long_key)
+}
+
 /// A key as the bar spells it: lower case, Ctrl as `^` (`^space`, `tab`, `esc`, `S`).
 pub(in crate::client) fn short_key(k: &KeySpec) -> String {
     let long = crate::client::design::long_key(k).replace("Ctrl+", "^");
@@ -86,7 +97,7 @@ pub(in crate::client) fn short_key(k: &KeySpec) -> String {
 
 /// A hint: its key bold in the accent, what it does muted.
 fn hint(key: String, words: &str, hit: Option<ScreenHit>, t: &Theme) -> Piece {
-    let base = Style::default().bg(t.sidebar_bg);
+    let base = Style::default().bg(t.bg);
     Piece {
         segs: vec![
             seg(key, base.fg(t.accent).add_modifier(Modifier::BOLD)),
@@ -109,15 +120,21 @@ fn mode_chip(label: &str, ground: Color, ink: Color, hit: Option<ScreenHit>) -> 
     }
 }
 
-/// Typing: `j/k sessions`, the leader for key mode (a click starts it) and `? help`.
+/// Typing: a key that needs the leader is shown with it in front (`^space ? help`): the bare key would be typed into the
+/// pane. The session keys are the ones that need none (`alt+↓/alt+↑`). The leader alone starts key mode (a click starts it), and `? help` lists
+/// the keys.
 fn pane_hints(app: &App, t: &Theme) -> Vec<Piece> {
+    let lead = short_key(&app.keymap.prefix);
     let mut hints = Vec::new();
-    if let (Some(next), Some(prev)) = (bound(app, &Action::NextSession), bound(app, &Action::PrevSession)) {
+    hints.push(hint(lead.clone(), "keys", Some(ScreenHit::ShortcutMode), t));
+    // Changing session without the leader (Alt+↓ / Alt+↑) when it has such keys, since they work from the pane; else the leader keys.
+    if let (Some(next), Some(prev)) = (bound_global(app, &Action::NextSession), bound_global(app, &Action::PrevSession)) {
         hints.push(hint(format!("{}/{}", short_key(&next), short_key(&prev)), "sessions", None, t));
+    } else if let (Some(next), Some(prev)) = (bound(app, &Action::NextSession), bound(app, &Action::PrevSession)) {
+        hints.push(hint(format!("{lead} {}/{}", short_key(&next), short_key(&prev)), "sessions", None, t));
     }
-    hints.push(hint(short_key(&app.keymap.prefix), "keys", Some(ScreenHit::ShortcutMode), t));
     if let Some(help) = bound(app, &Action::Help) {
-        hints.push(hint(short_key(&help), "help", None, t));
+        hints.push(hint(format!("{lead} {}", short_key(&help)), "help", None, t));
     }
     hints
 }
@@ -142,23 +159,15 @@ fn key_hints(app: &mut App, t: &Theme) -> Vec<Piece> {
     hints
 }
 
-/// The session the keys go to: its name and folder, bright; or a line that just happened.
+/// A line that just happened. The session's name and folder are not repeated here: the pane's
+/// own title already shows them.
 fn where_piece(app: &App, t: &Theme) -> Option<Piece> {
-    let base = Style::default().bg(t.sidebar_bg);
-    if let Some((text, at)) = &app.bar_flash
-        && at.elapsed() < BAR_FLASH_FOR
-    {
-        return Some(Piece {
-            segs: vec![seg(text.clone(), base.fg(t.done).add_modifier(Modifier::BOLD))],
-            gap: 1,
-            hit: None,
-        });
-    }
-    let term = app.focused()?;
-    let info = app.term_info(term)?;
-    let name = pane_title(app, &app.screen_model(), term);
-    Some(Piece {
-        segs: vec![seg(format!("{name} · {}", tilde(&info.cwd)), base.fg(t.strong))],
+    let (text, at) = app.bar_flash.as_ref()?;
+    (at.elapsed() < BAR_FLASH_FOR).then(|| Piece {
+        segs: vec![seg(
+            text.clone(),
+            Style::default().bg(t.bg).fg(t.done).add_modifier(Modifier::BOLD),
+        )],
         gap: 1,
         hit: None,
     })
@@ -238,7 +247,7 @@ fn keys_holder(app: &App) -> Option<Holder> {
         }
         Mode::ScreenSettings(_) => holder(
             "SETTINGS",
-            &[("j/k", "move"), ("Tab", "section"), ("Enter", "change")],
+            &[("↑↓", "move"), ("Tab", "section"), ("Enter", "change")],
             ("Esc", "close"),
         ),
         // A merge or throw-away asked in a finished row: Enter does it, Esc only drops the question.
@@ -339,17 +348,6 @@ fn keys_holder(app: &App) -> Option<Holder> {
         Mode::Finder(_) => holder(
             "OPEN FOLDER",
             &[("", "type a path"), ("Tab", "complete"), ("Enter", "open")],
-            ("Esc", "close"),
-        ),
-        Mode::NewSession(_) => holder(
-            "NEW SESSION",
-            &[
-                ("", "type a project or ~/path"),
-                ("Tab", "complete"),
-                ("Ctrl+O", "browse"),
-                ("↑↓", "move"),
-                ("Enter", "pick"),
-            ],
             ("Esc", "close"),
         ),
         Mode::ScreenPane(_) => holder(
@@ -601,7 +599,7 @@ fn view_holder(app: &App) -> Option<Holder> {
 fn hint_piece((key, words): Hint, t: &Theme) -> Piece {
     if key.is_empty() {
         return Piece {
-            segs: vec![seg(words, Style::default().fg(t.muted).bg(t.sidebar_bg))],
+            segs: vec![seg(words, Style::default().fg(t.muted).bg(t.bg))],
             gap: GAP,
             hit: None,
         };
@@ -641,7 +639,7 @@ pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rec
     if row.height == 0 || row.width < 4 {
         return;
     }
-    fill(buf, row, t.sidebar_bg);
+    fill(buf, row, t.bg);
     let holder = keys_holder(app);
     let (tag, mut right, place) = if let Some(h) = &holder {
         let (tag, right) = holding(app, h, t);
@@ -688,7 +686,7 @@ pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rec
     let words_only = only_says(app);
     // With `ui.rounded = "full"` a chip on the bar is capped on the bar's ground.
     let round = Look::of(&app.cfg.ui).round_tabs;
-    let ground = t.sidebar_bg;
+    let ground = t.bg;
     let put_piece = |app: &mut App, buf: &mut Buffer, x: u16, p: &Piece| -> u16 {
         let chip = p.segs.first().is_some_and(|(_, s)| s.bg != Some(ground));
         let segs = if round && chip {

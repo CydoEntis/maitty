@@ -182,11 +182,43 @@ pub fn should_alert<S: PartialEq>(
 }
 
 /// Play the app's sound for `kind`, unless sounds or that sound are off. Returns at once.
+/// Every window and the server each judge a status change for themselves, so one change could
+/// ring once per process; the shared claim lets the first of them ring and the rest stay quiet.
 pub fn ring(cfg: &crate::config::Notify, kind: Kind) {
     // Tests drive real status changes: they must not ring the machine they run on.
-    if kind.wanted(cfg) && !cfg!(test) {
+    if kind.wanted(cfg)
+        && !cfg!(test)
+        && claim_ring(&crate::config::data_dir().join(RING_CLAIM), ANY_AGAIN_AFTER)
+    {
         let volume = Volume::of(cfg);
         std::thread::spawn(move || play(kind, volume));
+    }
+}
+
+/// The file whose age says when any process last rang.
+const RING_CLAIM: &str = "ring.lock";
+
+/// Whether this process may ring: it creates `path` first, or finds the one there older than
+/// `quiet_for` and replaces it. A claim that cannot be made or read lets the sound play, since
+/// a missed alert is worse than a doubled one.
+fn claim_ring(path: &std::path::Path, quiet_for: std::time::Duration) -> bool {
+    use std::fs::OpenOptions;
+    use std::io::ErrorKind;
+    let create = || OpenOptions::new().write(true).create_new(true).open(path);
+    match create() {
+        Ok(_) => true,
+        Err(e) if e.kind() == ErrorKind::AlreadyExists => {
+            let age = std::fs::metadata(path)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|at| at.elapsed().ok());
+            match age {
+                Some(age) if age < quiet_for => false,
+                // Stale: whoever removes it and then creates it first wins.
+                _ => std::fs::remove_file(path).is_ok() && create().is_ok(),
+            }
+        }
+        Err(_) => true,
     }
 }
 
@@ -423,6 +455,20 @@ $p.Open([Uri]$env:",
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_second_process_ringing_at_once_stays_quiet() {
+        let dir = std::env::temp_dir().join(format!("ring-claim-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let claim = dir.join("ring.lock");
+        let _ = std::fs::remove_file(&claim);
+        let spell = std::time::Duration::from_secs(60);
+        assert!(claim_ring(&claim, spell), "the first rings");
+        assert!(!claim_ring(&claim, spell), "the second, a moment later, does not");
+        assert!(claim_ring(&claim, std::time::Duration::ZERO), "a claim older than the spell is taken over");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     use super::*;
 
     #[test]

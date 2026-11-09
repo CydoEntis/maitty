@@ -1997,10 +1997,15 @@ mod screen_tests {
                             failures.push(format!("{layout} split {split} {mode} update {update} {w}: {row} {:?} want {:?}", buf[(r.x + 3, r.y)].fg, app.theme.blocked));
                         }
                     }
-                    // Typing says so on the mode bar at every width.
-                    let (_, bar) = bar_text(&app, &buf);
-                    if mode == "off" && !bar.contains(" PANE ") {
-                        failures.push(format!("{layout} split {split} {mode} update {update} {w}: no PANE on the bar: {bar}"));
+                    // Typing says so on the mode bar at every width while the bar is up (a waiting
+                    // update keeps it up); otherwise there is no bar.
+                    if mode == "off" && update {
+                        let (_, bar) = bar_text(&app, &buf);
+                        if !bar.contains(" PANE ") {
+                            failures.push(format!("{layout} split {split} {mode} update {update} {w}: no PANE on the bar: {bar}"));
+                        }
+                    } else if mode == "off" && screen::bar_has_words(&app) {
+                        failures.push(format!("{layout} split {split} {mode} update {update} {w}: a bar while keys go to the pane"));
                     }
                 }
             }
@@ -2048,10 +2053,13 @@ mod screen_tests {
         app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(shell)));
         app.mode = Mode::Side;
         app.act(Action::ClosePane);
+        assert!(matches!(app.mode, Mode::Confirm(_)), "an idle shell asks too");
+        assert_eq!(app.closing.last_closed(), None, "nothing is closed before the answer");
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         assert_eq!(
             app.closing.last_closed(),
             Some(ClientTerm::local(shell)),
-            "an idle shell closes at once, with an undo"
+            "accepted, an idle shell closes, with an undo"
         );
         let agent = *app
             .snap
@@ -2064,22 +2072,16 @@ mod screen_tests {
         app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(agent)));
         app.mode = Mode::Side;
         app.act(Action::ClosePane);
-        assert_eq!(
-            app.closing.asking_about(),
-            Some(ClientTerm::local(agent)),
-            "a working agent asks for the same press again"
-        );
         assert!(
-            app.closing_banner().is_some_and(|b| b.text.starts_with("Close and stop ")),
-            "and says so"
+            matches!(&app.mode, Mode::Confirm(c) if c.title == "Stop session" && c.note.contains("stops it")),
+            "a working agent asks, and says closing stops it"
         );
-        app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(agent)));
-        app.mode = Mode::Side;
-        app.act(Action::ClosePane);
+        assert_ne!(app.closing.last_closed(), Some(ClientTerm::local(agent)), "the agent is not closed before the answer");
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         assert_eq!(
             app.closing.last_closed(),
             Some(ClientTerm::local(agent)),
-            "the second press closes it"
+            "accepted, it closes"
         );
     }
 
@@ -2110,7 +2112,7 @@ mod screen_tests {
     }
 
     #[test]
-    fn alt_x_in_the_sidebar_closes_the_selected_session_and_asks_again_for_a_working_agent() {
+    fn alt_x_in_the_sidebar_asks_before_it_closes_the_selected_session_and_says_a_working_agent_stops() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let focused = app.focused();
         let agent = app
@@ -2126,10 +2128,9 @@ mod screen_tests {
         app.mode = Mode::Side;
         app.snap.terms.get_mut(&agent.term).unwrap().status = Status::Working;
         app.on_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::ALT));
-        assert_eq!(
-            app.closing.asking_about(),
-            Some(agent),
-            "a working agent asks for a second press before it closes: {:?}",
+        assert!(
+            matches!(&app.mode, Mode::Confirm(c) if c.title == "Stop session"),
+            "a working agent asks before it closes: {:?}",
             app.mode
         );
         assert_eq!(app.focused(), focused, "it doesn't go into the pane");
@@ -2142,6 +2143,8 @@ mod screen_tests {
         for (padding, rows, cols) in [("small", 0, 0), ("medium", 1, 2), ("large", 2, 4)] {
             let (_, mut app) = super::design_tests::render_with(160, 45);
             app.cfg.ui.padding = padding.into();
+            // The bar hides in pane mode; a waiting update keeps it up to measure.
+            app.update_available = Some("0.99.0".into());
             let area = Rect::new(0, 0, 160, 45);
             let grid = screen::grid(&app, screen::framed(&app, area));
             let bar = screen::mode_bar_row(&app, area);
@@ -2545,19 +2548,18 @@ mod screen_tests {
             "the cursor goes with the keys"
         );
         app.act(Action::ClosePane);
-        assert_eq!(
-            app.closing.last_closed().or(app.closing.asking_about()),
-            Some(focused),
-            "close acts on the focused pane"
+        assert!(
+            matches!(&app.mode, Mode::Confirm(c) if matches!(&c.act, menu::Act::End(ts) if ts == &vec![focused])),
+            "close asks about the focused pane"
         );
+        app.mode = Mode::Normal;
         app.closing = Default::default();
         // Even a cursor left behind in normal mode is not a target.
         app.mode = Mode::Normal;
         app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(other)));
         app.act(Action::ClosePane);
-        assert_eq!(
-            app.closing.last_closed().or(app.closing.asking_about()),
-            Some(focused),
+        assert!(
+            matches!(&app.mode, Mode::Confirm(c) if matches!(&c.act, menu::Act::End(ts) if ts == &vec![focused])),
             "only the sidebar's own keys use its cursor"
         );
     }
@@ -2639,24 +2641,24 @@ mod screen_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(
-            o.contains("THEME") && o.contains("Enter browse"),
+            o.contains("THEME") && o.contains("Enter search"),
             "then the theme browser control"
         );
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         let o = draw(&mut app, 160, 45);
         assert!(
-            o.contains("Dark themes") && o.contains("Night") && !o.contains("Day"),
+            o.contains("Dark themes") && o.contains("Maitty Night") && !o.contains("Maitty Day"),
             "the dark tab lists only dark themes"
         );
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         let o = draw(&mut app, 160, 45);
         assert!(
-            o.contains("Light themes") && o.contains("Day") && !o.contains("Night"),
+            o.contains("Light themes") && o.contains("Maitty Day") && !o.contains("Maitty Night"),
             "Tab shows the light tab, on the light theme chosen"
         );
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
-        app.on_paste("Monokai".into());
-        assert!(draw(&mut app, 160, 45).contains("Monokai"));
+        app.on_paste("Gruvbox".into());
+        assert!(draw(&mut app, 160, 45).contains("Gruvbox"));
         app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
         app.on_paste("Tokyo Night".into());
         assert!(draw(&mut app, 160, 45).contains("Tokyo Night"));
@@ -2833,7 +2835,7 @@ mod screen_tests {
         app.cfg.ui.which_key = false;
         let lead = KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL);
         let key = |app: &mut App, c: KeyCode| app.on_key(KeyEvent::new(c, KeyModifiers::NONE));
-        // Armed: the sky pill in the tab row, the focused card's border sky too.
+        // Armed: the KEYS chip on the bar, the focused card's border in the same orange.
         app.on_key(lead);
         let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
         term.draw(|f| render::draw(&mut app, f)).unwrap();
@@ -2841,8 +2843,8 @@ mod screen_tests {
         let top = app.pane_frames[0].1.y;
         assert_eq!(
             (buf[(159, top)].symbol(), buf[(159, top)].fg),
-            ("╮", app.theme.sky()),
-            "the focused border turns sky"
+            ("╮", app.theme.blocked),
+            "the focused border turns the KEYS orange"
         );
         let (row, text) = bar_text(&app, &buf);
         assert!(
@@ -2900,7 +2902,7 @@ mod screen_tests {
     fn actions_list_every_command_with_its_key() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains(" menu "));
+        assert!(o.contains(" Menu "));
         let at = app
             .hits
             .iter()
@@ -3021,7 +3023,7 @@ mod screen_tests {
                 panic!("the menu chip opens its menu: {:?}", std::mem::discriminant(&app.mode))
             };
             let labels: Vec<&str> = menu.items.iter().map(|(l, _)| l.as_str()).collect();
-            assert_eq!(labels, ["Filter sessions", "Inbox", "Usage and cost", "Settings", "Keys"]);
+            assert_eq!(labels, ["Filter sessions", "Add machine…", "Inbox", "Usage and cost", "Settings", "Keys"]);
             // The full Menu is the leader's `.`; its rows are clickable.
             app.act(Action::Menu);
             assert!(matches!(app.mode, Mode::Actions { .. }));
@@ -3146,7 +3148,7 @@ mod screen_tests {
                     leader(&mut app, 't');
                 }
                 assert!(
-                    !matches!(app.mode, Mode::NewSession(_)),
+                    matches!(app.mode, Mode::Normal | Mode::Side),
                     "a shell opens no form: {:?}",
                     app.mode
                 );
@@ -3166,18 +3168,15 @@ mod screen_tests {
         }
     }
     #[test]
-    fn the_menu_starts_a_shell_or_opens_the_dialog_and_t_is_the_shell_key() {
+    fn the_menu_starts_a_shell_and_t_and_n_are_shell_keys() {
         let rows = screen::action_items();
         let labels: Vec<&str> = rows.iter().take(3).map(|(l, _)| *l).collect();
         assert_eq!(
             labels,
-            ["Shell here", "Session...", "Pane beside this"],
-            "Shell first"
+            ["Shell here", "Pane beside this", "Files"],
+            "Shell first, and no dialog row: New session is a shell too"
         );
-        assert!(
-            rows.iter()
-                .any(|(l, a)| *l == "Session..." && *a == Action::PickSession)
-        );
+        assert!(!rows.iter().any(|(l, _)| *l == "Session..."));
         assert!(
             rows.iter()
                 .any(|(l, a)| *l == "Shell here" && *a == Action::ShellHere)
@@ -3185,12 +3184,12 @@ mod screen_tests {
         let key = |c: &str| c.parse::<crate::keys::KeySpec>().unwrap();
         let (_, app) = super::design_tests::render_with(100, 30);
         assert_eq!(app.keymap.prefixed.get(&key("t")), Some(&Action::ShellHere));
-        assert_eq!(app.keymap.prefixed.get(&key("n")), Some(&Action::PickSession), "n is the New session dialog");
+        assert_eq!(app.keymap.prefixed.get(&key("n")), Some(&Action::PickSession), "n is New session, which starts a shell at once");
         assert_eq!(app.keymap.prefixed.get(&key("j")), Some(&Action::NextSession));
         assert_eq!(
             app.keymap.global.get(&key("ctrl+t")),
             Some(&Action::ShellHere),
-            "Ctrl+T makes a shell; the dialog is the Menu's Session..."
+            "Ctrl+T makes a shell"
         );
         assert_eq!(app.keymap.global.get(&key("ctrl+tab")), Some(&Action::NextTab));
         let (_, mut app) = super::design_tests::render_with(100, 30);
@@ -3396,6 +3395,8 @@ mod screen_tests {
             app.cfg.ui.layout = layout.into();
             app.cfg.ui.fold_retired_layout();
             app.cfg.ui.padding = "medium".into();
+            // The bar hides in pane mode; a waiting update keeps it up to measure.
+            app.update_available = Some("0.99.0".into());
             let o = draw(&mut app, 160, 45);
             show(&o);
             let lines: Vec<&str> = o.lines().collect();
@@ -3416,8 +3417,8 @@ mod screen_tests {
             );
             assert_eq!(
                 app.screen.side_rect.bottom(),
-                43,
-                "{layout}: and ends above the mode bar, which is one up"
+                42,
+                "{layout}: and ends a blank row above the mode bar, which is one up"
             );
             assert_eq!(
                 screen::mode_bar_row(&app, Rect::new(0, 0, 160, 45)),
@@ -3667,7 +3668,7 @@ mod screen_tests {
         // A row's keys are in its menu; the status line has the global ones.
         let rows: Vec<&str> = o.lines().collect();
         assert!(
-            !rows[2].contains(" menu ") && o.contains(" menu "),
+            !rows[2].contains(" Menu ") && o.contains(" Menu "),
             "the menu chip is at the foot"
         );
         let actions_y = app
@@ -3794,7 +3795,7 @@ mod screen_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let initial = draw(&mut app, 160, 45);
         assert!(
-            !initial.contains("↑ v") && initial.contains(" menu "),
+            !initial.contains("↑ v") && initial.contains(" Menu "),
             "actions stay in the sidebar, no update when current"
         );
         assert!(
@@ -3857,12 +3858,12 @@ mod screen_tests {
     }
 
     #[test]
-    fn closing_sends_a_close_with_undo_and_the_undo_key_undoes_it() {
+    fn closing_asks_then_sends_a_close_with_undo_and_the_undo_key_undoes_it() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let (tx, mut rx) = mpsc::unbounded_channel();
         app.out = tx;
         app.menu_act(menu::Act::End(vec![ClientTerm::local(3)]));
-        assert_eq!(app.mode, Mode::Normal, "nothing is asked");
+        assert!(matches!(app.mode, Mode::Confirm(_)), "closing asks first");
         let sent = |rx: &mut mpsc::UnboundedReceiver<Outgoing>| -> Vec<crate::protocol::Command> {
             std::iter::from_fn(|| rx.try_recv().ok())
                 .filter_map(|o| match o.msg {
@@ -3871,6 +3872,9 @@ mod screen_tests {
                 })
                 .collect()
         };
+        assert!(sent(&mut rx).is_empty(), "nothing is sent before the answer");
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(app.mode, Mode::Normal, "the question is answered");
         assert!(sent(&mut rx).iter().any(|c| matches!(c, Command::CloseSession { term: 3 })));
         let banner = app.closing_banner().expect("the undo offer").text;
         assert!(banner.ends_with("undo 6s") && banner.contains("Ctrl+Space then Ctrl+Z"), "{banner}");
@@ -4139,8 +4143,10 @@ mod screen_tests {
         term.backend().buffer().clone()
     }
 
-    /// The mode bar's row, which the toast sits above.
-    const BAR: u16 = 1;
+    /// Rows the toast sits above the input area's bottom: the mode bar and its gap, none while the
+    /// bar is hidden (keys go to the pane), which is how these tests draw.
+    /// The bar's rows (the bar and its gap) are always kept below the frames.
+    const BAR: u16 = 2;
 
     fn row_text(buf: &ratatui::buffer::Buffer, y: u16) -> String {
         (0..buf.area.width)
@@ -5438,6 +5444,30 @@ second line
     }
 
     #[test]
+    fn up_and_down_on_the_spinner_row_move_without_closing_settings() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let cat = modal::Cat::ALL.iter().position(|c| *c == modal::Cat::Appearance).unwrap();
+        let rows = design::settings_rows(modal::Cat::Appearance);
+        let spinner = rows
+            .iter()
+            .position(|r| matches!(r, design::SRow::Setting(s) if s.kind == modal::Kind::Spinner))
+            .unwrap();
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView {
+            cat,
+            sel: spinner,
+            editing: None,
+            capturing: false,
+            scroll: 0,
+        }));
+        app.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        let Mode::ScreenSettings(v) = &app.mode else { panic!("Up closed Settings: {:?}", app.mode) };
+        assert_eq!(v.sel, spinner - 1);
+        app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        assert!(matches!(app.mode, Mode::ScreenSettings(_)), "Down closed Settings");
+    }
+
+    #[test]
     fn settings_keys_tab_is_current() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let cat = modal::Cat::ALL
@@ -5788,7 +5818,7 @@ second line
                 .contains("settings")
         );
         assert!(
-            cards.contains(" menu ") && cards.contains(" + "),
+            cards.contains(" Menu ") && cards.contains(" + "),
             "sidebar controls remain in the sidebar"
         );
     }
@@ -6019,7 +6049,7 @@ second line
         let y = side.y + side.height / 2;
         assert_eq!(buf[(side.x, y)].symbol(), "│", "the card's line");
         assert_eq!(buf[(side.x, y)].bg, app.theme.bg);
-        assert_eq!(buf[(side.x + 1, y)].bg, app.theme.sidebar_bg, "the panel");
+        assert_eq!(buf[(side.x + 1, y)].bg, app.theme.bg, "the same ground");
         assert_eq!(buf[(side.x, side.y)].symbol(), "╭", "a round corner");
         // Off makes it square; Full keeps the centred line.
         app.cfg.ui.rounded = crate::config::Rounding::Off;
@@ -6143,7 +6173,7 @@ second line
     }
 
     #[test]
-    fn shortcut_mode_lights_the_focused_border_sky() {
+    fn key_mode_lights_the_focused_border_in_the_keys_orange() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let border = |app: &mut App| {
             let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
@@ -6152,11 +6182,43 @@ second line
             term.backend().buffer()[(r.x, r.y + 1)].fg
         };
         let own = border(&mut app);
-        assert_ne!(own, app.theme.sky(), "typing: the pane's own colour");
+        assert_ne!(own, app.theme.blocked, "typing: the pane's own colour");
         app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
-        assert_eq!(border(&mut app), app.theme.sky(), "shortcut mode: sky");
+        assert_eq!(border(&mut app), app.theme.blocked, "key mode: the KEYS chip's orange");
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         assert_eq!(border(&mut app), own, "back to its own colour");
+    }
+
+    #[test]
+    fn the_bar_rows_are_kept_but_blank_in_pane_mode_so_opening_a_menu_moves_nothing() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let buf = drawn(&mut app, 160, 45);
+        let bar = screen::mode_bar_row(&app, buf.area);
+        assert!(!screen::bar_has_words(&app), "keys go to the pane");
+        assert_eq!(bar.height, 1, "the row is kept");
+        let frames_end = app.pane_frames.iter().map(|(_, r)| r.bottom()).max().expect("a frame");
+        let before = frames_end;
+        let all = buf_text(&buf);
+        assert!(!all.contains("PANE") && !all.contains("KEYS"), "no mode words anywhere");
+
+        // Key mode fills the row with its words; the frames stay exactly where they were.
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        let buf = drawn(&mut app, 160, 45);
+        assert!(buf_text(&buf).contains("KEYS"), "the bar speaks in key mode");
+        let after = app.pane_frames.iter().map(|(_, r)| r.bottom()).max().expect("a frame");
+        assert_eq!(after, before, "the frames did not move");
+    }
+
+    #[test]
+    fn key_mode_brings_the_bar_back_and_turns_the_focused_frame_the_keys_orange() {
+        let mut app = shortcut_mode();
+        let buf = drawn(&mut app, 160, 45);
+        let bar = screen::mode_bar_row(&app, buf.area);
+        assert_eq!(bar.height, 1, "the bar is back");
+        assert_eq!(buf[(bar.x + 2, bar.y)].bg, app.theme.blocked, "the KEYS chip");
+        let r = app.pane_frames.first().expect("a pane").1;
+        assert!(r.bottom() < bar.y, "the frames stop above the bar and its gap");
+        assert_eq!(buf[(r.x, r.y + 1)].fg, app.theme.blocked, "the focused frame matches the chip");
     }
 
     fn shortcut_mode() -> App {
@@ -6485,6 +6547,9 @@ second line
     /// keys (`SETTINGS`, `FILES`, …), and the bar's ground at its right end, drawn at 160×45.
     fn shortcut_tag(app: &mut App) -> Option<(String, ratatui::style::Color)> {
         let buf = drawn(app, 160, 45);
+        if !screen::bar_has_words(app) {
+            return None;
+        }
         let (row, text) = bar_text(app, &buf);
         let tag = text.trim().split("  ").next().unwrap_or_default();
         (tag != "PANE").then(|| (tag.into(), buf[(row.x + 2, row.y)].bg))
@@ -6655,12 +6720,12 @@ second line
         (
             "settings",
             true,
-            "SETTINGS  · j/k move · Tab section · Enter change · shortcut mode waits · Esc close",
+            "SETTINGS  · ↑↓ move · Tab section · Enter change · shortcut mode waits · Esc close",
         ),
         (
             "settings",
             false,
-            "SETTINGS  · j/k move · Tab section · Enter change · Esc close",
+            "SETTINGS  · ↑↓ move · Tab section · Enter change · Esc close",
         ),
         (
             "files",
@@ -7361,6 +7426,14 @@ second line
                     let text = buf_text(&buf);
                     show(&format!("===== {layout} {w}x{h} {mode}\n{text}"));
                     let at = format!("{layout} {w}x{h} {mode}");
+                    if mode == "typing" {
+                        // Keys go to the pane: nothing to say, so the bar's rows are kept blank under the cards.
+                        let bar = screen::mode_bar_row(&app, buf.area);
+                        assert_eq!(bar.height, 1, "{at}: the bar's row is kept");
+                        assert!(!buf_text(&buf).contains("PANE"), "{at}: no PANE tag");
+                        assert!(app.pane_frames.iter().any(|(_, r)| r.bottom() < bar.y), "{at}: the panes end above the bar");
+                        continue;
+                    }
                     let (row, bar) = bar_text(&app, &buf);
                     assert_eq!(
                         row.y,
@@ -7370,8 +7443,8 @@ second line
                     assert!(bar.trim().starts_with(bar_words(mode)), "{at}: {bar}");
                     assert_eq!(
                         buf[(row.right() - 1, row.y)].bg,
-                        app.theme.sidebar_bg,
-                        "{at}: the bar is on the panel ground in every mode"
+                        app.theme.bg,
+                        "{at}: the bar is on the ground in every mode"
                     );
                     let row0: String = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
                     assert!(
@@ -7405,6 +7478,12 @@ second line
                                 let at = format!(
                                     "{layout} {side} padding {padding} {rounded:?} {w}x{h} {mode}"
                                 );
+                                if mode == "typing" {
+                                    if screen::bar_has_words(&app) {
+                                        failures.push(format!("{at}: a bar while keys go to the pane"));
+                                    }
+                                    continue;
+                                }
                                 let (row, bar) = bar_text(&app, &buf);
                                 let (rows, cols): (u16, u16) = match padding {
                                     "small" => (0, 0),
@@ -7541,11 +7620,7 @@ second line
         let y = screen::mode_bar_row(&app, buf.area).y;
         let new = on_bar(&app, &buf, "n new").expect("n new");
         click_at(&mut app, new + 2, y);
-        assert!(
-            matches!(app.mode, Mode::NewSession(_)),
-            "n opened New session: {:?}",
-            std::mem::discriminant(&app.mode)
-        );
+        assert_eq!(app.mode, Mode::Normal, "n starts a shell at once, so there is no dialog and the mode ends");
         let mut app = shortcut_mode();
         let buf = drawn(&mut app, 160, 45);
         let split = on_bar(&app, &buf, "s split").expect("s split");
@@ -7576,6 +7651,8 @@ second line
     fn a_click_on_typing_starts_shortcut_mode_but_not_over_a_popup() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.cfg.ui.which_key = false;
+        // The bar hides while keys go to the pane; a waiting update is what keeps it up to click.
+        app.update_available = Some("0.99.0".into());
         let buf = drawn(&mut app, 160, 45);
         let y = screen::mode_bar_row(&app, buf.area).y;
         let x = on_bar(&app, &buf, "PANE").expect("PANE");
@@ -7725,7 +7802,9 @@ second line
         type SetUp = fn(&mut App);
         let states: [(&str, Option<S>, SetUp); 3] = [
             ("PANE", Some(S::ShortcutMode), |app| {
-                app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+                app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+                // The bar hides in pane mode; a waiting update keeps it up.
+                app.update_available = Some("0.99.0".into());
             }),
             ("KEYS", Some(S::Leader), |_| {}),
             ("INBOX", None, |app| tap(app, 'i')),
@@ -8083,7 +8162,7 @@ mod settings_splash_tests {
         }
         assert!(settings.contains("Leader key") && settings.contains("Splash screen"));
         assert!(
-            keys.contains("Dark theme") && keys.contains("Enter browse"),
+            keys.contains("Dark theme") && keys.contains("Enter search"),
             "the theme control opens the browser"
         );
     }
@@ -9201,7 +9280,7 @@ mod check_sheet_tests {
     fn the_sheet_keeps_the_sidebars_foot_and_waits_for_output_it_has_not_got() {
         let mut app = open(160, 45, |_| {}, check(CheckState::Failed, Some(1)), None);
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains(" menu "), "the foot stays");
+        assert!(o.contains(" Menu "), "the foot stays");
         assert!(o.contains("OUTPUT  reading…"), "no output yet:\n{o}");
     }
 
@@ -10506,7 +10585,7 @@ mod check_settings_tests {
 
     #[test]
     fn saving_a_check_writes_its_table_in_place_and_keeps_the_comments() {
-        let before = "# my notes\ntheme = \"nord\"\n\n[ui]\n# my ui notes\nsidebar = true\n";
+        let before = "# my notes\ntheme = \"tokyo-night\"\n\n[ui]\n# my ui notes\nsidebar = true\n";
         let (out, cfg) = edited(before, set("npm test", 600));
         assert!(
             out.contains("# my notes") && out.contains("# my ui notes"),
@@ -10568,7 +10647,7 @@ mod check_settings_tests {
             cfg.check.is_empty() && !out.contains("check"),
             "the last one takes the key with it: {out}"
         );
-        let (_, cfg) = edited("theme = \"nord\"\n", remove(project()));
+        let (_, cfg) = edited("theme = \"tokyo-night\"\n", remove(project()));
         assert!(cfg.check.is_empty(), "removing what is not there is fine");
     }
 
@@ -12475,6 +12554,8 @@ mod side_panel_width_tests {
             matches!(app.view, Some(View::Changes(_))),
             "Changes stays open beside it"
         );
+        // The bar hides while keys go to the pane; a waiting update keeps it up to read.
+        app.update_available = Some("0.99.0".into());
         let mut term = Terminal::new(TestBackend::new(200, 50)).unwrap();
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = term.backend().buffer();
@@ -12530,11 +12611,8 @@ mod side_panel_width_tests {
             .expect("the focused pane beside the sheet");
         click(&mut app, pane.x + pane.width / 2, pane.y + pane.height / 2);
         leader_x(&mut app);
-        let first = app.closing_banner().expect("the pane has the keys: x closes it").text;
-        // A working agent asks for the same press again; a shell is closed at once.
-        if first.starts_with("Close and stop") {
-            key(&mut app, 'x');
-        }
+        assert!(matches!(app.mode, Mode::Confirm(_)), "the pane has the keys: x asks to close it");
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         let banner = app.closing_banner().expect("closed").text;
         assert!(banner.starts_with("Closed "), "it closes the focused pane: {banner}");
         assert!(
@@ -12559,10 +12637,8 @@ mod side_panel_width_tests {
             .unwrap()
             .status = Status::Working;
         leader_x(&mut app);
-        let first = app.closing_banner().expect("x closes the row").text;
-        if first.starts_with("Close and stop") {
-            key(&mut app, 'x');
-        }
+        assert!(matches!(app.mode, Mode::Confirm(_)), "x asks to close the row");
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         let banner = app.closing_banner().expect("closed").text;
         assert!(banner.starts_with("Closed "), "it closes the cursor's session: {banner}");
         let _ = row;
@@ -12589,9 +12665,8 @@ mod side_panel_width_tests {
         app.screen_place(b, Some(a));
         draw(&mut app, 200, 50);
         leader_x(&mut app);
-        if app.closing_banner().is_some_and(|b| b.warn) {
-            key(&mut app, 'x');
-        }
+        assert!(matches!(app.mode, Mode::Confirm(_)), "x asks to close the focused split");
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         let banner = app.closing_banner().expect("x closed the focused split").text;
         assert!(banner.starts_with("Closed "), "{banner}");
         let _ = a;
@@ -13022,8 +13097,8 @@ mod files_panel_tests {
             .find(|l| l.contains('‹'))
             .expect("the file's header");
         assert!(
-            header.contains("1–15 of 60 "),
-            "the title and the mode bar take a row each: {header}"
+            header.contains("1–14 of 60 "),
+            "the title, the mode bar and the gap above it take a row each: {header}"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

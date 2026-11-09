@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { InspectPanel, type InspectView } from './InspectPanel'
@@ -106,16 +106,35 @@ describe('Inspect panel', () => {
     },
   )
 
-  it('opens a folder and previews a file in it', async () => {
+  it('shows the file tree with a file beside it, opens folders in place and highlights the file', async () => {
     daemonAnswers({
       Tree: [{ name: 'src', is_directory: true }, { name: 'README.md', is_directory: false }],
-      File: 'hello\nworld\n',
+      File: 'const answer = 42 // the answer\n',
     })
     renderPanel('files')
 
+    const folder = await screen.findByRole('button', { name: 'src' })
+    expect(folder).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(folder)
+    expect(folder).toHaveAttribute('aria-expanded', 'true')
+
     fireEvent.click(await screen.findByRole('button', { name: 'README.md' }))
     expect(await screen.findByLabelText('Preview of README.md')).toBeTruthy()
-    await waitFor(() => { expect(screen.getByLabelText('Preview of README.md').textContent).toContain('world') })
+    await waitFor(() => { expect(screen.getByLabelText('Preview of README.md').textContent).toContain('answer') })
+    // The tree stays on screen beside the file, and the file is read-only (no editor).
+    expect(screen.getByRole('navigation', { name: 'Files' })).toBeTruthy()
+    expect(screen.queryByRole('textbox')).toBeNull()
+  })
+
+  it('opens the README by default, or the first file when there is none', async () => {
+    daemonAnswers({ Tree: [{ name: 'src', is_directory: true }, { name: 'main.go', is_directory: false }, { name: 'README.md', is_directory: false }], File: '# hello\n' })
+    renderPanel('files')
+    expect(await screen.findByLabelText('Preview of README.md')).toBeTruthy()
+    cleanup()
+
+    daemonAnswers({ Tree: [{ name: 'src', is_directory: true }, { name: 'main.go', is_directory: false }], File: 'package main\n' })
+    renderPanel('files')
+    expect(await screen.findByLabelText('Preview of main.go')).toBeTruthy()
   })
 
   it('marks the current branch and its distance from the upstream', async () => {
@@ -148,7 +167,7 @@ describe('Inspect history', () => {
     const { onNotice } = renderPanel('history')
 
     fireEvent.click(await screen.findByRole('button', { name: 'Restore' }))
-    expect(screen.getByRole('alertdialog').textContent).toContain('What is there now is saved first')
+    expect(screen.getByRole('group', { name: 'Confirm restore' }).textContent).toContain('What is there now is saved first')
     expect(vi.mocked(invoke)).not.toHaveBeenCalledWith('restore_snapshot', expect.anything())
 
     fireEvent.click(screen.getByRole('button', { name: 'Restore files' }))

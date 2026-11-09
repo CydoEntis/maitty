@@ -10,7 +10,7 @@ use super::screen::machines::{
 };
 use super::*;
 use crate::client::link::ConnectionState;
-use crate::client::machine_config;
+use crate::client::machine_config::{self, Grant};
 use crate::client::machine_ids;
 use crate::link_failure::FailureClass;
 use crate::machine_probe::{self, Probe};
@@ -71,6 +71,16 @@ impl Default for Flow {
             forgotten: HashSet::new(),
         }
     }
+}
+
+/// What the page says after a grant is switched, so it is never a guess whether it took.
+fn grant_words(grant: Grant, on: bool, name: &str) -> String {
+    let what = match grant {
+        Grant::Clipboard => "Copying to your clipboard from",
+        Grant::Notices => "Toasts from",
+        Grant::Sounds => "Alert sounds from",
+    };
+    format!("{what} {name} are now {}.", if on { "on" } else { "off" })
 }
 
 fn say(text: impl Into<String>, error: bool) -> MachineNotice {
@@ -439,6 +449,44 @@ impl App {
             .iter()
             .find(|m| m.name.eq_ignore_ascii_case(name))
             .cloned()
+    }
+
+    /// Turn one thing a machine may do to this computer on or off, as the other keys of the Machines
+    /// page do: written to its entry, and what this window holds is changed with it, so the next alert
+    /// already follows it.
+    pub(in crate::client) fn machine_toggle_grant(&mut self, name: &str, grant: Grant) -> MachineNotice {
+        let Some(def) = self.configured(name) else {
+            return say(format!("{name} is not in your machines."), true);
+        };
+        let now = match grant {
+            Grant::Clipboard => def.clipboard,
+            Grant::Notices => def.notices,
+            Grant::Sounds => def.sounds,
+        };
+        match machine_config::set_grant(&self.machine_flow.local_config, &def.name, grant, !now) {
+            Ok(true) => {}
+            Ok(false) => {
+                return say(
+                    format!(
+                        "{} is not in config.local.toml, so this cannot be changed here.",
+                        def.name
+                    ),
+                    true,
+                );
+            }
+            Err(e) => return say(format!("Could not change {}: {e:#}", def.name), true),
+        }
+        for m in &mut self.cfg.machines {
+            if m.name.eq_ignore_ascii_case(&def.name) {
+                match grant {
+                    Grant::Clipboard => m.clipboard = !now,
+                    Grant::Notices => m.notices = !now,
+                    Grant::Sounds => m.sounds = !now,
+                }
+            }
+        }
+        self.dirty = true;
+        say(grant_words(grant, !now, &def.name), false)
     }
 
     /// Dial a machine now, letting a daemon that was refused be looked at again. A machine

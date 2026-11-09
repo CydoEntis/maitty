@@ -317,7 +317,7 @@ pub fn integrate_agents(exe: &Path) -> Result<(), String> {
     crate::proc::run(Command::new(exe).arg("integrate")).map(drop)
 }
 
-fn integrate_opted_out() -> bool {
+pub(crate) fn integrate_opted_out() -> bool {
     std::env::var(concat!(env!("APP_ENV"), "_NO_INTEGRATE")).is_ok_and(|v| v == "1")
 }
 

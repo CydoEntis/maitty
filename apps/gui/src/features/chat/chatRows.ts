@@ -1,3 +1,4 @@
+import { parseTaskNotifications } from './taskNotification'
 import type { ApprovalEvent, ChatEvent, CommandEvent, EditEvent, ItemStatus, MessageEvent, SubagentEvent, TodoEvent, ToolEvent, TurnEvent } from './chatEvents'
 import { startsTable, streamingText } from './markdown'
 import { describeStep } from './stepInfo'
@@ -15,6 +16,8 @@ export type ChatRow =
   | { readonly kind: 'divider'; readonly key: string; readonly event: TurnEvent }
   /** What the person just sent, shown before the history has it; `echoText` of `buildRows`. */
   | { readonly kind: 'echo'; readonly key: string; readonly text: string }
+  /** A helper agent reporting back (the harness's `<task-notification>`), as one quiet line. */
+  | { readonly kind: 'report'; readonly key: string; readonly text: string }
   /** The line under the last item while a turn runs, with what the agent is doing (`describeWork`). */
   | { readonly kind: 'working'; readonly key: string; readonly phrase: string }
 
@@ -68,7 +71,9 @@ export function buildRows(events: readonly ChatEvent[], working: boolean, root: 
     switch (event.kind) {
       case 'message': {
         if (event.role === 'user') {
-          rows.push({ kind: 'user', key: event.id, event })
+          const reports = parseTaskNotifications(event.text)
+          if (reports !== null) rows.push(...reports.map((text, index): ChatRow => ({ kind: 'report', key: `${event.id}:${String(index)}`, text })))
+          else rows.push({ kind: 'user', key: event.id, event })
           break
         }
         const previous = rows.at(-1)

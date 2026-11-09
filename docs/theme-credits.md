@@ -1,5 +1,9 @@
 # Theme sources
 
+> The built-in list has since been cut to sixteen themes: Maitty's four and a dark and a light of GitHub, One, Catppuccin,
+> Solarized, Gruvbox and Tokyo Night (`crates/maitty-settings/themes.json`). The rest of this page records where the
+> palettes of the themes that were built in earlier came from; only the families named here still ship.
+
 Research checked on 2026-10-14 against the creators' source repositories. The
 catalog covers all 25 requested families with 42 palettes. Before this expansion,
 Maitty already included Dracula, Gruvbox Dark, Nord, Tokyo Night Night, and

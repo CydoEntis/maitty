@@ -5,7 +5,7 @@ import { afterFailure, createFeed, hasPendingApproval, syncFeed, type ChatFeed, 
 import { recordApprovalAnswer, selectChatEvents } from './projection'
 
 /** How often an open chat asks the daemon for news: quickly while the agent works or waits on a person, slowly otherwise. */
-export const ACTIVE_POLL_MS = 1000
+export const ACTIVE_POLL_MS = 300
 export const IDLE_POLL_MS = 3000
 
 /** The feeds the window has read, so reopening a chat shows its history at once and reads only what changed. */

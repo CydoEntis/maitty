@@ -113,7 +113,7 @@ export function composite(top: string, under: string): string {
   return formatColor({ r: over(t.r, u.r), g: over(t.g, u.g), b: over(t.b, u.b), a: 1 })
 }
 
-function luminance(color: string): number {
+export function luminance(color: string): number {
   const { r, g, b } = parseColor(color)
   return LUMINANCE.r * toLinear(r) + LUMINANCE.g * toLinear(g) + LUMINANCE.b * toLinear(b)
 }

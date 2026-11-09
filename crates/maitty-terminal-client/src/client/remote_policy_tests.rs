@@ -181,6 +181,35 @@ mod tests {
     }
 
     #[test]
+    fn a_machine_that_connects_with_toasts_off_says_so_once_and_its_alerts_still_raise_nothing() {
+        let term = ClientTerm::on(THERE, 1);
+        let state = || {
+            let mut snap = world(Stage::None).snap.clone();
+            let t = snap.terms.values().next().unwrap().clone();
+            snap.terms.clear();
+            snap.terms.insert(1, crate::protocol::TermInfo { id: 1, status: Status::Blocked, ..t });
+            snap
+        };
+        let mut app = app_with_machine(|_| {});
+        app.notice = None;
+        app.on_machine_server(THERE, ServerMsg::State(state()));
+        let said = app.notice.as_ref().map(|(text, ..)| text.clone()).unwrap_or_default();
+        assert!(said.contains("Toasts from build are off") && said.contains("press n"), "{said}");
+
+        // Said once for the machine this run; an alert from it still raises nothing.
+        app.notice = None;
+        app.on_machine_server(THERE, ServerMsg::State(state()));
+        app.alert_now(term, Status::Blocked);
+        assert!(app.notice.is_none(), "{:?}", app.notice);
+
+        // A machine that was granted toasts needs no explaining.
+        let mut granted = app_with_machine(|d| d.notices = true);
+        granted.notice = None;
+        granted.on_machine_server(THERE, ServerMsg::State(state()));
+        assert!(granted.notice.is_none(), "{:?}", granted.notice);
+    }
+
+    #[test]
     fn a_remote_worktree_prompt_never_opens() {
         let mut app = app_with_machine(|d| {
             d.clipboard = true;

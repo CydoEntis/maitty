@@ -149,6 +149,7 @@ runs a nested server with `MAITTY_SOCKET=<name> maitty`.
 - **Plan:** Plane, project `MAITTY` (see *Project-specific: planning (Plane)*). The shipped, declined and deferred feature lists are in [`docs/FEATURES.md`](docs/FEATURES.md). `docs/ROADMAP.md` is the legacy phase history, to be removed once the sessions editing it have landed; don't add new planned work to either. The current design is [`docs/DESIGN.md`](docs/DESIGN.md).
 - **Branches:** work lands on `dev` at https://github.com/CydoEntis/maitty; one
   commit per logical change, pushed after the gate passes.
+- **Run the current worktree:** `.\scripts\dev.ps1 tui` or `gui` builds and runs this folder's code, never an old install. The TUI's sidebar foot shows `v<version> <commit>[*] <age>` for any build that is not a clean release tag (`*` = uncommitted changes), so a stale build is visible at a glance.
 - **Install locally:** `cargo install --path apps/tui` (stop a running `maitty` first on
   Windows, or the binary is locked).
 - **Releases:** run `scripts/release.sh X.Y.Z` (`--dry-run` prints what it would do). It refuses

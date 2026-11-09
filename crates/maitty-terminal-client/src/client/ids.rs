@@ -108,7 +108,7 @@ mod tests {
 
     #[test]
     fn machines_do_not_change_what_goes_over_the_wire() {
-        assert_eq!(PROTOCOL_VERSION, 75);
+        assert_eq!(PROTOCOL_VERSION, 76);
         let hello = ClientMsg::Hello {
             version: PROTOCOL_VERSION,
             attach: true,
@@ -129,7 +129,7 @@ mod tests {
         let command = ClientMsg::Command(crate::protocol::Command::FocusPane { term: 3 });
         assert_eq!(
             hex(&hello),
-            "81a548656c6c6f86a776657273696f6e4ba6617474616368c3a466726f6d9203a430306666aa73747275637475726564c0a773757266616365a87465726d696e616ca77265706c617973c3"
+            "81a548656c6c6f86a776657273696f6e4ca6617474616368c3a466726f6d9203a430306666aa73747275637475726564c0a773757266616365a87465726d696e616ca77265706c617973c3"
         );
         assert_eq!(
             hex(&input),
@@ -481,7 +481,8 @@ mod tests {
         app.on_machine_server(MachineId(1), state_with_id(Some(BOX_A)));
         app.on_machine_server(MachineId(1), state_with_id(Some(BOX_A)));
         assert!(app.refused.is_empty());
-        assert!(app.notice.is_none());
+        // Nothing about a refusal; the one line it may say is that toasts from the machine are off until turned on.
+        assert!(app.notice.as_ref().is_none_or(|(text, ..)| text.starts_with("Toasts from ")), "{:?}", app.notice);
     }
 
     #[test]

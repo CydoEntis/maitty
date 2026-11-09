@@ -67,7 +67,7 @@ function ExitPill({ event }: { event: CommandEvent }) {
 function CommandState({ event }: { event: CommandEvent }) {
   if (event.status === 'running') {
     return (
-      <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] px-2 py-0.5 text-[11.5px] text-[var(--accent)]">
+      <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] px-2 py-0.5 text-[11.5px] text-[var(--accent-text)]">
         <Spinner className="mx-spin" />
         <span>Running · <ElapsedSince since={event.timing.startedAtMs ?? event.observed.firstSeenAtMs} /></span>
       </span>
@@ -192,7 +192,7 @@ export function TodoCard({ event }: { event: TodoEvent }) {
           <ul className="m-0 list-none p-0">
             {event.items.map((item, index) => (
               <li key={index} className="flex items-start gap-2 py-0.5 text-[13px]">
-                {item.state === 'done' ? <Check className="mt-0.5 size-3.5 shrink-0 text-[var(--ok)]" aria-label="Done" /> : item.state === 'current' ? <CircleDot className="mt-0.5 size-3.5 shrink-0 text-[var(--accent)]" aria-label="In progress" /> : <Circle className="mt-0.5 size-3.5 shrink-0 text-dim" aria-label="To do" />}
+                {item.state === 'done' ? <Check className="mt-0.5 size-3.5 shrink-0 text-[var(--ok)]" aria-label="Done" /> : item.state === 'current' ? <CircleDot className="mt-0.5 size-3.5 shrink-0 text-[var(--accent-text)]" aria-label="In progress" /> : <Circle className="mt-0.5 size-3.5 shrink-0 text-dim" aria-label="To do" />}
                 <span className={item.state === 'done' ? 'text-dim line-through' : item.state === 'current' ? 'font-semibold text-fg' : 'text-fg2'}>{item.text}</span>
               </li>
             ))}
