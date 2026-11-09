@@ -67,6 +67,20 @@ function approvalId(requestId: number | string): string {
   return `approval:${typeof requestId}:${String(requestId)}`
 }
 
+/**
+ * A step still running in a turn that has ended never got its result (an image read, a tool the
+ * history skipped): the agent went on and finished, so the step is shown with the turn's outcome
+ * instead of spinning for good.
+ */
+function settleStrandedSteps(turn: WorkingTurn): void {
+  if (turn.status === null || turn.status === 'running') return
+  const outcome = turn.status === 'completed' ? 'completed' : 'interrupted'
+  for (const [id, item] of turn.items) {
+    if (!item.events.some((event) => 'status' in event && event.status === 'running')) continue
+    turn.items.set(id, { ...item, events: item.events.map((event) => ('status' in event && event.status === 'running' ? { ...event, status: outcome } : event)) })
+  }
+}
+
 export function applyHistoryEntries(state: ChatProjection, entries: readonly unknown[], nowMs: number): ChatProjection {
   const turnOrder = [...state.turnOrder]
   const working = new Map<string, WorkingTurn>()
@@ -113,6 +127,7 @@ export function applyHistoryEntries(state: ChatProjection, entries: readonly unk
     turn.items.set(id, { events: projectItem(state.provider, entry.content, base), firstSeenAtMs, settledAtMs })
   }
 
+  for (const turn of working.values()) settleStrandedSteps(turn)
   if (working.size === 0 && rejectedInputs === state.rejectedInputs) return state
   return { ...state, turnOrder, turns: new Map([...state.turns, ...working]), rejectedInputs }
 }
