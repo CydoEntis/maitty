@@ -170,7 +170,8 @@ describe('how the chat feels while it waits', () => {
   it('marks a mode that asks about nothing, and shows nothing when the file said nothing', async () => {
     const { daemon } = open()
     await settle()
-    expect(screen.getByTitle('Not reported by the agent yet')).toHaveTextContent('Permissions')
+    // This chat can type into its terminal, so the mode is a button (it cycles the mode); it says when the agent has not reported one.
+    expect(screen.getByRole('button', { name: /not reported yet/ })).toHaveTextContent('Permissions')
 
     daemon.meta = { mode: 'bypassPermissions', model: null }
     await settle(IDLE_POLL_MS)
