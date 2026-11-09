@@ -2,6 +2,22 @@
 
 use super::*;
 
+/// Whether what a window was told about a pane still holds in its latest state. A pane's own
+/// status says so, except for a check: it fails or waits for approval after the turn ended, so
+/// the pane reads done or idle while it needs you all the same.
+fn still_asks(t: &TermInfo, status: Status) -> bool {
+    let check_asks = || {
+        matches!(t.status, Status::Done | Status::Idle)
+            && t.checks.iter().any(|check| {
+                matches!(
+                    check.state,
+                    CheckState::Failed | CheckState::NeedsApproval
+                )
+            })
+    };
+    t.status == status || (status == Status::Blocked && check_asks())
+}
+
 impl App {
     /// A message from the server can close a popup with no key pressed: shortcut mode held
     /// under it comes back then, not after a key has gone to the pane.
@@ -328,7 +344,10 @@ impl App {
     /// alert for a pane it no longer lists, and a parser and size for each it does.
     pub(super) fn sync_terms(&mut self, machine: MachineId, s: &Snapshot) {
         self.settling.retain(|id, (status, _)| {
-            id.machine != machine || s.terms.get(&id.term).is_some_and(|t| t.status == *status)
+            id.machine != machine
+                || s.terms
+                    .get(&id.term)
+                    .is_some_and(|t| still_asks(t, *status))
         });
         self.parsers
             .retain(|id, _| id.machine != machine || s.terms.contains_key(&id.term));
@@ -389,7 +408,7 @@ impl App {
             .collect();
         for (term, status) in due {
             self.settling.remove(&term);
-            if self.term_info(term).is_some_and(|t| t.status == status) {
+            if self.term_info(term).is_some_and(|t| still_asks(t, status)) {
                 self.alert_now(term, status);
                 self.dirty = true;
             }
@@ -400,7 +419,7 @@ impl App {
     /// pane you are looking at rings neither.
     /// With no window open the server shows a desktop notification instead.
     pub(super) fn alert_now(&mut self, term: ClientTerm, status: Status) {
-        if !self.term_info(term).is_some_and(|t| t.status == status) {
+        if !self.term_info(term).is_some_and(|t| still_asks(t, status)) {
             return;
         }
         // You are looking at it: a sound adds nothing.

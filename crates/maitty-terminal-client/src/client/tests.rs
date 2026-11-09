@@ -5014,6 +5014,44 @@ second line
     }
 
     #[test]
+    fn a_failed_check_rings_for_a_pane_whose_turn_has_ended() {
+        let (_, mut app) = super::design_tests::render_with(100, 30);
+        app.notice = None;
+        let pane = app.snap.terms.get_mut(&2).unwrap();
+        pane.status = Status::Done;
+        pane.checks = vec![crate::protocol::CheckInfo {
+            state: crate::protocol::CheckState::Failed,
+            ..Default::default()
+        }];
+        let term = ClientTerm::local(2);
+        app.on_server(ServerMsg::Attention {
+            term: 2,
+            status: Status::Blocked,
+        });
+        // The next state the daemon sends still shows the pane done: the alert must outlive it.
+        app.on_server(ServerMsg::State(app.snap.clone()));
+        app.settling.get_mut(&term).expect("still waiting to ring").1 =
+            Instant::now() - Duration::from_millis(1);
+        app.settle_alerts();
+        assert!(
+            app.alerted.contains_key(&term),
+            "a failed check needs you, though the pane reads done"
+        );
+
+        // With the check passed it is only a finished pane: a stale needs-you says nothing.
+        app.alerted.clear();
+        app.last_alert = None;
+        app.snap.terms.get_mut(&2).unwrap().checks[0].state = crate::protocol::CheckState::Passed;
+        app.on_server(ServerMsg::Attention {
+            term: 2,
+            status: Status::Blocked,
+        });
+        app.settling.get_mut(&term).unwrap().1 = Instant::now() - Duration::from_millis(1);
+        app.settle_alerts();
+        assert!(!app.alerted.contains_key(&term));
+    }
+
+    #[test]
     fn a_blocker_in_the_pane_you_are_looking_at_makes_no_sound() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let id = app.focused().unwrap();
