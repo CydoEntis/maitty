@@ -441,7 +441,12 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   (`--main` under `rgba(--hl,.075)` to `.035`, a `rgba(--hl,.12)` border, radius 16), a two-line text box on top, **+**
   (attach) at the left, and at the right the model picker ("Claude Sonnet 5.5 · Medium ▾": the agent's mark, the model
   picked or the one its own file says, the effort) and the round 32px send button, teal when it can send and grey while
-  a question waits; with nothing typed while a turn runs it is a Stop square. Placeholders: "Message claude", "Queue a
+  a question waits. While the agent works, or a message is held until it starts, the send button is the shared working spinner
+  (`Spinner`, so no extra animation); when the turn can be stopped (nothing typed) hovering or focusing it shows the Stop square.
+  Claude's model chip and mode chip are always there, from the first frame of a new chat: while the agent starts or works they
+  stay where they are, greyed out with the reason as their tooltip, so the box never gains or loses a control. A chat that
+  follows another agent (Codex, Gemini) draws its model label from the start, with just the agent's name until it says its
+  model. The "agent has not reported" hint of a starting chat floats over the conversation and moves nothing. Placeholders: "Message claude", "Queue a
   message for when claude finishes" while it works, "Answer the request above first" (and off) while a question
   waits. **3. The settings tray**: narrower and darker, under the box: the permission mode from the agent's own file
   ("Ask before running", "Plan", "Bypass permissions" in red, or "Permissions" before it has said), Subagents with their

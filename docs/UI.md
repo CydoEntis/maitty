@@ -821,7 +821,9 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
 - **While it waits.** The chat never looks stuck. First read of a history: `ChatSkeleton`, the shape of a conversation,
   static (an endless animation costs a repaint every frame, PERFORMANCE). A new session's chat is `StartingChat`, there
   at once with its message box; what is typed then is held per session (`firstMessage.ts`) and sent when the real chat can
-  send, and a half-typed draft carries over. A message sent into the terminal is drawn at once as an `echo` row, with the
+  send, and a half-typed draft carries over. The model, effort and mode picked on the new-chat page are held the same way
+  (`holdStartChoice`): the starting chat draws them in the same chips the real chat has (locked), and the real chat takes them as
+  its conversation's choice, so nothing in the box changes when it takes over. One message is held at a time. A message sent into the terminal is drawn at once as an `echo` row, with the
   working line under it, until the history has those words (`countUserMessages` against the count at send time); it is
   dropped after 20 s rather than left standing as sent. The **working line** says what the agent is doing from the newest
   step still running (`workPhase.ts`): "reading src/app.ts", "writing hello.txt", "running npm test", "thinking". It says

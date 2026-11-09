@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FAKE_CONVERSATION, FakeDaemonHistory } from '../fakeDaemonHistory'
 import { forgetComposers } from '../composerStore'
-import { forgetFirstMessages } from '../firstMessage'
+import { forgetFirstMessages, holdStartChoice, startChoiceOf } from '../firstMessage'
+import { forgetChoices } from '../agentChoice'
 import { forgetChatFeeds, IDLE_POLL_MS } from '../useChatFeed'
 import { ChatSession } from './ChatSession'
 
@@ -24,6 +25,8 @@ beforeEach(() => {
   forgetChatFeeds()
   forgetComposers()
   forgetFirstMessages()
+  forgetChoices()
+  window.localStorage.clear()
 })
 
 afterEach(() => {
@@ -74,13 +77,40 @@ describe('changing the mode, the model and the reasoning of a chat that follows 
     expect(typeInto).toHaveBeenLastCalledWith('/effort high\r')
   })
 
-  it('stays display-only for another agent, and while the agent is working', async () => {
+  it('has no mode dropdown for another agent', async () => {
     open('codex')
     await settle(IDLE_POLL_MS)
     expect(screen.queryByRole('button', { name: /^Permission mode/ })).not.toBeInTheDocument()
-    cleanup()
-    open('claude', 'Working')
+  })
+
+  it('keeps both chips in place while the agent works, greyed out with the reason, and sends nothing from them', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const typeInto = open('claude', 'Working')
     await settle(IDLE_POLL_MS)
-    expect(screen.queryByRole('button', { name: /^Permission mode/ })).not.toBeInTheDocument()
+
+    const mode = screen.getByRole('button', { name: /^Permission mode: Auto/ })
+    expect(mode).toHaveAttribute('aria-disabled', 'true')
+    expect(mode).toHaveAttribute('title', expect.stringMatching(/working/))
+    const model = screen.getByRole('button', { name: /^Agent, model and reasoning/ })
+    expect(model).toHaveAttribute('aria-disabled', 'true')
+
+    await user.click(mode)
+    await user.click(model)
+    expect(screen.queryByRole('menuitemradio')).not.toBeInTheDocument()
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument()
+    expect(typeInto).not.toHaveBeenCalled()
+  })
+
+  it('starts from what was picked on the new-chat page, before the agent has said anything', async () => {
+    holdStartChoice('s1', { model: 'claude-opus-5-5', reasoning: 'high', mode: 'plan' })
+    const daemon = new FakeDaemonHistory()
+    daemon.meta = null
+    fake.current = daemon
+    render(<ChatSession link={{ conversation: FAKE_CONVERSATION, generation: 1, readOnly: true }} agent="claude" online typeInto={vi.fn()} sessionId="s1" />)
+    await settle(IDLE_POLL_MS)
+
+    expect(screen.getByRole('button', { name: /^Agent, model and reasoning: Claude · Opus 5.5 · High/ })).toHaveTextContent('High')
+    expect(screen.getByRole('button', { name: /^Permission mode: Plan/ })).toBeInTheDocument()
+    expect(startChoiceOf('s1')).toBeNull()
   })
 })

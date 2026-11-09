@@ -5,7 +5,9 @@ import { connectAgent } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
 import { NO_EVENTS_HINT_AFTER_MS, noEventsHint, type ChatAgent } from '@/features/workspace/model/chatView'
 import { keepComposerFocus } from '../keepComposerFocus'
-import { carryDraft, holdFirstMessage, useHeldFirstMessage } from '../firstMessage'
+import { carryDraft, holdFirstMessage, useHeldFirstMessage, useStartChoice } from '../firstMessage'
+import { BYPASS_MODE, modeLabel } from '../chatMeta'
+import { AGENT_LABEL } from '../modelName'
 import type { AttachmentIntake } from '../useAttachmentIntake'
 import type { ChatComposer } from '../useChatComposer'
 import { Composer } from './Composer'
@@ -31,6 +33,7 @@ type StartingChatProps = {
 export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', branch = null }: StartingChatProps) {
   const [draft, setDraftState] = useState('')
   const held = useHeldFirstMessage(sessionId)
+  const started = useStartChoice(sessionId)
   const [late, setLate] = useState(false)
   const [connecting, setConnecting] = useState(false)
   useEffect(() => {
@@ -58,7 +61,8 @@ export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', 
     removeQueued: () => undefined,
     submit: () => {
       const text = draft.trim()
-      if (text === '') return
+      // One message is held at a time: a second would replace the first before it was ever sent.
+      if (text === '' || held !== null) return
       holdFirstMessage(sessionId, text)
       setDraftState('')
       carryDraft(sessionId, '')
@@ -71,11 +75,11 @@ export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', 
     error: null,
     sendText: () => Promise.resolve(false),
     echo: null,
-  }), [draft, sessionId])
+  }), [draft, held, sessionId])
 
   return (
-    <div className="mx-chat" onClick={keepComposerFocus}>
-      {/* A bar that comes and goes would push the conversation down and up as the chat takes over, so it shows only when the agent is late. */}
+    <div className="mx-chat is-starting" onClick={keepComposerFocus}>
+      {/* It floats over the conversation (chat.css), so it comes and goes without moving anything. */}
       {late && (
         <div className="mx-chat-notices">
           <span role="note" className="is-warn">{noEventsHint(agent)}</span>
@@ -93,7 +97,23 @@ export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', 
           <div className="mx-chat-row"><div className="mx-working"><Spinner /><span>{agent} is starting…</span></div></div>
         </div>
       )}
-      <Composer agent={agent} composer={composer} facts={{ mode: null, modeDanger: false, subagents: 0, folder, branch, model: null, onOpenFolder: null }} />
+      <Composer
+        agent={agent}
+        composer={composer}
+        waiting={held !== null}
+        facts={{
+          mode: modeLabel(started?.mode ?? null),
+          modeDanger: started?.mode === BYPASS_MODE,
+          modeKey: started?.mode ?? null,
+          subagents: 0,
+          folder,
+          branch,
+          model: null,
+          onOpenFolder: null,
+          // The chips the real chat will have are drawn now, with what was picked, so nothing is added or removed when it takes over.
+          ...(agent === 'claude' ? { agentChips: { locked: `${AGENT_LABEL[agent]} is starting. Change this once it is ready.`, ...(started === null ? {} : { start: { model: started.model, reasoning: started.reasoning } }) } } : {}),
+        }}
+      />
     </div>
   )
 }

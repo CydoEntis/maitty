@@ -7,6 +7,10 @@
 .mx-chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .mx-chat-notices { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 10px 20px 0; padding: 6px 12px; border-radius: 10px; background: rgba(var(--hl), calc(.04 * var(--hk))); border: 1px solid rgba(var(--hl), calc(.09 * var(--hk))); font-size: 12px; color: var(--fg2); }
 .mx-chat-notices .is-warn { color: var(--warn); }
+/* In a chat that is still starting the hint floats over the top of the conversation: a bar that took its own row would push the
+   conversation down when it came and up when the chat took over. */
+.mx-chat.is-starting { position: relative; }
+.mx-chat.is-starting .mx-chat-notices { position: absolute; top: 0; left: 0; right: 0; z-index: 2; margin-top: 10px; background: linear-gradient(rgba(var(--hl), calc(.04 * var(--hk))), rgba(var(--hl), calc(.04 * var(--hk)))), var(--main); }
 .mx-chat-starting { font-weight: 600; color: var(--fg); }
 .mx-chat-tag { padding: 0 6px; border-radius: 4px; font-size: 11px; font-weight: 600; border: 1px solid var(--line2); }
 .mx-chat-tag.is-danger { color: var(--danger); border-color: var(--danger-line); }
@@ -136,6 +140,17 @@
 .mx-send.is-off { background: rgba(var(--hl), calc(.06 * var(--hk))); color: var(--dim); box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.1 * var(--hk))); }
 .mx-send.is-stop { background: rgba(var(--hl), calc(.08 * var(--hk))); color: var(--fg); box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.14 * var(--hk))); }
 .mx-stop-square { width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
+/* Working: the shared spinner sits where the send arrow was. When the turn can be stopped, hovering or focusing the button shows the
+   stop square in its place, so the spinner is the only thing that moves (an infinite CSS animation here would cost every frame, PERFORMANCE). */
+.mx-send.is-busy { cursor: progress; }
+.mx-send .mx-spin { font-size: 15px; color: currentColor; }
+.mx-send.is-working .mx-stop-square { display: none; }
+.mx-send.is-working:hover .mx-spin, .mx-send.is-working:focus-visible .mx-spin { display: none; }
+.mx-send.is-working:hover .mx-stop-square, .mx-send.is-working:focus-visible .mx-stop-square { display: block; }
+/* A chip that cannot be changed right now keeps its place and size; only its look says so. */
+.mx-model-button.is-locked, .mx-tray-fact.is-locked { cursor: not-allowed; opacity: .6; }
+.mx-model-button.is-locked:hover { background: none; }
+.mx-tray-fact.is-locked:hover { background: none; color: var(--fg2); }
 
 /* Layer three: the settings tray, narrower, hanging from the box. It does not slide under the box: with a
    see-through field the overlap would show as a seam. */

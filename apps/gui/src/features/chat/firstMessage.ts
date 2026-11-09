@@ -4,6 +4,7 @@
  * later, when the agent first reports in, and nothing typed in between may be lost.
  */
 import { useSyncExternalStore } from 'react'
+import type { ReasoningPick } from './agentChoice'
 
 const heldMessages = new Map<string, string>()
 const carriedDrafts = new Map<string, string>()
@@ -48,9 +49,35 @@ export function takeCarriedDraft(sessionId: string): string | null {
   return text
 }
 
+/**
+ * What a new chat was started with: the agent's model and effort, and Claude's permission mode. Kept per session so the message
+ * box draws the same chips before the agent reports in and after, and the real chat starts from what was picked.
+ */
+export type StartChoice = { readonly model: string; readonly reasoning: ReasoningPick; readonly mode: string | null }
+
+const startChoices = new Map<string, StartChoice>()
+
+export function holdStartChoice(sessionId: string, choice: StartChoice): void {
+  startChoices.set(sessionId, choice)
+  notify()
+}
+
+export function startChoiceOf(sessionId: string | undefined): StartChoice | null {
+  return sessionId === undefined ? null : startChoices.get(sessionId) ?? null
+}
+
+export function releaseStartChoice(sessionId: string): void {
+  if (startChoices.delete(sessionId)) notify()
+}
+
+export function useStartChoice(sessionId: string | undefined): StartChoice | null {
+  return useSyncExternalStore(subscribe, () => startChoiceOf(sessionId), () => null)
+}
+
 /** For tests. */
 export function forgetFirstMessages(): void {
   heldMessages.clear()
   carriedDrafts.clear()
+  startChoices.clear()
   notify()
 }
