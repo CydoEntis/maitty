@@ -11,6 +11,24 @@ const MODE_WORDS: Readonly<Record<string, string>> = {
   bypassPermissions: 'Bypass permissions',
 }
 
+/**
+ * The permission mode a Claude screen is showing, from the line under its prompt ("auto mode on (shift+tab to cycle)"); `default` when it
+ * shows none, and null when the screen is empty. Used to show the new mode at once after Shift+Tab, before the agent's file says it.
+ */
+export function modeFromScreen(screen: string): string | null {
+  const text = screen.trimEnd()
+  if (text === '') return null
+  const tail = text.split('\n').slice(-MODE_LINES).join('\n').toLowerCase()
+  if (tail.includes('bypass permissions on')) return 'bypassPermissions'
+  if (tail.includes('accept edits on')) return 'acceptEdits'
+  if (tail.includes('plan mode on')) return 'plan'
+  if (tail.includes('auto mode on')) return 'auto'
+  return 'default'
+}
+
+/** How many of a screen's last lines can hold the mode line. */
+const MODE_LINES = 8
+
 /** A mode that asks about nothing: the header marks it, so it is never a quiet default. */
 export const BYPASS_MODE = 'bypassPermissions'
 

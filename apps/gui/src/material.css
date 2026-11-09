@@ -277,7 +277,7 @@
 :root[data-style="glass"]:not([data-gpu="software"]) .mx-app .mx-window { background: transparent; }
 /* Frosted, not clear: the sidebar and the main card are mostly opaque with a milky sheen and a strong blur, so what is behind them
    reaches the eye as a soft wash of colour and never as shapes. The fill, sheen and edge strength differ for dark and light. */
-.mx-app { --g-fill: 92%; --g-hi: .025; --g-lo: .01; --g-edge: .08; --g-glow: 3%; }
+.mx-app { --g-fill: 90%; --g-hi: .06; --g-lo: .02; --g-edge: .12; --g-glow: 4%; }
 .mx-app[data-theme-kind="light"] { --g-fill: 84%; --g-hi: .45; --g-lo: .2; --g-edge: .6; --g-glow: 5%; }
 :root[data-style="glass"] .mx-app .mx-sidebar,
 :root[data-style="glass"] .mx-app .mx-main {
@@ -292,6 +292,8 @@
    terminal is see-through (the default). Without WebGL the canvas paints the theme's solid ground, which differs only at its edge. */
 :root[data-finish="glass"] .mx-app .mx-pane.is-terminal,
 :root[data-finish="glass"] .mx-app .mx-pane-body:not(.is-chat) { background: transparent; }
+/* The card around a solid terminal is that same ground, so no lighter frame shows around the pane (see-through terminal off, or no WebGL). */
+:root[data-finish="glass"] .mx-app .mx-main:has(.terminal-view:not(.is-transparent)) { background: var(--main); backdrop-filter: none; -webkit-backdrop-filter: none; }
 /* When the terminal paints its own solid ground (no WebGL, or see-through off), the whole pane takes that same ground, so the text area
    and the header and margin around it are one colour. */
 :root[data-finish="glass"] .mx-app .mx-pane.is-terminal:has(.terminal-view:not(.is-transparent)),

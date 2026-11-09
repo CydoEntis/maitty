@@ -15,6 +15,7 @@ vi.mock('@/api/daemon', async (importOriginal) => ({
     if (fake.current === null) throw new Error('no fake daemon')
     return fake.current.read(cursor as never)
   },
+  loadTerminalScreen: () => Promise.resolve('> hi\n\n  dev · Sonnet 5.5\n  ⏵⏵ accept edits on (shift+tab to cycle)\n'),
   loadAgentModels: () => Promise.resolve([{ id: 'claude-opus-5-5', label: 'Opus 5.5', blurb: 'The most capable' }, { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', blurb: 'Fast' }]),
 }))
 
@@ -53,6 +54,9 @@ describe('changing the mode, the model and the reasoning of a chat that follows 
 
     await user.click(screen.getByRole('button', { name: /^Permission mode: .* Click to cycle it/ }))
     expect(typeInto).toHaveBeenCalledExactlyOnceWith('\x1b[Z')
+    // The new mode is read back from the agent's screen at once, before its file says it.
+    await settle(1000)
+    expect(screen.getByRole('button', { name: /^Permission mode: Accept edits/ })).toBeInTheDocument()
   })
 
   it('sends /model and /effort when a model and a reasoning level are picked', async () => {
@@ -63,6 +67,8 @@ describe('changing the mode, the model and the reasoning of a chat that follows 
     await user.click(screen.getByRole('button', { name: /^Agent, model and reasoning/ }))
     await user.click(await screen.findByRole('radio', { name: /Opus 5.5/ }))
     expect(typeInto).toHaveBeenLastCalledWith('/model claude-opus-5-5\r')
+    // The chip shows the picked model at once.
+    expect(screen.getByRole('button', { name: /^Agent, model and reasoning/ })).toHaveTextContent('Opus')
     await user.click(screen.getByRole('radio', { name: 'High' }))
     expect(typeInto).toHaveBeenLastCalledWith('/effort high\r')
   })

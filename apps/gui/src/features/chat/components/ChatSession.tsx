@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { toast } from '@/lib/toast'
-import { answerUserInput, approveRequest } from '@/api/daemon'
+import { answerUserInput, approveRequest, loadTerminalScreen } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
 import { readConversationPermissions } from '@/data/conversationPermissions'
 import type { ChatAgent, ChatLink } from '@/features/workspace/model/chatView'
@@ -11,7 +11,7 @@ import { buildRows, type ChatRow } from '../chatRows'
 import { useChatFeed } from '../useChatFeed'
 import { useChatComposer } from '../useChatComposer'
 import { countUserMessages } from '../workPhase'
-import { BYPASS_MODE, modeLabel } from '../chatMeta'
+import { BYPASS_MODE, modeFromScreen, modeLabel } from '../chatMeta'
 import type { ApprovalDecision } from '../chatEvents'
 import type { PermissionAsk } from '@/data/preview'
 import { ANSWER_KEY, ANSWER_KEYS, choiceKey, type AskChoice } from '../permissionAsk'
@@ -138,13 +138,34 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   const pickChoice = typeInto === undefined ? undefined : (index: number) => typeInto(choiceKey(index)).then(refresh)
   // A chat that follows the agent's own terminal changes its mode, model and reasoning the way its user would: by typing the agent's commands
   // (Shift+Tab, /model, /effort). Offered for Claude, and not while it works, when the keys would land in its turn.
+  // What it shows meanwhile is read back from its screen (mode) or taken from what was picked (model), until the agent's own file says it.
+  const [liveMode, setLiveMode] = useState<{ base: string | null; value: string } | null>(null)
+  const [liveModel, setLiveModel] = useState<{ base: string | null; value: string } | null>(null)
+  const metaMode = feed.meta?.mode ?? null
+  const metaModel = feed.meta?.model ?? null
+  const shownMode = liveMode !== null && liveMode.base === metaMode ? liveMode.value : metaMode
+  const shownModel = liveModel !== null && liveModel.base === metaModel ? liveModel.value : metaModel
   const agentControls = useMemo(() => {
     if (typeInto === undefined || agent !== 'claude' || link.readOnly !== true || !online || working) return {}
     return {
-      onCommand: (text: string) => { void typeInto(text).then(refresh) },
-      onCycleMode: () => { void typeInto(SHIFT_TAB).then(() => { window.setTimeout(refresh, MODE_READ_MS) }) },
+      onCommand: (text: string) => {
+        const model = /^\/model (\S+)/.exec(text)?.[1]
+        if (model !== undefined) setLiveModel({ base: metaModel, value: model })
+        void typeInto(text).then(refresh)
+      },
+      onCycleMode: () => {
+        void typeInto(SHIFT_TAB)
+          .then(() => new Promise<void>((resolve) => { window.setTimeout(resolve, MODE_READ_MS) }))
+          .then(() => (sessionId === undefined ? '' : loadTerminalScreen({ id: sessionId, generation: 0 })))
+          .then((screen) => {
+            const mode = modeFromScreen(screen)
+            if (mode !== null) setLiveMode({ base: metaMode, value: mode })
+            refresh()
+          })
+          .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not read the new permission mode')) })
+      },
     }
-  }, [typeInto, agent, link.readOnly, online, working, refresh])
+  }, [typeInto, agent, link.readOnly, online, working, refresh, sessionId, metaMode, metaModel])
   const composer = useChatComposer({ link, agent, feed, online, refresh, answersPrompt, paneWorking, ...(typeInto ? { typeInto } : {}) })
   const { sendText, setDraft: setComposerDraft, ready, sending, echo } = composer
   // A message just sent shows at once, with the agent taken to be at work on it, until the history has it.
@@ -260,7 +281,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
         composer={composer}
         conversation={link.conversation}
         question={question}
-        facts={{ mode: modeLabel(feed.meta?.mode ?? null), modeDanger: feed.meta?.mode === BYPASS_MODE, subagents: subagentCount, folder, branch, model: feed.meta?.model ?? null, onOpenFolder, ...agentControls }}
+        facts={{ mode: modeLabel(shownMode), modeDanger: shownMode === BYPASS_MODE, subagents: subagentCount, folder, branch, model: shownModel, onOpenFolder, ...agentControls }}
       />
     </div>
   )

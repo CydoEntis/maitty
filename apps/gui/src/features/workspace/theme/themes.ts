@@ -1,7 +1,7 @@
 import type { ITheme } from '@xterm/xterm'
 import maittyTokens from '@tokens/maitty-tokens.json'
 import themeManifest from '@tokens/themes.json'
-import { composite, contrastRatio, mixOklab, withAlpha } from './color'
+import { composite, contrastRatio, luminance, mixOklab, withAlpha } from './color'
 
 /** Every colour role the desktop app reads, set as CSS custom properties on the app root. */
 export type ThemeTokens = {
@@ -229,10 +229,26 @@ const DARK_GLASS = { '--hl': '255,255,255', '--hs': '255,255,255', '--hk': '1', 
 // A light theme's tints (hovers, raised fills, tracks, hairlines) are a warm brown ink, not a blue-grey one, so they read as cream over a pale ground.
 const LIGHT_GLASS = { '--hl': '112,92,52', '--hs': '255,255,255', '--hk': '.85', '--sd': '70,52,24', '--sk': '.3' }
 
+/** A dark ground at or above this luminance (One Dark's grey) is as light as the glass's sheen can sit on without turning grey. */
+const SOFT_GROUND_LUMINANCE = 0.03
+/**
+ * The frost's sheen and edge on a dark ground, in strength: full on a deep ground (Maitty Night), a third of it on a light grey one
+ * (One Dark), where the same white would wash the panel out.
+ */
+const FROST_DEEP = { hi: 0.06, lo: 0.02, edge: 0.12 }
+const FROST_SOFT = { hi: 0.02, lo: 0.007, edge: 0.05 }
+const FROST_DIGITS = 3
+function frostOf(main: string): Record<string, string> {
+  const soft = Math.min(luminance(main) / SOFT_GROUND_LUMINANCE, 1)
+  const strength = (key: keyof typeof FROST_DEEP) => (FROST_DEEP[key] - (FROST_DEEP[key] - FROST_SOFT[key]) * soft).toFixed(FROST_DIGITS)
+  return { '--g-hi': strength('hi'), '--g-lo': strength('lo'), '--g-edge': strength('edge') }
+}
+
 /** The theme as CSS custom properties, for the app root's style. */
 export function themeStyle(theme: ThemeEntry): Record<string, string> {
   const style: Record<string, string> = { '--card-ring': theme.cardRing, colorScheme: theme.light ? 'light' : 'dark', ...(theme.light ? LIGHT_GLASS : DARK_GLASS) }
   for (const [key, variable] of Object.entries(CSS_VARIABLES)) style[variable] = theme.tokens[key as keyof ThemeTokens]
+  if (!theme.light) Object.assign(style, frostOf(theme.tokens.main))
   const { look } = theme
   if (look === undefined) return style
   style['--ui'] = look.ui
