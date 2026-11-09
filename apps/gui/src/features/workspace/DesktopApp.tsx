@@ -206,14 +206,15 @@ const CLEAR_SCREEN = '\x0c'
 
 const makeId: MakeId = (prefix) => `${prefix}-${crypto.randomUUID()}`
 
-function useWindowWidth(): number {
-  const [width, setWidth] = useState(() => window.innerWidth)
+/** Whether the window is narrower than `px`. It changes only when the window crosses that width, so dragging the window's edge does not draw the app again at every pixel. */
+function useWindowNarrowerThan(px: number): boolean {
+  const [narrower, setNarrower] = useState(() => window.innerWidth < px)
   useEffect(() => {
-    const onResize = () => { setWidth(window.innerWidth) }
+    const onResize = () => { setNarrower(window.innerWidth < px) }
     window.addEventListener('resize', onResize)
     return () => { window.removeEventListener('resize', onResize) }
-  }, [])
-  return width
+  }, [px])
+  return narrower
 }
 
 function useSystemReducedMotion(): boolean {
@@ -259,9 +260,8 @@ function olderServiceNote(status: { canRestart: boolean; sessionCount: number; a
 export function DesktopApp() {
   const queryClient = useQueryClient()
   const platform = detectPlatform(navigator.userAgent)
-  const width = useWindowWidth()
-  const compact = width < COMPACT_WIDTH_PX
-  const narrow = width < NARROW_WIDTH_PX
+  const compact = useWindowNarrowerThan(COMPACT_WIDTH_PX)
+  const narrow = useWindowNarrowerThan(NARROW_WIDTH_PX)
   const systemReducedMotion = useSystemReducedMotion()
   const systemDark = useSystemDark()
   const updater = useUpdater()
