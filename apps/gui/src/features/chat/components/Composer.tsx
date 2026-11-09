@@ -30,6 +30,8 @@ export type ComposerFacts = {
   onPickMode?: ((mode: string) => void) | undefined
   /** The mode as the agent's file or screen wrote it, to tick it in the dropdown. */
   modeKey?: string | null | undefined
+  /** Bypass permissions can be picked: this session started with Claude allowing it. */
+  bypassAllowed?: boolean | undefined
 }
 
 type Props = {
@@ -166,9 +168,15 @@ function SettingsTray({ facts }: { facts: ComposerFacts }) {
           <DropdownMenuContent side="top" align="start" aria-label="Permission mode" className="w-[240px] text-fg">
             <DropdownMenuRadioGroup value={facts.modeKey ?? ''} onValueChange={facts.onPickMode}>
               {PICKABLE_MODES.map((key) => (
-                <DropdownMenuRadioItem key={key} value={key} className="text-[12.5px] text-fg focus:bg-hover focus:text-fg">
+                <DropdownMenuRadioItem
+                  key={key}
+                  value={key}
+                  disabled={key === BYPASS_MODE && facts.bypassAllowed !== true}
+                  title={key === BYPASS_MODE && facts.bypassAllowed !== true ? 'Claude only allows this when it starts with Yolo mode on (Settings, General). This session started without it: turn the setting on and start a new session.' : undefined}
+                  className="text-[12.5px] text-fg focus:bg-hover focus:text-fg"
+                >
                   {modeLabel(key)}
-                  {key === BYPASS_MODE && <span className="ml-auto pl-2 text-[11px] text-dim">asks nothing</span>}
+                  {key === BYPASS_MODE && <span className="ml-auto pl-2 text-[11px] text-dim">{facts.bypassAllowed === true ? 'asks nothing' : 'needs a new session'}</span>}
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>

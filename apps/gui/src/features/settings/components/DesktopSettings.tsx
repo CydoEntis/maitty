@@ -1,3 +1,4 @@
+import { toast } from '@/lib/toast'
 import type { UpdaterState } from '@/features/updates/useUpdater'
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
 import { THEMES } from '@/features/workspace/theme/themes'
@@ -356,11 +357,14 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
         title="Yolo mode"
         color="var(--danger)"
         iconPath={<path d="M12 3 5 6v6c0 4.4 3 7.6 7 9 4-1.4 7-4.6 7-9V6z" />}
-        foot="Off for every agent by default. Applies to sessions started after you change it; a running session keeps how it started."
+        foot="Off for every agent by default. Only sessions started after you turn one on get it. Every session already running has to be closed and started again."
       >
         {YOLO_AGENTS.map(({ key, label, detail }) => (
           <Row key={key} label={label} detail={detail}>
-            <Switch aria-label={`Yolo mode for ${label}`} checked={preferences[key]} onCheckedChange={(value) => { update(key, value) }} />
+            <Switch aria-label={`Yolo mode for ${label}`} checked={preferences[key]} onCheckedChange={(value) => {
+              update(key, value)
+              if (value) toast.message(`Yolo mode for ${label} is on for new sessions only`, { description: `Sessions already running keep how they started. Restart one, or start a new session, to get it.` })
+            }} />
           </Row>
         ))}
       </Card>

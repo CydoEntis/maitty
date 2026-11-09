@@ -11,6 +11,7 @@ import { buildRows, type ChatRow } from '../chatRows'
 import { useChatFeed } from '../useChatFeed'
 import { useChatComposer } from '../useChatComposer'
 import { countUserMessages } from '../workPhase'
+import { startedWithYolo } from '../yoloSessions'
 import { BYPASS_MODE, modeFromScreen, modeLabel } from '../chatMeta'
 import type { ApprovalDecision } from '../chatEvents'
 import type { PermissionAsk } from '@/data/preview'
@@ -158,10 +159,11 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
       onPickMode: (target: string) => {
         if (sessionId === undefined) return
         // Shift+Tab only cycles, so press it until the screen shows the picked mode; a mode that never comes up is not allowed in this session.
+        // The chip shows the pick at once and the presses happen behind it; the screen has the last word when they end.
+        setLiveMode({ base: metaMode, value: target })
         const step = async () => {
           for (let press = 0; press <= MODE_CYCLE_MAX; press += 1) {
             const mode = modeFromScreen(await loadTerminalScreen({ id: sessionId, generation: 0 }))
-            if (mode !== null) setLiveMode({ base: metaMode, value: mode })
             if (mode === target) {
               refresh()
               return
@@ -170,6 +172,8 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
             await typeInto(SHIFT_TAB)
             await new Promise<void>((resolve) => { window.setTimeout(resolve, MODE_READ_MS) })
           }
+          const now = modeFromScreen(await loadTerminalScreen({ id: sessionId, generation: 0 }))
+          setLiveMode(now === null ? null : { base: metaMode, value: now })
           toast.error(`${modeLabel(target) ?? target} is not available in this session. Claude has to be started allowing it.`)
           refresh()
         }
@@ -292,7 +296,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
         composer={composer}
         conversation={link.conversation}
         question={question}
-        facts={{ mode: modeLabel(shownMode), modeDanger: shownMode === BYPASS_MODE, subagents: subagentCount, folder, branch, model: shownModel, onOpenFolder, modeKey: shownMode, ...agentControls }}
+        facts={{ mode: modeLabel(shownMode), modeDanger: shownMode === BYPASS_MODE, subagents: subagentCount, folder, branch, model: shownModel, onOpenFolder, modeKey: shownMode, bypassAllowed: startedWithYolo(sessionId), ...agentControls }}
       />
     </div>
   )

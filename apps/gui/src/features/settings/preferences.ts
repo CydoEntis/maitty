@@ -186,7 +186,7 @@ function defaults(): SettingsPreferences {
     statusBar: false,
     perfOverlay: false,
     terminalPlainDrawing: prefersPlainDrawing(),
-    terminalSeeThrough: true,
+    terminalSeeThrough: false,
     backgroundGlow: false,
     cursorBlink: false,
     autoDownloadUpdates: true,

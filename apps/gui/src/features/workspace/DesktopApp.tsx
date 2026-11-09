@@ -100,6 +100,7 @@ import { NewSessionHost } from './components/NewSessionHost'
 import type { NewSessionRequest } from './components/NewSessionModal'
 import { NewChatPage, type NewChatRequest } from './components/NewChatPage'
 import { type WireChoice } from '@/features/chat/agentChoice'
+import { rememberYoloSession } from '@/features/chat/yoloSessions'
 import { launchFlags, yoloFlags } from './model/newChatHost'
 import { GetFileDialog } from './components/GetFileDialog'
 import { MachineUpdateDialog } from './components/MachineUpdateDialog'
@@ -921,13 +922,14 @@ export function DesktopApp() {
       // The daemon learns which agent runs from the agent's own hook, a moment after it starts; until then the
       // session is known to be this agent, so it never shows as a shell.
       setExpectedAgents((current) => ({ ...current, [id]: agent }))
+      if (yoloFlags(agent, yolo) !== '') rememberYoloSession(id)
       window.setTimeout(() => { setExpectedAgents((current) => omitKey(current, id)) }, EXPECTED_AGENT_MS)
       setLayout((current) => openArrangement(current, id, makeId))
       if (view === 'chat') paneViews.choose(id, 'chat')
       // In the same update as the new session opens, so the window never shows the page between the two.
       afterPlace?.()
     }, launchAgent(agent, flags))
-  }, [runStart, paneViews, launchAgent])
+  }, [runStart, paneViews, launchAgent, yolo])
 
   // "Start a Claude chat" on a shell's empty chat card: a chat session in that shell's folder.
   const startChatHere = useCallback((from: SessionView, agent: ChatAgent, fullAccess: boolean) => {
