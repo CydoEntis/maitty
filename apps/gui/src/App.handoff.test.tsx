@@ -523,6 +523,34 @@ describe('desktop terminal multiplexer', () => {
     expect(await screen.findByRole('region', { name: 'Shell in ~/a' })).toBeInTheDocument()
   })
 
+  it('keeps a layout change made while a close was still on its way to the daemon', async () => {
+    const user = userEvent.setup()
+    const a = term(2, `${HOME}/a`)
+    const b = term(7, `${HOME}/a`)
+    const c = term(9, `${HOME}/a`)
+    daemon.loadConversations.mockResolvedValue([a])
+    renderDesktopApp()
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+    daemon.loadConversations.mockResolvedValue([a, b])
+    await user.keyboard('{Control>}{Shift>}d{/Shift}{/Control}')
+    await screen.findByRole('region', { name: 'Terminal 2: ~/a, focused' })
+    daemon.loadConversations.mockResolvedValue([a, b, c])
+    await user.keyboard('{Control>}{Shift>}d{/Shift}{/Control}')
+    const third = await screen.findByRole('region', { name: 'Terminal 3: ~/a, focused' })
+    let ended: () => void = () => undefined
+    daemon.closeSessionWithUndo.mockReturnValue(new Promise<void>((resolve) => { ended = resolve }))
+
+    await user.click(within(screen.getByRole('region', { name: 'Terminal 1: ~/a' })).getByRole('button', { name: 'Close pane · ends its session' }))
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Close' }))
+    await waitFor(() => { expect(daemon.closeSessionWithUndo).toHaveBeenCalledWith(expect.objectContaining({ id: 't2' })) })
+    await user.click(within(third).getByRole('button', { name: 'Maximize pane' }))
+    await screen.findByRole('button', { name: 'Restore layout' })
+    await act(async () => { ended(); await Promise.resolve() })
+
+    await waitFor(() => { expect(screen.getAllByText('Closed ~/a').length).toBeGreaterThan(0) })
+    expect(screen.getByRole('button', { name: 'Restore layout' })).toBeInTheDocument()
+  })
+
   it('undoes the last close with Ctrl+Shift+Z, and leaves the key to the terminal when nothing was closed', async () => {
     const user = userEvent.setup()
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
@@ -816,6 +844,7 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     daemon.loadConversations.mockResolvedValueOnce([term(2, `${HOME}/a`)]).mockRejectedValue(new Error('connection refused'))
     const { client } = renderDesktopApp()
     await screen.findByRole('region', { name: 'Shell in ~/a' })
+    await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
     await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
     await screen.findByText('Reconnecting to maittyd')
     document.elementFromPoint = vi.fn(() => null)

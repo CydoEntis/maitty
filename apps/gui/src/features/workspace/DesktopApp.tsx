@@ -1099,6 +1099,9 @@ export function DesktopApp() {
   }, [queryClient, lastClose])
   // The toast's button outlives the render that made it, so it calls whichever undo is current.
   const undoNow = useLatest(undoLastClose)
+  // Ending a session takes a moment, and the layout may change meanwhile (a split, a resize, another close):
+  // the pane is taken out of the layout as it is when the daemon answers, not as it was when the close began.
+  const layoutNow = useLatest(() => layout)
   const endSessions = useCallback((ids: string[], what: string) => {
     const gone = new Set(ids)
     const running = sessions.filter((session) => gone.has(session.id))
@@ -1115,7 +1118,7 @@ export function DesktopApp() {
       ...terminals.map((session) => closeSessionWithUndo(session.conversation)),
     ])
       .then(async () => {
-        const before = layout
+        const before = layoutNow()
         const after = removeSessions(before, gone)
         setLayout(after)
         if (terminals.length > 0) {
@@ -1129,7 +1132,7 @@ export function DesktopApp() {
         await queryClient.invalidateQueries({ queryKey: ['conversations'] })
       })
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not end the session')) })
-  }, [sessions, flash, queryClient, layout, undoNow])
+  }, [sessions, flash, queryClient, undoNow, layoutNow])
 
   /** Runs `close` now when every session in `ids` has already ended; otherwise asks first. */
   const askToClose = useCallback((ids: string[], close: () => void) => {
