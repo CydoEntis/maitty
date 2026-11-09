@@ -265,11 +265,13 @@
 :root[data-style="pixel"] .mx-app::after { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 999; background: repeating-linear-gradient(180deg, transparent 0 2px, rgba(var(--sd), calc(.14 * var(--sk))) 2px 3px); }
 /* Glass's atmosphere is painted on the whole window, title bar included, so no seam shows under the controls. */
 :root[data-style="glass"] .mx-app { background: var(--bg); isolation: isolate; }
+/* The atmosphere is the theme's own colours at low strength: its accent top left, its blue bottom right, its working colour at the
+   centre, over the theme's window ground, so each theme tints its own glass and none brings a colour it does not have. */
 :root[data-style="glass"]:not([data-gpu="software"]) .mx-app {
   background:
-    radial-gradient(circle at 12% 18%, color-mix(in oklab, var(--working) var(--glow-accent), transparent), transparent 40%),
-    radial-gradient(circle at 80% 84%, color-mix(in oklab, var(--accent) var(--glow-mag), transparent), transparent 38%),
-    radial-gradient(circle at 88% 14%, color-mix(in oklab, var(--ansi-blue) var(--glow-mag), transparent), transparent 34%),
+    radial-gradient(circle at 10% 12%, color-mix(in oklab, var(--accent) var(--glow-accent), transparent), transparent 36%),
+    radial-gradient(circle at 88% 90%, color-mix(in oklab, var(--ansi-blue) var(--glow-mag), transparent), transparent 36%),
+    radial-gradient(circle at 70% 20%, color-mix(in oklab, var(--working) var(--glow-mag), transparent), transparent 26%),
     var(--bg);
 }
 :root[data-style="glass"]:not([data-gpu="software"]) .mx-app .mx-window { background: transparent; }

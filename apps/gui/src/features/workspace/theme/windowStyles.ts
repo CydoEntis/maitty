@@ -39,10 +39,10 @@ export const WINDOW_STYLES: readonly WindowStyleEntry[] = [
     id: 'glass', name: 'Glass', blurb: 'Soft frosted panels with rounded corners.',
     font: INTER,
     dark: {
-      look: { ui: INTER, mono: JETBRAINS_MONO, hk: '.7', sk: '1', glowAccent: '38%', glowMag: '26%' },
+      look: { ui: INTER, mono: JETBRAINS_MONO, hk: '.7', sk: '1', glowAccent: '18%', glowMag: '12%' },
     },
     light: {
-      look: { ui: INTER, mono: JETBRAINS_MONO, hk: '1', sk: '.35', sh: NO_SHEEN, glowAccent: '46%', glowMag: '34%' },
+      look: { ui: INTER, mono: JETBRAINS_MONO, hk: '1', sk: '.35', sh: NO_SHEEN, glowAccent: '22%', glowMag: '15%' },
     },
   },
   {
