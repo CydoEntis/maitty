@@ -912,3 +912,12 @@ fn the_top_plus_offers_a_new_session_or_a_remote_machine_and_there_is_no_remote_
     let menu = rows.join("\n");
     assert!(menu.contains("New session") && menu.contains("Add remote machine"), "{menu}");
 }
+
+#[test]
+fn a_two_cell_working_spinner_is_drawn_whole_in_the_sidebar_not_clipped_to_one_cell() {
+    let mut app = reference_fixture::world(Stage::None);
+    app.cfg.ui.spinner = crate::config::BARS_FRAMES.iter().map(|frame| (*frame).to_string()).collect();
+    let rows = text(&mut app, 140, 36);
+    let whole = crate::config::BARS_FRAMES.iter().any(|frame| rows.iter().any(|row| side_of(row).contains(frame)));
+    assert!(whole, "a whole Bars frame (two cells) is on a working row:\n{}", rows.iter().map(|r| side_of(r)).collect::<Vec<_>>().join("\n"));
+}

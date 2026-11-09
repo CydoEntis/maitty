@@ -760,7 +760,8 @@ fn draw_session(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, row: &SideRow,
         r.x + MARK_X,
         y,
         &[seg(mark.glyph, base.fg(mark.color).add_modifier(Modifier::BOLD))],
-        r.x + MARK_X + 1,
+        // The room before the name: a spinner may be two cells (the Bars frames), and clipping it to one showed two bars, not three.
+        r.x + NAME_X,
     );
     let name_colour = if unknown {
         t.idle
