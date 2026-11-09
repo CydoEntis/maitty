@@ -255,5 +255,5 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
     return () => { window.clearTimeout(timer) }
   }, [typing, first, online, waitingForMessage, awaitingAnswer, sending, conversation, send])
 
-  return { draft, setDraft, attachments, attach, readOnly, queue, removeQueued, submit, stop, running, sending, disabledReason, ready: disabledReason === null && !(typing && busy), error, sendText: send, echo }
+  return { draft, setDraft, attachments, attach, readOnly, attachable: !readOnly || typing, queue, removeQueued, submit, stop, running, sending, disabledReason, ready: disabledReason === null && !(typing && busy), error, sendText: send, echo }
 }

@@ -865,7 +865,7 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   when `attachments_exist` says the kept file was swept). The composer takes a `machine` (the chat link's):
   for another machine the same picker, drop and paste send the file there (`sendAttachments` over `send_files_to_machine` /
   `send_pasted_image`, with the terminal's progress toast and Cancel) and the chip holds the far-side path, checked
-  before it is used. No chat sets a machine yet. A read-only chat shows no paperclip.
+  before it is used. No chat sets a machine yet. A read-only chat shows no paperclip, unless it types into the agent's terminal (a chat that follows a terminal agent): the files go in as the block of paths, pasted with the message.
   The new-chat page and a chat that is still starting take files too, keyed in `composerStore` under a negative key
   (`-1` for the page, `draftKeyFor(session)` for a starting chat) since no conversation exists yet; the page puts them in the
   first message, the starting chat holds them with its held message and shows the echo as text and chips.

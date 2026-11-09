@@ -69,15 +69,15 @@ async function settle(ms = 0) {
   await act(async () => { await vi.advanceTimersByTimeAsync(ms) })
 }
 
-type Setup = { online?: boolean; readOnly?: boolean; prepare?: (daemon: FakeDaemonHistory) => void }
+type Setup = { online?: boolean; readOnly?: boolean; typeInto?: (text: string) => Promise<void>; prepare?: (daemon: FakeDaemonHistory) => void }
 
-async function open({ online = true, readOnly = false, prepare = () => undefined }: Setup = {}) {
+async function open({ online = true, readOnly = false, typeInto, prepare = () => undefined }: Setup = {}) {
   const daemon = new FakeDaemonHistory()
   daemon.upsert(daemon.message('t1', 'u', 'User', 'earlier'))
   prepare(daemon)
   fake.current = daemon
   const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) })
-  render(<ChatSession link={{ conversation: FAKE_CONVERSATION, generation: 1, ...(readOnly ? { readOnly: true } : {}) }} agent="claude" online={online} />)
+  render(<ChatSession link={{ conversation: FAKE_CONVERSATION, generation: 1, ...(readOnly ? { readOnly: true } : {}) }} agent="claude" online={online} {...(typeInto === undefined ? {} : { typeInto })} />)
   await settle()
   return { daemon, user, box: screen.getByRole('textbox', { name: 'Message claude' }) }
 }
@@ -350,6 +350,24 @@ describe('when files cannot be attached', () => {
 
     expect(paperclip()).toHaveAccessibleName(`Attach files: ${PENDING_APPROVAL_NOTE}`)
     expect(paperclip()).toHaveAttribute('aria-disabled', 'true')
+  })
+
+  it('offers the paperclip in a chat that follows a terminal agent, and types the files into it with the message', async () => {
+    const typeInto = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
+    fake.chooseFilesToAttach.mockResolvedValue(['/home/me/errors.log'])
+    fake.attachLocalFile.mockResolvedValue({ path: '/data/attachments/attach-1-errors.log', name: 'errors.log', size: 120, kind: 'file' })
+    const { user, box } = await open({ readOnly: true, typeInto })
+
+    await user.click(paperclip())
+    await settle()
+    await user.type(box, 'why does this fail?')
+    await user.click(sendButton())
+    await settle(600)
+
+    expect(typeInto).toHaveBeenCalled()
+    const typed = typeInto.mock.calls.map(([text]) => text).join('')
+    expect(typed).toContain('why does this fail?')
+    expect(typed).toContain('/data/attachments/attach-1-errors.log')
   })
 
   it('offers no paperclip in a read-only chat, whose composer already states the reason', async () => {
