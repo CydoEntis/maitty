@@ -70,6 +70,16 @@ export function Composer({ agent, composer, conversation, question = null, facts
   const draft = composer.draft ?? storedDraft
   const off = disabledReason !== null
   const box = useRef<HTMLDivElement>(null)
+  const text = useRef<HTMLTextAreaElement>(null)
+  // A chat that opens takes the typing, as the terminal under it would, when nothing else on the page has it:
+  // the new-chat page has just closed, or the starting chat's box was replaced by this one.
+  useEffect(() => {
+    const active = document.activeElement
+    if (active !== null && active !== document.body) return
+    const pane = text.current?.closest('.mx-pane')
+    if (pane?.classList.contains('is-card') === true && !pane.classList.contains('is-focused')) return
+    text.current?.focus({ preventScroll: true })
+  }, [])
   // The desktop shell takes file drops for itself, so the composer asks to be told of the ones that land on it.
   const { addPaths } = attach
   useEffect(() => {
@@ -124,6 +134,7 @@ export function Composer({ agent, composer, conversation, question = null, facts
         <div className={`mx-box${off ? ' is-locked' : ''}`}>
           <DraftAttachments attachments={attachments} onRemove={attach.remove} />
           <textarea
+            ref={text}
             aria-label={`Message ${agent}`}
             rows={2}
             value={draft}

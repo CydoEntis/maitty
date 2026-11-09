@@ -125,10 +125,11 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
   // Typed text answers a prompt the agent is showing, and the chat cannot tell the difference, so
   // it types only while the agent is known to be waiting for a message.
   const waitingForMessage = feed.status === 'Idle' || feed.status === 'Done'
-  // A terminal agent that is working still takes a message: it is held here and typed in once the agent is ready, so
-  // nothing reaches a prompt the agent might be showing meanwhile.
+  // A terminal agent that is working, or has not said what it is doing yet, still takes a message: it is held here and
+  // typed in once the agent is ready, so nothing reaches a prompt the agent might be showing meanwhile and nobody waits to type.
+  const holding = typing && (busy || !waitingForMessage)
   const disabledReason = typing
-    ? (!online ? 'The daemon is offline' : awaitingAnswer || feed.status === 'Blocked' ? (answersPrompt ? PENDING_APPROVAL_NOTE : TYPING_ASKING_NOTE) : !busy && !waitingForMessage ? 'Waiting for the agent to be ready' : null)
+    ? (!online ? 'The daemon is offline' : awaitingAnswer || feed.status === 'Blocked' ? (answersPrompt ? PENDING_APPROVAL_NOTE : TYPING_ASKING_NOTE) : null)
     : readOnly ? READ_ONLY_NOTE : !online ? 'The daemon is offline' : awaitingAnswer ? PENDING_APPROVAL_NOTE : null
   const conversation = link.conversation
   const attach = useAttachmentIntake({ conversation, blocked: disabledReason, machine: link.machine ?? null })
@@ -197,7 +198,7 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
     // A message may be only attachments; the block naming them is then the whole text.
     if ((text === '' && attachments.length === 0) || disabledReason !== null || sending) return
     const files = attachments
-    if (typing && busy) {
+    if (holding) {
       // Held until the agent is ready for a message; shown in the queue meanwhile.
       updateComposer(conversation, (state) => ({ ...state, draft: '', attachments: [], held: [...state.held, { id: nextHeldId(), text: buildAttachmentMessage(text, files) }] }))
       return
@@ -216,7 +217,7 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
       }
       updateComposer(conversation, (state) => ({ ...state, draft: text, attachments: files }))
     })
-  }, [disabledReason, sending, conversation, send, typing, busy])
+  }, [disabledReason, sending, conversation, send, holding])
 
   const removeQueued = useCallback((operation: number) => {
     if (operation < 0) {
@@ -260,5 +261,5 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
     return () => { window.clearTimeout(timer) }
   }, [typing, first, online, waitingForMessage, awaitingAnswer, sending, conversation, send])
 
-  return { conversationKey: link.conversation, setDraft, attachments, attach, readOnly, attachable: !readOnly || typing, queue, removeQueued, submit, stop, running, sending, disabledReason, ready: disabledReason === null && !(typing && busy), error, sendText: send, echo }
+  return { conversationKey: link.conversation, setDraft, attachments, attach, readOnly, attachable: !readOnly || typing, queue, removeQueued, submit, stop, running, sending, disabledReason, ready: disabledReason === null && !holding, error, sendText: send, echo }
 }

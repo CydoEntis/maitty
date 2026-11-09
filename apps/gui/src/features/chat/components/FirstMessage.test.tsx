@@ -5,7 +5,7 @@ import { FAKE_CONVERSATION, FakeDaemonHistory } from '../fakeDaemonHistory'
 import { forgetComposers } from '../composerStore'
 import { carryDraft, forgetFirstMessages, heldFirstMessage, holdFirstMessage } from '../firstMessage'
 import { PASTE_END, PASTE_START } from '../useChatComposer'
-import { ACTIVE_POLL_MS, forgetChatFeeds } from '../useChatFeed'
+import { ACTIVE_POLL_MS, IDLE_POLL_MS, forgetChatFeeds } from '../useChatFeed'
 import { ChatSession } from './ChatSession'
 
 const fake = vi.hoisted(() => ({ current: null as null | { read: (cursor: never) => Promise<unknown> } }))
@@ -37,7 +37,7 @@ async function settle(ms = 0) {
   await act(async () => { await vi.advanceTimersByTimeAsync(ms) })
 }
 
-function open(status: 'Idle' | 'Working') {
+function open(status: 'Idle' | 'Working' | 'None') {
   const daemon = new FakeDaemonHistory()
   daemon.status = status
   fake.current = daemon
@@ -78,6 +78,43 @@ describe('a message typed while the agent was starting', () => {
     await settle()
 
     expect(screen.getByRole('textbox', { name: 'Message claude' })).toHaveValue('half a thou')
+  })
+})
+
+describe('a chat whose agent has not said what it is doing yet', () => {
+  it('takes a message at once, holds it, and types it in when the agent is ready', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const { daemon, typeInto } = open('None')
+    await settle()
+    const box = screen.getByRole('textbox', { name: 'Message claude' })
+    expect(box).not.toBeDisabled()
+
+    await user.type(box, 'start on the parser{Enter}')
+    expect(typeInto).not.toHaveBeenCalled()
+    expect(screen.getByRole('list', { name: 'Queued messages' })).toHaveTextContent('start on the parser')
+
+    daemon.status = 'Idle'
+    await settle(IDLE_POLL_MS + 1)
+    await settle(10)
+    expect(typeInto).toHaveBeenCalledExactlyOnceWith(`${PASTE_START}start on the parser${PASTE_END}\r`)
+  })
+
+  it('puts the cursor in the message box when nothing else has it', async () => {
+    open('Idle')
+    await settle()
+
+    expect(screen.getByRole('textbox', { name: 'Message claude' })).toHaveFocus()
+  })
+
+  it('leaves the cursor where it is when something else has it', async () => {
+    const other = document.createElement('input')
+    document.body.append(other)
+    other.focus()
+    open('Idle')
+    await settle()
+
+    expect(other).toHaveFocus()
+    other.remove()
   })
 })
 
