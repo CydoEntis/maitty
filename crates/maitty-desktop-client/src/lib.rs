@@ -1465,12 +1465,57 @@ mod tests {
     }
 }
 
+/// How long one request may take, connecting included. The slowest answers (a diff of a large
+/// tree, a new checkout) take seconds; a daemon that says nothing for this long is stuck, and the
+/// window must be told so instead of waiting on it for ever.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+
 async fn request(message: ClientMsg, daemon_executable: PathBuf) -> Result<Reply> {
-    let (mut reader, mut writer) = ipc::open_or_spawn_for_user(&daemon_executable)
-        .await
-        .context("connecting to the local daemon")?;
-    ipc::send_message(&mut writer, &message).await?;
-    receive_reply(&mut reader).await
+    answered_within(REQUEST_TIMEOUT, async {
+        let (mut reader, mut writer) = ipc::open_or_spawn_for_user(&daemon_executable)
+            .await
+            .context("connecting to the local daemon")?;
+        ipc::send_message(&mut writer, &message).await?;
+        receive_reply(&mut reader).await
+    })
+    .await
+}
+
+async fn answered_within<T>(
+    limit: Duration,
+    request: impl std::future::Future<Output = Result<T>>,
+) -> Result<T> {
+    match tokio::time::timeout(limit, request).await {
+        Ok(answer) => answer,
+        Err(_) => bail!(
+            "the local daemon did not answer within {} seconds",
+            limit.as_secs()
+        ),
+    }
+}
+
+#[cfg(test)]
+mod request_timeout_tests {
+    use super::answered_within;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn a_request_the_daemon_never_answers_fails_instead_of_waiting_for_ever() {
+        let stuck = std::future::pending::<anyhow::Result<()>>();
+
+        let error = answered_within(Duration::from_millis(20), stuck)
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("did not answer"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn an_answer_in_time_is_passed_on_as_it_is() {
+        let answer = answered_within(Duration::from_secs(5), async { Ok(7) }).await;
+
+        assert_eq!(answer.unwrap(), 7);
+    }
 }
 
 async fn receive_reply(reader: &mut ipc::Reader) -> Result<Reply> {
