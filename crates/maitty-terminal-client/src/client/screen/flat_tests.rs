@@ -921,3 +921,115 @@ fn a_two_cell_working_spinner_is_drawn_whole_in_the_sidebar_not_clipped_to_one_c
     let whole = crate::config::BARS_FRAMES.iter().any(|frame| rows.iter().any(|row| side_of(row).contains(frame)));
     assert!(whole, "a whole Bars frame (two cells) is on a working row:\n{}", rows.iter().map(|r| side_of(r)).collect::<Vec<_>>().join("\n"));
 }
+
+/// How many close commands were sent (a pane, a session, or putting a chat away).
+fn closes_sent(rx: &mut mpsc::UnboundedReceiver<crate::client::ids::Outgoing>) -> usize {
+    std::iter::from_fn(|| rx.try_recv().ok())
+        .filter(|o| {
+            matches!(
+                &o.msg,
+                ClientMsg::Command(Command::CloseSession { .. } | Command::ClosePane { .. } | Command::ConversationArchive { .. })
+            )
+        })
+        .count()
+}
+
+/// A shell and a working agent of the reference world, as the sessions to close.
+fn a_shell_and_a_working_agent(app: &mut App) -> [ClientTerm; 2] {
+    let mut ids: Vec<_> = app.snap.terms.keys().copied().collect();
+    ids.sort_unstable();
+    let [shell, agent] = [ids[0], ids[1]];
+    app.snap.terms.get_mut(&shell).unwrap().agent = None;
+    let t = app.snap.terms.get_mut(&agent).unwrap();
+    t.agent = Some("claude".into());
+    t.status = crate::protocol::Status::Working;
+    [ClientTerm::local(shell), ClientTerm::local(agent)]
+}
+
+#[test]
+fn declining_a_close_with_esc_or_n_closes_nothing_for_a_shell_and_a_working_agent() {
+    for code in [KeyCode::Esc, KeyCode::Char('n')] {
+        let mut app = reference_fixture::world(Stage::None);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        for term in a_shell_and_a_working_agent(&mut app) {
+            app.menu_act(crate::client::menu::Act::End(vec![term]));
+            assert!(matches!(app.mode, Mode::Confirm(_)), "{code:?}: closing {term:?} asks first");
+            app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+            assert_eq!(app.mode, Mode::Normal, "{code:?}: declined");
+            assert_eq!(app.closing.last_closed(), None, "{code:?}: nothing is closed");
+        }
+        assert_eq!(closes_sent(&mut rx), 0, "{code:?}: nothing is sent");
+    }
+}
+
+#[test]
+fn the_close_question_is_answered_by_a_click_on_its_buttons() {
+    let button = |app: &App, want: ScreenHit| {
+        app.hits
+            .iter()
+            .rev()
+            .find_map(|(r, h)| matches!(h, Hit::Screen(s) if *s == want).then_some(*r))
+            .unwrap_or_else(|| panic!("no {want:?} button"))
+    };
+    for accept in [true, false] {
+        let mut app = reference_fixture::world(Stage::None);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        let [shell, _] = a_shell_and_a_working_agent(&mut app);
+        app.menu_act(crate::client::menu::Act::End(vec![shell]));
+        cells(&mut app, 140, 36);
+        let r = button(&app, if accept { ScreenHit::ConfirmYes } else { ScreenHit::ConfirmNo });
+        click(&mut app, r.x + 1, r.y);
+        assert_eq!(app.mode, Mode::Normal, "answered");
+        let sent = closes_sent(&mut rx);
+        assert_eq!(sent > 0, accept, "the Close button closes and Cancel does not ({sent} sent)");
+        assert_eq!(app.closing.last_closed(), accept.then_some(shell));
+    }
+}
+
+#[test]
+fn every_way_to_close_a_session_opens_the_same_question() {
+    let asks = |app: &App, term: ClientTerm| {
+        matches!(&app.mode, Mode::Confirm(c) if matches!(&c.act, crate::client::menu::Act::End(ts) if ts == &vec![term]))
+    };
+    // The pane's × chip.
+    let mut app = reference_fixture::world(Stage::None);
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    app.out = tx;
+    cells(&mut app, 140, 36);
+    let (r, term) = app
+        .hits
+        .iter()
+        .find_map(|(r, h)| match h {
+            Hit::Screen(ScreenHit::CloseSplit(t)) => Some((*r, *t)),
+            _ => None,
+        })
+        .expect("a × chip");
+    click(&mut app, r.x + 1, r.y);
+    assert!(asks(&app, term), "the × chip asks");
+    assert_eq!(closes_sent(&mut rx), 0);
+
+    // The leader, then x, on the focused pane.
+    let mut app = reference_fixture::world(Stage::None);
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    app.out = tx;
+    let focused = app.focused().expect("a focused pane");
+    app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+    app.on_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+    assert!(asks(&app, focused), "leader then x asks");
+    assert_eq!(closes_sent(&mut rx), 0);
+
+    // Alt+X on the sidebar's row, and the row menu's own item (the same act).
+    let mut app = reference_fixture::world(Stage::None);
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    app.out = tx;
+    let [shell, _] = a_shell_and_a_working_agent(&mut app);
+    app.screen_side_set(SideItem::Sess(ClientSession::local(SessionKey::Pane(shell.term))));
+    app.on_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::ALT));
+    assert!(asks(&app, shell), "Alt+X in the sidebar asks");
+    app.mode = Mode::Normal;
+    app.menu_act(crate::client::menu::Act::End(vec![shell]));
+    assert!(asks(&app, shell), "the row menu's Close shell asks");
+    assert_eq!(closes_sent(&mut rx), 0);
+}

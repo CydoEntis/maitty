@@ -186,11 +186,11 @@ fn closing_a_pane_hides_it_and_offers_undo_in_every_look() {
         draw(&mut app, w, h);
         let [_, second] = [0, 1].map(|i| app.screen.tabs[0].leaves()[i]);
         app.menu_act(crate::client::menu::Act::End(vec![second]));
-        // A working agent asks for the same press again; nothing else is asked, a close can be undone.
-        if app.closing_banner().is_some_and(|b| b.warn) {
-            app.menu_act(crate::client::menu::Act::End(vec![second]));
-        }
-        assert_eq!(app.mode, Mode::Normal, "{look}: no dialog opens");
+        // Closing asks first; once accepted a close can be undone.
+        assert!(matches!(app.mode, Mode::Confirm(_)), "{look}: the question opens");
+        assert!(app.closing_banner().is_none(), "{look}: nothing is closed before the answer");
+        press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+        assert_eq!(app.mode, Mode::Normal, "{look}: the question is answered");
         let banner = app.closing_banner().unwrap_or_else(|| panic!("{look}: the undo offer"));
         assert!(
             banner.text.starts_with("Closed ") && banner.text.contains("then Ctrl+Z undo 6s"),
@@ -204,11 +204,13 @@ fn closing_a_pane_hides_it_and_offers_undo_in_every_look() {
 
 
 #[test]
-fn a_lone_session_closes_at_once_and_the_banner_names_it() {
+fn a_lone_session_asks_and_then_closes_and_the_banner_names_it() {
     let mut app = split_world("floating", 1);
     let focus = app.focused().expect("a focused pane");
     draw(&mut app, 160, 45);
     app.menu_act(crate::client::menu::Act::End(vec![focus]));
+    assert!(matches!(app.mode, Mode::Confirm(_)), "closing asks first");
+    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
     let banner = app.closing_banner().expect("the undo offer");
     assert!(
         banner.text.starts_with("Closed fix-footer"),
@@ -360,7 +362,9 @@ fn the_pane_menu_follows_a_rebinding() {
     pane_menu(&mut app);
     assert_eq!(key_of(&app, "Close pane"), "w");
     press(&mut app, KeyCode::Char('w'), KeyModifiers::NONE);
-    assert!(app.closing_banner().is_some(), "the new key runs it: {:?}", app.mode);
+    assert!(matches!(app.mode, Mode::Confirm(_)), "the new key runs it, and it asks: {:?}", app.mode);
+    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    assert!(app.closing_banner().is_some(), "accepted, it closes: {:?}", app.mode);
 }
 
 #[test]
@@ -417,5 +421,7 @@ fn pressing_a_shown_key_runs_its_item() {
     let mut app = split_world("floating", 2);
     pane_menu(&mut app);
     press(&mut app, KeyCode::Char('x'), KeyModifiers::NONE);
-    assert!(app.closing_banner().is_some(), "x closes this pane with an undo: {:?}", app.mode);
+    assert!(matches!(app.mode, Mode::Confirm(_)), "x asks to close this pane: {:?}", app.mode);
+    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    assert!(app.closing_banner().is_some(), "accepted, it closes with an undo: {:?}", app.mode);
 }

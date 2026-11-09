@@ -731,17 +731,52 @@ impl App {
         }));
     }
 
+    /// A chat's title for a question about it, or a plain word when it has none.
+    fn chat_title(&self, id: crate::conversation::ConversationId) -> String {
+        self.snap_of(self.conversation_machine(id))
+            .and_then(|snap| snap.conversations.iter().find(|c| c.id == id))
+            .and_then(|c| c.title.clone())
+            .filter(|t| !t.is_empty())
+            .unwrap_or_else(|| "this chat".into())
+    }
+
     /// What a menu item does; closing things asks first, a plain shell too.
     pub(super) fn menu_act(&mut self, a: Act) {
-        // One session closes at once, with an Undo; a running agent asks for a second press.
-        if let Act::End(ts) = &a
-            && let [term] = ts.as_slice()
-        {
-            self.close_session(*term);
-            return;
-        }
         let model = self.screen_model();
         let ask: Option<Confirm> = match &a {
+            // Closing anything asks first, by whatever route it was asked for (a key, the pane's x, a menu, a click on the row).
+            Act::End(ts) if let [term] = ts.as_slice() => {
+                let name = super::screen::session_name(self, &model, *term);
+                let running = self.agent_running(*term);
+                Some(Confirm {
+                    title: if running { "Stop session".into() } else { "Close".into() },
+                    sub: String::new(),
+                    what: name,
+                    detail: String::new(),
+                    note: if running {
+                        "The agent is working: closing stops it. You can undo for a few seconds with the leader, then Ctrl+Z.".into()
+                    } else {
+                        "You can undo for a few seconds with the leader, then Ctrl+Z.".into()
+                    },
+                    list: Vec::new(),
+                    yes: "Close".into(),
+                    key: '\n',
+                    danger: true,
+                    act: a.clone(),
+                })
+            }
+            Act::ArchiveConversation(id) => Some(Confirm {
+                title: "Close".into(),
+                sub: String::new(),
+                what: self.chat_title(*id),
+                detail: String::new(),
+                note: "It keeps running in the background; every app stops listing it.".into(),
+                list: Vec::new(),
+                yes: "Close".into(),
+                key: '\n',
+                danger: true,
+                act: a.clone(),
+            }),
             Act::End(ts) => Some(Confirm {
                 title: "Close panes".into(),
                 sub: String::new(),
@@ -1124,7 +1159,12 @@ impl App {
                     self.cmd_on(t.machine, Command::FocusPane { term: t.term });
                 }
             }
+            // One session closes with an Undo (the asking was done by `menu_act`).
             Act::End(ts) => {
+                if let [term] = ts.as_slice() {
+                    self.close_session(*term);
+                    return;
+                }
                 for t in ts {
                     // Out of its split first: the pane beside it takes the room (and the
                     // focus), so nothing else slides into its place.

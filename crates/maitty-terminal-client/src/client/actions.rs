@@ -12,7 +12,7 @@ impl App {
             .and_then(|key| self.bare_conversation(key))
         {
             match a {
-                Action::ClosePane => return self.archive_conversation(id),
+                Action::ClosePane => return self.menu_act(menu::Act::ArchiveConversation(id)),
                 Action::RenameWorkspace => {
                     return self.menu_do(menu::Act::RenameConversation(id));
                 }

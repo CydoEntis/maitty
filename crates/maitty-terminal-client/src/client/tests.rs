@@ -2053,10 +2053,13 @@ mod screen_tests {
         app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(shell)));
         app.mode = Mode::Side;
         app.act(Action::ClosePane);
+        assert!(matches!(app.mode, Mode::Confirm(_)), "an idle shell asks too");
+        assert_eq!(app.closing.last_closed(), None, "nothing is closed before the answer");
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         assert_eq!(
             app.closing.last_closed(),
             Some(ClientTerm::local(shell)),
-            "an idle shell closes at once, with an undo"
+            "accepted, an idle shell closes, with an undo"
         );
         let agent = *app
             .snap
@@ -2069,22 +2072,16 @@ mod screen_tests {
         app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(agent)));
         app.mode = Mode::Side;
         app.act(Action::ClosePane);
-        assert_eq!(
-            app.closing.asking_about(),
-            Some(ClientTerm::local(agent)),
-            "a working agent asks for the same press again"
-        );
         assert!(
-            app.closing_banner().is_some_and(|b| b.text.starts_with("Close and stop ")),
-            "and says so"
+            matches!(&app.mode, Mode::Confirm(c) if c.title == "Stop session" && c.note.contains("stops it")),
+            "a working agent asks, and says closing stops it"
         );
-        app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(agent)));
-        app.mode = Mode::Side;
-        app.act(Action::ClosePane);
+        assert_ne!(app.closing.last_closed(), Some(ClientTerm::local(agent)), "the agent is not closed before the answer");
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         assert_eq!(
             app.closing.last_closed(),
             Some(ClientTerm::local(agent)),
-            "the second press closes it"
+            "accepted, it closes"
         );
     }
 
@@ -2115,7 +2112,7 @@ mod screen_tests {
     }
 
     #[test]
-    fn alt_x_in_the_sidebar_closes_the_selected_session_and_asks_again_for_a_working_agent() {
+    fn alt_x_in_the_sidebar_asks_before_it_closes_the_selected_session_and_says_a_working_agent_stops() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let focused = app.focused();
         let agent = app
@@ -2131,10 +2128,9 @@ mod screen_tests {
         app.mode = Mode::Side;
         app.snap.terms.get_mut(&agent.term).unwrap().status = Status::Working;
         app.on_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::ALT));
-        assert_eq!(
-            app.closing.asking_about(),
-            Some(agent),
-            "a working agent asks for a second press before it closes: {:?}",
+        assert!(
+            matches!(&app.mode, Mode::Confirm(c) if c.title == "Stop session"),
+            "a working agent asks before it closes: {:?}",
             app.mode
         );
         assert_eq!(app.focused(), focused, "it doesn't go into the pane");
@@ -2552,19 +2548,18 @@ mod screen_tests {
             "the cursor goes with the keys"
         );
         app.act(Action::ClosePane);
-        assert_eq!(
-            app.closing.last_closed().or(app.closing.asking_about()),
-            Some(focused),
-            "close acts on the focused pane"
+        assert!(
+            matches!(&app.mode, Mode::Confirm(c) if matches!(&c.act, menu::Act::End(ts) if ts == &vec![focused])),
+            "close asks about the focused pane"
         );
+        app.mode = Mode::Normal;
         app.closing = Default::default();
         // Even a cursor left behind in normal mode is not a target.
         app.mode = Mode::Normal;
         app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(other)));
         app.act(Action::ClosePane);
-        assert_eq!(
-            app.closing.last_closed().or(app.closing.asking_about()),
-            Some(focused),
+        assert!(
+            matches!(&app.mode, Mode::Confirm(c) if matches!(&c.act, menu::Act::End(ts) if ts == &vec![focused])),
             "only the sidebar's own keys use its cursor"
         );
     }
@@ -3863,12 +3858,12 @@ mod screen_tests {
     }
 
     #[test]
-    fn closing_sends_a_close_with_undo_and_the_undo_key_undoes_it() {
+    fn closing_asks_then_sends_a_close_with_undo_and_the_undo_key_undoes_it() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let (tx, mut rx) = mpsc::unbounded_channel();
         app.out = tx;
         app.menu_act(menu::Act::End(vec![ClientTerm::local(3)]));
-        assert_eq!(app.mode, Mode::Normal, "nothing is asked");
+        assert!(matches!(app.mode, Mode::Confirm(_)), "closing asks first");
         let sent = |rx: &mut mpsc::UnboundedReceiver<Outgoing>| -> Vec<crate::protocol::Command> {
             std::iter::from_fn(|| rx.try_recv().ok())
                 .filter_map(|o| match o.msg {
@@ -3877,6 +3872,9 @@ mod screen_tests {
                 })
                 .collect()
         };
+        assert!(sent(&mut rx).is_empty(), "nothing is sent before the answer");
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(app.mode, Mode::Normal, "the question is answered");
         assert!(sent(&mut rx).iter().any(|c| matches!(c, Command::CloseSession { term: 3 })));
         let banner = app.closing_banner().expect("the undo offer").text;
         assert!(banner.ends_with("undo 6s") && banner.contains("Ctrl+Space then Ctrl+Z"), "{banner}");
@@ -12613,11 +12611,8 @@ mod side_panel_width_tests {
             .expect("the focused pane beside the sheet");
         click(&mut app, pane.x + pane.width / 2, pane.y + pane.height / 2);
         leader_x(&mut app);
-        let first = app.closing_banner().expect("the pane has the keys: x closes it").text;
-        // A working agent asks for the same press again; a shell is closed at once.
-        if first.starts_with("Close and stop") {
-            key(&mut app, 'x');
-        }
+        assert!(matches!(app.mode, Mode::Confirm(_)), "the pane has the keys: x asks to close it");
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         let banner = app.closing_banner().expect("closed").text;
         assert!(banner.starts_with("Closed "), "it closes the focused pane: {banner}");
         assert!(
@@ -12642,10 +12637,8 @@ mod side_panel_width_tests {
             .unwrap()
             .status = Status::Working;
         leader_x(&mut app);
-        let first = app.closing_banner().expect("x closes the row").text;
-        if first.starts_with("Close and stop") {
-            key(&mut app, 'x');
-        }
+        assert!(matches!(app.mode, Mode::Confirm(_)), "x asks to close the row");
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         let banner = app.closing_banner().expect("closed").text;
         assert!(banner.starts_with("Closed "), "it closes the cursor's session: {banner}");
         let _ = row;
@@ -12672,9 +12665,8 @@ mod side_panel_width_tests {
         app.screen_place(b, Some(a));
         draw(&mut app, 200, 50);
         leader_x(&mut app);
-        if app.closing_banner().is_some_and(|b| b.warn) {
-            key(&mut app, 'x');
-        }
+        assert!(matches!(app.mode, Mode::Confirm(_)), "x asks to close the focused split");
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         let banner = app.closing_banner().expect("x closed the focused split").text;
         assert!(banner.starts_with("Closed "), "{banner}");
         let _ = a;

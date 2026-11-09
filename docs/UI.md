@@ -547,12 +547,13 @@ There is no New session dialog. `Action::PickSession` (leader `n`, palette `New 
 
 ## Project-specific: closing, service and update states
 
-- **Closing a session** (`client/screen/closing.rs`): the pane menu, the row menu, leader `x` and a middle
-  click on a tab send `Command::CloseSession`; the daemon hides the session and keeps its process for
-  six seconds (`UNDO_WINDOW`), `Command::UndoClose` brings it back. A banner on the first row of the focused pane
-  reads `Closed <name> · Ctrl+Space then Ctrl+Z undo 6s`, counting down; leader `Ctrl+Z` undoes. A session with an agent that is working
-  or waiting asks first: the banner reads `Close and stop <agent>? press again` and the same key a second time
-  closes it. Closing several panes at once (a tab's `✕`) still asks in a dialog and has no undo.
+- **Closing a session** (`client/screen/closing.rs`): closing always asks first, by whatever route: the pane's `×`, the pane
+  menu, the row menu, leader `x` or Alt+`x`, a middle click on a tab, or putting a chat away. The question is one dialog
+  (`menu.rs` `menu_act`; a working agent's says closing stops it). Accept it with Enter, `y`, `x` or Delete, or click
+  Close; decline with Esc, `n` or `q`, or click Cancel. Only then does a single session send `Command::CloseSession`; the daemon hides it
+  and keeps its process for six seconds (`UNDO_WINDOW`), `Command::UndoClose` brings it back. A banner on the first row of the
+  focused pane reads `Closed <name> · Ctrl+Space then Ctrl+Z undo 6s`, counting down; leader `Ctrl+Z` undoes. Closing several
+  panes at once (a tab's `✕`) asks in its own dialog and has no undo.
 - **Menus** (`menu.rs` `draw_menu`): a box in the accent on the panel ground, no title, one row per item
   with its leader key at the right in the accent when it has one (letters a menu gives items of its own run
   them while it is open but are not shown), the chosen row on `hov`, and the item that ends something last,
