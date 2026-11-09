@@ -29,6 +29,9 @@ export function modeFromScreen(screen: string): string | null {
 /** How many of a screen's last lines can hold the mode line. */
 const MODE_LINES = 8
 
+/** The modes Claude cycles through with Shift+Tab, in the order the dropdown lists them. Bypass is there only when Claude was started allowing it. */
+export const PICKABLE_MODES: readonly string[] = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions']
+
 /** A mode that asks about nothing: the header marks it, so it is never a quiet default. */
 export const BYPASS_MODE = 'bypassPermissions'
 

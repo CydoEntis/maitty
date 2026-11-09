@@ -47,15 +47,16 @@ function open(agent: 'claude' | 'codex', status: 'Idle' | 'Working' = 'Idle') {
 }
 
 describe('changing the mode, the model and the reasoning of a chat that follows the terminal', () => {
-  it('cycles the permission mode with the agent\'s own Shift+Tab', async () => {
+  it('moves the agent to the mode picked from the dropdown, with its own Shift+Tab', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const typeInto = open('claude')
     await settle(IDLE_POLL_MS)
 
-    await user.click(screen.getByRole('button', { name: /^Permission mode: .* Click to cycle it/ }))
-    expect(typeInto).toHaveBeenCalledExactlyOnceWith('\x1b[Z')
-    // The new mode is read back from the agent's screen at once, before its file says it.
+    await user.click(screen.getByRole('button', { name: /^Permission mode: .* Pick another/ }))
+    await user.click(await screen.findByRole('menuitemradio', { name: /Accept edits/ }))
     await settle(1000)
+    // The fake screen already shows "accept edits", so no key is needed; the chip shows it.
+    expect(typeInto).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: /^Permission mode: Accept edits/ })).toBeInTheDocument()
   })
 

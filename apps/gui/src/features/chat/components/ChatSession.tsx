@@ -32,6 +32,8 @@ const SETTLE_MS = 650
 /** Shift+Tab, which cycles the agent's permission mode, and how long after it the new mode is read back. */
 const SHIFT_TAB = '\x1b[Z'
 const MODE_READ_MS = 400
+/** The most presses of Shift+Tab a full turn of Claude's modes takes. */
+const MODE_CYCLE_MAX = 5
 
 /** A row not yet measured is drawn as if it were this tall, which a message or a card usually is. */
 const ESTIMATED_ROW_PX = 72
@@ -153,16 +155,25 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
         if (model !== undefined) setLiveModel({ base: metaModel, value: model })
         void typeInto(text).then(refresh)
       },
-      onCycleMode: () => {
-        void typeInto(SHIFT_TAB)
-          .then(() => new Promise<void>((resolve) => { window.setTimeout(resolve, MODE_READ_MS) }))
-          .then(() => (sessionId === undefined ? '' : loadTerminalScreen({ id: sessionId, generation: 0 })))
-          .then((screen) => {
-            const mode = modeFromScreen(screen)
+      onPickMode: (target: string) => {
+        if (sessionId === undefined) return
+        // Shift+Tab only cycles, so press it until the screen shows the picked mode; a mode that never comes up is not allowed in this session.
+        const step = async () => {
+          for (let press = 0; press <= MODE_CYCLE_MAX; press += 1) {
+            const mode = modeFromScreen(await loadTerminalScreen({ id: sessionId, generation: 0 }))
             if (mode !== null) setLiveMode({ base: metaMode, value: mode })
-            refresh()
-          })
-          .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not read the new permission mode')) })
+            if (mode === target) {
+              refresh()
+              return
+            }
+            if (press === MODE_CYCLE_MAX) break
+            await typeInto(SHIFT_TAB)
+            await new Promise<void>((resolve) => { window.setTimeout(resolve, MODE_READ_MS) })
+          }
+          toast.error(`${modeLabel(target) ?? target} is not available in this session. Claude has to be started allowing it.`)
+          refresh()
+        }
+        void step().catch((error: unknown) => { toast.error(errorMessage(error, 'Could not change the permission mode')) })
       },
     }
   }, [typeInto, agent, link.readOnly, online, working, refresh, sessionId, metaMode, metaModel])
@@ -281,7 +292,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
         composer={composer}
         conversation={link.conversation}
         question={question}
-        facts={{ mode: modeLabel(shownMode), modeDanger: shownMode === BYPASS_MODE, subagents: subagentCount, folder, branch, model: shownModel, onOpenFolder, ...agentControls }}
+        facts={{ mode: modeLabel(shownMode), modeDanger: shownMode === BYPASS_MODE, subagents: subagentCount, folder, branch, model: shownModel, onOpenFolder, modeKey: shownMode, ...agentControls }}
       />
     </div>
   )
