@@ -232,7 +232,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   only tint behind the cards, and Glass always has it, painted on the whole window so no seam shows under the title bar.
 - **Window style: four shapes, any theme** (Settings › Appearance › Look › Window style, `style`; the root carries
   `data-style` and `data-finish`). A style is shape and type, never colour: whatever theme is in use is what every style
-  wears. **Glass** (the default: clear frosted panels with 22px corners over a soft atmosphere tinted from the theme's teal and blue,
+  wears. **Glass** (the default: frosted panels with 22px corners — mostly opaque, a milky sheen, a strong blur (28px, saturate 140%) and a bright edge, so what is behind them is only a soft wash of colour — over an atmosphere of three blobs (teal, brass, blue) drawn from the theme; the terminal is see-through by default so its text sits on the frost,
   Inter and JetBrains Mono; a saved `frosted` reads as Glass), **Mono Type** (Space Mono everywhere, square corners),
   **Console** (IBM Plex Sans and JetBrains Mono, hairline borders, a marker on the selected row) and **Retro Pixel**
   (Pixelify Sans, square corners, 3px borders, hard offset shadows, scanlines). Layout and features never change. A style is data
