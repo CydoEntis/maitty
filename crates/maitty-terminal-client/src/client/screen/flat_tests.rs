@@ -898,6 +898,37 @@ fn a_folder_sits_one_level_in_under_its_machine_and_its_sessions_one_more() {
     assert!(arrow(folder) > arrow(machine), "{} vs {}", side(&rows, folder), side(&rows, machine));
 }
 
+/// The sidebar rows that are only a divider: a line of `─` and nothing else.
+fn divider_rows(rows: &[String]) -> usize {
+    (0..rows.len()).filter(|y| {
+        let row = side(rows, *y);
+        let line: String = row.chars().filter(|c| !c.is_whitespace() && *c != '│').collect();
+        line.chars().count() > 3 && line.chars().all(|c| c == '─')
+    }).count()
+}
+
+#[test]
+fn grouped_by_folder_each_folder_has_a_bar_down_its_side_and_a_line_before_the_next_one() {
+    let mut app = reference_fixture::world(Stage::None);
+    app.screen.saved.group_folders = true;
+    let rows = text(&mut app, 140, 36);
+    let folders = (1..rows.len()).filter(|y| side(&rows, *y).contains('▾')).count() - 1; // the machine heading is one of them
+    assert!(folders >= 2, "the reference world has more than one folder:
+{}", rows.join("
+"));
+    assert_eq!(divider_rows(&rows), folders - 1, "a line between folders, none before the first:
+{}", rows.join("
+"));
+    assert!(rows.iter().any(|r| side_of(r).contains('▎')), "a folder's bar");
+}
+
+#[test]
+fn grouped_by_priority_there_are_no_folder_lines() {
+    let mut app = reference_fixture::world(Stage::None);
+    let rows = text(&mut app, 140, 36);
+    assert_eq!(divider_rows(&rows), 0);
+}
+
 #[test]
 fn the_top_plus_offers_a_new_session_or_a_remote_machine_and_there_is_no_remote_machines_heading() {
     let (mut app, _) = with_kingdom_needing_the_app();

@@ -85,7 +85,7 @@ accent fill. See UI › *UI conventions*.
 Each machine with its sessions under it, on the panel ground, 34 columns by default (24 to 60
 resizable). On the top border the ` maitty ` chip at the left and ` « ` (hide) at the right; hidden,
 a ` » ` chip beside the panes brings it back. Filtering is a command (`/`) with its own modal,
-no field; the folder button groups sessions by folder. A machine is a heading chip with its count (` This computer 5 `), an accent ` + `
+no field; the folder button groups sessions by folder. In folder view each folder has a coloured bar and icon (the theme's pane colours in turn) and a line before the next folder. A machine is a heading chip with its count (` This computer 5 `), an accent ` + `
 chip (a shell there at once) and a green `●` at the right while it is up. While its app is missing
 or on another version the ` + ` gives way to an accent ` install ` or ` update ` chip, the fix one
 click from where it shows; the Machines dialog marks that row ` u install ` / ` u update ` beside its
