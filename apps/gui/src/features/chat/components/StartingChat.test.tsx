@@ -6,10 +6,12 @@ import { forgetFirstMessages, heldFirstMessage, holdStartChoice, takeCarriedDraf
 import { StartingChat } from './StartingChat'
 
 const attach = vi.hoisted(() => ({ attachLocalFile: vi.fn(), chooseFilesToAttach: vi.fn() }))
+const daemon = vi.hoisted(() => ({ connectAgent: vi.fn(), reloadAgentOnDaemon: vi.fn() }))
 vi.mock('@/api/attachments', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/api/attachments')>()), ...attach }))
 vi.mock('@/api/daemon', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/daemon')>()),
   loadAgentModels: () => Promise.resolve([]),
+  ...daemon,
 }))
 
 beforeEach(() => { forgetFirstMessages() })
@@ -19,6 +21,18 @@ const noop = () => undefined
 const open = () => render(<StartingChat agent="codex" sessionId="s1" onBackToTerminal={noop} />)
 
 describe('the chat of a session that is still starting', () => {
+  it('restarts the agent after connecting it, so it loads the hooks', async () => {
+    daemon.connectAgent.mockResolvedValue(undefined)
+    daemon.reloadAgentOnDaemon.mockResolvedValue(undefined)
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    open()
+    act(() => { vi.advanceTimersByTime(NO_EVENTS_HINT_AFTER_MS) })
+    await user.click(screen.getByRole('button', { name: 'Connect codex' }))
+    await vi.waitFor(() => { expect(daemon.reloadAgentOnDaemon).toHaveBeenCalledWith({ id: 's1' }) })
+    expect(daemon.connectAgent).toHaveBeenCalledWith('codex')
+  })
+
   it('is there at once, with a message box for the agent that was chosen', () => {
     open()
     expect(screen.getByText(/Type below: it is sent as soon as codex is ready/)).toBeInTheDocument()

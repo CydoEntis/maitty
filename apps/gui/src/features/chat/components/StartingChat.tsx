@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from '@/lib/toast'
 import { Spinner } from '@/features/workspace/components/glyphs'
-import { connectAgent } from '@/api/daemon'
+import { connectAgent, reloadAgentOnDaemon } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
 import { NO_EVENTS_HINT_AFTER_MS, noEventsHint, waitingInTerminalHint, type ChatAgent } from '@/features/workspace/model/chatView'
 import { keepComposerFocus } from '../keepComposerFocus'
@@ -78,7 +78,8 @@ export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', 
   const connect = () => {
     setConnecting(true)
     connectAgent(agent)
-      .then(() => { toast.success(`${agent} is connected. Restart it in the terminal to load the hooks.`) })
+      .then(() => reloadAgentOnDaemon({ id: sessionId }))
+      .then(() => { toast.success(`${agent} is connected and restarted to load the hooks.`) })
       .catch((failure: unknown) => { toast.error(errorMessage(failure, `Could not connect ${agent}`)) })
       .finally(() => { setConnecting(false) })
   }

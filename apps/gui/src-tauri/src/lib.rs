@@ -547,6 +547,23 @@ async fn archive_terminal_session(
 }
 
 #[tauri::command]
+async fn reload_terminal_session(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    term: u32,
+) -> Result<serde_json::Value, String> {
+    if routing::is_remote(machine) {
+        return wire
+            .command(machine, term, PaneCommand::Reload)
+            .map(|()| serde_json::Value::Null);
+    }
+    maitty_desktop_client::reload_terminal_session(term, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
 async fn mark_terminal_seen(
     app: tauri::AppHandle,
     wire: tauri::State<'_, terminal_stream::Wire>,
@@ -996,6 +1013,7 @@ pub fn run() {
             mark_terminal_seen,
             pin_terminal_session,
             archive_terminal_session,
+            reload_terminal_session,
             close_terminal_session,
             close_session_with_undo,
             undo_close_terminal_session,

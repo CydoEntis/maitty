@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { forgetMachines, registerMachine } from './machines'
-import { startTerminalSession, loadTerminalScreen, loadTerminalReplay, sendTerminalInput, resizeTerminal, archiveConversationOnDaemon, renameConversationOnDaemon, classifySubmissionFailure, createConversation, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversationDiff, loadConversationFile, loadConversationFiles, loadConversations, conversationsFromSnapshot, markSeenOnDaemon, archiveSessionOnDaemon, loadDaemonRestartStatus, loadMachines, loadMessages, restartMismatchedDaemon, resumeConversation } from './daemon'
+import { startTerminalSession, loadTerminalScreen, loadTerminalReplay, sendTerminalInput, resizeTerminal, archiveConversationOnDaemon, renameConversationOnDaemon, classifySubmissionFailure, createConversation, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversationDiff, loadConversationFile, loadConversationFiles, loadConversations, conversationsFromSnapshot, markSeenOnDaemon, archiveSessionOnDaemon, reloadAgentOnDaemon, loadDaemonRestartStatus, loadMachines, loadMessages, restartMismatchedDaemon, resumeConversation } from './daemon'
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
@@ -572,6 +572,7 @@ describe('commands for a pane, on whichever machine it is', () => {
     await archiveConversationOnDaemon(pane, true)
     await markSeenOnDaemon(pane)
     await archiveSessionOnDaemon(pane, true)
+    await reloadAgentOnDaemon(pane)
     expect(vi.mocked(invoke).mock.calls).toEqual([
       ['terminal_input', { term: 7, data: [108, 115] }],
       ['pane_terminal_resize', { term: 7, cols: 100, rows: 30 }],
@@ -579,6 +580,7 @@ describe('commands for a pane, on whichever machine it is', () => {
       ['close_terminal_session', { term: 7 }],
       ['mark_terminal_seen', { term: 7 }],
       ['archive_terminal_session', { term: 7, archived: true }],
+      ['reload_terminal_session', { term: 7 }],
     ])
   })
 
@@ -589,6 +591,7 @@ describe('commands for a pane, on whichever machine it is', () => {
     await archiveConversationOnDaemon(there, true)
     await markSeenOnDaemon(there)
     await archiveSessionOnDaemon(there, false)
+    await reloadAgentOnDaemon(there)
     expect(vi.mocked(invoke).mock.calls).toEqual([
       ['terminal_input', { term: 7, data: [108, 115], machine: 3 }],
       ['pane_terminal_resize', { term: 7, cols: 100, rows: 30, machine: 3 }],
@@ -596,6 +599,7 @@ describe('commands for a pane, on whichever machine it is', () => {
       ['close_terminal_session', { term: 7, machine: 3 }],
       ['mark_terminal_seen', { term: 7, machine: 3 }],
       ['archive_terminal_session', { term: 7, archived: false, machine: 3 }],
+      ['reload_terminal_session', { term: 7, machine: 3 }],
     ])
   })
 

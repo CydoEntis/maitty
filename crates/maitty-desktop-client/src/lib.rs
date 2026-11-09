@@ -26,6 +26,8 @@ pub enum PaneCommand {
     Pin(bool),
     Archive(bool),
     Seen,
+    /// Restart an agent in place so it loads hooks it missed.
+    Reload,
     Close,
     /// End the session after an undo window; `UndoClose` inside it brings the session back.
     CloseSession,
@@ -47,6 +49,7 @@ impl PaneCommand {
                 ClientMsg::Command(Command::ArchivePane { term, archived })
             }
             PaneCommand::Seen => ClientMsg::Command(Command::MarkSeen { term }),
+            PaneCommand::Reload => ClientMsg::Command(Command::ReloadAgent { term }),
             PaneCommand::Close => ClientMsg::Command(Command::ClosePane { term }),
             PaneCommand::CloseSession => ClientMsg::Command(Command::CloseSession { term }),
             PaneCommand::UndoClose => ClientMsg::Command(Command::UndoClose { term }),
@@ -903,6 +906,15 @@ pub async fn archive_terminal_session(
     match reply {
         Reply::Ok => Ok(Value::Null),
         _ => bail!("daemon returned an unexpected archive reply"),
+    }
+}
+
+/// Restart an agent in place, keeping its name, so it loads hooks it missed.
+pub async fn reload_terminal_session(term: u32, daemon_executable: PathBuf) -> Result<Value> {
+    let reply = request(PaneCommand::Reload.message(term), daemon_executable).await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected reload reply"),
     }
 }
 

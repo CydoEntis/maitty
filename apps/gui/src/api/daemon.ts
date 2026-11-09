@@ -40,6 +40,8 @@ const TerminalSessionSchema = z.object({
   linked: z.boolean().default(false),
   label: z.string().default(''),
   pinned: z.boolean().default(false),
+  // Whether the agent's hooks have reported in; an agent started before they were installed never does.
+  hooked: z.boolean().default(false),
   archived: z.boolean().default(false),
   conversation_id: z.number().nullable().default(null),
   // Lines added and removed in the session's checkout against HEAD; zero outside git.
@@ -785,6 +787,13 @@ export async function archiveSessionOnDaemon(conversation: Pick<Conversation, 'i
   if (!isDesktop()) return
   const pane = addressOf(conversation.id)
   if (pane !== null) await invokeParsed('archive_terminal_session', NullSchema, { term: pane.term, archived, ...machineArgs(pane) })
+}
+
+/** Restart an agent in place, keeping its name, so it loads hooks it missed. */
+export async function reloadAgentOnDaemon(conversation: Pick<Conversation, 'id'>): Promise<void> {
+  if (!isDesktop()) return
+  const pane = addressOf(conversation.id)
+  if (pane !== null) await invokeParsed('reload_terminal_session', NullSchema, { term: pane.term, ...machineArgs(pane) })
 }
 
 /**
