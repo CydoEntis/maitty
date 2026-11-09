@@ -16,13 +16,23 @@ function ask(action: UpdateAction, activity: Promise<MachineActivity | null> = P
 describe('the question before the sidebar updates a machine', () => {
   it('says what is open there before an update, and updates now or when idle', async () => {
     const user = userEvent.setup()
-    const { onUpdate } = ask('update', Promise.resolve({ sessions: 3, busy: 1 }))
+    const { onUpdate } = ask('update', Promise.resolve({ sessions: 3, busy: 1, current: false }))
     expect(screen.getByRole('dialog', { name: 'Update Maitty on box' })).toHaveTextContent('box runs another version of Maitty.')
     expect(await screen.findByText(/box has 3 sessions open, 1 busy\./)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Update when idle' }))
     expect(onUpdate).toHaveBeenCalledWith(true)
     await user.click(screen.getByRole('button', { name: 'Update now' }))
     expect(onUpdate).toHaveBeenLastCalledWith(false)
+  })
+
+  it('says restart, not update, when the app there is already this version', async () => {
+    const user = userEvent.setup()
+    const { onUpdate } = ask('update', Promise.resolve({ sessions: 1, busy: 0, current: true }))
+    expect(await screen.findByRole('dialog', { name: 'Restart Maitty on box' })).toHaveTextContent('box already has this version; its daemon is still the old one.')
+    expect(screen.queryByRole('button', { name: 'Update now' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Restart now' }))
+    expect(onUpdate).toHaveBeenCalledWith(false)
+    expect(screen.getByRole('button', { name: 'Restart when idle' })).toBeInTheDocument()
   })
 
   it('cannot update until it knows what is open, and still asks when the machine cannot say', async () => {

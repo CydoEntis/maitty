@@ -128,6 +128,8 @@ fn run(
 pub struct Activity {
     sessions: usize,
     busy: usize,
+    /// The app there is already this version, so an update is only a daemon restart.
+    current: bool,
 }
 
 /// The far side's one line, `activity: sessions=3 busy=1`; `None` when it could not say.
@@ -136,16 +138,19 @@ fn parse_activity(text: &str) -> Option<Activity> {
     let numbers = line.strip_prefix("activity: ")?;
     let mut sessions = None;
     let mut busy = None;
+    let mut current = false;
     for part in numbers.split_whitespace() {
         match part.split_once('=') {
             Some(("sessions", value)) => sessions = value.parse().ok(),
             Some(("busy", value)) => busy = value.parse().ok(),
+            Some(("current", value)) => current = value == "yes",
             _ => {}
         }
     }
     Some(Activity {
         sessions: sessions?,
         busy: busy?,
+        current,
     })
 }
 
@@ -235,7 +240,11 @@ mod tests {
     fn the_activity_line_is_read_and_anything_else_is_unknown() {
         assert_eq!(
             parse_activity("banner\nactivity: sessions=3 busy=1\n"),
-            Some(Activity { sessions: 3, busy: 1 })
+            Some(Activity { sessions: 3, busy: 1, current: false })
+        );
+        assert_eq!(
+            parse_activity("activity: sessions=1 busy=0 current=yes"),
+            Some(Activity { sessions: 1, busy: 0, current: true })
         );
         assert_eq!(parse_activity("activity: unknown"), None);
         assert_eq!(parse_activity("activity: sessions=3"), None);

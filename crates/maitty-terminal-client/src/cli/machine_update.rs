@@ -420,7 +420,22 @@ pub(crate) fn activity(name: &str, cfg: &Config) -> Result<String, Failure> {
         .map_err(|e| failed(format!("{e:#}")))?;
     let ran = ssh_run::run(&argv, None, ASK_LIMIT).map_err(Failure::Failed)?;
     reached(&ran, name)?;
-    Ok(activity_line(ran.code, &ran.stdout))
+    let mut line = activity_line(ran.code, &ran.stdout);
+    // The window words an update as a restart when the app there is already this version, so
+    // that is said beside the counts. Only a machine that answered the counts is looked at.
+    if line != UNKNOWN_ACTIVITY && installed_is_current(&machine, name) {
+        line.push_str(" current=yes");
+    }
+    Ok(line)
+}
+
+/// Whether the app on the machine is exactly this version, so only its daemon can be old.
+/// A machine that cannot be probed is "no": the window then says Update, which still works.
+pub(crate) fn installed_is_current(machine: &Machine, name: &str) -> bool {
+    probe_installed(machine, name)
+        .ok()
+        .and_then(|installed| state_of(&installed, APP_VERSION))
+        == Some(State::Matching)
 }
 
 /// The far side's answer when it ran and printed one; anything else (an older app that does not
@@ -430,8 +445,10 @@ fn activity_line(code: Option<i32>, stdout: &str) -> String {
     if code == Some(0) && line.starts_with("activity: ") {
         return sanitize(&line, false);
     }
-    "activity: unknown".into()
+    UNKNOWN_ACTIVITY.into()
 }
+
+const UNKNOWN_ACTIVITY: &str = "activity: unknown";
 
 /// Where the update stands as each stage ends, for the desktop app's progress line. The numbers are the stages
 /// themselves, not a measurement: the download and the upload have no byte count to report.

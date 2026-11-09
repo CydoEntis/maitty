@@ -138,8 +138,23 @@ export function installNote(name: string): string {
   return `Puts this version of Maitty on ${name} over ssh, then connects to it.`
 }
 
+type Activity = { sessions: number; busy: number; current: boolean }
+
+/** Whether the fix is only a restart: the app there is already this version and its daemon is the old one. */
+export function isRestartOnly(action: UpdateAction | null, activity: Activity | null): boolean {
+  return action === 'update' && activity?.current === true
+}
+
+/** The word on the button and in the title: Restart when only the daemon is old, else the action's own. */
+export function updateVerb(action: UpdateAction, activity: Activity | null): string {
+  return isRestartOnly(action, activity) ? 'Restart' : UPDATE_WORDS[action].verb
+}
+
 /** What an update will interrupt, said before it runs. `activity` is null when the machine could not say. */
-export function updateWarning(name: string, activity: { sessions: number; busy: number } | null): string {
+export function updateWarning(name: string, activity: Activity | null): string {
+  if (activity?.current === true) {
+    return `${name} already has this version; its daemon is still the old one. It has ${String(activity.sessions)} ${activity.sessions === 1 ? 'session' : 'sessions'} open, ${String(activity.busy)} busy. Restarting its daemon brings the sessions back with their agents resumed; an agent in the middle of a turn loses that turn if you restart now. Restart when idle waits up to half an hour for nothing to be running first.`
+  }
   const open = activity === null
     ? `Updating ${name} restarts its daemon, and ${name} could not say what is open on it. `
     : `${name} has ${String(activity.sessions)} ${activity.sessions === 1 ? 'session' : 'sessions'} open, ${String(activity.busy)} busy. Updating restarts its daemon. `

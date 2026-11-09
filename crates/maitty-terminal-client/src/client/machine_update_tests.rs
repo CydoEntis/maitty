@@ -8,7 +8,7 @@
 use super::remote_status_tests::built;
 use crate::brand::{APP_COMMAND, APP_VERSION};
 use crate::cli::machine_update::binary::{Binary, ReleaseSources, Releases, Sources, measured};
-use crate::cli::machine_update::{Failure, Flags, Outcome, Talk, update};
+use crate::cli::machine_update::{Failure, Flags, Outcome, Talk, installed_is_current, update};
 use crate::ipc::Machine;
 use crate::remote_install::Platform;
 use std::path::{Path, PathBuf};
@@ -640,6 +640,22 @@ fn a_daemon_left_running_with_nobody_to_ask_says_the_way_out_without_restarting(
     run(&remote, AT_HOME, YES, &busy_daemon_build(&remote), &mut person).unwrap();
     assert!(person.asked.is_empty());
     assert!(person.heard("click Update on box"), "{:?}", person.said);
+}
+
+#[test]
+fn the_window_is_told_when_the_app_there_is_already_this_version() {
+    needs_sh!();
+    let remote = Remote::new(LINUX);
+    remote.install(".local/bin/maitty", APP_VERSION);
+    assert!(installed_is_current(&remote.machine(AT_HOME), "box"));
+}
+
+#[test]
+fn an_older_app_there_is_not_called_current() {
+    needs_sh!();
+    let remote = Remote::new(LINUX);
+    remote.install(".local/bin/maitty", "0.1.0");
+    assert!(!installed_is_current(&remote.machine(AT_HOME), "box"));
 }
 
 #[test]
