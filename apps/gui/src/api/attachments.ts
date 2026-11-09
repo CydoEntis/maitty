@@ -40,3 +40,9 @@ export async function chooseFilesToAttach(): Promise<string[] | null> {
   if (chosen === null) return null
   return Array.isArray(chosen) ? chosen : [chosen]
 }
+
+/** The bytes of a kept image, for showing it. The host reads only images it kept itself; anything else rejects. */
+export async function attachmentImage(path: string): Promise<Blob> {
+  if (!isTauri()) throw new Error('Images can only be shown in the desktop app')
+  return new Blob([await invoke<ArrayBuffer>('attachment_image', { path })])
+}

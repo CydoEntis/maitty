@@ -16,6 +16,7 @@ const fake = vi.hoisted(() => ({
   submitMessage: vi.fn<(conversation: { id: string; generation: number }, operation: number, text: string) => Promise<unknown>>(),
   attachLocalFile: vi.fn<(path: string) => Promise<Attached>>(),
   attachmentsExist: vi.fn<(paths: readonly string[]) => Promise<boolean[]>>(),
+  attachmentImage: vi.fn<(path: string) => Promise<Blob>>(),
   chooseFilesToAttach: vi.fn<() => Promise<string[] | null>>(),
   saveImageLocally: vi.fn<(bytes: Uint8Array) => Promise<string>>(),
 }))
@@ -33,6 +34,7 @@ vi.mock('@/api/attachments', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/attachments')>()),
   attachLocalFile: fake.attachLocalFile,
   attachmentsExist: fake.attachmentsExist,
+  attachmentImage: fake.attachmentImage,
   chooseFilesToAttach: fake.chooseFilesToAttach,
 }))
 
@@ -55,6 +57,8 @@ beforeEach(() => {
   for (const mock of Object.values(fake)) if (typeof mock === 'function') mock.mockReset()
   fake.submitMessage.mockResolvedValue({})
   fake.attachmentsExist.mockImplementation((paths) => Promise.resolve(paths.map(() => true)))
+  fake.attachmentImage.mockResolvedValue(new Blob([new Uint8Array([1])]))
+  URL.createObjectURL = vi.fn(() => `blob:kept-${String(Math.random())}`)
   fake.attachLocalFile.mockImplementation((path) => Promise.resolve(kept(path.split('/').pop() ?? 'file')))
 })
 
@@ -325,6 +329,33 @@ describe('a sent message', () => {
     const gone = screen.getByText('Design_Final.zip').closest('li')
     expect(gone).toHaveTextContent('no longer available')
     expect(screen.getByText('Pasted image.png').closest('li')).not.toHaveTextContent('no longer available')
+  })
+})
+
+describe('an attached image', () => {
+  const sentImage = (stamp: number) => (daemon: FakeDaemonHistory) => {
+    daemon.upsert(daemon.message('t2', 'u2', 'User', `look\n\n${ATTACHMENT_HEADER}\n- /cache/pastes/paste-${String(stamp)}-0a1b2c3d.png`))
+  }
+
+  it('shows a sent image as a thumbnail that opens it full size, and closes with Escape', async () => {
+    const { user } = await open({ prepare: sentImage(1730000000002) })
+    await settle()
+
+    await user.click(screen.getByRole('button', { name: 'View Pasted image.png' }))
+    const viewer = screen.getByRole('dialog', { name: 'Pasted image.png' })
+    expect(within(viewer).getByRole('img', { name: 'Pasted image.png' })).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('keeps the name chip when the host can no longer read the image', async () => {
+    fake.attachmentImage.mockRejectedValue(new Error('that file is no longer kept'))
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    await open({ prepare: sentImage(1730000000003) })
+    await settle()
+
+    expect(screen.getByText('Pasted image.png')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^View / })).not.toBeInTheDocument()
   })
 })
 
