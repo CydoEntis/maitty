@@ -19,13 +19,13 @@ function entry(machine?: { id: number; name: string }) {
 
 function show(entries: ReturnType<typeof entry>[]) {
   const none = vi.fn()
-  render(<InboxPanel entries={entries} tracks={new Map()} online onAnswer={none} onClear={none} onClearDone={none} onOpen={none} onClose={none} />)
+  render(<InboxPanel entries={entries} tracks={new Map()} onClear={none} onClearDone={none} onOpen={none} onClose={none} />)
 }
 
 describe('the Inbox', () => {
   it('says a session of another machine is on it', () => {
     show([entry({ id: 1, name: 'build' })])
-    expect(screen.getByText(/claude · on build/)).toBeTruthy()
+    expect(screen.getByText(/on build/)).toBeTruthy()
     forgetMachines()
   })
 

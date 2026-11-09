@@ -46,7 +46,7 @@ import { TerminalView } from '@/TerminalView'
 import { ReducedMotionContext } from './components/motion'
 import { SplitHandle } from './components/SplitHandle'
 import { CommandPalette } from './components/CommandPalette'
-import { InboxPanel, type Answer, type InboxEntry } from './components/InboxPanel'
+import { InboxPanel, type InboxEntry } from './components/InboxPanel'
 import { InspectPanel, type InspectView } from '@/features/inspect/InspectPanel'
 import { runsProgram } from './components/runsProgram'
 import { rememberSessions, withEnded } from './model/ended'
@@ -1630,7 +1630,7 @@ export function DesktopApp() {
     return sendTerminalInput({ id: target.id, generation: target.conversation.generation ?? 0 }, data)
   }, [])
 
-  const answerSession = useCallback((sessionId: string, answer: Answer) => {
+  const answerSession = useCallback((sessionId: string, answer: 'y' | 'a' | 'n') => {
     const target = sessionMap.get(sessionId)
     if (!target) return
     // A card can outlast the question. Typing into a session that is not asking would land in its shell.
@@ -2164,8 +2164,6 @@ export function DesktopApp() {
               <InboxPanel
                 entries={inboxEntries}
                 tracks={tracks}
-                online={online}
-                onAnswer={answerSession}
                 onClear={clearEntry}
                 onClearDone={clearSettled}
                 onOpen={(id) => { setInboxOpen(false); showSessionById(id) }}

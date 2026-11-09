@@ -999,7 +999,7 @@ describe('desktop overlays and pane tools', () => {
     }
   })
 
-  it('lists what needs you in the inbox and types the answer into that session', async () => {
+  it('lists what needs you in the inbox as plain rows: a row opens its session and a finished one can be cleared', async () => {
     const user = userEvent.setup()
     daemon.loadConversations.mockResolvedValue([at(2), at(3, { status: 'needs-you', summary: 'Allow git push origin main?' }), at(4, { status: 'done' })])
     renderDesktopApp()
@@ -1008,18 +1008,18 @@ describe('desktop overlays and pane tools', () => {
 
     await user.click(open)
     const inbox = await screen.findByRole('dialog', { name: 'Inbox' })
-    const cards = within(inbox).getAllByRole('article')
-    expect(cards).toHaveLength(2)
-    expect(cards[0]).toHaveTextContent('Needs you')
-    expect(cards[0]).toHaveTextContent('Allow git push origin main?')
+    const rows = within(inbox).getAllByRole('listitem')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toHaveTextContent('Needs you')
+    expect(rows[0]).toHaveTextContent('Allow git push origin main?')
+    // No preview of the session and no answer buttons: the row opens the session, where the answer is given.
+    expect(within(inbox).queryByRole('button', { name: /^Yes, once/ })).not.toBeInTheDocument()
 
-    await user.click(within(cards[0] as HTMLElement).getByRole('button', { name: /^Yes, once/ }))
-    expect(daemon.sendTerminalInput).toHaveBeenCalledWith(expect.objectContaining({ id: 't3' }), 'y')
+    await user.click(within(rows[1] as HTMLElement).getByRole('button', { name: /^Clear / }))
+    expect(within(inbox).getAllByRole('listitem')).toHaveLength(1)
 
-    await user.click(within(cards[1] as HTMLElement).getByRole('button', { name: 'Clear' }))
-    expect(within(inbox).getAllByRole('article')).toHaveLength(1)
-    await user.keyboard('{Escape}')
-    expect(screen.queryByRole('dialog', { name: 'Inbox' })).not.toBeInTheDocument()
+    await user.click(within(inbox).getByRole('button', { name: /needs you$/ }))
+    await waitFor(() => { expect(screen.queryByRole('dialog', { name: 'Inbox' })).not.toBeInTheDocument() })
   })
 
   it('shows a session in the inbox again when it comes back to a state you cleared, after it moved on', async () => {
@@ -1028,8 +1028,8 @@ describe('desktop overlays and pane tools', () => {
     const { client } = renderDesktopApp()
     await user.click(await screen.findByRole('button', { name: /^Inbox, 1/ }))
     const inbox = await screen.findByRole('dialog', { name: 'Inbox' })
-    await user.click(within(within(inbox).getByRole('article')).getByRole('button', { name: 'Clear' }))
-    expect(within(inbox).queryByRole('article')).not.toBeInTheDocument()
+    await user.click(within(within(inbox).getByRole('listitem')).getByRole('button', { name: /^Clear / }))
+    expect(within(inbox).getByText(/all caught up/)).toBeInTheDocument()
 
     daemon.loadConversations.mockResolvedValue([at(2, { status: 'working' })])
     await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
@@ -1039,7 +1039,7 @@ describe('desktop overlays and pane tools', () => {
     daemon.loadConversations.mockResolvedValue([at(2, { status: 'done' })])
     await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
 
-    await waitFor(() => { expect(within(screen.getByRole('dialog', { name: 'Inbox' })).getAllByRole('article')).toHaveLength(1) })
+    await waitFor(() => { expect(within(screen.getByRole('dialog', { name: 'Inbox' })).queryByText(/all caught up/)).not.toBeInTheDocument() })
   })
 
   it('marks a finished session seen once you are in its pane, and leaves a needs-you one alone', async () => {
