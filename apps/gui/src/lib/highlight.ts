@@ -15,7 +15,11 @@ const SLASH_LANGUAGES = new Set([
 // Shell-like languages: # comments, $variables and -flags are worth coloring.
 const HASH_LANGUAGES = new Set([
   'py', 'sh', 'bash', 'zsh', 'rb', 'toml', 'yaml', 'yml', 'ps1',
+  'ini', 'env', 'conf', 'cfg', 'mk', 'lock', 'gitignore', 'dockerfile', 'makefile',
 ])
+// Markup: tags, headings and links are what a reader scans for, so they take the variable colour.
+const MARKDOWN_LANGUAGES = new Set(['md', 'markdown', 'mdx'])
+const MARKUP_LANGUAGES = new Set(['html', 'htm', 'xml', 'svg', 'vue', 'svelte'])
 const SHELL_LANGUAGES = new Set(['sh', 'bash', 'zsh', 'ps1'])
 
 // Common to the languages above; enough to make code scannable, not a parser.
@@ -46,6 +50,16 @@ const HASH_PATTERN = new RegExp(
   String.raw`(#.*)|(${STRING})|${NUMBER}|${WORD}`,
   'g',
 )
+// A group that never matches keeps the positions the tokenizer reads (comment, string, number, word, variable, flag).
+const NEVER = '((?!))'
+const MARKDOWN_PATTERN = new RegExp(
+  String.raw`(^\s*>.*)|(` + '`[^`]*`' + String.raw`)|${NEVER}|${NEVER}|(^\s*#{1,6}\s.*|\[[^\]]*\]\([^)]*\))`,
+  'g',
+)
+const MARKUP_PATTERN = new RegExp(
+  String.raw`(<!--.*?-->)|(${STRING})|${NEVER}|${NEVER}|(<\/?[A-Za-z][\w:.-]*)`,
+  'g',
+)
 const SHELL_PATTERN = new RegExp(
   String.raw`(#.*)|(${STRING})|${NUMBER}|${WORD}|(\$[A-Za-z_][\w:]*|\$\{[^}]*\})|((?<![\w-])--?[A-Za-z][\w-]*)`,
   'g',
@@ -69,19 +83,23 @@ export function extensionForLanguage(language: string): string {
 function extensionOf(path: string): string {
   const name = path.split(/[\\/]/).pop() ?? ''
   const dot = name.lastIndexOf('.')
-  return dot < 0 ? '' : name.slice(dot + 1).toLowerCase()
+  // A name with no dot (Dockerfile, Makefile) is its own kind.
+  return dot < 0 ? name.toLowerCase() : name.slice(dot + 1).toLowerCase()
+}
+
+function patternFor(extension: string): RegExp | null {
+  if (SHELL_LANGUAGES.has(extension)) return SHELL_PATTERN
+  if (SLASH_LANGUAGES.has(extension)) return SLASH_PATTERN
+  if (HASH_LANGUAGES.has(extension)) return HASH_PATTERN
+  if (MARKDOWN_LANGUAGES.has(extension)) return MARKDOWN_PATTERN
+  if (MARKUP_LANGUAGES.has(extension)) return MARKUP_PATTERN
+  return null
 }
 
 /** Split one line into tokens for its file type; unknown types stay plain. */
 export function highlightLine(line: string, path: string): Token[] {
   const extension = extensionOf(path)
-  const pattern = SHELL_LANGUAGES.has(extension)
-    ? SHELL_PATTERN
-    : SLASH_LANGUAGES.has(extension)
-      ? SLASH_PATTERN
-      : HASH_LANGUAGES.has(extension)
-        ? HASH_PATTERN
-        : null
+  const pattern = patternFor(extension)
   if (!pattern || line.length > MAX_HIGHLIGHT_LINE_LENGTH)
     return [{ text: line, kind: 'plain' }]
 
