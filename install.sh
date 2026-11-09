@@ -89,6 +89,12 @@ else
   "$DIR/$APP" integrate </dev/null || say "Warning: some agents weren't connected; run '$APP integrate' to retry."
 fi
 
+# What is connected and what is not, so a problem shows now and not at first launch. It only
+# reports; a failing check must not fail the install.
+say ""
+say "Checking your setup ('$APP doctor')..."
+"$DIR/$APP" doctor </dev/null || true
+
 # Another program of the same name found first on PATH?
 found="$(command -v "$APP" 2>/dev/null || true)"
 if [ -n "$found" ] && [ "$found" != "$DIR/$APP" ]; then
