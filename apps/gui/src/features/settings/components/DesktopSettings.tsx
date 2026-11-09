@@ -571,7 +571,7 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
         </Row>
       </Card>
       <Card title="Interface size" color="var(--ansi-green)" iconPath={<path d="M4 7h16M4 12h10M4 17h13" />}>
-        <Row label="Density" detail="How much room the sidebar rows, tabs and panes get.">
+        <Row label="Density" detail="How much room the sidebar rows, pane headers and gaps get.">
           <SegmentedChoice label="Density" value={preferences.density} options={DENSITY_OPTIONS} onChange={(value) => { update('density', value) }} />
         </Row>
         <Row label="Sidebar icons" detail="The project tiles, session icons and the collapsed rail.">
@@ -580,8 +580,8 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
         <Row label="Sidebar text" detail="Folder names and session rows.">
           <SegmentedChoice label="Sidebar text size" value={preferences.sidebarTextSize} options={UI_TEXT_OPTIONS} onChange={(value) => { update('sidebarTextSize', value) }} />
         </Row>
-        <Row label="Tab text" detail="The names on the tab bar.">
-          <SegmentedChoice label="Tab text size" value={preferences.tabTextSize} options={UI_TEXT_OPTIONS} onChange={(value) => { update('tabTextSize', value) }} />
+        <Row label="Pane title text" detail="The names on each pane's header.">
+          <SegmentedChoice label="Pane title text size" value={preferences.tabTextSize} options={UI_TEXT_OPTIONS} onChange={(value) => { update('tabTextSize', value) }} />
         </Row>
         <Row label="Sidebar width" detail="Drag the sidebar's edge to change it, or focus the edge and use the arrow keys.">
           <span className="mono" style={{ fontSize: 12, color: 'var(--fg2)' }}>{preferences.sidebarWidth}px</span>

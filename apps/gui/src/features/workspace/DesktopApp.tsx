@@ -107,7 +107,9 @@ import { MachineUpdateDialog } from './components/MachineUpdateDialog'
 import { runMachineUpdate } from './machineUpdate'
 import { ConfirmCloseDialog } from './components/ConfirmCloseDialog'
 import { movePanes } from './components/paneTransition'
-import { RenameDialog } from './components/RenameDialog'
+import { RenameDialog, RenameMachineDialog } from './components/RenameDialog'
+import { readSplitShells, withSplitShell, writeSplitShells } from '@/data/splitShells'
+import { readMachineNicknames, withNickname, writeMachineNicknames } from '@/data/machineNicknames'
 import { Sidebar, type OpenSubagent } from './components/Sidebar'
 import { EmptyState, Toast, type RestartOffer } from './components/states'
 import { ServiceStatus } from './components/ServiceStatus'
@@ -140,7 +142,7 @@ import {
 } from './model/layout'
 import { LAYOUT_RESET_NOTICE, readLayout, writeLayout } from './model/layoutStorage'
 import { byPriority } from './model/inboxOrder'
-import { displayName, folderNameOf, inCreationOrder, tildePath, toSessionView, type SessionView } from './model/session'
+import { displayName, folderNameOf, inCreationOrder, keepLabels, tildePath, toSessionView, type SessionView } from './model/session'
 import { byUrgency, isShell, rowTitle } from './model/sidebar'
 import { Keycaps } from '@/features/shortcuts/Keycaps'
 import { topmostOpen, type EscLayer } from './model/escLadder'
@@ -459,7 +461,8 @@ export function DesktopApp() {
   }, [])
   // Sessions started as a known agent, until the daemon says so itself (see `startAgentSession`).
   const [expectedAgents, setExpectedAgents] = useState<Record<string, ChatAgent>>({})
-  const everySession = useMemo(() => {
+  const [shownLabels, setShownLabels] = useState<ReadonlyMap<string, SessionView>>(() => new Map())
+  const liveSessions = useMemo(() => {
     // Terminal sessions, and the chat sessions the daemon owns that are not put away (ADR 0003).
     const terminals = (sessionsQuery.data ?? []).filter((item) => item.kind === 'terminal' || isListedChatSession(item))
     const here = online ? terminals : markConversationsDisconnected(terminals)
@@ -468,6 +471,10 @@ export function DesktopApp() {
       return toSessionView(expected !== undefined && !conversation.agent ? { ...conversation, agent: expected } : conversation, home)
     })
   }, [sessionsQuery.data, online, home, machines, expectedAgents])
+  const everySession = useMemo(() => liveSessions.map((view) => keepLabels(view, shownLabels.get(view.id))), [liveSessions, shownLabels])
+  // What each row shows is remembered, so a later refresh keeps it (see `keepLabels`); only a change is stored, which ends the loop.
+  const labelsChanged = everySession.length !== shownLabels.size || everySession.some((view) => shownLabels.get(view.id)?.title !== view.title || shownLabels.get(view.id)?.cwd !== view.cwd || shownLabels.get(view.id)?.branch !== view.branch)
+  if (labelsChanged) setShownLabels(new Map(everySession.map((view) => [view.id, view])))
   const sessions = everySession
   const sessionMap = useMemo(() => new Map(sessions.map((session) => [session.id, session])), [sessions])
   // A session the daemon stops listing keeps its pane, shown as ended, so a refresh that misses one
@@ -558,7 +565,9 @@ export function DesktopApp() {
   const visibleKey = windowFocused ? [...visibleSessionIds(layout)].sort().join(' ') : ''
   // Every session some layout shows: one the daemon lists before its pane is placed is kept off the sidebar until it is.
   const openIds = useMemo(() => new Set(layout.arrangements.flatMap((candidate) => candidate.panes.map((pane) => pane.sessionId))), [layout.arrangements])
-  const heads = useMemo(() => machineHeads(machines), [machines])
+  const [machineNicknames, setMachineNicknames] = useState(readMachineNicknames)
+  const [renamingMachine, setRenamingMachine] = useState<string | null>(null)
+  const heads = useMemo(() => machineHeads(machines, machineNicknames), [machines, machineNicknames])
   // The machine of the pane in front, named in the status bar once there is more than one machine to tell apart.
   const focusedMachine = focusedSession?.machine
   const focusMachine = useMemo<FocusMachine | null>(() => {
@@ -651,10 +660,13 @@ export function DesktopApp() {
   // The sidebar is one flat list in creation order; a status change, a pin or a focus never moves a row.
   const ordered = useMemo(() => inCreationOrder(sessions), [sessions])
   // A session the daemon lists a moment before its pane exists would show in the sidebar and then jump once placed.
+  // A terminal opened by splitting a pane is part of that split, not a session of its own to list; one no pane shows is listed so it is never lost.
+  const [splitShells, setSplitShells] = useState(readSplitShells)
   const sidebarSessions = useMemo(() => {
-    if (startedFrom === null) return ordered
-    return ordered.filter((session) => startedFrom.has(session.id) || openIds.has(session.id))
-  }, [ordered, startedFrom, openIds])
+    const listed = ordered.filter((session) => !splitShells.has(session.id) || !openIds.has(session.id))
+    if (startedFrom === null) return listed
+    return listed.filter((session) => startedFrom.has(session.id) || openIds.has(session.id))
+  }, [ordered, startedFrom, openIds, splitShells])
 
   // New sessions go to the machine of the session in front, else this computer.
   const focusedMachineNumber = focusedSession?.machine ?? LOCAL_MACHINE
@@ -1046,6 +1058,11 @@ export function DesktopApp() {
     }
     const cwd = sourceSession?.cwd
     void runStart(async () => cwd ?? resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => {
+      setSplitShells((known) => {
+        const next = withSplitShell(known, id, new Set([...sessionMap.keys(), id]))
+        writeSplitShells(next)
+        return next
+      })
       // If the layout changed or filled up while the shell started, the shell still gets a layout: it must not be left with no pane.
       setLayout((current) => {
         const next = splitPane(current, source?.id ?? null, direction, id, makeId)
@@ -1510,7 +1527,7 @@ export function DesktopApp() {
   const sidebarMode = compact || preferences.compactSidebar ? 'rail' : 'docked'
   // A name is typed in its row where the full sidebar shows; the rail and Focus mode ask in a dialog.
   const renameInline = !focusMode && (sidebarMode === 'docked' || drawerShown)
-  const dialogOpen = settingsSection !== null || (renameId !== null && !renameInline) || getFileId !== null || newSessionMachine !== null || newChatOpen
+  const dialogOpen = settingsSection !== null || (renameId !== null && !renameInline) || getFileId !== null || newSessionMachine !== null || newChatOpen || renamingMachine !== null
   const modalOpen = dialogOpen || overlayOpen
   const shortcutState = useRef({ runShortcut, canUndoClose: () => lastClose !== null, settingsOpen: dialogOpen, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
   useEffect(() => { shortcutState.current = { runShortcut, canUndoClose: () => lastClose !== null, settingsOpen: dialogOpen, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
@@ -2006,6 +2023,7 @@ export function DesktopApp() {
       onNewShell={(machine) => { afterPick(); newTerminal(machine) }}
       onAddMachine={() => { afterPick(); setSettingsSection('machines') }}
       onMachineSettings={() => { afterPick(); setSettingsSection('machines') }}
+      onRenameMachine={setRenamingMachine}
       onUpdateMachine={(name, action) => { afterPick(); setUpdateAsk({ name, action }) }}
       onShowSession={(id) => { afterPick(); showSessionById(id) }}
       onShowSubagent={(sessionId, subagentId) => { afterPick(); showSubagent(sessionId, subagentId) }}
@@ -2233,6 +2251,19 @@ export function DesktopApp() {
             )}
             {closeAsk && (
               <ConfirmCloseDialog title={closeAsk.title} body={closeAsk.body} confirmLabel={closeAsk.confirmLabel} onCancel={() => { setCloseAsk(null) }} onConfirm={() => { const run = closeAsk.run; setCloseAsk(null); run() }} />
+            )}
+            {renamingMachine !== null && (
+              <RenameMachineDialog
+                machine={renamingMachine}
+                nickname={machineNicknames[renamingMachine.toLowerCase()] ?? ''}
+                onSave={(nickname) => {
+                  const next = withNickname(machineNicknames, renamingMachine, nickname)
+                  setMachineNicknames(next)
+                  writeMachineNicknames(next)
+                  setRenamingMachine(null)
+                }}
+                onCancel={() => { setRenamingMachine(null) }}
+              />
             )}
             {renameId !== null && !renameInline && sessionMap.get(renameId) && (
               <RenameDialog session={sessionMap.get(renameId) as SessionView} onSave={(name) => { saveName(renameId, name) }} onCancel={() => { setRenameId(null) }} />

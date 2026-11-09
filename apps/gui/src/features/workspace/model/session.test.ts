@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Conversation } from '@/data/preview'
-import { displayName, folderNameOf, inCreationOrder, matchesFilter, processName, rowName, statusText, tildePath, toSessionView, truncatePrompt } from './session'
+import { displayName, folderNameOf, inCreationOrder, keepLabels, matchesFilter, processName, rowName, statusText, tildePath, toSessionView, truncatePrompt } from './session'
 import { formatAgo, formatElapsed, markSeen, trackSessions } from './tracking'
 import { folderExists, resolveStartFolder } from './startFolder'
 
@@ -181,5 +181,28 @@ describe('an exited session', () => {
     expect(toSessionView(conversation(1, `${HOME}/a`, { status: 'working', details }), HOME).status).toBe('working')
     expect(toSessionView(conversation(1, `${HOME}/a`, { status: 'needs-you', details }), HOME).status).toBe('needs')
     expect(toSessionView(conversation(1, `${HOME}/a`, { status: 'idle', details: { ...details, exit: null } }), HOME).status).toBe('idle')
+  })
+})
+
+describe('labels that stay put', () => {
+  const root = `${HOME}/maitty`
+  const shown = toSessionView(repo(1, root, root, { branch: 'dev' }), HOME)
+
+  it('keeps the branch and title while a pull blanks or switches the branch', () => {
+    const during = toSessionView(repo(1, root, root, { branch: 'working tree' }), HOME)
+    expect(keepLabels(during, shown)).toMatchObject({ title: 'dev', branch: 'dev', repoName: 'maitty' })
+    const switched = toSessionView(repo(1, root, root, { branch: 'other' }), HOME)
+    expect(keepLabels(switched, shown)).toMatchObject({ title: 'dev', branch: 'dev' })
+  })
+
+  it('follows the session into another folder', () => {
+    const moved = toSessionView(repo(1, root, `${root}/crates/core`, { branch: 'dev' }), HOME)
+    expect(keepLabels(moved, shown)).toBe(moved)
+  })
+
+  it('waits for the first branch instead of keeping a title with none', () => {
+    const early = toSessionView(repo(1, root, root, { branch: '' }), HOME)
+    const later = toSessionView(repo(1, root, root, { branch: 'dev' }), HOME)
+    expect(keepLabels(later, early)).toBe(later)
   })
 })

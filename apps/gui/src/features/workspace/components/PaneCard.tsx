@@ -104,6 +104,7 @@ export function PaneCard(props: PaneCardProps) {
   ]
 
   return (
+    <>
     <section
       ref={box}
       className={`mx-pane${view === 'chat' ? ' is-chat' : ' is-terminal'}${multi ? ' is-card' : ''}${focused && multi ? ' is-focused' : ''}${props.broadcast ? ' is-broadcast' : ''}${props.dropTarget ? ' is-drop-target' : ''}`}
@@ -182,7 +183,9 @@ export function PaneCard(props: PaneCardProps) {
         </div>
       )}
       <span className="mx-pane-ring" aria-hidden="true" />
-      {menuAt && <MenuPopup title={title} at={menuAt} items={menuItems} portalContainer={props.portalContainer} onClose={() => { setMenuAt(null) }} />}
     </section>
+    {/* Beside the pane, not in it: a pane has `contain: paint`, which would place the menu's fixed anchor from the pane's corner. */}
+    {menuAt && <MenuPopup key={`${String(menuAt.x)},${String(menuAt.y)}`} title={title} at={menuAt} items={menuItems} portalContainer={props.portalContainer} onClose={() => { setMenuAt(null) }} />}
+    </>
   )
 }

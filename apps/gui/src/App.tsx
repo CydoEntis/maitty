@@ -1,3 +1,4 @@
+import { installUndoRedo } from '@/features/editing/undoRedo'
 import {
   useCallback,
   useEffect,
@@ -240,6 +241,7 @@ function PreviewApp() {
     staleTime: Infinity,
   })
   const machinesError = machinesQuery.data?.error ?? null
+  useEffect(() => installUndoRedo(document, navigator.userAgent), [])
   useEffect(() => {
     if (machinesError) {
       toast.error(`Machines are not available: ${machinesError}`, {

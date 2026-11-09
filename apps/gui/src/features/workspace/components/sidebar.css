@@ -65,11 +65,11 @@
 .mx-machine-update:hover { background: rgba(var(--hl), calc(.06 * var(--hk))); }
 .mx-machine-dot.is-warn { background: var(--warn); border: 0; }
 
-.mx-rows { display: flex; flex-direction: column; gap: 2px; }
+.mx-rows { display: flex; flex-direction: column; gap: calc(2px * var(--pad, 1)); }
 .mx-projects { display: flex; flex-direction: column; gap: 8px; }
 .mx-project { display: flex; flex-direction: column; gap: 2px; }
 /* A project's heading lines up with its machine's: the arrow, the mark and the name start in the same columns, and its count ends where the machine's does (the right padding is the machine's controls: 68px, and the 8px inside its button). */
-.mx-project-head { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 76px 0 8px; font-size: 11.5px; color: var(--fg2); border-radius: 6px; }
+.mx-project-head { display: flex; align-items: center; gap: 6px; height: calc(24px * var(--pad, 1)); padding: 0 76px 0 8px; font-size: calc(11.5px * var(--sidebar-text, 1)); color: var(--fg2); border-radius: 6px; }
 .mx-project-head:hover { color: var(--fg); }
 .mx-project-square { width: 8px; height: 8px; margin: 0 2.5px; flex: none; border-radius: 2px; }
 .mx-project-name { flex: 1; text-align: left; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -83,23 +83,23 @@
 .mx-row-wrap:hover > .mx-row-close, .mx-row-close:focus-visible { opacity: 1; pointer-events: auto; }
 .mx-row-close:hover:not(:disabled) { color: var(--danger); background: var(--hover); }
 .mx-row-close:disabled { cursor: default; }
-.mx-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 4px 6px 4px 10px; border-radius: 8px; text-align: left; transition: background-color .12s ease; }
+.mx-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: calc(40px * var(--pad, 1)); padding: 4px 6px 4px 10px; border-radius: 8px; text-align: left; transition: background-color .12s ease; }
 .mx-row:hover { background: rgba(var(--hl), calc(.045 * var(--hk))); }
 .mx-row.is-selected, .mx-row.is-selected:hover { background: var(--c-sel-bg); box-shadow: var(--c-sel-sh); }
 .mx-row-icon { position: relative; flex: none; display: flex; }
 .mx-row-icon .mx-badge { right: -4px; bottom: -4px; width: 12px; height: 12px; border-radius: 3.5px; font-size: 9px; font-weight: 800; line-height: 1; color: var(--on-warn); }
-.mx-row-icon .mx-badge.is-working { border-radius: 50%; background: var(--m-well); overflow: hidden; color: var(--working); font-family: var(--mono); }
+.mx-row-icon .mx-badge.is-working { border-radius: 50%; background: var(--bg); overflow: hidden; color: var(--working); font-family: var(--mono); }
 .mx-row-icon .mx-badge.is-working .mx-spin, .mx-sub-mark .mx-spin { font-size: 9px; line-height: 1; }
 .mx-row-icon .mx-badge.is-done svg { width: 8px; height: 8px; }
 .mx-row-icon .mx-badge.is-unknown { width: 11px; height: 11px; background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
 /* A shell's tile in the sidebar is a flat raised square, so agents stand out among shells. */
 .mx-row.is-shell .mx-app-icon.is-shell, .mx-rail-session .mx-app-icon.is-shell { background: var(--m-raise); color: var(--accent-text); box-shadow: var(--c-tile-ring); }
 .mx-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.mx-row-name { height: 18px; font-size: 13px; line-height: 18px; font-weight: 400; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mx-row-name { height: calc(18px * var(--sidebar-text, 1)); font-size: calc(13px * var(--sidebar-text, 1)); line-height: calc(18px * var(--sidebar-text, 1)); font-weight: 400; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-row.is-active .mx-row-name { font-weight: 600; color: var(--fg); }
 .mx-row.is-selected .mx-row-name { color: var(--fg); }
 .mx-row .mx-inline-name { height: 20px; flex: none; width: 100%; margin-left: -5px; padding: 0 5px; border-radius: 5px; font-size: 13px; font-weight: 600; background: var(--m-well); border: 1px solid var(--accent-line); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
-.mx-row-sub { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 10.5px; line-height: 14px; color: var(--dim); white-space: nowrap; overflow: hidden; }
+.mx-row-sub { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: calc(10.5px * var(--sidebar-text, 1)); line-height: calc(14px * var(--sidebar-text, 1)); color: var(--dim); white-space: nowrap; overflow: hidden; }
 .mx-row-project { display: inline-flex; align-items: center; gap: 5px; flex: none; }
 .mx-row-square { width: 6px; height: 6px; border-radius: 2px; }
 .mx-row-branch { font-family: var(--mono); color: var(--ansi-mag); overflow: hidden; text-overflow: ellipsis; }
@@ -113,7 +113,7 @@
 .mx-sub-icon .mx-app-icon { box-shadow: 0 0 0 1.5px var(--card-ring); }
 .mx-sub-icon .mx-app-icon svg { width: 70%; height: 70%; }
 .mx-sub-mark { position: absolute; right: -4px; bottom: -4px; width: 10px; height: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 1.5px var(--card-ring); overflow: hidden; }
-.mx-sub-mark.is-working { border-radius: 50%; background: var(--m-well); color: var(--working); font-family: var(--mono); }
+.mx-sub-mark.is-working { border-radius: 50%; background: var(--bg); color: var(--working); font-family: var(--mono); }
 .mx-sub-mark.is-working .mx-spin { font-size: 7px; }
 .mx-sub-mark.is-needs { right: -3px; bottom: -3px; width: 8px; height: 8px; border-radius: 2.5px; background: var(--warn); }
 .mx-sub-mark.is-done { border-radius: 3px; background: color-mix(in oklab, var(--ok) 24%, var(--bg)); }
@@ -148,3 +148,10 @@
 .mx-machine-pct { flex: none; padding: 0 4px; font-size: 11px; color: var(--dim); }
 .mx-machine-progress { display: block; margin: -1px 10px 3px 26px; height: 2px; border-radius: 1px; background: rgba(var(--hl), calc(.06 * var(--hk))); overflow: hidden; }
 .mx-machine-progress > span { display: block; height: 100%; background: var(--accent); transition: width .25s ease; }
+
+/* A folded section: the row track shrinks to nothing and the content fades; `inert` in Collapse.tsx keeps it out of reach. */
+.mx-collapse-grid { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .2s ease; }
+.mx-collapse-grid[data-open="false"] { grid-template-rows: 0fr; }
+.mx-collapse-inner { min-height: 0; overflow: hidden; transition: opacity .16s ease; }
+.mx-collapse-grid[data-open="false"] > .mx-collapse-inner { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .mx-collapse-grid, .mx-collapse-inner { transition: none; } }

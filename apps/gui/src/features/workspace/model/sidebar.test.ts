@@ -28,6 +28,7 @@ describe('a row', () => {
     expect(rowTitle(session(1, { named: true, title: 'Growth' }))).toBe('Growth')
     expect(rowTitle(session(2, { cwd: '/home/me/dev', folder: '/home/me/dev' }))).toBe('dev')
     expect(rowTitle(session(3, { agent: 'codex' }))).toBe('codex')
+    expect(rowTitle(session(4, { cwd: '/home/me/dev', folder: '/home/me/dev', process: 'node-mainthread' }))).toBe('dev')
   })
 
   it('says stopped for an agent and exited for a shell, and nothing otherwise', () => {

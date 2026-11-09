@@ -74,6 +74,8 @@ export type MachineHead = {
   /** The number the host gave the machine this run; what a command for it takes. */
   machine: number
   name: string | null
+  /** The name you gave it in the sidebar, when you did; `name` stays what its sessions go by. */
+  nickname?: string
   label: string
   chip: MachineChip | null
   why: string | null
@@ -154,9 +156,14 @@ export const THIS_COMPUTER = 'this computer'
 /** This computer's header, which the sidebar shows even when there is no other machine. */
 export const LOCAL_HEAD: MachineHead = { key: 'machine-0', machine: LOCAL_MACHINE, name: null, label: THIS_COMPUTER, chip: null, why: null, down: false, downSince: null, grants: { clipboard: false, notices: false }, updateCommand: null, updateAction: null }
 
+function nicknameOf(nicknames: Readonly<Record<string, string>>, name: string): { nickname: string } | Record<string, never> {
+  const nickname = nicknames[name.toLowerCase()]
+  return nickname === undefined ? {} : { nickname }
+}
+
 /** The name a machine heading shows. */
 export function machineTitle(head: MachineHead): string {
-  return head.name ?? 'This computer'
+  return head.nickname ?? head.name ?? 'This computer'
 }
 
 /**
@@ -164,11 +171,14 @@ export function machineTitle(head: MachineHead): string {
  * order of their ids, which only changes when the machine list does (the sidebar never reorders
  * itself). Nothing while there is no other machine, so one machine looks as it always did.
  */
-export function machineHeads(machines: ReadonlyMap<number, RemoteMachine>): MachineHead[] {
+/** The longest name you can give a machine in the sidebar. */
+export const MAX_MACHINE_NICKNAME_LENGTH = 40
+
+export function machineHeads(machines: ReadonlyMap<number, RemoteMachine>, nicknames: Readonly<Record<string, string>> = {}): MachineHead[] {
   if (machines.size === 0) return []
   const others = [...machines.entries()]
     .sort(([a], [b]) => a - b)
-    .map(([id, machine]): MachineHead => ({ key: `machine-${String(id)}`, machine: id, name: machine.state.name, label: machine.state.name, chip: machineChip(machine.state), why: machine.state.why, down: isDown(machine.state), downSince: machine.state.since ?? null, grants: { clipboard: machine.state.clipboard === true, notices: machine.state.notices === true }, updateCommand: updateCommandOf(machine.state), updateAction: updateActionOf(machine.state) }))
+    .map(([id, machine]): MachineHead => ({ key: `machine-${String(id)}`, machine: id, name: machine.state.name, ...nicknameOf(nicknames, machine.state.name), label: machine.state.name, chip: machineChip(machine.state), why: machine.state.why, down: isDown(machine.state), downSince: machine.state.since ?? null, grants: { clipboard: machine.state.clipboard === true, notices: machine.state.notices === true }, updateCommand: updateCommandOf(machine.state), updateAction: updateActionOf(machine.state) }))
   return [LOCAL_HEAD, ...others]
 }
 

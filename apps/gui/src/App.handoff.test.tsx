@@ -178,8 +178,8 @@ describe('desktop terminal multiplexer', () => {
       const handle = await screen.findByRole('separator', { name: 'Resize sidebar' })
       const root = document.querySelector<HTMLElement>('.mx-app')
       expect(root?.style.getPropertyValue('--pad')).toBe('0.8')
-      expect(root?.style.getPropertyValue('--sidebar-fs')).toBe('15px')
-      expect(root?.style.getPropertyValue('--tab-fs')).toBe('12px')
+      expect(root?.style.getPropertyValue('--sidebar-text')).toBe(String(15 / 13.5))
+      expect(root?.style.getPropertyValue('--tab-text')).toBe(String(12 / 13.5))
       expect(root?.style.getPropertyValue('--sidebar-w')).toBe('320px')
 
       fireEvent.pointerDown(handle, { clientX: 320, pointerId: 1 })

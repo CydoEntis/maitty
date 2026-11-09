@@ -6,7 +6,7 @@ import { hasPendingApproval, type ChatFeed } from './chatFeed'
 import { buildAttachmentMessage } from './attachmentMessage'
 import { selectChatEvents } from './projection'
 import { countUserMessages } from './workPhase'
-import { peekComposer, updateComposer, useComposerState, type DraftAttachment } from './composerStore'
+import { peekComposer, updateComposer, useComposerSlice, type DraftAttachment } from './composerStore'
 
 import { revokePreviews, useAttachmentIntake, type AttachmentIntake } from './useAttachmentIntake'
 import { wireChoice } from './agentChoice'
@@ -64,7 +64,10 @@ type Input = {
 }
 
 export type ChatComposer = {
-  draft: string
+  /** The conversation whose stored draft this is; the box reads the text itself with `useComposerDraft`, so typing does not redraw the chat. */
+  conversationKey?: number
+  /** A draft the view holds itself, for a chat that has no conversation yet; it wins over the stored one. */
+  draft?: string
   setDraft: (text: string) => void
   /** The files attached to the draft, in the order they were added. */
   attachments: readonly DraftAttachment[]
@@ -103,7 +106,8 @@ export type ChatComposer = {
  * until it is sent. While an approval waits, nothing is sent.
  */
 export function useChatComposer({ link, agent, feed, online, refresh, typeInto, answersPrompt = false, paneWorking = false }: Input): ChatComposer {
-  const { draft, attachments, held } = useComposerState(link.conversation)
+  const attachments = useComposerSlice(link.conversation, (state) => state.attachments)
+  const held = useComposerSlice(link.conversation, (state) => state.held)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [echo, setEcho] = useState<SentEcho | null>(null)
@@ -188,6 +192,7 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
   }, [conversation, link.generation, agent, feed, refresh, typeText, running])
 
   const submit = useCallback(() => {
+    const { draft, attachments } = peekComposer(conversation)
     const text = draft.trim()
     // A message may be only attachments; the block naming them is then the whole text.
     if ((text === '' && attachments.length === 0) || disabledReason !== null || sending) return
@@ -211,7 +216,7 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
       }
       updateComposer(conversation, (state) => ({ ...state, draft: text, attachments: files }))
     })
-  }, [draft, attachments, disabledReason, sending, conversation, send, typing, busy])
+  }, [disabledReason, sending, conversation, send, typing, busy])
 
   const removeQueued = useCallback((operation: number) => {
     if (operation < 0) {
@@ -255,5 +260,5 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
     return () => { window.clearTimeout(timer) }
   }, [typing, first, online, waitingForMessage, awaitingAnswer, sending, conversation, send])
 
-  return { draft, setDraft, attachments, attach, readOnly, attachable: !readOnly || typing, queue, removeQueued, submit, stop, running, sending, disabledReason, ready: disabledReason === null && !(typing && busy), error, sendText: send, echo }
+  return { conversationKey: link.conversation, setDraft, attachments, attach, readOnly, attachable: !readOnly || typing, queue, removeQueued, submit, stop, running, sending, disabledReason, ready: disabledReason === null && !(typing && busy), error, sendText: send, echo }
 }

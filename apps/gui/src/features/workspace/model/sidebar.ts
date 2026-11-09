@@ -48,10 +48,14 @@ export function isShell(session: Pick<SessionView, 'process'>): boolean {
   return session.process === SHELL_PROCESS
 }
 
-/** What a row and a pane header call a session: the name you gave it, else a shell's folder, else the agent. */
+/**
+ * What a row and a pane header call a session: the name you gave it, else the agent the daemon
+ * detected, else the folder. A program running in a shell (`node`, `vim`) is not a name: it comes
+ * and goes with each command, and a title that followed it would change under you.
+ */
 export function rowTitle(session: SessionView): string {
   if (session.name !== null) return session.name
-  return isShell(session) ? folderNameOf(session) : session.process
+  return session.conversation.agent ? session.process : folderNameOf(session)
 }
 
 /** The words at the right of a row: only a stopped agent or an exited shell says anything. */
