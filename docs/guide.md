@@ -131,8 +131,8 @@ Without the leader: **Alt+1–9** opens that session of the sidebar; **Alt+arrow
 when enabled in Settings (after the leader, Alt+arrows swaps panes instead).
 
 **Files**, **Changes**, **Branch** and **References** share the side panel that slides in from
-the pane's right edge, inside its box: its title chip names the open one (lit while the panel has
-the keys) and `»` or Esc closes it. A pane's `files` and `changes` chips open those two; Tab / Shift+Tab
+the pane's right edge, over its box (it covers the pane's top line and its own `✕`): its title chip names the open one (lit while the panel has
+the keys) and `✕` or Esc closes it. A pane's `files` and `changes` chips open those two; Tab / Shift+Tab
 moves between the four for the same checkout. A click into the pane gives it the keys and leaves the
 panel open; a click in the panel, or its key again, gives the keys back.
 
@@ -545,6 +545,9 @@ build: maitty 0.60.0 installed to ~/.local/bin/maitty
 says what it found and asks before it installs or replaces anything; your `y` is the consent. When it is done
 the popup shows how it ended (installed, already up to date, not confirmed, refused because a newer version is
 there, or why the machine could not be reached) until you press Enter, then the machine reconnects.
+
+When the version there already matches, nothing is sent, but its daemon is still asked to restart if it is not running
+that version (an earlier update may have left it running because sessions were open). A daemon that already runs it is left alone.
 
 Exit status: 0 done or already up to date, 2 a mistake in how it was asked (an unknown machine, a flag
 missing), 1 a step that did not work.

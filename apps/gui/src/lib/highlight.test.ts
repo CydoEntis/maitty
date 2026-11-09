@@ -24,6 +24,34 @@ describe('highlightLine', () => {
     )
   })
 
+  it('marks a markdown heading, a code span and a link', () => {
+    expect(highlightLine('## Highlights', 'README.md')).toEqual([{ text: '## Highlights', kind: 'variable' }])
+    expect(highlightLine('Run `cargo test` now', 'README.md')).toEqual([
+      { text: 'Run ', kind: 'plain' },
+      { text: '`cargo test`', kind: 'string' },
+      { text: ' now', kind: 'plain' },
+    ])
+    expect(highlightLine('see [the guide](docs/guide.md)', 'README.md').at(-1)).toEqual({ text: '[the guide](docs/guide.md)', kind: 'variable' })
+  })
+
+  it('marks html and xml tags, attribute strings and comments', () => {
+    expect(highlightLine('<a href="#install">Install</a>', 'index.html')).toEqual([
+      { text: '<a', kind: 'variable' },
+      { text: ' href=', kind: 'plain' },
+      { text: '"#install"', kind: 'string' },
+      { text: '>Install', kind: 'plain' },
+      { text: '</a', kind: 'variable' },
+      { text: '>', kind: 'plain' },
+    ])
+    expect(highlightLine('<!-- note -->', 'a.xml')).toEqual([{ text: '<!-- note -->', kind: 'comment' }])
+  })
+
+  it('treats config files and extensionless build files as # comment languages', () => {
+    for (const path of ['.env', 'app.ini', 'Dockerfile', 'Makefile', '.gitignore', 'Cargo.lock']) {
+      expect(highlightLine('x # note', path).at(-1), path).toEqual({ text: '# note', kind: 'comment' })
+    }
+  })
+
   it('leaves unknown file types and very long lines untouched', () => {
     expect(highlightLine('const x = 1', 'notes.txt')).toEqual([
       { text: 'const x = 1', kind: 'plain' },

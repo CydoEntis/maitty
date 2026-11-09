@@ -91,7 +91,7 @@ import { ANSWER_KEYS } from '@/features/chat/permissionAsk'
 import { NoTerminalNote } from '@/features/chat/components/NoTerminalNote'
 import { rememberConversationPermissions } from '@/data/conversationPermissions'
 import { reserveOperation } from '@/features/chat/sendOperation'
-import { holdFirstMessage } from '@/features/chat/firstMessage'
+import { holdFirstMessage, holdStartChoice } from '@/features/chat/firstMessage'
 import { connectAgentOnce } from './model/agentHooks'
 import { machineProjects, nameFromMessage } from './model/newSession'
 import { usePaneViews } from './usePaneViews'
@@ -912,7 +912,7 @@ export function DesktopApp() {
     await launchAgentSession(folder, agent, `${flags}${yoloFlags(agent, yolo)}`.split(' ').filter((word) => word !== ''))
   }, [yolo])
 
-  const startAgentSession = useCallback((folder: () => Promise<string>, agent: ChatAgent, view: PaneView, firstMessage = '', flags = '', afterPlace?: () => void): Promise<boolean> => {
+  const startAgentSession = useCallback((folder: () => Promise<string>, agent: ChatAgent, view: PaneView, firstMessage = '', flags = '', afterPlace?: (id: string) => void): Promise<boolean> => {
     return runStart(folder, (id) => {
       // A first message waits under the session and goes out once the agent takes input; its words name the session.
       if (firstMessage !== '') {
@@ -927,7 +927,7 @@ export function DesktopApp() {
       setLayout((current) => openArrangement(current, id, makeId))
       if (view === 'chat') paneViews.choose(id, 'chat')
       // In the same update as the new session opens, so the window never shows the page between the two.
-      afterPlace?.()
+      afterPlace?.(id)
     }, launchAgent(agent, flags))
   }, [runStart, paneViews, launchAgent, yolo])
 
@@ -960,7 +960,10 @@ export function DesktopApp() {
     else if (request.branch) await switchBranch(folder, request.branch.name, request.branch.create)
     // The page stays, with the message in it, until the chat that replaces it is there: closing it first showed the
     // empty window (or the last chat) for a moment between the two.
-    await startAgentSession(() => Promise.resolve(folder), request.agent, 'chat', request.message, launchFlags(request.agent, request.model, request.reasoning, request.mode), () => { setNewChatOpen(false) })
+    await startAgentSession(() => Promise.resolve(folder), request.agent, 'chat', request.message, launchFlags(request.agent, request.model, request.reasoning, request.mode), (id) => {
+      holdStartChoice(id, { model: request.model, reasoning: request.reasoning, mode: request.agent === 'claude' ? request.mode : null })
+      setNewChatOpen(false)
+    })
   }, [online, startAgentSession])
 
   // New session (the shortcut, the palette, the sidebar's chat button): on this computer it is the new chat page.

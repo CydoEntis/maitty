@@ -2,10 +2,10 @@ import { useEffect, useRef, type ClipboardEvent, type KeyboardEvent, type ReactN
 import { toast } from '@/lib/toast'
 import { pickFromClipboard, unsupportedMessage } from '@/features/terminal/clipboardImage'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
-import { AppIcon, Icon } from '@/features/workspace/components/glyphs'
+import { AppIcon, Icon, Spinner } from '@/features/workspace/components/glyphs'
 import { registerComposerDrop } from '../composerDrop'
 import type { ChatComposer } from '../useChatComposer'
-import { useAgentChoice } from '../agentChoice'
+import { defaultChoice, useAgentChoice, type AgentChoice } from '../agentChoice'
 import { DraftAttachments } from './Attachments'
 import { AgentPicker } from './AgentPicker'
 import { modelName } from '../modelName'
@@ -32,6 +32,12 @@ export type ComposerFacts = {
   modeKey?: string | null | undefined
   /** Bypass permissions can be picked: this session started with Claude allowing it. */
   bypassAllowed?: boolean | undefined
+  /**
+   * Set for an agent whose model and mode can be changed (Claude): both chips are always drawn, and when they cannot be used right
+   * now (the agent is starting or working) they stay where they are, greyed out with `locked` as the reason, so the box never
+   * rearranges. `start` is what a chat with no conversation yet was started with.
+   */
+  agentChips?: { readonly locked: string | null; readonly start?: AgentChoice } | undefined
 }
 
 type Props = {
@@ -42,7 +48,11 @@ type Props = {
   /** The question tray: what the agent asks, slid up from behind the box. Null when it asks nothing. */
   question?: ReactNode
   facts: ComposerFacts
+  /** A message went in and the agent has not taken it up yet: the send button shows it is working and sends nothing more. */
+  waiting?: boolean
 }
+
+const NO_CHANGE = () => undefined
 
 /**
  * The message box, in three layers (README: message box): the question tray when the agent asks, the
@@ -50,7 +60,7 @@ type Props = {
  * adds a line, Esc interrupts the running turn. While the agent works, sending queues the message;
  * while a request waits for an answer, or the daemon is offline, the box is off and says why.
  */
-export function Composer({ agent, composer, conversation, question = null, facts }: Props) {
+export function Composer({ agent, composer, conversation, question = null, facts, waiting = false }: Props) {
   const { draft, setDraft, attachments, attach, readOnly, queue, removeQueued, submit, stop, running, sending, disabledReason, error } = composer
   const off = disabledReason !== null
   const box = useRef<HTMLDivElement>(null)
@@ -74,6 +84,7 @@ export function Composer({ agent, composer, conversation, question = null, facts
   const empty = draft.trim() === '' && attachments.length === 0
   // With nothing typed while a turn runs, the round button stops the agent instead of sending.
   const stopping = running && empty && !off
+  const busy = sending || waiting
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter while an input method is composing text confirms the text; it is not a send.
@@ -125,10 +136,20 @@ export function Composer({ agent, composer, conversation, question = null, facts
               </button>
             )}
             <span className="mx-spacer" />
-            {conversation !== undefined && (!readOnly || facts.onCommand !== undefined) && <ModelPicker agent={agent} conversation={conversation} model={facts.model} live={readOnly ? facts.onCommand : undefined} />}
-            {readOnly && facts.onCommand === undefined && facts.model !== null && <ModelLabel agent={agent} model={facts.model} />}
+            {facts.agentChips !== undefined ? (
+              conversation !== undefined
+                ? <ModelPicker agent={agent} conversation={conversation} model={facts.model} live={readOnly ? facts.onCommand : undefined} locked={facts.agentChips.locked} />
+                : <AgentPicker agent={agent} choice={facts.agentChips.start ?? defaultChoice()} onChange={NO_CHANGE} locked={facts.agentChips.locked ?? undefined} />
+            ) : (
+              <>
+                {conversation !== undefined && (!readOnly || facts.onCommand !== undefined) && <ModelPicker agent={agent} conversation={conversation} model={facts.model} live={readOnly ? facts.onCommand : undefined} locked={null} />}
+                {readOnly && facts.onCommand === undefined && <ModelLabel agent={agent} model={facts.model} />}
+              </>
+            )}
             {stopping ? (
-              <button type="button" className="mx-send is-stop" aria-label={`Stop ${agent}`} title={`Stop ${agent} (Esc)`} onClick={stop}><span className="mx-stop-square" aria-hidden="true" /></button>
+              <button type="button" className="mx-send is-stop is-working" aria-label={`Stop ${agent}`} title={`${agent} is working. Stop it (Esc)`} onClick={stop}><Spinner /><span className="mx-stop-square" aria-hidden="true" /></button>
+            ) : busy ? (
+              <button type="button" className="mx-send is-off is-busy" aria-label={`${agent} is working`} aria-busy="true" title={`${agent} is working`} disabled><Spinner /></button>
             ) : (
               <button type="button" className={`mx-send${off || empty ? ' is-off' : ''}`} aria-label={running ? 'Queue message' : 'Send message'} disabled={off || sending || empty} onClick={submit}>
                 <Icon name="arrowUp" size={15} strokeWidth={2.2} />
@@ -151,7 +172,14 @@ function ModeIcon() {
 function SettingsTray({ facts }: { facts: ComposerFacts }) {
   return (
     <div className="mx-settings-tray">
-      {facts.onPickMode === undefined ? (
+      {facts.agentChips !== undefined && (facts.agentChips.locked !== null || facts.onPickMode === undefined) ? (
+        // aria-disabled, not disabled: a disabled button gets no tooltip, and the reason is the point.
+        <button type="button" aria-disabled="true" className={`mx-tray-fact is-locked${facts.modeDanger ? ' is-danger' : ''}`} title={facts.agentChips.locked ?? 'Not available for this chat'} aria-label={`Permission mode: ${facts.mode ?? 'not reported yet'}. ${facts.agentChips.locked ?? 'Not available for this chat'}`}>
+          <ModeIcon />
+          {facts.mode ?? 'Permissions'}
+          <Icon name="chevronDown" size={10} />
+        </button>
+      ) : facts.onPickMode === undefined ? (
         <span className={`mx-tray-fact${facts.modeDanger ? ' is-danger' : ''}`} title={facts.mode === null ? 'Not reported by the agent yet' : "The permission mode, from the agent's own file. Cycle it in the terminal with Shift+Tab."}>
           <ModeIcon />
           {facts.mode ?? 'Permissions'}
@@ -196,8 +224,8 @@ function SettingsTray({ facts }: { facts: ComposerFacts }) {
   )
 }
 
-/** The model a chat that follows a terminal agent runs; it is changed in the terminal, so it is only said. */
-function ModelLabel({ agent, model }: { agent: ChatAgent; model: string }) {
+/** The model a chat that follows a terminal agent runs; it is changed in the terminal, so it is only said. Drawn from the start, with just the agent's name until the agent says its model, so it is never added later. */
+function ModelLabel({ agent, model }: { agent: ChatAgent; model: string | null }) {
   return (
     <span className="mx-model-button is-static" title="The model, from the agent's own file. Change it in the terminal with /model.">
       <span className="mx-model-icon"><AppIcon process={agent} size={14} /></span>
@@ -207,7 +235,7 @@ function ModelLabel({ agent, model }: { agent: ChatAgent; model: string }) {
 }
 
 /** The model and reasoning the next message uses, from the agent picker. */
-function ModelPicker({ agent, conversation, model, live }: { agent: ChatAgent; conversation: number; model: string | null; live?: ((command: string) => void) | undefined }) {
+function ModelPicker({ agent, conversation, model, live, locked }: { agent: ChatAgent; conversation: number; model: string | null; live?: ((command: string) => void) | undefined; locked: string | null }) {
   const [choice, change] = useAgentChoice(conversation, agent)
-  return <AgentPicker agent={agent} choice={choice} onChange={change} currentModel={model} {...(live ? { live } : {})} />
+  return <AgentPicker agent={agent} choice={choice} onChange={change} currentModel={model} locked={locked ?? undefined} {...(live ? { live } : {})} />
 }

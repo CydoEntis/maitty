@@ -641,6 +641,40 @@ fn a_matching_app_is_left_alone() {
 }
 
 #[test]
+fn a_matching_app_still_asks_a_stale_far_daemon_to_restart() {
+    needs_sh!();
+    let remote = Remote::new(LINUX);
+    remote.install(".local/bin/maitty", APP_VERSION);
+    let mut person = Person::absent();
+    run(&remote, AT_HOME, YES, &new_build(&remote), &mut person).unwrap();
+    assert!(!remote.uploaded());
+    let commands = remote.commands();
+    assert!(
+        commands.last().unwrap().ends_with("restart-if-idle"),
+        "{commands:?}"
+    );
+    assert!(person.heard("daemon:"), "{:?}", person.said);
+}
+
+#[test]
+fn restart_with_a_matching_app_restarts_the_far_daemon_even_with_sessions_open() {
+    needs_sh!();
+    let remote = Remote::new(LINUX);
+    remote.install(".local/bin/maitty", APP_VERSION);
+    let flags = Flags {
+        restart: true,
+        ..YES
+    };
+    run(&remote, AT_HOME, flags, &new_build(&remote), &mut Person::absent()).unwrap();
+    let commands = remote.commands();
+    assert!(
+        commands.last().unwrap().ends_with("restart-if-idle --now"),
+        "{commands:?}"
+    );
+    assert!(!remote.uploaded());
+}
+
+#[test]
 fn a_newer_app_is_not_downgraded_without_force() {
     needs_sh!();
     let remote = Remote::new(LINUX);

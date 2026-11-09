@@ -6,6 +6,7 @@ mod attachment;
 mod image_paste;
 pub mod hub;
 mod daemon_log;
+mod highlight;
 mod machine_update;
 mod machines;
 mod new_chat;
@@ -890,6 +891,7 @@ pub fn run() {
             terminal_stream::list_machines_overview,
             terminal_stream::retry_machine,
             daemon_log::open_daemon_log,
+            highlight::highlight_file,
             machine_update::update_machine,
             machine_update::machine_activity,
             terminal_stream::start_session_on_machine,

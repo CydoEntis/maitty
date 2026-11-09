@@ -814,8 +814,34 @@ pub(super) fn draw_changes(
 
 /// Files: the tree beside the selected file. `one_side` (a narrow panel) shows the tree, or
 /// the file you opened with a `‹` back to the tree.
-/// Files' tree column beside the open file, as the redesign draws it.
+/// Files' tree column beside the open file at its narrowest, as the redesign draws it.
 const FILES_TREE_W: u16 = 24;
+/// The most of the panel the tree column takes when long names need the room, in twentieths.
+const FILES_TREE_MAX_TWENTIETHS: u16 = 9;
+/// A tree row's columns around its name: the selection bar and margin, the fold arrow, and the
+/// git mark at the right.
+const TREE_ROW_FRAME: u16 = 2 + 2 + 5;
+/// Columns a folder level indents by, and the deepest level that still indents: past it a name
+/// keeps its place, so a deep folder never squeezes its files down to a few letters.
+const TREE_INDENT: usize = 1;
+const TREE_INDENT_MAX_LEVELS: usize = 12;
+
+/// The tree column's width: the longest name showing with its indent, within a share of the panel.
+fn files_tree_width(v: &super::views::FilesTree, panel: u16) -> u16 {
+    let narrowest = FILES_TREE_W.min(panel / 2);
+    let widest = (panel * FILES_TREE_MAX_TWENTIETHS / 20).max(narrowest);
+    let wanted = v
+        .visible()
+        .iter()
+        .map(|(_, e)| tree_indent(e.depth) + e.label.chars().count())
+        .max()
+        .unwrap_or(0);
+    (u16::try_from(wanted).unwrap_or(u16::MAX).saturating_add(TREE_ROW_FRAME)).clamp(narrowest, widest)
+}
+
+fn tree_indent(depth: usize) -> usize {
+    depth.min(TREE_INDENT_MAX_LEVELS) * TREE_INDENT
+}
 
 pub(super) fn draw_files(
     app: &mut App,
@@ -871,7 +897,7 @@ pub(super) fn draw_files(
     let fw: u16 = if one_side {
         body.width
     } else {
-        FILES_TREE_W.min(body.width / 2)
+        files_tree_width(v, body.width)
     };
     if show_tree {
         draw_files_tree(app, buf, body, fw, t, v, one_side);
@@ -891,6 +917,7 @@ pub(super) fn draw_files(
     };
     if show_file && v.edit.is_none() {
         v.lay_out(body.right().saturating_sub(px + 1), t, &app.cfg.theme);
+        v.highlight_preview();
     }
     let v = &*v;
     if one_side && show_file && v.edit.is_none() {
@@ -1053,7 +1080,12 @@ pub(super) fn draw_files(
                             let yy = prect.y + (k - v.scroll) as u16;
                             let mut segs =
                                 vec![seg(format!("{:>4}  ", k + 1), Style::default().fg(t.muted))];
-                            segs.extend(super::views::highlight(l, t));
+                            match v.code().and_then(|code| code.get(k)) {
+                                Some(spans) => segs.extend(spans.iter().map(|s| {
+                                    seg(s.text.replace('\t', "    "), super::views::role_style(s.kind, t))
+                                })),
+                                None => segs.extend(super::views::highlight(l, t)),
+                            }
                             put(buf, px, yy, &segs, prect.right());
                         }
                     }
@@ -1265,7 +1297,7 @@ fn draw_files_tree(
             body.x + 2,
             y,
             &[
-                seg(format!("{}{lead}", "  ".repeat(e.depth)), s.fg(t.muted)),
+                seg(format!("{}{lead}", " ".repeat(tree_indent(e.depth))), s.fg(t.muted)),
                 seg(e.label.clone(), ns),
             ],
             body.x + fw - 5,

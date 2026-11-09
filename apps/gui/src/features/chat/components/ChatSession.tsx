@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { toast } from '@/lib/toast'
 import { answerUserInput, approveRequest, loadTerminalScreen } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
@@ -17,7 +17,8 @@ import type { ApprovalDecision } from '../chatEvents'
 import type { PermissionAsk } from '@/data/preview'
 import { ANSWER_KEY, ANSWER_KEYS, choiceKey, type AskChoice } from '../permissionAsk'
 import { keepComposerFocus } from '../keepComposerFocus'
-import { releaseFirstMessage, takeCarriedDraft, useHeldFirstMessage } from '../firstMessage'
+import { releaseFirstMessage, releaseStartChoice, startChoiceOf, takeCarriedDraft, useHeldFirstMessage } from '../firstMessage'
+import { writeChoice } from '../agentChoice'
 import { Composer } from './Composer'
 import { ChatItem } from './ChatItems'
 import { KnownRowsContext } from '../knownRows'
@@ -146,18 +147,25 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   const [liveModel, setLiveModel] = useState<{ base: string | null; value: string } | null>(null)
   const metaMode = feed.meta?.mode ?? null
   const metaModel = feed.meta?.model ?? null
-  const shownMode = liveMode !== null && liveMode.base === metaMode ? liveMode.value : metaMode
+  // What the chat was started with, until the agent's own file says it: the chips the starting chat drew stay as they were.
+  const [started] = useState(() => startChoiceOf(sessionId))
+  const shownMode = (liveMode !== null && liveMode.base === metaMode ? liveMode.value : metaMode) ?? started?.mode ?? null
   const shownModel = liveModel !== null && liveModel.base === metaModel ? liveModel.value : metaModel
+  const canChangeAgent = typeInto !== undefined && agent === 'claude' && link.readOnly === true
+  // The chips stay drawn while their keys would land in a turn or nowhere; they are only greyed out, so the box does not rearrange.
+  const chipsLocked = !online ? 'The daemon is offline' : working ? `${agent} is working. Change this when it finishes.` : null
   const agentControls = useMemo(() => {
-    if (typeInto === undefined || agent !== 'claude' || link.readOnly !== true || !online || working) return {}
+    if (!canChangeAgent) return {}
     return {
+      agentChips: { locked: chipsLocked },
       onCommand: (text: string) => {
+        if (chipsLocked !== null) return
         const model = /^\/model (\S+)/.exec(text)?.[1]
         if (model !== undefined) setLiveModel({ base: metaModel, value: model })
         void typeInto(text).then(refresh)
       },
       onPickMode: (target: string) => {
-        if (sessionId === undefined) return
+        if (sessionId === undefined || chipsLocked !== null) return
         // Shift+Tab only cycles, so press it until the screen shows the picked mode; a mode that never comes up is not allowed in this session.
         // The chip shows the pick at once and the presses happen behind it; the screen has the last word when they end.
         setLiveMode({ base: metaMode, value: target })
@@ -180,7 +188,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
         void step().catch((error: unknown) => { toast.error(errorMessage(error, 'Could not change the permission mode')) })
       },
     }
-  }, [typeInto, agent, link.readOnly, online, working, refresh, sessionId, metaMode, metaModel])
+  }, [canChangeAgent, chipsLocked, typeInto, refresh, sessionId, metaMode, metaModel])
   const composer = useChatComposer({ link, agent, feed, online, refresh, answersPrompt, paneWorking, ...(typeInto ? { typeInto } : {}) })
   const { sendText, setDraft: setComposerDraft, ready, sending, echo } = composer
   // A message just sent shows at once, with the agent taken to be at work on it, until the history has it.
@@ -202,6 +210,12 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   const [known, setKnown] = useState<ReadonlySet<string> | null>(null)
   if (feed.loaded && known === null) setKnown(new Set(rows.map(rowKey)))
   const pending = useMemo(() => allRows.find((row): row is Extract<ChatRow, { kind: 'approval' }> => isPendingApproval(row))?.event ?? null, [allRows])
+  // The model and effort picked on the new-chat page are this conversation's choice from its first frame, so the picker shows them.
+  useLayoutEffect(() => {
+    if (sessionId === undefined) return
+    if (started !== null) writeChoice(link.conversation, { model: started.model, reasoning: started.reasoning })
+    releaseStartChoice(sessionId)
+  }, [sessionId, started, link.conversation])
   // A draft typed while the agent started comes over once, and a message sent then goes out as soon as the agent takes input.
   useEffect(() => {
     if (sessionId === undefined) return
@@ -296,6 +310,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
         composer={composer}
         conversation={link.conversation}
         question={question}
+        waiting={held !== null}
         facts={{ mode: modeLabel(shownMode), modeDanger: shownMode === BYPASS_MODE, subagents: subagentCount, folder, branch, model: shownModel, onOpenFolder, modeKey: shownMode, bypassAllowed: startedWithYolo(sessionId), ...agentControls }}
       />
     </div>

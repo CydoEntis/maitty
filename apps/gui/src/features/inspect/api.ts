@@ -34,6 +34,14 @@ export type RepoWorktree = z.infer<typeof WorktreeSchema>
 export type RepoSnapshot = z.infer<typeof SnapshotSchema>
 export type RepoReference = z.infer<typeof ReferenceSchema>
 
+const HighlightSchema = z.array(z.array(z.object({ text: z.string(), kind: z.enum(['plain', 'comment', 'string', 'number', 'keyword', 'variable']) }))).nullable()
+export type HighlightedLines = z.infer<typeof HighlightSchema>
+
+/** The file's lines split into colour roles by the shared highlighter, or null when its type has no grammar. */
+export async function highlightFile(path: string, text: string): Promise<HighlightedLines> {
+  return HighlightSchema.parse(await invoke('highlight_file', { path, text }))
+}
+
 const LOG_LIMIT = 60
 
 /** Ask the daemon about the repository `term` is in. It answers `{ <Kind>: payload }`; a different kind is a bug. */

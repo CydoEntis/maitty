@@ -179,8 +179,9 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
             let x = if side.x > col.x { col.right() - w } else { col.x };
             (Rect { x, width: w, ..col }, col)
         }
-        // A tool slides in from the panes' right edge, inside their box (its top and bottom
-        // lines and its chips stay in view): the panes keep the whole column.
+        // A tool slides in from the panes' right edge, over their box, top line and right edge
+        // included: its ✕ is then the only close at that corner, not one beside the pane's own.
+        // The panes keep the whole column.
         Some(kind) if overlaid(app, kind) => {
             let pane = focused_box(app, col);
             let full = wanted_w(app, kind, area.width)
@@ -191,9 +192,9 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
             (
                 Rect {
                     x: pane.right().saturating_sub(1 + w),
-                    y: pane.y + 1,
+                    y: pane.y,
                     width: w,
-                    height: pane.height.saturating_sub(2),
+                    height: pane.height,
                 },
                 col,
             )

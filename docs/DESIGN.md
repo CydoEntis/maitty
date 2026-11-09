@@ -85,7 +85,7 @@ accent fill. See UI › *UI conventions*.
 Each machine with its sessions under it, on the panel ground, 34 columns by default (24 to 60
 resizable). On the top border the ` maitty ` chip at the left and ` « ` (hide) at the right; hidden,
 a ` » ` chip beside the panes brings it back. Filtering is a command (`/`) with its own modal,
-no field; the folder button groups sessions by folder. A machine is a heading chip with its count (` This computer 5 `), an accent ` + `
+no field; the folder button groups sessions by folder. In folder view each folder has a coloured bar and icon (the theme's pane colours in turn) and a line before the next folder. A machine is a heading chip with its count (` This computer 5 `), an accent ` + `
 chip (a shell there at once) and a green `●` at the right while it is up. While its app is missing
 or on another version the ` + ` gives way to an accent ` install ` or ` update ` chip, the fix one
 click from where it shows; the Machines dialog marks that row ` u install ` / ` u update ` beside its
@@ -112,9 +112,10 @@ box is the accent, or the KEYS yellow (`blocked`) in key mode. See UI › *the f
 
 ## Side panel
 
-Reading while you work happens in a panel that slides in from the pane's right edge, inside its
-box (about 220 ms, eased out): the panel ground, a line down its left edge, its title chip
-(` files `, ` changes N `, ` branch `, ` references `, lit while it has the keys) and a ` » ` that
+Reading while you work happens in a panel that slides in from the pane's right edge, over
+its box, the pane's top line, its chips and its own ` ✕ ` included, so the panel's ` ✕ ` is the only close
+at that corner (about 220 ms, eased out): the panel ground, a line down its left edge, its title chip
+(` files `, ` changes N `, ` branch `, ` references `, lit while it has the keys) and a ` ✕ ` that
 closes it (Esc too). Files starts 96 columns wide and at most 80% of the panes, a tree beside the
 open file (Markdown drawn); Changes 54 and at most 70%, the changed files and their diff; Branch the
 branch, ahead/behind, recent commits, the last check and snapshots; References the project's
@@ -441,7 +442,12 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   (`--main` under `rgba(--hl,.075)` to `.035`, a `rgba(--hl,.12)` border, radius 16), a two-line text box on top, **+**
   (attach) at the left, and at the right the model picker ("Claude Sonnet 5.5 · Medium ▾": the agent's mark, the model
   picked or the one its own file says, the effort) and the round 32px send button, teal when it can send and grey while
-  a question waits; with nothing typed while a turn runs it is a Stop square. Placeholders: "Message claude", "Queue a
+  a question waits. While the agent works, or a message is held until it starts, the send button is the shared working spinner
+  (`Spinner`, so no extra animation); when the turn can be stopped (nothing typed) hovering or focusing it shows the Stop square.
+  Claude's model chip and mode chip are always there, from the first frame of a new chat: while the agent starts or works they
+  stay where they are, greyed out with the reason as their tooltip, so the box never gains or loses a control. A chat that
+  follows another agent (Codex, Gemini) draws its model label from the start, with just the agent's name until it says its
+  model. The "agent has not reported" hint of a starting chat floats over the conversation and moves nothing. Placeholders: "Message claude", "Queue a
   message for when claude finishes" while it works, "Answer the request above first" (and off) while a question
   waits. **3. The settings tray**: narrower and darker, under the box: the permission mode from the agent's own file
   ("Ask before running", "Plan", "Bypass permissions" in red, or "Permissions" before it has said), Subagents with their

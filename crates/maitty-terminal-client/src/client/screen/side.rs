@@ -335,6 +335,8 @@ enum Block {
     Machine(usize),
     /// A folder's heading (grouped by folder): the machine, and the first of its sessions.
     Folder(usize, usize),
+    /// The line between one folder's sessions and the next folder's heading.
+    Divider,
     Session(usize, usize),
     /// The `Remote machines` row with its `+` that adds one; above the first remote machine, or at the end when there is none.
     Gap,
@@ -347,7 +349,7 @@ fn open_session(app: &App) -> Option<ClientSession> {
 
 fn block_h(sm: &SideModel, b: Block, open: Option<ClientSession>) -> u16 {
     match b {
-        Block::Machine(_) | Block::Folder(..) | Block::Gap => 1,
+        Block::Machine(_) | Block::Folder(..) | Block::Divider | Block::Gap => 1,
         Block::Session(mi, ri) => {
             let r = &sm.machines[mi].rows[ri];
             let subs = match r.subs.len() {
@@ -378,6 +380,9 @@ fn blocks(sm: &SideModel) -> Vec<Block> {
                 break;
             }
             if sm.grouped && (ri == 0 || m.rows[ri].project != m.rows[ri - 1].project) {
+                if ri > 0 {
+                    out.push(Block::Divider);
+                }
                 out.push(Block::Folder(mi, ri));
             }
             if !m.rows[ri].hidden {
@@ -386,6 +391,20 @@ fn blocks(sm: &SideModel) -> Vec<Block> {
         }
     }
     out
+}
+
+/// The colour of row `ri`'s folder: folders take the theme's pane colours in turn, so two folders
+/// next to each other never share one.
+fn folder_colour(rows: &[SideRow], ri: usize, t: &Theme) -> Color {
+    let order = (1..=ri).filter(|&i| rows[i].project != rows[i - 1].project).count();
+    t.grid_colors()[order % 4]
+}
+
+/// The bar down the left of a folder's heading and sessions, `h` rows from `y`.
+fn put_folder_bar(buf: &mut Buffer, r: Rect, y: u16, h: u16, colour: Color, t: &Theme) {
+    for dy in 0..h {
+        put(buf, r.x + 1, y + dy, &[seg("▎", Style::default().fg(colour).bg(t.bg))], r.x + 2);
+    }
 }
 
 /// Columns a nested heading or row sits to the right of the one above it.
@@ -638,6 +657,8 @@ fn draw_list(
                 let room = r.width.saturating_sub(10 + shift) as usize;
                 let name = truncate(project, room);
                 let quiet = Style::default().fg(t.muted).bg(t.bg);
+                let colour = folder_colour(&machine.rows, ri, t);
+                put_folder_bar(buf, r, y, *h, colour, t);
                 // The arrow says the folder folds; a click on its name does it.
                 put(
                     buf,
@@ -645,7 +666,7 @@ fn draw_list(
                     y,
                     &[
                         seg(if folded { FOLDED } else { OPEN }, quiet.fg(t.accent)),
-                        seg(format!(" {} ", app.cfg.icons.folder), quiet),
+                        seg(format!(" {} ", app.cfg.icons.folder), quiet.fg(colour)),
                         seg(name, quiet.fg(t.text).add_modifier(Modifier::BOLD)),
                     ],
                     r.right().saturating_sub(2),
@@ -659,7 +680,15 @@ fn draw_list(
                 let row = &machine.rows[ri];
                 // Sessions sit one level in from their folder's heading, or from the machine's when not grouped.
                 let by = if sm.grouped { NEST } else { 0 };
+                if sm.grouped {
+                    put_folder_bar(buf, r, y, *h, folder_colour(&machine.rows, ri, t), t);
+                }
                 draw_session(app, buf, nested(r, by), y, row, Some(row.key) == open, t);
+            }
+            Block::Divider => {
+                let width = r.width.saturating_sub(4) as usize;
+                let line = "─".repeat(width);
+                put(buf, r.x + 2, y, &[seg(line, Style::default().fg(t.line).bg(t.bg))], r.right().saturating_sub(2));
             }
             Block::Gap => {}
         }

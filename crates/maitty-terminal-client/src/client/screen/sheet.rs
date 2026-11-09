@@ -314,6 +314,8 @@ pub(in crate::client) fn draw_sheet(
     t: &Theme,
 ) {
     if overlaid(app, kind) {
+        // The panel's width is what the pane's right line leaves it; it is drawn over that line too.
+        let r = Rect { width: r.width + 1, ..r };
         let body = draw_panel_frame(app, buf, r, kind, t);
         draw_panel_body(app, buf, body, kind, t);
         return;
@@ -366,8 +368,11 @@ pub(in crate::client) fn draw_sheet(
     }
 }
 
-/// The side panel's frame inside the pane: the panel ground, a line down its left edge, and on
-/// its first row the title chip (lit while the panel has the keys) and `»`, which closes it.
+/// The chip that closes a side panel.
+const CLOSE_PANEL: &str = "✕";
+
+/// The side panel's frame over the pane: the panel ground, a line down its left edge, and on
+/// its first row the title chip (lit while the panel has the keys) and `✕`, which closes it.
 /// Returns the room under the title row.
 fn draw_panel_frame(app: &mut App, buf: &mut Buffer, r: Rect, kind: SheetKind, t: &Theme) -> Rect {
     fill(buf, r, t.sidebar_bg);
@@ -390,7 +395,7 @@ fn draw_panel_frame(app: &mut App, buf: &mut Buffer, r: Rect, kind: SheetKind, t
     let lit = sheet_has_keys(app);
     let chip_ = chips::chip(app, &title, chips::Chip::Title { focused: lit }, t.sidebar_bg, t);
     put(buf, r.x + 2, r.y, &chip_, r.right().saturating_sub(1));
-    let close = chips::chip(app, SHOW, chips::Chip::Title { focused: false }, t.sidebar_bg, t);
+    let close = chips::chip(app, CLOSE_PANEL, chips::Chip::Title { focused: false }, t.sidebar_bg, t);
     let cw = segs_width(&close);
     let cx = r.right().saturating_sub(cw + 1);
     put(buf, cx, r.y, &close, r.right());

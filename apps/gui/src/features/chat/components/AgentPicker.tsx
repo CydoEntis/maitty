@@ -74,9 +74,11 @@ type PickerProps = {
   onAgent?: (agent: ChatAgent) => void
   /** Given for a chat that follows the agent's own terminal: a pick is sent to it now, as its own `/model` and `/effort` commands. */
   live?: (command: string) => void
+  /** Why the choice cannot be changed right now. The button stays where it is, greyed out, so the message box never rearranges. */
+  locked?: string | undefined
 }
 
-export function AgentPicker({ agent, choice, onChange, currentModel = null, onAgent, live }: PickerProps) {
+export function AgentPicker({ agent, choice, onChange, currentModel = null, onAgent, live, locked }: PickerProps) {
   const [open, setOpen] = useState(false)
   useDiscoveredModels(agent)
   const models = useAgentModels(agent)
@@ -89,9 +91,10 @@ export function AgentPicker({ agent, choice, onChange, currentModel = null, onAg
   const summary = `${AGENT_LABEL[agent]} · ${model?.label ?? ''} · ${REASONING_LABEL[choice.reasoning]}`
   const shownModel = modelName(agent, model, currentModel)
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
+    // aria-disabled, not disabled: a disabled button gets no tooltip, and the reason is the point.
+    <Popover.Root open={open && locked === undefined} onOpenChange={(next) => { if (locked === undefined) setOpen(next) }}>
       <Popover.Trigger asChild>
-        <button type="button" aria-label={`Agent, model and reasoning: ${summary}`} title="Agent, model and reasoning" className="mx-model-button">
+        <button type="button" aria-label={`Agent, model and reasoning: ${summary}`} title={locked ?? 'Agent, model and reasoning'} aria-disabled={locked !== undefined} className={`mx-model-button${locked === undefined ? '' : ' is-locked'}`}>
           <span className="mx-model-icon"><AppIcon process={agent} size={14} /></span>
           <span className="mx-model-name">{shownModel}</span>
           <span className="mx-model-effort">{REASONING_LABEL[choice.reasoning]}</span>
