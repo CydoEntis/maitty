@@ -5,17 +5,18 @@ import { connectAgent } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
 import { NO_EVENTS_HINT_AFTER_MS, noEventsHint, waitingInTerminalHint, type ChatAgent } from '@/features/workspace/model/chatView'
 import { keepComposerFocus } from '../keepComposerFocus'
-import { carryDraft, holdFirstMessage, useHeldFirstMessage, useStartChoice } from '../firstMessage'
+import { buildAttachmentMessage, parseAttachmentMessage } from '../attachmentMessage'
+import { SentAttachments } from './Attachments'
+import { updateComposer, useComposerState } from '../composerStore'
+import { carryDraft, draftKeyFor, holdFirstMessage, useHeldFirstMessage, useStartChoice } from '../firstMessage'
+import { revokePreviews, useAttachmentIntake } from '../useAttachmentIntake'
 import { BYPASS_MODE, modeLabel } from '../chatMeta'
 import { AGENT_LABEL } from '../modelName'
 import type { SessionStatus } from '@/features/workspace/model/session'
-import type { AttachmentIntake } from '../useAttachmentIntake'
 import type { ChatComposer } from '../useChatComposer'
 import { Composer } from './Composer'
 import { ScreenMenuTray } from './QuestionTray'
 import { parseScreenMenu } from '../screenMenu'
-
-const NO_ATTACH: AttachmentIntake = { pick: () => undefined, addPaths: () => undefined, addImage: () => undefined, remove: () => undefined }
 
 type StartingChatProps = {
   agent: ChatAgent
@@ -31,6 +32,18 @@ type StartingChatProps = {
   asking?: string
   /** Types into the agent's terminal. */
   typeInto?: (text: string) => Promise<void>
+}
+
+/** A held message as the chat will show it: its words, and the files it names as chips, not as the block that carries them. */
+function echoed(message: string) {
+  const parsed = parseAttachmentMessage(message)
+  if (parsed === null) return <p>{message}</p>
+  return (
+    <>
+      {parsed.text !== '' && <p>{parsed.text}</p>}
+      <SentAttachments files={parsed.files} />
+    </>
+  )
 }
 
 /**
@@ -49,6 +62,13 @@ export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', 
   const held = useHeldFirstMessage(sessionId)
   const started = useStartChoice(sessionId)
   const [late, setLate] = useState(false)
+  // Files attached now go out with the message held for the real chat, named by path in it.
+  const draftKey = draftKeyFor(sessionId)
+  const { attachments } = useComposerState(draftKey)
+  const attach = useAttachmentIntake({ conversation: draftKey, blocked: null })
+  useEffect(() => () => {
+    updateComposer(draftKey, (state) => { revokePreviews(state.attachments); return { ...state, attachments: [] } })
+  }, [draftKey])
   const [connecting, setConnecting] = useState(false)
   useEffect(() => {
     const timer = window.setTimeout(() => { setLate(true) }, NO_EVENTS_HINT_AFTER_MS)
@@ -66,18 +86,19 @@ export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', 
   const composer = useMemo<ChatComposer>(() => ({
     draft,
     setDraft: (text) => { setDraftState(text); carryDraft(sessionId, text) },
-    attachments: [],
-    attach: NO_ATTACH,
-    // There is nothing to attach to yet, so no paperclip.
+    attachments,
+    attach,
     readOnly: true,
+    attachable: true,
     // The held message is drawn in the conversation, where it will stay, not as a queued row that would jump when the chat takes over.
     queue: [],
     removeQueued: () => undefined,
     submit: () => {
       const text = draft.trim()
       // One message is held at a time: a second would replace the first before it was ever sent.
-      if (text === '' || held !== null) return
-      holdFirstMessage(sessionId, text)
+      if ((text === '' && attachments.length === 0) || held !== null) return
+      holdFirstMessage(sessionId, buildAttachmentMessage(text, attachments))
+      updateComposer(draftKey, (state) => ({ ...state, attachments: [] }))
       setDraftState('')
       carryDraft(sessionId, '')
     },
@@ -89,7 +110,7 @@ export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', 
     error: null,
     sendText: () => Promise.resolve(false),
     echo: null,
-  }), [draft, held, sessionId])
+  }), [draft, held, sessionId, attachments, attach, draftKey])
 
   return (
     <div className="mx-chat is-starting" onClick={keepComposerFocus}>
@@ -108,7 +129,7 @@ export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', 
       ) : (
         // The same list the real chat uses, so the message and the line under it are already where they will stay.
         <div className="mx-chat-scroller min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-chat-row"><div className="mx-msg-user is-echo" aria-label="Sending"><p>{held}</p></div></div>
+          <div className="mx-chat-row"><div className="mx-msg-user is-echo" aria-label="Sending">{echoed(held)}</div></div>
           <div className="mx-chat-row"><div className="mx-working"><Spinner /><span>{agent} is starting…</span></div></div>
         </div>
       )}

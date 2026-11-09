@@ -74,6 +74,22 @@ export function useStartChoice(sessionId: string | undefined): StartChoice | nul
   return useSyncExternalStore(subscribe, () => startChoiceOf(sessionId), () => null)
 }
 
+const draftKeys = new Map<string, number>()
+let nextDraftKey = -2
+
+/**
+ * The key a starting session's attached files are kept under in the composer store. No conversation exists yet, and a
+ * real one is never negative; -1 belongs to the new-chat page.
+ */
+export function draftKeyFor(sessionId: string): number {
+  const known = draftKeys.get(sessionId)
+  if (known !== undefined) return known
+  const key = nextDraftKey
+  nextDraftKey -= 1
+  draftKeys.set(sessionId, key)
+  return key
+}
+
 /** For tests. */
 export function forgetFirstMessages(): void {
   heldMessages.clear()

@@ -72,6 +72,8 @@ export type ChatComposer = {
   attach: AttachmentIntake
   /** The chat only follows an agent running in the terminal (ADR 0003): there is nothing to attach to. */
   readOnly: boolean
+  /** Whether files can be attached; when absent, they can unless the chat is read-only. */
+  attachable?: boolean
   /** What the daemon holds for the running turn, oldest first. */
   queue: readonly QueuedItem[]
   removeQueued: (id: number) => void
