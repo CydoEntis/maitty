@@ -2004,7 +2004,7 @@ mod screen_tests {
                         if !bar.contains(" PANE ") {
                             failures.push(format!("{layout} split {split} {mode} update {update} {w}: no PANE on the bar: {bar}"));
                         }
-                    } else if mode == "off" && screen::bar_shown(&app) {
+                    } else if mode == "off" && screen::bar_has_words(&app) {
                         failures.push(format!("{layout} split {split} {mode} update {update} {w}: a bar while keys go to the pane"));
                     }
                 }
@@ -4147,7 +4147,8 @@ mod screen_tests {
 
     /// Rows the toast sits above the input area's bottom: the mode bar and its gap, none while the
     /// bar is hidden (keys go to the pane), which is how these tests draw.
-    const BAR: u16 = 0;
+    /// The bar's rows (the bar and its gap) are always kept below the frames.
+    const BAR: u16 = 2;
 
     fn row_text(buf: &ratatui::buffer::Buffer, y: u16) -> String {
         (0..buf.area.width)
@@ -6191,18 +6192,23 @@ second line
     }
 
     #[test]
-    fn there_is_no_bar_row_in_pane_mode_and_the_frames_reach_the_bottom() {
+    fn the_bar_rows_are_kept_but_blank_in_pane_mode_so_opening_a_menu_moves_nothing() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let buf = drawn(&mut app, 160, 45);
         let bar = screen::mode_bar_row(&app, buf.area);
-        assert!(!screen::bar_shown(&app), "keys go to the pane");
-        assert_eq!(bar.height, 0, "no row for the bar");
-        assert!(
-            app.pane_frames.iter().any(|(_, r)| r.bottom() == bar.y),
-            "the frames end where the bar would have started, with no gap kept"
-        );
+        assert!(!screen::bar_has_words(&app), "keys go to the pane");
+        assert_eq!(bar.height, 1, "the row is kept");
+        let frames_end = app.pane_frames.iter().map(|(_, r)| r.bottom()).max().expect("a frame");
+        let before = frames_end;
         let all = buf_text(&buf);
         assert!(!all.contains("PANE") && !all.contains("KEYS"), "no mode words anywhere");
+
+        // Key mode fills the row with its words; the frames stay exactly where they were.
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        let buf = drawn(&mut app, 160, 45);
+        assert!(buf_text(&buf).contains("KEYS"), "the bar speaks in key mode");
+        let after = app.pane_frames.iter().map(|(_, r)| r.bottom()).max().expect("a frame");
+        assert_eq!(after, before, "the frames did not move");
     }
 
     #[test]
@@ -6543,7 +6549,7 @@ second line
     /// keys (`SETTINGS`, `FILES`, …), and the bar's ground at its right end, drawn at 160×45.
     fn shortcut_tag(app: &mut App) -> Option<(String, ratatui::style::Color)> {
         let buf = drawn(app, 160, 45);
-        if !screen::bar_shown(app) {
+        if !screen::bar_has_words(app) {
             return None;
         }
         let (row, text) = bar_text(app, &buf);
@@ -7423,10 +7429,11 @@ second line
                     show(&format!("===== {layout} {w}x{h} {mode}\n{text}"));
                     let at = format!("{layout} {w}x{h} {mode}");
                     if mode == "typing" {
-                        // Keys go to the pane: nothing to say, so no bar and the cards reach the bottom.
-                        assert_eq!(screen::mode_bar_row(&app, buf.area).height, 0, "{at}: no bar");
+                        // Keys go to the pane: nothing to say, so the bar's rows are kept blank under the cards.
+                        let bar = screen::mode_bar_row(&app, buf.area);
+                        assert_eq!(bar.height, 1, "{at}: the bar's row is kept");
                         assert!(!buf_text(&buf).contains("PANE"), "{at}: no PANE tag");
-                        assert!(app.pane_frames.iter().any(|(_, r)| r.bottom() == h), "{at}: the panes reach the bottom");
+                        assert!(app.pane_frames.iter().any(|(_, r)| r.bottom() < bar.y), "{at}: the panes end above the bar");
                         continue;
                     }
                     let (row, bar) = bar_text(&app, &buf);
@@ -7474,7 +7481,7 @@ second line
                                     "{layout} {side} padding {padding} {rounded:?} {w}x{h} {mode}"
                                 );
                                 if mode == "typing" {
-                                    if screen::mode_bar_row(&app, buf.area).height != 0 {
+                                    if screen::bar_has_words(&app) {
                                         failures.push(format!("{at}: a bar while keys go to the pane"));
                                     }
                                     continue;

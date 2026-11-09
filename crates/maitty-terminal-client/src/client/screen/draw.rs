@@ -60,10 +60,17 @@ fn padded(app: &App, area: Rect) -> Rect {
 /// Blank rows between the frames and the mode bar, so the bar does not touch their bottom lines.
 const BAR_GAP: u16 = 1;
 
-/// Whether the bar has anything to say. While keys go to the panes it has nothing: the pane and
-/// the sidebar already name the session, and key mode shows on the frame. It appears for key mode,
-/// for anything that holds the keys, for a line it flashes, and while Update or Restart waits.
+/// Whether the bar's rows are kept. Always: opening a menu or key mode fills the bar but must not move the frames.
 pub(in crate::client) fn bar_shown(app: &App) -> bool {
+    // The bar's rows are always kept, so opening a menu or key mode never moves the panes.
+    let _ = app;
+    true
+}
+
+/// Whether the bar has anything to say. While keys go to the panes it has nothing: the pane and the sidebar already
+/// name the session, and key mode shows on the frame. It speaks for key mode, for anything that holds the keys, for a
+/// line it flashes, and while Update or Restart waits; otherwise its rows stay blank.
+pub(in crate::client) fn bar_has_words(app: &App) -> bool {
     armed(app)
         || shortcut_waits(app)
         || app.mode != Mode::Normal
@@ -331,7 +338,14 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
         draw_sheet(app, f.buffer_mut(), g.sheet, kind, t);
         draw_sheet_edge(app, f.buffer_mut(), &g, t);
     }
-    draw_mode_bar(app, f.buffer_mut(), mode_bar_row(app, area), t);
+    let bar = mode_bar_row(app, area);
+    if bar_has_words(app) {
+        draw_mode_bar(app, f.buffer_mut(), bar, t);
+    } else {
+        // Nothing to say: the rows stay where they are, blank, so the frames above never move.
+        app.screen.bar_keys.clear();
+        fill(f.buffer_mut(), bar, t.bg);
+    }
     app.screen.crumb_x = g.panes.x + 1;
     // A popup (`<app> popup`) floats over everything, the rest dimmed.
     let above = above_bar(app, area);

@@ -171,8 +171,8 @@ fn the_borders_carry_the_title_hide_release_and_menu_chips() {
     assert!(!top.contains("+ machine"), "adding a machine lives in the menu: {top}");
     assert!(top.contains('\u{25be}') && top.find('\u{25be}').unwrap() < top.find(" « ").unwrap(), "the group-by chip: {top}");
     assert!(!rows.iter().any(|r| side_of(r).contains("filter sessions")), "the filter is a command, not a field");
-    // No mode bar in pane mode, so the frames reach the bottom row.
-    let foot = side(&rows, 35);
+    // The bar's rows stay blank in pane mode, so the frames end two rows above the bottom.
+    let foot = side(&rows, 33);
     let version = format!(" v{} ", crate::brand::APP_VERSION);
     assert!(foot.contains(&version) && foot.contains(" Menu "), "{foot}");
     app.update_available = Some("0.99.0".into());
@@ -802,7 +802,7 @@ fn a_narrow_status_bar_drops_pieces_instead_of_running_them_together() {
 fn the_status_bar_says_the_mode_the_session_and_the_keys_worth_knowing() {
     let mut app = reference_fixture::world(Stage::None);
     let rows = text(&mut app, 140, 36);
-    assert!(!rows[35].contains("PANE") && rows[35].contains('\u{2570}'), "no bar while keys go to the pane: {}", rows[35]);
+    assert!(!rows[35].contains("PANE") && rows[35].trim().is_empty(), "a blank bar row while keys go to the pane: {}", rows[35]);
     // Update or Restart waiting brings the bar back, in pane mode.
     app.update_available = Some("0.99.0".into());
     let buf = cells(&mut app, 140, 36);
