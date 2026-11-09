@@ -29,6 +29,9 @@ import { VirtualList } from './VirtualList'
 const END_OF_TURN_READ_MS = 600
 /** How long the working line stays after a turn ends with no reply read yet, so the pane is never blank between the two. */
 const SETTLE_MS = 650
+/** Shift+Tab, which cycles the agent's permission mode, and how long after it the new mode is read back. */
+const SHIFT_TAB = '\x1b[Z'
+const MODE_READ_MS = 400
 
 /** A row not yet measured is drawn as if it were this tall, which a message or a card usually is. */
 const ESTIMATED_ROW_PX = 72
@@ -133,6 +136,15 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   const answersPrompt = stoppedOnPrompt && typeInto !== undefined && (ask?.answerable === true || (ask?.choices?.length ?? 0) > 0)
   const answerPrompt = typeInto === undefined ? undefined : (choice: AskChoice) => typeInto(ANSWER_KEYS[choice]).then(refresh)
   const pickChoice = typeInto === undefined ? undefined : (index: number) => typeInto(choiceKey(index)).then(refresh)
+  // A chat that follows the agent's own terminal changes its mode, model and reasoning the way its user would: by typing the agent's commands
+  // (Shift+Tab, /model, /effort). Offered for Claude, and not while it works, when the keys would land in its turn.
+  const agentControls = useMemo(() => {
+    if (typeInto === undefined || agent !== 'claude' || link.readOnly !== true || !online || working) return {}
+    return {
+      onCommand: (text: string) => { void typeInto(text).then(refresh) },
+      onCycleMode: () => { void typeInto(SHIFT_TAB).then(() => { window.setTimeout(refresh, MODE_READ_MS) }) },
+    }
+  }, [typeInto, agent, link.readOnly, online, working, refresh])
   const composer = useChatComposer({ link, agent, feed, online, refresh, answersPrompt, paneWorking, ...(typeInto ? { typeInto } : {}) })
   const { sendText, setDraft: setComposerDraft, ready, sending, echo } = composer
   // A message just sent shows at once, with the agent taken to be at work on it, until the history has it.
@@ -248,7 +260,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
         composer={composer}
         conversation={link.conversation}
         question={question}
-        facts={{ mode: modeLabel(feed.meta?.mode ?? null), modeDanger: feed.meta?.mode === BYPASS_MODE, subagents: subagentCount, folder, branch, model: feed.meta?.model ?? null, onOpenFolder }}
+        facts={{ mode: modeLabel(feed.meta?.mode ?? null), modeDanger: feed.meta?.mode === BYPASS_MODE, subagents: subagentCount, folder, branch, model: feed.meta?.model ?? null, onOpenFolder, ...agentControls }}
       />
     </div>
   )

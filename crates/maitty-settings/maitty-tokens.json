@@ -121,25 +121,25 @@
  },
  "dark": {
   "bg": {
-   "page": "#050506",
-   "sky": "#0e0e10",
-   "surface": "#141416",
-   "card": "#0e0e10",
-   "terminal": "#08080a",
-   "selected": "#1c1c1f",
-   "depth1": "#1c1c1f",
-   "depth2": "#161618",
-   "depth3": "#0b0b0d",
-   "depth4": "#050506"
+   "page": "#0f1013",
+   "sky": "#17181c",
+   "surface": "#1b1c21",
+   "card": "#16171b",
+   "terminal": "#121317",
+   "selected": "#24262c",
+   "depth1": "#24262c",
+   "depth2": "#1d1f24",
+   "depth3": "#131418",
+   "depth4": "#0f1013"
   },
   "line": {
-   "default": "#26262a",
+   "default": "#2b2d34",
    "strong": "#f2f2f3"
   },
   "text": {
    "strong": "#f4f4f5",
-   "body": "#cbcbd0",
-   "dim": "#92929a"
+   "body": "#cdcdd2",
+   "dim": "#94949c"
   },
   "accent": {
    "brass": "#e3a72f",

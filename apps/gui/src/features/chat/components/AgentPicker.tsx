@@ -72,9 +72,11 @@ type PickerProps = {
   currentModel?: string | null
   /** Given where the agent is still to be chosen (a chat that has not started): the other agent can be picked. */
   onAgent?: (agent: ChatAgent) => void
+  /** Given for a chat that follows the agent's own terminal: a pick is sent to it now, as its own `/model` and `/effort` commands. */
+  live?: (command: string) => void
 }
 
-export function AgentPicker({ agent, choice, onChange, currentModel = null, onAgent }: PickerProps) {
+export function AgentPicker({ agent, choice, onChange, currentModel = null, onAgent, live }: PickerProps) {
   const [open, setOpen] = useState(false)
   useDiscoveredModels(agent)
   const models = useAgentModels(agent)
@@ -98,22 +100,22 @@ export function AgentPicker({ agent, choice, onChange, currentModel = null, onAg
       </Popover.Trigger>
       <PopupContent side="top" align="end" aria-label="Agent, model and reasoning" className="w-[min(640px,calc(100vw-32px))]">
           <div className="flex gap-2">
-            <Column title="Agent" options={agentOptions} value={agent} onPick={(value) => { onAgent?.(value as ChatAgent) }} />
+            {live === undefined && <Column title="Agent" options={agentOptions} value={agent} onPick={(value) => { onAgent?.(value as ChatAgent) }} />}
             <Column
               title="Model"
               options={models.map((option) => ({ value: option.id, label: option.label, blurb: option.blurb }))}
               value={model?.id ?? ''}
-              onPick={(value) => { onChange({ model: value }) }}
+              onPick={(value) => { onChange({ model: value }); live?.(`/model ${value}\r`) }}
             />
             <Column
               title="Reasoning"
               options={REASONING_PICKS.map((level) => ({ value: level, label: REASONING_LABEL[level], ...(level === DEFAULT_PICK ? {} : { extra: <Meter level={level} /> }) }))}
               value={choice.reasoning}
-              onPick={(value) => { onChange({ reasoning: value as ReasoningPick }) }}
+              onPick={(value) => { onChange({ reasoning: value as ReasoningPick }); if (live !== undefined && value !== DEFAULT_PICK) live(`/effort ${value}\r`) }}
             />
           </div>
           <p className="m-0 mt-2 flex justify-between border-t border-line2 px-2 pt-2 text-[11.5px] text-dim">
-            <span>Changes apply from your next message</span>
+            <span>{live === undefined ? 'Changes apply from your next message' : 'Sent to the agent now, as /model and /effort'}</span>
             <span>Esc</span>
           </p>
       </PopupContent>
