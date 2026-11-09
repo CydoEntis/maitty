@@ -1137,7 +1137,7 @@ kbd { align-items: center; background: var(--secondary); border: 1px solid var(-
 
 /* Custom title bar in the app's own colors (the native bar is off). */
 .title-bar { align-items: center; background: var(--bg); color: var(--muted-text); display: flex; flex: 0 0 32px; gap: 8px; height: 32px; padding-left: 12px; user-select: none; }
-.title-bar-logo { height: 18px; pointer-events: none; width: 18px; }
+.title-bar-logo { height: 20px; pointer-events: none; width: 20px; object-fit: contain; }
 .title-bar-name { font-size: 12px; pointer-events: none; }
 .sidebar-heading { justify-content: flex-end; }
 .sidebar-rail-toggle, .sidebar-collapse-toggle { margin-right: auto; }
