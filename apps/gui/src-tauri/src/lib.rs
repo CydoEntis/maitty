@@ -189,10 +189,63 @@ fn codex_models_from(cache: &str) -> Result<Vec<AgentModel>, String> {
     Ok(listed.into_iter().map(|(_, model)| model).collect())
 }
 
+/// The extra models Claude Code offers this account, from `additionalModelOptionsCache` in its own
+/// `.claude.json` (Claude Code refreshes it; the file is not a documented interface, so anything
+/// unexpected gives an empty list and the window keeps its fixed aliases). Each entry reads
+/// `Name 5.1 · what it is for`, and its value is what `--model` takes.
+fn claude_models_from(config: &str) -> Vec<AgentModel> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(config) else {
+        return Vec::new();
+    };
+    value
+        .get("additionalModelOptionsCache")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|option| {
+            let id = option.get("value")?.as_str()?.trim();
+            if id.is_empty() {
+                return None;
+            }
+            let text = option.get("description").and_then(serde_json::Value::as_str).unwrap_or_default();
+            let (name, blurb) = text.split_once(" · ").unwrap_or((text, ""));
+            let label = if name.is_empty() { option.get("label")?.as_str()? } else { name };
+            Some(AgentModel { id: id.to_string(), label: label.to_string(), blurb: blurb.to_string() })
+        })
+        .collect()
+}
+
+/// The "Default" row for Claude: what Claude Code will run when no model is picked, from the
+/// `model` in its `settings.json`. Without one, Claude Code picks by account, which cannot be read.
+fn claude_default_from(settings: &str) -> AgentModel {
+    let named = serde_json::from_str::<serde_json::Value>(settings)
+        .ok()
+        .and_then(|value| value.get("model").and_then(serde_json::Value::as_str).map(str::trim).filter(|name| !name.is_empty()).map(str::to_string));
+    let blurb = match named {
+        Some(name) => format!("Claude Code's own setting: {name}"),
+        None => "Whatever Claude Code picks for your account".to_string(),
+    };
+    AgentModel { id: "default".into(), label: "Default".into(), blurb }
+}
+
 /// The models an agent offers on this computer. Codex keeps a list under its own folder; Claude
-/// has none to read, so its answer is empty and the window keeps its fixed aliases.
+/// keeps its account's extra models in `.claude.json`. Gemini has none.
 #[tauri::command]
 async fn agent_models(app: tauri::AppHandle, agent: String) -> Result<Vec<AgentModel>, String> {
+    if agent == "claude" {
+        let folder = match std::env::var_os("CLAUDE_CONFIG_DIR") {
+            Some(path) => PathBuf::from(path),
+            None => app.path().home_dir().map_err(|error| error.to_string())?,
+        };
+        // A missing or unreadable file is no list, not a failure: the fixed aliases stay.
+        let extras = std::fs::read_to_string(folder.join(".claude.json")).map(|text| claude_models_from(&text)).unwrap_or_default();
+        let settings = match std::env::var_os("CLAUDE_CONFIG_DIR") {
+            Some(path) => PathBuf::from(path),
+            None => folder.join(".claude"),
+        };
+        let default = claude_default_from(&std::fs::read_to_string(settings.join("settings.json")).unwrap_or_default());
+        return Ok(std::iter::once(default).chain(extras).collect());
+    }
     if agent != "codex" {
         return Ok(Vec::new());
     }
@@ -984,6 +1037,19 @@ mod tests {
         assert_eq!(ids, ["a", "b"]);
         assert_eq!(models[0].label, "A");
         assert!(super::codex_models_from("not json").is_err());
+    }
+
+    #[test]
+    fn claude_offers_the_extra_models_its_own_config_lists() {
+        let config = r#"{"additionalModelOptionsCache":[{"description":"Fable 5.1 · Most capable for your hardest tasks","label":"Fable","value":"claude-fable-5-1[1m]"}]}"#;
+        assert_eq!(
+            super::claude_models_from(config),
+            vec![super::AgentModel { id: "claude-fable-5-1[1m]".into(), label: "Fable 5.1".into(), blurb: "Most capable for your hardest tasks".into() }]
+        );
+        assert!(super::claude_models_from("not json").is_empty());
+        assert_eq!(super::claude_default_from(r#"{"model":"sonnet"}"#).blurb, "Claude Code's own setting: sonnet");
+        assert!(super::claude_default_from("{}").blurb.starts_with("Whatever Claude Code picks"));
+        assert!(super::claude_models_from("{}").is_empty());
     }
 
     use super::first_existing_daemon;

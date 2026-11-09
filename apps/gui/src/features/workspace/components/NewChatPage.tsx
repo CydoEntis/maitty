@@ -213,7 +213,7 @@ export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = 
                 footer={<p>Agents are the coding programs Maitty finds on this computer.</p>} />
               <ChipMenu title="Model and reasoning" summary={`${modelName(agent, model, null)} ${REASONING_LABEL[choice.reasoning]}`} label={<><strong>{modelName(agent, model, null)}</strong><span className="mx-chip-muted">{REASONING_LABEL[choice.reasoning]}</span></>} search="Search models" width={360}
                 sections={[{ heading: 'Models', items: modelItems }]}
-                extra={<ReasoningMeter levels={REASONING_PICKS} value={choice.reasoning} labels={effortLabels} onPick={(level) => { setChoice((now) => ({ ...now, reasoning: level })) }} />}
+                below={<ReasoningMeter levels={REASONING_PICKS} value={choice.reasoning} labels={effortLabels} onPick={(level) => { setChoice((now) => ({ ...now, reasoning: level })) }} />}
                 footer={<p>Used by this chat from its first message.</p>} />
               {branches !== null && (
                 <>
