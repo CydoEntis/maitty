@@ -197,6 +197,8 @@ const THEME_PREVIEW_DELAY_MS = 140
 /** A notification's click brings the window forward; returning later than this is not that click. */
 const NOTIFICATION_CLICK_WINDOW_MS = 15_000
 const MAX_RETRY_EXPONENT = 3
+/** Failed reads in a row before the window says the service is unreachable. */
+const OFFLINE_AFTER_FAILURES = 2
 const BACKOFF_BASE = 2
 const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)'
 
@@ -362,8 +364,12 @@ export function DesktopApp() {
   })
   const homeQuery = useQuery({ queryKey: ['home-folder'], queryFn: defaultSessionFolder, staleTime: Infinity, retry: false })
   const home = homeQuery.data ?? ''
-  const online = !sessionsQuery.isError
   const mismatch = sessionsQuery.isError ? daemonProtocolMismatch(sessionsQuery.error) : null
+  // One read that failed while the sessions are known is tried again a second later before anything is called
+  // unreachable: a single lost read is not an outage, and marking every session unknown for it is a false alarm.
+  // Another version is certain at once.
+  const oneLostRead = failures < OFFLINE_AFTER_FAILURES && mismatch === null && sessionsQuery.data !== undefined
+  const online = !sessionsQuery.isError || oneLostRead
   // A service newer than this app cannot be restarted into agreement; only updating the app helps.
   const serviceNewer = mismatch !== null && mismatch.daemonProtocol > mismatch.guiProtocol
   const restartStatusQuery = useQuery({ queryKey: ['daemon-restart-status', mismatch?.daemonProtocol], queryFn: loadDaemonRestartStatus, enabled: Boolean(mismatch), retry: false })

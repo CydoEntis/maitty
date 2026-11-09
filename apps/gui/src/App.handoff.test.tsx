@@ -658,15 +658,33 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     expect(screen.getByRole('region', { name: /^Terminal 1: ~\/a/ })).toBeInTheDocument()
   })
 
+  it('keeps every session as it was after one lost read, and reads again', async () => {
+    daemon.loadConversations
+      .mockResolvedValueOnce([term(2, `${HOME}/a`, { status: 'working', agent: 'codex' })])
+      .mockRejectedValueOnce(new Error('connection refused'))
+      .mockResolvedValue([term(2, `${HOME}/a`, { status: 'working', agent: 'codex' })])
+    const { client } = renderDesktopApp()
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+
+    await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
+
+    expect(screen.queryByText('Reconnecting to maittyd')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'codex, codex, working' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Shell in ~/a' })).not.toHaveAttribute('data-input-disabled', 'true')
+    await waitFor(() => { expect(daemon.loadConversations).toHaveBeenCalledTimes(3) }, { timeout: 3000 })
+    expect(screen.queryByText('Reconnecting to maittyd')).not.toBeInTheDocument()
+  })
+
   it('shows the disconnected banner, marks every status Unknown and holds input', async () => {
     daemon.loadConversations.mockResolvedValueOnce([term(2, `${HOME}/a`, { status: 'working', agent: 'codex' })]).mockRejectedValue(new Error('connection refused'))
     const { client } = renderDesktopApp()
     await screen.findByRole('region', { name: 'Shell in ~/a' })
 
     await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
+    await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
 
     expect(await screen.findByText('Reconnecting to maittyd')).toBeInTheDocument()
-    expect(screen.getByText(/Try 1 of 5 · next in 1s/)).toBeInTheDocument()
+    expect(screen.getByText(/Try 2 of 5 · next in 2s/)).toBeInTheDocument()
     // The row says only that it is unknown; "last seen working" now lives in its tooltip and hover card.
     expect(screen.getByRole('button', { name: 'codex, codex, unknown' })).toBeInTheDocument()
     expect(screen.getAllByText('Reconnecting to maittyd…')).toHaveLength(2)
