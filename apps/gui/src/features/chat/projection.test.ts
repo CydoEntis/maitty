@@ -377,6 +377,18 @@ describe('approvals', () => {
   })
 })
 
+describe('steps that never got a result', () => {
+  it('stop spinning once their turn has completed', () => {
+    const events = project('claude', [tool('t1', 'Read a.png', '', 'Running'), turnStatus(TURN, 'Completed')])
+    expect(events.find((event) => event.kind === 'command')).toMatchObject({ status: 'completed' })
+  })
+
+  it('keep spinning while their turn is still running', () => {
+    const events = project('claude', [tool('t1', 'Read a.png', '', 'Running'), turnStatus(TURN, 'Running')])
+    expect(events.find((event) => event.kind === 'command')).toMatchObject({ status: 'running' })
+  })
+})
+
 describe('malformed input', () => {
   it('skips entries and approvals that fail validation, counts them, and keeps the rest', () => {
     const entries = [

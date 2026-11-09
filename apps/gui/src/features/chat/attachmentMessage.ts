@@ -54,7 +54,9 @@ export function kindOf(name: string): AttachmentKind {
  * trailing block of the exact shape counts, and only absolute paths: anything else a person typed
  * stays plain text.
  */
-export function parseAttachmentMessage(message: string): { text: string; files: SentAttachment[] } | null {
+export function parseAttachmentMessage(raw: string): { text: string; files: SentAttachment[] } | null {
+  // An agent's history can hand the message back with CRLF line ends or trailing blank lines.
+  const message = raw.replace(/\r\n/g, '\n').trimEnd()
   const at = message.lastIndexOf(ATTACHMENT_HEADER)
   if (at < 0 || (at > 0 && !message.slice(0, at).endsWith('\n\n'))) return null
   const lines = message.slice(at + ATTACHMENT_HEADER.length).split('\n')

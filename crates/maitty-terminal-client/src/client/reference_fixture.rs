@@ -100,6 +100,7 @@ pub(super) fn term(
         remote: None,
         popup: false,
         agent: Some(agent.into()),
+        hooked: true,
         status,
         cwd: cwd.to_path_buf(),
         summary: String::new(),

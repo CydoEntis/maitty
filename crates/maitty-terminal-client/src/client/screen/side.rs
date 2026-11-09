@@ -9,8 +9,11 @@ use super::*;
 use crate::client::ids::ClientSession;
 use crate::protocol::{SubagentActivity, SubagentState, TurnKind};
 
-/// Rows a session takes before its subagents.
-const SESSION_H: u16 = 2;
+/// Rows a session takes before its subagents: its name, and under it the project when sessions
+/// are not grouped by folder. The branch is not shown here; the open pane's title already has it.
+fn session_h(grouped: bool) -> u16 {
+    if grouped { 1 } else { 2 }
+}
 /// Columns from the sidebar's left edge: the selection bar, the status mark, the name, and the
 /// subagents' tree.
 const BAR_X: u16 = 1;
@@ -365,7 +368,7 @@ fn block_h(sm: &SideModel, b: Block, open: Option<ClientSession>) -> u16 {
                 n if Some(r.key) == open => n as u16,
                 _ => 1,
             };
-            SESSION_H + subs
+            session_h(sm.grouped) + subs
         }
     }
 }
@@ -754,6 +757,7 @@ fn draw_machine(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, m: &MachineSec
 
 /// One session's two lines and its subagents.
 fn draw_session(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, row: &SideRow, open: bool, t: &Theme) {
+    let height = session_h(app.screen.saved.group_folders);
     let picked = side_focused(app) && app.screen.cursor == Some(row.key);
     let ground = if picked {
         t.sel_bg()
@@ -766,14 +770,14 @@ fn draw_session(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, row: &SideRow,
         x: r.x + 1,
         y,
         width: r.width.saturating_sub(2),
-        height: SESSION_H,
+        height,
     };
     fill(buf, lines, ground);
     // A lit row is one soft-cornered block when shapes are rounded, as the pointer's tint is.
     if ground != t.bg && lines.width >= 2 && Look::of(&app.cfg.ui).caps {
         let edge = Style::default().fg(ground).bg(t.bg);
-        for dy in 0..SESSION_H {
-            let (l, e) = block_ends(dy, SESSION_H);
+        for dy in 0..height {
+            let (l, e) = block_ends(dy, height);
             put(buf, lines.x, y + dy, &[seg(l, edge)], lines.x + 1);
             put(buf, lines.right() - 1, y + dy, &[seg(e, edge)], lines.right());
         }
@@ -781,12 +785,12 @@ fn draw_session(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, row: &SideRow,
     let base = Style::default().bg(ground);
     let end = r.right().saturating_sub(2);
     if open {
-        for dy in 0..SESSION_H {
+        for dy in 0..height {
             put(buf, r.x + BAR_X, y + dy, &[seg("▎", base.fg(t.accent))], r.x + BAR_X + 1);
         }
     } else if app.screen.in_view.contains(&row.key) {
         // Shown in another pane of this view: the same bar, quieter, so every pane of a split is marked.
-        for dy in 0..SESSION_H {
+        for dy in 0..height {
             put(buf, r.x + BAR_X, y + dy, &[seg("▎", base.fg(t.muted))], r.x + BAR_X + 1);
         }
     }
@@ -815,21 +819,15 @@ fn draw_session(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, row: &SideRow,
     let room = end.saturating_sub(r.x + NAME_X) as usize;
     put(buf, r.x + NAME_X, y, &[seg(truncate(&row.name, room.max(1)), name_style)], end);
 
-    // Under its folder's heading a session says only its branch; otherwise the folder first.
-    let mut second = Vec::new();
-    if !app.screen.saved.group_folders {
-        second.push(seg(row.project.clone(), base.fg(t.muted)));
+    // Under its folder's heading a session is one line; otherwise the project goes under the name.
+    if height > 1 {
+        put_cut(buf, r.x + NAME_X, y + 1, vec![seg(row.project.clone(), base.fg(t.muted))], end);
     }
-    if !row.branch.is_empty() {
-        let lead = if second.is_empty() { "" } else { " " };
-        second.push(seg(format!("{lead}{}", row.branch), base.fg(t.muted).add_modifier(Modifier::DIM)));
-    }
-    put_cut(buf, r.x + NAME_X, y + 1, second, end);
     if let Some(term) = row.term {
         app.screen.row_y.insert(term, y);
     }
     hit(app, lines, ScreenHit::Session(row.key));
-    draw_subs(app, buf, r, y + SESSION_H, row, open, t);
+    draw_subs(app, buf, r, y + height, row, open, t);
 }
 
 /// `segs` from `x`, the last one cut with `…` where they would pass `end`.

@@ -529,3 +529,23 @@ chat that is working asks the daemon for news every 300 ms (`ACTIVE_POLL_MS`), n
 What is left is the shell's own startup and the agent's own startup, which Maitty does not control.
 Measure it on Windows with a screen recording at 30 fps: count frames from Enter to the first
 "thinking" line.
+
+## The Changes tab with many new files (2026-11-09)
+
+The Changes tab asks the daemon for `Diff`, which listed the untracked files and then ran one
+`git diff --no-index` process for each of them. One git process costs about 33 ms on Windows
+(`git rev-parse`, 3 runs), so the wait grew with the number of new files. Measured on the daemon's
+`conversation_diff` in a scratch repository (debug build, Windows), new files only:
+
+| New files | One process per file | Batched |
+| --- | --- | --- |
+| 3 | 110 ms | 137 ms (the per-file path is still used below 4 files) |
+| 60 | 1127 ms | 110 ms |
+| 263 | 4362 ms | 164 ms |
+
+From 4 new files, `git add --intent-to-add` marks them in a scratch copy of the index
+(`GIT_INDEX_FILE`, deleted afterwards, the person's own index never touched) and one `git diff HEAD`
+shows them as added files (`daemon/git.rs`, `UNTRACKED_BATCH_FROM`). The Files tab was not measured
+slow: a folder listing is one `git rev-parse` plus a directory read, about 35 ms. Still open: each
+query also runs its own `git rev-parse --show-toplevel`, and `conversation_diff` runs it a second
+time.

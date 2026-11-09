@@ -2769,6 +2769,7 @@ impl Daemon {
                         remote: t.remote.clone(),
                         popup: t.popup,
                         agent: t.agent.clone(),
+                        hooked: t.hooked,
                         // Asking for helpers needs you, whatever the agent's own hooks say meanwhile.
                         status: if t.helpers.asked.is_empty() {
                             t.status

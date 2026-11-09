@@ -126,6 +126,7 @@ mod design_tests {
                 "pwsh".into()
             },
             agent: agent.map(String::from),
+            hooked: true,
             status,
             cwd: PathBuf::from(cwd),
             summary: String::new(),
@@ -10685,6 +10686,31 @@ mod check_settings_tests {
         assert!(!away, "a window in the background is not looking");
         assert!(looking, "a focused window showing a done pane has seen it");
         assert!(!working, "only a done pane is marked");
+    }
+
+    #[test]
+    fn reloading_agents_restarts_the_idle_ones_that_missed_their_hooks_and_leaves_a_working_one() {
+        use crate::protocol::{ClientMsg, Command, Status};
+        let (mut app, mut rx) = app_with_channel();
+        let front = app.focused().expect("a pane is in front").term;
+        let template = app.snap.terms[&front].clone();
+        for (id, status) in [(front, Status::Idle), (901, Status::Working)] {
+            let mut t = template.clone();
+            (t.id, t.agent, t.hooked, t.status) = (id, Some("claude".into()), false, status);
+            t.exit = None;
+            t.asleep = false;
+            app.snap.terms.insert(id, t);
+        }
+
+        app.act(Action::ReloadAgents);
+
+        let reloaded: Vec<_> = std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok())
+            .filter_map(|m| match m {
+                ClientMsg::Command(Command::ReloadAgent { term }) => Some(term),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(reloaded, [front], "the working agent keeps its turn");
     }
 
     fn draft(app: &App) -> Option<&crate::client::screen::check_settings::CheckDraft> {

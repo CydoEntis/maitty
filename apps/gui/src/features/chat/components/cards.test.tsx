@@ -19,13 +19,26 @@ describe('command card', () => {
   it.each([
     ['exit 0 in green with the provider duration', finished({ exitCode: 0, durationMs: 1_400 }), '1s', 'exit 0'],
     ['a non-zero exit', finished({ exitCode: 2, durationMs: 2_000, status: 'failed' }), '2s', 'exit 2'],
-    ['an honest unavailable exit code (Claude reports none)', { ...finished(), timing: { startedAtMs: 1_000, completedAtMs: 4_000 } }, '3s', 'exit code unavailable'],
-    ['unavailable time when the history kept none', finished({ exitCode: 0 }), 'time unavailable', 'exit 0'],
   ])('shows %s', (_name, event, took, exit) => {
     render(<CommandCard event={event} />)
 
     expect(screen.getByText(took)).toBeInTheDocument()
     expect(screen.getByText(exit)).toBeInTheDocument()
+  })
+
+  it('marks a command with no exit code as finished, without claiming it passed', () => {
+    render(<CommandCard event={{ ...finished(), timing: { startedAtMs: 1_000, completedAtMs: 4_000 } }} />)
+
+    expect(screen.getByText('3s')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Finished' })).toBeInTheDocument()
+    expect(screen.queryByText(/^exit [0-9]/)).toBeNull()
+  })
+
+  it('says nothing of the time when the history kept none', () => {
+    render(<CommandCard event={finished({ exitCode: 0 })} />)
+
+    expect(screen.getByText('exit 0')).toBeInTheDocument()
+    expect(screen.queryByText(/unavailable/)).toBeNull()
   })
 
   it('shows Running with a live clock while it runs, and no exit code', () => {

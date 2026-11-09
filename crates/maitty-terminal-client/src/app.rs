@@ -109,6 +109,17 @@ enum Cmd {
         #[arg(long)]
         to: String,
     },
+    /// Restart the running agents that never loaded their status hooks (started before
+    /// `integrate`), in place and in the same conversation. Agents mid-turn or waiting for you
+    /// are left alone unless `--all`.
+    ReloadAgents {
+        /// Restart the ones working or waiting for you too: their turn in flight is lost.
+        #[arg(long)]
+        all: bool,
+        /// Only list what would restart.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Open a new workspace.
     New {
         path: Option<PathBuf>,
@@ -307,6 +318,7 @@ impl Cmd {
                 | Cmd::Wait { .. }
                 | Cmd::Split { .. }
                 | Cmd::Handoff { .. }
+                | Cmd::ReloadAgents { .. }
                 | Cmd::New { .. }
                 | Cmd::Focus { .. }
                 | Cmd::Teach { .. }
@@ -592,6 +604,7 @@ pub(crate) fn run() {
             command,
         }) => cli::split(&target, term_of(pane), down, command),
         Some(Cmd::Handoff { pane, to }) => cli::handoff(&target, pane.term, to),
+        Some(Cmd::ReloadAgents { all, dry_run }) => cli::reload_agents(&target, all, dry_run),
         Some(Cmd::New {
             path,
             name,

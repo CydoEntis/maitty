@@ -30,6 +30,12 @@ describe('the message an attachment makes', () => {
     expect(parseAttachmentMessage(buildAttachmentMessage('', [{ path: KEPT }]))?.text).toBe('')
   })
 
+  it('still reads back when the history adds trailing blank lines or CRLF', () => {
+    const message = buildAttachmentMessage('look', [{ path: KEPT }])
+    expect(parseAttachmentMessage(`${message}\n\n`)?.files).toHaveLength(1)
+    expect(parseAttachmentMessage(message.replace(/\n/g, '\r\n'))?.text).toBe('look')
+  })
+
   it('leaves a message alone that only looks like one', () => {
     expect(parseAttachmentMessage('plain')).toBeNull()
     expect(parseAttachmentMessage(ATTACHMENT_HEADER)).toBeNull()

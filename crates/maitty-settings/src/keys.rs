@@ -258,6 +258,9 @@ pub enum Action {
     /// Find a file (0) or search the code (1).
     Find(u8),
     AgentStatusSetup,
+    /// Restart the agents that never loaded their status hooks, resuming their conversations; one
+    /// in the middle of a turn is left alone.
+    ReloadAgents,
     /// Switch the branch of the checkout you're in.
     Branches,
     /// The project's reference images and design files, in the side panel.
@@ -362,6 +365,7 @@ impl Action {
             Action::PasteImage => "Paste the clipboard image".into(),
             Action::SendFile => "Send a file to the pane's machine".into(),
             Action::AgentStatusSetup => "Connect agents".into(),
+            Action::ReloadAgents => "Reload agents that missed their hooks".into(),
             Action::Branches => "Branch".into(),
             Action::References => "References".into(),
             Action::ShellHere => "New shell here".into(),
@@ -453,6 +457,7 @@ impl Action {
             Action::PasteImage => "paste-image".into(),
             Action::SendFile => "send-file".into(),
             Action::AgentStatusSetup => "agent-status-setup".into(),
+            Action::ReloadAgents => "reload-agents".into(),
             Action::Branches => "branch".into(),
             Action::References => "references".into(),
             Action::ShellHere => "shell-here".into(),
@@ -570,6 +575,7 @@ impl FromStr for Action {
             // them to the command palette so stale config never prevents startup.
             "profiles" | "workflows" | "workflow-runs" => Action::Palette,
             "agent-status-setup" => Action::AgentStatusSetup,
+            "reload-agents" => Action::ReloadAgents,
             "branch" | "switch-branch" => Action::Branches,
             "references" => Action::References,
             "shell-here" => Action::ShellHere,

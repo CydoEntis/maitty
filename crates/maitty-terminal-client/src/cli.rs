@@ -14,6 +14,7 @@ pub(crate) mod machines_ls;
 pub(crate) mod mcp;
 mod mcp_config;
 pub(crate) mod restart;
+pub(crate) mod reload;
 pub(crate) mod reveal;
 pub(crate) mod secret_run;
 pub(crate) mod target;
@@ -27,6 +28,7 @@ use serde_json::{Value, json};
 use std::io::Read;
 use std::path::PathBuf;
 use std::time::Duration;
+pub use reload::reload_agents;
 use target::Target;
 
 pub(crate) fn block_on<T>(f: impl std::future::Future<Output = Result<T>>) -> Result<T> {
@@ -3143,7 +3145,9 @@ fn integrate_every(exe: &str, uninstall: bool) -> Result<()> {
         .count();
     println!("\nMCP:");
     let mcp = integrate_mcp(exe, uninstall);
-    println!("\nRestart your agents to load the change.");
+    println!(
+        "\nRestart your agents to load the change, or run `{APP_COMMAND} reload-agents` to restart the ones that are not working for you."
+    );
     match (failed, mcp) {
         (0, mcp) => mcp,
         (n, Ok(())) => bail!("{n} agent(s) not changed"),

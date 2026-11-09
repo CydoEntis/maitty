@@ -87,6 +87,12 @@ try {
         if ($LASTEXITCODE -ne 0) { Write-Host "Warning: some agents weren't connected; run '$app integrate' to retry." }
     }
 
+    # What is connected and what is not, so a problem shows now and not at first launch. It only
+    # reports; a failing check must not fail the install.
+    Write-Host ""
+    Write-Host "Checking your setup ('$app doctor')..."
+    & { $ErrorActionPreference = 'Continue'; & $installed doctor }
+
     # Another program of the same name found first on PATH?
     $first = (Get-Command $app -All -ErrorAction SilentlyContinue | Select-Object -First 1).Source
     if ($first -and ($first -ne $installed)) {
@@ -96,7 +102,7 @@ try {
         Write-Host "  Set-Alias $($app)2 '$installed'"
     }
     Write-Host ""
-    Write-Host "Next: run '$app'. Restart agents that were already running so they load the hooks; '$app doctor' checks your setup."
+    Write-Host "Next: run '$app'. Agents that were already running load the hooks when restarted: '$app reload-agents' does it for the idle ones. '$app doctor' checks your setup."
     Write-Host "If $app was already running, just run ${app}: it restarts itself onto the new version (agents resume)."
 } finally {
     Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue

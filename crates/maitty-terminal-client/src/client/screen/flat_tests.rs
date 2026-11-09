@@ -99,8 +99,8 @@ fn the_sidebar_lists_each_machine_with_its_sessions_two_lines_each() {
     let y = row_of(&app, 1);
     assert!(side(&rows, y).contains("● fix-footer"), "{}", side(&rows, y));
     assert!(
-        side(&rows, y + 1).contains("affiliate-site fix-footer") && !side(&rows, y + 1).contains('■'),
-        "the project and the branch, no colour square: {}",
+        side(&rows, y + 1).contains("affiliate-site") && !side(&rows, y + 1).contains("fix-footer") && !side(&rows, y + 1).contains('■'),
+        "the project alone, no branch and no colour square: {}",
         side(&rows, y + 1)
     );
     let finch = row_of(&app, 3);
@@ -853,8 +853,8 @@ fn the_group_by_menu_lists_sessions_by_folder_or_by_priority() {
     let heading = rows.iter().position(|r| side_of(r).contains("affiliate-site") && !side_of(r).contains("fix-footer"));
     assert!(heading.is_some(), "a heading for the folder");
     let y = row_of(&app, 1);
+    assert!(!side(&rows, y + 1).contains("fix-footer"), "no branch under the name: {}", side(&rows, y + 1));
     assert!(!side(&rows, y + 1).contains("affiliate-site"), "no folder under the name: {}", side(&rows, y + 1));
-    assert!(side(&rows, y + 1).contains("fix-footer"), "the branch stays: {}", side(&rows, y + 1));
     click(&mut app, x, 0);
     app.menu_pick(0);
     assert!(!app.screen.saved.group_folders);

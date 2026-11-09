@@ -54,7 +54,10 @@ function RedactionNote({ texts }: { texts: readonly (string | null)[] }) {
 
 function ExitPill({ event }: { event: CommandEvent }) {
   if (event.exitCode === null) {
-    return <span className="text-[11px] text-dim" title="This provider does not report an exit code for the command.">exit code unavailable</span>
+    // Claude reports no exit code: say only what is known (it finished), without claiming it passed.
+    return event.status === 'failed'
+      ? <StatusWord status="failed" />
+      : <Check className="size-3.5 text-dim" aria-label="Finished" role="img"><title>Finished. This provider does not report an exit code.</title></Check>
   }
   const ok = event.exitCode === 0
   return (
@@ -76,7 +79,7 @@ function CommandState({ event }: { event: CommandEvent }) {
   const took = elapsedMs(event, event.durationMs, 0)
   return (
     <span className="flex shrink-0 items-center gap-2">
-      {took === null ? <span className="text-[11px] text-dim" title="The provider's saved history keeps no times.">time unavailable</span> : <span className="font-mono text-[11.5px] text-fg2">{tookText(took)}</span>}
+      {took !== null && <span className="font-mono text-[11.5px] text-fg2">{tookText(took)}</span>}
       {event.status === 'completed' || event.status === 'failed' ? <ExitPill event={event} /> : <StatusWord status={event.status} />}
     </span>
   )
@@ -91,7 +94,7 @@ export function CommandCard({ event }: { event: CommandEvent }) {
   return (
     <div role="group" aria-label={`Command ${event.command}`} className="mx-step-card">
       <div className="mx-step-head">
-        <span className="font-mono text-dim" aria-hidden="true">$</span>
+        <span className="self-start py-[7px] font-mono text-[12px] leading-[18px] text-dim" aria-hidden="true">$</span>
         <code className="mx-step-command">{event.command === '' ? 'A command' : event.command}</code>
         <CommandState event={event} />
       </div>
