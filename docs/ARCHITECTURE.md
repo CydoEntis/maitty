@@ -308,6 +308,7 @@ crates/
   maitty-settings/                preference schemas, key actions and themes
   maitty-ipc-transport/           shared IPC framing and handshake
   maitty-machines/                the `[[machines]]` definition and its checks and edits, the ssh line, failure classes, dial, connection registry and link supervisors, the cleaning and policy for what another machine sends, the daemon-id store, the `~/.ssh/config` parser, the reader of this computer's machine list (`local_machines`: `config.local.toml`, as both apps read it), and the atomic state-file helpers (`write_atomic`, `read_state`, which `maitty-core` re-exports), shared by both apps
+  maitty-highlight/               syntax highlighting for file previews, shared by both apps (STACK: syntect)
   maitty-test-support/            test-only helpers shared across crates: building and locating the fake-ssh shim, running a command with a time limit
   adapters/                       Codex, Claude and future provider adapters
 scripts/                          repository checks, e.g. `check-gui-deps.sh` (the desktop app's dependency rule)

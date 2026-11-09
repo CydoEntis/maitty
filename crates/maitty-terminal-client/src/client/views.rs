@@ -190,6 +190,9 @@ pub struct FilesTree {
     pub raw: Option<PathBuf>,
     /// The drawn markdown, kept until the file, the width or the theme changes.
     pub(super) drawn_cache: Option<DrawnCache>,
+    /// The previewed file's syntax roles, kept until the file changes; `None` inside means the
+    /// file type has no grammar and the plain highlighter draws it.
+    pub(super) code_cache: Option<CodeCache>,
     /// The left button went down in the preview and is still held: moving selects.
     pub dragging: bool,
     /// The last press in the preview, to tell a double-click.
@@ -205,6 +208,15 @@ pub(super) struct DrawnCache {
     width: u16,
     theme: String,
     pub(super) lines: Vec<Vec<super::design::Seg>>,
+}
+
+/// Syntax roles for a previewed file, and what they were computed for.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct CodeCache {
+    path: PathBuf,
+    /// Line count and byte count: a cheap stand-in for "the same text".
+    shape: (usize, usize),
+    pub(super) lines: Option<Vec<Vec<maitty_highlight::Span>>>,
 }
 
 /// A small editor for the file in the preview.
@@ -727,6 +739,7 @@ impl FilesTree {
             reveal: None,
             raw: None,
             drawn_cache: None,
+            code_cache: None,
             dragging: false,
             last_press: None,
             pick: None,
@@ -862,6 +875,35 @@ impl FilesTree {
             theme: theme.to_string(),
             lines,
         });
+    }
+
+    /// Work out the previewed file's syntax roles once per file, so a frame only draws them.
+    pub(super) fn highlight_preview(&mut self) {
+        let Some((path, lines)) = self.preview.as_ref().filter(|_| !self.drawn()) else {
+            return;
+        };
+        let shape = (lines.len(), lines.iter().map(String::len).sum::<usize>());
+        if self
+            .code_cache
+            .as_ref()
+            .is_some_and(|c| c.path == *path && c.shape == shape)
+        {
+            return;
+        }
+        let highlighted = maitty_highlight::highlight(&path.to_string_lossy(), &lines.join("
+"))
+            .filter(|h| h.len() == lines.len());
+        self.code_cache = Some(CodeCache { path: path.clone(), shape, lines: highlighted });
+    }
+
+    /// The previewed file's highlighted lines, when its type has a grammar.
+    pub(super) fn code(&self) -> Option<&[Vec<maitty_highlight::Span>]> {
+        let (path, _) = self.preview.as_ref()?;
+        self.code_cache
+            .as_ref()
+            .filter(|c| c.path == *path)?
+            .lines
+            .as_deref()
     }
 
     /// The drawn markdown from the last `lay_out`, unless the file is shown raw.
@@ -1144,6 +1186,19 @@ const KEYWORDS: &[&str] = &[
     "private",
     "void",
 ];
+
+/// The colour of a syntax role, in the palette the old line highlighter used.
+pub fn role_style(kind: maitty_highlight::Kind, t: &Theme) -> Style {
+    use maitty_highlight::Kind;
+    match kind {
+        Kind::Plain => Style::default().fg(t.fg),
+        Kind::Comment => Style::default().fg(t.muted),
+        Kind::String => Style::default().fg(Color::Rgb(0x7f, 0xd9, 0x62)),
+        Kind::Number => Style::default().fg(Color::Rgb(0xe8, 0xc5, 0x65)),
+        Kind::Keyword => Style::default().fg(Color::Rgb(0xa5, 0x93, 0xff)),
+        Kind::Name => Style::default().fg(Color::Rgb(0x5a, 0xa9, 0xff)),
+    }
+}
 
 /// Colour a line of code: keywords magenta, strings green, calls blue, comments grey.
 pub fn highlight(line: &str, t: &Theme) -> Vec<(String, Style)> {

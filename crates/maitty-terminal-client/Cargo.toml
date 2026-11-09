@@ -12,6 +12,7 @@ doctest = false
 
 [dependencies]
 maitty-core = { path = "../maitty-core" }
+maitty-highlight = { path = "../maitty-highlight" }
 maitty-shared = { path = "../maitty-shared" }
 maitty-agent-detection = { path = "../maitty-agent-detection" }
 maitty-agent-integrations = { path = "../maitty-agent-integrations" }

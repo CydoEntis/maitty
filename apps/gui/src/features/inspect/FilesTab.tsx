@@ -1,7 +1,8 @@
+import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { HighlightedLine } from '@/components/HighlightedLine'
 import { Icon } from '@/features/workspace/components/glyphs'
-import { repoFile, repoTree } from './api'
+import { type HighlightedLines, highlightFile, repoFile, repoTree } from './api'
 import { joinPath } from './format'
 import { RepoError } from './RepoError'
 import { messageOf, useRepoQuery } from './useRepoQuery'
@@ -45,6 +46,18 @@ export function FilesTab({ term, lookAt }: { term: number; lookAt: LookAt | null
   const file = picked ?? startingFile(top.data)
   const preview = useRepoQuery(term, ['file', file], () => repoFile(term, file ?? ''), false, file !== null)
 
+  // Best effort: a failed or empty answer leaves the built-in per-line colouring in place.
+  const text = preview.data
+  const highlighted = useQuery({
+    queryKey: ['highlight', term, file, text?.length],
+    queryFn: () => highlightFile(file ?? '', text ?? ''),
+    enabled: file !== null && text !== undefined,
+    retry: false,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+  })
+  const spans = highlighted.data ?? null
+
   useEffect(() => {
     if (lookAt?.line === undefined) return
     document.querySelector(`[data-line="${String(lookAt.line)}"]`)?.scrollIntoView({ block: 'center' })
@@ -76,7 +89,7 @@ export function FilesTab({ term, lookAt }: { term: number; lookAt: LookAt | null
                 {preview.data.split('\n').map((line, index) => (
                   <span key={index} data-line={index + 1} className={lookAt?.path === file && lookAt.line === index + 1 ? 'is-target' : undefined}>
                     <i className="mx-preview-no" aria-hidden="true">{index + 1}</i>
-                    <HighlightedLine line={line} path={file} />
+                    {spans?.[index] ? <Spans spans={spans[index]} /> : <HighlightedLine line={line} path={file} />}
                     {'\n'}
                   </span>
                 ))}
@@ -86,6 +99,14 @@ export function FilesTab({ term, lookAt }: { term: number; lookAt: LookAt | null
         )}
       </section>
     </div>
+  )
+}
+
+function Spans({ spans }: { spans: NonNullable<HighlightedLines>[number] }) {
+  return (
+    <>
+      {spans.map((span, index) => (span.kind === 'plain' ? span.text : <span key={index} className={`tok-${span.kind}`}>{span.text}</span>))}
+    </>
   )
 }
 

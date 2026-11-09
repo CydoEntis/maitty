@@ -917,6 +917,7 @@ pub(super) fn draw_files(
     };
     if show_file && v.edit.is_none() {
         v.lay_out(body.right().saturating_sub(px + 1), t, &app.cfg.theme);
+        v.highlight_preview();
     }
     let v = &*v;
     if one_side && show_file && v.edit.is_none() {
@@ -1079,7 +1080,12 @@ pub(super) fn draw_files(
                             let yy = prect.y + (k - v.scroll) as u16;
                             let mut segs =
                                 vec![seg(format!("{:>4}  ", k + 1), Style::default().fg(t.muted))];
-                            segs.extend(super::views::highlight(l, t));
+                            match v.code().and_then(|code| code.get(k)) {
+                                Some(spans) => segs.extend(spans.iter().map(|s| {
+                                    seg(s.text.replace('\t', "    "), super::views::role_style(s.kind, t))
+                                })),
+                                None => segs.extend(super::views::highlight(l, t)),
+                            }
                             put(buf, px, yy, &segs, prect.right());
                         }
                     }
