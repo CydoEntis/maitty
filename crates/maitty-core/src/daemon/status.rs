@@ -112,6 +112,7 @@ impl Daemon {
             model,
             name,
             background,
+            background_agents,
             ask,
             call,
             ..
@@ -326,9 +327,11 @@ impl Daemon {
                 t.refresh_head();
             }
         }
-        self.hook(term, agent, status, &event, &background);
+        self.hook_report(term, agent, status, &event, &background, &background_agents);
     }
 
+    /// A report with no helper agents named, as the tests make them.
+    #[cfg(test)]
     pub(super) fn hook(
         &mut self,
         term: TermId,
@@ -336,6 +339,18 @@ impl Daemon {
         status: HookStatus,
         event: &str,
         background: &[String],
+    ) {
+        self.hook_report(term, agent, status, event, background, &[]);
+    }
+
+    fn hook_report(
+        &mut self,
+        term: TermId,
+        agent: String,
+        status: HookStatus,
+        event: &str,
+        background: &[String],
+        background_agents: &[String],
     ) {
         tracing::debug!("hook for pane {term}: {event} -> {status:?}");
         if let Some(t) = self.terms.get_mut(&term) {
@@ -363,10 +378,13 @@ impl Daemon {
         t.screen_blocked_from = None;
         let now = Instant::now();
         // Claude stops when a turn waits on background work it started, and wakes itself when
-        // that work ends: a pause, not a finish.
-        let paused = status == HookStatus::Done
-            && event == "Stop"
-            && t.paused_on_new_background_work(background);
+        // that work ends: a pause, not a finish. A shell holds only the stop it began in (it
+        // may be a server that never ends); a helper agent always ends and wakes it, so the
+        // work is not over while one runs.
+        let stopped = status == HookStatus::Done && event == "Stop";
+        // Asked on a stop only, and on every stop: it also records what is running now.
+        let began_work = stopped && t.paused_on_new_background_work(background);
+        let paused = stopped && (began_work || !background_agents.is_empty());
         if matches!(status, HookStatus::Done | HookStatus::Idle) {
             t.last_turn_end = now;
             if agent == "codex" {
@@ -588,8 +606,11 @@ impl Daemon {
         }
         // Whatever it was about to say is out of date now.
         if let Some(t) = self.terms.get_mut(&term) {
-            // A finish that did not stay long enough to be said was never said.
-            if t.alert_due.take().is_some_and(|(s, _)| s == Status::Done) {
+            // A finish the agent carried straight on from was never one: the finish that
+            // stands is the first to count. One you looked at was heard, so it stays said.
+            if t.alert_due.take().is_some_and(|(s, _)| s == Status::Done)
+                && new == Status::Working
+            {
                 t.finish_said = None;
             }
             match new {
@@ -926,12 +947,13 @@ impl Daemon {
                     .iter()
                     .any(|activity| activity.state.active());
             // Claude's input box shows all turn long, and its title says idle while its
-            // turn-end hooks still run: a hooked agent's screen must also have gone still, or
-            // this would finish (and ring) ahead of the hook.
+            // turn-end hooks still run and between a turn's steps: the screen must also have
+            // gone still, or this would finish (and ring) ahead of the hook, or over and over
+            // through the turn of an agent with no hooks.
             if signal.status == Some(Status::Idle)
                 && signal.visible_idle
                 && (t.status == Status::Working || has_active_children)
-                && (!t.hooked || t.last_output.elapsed() >= SCREEN_DONE_QUIET)
+                && t.last_output.elapsed() >= SCREEN_DONE_QUIET
             {
                 let status = if t.status == Status::Working {
                     Status::Done
@@ -1071,7 +1093,9 @@ impl Daemon {
             let still_going =
                 t.status == Status::Working && t.last_output.elapsed() < SCREEN_DONE_QUIET;
             let (new, why) = if let Some(status) = signal.status {
-                let status = if status == Status::Idle && !signal.visible_idle && still_going {
+                // An idle prompt on screen is not the end by itself (Claude's shows all turn
+                // long): the screen must have gone still too.
+                let status = if status == Status::Idle && still_going {
                     Status::Working
                 } else if status == Status::Idle
                     && matches!(t.status, Status::Working | Status::Done)

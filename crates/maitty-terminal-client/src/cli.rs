@@ -2258,10 +2258,13 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
     {
         event = format!("Notification:{kind}");
     }
-    let background = if event == "Stop" {
-        running_background_tasks(payload_json)
+    let (background, background_agents) = if event == "Stop" {
+        (
+            running_background_tasks(payload_json, false),
+            running_background_tasks(payload_json, true),
+        )
     } else {
-        Vec::new()
+        (Vec::new(), Vec::new())
     };
     let call = call_fingerprint(&origin.agent, &event, payload_json).filter(|_| parent_facts);
     let ask = (event == "PermissionRequest" && parent_facts)
@@ -2295,6 +2298,7 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
         model,
         name,
         background,
+        background_agents,
         ask,
         call,
     }
@@ -2429,8 +2433,8 @@ const BACKGROUND_TASK_OVER: &[&str] = &[
 ];
 
 /// The ids of the background tasks Claude's Stop says are still in flight; it wakes itself when
-/// one ends.
-fn running_background_tasks(payload: &Value) -> Vec<String> {
+/// one ends. With `agents_only`, just the helper agents among them (`"type": "subagent"`).
+fn running_background_tasks(payload: &Value, agents_only: bool) -> Vec<String> {
     let tasks = payload
         .get("background_tasks")
         .and_then(Value::as_array)
@@ -2442,6 +2446,13 @@ fn running_background_tasks(payload: &Value) -> Vec<String> {
             task.get("status")
                 .and_then(Value::as_str)
                 .is_none_or(|s| !BACKGROUND_TASK_OVER.contains(&s.to_ascii_lowercase().as_str()))
+        })
+        .filter(|task| {
+            !agents_only
+                || task
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .is_some_and(|kind| kind.to_ascii_lowercase().contains("agent"))
         })
         .filter_map(|task| {
             ["id", "command", "description"]
@@ -4252,7 +4263,7 @@ mod tests {
 
     #[test]
     fn a_claude_stop_with_background_work_in_flight_says_so() {
-        let stop = |tasks: Value| {
+        let stop_of = |tasks: Value, helpers_only: bool| {
             let payload =
                 json!({"hook_event_name":"Stop","background_tasks":tasks,"session_crons":[]});
             let origin = super::HookOrigin {
@@ -4262,14 +4273,22 @@ mod tests {
                 token: String::new(),
             };
             let ClientMsg::Hook {
-                status, background, ..
+                status,
+                background,
+                background_agents,
+                ..
             } = super::hook_message(origin, &payload, super::status_from_hook(&payload).unwrap())
             else {
                 panic!("expected hook report")
             };
             assert_eq!(status, HookStatus::Done);
-            background
+            assert!(
+                background_agents.iter().all(|id| background.contains(id)),
+                "helpers are a subset of what is in flight"
+            );
+            if helpers_only { background_agents } else { background }
         };
+        let stop = |tasks: Value| stop_of(tasks, false);
         let shell = json!([{"id":"b1","type":"shell","status":"running","description":"watch CI","command":"gh pr checks 38 --watch"}]);
         assert_eq!(stop(shell), ["b1"], "still in flight");
         assert_eq!(
@@ -4282,6 +4301,12 @@ mod tests {
             stop(over),
             ["b4"],
             "finished entries don't count; one with no status might still run"
+        );
+        let mixed = json!([{"id":"b1","type":"shell","status":"running"}, {"id":"a2","type":"subagent","status":"running"}, {"id":"a3","type":"subagent","status":"completed"}]);
+        assert_eq!(
+            stop_of(mixed, true),
+            ["a2"],
+            "only a running helper agent is named as one: a shell may be a server"
         );
     }
 

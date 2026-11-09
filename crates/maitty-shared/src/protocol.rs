@@ -145,6 +145,11 @@ pub enum ClientMsg {
         /// Ids of the background tasks (shells, helpers) still running when a turn stopped.
         #[serde(default)]
         background: Vec<String>,
+        /// Those of `background` that are helper agents. A helper always ends and wakes the
+        /// agent, where a shell may be a server that never does, so only helpers hold a
+        /// later stop as a pause.
+        #[serde(default)]
+        background_agents: Vec<String>,
         /// The question a permission prompt asks, from the hook's own payload (a
         /// `PermissionRequest`). The daemon cleans it and decides `answerable` itself.
         #[serde(default)]
@@ -1640,6 +1645,7 @@ mod tests {
                 model: Some("opus".into()),
                 name: Some("api work".into()),
                 background: vec!["b1".into()],
+                background_agents: vec![],
                 ask: Some(PermissionAsk {
                     tool: "Bash".into(),
                     detail: "cargo test".into(),
@@ -2436,6 +2442,7 @@ mod tests {
         let ClientMsg::Hook {
             event,
             background,
+            background_agents,
             ask,
             call,
             ..
@@ -2444,6 +2451,7 @@ mod tests {
             panic!("expected a hook report")
         };
         assert_eq!((event.as_str(), background.len(), ask), ("Stop", 0, None));
+        assert!(background_agents.is_empty(), "an older peer names no helpers");
         assert_eq!(call, None, "an older peer sends no call fingerprint");
 
         #[derive(Deserialize)]
@@ -2472,6 +2480,7 @@ mod tests {
             model: None,
             name: None,
             background: vec!["b1".into()],
+            background_agents: vec!["b1".into()],
             ask: None,
             call: None,
         };

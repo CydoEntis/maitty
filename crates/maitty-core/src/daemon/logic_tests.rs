@@ -58,6 +58,7 @@ fn report(term: TermId, token: &str, pid: u32, status: HookStatus, event: &str) 
         model: None,
         name: None,
         background: Vec::new(),
+        background_agents: Vec::new(),
         ask: None,
         call: None,
     }
@@ -1271,6 +1272,34 @@ fn a_hooked_claude_still_animating_is_not_read_idle_from_its_prompt_box() {
     );
     assert!(d.terms[&t].alert_due.is_none(), "nothing rings yet");
     // No turn-end report ever came and the screen has gone still: the missed hook is recovered.
+    d.terms.get_mut(&t).unwrap().last_output = Instant::now() - Duration::from_secs(10);
+    d.update_statuses();
+    assert_eq!(d.terms[&t].status, Status::Done);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn an_unhooked_claude_still_animating_is_not_read_idle_from_its_prompt_box() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let mut seen = viewer(&mut d);
+    {
+        let p = d.terms.get_mut(&t).unwrap();
+        p.agent = Some("claude".into());
+        p.hooked = false;
+        p.status = Status::Working;
+        p.status_since = term::unix_now() - 60;
+        p.parser.process(CLAUDE_RUNNING_STOP_HOOKS.as_bytes());
+        p.last_output = Instant::now();
+    }
+    d.update_statuses();
+    assert_eq!(
+        d.terms[&t].status,
+        Status::Working,
+        "its input box shows all turn long: a screen still redrawing is a turn still running"
+    );
+    assert!(!told_done(&mut seen), "nothing rings mid-turn");
+    // With no hooks the screen is all there is: once it has gone still, the turn is over.
     d.terms.get_mut(&t).unwrap().last_output = Instant::now() - Duration::from_secs(10);
     d.update_statuses();
     assert_eq!(d.terms[&t].status, Status::Done);
@@ -2947,6 +2976,7 @@ fn an_agent_stays_in_the_folder_it_started_in() {
             model,
             name,
             background,
+            background_agents,
             ..
         } => ClientMsg::Hook {
             term,
@@ -2964,6 +2994,7 @@ fn an_agent_stays_in_the_folder_it_started_in() {
             model,
             name,
             background,
+            background_agents,
             ask: None,
             call: None,
         },
@@ -5097,6 +5128,28 @@ fn an_agent_that_picks_itself_back_up_and_finishes_again_is_not_said_twice() {
 }
 
 #[test]
+fn a_finish_you_looked_at_straight_away_still_counts_as_said() {
+    let (mut d, _rx) = daemon();
+    let t = working_agent(&mut d);
+    let mut seen = viewer(&mut d);
+    d.terms.get_mut(&t).unwrap().last_input = Instant::now() - Duration::from_secs(30);
+    d.terms.get_mut(&t).unwrap().status_since = term::unix_now() - 60;
+    d.set_status(t, Status::Done, "test");
+    assert!(told_done(&mut seen), "the finish of what you asked is said");
+    // You were watching it: seen before the desktop alert's wait was over.
+    d.set_status(t, Status::Idle, "you looked at it");
+
+    // A background job reports in: it works a little more and stops again. Nobody typed.
+    d.set_status(t, Status::Working, "test");
+    finishes_and_settles(&mut d, t);
+    assert!(
+        !told_done(&mut seen),
+        "the window already heard this work finish: looking at it is not a reason to ring again"
+    );
+    close(&mut d, &[t]);
+}
+
+#[test]
 fn a_finish_that_did_not_last_is_not_counted_as_said() {
     let (mut d, _rx) = daemon();
     let t = working_agent(&mut d);
@@ -5301,6 +5354,45 @@ fn a_wake_up_with_an_older_task_still_running_rings() {
     say(&mut d, HookStatus::Working, "PreToolUse", &[]);
     say(&mut d, HookStatus::Done, "Stop", &["b2"]);
     assert!(announced(&heard(&mut seen), Status::Done));
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_wake_up_with_a_helper_agent_still_running_stays_paused() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let secret = d.terms[&t].token.clone();
+    let mut seen = viewer(&mut d);
+    let say = |d: &mut Daemon, status, event: &str, agents: &[&str]| {
+        let mut msg = report(t, &secret, 0, status, event);
+        if let ClientMsg::Hook {
+            background,
+            background_agents,
+            ..
+        } = &mut msg
+        {
+            *background = agents.iter().map(|id| id.to_string()).collect();
+            *background_agents = background.clone();
+        }
+        d.apply_hook(msg, Some(true), Vec::new())
+    };
+    say(&mut d, HookStatus::Working, "UserPromptSubmit", &[]);
+    say(&mut d, HookStatus::Done, "Stop", &["a1", "a2"]);
+    assert!(!announced(&heard(&mut seen), Status::Done), "both are new: paused");
+    // a1 reported in and woke it; a2 is a helper that will end and wake it again, unlike a
+    // shell that may be a server.
+    say(&mut d, HookStatus::Working, "PreToolUse", &[]);
+    say(&mut d, HookStatus::Done, "Stop", &["a2"]);
+    assert!(
+        !announced(&heard(&mut seen), Status::Done),
+        "a helper is still running: the work is not finished"
+    );
+    say(&mut d, HookStatus::Working, "PreToolUse", &[]);
+    say(&mut d, HookStatus::Done, "Stop", &[]);
+    assert!(
+        announced(&heard(&mut seen), Status::Done),
+        "the last helper is in: the real end rings"
+    );
     close(&mut d, &[t]);
 }
 
