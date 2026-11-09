@@ -622,6 +622,13 @@ impl Daemon {
         })
     }
 
+    /// Restart an agent that is running, in the same spot and conversation, so it loads hooks
+    /// installed since it started. Its process tree is stopped first; `wake` does the rest.
+    pub(super) fn reload_agent(&mut self, old: TermId) -> Option<TermId> {
+        self.terms.get_mut(&old)?.kill_tree();
+        self.wake(old)
+    }
+
     /// Bring a sleeping agent back: start its resume command in the same spot.
     pub(super) fn wake(&mut self, old: TermId) -> Option<TermId> {
         let t = self.terms.get(&old)?;

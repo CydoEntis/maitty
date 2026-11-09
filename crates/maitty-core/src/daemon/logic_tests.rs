@@ -1380,6 +1380,43 @@ fn waking_a_sleeping_session_keeps_what_you_called_it() {
     close(&mut d, &[new]);
 }
 
+#[test]
+fn reloading_an_agent_restarts_it_in_place_and_keeps_what_you_called_it() {
+    let (mut d, _rx) = daemon();
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
+    let old = d.workspaces[0].tabs[0].focus;
+    assert!(
+        d.command(0, Command::ReloadAgent { term: old }).is_err(),
+        "a plain shell is not an agent, and must not be swapped for another shell"
+    );
+    d.command(
+        0,
+        Command::RenamePane {
+            term: old,
+            name: "The Planner".into(),
+        },
+    )
+    .unwrap();
+    let t = d.terms.get_mut(&old).unwrap();
+    (t.agent, t.session, t.hooked) = (Some("claude".into()), Some("abc123".into()), false);
+
+    d.command(0, Command::ReloadAgent { term: old }).unwrap();
+
+    let new = d.workspaces[0].tabs[0].focus;
+    assert!(new != old && !d.terms.contains_key(&old), "a new process in its place");
+    assert_eq!(d.terms[&new].label, "The Planner", "the same session to you");
+    assert!(!d.terms[&new].hooked, "it is hooked again only once its hooks report");
+    close(&mut d, &[new]);
+}
+
 /// A connection acting from `term`, as its agent's `<app>` commands do.
 fn from_pane(
     d: &mut Daemon,

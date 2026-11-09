@@ -1436,6 +1436,22 @@ impl App {
     }
 
     /// The palette's Restart: say so when there is nothing to replace.
+    /// Restart the agents that never loaded their hooks, so they report their own status. One in
+    /// the middle of a turn is left alone: the command line's `--all` restarts it too.
+    fn reload_agents_from_menu(&mut self) {
+        let plan = crate::cli::reload::plan(&self.snap, false);
+        for t in &plan.restart {
+            self.cmd(Command::ReloadAgent { term: t.id });
+        }
+        let message = match (plan.restart.len(), plan.skipped.len()) {
+            (0, 0) => "No running agent needs a restart".to_string(),
+            (0, busy) => format!("{busy} agent(s) need one, but are working or waiting for you"),
+            (n, 0) => format!("Restarting {n} agent(s) so they load their hooks"),
+            (n, busy) => format!("Restarting {n} agent(s); {busy} working or waiting were left alone"),
+        };
+        self.notify(message, false);
+    }
+
     fn restart_from_menu(&mut self) {
         if self.restart_needed() {
             self.ask_restart();

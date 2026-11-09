@@ -344,6 +344,22 @@ impl Daemon {
                 }
                 self.poll_git_soon();
             }
+            Command::ReloadAgent { term } => {
+                let t = self
+                    .terms
+                    .get(&term)
+                    .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+                if t.agent.is_none() {
+                    anyhow::bail!("only an agent can be reloaded");
+                }
+                // Without either, `wake` would leave a bare shell where the agent was.
+                if self.resume_cmd(t).is_none() && t.cmd.is_none() {
+                    anyhow::bail!("this agent can't be restarted: it has no session to resume yet");
+                }
+                if self.reload_agent(term).is_none() {
+                    anyhow::bail!("the agent could not be restarted");
+                }
+            }
             Command::MoveToWorktree { term, branch } => {
                 let t = self
                     .terms

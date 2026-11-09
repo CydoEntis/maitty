@@ -141,7 +141,10 @@ maitty integrate --uninstall  # removes every one
 maitty doctor               # checks what's connected
 ```
 
-Restart agents that were already running so they load it.
+Agents that were already running load it when they restart. `maitty reload-agents` restarts the ones
+that missed it, in place and in the same conversation, and leaves any that are working or waiting
+for you alone (`--all` restarts those too, `--dry-run` only lists them). The command palette has the
+same as **Reload agents that missed their hooks**.
 
 Or use **Settings › Agents › Connect agents…**, which offers the same agents. See [agent status](docs/agent-status.md)
 for what each integration reports.

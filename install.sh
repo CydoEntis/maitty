@@ -114,5 +114,5 @@ case ":$PATH:" in
 esac
 
 say ""
-say "Next: run '$APP'. Restart agents that were already running so they load the hooks; '$APP doctor' checks your setup."
+say "Next: run '$APP'. Agents that were already running load the hooks when restarted: '$APP reload-agents' does it for the idle ones. '$APP doctor' checks your setup."
 say "If $APP was already running, just run $APP: it restarts itself onto the new version (agents resume)."

@@ -102,7 +102,7 @@ try {
         Write-Host "  Set-Alias $($app)2 '$installed'"
     }
     Write-Host ""
-    Write-Host "Next: run '$app'. Restart agents that were already running so they load the hooks; '$app doctor' checks your setup."
+    Write-Host "Next: run '$app'. Agents that were already running load the hooks when restarted: '$app reload-agents' does it for the idle ones. '$app doctor' checks your setup."
     Write-Host "If $app was already running, just run ${app}: it restarts itself onto the new version (agents resume)."
 } finally {
     Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue

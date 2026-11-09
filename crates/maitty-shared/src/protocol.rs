@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 76;
+pub const PROTOCOL_VERSION: u32 = 77;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -385,6 +385,11 @@ pub enum Command {
     MoveToWorktree {
         term: TermId,
         branch: Option<String>,
+    },
+    /// Restart the agent in `term` where it is, resuming its conversation, so it loads hooks
+    /// installed since it started. Stops what it is doing: a turn in flight is not replayed.
+    ReloadAgent {
+        term: TermId,
     },
     /// Grow (positive) or shrink the pane along `dir`'s axis by `delta` (fraction of parent).
     ResizePane {
@@ -1150,6 +1155,10 @@ pub struct TermInfo {
     pub popup: bool,
     /// Detected or hook-reported agent name.
     pub agent: Option<String>,
+    /// Whether the agent's own hooks have reported for this pane. An agent started before its
+    /// hooks were installed never does, which is what `Command::ReloadAgent` is for.
+    #[serde(default)]
+    pub hooked: bool,
     pub status: Status,
     pub cwd: PathBuf,
     /// What the agent is on: the last prompt it was given (one line), if known.
@@ -1767,6 +1776,7 @@ mod tests {
                 term: 3,
                 branch: Some("feat/x".into()),
             }),
+            ClientMsg::Command(Command::ReloadAgent { term: 3 }),
             ClientMsg::Command(Command::SwapPanes { a: 3, b: 4 }),
             ClientMsg::Command(Command::RestoreSnapshot {
                 term: 3,
@@ -2049,7 +2059,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 76);
+        assert_eq!(PROTOCOL_VERSION, 77);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
