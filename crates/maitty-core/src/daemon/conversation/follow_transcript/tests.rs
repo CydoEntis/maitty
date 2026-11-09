@@ -727,3 +727,11 @@ fn gemini_info_and_error_lines_and_a_second_user_message_are_handled() {
     assert_eq!(said, ["first", "one", "second", "two"]);
     assert_eq!(turns(&history).len(), 2);
 }
+
+#[test]
+fn the_markers_claude_puts_around_a_paste_are_not_shown_as_said() {
+    let said = "<pasted_content id=\"aa4a\">\nErrors occurred\nretry it\n</pasted_content id=\"aa4a\">";
+    assert_eq!(without_paste_tags(said), "Errors occurred\nretry it\n");
+    assert_eq!(without_paste_tags("plain words"), "plain words");
+    assert_eq!(without_paste_tags("keep <pasted_content oops"), "keep <pasted_content oops");
+}

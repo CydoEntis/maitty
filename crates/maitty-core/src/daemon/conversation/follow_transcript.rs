@@ -193,7 +193,7 @@ impl Transcript {
                 match content {
                     Value::String(text) => {
                         if !is_claude_chrome(text) {
-                            self.user_message(&uuid, text, at_ms, notes);
+                            self.user_message(&uuid, &without_paste_tags(text), at_ms, notes);
                         }
                     }
                     Value::Array(blocks) => self.claude_user_blocks(&uuid, blocks, at_ms, notes),
@@ -254,7 +254,7 @@ impl Transcript {
             }
         }
         if !text.is_empty() && !is_claude_chrome(&text) {
-            self.user_message(uuid, &text, at_ms, notes);
+            self.user_message(uuid, &without_paste_tags(&text), at_ms, notes);
         }
     }
 
@@ -641,6 +641,29 @@ fn is_claude_chrome(text: &str) -> bool {
     ]
     .iter()
     .any(|tag| text.starts_with(tag))
+}
+
+/// A message with the `<pasted_content id="…">` / `</pasted_content id="…">` markers Claude Code puts
+/// around pasted text removed: they say where the paste was, not what the person said, and the
+/// pasted text itself stays as written.
+fn without_paste_tags(text: &str) -> String {
+    const MARKERS: [&str; 2] = ["<pasted_content", "</pasted_content"];
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = MARKERS.iter().filter_map(|marker| rest.find(marker)).min() {
+        out.push_str(&rest[..at]);
+        let after = &rest[at..];
+        let Some(end) = after.find('>') else {
+            // An unfinished tag is the person's own text: keep it.
+            out.push_str(after);
+            return out;
+        };
+        rest = &after[end + 1..];
+        // The line break that put the marker on a line of its own goes with it.
+        rest = rest.strip_prefix('\n').unwrap_or(rest);
+    }
+    out.push_str(rest);
+    out
 }
 
 /// What opens a user-role message that Codex adds itself, not the person.
