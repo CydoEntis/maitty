@@ -17,7 +17,7 @@ Most of this document describes the TUI. The desktop app's look is in
 - **Shape and word carry the meaning; colour backs them.** Every state reads in the Unicode
   glyph set and without colour.
 - **Amber means needs you.** Nothing else is drawn in it: no heading, no decoration.
-- **Only what has the keys is lit.** The focused pane, the open sheet or the selected row;
+- **Only what has the keys is lit.** The focused pane, the open sheet or the selected row (a selected row's ground is the theme's accent tinted into the surface it is on, `SELECTED_ACCENT`, so it is seen on dark and light alike; in the GUI a terminal selection is the solid accent);
   everything else is quieter.
 - **Plain words.** Sentence case, no bracketed explanations, every key shown as a keycap.
 

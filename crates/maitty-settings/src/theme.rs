@@ -72,6 +72,10 @@ pub struct SplashColors {
 #[serde(default)]
 pub struct ThemeOverrides(pub BTreeMap<String, String>);
 
+/// How much of the accent a selected row's ground carries (a share of 1): enough to be seen on a dark ground, little enough that
+/// the text on it keeps its contrast.
+const SELECTED_ACCENT: f32 = 0.24;
+
 /// The theme when none is chosen.
 pub const DEFAULT: &str = "night";
 /// The light theme when none is chosen.
@@ -671,21 +675,20 @@ impl Theme {
         c
     }
 
-    /// The selected row's ground: the background a step toward the text, so it reads on any
-    /// theme without a colour of its own.
+    /// The selected row's ground: the background tinted with the theme's accent, so a selection is
+    /// the accent's colour and is seen on any ground, dark or light.
     /// Tree lines and line numbers: half way from the quiet text to the ground.
     pub fn faint(&self) -> Color {
         mix(self.muted, self.bg, 0.5)
     }
 
     pub fn sel_bg(&self) -> Color {
-        mix(self.bg, self.text, 0.12)
+        mix(self.bg, self.accent, SELECTED_ACCENT)
     }
 
-    /// The selected row's ground on a raised surface (a sheet, a popup): `ground` a step toward
-    /// the text.
+    /// The selected row's ground on a raised surface (a sheet, a popup): `ground` tinted with the accent.
     pub fn sel_on(&self, ground: Color) -> Color {
-        mix(ground, self.text, 0.12)
+        mix(ground, self.accent, SELECTED_ACCENT)
     }
 
     /// A pointed-at row on a raised surface.
@@ -829,6 +832,10 @@ impl Theme {
             t("state.doneText")
         };
         let card2 = if day { t("bg.depth1") } else { t("bg.depth2") };
+        let selection = match mix(hex(&t("bg.card")), hex(&t("accent.brass")), 0.30) {
+            Color::Rgb(r, g, b) => format!("#{r:02x}{g:02x}{b:02x}"),
+            _ => t("bg.selected"),
+        };
         let mut theme = Theme::design(
             [
                 &t("bg.page"),
@@ -865,7 +872,7 @@ impl Theme {
             ],
         )
         .with_err(err)
-        .with_selection(&t("selection.bg"))
+        .with_selection(&selection)
         .with_splash([
             &t("text.strong"),
             &accent_text,
@@ -2677,6 +2684,18 @@ mod maitty {
         assert_eq!(super::DEFAULT_LIGHT, "day");
         for id in ["maitty-dark", "maitty-light"] {
             assert!(super::BUILTIN.contains(&id), "{id} is a built-in theme");
+        }
+    }
+
+    #[test]
+    fn a_selected_row_is_seen_on_every_ground_and_keeps_its_text_readable() {
+        for id in ["night", "day", "maitty-dark", "maitty-light", "dracula", "gruvbox-light"] {
+            let t = Theme::named(id);
+            for ground in [t.bg, t.card] {
+                let on = t.sel_on(ground);
+                assert!(contrast(on, ground) >= 1.25, "{id}: the selection is seen against its ground");
+                assert!(contrast(t.strong, on) >= 4.5, "{id}: strong text reads on the selection");
+            }
         }
     }
 }

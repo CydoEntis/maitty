@@ -342,7 +342,6 @@ function MachineSection({ draft, progress, group, open, byProject, canStart, onT
         <span className="mx-machine-progress" role="progressbar" aria-label={`Updating ${head.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><span style={{ width: `${String(progress)}%` }} /></span>
       )}
       <Collapse open={open}>
-        {draft && <DraftRow />}
         {byProject ? (
           <div className="mx-projects">
             {projects.map((project) => <ProjectSection key={project.name} name={project.name} color={project.color} needs={project.needs} sessions={project.sessions} renderRow={renderRow} />)}
@@ -350,16 +349,27 @@ function MachineSection({ draft, progress, group, open, byProject, canStart, onT
         ) : (
           <div className="mx-rows" role="list" aria-label={`Sessions on ${title}`}>{sessions.map((session) => renderRow(session, true))}</div>
         )}
+        {/* Last, where the new chat will be (sessions keep creation order), so it fills in without anything moving. */}
+        {draft && <DraftRow />}
       </Collapse>
     </div>
   )
 }
 
-/** The chat that has not been sent yet: a grey box on its machine with three dots bouncing one after the other, until it has a first message. */
+/**
+ * The chat that has not been sent yet: a copy of a session row (its icon, its name line and its project line) drawn as
+ * placeholders with three dots bouncing in the icon, last in its machine. The real row takes this place when the chat starts.
+ */
 function DraftRow() {
   return (
-    <div className="mx-draft" role="status" aria-label="New chat, waiting for the first message" data-flip="draft">
-      <span className="mx-draft-dots" aria-hidden="true"><i /><i /><i /></span>
+    <div className="mx-row-wrap mx-draft-wrap" role="status" aria-label="New chat, waiting for the first message" data-flip="draft">
+      <div className="mx-row mx-draft">
+        <span className="mx-row-icon"><span className="mx-draft-tile"><span className="mx-draft-dots" aria-hidden="true"><i /><i /><i /></span></span></span>
+        <span className="mx-row-text" aria-hidden="true">
+          <span className="mx-draft-line is-name" />
+          <span className="mx-draft-line is-sub" />
+        </span>
+      </div>
     </div>
   )
 }

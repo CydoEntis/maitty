@@ -266,11 +266,19 @@ describe('a machine heading', () => {
 })
 
 describe('a draft chat', () => {
-  it('is listed first on its machine while it waits for a first message, and the empty note steps aside', () => {
+  it('is listed last on its machine while it waits for a first message, as a twin of a session row, and the empty note steps aside', () => {
     show([], { draft: { machine: 0 } })
     const draft = screen.getByRole('status', { name: 'New chat, waiting for the first message' })
     expect((screen.getByRole('button', { name: /^This computer/ }).closest('.mx-machine') as HTMLElement).contains(draft)).toBe(true)
     expect(screen.queryByText('No agents running. Use the buttons above to start one.')).toBeNull()
+    expect(draft.querySelector('.mx-row')).not.toBeNull()
+  })
+
+  it('stays after every session of its machine, wherever they sort', () => {
+    show([session(1, { agent: 'claude', named: true, title: 'First' }), session(2, { agent: 'claude', named: true, title: 'Second', status: 'needs-you' })], { draft: { machine: 0 }, order: 'priority' })
+    const draft = screen.getByRole('status', { name: 'New chat, waiting for the first message' })
+    const rows = Array.from((screen.getByRole('button', { name: /^This computer/ }).closest('.mx-machine') as HTMLElement).querySelectorAll('.mx-row-wrap'))
+    expect(rows.at(-1)).toBe(draft)
   })
 
   it('is not listed once there is no draft, nor on another machine', () => {
