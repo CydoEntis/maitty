@@ -1380,12 +1380,11 @@ impl App {
                             r.scroll = 0;
                         }
                     }
+                    // Enter inserts the path and closes the panel; a second click on the same row
+                    // must not do that behind a person who only wanted to look at the file.
                     Some(View::Files(v)) => {
                         v.sel = i;
                         v.refresh_preview();
-                        if double {
-                            self.on_view_key(&KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-                        }
                     }
                     Some(View::Branch(v)) => {
                         v.sel = i;

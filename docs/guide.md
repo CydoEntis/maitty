@@ -131,8 +131,8 @@ Without the leader: **Alt+1–9** opens that session of the sidebar; **Alt+arrow
 when enabled in Settings (after the leader, Alt+arrows swaps panes instead).
 
 **Files**, **Changes**, **Branch** and **References** share the side panel that slides in from
-the pane's right edge, inside its box: its title chip names the open one (lit while the panel has
-the keys) and `»` or Esc closes it. A pane's `files` and `changes` chips open those two; Tab / Shift+Tab
+the pane's right edge, over its box (it covers the pane's top line and its own `✕`): its title chip names the open one (lit while the panel has
+the keys) and `✕` or Esc closes it. A pane's `files` and `changes` chips open those two; Tab / Shift+Tab
 moves between the four for the same checkout. A click into the pane gives it the keys and leaves the
 panel open; a click in the panel, or its key again, gives the keys back.
 

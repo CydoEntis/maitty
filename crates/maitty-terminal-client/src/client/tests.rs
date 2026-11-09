@@ -7976,8 +7976,8 @@ second line
         let sheet = app.screen.sheet_rect;
         let close = (sheet.x..sheet.right())
             .rev()
-            .find(|&x| buf[(x, sheet.y)].symbol() == "»")
-            .expect("the panel's »");
+            .find(|&x| buf[(x, sheet.y)].symbol() == "✕")
+            .expect("the panel's ✕");
         assert!(close + 5 >= sheet.right(), "at the corner");
         click_at(&mut app, close, sheet.y);
         assert!(app.view.is_none(), "a click on it closes Files");
@@ -12865,6 +12865,69 @@ mod files_panel_tests {
     }
 
     #[test]
+    fn a_double_click_on_a_file_only_selects_it_and_leaves_the_panel_open() {
+        let dir = project("double");
+        let mut app = screen_in(&dir, 160, 45);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        draw(&mut app, 160, 45);
+        let (row, index) = app
+            .hits
+            .iter()
+            .find_map(|(r, h)| match h {
+                Hit::Button(Btn::Row(i))
+                    if files(&app)
+                        .visible()
+                        .iter()
+                        .any(|(vi, n)| vi == i && n.label == "notes.txt") =>
+                {
+                    Some((*r, *i))
+                }
+                _ => None,
+            })
+            .expect("notes.txt is a row");
+        for _ in 0..2 {
+            app.on_mouse(crossterm::event::MouseEvent {
+                kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+                column: row.x + 4,
+                row: row.y,
+                modifiers: KeyModifiers::NONE,
+            });
+        }
+        assert!(
+            matches!(app.view, Some(View::Files(_))),
+            "a double-click neither inserts the path nor closes the panel"
+        );
+        assert_eq!(files(&app).sel, index, "it is the selected file");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_deeply_nested_file_keeps_its_whole_name_in_the_tree() {
+        let dir = project("deep");
+        let parts = ["apps", "gui", "src", "features", "chat", "components", "more", "inner"];
+        let deepest = parts.iter().fold(dir.clone(), |at, part| at.join(part));
+        std::fs::create_dir_all(&deepest).unwrap();
+        std::fs::write(deepest.join("AgentControls.test.tsx"), "x
+").unwrap();
+        let mut app = screen_in(&dir, 200, 40);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        if let Some(View::Files(v)) = &mut app.view {
+            let mut at = dir.clone();
+            for part in parts {
+                at = at.join(part);
+                v.expanded.insert(at.clone());
+            }
+        }
+        let o = draw(&mut app, 200, 40);
+        show(&o);
+        assert!(o.contains("AgentControls.test.tsx"), "the name is whole:
+{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn brackets_are_text_while_the_filter_or_the_editor_takes_it() {
         let dir = project("text");
         let mut app = screen_in(&dir, 200, 50);
@@ -13097,8 +13160,8 @@ mod files_panel_tests {
             .find(|l| l.contains('‹'))
             .expect("the file's header");
         assert!(
-            header.contains("1–14 of 60 "),
-            "the title, the mode bar and the gap above it take a row each: {header}"
+            header.contains("i e 1–16 of 60"),
+            "the panel covers the pane's top and bottom lines, so the title, the mode bar and the gap above it take a row each: {header}"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

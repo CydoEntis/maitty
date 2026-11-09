@@ -112,9 +112,10 @@ box is the accent, or the KEYS yellow (`blocked`) in key mode. See UI › *the f
 
 ## Side panel
 
-Reading while you work happens in a panel that slides in from the pane's right edge, inside its
-box (about 220 ms, eased out): the panel ground, a line down its left edge, its title chip
-(` files `, ` changes N `, ` branch `, ` references `, lit while it has the keys) and a ` » ` that
+Reading while you work happens in a panel that slides in from the pane's right edge, over
+its box, the pane's top line, its chips and its own ` ✕ ` included, so the panel's ` ✕ ` is the only close
+at that corner (about 220 ms, eased out): the panel ground, a line down its left edge, its title chip
+(` files `, ` changes N `, ` branch `, ` references `, lit while it has the keys) and a ` ✕ ` that
 closes it (Esc too). Files starts 96 columns wide and at most 80% of the panes, a tree beside the
 open file (Markdown drawn); Changes 54 and at most 70%, the changed files and their diff; Branch the
 branch, ahead/behind, recent commits, the last check and snapshots; References the project's
