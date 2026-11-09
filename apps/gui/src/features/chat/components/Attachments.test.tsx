@@ -16,6 +16,7 @@ const fake = vi.hoisted(() => ({
   submitMessage: vi.fn<(conversation: { id: string; generation: number }, operation: number, text: string) => Promise<unknown>>(),
   attachLocalFile: vi.fn<(path: string) => Promise<Attached>>(),
   attachmentsExist: vi.fn<(paths: readonly string[]) => Promise<boolean[]>>(),
+  attachmentImage: vi.fn<(path: string) => Promise<Blob>>(),
   chooseFilesToAttach: vi.fn<() => Promise<string[] | null>>(),
   saveImageLocally: vi.fn<(bytes: Uint8Array) => Promise<string>>(),
 }))
@@ -33,6 +34,7 @@ vi.mock('@/api/attachments', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/attachments')>()),
   attachLocalFile: fake.attachLocalFile,
   attachmentsExist: fake.attachmentsExist,
+  attachmentImage: fake.attachmentImage,
   chooseFilesToAttach: fake.chooseFilesToAttach,
 }))
 
@@ -55,6 +57,8 @@ beforeEach(() => {
   for (const mock of Object.values(fake)) if (typeof mock === 'function') mock.mockReset()
   fake.submitMessage.mockResolvedValue({})
   fake.attachmentsExist.mockImplementation((paths) => Promise.resolve(paths.map(() => true)))
+  fake.attachmentImage.mockResolvedValue(new Blob([new Uint8Array([1])]))
+  URL.createObjectURL = vi.fn(() => `blob:kept-${String(Math.random())}`)
   fake.attachLocalFile.mockImplementation((path) => Promise.resolve(kept(path.split('/').pop() ?? 'file')))
 })
 
@@ -69,15 +73,15 @@ async function settle(ms = 0) {
   await act(async () => { await vi.advanceTimersByTimeAsync(ms) })
 }
 
-type Setup = { online?: boolean; readOnly?: boolean; prepare?: (daemon: FakeDaemonHistory) => void }
+type Setup = { online?: boolean; readOnly?: boolean; typeInto?: (text: string) => Promise<void>; prepare?: (daemon: FakeDaemonHistory) => void }
 
-async function open({ online = true, readOnly = false, prepare = () => undefined }: Setup = {}) {
+async function open({ online = true, readOnly = false, typeInto, prepare = () => undefined }: Setup = {}) {
   const daemon = new FakeDaemonHistory()
   daemon.upsert(daemon.message('t1', 'u', 'User', 'earlier'))
   prepare(daemon)
   fake.current = daemon
   const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) })
-  render(<ChatSession link={{ conversation: FAKE_CONVERSATION, generation: 1, ...(readOnly ? { readOnly: true } : {}) }} agent="claude" online={online} />)
+  render(<ChatSession link={{ conversation: FAKE_CONVERSATION, generation: 1, ...(readOnly ? { readOnly: true } : {}) }} agent="claude" online={online} {...(typeInto === undefined ? {} : { typeInto })} />)
   await settle()
   return { daemon, user, box: screen.getByRole('textbox', { name: 'Message claude' }) }
 }
@@ -328,6 +332,33 @@ describe('a sent message', () => {
   })
 })
 
+describe('an attached image', () => {
+  const sentImage = (stamp: number) => (daemon: FakeDaemonHistory) => {
+    daemon.upsert(daemon.message('t2', 'u2', 'User', `look\n\n${ATTACHMENT_HEADER}\n- /cache/pastes/paste-${String(stamp)}-0a1b2c3d.png`))
+  }
+
+  it('shows a sent image as a thumbnail that opens it full size, and closes with Escape', async () => {
+    const { user } = await open({ prepare: sentImage(1730000000002) })
+    await settle()
+
+    await user.click(screen.getByRole('button', { name: 'View Pasted image.png' }))
+    const viewer = screen.getByRole('dialog', { name: 'Pasted image.png' })
+    expect(within(viewer).getByRole('img', { name: 'Pasted image.png' })).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('keeps the name chip when the host can no longer read the image', async () => {
+    fake.attachmentImage.mockRejectedValue(new Error('that file is no longer kept'))
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    await open({ prepare: sentImage(1730000000003) })
+    await settle()
+
+    expect(screen.getByText('Pasted image.png')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^View / })).not.toBeInTheDocument()
+  })
+})
+
 describe('when files cannot be attached', () => {
   it('says why on the paperclip while the daemon is offline and picks nothing', async () => {
     const error = vi.spyOn(toast, 'error')
@@ -350,6 +381,24 @@ describe('when files cannot be attached', () => {
 
     expect(paperclip()).toHaveAccessibleName(`Attach files: ${PENDING_APPROVAL_NOTE}`)
     expect(paperclip()).toHaveAttribute('aria-disabled', 'true')
+  })
+
+  it('offers the paperclip in a chat that follows a terminal agent, and types the files into it with the message', async () => {
+    const typeInto = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
+    fake.chooseFilesToAttach.mockResolvedValue(['/home/me/errors.log'])
+    fake.attachLocalFile.mockResolvedValue({ path: '/data/attachments/attach-1-errors.log', name: 'errors.log', size: 120, kind: 'file' })
+    const { user, box } = await open({ readOnly: true, typeInto })
+
+    await user.click(paperclip())
+    await settle()
+    await user.type(box, 'why does this fail?')
+    await user.click(sendButton())
+    await settle(600)
+
+    expect(typeInto).toHaveBeenCalled()
+    const typed = typeInto.mock.calls.map(([text]) => text).join('')
+    expect(typed).toContain('why does this fail?')
+    expect(typed).toContain('/data/attachments/attach-1-errors.log')
   })
 
   it('offers no paperclip in a read-only chat, whose composer already states the reason', async () => {

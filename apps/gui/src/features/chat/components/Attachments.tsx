@@ -3,6 +3,7 @@ import { File as FileIcon, FileArchive, Image as ImageIcon, X } from 'lucide-rea
 import { attachmentsExist, type AttachmentKind } from '@/api/attachments'
 import type { SentAttachment } from '../attachmentMessage'
 import type { DraftAttachment } from '../composerStore'
+import { ImageThumb } from './KeptImage'
 
 const KIND_ICON = { image: ImageIcon, archive: FileArchive, file: FileIcon } as const
 
@@ -31,10 +32,10 @@ export function DraftAttachments({ attachments, onRemove }: { attachments: reado
     <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0" aria-label="Attached files">
       {attachments.map((attachment) => (
         <li key={attachment.id} className={`${CHIP} max-w-[240px]`}>
-          {attachment.preview === null ? (
-            <Icon kind={attachment.kind} />
+          {attachment.kind === 'image' ? (
+            <ImageThumb name={attachment.name} path={attachment.path} preview={attachment.preview} fallback={<Icon kind="image" />} />
           ) : (
-            <img src={attachment.preview} alt="" className="size-8 shrink-0 rounded object-cover" />
+            <Icon kind={attachment.kind} />
           )}
           <span className="flex min-w-0 flex-col leading-tight">
             <span className="truncate text-fg" title={attachment.name}>{attachment.name}</span>
@@ -77,7 +78,11 @@ export function SentAttachments({ files }: { files: readonly SentAttachment[] })
     <ul className="m-0 mt-1.5 flex list-none flex-wrap justify-end gap-1.5 p-0" aria-label="Attached files">
       {files.map((file, index) => (
         <li key={`${file.path}-${String(index)}`} className={`${CHIP} max-w-[240px]`}>
-          <Icon kind={file.kind} />
+          {file.kind === 'image' && there[index] !== false ? (
+            <ImageThumb name={file.name} path={file.path} fallback={<Icon kind="image" />} />
+          ) : (
+            <Icon kind={file.kind} />
+          )}
           <span className="truncate text-fg" title={file.name}>{file.name}</span>
           {there[index] === false && <span className="shrink-0 text-[11px] text-dim">no longer available</span>}
         </li>

@@ -223,6 +223,18 @@ pub fn exist(folders: &[PathBuf], paths: &[String]) -> Vec<bool> {
         .collect()
 }
 
+/// The bytes of a kept image, for the window to show. Only a file that `exist` accepts (directly
+/// inside a kept folder) and that starts like an image is read, so the window cannot use this to
+/// read other files.
+pub fn read_image(folders: &[PathBuf], path: &str) -> Result<Vec<u8>, String> {
+    if !exist(folders, &[path.to_owned()])[0] {
+        return Err("that file is no longer kept".to_owned());
+    }
+    let bytes = std::fs::read(path).map_err(|e| format!("could not read the image: {e}"))?;
+    check_image(&bytes)?;
+    Ok(bytes)
+}
+
 fn cache_of(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_cache_dir()
@@ -246,6 +258,17 @@ pub async fn attachments_exist(app: tauri::AppHandle, paths: Vec<String>) -> Res
     tauri::async_runtime::spawn_blocking(move || exist(&folders, &paths))
         .await
         .map_err(|e| format!("checking the files stopped: {e}"))
+}
+
+/// A kept image's bytes as the raw body of the answer, never base64 in JSON.
+#[tauri::command]
+pub async fn attachment_image(app: tauri::AppHandle, path: String) -> Result<tauri::ipc::Response, String> {
+    let cache = cache_of(&app)?;
+    let folders = [cache.join(FOLDER), cache.join(PASTE_FOLDER)];
+    tauri::async_runtime::spawn_blocking(move || read_image(&folders, &path))
+        .await
+        .map_err(|e| format!("reading the image stopped: {e}"))?
+        .map(tauri::ipc::Response::new)
 }
 
 #[cfg(test)]

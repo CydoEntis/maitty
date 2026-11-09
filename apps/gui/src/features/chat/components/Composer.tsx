@@ -129,7 +129,7 @@ export function Composer({ agent, composer, conversation, question = null, facts
             onPaste={onPaste}
           />
           <div className="mx-box-row">
-            {!readOnly && (
+            {(composer.attachable ?? !readOnly) && (
               // aria-disabled, not disabled: a disabled button gets no focus or tooltip, and the reason is the point.
               <button type="button" className="mx-box-attach" aria-label={attachLabel} title={attachLabel} aria-disabled={off} onClick={() => { if (!off) attach.pick() }}>
                 <Icon name="plus" size={16} />

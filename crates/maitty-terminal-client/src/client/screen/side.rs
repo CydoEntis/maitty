@@ -129,16 +129,24 @@ fn turn_start(info: &TermInfo) -> u64 {
         .map_or(info.since, |e| e.at)
 }
 
+/// How long a finished subagent stays listed before it clears, so a long turn does not pile up
+/// rows that look stuck.
+const FINISHED_LINGER_SECS: u64 = 15;
+
 /// The subagents of the turn the agent is in: none once the turn is over, since the daemon keeps
-/// every record the session ever reported.
-pub(super) fn turn_subagents(info: &TermInfo) -> Vec<&SubagentActivity> {
+/// every record the session ever reported. A finished one clears after [`FINISHED_LINGER_SECS`].
+pub(super) fn turn_subagents(info: &TermInfo, now: u64) -> Vec<&SubagentActivity> {
     if !matches!(info.status, Status::Working | Status::Blocked) {
         return Vec::new();
     }
     let from = turn_start(info);
     info.subagent_activity
         .iter()
-        .filter(|a| a.state.active() || a.started_at.unwrap_or(a.updated_at) >= from)
+        .filter(|a| {
+            a.state.active()
+                || (a.started_at.unwrap_or(a.updated_at) >= from
+                    && now.saturating_sub(a.updated_at) <= FINISHED_LINGER_SECS)
+        })
         .collect()
 }
 
@@ -163,7 +171,7 @@ fn side_rows(app: &App, model: &[Proj]) -> Vec<SideRow> {
             let subs = info
                 .filter(|_| app.cfg.ui.subagent_count)
                 .map(|i| {
-                    turn_subagents(i)
+                    turn_subagents(i, super::now_secs())
                         .into_iter()
                         .map(|a| SubRow {
                             name: a.name.clone(),
@@ -969,10 +977,11 @@ mod tests {
             activity("this turn", SubagentState::Completed, 60),
             activity("running", SubagentState::Working, 70),
         ];
-        let names: Vec<&str> = turn_subagents(&info).iter().map(|a| a.name.as_str()).collect();
-        assert_eq!(names, ["this turn", "running"]);
+        let names = |info: &TermInfo, now| turn_subagents(info, now).iter().map(|a| a.name.clone()).collect::<Vec<_>>();
+        assert_eq!(names(&info, 60), ["this turn", "running"]);
+        assert_eq!(names(&info, 60 + FINISHED_LINGER_SECS + 1), ["running"], "a finished one clears after a while");
         info.status = Status::Done;
-        assert!(turn_subagents(&info).is_empty(), "a finished turn lists none");
+        assert!(names(&info, 60).is_empty(), "a finished turn lists none");
     }
 
     #[test]

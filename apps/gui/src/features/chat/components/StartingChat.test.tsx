@@ -5,6 +5,8 @@ import { NO_EVENTS_HINT_AFTER_MS } from '@/features/workspace/model/chatView'
 import { forgetFirstMessages, heldFirstMessage, holdStartChoice, takeCarriedDraft } from '../firstMessage'
 import { StartingChat } from './StartingChat'
 
+const attach = vi.hoisted(() => ({ attachLocalFile: vi.fn(), chooseFilesToAttach: vi.fn() }))
+vi.mock('@/api/attachments', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/api/attachments')>()), ...attach }))
 vi.mock('@/api/daemon', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/daemon')>()),
   loadAgentModels: () => Promise.resolve([]),
@@ -23,6 +25,21 @@ describe('the chat of a session that is still starting', () => {
     expect(screen.queryByText('Starting codex…')).not.toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Message codex' })).toBeEnabled()
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
+  })
+
+  it('holds a file attached now with the message, and shows it as a chip, not as the block that names it', async () => {
+    attach.chooseFilesToAttach.mockResolvedValue(['/home/me/errors.log'])
+    attach.attachLocalFile.mockResolvedValue({ path: '/data/attachments/attach-1-errors.log', name: 'errors.log', size: 120, kind: 'file' })
+    const user = userEvent.setup()
+    open()
+    await user.click(screen.getByRole('button', { name: 'Attach files' }))
+    expect(await screen.findByText('errors.log')).toBeInTheDocument()
+    await user.type(screen.getByRole('textbox', { name: 'Message codex' }), 'why does this fail?{Enter}')
+
+    expect(heldFirstMessage('s1')).toContain('/data/attachments/attach-1-errors.log')
+    expect(screen.getByLabelText('Sending')).toHaveTextContent('why does this fail?')
+    expect(screen.getByLabelText('Sending')).not.toHaveTextContent('Attached files (kept by Maitty')
+    expect(screen.getByLabelText('Sending')).toHaveTextContent('errors.log')
   })
 
   it('holds a message sent now and shows it in the conversation, where it stays when the chat takes over', async () => {

@@ -534,7 +534,7 @@ The sidebar shows or collapses (`App::sidebar`) to a narrow column (`side.rs` `d
 - **Nesting.** Each level sits two columns in from the one above: a folder under its machine, and a session under its folder (or flush under its machine when not grouped).
 - **Splits.** Every session a pane of the current view shows has a bar in the row's left edge: the focused one in the accent, the others quieter, so the panes of a split are all marked in the list.
 - **Session row** (two lines; agents first, then shells, each in creation order, so a row never moves when its status changes): the status mark, then the name (your name for it, else the process; a chat goes by its title), bold in `strong` for an agent that is working, needs you, done or failed, plain `text` otherwise; under it `■` in the project's colour, the project muted and the branch in violet. No status words anywhere. The session open in the workspace has the `hov` ground and an accent `▎` on both lines; the keyboard's row `sel`. A session whose machine is down is drawn in `idle`.
-- **Subagents** (`side::turn_subagents`, from `TermInfo::subagent_activity`, the daemon's record of what the agent's own hooks reported): only those of the turn the agent is in, so none once it is done or idle. Under any other session they are one row, `└` and a mark each; under the open session one row each, `├` / `└`, the mark and the name. A click on one opens its parent's pane: the agent shows its subagents in its own terminal, and the TUI draws no chat of its own.
+- **Subagents** (`side::turn_subagents`, from `TermInfo::subagent_activity`, the daemon's record of what the agent's own hooks reported): only those of the turn the agent is in, so none once it is done or idle; a finished one clears 15 seconds after it reports (`FINISHED_LINGER_SECS`), so a long turn does not pile up rows that look stuck. Under any other session they are one row, `└` and a mark each; under the open session one row each, `├` / `└`, the mark and the name. A click on one opens its parent's pane: the agent shows its subagents in its own terminal, and the TUI draws no chat of its own.
 - **Foot** (the bottom border): at the left the release chip, ` ↑ v0.15.0 ` in the accent when a release is out, ` ↻ restart ` once one is installed and not running, else the version this is, muted; it opens a menu upward (`menu.rs` `release_menu`: Update to …, or Restart onto the new version; Running …; Release notes). At the right ` menu `, the Menu.
 - **Row menu** (right-click on a session, or `.` with the cursor on one): see *Menus*. Anywhere else `.` is the Menu.
 - **Keys.** ↑ ↓ walk the sessions; → or Enter opens one; `1`–`9` open that row.
@@ -861,11 +861,16 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   name, size, a Remove button) or, for a pasted image, a thumbnail made from the bytes the window already holds
   (an object URL, revoked on remove or send). Sending builds the text with `buildAttachmentMessage` (the text, then a
   fixed block naming each kept file by path); a message may be only files. A failed send gives text and files back.
-  A sent message is shown by `parseAttachmentMessage` as its text and chips (icon and name; "no longer available"
-  when `attachments_exist` says the kept file was swept). The composer takes a `machine` (the chat link's):
+  A sent message is shown by `parseAttachmentMessage` as its text and chips (name, and a thumbnail for an image; "no longer available"
+  when `attachments_exist` says the kept file was swept). An image thumbnail, in a draft or a sent message, opens the picture
+  full size in a viewer (`KeptImage.tsx`; Escape or a click outside closes it); the host returns a kept image's bytes
+  (`attachment_image`, only from its own folders and only for an image) and the window shows them as an object URL. The composer takes a `machine` (the chat link's):
   for another machine the same picker, drop and paste send the file there (`sendAttachments` over `send_files_to_machine` /
   `send_pasted_image`, with the terminal's progress toast and Cancel) and the chip holds the far-side path, checked
-  before it is used. No chat sets a machine yet. A read-only chat shows no paperclip.
+  before it is used. No chat sets a machine yet. A read-only chat shows no paperclip, unless it types into the agent's terminal (a chat that follows a terminal agent): the files go in as the block of paths, pasted with the message.
+  The new-chat page and a chat that is still starting take files too, keyed in `composerStore` under a negative key
+  (`-1` for the page, `draftKeyFor(session)` for a starting chat) since no conversation exists yet; the page puts them in the
+  first message, the starting chat holds them with its held message and shows the echo as text and chips.
 - **Read-only chat.** For a link with `readOnly` the composer is off with "Read-only: talk to the agent in the
   terminal" as its placeholder, and offers no Stop or queue wording; the daemon refuses send, approve and cancel
   for such a conversation. The history and status still follow the agent.

@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react'
+import { toast } from '@/lib/toast'
+import { pickFromClipboard, unsupportedMessage } from '@/features/terminal/clipboardImage'
+import { buildAttachmentMessage } from '@/features/chat/attachmentMessage'
+import { registerComposerDrop } from '@/features/chat/composerDrop'
+import { updateComposer, useComposerState } from '@/features/chat/composerStore'
+import { revokePreviews, useAttachmentIntake } from '@/features/chat/useAttachmentIntake'
+import { DraftAttachments } from '@/features/chat/components/Attachments'
 import { errorMessage } from '@/lib/error-message'
 import { DEFAULT_PICK, REASONING_LABEL, REASONING_PICKS, modelsFor, useAgentModels, useDiscoveredModels, type AgentChoice, type ReasoningPick } from '@/features/chat/agentChoice'
 import { AGENT_LABEL, modelName } from '@/features/chat/modelName'
@@ -16,6 +23,9 @@ export type BranchChoice = { name: string; create: boolean; worktree: boolean }
 
 /** What the page asks the window to start: a chat with this agent, model and effort, in this folder, and its first message. */
 export type NewChatRequest = { folder: string; agent: ChatAgent; model: string; reasoning: AgentChoice['reasoning']; mode: string; message: string; branch: BranchChoice | null }
+
+/** The key the first message's files are kept under: no conversation exists yet, and a real one is never negative. */
+const NEW_CHAT_DRAFT = -1
 
 /** A computer a chat could start on. Chats run on this computer; another one hands over to the dialog that starts a session there. */
 export type NewChatMachine = { machine: number; label: string; local: boolean }
@@ -54,6 +64,27 @@ export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const text = useRef<HTMLTextAreaElement>(null)
+  const box = useRef<HTMLDivElement>(null)
+  const { attachments } = useComposerState(NEW_CHAT_DRAFT)
+  // A new chat runs on this computer, so its files are copied here and named by path in the first message.
+  const attach = useAttachmentIntake({ conversation: NEW_CHAT_DRAFT, blocked: busy ? 'The chat is starting' : null })
+  const { addPaths } = attach
+  useEffect(() => {
+    const element = box.current
+    return element === null ? undefined : registerComposerDrop(element, addPaths)
+  }, [addPaths])
+  // Files meant for a chat that was never started are not kept for the next one.
+  useEffect(() => () => {
+    updateComposer(NEW_CHAT_DRAFT, (state) => { revokePreviews(state.attachments); return { ...state, attachments: [] } })
+  }, [])
+  // Text first, as in the terminal: a clipboard with any text pastes the text; only a bare image is attached.
+  const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const pick = pickFromClipboard(event.clipboardData)
+    if (pick.kind === 'text' || pick.kind === 'none') return
+    event.preventDefault()
+    if (pick.kind === 'image') attach.addImage(pick.image)
+    else toast.error(unsupportedMessage(pick.type))
+  }
   // Until one is picked, the first project is the choice, even when the list arrives after the page opened.
   const folder = picked ?? projects[0]?.folder ?? ''
   const shown = extra === null || projects.some((project) => project.folder === extra.folder) ? projects : [...projects, extra]
@@ -78,7 +109,7 @@ export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = 
     if (busy || folder === '' || agentMissing) return
     setBusy(true)
     setError(null)
-    onStart({ folder, agent, model: choice.model, reasoning: choice.reasoning, mode: agent === 'claude' ? mode : 'default', message: message.trim(), branch })
+    onStart({ folder, agent, model: choice.model, reasoning: choice.reasoning, mode: agent === 'claude' ? mode : 'default', message: buildAttachmentMessage(message.trim(), attachments), branch })
       .catch((failure: unknown) => { setError(errorMessage(failure, 'Could not start the chat')) })
       .finally(() => { setBusy(false); reloadBranches() })
   }
@@ -103,7 +134,7 @@ export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = 
 
   const models = useAgentModels(agent)
   const model = models.find((option) => option.id === choice.model) ?? models[0]
-  const empty = message.trim() === ''
+  const empty = message.trim() === '' && attachments.length === 0
   useDiscoveredModels(agent)
 
   const machineItems: ChipItem[] = machines.map((machine) => ({
@@ -197,7 +228,7 @@ export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = 
     <section className="mx-newchat" aria-label="New agent chat" onKeyDown={onKeyDown}>
       <button type="button" className="mx-icon-button mx-newchat-close" aria-label="Close" title="Close (Esc)" onClick={onCancel}><Icon name="close" size={13} /></button>
       <p className="mx-chat-empty">{`What should ${AGENT_LABEL[agent]} work on?`}</p>
-      <div className="mx-composer">
+      <div ref={box} className="mx-composer">
         <div className="mx-composer-column">
           <div className="mx-newchat-stack mx-field">
             <div className="mx-ctxrow">
@@ -226,8 +257,10 @@ export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = 
               )}
             </div>
             <div className="mx-box">
-              <textarea ref={text} aria-label="First message" rows={2} value={message} placeholder={`What should ${AGENT_LABEL[agent]} work on?`} className="mx-box-text" onChange={(event) => { setMessage(event.target.value) }} />
+              <DraftAttachments attachments={attachments} onRemove={attach.remove} />
+              <textarea ref={text} onPaste={onPaste} aria-label="First message" rows={2} value={message} placeholder={`What should ${AGENT_LABEL[agent]} work on?`} className="mx-box-text" onChange={(event) => { setMessage(event.target.value) }} />
               <div className="mx-box-row">
+                <button type="button" className="mx-box-attach" aria-label="Attach files" title="Attach files" onClick={attach.pick}><Icon name="plus" size={16} /></button>
                 <span className="mx-spacer" />
                 <button type="button" className={`mx-send${busy || folder === '' || agentMissing ? ' is-off' : ''}`} aria-label={empty ? 'Start chat' : 'Send message'} title={empty ? 'Start an empty chat' : 'Send (Enter)'} disabled={busy || folder === '' || agentMissing} onClick={start}>
                   <Icon name="arrowUp" size={15} strokeWidth={2.2} />

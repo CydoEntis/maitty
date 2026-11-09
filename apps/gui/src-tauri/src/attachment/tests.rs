@@ -130,3 +130,17 @@ fn only_kept_files_are_reported_present() {
     ];
     assert_eq!(exist(&[kept], &paths), vec![true, false, false, false, false]);
 }
+
+#[test]
+fn only_a_kept_image_can_be_read_back() {
+    let kept = folder("image");
+    let elsewhere = folder("image-else");
+    let image = write(&kept, "attach-1-a.png", PNG);
+    let text = write(&kept, "attach-2-notes.txt", b"not an image");
+    let outside = write(&elsewhere, "shot.png", PNG);
+    let folders = [kept];
+
+    assert_eq!(read_image(&folders, &image.display().to_string()).unwrap(), PNG);
+    assert!(read_image(&folders, &text.display().to_string()).is_err());
+    assert!(read_image(&folders, &outside.display().to_string()).is_err());
+}

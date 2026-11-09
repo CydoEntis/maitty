@@ -961,6 +961,7 @@ pub fn run() {
             file_send::cancel_file_send,
             attachment::attach_local_file,
             attachment::attachments_exist,
+            attachment::attachment_image,
             image_paste::save_pasted_image,
             image_paste::send_pasted_image,
             read_conversation,
