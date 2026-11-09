@@ -56,6 +56,23 @@ describe('the chat of a session that is still starting', () => {
     expect(document.querySelector('.mx-model-button.is-static')).toHaveTextContent('Codex')
   })
 
+  it('says the agent is waiting in the terminal at once when the daemon says it needs you, without blaming the hooks', () => {
+    render(<StartingChat agent="claude" sessionId="s1" paneStatus="needs" onBackToTerminal={noop} />)
+    expect(screen.getByRole('note')).toHaveTextContent(/waiting for you in the terminal.*trust this folder/)
+    expect(screen.queryByRole('button', { name: /^Connect/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open terminal' })).toBeInTheDocument()
+  })
+
+  it('shows a question on the agent’s screen with its choices, and answers it by moving the cursor and pressing Enter', async () => {
+    const user = userEvent.setup()
+    const typeInto = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
+    const asking = 'Quick safety check: do you trust this folder?\n❯ 1. No, exit\n2. Yes, I trust this folder'
+    render(<StartingChat agent="claude" sessionId="s1" paneStatus="needs" asking={asking} typeInto={typeInto} onBackToTerminal={noop} />)
+    expect(screen.getByText(/do you trust this folder/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Yes, I trust this folder' }))
+    expect(typeInto.mock.calls.map(([keys]) => keys)).toEqual([String.fromCharCode(27) + '[B', String.fromCharCode(13)])
+  })
+
   it('floats the hooks hint over the conversation, so it moves nothing when it comes or goes', () => {
     vi.useFakeTimers()
     open()

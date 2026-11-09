@@ -96,7 +96,10 @@ export function noChatReason(availability: Exclude<ChatAvailability, { kind: 're
 export const NO_EVENTS_HINT_AFTER_MS = 10_000
 
 /** Shown once a session has stayed empty past `NO_EVENTS_HINT_AFTER_MS`: the usual cause is hooks from another version. */
-export const noEventsHint = (agent: ChatAgent): string => `Still nothing. ${agent}'s status hooks are not connected, or are from another version. Connect them here, or run "maitty integrate ${agent}".`
+export const noEventsHint = (agent: ChatAgent): string => `Still nothing. ${agent} may be waiting for you in the terminal, or its status hooks are not connected or are from another version. Check the terminal, connect them here, or run "maitty integrate ${agent}".`
+
+/** Shown instead when the daemon already knows the agent is stopped for an answer (a trust-this-folder question, a login). */
+export const waitingInTerminalHint = (agent: ChatAgent): string => `${agent} is waiting for you in the terminal, for example to trust this folder. Answer it there and the chat takes over.`
 
 /** What a session tells the chat view about itself, from the fields every session view carries. */
 export function chatSourceOf(session: { machineName: string | null; conversation: { agent?: string | null; chat?: ChatLink | undefined } }): ChatSource {

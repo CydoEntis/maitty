@@ -4,6 +4,7 @@ import { errorMessage } from '@/lib/error-message'
 import type { PermissionAsk } from '@/data/preview'
 import type { ApprovalDecision, ApprovalEvent } from '../chatEvents'
 import { ANSWER_KEY, type AskChoice } from '../permissionAsk'
+import { keysToPick, type ScreenMenu } from '../screenMenu'
 import type { ApprovalActions } from './ApprovalCard'
 import { UserInputForm } from './UserInputForm'
 
@@ -26,6 +27,31 @@ function Tray({ label, title, children }: { label: string; title: string; childr
       <span className="mx-question-title"><span className="mx-question-tile" aria-hidden="true"><i /><i /></span>{title}</span>
       {children}
     </section>
+  )
+}
+
+/**
+ * A question the agent asks on its screen that its hooks do not report, such as trusting a new
+ * folder: its text and one button per choice, each moving the terminal's cursor to the choice and
+ * pressing Enter.
+ */
+export function ScreenMenuTray({ agent, menu, send }: { agent: string; menu: ScreenMenu; send: (keys: string[]) => Promise<void> }) {
+  const [busy, setBusy] = useState(false)
+  const pick = (index: number) => {
+    setBusy(true)
+    send(keysToPick(menu, index))
+      .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not send your answer')) })
+      .finally(() => { setBusy(false) })
+  }
+  return (
+    <Tray label={`${agent} is asking`} title={`${agent} is asking`}>
+      {menu.question !== '' && <p className="mx-question-reason" style={{ whiteSpace: 'pre-wrap' }}>{menu.question}</p>}
+      <div className="mx-question-answers is-choices">
+        {menu.options.map((option, index) => (
+          <button key={`${String(index)}-${option}`} type="button" className="mx-answer" disabled={busy} onClick={() => { pick(index) }}>{option}</button>
+        ))}
+      </div>
+    </Tray>
   )
 }
 

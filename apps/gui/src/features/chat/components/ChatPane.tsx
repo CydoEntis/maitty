@@ -18,6 +18,8 @@ export type ChatPaneProps = {
   onOpenDiff?: ((file: string) => void) | null
   /** Types into the terminal the agent runs in, so a chat that follows it can talk to it (ADR 0003). */
   typeInto?: ((text: string) => Promise<void>) | undefined
+  /** What the daemon read off the screen of a pane that is stopped on a question: the text and its choices. */
+  asking?: string
   /** The permission prompt the agent's hook says the pane is stopped on. */
   ask?: PermissionAsk | null
   /** The session's id, so what is typed before its agent is ready is kept for it. */
@@ -79,7 +81,7 @@ export function ChatPane(props: ChatPaneProps) {
           />
         )
         : availability.kind === 'no-events' && props.sessionId !== undefined
-          ? <StartingChat agent={availability.agent} sessionId={props.sessionId} onBackToTerminal={props.onBackToTerminal} folder={props.folder ?? ''} branch={props.branch ?? null} />
+          ? <StartingChat agent={availability.agent} sessionId={props.sessionId} onBackToTerminal={props.onBackToTerminal} folder={props.folder ?? ''} branch={props.branch ?? null} {...(props.paneStatus === undefined ? {} : { paneStatus: props.paneStatus })} {...(props.asking === undefined ? {} : { asking: props.asking })} {...(props.typeInto === undefined ? {} : { typeInto: props.typeInto })} />
           : <NoChat {...props} availability={availability} />}
     </section>
   )
