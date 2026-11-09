@@ -630,7 +630,8 @@ pub fn step(cfg: &Config, s: &Setting, dir: i64) -> Option<toml_edit::Value> {
                 .position(|o| Some(*o) == cur.as_str())
                 .unwrap_or(0) as i64;
             let n = opts.len() as i64;
-            opts[((i + dir).rem_euclid(n)) as usize].into()
+            // The arrows stop at the first and the last choice instead of wrapping round.
+            opts[(i + dir).clamp(0, n - 1) as usize].into()
         }
         Kind::Number { step, min, max } => {
             let v = cur.as_float().unwrap_or(0.0) + step * dir as f64;
@@ -643,7 +644,7 @@ pub fn step(cfg: &Config, s: &Setting, dir: i64) -> Option<toml_edit::Value> {
             let now = cur.as_str().unwrap_or_default().to_string();
             let opts = program_options(cands, &now);
             let i = opts.iter().position(|o| *o == now).unwrap_or(0) as i64;
-            let next = &opts[((i + dir).rem_euclid(opts.len() as i64)) as usize];
+            let next = &opts[(i + dir).clamp(0, opts.len() as i64 - 1) as usize];
             (if next == "default" { "" } else { next.as_str() }).into()
         }
         Kind::Text | Kind::Key | Kind::Folder | Kind::Spinner => return None,
@@ -721,7 +722,8 @@ mod tests {
             .find(|s| s.path == "ui.sidebar_position")
             .unwrap();
         assert_eq!(step(&cfg, side, 1).unwrap().as_str(), Some("right"));
-        assert_eq!(step(&cfg, side, -1).unwrap().as_str(), Some("right"));
+        // Left is the first choice: an arrow left stays on it instead of wrapping to the last.
+        assert_eq!(step(&cfg, side, -1).unwrap().as_str(), Some("left"));
         let leader = SETTINGS.iter().find(|s| s.path == "prefix").unwrap();
         assert_eq!(display(&cfg, leader), "C-Space");
     }
@@ -796,13 +798,29 @@ mod tests {
         let dark = super::super::themes::matching("", false);
         let before = dark.iter().position(|n| *n == app.cfg.theme_dark || crate::theme::canonical(&app.cfg.theme_dark) == *n).unwrap_or(0);
         app.step_theme(false, 1);
-        assert_eq!(app.cfg.theme_dark, dark[(before + 1) % dark.len()]);
+        assert_eq!(app.cfg.theme_dark, dark[(before + 1).min(dark.len() - 1)]);
+        // At the last theme an arrow right stops there; at the first an arrow left stops there.
+        let at = |app: &super::super::App| dark.iter().position(|n| crate::theme::canonical(&app.cfg.theme_dark) == *n).unwrap();
+        let mut trail = Vec::new();
+        for _ in 0..dark.len() + 2 {
+            let was = at(&app);
+            app.step_theme(false, 1);
+            trail.push(app.cfg.theme_dark.clone());
+            assert!(at(&app) == (was + 1).min(dark.len() - 1), "one step right from {was}: {trail:?}");
+        }
+        assert_eq!(at(&app), dark.len() - 1, "the list does not wrap");
+        for _ in 0..dark.len() + 2 {
+            let was = at(&app);
+            app.step_theme(false, -1);
+            assert!(at(&app) == was.saturating_sub(1), "one step left from {was} landed on {} ({}): {dark:?}", at(&app), app.cfg.theme_dark);
+        }
+        assert_eq!(at(&app), 0, "the list does not wrap");
         assert_eq!(app.theme.bg, crate::theme::Theme::named(&app.cfg.theme_dark).bg);
         assert_eq!(Config::load().unwrap().theme_dark, app.cfg.theme_dark);
-        // An arrow on the spinner row applies the next spinner at once, wrapping at the ends.
+        // An arrow on the spinner row applies the next spinner at once, stopping at the ends.
         let at = crate::config::SPINNERS.iter().position(|(n, _)| *n == crate::config::spinner_name(&app.cfg.ui.spinner)).unwrap();
         app.step_spinner(1);
-        let want: Vec<String> = crate::config::SPINNERS[(at + 1) % crate::config::SPINNERS.len()].1.iter().map(|f| (*f).into()).collect();
+        let want: Vec<String> = crate::config::SPINNERS[(at + 1).min(crate::config::SPINNERS.len() - 1)].1.iter().map(|f| (*f).into()).collect();
         assert_eq!(app.cfg.ui.spinner, want);
         assert_eq!(Config::load().unwrap().ui.spinner, want);
         let saved_spinner = app.cfg.ui.spinner.clone();

@@ -733,7 +733,10 @@ impl Theme {
 
     pub fn named(name: &str) -> Theme {
         let name = canonical(name);
-        let theme = Theme::base(name);
+        let mut theme = Theme::base(name);
+        // The row the keys are on is the accent tinted into the ground, in every theme: a theme's own hover colour was often a step
+        // from the card too small to see on a dark ground.
+        theme.hov = theme.sel_on(theme.card);
         if matches!(name, "night" | "day" | "maitty-dark" | "maitty-light") {
             return theme;
         }

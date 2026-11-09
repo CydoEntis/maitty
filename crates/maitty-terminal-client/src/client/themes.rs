@@ -70,7 +70,8 @@ impl App {
         if list.is_empty() {
             return;
         }
-        let next = (self.slot_row(light) as i64 + dir).rem_euclid(list.len() as i64) as usize;
+        // The list has two ends: the arrows stop at them instead of wrapping round.
+        let next = (self.slot_row(light) as i64 + dir).clamp(0, list.len() as i64 - 1) as usize;
         self.save_setting(slot_path(light), list[next].into());
     }
 

@@ -946,6 +946,10 @@ fn validate_appearance(appearance: &str) -> Result<()> {
 /// The app's own themes were once named after it ("seshi-night", ADR 0008), and the first set
 /// gave way to Night and Day: an old choice moves to the one of the same lightness.
 fn retired_theme(theme: &str) -> Option<&'static str> {
+    // A built-in theme is never retired: `maitty-dark` and `maitty-light` start with the app's name too, and are themes of their own.
+    if crate::theme::BUILTIN.contains(&theme) {
+        return None;
+    }
     let plain = theme
         .split_once('-')
         .filter(|(p, _)| {
@@ -1602,6 +1606,14 @@ mod tests {
             super::Config::default().check.is_empty(),
             "no check unless the user names one"
         );
+    }
+
+    #[test]
+    fn maitty_dark_and_maitty_light_are_themes_of_their_own_not_retired_names() {
+        // They start with the app's name like the old `maitty-dark`, and once loaded as `night` and `day`.
+        assert_eq!(retired_theme("maitty-dark"), None);
+        assert_eq!(retired_theme("maitty-light"), None);
+        assert_eq!(retired_theme("maitty-night"), Some("night"));
     }
 
     #[test]
