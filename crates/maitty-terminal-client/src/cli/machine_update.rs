@@ -140,6 +140,9 @@ pub(crate) fn update(
     };
     match decide(&state, consent) {
         Decision::UpToDate => {
+            // The file being current says nothing about the daemon: an earlier update may have
+            // swapped it and then left the old daemon running because sessions were open.
+            ask_daemon_to_restart(machine, &remote_cmd, &name, flags, talk);
             let version = installed_version(&installed);
             return Ok(Outcome::UpToDate { version });
         }
@@ -171,13 +174,25 @@ pub(crate) fn update(
     check_reachable(machine, &remote_cmd, &to, &name, talk);
     talk.progress(stage::REACHABLE);
     if had_old {
-        if flags.wait {
-            restart_when_idle(machine, &to, &name, IDLE_POLL, talk);
-        } else {
-            restart_daemon(machine, &to, &name, flags.restart, talk);
-        }
+        ask_daemon_to_restart(machine, &to, &name, flags, talk);
     }
     Ok(Outcome::Installed { destination: to })
+}
+
+/// Ask the far daemon to take the version installed at `program`. The far side leaves a daemon
+/// that already runs it alone.
+fn ask_daemon_to_restart(
+    machine: &Machine,
+    program: &str,
+    name: &str,
+    flags: Flags,
+    talk: &mut dyn Talk,
+) {
+    if flags.wait {
+        restart_when_idle(machine, program, name, IDLE_POLL, talk);
+    } else {
+        restart_daemon(machine, program, name, flags.restart, talk);
+    }
 }
 
 fn question(what: Ask, name: &str, remote_cmd: &str) -> String {
@@ -317,7 +332,7 @@ fn restart_when_idle(
         match asked {
             Ok(ran) if ran.code == Some(0) => {
                 let line = last_line(&ran.stdout);
-                if line.starts_with("restarted") || line.starts_with("no server") {
+                if ["restarted", "no server", "current"].iter().any(|done| line.starts_with(done)) {
                     talk.say(&format!("daemon: {line}"));
                     return;
                 }

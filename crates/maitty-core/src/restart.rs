@@ -107,6 +107,12 @@ pub fn replace_older_idle_server(published: Option<&Activity>, ours: &str) -> bo
     published.is_some_and(|a| a.busy() == 0 && crate::version::newer_than(ours, &a.version))
 }
 
+/// Whether the running daemon already is `ours`. A daemon that published nothing is not known
+/// to be, so an update still tries to replace it.
+pub fn is_running(published: Option<&Activity>, ours: &str) -> bool {
+    published.is_some_and(|a| a.version == ours)
+}
+
 /// Whether a daemon may be restarted right now to take a newly installed version: it published
 /// its activity and holds no session. One with sessions open, or that said nothing, is left
 /// running, so an update never ends anyone's work.
@@ -145,6 +151,13 @@ mod tests {
     }
 
     const OLDER: u32 = crate::protocol::PROTOCOL_VERSION - 1;
+
+    #[test]
+    fn only_a_daemon_that_published_this_version_counts_as_running_it() {
+        assert!(is_running(Some(&activity(0, 0)), "0.40.0"));
+        assert!(!is_running(Some(&activity(0, 0)), "0.41.0"));
+        assert!(!is_running(None, "0.40.0"), "a daemon that said nothing is not known to be current");
+    }
 
     #[test]
     fn a_newer_server_is_never_replaced_without_asking() {

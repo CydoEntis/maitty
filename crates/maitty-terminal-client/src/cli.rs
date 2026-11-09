@@ -1,6 +1,6 @@
 //! One-shot commands: scripting the multiplexer from a shell (or from an agent inside it).
 
-use crate::brand::APP_COMMAND;
+use crate::brand::{APP_COMMAND, APP_VERSION};
 use crate::ipc;
 pub(crate) mod conversation;
 pub(crate) mod doctor_machines;
@@ -1175,13 +1175,17 @@ pub fn kill_server(t: &Target, forget: bool) -> Result<()> {
 /// it so the next start is the new version. Without `now` only when no session is open; with
 /// `now` also when sessions are open but saved, because the next server restores them and
 /// resumes their agents (a turn in progress is lost). A server whose sessions are not saved is
-/// always left alone.
+/// always left alone, and so is one that already runs this version.
 pub fn restart_if_idle(now: bool) -> Result<()> {
     if !server_running() {
         println!("no server is running");
         return Ok(());
     }
     let published = crate::restart::read();
+    if crate::restart::is_running(published.as_ref(), APP_VERSION) {
+        println!("current: the server already runs {APP_VERSION}");
+        return Ok(());
+    }
     let may_restart = if now {
         crate::restart::may_restart_now(published.as_ref(), crate::restart::session_is_saved())
     } else {

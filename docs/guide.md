@@ -546,6 +546,9 @@ says what it found and asks before it installs or replaces anything; your `y` is
 the popup shows how it ended (installed, already up to date, not confirmed, refused because a newer version is
 there, or why the machine could not be reached) until you press Enter, then the machine reconnects.
 
+When the version there already matches, nothing is sent, but its daemon is still asked to restart if it is not running
+that version (an earlier update may have left it running because sessions were open). A daemon that already runs it is left alone.
+
 Exit status: 0 done or already up to date, 2 a mistake in how it was asked (an unknown machine, a flag
 missing), 1 a step that did not work.
 
