@@ -59,7 +59,7 @@ describe('settings preferences', () => {
   })
 
   it('restores every saved choice', () => {
-    const saved: SettingsPreferences = { ...DEFAULTS, accent: 'violet', spinner: 'snake', restoreLayout: false, reduceMotion: true, toastPosition: 'top-left', notifyNeedsYou: false, notificationSound: true, terminalFontSize: 15, themeMode: 'dark', darkTheme: 'Nord', cursorStyle: 'underline', scrollback: 50000, }
+    const saved: SettingsPreferences = { ...DEFAULTS, accent: 'violet', spinner: 'snake', restoreLayout: false, reduceMotion: true, toastPosition: 'top-left', notifyNeedsYou: false, notificationSound: true, terminalFontSize: 15, themeMode: 'dark', darkTheme: 'Tokyo Night', cursorStyle: 'underline', scrollback: 50000, }
     writeSettingsPreferences(saved)
 
     expect(readSettingsPreferences()).toEqual(saved)
@@ -188,19 +188,19 @@ describe('settings preferences', () => {
   })
 
   it('moves a single saved theme into its dark or light slot and keeps using it', () => {
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ theme: 'Nord' }))
-    expect(readSettingsPreferences()).toMatchObject({ themeMode: 'dark', darkTheme: 'Nord', lightTheme: 'Maitty Day' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ theme: 'Tokyo Night' }))
+    expect(readSettingsPreferences()).toMatchObject({ themeMode: 'dark', darkTheme: 'Tokyo Night', lightTheme: 'Maitty Day' })
 
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ theme: 'Gruvbox Light' }))
     expect(readSettingsPreferences()).toMatchObject({ themeMode: 'light', lightTheme: 'Gruvbox Light', darkTheme: 'Maitty Night' })
   })
 
   it('keeps each slot to its own kind of theme and the mode to its three values', () => {
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ themeMode: 'dark', darkTheme: 'Maitty Day', lightTheme: 'Nord' }))
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ themeMode: 'dark', darkTheme: 'Maitty Day', lightTheme: 'Tokyo Night' }))
     expect(readSettingsPreferences()).toMatchObject({ themeMode: 'dark', darkTheme: 'Maitty Night', lightTheme: 'Maitty Day' })
 
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ themeMode: 'auto', darkTheme: 'High Contrast' }))
-    expect(readSettingsPreferences()).toMatchObject({ themeMode: 'system', darkTheme: 'High Contrast' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ themeMode: 'auto', darkTheme: 'Maitty Dark' }))
+    expect(readSettingsPreferences()).toMatchObject({ themeMode: 'system', darkTheme: 'Maitty Dark' })
   })
 
   it('has no monthly budget by default and keeps only a positive amount in range', () => {

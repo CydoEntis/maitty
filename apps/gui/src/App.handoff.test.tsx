@@ -874,16 +874,16 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     await user.keyboard('{Control>},{/Control}')
     await user.keyboard('a')
     await user.click(screen.getByRole('button', { name: 'Dark theme: Maitty Night' }))
-    await user.type(screen.getByRole('textbox', { name: 'Search dark themes' }), 'nord')
+    await user.type(screen.getByRole('textbox', { name: 'Search dark themes' }), 'tokyo')
     const listbox = await screen.findByRole('radiogroup', { name: 'Dark themes' })
     expect(within(listbox).getAllByRole('radio')).toHaveLength(1)
-    await user.click(within(listbox).getByRole('radio', { name: /Nord/ }))
+    await user.click(within(listbox).getByRole('radio', { name: /Tokyo Night/ }))
 
-    expect(root()?.style.getPropertyValue('--accent')).toBe('#88C0D0')
+    expect(root()?.style.getPropertyValue('--accent')).toBe('#7DCFFF')
     app.unmount()
     renderDesktopApp()
     await screen.findByRole('heading', { name: 'No sessions running' })
-    expect(root()?.style.getPropertyValue('--accent')).toBe('#88C0D0')
+    expect(root()?.style.getPropertyValue('--accent')).toBe('#7DCFFF')
   })
 
   it('checks the start folder as it is typed and saves only a folder that exists', async () => {
@@ -945,12 +945,12 @@ describe('desktop overlays and pane tools', () => {
     await screen.findByRole('heading', { name: 'No sessions running' })
     await user.keyboard('{Control>}{Shift>}k{/Shift}{/Control}')
     const dialog = await screen.findByRole('dialog', { name: 'Command palette' })
-    expect(within(dialog).queryByRole('option', { name: /Nord/ })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('option', { name: /Tokyo/ })).not.toBeInTheDocument()
 
-    await user.type(within(dialog).getByRole('combobox'), 'nord')
+    await user.type(within(dialog).getByRole('combobox'), 'tokyo')
     await user.keyboard('{Enter}')
 
-    await waitFor(() => { expect(JSON.parse(window.localStorage.getItem('maitty.gui.settings.v1') ?? '{}')).toMatchObject({ themeMode: 'dark', darkTheme: 'Nord' }) })
+    await waitFor(() => { expect(JSON.parse(window.localStorage.getItem('maitty.gui.settings.v1') ?? '{}')).toMatchObject({ themeMode: 'dark', darkTheme: 'Tokyo Night' }) })
   })
 
   it('shows a card when a session you are not in needs you, and Allow types the answer', async () => {

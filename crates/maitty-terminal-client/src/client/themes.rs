@@ -471,24 +471,24 @@ mod tests {
     }
 
     #[test]
-    fn theme_browser_opens_on_the_theme_an_old_name_became() {
+    fn theme_browser_opens_on_the_theme_an_old_name_became_even_a_removed_one() {
         let mut app = app();
         app.cfg.theme_dark = "melange".into();
         app.open_themes_on(false);
         assert!(
-            matches!(app.mode, Mode::Themes { sel, .. } if matching("", false)[sel] == "melange-dark")
+            matches!(app.mode, Mode::Themes { sel, .. } if matching("", false)[sel] == "gruvbox")
         );
     }
 
     #[test]
     fn theme_browser_filters_previews_and_returns_without_changing_the_theme() {
         let mut app = app();
-        app.cfg.theme = "dracula".into();
-        app.cfg.theme_dark = "dracula".into();
-        app.theme = Theme::named("dracula");
+        app.cfg.theme = "one-dark".into();
+        app.cfg.theme_dark = "one-dark".into();
+        app.theme = Theme::named("one-dark");
         app.open_themes_on(false);
         assert!(
-            matches!(app.mode, Mode::Themes { sel, .. } if matching("", false)[sel] == "dracula")
+            matches!(app.mode, Mode::Themes { sel, .. } if matching("", false)[sel] == "one-dark")
         );
         app.on_paste("CATPPUCCIN mocha\nignored".into());
         assert_eq!(
@@ -515,8 +515,8 @@ mod tests {
                 .any(|cell| cell.bg == Theme::named("catppuccin-mocha").bg)
         );
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        assert_eq!(app.cfg.theme, "dracula");
-        assert_eq!(app.theme.bg, Theme::named("dracula").bg);
+        assert_eq!(app.cfg.theme, "one-dark");
+        assert_eq!(app.theme.bg, Theme::named("one-dark").bg);
         assert!(
             matches!(&app.mode, Mode::ScreenSettings(view) if view.cat == 1 && matches!(super::super::design::settings_rows(modal::Cat::Appearance).get(view.sel), Some(super::super::design::SRow::Setting(s)) if s.path == "theme_dark"))
         );
@@ -529,7 +529,7 @@ mod tests {
         let dark = matching("", false);
         let default = dark.iter().position(|name| *name == DEFAULT).unwrap();
         app.on_key(KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE));
-        assert!(matches!(app.mode, Mode::Themes { sel, .. } if sel == default + PAGE_ROWS));
+        assert!(matches!(app.mode, Mode::Themes { sel, .. } if sel == (default + PAGE_ROWS).min(dark.len() - 1)));
         app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE));
         // At 40 columns the swatches clip the label to its first few letters.
         let last: String = theme_label(dark.last().unwrap()).chars().take(6).collect();
@@ -568,18 +568,18 @@ mod tests {
     fn the_appearance_switch_changes_the_whole_screen_and_each_slot_keeps_its_pick() {
         let mut app = app();
         let mut cfg = app.cfg.clone();
-        cfg.theme_dark = "dracula".into();
-        cfg.theme_light = "vim".into();
+        cfg.theme_dark = "one-dark".into();
+        cfg.theme_light = "one-light".into();
         cfg.appearance = "dark".into();
         cfg.settle_theme([true; 3]);
         app.apply_config(cfg.clone());
-        assert_eq!(app.theme.bg, Theme::named("dracula").bg);
+        assert_eq!(app.theme.bg, Theme::named("one-dark").bg);
         cfg.appearance = "light".into();
         cfg.settle_theme([true; 3]);
         app.apply_config(cfg.clone());
         assert_eq!(
             app.theme.bg,
-            Theme::named("vim").bg,
+            Theme::named("one-light").bg,
             "the light slot's theme shows"
         );
         assert!(app.theme.is_light());
@@ -587,13 +587,13 @@ mod tests {
         cfg.appearance = "dark".into();
         cfg.settle_theme([true; 3]);
         app.apply_config(cfg);
-        assert_eq!(app.theme.bg, Theme::named("dracula").bg);
+        assert_eq!(app.theme.bg, Theme::named("one-dark").bg);
     }
 
     #[test]
     fn a_tab_click_switches_tabs_and_lands_on_the_theme_that_tab_chose() {
         let mut app = app();
-        app.cfg.theme_light = "vim".into();
+        app.cfg.theme_light = "one-light".into();
         app.open_themes_on(false);
         let before = draw(&mut app, 100, 30);
         assert!(
@@ -607,7 +607,7 @@ mod tests {
         app.on_hy_hit(ScreenHit::ThemeTab(true), false);
         assert!(app.theme_tab_light);
         assert!(
-            matches!(app.mode, Mode::Themes { sel, .. } if matching("", true)[sel] == "vim"),
+            matches!(app.mode, Mode::Themes { sel, .. } if matching("", true)[sel] == "one-light"),
             "the Light tab opens on its own pick"
         );
         app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE));
@@ -635,7 +635,7 @@ mod tests {
         app.open_themes_on(false);
         let selected = matching("", false)
             .iter()
-            .position(|name| *name == "kanagawa-wave")
+            .position(|name| *name == "github-dark")
             .unwrap();
         app.on_hy_hit(ScreenHit::ThemePick(selected), false);
         assert!(matches!(app.mode, Mode::Themes { sel, saving: false, .. } if sel == selected));
@@ -647,7 +647,7 @@ mod tests {
                 .iter()
                 .map(|cell| cell.symbol())
                 .collect::<String>()
-                .contains("PREVIEW · Kanagawa Wave")
+                .contains("PREVIEW · GitHub Dark")
         );
         app.on_mouse(super::super::MouseEvent {
             kind: super::super::MouseEventKind::ScrollDown,
@@ -659,7 +659,7 @@ mod tests {
         app.on_hy_hit(ScreenHit::Close, false);
         assert!(matches!(app.mode, Mode::ScreenSettings(_)));
         assert_eq!(app.cfg.theme, applied);
-        assert_eq!(matching("frappe", false), vec!["catppuccin-frappe"]);
-        assert_eq!(matching("rosé dawn", true), vec!["rose-pine-dawn"]);
+        assert_eq!(matching("mocha", false), vec!["catppuccin-mocha"]);
+        assert_eq!(matching("latte", true), vec!["catppuccin-latte"]);
     }
 }

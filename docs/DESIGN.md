@@ -28,8 +28,9 @@ slots (Settings › Appearance) and a switch; **Maitty Night** (id `night`) is t
 **Maitty Day** (id `day`) the default light one, and the browser lists each side on its own tab. **Maitty Dark** (`maitty-dark`) and **Maitty Light** (`maitty-light`) are the same accents on a standard black and white ground, from the file's `dark` and `light` sections. They are
 Sea-glass and Brass, built from `crates/maitty-settings/maitty-tokens.json`, the one file the colours are
 read from: brass is the accent, teal only ever means working, coral only ever means needs you, and the AI in
-the wordmark is gold. Night is a deep teal-black ground; Day a pale sea-glass one. The other built-in
-themes fill the same roles; [theme sources](theme-credits.md) lists where they come from.
+the wordmark is gold. Night is a deep teal-black ground; Day a pale sea-glass one. The other twelve built-in
+themes (a dark and a light each of GitHub, One, Catppuccin, Solarized, Gruvbox and Tokyo Night, listed with Maitty's four in
+`crates/maitty-settings/themes.json`) fill the same roles; [theme sources](theme-credits.md) lists where they come from.
 
 | Role | Used for | Night | Day |
 | --- | --- | --- | --- |
@@ -594,9 +595,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   hold still under Reduce motion and pause while the window is in the background. Text-only places (a hover
   card) show the Braille frames while a web spinner is picked.
 - **Process icons** are generic tiles, never a product's mark: `>_` shell, `✻` codex, `rs` cargo.
-- **Themes** are **Maitty Night** and **Maitty Day** (the defaults, built from `crates/maitty-settings/maitty-tokens.json`, the same file the TUI's `night` and `day` read: sea-glass and brass; brass is the accent (`--accent` as a fill, `--accent-text` as text, darker by day), teal is only ever `--working`, coral is only ever needs-you (`--warn`)), themes generated from six
-  inputs (`bg fg accent mag blue green` and a light flag) by Oklab mixing, and **High Contrast** (pure
-  black and white, lines `#5A5A5A`/`#8A8A8A`, amber and red kept). Every theme's `--pane` is its opaque
+- **Themes**: sixteen, the same in the GUI and the TUI (`crates/maitty-settings/themes.json` lists them; a TUI test holds its ground and text equal to it). Four are Maitty's own, built from `crates/maitty-settings/maitty-tokens.json` (the TUI reads it too): **Maitty Night** and **Maitty Day** (sea-glass and brass, the defaults) and **Maitty Dark** and **Maitty Light** (a standard black and white ground, same accents). Brass is the accent (`--accent` as a fill, `--accent-text` as text, darker by day), teal is only ever `--working`, coral is only ever needs-you (`--warn`). The other twelve are six families, each with a dark and a light (GitHub, One, Catppuccin, Solarized, Gruvbox, Tokyo Night), generated from six inputs (`bg fg accent mag blue green` and a light flag) by Oklab mixing. A saved theme that is gone falls back to Maitty Night or Maitty Day (the TUI maps each removed id to its nearest survivor). The theme is stored as its id (`night`, `github-dark`, ...) in the shared settings. Every theme's `--pane` is its opaque
   `--main`. The foreground, terminal text (`--fg2`), muted and dim text keep 4.5:1 on both `--term` and the
   window `--bg`, and Maitty Night and Maitty Day also hold it for the accent text, working, needs-you, red, done and the ANSI blue,
   magenta and green; the theme tests check this. Every light theme holds it too, for accent, amber, red,

@@ -2652,18 +2652,18 @@ mod screen_tests {
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         let o = draw(&mut app, 160, 45);
         assert!(
-            o.contains("Dark themes") && o.contains("Night") && !o.contains("Day"),
+            o.contains("Dark themes") && o.contains("Maitty Night") && !o.contains("Maitty Day"),
             "the dark tab lists only dark themes"
         );
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         let o = draw(&mut app, 160, 45);
         assert!(
-            o.contains("Light themes") && o.contains("Day") && !o.contains("Night"),
+            o.contains("Light themes") && o.contains("Maitty Day") && !o.contains("Maitty Night"),
             "Tab shows the light tab, on the light theme chosen"
         );
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
-        app.on_paste("Monokai".into());
-        assert!(draw(&mut app, 160, 45).contains("Monokai"));
+        app.on_paste("Gruvbox".into());
+        assert!(draw(&mut app, 160, 45).contains("Gruvbox"));
         app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
         app.on_paste("Tokyo Night".into());
         assert!(draw(&mut app, 160, 45).contains("Tokyo Night"));
@@ -10587,7 +10587,7 @@ mod check_settings_tests {
 
     #[test]
     fn saving_a_check_writes_its_table_in_place_and_keeps_the_comments() {
-        let before = "# my notes\ntheme = \"nord\"\n\n[ui]\n# my ui notes\nsidebar = true\n";
+        let before = "# my notes\ntheme = \"tokyo-night\"\n\n[ui]\n# my ui notes\nsidebar = true\n";
         let (out, cfg) = edited(before, set("npm test", 600));
         assert!(
             out.contains("# my notes") && out.contains("# my ui notes"),
@@ -10649,7 +10649,7 @@ mod check_settings_tests {
             cfg.check.is_empty() && !out.contains("check"),
             "the last one takes the key with it: {out}"
         );
-        let (_, cfg) = edited("theme = \"nord\"\n", remove(project()));
+        let (_, cfg) = edited("theme = \"tokyo-night\"\n", remove(project()));
         assert!(cfg.check.is_empty(), "removing what is not there is fine");
     }
 

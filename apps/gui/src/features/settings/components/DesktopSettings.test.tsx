@@ -207,17 +207,17 @@ describe('desktop settings', () => {
 
   it('picks a dark and a light theme separately, from searchable dropdowns that list the one in use first', async () => {
     const user = userEvent.setup()
-    const { onChange } = renderSettings('appearance', { preferences: { ...PREFS, darkTheme: 'Nord' } })
-    expect(screen.getByText('28 themes installed')).toBeInTheDocument()
+    const { onChange } = renderSettings('appearance', { preferences: { ...PREFS, darkTheme: 'Gruvbox Dark' } })
+    expect(screen.getByText('16 themes installed')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Dark theme: Nord' }))
+    await user.click(screen.getByRole('button', { name: 'Dark theme: Gruvbox Dark' }))
     const dark = (await screen.findByRole('radiogroup', { name: 'Dark themes' }))
-    expect(within(dark).getAllByRole('radio')[0]).toHaveTextContent('Nord')
+    expect(within(dark).getAllByRole('radio')[0]).toHaveTextContent('Gruvbox Dark')
     expect(within(dark).queryByRole('radio', { name: /Maitty Day/ })).not.toBeInTheDocument()
-    await user.type(screen.getByRole('textbox', { name: 'Search dark themes' }), 'dracula')
+    await user.type(screen.getByRole('textbox', { name: 'Search dark themes' }), 'tokyo')
     expect(within(dark).getAllByRole('radio')).toHaveLength(1)
-    await user.click(within(dark).getByRole('radio', { name: /Dracula/ }))
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ darkTheme: 'Dracula' }))
+    await user.click(within(dark).getByRole('radio', { name: /Tokyo Night/ }))
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ darkTheme: 'Tokyo Night' }))
     expect(screen.queryByRole('radiogroup', { name: 'Dark themes' })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Light theme: Maitty Day' }))
@@ -252,8 +252,8 @@ describe('desktop settings', () => {
     const { onPreviewTheme } = renderSettings('appearance', { preferences: { ...PREFS, themeMode: 'dark' } })
 
     await user.click(screen.getByRole('button', { name: 'Dark theme: Maitty Night' }))
-    await user.hover(within((await screen.findByRole('radiogroup', { name: 'Dark themes' }))).getByRole('radio', { name: /Nord/ }))
-    expect(onPreviewTheme).toHaveBeenLastCalledWith('Nord')
+    await user.hover(within((await screen.findByRole('radiogroup', { name: 'Dark themes' }))).getByRole('radio', { name: /Gruvbox Dark/ }))
+    expect(onPreviewTheme).toHaveBeenLastCalledWith('Gruvbox Dark')
     await user.hover(screen.getByRole('textbox', { name: 'Search dark themes' }))
     expect(onPreviewTheme).toHaveBeenLastCalledWith(null)
 

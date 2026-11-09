@@ -1,5 +1,6 @@
 import type { ITheme } from '@xterm/xterm'
 import maittyTokens from '@tokens/maitty-tokens.json'
+import themeManifest from '@tokens/themes.json'
 import { composite, contrastRatio, mixOklab, withAlpha } from './color'
 
 /** Every colour role the desktop app reads, set as CSS custom properties on the app root. */
@@ -51,7 +52,7 @@ export type ThemeInputs = { bg: string; fg: string; accent: string; mag: string;
 export type StyleLook = { ui: string; mono: string; hk?: string; sk?: string; sh?: string; glowAccent?: string; glowMag?: string }
 
 /** `cardRing` is the solid card colour that rings a status badge so it reads as cut out of the card. `look` is set by `withWindowStyle`. */
-export type ThemeEntry = { name: string; family: string; light: boolean; tokens: ThemeTokens; cardRing: string; look?: StyleLook }
+export type ThemeEntry = { id: string; name: string; family: string; light: boolean; tokens: ThemeTokens; cardRing: string; look?: StyleLook }
 
 /** Which theme is in use: the dark theme, the light theme, or whichever one the system's own setting asks for. */
 export type ThemeMode = 'system' | 'dark' | 'light'
@@ -76,16 +77,6 @@ const LIGHT_STATUS = { warn: '#8F5400', warnSoft: 'rgba(143,84,0,.07)', warnLine
 
 
 
-
-// Pure black and white with strong lines, for readability over polish. Warn and danger keep their meaning.
-const HIGH_CONTRAST: ThemeTokens = {
-  ansiBlue: '#8FB8FF', ansiMag: '#E3B5FF', ansiGreen: '#7CF29A', pane: '#000000', paneLine: 'rgba(255,255,255,.3)',
-  bg: '#000000', main: '#000000', raise: '#0D0D0D', hover: '#0A0A0A', sel: '#1C1C1C', line: '#5A5A5A', line2: '#8A8A8A',
-  well: '#000000', term: '#000000', fg: '#FFFFFF', fg2: '#EDEDED', muted: '#CFCFCF', dim: '#ABABAB', accent: '#3CF2D2', accentText: '#3CF2D2', working: '#3CF2D2',
-  accentSoft: 'rgba(60,242,210,.16)', accentLine: 'rgba(60,242,210,.75)', onAccent: '#000000',
-  warn: '#FFC94D', warnSoft: 'rgba(255,201,77,.12)', warnLine: 'rgba(255,201,77,.6)', onWarn: '#000000',
-  danger: '#FF7A7A', dangerSoft: 'rgba(255,122,122,.12)', dangerLine: 'rgba(255,122,122,.6)', ok: '#7CF29A',
-}
 
 // Mix percentages from the design; `fg2`, `muted` and `dim` are raised when a theme would fall below
 // MIN_TEXT_CONTRAST against the terminal ground or the window ground.
@@ -137,9 +128,11 @@ function shiftUntilReadable(colour: string, grounds: readonly string[], toward: 
 
 /** Builds every token from a theme's six inputs, as the TUI themes import. */
 export function generateTheme(inputs: ThemeInputs): ThemeTokens {
-  const { bg, fg, accent, mag, blue, green, light } = inputs
-  const towardFg = (percent: number) => mixOklab(bg, fg, percent)
+  const { bg, accent, mag, blue, green, light } = inputs
+  const towardFg = (percent: number) => mixOklab(bg, inputs.fg, percent)
   const windowBg = light ? towardFg(MIX.bgLight) : mixOklab(bg, '#000000', MIX.bgDark)
+  // The foreground is lifted (or darkened) in place if a theme's own would fall short on the window ground (Tokyo Night Day).
+  const fg = shiftUntilReadable(inputs.fg, [bg, windowBg], light ? '#000000' : '#FFFFFF')
   // Text sits on the card and terminal ground (`bg`) and, in the sidebar's gaps and the status bar, on the window ground.
   const readable = (start: number) => {
     let percent = start
@@ -186,36 +179,8 @@ export function generateTheme(inputs: ThemeInputs): ThemeTokens {
   }
 }
 
-// [name, bg, fg, accent, mag, blue, green, light, family]
-type GeneratedSource = readonly [string, string, string, string, string, string, string, boolean, string]
-
-const GENERATED: readonly GeneratedSource[] = [
-  ['Dracula', '#282A36', '#F8F8F2', '#8BE9FD', '#FF79C6', '#BD93F9', '#50FA7B', false, 'Vivid'],
-  ['Nord', '#2E3440', '#ECEFF4', '#88C0D0', '#B48EAD', '#81A1C1', '#A3BE8C', false, 'Arctic'],
-  ['Gruvbox Dark', '#282828', '#EBDBB2', '#8EC07C', '#D3869B', '#83A598', '#B8BB26', false, 'Retro'],
-  ['Gruvbox Light', '#FBF1C7', '#3C3836', '#427B58', '#8F3F71', '#076678', '#79740E', true, 'Retro'],
-  ['Catppuccin Mocha', '#1E1E2E', '#CDD6F4', '#94E2D5', '#CBA6F7', '#89B4FA', '#A6E3A1', false, 'Pastel'],
-  ['Catppuccin Latte', '#EFF1F5', '#4C4F69', '#179299', '#8839EF', '#1E66F5', '#40A02B', true, 'Pastel'],
-  ['Tokyo Night', '#1A1B26', '#C0CAF5', '#7DCFFF', '#BB9AF7', '#7AA2F7', '#9ECE6A', false, 'Neon'],
-  ['One Dark', '#282C34', '#ABB2BF', '#56B6C2', '#C678DD', '#61AFEF', '#98C379', false, 'Classic'],
-  ['Solarized Dark', '#002B36', '#93A1A1', '#2AA198', '#D33682', '#268BD2', '#859900', false, 'Classic'],
-  ['Solarized Light', '#FDF6E3', '#586E75', '#2AA198', '#D33682', '#268BD2', '#859900', true, 'Classic'],
-  ['Rosé Pine', '#191724', '#E0DEF4', '#9CCFD8', '#C4A7E7', '#31748F', '#9CCFD8', false, 'Muted'],
-  ['Rosé Pine Dawn', '#FAF4ED', '#575279', '#56949F', '#907AA9', '#286983', '#56949F', true, 'Muted'],
-  ['Kanagawa', '#1F1F28', '#DCD7BA', '#7AA89F', '#957FB8', '#7E9CD8', '#98BB6C', false, 'Ink'],
-  ['Everforest', '#2D353B', '#D3C6AA', '#83C092', '#D699B6', '#7FBBB3', '#A7C080', false, 'Forest'],
-  ['Monokai', '#272822', '#F8F8F2', '#66D9EF', '#AE81FF', '#66D9EF', '#A6E22E', false, 'Vivid'],
-  ['GitHub Dark', '#0D1117', '#C9D1D9', '#39C5CF', '#BC8CFF', '#58A6FF', '#3FB950', false, 'Clean'],
-  ['GitHub Light', '#FFFFFF', '#24292F', '#1B7C83', '#8250DF', '#0969DA', '#1A7F37', true, 'Clean'],
-  ['Ayu Mirage', '#1F2430', '#CBCCC6', '#95E6CB', '#D4BFFF', '#73D0FF', '#BAE67E', false, 'Soft'],
-  ['Material Ocean', '#0F111A', '#A6ACCD', '#89DDFF', '#C792EA', '#82AAFF', '#C3E88D', false, 'Deep'],
-  ['Night Owl', '#011627', '#D6DEEB', '#7FDBCA', '#C792EA', '#82AAFF', '#ADDB67', false, 'Deep'],
-  ['Horizon', '#1C1E26', '#E0E0E0', '#25B0BC', '#B877DB', '#26BBD9', '#29D398', false, 'Warm'],
-  ['Oxocarbon', '#161616', '#F2F4F8', '#3DDBD9', '#BE95FF', '#78A9FF', '#42BE65', false, 'Mono'],
-  ['Zenburn', '#3F3F3F', '#DCDCCC', '#93E0E3', '#DC8CC3', '#8CD0D3', '#7F9F7F', false, 'Low contrast'],
-]
-
-const entry = (name: string, family: string, light: boolean, tokens: ThemeTokens): ThemeEntry => ({
+const entry = (id: string, name: string, family: string, light: boolean, tokens: ThemeTokens): ThemeEntry => ({
+  id,
   name,
   family,
   light,
@@ -223,16 +188,24 @@ const entry = (name: string, family: string, light: boolean, tokens: ThemeTokens
   cardRing: composite(tokens.pane, tokens.bg),
 })
 
-export const THEMES: readonly ThemeEntry[] = [
-  entry('Maitty Night', 'Maitty · default dark', false, MAITTY_NIGHT),
-  entry('Maitty Day', 'Maitty · default light', true, MAITTY_DAY),
-  entry('Maitty Dark', 'Maitty · black', false, MAITTY_DARK),
-  entry('Maitty Light', 'Maitty · white', true, MAITTY_LIGHT),
-  ...GENERATED.map(([name, bg, fg, accent, mag, blue, green, light, family]) =>
-    entry(name, `${family} · ${light ? 'light' : 'dark'}`, light, generateTheme({ bg, fg, accent, mag, blue, green, light })),
-  ),
-  entry('High Contrast', 'Accessibility · dark', false, HIGH_CONTRAST),
-]
+const MAITTY_TOKENS = { night: MAITTY_NIGHT, day: MAITTY_DAY, dark: MAITTY_DARK, light: MAITTY_LIGHT } as const
+
+/**
+ * The themes both apps ship, in display order, from `themes.json` (the TUI reads the same list): four of Maitty's own, built
+ * from `maitty-tokens.json`, and six families with a dark and a light each, generated from six colours.
+ */
+export const THEMES: readonly ThemeEntry[] = themeManifest.themes.map((theme) => {
+  const kind = theme.light ? 'light' : 'dark'
+  if ('tokens' in theme) return entry(theme.id, theme.name, `${theme.family} · ${kind}`, theme.light, MAITTY_TOKENS[theme.tokens as keyof typeof MAITTY_TOKENS])
+  const { bg, fg, accent, mag, blue, green, light } = theme
+  return entry(theme.id, theme.name, `${theme.family} · ${kind}`, light, generateTheme({ bg, fg, accent, mag, blue, green, light }))
+})
+
+/** The id both apps store a theme under (the TUI's config name) for a theme's display name; the name itself when it is unknown. */
+export const themeIdOf = (name: string): string => THEMES.find((theme) => theme.name === name)?.id ?? name
+
+/** The display name of the theme stored under `id`, or null when no shipped theme has it. */
+export const themeNameOf = (id: string): string | null => THEMES.find((theme) => theme.id === id)?.name ?? null
 
 /** The theme in use for a mode. `systemDark` only matters in System mode. */
 export function activeThemeName(choice: { themeMode: ThemeMode; darkTheme: string; lightTheme: string }, systemDark: boolean): string {

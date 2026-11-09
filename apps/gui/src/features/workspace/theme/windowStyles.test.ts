@@ -20,7 +20,7 @@ describe('window styles', () => {
   })
 
   it('is shape only: whatever the style, the theme keeps its own colours', () => {
-    for (const theme of [MIDNIGHT, DAY, findTheme('Maitty Dark'), findTheme('Nord')]) {
+    for (const theme of [MIDNIGHT, DAY, findTheme('Maitty Dark'), findTheme('Catppuccin Mocha')]) {
       for (const id of WINDOW_STYLE_IDS) expect(withWindowStyle(theme, id).tokens, `${theme.name} in ${id}`).toEqual(theme.tokens)
     }
     expect(withWindowStyle(MIDNIGHT, 'pixel').tokens.accent).toBe('#e3a72f')
@@ -38,7 +38,7 @@ describe('window styles', () => {
   })
 
   it("keeps another theme's own colours and gives it only the style's fonts, dials and shapes", () => {
-    const dracula = findTheme('Dracula')
+    const dracula = findTheme('Tokyo Night')
     const styled = withWindowStyle(dracula, 'pixel')
     expect(styled.tokens).toEqual(dracula.tokens)
     expect(themeStyle(styled)['--ui']).toContain('Pixelify')

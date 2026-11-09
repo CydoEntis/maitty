@@ -1,0 +1,177 @@
+{
+ "note": "The themes both apps ship, in display order: four of Maitty's own (palettes in maitty-tokens.json) and six families with a dark and a light each. The GUI builds a family's tokens from the six colours; the TUI hand-tunes its own palette and a test holds its ground and text equal to these.",
+ "themes": [
+  {
+   "id": "night",
+   "name": "Maitty Night",
+   "family": "Maitty",
+   "light": false,
+   "tokens": "night"
+  },
+  {
+   "id": "day",
+   "name": "Maitty Day",
+   "family": "Maitty",
+   "light": true,
+   "tokens": "day"
+  },
+  {
+   "id": "maitty-dark",
+   "name": "Maitty Dark",
+   "family": "Maitty",
+   "light": false,
+   "tokens": "dark"
+  },
+  {
+   "id": "maitty-light",
+   "name": "Maitty Light",
+   "family": "Maitty",
+   "light": true,
+   "tokens": "light"
+  },
+  {
+   "id": "github-dark",
+   "name": "GitHub Dark",
+   "family": "GitHub",
+   "light": false,
+   "bg": "#0D1117",
+   "fg": "#C9D1D9",
+   "accent": "#39C5CF",
+   "mag": "#BC8CFF",
+   "blue": "#58A6FF",
+   "green": "#3FB950"
+  },
+  {
+   "id": "github-light",
+   "name": "GitHub Light",
+   "family": "GitHub",
+   "light": true,
+   "bg": "#FFFFFF",
+   "fg": "#24292F",
+   "accent": "#1B7C83",
+   "mag": "#8250DF",
+   "blue": "#0969DA",
+   "green": "#1A7F37"
+  },
+  {
+   "id": "one-dark",
+   "name": "One Dark",
+   "family": "One",
+   "light": false,
+   "bg": "#282C34",
+   "fg": "#ABB2BF",
+   "accent": "#56B6C2",
+   "mag": "#C678DD",
+   "blue": "#61AFEF",
+   "green": "#98C379"
+  },
+  {
+   "id": "one-light",
+   "name": "One Light",
+   "family": "One",
+   "light": true,
+   "bg": "#FAFAFA",
+   "fg": "#383A42",
+   "accent": "#0184BC",
+   "mag": "#A626A4",
+   "blue": "#4078F2",
+   "green": "#50A14F"
+  },
+  {
+   "id": "catppuccin-mocha",
+   "name": "Catppuccin Mocha",
+   "family": "Catppuccin",
+   "light": false,
+   "bg": "#1E1E2E",
+   "fg": "#CDD6F4",
+   "accent": "#94E2D5",
+   "mag": "#CBA6F7",
+   "blue": "#89B4FA",
+   "green": "#A6E3A1"
+  },
+  {
+   "id": "catppuccin-latte",
+   "name": "Catppuccin Latte",
+   "family": "Catppuccin",
+   "light": true,
+   "bg": "#EFF1F5",
+   "fg": "#4C4F69",
+   "accent": "#179299",
+   "mag": "#8839EF",
+   "blue": "#1E66F5",
+   "green": "#40A02B"
+  },
+  {
+   "id": "solarized-dark",
+   "name": "Solarized Dark",
+   "family": "Solarized",
+   "light": false,
+   "bg": "#002B36",
+   "fg": "#93A1A1",
+   "accent": "#2AA198",
+   "mag": "#D33682",
+   "blue": "#268BD2",
+   "green": "#859900"
+  },
+  {
+   "id": "solarized-light",
+   "name": "Solarized Light",
+   "family": "Solarized",
+   "light": true,
+   "bg": "#FDF6E3",
+   "fg": "#586E75",
+   "accent": "#2AA198",
+   "mag": "#D33682",
+   "blue": "#268BD2",
+   "green": "#859900"
+  },
+  {
+   "id": "gruvbox",
+   "name": "Gruvbox Dark",
+   "family": "Gruvbox",
+   "light": false,
+   "bg": "#282828",
+   "fg": "#EBDBB2",
+   "accent": "#8EC07C",
+   "mag": "#D3869B",
+   "blue": "#83A598",
+   "green": "#B8BB26"
+  },
+  {
+   "id": "gruvbox-light",
+   "name": "Gruvbox Light",
+   "family": "Gruvbox",
+   "light": true,
+   "bg": "#FBF1C7",
+   "fg": "#3C3836",
+   "accent": "#427B58",
+   "mag": "#8F3F71",
+   "blue": "#076678",
+   "green": "#79740E"
+  },
+  {
+   "id": "tokyo-night",
+   "name": "Tokyo Night",
+   "family": "Tokyo Night",
+   "light": false,
+   "bg": "#1A1B26",
+   "fg": "#C0CAF5",
+   "accent": "#7DCFFF",
+   "mag": "#BB9AF7",
+   "blue": "#7AA2F7",
+   "green": "#9ECE6A"
+  },
+  {
+   "id": "tokyo-night-day",
+   "name": "Tokyo Night Day",
+   "family": "Tokyo Night",
+   "light": true,
+   "bg": "#E1E2E7",
+   "fg": "#3760BF",
+   "accent": "#007197",
+   "mag": "#9854F1",
+   "blue": "#2E7DE9",
+   "green": "#587539"
+  }
+ ]
+}

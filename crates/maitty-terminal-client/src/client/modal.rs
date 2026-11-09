@@ -736,7 +736,7 @@ mod tests {
         let file = dir.join("config.toml");
         std::fs::write(
             &file,
-            "# my notes\ntheme = \"nord\"\n\n[ui]\n# my ui notes\nsidebar = true\n",
+            "# my notes\ntheme = \"tokyo-night\"\n\n[ui]\n# my ui notes\nsidebar = true\n",
         )
         .unwrap();
         // SAFETY: tests touching <APP>_CONFIG run in this one test only.
@@ -748,7 +748,7 @@ mod tests {
         let mut app = super::super::App::new(Config::load().unwrap(), tx, None, bg_tx);
         app.splash = false;
         app.open_themes_on(true);
-        app.on_paste("zenbones light".into());
+        app.on_paste("one light".into());
         app.on_key(super::super::KeyEvent::new(
             super::super::KeyCode::Enter,
             super::super::KeyModifiers::NONE,
@@ -758,15 +758,15 @@ mod tests {
             super::super::Mode::Themes { saving: true, .. }
         ));
         app.on_bg(bg_rx.blocking_recv().unwrap());
-        assert_eq!(app.cfg.theme_light, "zenbones-light");
+        assert_eq!(app.cfg.theme_light, "one-light");
         assert_eq!(
-            app.cfg.theme, "nord",
+            app.cfg.theme, "tokyo-night",
             "a light pick leaves the dark theme they had showing"
         );
-        assert_eq!(app.theme.bg, crate::theme::Theme::named("nord").bg);
+        assert_eq!(app.theme.bg, crate::theme::Theme::named("tokyo-night").bg);
         assert!(matches!(app.mode, super::super::Mode::ScreenSettings(_)));
         let out = std::fs::read_to_string(&file).unwrap();
-        assert!(out.contains("theme_light = \"zenbones-light\""));
+        assert!(out.contains("theme_light = \"one-light\""));
         // A directory cannot be a config file: failed saves retain the browser and applied theme.
         unsafe { std::env::set_var(concat!(env!("APP_ENV"), "_CONFIG"), &dir) };
         app.open_themes_on(false);
@@ -776,7 +776,7 @@ mod tests {
             super::super::KeyModifiers::NONE,
         ));
         app.on_bg(bg_rx.blocking_recv().unwrap());
-        assert_eq!(app.cfg.theme, "nord");
+        assert_eq!(app.cfg.theme, "tokyo-night");
         assert!(
             matches!(&app.mode, super::super::Mode::Themes { query, saving: false, .. } if query == "solarized dark")
         );
