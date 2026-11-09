@@ -277,16 +277,16 @@
 :root[data-style="glass"]:not([data-gpu="software"]) .mx-app .mx-window { background: transparent; }
 /* Frosted, not clear: the sidebar and the main card are mostly opaque with a milky sheen and a strong blur, so what is behind them
    reaches the eye as a soft wash of colour and never as shapes. The fill, sheen and edge strength differ for dark and light. */
-.mx-app { --g-fill: 84%; --g-hi: .09; --g-lo: .03; --g-edge: .2; --g-glow: 9%; }
-.mx-app[data-theme-kind="light"] { --g-fill: 74%; --g-hi: .65; --g-lo: .3; --g-edge: .9; --g-glow: 12%; }
+.mx-app { --g-fill: 90%; --g-hi: .06; --g-lo: .02; --g-edge: .12; --g-glow: 4%; }
+.mx-app[data-theme-kind="light"] { --g-fill: 84%; --g-hi: .45; --g-lo: .2; --g-edge: .6; --g-glow: 5%; }
 :root[data-style="glass"] .mx-app .mx-sidebar,
 :root[data-style="glass"] .mx-app .mx-main {
   background: linear-gradient(140deg, rgba(var(--hs), var(--g-hi)), rgba(var(--hs), var(--g-lo))), color-mix(in srgb, var(--main) var(--g-fill), transparent);
-  backdrop-filter: blur(28px) saturate(140%);
-  -webkit-backdrop-filter: blur(28px) saturate(140%);
+  backdrop-filter: blur(20px) saturate(115%);
+  -webkit-backdrop-filter: blur(20px) saturate(115%);
   border: 1px solid rgba(var(--hs), var(--g-edge));
   border-radius: 22px;
-  box-shadow: 0 30px 50px -22px rgba(var(--sd), calc(.55 * var(--sk))), inset 0 1px 0 rgba(var(--hs), .4), inset 0 0 60px color-mix(in srgb, var(--working) var(--g-glow), transparent);
+  box-shadow: 0 24px 44px -24px rgba(var(--sd), calc(.45 * var(--sk))), inset 0 1px 0 rgba(var(--hs), .25), inset 0 0 50px color-mix(in srgb, var(--working) var(--g-glow), transparent);
 }
 /* A terminal pane is the frost itself: the header and the margin around the text show the card, and the text is drawn on it when the
    terminal is see-through (the default). Without WebGL the canvas paints the theme's solid ground, which differs only at its edge. */

@@ -226,7 +226,8 @@ export function findTheme(name: string): ThemeEntry {
  * light themes are lit and shaded by their own ink, more faintly.
  */
 const DARK_GLASS = { '--hl': '255,255,255', '--hs': '255,255,255', '--hk': '1', '--sd': '0,0,0', '--sk': '1' }
-const LIGHT_GLASS = { '--hl': '20,32,46', '--hs': '255,255,255', '--hk': '.85', '--sd': '20,32,46', '--sk': '.3' }
+// A light theme's tints (hovers, raised fills, tracks, hairlines) are a warm brown ink, not a blue-grey one, so they read as cream over a pale ground.
+const LIGHT_GLASS = { '--hl': '112,92,52', '--hs': '255,255,255', '--hk': '.85', '--sd': '70,52,24', '--sk': '.3' }
 
 /** The theme as CSS custom properties, for the app root's style. */
 export function themeStyle(theme: ThemeEntry): Record<string, string> {
