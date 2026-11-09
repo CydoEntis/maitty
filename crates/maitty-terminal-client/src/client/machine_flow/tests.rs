@@ -560,6 +560,41 @@ fn a_missing_app_adds_the_machine_so_its_state_can_say_what_to_install() {
     });
 }
 
+#[test]
+fn after_an_update_that_left_the_daemon_old_the_fix_becomes_a_restart_that_runs_with_restart() {
+    let runtime = Runtime::new();
+    runtime.block_on(async {
+        let mut h = Harness::live("not-installed").await;
+        h.add_by_enter("box");
+        h.until("the machine to say what it needs", |h| {
+            matches!(h.state_of("box"), Some(ConnectionState::NeedsUpdate { .. }))
+        })
+        .await;
+        let id = h.id_of("box").expect("its connection");
+        let old_daemon = ConnectionState::NeedsUpdate {
+            why: crate::link_failure::FIX_UPDATE.into(),
+        };
+        h.app.remotes.get_mut(&id).unwrap().state = old_daemon.clone();
+        assert_eq!(h.app.machine_fix(id), Some(AppFix::Update));
+
+        // The update ran to its end, and the machine still answers with another version.
+        h.app.machine_update_from_side(id);
+        h.app.machine_login_done("box");
+        h.app.remotes.get_mut(&id).unwrap().state = old_daemon;
+        assert_eq!(h.app.machine_fix(id), Some(AppFix::Restart));
+
+        // The chip is now a restart, and it runs the popup with --restart.
+        h.app.machine_update_from_side(id);
+        let popups = h.popups();
+        let (_, cmd) = popups.last().expect("a popup");
+        assert!(cmd.ends_with(" machine update box --restart --hold"), "{cmd}");
+
+        // Once it connects, nothing is left to restart.
+        h.app.machine_update_settled("box");
+        assert!(!h.app.machine_restart_pending(id));
+    });
+}
+
 // ---- live: connecting, the popup's end, removing, retrying ---------------------------------
 
 #[test]
