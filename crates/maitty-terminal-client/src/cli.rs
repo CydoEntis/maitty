@@ -1173,6 +1173,10 @@ pub fn kill_server(t: &Target, forget: bool) -> Result<()> {
     }
 }
 
+/// The word `restart-if-idle` leads with when it leaves the server alone; `machine update` reads it
+/// from the far side's reply, so the two must agree.
+pub(crate) const LEFT_RUNNING: &str = "left running";
+
 /// What `machine update` asks of the server it leaves running (it runs this over ssh): stop
 /// it so the next start is the new version. Without `now` only when no session is open; with
 /// `now` also when sessions are open but saved, because the next server restores them and
@@ -1196,10 +1200,10 @@ pub fn restart_if_idle(now: bool) -> Result<()> {
     if !may_restart {
         match published {
             Some(a) => println!(
-                "left running: {} open session(s); it keeps them",
+                "{LEFT_RUNNING}: {} open session(s); it keeps them",
                 a.sessions
             ),
-            None => println!("left running: it did not say whether sessions are open"),
+            None => println!("{LEFT_RUNNING}: it did not say whether sessions are open"),
         }
         return Ok(());
     }

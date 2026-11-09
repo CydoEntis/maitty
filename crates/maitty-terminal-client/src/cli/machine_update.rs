@@ -5,7 +5,8 @@
 //! a fixed script that swaps it in only after it has arrived whole and run. The far side's
 //! install script never signals a process. Afterwards the far daemon is asked to restart: only
 //! if no session is open, or with `--restart` also when its sessions are saved, because the new
-//! daemon restores them and resumes their agents (a turn in progress is lost).
+//! daemon restores them and resumes their agents (a turn in progress is lost). When sessions
+//! keep it running and a person is at the keyboard, it asks whether to restart now.
 
 pub(crate) mod binary;
 
@@ -372,13 +373,33 @@ fn restart_daemon(machine: &Machine, to: &str, name: &str, now: bool, talk: &mut
         .and_then(|argv| ssh_run::run(&argv, None, ASK_LIMIT));
     match asked {
         Ok(ran) if ran.code == Some(0) => {
-            talk.say(&format!("daemon: {}", last_line(&ran.stdout)));
+            let line = last_line(&ran.stdout);
+            talk.say(&format!("daemon: {line}"));
+            if !now && line.starts_with(crate::cli::LEFT_RUNNING) {
+                offer_restart_now(machine, to, name, talk);
+            }
         }
         Ok(ran) => talk.say(&format!(
             "note: could not ask the daemon ({}); running sessions are untouched, and it takes the new version when it next restarts",
             last_line(&ran.stderr)
         )),
         Err(why) => talk.say(&format!("note: could not ask the daemon ({why}); running sessions are untouched")),
+    }
+}
+
+/// The daemon kept its sessions and so still runs the old version, which the window reports as
+/// "needs update" until it restarts. Saying "updated" and leaving that standing is the trap, so
+/// a person at the keyboard is asked; otherwise the way out is spelled out.
+fn offer_restart_now(machine: &Machine, to: &str, name: &str, talk: &mut dyn Talk) {
+    let question = format!(
+        "The daemon on {name} still runs the old version until it restarts. Restart it now? Its sessions are saved and come back; an agent turn in progress is lost."
+    );
+    if talk.can_ask() && talk.confirm(&question) {
+        restart_daemon(machine, to, name, true, talk);
+    } else {
+        talk.say(&format!(
+            "note: the daemon on {name} still runs the old version, so it keeps showing as needing an update; click Update on {name} (or press u on it in Machines) again when you are ready to restart it"
+        ));
     }
 }
 
