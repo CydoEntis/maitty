@@ -7596,7 +7596,7 @@ fn test_client(surface: Surface) -> Client {
 }
 
 #[test]
-fn a_desktop_agent_that_died_mid_turn_comes_back_as_a_shell_that_offers_the_resume() {
+fn an_agent_that_died_mid_turn_comes_back_as_a_shell_that_offers_the_resume() {
     let (mut d, _rx) = daemon();
     let dir = std::env::temp_dir();
     let saved_pane = |owner: Surface, was_working: bool| persist::SavedPane {
@@ -7625,6 +7625,11 @@ fn a_desktop_agent_that_died_mid_turn_comes_back_as_a_shell_that_offers_the_resu
         workspaces: vec![
             ws(saved_pane(Surface::Desktop, true)),
             ws(saved_pane(Surface::Desktop, false)),
+            // Its own session, so it is not taken for a second pane of the conversation above.
+            ws(persist::SavedPane {
+                session: Some("its-own".into()),
+                ..saved_pane(Surface::Terminal, true)
+            }),
         ],
         active: 0,
         made_worktrees: Vec::new(),
@@ -7632,7 +7637,7 @@ fn a_desktop_agent_that_died_mid_turn_comes_back_as_a_shell_that_offers_the_resu
         pending_starts: Vec::new(),
         conversation_operations: Vec::new(),
     });
-    let [interrupted, finished] = [0, 1].map(|i| d.workspaces[i].tabs[0].focus);
+    let [interrupted, finished, in_terminal] = [0, 1, 2].map(|i| d.workspaces[i].tabs[0].focus);
 
     let info = d.snapshot();
     let offered = info.terms[&interrupted]
@@ -7649,11 +7654,15 @@ fn a_desktop_agent_that_died_mid_turn_comes_back_as_a_shell_that_offers_the_resu
         info.terms[&finished].interrupted, None,
         "an agent that was not working is restored as before"
     );
+    assert!(
+        info.terms[&in_terminal].interrupted.is_some() && info.terms[&in_terminal].agent.is_none(),
+        "the terminal app's sessions are told of a cut turn the same way"
+    );
 
     // Once an agent runs in the pane again, there is nothing left to offer.
     d.terms.get_mut(&interrupted).unwrap().agent = Some("codex".into());
     assert_eq!(d.snapshot().terms[&interrupted].interrupted, None);
-    close(&mut d, &[interrupted, finished]);
+    close(&mut d, &[interrupted, finished, in_terminal]);
 }
 
 #[test]

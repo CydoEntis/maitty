@@ -543,7 +543,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   was unreachable send nothing. The in-window notification card follows the state: green for done, amber
   for needs you, red for an error. Its position (any of the six corners and edges) is set in Settings ›
   Notifications, which can show a test card.
-- **Interrupted agents.** When the daemon restarted while an agent was mid-turn in a desktop session,
+- **Interrupted agents.** When the daemon restarted while an agent was mid-turn,
   a banner above the panes says which agent and shows the command that brings it back
   (`codex resume --last`). **Resume** types it into that session; **Dismiss** hides the banner. Nothing
   resumes on its own.

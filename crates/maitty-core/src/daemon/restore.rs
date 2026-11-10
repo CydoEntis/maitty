@@ -529,9 +529,12 @@ impl Daemon {
                         .filter(|p| p.is_dir())
                         .unwrap_or_else(|| sw.cwd.clone());
                     let cmd = self.restore_cmd_once(&mut pane, &cwd, &mut resuming);
-                    // A desktop session's agent that died mid-turn is not started again on its
-                    // own: the pane comes back as a shell and offers the resume command.
-                    let interrupted = (pane.owner == Surface::Desktop && pane.was_working)
+                    // An agent that died mid-turn is not started again on its own, whichever app
+                    // owns the session: resumed, it would sit at its prompt as if it had finished,
+                    // and nothing would say its turn was cut. The pane comes back as a shell and
+                    // offers the resume command.
+                    let interrupted = pane
+                        .was_working
                         .then(|| pane.agent.clone().zip(cmd.clone()))
                         .flatten()
                         .map(|(agent, resume)| Interrupted { agent, resume });

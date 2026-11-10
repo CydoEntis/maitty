@@ -597,8 +597,8 @@ Protocol 67 adds, for the desktop app's Inspect panel, find, quick-look links an
   mid-turn when the daemon restarted, with the command that resumes it), `timeline` (the latest
   turn events, oldest first, from status reports and the shell's OSC 133 prompt marks, 60 kept in
   memory) and `usage.tokens` (what the provider reported, never an estimate). The daemon never
-  resumes an `interrupted` agent: a desktop-owned pane saved mid-turn comes back as a plain shell,
-  and the window offers the command. Terminal-app panes restore as before.
+  resumes an `interrupted` agent: a pane saved mid-turn comes back as a plain shell, whichever app
+  owns it, and the window offers the command.
 - `Query::PaneSearch { query }` and `Reply::Search`: where a word appears in what the app's own
   panes printed recently, case-insensitively, at most 100 hits and 20 from one pane. Human clients
   only, over the panes the client may use. The text is the pane's replay with escape sequences
