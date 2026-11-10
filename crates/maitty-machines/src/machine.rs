@@ -746,14 +746,17 @@ pub async fn open_remote(machine: &Machine, dial: Dial) -> Result<(Reader, Write
             }
         }
     };
-    let version = match maitty_ipc_transport::welcome_version(&mut r).await {
-        Ok(version) => version,
+    let daemon = match maitty_ipc_transport::welcome_version(&mut r).await {
+        Ok(daemon) => daemon,
         Err(e) => return Err(ssh_failed(machine, said, e, true).await),
     };
-    if version == protocol::PROTOCOL_VERSION {
+    if daemon.speaks_with_us() {
         Ok((r, w))
     } else {
-        Err(OtherVersion { daemon: version }.into())
+        Err(OtherVersion {
+            daemon: daemon.version,
+        }
+        .into())
     }
 }
 

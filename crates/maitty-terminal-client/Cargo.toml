@@ -25,6 +25,7 @@ anyhow = "1"
 arboard = { version = "3", default-features = false, features = ["image-data"] }
 png = "0.17"
 pulldown-cmark = { version = "0.13", default-features = false }
+base64 = "0.22"
 bytes = "1"
 crossterm = { version = "0.29", features = ["event-stream"] }
 clap = { version = "4", features = ["derive"] }
@@ -33,6 +34,7 @@ getrandom = "0.3"
 sha2 = "0.10"
 futures-util = { version = "0.3", features = ["sink"] }
 ignore = "0.4"
+minisign-verify = "0.3"
 interprocess = { version = "2", features = ["tokio"] }
 portable-pty = "0.9"
 ratatui = "0.30"

@@ -103,8 +103,14 @@ entry point (handler / route / command / consumer)
 Not HTTP. A private IPC protocol between client and daemon over a local socket
 (or `ssh host maitty proxy`): length-delimited frames carrying msgpack-encoded
 `ClientMsg` / `ServerMsg` enums (`crates/maitty-shared/src/protocol.rs`). The first exchange is
-`Hello { version }` → `Welcome { version }`; mismatched `PROTOCOL_VERSION`s are
-refused. Bump it when a message shape changes incompatibly: a field removed, renamed
+`Hello { version }` → `Welcome { version, compatible_since }`. The client decides whether
+the two talk (`protocol::speaks_with`): the same `PROTOCOL_VERSION` always does, and another
+one does inside the compatibility window, which is from the newer side's `COMPATIBLE_SINCE`
+up to its own version. Outside it the connection is refused. Inside it the newer side adapts:
+the daemon does not send a client a message newer than the client (`ServerMsg::introduced_in`)
+and passes over a request it cannot decode from a newer client; a client checks
+`ClientMsg::introduced_in` before sending an older daemon a request that needs an answer.
+Bump `PROTOCOL_VERSION` when a message shape changes incompatibly: a field removed, renamed
 or retyped, or a new enum variant (an old decoder rejects it). An added field with
 `#[serde(default)]` is compatible (messages are named msgpack maps and unknown fields
 are ignored) and needs no bump, provided a test decodes the old shape. Hooks say Hello
@@ -306,7 +312,7 @@ time so duplicate or stale reports cannot replace newer lifecycle state.
 
 A new capability adds: a `Command` variant (and any new `ServerMsg` /
 snapshot field) in `protocol.rs`, bumping `PROTOCOL_VERSION` when the change is
-incompatible (see *API style*); handling in
+incompatible and deciding `COMPATIBLE_SINCE` with it (see *API style*); handling in
 `daemon/mod.rs` (or a `daemon/<feature>.rs`); the client side as an `Action` in
 `keys.rs`, a `Mode` and `draw_*` / `on_*_key` pair in `client/`, and a CLI
 subcommand in `cli.rs` when scripts should reach it.

@@ -9,8 +9,30 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
-/// style*); client and daemon refuse to talk across versions, and so do hooks.
+/// style*). A client and a daemon on different versions talk only inside the window
+/// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
 pub const PROTOCOL_VERSION: u32 = 78;
+
+/// The oldest `PROTOCOL_VERSION` this build still talks to, in either role. It stays behind
+/// `PROTOCOL_VERSION` only across changes an older peer can live with: a new message it is never
+/// sent (`ServerMsg::introduced_in`), or a field it does not need. Set it to the current version
+/// in the change that removes, renames or retypes anything an older peer reads or writes, or
+/// that adds a value inside a message it is still sent (a new `Status`, say): such a peer would
+/// misread, and that is refused. 78 is the first version that knows about the window at all.
+pub const COMPATIBLE_SINCE: u32 = 78;
+
+/// Whether this build and a peer talk. The older of the two cannot know what came after it, so
+/// the newer one decides: `peer_compatible_since` is what the peer said in the handshake (0 from
+/// a build that says nothing, which then talks only to its own version).
+pub fn speaks_with(peer_version: u32, peer_compatible_since: u32) -> bool {
+    match peer_version.cmp(&PROTOCOL_VERSION) {
+        std::cmp::Ordering::Equal => true,
+        std::cmp::Ordering::Less => peer_version >= COMPATIBLE_SINCE,
+        std::cmp::Ordering::Greater => {
+            (1..=PROTOCOL_VERSION).contains(&peer_compatible_since)
+        }
+    }
+}
 
 /// The oldest `PROTOCOL_VERSION` whose daemon reads today's `Hook` and `Usage` reports. An
 /// agent's hooks run the installed binary, which an update replaces while the old daemon keeps
@@ -793,8 +815,12 @@ fn replays_by_default() -> bool {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerMsg {
+    /// `compatible_since`: the oldest version this daemon still talks to (`COMPATIBLE_SINCE`),
+    /// so an older client can tell whether it is inside the window.
     Welcome {
         version: u32,
+        #[serde(default)]
+        compatible_since: u32,
     },
     State(Snapshot),
     /// Only some panes changed since the last `State` or `TermsChanged` on this connection:
@@ -1607,6 +1633,23 @@ impl WorkspaceInfo {
     }
 }
 
+impl ServerMsg {
+    /// The first version whose client reads this message. The daemon does not send a message to
+    /// a client older than that. A message added while `COMPATIBLE_SINCE` stays behind gets its
+    /// own arm here; everything else is as old as the window.
+    pub fn introduced_in(&self) -> u32 {
+        COMPATIBLE_SINCE
+    }
+}
+
+impl ClientMsg {
+    /// The first version whose daemon reads this message: what a client checks before it sends
+    /// a request to an older daemon, which would otherwise never answer it.
+    pub fn introduced_in(&self) -> u32 {
+        COMPATIBLE_SINCE
+    }
+}
+
 pub fn encode<T: Serialize>(msg: &T) -> anyhow::Result<bytes::Bytes> {
     Ok(rmp_serde::to_vec_named(msg)?.into())
 }
@@ -1618,6 +1661,38 @@ pub fn decode<'a, T: Deserialize<'a>>(buf: &'a [u8]) -> anyhow::Result<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_peer_talks_inside_the_window_and_is_refused_outside_it() {
+        const { assert!(COMPATIBLE_SINCE <= PROTOCOL_VERSION) };
+        assert!(speaks_with(PROTOCOL_VERSION, COMPATIBLE_SINCE));
+        // The same version talks even when it says nothing about a window.
+        assert!(speaks_with(PROTOCOL_VERSION, 0));
+        assert!(speaks_with(COMPATIBLE_SINCE, 0));
+        assert!(!speaks_with(COMPATIBLE_SINCE - 1, 0));
+        // A newer peer decides: it talks when it says it still speaks this version.
+        assert!(speaks_with(PROTOCOL_VERSION + 1, PROTOCOL_VERSION));
+        assert!(speaks_with(PROTOCOL_VERSION + 5, COMPATIBLE_SINCE));
+        assert!(!speaks_with(PROTOCOL_VERSION + 1, PROTOCOL_VERSION + 1));
+        assert!(!speaks_with(PROTOCOL_VERSION + 1, 0));
+    }
+
+    /// A build from before the window sends a Welcome with the version alone.
+    #[test]
+    fn a_welcome_without_a_window_still_decodes() {
+        #[derive(Serialize)]
+        enum Old {
+            Welcome { version: u32 },
+        }
+        let bytes = encode(&Old::Welcome { version: 77 }).unwrap();
+        match decode::<ServerMsg>(&bytes).unwrap() {
+            ServerMsg::Welcome {
+                version,
+                compatible_since,
+            } => assert_eq!((version, compatible_since), (77, 0)),
+            other => panic!("{other:?}"),
+        }
+    }
 
     /// Encoding what was decoded gives the same bytes: nothing is lost on the way.
     fn round_trips<T: Serialize + for<'a> Deserialize<'a>>(msg: &T) {
@@ -1827,6 +1902,7 @@ mod tests {
         let servers = vec![
             ServerMsg::Welcome {
                 version: PROTOCOL_VERSION,
+                compatible_since: COMPATIBLE_SINCE,
             },
             ServerMsg::State(Snapshot::default()),
             ServerMsg::TermsChanged {

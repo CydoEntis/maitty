@@ -563,16 +563,17 @@ async fn serve(
     ev: mpsc::Sender<Ev>,
 ) {
     let (mut r, mut w) = ipc::framed(stream);
-    let (attach, from, structured, surface, replays) = match ipc::recv_client(&mut r).await {
+    let (theirs, attach, from, structured, surface, replays) = match ipc::recv_client(&mut r).await
+    {
         Ok(Some(ClientMsg::Hello {
+            version,
             attach,
             from,
             structured,
             surface,
             replays,
-            ..
         })) if from.is_none() || structured.is_none() => {
-            (attach, from, structured, surface, replays)
+            (version, attach, from, structured, surface, replays)
         }
         _ => return,
     };
@@ -580,6 +581,7 @@ async fn serve(
         &mut w,
         &ServerMsg::Welcome {
             version: PROTOCOL_VERSION,
+            compatible_since: crate::protocol::COMPATIBLE_SINCE,
         },
     )
     .await
@@ -607,6 +609,9 @@ async fn serve(
     }
     let mut writer = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
+            if !client_reads(&msg, theirs) {
+                continue;
+            }
             let bye = matches!(msg, ServerMsg::Bye);
             if ipc::send(&mut w, &msg).await.is_err() || bye {
                 break;
@@ -625,12 +630,30 @@ async fn serve(
                         break;
                     }
                 }
+                Err(e) if skips_unreadable(theirs, &e) => {
+                    tracing::info!(
+                        "client {id}: skipped a message from protocol v{theirs} that v{PROTOCOL_VERSION} does not know"
+                    );
+                }
                 _ => break,
             },
         }
     }
     let _ = ev.send(Ev::Disconnected(id)).await;
     writer.abort();
+}
+
+/// Whether a client at `theirs` reads `msg`. An older client inside the compatibility window is
+/// never sent a message added after it: it could not decode it, and would drop the connection.
+fn client_reads(msg: &ServerMsg, theirs: u32) -> bool {
+    theirs >= msg.introduced_in()
+}
+
+/// Whether a frame that would not decode is passed over instead of ending the connection: only
+/// one from a newer client, which may send a request added after this daemon. From a client of
+/// this version or older it means the stream is broken, and that connection ends.
+fn skips_unreadable(theirs: u32, error: &anyhow::Error) -> bool {
+    theirs > PROTOCOL_VERSION && maitty_ipc_transport::is_decode_error(error)
 }
 
 /// "removed 3 worktrees (1 merged branch went too); kept rate: it has uncommitted changes".
@@ -3258,6 +3281,26 @@ mod logic_tests;
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_older_client_is_not_sent_what_it_cannot_read_and_a_newer_ones_unknown_request_is_skipped()
+    {
+        use super::{ClientMsg, PROTOCOL_VERSION, ServerMsg, client_reads, skips_unreadable};
+        let msg = ServerMsg::Bye;
+        assert!(client_reads(&msg, PROTOCOL_VERSION));
+        assert!(client_reads(&msg, msg.introduced_in()));
+        assert!(!client_reads(&msg, msg.introduced_in() - 1));
+
+        let unreadable = crate::protocol::decode::<ClientMsg>(&[0xc1]).unwrap_err();
+        assert!(skips_unreadable(PROTOCOL_VERSION + 1, &unreadable));
+        // From this version or an older one, a frame that will not decode is a broken stream.
+        assert!(!skips_unreadable(PROTOCOL_VERSION, &unreadable));
+        assert!(!skips_unreadable(PROTOCOL_VERSION - 1, &unreadable));
+        assert!(!skips_unreadable(
+            PROTOCOL_VERSION + 1,
+            &anyhow::anyhow!("the pipe closed")
+        ));
+    }
+
     #[test]
     fn worktrees_of_trusted_repos_are_trusted() {
         let dir = std::env::temp_dir().join(format!(

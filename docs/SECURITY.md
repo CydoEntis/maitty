@@ -362,7 +362,12 @@ the argv, and the script has no `{`/`}` and no process-signalling command). The 
 not in a command. The script writes beside the destination with `umask 077`, checks the byte count, runs
 `--version` (owner-only mode until it has run), makes it 755, and renames it over the old file; on any
 failure it removes the temp file and leaves the destination as it was. It never signals a process: a
-running daemon keeps its sessions. A release fetched for another platform is verified against
+running daemon keeps its sessions. `maitty update` verifies a release twice before it
+replaces the program: `sha256sums.txt` must carry a signature (`sha256sums.txt.sig`) made with the release
+key built into the program, which is the desktop updater's, and the download must match its line in that
+file; then the downloaded program is run (`--version`) and must name the release asked for. Releases are
+signed from 0.71.0 on; an older one, reached only with `update --to`, is checked by checksum alone. The
+installers (`install.sh`, `install.ps1`) and the fetch for another machine check the checksum only. A release fetched for another platform is verified against
 `sha256sums.txt` (exact full sha256) before it is unpacked, the archive listing is checked before
 extraction (no absolute path, no `..`, no link, only the release folder; only the one binary is taken),
 and the archive and the binary are capped at 200 MB. Nothing fetched is ever run on this computer. The

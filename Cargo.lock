@@ -2912,6 +2912,7 @@ version = "0.51.0"
 dependencies = [
  "anyhow",
  "arboard",
+ "base64 0.22.1",
  "bytes",
  "clap",
  "crossterm",
@@ -2932,6 +2933,7 @@ dependencies = [
  "maitty-provider-codex",
  "maitty-settings",
  "maitty-shared",
+ "minisign-verify",
  "png 0.17.16",
  "portable-pty",
  "pulldown-cmark",

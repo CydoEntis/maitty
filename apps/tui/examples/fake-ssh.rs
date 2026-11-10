@@ -165,10 +165,11 @@ fn main() {
         "hang" => loop {
             std::thread::sleep(std::time::Duration::from_secs(3600));
         },
-        // An older daemon (`mismatch`) or a newer one than this build (`mismatch-newer`).
+        // A daemon this build cannot talk to: one from before its window (`mismatch`), or a
+        // newer one that no longer speaks this version (`mismatch-newer`).
         "mismatch" | "mismatch-newer" => {
             let theirs = if own.mode == "mismatch" {
-                maitty_shared::protocol::PROTOCOL_VERSION - 1
+                maitty_shared::protocol::COMPATIBLE_SINCE - 1
             } else {
                 maitty_shared::protocol::PROTOCOL_VERSION + 1
             };
@@ -220,7 +221,11 @@ fn proxy_command(own: &Own, maitty: &std::ffi::OsStr) -> Command {
 
 fn welcome_frame(version: u32) -> Vec<u8> {
     let body =
-        maitty_shared::protocol::encode(&maitty_shared::protocol::ServerMsg::Welcome { version })
+        maitty_shared::protocol::encode(&maitty_shared::protocol::ServerMsg::Welcome {
+            version,
+            // It speaks its own version only.
+            compatible_since: version,
+        })
             .expect("encode a Welcome");
     let mut frame = (body.len() as u32).to_be_bytes().to_vec();
     frame.extend_from_slice(&body);
