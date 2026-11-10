@@ -14034,6 +14034,8 @@ mod files_panel_tests {
         );
         assert!(edit(&app).dirty, "an undo marks the file changed");
         click_hit(&mut app, ctrl('s'));
+        let written = super::branch_view_tests::next_bg(&mut rx);
+        app.on_bg(written);
         assert!(!edit(&app).dirty, "Save saves");
         assert_eq!(
             std::fs::read_to_string(dir.join("src").join("main.rs"))
