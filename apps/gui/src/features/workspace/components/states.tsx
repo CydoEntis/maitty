@@ -37,7 +37,7 @@ export type RestartOffer = {
   canRestart: boolean
   pending: boolean
   onRestart: () => void
-  /** The service's protocol and the one this app needs, for "v75 → v76". */
+  /** The service's protocol and the one this app needs, for "protocol 75 → 76". They are not app versions. */
   from: number
   to: number
   /** What a restart touches: the sessions the service owns, and how many of them have an agent mid-turn. */
@@ -50,7 +50,7 @@ export type AppBehindOffer = {
   label: string
   disabled: boolean
   onPress: () => void
-  /** The service's protocol and the one this app speaks, for "v77 → v76". */
+  /** The service's protocol and the one this app speaks, for "protocol 76 → 77". They are not app versions. */
   serviceProtocol: number
   appProtocol: number
 }

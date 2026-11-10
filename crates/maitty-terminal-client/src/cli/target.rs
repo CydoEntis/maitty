@@ -315,6 +315,7 @@ pub(crate) fn failure_line(class: &FailureClass) -> String {
     match class {
         FailureClass::Login => format!("needs a login; {}", link_failure::FIX_LOGIN),
         FailureClass::Update => format!("is another version; {}", link_failure::FIX_UPDATE),
+        FailureClass::UpdateHere => format!("is newer; {}", link_failure::FIX_UPDATE_HERE),
         FailureClass::Install => format!("has no app; {}", link_failure::FIX_INSTALL),
         FailureClass::NoDaemon => format!("is not running; {}", link_failure::FIX_NO_DAEMON),
         FailureClass::Unreachable(why) => format!("unreachable ({why})"),

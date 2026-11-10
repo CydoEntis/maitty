@@ -69,6 +69,7 @@ conversation continuity are planned in phases 34–37:
 - Click a notification to jump to its session — shipped — `crates/maitty-core/src/reveal.rs`, `crates/maitty-core/src/alert.rs` (#19)
 - Sidebar groups sessions by where they work now (repo, or folder outside git); no projects to open; splits stay with their session — shipped — `crates/maitty-terminal-client/src/client/screen/mod.rs`
 - Releases and installers (Windows, macOS, Linux; checksums), `maitty update` and a daily update check — shipped — `.github/workflows/release.yml`, `install.sh`, `install.ps1`, `crates/maitty-terminal-client/src/cli/update.rs`
+- `maitty uninstall`: stops the server, disconnects the agents and removes the program; `--purge` deletes settings and saved sessions too — shipped — `crates/maitty-terminal-client/src/cli/uninstall.rs`
 - CI: test and clippy on Linux and Windows, a macOS check — shipped — `.github/workflows/ci.yml`
 - Config sync across machines (local file never synced) — shipped — `crates/maitty-core/src/sync.rs`
 - SSH remotes (`--remote host`) — shipped — `crates/maitty-core/src/ipc.rs` `connect_remote`

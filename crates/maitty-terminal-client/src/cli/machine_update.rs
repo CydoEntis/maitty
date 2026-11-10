@@ -49,7 +49,7 @@ fn failed(message: impl Into<String>) -> Failure {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Outcome {
     UpToDate { version: String },
-    Installed { destination: String },
+    Installed { version: String, destination: String },
 }
 
 impl Outcome {
@@ -58,8 +58,11 @@ impl Outcome {
             Outcome::UpToDate { version } => {
                 format!("{machine}: {APP_COMMAND} {version} is already up to date")
             }
-            Outcome::Installed { destination } => {
-                format!("{machine}: {APP_COMMAND} {APP_VERSION} installed to {destination}")
+            Outcome::Installed {
+                version,
+                destination,
+            } => {
+                format!("{machine}: {APP_COMMAND} {version} installed to {destination}")
             }
         }
     }
@@ -177,7 +180,10 @@ pub(crate) fn update(
     if had_old {
         ask_daemon_to_restart(machine, &to, &name, flags, talk);
     }
-    Ok(Outcome::Installed { destination: to })
+    Ok(Outcome::Installed {
+        version: binary.version,
+        destination: to,
+    })
 }
 
 /// Ask the far daemon to take the version installed at `program`. The far side leaves a daemon
@@ -283,8 +289,9 @@ fn upload_failure(why: &UploadError, name: &str, had_old: bool, ran: &Ran) -> St
     }
 }
 
-/// After the swap: does the machine find the app by its configured command? A default
-/// install lands in a folder that may not be on its PATH; that is told, never fixed silently.
+/// After the swap: does the machine find the app by its configured command? The default name
+/// is looked up in the install folder first, so this speaks only for a configured name that
+/// leads somewhere else; that is told, never fixed silently.
 fn check_reachable(machine: &Machine, remote_cmd: &str, to: &str, name: &str, talk: &mut dyn Talk) {
     let Ok(argv) = machine.probe_argv() else {
         return;
@@ -323,7 +330,7 @@ fn restart_when_idle(
     talk: &mut dyn Talk,
 ) {
     talk.say(&format!(
-        "waiting for {name} to be idle, then restarting its daemon…"
+        "waiting until no session is open on {name}, then restarting its daemon…"
     ));
     for ask in 0..MOST_IDLE_ASKS {
         let asked = machine
@@ -355,7 +362,7 @@ fn restart_when_idle(
         }
     }
     talk.say(&format!(
-        "note: {name} was still busy after half an hour; its daemon was left running and takes the new version when it next restarts"
+        "note: {name} still had sessions open after half an hour; its daemon was left running and takes the new version when it next restarts (`{APP_COMMAND} machine update {name} --restart` does it now)"
     ));
 }
 

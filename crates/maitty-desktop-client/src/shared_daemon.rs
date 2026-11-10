@@ -68,8 +68,9 @@ fn installed_version(executable: &Path) -> Option<String> {
 
 /// Make the shared daemon file the same release as the app, and return its path.
 ///
-/// A running daemon of another release is stopped first, but only when its sessions are saved
-/// (the next daemon restores them) or it has none; otherwise this fails and leaves it running.
+/// A running daemon is never stopped for this: the old file is moved aside and goes on running
+/// with its sessions. When it speaks another protocol the window asks before restarting it
+/// (`restart_mismatched_daemon`); an agent's turn is the user's to end, never an update's.
 pub fn ensure_shared_daemon(bundled: &Path, app_version: &str) -> Result<PathBuf> {
     let target = shared_daemon_path()?;
     let installed = target
@@ -79,7 +80,6 @@ pub fn ensure_shared_daemon(bundled: &Path, app_version: &str) -> Result<PathBuf
     if plan(installed.as_deref(), app_version) == Plan::UseInstalled {
         return Ok(target);
     }
-    crate::stop_running_daemon_for_update()?;
     replace_file(bundled, &target)?;
     match installed_version(&target) {
         Some(version) if version == app_version => {}
@@ -204,13 +204,26 @@ fn replace_file(source: &Path, target: &Path) -> Result<()> {
     }
     #[cfg(windows)]
     if target.exists() {
-        let aside = directory.join(format!("{APP_COMMAND}.old.exe"));
-        let _ = std::fs::remove_file(&aside);
+        let aside = free_aside(directory);
         std::fs::rename(target, &aside)
             .with_context(|| format!("moving the old {} aside", target.display()))?;
     }
     std::fs::rename(&staged, target)
         .with_context(|| format!("installing {}", target.display()))
+}
+
+/// A free name for the old file. One moved aside earlier is removed when nothing runs it; a daemon
+/// or an agent's `mcp` still running from it keeps it locked, so the next one gets a number.
+#[cfg(windows)]
+fn free_aside(directory: &Path) -> PathBuf {
+    let named = |number: u32| match number {
+        1 => directory.join(format!("{APP_COMMAND}.old.exe")),
+        _ => directory.join(format!("{APP_COMMAND}.old-{number}.exe")),
+    };
+    (1..)
+        .map(named)
+        .find(|aside| std::fs::remove_file(aside).is_ok() || !aside.exists())
+        .unwrap_or_else(|| named(1))
 }
 
 #[cfg(test)]
@@ -264,6 +277,38 @@ mod tests {
 
         assert_eq!(std::fs::read(&target).unwrap(), b"new");
         assert!(!directory.join(concat!(".", env!("MAITTY_APP_COMMAND"), ".new")).exists());
+        std::fs::remove_dir_all(&directory).unwrap();
+    }
+
+    /// A daemon still running from the file moved aside last time keeps that file locked.
+    #[cfg(windows)]
+    #[test]
+    fn replacing_twice_works_while_the_first_old_file_is_still_in_use() {
+        let directory = std::env::temp_dir().join(format!("shared-daemon-twice-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let source = directory.join("new");
+        let target = directory.join("installed.exe");
+        std::fs::write(&source, b"newest").unwrap();
+        std::fs::write(&target, b"newer").unwrap();
+        let first_aside = directory.join(concat!(env!("MAITTY_APP_COMMAND"), ".old.exe"));
+        std::fs::write(&first_aside, b"oldest").unwrap();
+        // A running program's file cannot be removed; an open handle that shares nothing is the same lock.
+        let in_use = {
+            use std::os::windows::fs::OpenOptionsExt;
+            std::fs::OpenOptions::new()
+                .read(true)
+                .share_mode(0)
+                .open(&first_aside)
+                .unwrap()
+        };
+
+        replace_file(&source, &target).unwrap();
+
+        assert_eq!(std::fs::read(&target).unwrap(), b"newest");
+        let second_aside = directory.join(concat!(env!("MAITTY_APP_COMMAND"), ".old-2.exe"));
+        assert_eq!(std::fs::read(&second_aside).unwrap(), b"newer");
+        drop(in_use);
+        assert_eq!(std::fs::read(&first_aside).unwrap(), b"oldest");
         std::fs::remove_dir_all(&directory).unwrap();
     }
 

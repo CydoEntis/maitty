@@ -483,10 +483,12 @@ A machine you add only needs the `maitty` program. There is no desktop app on it
   install it by hand. A Windows machine cannot be the remote yet.
 - **A way in.** ssh must get in without asking you anything: a key (or your ssh agent) for that user. Run plain
   `ssh <target>` once first, so its host key is known and you can see that it works.
-- **maitty on the PATH ssh uses.** A program in `~/.local/bin` is on the PATH of most logins. If ssh cannot find
-  it, set `remote_cmd` on the machine to its full path.
+- **maitty where ssh finds it.** Maitty looks in `~/.local/bin` (where it installs itself) first, then on the
+  PATH ssh gives it. Only a copy kept somewhere else needs `remote_cmd` set to its full path.
 - **The same version.** This computer, the machine and any desktop app must speak the same protocol. A machine
-  on another version shows `needs update`; run `maitty machine update <name>`.
+  on an older version shows `needs update`; run `maitty machine update <name>`. A machine on a newer version
+  than this computer shows `newer than this app` and has no update button: update this computer instead
+  (`maitty update`, or the desktop app's own update). A machine is never downgraded from here.
 
 Nothing else needs installing. Agents such as Claude Code or Codex run there as they do anywhere, so install
 the ones you want to use on that machine yourself.
@@ -529,8 +531,7 @@ build: maitty 0.60.0 installed to ~/.local/bin/maitty
   run with `--version`, and only then renamed over the old one. Any failed step leaves the old maitty as it
   was and says so ("the old version is unchanged", or "nothing was installed" on a first install).
 - **Where.** At the machine's `remote_cmd` when that is an absolute path or starts with `~/`; otherwise at
-  `~/.local/bin/maitty`. If `maitty` is not found on that machine's PATH afterwards, the command says to set
-  `remote_cmd = "~/.local/bin/maitty"` for it in `config.local.toml` (it does not edit your config).
+  `~/.local/bin/maitty`, which is the first place Maitty looks on that machine, so nothing else needs setting.
 - **Running sessions survive an ordinary update.** The old daemon keeps running on the old file. The new
   maitty restarts it only when it has no session open; otherwise it says it left it running. Add `--restart`
   (the desktop app's Update button does, after asking) to restart it anyway: its sessions are saved, so the
@@ -687,7 +688,7 @@ one shows in the other the next time that app starts.
 
 With one machine the sidebar looks as it always did. Once you have another, every machine's folders sit under
 a header: **this computer** first, then the others. A machine's header carries its state as a shape and a
-word: `connected`, `connecting`, `reconnecting #2`, `needs login`, `not installed`, `needs update`, `unreachable` or `refused`
+word: `connected`, `connecting`, `reconnecting #2`, `needs login`, `not installed`, `needs update`, `newer than this app`, `unreachable` or `refused`
 (a different computer answers at that name). When you have to act, the fix is written under the header, in
 full. A machine that is down keeps its folders and sessions, dimmed, with `disconnected since 2m ago`; its
 sessions' needs-you and done marks leave the counts and the Inbox until it is back, and everything returns on
@@ -711,8 +712,8 @@ with another version says `needs update`, with an **Update** button. Its right-c
 needed: Install runs `maitty machine update <name> --install` for you, and Update replaces the version there
 (`--yes`). Both ask first. Install says what it puts on the machine; Update says how many sessions are open there
 and how many are busy, and offers **Update now** (its daemon restarts and its saved sessions come back with their
-agents resumed; a turn in progress is lost) or **Update when idle** (it waits up to half an hour for nothing to
-be running). A toast says it is running, then how it ended: installed, already up to date, or why it did not (ssh
+agents resumed; a turn in progress is lost) or **Update when idle** (the new version is installed now and the daemon
+restarts once every session there is closed; it waits up to half an hour, then leaves the daemon running). A toast says it is running, then how it ended: installed, already up to date, or why it did not (ssh
 could not get in, the machine has a newer maitty than this app, which is never downgraded from here, or it is a
 Windows machine, which cannot be a remote yet). After a success the machine is dialled again. The exact command
 is still shown with a **Copy command** button, to run in a terminal instead.

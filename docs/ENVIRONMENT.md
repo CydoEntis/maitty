@@ -205,7 +205,9 @@ needs `--yes`.
 `maitty machine update <name> [--install] [--yes] [--force]` puts this version on a configured machine
 (see the guide). The destination is `remote_cmd` when it is an absolute path or begins with `~/` (the `~`
 is expanded on the far side, from its `$HOME`, never here); a `remote_cmd` that is only a name (the
-default, `maitty`) installs to `~/.local/bin/maitty`. Only Linux and macOS on x86_64 or aarch64 are
+default, `maitty`) installs to `~/.local/bin/maitty`, and the default name is run on the far side with
+`~/.local/bin` first on its PATH (`FIND_INSTALLED_SCRIPT`), so a fresh install is found whatever PATH a
+non-interactive ssh gets. Only Linux and macOS on x86_64 or aarch64 are
 supported as a remote; a Windows machine is refused. The release assets are named
 `maitty-<target>.tar.gz` (see `cli/update.rs`) and the fetch uses the same `gh` or `curl` path as
 `maitty update`, on this computer only.
@@ -246,7 +248,7 @@ it reads:
 | `MAITTY_UPDATE_PROGRESS` | `1` makes `maitty machine update` print a `progress: N` line on stderr as each stage ends (the desktop app sets it; a person at a terminal never sees it) | desktop app |
 | `MAITTY_TERM_ID`, `MAITTY_PANE_TOKEN` | the pane's id and secret, set inside every pane | daemon |
 | `MAITTY_SHOW` | tests print rendered frames | developer |
-| `MAITTY_NO_INTEGRATE` | `1`: the installers and `maitty update` leave agents' config alone instead of running `maitty integrate` | user |
+| `MAITTY_NO_INTEGRATE` | `1`: the installers and `maitty update` leave agents' config alone instead of running `maitty integrate`, and `maitty uninstall` leaves it alone too | user |
 | `PI_CODING_AGENT_DIR` | Pi/OMP native agent configuration directory; do not share between the two apps | user / agent app |
 | `PI_CONFIG_DIR` | OMP config folder below the user's home, default `.omp` | user / OMP |
 | `KIMI_CODE_HOME` | Kimi config directory, default `~/.kimi-code` | user / Kimi |

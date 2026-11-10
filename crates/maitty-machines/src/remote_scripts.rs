@@ -8,6 +8,13 @@ pub const PLATFORM_SCRIPT: &str = "printf '%s\\n' maitty-platform; uname -sm";
 /// person or a machine supplies can reach the remote shell.
 pub const WHERE_SCRIPT: &str = concat!("command -v ", env!("APP_COMMAND"));
 
+/// Runs the app by its bare name with the folder `machine update` installs to
+/// (`remote_install::DEFAULT_DESTINATION`) first on PATH. A shell ssh starts without a terminal
+/// often has no `~/.local/bin` on its PATH, so a fresh install would not be found; first, so the
+/// file just installed wins over an older copy elsewhere. Its arguments are the program and
+/// what it is given.
+pub const FIND_INSTALLED_SCRIPT: &str = r#"PATH="$HOME/.local/bin:$PATH"; export PATH; exec "$@""#;
+
 /// `$1` is the destination (a leading `~/` is the far side's home), `$2` the byte count
 /// expected on stdin. The new file is written beside the destination so the final `mv` is a
 /// rename, and is made executable by its owner alone until it has run `--version`.

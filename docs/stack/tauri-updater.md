@@ -18,8 +18,9 @@
   private key lives only in the `TAURI_SIGNING_PRIVATE_KEY` repository secret and the owner's
   backup. Never commit it, print it, or put it in a fixture or log.
 - An update replaces the GUI. After the restart the new GUI brings the shared daemon file up to its
-  own release (ADR 0004), stopping a running older daemon only when its sessions are saved, so they
-  restore on the next daemon. It never stops a daemon whose sessions would be lost.
+  own release (ADR 0004) and leaves a running daemon alone: the old file is moved aside and goes on
+  running with its sessions. A daemon that speaks another protocol is restarted only when the user
+  says so on the "Restart Maitty to finish updating" card. An update never ends an agent's turn.
 - A failed or offline check is quiet: no banner, only the line in Settings. A failed install says so
   and never claims the app is updated.
 - Enable only the operations the GUI calls in its Tauri capability.

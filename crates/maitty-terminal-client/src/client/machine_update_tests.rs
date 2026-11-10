@@ -264,6 +264,7 @@ fn a_missing_app_is_installed_with_the_flag_and_runs_afterwards() {
     assert_eq!(
         outcome,
         Outcome::Installed {
+            version: APP_VERSION.into(),
             destination: AT_HOME.into()
         }
     );
@@ -348,7 +349,12 @@ fn wait_installs_then_asks_the_far_daemon_to_restart_when_idle() {
     };
     let mut person = Person::absent();
     run(&remote, AT_HOME, flags, &new_build(&remote), &mut person).unwrap();
-    assert!(person.heard("waiting for"), "{:?}", person.said);
+    assert!(person.heard("waiting until no session is open"), "{:?}", person.said);
+    assert!(
+        person.heard("still had sessions open after half an hour; its daemon was left running"),
+        "{:?}",
+        person.said
+    );
     let commands = remote.commands();
     assert!(
         commands.last().unwrap().ends_with("restart-if-idle"),
@@ -668,6 +674,7 @@ fn an_older_app_is_replaced_on_yes_and_the_daemon_is_asked_not_killed() {
     assert_eq!(
         outcome,
         Outcome::Installed {
+            version: APP_VERSION.into(),
             destination: AT_HOME.into()
         }
     );

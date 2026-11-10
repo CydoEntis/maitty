@@ -8,7 +8,7 @@ use super::*;
 use crate::brand::APP_NAME;
 use crate::client::link::ConnectionState;
 use crate::hidden::sanitize;
-use crate::link_failure::FIX_INSTALL;
+use crate::link_failure::{FIX_INSTALL, FIX_UPDATE_HERE};
 
 /// This computer's mark on the pane badge, and another machine's (here and on the sidebar).
 pub(super) const LOCAL_ICON: &str = "⌂";
@@ -39,6 +39,8 @@ impl AppFix {
     pub fn of(state: &ConnectionState) -> Option<AppFix> {
         match state {
             ConnectionState::NeedsUpdate { why } if why == FIX_INSTALL => Some(AppFix::Install),
+            // Newer there than here: nothing to do to that machine, so no button for it.
+            ConnectionState::NeedsUpdate { why } if why == FIX_UPDATE_HERE => None,
             ConnectionState::NeedsUpdate { .. } => Some(AppFix::Update),
             _ => None,
         }
@@ -84,6 +86,9 @@ pub(super) fn state_mark(state: &ConnectionState, ascii: bool, t: &Theme) -> Sta
             (pick("↻", "~"), format!("reconnecting #{attempt}"), t.muted)
         }
         ConnectionState::NeedsLogin { .. } => (pick("✕", "x"), "needs login".to_string(), t.err),
+        ConnectionState::NeedsUpdate { why } if why == FIX_UPDATE_HERE => {
+            (pick("✕", "x"), "newer than this app".to_string(), t.err)
+        }
         ConnectionState::NeedsUpdate { .. } => (pick("✕", "x"), "needs update".to_string(), t.err),
         ConnectionState::Unreachable { .. } => (pick("✕", "x"), "unreachable".to_string(), t.err),
     };
@@ -163,6 +168,7 @@ mod tests {
         let needs = |why: &str| ConnectionState::NeedsUpdate { why: why.into() };
         assert_eq!(AppFix::of(&needs(FIX_INSTALL)), Some(AppFix::Install));
         assert_eq!(AppFix::of(&needs(FIX_UPDATE)), Some(AppFix::Update));
+        assert_eq!(AppFix::of(&needs(FIX_UPDATE_HERE)), None);
         assert_eq!(AppFix::Restart.verb(), "restart");
         assert_eq!(AppFix::Restart.label(), format!("Restart {APP_NAME}"));
         assert_eq!(AppFix::of(&ConnectionState::Connected), None);

@@ -1,7 +1,8 @@
 //! One machine's connection state and the rules that move it. Pure: the time is passed in, so
 //! the table is tested without a clock, and nothing here dials or sleeps.
 
-use crate::link_failure::{FIX_INSTALL, FIX_LOGIN, FIX_NO_DAEMON, FIX_UPDATE, FailureClass};
+use crate::link_failure::{FIX_INSTALL, FIX_LOGIN, FIX_NO_DAEMON, FIX_UPDATE, FIX_UPDATE_HERE, FailureClass,
+};
 use std::time::{Duration, Instant};
 
 /// Dials after a drop that still read as "reconnecting": a blip is not an outage. Past them
@@ -89,6 +90,9 @@ fn failed(class: FailureClass, since: Instant) -> ConnectionState {
         },
         FailureClass::Update => NeedsUpdate {
             why: FIX_UPDATE.into(),
+        },
+        FailureClass::UpdateHere => NeedsUpdate {
+            why: FIX_UPDATE_HERE.into(),
         },
         FailureClass::Install => NeedsUpdate {
             why: FIX_INSTALL.into(),

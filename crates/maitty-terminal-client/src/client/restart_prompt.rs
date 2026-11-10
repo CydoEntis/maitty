@@ -1,5 +1,6 @@
-//! What a new the app shows when the server already running is another version: a full-screen
-//! choice instead of an error, so one click replaces the old server.
+//! What the app shows when the server already running is another version: a full-screen choice
+//! instead of an error. An older server is replaced with one click; a newer one is never
+//! replaced by this older app, which offers to update itself instead.
 
 use super::design::{BtnKind, button, fill, put, seg, segs_width};
 use crate::brand::APP_NAME;
@@ -18,6 +19,8 @@ use ratatui::style::{Modifier, Style};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Choice {
     Restart,
+    /// The server is newer: update this app. Restarting the server onto this app would be a downgrade.
+    Update,
     Quit,
 }
 
@@ -72,8 +75,15 @@ impl Prompt {
         }
     }
 
+    /// The running server is newer than this app.
+    fn behind(&self) -> bool {
+        self.daemon > crate::protocol::PROTOCOL_VERSION
+    }
+
     pub fn on_key(&mut self, k: KeyEvent) -> Option<Choice> {
         match k.code {
+            KeyCode::Enter | KeyCode::Char('u') if self.behind() => Some(Choice::Update),
+            KeyCode::Char('r') if self.behind() => None,
             KeyCode::Enter | KeyCode::Char('r') => Some(Choice::Restart),
             KeyCode::Esc => Some(Choice::Quit),
             // Raw mode turns Ctrl+C into a key, so it has to be answered here.
@@ -108,38 +118,51 @@ impl Prompt {
         self.hits.clear();
         let ground = Style::default().bg(t.bg);
         let this = crate::protocol::PROTOCOL_VERSION;
-        let age = if self.daemon < this { "older" } else { "newer" };
-        let cost = self.cost();
-        let title = format!(" {}D NEEDS AN UPDATE ", env!("APP_COMMAND").to_uppercase());
-        let lines = [
-            (
-                0,
-                title,
-                Style::default().fg(t.acc_ink).bg(t.blocked).add_modifier(Modifier::BOLD),
-            ),
-            (
-                2,
-                format!(
-                    "The running {APP_NAME} server is {age} (protocol v{}; this one is v{this}).",
-                    self.daemon
+        let behind = self.behind();
+        let chip = Style::default().fg(t.acc_ink).bg(t.blocked).add_modifier(Modifier::BOLD);
+        let lines = if behind {
+            vec![
+                (0, format!(" {} NEEDS AN UPDATE ", env!("APP_COMMAND").to_uppercase()), chip),
+                (
+                    2,
+                    format!(
+                        "The running {APP_NAME} server is newer (protocol v{}; this one is v{this}).",
+                        self.daemon
+                    ),
+                    ground.fg(t.text),
                 ),
-                ground.fg(t.text),
-            ),
-            (3, "SURVIVES  shells and their scrollback".to_string(), ground.fg(t.done)),
-            (4, "STOPS     agents: Enter on a row resumes one afterwards".to_string(), ground.fg(t.blocked)),
-            (5, cost, ground.fg(t.muted)),
-        ];
+                (3, "KEEPS     every session running while this app updates".to_string(), ground.fg(t.done)),
+                (5, "Another copy of the app started that server; this one is older.".to_string(), ground.fg(t.muted)),
+            ]
+        } else {
+            vec![
+                (0, format!(" {}D NEEDS AN UPDATE ", env!("APP_COMMAND").to_uppercase()), chip),
+                (
+                    2,
+                    format!(
+                        "The running {APP_NAME} server is older (protocol v{}; this one is v{this}).",
+                        self.daemon
+                    ),
+                    ground.fg(t.text),
+                ),
+                (3, "SURVIVES  shells and their scrollback".to_string(), ground.fg(t.done)),
+                (4, "STOPS     agents: Enter on a row resumes one afterwards".to_string(), ground.fg(t.blocked)),
+                (5, self.cost(), ground.fg(t.muted)),
+            ]
+        };
         let top = area.y + area.height.saturating_sub(BLOCK_HEIGHT) / 2;
         for (row, text, style) in lines {
             let x = area.x + area.width.saturating_sub(text.chars().count() as u16) / 2;
             put(buf, x, top + row, &[seg(text, style)], area.right());
         }
         let y = top + BLOCK_HEIGHT - 1;
+        let main = if behind {
+            (Choice::Update, button(t, "Update this app", "u", BtnKind::Primary))
+        } else {
+            (Choice::Restart, button(t, "Restart service", "r", BtnKind::Primary))
+        };
         let buttons = [
-            (
-                Choice::Restart,
-                button(t, "Restart service", "r", BtnKind::Primary),
-            ),
+            main,
             (Choice::Quit, button(t, "Not now", "Esc", BtnKind::Normal)),
         ];
         let total: u16 = buttons.iter().map(|(_, b)| segs_width(b)).sum::<u16>() + BUTTON_GAP;
@@ -312,6 +335,33 @@ mod tests {
         assert!(drawn(&mut prompt, 100, 30).contains("newer"));
         let mut prompt = Prompt::new(OLD_PROTOCOL, &cfg(LAYOUTS[0]));
         assert!(drawn(&mut prompt, 100, 30).contains("older"));
+    }
+
+    /// Restarting a newer server onto this app would be a downgrade, so that is not on offer.
+    #[test]
+    fn a_newer_server_offers_to_update_this_app_and_never_a_restart() {
+        for (w, h) in SIZES {
+            let mut prompt = Prompt::new(crate::protocol::PROTOCOL_VERSION + 1, &cfg(LAYOUTS[0]))
+                .resuming(3, Some(1));
+            let out = drawn(&mut prompt, w, h);
+            for want in ["Update this app", "Not now", "KEEPS", "NEEDS AN UPDATE"] {
+                assert!(out.contains(want), "{w}x{h} lacks {want:?}\n{out}");
+            }
+            for unwanted in ["Restart service", "STOPS"] {
+                assert!(!out.contains(unwanted), "{w}x{h} shows {unwanted:?}\n{out}");
+            }
+            assert!(prompt.hits.iter().all(|(_, choice)| *choice != Choice::Restart));
+            let update = button_at(&prompt, Choice::Update);
+            assert_eq!(
+                mouse(&mut prompt, MouseEventKind::Down(MouseButton::Left), update),
+                Some(Choice::Update)
+            );
+        }
+        let mut prompt = Prompt::new(crate::protocol::PROTOCOL_VERSION + 1, &cfg(LAYOUTS[0]));
+        assert_eq!(press(&mut prompt, KeyCode::Enter), Some(Choice::Update));
+        assert_eq!(press(&mut prompt, KeyCode::Char('u')), Some(Choice::Update));
+        assert_eq!(press(&mut prompt, KeyCode::Char('r')), None);
+        assert_eq!(press(&mut prompt, KeyCode::Esc), Some(Choice::Quit));
     }
 
     #[test]

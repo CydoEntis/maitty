@@ -4,7 +4,7 @@
 //!
 //! `MAITTY_FAKE_SSH_MAITTY` names the `maitty` to run. `MAITTY_FAKE_SSH_MODE` picks the
 //! behaviour: `proxy` (default), `auth-fail`, `noise`, `noise-only`, `noise-flood`, `old`, `hang`,
-//! `mismatch`, `exit`, `unreachable` (ssh cannot connect), `not-installed` (the remote has no
+//! `mismatch` (an older daemon), `mismatch-newer`, `exit`, `unreachable` (ssh cannot connect), `not-installed` (the remote has no
 //! app), `capture-hello`, `require-pipes`, `capture-argv`.
 //! The shim also stands in for a machine's custom transport (`via`): it is then the program,
 //! the settings are its own arguments, and the remote command is its last argument.
@@ -165,10 +165,14 @@ fn main() {
         "hang" => loop {
             std::thread::sleep(std::time::Duration::from_secs(3600));
         },
-        "mismatch" => {
-            print_stdout(&welcome_frame(
-                maitty_shared::protocol::PROTOCOL_VERSION + 1,
-            ));
+        // An older daemon (`mismatch`) or a newer one than this build (`mismatch-newer`).
+        "mismatch" | "mismatch-newer" => {
+            let theirs = if own.mode == "mismatch" {
+                maitty_shared::protocol::PROTOCOL_VERSION - 1
+            } else {
+                maitty_shared::protocol::PROTOCOL_VERSION + 1
+            };
+            print_stdout(&welcome_frame(theirs));
             let mut sink = Vec::new();
             let _ = std::io::stdin().read_to_end(&mut sink);
         }
