@@ -134,10 +134,10 @@ fifth a veil (the main card under `color-mix(--main 55%)` and a 3px blur) and on
 stopped**, a line saying how many sessions are saved, the technical details under a Details disclosure, and **Start service**,
 **Try again** and **Open log** (shows `daemon.log` selected in the data folder; the only record of why it stopped). The desktop's connection starts maittyd itself on every try (`open_or_spawn_for_user`), so both buttons try
 again at once; there is no separate start-service command. A running service of another protocol gets the same veil and card,
-**Restart Maitty to finish updating**, "The app updated to v76, but the service is still on v75.", a tray of what a restart
+**Restart Maitty to finish updating**, "The app updated, but the service behind it is still the older one.", a tray of what a restart
 keeps and stops (sessions that reopen, agents that will offer Resume, shells that stop; a line with a count of 0 is left out)
 and a **Restart and restore** button that asks for a second click (`restart_mismatched_daemon`, then "Service restarted · N
-sessions back"), with `v75 → v76` beside it. **Later** leaves a slim bar. The sidebar foot says "Service stopped" or "Restart
+sessions back"), with `protocol 75 → 76` beside it (protocol numbers are never written as app versions). **Later** leaves a slim bar. The sidebar foot says "Service stopped" or "Restart
 needed" in muted grey beside a red dot, never a red banner, and no needs-you toast shows while the service is not connected. Agents that were mid-turn offer **Resume** in the restore banner; nothing resumes by itself.
 
 A terminal UI (ratatui). Colours come only from the theme (`theme.rs`): semantic

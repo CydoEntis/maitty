@@ -104,7 +104,7 @@ function ServiceUpdateCard({ restart, onLater }: { restart: RestartOffer | null;
           <span className="mx-service-tile is-accent" aria-hidden="true">{RESTART}</span>
           <div className="mx-service-copy">
             <h2 id="mx-service-update-title">Restart Maitty to finish updating</h2>
-            <p>{restart ? `The app updated to v${String(restart.to)}, but the service is still on v${String(restart.from)}.` : 'The app updated, but the service is still on an older version.'}</p>
+            <p>The app updated, but the service behind it is still the older one.</p>
           </div>
         </div>
         {facts.length > 0 && (
@@ -132,7 +132,7 @@ function ServiceUpdateCard({ restart, onLater }: { restart: RestartOffer | null;
             </button>
           )}
           <button type="button" className="mx-svc-secondary" onClick={onLater}>Later</button>
-          {restart && <span className="mx-service-versions mono">v{restart.from} → v{restart.to}</span>}
+          {restart && <span className="mx-service-versions mono">protocol {restart.from} → {restart.to}</span>}
         </div>
       </section>
     </ServiceLayer>
@@ -150,13 +150,13 @@ function AppBehindCard({ offer, sessions, onLater }: { offer: AppBehindOffer; se
           <span className="mx-service-tile is-accent" aria-hidden="true">{RESTART}</span>
           <div className="mx-service-copy">
             <h2 id="mx-service-behind-title">Update Maitty to reconnect</h2>
-            <p>The service is on v{offer.serviceProtocol}, but this app only speaks v{offer.appProtocol}.{sessions > 0 && ` Your ${plural(sessions, 'session', 'sessions')} keep running.`}</p>
+            <p>The service behind this app is newer than the app.{sessions > 0 && ` Your ${plural(sessions, 'session', 'sessions')} keep running.`}</p>
           </div>
         </div>
         <div className="mx-service-actions">
           <button ref={first} type="button" className="mx-svc-primary" disabled={offer.disabled} onClick={offer.onPress}>{offer.label}</button>
           <button type="button" className="mx-svc-secondary" onClick={onLater}>Later</button>
-          <span className="mx-service-versions mono">v{offer.appProtocol} → v{offer.serviceProtocol}</span>
+          <span className="mx-service-versions mono">protocol {offer.appProtocol} → {offer.serviceProtocol}</span>
         </div>
       </section>
     </ServiceLayer>

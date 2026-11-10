@@ -786,7 +786,8 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     renderDesktopApp()
 
     const card = await screen.findByRole('region', { name: 'Restart Maitty to finish updating' })
-    expect(within(card).getByText('The app updated to v62, but the service is still on v49.')).toBeInTheDocument()
+    expect(within(card).getByText('The app updated, but the service behind it is still the older one.')).toBeInTheDocument()
+    expect(within(card).getByText('protocol 49 → 62')).toBeInTheDocument()
     await user.click(within(card).getByRole('button', { name: 'Later' }))
     expect(screen.queryByRole('region', { name: 'Restart Maitty to finish updating' })).not.toBeInTheDocument()
     expect(screen.getByText('Restart needed.')).toBeInTheDocument()
@@ -798,7 +799,7 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     renderDesktopApp()
 
     expect(await screen.findByRole('button', { name: 'Service in use' })).toBeDisabled()
-    expect(screen.getByText('The app updated to v59, but the service is still on v49.')).toBeInTheDocument()
+    expect(screen.getByText('The app updated, but the service behind it is still the older one.')).toBeInTheDocument()
     expect(screen.getByText(/owns 2 sessions but is not saving them, so Maitty leaves it running/)).toBeInTheDocument()
     expect(daemon.restartMismatchedDaemon).not.toHaveBeenCalled()
   })
@@ -808,7 +809,8 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     renderDesktopApp()
 
     const card = await screen.findByRole('region', { name: 'Update Maitty to reconnect' })
-    expect(within(card).getByText(/The service is on v77, but this app only speaks v76\./)).toBeInTheDocument()
+    expect(within(card).getByText(/The service behind this app is newer than the app\./)).toBeInTheDocument()
+    expect(within(card).getByText('protocol 76 → 77')).toBeInTheDocument()
     expect(within(card).getByRole('button', { name: 'Check again' })).toBeEnabled()
     expect(screen.queryByRole('region', { name: 'Restart Maitty to finish updating' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Service in use' })).not.toBeInTheDocument()
