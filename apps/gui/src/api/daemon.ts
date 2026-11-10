@@ -212,6 +212,15 @@ const DaemonRestartStatusSchema = z.object({
   activeTurnCount: z.number().int().nonnegative().nullable(),
 })
 
+/** A service that still talks to this app but runs an older release; `behind` is false for one that is current, newer or silent. */
+const DaemonUpdateStatusSchema = z.object({
+  daemonVersion: z.string().nullable(),
+  behind: z.boolean(),
+  canRestart: z.boolean(),
+  sessionCount: z.number().int().nonnegative(),
+  activeTurnCount: z.number().int().nonnegative().nullable(),
+})
+
 type ConversationSummary = z.infer<typeof ConversationSummarySchema>
 type WorkspaceSummary = z.infer<typeof WorkspaceSummarySchema>
 type ReadResult = z.infer<typeof ReadResultSchema>
@@ -273,6 +282,18 @@ export async function restartMismatchedDaemon(expectedProtocol: number): Promise
   if (!isDesktop()) throw new Error('Daemon restart is available in the desktop app')
   if (!Number.isSafeInteger(expectedProtocol) || expectedProtocol < 1) throw new Error('Daemon protocol is invalid')
   await invoke('restart_mismatched_daemon', { expectedProtocol })
+}
+
+export async function loadDaemonUpdateStatus() {
+  if (!isDesktop()) throw new Error('Service update status is available in the desktop app')
+  return invokeParsed('daemon_update_status', DaemonUpdateStatusSchema)
+}
+
+/** Restarts the service shown as `expectedVersion`; the host refuses when it is no longer that version. */
+export async function restartStaleDaemon(expectedVersion: string): Promise<void> {
+  if (!isDesktop()) throw new Error('Service restart is available in the desktop app')
+  if (!expectedVersion) throw new Error('Service version is invalid')
+  await invoke('restart_stale_daemon', { expectedVersion })
 }
 
 /** Shows the service's log in the system's file manager. Rejects with the host's words, such as "There is no log yet." */

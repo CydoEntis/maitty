@@ -110,11 +110,38 @@ fn can_restart_mismatched_daemon(
     sessions_saved: bool,
 ) -> bool {
     daemon_protocol < maitty_shared::protocol::PROTOCOL_VERSION
-        && (sessions_saved || activity.is_some_and(|activity| activity.sessions == 0))
+        && sessions_survive_restart(activity, sessions_saved)
+}
+
+/// Whether stopping the daemon loses nothing: its sessions are saved on disk, or it has none.
+fn sessions_survive_restart(activity: Option<&Activity>, sessions_saved: bool) -> bool {
+    sessions_saved || activity.is_some_and(|activity| activity.sessions == 0)
+}
+
+/// Whether the local daemon runs an older release than this app though the two still talk to each
+/// other. Such a daemon is never replaced unasked (it may hold running sessions), so the window
+/// says so and offers the restart.
+pub fn daemon_update_status(app_version: &str) -> Value {
+    update_status(
+        read_activity().as_ref(),
+        app_version,
+        session_file().is_file(),
+    )
+}
+
+fn update_status(activity: Option<&Activity>, app_version: &str, sessions_saved: bool) -> Value {
+    let behind = activity.is_some_and(|a| shared_daemon::is_older(&a.version, app_version));
+    json!({
+        "daemonVersion": activity.map(|a| a.version.as_str()).filter(|_| behind),
+        "behind": behind,
+        "canRestart": behind && sessions_survive_restart(activity, sessions_saved),
+        "sessionCount": activity.map_or(0, |a| a.sessions),
+        "activeTurnCount": activity.map(Activity::busy),
+    })
 }
 
 fn validate_restart_activity(activity: Option<&Activity>, sessions_saved: bool) -> Result<()> {
-    if sessions_saved || activity.is_some_and(|activity| activity.sessions == 0) {
+    if sessions_survive_restart(activity, sessions_saved) {
         return Ok(());
     }
     match activity {
@@ -131,6 +158,9 @@ fn validate_restart_activity(activity: Option<&Activity>, sessions_saved: bool) 
 #[derive(serde::Deserialize)]
 struct Activity {
     pid: u32,
+    /// Empty for a daemon from before it published its version.
+    #[serde(default)]
+    version: String,
     sessions: usize,
     working: usize,
     waiting: usize,
@@ -265,6 +295,25 @@ pub async fn restart_mismatched_daemon(expected_protocol: u32) -> Result<()> {
         }
     };
     validate_restart_confirmation(daemon_protocol, expected_protocol)?;
+    stop_local_daemon().await
+}
+
+/// Stop the exact older release the user confirmed replacing. It must still be the version the
+/// prompt named and still older than this app, so a daemon another window already replaced is
+/// never stopped by a stale prompt.
+pub async fn restart_stale_daemon(app_version: &str, expected_version: &str) -> Result<()> {
+    let activity = read_activity();
+    let running = activity.as_ref().map_or("", |a| a.version.as_str());
+    anyhow::ensure!(
+        running == expected_version && shared_daemon::is_older(running, app_version),
+        "the local {APP_NAME} service changed since the restart prompt opened"
+    );
+    stop_local_daemon().await
+}
+
+/// Stop the local daemon, after checking that its sessions are saved or that it has none, and
+/// wait until it lets go of the socket.
+async fn stop_local_daemon() -> Result<()> {
     validate_restart_activity(read_activity().as_ref(), session_file().is_file())?;
     tokio::task::spawn_blocking(stop_mismatched_daemon)
         .await
@@ -1660,7 +1709,7 @@ async fn receive_reply(reader: &mut ipc::Reader) -> Result<Reply> {
 #[cfg(test)]
 mod restart_confirmation_tests {
     use super::{
-        Activity, can_restart_mismatched_daemon, is_daemon_command_line,
+        Activity, can_restart_mismatched_daemon, is_daemon_command_line, update_status,
         validate_restart_activity, validate_restart_confirmation,
     };
 
@@ -1700,6 +1749,7 @@ mod restart_confirmation_tests {
     fn activity(sessions: usize, working: usize, waiting: usize) -> Activity {
         Activity {
             pid: 1,
+            version: "0.71.0".into(),
             sessions,
             working,
             waiting,
@@ -1740,6 +1790,37 @@ mod restart_confirmation_tests {
         assert!(validate_restart_activity(None, false).is_err());
         assert!(validate_restart_activity(Some(&activity(2, 1, 0)), true).is_ok());
         assert!(validate_restart_activity(Some(&activity(0, 0, 0)), false).is_ok());
+    }
+
+    #[test]
+    fn a_daemon_a_release_behind_is_reported_with_what_a_restart_costs() {
+        let status = update_status(Some(&activity(11, 1, 0)), "0.72.0", true);
+
+        assert_eq!(status["behind"], true);
+        assert_eq!(status["daemonVersion"], "0.71.0");
+        assert_eq!(status["canRestart"], true, "its sessions are saved");
+        assert_eq!(status["sessionCount"], 11);
+        assert_eq!(status["activeTurnCount"], 1);
+    }
+
+    #[test]
+    fn a_behind_daemon_whose_sessions_are_not_saved_is_reported_but_not_restartable() {
+        let status = update_status(Some(&activity(3, 0, 0)), "0.72.0", false);
+
+        assert_eq!(status["behind"], true);
+        assert_eq!(status["canRestart"], false);
+    }
+
+    #[test]
+    fn a_daemon_on_this_release_or_newer_or_silent_is_not_behind() {
+        for version in ["0.72.0", "0.73.0", ""] {
+            let mut current = activity(2, 0, 0);
+            current.version = version.into();
+            let status = update_status(Some(&current), "0.72.0", true);
+            assert_eq!(status["behind"], false, "{version:?}");
+            assert_eq!(status["canRestart"], false, "{version:?}");
+        }
+        assert_eq!(update_status(None, "0.72.0", true)["behind"], false);
     }
 
     #[test]

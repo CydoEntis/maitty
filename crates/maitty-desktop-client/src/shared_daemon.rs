@@ -56,6 +56,15 @@ fn parse_version(version: &str) -> Option<(u64, u64, u64)> {
     parts.next().is_none().then_some(version)
 }
 
+/// Whether the daemon runs an older release than the app. A version either side cannot read is
+/// never "older": the window offers a restart only when it is sure there is one to take.
+pub(crate) fn is_older(daemon: &str, app: &str) -> bool {
+    matches!(
+        (parse_version(daemon), parse_version(app)),
+        (Some(daemon), Some(app)) if daemon < app
+    )
+}
+
 /// What `<executable> --version` prints after the program name, if it runs.
 fn installed_version(executable: &Path) -> Option<String> {
     let output = Command::new(executable).arg("--version").output().ok()?;
@@ -228,7 +237,17 @@ fn free_aside(directory: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::{Plan, parse_version, path_with, plan, replace_file};
+    use super::{Plan, is_older, parse_version, path_with, plan, replace_file};
+
+    #[test]
+    fn a_daemon_is_older_only_when_both_versions_read_and_it_is_lower() {
+        assert!(is_older("0.71.0", "0.72.0"));
+        assert!(is_older("0.9.0", "0.10.0"), "compared as numbers, not text");
+        assert!(!is_older("0.72.0", "0.72.0"));
+        assert!(!is_older("0.73.0", "0.72.0"), "a newer daemon is never replaced by an older app");
+        assert!(!is_older("", "0.72.0"), "a daemon that did not say its version is left alone");
+        assert!(!is_older("0.71.0", "dev"));
+    }
 
     #[test]
     fn installs_when_nothing_is_installed() {
