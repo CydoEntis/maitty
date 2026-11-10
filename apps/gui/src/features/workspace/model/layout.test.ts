@@ -13,6 +13,7 @@ import {
   paneColumns,
   parseLayout,
   reconcileLayout,
+  removePane,
   removeSessions,
   showSession,
   splitPane,
@@ -85,6 +86,12 @@ describe('tab layout', () => {
   it('removes a pane with its session and closes the columns up', () => {
     const { layout } = withPanes('a', 'b', 'c')
     expect(cols(removeSessions(layout, new Set(['b'])))).toEqual(['a@0', 'c@1'])
+  })
+
+  it('takes one pane out by its id, even when another pane shows the same session', () => {
+    const { layout } = withPanes('a', 'b', 'a')
+    const second = layout.arrangements[0]?.panes[2]?.id ?? ''
+    expect(cols(removePane(layout, second))).toEqual(['a@0', 'b@1'])
   })
 
   it('removes the arrangement when its last pane goes', () => {

@@ -278,7 +278,9 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   **Machine**: Install Maitty or Update Maitty first (a machine that needs it), New agent chat here, New shell here, Collapse or Expand, Group by project or Show as one list, Machine
   settings…. **Pane** (⋯ or a right-click in the pane): Split right, Split down, Maximize pane, Show chat or Show
   terminal, then New terminal and Pin terminals under chat or Move terminals to side panel (agents) or Clear and Copy
-  folder path (shells), Changes and files, Close pane.
+  folder path (shells), Changes and files, Close pane. **Close pane** on one pane of several closes only the pane when its
+  session has work in it (an agent, a chat, a shell running a program): the session keeps running and stays in the
+  sidebar (`useClosing`, `removePane`). A plain idle shell, or the only pane, ends its session as before, with Undo.
 - **Status bar.** A 28px line at the bottom of the main area under a hairline, 11.5px muted, one line.
   The left is empty, except "Reconnecting to maittyd…" in amber with a dashed dot when the daemon is
   unreachable (the sidebar foot says "Service stopped" or "Restart needed" beside a red dot). The right holds quick controls: a **theme** menu (Dark, Light or System, a few themes of

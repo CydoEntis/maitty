@@ -161,8 +161,17 @@ export function toggleMaximize(layout: Layout, paneId: string): Layout {
 
 /** Drops panes whose session has ended, and tabs left empty. */
 export function reconcileLayout(layout: Layout, liveSessionIds: ReadonlySet<string>): Layout {
+  return keepPanes(layout, (pane) => liveSessionIds.has(pane.sessionId))
+}
+
+/** Takes one pane out and leaves its session alone: the others of its tab take the room. */
+export function removePane(layout: Layout, paneId: string): Layout {
+  return keepPanes(layout, (pane) => pane.id !== paneId)
+}
+
+function keepPanes(layout: Layout, keep: (pane: PaneSlot) => boolean): Layout {
   const tabs = layout.arrangements.flatMap((tab) => {
-    const panes = tab.panes.filter((pane) => liveSessionIds.has(pane.sessionId))
+    const panes = tab.panes.filter(keep)
     if (panes.length === tab.panes.length) return [tab]
     if (panes.length === 0) return []
     const compacted = compactColumns(panes)

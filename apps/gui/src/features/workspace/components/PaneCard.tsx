@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 're
 import { MAX_PANES, type PaneSlot, type SplitDirection } from '../model/layout'
 import type { SessionView } from '../model/session'
 import { headerFit } from '../model/paneHeader'
-import { rowTitle } from '../model/sidebar'
+import { keepsRunningUnseen, rowTitle } from '../model/sidebar'
 import { AppIcon, Icon, StatusBadge } from './glyphs'
 import { beginPointerDrag } from './dragSession'
 import { PaneViewSwitch } from './PaneViewSwitch'
@@ -88,7 +88,8 @@ export function PaneCard(props: PaneCardProps) {
   const view = props.view ?? 'terminal'
   const fit = headerFit(width)
   const title = rowTitle(session)
-  const closeLabel = 'Close pane · ends its session'
+  // One pane of several closes alone when its session has work in it (`useClosing`); otherwise closing ends the session.
+  const closeLabel = multi && keepsRunningUnseen(session) ? 'Close pane · its session keeps running' : 'Close pane · ends its session'
   const hasChanges = props.changed.added + props.changed.removed > 0
   const panelTip = hasChanges ? `Side panel · +${String(props.changed.added)} −${String(props.changed.removed)}` : 'Side panel'
   const drawerTip = props.drawerFolded === true ? 'Show the terminals' : 'Hide the terminals'
