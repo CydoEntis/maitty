@@ -192,7 +192,7 @@ jobs:
               cp target/release/bundle/macos/Maitty.app.tar.gz "dist/Maitty_${ver}_aarch64.app.tar.gz"
               cp target/release/bundle/macos/Maitty.app.tar.gz.sig "dist/Maitty_${ver}_aarch64.app.tar.gz.sig"
               ;;
-            Linux) find target/release/bundle -type f \( -iname '*.deb' -o -iname '*.rpm' -o -iname '*.appimage' -o -iname '*.appimage.sig' \) -exec cp {} dist/ \; ;;
+            Linux) find target/release/bundle -type f \( -iname '*.deb' -o -iname '*.rpm' -o -iname '*.appimage' -o -iname '*.sig' \) -exec cp {} dist/ \; ;;
           esac
           test -n "$(find dist -maxdepth 1 -type f -print -quit)" \
             || { echo "No GUI installers were collected" >&2; exit 1; }
@@ -272,6 +272,22 @@ jobs:
               "windows-x86_64": {signature: $winsig, url: "\($base)/\($win)"},
               "darwin-aarch64": {signature: $macsig, url: "\($base)/\($mac)"},
               "linux-x86_64": {signature: $linsig, url: "\($base)/\($lin)"}}}' > dist/latest.json
+          # An install made by another kind of installer asks for its own kind first
+          # (`<os>-<arch>-<installer>`) and only then for the entry above, which would put a second
+          # copy beside an .msi install and cannot replace a .deb or .rpm one. Each gets its entry
+          # when the build signed that installer; without a signature it is left out and said.
+          for kind in "windows-x86_64-msi msi" "linux-x86_64-deb deb" "linux-x86_64-rpm rpm"; do
+            set -- $kind
+            file=$(find dist -maxdepth 1 -type f -iname "*.$2" -printf '%f\n' | sort | head -n 1)
+            if [ -n "$file" ] && [ -f "dist/$file.sig" ]; then
+              jq --arg key "$1" --arg sig "$(cat "dist/$file.sig")" \
+                --arg url "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$file" \
+                '.platforms[$key] = {signature: $sig, url: $url}' dist/latest.json > dist/latest.next.json
+              mv dist/latest.next.json dist/latest.json
+            else
+              echo "No signed .$2 installer was built: an install made with one cannot update itself." >&2
+            fi
+          done
           cat dist/latest.json
 
       - name: Checksums

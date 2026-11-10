@@ -43,6 +43,12 @@ publishes the signed bundles and `latest.json` beside the installers:
 | macOS Apple Silicon | `Maitty_<version>_aarch64.app.tar.gz` |
 | Linux x64 | `Maitty_<version>_amd64.AppImage` |
 
+An install made with the `.msi`, `.deb` or `.rpm` installer asks `latest.json` for its own kind first
+(`windows-x86_64-msi`, `linux-x86_64-deb`, `linux-x86_64-rpm`) and updates with that installer. The
+release adds each of those entries when the build signed that installer, and says so in its log when
+one is missing; an install of that kind then has to be reinstalled to update. A `.dmg` install is the
+same app as the macOS update bundle and updates like it.
+
 While `apps/gui/RELEASE-HOLD` exists, a release leaves the desktop app out. The release workflow
 builds no installers or update bundles and attaches the newest release's `latest.json` to the new
 release unchanged. The app asks the newest release for that file, so desktop users go on being
@@ -52,5 +58,4 @@ Don't rebuild the release that manifest points at while the hold is on: its sign
 and rebuilt bundles would no longer match them.
 
 CI builds the installers on a push to `dev`, without `createUpdaterArtifacts` because it has no private key. On Windows
-the installer runs in `passive` mode and closes the app while it installs. The `.deb`, `.rpm`, `.msi`
-and `.dmg` installers are not update bundles; a user who installed one reinstalls to update.
+the installer runs in `passive` mode and closes the app while it installs.
