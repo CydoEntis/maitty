@@ -1,6 +1,5 @@
 import { isSpinnerStyle, type SpinnerStyle } from '@/lib/spinner-clock'
 import { DEFAULT_WINDOW_STYLE, isWindowStyle, type WindowStyle } from '@/features/workspace/theme/windowStyles'
-import { prefersPlainDrawing } from '@/lib/gpu'
 import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, isFontFamily, isFontWeight, type TerminalFontWeight } from '@/lib/terminalFont'
 import { readThemePreference, type ThemePreference } from '@/data/themePreference'
 import { DEFAULT_LIGHT_THEME, DEFAULT_THEME, THEMES, type ThemeMode } from '@/features/workspace/theme/themes'
@@ -193,7 +192,8 @@ function defaults(): SettingsPreferences {
     yoloGemini: false,
     statusBar: false,
     perfOverlay: false,
-    terminalPlainDrawing: prefersPlainDrawing(),
+    // WebGL everywhere. The late letters it once showed on Linux came from a page drawn on the CPU, which the host now prevents (docs/PERFORMANCE.md).
+    terminalPlainDrawing: false,
     terminalSeeThrough: false,
     backgroundGlow: false,
     cursorBlink: false,

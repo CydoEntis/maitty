@@ -1,5 +1,5 @@
 import { flushSync } from 'react-dom'
-import { prefersPlainDrawing } from '@/lib/gpu'
+import { isLinuxWebView } from '@/lib/gpu'
 
 type Transitions = { startViewTransition?: (update: () => void) => { finished: Promise<unknown> } }
 
@@ -29,7 +29,7 @@ const reducedMotion = (): boolean =>
  */
 export function movePanes(update: () => void): void {
   const doc = document as Document & Transitions
-  if (typeof doc.startViewTransition !== 'function' || prefersPlainDrawing() || reducedMotion() || panesNow().length < MIN_PANES) {
+  if (typeof doc.startViewTransition !== 'function' || isLinuxWebView() || reducedMotion() || panesNow().length < MIN_PANES) {
     update()
     return
   }

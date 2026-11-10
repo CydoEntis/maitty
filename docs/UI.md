@@ -594,6 +594,11 @@ system's, so it takes no theme. Closing the window still closes the app; the ite
   protocol version: an amber title, SURVIVES (shells and their scrollback), STOPS (agents), `r` restart service or `Esc`
   not now (which leaves the window; a client and daemon that cannot read each other do not talk, so there is no
   read-only mode).
+- **Service a release behind (desktop)** (`features/preview/ServiceBehindNotice.tsx`): an update leaves a running
+  daemon alone while it holds sessions, so the window can be newer than the service it talks to. A toast that stays
+  says `The Maitty service is still on <version>` with `Restart…`, which opens a dialog saying how many sessions
+  come back and how many agent turns stop before anything is restarted. With sessions that are not saved the toast
+  says so and offers no restart.
 - **After a restart** a line reads `maittyd restarted · N agents stopped · Enter on its row resumes` for 30 seconds
   while any session has `TermInfo.interrupted`; Enter on that row in the sidebar types its resume command.
   Resuming is never automatic.

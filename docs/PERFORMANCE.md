@@ -403,10 +403,9 @@ read: key replies median 1 ms and worst 40 ms, 63 fps, no slow frames, 124 of 12
 the local socket. Typing was still late. Switching the terminals to xterm's DOM renderer
 (Settings › Performance › **Draw terminals without the GPU**) fixed it, in a shell and in a Claude
 session. So the delay was in the WebGL renderer presenting its canvas on this web view, not in the
-keys, the daemon, the host or the output socket. On Linux the setting now starts on; macOS and
-Windows keep WebGL (`prefersPlainDrawing` in `lib/gpu.ts`). Not yet checked: CPU with the DOM
-renderer while an agent streams a long answer (the figures above for a streaming session were
-measured with WebGL). Copy the report during one and compare.
+keys, the daemon, the host or the output socket. The real cause was one level down: the page was
+drawn on the CPU (see *The page was drawn on the CPU* below), and with that fixed WebGL shows
+letters on time. Every platform now starts on WebGL; the setting stays for a machine that needs it.
 
 ### How to run measurement 2 again
 
@@ -517,6 +516,61 @@ chat and treat the terminal as secondary, and the one on Chromium has no Linux l
 the one on WebKitGTK calls its Linux build a preview. If the hop turns out to be the web view or
 Tauri's IPC and not this app's code, the choice is between working around WebKitGTK and moving the
 desktop app to Chromium (Electron, or a Chromium web view). That is an ADR, not a ticket.
+
+## The page was drawn on the CPU (2026-11-10)
+
+On the owner's machine (Hyprland, NVIDIA RTX 4060, driver 615.78, 2556x1380 window on a 120 Hz
+monitor) the AppImage ran at 4 to 16 frames a second with every frame slow, on either terminal
+renderer. The cause was not in this app's code.
+
+**Cause.** The AppImage carries its own WebKitGTK, whatever the build machine has (2.52.6 on that
+day; the system's was 2.54.1). Before 2.54, WebKitGTK leaves hardware acceleration off under
+NVIDIA's driver unless `WEBKIT_FORCE_DMABUF_RENDERER=1` is set: `webkit://gpu` reads *Policy:
+never* and the web process has no `ThreadedCompositor` thread. The whole window is then painted by
+the web process's main thread, a WebGL canvas is read back for every frame, and the cost grows with
+the window's area. 2.54 has no such variable and reads *Policy: always* on the same machine.
+
+**Measured** (the production build with the harness's mock daemon streaming 20 KB/s, a 1880x1000
+window on a 60 Hz monitor, 12 s after 7 s warm; frames a second, frames over 50 ms, main thread of
+the web process as a share of one core):
+
+| WebKitGTK | Terminal renderer | Frames/s | Slow frames | Main thread |
+| --- | --- | --- | --- | --- |
+| 2.52.6 from the AppImage, as shipped | DOM | 27 | 157 | 92% |
+| 2.52.6 from the AppImage, as shipped | WebGL | 61 | 2 | 60% |
+| 2.52.6 with the renderer forced | WebGL | 62 | 0 | 5-7% |
+| 2.52.6 with the renderer forced | DOM | 61 | 0-1 | about 42% |
+| 2.54.1 from the system | WebGL | 62 | 0 | 5% |
+| 2.54.1 from the system | DOM | 61-62 | 0-1 | about 36% |
+
+In the owner's own window the AppImage went from 4 to 16 frames a second to 62 to 63 with no slow
+frame, and the late letters and the cursor over the last letter (above) went away with WebGL on.
+
+**Explicit sync.** The GPU renderer and NVIDIA's explicit sync do not work together on that
+machine: without `__NV_DISABLE_EXPLICIT_SYNC=1` the app exits at start with `Error 71 (Protocol
+error) dispatching to Wayland display`, three times out of three on 2.52.6 with the renderer forced
+and once out of once on 2.54.1. Omarchy sets the variable for the whole session.
+
+**Fix.** On Linux the host sets both variables before the web view starts, only for NVIDIA under
+Wayland (`apps/gui/src-tauri/src/linux_gpu.rs`). It adds nothing when the person set a WebKit
+drawing variable themselves, set explicit sync to stay on, or opted out with
+`MAITTY_NO_GPU_FORCE=1` ([ENVIRONMENT](ENVIRONMENT.md#project-specific-variables)).
+
+**The report read 0% CPU throughout.** `performance.rs` refreshed the process table twice a
+sample, and `sysinfo` moves a process's CPU mark on every refresh, so the share was always the work
+of the last few microseconds. One refresh a sample now. The web process was at 30 to 45% of a core
+while its report said 0.
+
+**To check a machine:** a GPU-drawn page has a thread named `ThreadedCompositor` in the web process
+(`cat /proc/<pid>/task/*/comm`, cut to its last 15 letters), and `webkit://gpu` in any WebKitGTK
+view names the policy and the renderer.
+
+**Not covered:** X11 sessions with NVIDIA (the 2.52.6 page is CPU-drawn there too, and forcing it
+was not tried); other graphics cards; the owner's window size and 120 Hz in the harness; long use
+with the renderer forced, a mode WebKitGTK kept off for NVIDIA in that version. One forced run of
+twelve drew no frames while its timers ran; it did not repeat, and three unforced runs showed the
+same pause, so it is not pinned on the forcing. The AppImage's web process also crashes when the
+app closes, forced or not; not investigated.
 
 ## Starting a chat (2026-11-08)
 

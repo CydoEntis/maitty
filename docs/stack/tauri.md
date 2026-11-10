@@ -81,9 +81,18 @@ Expose only fixed commands to the webview. On a protocol mismatch, the GUI may
 offer an explicit restart for an older local daemon after showing its saved
 session and active-turn counts; recheck the exact protocol in Rust before
 stopping it, then reconnect through the bundled daemon. Never downgrade a newer
-daemon or restart a remote service from the GUI.
+daemon or restart a remote service from the GUI. A local daemon that still
+speaks this protocol but runs an older release is never replaced unasked
+either: the window says which release it is on and offers the same restart
+(`daemon_update_status`, `restart_stale_daemon`, which rechecks the version the
+person was shown).
 The target OS floor is the existing project support floor; do not raise it
 without updating this section and the release workflow.
+
+Linux drawing (`linux_gpu.rs`): before anything else in `run`, the host sets the two environment
+variables that let WebKitGTK draw the page on the GPU with NVIDIA's driver under Wayland, and
+nothing on any other machine. The why and the measurements are in
+[PERFORMANCE](../PERFORMANCE.md#the-page-was-drawn-on-the-cpu-2026-11-10).
 
 Tray item (`tray.rs`, Tauri's `tray-icon` feature): one item in the Windows tray or the macOS
 menu bar, with the system's own menu. The window says which sessions to list

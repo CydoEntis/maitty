@@ -7,6 +7,8 @@ mod image_paste;
 pub mod hub;
 mod daemon_log;
 mod highlight;
+#[cfg(target_os = "linux")]
+mod linux_gpu;
 mod machine_update;
 mod machines;
 mod changes;
@@ -954,7 +956,27 @@ async fn restart_mismatched_daemon(expected_protocol: u32) -> Result<(), String>
         .map_err(|error| format!("{error:#}"))
 }
 
+#[tauri::command]
+async fn daemon_update_status(app: tauri::AppHandle) -> serde_json::Value {
+    maitty_desktop_client::daemon_update_status(&app.package_info().version.to_string())
+}
+
+#[tauri::command]
+async fn restart_stale_daemon(
+    app: tauri::AppHandle,
+    expected_version: String,
+) -> Result<(), String> {
+    maitty_desktop_client::restart_stale_daemon(
+        &app.package_info().version.to_string(),
+        &expected_version,
+    )
+    .await
+    .map_err(|error| format!("{error:#}"))
+}
+
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    linux_gpu::prefer_gpu_drawing();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -1087,6 +1109,8 @@ pub fn run() {
             claude_executable_path,
             daemon_restart_status,
             restart_mismatched_daemon,
+            daemon_update_status,
+            restart_stale_daemon,
             performance::performance_sample
         ])
         .run(tauri::generate_context!())
