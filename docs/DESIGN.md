@@ -328,8 +328,8 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   user message) is one quiet line, "Agent "name" finished · 11s · 50.5k tokens", never the markup; once it has reported,
   its row leaves the sidebar (one that stopped or still needs something stays).
 - **Panes swap with a glide.** Dropping a pane on another swaps them through a View Transition (`paneTransition.ts`): only the
-  browser's pictures of the panes move, so text never reflows on the way. Without View Transitions, or with Reduce motion,
-  the swap just happens.
+  browser's pictures of the panes move, so text never reflows on the way. Without View Transitions, with Reduce motion, or on
+  the Linux web view (where a swap by drag was reported to take the window down in 0.72.0), the swap just happens.
 - **Toasts are cards.** The notification card is the one design; a plain toast (Sonner) is laid out the same way: icon tile,
   title and detail, the close at the top right and the action on its own row under the text, 96px below the top edge and 36px
   in from the side.
@@ -513,11 +513,16 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   `Sending image`, **Cancel**), ending as `Sent the image to <machine>`. For a pane of this computer there is
   no progress: a short `Saving the image…` toast becomes `Pasted the image`.
 - **Side panel** (⌘I, a pane's side-panel button, a session's Show changes; `features/inspect/InspectPanel.tsx`). It
-  slides over a scrim at three-quarters of the window, never over the sidebar, 12px from the top and bottom and 24px
+  slides over a scrim at half of the window, never over the sidebar, 12px from the top and bottom and 24px
   from the right, radius 16; its edge drags and the width is remembered (a double-click goes back to following the
-  window). Its header is only the tabs **Changes** (with its count), **Files** and **Terminal**, with a 2px accent
-  underline, and ×. Esc closes it, except in a terminal, where Esc is the program's. A shell has no Terminal tab; a
-  chat session has no pane to ask about its repository, so Changes and Files appear for it once it has a terminal.
+  window). Its header is one segmented control, **Changes** (with its count), **Files** and **Terminal**, each with
+  its icon and the open one a raised pill, and ×. Esc closes it, except in a terminal, where Esc is the program's.
+  **Changes** is two columns: the branch, the changed files (a letter for added, modified or deleted, the name over
+  its folder, the lines added and removed) and under them the commit message with Commit and Create PR; beside it
+  the picked file's path, what happened to it, and its diff with both line numbers and without git's header lines.
+  An agent always has the Terminal tab: with its terminals pinned under the chat the tab says so and offers to show
+  them there. A shell has no Terminal tab; a chat session has no pane to ask about its repository, so Changes and
+  Files appear for it once it has a terminal.
   Branches, History, Timeline and References are kept in the code but nothing opens them: whether they come back
   is undecided. Changes lists the
   changed files (`+N −N`) and the picked file's diff (added lines tinted with `--ok`, removed with `--danger`, hunk

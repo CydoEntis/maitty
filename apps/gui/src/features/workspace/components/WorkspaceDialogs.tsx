@@ -29,16 +29,25 @@ import { useWorkspace } from '../workspaceContext'
 /** What opens over or beside the panes: Inspect, the palette, Settings and each dialog. */
 export function WorkspaceDialogs() {
   const { mismatch, inspectOpen, focusMode, inspectTerm, ownsTerminals, focusedSession, projectOf, diffStat, inspectView, lookAt, setInspectView, setInspectOpen, flash, shortcutsOpen, platform, root, setShortcutsOpen, welcomeOpen, preferences, setPreferences, setWelcomeOpen, newSession, focusedMachineNumber, paletteOpen, paletteItems, setPaletteOpen, focusedId, sessionMap, needsElsewhere, setFocusMode, focusModeChord, worktreeFrom, createWorktree, setWorktreeFrom, newSessionMachine, heads, sessions, home, startFromModal, setNewSessionMachine, getFileId, setGetFileId, getFile, updateAsk, setUpdateAsk, updateNamed, closeAsk, setCloseAsk, renamingMachine, machineNicknames, setMachineNicknames, setRenamingMachine, renameId, renameInline, saveName, setRenameId, settingsSection, setSettingsSection, systemReducedMotion, systemDark, previewThemeSoon, showTestNotice, updater, restartNow, setPreviewTheme, online, runningVersion, machinesKnown, retryNamed, removeNamed, grantNamed, copyCommand, addNamed, cancelAdding, usageInfo, chooseStartFolder, toastMessage, updatedTo, setUpdatedTo, restarting } = useWorkspace()
-  // The Terminal tab is there while terminals live in the panel; pinned under the chat, they are in the pane.
-  const panelTerminals = focusedSession !== undefined && ownsTerminals(focusedSession) && preferences.terminalDock === 'panel'
+  // An agent always has a Terminal tab. Pinned under the chat, its terminals are in the pane, and the tab offers to bring them back.
+  const hasTerminals = focusedSession !== undefined && ownsTerminals(focusedSession)
   return (
     <>
-      {inspectOpen && !focusMode && focusedSession && (inspectTerm !== null || panelTerminals) && (
+      {inspectOpen && !focusMode && focusedSession && (inspectTerm !== null || hasTerminals) && (
               <InspectPanel
                 key={focusedSession.id}
                 term={inspectTerm}
-                terminals={panelTerminals ? <AgentTerminals agent={focusedSession} dock="panel" focused={inspectView === 'terminal'} /> : null}
+                terminals={!hasTerminals ? null : preferences.terminalDock === 'panel'
+                  ? <AgentTerminals agent={focusedSession} dock="panel" focused={inspectView === 'terminal'} />
+                  : (
+                    <div className="mx-terms-empty">
+                      <strong>Terminals are pinned under the chat</strong>
+                      <span>They show at the bottom of this agent's pane.</span>
+                      <button type="button" className="mx-terms-start" onClick={() => { setPreferences((current) => ({ ...current, terminalDock: 'panel' })) }}>Show them here</button>
+                    </div>
+                  )}
                 changedFiles={diffStat.data?.files ?? 0}
+                {...(focusedSession.branch ? { branch: focusedSession.branch } : {})}
                 view={inspectView}
                 agentWorking={focusedSession.status === 'working'}
                 timeline={focusedSession.timeline}

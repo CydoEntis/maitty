@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { InspectPanel, type InspectView } from './InspectPanel'
@@ -73,9 +73,11 @@ describe('Inspect panel', () => {
     })
     renderPanel('changes')
 
-    expect(await screen.findByText('a.txt')).toBeTruthy()
+    const files = await screen.findByRole('list', { name: 'Changed files' })
+    expect(within(files).getByText('a.txt')).toBeTruthy()
     expect(screen.getByLabelText('Diff').textContent).toContain('+new')
-    fireEvent.click(screen.getByRole('button', { name: /b\.txt/ }))
+    expect(screen.getByLabelText('Diff').textContent).not.toContain('diff --git')
+    fireEvent.click(within(files).getByRole('button', { name: /b\.txt/ }))
     expect(screen.getByLabelText('Diff').textContent).toContain('+z')
   })
 
@@ -141,7 +143,7 @@ describe('Inspect panel', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('nothing to commit')
     cleanup()
     renderPanel('changes')
-    await screen.findByText('a.txt')
+    await screen.findByRole('list', { name: 'Changed files' })
     expect(screen.queryByRole('button', { name: /^Commit/ })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Create PR' })).toBeNull()
   })

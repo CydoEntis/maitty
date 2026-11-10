@@ -17,7 +17,16 @@ function canComment(line: PatchLine): boolean {
   return line.line !== null
 }
 
-/** One file's unified diff, each line coloured by what it did. With `comments`, a click on a line opens a box to tell the agent about it. */
+/** The two line numbers of a diff line, drawn by the stylesheet so that copying the diff copies only its text. */
+function Numbers({ line }: { line: PatchLine }) {
+  return <i className="mx-patch-no" data-old={line.oldLine ?? ''} data-new={line.newLine ?? ''} aria-hidden="true" />
+}
+
+/**
+ * One file's unified diff, each line coloured by what it did and numbered on both sides. Git's own
+ * header lines are left out: the panel already names the file. With `comments`, a click on a line
+ * opens a box to tell the agent about it.
+ */
 export function PatchView({ patch, comments }: { patch: string; comments?: PatchComments }) {
   const [open, setOpen] = useState<number | null>(null)
   const [draft, setDraft] = useState('')
@@ -25,6 +34,7 @@ export function PatchView({ patch, comments }: { patch: string; comments?: Patch
   const [failure, setFailure] = useState<string | null>(null)
   const [sent, setSent] = useState<readonly Sent[]>([])
   const lines = patchLines(patch)
+  const firstHunk = lines.findIndex((line) => line.kind === 'hunk')
 
   const openAt = (index: number) => {
     if (sending) return
@@ -47,8 +57,11 @@ export function PatchView({ patch, comments }: { patch: string; comments?: Patch
   }
 
   return (
-    <pre className={`mx-patch${comments ? ' is-numbered' : ''}`} aria-label="Diff">
+    <pre className="mx-patch is-numbered" aria-label="Diff">
       {lines.map((line, index) => {
+        // The first hunk's header only says where the file starts; a later one marks a gap in it.
+        if (index <= firstHunk) return null
+        if (line.kind === 'hunk') return <span key={index} className="mx-patch-gap" aria-hidden="true" />
         const commentable = comments !== undefined && canComment(line)
         return (
           <Fragment key={index}>
@@ -61,9 +74,9 @@ export function PatchView({ patch, comments }: { patch: string; comments?: Patch
                 title="Click to comment"
                 onClick={() => { openAt(index) }}
                 onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openAt(index) } }}
-              >{line.text}{'\n'}</span>
+              ><Numbers line={line} />{line.text}{'\n'}</span>
             ) : (
-              <span className={`mx-patch-line is-${line.kind}`} data-line={line.line ?? ''}>{line.text}{'\n'}</span>
+              <span className={`mx-patch-line is-${line.kind}`} data-line={line.line ?? ''}><Numbers line={line} />{line.text}{'\n'}</span>
             )}
             {sent.filter((comment) => comment.index === index).map((comment, at) => (
               <span key={at} className="mx-patch-sent"><b>You</b> {comment.text} <i>· sent to {comments?.agent}</i></span>
