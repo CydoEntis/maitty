@@ -399,6 +399,55 @@ pub(crate) fn expected_checksum(sums: &str, asset: &str) -> Option<String> {
     })
 }
 
+/// The public key releases are signed with: the desktop updater's (`plugins.updater.pubkey` in
+/// the desktop app's `tauri.conf.json`, which a test holds this to), so one key vouches for
+/// both apps. A public key is not a secret.
+const RELEASE_KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMzNzI5RUU4NTdGMUIxNUMKUldSY3NmRlg2SjV5TTF5VTJWUTQ1VnlHSlBWTU9uYnl5ZW50UzQzSFVXcU5zRlhqOGZIZXpucUsK";
+
+/// The first release whose `sha256sums.txt` is signed. An older one, which only `--to` reaches,
+/// is checked by its checksum alone.
+const SIGNED_SINCE: &str = "0.71.0";
+
+/// The file beside `sha256sums.txt` that holds its signature.
+const SUMS_SIGNATURE: &str = "sha256sums.txt.sig";
+
+/// Whether the release at `tag` must come with a signature.
+fn is_signed(tag: &str) -> bool {
+    !newer_than(SIGNED_SINCE, tag)
+}
+
+/// Check that `signature` (as the release workflow writes it: a minisign signature, base64) is
+/// `key`'s over exactly these bytes. The checksums vouch for every download, so this is what
+/// ties a download to the people who release the app and not only to the server it came from.
+fn verify_signed(data: &[u8], signature: &str, key: &str) -> Result<()> {
+    use base64::Engine;
+    let text = |encoded: &str| -> Result<String> {
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(encoded.trim())
+            .context("not base64")?;
+        String::from_utf8(bytes).context("not text")
+    };
+    let key = minisign_verify::PublicKey::decode(&text(key)?)
+        .map_err(|e| anyhow::anyhow!("reading the release key: {e}"))?;
+    let signature = minisign_verify::Signature::decode(&text(signature)?)
+        .map_err(|e| anyhow::anyhow!("reading the signature: {e}"))?;
+    key.verify(data, &signature, true)
+        .map_err(|e| anyhow::anyhow!("the signature does not match: {e}"))
+}
+
+/// `<app> verify-release <sha256sums.txt>`: check the signature beside a checksum file with the
+/// key built into this program. The release workflow runs it on what it is about to publish, so
+/// a release this app would refuse to update to is never published.
+pub fn verify_release(sums: &Path) -> Result<()> {
+    let signature = sums.with_file_name(SUMS_SIGNATURE);
+    let data = std::fs::read(sums).with_context(|| format!("reading {}", sums.display()))?;
+    let signature = std::fs::read_to_string(&signature)
+        .with_context(|| format!("reading {}", signature.display()))?;
+    verify_signed(&data, &signature, RELEASE_KEY)?;
+    println!("{} is signed with {APP_NAME}'s release key.", sums.display());
+    Ok(())
+}
+
 fn install(tag: &str, target: &str, asset: &str, tmp: &Path, say: bool) -> Result<PathBuf> {
     if say {
         println!(
@@ -410,6 +459,12 @@ fn install(tag: &str, target: &str, asset: &str, tmp: &Path, say: bool) -> Resul
     let archive = download(tag, asset, tmp)?;
     let sums = std::fs::read_to_string(download(tag, "sha256sums.txt", tmp)?)?;
     at_step(2);
+    if is_signed(tag) {
+        let signature = std::fs::read_to_string(download(tag, SUMS_SIGNATURE, tmp)?)?;
+        verify_signed(sums.as_bytes(), &signature, RELEASE_KEY).with_context(|| {
+            format!("this release's checksums are not signed with {APP_NAME}'s key; nothing was changed")
+        })?;
+    }
     let expected =
         expected_checksum(&sums, asset).with_context(|| format!("no checksum for {asset}"))?;
     if sha256_hex(&archive)? != expected {
@@ -588,6 +643,42 @@ fn changes_in(json: &str, current: &str) -> Vec<String> {
 mod tests {
     use super::*;
     use crate::installed_executable::installed_path;
+
+    /// A key and a signature made for this test with the same tool the release uses; the private
+    /// half was thrown away.
+    const TEST_KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY0OTA3MTExNDdERjgzQTEKUldTaGc5OUhFWEdRWkIzRFZ0WEx4amt1TStGUk1qVWJ2Ky9EMm5ubmZHN2c5NjlYNTc2aWZmbDQK";
+    const TEST_SIGNATURE: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTaGc5OUhFWEdRWkx6VGdxS2t1VnhJUGRPZ2ZPemc0WEU0S2YyaU5TenloWlpTOVRqWnVXZHd0SXlySjl4ZTZFT0JtWGt0L1gwem5obFY0cXJtU2hkRmZBU0Q2ZjFYcHcwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MzE1OTE0CWZpbGU6c2hhMjU2c3Vtcy50eHQKU0t6OU5ZZ1h2MnFEVDJhZFh1OXEyV0gxMW9OVXFpZDFsanlISlM2RmZGU2tFbno3cm9RZS9KY2FtUEtPeVFXQXJxdFJmWmpNYzdsZGMrbFhwcjJRQkE9PQo=";
+    const TEST_SUMS: &[u8] = b"abc123  maitty-x86_64-pc-windows-msvc.zip\n";
+
+    #[test]
+    fn signed_checksums_verify_and_changed_ones_do_not() {
+        verify_signed(TEST_SUMS, TEST_SIGNATURE, TEST_KEY).unwrap();
+        let changed = b"abc124  maitty-x86_64-pc-windows-msvc.zip\n";
+        let error = verify_signed(changed, TEST_SIGNATURE, TEST_KEY).unwrap_err();
+        assert!(error.to_string().contains("does not match"), "{error}");
+    }
+
+    #[test]
+    fn a_signature_from_another_key_is_refused() {
+        assert!(verify_signed(TEST_SUMS, TEST_SIGNATURE, RELEASE_KEY).is_err());
+        assert!(verify_signed(TEST_SUMS, "not a signature", TEST_KEY).is_err());
+        assert!(verify_signed(TEST_SUMS, "", TEST_KEY).is_err());
+    }
+
+    #[test]
+    fn the_release_key_is_the_desktop_updaters() {
+        let conf = concat!(env!("CARGO_MANIFEST_DIR"), "/../../apps/gui/src-tauri/tauri.conf.json");
+        let conf = std::fs::read_to_string(conf).unwrap();
+        assert!(conf.contains(&format!("\"pubkey\": \"{RELEASE_KEY}\"")));
+    }
+
+    #[test]
+    fn releases_are_signed_from_the_first_signed_one_on() {
+        assert!(!is_signed("v0.70.0"));
+        assert!(is_signed(&format!("v{SIGNED_SINCE}")));
+        assert!(is_signed("v0.71.1"));
+        assert!(is_signed("v1.0.0"));
+    }
 
     #[test]
     fn a_named_release_is_a_version_with_or_without_its_v() {

@@ -256,6 +256,12 @@ enum Cmd {
         #[arg(long, value_name = "VERSION", conflicts_with = "check")]
         to: Option<String>,
     },
+    /// Check the signature beside a release's checksum file with this program's key.
+    #[command(hide = true)]
+    VerifyRelease {
+        /// The `sha256sums.txt` to check; its signature is the `.sig` beside it.
+        sums: PathBuf,
+    },
     /// Take the app off this computer: stop the server, disconnect your agents and remove the
     /// program. It says what it will do and asks first. Settings and saved sessions are kept.
     Uninstall {
@@ -687,6 +693,7 @@ pub(crate) fn run() {
         Some(Cmd::Account { name, command }) => cli::account(&name, &command),
         Some(Cmd::Update { check, force, to }) => cli::update::run(check, force, to.as_deref()),
         Some(Cmd::Uninstall { yes, purge }) => cli::uninstall::run(yes, purge),
+        Some(Cmd::VerifyRelease { sums }) => cli::update::verify_release(&sums),
         Some(Cmd::Machine {
             cmd:
                 MachineCmd::Update {
