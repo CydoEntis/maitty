@@ -39,7 +39,7 @@ const EDGE_PX = 24
 const KEY_STEP_PX = 24
 const WIDTH_KEY = 'maitty.inspect.width.v2'
 /** The exit animation's length: the panel is unmounted when it ends, not at once. */
-const EXIT_MS = 210
+const EXIT_MS = 190
 
 /** The widest the panel may be: it never covers the sidebar, and leaves a strip of the chat. */
 function roomPx(): number {
