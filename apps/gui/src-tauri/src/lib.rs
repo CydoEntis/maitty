@@ -7,6 +7,8 @@ mod image_paste;
 pub mod hub;
 mod daemon_log;
 mod highlight;
+#[cfg(target_os = "linux")]
+mod linux_gpu;
 mod machine_update;
 mod machines;
 mod changes;
@@ -955,6 +957,8 @@ async fn restart_mismatched_daemon(expected_protocol: u32) -> Result<(), String>
 }
 
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    linux_gpu::prefer_gpu_drawing();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())

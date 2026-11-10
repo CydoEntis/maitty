@@ -11,17 +11,6 @@ export function hasWebgl2(): boolean {
   return webgl2Available
 }
 
-/**
- * Whether terminals should start on xterm's DOM renderer. On WebKitGTK (the Linux web view) the WebGL
- * renderer showed typed letters late and left the cursor over the last one while frames, output and
- * key replies were all fast; the DOM renderer fixed it on the machine that reported it (Hyprland,
- * NVIDIA, WebKitGTK 2.52). macOS and Windows keep WebGL. The user can change it in Settings › Performance.
- * WebKitGTK's user agent names X11 and Linux; Android and the test environment's do not.
- */
-export function prefersPlainDrawing(userAgent: string = navigator.userAgent): boolean {
-  return userAgent.includes('X11; Linux')
-}
-
 export type GpuKind = 'webgl' | 'software'
 
 export function gpuKind(): GpuKind {

@@ -62,19 +62,8 @@ fn sample(app: &tauri::AppHandle) -> Result<ProcessSample, String> {
         .lock()
         .map_err(|_| "The process table is unavailable".to_string())?;
     let system = system.get_or_insert_with(System::new);
-    system.refresh_processes_specifics(ProcessesToUpdate::All, true, identity_refresh());
+    refresh(system);
     let host_pid = Pid::from_u32(std::process::id());
-    let mut interesting: Vec<Pid> = vec![host_pid];
-    for (pid, process) in system.processes() {
-        if process.parent() == Some(host_pid) || is_daemon(process) {
-            interesting.push(*pid);
-        }
-    }
-    system.refresh_processes_specifics(
-        ProcessesToUpdate::Some(&interesting),
-        true,
-        identity_refresh().with_cpu().with_memory(),
-    );
     let host = system
         .process(host_pid)
         .map(load_of)
@@ -102,6 +91,17 @@ fn sample(app: &tauri::AppHandle) -> Result<ProcessSample, String> {
         daemons,
         terminal_frames_sent: TERMINAL_FRAMES_SENT.load(Ordering::Relaxed),
     })
+}
+
+/// One refresh a sample, of every process. A CPU share is the work between two refreshes of a
+/// process, and any refresh moves that mark, whatever it asks for: a second refresh in the same
+/// sample compared the process with itself a moment earlier, and every share read 0.
+fn refresh(system: &mut System) {
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        identity_refresh().with_cpu().with_memory(),
+    );
 }
 
 /// What it takes to tell a process by its command line. `nothing()` leaves the command line
@@ -169,6 +169,30 @@ mod tests {
         system.refresh_processes_specifics(ProcessesToUpdate::Some(&[pid]), true, identity_refresh());
         let process = system.process(pid).expect("this process is in the table");
         assert!(!process.cmd().is_empty());
+    }
+
+    #[test]
+    fn a_busy_process_reads_as_busy_on_its_second_sample() {
+        const BUSY_FOR: std::time::Duration = std::time::Duration::from_millis(600);
+        const CLEARLY_BUSY_PERCENT: f32 = 20.0;
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let spinning = stop.clone();
+        let worker = std::thread::spawn(move || {
+            while !spinning.load(Ordering::Relaxed) {
+                std::hint::spin_loop();
+            }
+        });
+        let mut system = System::new();
+        let pid = Pid::from_u32(std::process::id());
+
+        refresh(&mut system);
+        std::thread::sleep(BUSY_FOR);
+        refresh(&mut system);
+        let cpu = system.process(pid).expect("this process is in the table").cpu_usage();
+        stop.store(true, Ordering::Relaxed);
+        worker.join().expect("the busy thread ends");
+
+        assert!(cpu > CLEARLY_BUSY_PERCENT, "one thread spinning read as {cpu}%");
     }
 
     #[test]

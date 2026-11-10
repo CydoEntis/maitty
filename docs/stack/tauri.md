@@ -85,6 +85,11 @@ daemon or restart a remote service from the GUI.
 The target OS floor is the existing project support floor; do not raise it
 without updating this section and the release workflow.
 
+Linux drawing (`linux_gpu.rs`): before anything else in `run`, the host sets the two environment
+variables that let WebKitGTK draw the page on the GPU with NVIDIA's driver under Wayland, and
+nothing on any other machine. The why and the measurements are in
+[PERFORMANCE](../PERFORMANCE.md#the-page-was-drawn-on-the-cpu-2026-11-10).
+
 Tray item (`tray.rs`, Tauri's `tray-icon` feature): one item in the Windows tray or the macOS
 menu bar, with the system's own menu. The window says which sessions to list
 (`set_tray_sessions`: the ones that need you, then the finished ones, by id and name); the host
