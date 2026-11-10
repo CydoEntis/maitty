@@ -138,7 +138,7 @@ again at once; there is no separate start-service command. A running service of 
 keeps and stops (sessions that reopen, agents that will offer Resume, shells that stop; a line with a count of 0 is left out)
 and a **Restart and restore** button that asks for a second click (`restart_mismatched_daemon`, then "Service restarted · N
 sessions back"), with `protocol 75 → 76` beside it (protocol numbers are never written as app versions). **Later** leaves a slim bar. The sidebar foot says "Service stopped" or "Restart
-needed" in muted grey beside a red dot, never a red banner, and no needs-you toast shows while the service is not connected. Agents that were mid-turn offer **Resume** in the restore banner; nothing resumes by itself.
+needed" in muted grey beside a red dot, never a red banner, and no needs-you toast shows while the service is not connected. A failed action whose only reason is that the window has no line to the service (`lib/serviceLine.ts`) shows no error toast either (`lib/toast.ts`): the bar, the card and the sidebar foot already say it. Agents that were mid-turn offer **Resume** in the restore banner; nothing resumes by itself.
 
 A terminal UI (ratatui). Colours come only from the theme (`theme.rs`): semantic
 slots `bg`, `card`, `card2`, `hov`, `accent`/`acc_ink`, `text`/`strong`/`muted`,
