@@ -709,7 +709,8 @@ toast instead.
 host `image_paste.rs`, ADR 0007 and the amendment to 0055). Ctrl+Shift+V on Windows and Linux, or Cmd+V on macOS, pastes through the
 webview's paste event, whose clipboard holds text, an image or both. **Text comes first**: any text and the
 terminal pastes it as it always has (bracketed paste included); only an image with no text becomes an image
-paste. Plain Ctrl+V on Windows and Linux is never taken: like every plain Ctrl+letter there, it goes to the program
+paste. On Linux the webview hands a pasted image over as an empty paste, so an empty paste asks the host for the
+clipboard's picture ([tauri-clipboard](stack/tauri-clipboard.md)). Plain Ctrl+V on Windows and Linux is never taken: like every plain Ctrl+letter there, it goes to the program
 in the pane as a raw `^V` (so Claude Code's own clipboard handling and vim's `^V` work). The chat composer takes any
 paste chord, since its paste event is not behind a terminal. PNG, JPEG, GIF and WebP are taken (the host checks the
 first bytes, not the name the webview gives); another image type is refused with one error toast. At most 25 MB,

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react'
 import { toast } from '@/lib/toast'
-import { pickFromClipboard, unsupportedMessage } from '@/features/terminal/clipboardImage'
+import { pasteFromHost, pickFromClipboard, unsupportedMessage } from '@/features/terminal/clipboardImage'
 import { buildAttachmentMessage } from '@/features/chat/attachmentMessage'
 import { registerComposerDrop } from '@/features/chat/composerDrop'
 import { updateComposer, useComposerState } from '@/features/chat/composerStore'
@@ -80,6 +80,7 @@ export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = 
   // Text first, as in the terminal: a clipboard with any text pastes the text; only a bare image is attached.
   const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
     const pick = pickFromClipboard(event.clipboardData)
+    if (pick.kind === 'none') pasteFromHost(attach.addImage)
     if (pick.kind === 'text' || pick.kind === 'none') return
     event.preventDefault()
     if (pick.kind === 'image') attach.addImage(pick.image)
