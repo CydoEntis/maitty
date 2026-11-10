@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { cancelTurn, dequeueMessage, submitMessage } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
+import { useLatest } from '@/lib/useLatest'
 import type { ChatAgent, ChatLink } from '@/features/workspace/model/chatView'
 import { hasPendingApproval, type ChatFeed } from './chatFeed'
 import { buildAttachmentMessage } from './attachmentMessage'
+import { onOutsideSend } from './outsideSends'
 import { selectChatEvents } from './projection'
 import { countUserMessages } from './workPhase'
 import { peekComposer, updateComposer, useComposerSlice, type DraftAttachment } from './composerStore'
@@ -138,6 +140,15 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
   const setDraft = useCallback((text: string) => {
     updateComposer(conversation, (state) => (state.draft === text ? state : { ...state, draft: text }))
   }, [conversation])
+
+  // A comment sent from the diff is drawn in the chat at once, like a message typed here.
+  const eventsNow = useLatest(() => selectChatEvents(feed.projection))
+  useEffect(() => onOutsideSend(link.conversation, (text) => {
+    setEcho({ text, baseline: countUserMessages(eventsNow(), text), quiet: false })
+    window.setTimeout(() => { setEcho((current) => (current?.text === text ? { ...current, quiet: true } : current)) }, ECHO_THINKING_MS)
+    window.setTimeout(() => { setEcho((current) => (current?.text === text ? null : current)) }, ECHO_MAX_MS)
+    refresh()
+  }), [link.conversation, eventsNow, refresh])
 
   const send = useCallback(async (text: string): Promise<boolean> => {
     setSending(true)

@@ -538,7 +538,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   changed files (`+N −N`) and the picked file's diff (added lines tinted with `--ok`, removed with `--danger`, hunk
   headers in the accent), with line numbers drawn beside it. For an agent, a click on a code line opens a comment box
   under it with **Send to Claude** (the agent's name; Ctrl/⌘+Enter sends, Esc closes the box); the comment goes to the
-  agent as a message naming the file, the line and its text (`model/agentMessage.ts`), and stays pinned under the line as an accent-tinted "You → Claude" box, also while other files are read; the file's header then counts the comments. An
+  agent as a message naming the file, the line and its text (`model/agentMessage.ts`), and stays pinned under the line as an accent-tinted "You → Claude" box, also while other files are read; the file's header then counts the comments. The chat draws the comment at once, like a message typed in its box (`outsideSends.ts`). An
   agent that is asking something is not sent one. Under the file list, for a checkout on this computer, is the commit
   message (first the session's name, else the first line of its last prompt), **Commit N files** (stages everything
   and commits) and **Create PR** (pushes the branch and runs `gh pr create --fill`; the address stays under the
