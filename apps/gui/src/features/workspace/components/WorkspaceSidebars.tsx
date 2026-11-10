@@ -9,7 +9,7 @@ const noop = () => undefined
 
 /** The sidebar: the docked column or the rail, and the full one in a drawer over a narrow window. */
 export function WorkspaceSidebars() {
-  const { sidebarSessions, sidebarMachineHeads, focusedId, openSubagent, online, canStart, renameInline, renameId, root, preferences, sidebarWidth, setLiveSidebarWidth, setPreferences, inboxEntries, needsCount, setInboxOpen, newSession, newTerminal, setSettingsSection, setRenamingMachine, setUpdateAsk, showSessionById, showSubagent, setRenameId, saveName, openInSplit, splitSubagent, toggleAgentTerminal, copyPathOf, copyText, showChangesOf, setGetFileId, endSession, newChatOpen, serviceFooterText, updateProgress, updater, runningVersion, skippedVersion, restartNow, setSkippedVersion, focusMode, sidebarMode, toggleSidebar, drawerShown, setDrawerOpen } = useWorkspace()
+  const { sidebarSessions, sidebarMachineHeads, focusedId, openSubagent, online, canStart, renameInline, renameId, root, preferences, sidebarWidth, setLiveSidebarWidth, setPreferences, setPaletteOpen, newSession, newTerminal, setSettingsSection, setRenamingMachine, setUpdateAsk, showSessionById, showSubagent, setRenameId, saveName, openInSplit, splitSubagent, addAgentTerminal, copyPathOf, copyText, showChangesOf, markDone, setGetFileId, endSession, newChatOpen, serviceFooterText, updateProgress, updater, runningVersion, skippedVersion, restartNow, setSkippedVersion, focusMode, sidebarMode, toggleSidebar, drawerShown, setDrawerOpen } = useWorkspace()
   const updateSlot = (variant: 'footer' | 'rail') => (
     <UpdateSlot
       variant={variant}
@@ -39,15 +39,15 @@ export function WorkspaceSidebars() {
       onToggleRail={onToggle}
       side={preferences.sidebarSide}
       order={preferences.sidebarOrder}
+      grouping={preferences.sidebarGroup}
+      onGrouping={(sidebarGroup) => { setPreferences((current) => ({ ...current, sidebarGroup })) }}
+      onSearch={() => { afterPick(); setPaletteOpen(true) }}
       width={sidebarWidth}
       onResize={setLiveSidebarWidth}
       onResizeEnd={(width) => {
         setPreferences((current) => ({ ...current, sidebarWidth: width }))
         setLiveSidebarWidth(null)
       }}
-      inboxCount={inboxEntries.length}
-      inboxNeeds={needsCount > 0}
-      onOpenInbox={() => { afterPick(); setInboxOpen(true) }}
       onNewAgentChat={(machine) => { afterPick(); newSession(machine) }}
       onNewShell={(machine) => { afterPick(); newTerminal(machine) }}
       onAddMachine={() => { afterPick(); setSettingsSection('machines') }}
@@ -60,10 +60,11 @@ export function WorkspaceSidebars() {
       onSetName={saveName}
       onSplitSession={(id, direction) => { afterPick(); openInSplit(id, direction) }}
       onSplitSubagent={(sessionId, subagentId) => { afterPick(); splitSubagent(sessionId, subagentId) }}
-      onOpenTerminal={(id) => { afterPick(); toggleAgentTerminal(id) }}
+      onOpenTerminal={(id) => { afterPick(); addAgentTerminal(id) }}
       onCopyPath={copyPathOf}
       onCopyText={copyText}
       onShowChanges={(id) => { afterPick(); showChangesOf(id) }}
+      onMarkDone={markDone}
       onGetFile={setGetFileId}
       onEndSession={endSession}
       onOpenSettings={() => { afterPick(); setSettingsSection('appearance') }}

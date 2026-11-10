@@ -9,11 +9,8 @@ import { PaneViewSwitch } from './PaneViewSwitch'
 import { MenuPopup, type MenuEntry } from './MenuPopup'
 import { menuPoint } from './menuPoint'
 import type { PaneView } from '../model/chatView'
-import type { InspectView } from '@/features/inspect/InspectPanel'
+import type { TerminalDock } from '@/features/settings/preferences'
 import { useShortcutText, useTipWithKeys } from '@/features/shortcuts/platform'
-
-/** The Files and Changes tray: which of the two the repository drawer shows for this pane, if any. */
-export type PaneTool = Extract<InspectView, 'files' | 'changes'>
 
 export type PaneCardProps = {
   pane: PaneSlot
@@ -32,12 +29,20 @@ export type PaneCardProps = {
   onViewChange?: (view: PaneView) => void
   /** The chat that covers the terminal while `view` is `chat`. */
   chat?: ReactNode
-  /** Which tool of the tray is showing for this pane; null when the drawer is closed or shows another pane. */
-  tool: PaneTool | null
-  onTool: (tool: PaneTool) => void
-  /** For an agent: whether a terminal you opened in its folder is open. Null for a shell, which has its own. */
-  terminalOpen: boolean | null
-  onToggleTerminal: () => void
+  /** The side panel is open for this pane. */
+  panelOpen: boolean
+  /** Opens the side panel for this pane, or closes it; absent when the panel has nothing to show for it. */
+  onPanel?: () => void
+  /** Lines the repository says changed, for the dot on the side-panel button. */
+  changed: { added: number; removed: number }
+  /** For an agent that can have terminals of its own: where they show. Null for a shell, which is one. */
+  terminalDock: TerminalDock | null
+  onNewTerminal: () => void
+  onDock: (dock: TerminalDock) => void
+  /** The agent's terminals when they are pinned under its chat, and whether that drawer is folded away. */
+  drawer?: ReactNode
+  drawerFolded?: boolean
+  onDrawerFold?: (folded: boolean) => void
   online: boolean
   /** Where portalled menus mount, so they read the theme's colours. */
   portalContainer: HTMLElement | null
@@ -84,7 +89,9 @@ export function PaneCard(props: PaneCardProps) {
   const fit = headerFit(width)
   const title = rowTitle(session)
   const closeLabel = 'Close pane · ends its session'
-  const toggleTool = (tool: PaneTool) => { props.onTool(tool) }
+  const hasChanges = props.changed.added + props.changed.removed > 0
+  const panelTip = hasChanges ? `Side panel · +${String(props.changed.added)} −${String(props.changed.removed)}` : 'Side panel'
+  const drawerTip = props.drawerFolded === true ? 'Show the terminals' : 'Hide the terminals'
 
   const menuItems: MenuEntry[] = [
     { label: 'Split right', hint: shortcutText('split-right'), disabled: full, run: () => { props.onSplit(pane.id, 'right') } },
@@ -94,11 +101,15 @@ export function PaneCard(props: PaneCardProps) {
     ...(props.onViewChange
       ? [{ label: view === 'chat' ? 'Show terminal' : 'Show chat', hint: shortcutText('chat-toggle'), run: () => { props.onViewChange?.(view === 'chat' ? 'terminal' : 'chat') } }]
       : []),
-    ...(props.terminalOpen === null
+    ...(props.terminalDock === null
       ? [{ label: 'Clear', hint: 'Ctrl+L', disabled: !props.online || ended, run: props.onClear }, { label: 'Copy folder path', run: props.onCopyPath }]
-      : [{ label: props.terminalOpen ? 'Close its terminal' : 'Open terminal here', disabled: !props.online, run: props.onToggleTerminal }]),
-    { label: 'Files', run: () => { toggleTool('files') } },
-    { label: 'Changes', run: () => { toggleTool('changes') } },
+      : [
+          { label: 'New terminal', disabled: !props.online, run: props.onNewTerminal },
+          props.terminalDock === 'panel'
+            ? { label: 'Pin terminals under chat', run: () => { props.onDock('under') } }
+            : { label: 'Move terminals to side panel', run: () => { props.onDock('panel') } },
+        ]),
+    ...(props.onPanel ? [{ label: 'Changes and files', hint: shortcutText('inspect'), run: props.onPanel }] : []),
     'separator',
     { label: 'Close pane', danger: true, run: () => { props.onClose(pane.id) } },
   ]
@@ -142,22 +153,15 @@ export function PaneCard(props: PaneCardProps) {
         {props.broadcast && <span className="mx-broadcast-pill">◉ Broadcast</span>}
         <span className="mx-pane-controls">
           {props.onViewChange && fit.switcher && <PaneViewSwitch view={view} onChange={props.onViewChange} />}
-          {fit.tools && (
-            <>
-              <span className="mx-pane-gap" aria-hidden="true" />
-              <span className="mx-pane-tray" role="group" aria-label="Repository">
-                <button type="button" className={`mx-tray-button${props.tool === 'files' ? ' is-on' : ''}`} aria-pressed={props.tool === 'files'} aria-label="Files" title={tip('Files', 'inspect')} onMouseDown={stop} onClick={() => { toggleTool('files') }}><Icon name="files" size={13} />{fit.toolLabels && 'Files'}</button>
-                <button type="button" className={`mx-tray-button${props.tool === 'changes' ? ' is-on' : ''}`} aria-pressed={props.tool === 'changes'} aria-label="Changes" title="Changes" onMouseDown={stop} onClick={() => { toggleTool('changes') }}><Icon name="plus" size={13} />{fit.toolLabels && 'Changes'}</button>
-              </span>
-              <span className="mx-pane-divider" aria-hidden="true" />
-            </>
+          {fit.split && <button type="button" className="mx-pane-control" aria-label={tip('Split right', 'split-right')} title={tip('Split right', 'split-right')} disabled={full} onMouseDown={stop} onClick={() => { props.onSplit(pane.id, 'right') }}><Icon name="splitRight" /></button>}
+          {props.drawer !== undefined && props.onDrawerFold && (
+            <button type="button" className={`mx-pane-control${props.drawerFolded === true ? '' : ' is-on'}`} aria-pressed={props.drawerFolded !== true} aria-label={drawerTip} title={drawerTip} onMouseDown={stop} onClick={() => { props.onDrawerFold?.(props.drawerFolded !== true) }}><Icon name="drawer" /></button>
           )}
-          {fit.splits && (
-            <>
-              <button type="button" className="mx-pane-control" aria-label={tip('Split right', 'split-right')} title={tip('Split right', 'split-right')} disabled={full} onMouseDown={stop} onClick={() => { props.onSplit(pane.id, 'right') }}><Icon name="splitRight" /></button>
-              <button type="button" className="mx-pane-control" aria-label={tip('Split down', 'split-down')} title={tip('Split down', 'split-down')} disabled={full} onMouseDown={stop} onClick={() => { props.onSplit(pane.id, 'down') }}><Icon name="splitDown" /></button>
-              <button type="button" className="mx-pane-control" aria-label={maximized ? 'Restore layout' : 'Maximize pane'} title={maximized ? 'Restore layout' : 'Maximize pane'} disabled={!multi && !maximized} onMouseDown={stop} onClick={() => { props.onToggleMaximize(pane.id) }}><Icon name={maximized ? 'restore' : 'maximize'} /></button>
-            </>
+          {props.onPanel && (
+            <button type="button" className={`mx-pane-control mx-pane-panel${props.panelOpen ? ' is-on' : ''}`} aria-pressed={props.panelOpen} aria-label="Side panel" title={tip(panelTip, 'inspect')} onMouseDown={stop} onClick={props.onPanel}>
+              <Icon name="sidePanel" />
+              {hasChanges && <span className="mx-pane-dot" aria-hidden="true" />}
+            </button>
           )}
           <button type="button" className="mx-pane-control mx-pane-more" aria-label="More pane actions" title="More pane actions" aria-haspopup="menu" onMouseDown={stop} onClick={(event) => { setMenuAt(menuPoint(event, true)) }}>⋯</button>
           <button type="button" className="mx-pane-control is-close" aria-label={closeLabel} title={closeLabel} onMouseDown={stop} onClick={() => { props.onClose(pane.id) }}><Icon name="close" /></button>
@@ -182,6 +186,7 @@ export function PaneCard(props: PaneCardProps) {
           <button type="button" className="mx-pane-ended-button" onMouseDown={stop} onClick={() => { props.onClose(pane.id) }}>Close pane</button>
         </div>
       )}
+      {props.drawer}
       <span className="mx-pane-ring" aria-hidden="true" />
     </section>
     {/* Beside the pane, not in it: a pane has `contain: paint`, which would place the menu's fixed anchor from the pane's corner. */}

@@ -2,8 +2,8 @@ import { listSshHosts, machineActivity } from '@/api/machines'
 import { DesktopSettings } from '@/features/settings/components/DesktopSettings'
 import { PerfOverlay } from './PerfOverlay'
 import { CommandPalette } from './CommandPalette'
-import { InboxPanel } from './InboxPanel'
 import { InspectPanel } from '@/features/inspect/InspectPanel'
+import { AgentTerminals } from './AgentTerminals'
 import { HoverTips } from './HoverTips'
 import { ShortcutOverlay } from '@/features/shortcuts/ShortcutOverlay'
 import { WelcomeDialog } from '@/features/welcome/WelcomeDialog'
@@ -19,27 +19,32 @@ import { ConfirmCloseDialog } from './ConfirmCloseDialog'
 import { RenameDialog, RenameMachineDialog } from './RenameDialog'
 import { withNickname, writeMachineNicknames } from '@/data/machineNicknames'
 import { Toast } from './states'
-import { displayName, type SessionView } from '../model/session'
+import type { SessionView } from '../model/session'
+import { isShell } from '../model/sidebar'
+import { agentName, sendAgentMessage, suggestedCommitMessage } from '../model/agentMessage'
 import { Keycaps } from '@/features/shortcuts/Keycaps'
 import { folderExists, resolveStartFolder } from '../model/startFolder'
 import { useWorkspace } from '../workspaceContext'
 
-/** What opens over or beside the panes: Inspect, the palette, the inbox, Settings and each dialog. */
+/** What opens over or beside the panes: Inspect, the palette, Settings and each dialog. */
 export function WorkspaceDialogs() {
-  const { inspectOpen, focusMode, inspectTerm, focusedSession, projectOf, diffStat, inspectView, lookAt, setInspectView, setInspectOpen, flash, shortcutsOpen, platform, root, setShortcutsOpen, welcomeOpen, preferences, setPreferences, setWelcomeOpen, newSession, focusedMachineNumber, paletteOpen, paletteItems, setPaletteOpen, inboxOpen, inboxEntries, tracks, clearEntry, clearSettled, setInboxOpen, showSessionById, focusedId, sessionMap, needsElsewhere, setFocusMode, focusModeChord, worktreeFrom, createWorktree, setWorktreeFrom, newSessionMachine, heads, sessions, home, startFromModal, setNewSessionMachine, getFileId, setGetFileId, getFile, updateAsk, setUpdateAsk, updateNamed, closeAsk, setCloseAsk, renamingMachine, machineNicknames, setMachineNicknames, setRenamingMachine, renameId, renameInline, saveName, setRenameId, settingsSection, setSettingsSection, systemReducedMotion, systemDark, previewThemeSoon, showTestNotice, updater, restartNow, setPreviewTheme, online, runningVersion, machinesKnown, retryNamed, removeNamed, grantNamed, copyCommand, addNamed, cancelAdding, usageInfo, chooseStartFolder, toastMessage, updatedTo, setUpdatedTo, restarting } = useWorkspace()
+  const { mismatch, inspectOpen, focusMode, inspectTerm, ownsTerminals, focusedSession, projectOf, diffStat, inspectView, lookAt, setInspectView, setInspectOpen, flash, shortcutsOpen, platform, root, setShortcutsOpen, welcomeOpen, preferences, setPreferences, setWelcomeOpen, newSession, focusedMachineNumber, paletteOpen, paletteItems, setPaletteOpen, focusedId, sessionMap, needsElsewhere, setFocusMode, focusModeChord, worktreeFrom, createWorktree, setWorktreeFrom, newSessionMachine, heads, sessions, home, startFromModal, setNewSessionMachine, getFileId, setGetFileId, getFile, updateAsk, setUpdateAsk, updateNamed, closeAsk, setCloseAsk, renamingMachine, machineNicknames, setMachineNicknames, setRenamingMachine, renameId, renameInline, saveName, setRenameId, settingsSection, setSettingsSection, systemReducedMotion, systemDark, previewThemeSoon, showTestNotice, updater, restartNow, setPreviewTheme, online, runningVersion, machinesKnown, retryNamed, removeNamed, grantNamed, copyCommand, addNamed, cancelAdding, usageInfo, chooseStartFolder, toastMessage, updatedTo, setUpdatedTo, restarting } = useWorkspace()
+  // The Terminal tab is there while terminals live in the panel; pinned under the chat, they are in the pane.
+  const panelTerminals = focusedSession !== undefined && ownsTerminals(focusedSession) && preferences.terminalDock === 'panel'
   return (
     <>
-      {inspectOpen && !focusMode && inspectTerm !== null && focusedSession && (
+      {inspectOpen && !focusMode && focusedSession && (inspectTerm !== null || panelTerminals) && (
               <InspectPanel
-                key={inspectTerm}
+                key={focusedSession.id}
                 term={inspectTerm}
-                project={projectOf.get(focusedSession.id)?.name ?? displayName(focusedSession)}
-                branch={focusedSession.branch}
+                terminals={panelTerminals ? <AgentTerminals agent={focusedSession} dock="panel" focused={inspectView === 'terminal'} /> : null}
                 changedFiles={diffStat.data?.files ?? 0}
                 view={inspectView}
                 agentWorking={focusedSession.status === 'working'}
                 timeline={focusedSession.timeline}
                 lookAt={lookAt}
+                {...(isShell(focusedSession) ? {} : { comments: { agent: agentName(focusedSession.process), onSend: (message: string) => sendAgentMessage(focusedSession, message) } })}
+                {...(focusedSession.machineName === null && focusedSession.repoRoot !== null ? { changeActions: { folder: focusedSession.repoRoot, suggested: suggestedCommitMessage(focusedSession) } } : {})}
                 onView={setInspectView}
                 onClose={() => { setInspectOpen(false) }}
                 onNotice={flash}
@@ -59,16 +64,6 @@ export function WorkspaceDialogs() {
               />
             )}
             {paletteOpen && <CommandPalette items={paletteItems} onClose={() => { setPaletteOpen(false) }} />}
-            {inboxOpen && (
-              <InboxPanel
-                entries={inboxEntries}
-                tracks={tracks}
-                onClear={clearEntry}
-                onClearDone={clearSettled}
-                onOpen={(id) => { setInboxOpen(false); showSessionById(id) }}
-                onClose={() => { setInboxOpen(false) }}
-              />
-            )}
             {focusMode && (
               <div className="mx-focus-pill" role="status">
                 <span className="mx-focus-tag">Focus</span>
@@ -164,7 +159,8 @@ export function WorkspaceDialogs() {
               />
             )}
             {toastMessage && <Toast key={toastMessage.key} message={toastMessage.text} />}
-            {updatedTo && <UpdatedNotice update={updatedTo} onDone={() => { setUpdatedTo(null) }} />}
+            {/* Not while the service still runs the older version: the update is not finished, and its card says so. */}
+            {updatedTo && !mismatch && <UpdatedNotice update={updatedTo} onDone={() => { setUpdatedTo(null) }} />}
             {preferences.perfOverlay && <PerfOverlay />}
             {restarting && (
               <div className="mx-restarting" role="status">

@@ -798,8 +798,10 @@ pub(crate) fn run() {
 fn open_client(open: Option<std::path::PathBuf>) -> anyhow::Result<()> {
     run_client(open)?;
     if cli::restart::relaunch_requested() {
-        // The old server is stopping; the installed the app starts the new one.
-        let _ = cli::restart::wait_until_server_gone();
+        if cli::restart::server_stopping() {
+            // The old server is stopping; the installed the app starts the new one.
+            let _ = cli::restart::wait_until_server_gone();
+        }
         eprintln!(concat!("Restarting ", env!("APP_COMMAND"), "…"));
         cli::restart::relaunch()?;
     }

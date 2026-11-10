@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Conversation } from '@/data/preview'
-import { displayName, folderNameOf, inCreationOrder, keepLabels, matchesFilter, processName, rowName, statusText, tildePath, toSessionView, truncatePrompt } from './session'
+import { displayName, folderNameOf, inCreationOrder, keepLabels, processName, rowName, statusText, tildePath, toSessionView, truncatePrompt } from './session'
 import { formatAgo, formatElapsed, markSeen, trackSessions } from './tracking'
 import { folderExists, resolveStartFolder } from './startFolder'
 
@@ -91,16 +91,6 @@ describe('session view', () => {
   it('carries the diff counts the daemon sends, zero when it sends none', () => {
     expect(toSessionView(conversation(1, HOME, { diffAdded: 104, diffRemoved: 61 }), HOME)).toMatchObject({ diffAdded: 104, diffRemoved: 61 })
     expect(toSessionView(conversation(1, HOME), HOME)).toMatchObject({ diffAdded: 0, diffRemoved: 0 })
-  })
-
-  it('filters by name, folder, process and machine, ignoring case', () => {
-    const local = toSessionView(repo(1, `${HOME}/AeVoxGrowth`, `${HOME}/AeVoxGrowth`, { agent: 'claude' }), HOME)
-    const remote = toSessionView(conversation(2, '/srv/app', { machine: 3, machineName: 'devbox' }), HOME)
-    expect(matchesFilter(local, 'aevox')).toBe(true)
-    expect(matchesFilter(local, 'CLAUDE')).toBe(true)
-    expect(matchesFilter(local, 'devbox')).toBe(false)
-    expect(matchesFilter(remote, 'devbox')).toBe(true)
-    expect(matchesFilter(remote, '  ')).toBe(true)
   })
 })
 

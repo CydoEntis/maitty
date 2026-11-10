@@ -25,6 +25,22 @@ const LINE_HEIGHT = 1.6
 const NOT_CONNECTED_YET = 'not connected to the daemon'
 const CONNECT_RETRY_MS = 250
 const CONNECT_RETRIES = 24
+/** How long a pane waits for its font before it opens with the fallback: a slow disk must not hold the terminal back. */
+const FONT_WAIT_MS = 1000
+
+/**
+ * Resolves once the terminal's font can be measured, or after `FONT_WAIT_MS`. xterm sizes its cells
+ * from a canvas measurement, which does not load a web font: measured too early, the grid is sized
+ * for the fallback face and the real one then draws past the pane's edge.
+ */
+async function terminalFontReady(family: string, size: number): Promise<void> {
+  const fonts = (document as { fonts?: FontFaceSet }).fonts
+  if (!fonts) return
+  const waited = new Promise<void>((resolve) => { window.setTimeout(resolve, FONT_WAIT_MS) })
+  // A face that cannot load leaves the fallback, which is what gets measured and drawn: nothing to report.
+  const loaded = fonts.load(`${String(size)}px ${family}`).then(() => undefined, () => undefined)
+  await Promise.race([loaded, waited])
+}
 
 /** The screen to start from, asked again for a few seconds while the host has no daemon line yet, so a
  *  pane restored at start-up shows its screen instead of an error toast. Any other failure is raised at once. */
@@ -350,6 +366,8 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
           import('@xterm/addon-search'),
         ])
         if (!isMounted) return
+        await terminalFontReady(fontStackFor(lookRef.current.fontFamily ?? ''), fontSizeRef.current)
+        if (!stillMounted()) return
 
         const wantsWebgl = hasWebgl2() && !(lookRef.current.plainDrawing ?? false)
         const startRenderer: Renderer = wantsWebgl ? 'webgl' : 'dom'
@@ -598,10 +616,12 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
 
         resizeObserver = new ResizeObserver(fitAndResize)
         resizeObserver.observe(hostElement)
+        // xterm measures its cells again on its own (after a resize, on a new display scale, once a
+        // late font is in) and resizes its screen without the pane changing size. Watching the screen
+        // too is what fits the grid to the new cells, so a row never runs past the pane's edge.
+        const xtermScreen = hostElement.querySelector('.xterm-screen')
+        if (xtermScreen) resizeObserver.observe(xtermScreen)
         fitAndResize()
-        // Geist Mono may still be loading; measure again once it is, so the grid fits the font.
-        const fonts = (document as { fonts?: FontFaceSet }).fonts
-        void fonts?.ready.then(() => { refitTerminal.current?.() })
 
         // A terminal sends the same byte for Shift+Enter as for Enter. Agents read ESC then Enter (Alt+Enter) as "new line", so that is what goes.
         // Ctrl+Shift+V is left to the browser, whose paste event is how an image on the clipboard is found (ticket 19). Plain Ctrl+V still reaches the program as ^V.
@@ -639,7 +659,9 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         if (isMounted) {
           setLoadError(true)
           setConnecting(false)
-          toast.error(error instanceof Error ? error.message : 'Could not start the terminal emulator')
+          const message = error instanceof Error ? error.message : 'Could not start the terminal emulator'
+          // No line to the service is the window's news, not this pane's: the service card and the status bar say it once.
+          if (!message.includes(NOT_CONNECTED_YET)) toast.error(message)
         }
       }
     }

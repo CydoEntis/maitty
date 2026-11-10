@@ -29,8 +29,7 @@ const TABLE: readonly [ShortcutAction, string, string][] = [
   ['undo-close', '⌘Z', 'Ctrl+Shift+Z'],
   ['broadcast', '⌘⇧B', 'Ctrl+Alt+Shift+B'],
   ['palette', '⌘K', 'Ctrl+Shift+K'],
-  ['inbox', '⌘J', 'Ctrl+Shift+J'],
-  ['jump-needs', '⌘⇧J', ''],
+  ['jump-needs', '⌘J', 'Ctrl+Shift+J'],
   ['inspect', '⌘I', 'Ctrl+Shift+I'],
   ['find', '⌘F', 'Ctrl+Shift+F'],
   ['toggle-sidebar', '⌘B', 'Ctrl+Shift+B'],
@@ -61,7 +60,7 @@ describe('the shortcut table', () => {
   it('splits a chord into its keycaps', () => {
     expect(shortcutChords(bindingFor('split-down'), 'mac')).toEqual([['⌘', '⇧', 'D']])
     expect(shortcutChords(bindingFor('split-down'), 'windows')).toEqual([['Ctrl', 'Alt', 'Shift', 'D']])
-    expect(shortcutChords(bindingFor('jump-needs'), 'linux')).toEqual([])
+    expect(shortcutChords(bindingFor('jump-needs'), 'linux')).toEqual([['Ctrl', 'Shift', 'J']])
   })
 
   it('gives no two actions the same key on a platform', () => {
@@ -137,9 +136,9 @@ describe('matching a key press', () => {
     expect(matchShortcut({ key: '+', ctrlKey: true, metaKey: false, shiftKey: true, altKey: false }, 'linux')).toEqual({ action: 'text-larger' })
   })
 
-  it('takes the Inbox on Cmd+J on macOS and Ctrl+Shift+J elsewhere, and leaves a bare Ctrl+J to the terminal', () => {
-    expect(matchShortcut({ key: 'j', ctrlKey: false, metaKey: true, shiftKey: false, altKey: false }, 'mac')).toEqual({ action: 'inbox' })
-    expect(matchShortcut({ key: 'J', ctrlKey: true, metaKey: false, shiftKey: true, altKey: false }, 'linux')).toEqual({ action: 'inbox' })
+  it('jumps to the next session that needs you on Cmd+J on macOS and Ctrl+Shift+J elsewhere, and leaves a bare Ctrl+J to the terminal', () => {
+    expect(matchShortcut({ key: 'j', ctrlKey: false, metaKey: true, shiftKey: false, altKey: false }, 'mac')).toEqual({ action: 'jump-needs' })
+    expect(matchShortcut({ key: 'J', ctrlKey: true, metaKey: false, shiftKey: true, altKey: false }, 'linux')).toEqual({ action: 'jump-needs' })
     expect(matchShortcut({ key: 'j', ctrlKey: true, metaKey: false, shiftKey: false, altKey: false }, 'linux')).toBeNull()
   })
 
@@ -160,8 +159,8 @@ describe('the shortcut lists', () => {
     expect(hotkeyRows('mac').find((row) => row.action === 'Interrupt')?.chords).toEqual([['⌃', 'C']])
   })
 
-  it('leaves out an action with no key on the platform, and one that is not built', () => {
-    expect(hotkeyRows('linux').some((row) => row.action.startsWith('Jump to the next'))).toBe(false)
+  it('lists jumping to what needs you on every platform, and leaves out an action that is not built', () => {
+    expect(hotkeyRows('linux').some((row) => row.action.startsWith('Jump to the next'))).toBe(true)
     expect(hotkeyRows('mac').some((row) => row.action.startsWith('Jump to the next'))).toBe(true)
     expect(hotkeyRows('mac').some((row) => row.action === 'Overview')).toBe(false)
     expect(hotkeyRows('mac').some((row) => row.action === 'Session panel')).toBe(false)

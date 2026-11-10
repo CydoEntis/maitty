@@ -26,7 +26,7 @@ function renderPanel(view: InspectView, extra: { agentWorking?: boolean } = {}) 
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
-      <InspectPanel term={5} project="maitty" branch="main" changedFiles={2} view={view} agentWorking={extra.agentWorking ?? false} timeline={[]} lookAt={null} onView={vi.fn()} onClose={vi.fn()} onNotice={onNotice} />
+      <InspectPanel term={5} terminals={null} changedFiles={2} view={view} agentWorking={extra.agentWorking ?? false} timeline={[]} lookAt={null} onView={vi.fn()} onClose={vi.fn()} onNotice={onNotice} />
     </QueryClientProvider>,
   )
   return { onNotice }
@@ -35,6 +35,32 @@ function renderPanel(view: InspectView, extra: { agentWorking?: boolean } = {}) 
 beforeEach(() => { vi.mocked(isTauri).mockReturnValue(true) })
 
 describe('Inspect panel', () => {
+  it('offers Changes, Files and Terminal, and shows the session’s terminals on that tab', () => {
+    daemonAnswers({})
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <InspectPanel term={5} terminals={<p>its terminals</p>} changedFiles={0} view="terminal" agentWorking={false} timeline={[]} lookAt={null} onView={vi.fn()} onClose={vi.fn()} onNotice={vi.fn()} />
+      </QueryClientProvider>,
+    )
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Changes', 'Files', 'Terminal'])
+    expect(screen.getByText('its terminals')).toBeTruthy()
+    cleanup()
+  })
+
+  it('shows only the Terminal tab for a session with no repository to ask about', () => {
+    daemonAnswers({})
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <InspectPanel term={null} terminals={<p>its terminals</p>} changedFiles={0} view="changes" agentWorking={false} timeline={[]} lookAt={null} onView={vi.fn()} onClose={vi.fn()} onNotice={vi.fn()} />
+      </QueryClientProvider>,
+    )
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Terminal'])
+    expect(screen.getByText('its terminals')).toBeTruthy()
+    cleanup()
+  })
+
   it('lists the changed files and shows the picked file’s diff', async () => {
     daemonAnswers({
       Diff: {
@@ -51,6 +77,82 @@ describe('Inspect panel', () => {
     expect(screen.getByLabelText('Diff').textContent).toContain('+new')
     fireEvent.click(screen.getByRole('button', { name: /b\.txt/ }))
     expect(screen.getByLabelText('Diff').textContent).toContain('+z')
+  })
+
+  it('opens a comment box on a clicked diff line, sends the comment to the agent and keeps it under the line', async () => {
+    daemonAnswers({
+      Diff: { files: [{ path: 'src/a.ts', additions: 1, deletions: 1, binary: false, patch: '@@ -3 +3 @@\n-old\n+new\n' }], additions: 1, deletions: 1, total_files: 1, truncated: false },
+    })
+    const onSend = vi.fn(() => Promise.resolve())
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <InspectPanel term={5} terminals={null} changedFiles={1} view="changes" agentWorking={false} timeline={[]} lookAt={null} comments={{ agent: 'Claude', onSend }} onView={vi.fn()} onClose={vi.fn()} onNotice={vi.fn()} />
+      </QueryClientProvider>,
+    )
+    fireEvent.click(await screen.findByText(/\+new/))
+    const send = screen.getByRole('button', { name: 'Send to Claude' })
+    expect(send).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Comment on line 3'), { target: { value: 'call it fresh' } })
+    fireEvent.click(send)
+    await waitFor(() => { expect(onSend).toHaveBeenCalledWith('About src/a.ts, line 3:\n> new\n\ncall it fresh') })
+    expect(await screen.findByText(/sent to Claude/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Send to Claude' })).toBeNull()
+    cleanup()
+  })
+
+  it('commits the changed files with the suggested message, then opens a pull request and shows where it is', async () => {
+    const asked: Array<[string, unknown]> = []
+    vi.mocked(invoke).mockReset().mockImplementation((command, args) => {
+      asked.push([command, args])
+      if (command === 'git_commit_all') return Promise.resolve('abc1234')
+      if (command === 'git_create_pull_request') return Promise.resolve('https://github.com/o/r/pull/7')
+      return Promise.resolve({ Diff: { files: [{ path: 'a.txt', additions: 1, deletions: 0, binary: false, patch: '@@ -0,0 +1 @@\n+new\n' }], additions: 1, deletions: 0, total_files: 1, truncated: false } })
+    })
+    const onNotice = vi.fn()
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <InspectPanel term={5} terminals={null} changedFiles={1} view="changes" agentWorking={false} timeline={[]} lookAt={null} changeActions={{ folder: '/home/me/app', suggested: 'Add refunds' }} onView={vi.fn()} onClose={vi.fn()} onNotice={onNotice} />
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByLabelText('Commit message')).toHaveValue('Add refunds')
+    fireEvent.click(screen.getByRole('button', { name: 'Commit 1 file' }))
+    await waitFor(() => { expect(onNotice).toHaveBeenCalledWith('Committed 1 file as abc1234') })
+    expect(asked).toContainEqual(['git_commit_all', { folder: '/home/me/app', message: 'Add refunds' }])
+    fireEvent.click(screen.getByRole('button', { name: 'Create PR' }))
+    expect(await screen.findByText('https://github.com/o/r/pull/7')).toBeTruthy()
+    expect(asked).toContainEqual(['git_create_pull_request', { folder: '/home/me/app' }])
+    cleanup()
+  })
+
+  it('says what git said when a commit fails, and offers neither button without a checkout on this computer', async () => {
+    vi.mocked(invoke).mockReset().mockImplementation((command) => {
+      if (command === 'git_commit_all') return Promise.reject(new Error('nothing to commit'))
+      return Promise.resolve({ Diff: { files: [{ path: 'a.txt', additions: 1, deletions: 0, binary: false, patch: '@@ -0,0 +1 @@\n+new\n' }], additions: 1, deletions: 0, total_files: 1, truncated: false } })
+    })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <InspectPanel term={5} terminals={null} changedFiles={1} view="changes" agentWorking={false} timeline={[]} lookAt={null} changeActions={{ folder: '/home/me/app', suggested: 'x' }} onView={vi.fn()} onClose={vi.fn()} onNotice={vi.fn()} />
+      </QueryClientProvider>,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Commit 1 file' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('nothing to commit')
+    cleanup()
+    renderPanel('changes')
+    await screen.findByText('a.txt')
+    expect(screen.queryByRole('button', { name: /^Commit/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Create PR' })).toBeNull()
+  })
+
+  it('offers no comment box without an agent to tell', async () => {
+    daemonAnswers({
+      Diff: { files: [{ path: 'a.txt', additions: 1, deletions: 0, binary: false, patch: '@@ -0,0 +1 @@\n+new\n' }], additions: 1, deletions: 0, total_files: 1, truncated: false },
+    })
+    renderPanel('changes')
+    fireEvent.click(await screen.findByText(/\+new/))
+    expect(screen.queryByRole('textbox')).toBeNull()
   })
 
   it('says so when the working tree is clean', async () => {

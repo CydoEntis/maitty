@@ -406,6 +406,8 @@ function updateAction(updates: NonNullable<DesktopSettingsProps['updates']>): { 
 }
 const TOAST_POSITIONS = [['top-left', 'Top left'], ['top-center', 'Top center'], ['top-right', 'Top right'], ['bottom-left', 'Bottom left'], ['bottom-center', 'Bottom center'], ['bottom-right', 'Bottom right']] as const
 const ORDER_OPTIONS: ReadonlyArray<readonly [SidebarOrder, string]> = [['creation', 'Creation'], ['priority', 'Priority']]
+const GROUP_OPTIONS = [['status', 'Status'], ['project', 'Project'], ['machine', 'Machine']] as const
+const DOCK_OPTIONS = [['panel', 'Side panel'], ['under', 'Under the chat']] as const
 const SIDE_OPTIONS = [['left', 'Left'], ['right', 'Right']] as const
 const ICON_OPTIONS = [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']] as const
 const DENSITY_OPTIONS = [['compact', 'Compact'], ['comfortable', 'Comfortable'], ['spacious', 'Spacious']] as const
@@ -560,13 +562,21 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
           <Switch aria-label="See-through terminal" checked={preferences.terminalSeeThrough} onCheckedChange={(value) => { update('terminalSeeThrough', value) }} />
         </Row>
       </Card>
+      <Card title="Layout" color="var(--ansi-blue)" iconPath={<><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M3 14h18M9 4v10" /></>}>
+        <Row label="Group sessions by" detail="Status lists what needs you first, then what is working, finished and idle. Project and Machine put each under its own heading.">
+          <SegmentedChoice label="Group sessions by" value={preferences.sidebarGroup} options={GROUP_OPTIONS} onChange={(value) => { update('sidebarGroup', value) }} />
+        </Row>
+        <Row label="Terminals open in" detail="An agent's own terminals: a tab of the side panel, or a drawer pinned under its chat.">
+          <SegmentedChoice label="Terminals open in" value={preferences.terminalDock} options={DOCK_OPTIONS} onChange={(value) => { update('terminalDock', value) }} />
+        </Row>
+      </Card>
       <Card title="Sidebar" color="var(--accent)" iconPath={<><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M9 4v16" /></>}
-        foot="Creation order keeps rows still; Priority lifts a session that needs you."
+        foot="Session order applies when the sidebar is grouped by machine."
       >
         <Row label="Session order" detail="Creation keeps every row where it was put. Priority moves a session that needs you to the top.">
           <SegmentedChoice label="Session order" value={preferences.sidebarOrder} options={ORDER_OPTIONS} onChange={(value) => { update('sidebarOrder', value) }} />
         </Row>
-        <Row label="Sidebar position" detail="Which side of the window the sidebar sits on. Inspect and the inbox open from the other side.">
+        <Row label="Sidebar position" detail="Which side of the window the sidebar sits on. Inspect opens from the other side.">
           <SegmentedChoice label="Sidebar position" value={preferences.sidebarSide} options={SIDE_OPTIONS} onChange={(value) => { update('sidebarSide', value) }} />
         </Row>
       </Card>
@@ -589,7 +599,7 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
         </Row>
       </Card>
       <Card title="Motion" color="var(--ansi-blue)" iconPath={<><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 0 0 16" /></>}>
-        <Row label="Reduce motion" detail="Turns off pulses, slide-ins and size animations. Your system setting is always respected.">
+        <Row label="Reduce motion" detail="Turns off pulses, slide-ins and size animations, and holds spinners still. Your system setting is always respected.">
           <Switch aria-label="Reduce motion" checked={preferences.reduceMotion} onCheckedChange={(value) => { update('reduceMotion', value) }} />
         </Row>
       </Card>

@@ -1,4 +1,3 @@
-import { installUndoRedo } from '@/features/editing/undoRedo'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from '@/lib/toast'
@@ -55,7 +54,6 @@ export function usePreviewState() {
     staleTime: Infinity,
   })
   const machinesError = machinesQuery.data?.error ?? null
-  useEffect(() => installUndoRedo(document, navigator.userAgent), [])
   useEffect(() => {
     if (machinesError) {
       toast.error(`Machines are not available: ${machinesError}`, {

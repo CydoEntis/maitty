@@ -80,8 +80,9 @@ async function openRemotePane() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(<QueryClientProvider client={client}><App /></QueryClientProvider>)
   const user = userEvent.setup()
-  const list = await screen.findByRole('list', { name: 'Sessions on build' })
-  const row = within(list).getAllByRole('button')[0]
+  // The only session there is runs on build, so the first row of the list is its row.
+  const item = (await within(await screen.findByRole('navigation', { name: 'Sessions' })).findAllByRole('listitem'))[0]
+  const row = item === undefined ? undefined : within(item).getAllByRole('button')[0]
   if (row === undefined) throw new Error('the session row of build was not shown')
   await user.click(row)
   await screen.findByRole('region', { name: /Terminal 1/ })

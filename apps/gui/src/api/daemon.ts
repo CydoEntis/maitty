@@ -49,6 +49,8 @@ const TerminalSessionSchema = z.object({
   diff_removed: z.number().int().nonnegative().default(0),
   popup: z.boolean().default(false),
   remote: z.string().nullable().default(null),
+  // When the status last changed, in unix seconds; the sidebar row's time.
+  since: z.number().nonnegative().default(0),
   asking: z.string().default(''),
   // The agent's own hook said what its permission prompt asks (not read off the screen).
   ask: z.object({ tool: z.string(), detail: z.string(), answerable: z.boolean().default(false), choices: z.array(z.string()).default([]) }).nullable().default(null),
@@ -1011,6 +1013,7 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
       ask: term.ask,
       interrupted: term.interrupted,
       exit: term.exit,
+      since: term.since,
       timeline: term.timeline,
       usage: term.usage,
       subagents: term.subagent_activity.map((child) => ({ id: child.id, name: child.name, state: child.state, task: child.task, startedAt: child.started_at, updatedAt: child.updated_at, latest: child.latest_activity, result: child.result })),

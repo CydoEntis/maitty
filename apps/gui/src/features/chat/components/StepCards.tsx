@@ -85,28 +85,44 @@ function CommandState({ event }: { event: CommandEvent }) {
   )
 }
 
-/** The command, its state, and the last three lines of its output (all of it on request). */
+/**
+ * A command the agent ran. Closed it is one line, the command's first line and how it ended, as the
+ * agent's own terminal shows it; opened it is the whole command and the last three lines of its
+ * output (all of it on request). One that failed starts open: that is the one worth reading.
+ */
 export function CommandCard({ event }: { event: CommandEvent }) {
+  const [open, setOpen] = useState(event.status === 'failed')
   const [all, setAll] = useState(false)
   const omitted = isOmitted(event.output)
   const lines = event.output === '' || omitted ? [] : event.output.replace(/\n+$/, '').split('\n')
   const shown = all ? lines : lines.slice(-COMMAND_TAIL_LINES)
+  const typed = event.command.split('\n')
+  const first = typed[0] ?? ''
+  const folded = typed.length > 1 ? `${first} …` : first
   return (
-    <div role="group" aria-label={`Command ${event.command}`} className="mx-step-card">
-      <div className="mx-step-head">
+    <div role="group" aria-label={`Command ${first}`} className="mx-step-card">
+      <button type="button" className="mx-step-head" aria-expanded={open} title={open ? 'Hide the command and its output' : 'Show the command and its output'} onClick={() => { setOpen((current) => !current) }}>
         <span className="self-start py-[7px] font-mono text-[12px] leading-[18px] text-dim" aria-hidden="true">$</span>
-        <code className="mx-step-command">{event.command === '' ? 'A command' : event.command}</code>
+        <code className={`mx-step-command${open ? '' : ' is-folded'}`}>{event.command === '' ? 'A command' : open ? event.command : folded}</code>
         <CommandState event={event} />
-      </div>
+      </button>
+      {open && <CommandOutput event={event} omitted={omitted} shown={shown} total={lines.length} all={all} onAll={() => { setAll((current) => !current) }} />}
+    </div>
+  )
+}
+
+function CommandOutput({ event, omitted, shown, total, all, onAll }: { event: CommandEvent; omitted: boolean; shown: readonly string[]; total: number; all: boolean; onAll: () => void }) {
+  return (
+    <>
       {omitted && <p className="mx-step-note">The output shows a secret file, so the history does not keep it.</p>}
       {shown.length > 0 && <pre className="mx-step-output">{shown.join('\n')}</pre>}
       {shown.length > 0 && <RedactionNote texts={[event.output]} />}
-      {lines.length > COMMAND_TAIL_LINES && (
-        <button type="button" aria-expanded={all} className="mx-step-more" onClick={() => { setAll((current) => !current) }}>
-          {all ? 'Show less' : `Show all ${String(lines.length)} lines`}
+      {total > COMMAND_TAIL_LINES && (
+        <button type="button" aria-expanded={all} className="mx-step-more" onClick={onAll}>
+          {all ? 'Show less' : `Show all ${String(total)} lines`}
         </button>
       )}
-    </div>
+    </>
   )
 }
 

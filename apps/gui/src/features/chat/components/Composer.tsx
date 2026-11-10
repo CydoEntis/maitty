@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { toast } from '@/lib/toast'
-import { pickFromClipboard, unsupportedMessage } from '@/features/terminal/clipboardImage'
+import { pasteFromHost, pickFromClipboard, unsupportedMessage } from '@/features/terminal/clipboardImage'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
 import { AppIcon, Icon, Spinner } from '@/features/workspace/components/glyphs'
 import { registerComposerDrop } from '../composerDrop'
@@ -90,6 +90,7 @@ export function Composer({ agent, composer, conversation, question = null, facts
   // Text first, as in the terminal: a clipboard with any text pastes the text; only a bare image is attached.
   const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
     const pick = pickFromClipboard(event.clipboardData)
+    if (pick.kind === 'none') pasteFromHost(attach.addImage)
     if (pick.kind === 'text' || pick.kind === 'none') return
     event.preventDefault()
     if (pick.kind === 'image') attach.addImage(pick.image)

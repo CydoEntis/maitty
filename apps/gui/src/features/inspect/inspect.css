@@ -10,10 +10,9 @@
 .mx-inspect-grip::after { content: ""; position: absolute; top: 8px; bottom: 8px; left: 3px; width: 2px; border-radius: 2px; background: transparent; transition: background .15s; }
 .mx-inspect-grip:hover::after, .mx-inspect-grip:focus-visible::after { background: var(--accent); }
 .mx-app.is-narrow .mx-inspect-grip { display: none; }
-.mx-inspect-head { flex: none; height: 48px; display: flex; align-items: center; gap: 10px; padding: 0 10px 0 18px; }
-.mx-inspect-head strong { font-size: 14px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mx-inspect-branch { min-width: 0; font-family: var(--mono); font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-inspect-tabs { flex: none; display: flex; gap: 0; height: 38px; padding: 0 8px; border-bottom: 1px solid var(--pane-line); overflow-x: auto; }
+.mx-inspect-head { flex: none; height: 44px; display: flex; align-items: stretch; gap: 10px; padding: 0 10px 0 8px; border-bottom: 1px solid var(--pane-line); }
+.mx-inspect-head > .mx-icon-button { align-self: center; flex: none; }
+.mx-inspect-tabs { flex: 1; min-width: 0; display: flex; gap: 0; overflow-x: auto; }
 .mx-inspect-tabs button { position: relative; display: flex; align-items: center; gap: 6px; padding: 0 12px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
 .mx-inspect-tabs button:hover { color: var(--fg); }
 .mx-inspect-tabs button.is-current { color: var(--fg); font-weight: 500; }
@@ -33,6 +32,7 @@
 :root[data-motion="reduced"] .mx-inspect, :root[data-motion="reduced"] .mx-inspect-scrim, .mx-app[data-motion="reduced"] .mx-inspect, .mx-app[data-motion="reduced"] .mx-inspect-scrim { animation: none; }
 @media (prefers-reduced-motion: reduce) { .mx-inspect, .mx-inspect-scrim { animation: none; } }
 .mx-inspect-scroll { flex: 1; min-height: 0; overflow: auto; padding: 10px; }
+.mx-inspect-terminals { flex: 1; min-height: 0; display: flex; }
 .mx-inspect-body, .mx-inspect-split { display: flex; flex-direction: column; gap: 10px; }
 .mx-inspect-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .mx-inspect-row { width: 100%; min-height: 28px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 4px 8px; border-radius: 8px; font-size: 12.5px; color: var(--fg2); text-align: left; }
@@ -65,6 +65,24 @@ button.mx-inspect-row:hover, .mx-inspect-pick:hover { background: rgba(var(--hl)
 .mx-patch-line.is-remove { background: color-mix(in oklab, var(--danger) 16%, transparent); }
 .mx-patch-line.is-hunk { color: var(--accent-text); }
 .mx-patch-line.is-meta { color: var(--dim); }
+.mx-commit { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--pane-line); border-radius: 12px; background: var(--m-well); }
+.mx-commit-message { width: 100%; resize: vertical; border: 0; background: transparent; color: var(--fg); font: inherit; font-size: 13px; outline: none; }
+.mx-commit-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.mx-commit-error { margin: 0; font-size: 12.5px; color: var(--danger); }
+.mx-commit-link { margin: 0; font-size: 12.5px; color: var(--muted); }
+.mx-commit-link span { color: var(--accent-text); user-select: text; overflow-wrap: anywhere; }
+/* Line numbers are drawn, not written, so copying a diff copies only its text. */
+.mx-patch.is-numbered .mx-patch-line::before { content: attr(data-line); display: inline-block; width: 4ch; margin-right: 10px; text-align: right; color: var(--dim); user-select: none; }
+.mx-patch-line.is-commentable { cursor: pointer; }
+.mx-patch-line.is-commentable:hover, .mx-patch-line.is-commentable:focus-visible { box-shadow: inset 2px 0 0 var(--accent); outline: none; }
+.mx-patch-comment, .mx-patch-sent { display: block; margin: 4px 10px 6px calc(4ch + 20px); white-space: normal; font-family: var(--ui, system-ui, sans-serif); font-size: 12.5px; }
+.mx-patch-comment { padding: 8px; border: 1px solid var(--pane-line); border-radius: 10px; background: var(--m-well); max-width: 560px; }
+.mx-patch-comment-text { display: block; width: 100%; resize: vertical; border: 0; background: transparent; color: var(--fg); font: inherit; outline: none; }
+.mx-patch-comment-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+.mx-patch-comment-error { display: block; margin-top: 4px; color: var(--danger); }
+.mx-patch-sent { padding: 6px 10px; border-left: 2px solid var(--accent); color: var(--fg); max-width: 560px; }
+.mx-patch-sent b { margin-right: 6px; }
+.mx-patch-sent i { color: var(--muted); font-style: normal; }
 .mx-preview > span.is-target { background: color-mix(in oklab, var(--warn) 22%, transparent); }
 .mx-inspect .is-add { color: var(--ok); }
 .mx-inspect .is-remove { color: var(--danger); }

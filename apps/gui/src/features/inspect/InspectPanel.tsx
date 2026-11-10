@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { BranchesTab } from './BranchesTab'
 import { ChangesTab } from './ChangesTab'
+import type { ChangeActions } from './CommitBar'
+import type { PatchComments } from './PatchView'
 import { FilesTab, type LookAt } from './FilesTab'
 import { HistoryTab } from './HistoryTab'
 import { ReferencesTab } from './ReferencesTab'
@@ -8,52 +10,70 @@ import { TimelineTab } from './TimelineTab'
 import type { TerminalDetails } from '@/data/preview'
 import './inspect.css'
 
-export type InspectView = 'files' | 'changes' | 'branches' | 'history' | 'timeline' | 'references'
+export type InspectView = 'changes' | 'files' | 'terminal' | 'branches' | 'history' | 'timeline' | 'references'
 
 const VIEWS: readonly { id: InspectView; label: string }[] = [
-  { id: 'files', label: 'Files' },
   { id: 'changes', label: 'Changes' },
+  { id: 'files', label: 'Files' },
+  { id: 'terminal', label: 'Terminal' },
   { id: 'branches', label: 'Branches' },
   { id: 'history', label: 'History' },
   { id: 'timeline', label: 'Timeline' },
   { id: 'references', label: 'References' },
 ]
 
-/** Opened from a pane, the drawer offers its two tools; another view shows its tab only while it is the one open. */
-const TRAY_VIEWS: readonly InspectView[] = ['files', 'changes']
+/**
+ * The panel's own tabs (layout 2e). The other views are kept but nothing opens them: whether they
+ * come back is undecided, so each shows its tab only while it is the one open.
+ */
+const PANEL_VIEWS: readonly InspectView[] = ['changes', 'files', 'terminal']
 
-/** The drawer opens at this width on every tab, so tabs never jump; the edge can be dragged and the width is remembered. */
-const DEFAULT_WIDTH_PX = 680
+/** The panel opens at this share of the window; the edge can be dragged and the width is remembered. */
+const DEFAULT_SHARE = 0.75
 const MIN_WIDTH_PX = 420
-/** Room left for the sessions and panes beside the drawer. */
-const MIN_BESIDE_PX = 300
-const SNAP_PX = 10
+/** The strip of the chat that stays in sight beside the panel, to click it away. */
+const STRIP_PX = 56
+/** The gap between the window's edge and the panel. */
+const EDGE_PX = 24
 const KEY_STEP_PX = 24
-const WIDTH_KEY = 'maitty.inspect.width'
-/** The exit animation's length: the drawer is unmounted when it ends, not at once. */
+const WIDTH_KEY = 'maitty.inspect.width.v2'
+/** The exit animation's length: the panel is unmounted when it ends, not at once. */
 const EXIT_MS = 210
 
-function readWidth(): number {
-  try {
-    const stored = Number(window.localStorage.getItem(WIDTH_KEY))
-    return Number.isFinite(stored) && stored >= MIN_WIDTH_PX ? stored : DEFAULT_WIDTH_PX
-  } catch {
-    return DEFAULT_WIDTH_PX
-  }
+/** The widest the panel may be: it never covers the sidebar, and leaves a strip of the chat. */
+function roomPx(): number {
+  const sidebar = document.querySelector('.mx-sidebar-expanded')?.getBoundingClientRect().width ?? 0
+  return Math.max(MIN_WIDTH_PX, window.innerWidth - sidebar - STRIP_PX - EDGE_PX)
 }
 
 function clampWidth(width: number): number {
-  const widest = Math.max(MIN_WIDTH_PX, window.innerWidth - MIN_BESIDE_PX)
-  const clamped = Math.min(Math.max(width, MIN_WIDTH_PX), widest)
-  return Math.abs(clamped - DEFAULT_WIDTH_PX) <= SNAP_PX ? DEFAULT_WIDTH_PX : clamped
+  return Math.round(Math.min(Math.max(width, MIN_WIDTH_PX), roomPx()))
+}
+
+/** The width someone dragged it to, or null while it follows the window. */
+function readWidth(): number | null {
+  try {
+    const stored = Number(window.localStorage.getItem(WIDTH_KEY))
+    return Number.isFinite(stored) && stored >= MIN_WIDTH_PX ? stored : null
+  } catch {
+    return null
+  }
+}
+
+function writeWidth(width: number | null): void {
+  try {
+    if (width === null) window.localStorage.removeItem(WIDTH_KEY)
+    else window.localStorage.setItem(WIDTH_KEY, String(width))
+  } catch {
+    // The width is only remembered, never needed.
+  }
 }
 
 type Props = {
-  /** The daemon's pane number: every question is about that pane's own repository. */
-  term: number
-  /** The project's name, then its branch when it has one, in the header. */
-  project: string
-  branch: string | null
+  /** The daemon's pane number every repository question is about; null when there is none to ask, and Changes and Files are left out. */
+  term: number | null
+  /** The session's own terminals, for the Terminal tab; null when it has none here. */
+  terminals: ReactNode | null
   /** How many files the repository says changed, shown beside Changes. */
   changedFiles: number
   view: InspectView
@@ -61,18 +81,30 @@ type Props = {
   /** What the pane's agent and shell reported lately, for the Timeline view. */
   timeline: TerminalDetails['timeline']
   lookAt: LookAt | null
+  /** The agent a comment on a diff line goes to; absent for a shell, which has nobody to tell. */
+  comments?: Omit<PatchComments, 'path'>
+  /** Commit and Create PR on the Changes tab, for a checkout on this computer. */
+  changeActions?: ChangeActions
   onView: (view: InspectView) => void
   onClose: () => void
   onNotice: (text: string) => void
 }
 
+/** The asked view when the panel can show it, or else the first one it can. */
+function shownView(view: InspectView, hasRepo: boolean, hasTerminals: boolean): InspectView {
+  const can = (id: InspectView) => (id === 'terminal' ? hasTerminals : hasRepo)
+  return can(view) ? view : (PANEL_VIEWS.find(can) ?? view)
+}
+
 /**
- * The repository drawer (v19 §9). It slides over the panes from beside the activity bar, over a scrim,
- * and never pushes them. A read-only look at the focused pane's repository: anything that changes it
- * happens in the pane's terminal.
+ * The side panel (layout 2e). It slides over the panes from the window's edge, over a scrim, and
+ * never pushes them or covers the sidebar: the focused session's changes, its files and its own
+ * terminals.
  */
-export function InspectPanel({ term, project, branch, changedFiles, view, agentWorking, timeline, lookAt, onView, onClose, onNotice }: Props) {
-  const [width, setWidth] = useState(readWidth)
+export function InspectPanel({ term, terminals, changedFiles, view: asked, agentWorking, timeline, lookAt, comments, changeActions, onView, onClose, onNotice }: Props) {
+  const view = shownView(asked, term !== null, terminals !== null)
+  const [dragged, setDragged] = useState(readWidth)
+  const width = clampWidth(dragged ?? window.innerWidth * DEFAULT_SHARE)
   const [leaving, setLeaving] = useState(false)
   const previous = useRef(view)
   const [towards, setTowards] = useState<'forward' | 'back'>('forward')
@@ -86,13 +118,13 @@ export function InspectPanel({ term, project, branch, changedFiles, view, agentW
     setLeaving(true)
     window.setTimeout(onClose, EXIT_MS)
   }, [onClose])
-  const save = useCallback((next: number) => {
-    setWidth(next)
-    try { window.localStorage.setItem(WIDTH_KEY, String(next)) } catch { /* the width is only remembered, never needed */ }
+  const save = useCallback((next: number | null) => {
+    setDragged(next)
+    writeWidth(next)
   }, [])
   const startDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault()
-    const move = (at: PointerEvent) => { setWidth(clampWidth(widthAtPointer(at.clientX))) }
+    const move = (at: PointerEvent) => { setDragged(clampWidth(widthAtPointer(at.clientX))) }
     const stop = (at: PointerEvent) => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', stop)
@@ -111,43 +143,44 @@ export function InspectPanel({ term, project, branch, changedFiles, view, agentW
       <aside
         className={`mx-inspect${leaving ? ' is-leaving' : ''}`}
         style={{ width }}
-        aria-label="Repository"
-        onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); close() } }}
+        aria-label="Side panel"
+        onKeyDown={(event) => {
+          // Esc closes the panel, except in a terminal, where it belongs to the program running there.
+          if (event.key !== 'Escape' || (event.target instanceof Element && event.target.closest('.mx-terms-screen'))) return
+          event.stopPropagation()
+          close()
+        }}
       >
-        <div className="mx-inspect-grip" role="separator" aria-orientation="vertical" aria-label="Resize the repository drawer" tabIndex={0} onPointerDown={startDrag} onKeyDown={nudge} onDoubleClick={() => { save(DEFAULT_WIDTH_PX) }} />
+        <div className="mx-inspect-grip" role="separator" aria-orientation="vertical" aria-label="Resize the side panel" tabIndex={0} onPointerDown={startDrag} onKeyDown={nudge} onDoubleClick={() => { save(null) }} />
         <header className="mx-inspect-head">
-          <strong>{project}</strong>
-          {branch !== null && <span className="mx-inspect-branch">{branch}</span>}
-          <span className="mx-spacer" />
+          <div role="tablist" aria-label="Side panel views" className={`mx-inspect-tabs is-${towards}`}>
+            {VIEWS.filter((item) => item.id === view || (PANEL_VIEWS.includes(item.id) && shownView(item.id, term !== null, terminals !== null) === item.id)).map((item) => (
+              <button key={item.id} type="button" role="tab" aria-selected={view === item.id} className={view === item.id ? 'is-current' : undefined} onClick={() => { onView(item.id) }}>
+                {item.label}
+                {item.id === 'changes' && changedFiles > 0 && <span className="mx-inspect-count">{changedFiles}</span>}
+              </button>
+            ))}
+          </div>
           <button type="button" className="mx-icon-button" aria-label="Close" title="Close (esc)" onClick={close}>×</button>
         </header>
-        <div role="tablist" aria-label="Repository views" className={`mx-inspect-tabs is-${towards}`}>
-          {VIEWS.filter((item) => item.id === view || TRAY_VIEWS.includes(item.id)).map((item) => (
-            <button key={item.id} type="button" role="tab" aria-selected={view === item.id} className={view === item.id ? 'is-current' : undefined} onClick={() => { onView(item.id) }}>
-              {item.label}
-              {item.id === 'changes' && changedFiles > 0 && <span className="mx-inspect-count">{changedFiles}</span>}
-            </button>
-          ))}
-        </div>
-        <div className="mx-inspect-scroll" role="tabpanel">
-          {view === 'files' && <FilesTab term={term} lookAt={lookAt} />}
-          {view === 'changes' && <ChangesTab term={term} />}
-          {view === 'branches' && <BranchesTab term={term} />}
-          {view === 'history' && <HistoryTab term={term} agentWorking={agentWorking} onNotice={onNotice} />}
-          {view === 'timeline' && <TimelineTab events={timeline} />}
-          {view === 'references' && <ReferencesTab term={term} />}
-        </div>
+        {view === 'terminal' && <div className="mx-inspect-terminals" role="tabpanel">{terminals}</div>}
+        {view !== 'terminal' && term !== null && (
+          <div className="mx-inspect-scroll" role="tabpanel">
+            {view === 'files' && <FilesTab term={term} lookAt={lookAt} />}
+            {view === 'changes' && <ChangesTab term={term} {...(comments ? { comments } : {})} {...(changeActions ? { actions: changeActions } : {})} onNotice={onNotice} />}
+            {view === 'branches' && <BranchesTab term={term} />}
+            {view === 'history' && <HistoryTab term={term} agentWorking={agentWorking} onNotice={onNotice} />}
+            {view === 'timeline' && <TimelineTab events={timeline} />}
+            {view === 'references' && <ReferencesTab term={term} />}
+          </div>
+        )}
       </aside>
     </>
   )
 }
 
-/** The drawer's width if its inner edge were at this x: it is anchored beside the activity bar, so the gap is the bar and the margins around it. */
+/** The panel's width if its inner edge were at this x: it is anchored a gap in from the window's edge. */
 function widthAtPointer(x: number): number {
-  const bar = document.querySelector('.mx-activity')
-  const gap = (bar?.getBoundingClientRect().width ?? 0) + DRAWER_MARGIN_PX
-  const onRight = document.querySelector('.mx-app')?.getAttribute('data-side') === 'right'
-  return onRight ? x - gap : window.innerWidth - x - gap
+  const onLeft = document.querySelector('.mx-app')?.getAttribute('data-side') === 'right'
+  return onLeft ? x - EDGE_PX : window.innerWidth - x - EDGE_PX
 }
-/** The margins between the window's edge, the bar and the drawer (v19 §9). */
-const DRAWER_MARGIN_PX = 22
