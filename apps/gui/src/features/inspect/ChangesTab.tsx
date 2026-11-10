@@ -3,7 +3,7 @@ import { Icon } from '@/features/workspace/components/glyphs'
 import { repoDiff, type RepoDiff } from './api'
 import { changeKind } from './changeKind'
 import { CommitBar, type ChangeActions } from './CommitBar'
-import { PatchView, type PatchComments } from './PatchView'
+import { PatchView, type PatchComments, type SentComment } from './PatchView'
 import { RepoError } from './RepoError'
 import { useRepoQuery } from './useRepoQuery'
 
@@ -16,11 +16,16 @@ function splitPath(path: string): { folder: string; name: string } {
   return { folder: path.slice(0, cut), name: path.slice(cut) }
 }
 
+function commentHint(count: number): string {
+  if (count === 0) return 'Click a line to comment'
+  return count === 1 ? '1 comment' : `${String(count)} comments`
+}
+
 type Props = {
   term: number
   /** The branch the checkout is on, shown above the files. */
   branch?: string
-  comments?: Omit<PatchComments, 'path'>
+  comments?: Omit<PatchComments, 'path' | 'sent' | 'onSent'>
   /** Commit and Create PR, for a checkout on this computer; absent elsewhere. */
   actions?: ChangeActions
   onNotice: (text: string) => void
@@ -48,6 +53,8 @@ function FileRow({ file, current, onPick }: { file: ChangedFile; current: boolea
 export function ChangesTab({ term, branch, comments, actions, onNotice }: Props) {
   const query = useRepoQuery(term, ['diff'], () => repoDiff(term), CHANGES_REFRESH_MS)
   const [picked, setPicked] = useState<string | null>(null)
+  // Comments sent in this look at the changes, by file: a comment stays pinned on its line while other files are read.
+  const [sent, setSent] = useState<ReadonlyMap<string, readonly SentComment[]>>(() => new Map())
   if (query.isPending) return <p className="mx-inspect-note">Loading…</p>
   if (query.isError) return <RepoError error={query.error} tab="changes" onRetry={() => { void query.refetch() }} retrying={query.isFetching} />
   const { files } = query.data
@@ -76,9 +83,9 @@ export function ChangesTab({ term, branch, comments, actions, onNotice }: Props)
                 {selected.additions > 0 && <span className="is-add">+{selected.additions}</span>}
                 {selected.deletions > 0 && <span className="is-remove">−{selected.deletions}</span>}
               </span>
-              {comments && !selected.binary && <span className="mx-changes-hint">Click a line to comment</span>}
+              {comments && !selected.binary && <span className="mx-changes-hint">{commentHint(sent.get(selected.path)?.length ?? 0)}</span>}
             </header>
-            {selected.binary ? <p className="mx-inspect-note">Binary file; no diff to show.</p> : <PatchView key={selected.path} patch={selected.patch} {...(comments ? { comments: { ...comments, path: selected.path } } : {})} />}
+            {selected.binary ? <p className="mx-inspect-note">Binary file; no diff to show.</p> : <PatchView key={selected.path} patch={selected.patch} {...(comments ? { comments: { ...comments, path: selected.path, sent: sent.get(selected.path) ?? [], onSent: (comment) => { setSent((current) => new Map(current).set(selected.path, [...(current.get(selected.path) ?? []), comment])) } } } : {})} />}
           </>
         ) : (
           <p className="mx-changes-none">No changes. The working tree matches the last commit.</p>

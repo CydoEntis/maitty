@@ -111,8 +111,8 @@ button.mx-inspect-row:hover, .mx-inspect-pick:hover { background: rgba(var(--hl)
 .mx-patch-comment-text { display: block; width: 100%; resize: vertical; border: 0; background: transparent; color: var(--fg); font: inherit; outline: none; }
 .mx-patch-comment-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 .mx-patch-comment-error { display: block; margin-top: 4px; color: var(--danger); }
-.mx-patch-sent { padding: 6px 10px; border-left: 2px solid var(--accent); color: var(--fg); max-width: 560px; }
-.mx-patch-sent b { margin-right: 6px; }
+.mx-patch-sent { padding: 8px 10px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); background: color-mix(in srgb, var(--accent) 9%, transparent); color: var(--fg); max-width: 560px; }
+.mx-patch-sent b { display: block; margin-bottom: 2px; font-size: 11.5px; font-weight: 600; color: var(--accent-text); }
 .mx-patch-sent i { color: var(--muted); font-style: normal; }
 .mx-preview > span.is-target { background: color-mix(in oklab, var(--warn) 22%, transparent); }
 .mx-inspect .is-add { color: var(--ok); }

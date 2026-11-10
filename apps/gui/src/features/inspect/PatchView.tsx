@@ -9,9 +9,13 @@ export type PatchComments = {
   /** The agent's name, for the button. */
   agent: string
   onSend: (message: string) => Promise<void>
+  /** The comments already sent on this file, kept by whoever shows the diff so they outlast a look at another file. */
+  sent: readonly SentComment[]
+  onSent: (comment: SentComment) => void
 }
 
-type Sent = { index: number; text: string }
+/** A comment that went to the agent: the diff line it is pinned under, and what it said. */
+export type SentComment = { index: number; text: string }
 
 function canComment(line: PatchLine): boolean {
   return line.line !== null
@@ -32,7 +36,7 @@ export function PatchView({ patch, comments }: { patch: string; comments?: Patch
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
-  const [sent, setSent] = useState<readonly Sent[]>([])
+  const sent = comments?.sent ?? []
   const lines = patchLines(patch)
   const firstHunk = lines.findIndex((line) => line.kind === 'hunk')
 
@@ -49,7 +53,7 @@ export function PatchView({ patch, comments }: { patch: string; comments?: Patch
     setFailure(null)
     comments.onSend(commentMessage(comments.path, line, text))
       .then(() => {
-        setSent((current) => [...current, { index, text }])
+        comments.onSent({ index, text })
         setOpen(null)
       })
       .catch((error: unknown) => { setFailure(errorMessage(error, `Could not send the comment to ${comments.agent}`)) })
@@ -79,7 +83,7 @@ export function PatchView({ patch, comments }: { patch: string; comments?: Patch
               <span className={`mx-patch-line is-${line.kind}`} data-line={line.line ?? ''}><Numbers line={line} />{line.text}{'\n'}</span>
             )}
             {sent.filter((comment) => comment.index === index).map((comment, at) => (
-              <span key={at} className="mx-patch-sent"><b>You</b> {comment.text} <i>· sent to {comments?.agent}</i></span>
+              <span key={at} className="mx-patch-sent"><b>You → {comments?.agent}</b>{comment.text} <i>· sent to {comments?.agent}</i></span>
             ))}
             {comments !== undefined && open === index && (
               <span className="mx-patch-comment">

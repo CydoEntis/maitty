@@ -85,7 +85,7 @@ type Props = {
   timeline: TerminalDetails['timeline']
   lookAt: LookAt | null
   /** The agent a comment on a diff line goes to; absent for a shell, which has nobody to tell. */
-  comments?: Omit<PatchComments, 'path'>
+  comments?: Omit<PatchComments, 'path' | 'sent' | 'onSent'>
   /** Commit and Create PR on the Changes tab, for a checkout on this computer. */
   changeActions?: ChangeActions
   onView: (view: InspectView) => void

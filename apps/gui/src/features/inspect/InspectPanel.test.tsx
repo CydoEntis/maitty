@@ -99,6 +99,7 @@ describe('Inspect panel', () => {
     fireEvent.click(send)
     await waitFor(() => { expect(onSend).toHaveBeenCalledWith('About src/a.ts, line 3:\n> new\n\ncall it fresh') })
     expect(await screen.findByText(/sent to Claude/)).toBeTruthy()
+    expect(screen.getByText('1 comment')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Send to Claude' })).toBeNull()
     cleanup()
   })
