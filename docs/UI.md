@@ -587,6 +587,10 @@ system's, so it takes no theme. Closing the window still closes the app; the ite
   (`BACKOFF`). Typing goes nowhere; `r` tries now and `Esc` leaves. The status glyphs do not change to `┆` yet.
 - **Service down.** After five tries a red box, ` MAITTYD ISN'T RESPONDING `, says sessions are still running and
   gives three things to try: `r` connect again, `s` start the service (`ipc::open_or_spawn_installed`), `maitty doctor`.
+- **Service came back as another version** (another copy of the app updated and restarted it): no try can work, so the
+  first try that hears the other version ends them (`service_changed_version`). When a newer maitty is installed here it
+  opens in this window's place; otherwise the window closes into the *Service update needed* screen below. A connect
+  waits at most 3 s for the daemon's pipe (`ipc::CONNECT_WITHIN`), so a try never holds the keys.
 - **Service update needed** is `restart_prompt.rs`, shown before the window opens when the running daemon is another
   protocol version: an amber title, SURVIVES (shells and their scrollback), STOPS (agents), `r` restart service or `Esc`
   not now (which leaves the window; a client and daemon that cannot read each other do not talk, so there is no
