@@ -297,7 +297,10 @@ mod tests {
 
     fn every_message() -> Vec<ServerMsg> {
         vec![
-            ServerMsg::Welcome { version: 1 },
+            ServerMsg::Welcome {
+                version: 1,
+                compatible_since: 1,
+            },
             ServerMsg::State(Snapshot::default()),
             ServerMsg::TermsChanged {
                 changed: Vec::new(),

@@ -112,7 +112,9 @@ has to be right, and sessions survive the UI closing.
 2. **Bump `PROTOCOL_VERSION`** (`crates/maitty-shared/src/protocol.rs`) when a
    message shape changes incompatibly: a field removed, renamed or retyped, or a new enum variant. An
    added `#[serde(default)]` field needs no bump when a test decodes the old
-   shape. A client and daemon that can't read each other must refuse to talk, not
+   shape. In the same change, decide `COMPATIBLE_SINCE`: it stays only when an older peer can
+   live with the change (a new message with its own `introduced_in` arm); anything an older
+   peer would misread moves it to the new version. A client and daemon that can't read each other must refuse to talk, not
    misparse. See [API_PATTERNS](docs/API_PATTERNS.md#project-specific-api-style) and ADR 0002.
 3. **Windows is a first-class target.** Every change builds and behaves on
    Windows (ConPTY, named pipes, PowerShell) as well as Linux and macOS; the

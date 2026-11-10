@@ -82,11 +82,32 @@ pub fn private_socket_dir(
 pub type Reader = FramedRead<Box<dyn AsyncRead + Send + Unpin>, LengthDelimitedCodec>;
 pub type Writer = FramedWrite<Box<dyn AsyncWrite + Send + Unpin>, LengthDelimitedCodec>;
 
-pub async fn welcome_version(reader: &mut Reader) -> Result<u32> {
+/// What the daemon said of itself in the handshake.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Welcomed {
+    pub version: u32,
+    /// The oldest version it still talks to; 0 from a daemon that does not say.
+    pub compatible_since: u32,
+}
+
+impl Welcomed {
+    /// Whether this build and that daemon talk (`protocol::speaks_with`).
+    pub fn speaks_with_us(self) -> bool {
+        maitty_shared::protocol::speaks_with(self.version, self.compatible_since)
+    }
+}
+
+pub async fn welcome_version(reader: &mut Reader) -> Result<Welcomed> {
     use maitty_shared::protocol::ServerMsg;
 
     match receive(reader).await? {
-        Some(ServerMsg::Welcome { version }) => Ok(version),
+        Some(ServerMsg::Welcome {
+            version,
+            compatible_since,
+        }) => Ok(Welcomed {
+            version,
+            compatible_since,
+        }),
         Some(ServerMsg::Error(error)) => anyhow::bail!(error),
         _ => anyhow::bail!("unexpected handshake from daemon"),
     }
@@ -181,15 +202,20 @@ mod tests {
             &mut server_writer,
             &ServerMsg::Welcome {
                 version: PROTOCOL_VERSION + 1,
+                compatible_since: PROTOCOL_VERSION + 1,
             },
         )
         .await
         .unwrap();
 
-        assert_eq!(
-            welcome_version(&mut client_reader).await.unwrap(),
-            PROTOCOL_VERSION + 1
-        );
+        let daemon = welcome_version(&mut client_reader).await.unwrap();
+        assert_eq!(daemon.version, PROTOCOL_VERSION + 1);
+        assert!(!daemon.speaks_with_us(), "it no longer speaks this version");
+        let in_window = super::Welcomed {
+            version: PROTOCOL_VERSION + 1,
+            compatible_since: PROTOCOL_VERSION,
+        };
+        assert!(in_window.speaks_with_us());
     }
 
     #[tokio::test]
