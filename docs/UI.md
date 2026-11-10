@@ -586,6 +586,8 @@ system's, so it takes no theme. Closing the window still closes the app; the ite
   (`BACKOFF`). Typing goes nowhere; `r` tries now and `Esc` leaves. The status glyphs do not change to `┆` yet.
 - **Service down.** After five tries a red box, ` MAITTYD ISN'T RESPONDING `, says sessions are still running and
   gives three things to try: `r` connect again, `s` start the service (`ipc::open_or_spawn_installed`), `maitty doctor`.
+  The window still tries by itself every 15 s (`DOWN_RETRY`) and the box says so, so a service that another window or
+  an update brought back is found without a key.
 - **Service came back as another version** (another copy of the app updated and restarted it): no try can work, so the
   first try that hears the other version ends them (`service_changed_version`). When a newer maitty is installed here it
   opens in this window's place; otherwise the window closes into the *Service update needed* screen below. A connect
