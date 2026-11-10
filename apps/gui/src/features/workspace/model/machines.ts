@@ -153,12 +153,12 @@ export function updateVerb(action: UpdateAction, activity: Activity | null): str
 /** What an update will interrupt, said before it runs. `activity` is null when the machine could not say. */
 export function updateWarning(name: string, activity: Activity | null): string {
   if (activity?.current === true) {
-    return `${name} already has this version; its daemon is still the old one. It has ${String(activity.sessions)} ${activity.sessions === 1 ? 'session' : 'sessions'} open, ${String(activity.busy)} busy. Restarting its daemon brings the sessions back with their agents resumed; an agent in the middle of a turn loses that turn if you restart now. Restart when idle waits up to half an hour for nothing to be running first.`
+    return `${name} already has this version; its daemon is still the old one. It has ${String(activity.sessions)} ${activity.sessions === 1 ? 'session' : 'sessions'} open, ${String(activity.busy)} busy. Restarting its daemon brings the sessions back with their agents resumed; an agent in the middle of a turn loses that turn if you restart now. Restart when idle restarts it once every session there is closed; it waits up to half an hour, then leaves it running.`
   }
   const open = activity === null
     ? `Updating ${name} restarts its daemon, and ${name} could not say what is open on it. `
     : `${name} has ${String(activity.sessions)} ${activity.sessions === 1 ? 'session' : 'sessions'} open, ${String(activity.busy)} busy. Updating restarts its daemon. `
-  return `${open}Its sessions are saved and come back with their agents resumed; an agent in the middle of a turn loses that turn if you update now. Update when idle waits up to half an hour for nothing to be running first.`
+  return `${open}Its sessions are saved and come back with their agents resumed; an agent in the middle of a turn loses that turn if you update now. Update when idle installs the new version now and restarts the daemon once every session there is closed; it waits up to half an hour, then leaves it running.`
 }
 
 /** Whether a machine's sessions are shown as last seen: its line is not up and not on its first dial. */

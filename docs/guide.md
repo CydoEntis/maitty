@@ -710,8 +710,8 @@ with another version says `needs update`, with an **Update** button. Its right-c
 needed: Install runs `maitty machine update <name> --install` for you, and Update replaces the version there
 (`--yes`). Both ask first. Install says what it puts on the machine; Update says how many sessions are open there
 and how many are busy, and offers **Update now** (its daemon restarts and its saved sessions come back with their
-agents resumed; a turn in progress is lost) or **Update when idle** (it waits up to half an hour for nothing to
-be running). A toast says it is running, then how it ended: installed, already up to date, or why it did not (ssh
+agents resumed; a turn in progress is lost) or **Update when idle** (the new version is installed now and the daemon
+restarts once every session there is closed; it waits up to half an hour, then leaves the daemon running). A toast says it is running, then how it ended: installed, already up to date, or why it did not (ssh
 could not get in, the machine has a newer maitty than this app, which is never downgraded from here, or it is a
 Windows machine, which cannot be a remote yet). After a success the machine is dialled again. The exact command
 is still shown with a **Copy command** button, to run in a terminal instead.

@@ -330,7 +330,7 @@ fn restart_when_idle(
     talk: &mut dyn Talk,
 ) {
     talk.say(&format!(
-        "waiting for {name} to be idle, then restarting its daemon…"
+        "waiting until no session is open on {name}, then restarting its daemon…"
     ));
     for ask in 0..MOST_IDLE_ASKS {
         let asked = machine
@@ -362,7 +362,7 @@ fn restart_when_idle(
         }
     }
     talk.say(&format!(
-        "note: {name} was still busy after half an hour; its daemon was left running and takes the new version when it next restarts"
+        "note: {name} still had sessions open after half an hour; its daemon was left running and takes the new version when it next restarts (`{APP_COMMAND} machine update {name} --restart` does it now)"
     ));
 }
 
