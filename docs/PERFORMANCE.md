@@ -533,6 +533,16 @@ What is left is the shell's own startup and the agent's own startup, which Maitt
 Measure it on Windows with a screen recording at 30 fps: count frames from Enter to the first
 "thinking" line.
 
+## A reply being typed out in chat (2026-11-09)
+
+The chat reads snapshots, at least 100 ms apart, so the daemon's news never arrives faster than
+that. The cost while a reply streams is the typing effect: `useTypedText` moves the shown text
+forward every 24 ms, and each step parsed and rendered the whole message again. Measured in the
+test renderer on a 2.2 KB reply of 40 blocks: 1.27 ms a step, 0.07 ms of it parsing. Blocks whose
+parse did not change are now left as they are (`BlockView` in `Markdown.tsx`): 0.48 ms a step. The
+timer also stops once the text has caught up, so messages at rest wake nothing. To re-measure,
+render `Markdown` with a text that grows a few characters at a time and time the re-renders.
+
 ## The Changes tab with many new files (2026-11-09)
 
 The Changes tab asks the daemon for `Diff`, which listed the untracked files and then ran one

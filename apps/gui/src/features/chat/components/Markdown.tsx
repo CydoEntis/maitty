@@ -46,7 +46,22 @@ const alignClass = (align: TableAlign | undefined) => ALIGN[align ?? 'left']
 
 const HEADING_SIZE = ['text-[17px]', 'text-[16px]', 'text-[15px]', 'text-[14px]', 'text-[14px]', 'text-[14px]'] as const
 
-function BlockView({ block }: { block: Block }) {
+/** Whether two parsed values say the same thing: plain data only, as the parser makes it. */
+function sameParsed(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
+  if (Array.isArray(a) !== Array.isArray(b)) return false
+  const [left, right] = [a as Record<string, unknown>, b as Record<string, unknown>]
+  const keys = Object.keys(left)
+  return keys.length === Object.keys(right).length && keys.every((key) => sameParsed(left[key], right[key]))
+}
+
+/**
+ * One block. A reply that is being typed out is parsed again about forty times a second, and only its last block
+ * differs each time: comparing a block's parse is far cheaper than rendering it again, so the ones above stay as
+ * they are.
+ */
+const BlockView = memo(function BlockView({ block }: { block: Block }) {
   switch (block.kind) {
     case 'paragraph':
       return <p className="m-0 whitespace-pre-wrap"><Inlines nodes={block.inlines} /></p>
@@ -95,7 +110,7 @@ function BlockView({ block }: { block: Block }) {
         </div>
       )
   }
-}
+}, (before, after) => sameParsed(before.block, after.block))
 
 /** A message's text as markdown blocks, spaced like paragraphs. */
 export const Markdown = memo(function Markdown({ text, className = '' }: { text: string; className?: string }) {
