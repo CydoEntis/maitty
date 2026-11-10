@@ -113,6 +113,7 @@ impl Daemon {
             name,
             background,
             background_agents,
+            background_reported,
             ask,
             call,
             ..
@@ -248,6 +249,13 @@ impl Daemon {
                         .or_else(|| Some("Runtime reported child stop".into()));
                 }
                 self.dirty = true;
+            }
+            // The agent's own list of what still runs outranks our count of starts and stops:
+            // a stop that never reached us must not leave a helper listed, or hold the turn.
+            if event == "Stop" && background_reported && background_agents.is_empty() {
+                self.dirty |= t.forget_unreported_subagents(
+                    "The agent's turn ended with no helper running; its stop was never reported",
+                );
             }
             // A turn over (or a new session) has no subagents left; a "done" while some
             // still run is held instead (see `hook`).
