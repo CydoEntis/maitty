@@ -810,6 +810,9 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   bottom (`followAfterScroll`). Rows
   are `buildRows(events)`: one agent message per turn (adjacent agent messages of a turn are joined; a step between
   two messages keeps their order), user bubbles, step cards, approvals, turn dividers, and the working line last.
+  Two or more steps that follow each other (edits, commands, tools; never the to-do list) fold into one **work row**
+  (`workSummary.ts`, `WorkCard`): a line such as "Read 2 files, edited 3, ran 1 command" with the daemon's own time for
+  the run, which opens to the steps. A run with a failed step starts open.
 - **Cards** (`features/chat/components/`). Every fact the history carries is shown, and a missing one is said to be
   unavailable (a diff the history did not keep, a checklist without items, a command time or exit code the provider
   does not report, a turn without the daemon's times shows "Turn finished", not an invented duration). Only a step

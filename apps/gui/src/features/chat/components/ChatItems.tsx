@@ -1,4 +1,4 @@
-import { memo, useContext, useEffect, type ReactNode } from 'react'
+import { memo, useContext, useEffect, useState, type ReactNode } from 'react'
 import { Icon, Spinner } from '@/features/workspace/components/glyphs'
 import { ElapsedSince } from '@/features/workspace/components/times'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
@@ -13,6 +13,8 @@ import { SentAttachments } from './Attachments'
 import { ApprovalCard, type ApprovalActions } from './ApprovalCard'
 import { InlineMarkdown, Markdown } from './Markdown'
 import { CommandCard, EditCard, TodoCard, ToolChip } from './StepCards'
+import { tookText } from '../stepInfo'
+import { workDurationMs, workStatus, workSummary, type WorkStep } from '../workSummary'
 
 /**
  * The rows of the chat (v18 C.1). Every fact the daemon's history carries is shown, and one it does
@@ -56,6 +58,8 @@ function sameRow(a: ChatRow, b: ChatRow): boolean {
       return b.kind === 'agent' && a.status === b.status && sameStrings(a.paragraphs, b.paragraphs)
     case 'agents':
       return b.kind === 'agents' && a.events.length === b.events.length && a.events.every((event, index) => event === b.events[index])
+    case 'work':
+      return b.kind === 'work' && a.events.length === b.events.length && a.events.every((event, index) => event === b.events[index])
     case 'approval':
       return b.kind === 'approval' && a.event === b.event && a.step?.key === b.step?.key && a.step?.label === b.step?.label
     case 'working':
@@ -112,6 +116,34 @@ function SaidText({ text }: { text: string }) {
   )
 }
 
+function Step({ event, root, openDiff }: { event: WorkStep | Extract<ChatRow, { kind: 'step' }>['event']; root: string | null; openDiff: ((file: string) => void) | null }) {
+  if (event.kind === 'edit') return <EditCard event={event} root={root} onOpen={openDiff} />
+  if (event.kind === 'command') return <CommandCard event={event} />
+  if (event.kind === 'todo') return <TodoCard event={event} />
+  return <ToolChip event={event} />
+}
+
+/**
+ * A run of steps as one line saying what it did; a click opens the steps themselves. One that failed starts open,
+ * so a failure is never folded away.
+ */
+function WorkCard({ steps, root, openDiff }: { steps: readonly WorkStep[]; root: string | null; openDiff: ((file: string) => void) | null }) {
+  const status = workStatus(steps)
+  const [open, setOpen] = useState(status === 'failed')
+  const took = workDurationMs(steps)
+  return (
+    <div className={`mx-work${open ? ' is-open' : ''}`}>
+      <button type="button" className="mx-work-head" aria-expanded={open} title={open ? 'Hide the steps' : 'Show the steps'} onClick={() => { setOpen((current) => !current) }}>
+        {status === 'running' ? <Spinner /> : <span className={`mx-work-mark is-${status}`} aria-hidden="true"><Icon name={status === 'failed' ? 'close' : 'check'} size={10} /></span>}
+        <span className="mx-work-text">{workSummary(steps)}{status === 'failed' && ' · a step failed'}</span>
+        {took !== null && status !== 'running' && <span className="mx-work-took">{tookText(took)}</span>}
+        <span className={`mx-caret-wrap${open ? ' is-open' : ''}`}><Icon name="caret" /></span>
+      </button>
+      {open && <div className="mx-work-steps">{steps.map((step) => <Step key={step.id} event={step} root={root} openDiff={openDiff} />)}</div>}
+    </div>
+  )
+}
+
 /** One row of the list. Memoised: a streamed update re-renders only the rows whose events changed. */
 export const ChatItem = memo(function ChatItem({ row, agent, workingSince, approval, root, openDiff, goToStep }: RowProps) {
   switch (row.kind) {
@@ -128,14 +160,9 @@ export const ChatItem = memo(function ChatItem({ row, agent, workingSince, appro
     case 'agent':
       return <Frame><AgentMessage rowKey={row.key} paragraphs={row.paragraphs} status={row.status} /></Frame>
     case 'step':
-      return (
-        <Frame>
-          {row.event.kind === 'edit' ? <EditCard event={row.event} root={root} onOpen={openDiff} />
-            : row.event.kind === 'command' ? <CommandCard event={row.event} />
-              : row.event.kind === 'todo' ? <TodoCard event={row.event} />
-                : <ToolChip event={row.event} />}
-        </Frame>
-      )
+      return <Frame><Step event={row.event} root={root} openDiff={openDiff} /></Frame>
+    case 'work':
+      return <Frame><WorkCard steps={row.events} root={root} openDiff={openDiff} /></Frame>
     case 'agents':
       return <Frame><AgentsCard agents={row.events} /></Frame>
     case 'approval':

@@ -3,6 +3,7 @@ import type { ApprovalEvent, ChatEvent, CommandEvent, EditEvent, ItemStatus, Mes
 import { startsTable, streamingText } from './markdown'
 import { describeStep } from './stepInfo'
 import { describeWork } from './workPhase'
+import type { WorkStep } from './workSummary'
 
 /** What the list draws. One row per thing on screen; the events beneath keep their own ids. */
 export type ChatRow =
@@ -10,6 +11,8 @@ export type ChatRow =
   /** One agent message: the text of the agent's messages that follow each other in a turn. */
   | { readonly kind: 'agent'; readonly key: string; readonly turnId: string; readonly paragraphs: readonly string[]; readonly status: ItemStatus }
   | { readonly kind: 'step'; readonly key: string; readonly event: EditEvent | CommandEvent | TodoEvent | ToolEvent }
+  /** Two or more steps that follow each other, folded into one line that opens to them; its key is the first step's id. */
+  | { readonly kind: 'work'; readonly key: string; readonly events: readonly WorkStep[] }
   /** Helper agents that follow each other are one card; its key is the first one's id, so it stays put as more join. */
   | { readonly kind: 'agents'; readonly key: string; readonly events: readonly SubagentEvent[] }
   | { readonly kind: 'approval'; readonly key: string; readonly event: ApprovalEvent; readonly step: StepRef | null }
@@ -96,11 +99,17 @@ export function buildRows(events: readonly ChatEvent[], working: boolean, root: 
         else rows.push({ kind: 'agents', key: event.id, events: [event] })
         break
       }
+      case 'todo':
+        rows.push({ kind: 'step', key: event.id, event })
+        break
       case 'edit':
       case 'command':
-      case 'todo':
-      case 'tool':
-        rows.push({ kind: 'step', key: event.id, event })
+      case 'tool': {
+        const previous = rows.at(-1)
+        if (previous?.kind === 'work') rows[rows.length - 1] = { ...previous, events: [...previous.events, event] }
+        else if (previous?.kind === 'step' && previous.event.kind !== 'todo') rows[rows.length - 1] = { kind: 'work', key: previous.key, events: [previous.event, event] }
+        else rows.push({ kind: 'step', key: event.id, event })
+      }
     }
   }
   // A message just sent is drawn at once, and the agent is taken to be at work on it, until the history says so itself.
@@ -115,7 +124,7 @@ function linkApprovals(rows: ChatRow[], events: readonly ChatEvent[], root: stri
   const rowOf = new Map<string, string>()
   for (const row of rows) {
     if (row.kind === 'step') rowOf.set(row.key, row.key)
-    if (row.kind === 'agents') for (const event of row.events) rowOf.set(event.id, row.key)
+    if (row.kind === 'agents' || row.kind === 'work') for (const event of row.events) rowOf.set(event.id, row.key)
   }
   const labelOf = new Map<string, string>()
   for (const event of events) {

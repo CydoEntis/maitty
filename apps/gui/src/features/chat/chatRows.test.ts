@@ -21,6 +21,14 @@ describe('buildRows', () => {
     expect(rows.map((row) => row.kind)).toEqual(['agent', 'step', 'agent'])
   })
 
+  it('folds steps that follow each other into one row, keyed by the first so it stays put as more join', () => {
+    const rows = buildRows([message('a1', 'agent', 'Looking.'), command('c1'), command('c2'), command('c3'), message('a2', 'agent', 'Done.')], false)
+
+    expect(rows.map((row) => row.kind)).toEqual(['agent', 'work', 'agent'])
+    expect(rows[1]).toMatchObject({ key: 'c1' })
+    expect(rows[1]?.kind === 'work' && rows[1].events.map((event) => event.id)).toEqual(['c1', 'c2', 'c3'])
+  })
+
   it('never joins messages of different turns', () => {
     const rows = buildRows([message('a1', 'agent', 'One.', 't1'), message('a2', 'agent', 'Two.', 't2')], false)
 
