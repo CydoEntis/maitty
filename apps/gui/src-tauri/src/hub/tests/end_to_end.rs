@@ -34,6 +34,7 @@ struct Host {
     frames: Vec<Frame>,
     sessions: BTreeMap<u16, Option<Snapshot>>,
     folders: Vec<(u16, u64, FolderListing)>,
+    errors: Vec<(u16, String)>,
 }
 
 impl Host {
@@ -54,6 +55,7 @@ impl Host {
             frames: Vec::new(),
             sessions: BTreeMap::new(),
             folders: Vec::new(),
+            errors: Vec::new(),
         }
     }
 
@@ -74,8 +76,8 @@ impl Host {
             match reaction {
                 Reaction::State(told) => self.states.push((told.machine, told.state)),
                 Reaction::Frame(frame) => self.frames.push(decode(&frame)),
-                Reaction::Error { .. }
-                | Reaction::Removed { .. }
+                Reaction::Error { machine, text } => self.errors.push((machine.0, text)),
+                Reaction::Removed { .. }
                 | Reaction::Notice { .. }
                 | Reaction::Attention { .. }
                 | Reaction::Clipboard { .. }
@@ -373,4 +375,64 @@ async fn each_machine_lists_the_folders_inside_a_folder_and_the_answer_names_the
     host.wire.list_folders(None, &missing.to_string_lossy(), 4).unwrap();
     host.until("the missing folder answered", |h| h.folders.iter().any(|(_, t, _)| *t == 4)).await;
     assert!(!host.folders.iter().find(|(_, t, _)| *t == 4).unwrap().2.exists);
+}
+
+#[tokio::test]
+async fn a_daemon_takes_a_message_to_hold_for_a_pane_from_the_window_and_refuses_one_for_no_pane() {
+    let (mut here, mut alpha, mut beta) = (Sandbox::new(), Sandbox::new(), Sandbox::new());
+    for sandbox in [&mut here, &mut alpha, &mut beta] {
+        sandbox.start_daemon();
+    }
+    let mut host = Host::new(&here, &alpha, &beta);
+    host.until("every machine connected", |h| {
+        [HERE, ALPHA, BETA].iter().all(|m| h.kinds(*m).last() == Some(&"connected"))
+    })
+    .await;
+    let handle = host.hub.handle();
+    for machine in [HERE, ALPHA] {
+        handle
+            .send(Outgoing {
+                machine,
+                msg: ClientMsg::Command(Command::NewWorkspace { cwd: None, name: None, cmd: None }),
+            })
+            .expect("the line is up");
+    }
+    host.until("a pane here and on alpha", |h| h.pane_of(HERE).is_some() && h.pane_of(ALPHA).is_some()).await;
+    let (ours, theirs) = (host.pane_of(HERE).unwrap(), host.pane_of(ALPHA).unwrap());
+    for (machine, term) in [(None, ours), (Some(ALPHA.0), theirs)] {
+        host.wire.command(machine, term, PaneCommand::WantReplay).expect("the line is up");
+    }
+    host.until("a history for each pane", |h| {
+        h.history(HERE, ours).is_some() && h.history(ALPHA, theirs).is_some()
+    })
+    .await;
+
+    // No agent runs in these panes, so the message is held and never typed: the shell shows none of it.
+    let hold = |machine: Option<u16>, term: TermId| {
+        host.wire
+            .command(machine, term, PaneCommand::SendWhenReady("held-for-the-agent".into()))
+            .expect("the machine takes the command");
+    };
+    hold(None, ours);
+    hold(Some(ALPHA.0), theirs);
+    hold(Some(ALPHA.0), theirs + 1000);
+    host.until("the refusal for the pane that is not there", |h| !h.errors.is_empty()).await;
+    assert_eq!(host.errors.len(), 1, "only the missing pane is refused: {:?}", host.errors);
+    assert_eq!(host.errors[0].0, ALPHA.0);
+
+    // The lines still carry typing after it, in order, and the held text was not typed into a shell.
+    for (machine, term) in [(HERE, ours), (ALPHA, theirs)] {
+        host.type_into(machine, term, "echo AFTER_HELD_7");
+    }
+    host.until("both panes ran what was typed after", |h| {
+        [(HERE, ours), (ALPHA, theirs)]
+            .iter()
+            .all(|(m, t)| h.history(*m, *t).is_some_and(|(_, text)| occurrences(&text, "AFTER_HELD_7") >= 2))
+    })
+    .await;
+    for (machine, term) in [(HERE, ours), (ALPHA, theirs)] {
+        let (_, text) = host.history(machine, term).unwrap();
+        assert!(!text.contains("held-for-the-agent"), "{text}");
+    }
+    assert_eq!(host.errors.len(), 1, "{:?}", host.errors);
 }
