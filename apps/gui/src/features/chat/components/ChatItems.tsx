@@ -1,4 +1,4 @@
-import { memo, useContext, type ReactNode } from 'react'
+import { memo, useContext, useEffect, type ReactNode } from 'react'
 import { Icon, Spinner } from '@/features/workspace/components/glyphs'
 import { ElapsedSince } from '@/features/workspace/components/times'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
@@ -84,6 +84,8 @@ function AgentMessage({ rowKey, paragraphs, status }: { rowKey: string; paragrap
   const known = useContext(KnownRowsContext)
   const target = (status === 'running' ? streamingParagraphs(paragraphs) : paragraphs).join('\n\n')
   const typed = useTypedText(target, !reduced, known !== null && !known.has(rowKey))
+  // Typed in once: drawn again, this row shows whole.
+  useEffect(() => { known?.add(rowKey) }, [known, rowKey])
   const { lead, rest } = splitLead(typed === target ? (status === 'running' ? streamingParagraphs(paragraphs) : paragraphs) : paragraphsOf(typed))
   const empty = lead === '' && rest.length === 0
   return (
@@ -95,32 +97,32 @@ function AgentMessage({ rowKey, paragraphs, status }: { rowKey: string; paragrap
   )
 }
 
+/**
+ * What the person said: its text, and its attached files as chips. A message on its way is drawn the
+ * same as one the history holds, so the files never show as the paths that carry them.
+ */
+function SaidText({ text }: { text: string }) {
+  const attached = parseAttachmentMessage(text)
+  if (attached === null) return <p>{text}</p>
+  return (
+    <div className="flex max-w-[85%] flex-col items-end">
+      {attached.text !== '' && <p className="mx-bubble">{attached.text}</p>}
+      <SentAttachments files={attached.files} />
+    </div>
+  )
+}
+
 /** One row of the list. Memoised: a streamed update re-renders only the rows whose events changed. */
 export const ChatItem = memo(function ChatItem({ row, agent, workingSince, approval, root, openDiff, goToStep }: RowProps) {
   switch (row.kind) {
-    case 'user': {
-      const attached = parseAttachmentMessage(row.event.text)
-      return (
-        <Frame>
-          <div className="mx-msg-user">
-            {attached !== null ? (
-              <div className="flex max-w-[85%] flex-col items-end">
-                {attached.text !== '' && <p className="mx-bubble">{attached.text}</p>}
-                <SentAttachments files={attached.files} />
-              </div>
-            ) : (
-              <p>{row.event.text}</p>
-            )}
-          </div>
-        </Frame>
-      )
-    }
+    case 'user':
+      return <Frame><div className="mx-msg-user"><SaidText text={row.event.text} /></div></Frame>
     case 'report':
       return <Frame><p className="mx-report"><Icon name="check" size={11} />{row.text}</p></Frame>
     case 'echo':
       return (
         <Frame>
-          <div className="mx-msg-user is-echo" aria-label="Sending"><p>{row.text}</p></div>
+          <div className="mx-msg-user is-echo" aria-label="Sending"><SaidText text={row.text} /></div>
         </Frame>
       )
     case 'agent':
