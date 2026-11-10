@@ -6,6 +6,7 @@ import { forgetComposers } from '../composerStore'
 import { carryDraft, forgetFirstMessages, heldFirstMessage, holdFirstMessage } from '../firstMessage'
 import { PASTE_END, PASTE_START } from '../useChatComposer'
 import { ACTIVE_POLL_MS, IDLE_POLL_MS, forgetChatFeeds } from '../useChatFeed'
+import { chatFindOf } from '../chatSearch'
 import { ChatSession } from './ChatSession'
 
 const fake = vi.hoisted(() => ({ current: null as null | { read: (cursor: never) => Promise<unknown> } }))
@@ -115,6 +116,29 @@ describe('a chat whose agent has not said what it is doing yet', () => {
 
     expect(other).toHaveFocus()
     other.remove()
+  })
+})
+
+describe('finding text in the chat a session shows', () => {
+  it('marks the row that holds the text, and unmarks it when the search is cleared', async () => {
+    const daemon = new FakeDaemonHistory()
+    daemon.upsert(daemon.message('t1', 'u1', 'User', 'look at the parser'))
+    daemon.upsert(daemon.message('t1', 'a1', 'Assistant', 'It drops the last row.'))
+    fake.current = daemon
+    render(<ChatSession link={LINK} agent="claude" online sessionId="s1" />)
+    await settle()
+    const find = chatFindOf('s1')
+
+    let hit = false
+    act(() => { hit = find?.find('PARSER', 'next') ?? false })
+    expect(hit).toBe(true)
+    expect(document.querySelector('[data-found="true"]')).toHaveTextContent('look at the parser')
+
+    act(() => { hit = find?.find('lexer', 'next') ?? true })
+    expect(hit).toBe(false)
+
+    act(() => { find?.clear() })
+    expect(document.querySelector('[data-found="true"]')).toBeNull()
   })
 })
 

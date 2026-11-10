@@ -8,6 +8,8 @@ import type { SessionStatus } from '@/features/workspace/model/session'
 import type { SubagentView } from '@/features/workspace/model/subagents'
 import { hasPendingApproval, runningTurnStartedAt, type ChatFeed } from '../chatFeed'
 import { buildRows, type ChatRow } from '../chatRows'
+import { findRow, registerChatFind } from '../chatSearch'
+import { useLatest } from '@/lib/useLatest'
 import { useChatFeed } from '../useChatFeed'
 import { useChatComposer } from '../useChatComposer'
 import { countUserMessages } from '../workPhase'
@@ -253,9 +255,29 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   const [scrollTarget, setScrollTarget] = useState<{ key: string; nonce: number } | null>(null)
   const goToStep = useCallback((key: string) => { setScrollTarget((current) => ({ key, nonce: (current?.nonce ?? 0) + 1 })) }, [])
 
+  // Find (the window's search bar) looks through this chat while it shows: the row that holds the text is scrolled to and marked.
+  const [found, setFound] = useState<string | null>(null)
+  const rowsNow = useLatest(() => rows)
+  const foundNow = useLatest(() => found)
+  useEffect(() => {
+    if (sessionId === undefined) return undefined
+    return registerChatFind(sessionId, {
+      find: (query, direction) => {
+        const key = findRow(rowsNow(), query, foundNow(), direction)
+        setFound(key)
+        if (key !== null) goToStep(key)
+        return key !== null
+      },
+      clear: () => { setFound(null) },
+    })
+  }, [sessionId, rowsNow, foundNow, goToStep])
+
   const renderRow = useCallback(
-    (row: ChatRow) => <ChatItem row={row} agent={agent} workingSince={workingSince} approval={approval} root={root} openDiff={onOpenDiff} goToStep={goToStep} />,
-    [agent, workingSince, approval, root, onOpenDiff, goToStep],
+    (row: ChatRow) => {
+      const item = <ChatItem row={row} agent={agent} workingSince={workingSince} approval={approval} root={root} openDiff={onOpenDiff} goToStep={goToStep} />
+      return row.key === found ? <div className="mx-chat-found" data-found="true">{item}</div> : item
+    },
+    [agent, workingSince, approval, root, onOpenDiff, goToStep, found],
   )
 
   // y, a and n answer the tray from anywhere in the chat but a field, as the same letters do in the terminal.

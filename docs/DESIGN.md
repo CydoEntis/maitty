@@ -505,7 +505,8 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   optional `:line`, opens it in Inspect › Files at that line. A name that is not a file in the
   pane's repository says so in a toast.
 - **Find (⌘F).** A bar over the top right of the panes. **Pane** looks in the focused pane's
-  scrollback (Enter next, Shift+Enter previous); **All sessions** lists lines from every session's
+  scrollback (Enter next, Shift+Enter previous), or, when the pane shows its chat, in the conversation:
+  the row that holds the text is scrolled to and marked, starting from the newest; **All sessions** lists lines from every session's
   recent output, and a click shows that session.
 - **Worktrees (⌘⇧N).** The New worktree dialog names a branch and what to start it from (an
   existing branch is checked out instead), then opens a session in the new folder in a new tab. A
