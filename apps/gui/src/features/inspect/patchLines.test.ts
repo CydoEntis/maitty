@@ -24,7 +24,7 @@ describe('a diff’s lines', () => {
   })
 
   it('reads a removed line that looks like a file header as code', () => {
-    expect(patchLines(PATCH)[5]).toEqual({ kind: 'remove', text: '--- an old comment', line: 11 })
+    expect(patchLines(PATCH)[5]).toEqual({ kind: 'remove', text: '--- an old comment', line: 11, oldLine: 11, newLine: null })
   })
 
   it('starts numbering again at each hunk', () => {

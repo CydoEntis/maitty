@@ -9,7 +9,6 @@ import { sizeVariables } from './model/layoutSize'
 import { errorMessage } from '@/lib/error-message'
 import type { InspectView } from '@/features/inspect/InspectPanel'
 import { isChatSession } from './model/chatSession'
-import { isShell } from './model/sidebar'
 import { LOCAL_HEAD, machineHeads, remoteStartRefusal, type UpdateAction } from './model/machines'
 import type { FocusMachine } from './components/StatusBar'
 import { isFirstRun } from '@/features/welcome/welcomed'
@@ -351,7 +350,7 @@ export function useWorkspaceState() {
     return sessionMap.get(agentTerminals.get(session.id)?.[0] ?? '')?.pane ?? null
   }, [online, sessionMap, agentTerminals])
   // An agent of this computer can have terminals of its own; a shell is one already.
-  const ownsTerminals = useCallback((session: SessionView) => online && isDesktop() && session.machine === LOCAL_MACHINE && !isShell(session), [online])
+  const ownsTerminals = useCallback((session: SessionView) => online && isDesktop() && session.machine === LOCAL_MACHINE, [online])
   const inspectTerm = focusedSession ? repoPaneOf(focusedSession) : null
   const diffStat = useQuery({
     queryKey: ['repo', inspectTerm, 'diff-stat'],

@@ -1,4 +1,4 @@
-import { useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { machineTitle, UPDATE_WORDS, type MachineHead, type UpdateAction } from '../model/machines'
 import { STATUS_WORD, type SessionView } from '../model/session'
 import { inProject, isShell, machineGroups, projectChoices, projectGroups, projectSections, rowTitle, SIDEBAR_GROUPINGS, statusSections, type MachineGroup, type SidebarGrouping, type SidebarOrder } from '../model/sidebar'
@@ -12,6 +12,8 @@ import { useFlip } from './useFlip'
 import { useStatusFlash } from './useStatusFlash'
 import { MenuPopup, type MenuEntry } from './MenuPopup'
 import { SessionRow } from './SessionRow'
+import { RowHoverCard } from './RowHoverCard'
+import { HOVER_CARD_DELAY_MS, type Box } from '../model/hoverCard'
 import { SubagentList, SubagentPeek } from './SubagentRows'
 
 /** A subagent whose own chat a pane shows. */
@@ -60,7 +62,6 @@ export type SidebarProps = {
   onSplitSession: (id: string, direction: 'right' | 'down') => void
   onSplitSubagent: (sessionId: string, subagentId: string) => void
   /** Opens a shell in an agent's folder, beside it. */
-  onOpenTerminal: (id: string) => void
   onCopyPath: (id: string) => void
   onCopyText: (text: string, what: string) => void
   onShowChanges: (id: string) => void
@@ -117,6 +118,23 @@ function Expanded(props: SidebarProps) {
   const shortcutText = useShortcutText()
   const list = useRef<HTMLDivElement>(null)
   const [menu, setMenu] = useState<OpenMenu | null>(null)
+  // The card beside a row the pointer rests on. A click, a menu or leaving the row puts it away.
+  const [hover, setHover] = useState<{ id: string; row: Box } | null>(null)
+  const hoverTimer = useRef<number | null>(null)
+  const endHover = () => {
+    if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current)
+    hoverTimer.current = null
+    setHover(null)
+  }
+  const beginHover = (id: string, element: HTMLElement) => {
+    endHover()
+    hoverTimer.current = window.setTimeout(() => {
+      const box = element.getBoundingClientRect()
+      setHover({ id, row: { left: box.left, right: box.right, top: box.top } })
+    }, HOVER_CARD_DELAY_MS)
+  }
+  useEffect(() => () => { if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current) }, [])
+  const hovered = hover === null || menu !== null ? undefined : props.sessions.find((session) => session.id === hover.id)
   const [pickedProject, setPickedProject] = useState<string | null>(null)
   const views = useMachineViews()
   const reduced = useReducedMotion()
@@ -168,12 +186,11 @@ function Expanded(props: SidebarProps) {
     return [
       { label: 'Open', run: () => { props.onShowSession(session.id) } },
       ...(other ? [{ label: 'Open in split right', run: () => { props.onSplitSession(session.id, 'right') } }, { label: 'Open in split down', run: () => { props.onSplitSession(session.id, 'down') } }] : []),
-      ...(agent ? [{ label: 'New terminal', run: () => { props.onOpenTerminal(session.id) }, disabled: !props.canStart }] : []),
+      ...(agent ? [{ label: 'Show changes', run: () => { props.onShowChanges(session.id) } }] : []),
       'separator',
       { label: 'Rename…', hint: 'F2', run: () => { props.onRenameSession(session.id) } },
       { label: 'Copy folder path', run: () => { props.onCopyPath(session.id) } },
       ...(session.machineName === null ? [] : [{ label: 'Get a file…', disabled: !props.online, run: () => { props.onGetFile(session.id) } }]),
-      ...(agent ? [{ label: 'Show changes', run: () => { props.onShowChanges(session.id) } }] : []),
       // A finished agent waits under Finished until you look; this files it under Idle without opening it.
       ...(session.status === 'done' ? [{ label: 'Mark as done', disabled: !props.online, run: () => { props.onMarkDone(session.id) } }] : []),
       'separator',
@@ -212,7 +229,7 @@ function Expanded(props: SidebarProps) {
     const selected = session.id === props.focusedId
     const subagents = session.subagents
     return (
-      <div key={session.id} className="mx-row-wrap" role="listitem" data-flip={session.id}>
+      <div key={session.id} className="mx-row-wrap" role="listitem" data-flip={session.id} onMouseEnter={(event) => { beginHover(session.id, event.currentTarget) }} onMouseLeave={endHover} onMouseDown={endHover}>
         <SessionRow
           session={session}
           selected={selected}
@@ -263,7 +280,7 @@ function Expanded(props: SidebarProps) {
           <Icon name="layout" size={13} />{groupingLabel}<Icon name="chevronDown" size={10} />
         </button>
       </div>
-      <div ref={list} className="mx-sidebar-list">
+      <div ref={list} className="mx-sidebar-list" onScroll={endHover}>
         {props.grouping !== 'machine' && (
           <section aria-label="Agents" className="mx-sections">
             {draft !== null && <DraftRow />}
@@ -311,6 +328,7 @@ function Expanded(props: SidebarProps) {
           : <><span className="mx-daemon-dot is-offline" aria-hidden="true" /><span className="mx-daemon-text is-offline" role="status">{props.serviceText ?? 'Reconnecting to maittyd…'}</span></>}
         <button type="button" className="mx-head-button mx-settings-button" aria-label="Settings" title={tip('Settings', 'settings')} onClick={props.onOpenSettings}><Icon name="gear" size={15} /></button>
       </div>
+      {hovered && hover && <RowHoverCard session={hovered} row={hover.row} portalContainer={props.portalContainer} />}
       {menu && <MenuPopup key={`${String(menu.at.x)},${String(menu.at.y)}`} title={menu.title} at={menu.at} items={menu.items} portalContainer={props.portalContainer} onClose={() => { setMenu(null) }} />}
     </div>
   )
@@ -338,7 +356,7 @@ type ListSectionProps = {
 function ListSection({ id, name, label, count, open, onToggle, children, tone, hint, color, machine = null, needs = 0 }: ListSectionProps) {
   return (
     <div className="mx-section" data-section={id}>
-      <button type="button" className={`mx-section-head${tone === undefined ? '' : ` is-${tone}`}`} aria-expanded={open} onClick={onToggle}>
+      <button type="button" className={`mx-section-head${tone === undefined ? '' : ` is-${tone}`}`} data-flip={`head:${id}`} aria-expanded={open} onClick={onToggle}>
         {color !== undefined && <span className="mx-project-square" style={{ background: color }} aria-hidden="true" />}
         <span className="mx-section-name">{name}</span>
         {machine !== null && <span className="mx-section-machine">· {machineTitle(machine)}</span>}
@@ -408,7 +426,7 @@ function MachineSection({ draft, progress, group, open, byProject, canStart, onT
   const projects = byProject ? projectGroups(sessions) : []
   return (
     <div className={`mx-machine${head.down ? ' is-away' : ''}`}>
-      <div className="mx-machine-head">
+      <div className="mx-machine-head" data-flip={`machine:${head.key}`}>
         <button type="button" className="mx-machine-toggle" aria-expanded={open} onClick={onToggle} onContextMenu={onContextMenu}>
           <span className={`mx-caret-wrap${open ? ' is-open' : ''}`}><Icon name="caret" /></span>
           <span className="mx-machine-icon" aria-hidden="true"><Icon name={head.name === null ? 'laptop' : 'server'} size={13} /></span>

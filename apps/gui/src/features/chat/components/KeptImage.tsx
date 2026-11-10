@@ -1,10 +1,7 @@
 import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
-import { attachmentImage } from '@/api/attachments'
+import { keptPicture, warmPicture } from '../keptPictures'
 import { Dialog, DialogClose, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-
-/** The picture of each kept file already read, by path: a chat that scrolls back asks the host once. */
-const pictures = new Map<string, string>()
 
 /**
  * A kept image as something an `<img>` can show: its address once the host has read it, null while
@@ -13,17 +10,12 @@ const pictures = new Map<string, string>()
 function useKeptPicture(path: string, wanted: boolean): string | null {
   const [, setRead] = useState(0)
   useEffect(() => {
-    if (!wanted || pictures.has(path)) return
+    if (!wanted || keptPicture(path) !== null) return
     let current = true
-    attachmentImage(path)
-      .then((blob) => {
-        pictures.set(path, URL.createObjectURL(blob))
-        if (current) setRead((count) => count + 1)
-      })
-      .catch((error: unknown) => { console.warn('Could not show the attached image', error) })
+    void warmPicture(path).then(() => { if (current) setRead((count) => count + 1) })
     return () => { current = false }
   }, [path, wanted])
-  return wanted ? (pictures.get(path) ?? null) : null
+  return wanted ? keptPicture(path) : null
 }
 
 const THUMB = 'size-8 shrink-0 rounded object-cover'

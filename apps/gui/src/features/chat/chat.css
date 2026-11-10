@@ -76,6 +76,33 @@
 .mx-tool .mx-spin { font-size: 12px; }
 .mx-tool-detail { margin-top: 6px; }
 
+/* Under a turn that edited files: "3 changed files +111 −0", which opens the side panel on Changes. */
+.mx-changed {
+  display: inline-flex; height: 34px; max-width: 100%; align-items: center; gap: 9px; margin: 0; padding: 0 11px; border-radius: 10px;
+  border: 1px solid rgba(var(--hl), calc(.1 * var(--hk)));
+  background: linear-gradient(180deg, rgba(var(--hl), calc(.06 * var(--hk) * var(--gk))), rgba(var(--hl), calc(.02 * var(--hk) * var(--gk))));
+  font-size: 13px; font-weight: 500; color: var(--fg); transition: border-color .15s;
+}
+button.mx-changed:hover { border-color: rgba(var(--hl), calc(.18 * var(--hk) * var(--gk))); }
+.mx-changed-counts { display: flex; gap: 6px; font-family: var(--mono); font-size: 12px; }
+.mx-changed-counts .is-add { color: var(--ok); }
+.mx-changed-counts .is-remove { color: var(--danger); }
+
+/* A run of steps as one line (`WorkCard`): what it did, how long it took, and a caret that opens the steps. */
+.mx-work-head {
+  display: flex; width: 100%; min-height: 34px; align-items: center; gap: 9px; padding: 0 11px; border-radius: 10px; text-align: left;
+  border: 1px solid rgba(var(--hl), calc(.1 * var(--hk)));
+  background: linear-gradient(180deg, rgba(var(--hl), calc(.06 * var(--hk) * var(--gk))), rgba(var(--hl), calc(.02 * var(--hk) * var(--gk))));
+  font-size: 13px; color: var(--fg2); transition: border-color .15s, background .15s;
+}
+.mx-work-head:hover { border-color: rgba(var(--hl), calc(.16 * var(--hk) * var(--gk))); color: var(--fg); }
+.mx-work-mark { flex: none; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; border-radius: 50%; color: var(--ok); background: color-mix(in srgb, var(--ok) 16%, transparent); }
+.mx-work-mark.is-failed { color: var(--danger); background: color-mix(in srgb, var(--danger) 16%, transparent); }
+.mx-work-mark.is-interrupted { color: var(--dim); background: rgba(var(--hl), calc(.08 * var(--hk))); }
+.mx-work-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mx-work-took { flex: none; font-family: var(--mono); font-size: 11.5px; color: var(--dim); }
+.mx-work-steps { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 0 7px; padding-left: 14px; border-left: 1px solid rgba(var(--hl), calc(.1 * var(--hk))); animation: v7fade .2s ease-out; }
+
 /* The message box. */
 .mx-composer { flex-shrink: 0; padding: 4px 20px 14px; }
 .mx-composer-column { margin: 0 auto; width: 100%; max-width: 760px; display: flex; flex-direction: column; align-items: center; }

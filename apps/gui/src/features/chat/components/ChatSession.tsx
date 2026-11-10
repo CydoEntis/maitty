@@ -210,7 +210,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   const allRows = useMemo(() => buildRows(events, working || holdWorking, root, echoText, echoThinking), [events, working, holdWorking, root, echoText, echoThinking])
   const rows = useMemo(() => allRows.filter((row) => !isPendingApproval(row)), [allRows])
   // The rows the history had when it loaded: what arrives after them is live, and is typed in rather than shown whole.
-  const [known, setKnown] = useState<ReadonlySet<string> | null>(null)
+  const [known, setKnown] = useState<Set<string> | null>(null)
   if (feed.loaded && known === null) setKnown(new Set(rows.map(rowKey)))
   const pending = useMemo(() => allRows.find((row): row is Extract<ChatRow, { kind: 'approval' }> => isPendingApproval(row))?.event ?? null, [allRows])
   // The model and effort picked on the new-chat page are this conversation's choice from its first frame, so the picker shows them.

@@ -14,6 +14,7 @@ import { ChatPane } from '@/features/chat/components/ChatPane'
 import { NoTerminalNote } from '@/features/chat/components/NoTerminalNote'
 import { type Arrangement, focusPane, type PaneSlot, toggleMaximize } from '../model/layout'
 import { folderNameOf } from '../model/session'
+import { isShell } from '../model/sidebar'
 
 /** Whether a session can show a chat at all: an agent the app reads. A shell or another program has none, so it gets no switch. */
 function hasChat(availability: ReturnType<typeof chatAvailability>): boolean {
@@ -32,7 +33,7 @@ export function WorkspacePane({ shown, pane, kept }: {
   pane: PaneSlot
   kept: boolean
 }) {
-  const { paneSessions, chatOf, openSubagent, ownsTerminals, repoPaneOf, outsidePanes, dropId, dragId, paneViews, showChanges, online, setOpenSubagent, togglePanel, preferences, setPreferences, startChatHere, inspectOpen, addAgentTerminal, root, look, modalOpen, mirrorInput, openPath, pasteImage, terminalHandles, setLayout, split, closePaneById, sendTo, copyPathOf, restartPane } = useWorkspace()
+  const { paneSessions, chatOf, openSubagent, ownsTerminals, repoPaneOf, outsidePanes, dropId, dragId, paneViews, showChanges, online, setOpenSubagent, togglePanel, preferences, setPreferences, startChatHere, inspectOpen, addAgentTerminal, root, look, modalOpen, mirrorInput, openPath, pasteImage, terminalHandles, setLayout, split, closePaneById, sendTo, copyPathOf, restartPane, setRenameId } = useWorkspace()
   const [drawerFolded, setDrawerFolded] = useState(startsFolded)
   const session = paneSessions.get(pane.sessionId)
   if (!session) return null
@@ -43,9 +44,11 @@ export function WorkspacePane({ shown, pane, kept }: {
   const typeInto = chatOnly ? undefined : (text: string) => sendTerminalInput({ id: session.id, generation: session.conversation.generation ?? 0 }, text)
   const terminals = ownsTerminals(session)
   const dock = preferences.terminalDock
-  const pinned = terminals && dock === 'under' && !kept
+  // A shell is a terminal already: its further terminals stay in the side panel, never under it.
+  const shell = isShell(session)
+  const pinned = terminals && !shell && dock === 'under' && !kept
   // The panel has something for this pane: its repository, or terminals that live there. A pane of another machine keeps the button, which says why not.
-  const hasPanel = session.machine !== LOCAL_MACHINE || repoPaneOf(session) !== null || (terminals && dock === 'panel')
+  const hasPanel = session.machine !== LOCAL_MACHINE || repoPaneOf(session) !== null || (terminals && (shell || dock === 'panel'))
   return (
     <PaneCard
       pane={pane}
@@ -56,6 +59,8 @@ export function WorkspacePane({ shown, pane, kept }: {
       focused={focused && !outsidePanes}
       maximized={shown.max === pane.id}
       dropTarget={dropId === pane.id && dragId !== pane.id}
+      dragging={dragId === pane.id}
+      dropWord={dragId === null ? 'Drop to show it here' : 'Drop to swap'}
       view={chat.view}
       {...(chatOnly || !hasChat(chat.availability) ? {} : { onViewChange: (view: PaneView) => { paneViews.choose(session.id, view) } })}
       chat={chat.view === 'chat' && !kept ? (
@@ -89,7 +94,7 @@ export function WorkspacePane({ shown, pane, kept }: {
       panelOpen={inspectOpen && focused}
       {...(hasPanel ? { onPanel: () => { togglePanel(pane.id, session.id) } } : {})}
       changed={{ added: session.diffAdded, removed: session.diffRemoved }}
-      terminalDock={terminals ? dock : null}
+      terminalDock={terminals && !shell ? dock : null}
       onNewTerminal={() => { addAgentTerminal(session.id) }}
       onDock={(terminalDock) => { setPreferences((current) => ({ ...current, terminalDock })) }}
       {...(pinned ? { drawer: <AgentTerminals agent={session} dock="under" focused={false} folded={drawerFolded} onFold={setDrawerFolded} />, drawerFolded, onDrawerFold: setDrawerFolded } : {})}
@@ -125,6 +130,7 @@ export function WorkspacePane({ shown, pane, kept }: {
       onClose={closePaneById}
       onClear={() => { void sendTo(session, CLEAR_SCREEN).catch((error: unknown) => { toast.error(errorMessage(error, 'Could not clear the screen')) }) }}
       onCopyPath={() => { copyPathOf(session.id) }}
+      onRename={() => { setRenameId(session.id) }}
       onRestart={restartPane}
     />
   )

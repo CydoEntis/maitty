@@ -276,9 +276,11 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   (agents), Stop session or Close shell.
   **Subagent**: Open, Open in split right, Copy summary, Stop subagent (disabled: the agent stops its own subagents).
   **Machine**: Install Maitty or Update Maitty first (a machine that needs it), New agent chat here, New shell here, Collapse or Expand, Group by project or Show as one list, Machine
-  settings…. **Pane** (⋯ or a right-click in the pane): Split right, Split down, Maximize pane, Show chat or Show
-  terminal, then New terminal and Pin terminals under chat or Move terminals to side panel (agents) or Clear and Copy
-  folder path (shells), Changes and files, Close pane.
+  settings…. **Pane** (⋯ or a right-click in the pane): Split right, Split down, Changes and files, Pin terminals
+  under chat or Move terminals to side panel (agents); then Rename…, Maximize pane, Show chat or Show terminal, and New
+  terminal (agents) or Clear and Copy folder path (shells); then Close pane, only when there are several. **Close pane** on one pane of several closes only the pane when its
+  session has work in it (an agent, a chat, a shell running a program): the session keeps running and stays in the
+  sidebar (`useClosing`, `removePane`). A plain idle shell, or the only pane, ends its session as before, with Undo.
 - **Status bar.** A 28px line at the bottom of the main area under a hairline, 11.5px muted, one line.
   The left is empty, except "Reconnecting to maittyd…" in amber with a dashed dot when the daemon is
   unreachable (the sidebar foot says "Service stopped" or "Restart needed" beside a red dot). The right holds quick controls: a **theme** menu (Dark, Light or System, a few themes of
@@ -306,9 +308,13 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   While the new-chat page is open, a draft **New chat** row (placeholders that pulse) is listed last on this computer,
   so the draft is never missing from the sidebar; it goes when the chat starts and the chat's own row takes its place.
   Grouped by project inside a machine, each project is a folding heading (its colour square, name, needs-you count,
-  count). A row whose status changes glides to its new place (`useFlip`) and is tinted with the accent for a moment
+  count). A row whose status changes glides to its new place over 420ms, and the headings and rows it passes glide with it, so
+  nothing in the list snaps (`useFlip`); a new row slides in from the left. The moved row is tinted with the accent for a moment
   (`useStatusFlash`); Reduce motion turns both off. A **row** (40px, radius 8) is the 20px app tile with its status badge
-  (spinner, amber `›`, green check, dashed square for unknown), the name (13px; 600 and `--fg` for an agent that is
+  A pointer resting on a row for 450ms shows a **hover card** beside it (`RowHoverCard`, 290px, level with the row and
+  kept inside the window): the name, project and branch, what it is doing in the daemon's own words, its agent,
+  changes and last activity. It takes no pointer input and goes on leave, click, scroll or a menu.
+  (spinner, amber `!` square, solid green check, solid red cross, hollow grey ring for idle, dashed square for unknown), the name (13px; 600 and `--fg` for an agent that is
   doing anything), and under it the project's 6px colour square, the project and `·` and the branch in mono
   `--ansi-mag`; a stopped agent says `stopped` and an exited shell `exited` at the right, in `--danger`, instead of a
   badge. Any other agent row has, at the right in 11px `--muted`, how long it has been in its state (`now`, `4m`, `3h`,
@@ -328,8 +334,8 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   user message) is one quiet line, "Agent "name" finished · 11s · 50.5k tokens", never the markup; once it has reported,
   its row leaves the sidebar (one that stopped or still needs something stays).
 - **Panes swap with a glide.** Dropping a pane on another swaps them through a View Transition (`paneTransition.ts`): only the
-  browser's pictures of the panes move, so text never reflows on the way. Without View Transitions, or with Reduce motion,
-  the swap just happens.
+  browser's pictures of the panes move, so text never reflows on the way. Without View Transitions, with Reduce motion, or on
+  the Linux web view (where a swap by drag was reported to take the window down in 0.72.0), the swap just happens.
 - **Toasts are cards.** The notification card is the one design; a plain toast (Sonner) is laid out the same way: icon tile,
   title and detail, the close at the top right and the action on its own row under the text, 96px below the top edge and 36px
   in from the side.
@@ -429,14 +435,18 @@ and timings; the feature stylesheets beside their components carry them (`sideba
 - **Terminal | Chat switch.** An agent's pane header carries a two-button switch (terminal glyph, chat bubble). The
   chat covers the pane body while the terminal stays mounted underneath, hidden by `visibility`, so it keeps streaming
   and keeps its size: switching sends nothing to the daemon. **An agent opens as its chat**; a shell opens as a
-  terminal, and a terminal for an agent exists only when you ask: **New terminal** starts a shell in the agent's
-  folder as one of its own terminals (`components/AgentTerminals.tsx`): a tab each, **+** for another, × to end one.
+  terminal. Every session on this computer, agent or shell, has terminals of its own in its folder
+  (`components/AgentTerminals.tsx`): a pill tab each with a status dot, **+** for another, × to end one. The first
+  opens by itself the first time they are shown; closing the last leaves a note with **New terminal**.
   They are tabs of the agent, not rows of the sidebar; which shell is whose is the window's own memory
   (`data/agentTerminals.ts`), so the terminal app lists them as sessions, and one whose agent is gone is a row again.
   They show in the side panel's Terminal tab, or pinned under the agent's chat (Settings › Appearance › Layout ›
-  Terminals open in, the pin button, or the pane menu): a drawer of the pane with a handle to size it (120 to 640px,
-  at most 60% of the pane; `model/terminalDrawer.ts`), folding to its 42px header, and starting folded in a window
-  under 760px tall. The drawer is part of the agent's pane card, not a card of its own as the handoff draws it.
+  Terminals open in, the layout buttons (the drawer icon pins them under, the side-panel icon moves them back), or
+  the pane menu): a glass card of its own 8px under the pane, with a centred handle to size it (120 to 640px, at most
+  60% of the two together; `model/terminalDrawer.ts`), folding to its 42px header (the **Terminals** button or ×),
+  and starting folded in a window under 760px tall. The card's height eases over .28s; the terminal inside stays
+  mounted at its open size and is only uncovered, so its text is never fitted again on the way. A shell's terminals
+  stay in the side panel: a shell is never given a card under it.
   Settings › General › Chat view picks the view each of Claude and
   Codex opens in (Chat by default). A shell, an unsupported agent or a session on another machine shows the chat
   card's empty state, "Chat view is for agent sessions", with the reason and the ways to start one.
@@ -515,15 +525,20 @@ and timings; the feature stylesheets beside their components carry them (`sideba
 - **Side panel** (⌘I, a pane's side-panel button, a session's Show changes; `features/inspect/InspectPanel.tsx`). It
   slides over a scrim at three-quarters of the window, never over the sidebar, 12px from the top and bottom and 24px
   from the right, radius 16; its edge drags and the width is remembered (a double-click goes back to following the
-  window). Its header is only the tabs **Changes** (with its count), **Files** and **Terminal**, with a 2px accent
-  underline, and ×. Esc closes it, except in a terminal, where Esc is the program's. A shell has no Terminal tab; a
-  chat session has no pane to ask about its repository, so Changes and Files appear for it once it has a terminal.
+  window). Its header is one segmented control, **Changes** (with its count), **Files** and **Terminal**, each with
+  its icon and the open one a raised pill, and ×. Esc closes it, except in a terminal, where Esc is the program's.
+  **Changes** is two columns: the branch, the changed files (a letter for added, modified or deleted, the name over
+  its folder, the lines added and removed) and under them the commit message with Commit and Create PR; beside it
+  the picked file's path, what happened to it, and its diff with both line numbers and without git's header lines.
+  Every session on this computer has the Terminal tab: with an agent's terminals pinned under the chat the tab says
+  so and offers to show them there. A chat session has no pane to ask about its repository, so Changes and
+  Files appear for it once it has a terminal.
   Branches, History, Timeline and References are kept in the code but nothing opens them: whether they come back
   is undecided. Changes lists the
   changed files (`+N −N`) and the picked file's diff (added lines tinted with `--ok`, removed with `--danger`, hunk
   headers in the accent), with line numbers drawn beside it. For an agent, a click on a code line opens a comment box
   under it with **Send to Claude** (the agent's name; Ctrl/⌘+Enter sends, Esc closes the box); the comment goes to the
-  agent as a message naming the file, the line and its text (`model/agentMessage.ts`), and stays under the line. An
+  agent as a message naming the file, the line and its text (`model/agentMessage.ts`), and stays pinned under the line as an accent-tinted "You → Claude" box, also while other files are read; the file's header then counts the comments. The chat draws the comment at once, like a message typed in its box (`outsideSends.ts`). An
   agent that is asking something is not sent one. Under the file list, for a checkout on this computer, is the commit
   message (first the session's name, else the first line of its last prompt), **Commit N files** (stages everything
   and commits) and **Create PR** (pushes the branch and runs `gh pr create --fill`; the address stays under the
@@ -531,6 +546,10 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   else in the panel changes the repository. **Restore** on a snapshot asks
   first and is disabled while the agent works; **Compare** picks two entries. A tab that cannot load shows one calm
   screen with Try again. A folder that is not a git project says so.
+  **Files** (`FilesTab.tsx`) lists the changed files first (**Changed**, each with its A, M or D mark), then the tree
+  (**All files**): a file carries a type tag (`fileTag.ts`: TS, TSX, `{ }`, MD…) and its mark when changed, a folder a
+  dot when it holds a changed file. It opens on the first changed file, else the README. A changed file shows its diff
+  under a 44px bar with **Show the whole file**; a link to a line opens the whole file at that line.
 - **Quick-look links.** ⌘-click (Ctrl-click elsewhere) on a file name in a pane's output, with an
   optional `:line`, opens it in Inspect › Files at that line. A name that is not a file in the
   pane's repository says so in a toast.

@@ -1,7 +1,11 @@
 export type PatchLineKind = 'meta' | 'hunk' | 'add' | 'remove' | 'context'
 
-/** One line of a unified diff. `line` is its number in the new file, or in the old file for a removed line; null for a line of the diff itself. */
-export type PatchLine = { kind: PatchLineKind; text: string; line: number | null }
+/**
+ * One line of a unified diff. `line` is its number in the new file, or in the old file for a removed
+ * line; null for a line of the diff itself. `oldLine` and `newLine` are its place on each side, null
+ * on the side it is not on.
+ */
+export type PatchLine = { kind: PatchLineKind; text: string; line: number | null; oldLine: number | null; newLine: number | null }
 
 const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/
 const NO_NEWLINE_NOTE = '\\'
@@ -22,22 +26,25 @@ export function patchLines(patch: string): PatchLine[] {
       oldLeft = Number(header[2] ?? 1)
       newLine = Number(header[3])
       newLeft = Number(header[4] ?? 1)
-      return { kind: 'hunk', text, line: null }
+      return { kind: 'hunk', text, line: null, oldLine: null, newLine: null }
     }
     const inHunk = oldLeft > 0 || newLeft > 0
-    if (!inHunk || text.startsWith(NO_NEWLINE_NOTE)) return { kind: text === '' ? 'context' : 'meta', text, line: null }
+    if (!inHunk || text.startsWith(NO_NEWLINE_NOTE)) return { kind: text === '' ? 'context' : 'meta', text, line: null, oldLine: null, newLine: null }
     if (text.startsWith('+')) {
       newLeft -= 1
-      return { kind: 'add', text, line: newLine++ }
+      newLine += 1
+      return { kind: 'add', text, line: newLine - 1, oldLine: null, newLine: newLine - 1 }
     }
     if (text.startsWith('-')) {
       oldLeft -= 1
-      return { kind: 'remove', text, line: oldLine++ }
+      oldLine += 1
+      return { kind: 'remove', text, line: oldLine - 1, oldLine: oldLine - 1, newLine: null }
     }
     oldLeft -= 1
     newLeft -= 1
     oldLine += 1
-    return { kind: 'context', text, line: newLine++ }
+    newLine += 1
+    return { kind: 'context', text, line: newLine - 1, oldLine: oldLine - 1, newLine: newLine - 1 }
   })
 }
 

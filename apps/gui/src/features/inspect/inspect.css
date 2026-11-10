@@ -1,37 +1,63 @@
 /* The repository drawer (v19 §9): over the panes from beside the activity bar, over a scrim, never pushing them. */
-.mx-inspect-scrim { position: absolute; inset: 0; z-index: 49; background: rgba(3, 5, 8, .32); animation: mx-inspect-fade .36s var(--ease-out); }
-.mx-inspect-scrim.is-leaving { animation: mx-inspect-fade-out .22s cubic-bezier(.4, 0, 1, 1) forwards; }
-.mx-inspect { position: absolute; top: 12px; right: 24px; bottom: 12px; z-index: 50; max-width: calc(100% - 24px); display: flex; flex-direction: column; border-radius: var(--r16); background: linear-gradient(180deg, rgba(var(--hl), calc(.035 * var(--hk))), rgba(255, 255, 255, 0) 160px), var(--m-pane); border: 1px solid var(--pane-line); box-shadow: var(--sh); overflow: visible; animation: mx-inspect-in .36s cubic-bezier(.16, 1, .3, 1); }
+.mx-inspect-scrim { position: absolute; inset: 0; z-index: 49; background: rgba(4, 6, 9, .45); animation: mx-inspect-fade .2s ease-out; }
+.mx-inspect-scrim.is-leaving { animation: mx-inspect-fade-out .19s cubic-bezier(.4, 0, 1, 1) forwards; }
+.mx-inspect { position: absolute; top: 12px; right: 24px; bottom: 12px; z-index: 50; max-width: calc(100% - 24px); display: flex; flex-direction: column; border-radius: var(--r16); background: linear-gradient(180deg, rgba(var(--hl), calc(.035 * var(--hk))), rgba(255, 255, 255, 0) 160px), var(--m-pane); border: 1px solid var(--pane-line); box-shadow: var(--sh); overflow: visible; animation: mx-inspect-in .24s cubic-bezier(.2, .8, .2, 1); }
 .mx-app[data-side="right"] .mx-inspect { right: auto; left: 24px; animation-name: mx-inspect-in-left; }
 .mx-app.is-narrow .mx-inspect { left: 12px; right: 12px; width: auto !important; }
-.mx-inspect.is-leaving { animation: mx-inspect-out .22s cubic-bezier(.4, 0, 1, 1) forwards; }
+.mx-inspect.is-leaving { animation: mx-inspect-out .19s cubic-bezier(.4, 0, 1, 1) forwards; }
 .mx-app[data-side="right"] .mx-inspect.is-leaving { animation-name: mx-inspect-out-left; }
 .mx-inspect-grip { position: absolute; top: 0; bottom: 0; left: -4px; width: 8px; cursor: col-resize; z-index: 2; }
 .mx-inspect-grip::after { content: ""; position: absolute; top: 8px; bottom: 8px; left: 3px; width: 2px; border-radius: 2px; background: transparent; transition: background .15s; }
 .mx-inspect-grip:hover::after, .mx-inspect-grip:focus-visible::after { background: var(--accent); }
 .mx-app.is-narrow .mx-inspect-grip { display: none; }
-.mx-inspect-head { flex: none; height: 44px; display: flex; align-items: stretch; gap: 10px; padding: 0 10px 0 8px; border-bottom: 1px solid var(--pane-line); }
-.mx-inspect-head > .mx-icon-button { align-self: center; flex: none; }
-.mx-inspect-tabs { flex: 1; min-width: 0; display: flex; gap: 0; overflow-x: auto; }
-.mx-inspect-tabs button { position: relative; display: flex; align-items: center; gap: 6px; padding: 0 12px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.mx-inspect-head { flex: none; height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 10px 0 8px; border-bottom: 1px solid var(--pane-line); }
+.mx-inspect-head > .mx-icon-button { flex: none; }
+/* The views are one segmented control: the open one is a raised pill, as in the layout's design. */
+.mx-inspect-tabs { min-width: 0; display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--m-well); box-shadow: inset 0 0 0 1px var(--pane-line); overflow-x: auto; scrollbar-width: none; }
+.mx-inspect-tabs button { flex: none; height: 28px; display: flex; align-items: center; gap: 7px; padding: 0 12px; border-radius: 7px; font-size: 12.5px; font-weight: 500; color: var(--muted); white-space: nowrap; transition: background-color .14s ease, color .14s ease; }
 .mx-inspect-tabs button:hover { color: var(--fg); }
-.mx-inspect-tabs button.is-current { color: var(--fg); font-weight: 500; }
-.mx-inspect-tabs button::after { content: ""; position: absolute; left: 6px; right: 6px; bottom: 0; height: 2px; border-radius: 2px; background: var(--accent); transform: scaleX(0); transform-origin: right; transition: transform .28s cubic-bezier(.2, .8, .2, 1); }
-.mx-inspect-tabs.is-forward button::after { transform-origin: right; }
-.mx-inspect-tabs.is-back button::after { transform-origin: left; }
-.mx-inspect-tabs button.is-current::after { transform: scaleX(1); transform-origin: left; }
-.mx-inspect-tabs.is-back button.is-current::after { transform-origin: right; }
+.mx-inspect-tabs button.is-current { color: var(--fg); font-weight: 600; background: rgba(var(--hl), calc(.09 * var(--hk))); box-shadow: inset 0 0 0 1px var(--pane-line); }
 .mx-inspect-count { min-width: 16px; height: 16px; padding: 0 5px; border-radius: 999px; font-size: 10.5px; line-height: 16px; text-align: center; color: var(--muted); background: rgba(var(--hl), calc(.06 * var(--hk))); font-variant-numeric: tabular-nums; }
 .mx-inspect-tabs button.is-current .mx-inspect-count { color: var(--accent-text); background: var(--accent-soft); }
 @keyframes mx-inspect-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes mx-inspect-fade-out { to { opacity: 0; } }
-@keyframes mx-inspect-in { from { opacity: 0; transform: translateX(36px); } to { opacity: 1; transform: none; } }
-@keyframes mx-inspect-in-left { from { opacity: 0; transform: translateX(-36px); } to { opacity: 1; transform: none; } }
+@keyframes mx-inspect-in { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+@keyframes mx-inspect-in-left { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
 @keyframes mx-inspect-out { to { opacity: 0; transform: translateX(36px); } }
 @keyframes mx-inspect-out-left { to { opacity: 0; transform: translateX(-36px); } }
 :root[data-motion="reduced"] .mx-inspect, :root[data-motion="reduced"] .mx-inspect-scrim, .mx-app[data-motion="reduced"] .mx-inspect, .mx-app[data-motion="reduced"] .mx-inspect-scrim { animation: none; }
 @media (prefers-reduced-motion: reduce) { .mx-inspect, .mx-inspect-scrim { animation: none; } }
 .mx-inspect-scroll { flex: 1; min-height: 0; overflow: auto; padding: 10px; }
+/* Changes: the files and the commit down the left, the picked file's diff beside; each side scrolls on its own. */
+.mx-inspect-scroll:has(.mx-changes) { overflow: hidden; padding: 0; }
+.mx-changes { height: 100%; min-height: 0; display: grid; grid-template-columns: minmax(170px, 244px) minmax(0, 1fr); }
+.mx-changes-side { min-height: 0; display: flex; flex-direction: column; border-right: 1px solid var(--pane-line); }
+.mx-changes-branch { flex: none; margin: 0; display: flex; align-items: center; gap: 6px; padding: 12px 12px 6px; font-family: var(--mono); font-size: 11.5px; color: var(--ansi-mag); min-width: 0; }
+.mx-changes-branch span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mx-changes-list { flex: 1; min-height: 0; overflow: auto; list-style: none; margin: 0; padding: 4px 6px; display: flex; flex-direction: column; gap: 2px; }
+.mx-changes-row { width: 100%; min-height: 38px; display: flex; align-items: center; gap: 9px; padding: 4px 8px; border-radius: 8px; text-align: left; color: var(--fg2); }
+.mx-changes-row:hover { background: var(--m-hover); color: var(--fg); }
+.mx-changes-row.is-current { background: var(--c-sel-bg); box-shadow: var(--c-sel-sh); color: var(--fg); }
+.mx-changes-letter { flex: none; width: 10px; font-family: var(--mono); font-size: 10.5px; font-weight: 700; text-align: center; }
+.mx-changes-letter.is-add, .mx-changes-chip.is-add { color: var(--ok); }
+.mx-changes-letter.is-edit, .mx-changes-chip.is-edit { color: var(--warn); }
+.mx-changes-letter.is-remove, .mx-changes-chip.is-remove { color: var(--danger); }
+.mx-changes-name { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
+.mx-changes-name b { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mx-changes-name small { font-size: 10.5px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mx-changes-count { flex: none; display: flex; gap: 6px; font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; }
+.mx-changes-side .mx-commit { flex: none; margin: 0; padding: 8px; border: 0; border-top: 1px solid var(--pane-line); border-radius: 0; background: transparent; }
+.mx-changes-side .mx-commit-message { padding: 8px 10px; border-radius: 9px; background: var(--m-well); box-shadow: inset 0 0 0 1px var(--pane-line); font-size: 12.5px; resize: none; }
+.mx-changes-side .mx-commit-actions { flex-wrap: nowrap; }
+.mx-changes-side .mx-commit-actions .is-primary { flex: 1; min-width: 0; }
+.mx-changes-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.mx-changes-file { flex: none; min-height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--pane-line); }
+.mx-changes-path { flex: 1; min-width: 0; font-family: var(--mono); font-size: 12px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mx-changes-path b { font-weight: 600; color: var(--fg); }
+.mx-changes-chip { flex: none; height: 20px; display: flex; align-items: center; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 600; background: rgba(var(--hl), calc(.07 * var(--hk))); }
+.mx-changes-hint { flex: none; font-size: 11.5px; color: var(--dim); white-space: nowrap; }
+.mx-changes-main .mx-patch { flex: 1; min-height: 0; padding: 8px 0; font-size: 12.5px; line-height: 1.75; }
+.mx-changes-none { margin: auto; padding: 24px; font-size: 12.5px; color: var(--dim); text-align: center; }
 .mx-inspect-terminals { flex: 1; min-height: 0; display: flex; }
 .mx-inspect-body, .mx-inspect-split { display: flex; flex-direction: column; gap: 10px; }
 .mx-inspect-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -72,16 +98,21 @@ button.mx-inspect-row:hover, .mx-inspect-pick:hover { background: rgba(var(--hl)
 .mx-commit-link { margin: 0; font-size: 12.5px; color: var(--muted); }
 .mx-commit-link span { color: var(--accent-text); user-select: text; overflow-wrap: anywhere; }
 /* Line numbers are drawn, not written, so copying a diff copies only its text. */
-.mx-patch.is-numbered .mx-patch-line::before { content: attr(data-line); display: inline-block; width: 4ch; margin-right: 10px; text-align: right; color: var(--dim); user-select: none; }
+.mx-patch-no { font-style: normal; color: var(--dim); user-select: none; }
+.mx-patch-no::before { content: attr(data-old); }
+.mx-patch-no::after { content: attr(data-new); }
+.mx-patch-no::before, .mx-patch-no::after { display: inline-block; width: 4ch; margin-right: 10px; text-align: right; }
+.mx-patch-line { min-inline-size: max-content; }
+.mx-patch-gap { display: block; height: 0; margin: 7px 0; border-top: 1px dashed var(--pane-line); overflow: hidden; }
 .mx-patch-line.is-commentable { cursor: pointer; }
 .mx-patch-line.is-commentable:hover, .mx-patch-line.is-commentable:focus-visible { box-shadow: inset 2px 0 0 var(--accent); outline: none; }
-.mx-patch-comment, .mx-patch-sent { display: block; margin: 4px 10px 6px calc(4ch + 20px); white-space: normal; font-family: var(--ui, system-ui, sans-serif); font-size: 12.5px; }
+.mx-patch-comment, .mx-patch-sent { display: block; margin: 4px 10px 6px calc(8ch + 30px); white-space: normal; font-family: var(--ui, system-ui, sans-serif); font-size: 12.5px; }
 .mx-patch-comment { padding: 8px; border: 1px solid var(--pane-line); border-radius: 10px; background: var(--m-well); max-width: 560px; }
 .mx-patch-comment-text { display: block; width: 100%; resize: vertical; border: 0; background: transparent; color: var(--fg); font: inherit; outline: none; }
 .mx-patch-comment-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 .mx-patch-comment-error { display: block; margin-top: 4px; color: var(--danger); }
-.mx-patch-sent { padding: 6px 10px; border-left: 2px solid var(--accent); color: var(--fg); max-width: 560px; }
-.mx-patch-sent b { margin-right: 6px; }
+.mx-patch-sent { padding: 8px 10px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); background: color-mix(in srgb, var(--accent) 9%, transparent); color: var(--fg); max-width: 560px; }
+.mx-patch-sent b { display: block; margin-bottom: 2px; font-size: 11.5px; font-weight: 600; color: var(--accent-text); }
 .mx-patch-sent i { color: var(--muted); font-style: normal; }
 .mx-preview > span.is-target { background: color-mix(in oklab, var(--warn) 22%, transparent); }
 .mx-inspect .is-add { color: var(--ok); }
@@ -114,7 +145,17 @@ button.mx-inspect-row:hover, .mx-inspect-pick:hover { background: rgba(var(--hl)
 .mx-files { height: 100%; display: grid; grid-template-columns: minmax(120px, 22%) minmax(0, 1fr); gap: 0; min-height: 0; }
 .mx-files-tree { min-height: 0; overflow: auto; padding: 4px 6px; border-right: 1px solid var(--pane-line); }
 .mx-files-view { min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
-.mx-files-view .mx-inspect-file { flex: none; margin: 0; padding: 7px 14px; border-bottom: 1px solid var(--pane-line); }
+.mx-files-bar { flex: none; height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--pane-line); }
+.mx-files-bar .mx-inspect-file { flex: 1; min-width: 0; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mx-files-view .mx-patch { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.mx-files-heading { margin: 8px 8px 4px; font-size: 11px; font-weight: 600; color: var(--dim); }
+.mx-files-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.mx-files-tag { flex: none; min-width: 26px; padding: 0 3px; border-radius: 4px; font: 600 9.5px var(--mono); line-height: 15px; text-align: center; color: var(--muted); background: rgba(var(--hl), calc(.07 * var(--hk))); }
+.mx-files-mark { flex: none; width: 14px; font: 600 10.5px var(--mono); text-align: center; }
+.mx-files-mark.is-add { color: var(--ok); }
+.mx-files-mark.is-edit { color: var(--warn); }
+.mx-files-mark.is-remove { color: var(--danger); }
+.mx-files-dot { flex: none; width: 6px; height: 6px; margin-right: 4px; border-radius: 50%; background: var(--warn); }
 .mx-files-view .mx-inspect-note { padding: 10px 14px; }
 .mx-files-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
 .mx-files-row { width: 100%; min-height: 26px; display: flex; align-items: center; gap: 4px; padding-right: 8px; border-radius: 7px; font-size: 12.5px; color: var(--fg2); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
