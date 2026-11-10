@@ -1011,6 +1011,21 @@ describe('desktop overlays and pane tools', () => {
     daemon.suggestProjectFolders.mockResolvedValue([])
   })
 
+  it('undoes and redoes typing in a text box of the desktop window, where the Linux web view has no undo of its own', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
+    renderDesktopApp()
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+
+    await user.keyboard('{Control>}{Shift>}k{/Shift}{/Control}')
+    const box = within(await screen.findByRole('dialog', { name: 'Command palette' })).getByRole('combobox')
+    await user.type(box, 'codex')
+    await user.keyboard('{Control>}z{/Control}')
+    expect(box).toHaveValue('')
+    await user.keyboard('{Control>}{Shift>}z{/Shift}{/Control}')
+    expect(box).toHaveValue('codex')
+  })
+
   it('opens the palette with Ctrl+K, finds a session by typing, opens it with Enter and closes with Escape', async () => {
     const user = userEvent.setup()
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`), term(3, `${HOME}/b`, { agent: 'codex' })])
