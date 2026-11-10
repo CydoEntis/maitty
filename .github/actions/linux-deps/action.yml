@@ -1,0 +1,32 @@
+# The Ubuntu packages the desktop app builds against, kept between runs.
+#
+# The package mirror GitHub's runners use goes quiet for minutes at a time, and that failed whole
+# runs with nothing wrong in the change. The packages are downloaded once for each runner image,
+# kept in the cache, and after that installed from the kept copy without the mirror. A run with
+# nothing kept, or whose kept copy no longer installs, downloads them as before.
+#
+# One list for every job: the kept copy is then one cache entry (about the size of the
+# packages), not one per job. Needs the repository checked out first.
+name: Linux build packages
+description: Install the Ubuntu packages the desktop app builds against, from a kept copy when there is one.
+
+runs:
+  using: composite
+  steps:
+    # A kept copy fits the image it was downloaded on: another image has other versions installed.
+    - id: image
+      shell: bash
+      run: echo "name=${ImageOS:-ubuntu}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/cache@v6
+      with:
+        path: ${{ runner.temp }}/apt-packages
+        key: apt-packages-${{ steps.image.outputs.name }}-${{ hashFiles('.github/actions/linux-deps/action.yml', 'scripts/ci-apt-install.sh') }}
+
+    - shell: bash
+      env:
+        CI_APT_KEEP: ${{ runner.temp }}/apt-packages
+      run: |
+        scripts/ci-apt-install.sh \
+          build-essential curl file libayatana-appindicator3-dev libssl-dev \
+          libwebkit2gtk-4.1-dev libxdo-dev librsvg2-dev patchelf rpm wget
