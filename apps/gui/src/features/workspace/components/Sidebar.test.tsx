@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { Conversation, SubagentActivity } from '@/data/preview'
@@ -256,6 +256,25 @@ describe('a session row', () => {
     const field = screen.getByRole('textbox', { name: 'Session name' })
     await user.type(field, 'Login fix{Enter}')
     expect(onSetName).toHaveBeenCalledWith('t1', 'Login fix')
+  })
+
+  it('shows a card beside a row the pointer rests on, and puts it away when the pointer leaves', () => {
+    vi.useFakeTimers()
+    try {
+      show([session(1, { agent: 'claude', named: true, title: 'Growth', status: 'needs-you' })])
+      const row = screen.getByRole('button', { name: /^Growth,/ }).closest('.mx-row-wrap') as HTMLElement
+      fireEvent.mouseEnter(row)
+      expect(screen.queryByRole('tooltip')).toBeNull()
+      act(() => { vi.advanceTimersByTime(450) })
+      const card = screen.getByRole('tooltip')
+      expect(card).toHaveTextContent('Growth')
+      expect(card).toHaveTextContent('Needs you')
+      expect(card).toHaveTextContent('No changes')
+      fireEvent.mouseLeave(row)
+      expect(screen.queryByRole('tooltip')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('offers the session menu on right-click, and hands Stop session to the app, which asks first', async () => {

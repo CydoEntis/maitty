@@ -311,6 +311,9 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   count). A row whose status changes glides to its new place over 420ms, and the headings and rows it passes glide with it, so
   nothing in the list snaps (`useFlip`); a new row slides in from the left. The moved row is tinted with the accent for a moment
   (`useStatusFlash`); Reduce motion turns both off. A **row** (40px, radius 8) is the 20px app tile with its status badge
+  A pointer resting on a row for 450ms shows a **hover card** beside it (`RowHoverCard`, 290px, level with the row and
+  kept inside the window): the name, project and branch, what it is doing in the daemon's own words, its agent,
+  changes and last activity. It takes no pointer input and goes on leave, click, scroll or a menu.
   (spinner, amber `!` square, solid green check, solid red cross, hollow grey ring for idle, dashed square for unknown), the name (13px; 600 and `--fg` for an agent that is
   doing anything), and under it the project's 6px colour square, the project and `·` and the branch in mono
   `--ansi-mag`; a stopped agent says `stopped` and an exited shell `exited` at the right, in `--danger`, instead of a
