@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Conversation } from '@/data/preview'
 import type { TerminalChunk, TerminalHistory } from '@/api/terminalStream'
@@ -19,6 +19,7 @@ const { loadTerminalReplay, resizeTerminal, sendTerminalInput, loadTerminalHisto
     onData: undefined as ((data: string) => void) | undefined,
     keyHandler: undefined as ((event: Pick<KeyboardEvent, 'type' | 'key' | 'shiftKey' | 'ctrlKey' | 'altKey' | 'metaKey'>) => boolean) | undefined,
     onResize: undefined as (() => void) | undefined,
+    watched: [] as Element[],
     resolveResize: undefined as (() => void) | undefined,
     onChunk: undefined as ((chunk: TerminalChunk) => void) | undefined,
     cols: 80,
@@ -55,7 +56,11 @@ vi.mock('@xterm/xterm', () => ({
     get cols() { return terminalState.cols }
     get rows() { return terminalState.rows }
     loadAddon() {}
-    open() {}
+    open(host: HTMLElement) {
+      const screen = document.createElement('div')
+      screen.className = 'xterm-screen'
+      host.append(screen)
+    }
     focus() {}
     clearSelection() {}
     registerLinkProvider(provider: typeof terminalState.linkProvider) {
@@ -119,6 +124,7 @@ describe('terminal view', () => {
     terminalState.onData = undefined
     terminalState.duringWrite = undefined
     terminalState.onResize = undefined
+    terminalState.watched = []
     terminalState.resolveResize = undefined
     terminalState.onChunk = undefined
     terminalState.cols = 80
@@ -130,7 +136,8 @@ describe('terminal view', () => {
     vi.stubGlobal('ResizeObserver', class {
       private readonly callback: () => void
       constructor(callback: () => void) { this.callback = callback }
-      observe() {
+      observe(element: Element) {
+        terminalState.watched.push(element)
         terminalState.onResize = this.callback
         this.callback()
       }
@@ -153,6 +160,8 @@ describe('terminal view', () => {
   })
 
   afterEach(() => {
+    // Unmount while the frame stubs are still in place, so a pane's waiting write is cancelled and cannot land in the next test.
+    cleanup()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
@@ -393,6 +402,29 @@ describe('terminal view', () => {
 
     terminalState.resolveResize?.()
     await waitFor(() => { expect(resizeTerminal).toHaveBeenLastCalledWith(binding, 80, 24) })
+  })
+
+  it("fits the grid again when xterm's own screen changes size, not only when the pane does", async () => {
+    renderTerminal()
+
+    await waitFor(() => { expect(terminalState.watched).toHaveLength(2) })
+    expect(terminalState.watched.map((element) => element.className)).toEqual(['terminal-screen', 'xterm-screen'])
+  })
+
+  it('waits for the terminal font before it opens, so the grid is measured with the face it draws', async () => {
+    let fontLoaded: () => void = () => {}
+    const load = vi.fn(() => new Promise<void>((resolve) => { fontLoaded = resolve }))
+    Object.defineProperty(document, 'fonts', { configurable: true, value: { load } })
+    try {
+      renderTerminal()
+
+      await waitFor(() => { expect(load).toHaveBeenCalledWith(expect.stringContaining('Geist Mono')) })
+      expect(terminalState.options).toBeUndefined()
+      fontLoaded()
+      await waitFor(() => { expect(terminalState.options).toBeDefined() })
+    } finally {
+      Reflect.deleteProperty(document, 'fonts')
+    }
   })
 
   it('shows one inline resize error and does not toast repeatedly for the same size', async () => {
