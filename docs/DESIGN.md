@@ -524,6 +524,10 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   that has not attached after 300 ms shows a 24 px strip under the pane header (spinner, **Catching up
   from <machine> · N ms**, a 2 px progress line on its top edge) that sits in the flow, never over the
   terminal, and goes when the stream is live. A real failure keeps its banner; it is not a loading state.
+  The two tabs shown last stay mounted behind the one showing (`model/keptTabs.ts`, at most eight panes
+  between them, since each terminal holds a GPU context): the same box, not painted, `inert` and hidden from
+  screen readers, their terminals paused and their chats unmounted, so going back builds no terminal and a
+  hidden chat reads nothing and answers no key. A paused terminal catches up from the kept screen when shown.
 - **Sidebar footer and updates.** The footer's left slot shows the version, or what an update needs
   from you: a pill that opens a card upward with the matching actions. An update waiting to be downloaded or
   installed is a glass button, a sheen sweeping across it, a tile with an arrow falling into a tray, **Update** and the

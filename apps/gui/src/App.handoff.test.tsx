@@ -470,6 +470,29 @@ describe('desktop terminal multiplexer', () => {
     expect(screen.getByRole('region', { name: 'Shell in ~/a' })).toBeInTheDocument()
   })
 
+  it('keeps the terminal of the session you left mounted out of sight, and shows that same one when you go back', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`), term(3, `${HOME}/b`)])
+    renderDesktopApp()
+    const first = await screen.findByRole('region', { name: 'Shell in ~/a' })
+
+    await user.click(screen.getByRole('button', { name: 'b, shell, idle' }))
+
+    expect(first).toBeInTheDocument()
+    const kept = first.closest('.mx-panes')
+    expect(kept).toHaveClass('is-kept')
+    expect(kept).toHaveAttribute('aria-hidden', 'true')
+    expect(kept).toHaveAttribute('inert')
+    expect(first).toHaveAttribute('data-focused', 'false')
+
+    await user.click(screen.getByRole('button', { name: 'a, shell, idle' }))
+
+    expect(screen.getByRole('region', { name: 'Shell in ~/a' })).toBe(first)
+    expect(first.closest('.mx-panes')).not.toHaveClass('is-kept')
+    expect(first).toHaveAttribute('data-focused', 'true')
+    expect(screen.getByText('Pane 3').closest('.mx-panes')).toHaveClass('is-kept')
+  })
+
   it('splits right in the focused shell’s folder, moves focus, and ends the focused pane’s session on Ctrl+Shift+W', async () => {
     const user = userEvent.setup()
     daemon.loadConversations.mockResolvedValue([inRepo(2, `${HOME}/code/maitty`, `${HOME}/code/maitty/apps`)])

@@ -143,6 +143,7 @@ import {
   type PaneSlot,
   type SplitDirection,
 } from './model/layout'
+import { keptArrangements, rememberShown } from './model/keptTabs'
 import { LAYOUT_RESET_NOTICE, readLayout, writeLayout } from './model/layoutStorage'
 import { byPriority } from './model/inboxOrder'
 import { displayName, folderNameOf, inCreationOrder, keepLabels, tildePath, toSessionView, type SessionView } from './model/session'
@@ -1941,16 +1942,24 @@ export function DesktopApp() {
   const offlineDetail = mismatch && !serviceNewer ? `${daemonConnectionError(sessionsQuery.error)}${olderServiceNote(restartStatusQuery.data)}` : null
 
   const tab = activeArrangement(layout)
+  // The tabs shown last stay mounted behind the one showing, so going back to one does not build its terminals again.
+  const [recentTabs, setRecentTabs] = useState<readonly string[]>([])
+  const shownTabs = rememberShown(recentTabs, layout.activeId)
+  if (shownTabs !== recentTabs) setRecentTabs(shownTabs)
+  const keptTabs = useMemo(() => keptArrangements(layout, shownTabs), [layout, shownTabs])
+  // In the layout's own order, so a tab coming to the front never moves in the page.
+  const mountedTabs = tab ? layout.arrangements.filter((candidate) => candidate.id === tab.id || keptTabs.includes(candidate)) : []
   const startFolderLabel = preferences.startFolder.trim() ? tildePath(resolveStartFolder(preferences.startFolder, home), home) : '~'
   const canStart = online && !starting
   const sidebarWidth = liveSidebarWidth ?? preferences.sidebarWidth
   const rootStyle = { ...themeStyle(theme), ...sizeVariables(preferences, sidebarWidth) } as CSSProperties
 
   // One pane of the layout: its header, and the session's terminal with its chat over it when the chat shows.
-  const renderPane = (shown: Arrangement, pane: PaneSlot) => {
+  // A pane of a tab kept out of sight keeps only its terminal, paused: no chat reads, takes keys or answers for it.
+  const renderPane = (shown: Arrangement, pane: PaneSlot, kept: boolean) => {
     const session = paneSessions.get(pane.sessionId)
     if (!session) return null
-    const focused = pane.id === shown.focus
+    const focused = pane.id === shown.focus && !kept
     const chat = chatOf(session)
     const chatOnly = isChatSession(session.conversation)
     const subagent = openSubagent?.sessionId === session.id ? session.subagents.find((child) => child.id === openSubagent.subagentId) : undefined
@@ -1968,7 +1977,7 @@ export function DesktopApp() {
         dropTarget={dropId === pane.id && dragId !== pane.id}
         view={chat.view}
         {...(chatOnly || !hasChat(chat.availability) ? {} : { onViewChange: (view: PaneView) => { paneViews.choose(session.id, view) } })}
-        chat={chat.view === 'chat' ? (
+        chat={chat.view === 'chat' && !kept ? (
           <ChatPane
             availability={chat.availability}
             hasTerminal={!chatOnly}
@@ -2013,7 +2022,7 @@ export function DesktopApp() {
             inputDisabled={!online}
             ended={session.ended}
             focused={focused && !modalOpen && chat.view === 'terminal'}
-            paused={chat.view === 'chat'}
+            paused={kept || chat.view === 'chat'}
             onInput={(data) => { mirrorInput(session.id, data) }}
             onOpenPath={(path, line) => { openPath(session, path, line) }}
             onPasteImage={(image) => { pasteImage(session.id, image) }}
@@ -2142,7 +2151,11 @@ export function DesktopApp() {
                 />
                 <ServiceStatus online={online} failures={failures} mismatch={Boolean(mismatch)} retryAt={retryAt} detail={offlineDetail ?? (sessionsQuery.isError ? daemonConnectionError(sessionsQuery.error) : null)} restart={restartOffer} appBehind={appBehindOffer} sessions={sessions.length} onRetry={() => { void refetchSessions() }} onOpenLog={() => { openDaemonLog().catch((error: unknown) => { toast.error(errorMessage(error, 'Could not open the log')) }) }} />
                 {tab ? (
-                  <div className={`mx-panes${tab.panes.length > 1 && tab.max === null ? ' is-split' : ''}`}>
+                  <div className="mx-pane-stack">
+                  {mountedTabs.map((tab) => {
+                  const kept = tab.id !== layout.activeId
+                  return (
+                  <div key={tab.id} className={`mx-panes${tab.panes.length > 1 && tab.max === null ? ' is-split' : ''}${kept ? ' is-kept' : ''}`} aria-hidden={kept ? true : undefined} inert={kept}>
                     {paneColumns(tab, narrow).map((column, columnIndex, columns) => (
                       <Fragment key={column[0]?.id ?? columnIndex}>
                         {columnIndex > 0 && tab.max === null && !narrow && (
@@ -2165,13 +2178,16 @@ export function DesktopApp() {
                               />
                             )}
                             <div className={`mx-pane-cell${closingPanes.has(pane.id) ? ' is-closing' : ''}`} style={pane.h !== undefined && tab.max === null && !narrow ? { flexGrow: pane.h } : undefined}>
-                              {renderPane(tab, pane)}
+                              {renderPane(tab, pane, kept)}
                             </div>
                           </Fragment>
                         ))}
                       </div>
                       </Fragment>
                     ))}
+                  </div>
+                  )
+                  })}
                   </div>
                 ) : (
                   <EmptyState
