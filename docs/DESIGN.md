@@ -276,9 +276,9 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   (agents), Stop session or Close shell.
   **Subagent**: Open, Open in split right, Copy summary, Stop subagent (disabled: the agent stops its own subagents).
   **Machine**: Install Maitty or Update Maitty first (a machine that needs it), New agent chat here, New shell here, Collapse or Expand, Group by project or Show as one list, Machine
-  settings…. **Pane** (⋯ or a right-click in the pane): Split right, Split down, Maximize pane, Show chat or Show
-  terminal, then New terminal and Pin terminals under chat or Move terminals to side panel (agents) or Clear and Copy
-  folder path (shells), Changes and files, Close pane. **Close pane** on one pane of several closes only the pane when its
+  settings…. **Pane** (⋯ or a right-click in the pane): Split right, Split down, Changes and files, Pin terminals
+  under chat or Move terminals to side panel (agents); then Rename…, Maximize pane, Show chat or Show terminal, and New
+  terminal (agents) or Clear and Copy folder path (shells); then Close pane, only when there are several. **Close pane** on one pane of several closes only the pane when its
   session has work in it (an agent, a chat, a shell running a program): the session keeps running and stays in the
   sidebar (`useClosing`, `removePane`). A plain idle shell, or the only pane, ends its session as before, with Undo.
 - **Status bar.** A 28px line at the bottom of the main area under a hairline, 11.5px muted, one line.
@@ -546,6 +546,10 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   else in the panel changes the repository. **Restore** on a snapshot asks
   first and is disabled while the agent works; **Compare** picks two entries. A tab that cannot load shows one calm
   screen with Try again. A folder that is not a git project says so.
+  **Files** (`FilesTab.tsx`) lists the changed files first (**Changed**, each with its A, M or D mark), then the tree
+  (**All files**): a file carries a type tag (`fileTag.ts`: TS, TSX, `{ }`, MD…) and its mark when changed, a folder a
+  dot when it holds a changed file. It opens on the first changed file, else the README. A changed file shows its diff
+  under a 44px bar with **Show the whole file**; a link to a line opens the whole file at that line.
 - **Quick-look links.** ⌘-click (Ctrl-click elsewhere) on a file name in a pane's output, with an
   optional `:line`, opens it in Inspect › Files at that line. A name that is not a file in the
   pane's repository says so in a toast.

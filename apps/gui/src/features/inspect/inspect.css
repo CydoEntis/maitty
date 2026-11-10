@@ -145,7 +145,17 @@ button.mx-inspect-row:hover, .mx-inspect-pick:hover { background: rgba(var(--hl)
 .mx-files { height: 100%; display: grid; grid-template-columns: minmax(120px, 22%) minmax(0, 1fr); gap: 0; min-height: 0; }
 .mx-files-tree { min-height: 0; overflow: auto; padding: 4px 6px; border-right: 1px solid var(--pane-line); }
 .mx-files-view { min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
-.mx-files-view .mx-inspect-file { flex: none; margin: 0; padding: 7px 14px; border-bottom: 1px solid var(--pane-line); }
+.mx-files-bar { flex: none; height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--pane-line); }
+.mx-files-bar .mx-inspect-file { flex: 1; min-width: 0; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mx-files-view .mx-patch { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.mx-files-heading { margin: 8px 8px 4px; font-size: 11px; font-weight: 600; color: var(--dim); }
+.mx-files-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.mx-files-tag { flex: none; min-width: 26px; padding: 0 3px; border-radius: 4px; font: 600 9.5px var(--mono); line-height: 15px; text-align: center; color: var(--muted); background: rgba(var(--hl), calc(.07 * var(--hk))); }
+.mx-files-mark { flex: none; width: 14px; font: 600 10.5px var(--mono); text-align: center; }
+.mx-files-mark.is-add { color: var(--ok); }
+.mx-files-mark.is-edit { color: var(--warn); }
+.mx-files-mark.is-remove { color: var(--danger); }
+.mx-files-dot { flex: none; width: 6px; height: 6px; margin-right: 4px; border-radius: 50%; background: var(--warn); }
 .mx-files-view .mx-inspect-note { padding: 10px 14px; }
 .mx-files-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
 .mx-files-row { width: 100%; min-height: 26px; display: flex; align-items: center; gap: 4px; padding-right: 8px; border-radius: 7px; font-size: 12.5px; color: var(--fg2); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
