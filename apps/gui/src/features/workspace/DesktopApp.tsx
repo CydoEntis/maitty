@@ -148,7 +148,7 @@ import { byUrgency, isShell, rowTitle } from './model/sidebar'
 import { Keycaps } from '@/features/shortcuts/Keycaps'
 import { topmostOpen, type EscLayer } from './model/escLadder'
 import { jumpToast, NOTHING_NEEDS_YOU, nextNeedsYou } from '@/features/needs-you/model/needsYou'
-import { bindingFor, detectPlatform, matchShortcut, shortcutChords, shortcutText, type ShortcutAction } from './model/shortcuts'
+import { bindingFor, detectPlatform, matchShortcut, NEW_CHAT_PAGE_ACTIONS, shortcutChords, shortcutText, type ShortcutAction } from './model/shortcuts'
 import { folderExists, resolveStartFolder } from './model/startFolder'
 import { markSeen, trackSessions, tracksEqual, type SessionTrack } from './model/tracking'
 import type { PaletteItem } from './model/palette'
@@ -1548,8 +1548,10 @@ export function DesktopApp() {
   const renameInline = !focusMode && (sidebarMode === 'docked' || drawerShown)
   const dialogOpen = settingsSection !== null || (renameId !== null && !renameInline) || getFileId !== null || newSessionMachine !== null || newChatOpen || renamingMachine !== null
   const modalOpen = dialogOpen || overlayOpen
-  const shortcutState = useRef({ runShortcut, canUndoClose: () => lastClose !== null, settingsOpen: dialogOpen, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
-  useEffect(() => { shortcutState.current = { runShortcut, canUndoClose: () => lastClose !== null, settingsOpen: dialogOpen, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
+  // Only the new chat page is up, with no dialog over it.
+  const onNewChatPage = newChatOpen && settingsSection === null && (renameId === null || renameInline) && getFileId === null && newSessionMachine === null && renamingMachine === null
+  const shortcutState = useRef({ runShortcut, canUndoClose: () => lastClose !== null, settingsOpen: dialogOpen, onNewChatPage, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
+  useEffect(() => { shortcutState.current = { runShortcut, canUndoClose: () => lastClose !== null, settingsOpen: dialogOpen, onNewChatPage, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
   useEffect(() => {
     // How each layer of the Esc ladder closes. A new dialog adds its closer here and its id to ESC_LADDER.
     const closers: Partial<Record<EscLayer, () => void>> = {
@@ -1592,7 +1594,7 @@ export function DesktopApp() {
         }
         return
       }
-      if (state.settingsOpen) return
+      if (state.settingsOpen && !(state.onNewChatPage && match !== null && NEW_CHAT_PAGE_ACTIONS.has(match.action))) return
       if (!match) return
       // Undo is the field's own inside a text field, and the terminal's own when nothing was just closed.
       if (match.action === 'undo-close' && (!state.canUndoClose() || (event.target instanceof Element && event.target.closest('input, textarea, [contenteditable="true"]')))) return

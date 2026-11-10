@@ -168,6 +168,21 @@ describe('desktop terminal multiplexer', () => {
     await waitFor(() => { expect(screen.queryByRole('region', { name: 'New agent chat' })).not.toBeInTheDocument() })
   })
 
+  it('keeps the window’s shortcuts on the new agent chat page, and not the ones for the pane under it', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
+    renderDesktopApp()
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+    await user.keyboard('{Control>}{Shift>}t{/Shift}{/Control}')
+    await screen.findByRole('region', { name: 'New agent chat' })
+
+    await user.keyboard('{Control>}{Shift>}d{/Shift}{/Control}')
+    expect(daemon.startShellSession).not.toHaveBeenCalled()
+
+    await user.keyboard('{Control>}{Shift>}k{/Shift}{/Control}')
+    expect(await screen.findByRole('dialog', { name: 'Command palette' })).toBeInTheDocument()
+  })
+
   it('applies the saved density, text sizes and sidebar width, and a drag of the edge changes and saves the width', async () => {
     const wide = window.innerWidth
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1400 })
