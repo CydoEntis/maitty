@@ -30,16 +30,17 @@ function Fetch($name) {
     $signedIn = $false
     if ($gh) { gh auth status *> $null; $signedIn = ($LASTEXITCODE -eq 0) }
     if ($signedIn) {
-        # A private repo: the GitHub CLI brings your sign-in.
+        # A private repo: the GitHub CLI brings your sign-in. A call that fails (an expired
+        # sign-in, one that cannot see this repo) falls back to the direct download.
         if ($version) { gh release download $version -R $repo -p $name -D $tmp --clobber }
         else { gh release download -R $repo -p $name -D $tmp --clobber }
-        if ($LASTEXITCODE -ne 0) { throw "couldn't download $name with gh" }
-    } else {
-        $url = if ($version) { "https://github.com/$repo/releases/download/$version/$name" }
-               else { "https://github.com/$repo/releases/latest/download/$name" }
-        try { Invoke-WebRequest -UseBasicParsing $url -OutFile (Join-Path $tmp $name) }
-        catch { throw "couldn't download $name (a private repo needs the GitHub CLI: gh auth login)" }
+        if ($LASTEXITCODE -eq 0) { return }
+        Write-Host "gh couldn't download $name; trying the direct download..."
     }
+    $url = if ($version) { "https://github.com/$repo/releases/download/$version/$name" }
+           else { "https://github.com/$repo/releases/latest/download/$name" }
+    try { Invoke-WebRequest -UseBasicParsing $url -OutFile (Join-Path $tmp $name) }
+    catch { throw "couldn't download $name (a private repo needs the GitHub CLI: gh auth login)" }
 }
 
 try {

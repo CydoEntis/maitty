@@ -97,14 +97,37 @@ fn gh_signed_in() -> bool {
 
 use crate::proc::system_tool;
 
+/// `with_gh` when the GitHub CLI is signed in, and the public address when it is not or when
+/// its call fails: a sign-in that expired or cannot see this repo must not stop an update the
+/// public address can serve. When both fail, both reasons are told.
+fn gh_then_public<T>(
+    signed_in: bool,
+    with_gh: impl FnOnce() -> Result<T, String>,
+    public: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    if !signed_in {
+        return public();
+    }
+    with_gh().or_else(|gh_said| {
+        public().map_err(|public_said| format!("{public_said} (and with gh: {gh_said})"))
+    })
+}
+
 /// The newest release's tag, e.g. `v0.3.0`.
 pub fn latest_tag() -> Result<String, String> {
-    if gh_signed_in() {
-        return crate::proc::run(Command::new("gh").args([
-            "release", "view", "-R", REPO, "--json", "tagName", "-q", ".tagName",
-        ]))
-        .map(|s| s.trim().to_string());
-    }
+    gh_then_public(
+        gh_signed_in(),
+        || {
+            crate::proc::run(Command::new("gh").args([
+                "release", "view", "-R", REPO, "--json", "tagName", "-q", ".tagName",
+            ]))
+            .map(|s| s.trim().to_string())
+        },
+        latest_tag_from_the_public_page,
+    )
+}
+
+fn latest_tag_from_the_public_page() -> Result<String, String> {
     // The releases/latest page redirects to the newest tag's page. Unlike GitHub's API it
     // has no per-address limit, which shared networks (offices, CI) run out of.
     let url = format!("https://github.com/{REPO}/releases/latest");
@@ -136,32 +159,36 @@ fn tag_from_url(url: &str) -> Option<String> {
 
 pub(crate) fn download(tag: &str, name: &str, dir: &Path) -> Result<PathBuf> {
     let to = dir.join(name);
-    let got = if gh_signed_in() {
-        crate::proc::run(
-            Command::new("gh")
-                .args([
-                    "release",
-                    "download",
-                    tag,
-                    "-R",
-                    REPO,
-                    "-p",
-                    name,
-                    "--clobber",
-                    "-D",
-                ])
-                .arg(dir),
-        )
-    } else {
-        let url = format!("https://github.com/{REPO}/releases/download/{tag}/{name}");
-        crate::proc::run(
-            system_tool("curl")
-                .args(["-fsSL", "--max-time", "300", "-o"])
-                .arg(&to)
-                .arg(&url),
-        )
-    };
-    got.map_err(|e| anyhow::anyhow!("downloading {name}: {e}"))?;
+    gh_then_public(
+        gh_signed_in(),
+        || {
+            crate::proc::run(
+                Command::new("gh")
+                    .args([
+                        "release",
+                        "download",
+                        tag,
+                        "-R",
+                        REPO,
+                        "-p",
+                        name,
+                        "--clobber",
+                        "-D",
+                    ])
+                    .arg(dir),
+            )
+        },
+        || {
+            let url = format!("https://github.com/{REPO}/releases/download/{tag}/{name}");
+            crate::proc::run(
+                system_tool("curl")
+                    .args(["-fsSL", "--max-time", "300", "-o"])
+                    .arg(&to)
+                    .arg(&url),
+            )
+        },
+    )
+    .map_err(|e| anyhow::anyhow!("downloading {name}: {e}"))?;
     Ok(to)
 }
 
@@ -439,19 +466,21 @@ pub fn tidy() {
 /// release first. Empty when GitHub can't be reached. Slow (network): off the UI thread.
 pub fn changes_since_this() -> Vec<String> {
     let path = format!("repos/{REPO}/releases?per_page={RELEASES_LOOKED_AT}");
-    let json = if gh_signed_in() {
-        crate::proc::run(Command::new("gh").args(["api", &path]))
-    } else {
-        let url = format!("https://api.github.com/{path}");
-        crate::proc::run(system_tool("curl").args([
-            "-fsSL",
-            "--max-time",
-            "20",
-            "-H",
-            "Accept: application/vnd.github+json",
-            &url,
-        ]))
-    };
+    let json = gh_then_public(
+        gh_signed_in(),
+        || crate::proc::run(Command::new("gh").args(["api", &path])),
+        || {
+            let url = format!("https://api.github.com/{path}");
+            crate::proc::run(system_tool("curl").args([
+                "-fsSL",
+                "--max-time",
+                "20",
+                "-H",
+                "Accept: application/vnd.github+json",
+                &url,
+            ]))
+        },
+    );
     json.map(|j| changes_in(&j, env!("APP_VERSION")))
         .unwrap_or_default()
 }
@@ -494,6 +523,22 @@ fn changes_in(json: &str, current: &str) -> Vec<String> {
 mod tests {
     use super::*;
     use crate::installed_executable::installed_path;
+
+    #[test]
+    fn a_failed_gh_call_falls_back_to_the_public_address() {
+        let ok = |s: &str| Ok::<String, String>(s.to_string());
+        let no = |s: &str| Err::<String, String>(s.to_string());
+        assert_eq!(gh_then_public(true, || ok("gh"), || ok("public")), ok("gh"));
+        assert_eq!(gh_then_public(true, || no("expired"), || ok("public")), ok("public"));
+        assert_eq!(
+            gh_then_public(false, || -> Result<String, String> { panic!("gh is not signed in") }, || ok("public")),
+            ok("public")
+        );
+        assert_eq!(
+            gh_then_public(true, || no("expired"), || no("offline")),
+            no("offline (and with gh: expired)")
+        );
+    }
 
     #[test]
     fn changes_are_the_note_lines_of_newer_releases() {
