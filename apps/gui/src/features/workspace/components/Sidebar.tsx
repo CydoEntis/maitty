@@ -64,6 +64,7 @@ export type SidebarProps = {
   onCopyPath: (id: string) => void
   onCopyText: (text: string, what: string) => void
   onShowChanges: (id: string) => void
+  onMarkDone: (id: string) => void
   /** Asks for a file to pull from the machine of session `id`. */
   onGetFile: (id: string) => void
   onEndSession: (id: string) => void
@@ -173,6 +174,8 @@ function Expanded(props: SidebarProps) {
       { label: 'Copy folder path', run: () => { props.onCopyPath(session.id) } },
       ...(session.machineName === null ? [] : [{ label: 'Get a file…', disabled: !props.online, run: () => { props.onGetFile(session.id) } }]),
       ...(agent ? [{ label: 'Show changes', run: () => { props.onShowChanges(session.id) } }] : []),
+      // A finished agent waits under Finished until you look; this files it under Idle without opening it.
+      ...(session.status === 'done' ? [{ label: 'Mark as done', disabled: !props.online, run: () => { props.onMarkDone(session.id) } }] : []),
       'separator',
       // Stopping an agent asks a second click; a plain shell has nothing running to lose.
       { label: agent ? 'Stop session' : 'Close shell', danger: true, disabled: !props.online, run: () => { props.onEndSession(session.id) } },

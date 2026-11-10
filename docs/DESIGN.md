@@ -311,7 +311,9 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   (spinner, amber `›`, green check, dashed square for unknown), the name (13px; 600 and `--fg` for an agent that is
   doing anything), and under it the project's 6px colour square, the project and `·` and the branch in mono
   `--ansi-mag`; a stopped agent says `stopped` and an exited shell `exited` at the right, in `--danger`, instead of a
-  badge. A shell's tile is a flat `--raise` square with a teal `>_`. The selected row is a raised glass pill. The row
+  badge. Any other agent row has, at the right in 11px `--muted`, how long it has been in its state (`now`, `4m`, `3h`,
+  `2d`; the daemon's `TermInfo.since`); it gives way to the close button on hover. A finished agent's menu has **Mark as
+  done**, which files it under Idle without opening it (`MarkSeen`). A shell's tile is a flat `--raise` square with a teal `>_`. The selected row is a raised glass pill. The row
   is named by the name you gave it, else a shell's folder, else its agent. **Rename**: double-click, F2 or the menu
   turns the name into a field; Enter or leaving saves, Esc cancels, empty clears. Project colours are five tokens
   (`--proj-1` to `--proj-5`: teal, blue, pink, violet, green), chosen from the project's name, never amber or red.

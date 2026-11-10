@@ -27,7 +27,7 @@ function show(sessions: SessionView[], more: Partial<SidebarProps> = {}) {
     sessions, machines: [LOCAL_HEAD], order: 'creation', focusedId: null, openSubagent: null, mode: 'docked', online: true, canStart: true, renamingId: null, portalContainer: null,
     onToggleRail: none, side: 'left', width: 264, onResize: none, onResizeEnd: none, grouping: 'machine', onGrouping: none, onSearch: none,
     onNewAgentChat: none, onNewShell: none, onAddMachine: none, onMachineSettings: none, onRenameMachine: none, onUpdateMachine: none, onShowSession: none, onShowSubagent: none, onRenameSession: none,
-    onSetName: none, onSplitSession: none, onSplitSubagent: none, onOpenTerminal: none, onCopyPath: none, onCopyText: none, onShowChanges: none, onGetFile: none,
+    onSetName: none, onSplitSession: none, onSplitSubagent: none, onOpenTerminal: none, onCopyPath: none, onCopyText: none, onShowChanges: none, onMarkDone: none, onGetFile: none,
     onEndSession: none, onOpenSettings: none, updateSlot: null, railUpdateSlot: null,
     ...more,
   }
@@ -195,6 +195,30 @@ describe('subagents', () => {
 })
 
 describe('a session row', () => {
+  it('says how long an agent has been in its state, and nothing for a shell or when the daemon did not say', () => {
+    const details = (since: number) => ({ asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, since })
+    const fiveMinutesAgo = Math.floor(Date.now() / 1000) - 5 * 60
+    show([
+      session(1, { agent: 'claude', named: true, title: 'Timed', details: details(fiveMinutesAgo) }),
+      session(2, { named: true, title: 'A shell', details: details(fiveMinutesAgo) }),
+      session(3, { agent: 'claude', named: true, title: 'Untimed', details: details(0) }),
+    ])
+    expect(screen.getByRole('button', { name: /^Timed,/ })).toHaveTextContent('5m')
+    expect(screen.getByRole('button', { name: /^A shell,/ })).not.toHaveTextContent('5m')
+    expect(screen.getByRole('button', { name: /^Untimed,/ }).querySelector('.mx-row-when')).toBeNull()
+  })
+
+  it('offers Mark as done on a finished agent only, and asks for that session', async () => {
+    const onMarkDone = vi.fn()
+    show([session(1, { agent: 'claude', named: true, title: 'Finished', status: 'done' }), session(2, { agent: 'claude', named: true, title: 'Busy', status: 'working' })], { onMarkDone })
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Busy,/ }))
+    expect(screen.queryByRole('menuitem', { name: 'Mark as done' })).toBeNull()
+    await userEvent.keyboard('{Escape}')
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Finished,/ }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Mark as done' }))
+    expect(onMarkDone).toHaveBeenCalledWith('t1')
+  })
+
   it('starts renaming on a double-click', async () => {
     const user = userEvent.setup()
     const onRenameSession = vi.fn()

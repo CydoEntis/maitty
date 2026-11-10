@@ -117,6 +117,9 @@
 .mx-row-square { width: 6px; height: 6px; border-radius: 2px; }
 .mx-row-branch { font-family: var(--mono); color: var(--ansi-mag); overflow: hidden; text-overflow: ellipsis; }
 .mx-row-word { flex: none; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--danger); }
+.mx-row-when { flex: none; align-self: flex-start; margin-top: 2px; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--muted); transition: opacity .12s ease; }
+/* The close button takes this corner on hover and focus. */
+.mx-row-wrap:hover .mx-row-when, .mx-row-wrap:focus-within .mx-row-when { opacity: 0; }
 
 /* Subagents: an elbow and small icons under a session that is not selected, a row each under the one that is. */
 .mx-sub-peek { display: flex; align-items: center; gap: 6px; margin: -4px 0 2px 40px; height: 18px; }

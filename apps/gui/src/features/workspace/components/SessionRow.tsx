@@ -4,6 +4,7 @@ import { isShell, projectColor, projectOf, rowTitle, rowWord } from '../model/si
 import { AppIcon, StatusBadge } from './glyphs'
 import { beginPointerDrag } from './dragSession'
 import { InlineName } from './InlineName'
+import { Ago } from './times'
 
 type Props = {
   session: SessionView
@@ -38,7 +39,7 @@ function SubLine({ session, showProject, machine }: { session: SessionView; show
   )
 }
 
-/** One session in the sidebar: its app tile and status badge, name, project and branch, and a word when it stopped. */
+/** One session in the sidebar: its app tile and status badge, name, project and branch, and at the right a word when it stopped, else how long it has been in its state. */
 export function SessionRow({ session, selected, showProject, machine = null, renaming, onShow, onRename, onSetName, onCancelRename, onContextMenu }: Props) {
   const title = rowTitle(session)
   const active = !isShell(session) && session.status !== 'idle'
@@ -80,6 +81,8 @@ export function SessionRow({ session, selected, showProject, machine = null, ren
         <SubLine session={session} showProject={showProject} machine={machine} />
       </span>
       {word !== '' && <span className="mx-row-word">{word}</span>}
+      {/* How long the agent has been in this state; a shell has no state worth timing. */}
+      {word === '' && !isShell(session) && session.statusSince !== null && <span className="mx-row-when"><Ago at={session.statusSince} /></span>}
     </button>
   )
 }
