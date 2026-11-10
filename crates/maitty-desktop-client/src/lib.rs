@@ -1,7 +1,9 @@
 use maitty_shared::conversation::{ApprovalPolicy, LaunchSettings, Provider, Sandbox, StartTarget};
+mod host_env;
 mod ipc;
 mod shared_daemon;
 use anyhow::{Context, Result, bail};
+pub use host_env::host_command;
 pub use ipc::data_dir;
 pub use shared_daemon::{ensure_shared_daemon, shared_daemon_path};
 use maitty_shared::protocol::{ClientMsg, Command, Query, Reply, ServerMsg};

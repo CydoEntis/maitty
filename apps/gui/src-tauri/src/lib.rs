@@ -100,7 +100,7 @@ async fn connect_agent(app: tauri::AppHandle, agent: String) -> Result<(), Strin
     }
     let executable = daemon_executable(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let mut command = std::process::Command::new(executable);
+        let mut command = maitty_desktop_client::host_command(executable);
         command
             .args(["integrate", agent.as_str()])
             .stdin(std::process::Stdio::null());

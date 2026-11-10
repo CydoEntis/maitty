@@ -138,3 +138,8 @@ path. `send_pasted_image` runs the same checks, then that the machine is known, 
 (`MachineStates::is_connected`), stages the bytes as a private file and starts a `file_send` job of kind `Image`:
 the runner, events, Cancel and the far-side path checks are the file send's, and the staged copy is removed when
 the send ends. A chat composer's attachment calls these two commands.
+
+**Programs the app starts get the user's environment, not the bundle's.** An AppImage's `AppRun` points Python,
+the loader, GTK and `PATH` at its mount (`/tmp/.mount_…`); inherited by a session that breaks the system's Python
+and git. Start every program with `maitty_desktop_client::host_command`, never `Command::new`; the daemon also
+drops those settings from its own environment when it starts (`maitty_shared::host_env`), since it outlives the app.

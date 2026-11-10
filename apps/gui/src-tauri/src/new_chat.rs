@@ -7,7 +7,7 @@ use serde::Serialize;
 use std::ffi::OsStr;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 const GIT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -135,7 +135,7 @@ fn run_git(folder: &Path, args: &[&str]) -> Result<String, String> {
     if !folder.is_dir() {
         return Err("that folder is gone".into());
     }
-    let mut command = Command::new("git");
+    let mut command = maitty_desktop_client::host_command("git");
     command
         .args(args)
         .current_dir(folder)
@@ -272,7 +272,7 @@ pub fn open_agent_docs(agent: String) -> Result<(), String> {
     } else {
         "xdg-open"
     };
-    Command::new(program)
+    maitty_desktop_client::host_command(program)
         .arg(url)
         .spawn()
         .map(drop)

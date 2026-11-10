@@ -452,7 +452,22 @@ struct Daemon {
     last_loss: Option<Instant>,
 }
 
+/// The daemon's environment is every session's, and it keeps it across its own restarts. Started
+/// from the desktop app's AppImage it would hand each pane the bundle's Python and libraries.
+fn leave_the_app_bundle() {
+    for (key, value) in maitty_shared::host_env::inherited_bundle_changes() {
+        // SAFETY: `run` calls this first, before the runtime exists, so no other thread reads the environment.
+        unsafe {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+        }
+    }
+}
+
 pub fn run(on_start: impl FnOnce()) -> Result<()> {
+    leave_the_app_bundle();
     crate::proc::ahead_of_the_panes();
     init_logging();
     let rt = tokio::runtime::Builder::new_multi_thread()
