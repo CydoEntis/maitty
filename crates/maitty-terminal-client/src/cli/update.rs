@@ -201,12 +201,30 @@ pub(crate) fn sha256_hex(path: &Path) -> Result<String> {
         .collect())
 }
 
+/// The tag a person named with `--to`: `0.70.0` and `v0.70.0` are the same release. Anything
+/// that is not a version is refused here, before it becomes part of a download address.
+fn tag_named(to: &str) -> Result<String> {
+    let bare = to.trim().trim_start_matches('v');
+    if version(bare).is_none() {
+        bail!("`{to}` is not a version; name a release such as 0.70.0");
+    }
+    Ok(format!("v{bare}"))
+}
+
 /// `<app> update`: install the newest release over this one. `check` only says whether
-/// there is one; `force` reinstalls it even when it's this version.
-pub fn run(check: bool, force: bool) -> Result<()> {
+/// there is one; `force` reinstalls it even when it's this version; `to` installs that release
+/// instead, older ones included, which is the way back from an update that went wrong.
+pub fn run(check: bool, force: bool, to: Option<&str>) -> Result<()> {
     let current = env!("APP_VERSION");
-    let tag = latest_tag().map_err(|e| anyhow::anyhow!(e))?;
-    if !is_newer(&tag) && !force {
+    let tag = match to {
+        Some(to) => tag_named(to)?,
+        None => latest_tag().map_err(|e| anyhow::anyhow!(e))?,
+    };
+    if to.is_some() && tag.trim_start_matches('v') == current && !force {
+        println!("{APP_COMMAND} {current} is already installed.");
+        return Ok(());
+    }
+    if to.is_none() && !is_newer(&tag) && !force {
         println!("{APP_COMMAND} {current} is the latest version.");
         return Ok(());
     }
@@ -415,10 +433,33 @@ fn install(tag: &str, target: &str, asset: &str, tmp: &Path, say: bool) -> Resul
     if !new.is_file() {
         bail!("the download had no {name}");
     }
+    runs_as(&new, tag)?;
     let exe = std::env::current_exe().context(concat!("finding this ", env!("APP_COMMAND")))?;
     at_step(4);
     replace_exe(&new, &exe)?;
     Ok(exe)
+}
+
+/// Run the downloaded program before it replaces this one: a build that does not start here (the
+/// wrong one for this computer, or one a virus scanner broke) must not become the installed app.
+fn runs_as(new: &Path, tag: &str) -> Result<()> {
+    let said = crate::proc::run(crate::proc::quiet(Command::new(new).arg("--version")))
+        .map_err(|why| {
+            anyhow::anyhow!("the download does not run on this computer ({why}); nothing was changed")
+        })?;
+    says_version(&said, tag)
+}
+
+/// Whether `--version` output names the release that was asked for.
+fn says_version(said: &str, tag: &str) -> Result<()> {
+    let wanted = format!("{APP_COMMAND} {}", tag.trim_start_matches('v'));
+    if said.trim() != wanted {
+        bail!(
+            "the download says it is `{}`, not `{wanted}`; nothing was changed",
+            said.trim()
+        );
+    }
+    Ok(())
 }
 
 /// Put `new` where `exe` is. Windows won't overwrite a running program but lets it be
@@ -547,6 +588,39 @@ fn changes_in(json: &str, current: &str) -> Vec<String> {
 mod tests {
     use super::*;
     use crate::installed_executable::installed_path;
+
+    #[test]
+    fn a_named_release_is_a_version_with_or_without_its_v() {
+        assert_eq!(tag_named("0.70.0").unwrap(), "v0.70.0");
+        assert_eq!(tag_named(" v0.70.0 ").unwrap(), "v0.70.0");
+        assert!(tag_named("latest").is_err());
+        assert!(tag_named("../../other").is_err());
+        assert!(tag_named("").is_err());
+    }
+
+    #[test]
+    fn a_download_that_is_another_version_is_not_installed() {
+        let ours = format!("{APP_COMMAND} 1.2.3\n");
+        assert!(says_version(&ours, "v1.2.3").is_ok());
+        let error = says_version(&ours, "v1.2.4").unwrap_err().to_string();
+        assert!(error.contains("nothing was changed"), "{error}");
+        assert!(says_version("something else entirely", "v1.2.3").is_err());
+    }
+
+    #[test]
+    fn a_download_that_does_not_start_is_not_installed() {
+        let dir = std::env::temp_dir().join(format!(
+            "{APP_COMMAND}-update-test-{}-broken",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let broken = dir.join(if cfg!(windows) { "broken.exe" } else { "broken" });
+        std::fs::write(&broken, b"not a program").unwrap();
+        let error = runs_as(&broken, "v1.2.3").unwrap_err().to_string();
+        assert!(error.contains("does not run on this computer"), "{error}");
+        assert!(error.contains("nothing was changed"), "{error}");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn an_update_names_the_command_for_each_machine_and_says_nothing_with_none() {

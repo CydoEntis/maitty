@@ -97,6 +97,7 @@ the same local daemon protocol.
 
 Maitty tells you when an update is out; one click installs it and restarts without
 losing your sessions. **Settings › General › UPDATES** shows the version you have.
+If an update goes wrong, `maitty update --to 0.70.0` puts a named release back.
 
 **Coming from Vibecasso or Seshi?** Maitty is the new name. Install Maitty as above. The
 first time it starts, it brings over your config, saved sessions and history, and points your
