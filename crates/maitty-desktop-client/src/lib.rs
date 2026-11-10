@@ -11,6 +11,8 @@ use std::time::Duration;
 
 /// The most one keystroke message may carry.
 pub const MAX_TERMINAL_INPUT_BYTES: usize = 16 * 1024;
+/// The longest message the daemon is asked to hold for a starting agent.
+pub const MAX_HELD_MESSAGE_BYTES: usize = 256 * 1024;
 const APP_COMMAND: &str = env!("MAITTY_APP_COMMAND");
 const APP_NAME: &str = env!("MAITTY_APP_NAME");
 const APP_ENV: &str = env!("MAITTY_APP_ENV");
@@ -23,6 +25,8 @@ pub enum PaneCommand {
     WantReplay,
     Resize { cols: u16, rows: u16 },
     Rename(String),
+    /// A message for the agent starting in the pane, held by its daemon until the agent takes input.
+    SendWhenReady(String),
     Pin(bool),
     Archive(bool),
     Seen,
@@ -44,6 +48,9 @@ impl PaneCommand {
                 ClientMsg::Command(Command::TerminalResize { term, cols, rows })
             }
             PaneCommand::Rename(name) => ClientMsg::Command(Command::RenamePane { term, name }),
+            PaneCommand::SendWhenReady(text) => {
+                ClientMsg::Command(Command::SendWhenReady { term, text })
+            }
             PaneCommand::Pin(pinned) => ClientMsg::Command(Command::PinPane { term, pinned }),
             PaneCommand::Archive(archived) => {
                 ClientMsg::Command(Command::ArchivePane { term, archived })
@@ -718,6 +725,25 @@ pub async fn start_agent_session(
     match reply {
         Reply::Ok => Ok(Value::Null),
         _ => bail!("daemon returned an unexpected agent session reply"),
+    }
+}
+
+/// What may be held for a starting agent: some words, and not more than the daemon is asked to keep.
+pub fn held_message(text: String) -> Result<PaneCommand> {
+    if text.trim().is_empty() {
+        bail!("there is no message to hold");
+    }
+    if text.len() > MAX_HELD_MESSAGE_BYTES {
+        bail!("the message is too long to hold for the agent");
+    }
+    Ok(PaneCommand::SendWhenReady(text))
+}
+
+pub async fn send_when_ready(term: u32, text: String, daemon_executable: PathBuf) -> Result<Value> {
+    let reply = request(held_message(text)?.message(term), daemon_executable).await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected reply to a held message"),
     }
 }
 
@@ -1465,12 +1491,190 @@ mod tests {
     }
 }
 
+/// How long one request may take, connecting included. The slowest answers (a diff of a large
+/// tree, a new checkout) take seconds; a daemon that says nothing for this long is stuck, and the
+/// window must be told so instead of waiting on it for ever.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Connections kept open between questions, so each one does not connect and say hello again:
+/// an open chat asks several times a second. Only a `Query` uses them. It changes nothing, so
+/// when a kept connection turns out to be dead (its daemon restarted) the question is simply
+/// asked again on a new one; a command asked twice could act twice.
+static IDLE_CONNECTIONS: IdleConnections = std::sync::Mutex::new(Vec::new());
+const MAX_IDLE_CONNECTIONS: usize = 4;
+
+type Connection = (ipc::Reader, ipc::Writer);
+type IdleConnections = std::sync::Mutex<Vec<Connection>>;
+
+async fn ask(connection: &mut Connection, message: &ClientMsg) -> Result<Reply> {
+    ipc::send_message(&mut connection.1, message).await?;
+    receive_reply(&mut connection.0).await
+}
+
+/// Ask `message`: on a kept connection when it is a question, else on one from `open`.
+async fn ask_reusing<Open, Opening>(
+    idle: &IdleConnections,
+    message: &ClientMsg,
+    open: Open,
+) -> Result<Reply>
+where
+    Open: FnOnce() -> Opening,
+    Opening: std::future::Future<Output = Result<Connection>>,
+{
+    let reusable = matches!(message, ClientMsg::Query(_));
+    let keep = |connection: Connection| {
+        if let Ok(mut idle) = idle.lock()
+            && idle.len() < MAX_IDLE_CONNECTIONS
+        {
+            idle.push(connection);
+        }
+    };
+    let kept = if reusable {
+        idle.lock().ok().and_then(|mut idle| idle.pop())
+    } else {
+        None
+    };
+    if let Some(mut kept) = kept
+        && let Ok(reply) = ask(&mut kept, message).await
+    {
+        keep(kept);
+        return Ok(reply);
+    }
+    let mut fresh = open().await?;
+    let reply = ask(&mut fresh, message).await?;
+    if reusable {
+        keep(fresh);
+    }
+    Ok(reply)
+}
+
 async fn request(message: ClientMsg, daemon_executable: PathBuf) -> Result<Reply> {
-    let (mut reader, mut writer) = ipc::open_or_spawn_for_user(&daemon_executable)
-        .await
-        .context("connecting to the local daemon")?;
-    ipc::send_message(&mut writer, &message).await?;
-    receive_reply(&mut reader).await
+    answered_within(
+        REQUEST_TIMEOUT,
+        ask_reusing(&IDLE_CONNECTIONS, &message, || async {
+            ipc::open_or_spawn_for_user(&daemon_executable)
+                .await
+                .context("connecting to the local daemon")
+        }),
+    )
+    .await
+}
+
+#[cfg(test)]
+mod kept_connection_tests {
+    use super::{Connection, IdleConnections, ask_reusing};
+    use maitty_shared::protocol::{ClientMsg, Command, Query, Reply, ServerMsg};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// A connection to a daemon that answers everything with `Ok`, until `answers` have gone out.
+    fn daemon_answering(answers: usize) -> Connection {
+        let (ours, theirs) = tokio::io::duplex(64 * 1024);
+        let (their_read, their_write) = tokio::io::split(theirs);
+        let (mut reader, mut writer) = maitty_ipc_transport::framed_parts(their_read, their_write);
+        tokio::spawn(async move {
+            for _ in 0..answers {
+                let Ok(Some(_)) = maitty_ipc_transport::receive::<ClientMsg>(&mut reader).await
+                else {
+                    return;
+                };
+                if maitty_ipc_transport::send(&mut writer, &ServerMsg::Reply(Reply::Ok))
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
+            }
+        });
+        let (our_read, our_write) = tokio::io::split(ours);
+        maitty_ipc_transport::framed_parts(our_read, our_write)
+    }
+
+    fn question() -> ClientMsg {
+        ClientMsg::Query(Query::Settings)
+    }
+
+    #[tokio::test]
+    async fn a_second_question_goes_out_on_the_connection_the_first_one_opened() {
+        let idle = IdleConnections::default();
+        let opened = Arc::new(AtomicUsize::new(0));
+        for _ in 0..3 {
+            let opened = opened.clone();
+            let reply = ask_reusing(&idle, &question(), || async move {
+                opened.fetch_add(1, Ordering::SeqCst);
+                Ok(daemon_answering(usize::MAX))
+            })
+            .await;
+            assert!(matches!(reply, Ok(Reply::Ok)));
+        }
+        assert_eq!(opened.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn a_question_on_a_kept_connection_whose_daemon_went_away_is_asked_again_on_a_new_one() {
+        let idle = IdleConnections::default();
+        let opened = Arc::new(AtomicUsize::new(0));
+        for _ in 0..2 {
+            let opened = opened.clone();
+            let reply = ask_reusing(&idle, &question(), || async move {
+                opened.fetch_add(1, Ordering::SeqCst);
+                // Each daemon answers once and is gone.
+                Ok(daemon_answering(1))
+            })
+            .await;
+            assert!(matches!(reply, Ok(Reply::Ok)));
+        }
+        assert_eq!(opened.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn a_command_never_goes_out_on_a_kept_connection_and_leaves_none_behind() {
+        let idle = IdleConnections::default();
+        idle.lock().unwrap().push(daemon_answering(0));
+        let command = ClientMsg::Command(Command::SelectWorkspace { ws: 1 });
+
+        let reply = ask_reusing(&idle, &command, || async { Ok(daemon_answering(1)) }).await;
+
+        assert!(matches!(reply, Ok(Reply::Ok)));
+        assert_eq!(idle.lock().unwrap().len(), 1, "only the one that was there");
+    }
+}
+
+async fn answered_within<T>(
+    limit: Duration,
+    request: impl std::future::Future<Output = Result<T>>,
+) -> Result<T> {
+    match tokio::time::timeout(limit, request).await {
+        Ok(answer) => answer,
+        Err(_) => bail!(
+            "the local daemon did not answer within {} seconds",
+            limit.as_secs()
+        ),
+    }
+}
+
+#[cfg(test)]
+mod request_timeout_tests {
+    use super::answered_within;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn a_request_the_daemon_never_answers_fails_instead_of_waiting_for_ever() {
+        let stuck = std::future::pending::<anyhow::Result<()>>();
+
+        let error = answered_within(Duration::from_millis(20), stuck)
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("did not answer"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn an_answer_in_time_is_passed_on_as_it_is() {
+        let answer = answered_within(Duration::from_secs(5), async { Ok(7) }).await;
+
+        assert_eq!(answer.unwrap(), 7);
+    }
 }
 
 async fn receive_reply(reader: &mut ipc::Reader) -> Result<Reply> {
@@ -1681,6 +1885,13 @@ mod pane_command_tests {
                 ClientMsg::Command(Command::RenamePane {
                     term: 4,
                     name: "build".into(),
+                }),
+            ),
+            (
+                PaneCommand::SendWhenReady("fix the parser".into()),
+                ClientMsg::Command(Command::SendWhenReady {
+                    term: 4,
+                    text: "fix the parser".into(),
                 }),
             ),
             (

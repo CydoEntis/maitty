@@ -7,6 +7,7 @@ import { useSyncExternalStore } from 'react'
 import type { ReasoningPick } from './agentChoice'
 
 const heldMessages = new Map<string, string>()
+const heldByDaemon = new Set<string>()
 const carriedDrafts = new Map<string, string>()
 const listeners = new Set<() => void>()
 
@@ -28,7 +29,29 @@ export function heldFirstMessage(sessionId: string): string | null {
 
 export function releaseFirstMessage(sessionId: string): void {
   heldMessages.delete(sessionId)
+  heldByDaemon.delete(sessionId)
   notify()
+}
+
+/**
+ * Hands a held first message to the session's daemon, which types it in once the agent takes input, so it is
+ * delivered even if this window closes first. The window keeps showing it. If the daemon does not take it, the
+ * window sends it itself, as it does for a session that has no terminal for the daemon to type into.
+ */
+export function entrustFirstMessage(sessionId: string, text: string, hand: (sessionId: string, text: string) => Promise<void>): void {
+  heldByDaemon.add(sessionId)
+  notify()
+  // `hand` may refuse before it asks (a session that is not a terminal), which must not stop the window sending it.
+  void Promise.resolve().then(() => hand(sessionId, text)).catch((error: unknown) => {
+    console.warn('The daemon did not take the first message, so the window sends it', error instanceof Error ? error.message : String(error))
+    heldByDaemon.delete(sessionId)
+    notify()
+  })
+}
+
+/** Whether the session's daemon has the held message, and will send it. */
+export function useHeldByDaemon(sessionId: string | undefined): boolean {
+  return useSyncExternalStore(subscribe, () => sessionId !== undefined && heldByDaemon.has(sessionId), () => false)
 }
 
 /** The message held for a session, kept up to date as it is held and released; null when none or no session. */
@@ -93,6 +116,7 @@ export function draftKeyFor(sessionId: string): number {
 /** For tests. */
 export function forgetFirstMessages(): void {
   heldMessages.clear()
+  heldByDaemon.clear()
   carriedDrafts.clear()
   startChoices.clear()
   notify()

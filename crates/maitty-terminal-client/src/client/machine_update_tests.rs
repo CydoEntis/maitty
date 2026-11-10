@@ -8,7 +8,7 @@
 use super::remote_status_tests::built;
 use crate::brand::{APP_COMMAND, APP_VERSION};
 use crate::cli::machine_update::binary::{Binary, ReleaseSources, Releases, Sources, measured};
-use crate::cli::machine_update::{Failure, Flags, Outcome, Talk, update};
+use crate::cli::machine_update::{Failure, Flags, Outcome, Talk, installed_is_current, update};
 use crate::ipc::Machine;
 use crate::remote_install::Platform;
 use std::path::{Path, PathBuf};
@@ -573,6 +573,89 @@ fn restart_asks_the_far_daemon_to_restart_even_with_sessions_open() {
         commands.last().unwrap().ends_with("restart-if-idle --now"),
         "{commands:?}"
     );
+}
+
+/// A build whose daemon-restart reply is the far side's own: it leaves a daemon with open
+/// sessions alone, and restarts it when told `--now`.
+fn busy_daemon_build(remote: &Remote) -> File {
+    let path = remote.dir.join("busy-build");
+    std::fs::write(
+        &path,
+        format!(
+            "#!/bin/sh
+case \"$*\" in
+*--now*) echo 'restarted: sessions were saved and come back with the new version';;
+*restart-if-idle*) echo 'left running: 1 open session(s); it keeps them';;
+*) echo '{APP_COMMAND} {APP_VERSION}';;
+esac
+"
+        ),
+    )
+    .unwrap();
+    File {
+        path,
+        claim_extra_bytes: 0,
+    }
+}
+
+#[test]
+fn a_daemon_left_running_by_open_sessions_is_restarted_when_the_person_agrees() {
+    needs_sh!();
+    let remote = Remote::new(LINUX);
+    remote.install(".local/bin/maitty", "0.1.0");
+    let mut person = Person::absent();
+    person.answer = Some(true);
+    run(&remote, AT_HOME, YES, &busy_daemon_build(&remote), &mut person).unwrap();
+    let commands = remote.commands();
+    assert!(
+        commands.last().unwrap().ends_with("restart-if-idle --now"),
+        "{commands:?}"
+    );
+    assert!(person.heard("daemon: restarted"), "{:?}", person.said);
+    assert_eq!(person.asked.len(), 1, "{:?}", person.asked);
+}
+
+#[test]
+fn a_daemon_left_running_stays_untouched_when_the_person_declines_and_the_way_out_is_said() {
+    needs_sh!();
+    let remote = Remote::new(LINUX);
+    remote.install(".local/bin/maitty", "0.1.0");
+    let mut person = Person::absent();
+    person.answer = Some(false);
+    run(&remote, AT_HOME, YES, &busy_daemon_build(&remote), &mut person).unwrap();
+    let commands = remote.commands();
+    assert!(
+        commands.last().unwrap().ends_with("restart-if-idle"),
+        "{commands:?}"
+    );
+    assert!(person.heard("click Update on box"), "{:?}", person.said);
+}
+
+#[test]
+fn a_daemon_left_running_with_nobody_to_ask_says_the_way_out_without_restarting() {
+    needs_sh!();
+    let remote = Remote::new(LINUX);
+    remote.install(".local/bin/maitty", "0.1.0");
+    let mut person = Person::absent();
+    run(&remote, AT_HOME, YES, &busy_daemon_build(&remote), &mut person).unwrap();
+    assert!(person.asked.is_empty());
+    assert!(person.heard("click Update on box"), "{:?}", person.said);
+}
+
+#[test]
+fn the_window_is_told_when_the_app_there_is_already_this_version() {
+    needs_sh!();
+    let remote = Remote::new(LINUX);
+    remote.install(".local/bin/maitty", APP_VERSION);
+    assert!(installed_is_current(&remote.machine(AT_HOME), "box"));
+}
+
+#[test]
+fn an_older_app_there_is_not_called_current() {
+    needs_sh!();
+    let remote = Remote::new(LINUX);
+    remote.install(".local/bin/maitty", "0.1.0");
+    assert!(!installed_is_current(&remote.machine(AT_HOME), "box"));
 }
 
 #[test]

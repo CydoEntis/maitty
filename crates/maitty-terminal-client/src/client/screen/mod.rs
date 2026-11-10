@@ -448,6 +448,10 @@ pub(super) struct Finder {
     /// The folder being listed and its subfolders: (name, is a git repo).
     pub dir: PathBuf,
     pub list: Vec<(String, bool)>,
+    /// Whether `dir` itself is a git repo.
+    pub here_repo: bool,
+    /// The folder typed into, not listed yet: it is listed off the UI thread and arrives later.
+    pub wanted: Option<PathBuf>,
     /// Picking a folder for this setting (Settings → Start folder) instead of opening one.
     pub for_setting: Option<&'static str>,
 }

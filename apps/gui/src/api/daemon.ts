@@ -819,6 +819,13 @@ export async function markSeenOnDaemon(conversation: Pick<Conversation, 'id'>): 
   if (pane !== null) await invokeParsed('mark_terminal_seen', NullSchema, { term: pane.term, ...machineArgs(pane) })
 }
 
+/** Hands a message to a terminal session's daemon, which types it in once the agent starting there takes input. */
+export async function sendWhenAgentReady(sessionId: string, text: string): Promise<void> {
+  const pane = addressOf(sessionId)
+  if (pane === null) throw new Error('Only a terminal session holds a message for its agent')
+  await invokeParsed('send_when_agent_ready', NullSchema, { term: pane.term, text, ...machineArgs(pane) })
+}
+
 export async function renameConversationOnDaemon(conversation: Pick<Conversation, 'id'>, title: string): Promise<void> {
   const pane = addressOf(conversation.id)
   if (pane !== null) {

@@ -150,6 +150,16 @@ export function tildePath(path: string, home: string): string {
   return clean
 }
 
+/**
+ * A row's repository, branch and title once a session has shown them, kept while it stays in the same
+ * folder. A `git pull` or rebase makes the branch blank or switch for a moment, and a row that follows
+ * it jumps; the labels change only when the session moves to another folder.
+ */
+export function keepLabels(view: SessionView, before: SessionView | undefined): SessionView {
+  if (before === undefined || before.repoName === null || before.branch === null || before.cwd !== view.cwd) return view
+  return { ...view, repoName: before.repoName, branch: before.branch, title: before.title, promptPath: before.promptPath }
+}
+
 export function toSessionView(conversation: Conversation, home: string): SessionView {
   const cwd = trimTrailingSeparator(conversation.cwd ?? conversation.folder)
   const machineName = conversation.machineName ?? null

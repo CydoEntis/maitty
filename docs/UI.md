@@ -120,7 +120,10 @@ login that needs a person run in a session named `ssh <name>`); **New session** 
 agent, which project (the machine's projects, the focused one first; **Other folder…** is this computer's folder picker),
 where it works and a first message. It is presentation only; the window starts the session through the same paths as
 before (`startShellSession` and the agent typed into the new shell, `startSessionOnMachine` on another machine) and holds
-the first message under the new session (`firstMessage.ts`) until the agent takes input. **New agent chat** (⌘⇧A,
+the first message under the new session (`firstMessage.ts`) until the agent takes input. For a terminal session the
+message is also handed to the session's daemon (`send_when_agent_ready`), which types it in, so it is delivered when
+the window closes first; the window keeps showing it until the history has it, and sends it itself only when the
+daemon does not take it. **New agent chat** (⌘⇧A,
 Ctrl+Shift+A) opens the page above, and **New shell** (⌘⇧T, Ctrl+Alt+T, the sidebar's terminal button, a
 machine's New shell here) starts a plain shell in the start folder with no dialog; another machine asks for a folder there first, so it opens the dialog. A screen reader is told when a machine goes down (`build disconnected: unreachable`) and when it is back, once each and not for every retry, through a polite live region; every state is a word as well as a shape and a colour, nothing about machines animates, and the Machines page works with the keyboard alone (Tab, Enter, Esc ends a look in progress without closing Settings). Features that read a pane's files (Inspect, worktreesFeatures that read a pane's files (Inspect, worktrees, opening a file from the output, dropping files, the screen text) are for this computer's panes only: each says `<Feature> is local-only in v1: the files are on <machine>, not on this computer.` and the Repository button shows disabled with that text.
 
@@ -196,6 +199,11 @@ Rules for `apps/gui/` (the look is in [DESIGN](DESIGN.md#desktop-app)).
    session closes with a 6 second Undo. Crewmates (`features/crew/`) is not mounted: the redesign leaves it undesigned.
 3. A terminal sits on the workspace card's own ground (`--main`, xterm's background and ANSI black), so a pane reads as
    part of the card and not as a box inside it.
+4. The window's state is put together once, in `features/workspace/useWorkspaceState.ts`, and `DesktopApp` hands it to
+   the window's parts (`WorkspaceSidebars`, `WorkspaceMain`, `WorkspacePane`, `WorkspaceDialogs`) through
+   `useWorkspace()` (`workspaceContext.ts`). A part of the window reads what it needs from there and is not passed the
+   window's state as props; a component used outside the window (`Sidebar`, `PaneCard`, a dialog) still takes props.
+   New window state goes in a hook of its own that `useWorkspaceState` calls, not in `DesktopApp`.
 
 ## Project-specific: usage and cost page (desktop)
 
@@ -238,7 +246,7 @@ Keep update indicators until the installed program, window and daemon versions a
 
 **Restart now** is one step: it restarts the server onto the installed maitty **and** replaces this window with the installed one in the same terminal. It shows in Settings' restart-pending line (`R`), on the toast after an install (it stays 12 s), on the `↻ Restart` pill, and as the palette action *Restart maitty* (`Action::Restart`, `restart`); none show for a remote daemon or while a restart is under way. It asks only when a session is working or waiting for you (or when `restore.enabled` is off, since then sessions close for good): a confirm (`menu::Confirm`, danger) reading "4 sessions stop and resume, 2 are working, 1 waiting for you" with Restart (Enter) and Cancel. Otherwise it restarts at once. The server saves its session and every pane's output first (`KillServer`), then the window closes and the installed maitty opens in its place (`restart::relaunch`: exec on Unix, spawn-and-exit on Windows, same arguments and `MAITTY_SOCKET`), which starts the new server and restores the sessions. A window that is already current (only the server is old) reconnects in place; a current server with an old window swaps only the window and leaves every session running. An agent mid-turn is stopped when the server stops and resumed with its conversation when it comes back; the turn in flight is not replayed.
 
-A new `maitty` that finds a server of another version replaces it on the way in. A server of an older release whose protocol this one speaks, and which is idle, is stopped at once (`restart::replace_older_idle_server`, from the activity file the server keeps beside its pid file: `restart::Activity`). A server whose protocol this one cannot speak (`ipc::OtherVersion`) is judged by that file, or for a server too old to write one by the agents in the saved session (`restart::plan_for_mismatch`): when nothing is working or waiting, the terminal says `Updating maitty…`, the server is stopped by its process as `maitty kill-server` does across versions, and the window opens with the sessions restored, with no prompt. When something is working or waiting, or the server is newer than this maitty (never replaced unasked), the full-screen prompt (`client/restart_prompt.rs`) shows the protocols, how many sessions resume and how many are mid-turn, and **Restart and open** (Enter) and **Quit** (Esc, Ctrl+C), each clickable; Quit prints the usual error and exits 1. Without a terminal on stdin and stdout, or with `--remote`, there is no automatic step or prompt: the error text and exit code are unchanged, and a remote server is never restarted this way. A same-protocol older server that is busy is left running; the `↻ Restart` pill offers the restart.
+A new `maitty` that finds a server of another version replaces it on the way in. A server of an older release whose protocol this one speaks, and which holds no session, is stopped at once (`restart::replace_older_idle_server`, from the activity file the server keeps beside its pid file: `restart::Activity`). A server whose protocol this one cannot speak (`ipc::OtherVersion`) is judged by that file, or for a server too old to write one by the agents in the saved session (`restart::plan_for_mismatch`): when it holds no session, the terminal says `Updating maitty…`, the server is stopped by its process as `maitty kill-server` does across versions, and the window opens, with no prompt. When it holds sessions (a restart ends whatever runs in them: a build, a dev server, an agent's turn), or the server is newer than this maitty (never replaced unasked), the full-screen prompt (`client/restart_prompt.rs`) shows the protocols, how many sessions resume and how many are mid-turn, and **Restart and open** (Enter) and **Quit** (Esc, Ctrl+C), each clickable; Quit prints the usual error and exits 1. Without a terminal on stdin and stdout, or with `--remote`, there is no automatic step or prompt: the error text and exit code are unchanged, and a remote server is never restarted this way. A same-protocol older server that holds sessions is left running; the `↻ Restart` pill offers the restart.
 
 **One key overlay** replaces the command palette, the long shortcuts reference and the old leader overview (`client/screen/keyoverlay.rs`). It has three faces in one card with one typing row: Its card has no fill (its lifted rows are flattened to the ground), a red `×` close on the top border, and its key hints are chips on the bottom border.
 
@@ -545,6 +553,15 @@ The sidebar shows or collapses (`App::sidebar`) to a narrow column (`side.rs` `d
 
 There is no New session dialog. `Action::PickSession` (leader `n`, palette `New session`, the splash's `n`, the empty workspace's ` n new session ` chip) does what **Shell here** does (`Action::ShellHere`: leader `t`, `Alt+N`, `Ctrl+T`): one plain shell at once in the folder you are in, or in the workspace's own when you are not in it, on the machine of the session you are on. A machine's ` + ` chip on its sidebar heading starts one on that machine. Every session this starts is a **shell**: agents start inside it. The Menu has no `Session...` row.
 
+## Project-specific: tray item (desktop)
+
+The desktop app keeps one item in the Windows tray or the macOS menu bar (`useTrayItem.ts`,
+`model/traySessions.ts`, the host's `tray.rs`). Its menu lists what the Inbox lists, so an entry
+cleared there is not in the menu: **Needs you (N)**, then **Finished (N)**, each session as
+`agent: name`, or **Nothing needs you**; then **Show Maitty** and **Quit Maitty**. Choosing a
+session brings the window forward on it. Hovering says how many need you. The menu is the
+system's, so it takes no theme. Closing the window still closes the app; the item goes with it.
+
 ## Project-specific: closing, service and update states
 
 - **Closing a session** (`client/screen/closing.rs`): closing always asks first, by whatever route: the pane's `×`, the pane
@@ -773,8 +790,10 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
 - **Keyboard.** While the chat covers a pane its terminal is not focused (`TerminalView focused` is false) and is
   hidden from Tab and screen readers. The chat adds no layer to the Esc ladder.
 - **History.** `useChatFeed` follows one conversation while its chat is open (`chatFeed.ts` is the pure core). The
-  first read pages the whole history; later polls (1 s while the agent works or waits on a person, 3 s otherwise,
-  none while the window is hidden) read from the daemon's `resume` cursor, which returns only the entries added or
+  first read pages the whole history; later reads happen when the daemon says the conversation changed
+  (`conversation-changed`, at least 100 ms apart) and on a poll (300 ms while the agent works or waits on a person,
+  1 s once the daemon has announced a change for this chat, 3 s otherwise, none while the window is hidden). Each
+  reads from the daemon's `resume` cursor, which returns only the entries added or
   changed since, so a 1,000-entry conversation costs one small read per poll. A page that says `reset` (the history was
   rebuilt, or the conversation started over) replaces what the feed held. A failed read, or a daemon that predates
   `resume`, falls back to the old way: ask again for the last page read, or read from the start when that cursor is

@@ -234,13 +234,11 @@ impl App {
                         self.notify("nothing to redo".into(), false);
                     }
                 }
-                KeyCode::Char('s') if ctrl => match ed.save() {
-                    Ok(views::Saved::Done) => self.notify(format!("saved {}", ed.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()), false),
-                    Ok(views::Saved::ChangedOnDisk) => {
-                        self.notify("the file changed since you opened it (an agent?): Ctrl+S again overwrites it, Esc keeps theirs".into(), true)
+                KeyCode::Char('s') if ctrl => {
+                    if let Some(job) = ed.save_job() {
+                        self.save_edit(job);
                     }
-                    Err(e) => self.notify(e, true),
-                },
+                }
                 KeyCode::Esc if ed.dirty && !ed.warned => {
                     ed.warned = true;
                     self.notify("unsaved changes: Ctrl+S saves, Esc again throws them away".into(), true);

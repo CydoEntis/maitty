@@ -45,10 +45,20 @@ export type RestartOffer = {
   working: number
 }
 
+/** The card for a service newer than this app: the way out is updating the app, not restarting the service. */
+export type AppBehindOffer = {
+  label: string
+  disabled: boolean
+  onPress: () => void
+  /** The service's protocol and the one this app speaks, for "v77 → v76". */
+  serviceProtocol: number
+  appProtocol: number
+}
+
 const SECOND_MS = 1000
 
 /** Under the tabs while maittyd is unreachable: the last known screen stays, input waits. */
-export function OfflineBanner({ retryAt, detail, restart, onRetry }: { retryAt: number | null; detail: string | null; restart: RestartOffer | null; onRetry: () => void }) {
+export function OfflineBanner({ retryAt, detail, restart, appBehind = false, onRetry }: { retryAt: number | null; detail: string | null; restart: RestartOffer | null; appBehind?: boolean; onRetry: () => void }) {
   const [now, setNow] = useState(() => Date.now())
   const [armed, setArmed] = useState(false)
   useEffect(() => {
@@ -60,10 +70,10 @@ export function OfflineBanner({ retryAt, detail, restart, onRetry }: { retryAt: 
     <div className="mx-offline" role="status">
       <span className="mx-offline-dot" aria-hidden="true" />
       <span className="mx-offline-text">
-        <strong>Restart needed.</strong> The service is on an older version; your sessions keep running.{seconds !== null && ` Retrying in ${String(seconds)}s.`}
+        {appBehind ? <><strong>Update needed.</strong> This app is older than the service; your sessions keep running.</> : <><strong>Restart needed.</strong> The service is on an older version; your sessions keep running.</>}{seconds !== null && ` Retrying in ${String(seconds)}s.`}
         {detail && <> {detail}</>}
       </span>
-      {restart && (
+      {restart && !appBehind && (
         <button
           type="button"
           className={`mx-offline-button${armed ? ' is-armed' : ''}`}

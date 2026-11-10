@@ -25,6 +25,15 @@ function Icon({ kind }: { kind: AttachmentKind }) {
   return <Glyph className="size-4 shrink-0 text-dim" aria-hidden="true" />
 }
 
+function DraftLabel({ attachment }: { attachment: DraftAttachment }) {
+  return (
+    <span className="flex min-w-0 flex-col leading-tight">
+      <span className="truncate text-fg" title={attachment.name}>{attachment.name}</span>
+      <span className="text-[11px] text-dim">{sizeText(attachment.size)}</span>
+    </span>
+  )
+}
+
 /** The files attached to the draft, each with a thumbnail when the window holds the picture and a remove button. */
 export function DraftAttachments({ attachments, onRemove }: { attachments: readonly DraftAttachment[]; onRemove: (id: string) => void }) {
   if (attachments.length === 0) return null
@@ -33,14 +42,15 @@ export function DraftAttachments({ attachments, onRemove }: { attachments: reado
       {attachments.map((attachment) => (
         <li key={attachment.id} className={`${CHIP} max-w-[240px]`}>
           {attachment.kind === 'image' ? (
-            <ImageThumb name={attachment.name} path={attachment.path} preview={attachment.preview} fallback={<Icon kind="image" />} />
+            <ImageThumb name={attachment.name} path={attachment.path} preview={attachment.preview} fallback={<Icon kind="image" />}>
+              <DraftLabel attachment={attachment} />
+            </ImageThumb>
           ) : (
-            <Icon kind={attachment.kind} />
+            <>
+              <Icon kind={attachment.kind} />
+              <DraftLabel attachment={attachment} />
+            </>
           )}
-          <span className="flex min-w-0 flex-col leading-tight">
-            <span className="truncate text-fg" title={attachment.name}>{attachment.name}</span>
-            <span className="text-[11px] text-dim">{sizeText(attachment.size)}</span>
-          </span>
           <button
             type="button"
             aria-label={`Remove ${attachment.name}`}
@@ -79,11 +89,15 @@ export function SentAttachments({ files }: { files: readonly SentAttachment[] })
       {files.map((file, index) => (
         <li key={`${file.path}-${String(index)}`} className={`${CHIP} max-w-[240px]`}>
           {file.kind === 'image' && there[index] !== false ? (
-            <ImageThumb name={file.name} path={file.path} fallback={<Icon kind="image" />} />
+            <ImageThumb name={file.name} path={file.path} fallback={<Icon kind="image" />}>
+              <span className="truncate text-fg" title={file.name}>{file.name}</span>
+            </ImageThumb>
           ) : (
-            <Icon kind={file.kind} />
+            <>
+              <Icon kind={file.kind} />
+              <span className="truncate text-fg" title={file.name}>{file.name}</span>
+            </>
           )}
-          <span className="truncate text-fg" title={file.name}>{file.name}</span>
           {there[index] === false && <span className="shrink-0 text-[11px] text-dim">no longer available</span>}
         </li>
       ))}

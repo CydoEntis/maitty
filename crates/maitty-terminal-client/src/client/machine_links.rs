@@ -76,6 +76,7 @@ impl App {
     }
 
     fn tell_connected(&mut self, machine: MachineId, name: &str) {
+        self.machine_update_settled(name);
         match self.unsent_input.remove(&machine) {
             Some(n) if n > 0 => {
                 let (what, were) = if n == 1 {

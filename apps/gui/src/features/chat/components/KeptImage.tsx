@@ -37,18 +37,21 @@ type Props = {
   /** The picture's thumbnail when shown, or a stand-in while there is none. */
   fallback: React.ReactNode
   className?: string
+  /** A label shown beside the thumbnail and part of what opens the picture, so the whole chip is one click. */
+  children?: React.ReactNode
 }
 
-/** An image's thumbnail; clicking it opens the picture full size, and Escape or a click outside closes it. */
-export function ImageThumb({ name, path, preview = null, fallback, className = THUMB }: Props) {
+/** An image's thumbnail, with its label if given; clicking any of it opens the picture full size, and Escape or a click outside closes it. */
+export function ImageThumb({ name, path, preview = null, fallback, className = THUMB, children }: Props) {
   const kept = useKeptPicture(path, preview === null)
   const src = preview ?? kept
-  if (src === null) return <>{fallback}</>
+  if (src === null) return <>{fallback}{children}</>
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <button type="button" aria-label={`View ${name}`} title={`View ${name}`} className="shrink-0 cursor-zoom-in rounded focus-visible:outline-2 focus-visible:outline-[var(--accent-line)]">
+        <button type="button" aria-label={`View ${name}`} title={`View ${name}`} className="flex min-w-0 shrink-0 cursor-zoom-in items-center gap-2 rounded text-left focus-visible:outline-2 focus-visible:outline-[var(--accent-line)]">
           <img src={src} alt="" className={className} />
+          {children}
         </button>
       </DialogTrigger>
       <DialogContent unstyled overlayClassName="fixed inset-0 z-50 grid place-items-center bg-black/70 p-6" aria-describedby={undefined} className="relative flex max-h-full max-w-full outline-none">

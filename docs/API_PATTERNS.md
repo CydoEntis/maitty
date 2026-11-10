@@ -108,8 +108,28 @@ refused. Bump it when a message shape changes incompatibly: a field removed, ren
 or retyped, or a new enum variant (an old decoder rejects it). An added field with
 `#[serde(default)]` is compatible (messages are named msgpack maps and unknown fields
 are ignored) and needs no bump, provided a test decodes the old shape. Hooks say Hello
-too, so every bump stops hooked panes reporting until the daemon restarts. The CLI subcommands and the MCP server (`maitty mcp`, JSON-RPC over stdio)
+too, but a hook or usage report is also accepted by an older daemon back to
+`REPORTS_READ_SINCE` (`ipc::open_for_report`), so an update does not stop hooked panes
+reporting before the daemon restarts. When `Hook`, `Usage` or `HookStatus` changes in a way an
+older daemon cannot read, set `REPORTS_READ_SINCE` to the new version in the same change; the
+test `todays_reports_are_read_by_the_oldest_daemon_they_are_sent_to` holds the shapes. The CLI subcommands and the MCP server (`maitty mcp`, JSON-RPC over stdio)
 are thin wrappers that send the same commands.
+
+A conversation that changed is announced to the desktop app's attached clients as
+`ServerMsg::ConversationChanged { id, generation }` (`daemon/conversation/news.rs`): after each
+batch of events the daemon compares a stamp of what a `ConversationRead` would answer (history
+revision, status, error, approvals, queue) with the one it last announced, at most once per
+100 ms per conversation, and never for a conversation seen for the first time. It carries no
+content: the window reads as before, under the same checks. The host passes it to the webview as
+the `conversation-changed` event, for this computer only; another machine's is ignored
+(`remote_policy`). The terminal app is sent none.
+
+`Command::SendWhenReady { term, text }` hands the daemon a message for the agent starting in a
+pane. The daemon holds one per pane and types it in once the agent is running and at rest (idle or
+done) with its hooks reporting, or 20 s after an agent without hooks was first seen; never while
+the pane works or asks something. It is typed as a queued follow-up is (one paste when it has
+several lines), and is saved with the pane, so a daemon restart keeps it. The desktop command is
+`send_when_agent_ready` (at most 256 KiB, not blank).
 
 A state change reaches attached clients as `ServerMsg::State` (the whole `Snapshot`) or, when only
 some panes differ from what that surface's clients last received, as `ServerMsg::TermsChanged`
@@ -593,8 +613,8 @@ Protocol 67 adds, for the desktop app's Inspect panel, find, quick-look links an
   mid-turn when the daemon restarted, with the command that resumes it), `timeline` (the latest
   turn events, oldest first, from status reports and the shell's OSC 133 prompt marks, 60 kept in
   memory) and `usage.tokens` (what the provider reported, never an estimate). The daemon never
-  resumes an `interrupted` agent: a desktop-owned pane saved mid-turn comes back as a plain shell,
-  and the window offers the command. Terminal-app panes restore as before.
+  resumes an `interrupted` agent: a pane saved mid-turn comes back as a plain shell, whichever app
+  owns it, and the window offers the command.
 - `Query::PaneSearch { query }` and `Reply::Search`: where a word appears in what the app's own
   panes printed recently, case-insensitively, at most 100 hits and 20 from one pane. Human clients
   only, over the panes the client may use. The text is the pane's replay with escape sequences

@@ -49,21 +49,37 @@ pub fn fingerprint(dir: &Path, file: &str) -> u64 {
     })
 }
 
-/// Which of `files` are still as they were when marked.
-pub fn still_reviewed(
+/// What each marked file among `files` is like right now. This reads every one of them in
+/// full, so it runs with the rest of the review's loading, off the UI thread.
+pub fn marked_fingerprints(
     dir: &Path,
     files: &[super::tasks::Changed],
+    marked: &HashSet<String>,
+) -> HashMap<String, u64> {
+    files
+        .iter()
+        .filter(|f| marked.contains(&f.path))
+        .map(|f| (f.path.clone(), fingerprint(dir, &f.path)))
+        .collect()
+}
+
+/// Which of `files` are still as they were when marked, given what they are like `now`. A file
+/// marked after `now` was read has no fingerprint there; it keeps the mark it is `shown` with.
+pub fn still_reviewed(
+    files: &[super::tasks::Changed],
     marks: Option<&HashMap<String, u64>>,
+    now: &HashMap<String, u64>,
+    shown: &HashSet<String>,
 ) -> HashSet<String> {
     let Some(marks) = marks else {
         return HashSet::new();
     };
     files
         .iter()
-        .filter(|f| {
-            marks
-                .get(&f.path)
-                .is_some_and(|m| *m == fingerprint(dir, &f.path))
+        .filter(|f| match (marks.get(&f.path), now.get(&f.path)) {
+            (Some(mark), Some(now)) => mark == now,
+            (Some(_), None) => shown.contains(&f.path),
+            (None, _) => false,
         })
         .map(|f| f.path.clone())
         .collect()
@@ -174,6 +190,8 @@ pub struct FilesTree {
     /// rel path -> the agent changing it
     pub editing: HashMap<String, String>,
     pub preview: Option<(PathBuf, Vec<String>)>,
+    /// The selected file, not read yet: its lines are read off the UI thread and arrive later.
+    pub(super) preview_wanted: Option<PathBuf>,
     /// Showing recent files (Downloads, Desktop, …) instead of the tree.
     pub recent: bool,
     pub recent_list: Option<Vec<FileEntry>>,
@@ -236,6 +254,8 @@ pub struct Edit {
     seen: u64,
     /// Ctrl+S found it changed on disk: the next Ctrl+S overwrites anyway.
     pub conflict: bool,
+    /// A save is being written; another does not start until it is done.
+    saving: bool,
     /// Where the selection started; it runs to the cursor.
     pub anchor: Option<Pos>,
     /// Earlier text and cursors, for Ctrl+Z; what Ctrl+Z took, for Ctrl+Y.
@@ -368,16 +388,72 @@ pub enum Saved {
     ChangedOnDisk,
 }
 
+/// One save of the editor's text, taken on the UI thread so the disk work runs off it.
+pub struct SaveJob {
+    path: PathBuf,
+    text: String,
+    /// The file as the editor last saw it; `None` overwrites whatever is there.
+    unless_changed_from: Option<u64>,
+}
+
+/// What a save did, and the fingerprint of the text it was given.
+pub type SaveOutcome = Result<(Saved, u64), String>;
+
+impl SaveJob {
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Writes the text, unless the file changed on disk since the editor saw it. The write
+    /// goes to a temporary file that replaces the real one, so a crash can't leave it half
+    /// written.
+    pub fn run(self) -> SaveOutcome {
+        let written = fingerprint_bytes(self.text.as_bytes());
+        if let Some(seen) = self.unless_changed_from
+            && let Ok(now) = std::fs::read(&self.path)
+            && fingerprint_bytes(&now) != seen
+        {
+            return Ok((Saved::ChangedOnDisk, written));
+        }
+        let name = self
+            .path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let tmp = self
+            .path
+            .with_file_name(format!(".{name}.{APP_COMMAND}-save"));
+        std::fs::write(&tmp, &self.text).map_err(|e| format!("couldn't save: {e}"))?;
+        if let Err(e) = std::fs::rename(&tmp, &self.path) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(format!("couldn't save: {e}"));
+        }
+        Ok((Saved::Done, written))
+    }
+}
+
 impl Edit {
+    const LARGEST_EDITABLE: u64 = 4 * 1024 * 1024;
+
     pub fn open(path: &Path) -> Result<Edit, String> {
-        let bytes = std::fs::read(path).map_err(|e| format!("can't read it: {e}"))?;
-        if bytes.len() > 4 * 1024 * 1024 || bytes.contains(&0) {
-            return Err(concat!(
+        let not_editable = || {
+            concat!(
                 "not a text file ",
                 env!("APP_COMMAND"),
                 " can edit (too big or binary); press e for your editor"
             )
-            .into());
+            .to_string()
+        };
+        // Asked before reading: a file far too big is turned away without being read through.
+        let size = std::fs::metadata(path)
+            .map_err(|e| format!("can't read it: {e}"))?
+            .len();
+        if size > Self::LARGEST_EDITABLE {
+            return Err(not_editable());
+        }
+        let bytes = std::fs::read(path).map_err(|e| format!("can't read it: {e}"))?;
+        if bytes.len() as u64 > Self::LARGEST_EDITABLE || bytes.contains(&0) {
+            return Err(not_editable());
         }
         let seen = fingerprint_bytes(&bytes);
         let text = String::from_utf8(bytes)
@@ -404,6 +480,7 @@ impl Edit {
             trailing_newline,
             seen,
             conflict: false,
+            saving: false,
             anchor: None,
             undo: Vec::new(),
             redo: Vec::new(),
@@ -411,41 +488,53 @@ impl Edit {
         })
     }
 
-    /// Save, unless the file changed on disk since it was opened (an agent edited it): then
-    /// nothing is written and `conflict` is set, so saving again overwrites on purpose. The
-    /// write goes to a temporary file that replaces the real one, so a crash can't leave
-    /// it half written.
-    pub fn save(&mut self) -> Result<Saved, String> {
-        if !self.conflict
-            && let Ok(now) = std::fs::read(&self.path)
-            && fingerprint_bytes(&now) != self.seen
-        {
-            self.conflict = true;
-            return Ok(Saved::ChangedOnDisk);
-        }
+    /// The text as it goes to disk, with the file's own line endings.
+    fn text(&self) -> String {
         let nl = if self.crlf { "\r\n" } else { "\n" };
         let mut text = self.lines.join(nl);
         if self.trailing_newline {
             text.push_str(nl);
         }
-        let name = self
-            .path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let tmp = self
-            .path
-            .with_file_name(format!(".{name}.{APP_COMMAND}-save"));
-        std::fs::write(&tmp, &text).map_err(|e| format!("couldn't save: {e}"))?;
-        if let Err(e) = std::fs::rename(&tmp, &self.path) {
-            let _ = std::fs::remove_file(&tmp);
-            return Err(format!("couldn't save: {e}"));
+        text
+    }
+
+    /// The save to run off the UI thread, or none while one is still being written. It does
+    /// not write when the file changed on disk since it was opened (an agent edited it), unless
+    /// a save already found that: saving again overwrites on purpose.
+    pub fn save_job(&mut self) -> Option<SaveJob> {
+        if self.saving {
+            return None;
         }
-        self.seen = fingerprint_bytes(text.as_bytes());
-        self.conflict = false;
-        self.dirty = false;
-        self.warned = false;
-        Ok(Saved::Done)
+        self.saving = true;
+        Some(SaveJob {
+            path: self.path.clone(),
+            text: self.text(),
+            unless_changed_from: (!self.conflict).then_some(self.seen),
+        })
+    }
+
+    /// Takes in what a save did. Text typed while it was written stays unsaved.
+    pub fn finish_save(&mut self, outcome: &SaveOutcome) {
+        self.saving = false;
+        match outcome {
+            Ok((Saved::ChangedOnDisk, _)) => self.conflict = true,
+            Ok((Saved::Done, written)) => {
+                self.seen = *written;
+                self.conflict = false;
+                if fingerprint_bytes(self.text().as_bytes()) == *written {
+                    self.dirty = false;
+                    self.warned = false;
+                }
+            }
+            Err(_) => {}
+        }
+    }
+
+    #[cfg(test)]
+    fn save(&mut self) -> Result<Saved, String> {
+        let outcome = self.save_job().expect("no save is running").run();
+        self.finish_save(&outcome);
+        outcome.map(|(saved, _)| saved)
     }
 
     fn len(&self, row: usize) -> usize {
@@ -730,6 +819,7 @@ impl FilesTree {
             git: HashMap::new(),
             editing: HashMap::new(),
             preview: None,
+            preview_wanted: None,
             recent: false,
             recent_list: None,
             loading: true,
@@ -1001,9 +1091,13 @@ impl FilesTree {
         self.shown_count()
     }
 
+    /// Points the preview at the selected row. A file's lines are not read here: the file can be
+    /// any size, and this runs on every move through the tree. They are asked for
+    /// (`preview_wanted`) and shown when they arrive.
     pub fn refresh_preview(&mut self) {
         let Some(n) = self.selected() else {
             self.preview = None;
+            self.preview_wanted = None;
             return;
         };
         if self.preview.as_ref().is_none_or(|(p, _)| *p != n.path) {
@@ -1016,6 +1110,7 @@ impl FilesTree {
                 .filter(|c| c.path.parent() == Some(n.path.as_path()))
                 .count();
             self.preview = Some((n.path.clone(), vec![format!("folder · {kids} items")]));
+            self.preview_wanted = None;
             return;
         }
         if self.preview.as_ref().is_some_and(|(p, _)| *p == n.path) {
@@ -1023,7 +1118,19 @@ impl FilesTree {
         }
         self.scroll = 0;
         self.drawn_cache = None;
-        self.preview = Some((n.path.clone(), super::files::preview(&n.path)));
+        self.preview = Some((n.path.clone(), Vec::new()));
+        self.preview_wanted = Some(n.path.clone());
+    }
+
+    /// The lines read for `path`, unless the selection moved on while they were read.
+    pub(super) fn preview_read(&mut self, path: &Path, lines: Vec<String>) -> bool {
+        let Some((_, text)) = self.preview.as_mut().filter(|(shown, _)| shown == path) else {
+            return false;
+        };
+        *text = lines;
+        self.drawn_cache = None;
+        self.code_cache = None;
+        true
     }
 }
 
@@ -1374,14 +1481,35 @@ mod tests {
             ("b.rs".to_string(), fingerprint(&dir, "b.rs")),
         ]
         .into();
-        assert_eq!(still_reviewed(&dir, &files, Some(&marks)).len(), 2);
+        let marked: HashSet<String> = marks.keys().cloned().collect();
+        let nothing_shown = HashSet::new();
+        let now = marked_fingerprints(&dir, &files, &marked);
+        assert_eq!(still_reviewed(&files, Some(&marks), &now, &nothing_shown).len(), 2);
         std::fs::write(dir.join("b.rs"), "two, edited by the agent").unwrap();
+        let now = marked_fingerprints(&dir, &files, &marked);
         assert_eq!(
-            still_reviewed(&dir, &files, Some(&marks)),
+            still_reviewed(&files, Some(&marks), &now, &nothing_shown),
             HashSet::from(["a.rs".to_string()]),
             "b changed since"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_file_marked_while_the_review_was_loading_keeps_its_mark() {
+        let f = |p: &str| Changed {
+            path: p.into(),
+            added: 1,
+            removed: 0,
+            untracked: false,
+        };
+        let files = vec![f("a.rs"), f("b.rs")];
+        let marks: HashMap<String, u64> = [("a.rs".to_string(), 1), ("b.rs".to_string(), 2)].into();
+        // Read before either was marked: nothing is known of them.
+        let now = HashMap::new();
+        let shown = HashSet::from(["a.rs".to_string()]);
+
+        assert_eq!(still_reviewed(&files, Some(&marks), &now, &shown), shown);
     }
     use super::*;
     use crate::client::tasks::{Changed, Review, Stage, TaskRow};

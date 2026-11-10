@@ -29,6 +29,16 @@ describe('typed text', () => {
     expect(result.current).toBe('Going well, thanks.')
   })
 
+  it('runs no timer once it has caught up, and starts one again when more arrives', () => {
+    const { result, rerender } = renderHook(({ text }) => useTypedText(text, true), { initialProps: { text: 'Hello' } })
+    expect(vi.getTimerCount()).toBe(0)
+    rerender({ text: 'Hello there' })
+    expect(vi.getTimerCount()).toBe(1)
+    act(() => { vi.advanceTimersByTime(2000) })
+    expect(result.current).toBe('Hello there')
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('shows everything at once when it is off', () => {
     const { result, rerender } = renderHook(({ text }) => useTypedText(text, false), { initialProps: { text: 'a' } })
     rerender({ text: 'a much longer reply' })

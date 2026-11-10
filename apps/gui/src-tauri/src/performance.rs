@@ -46,8 +46,16 @@ pub struct ProcessSample {
     pub terminal_frames_sent: u64,
 }
 
+/// Reading the process table takes a while and a plain command runs on the window's own thread,
+/// where it would hold up every key and frame once a second while the figures show.
 #[tauri::command]
-pub fn performance_sample(app: tauri::AppHandle) -> Result<ProcessSample, String> {
+pub async fn performance_sample(app: tauri::AppHandle) -> Result<ProcessSample, String> {
+    tauri::async_runtime::spawn_blocking(move || sample(&app))
+        .await
+        .map_err(|error| format!("The process table could not be read: {error}"))?
+}
+
+fn sample(app: &tauri::AppHandle) -> Result<ProcessSample, String> {
     let stats = app.state::<ProcessStats>();
     let mut system = stats
         .0

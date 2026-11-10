@@ -92,6 +92,9 @@ pub struct SavedPane {
     /// Follow-ups that were waiting for its turn to end.
     #[serde(default)]
     pub queue: Vec<String>,
+    /// A message that was waiting for the agent starting here to take input.
+    #[serde(default)]
+    pub held_message: Option<String>,
     /// Child activity records survive daemon restarts and completed turns.
     #[serde(default)]
     pub subagent_activity: Vec<SubagentActivity>,
@@ -356,9 +359,12 @@ pub fn forget_outputs() -> std::io::Result<()> {
 /// restarts (an update, a reboot): one file per pane, named by its id.
 pub fn output_dir() -> PathBuf {
     if cfg!(test) {
+        // One folder per test (each runs on a thread of its own): a test that clears the saved
+        // output must not take away what another test saved a moment ago.
         return std::env::temp_dir().join(format!(
-            concat!(env!("APP_COMMAND"), "-test-output-{}"),
-            std::process::id()
+            concat!(env!("APP_COMMAND"), "-test-output-{}-{:?}"),
+            std::process::id(),
+            std::thread::current().id()
         ));
     }
     let label =

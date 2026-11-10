@@ -390,10 +390,11 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   (the workspace card drops its own fill). A pane that is added, closed or resized takes its room at once, with no easing:
   easing a split made the terminal re-fit every frame and its text jumped. A terminal pane, header included, is one
   surface (`--main`), with no band where the header ends.
-- **Close ends the session, asking first, with Undo.** The pane's **×**, the pane menu's Close session, a row's Close
-  session and Ctrl+Shift+W (⌘W) first open the confirm dialog (`ConfirmCloseDialog`: "Close name?", Cancel and a red
-  Close, or "Stop claude" for a running agent; Enter confirms, Esc cancels) unless every session in question has already
-  ended. Confirming sends the daemon `CloseSession`: the session leaves the list at once and
+- **Close ends the session, asking first when there is work to lose, with Undo.** The pane's **×**, the pane menu's
+  Close session, a row's Close session and Ctrl+Shift+W (⌘W) first open the confirm dialog (`ConfirmCloseDialog`:
+  "Close name?", Cancel and a red Close, or "Stop claude" for a running agent; Enter confirms, Esc cancels) unless every
+  session in question has already ended or is a shell with nothing running in it, which Undo brings back as it was.
+  Closing sends the daemon `CloseSession`: the session leaves the list at once and
   its process runs on for 6 seconds. A toast "Closed name" with **Undo** stays for the same 6 seconds;
   the button or ⌘Z (Ctrl+Shift+Z elsewhere; passed to the terminal when nothing was just closed, and left to a
   text field inside one) sends `UndoClose` and puts the pane back in its place. A chat session has no terminal to
@@ -504,7 +505,8 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   optional `:line`, opens it in Inspect › Files at that line. A name that is not a file in the
   pane's repository says so in a toast.
 - **Find (⌘F).** A bar over the top right of the panes. **Pane** looks in the focused pane's
-  scrollback (Enter next, Shift+Enter previous); **All sessions** lists lines from every session's
+  scrollback (Enter next, Shift+Enter previous), or, when the pane shows its chat, in the conversation:
+  the row that holds the text is scrolled to and marked, starting from the newest; **All sessions** lists lines from every session's
   recent output, and a click shows that session.
 - **Worktrees (⌘⇧N).** The New worktree dialog names a branch and what to start it from (an
   existing branch is checked out instead), then opens a session in the new folder in a new tab. A
@@ -522,6 +524,10 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   that has not attached after 300 ms shows a 24 px strip under the pane header (spinner, **Catching up
   from <machine> · N ms**, a 2 px progress line on its top edge) that sits in the flow, never over the
   terminal, and goes when the stream is live. A real failure keeps its banner; it is not a loading state.
+  The two tabs shown last stay mounted behind the one showing (`model/keptTabs.ts`, at most eight panes
+  between them, since each terminal holds a GPU context): the same box, not painted, `inert` and hidden from
+  screen readers, their terminals paused and their chats unmounted, so going back builds no terminal and a
+  hidden chat reads nothing and answers no key. A paused terminal catches up from the kept screen when shown.
 - **Sidebar footer and updates.** The footer's left slot shows the version, or what an update needs
   from you: a pill that opens a card upward with the matching actions. An update waiting to be downloaded or
   installed is a glass button, a sheen sweeping across it, a tile with an arrow falling into a tray, **Update** and the
@@ -543,7 +549,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   was unreachable send nothing. The in-window notification card follows the state: green for done, amber
   for needs you, red for an error. Its position (any of the six corners and edges) is set in Settings ›
   Notifications, which can show a test card.
-- **Interrupted agents.** When the daemon restarted while an agent was mid-turn in a desktop session,
+- **Interrupted agents.** When the daemon restarted while an agent was mid-turn,
   a banner above the panes says which agent and shows the command that brings it back
   (`codex resume --last`). **Resume** types it into that session; **Dismiss** hides the banner. Nothing
   resumes on its own.

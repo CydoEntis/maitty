@@ -371,6 +371,7 @@ struct Daemon {
     last_saved: String,
     /// What each surface's attached clients last received (see `publish_state`).
     sent_state: HashMap<Surface, SentState>,
+    conversation_news: conversation::news::News,
     /// What was last noted for whoever replaces this server (see `restart`).
     last_activity: Option<crate::restart::Activity>,
     /// Where check output tails are kept.
@@ -921,6 +922,10 @@ impl Daemon {
             Command::QueueFollowUp { term, .. } | Command::ClearQueue { term } => {
                 self.may(client, Grant::Write, Some(*term))
             }
+            Command::SendWhenReady { term, .. } => {
+                self.may_use_terminal(client, *term)?;
+                self.may(client, Grant::Write, Some(*term))
+            }
             Command::RerunCheck { term, .. } => self.may(client, Grant::Write, Some(*term)),
             // The pane's own claim never counts, so a pane may not accept its own failure.
             Command::OverrideCheck { term, .. } | Command::UndoOverride { term, .. } => {
@@ -1061,6 +1066,7 @@ impl Daemon {
             last_output_save: Instant::now(),
             last_saved: String::new(),
             sent_state: HashMap::new(),
+            conversation_news: conversation::news::News::default(),
             last_activity: None,
             check_dir: persist::check_output_dir(),
             resolver: check_source::resolve,
@@ -1167,6 +1173,7 @@ impl Daemon {
                     }
                 }
             }
+            self.publish_conversation_news();
             if self.dirty {
                 self.dirty = false;
                 self.sync_scan_roots();

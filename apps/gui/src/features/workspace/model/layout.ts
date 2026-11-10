@@ -113,6 +113,9 @@ function compactColumns(panes: PaneSlot[]): PaneSlot[] {
 export function focusPane(layout: Layout, paneId: string): Layout {
   const tab = layout.arrangements.find((candidate) => candidate.panes.some((pane) => pane.id === paneId))
   if (!tab) return layout
+  // A click on the pane that already has the focus changes nothing, and the same layout back means
+  // nothing is drawn again or saved.
+  if (layout.activeId === tab.id && tab.focus === paneId && (tab.max === null || tab.max === paneId)) return layout
   // In a maximized tab the focused pane is the one on screen, so focus and maximize move together.
   return { ...replaceArrangement(layout, { ...tab, focus: paneId, max: tab.max === null ? null : paneId }), activeId: tab.id }
 }

@@ -35,6 +35,8 @@ pub struct FindView {
     pub hits: Option<Result<Vec<GrepHit>, String>>,
     pub seq: u64,
     pub preview: Vec<String>,
+    /// What `preview` shows, or is being read to show.
+    pub preview_of: Option<Target>,
 }
 
 /// What the selection points at: (relative path, line).
@@ -55,6 +57,7 @@ impl FindView {
             hits: None,
             seq: 0,
             preview: Vec::new(),
+            preview_of: None,
         }
     }
 
@@ -101,22 +104,42 @@ impl FindView {
         self.targets().into_iter().nth(self.sel)
     }
 
-    /// The selected file's first lines (around the hit), for the preview.
-    pub fn refresh_preview(&mut self) {
-        self.preview.clear();
-        let Some(t) = self.selected() else { return };
-        let Ok(text) = std::fs::read_to_string(self.dir.join(&t.path)) else {
-            return;
-        };
-        let from = t.line.map(|l| (l as usize).saturating_sub(6)).unwrap_or(0);
-        self.preview = text
-            .lines()
-            .skip(from)
-            .take(60)
-            .enumerate()
-            .map(|(i, l)| format!("{:>5}  {}", from + i + 1, l.replace('\t', "    ")))
-            .collect();
+    /// The file the preview should now show, when that is not the one it shows. The last
+    /// preview stays up until the new one is read, so moving down a list does not flicker.
+    pub fn preview_wanted(&mut self) -> Option<(PathBuf, Target)> {
+        let wanted = self.selected();
+        if wanted == self.preview_of {
+            return None;
+        }
+        self.preview_of = wanted.clone();
+        if wanted.is_none() {
+            self.preview.clear();
+        }
+        wanted.map(|target| (self.dir.clone(), target))
     }
+}
+
+const PREVIEW_LINES: usize = 60;
+const PREVIEW_LINES_BEFORE_A_HIT: usize = 6;
+
+/// The file's first lines, or the ones around the hit. Reads no further than the last line shown.
+pub fn preview_lines(dir: &Path, target: &Target) -> Vec<String> {
+    use std::io::BufRead;
+    let Ok(file) = std::fs::File::open(dir.join(&target.path)) else {
+        return Vec::new();
+    };
+    let from = target
+        .line
+        .map(|l| (l as usize).saturating_sub(PREVIEW_LINES_BEFORE_A_HIT))
+        .unwrap_or(0);
+    std::io::BufReader::new(file)
+        .lines()
+        .map_while(Result::ok)
+        .skip(from)
+        .take(PREVIEW_LINES)
+        .enumerate()
+        .map(|(i, l)| format!("{:>5}  {}", from + i + 1, l.replace('\t', "    ")))
+        .collect()
 }
 
 /// Every file under `dir` (respecting .gitignore), relative, up to 50k.
@@ -199,6 +222,16 @@ impl App {
             .unwrap_or_else(|| self.here_dir())
     }
 
+    /// Reads the preview for the row the selection moved to, off the UI thread: the file can
+    /// be any size, and this runs on every key typed into the finder.
+    pub(super) fn load_find_preview(&mut self, wanted: Option<(PathBuf, Target)>) {
+        let Some((dir, target)) = wanted else { return };
+        self.spawn_bg(move || {
+            let lines = preview_lines(&dir, &target);
+            Bg::FindPreview(dir, target, lines)
+        });
+    }
+
     fn find_search(&mut self, v: &mut FindView) {
         v.seq += 1;
         v.hits = None;
@@ -272,8 +305,9 @@ impl App {
             }
             _ => {}
         }
-        v.refresh_preview();
+        let wanted = v.preview_wanted();
         self.mode = Mode::Find(Box::new(v));
+        self.load_find_preview(wanted);
     }
 }
 
@@ -486,6 +520,46 @@ pub(super) fn draw_find(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, v: 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_preview_shows_the_lines_around_a_hit_and_the_top_of_a_file_without_one() {
+        let dir = std::env::temp_dir().join(format!("find-preview-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let text: String = (1..=200).map(|n| format!("line {n}\n")).collect();
+        std::fs::write(dir.join("long.txt"), text).unwrap();
+        let target = |line| Target {
+            path: "long.txt".into(),
+            line,
+        };
+
+        let top = preview_lines(&dir, &target(None));
+        let hit = preview_lines(&dir, &target(Some(100)));
+        std::fs::remove_dir_all(&dir).unwrap();
+
+        assert_eq!(top.len(), PREVIEW_LINES);
+        assert_eq!(top[0], "    1  line 1");
+        assert_eq!(hit[0], "   95  line 95");
+        assert!(hit.contains(&"  100  line 100".to_string()));
+    }
+
+    #[test]
+    fn a_preview_is_asked_for_once_per_row_and_the_last_one_stays_until_it_arrives() {
+        let mut v = FindView::new(PathBuf::from("."), 0);
+        v.files = Some(vec!["a.rs".into(), "b.rs".into()]);
+        let first = v.preview_wanted();
+        assert_eq!(first.map(|(_, t)| t.path), Some("a.rs".to_string()));
+        assert_eq!(v.preview_wanted(), None, "the same row is not read twice");
+
+        v.preview = vec!["    1  fn a() {}".into()];
+        v.sel = 1;
+        let second = v.preview_wanted();
+        assert_eq!(second.map(|(_, t)| t.path), Some("b.rs".to_string()));
+        assert!(!v.preview.is_empty(), "the old preview stays while the new one is read");
+
+        v.query = "no such file".into();
+        assert_eq!(v.preview_wanted(), None);
+        assert!(v.preview.is_empty(), "nothing selected, nothing previewed");
+    }
 
     #[test]
     fn grep_output_and_fuzzy_files() {

@@ -345,14 +345,25 @@ impl Machine {
     /// `--yes`: the person answers its question there, which is the consent. `--hold` keeps the
     /// result on screen until Enter, because the popup closes the moment the command ends.
     pub fn update_command(&self, program: &str) -> Result<String> {
+        self.update_popup(program, &[])
+    }
+
+    /// The same popup with `--restart`: for a machine whose app is already current but whose
+    /// daemon still runs the old version, the one step left is restarting that daemon.
+    pub fn restart_command(&self, program: &str) -> Result<String> {
+        self.update_popup(program, &["--restart"])
+    }
+
+    fn update_popup(&self, program: &str, extra: &[&str]) -> Result<String> {
         self.ssh_route()?;
-        let argv = [
+        let mut argv = vec![
             program.to_string(),
             "machine".to_string(),
             "update".to_string(),
             self.name.clone(),
-            "--hold".to_string(),
         ];
+        argv.extend(extra.iter().map(|flag| (*flag).to_string()));
+        argv.push("--hold".to_string());
         Ok(ssh_command::popup_command(&argv)?)
     }
 

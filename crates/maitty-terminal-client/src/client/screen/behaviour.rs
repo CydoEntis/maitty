@@ -2141,9 +2141,10 @@ impl App {
                 if let Mode::Find(v) = &mut self.mode {
                     let again = v.sel == i;
                     v.sel = i;
-                    v.refresh_preview();
-                    if again || double {
-                        let v = (**v).clone();
+                    let wanted = v.preview_wanted();
+                    let entered = (again || double).then(|| (**v).clone());
+                    self.load_find_preview(wanted);
+                    if let Some(v) = entered {
                         self.on_find_key(v, &KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
                     }
                 }

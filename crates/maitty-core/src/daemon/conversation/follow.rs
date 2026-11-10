@@ -80,6 +80,16 @@ impl Followed {
         }
     }
 
+    /// What differs when a read of this conversation would answer differently.
+    pub fn changes(&self) -> (u64, u64, bool, &crate::conversation::SessionMeta) {
+        (
+            self.generation,
+            self.history.revision,
+            self.error.is_some(),
+            &self.meta,
+        )
+    }
+
     pub fn error(&self) -> Option<String> {
         self.error.clone()
     }

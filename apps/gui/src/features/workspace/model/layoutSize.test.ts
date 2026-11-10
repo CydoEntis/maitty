@@ -3,11 +3,11 @@ import { DENSITY_SCALE, ICON_SCALE, sizeVariables } from './layoutSize'
 
 describe('window size variables', () => {
   it('turns the density, text sizes and sidebar width into CSS variables', () => {
-    expect(sizeVariables({ density: 'spacious', sidebarTextSize: 15, tabTextSize: 12, iconSize: 'small' }, 300)).toEqual({
+    expect(sizeVariables({ density: 'spacious', sidebarTextSize: 27, tabTextSize: 13.5, iconSize: 'small' }, 300)).toEqual({
       '--pad': String(DENSITY_SCALE.spacious),
       '--sidebar-w': '300px',
-      '--sidebar-fs': '15px',
-      '--tab-fs': '12px',
+      '--sidebar-text': '2',
+      '--tab-text': '1',
       '--icon-scale': String(ICON_SCALE.small),
     })
   })

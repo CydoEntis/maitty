@@ -322,10 +322,42 @@ impl Finder {
             sel: 0,
             dir: PathBuf::new(),
             list: Vec::new(),
+            here_repo: false,
+            wanted: None,
             for_setting: None,
         };
         f.refresh();
         f
+    }
+
+    /// The subfolders of `dir` as (name, is a git repo), and whether `dir` is one. Reads the
+    /// disk: run it off the UI thread.
+    pub(in crate::client) fn list_folders(dir: &Path) -> (Vec<(String, bool)>, bool) {
+        let mut list: Vec<(String, bool)> = std::fs::read_dir(dir)
+            .map(|rd| {
+                rd.flatten()
+                    .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+                    .map(|e| e.file_name().to_string_lossy().into_owned())
+                    .filter(|n| !n.starts_with('.') && !n.starts_with('$'))
+                    .map(|n| {
+                        let repo = dir.join(&n).join(".git").exists();
+                        (n, repo)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        list.sort_by_key(|(n, _)| n.to_lowercase());
+        (list, dir.join(".git").exists())
+    }
+
+    /// The listing read for `dir`, unless another folder was typed while it was read.
+    pub(in crate::client) fn listed(&mut self, dir: &Path, list: Vec<(String, bool)>, repo: bool) -> bool {
+        if self.dir != dir {
+            return false;
+        }
+        (self.list, self.here_repo) = (list, repo);
+        self.sel = self.sel.min(self.rows().len().saturating_sub(1));
+        true
     }
 
     /// The typed text as (folder, the part being typed in it).
@@ -352,28 +384,17 @@ impl Finder {
         (normalize(Path::new(dir)), part)
     }
 
-    /// Re-list the folder being typed in.
+    /// Follow the text to the folder being typed in. A new folder is not listed here: this
+    /// runs on every key and the folder can be large or on a slow disk, so it is asked for
+    /// (`wanted`) and its subfolders show when they arrive.
     pub fn refresh(&mut self) {
-        let (dir, part) = self.split();
+        let (dir, _) = self.split();
         if dir != self.dir {
-            self.dir = dir.clone();
-            let mut list: Vec<(String, bool)> = std::fs::read_dir(&dir)
-                .map(|rd| {
-                    rd.flatten()
-                        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
-                        .map(|e| e.file_name().to_string_lossy().into_owned())
-                        .filter(|n| !n.starts_with('.') && !n.starts_with('$'))
-                        .map(|n| {
-                            let repo = dir.join(&n).join(".git").exists();
-                            (n, repo)
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            list.sort_by_key(|(n, _)| n.to_lowercase());
-            self.list = list;
+            self.list.clear();
+            self.here_repo = false;
+            self.wanted = Some(dir.clone());
+            self.dir = dir;
         }
-        let _ = part;
         self.sel = self.sel.min(self.rows().len().saturating_sub(1));
     }
 
@@ -392,7 +413,7 @@ impl Finder {
         };
         let mut out = Vec::new();
         if part.is_empty() {
-            out.push((".".to_string(), dir.clone(), dir.join(".git").exists()));
+            out.push((".".to_string(), dir.clone(), self.here_repo && dir == self.dir));
         }
         if dir.parent().is_some() && (part.is_empty() || "..".starts_with(&part)) {
             out.push((

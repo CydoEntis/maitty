@@ -121,7 +121,7 @@ pub struct Operation {
 
 /// How a conversation's agent is set up, as its own file says: for Claude, the permission mode and the model
 /// answering. `None` for a field the file has not said (yet); never guessed.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SessionMeta {
     #[serde(default)]
     pub mode: Option<String>,

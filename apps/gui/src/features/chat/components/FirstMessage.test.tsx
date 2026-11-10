@@ -3,9 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FAKE_CONVERSATION, FakeDaemonHistory } from '../fakeDaemonHistory'
 import { forgetComposers } from '../composerStore'
-import { carryDraft, forgetFirstMessages, heldFirstMessage, holdFirstMessage } from '../firstMessage'
+import { carryDraft, entrustFirstMessage, forgetFirstMessages, heldFirstMessage, holdFirstMessage } from '../firstMessage'
 import { PASTE_END, PASTE_START } from '../useChatComposer'
-import { ACTIVE_POLL_MS, forgetChatFeeds } from '../useChatFeed'
+import { ACTIVE_POLL_MS, IDLE_POLL_MS, forgetChatFeeds } from '../useChatFeed'
+import { chatFindOf } from '../chatSearch'
 import { ChatSession } from './ChatSession'
 
 const fake = vi.hoisted(() => ({ current: null as null | { read: (cursor: never) => Promise<unknown> } }))
@@ -37,7 +38,7 @@ async function settle(ms = 0) {
   await act(async () => { await vi.advanceTimersByTimeAsync(ms) })
 }
 
-function open(status: 'Idle' | 'Working') {
+function open(status: 'Idle' | 'Working' | 'None') {
   const daemon = new FakeDaemonHistory()
   daemon.status = status
   fake.current = daemon
@@ -78,6 +79,106 @@ describe('a message typed while the agent was starting', () => {
     await settle()
 
     expect(screen.getByRole('textbox', { name: 'Message claude' })).toHaveValue('half a thou')
+  })
+})
+
+describe('a first message the daemon holds', () => {
+  it('is typed in by the daemon and not by the window, and its stand-in goes once the history has it', async () => {
+    holdFirstMessage('s1', 'hello there')
+    entrustFirstMessage('s1', 'hello there', () => Promise.resolve())
+    const { daemon, typeInto } = open('Idle')
+    await settle()
+    await settle(ACTIVE_POLL_MS)
+
+    expect(typeInto).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Sending')).toHaveTextContent('hello there')
+
+    daemon.upsert(daemon.message('t1', 'u1', 'User', 'hello there'))
+    await settle(IDLE_POLL_MS + 1)
+
+    expect(heldFirstMessage('s1')).toBeNull()
+    expect(typeInto).not.toHaveBeenCalled()
+  })
+
+  it('is sent by the window when the daemon does not take it', async () => {
+    holdFirstMessage('s1', 'hello there')
+    entrustFirstMessage('s1', 'hello there', () => Promise.reject(new Error('no pane 1')))
+    const { typeInto } = open('Idle')
+    await settle()
+    await settle(ACTIVE_POLL_MS)
+
+    expect(typeInto).toHaveBeenCalledExactlyOnceWith(`${PASTE_START}hello there${PASTE_END}\r`)
+    expect(heldFirstMessage('s1')).toBeNull()
+  })
+
+  it('is sent by the window for a session the daemon cannot type into', async () => {
+    holdFirstMessage('s1', 'hello there')
+    entrustFirstMessage('s1', 'hello there', () => { throw new Error('Only a terminal session holds a message for its agent') })
+    const { typeInto } = open('Idle')
+    await settle()
+    await settle(ACTIVE_POLL_MS)
+
+    expect(typeInto).toHaveBeenCalledOnce()
+  })
+})
+
+describe('a chat whose agent has not said what it is doing yet', () => {
+  it('takes a message at once, holds it, and types it in when the agent is ready', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const { daemon, typeInto } = open('None')
+    await settle()
+    const box = screen.getByRole('textbox', { name: 'Message claude' })
+    expect(box).not.toBeDisabled()
+
+    await user.type(box, 'start on the parser{Enter}')
+    expect(typeInto).not.toHaveBeenCalled()
+    expect(screen.getByRole('list', { name: 'Queued messages' })).toHaveTextContent('start on the parser')
+
+    daemon.status = 'Idle'
+    await settle(IDLE_POLL_MS + 1)
+    await settle(10)
+    expect(typeInto).toHaveBeenCalledExactlyOnceWith(`${PASTE_START}start on the parser${PASTE_END}\r`)
+  })
+
+  it('puts the cursor in the message box when nothing else has it', async () => {
+    open('Idle')
+    await settle()
+
+    expect(screen.getByRole('textbox', { name: 'Message claude' })).toHaveFocus()
+  })
+
+  it('leaves the cursor where it is when something else has it', async () => {
+    const other = document.createElement('input')
+    document.body.append(other)
+    other.focus()
+    open('Idle')
+    await settle()
+
+    expect(other).toHaveFocus()
+    other.remove()
+  })
+})
+
+describe('finding text in the chat a session shows', () => {
+  it('marks the row that holds the text, and unmarks it when the search is cleared', async () => {
+    const daemon = new FakeDaemonHistory()
+    daemon.upsert(daemon.message('t1', 'u1', 'User', 'look at the parser'))
+    daemon.upsert(daemon.message('t1', 'a1', 'Assistant', 'It drops the last row.'))
+    fake.current = daemon
+    render(<ChatSession link={LINK} agent="claude" online sessionId="s1" />)
+    await settle()
+    const find = chatFindOf('s1')
+
+    let hit = false
+    act(() => { hit = find?.find('PARSER', 'next') ?? false })
+    expect(hit).toBe(true)
+    expect(document.querySelector('[data-found="true"]')).toHaveTextContent('look at the parser')
+
+    act(() => { hit = find?.find('lexer', 'next') ?? true })
+    expect(hit).toBe(false)
+
+    act(() => { find?.clear() })
+    expect(document.querySelector('[data-found="true"]')).toBeNull()
   })
 })
 

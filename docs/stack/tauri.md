@@ -85,6 +85,16 @@ daemon or restart a remote service from the GUI.
 The target OS floor is the existing project support floor; do not raise it
 without updating this section and the release workflow.
 
+Tray item (`tray.rs`, Tauri's `tray-icon` feature): one item in the Windows tray or the macOS
+menu bar, with the system's own menu. The window says which sessions to list
+(`set_tray_sessions`: the ones that need you, then the finished ones, by id and name); the host
+only lists them, at most ten a group, each name cut to one short line and an id that is not a
+session id left out. Choosing one shows the window and tells it the id (`tray-open-session`); a
+left click on the item shows the window. The host decides no status and sends nothing to a
+session. The app runs without the item when the system refuses it. Linux builds it too (the
+`libayatana-appindicator3` package the workflows already install) but reports no click on the
+item there, only the menu; it has been tried on Windows only.
+
 Machines (ADR 0007): the host reads the `[[machines]]` list of `config.local.toml` once at start
 through `maitty-machines` (`machines.rs`, command `list_machines`); a hand edit applies on the next
 start. The window is told names only, plus the error when the file is bad, and shows it as a toast

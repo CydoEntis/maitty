@@ -237,6 +237,8 @@ pub struct Term {
     pub restore_unseen: bool,
     /// Typed while it was asleep: delivered once it's back up (or after a few seconds).
     pub pending_input: Option<(Vec<u8>, Instant)>,
+    /// A message for the agent starting here, typed in once it takes input (`SendWhenReady`).
+    pub held_message: Option<HeldMessage>,
     /// Its branch has had commits that were nowhere else: once they are somewhere else,
     /// its work is merged (a branch that never had any is merely new).
     /// The account it runs as, if its command says one (`<app> account <name> -- …`).
@@ -604,6 +606,73 @@ fn remove_remote_route(cmd: &mut CommandBuilder) {
     }
 }
 
+/// How long an agent with no hooks is given to finish starting before a held message goes in.
+/// One with hooks says when it is up, and is not kept waiting.
+const UNHOOKED_AGENT_STARTS_WITHIN: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// A message held for the agent that is starting in a pane.
+pub struct HeldMessage {
+    pub text: String,
+    /// When the agent was first seen running here; the pane may still be a shell when the
+    /// message arrives.
+    agent_seen: Option<Instant>,
+}
+
+impl HeldMessage {
+    pub fn new(text: &str) -> HeldMessage {
+        HeldMessage {
+            text: text.to_string(),
+            agent_seen: None,
+        }
+    }
+
+    /// Whether the agent takes input now. Never while it works or asks something: a message
+    /// typed into a start-up question would answer it.
+    pub fn is_due(&mut self, agent_here: bool, at_rest: bool, hooked: bool, now: Instant) -> bool {
+        if !agent_here {
+            self.agent_seen = None;
+            return false;
+        }
+        let seen = *self.agent_seen.get_or_insert(now);
+        at_rest && (hooked || now.duration_since(seen) >= UNHOOKED_AGENT_STARTS_WITHIN)
+    }
+}
+
+#[cfg(test)]
+mod held_message_tests {
+    use super::{HeldMessage, UNHOOKED_AGENT_STARTS_WITHIN};
+    use std::time::Instant;
+
+    #[test]
+    fn a_held_message_waits_for_the_agent_to_be_running_and_at_rest() {
+        let now = Instant::now();
+        let mut held = HeldMessage::new("fix the parser");
+        assert!(!held.is_due(false, true, true, now), "still a shell");
+        assert!(!held.is_due(true, false, true, now), "working, or asking something");
+        assert!(held.is_due(true, true, true, now), "its hooks say it is up");
+    }
+
+    #[test]
+    fn an_agent_without_hooks_is_given_time_to_start_first() {
+        let start = Instant::now();
+        let mut held = HeldMessage::new("fix the parser");
+        assert!(!held.is_due(true, true, false, start));
+        let later = start + UNHOOKED_AGENT_STARTS_WITHIN;
+        assert!(!held.is_due(true, false, false, later), "never into a question");
+        assert!(held.is_due(true, true, false, later));
+    }
+
+    #[test]
+    fn the_wait_starts_again_when_the_agent_went_away_and_came_back() {
+        let start = Instant::now();
+        let mut held = HeldMessage::new("fix the parser");
+        assert!(!held.is_due(true, true, false, start));
+        let later = start + UNHOOKED_AGENT_STARTS_WITHIN;
+        assert!(!held.is_due(false, true, false, later));
+        assert!(!held.is_due(true, true, false, later), "seen again only now");
+    }
+}
+
 impl Term {
     /// The folder it works in, by name: its checkout's, else where its shell is.
     pub fn place(&self) -> String {
@@ -879,6 +948,7 @@ impl Term {
             token,
             restore_unseen: false,
             pending_input: None,
+            held_message: None,
             account: None,
             conversation_id: None,
             queue: Default::default(),
