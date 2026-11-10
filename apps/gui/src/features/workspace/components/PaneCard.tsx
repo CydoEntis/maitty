@@ -57,6 +57,7 @@ export type PaneCardProps = {
   /** Clears a shell's screen, as Ctrl+L does in it. */
   onClear: () => void
   onCopyPath: () => void
+  onRename: () => void
   /** Starts a new shell in an ended pane's folder, in its place. */
   onRestart: (paneId: string) => void
 }
@@ -101,22 +102,23 @@ export function PaneCard(props: PaneCardProps) {
   const menuItems: MenuEntry[] = [
     { label: 'Split right', hint: shortcutText('split-right'), disabled: full, run: () => { props.onSplit(pane.id, 'right') } },
     { label: 'Split down', hint: shortcutText('split-down'), disabled: full, run: () => { props.onSplit(pane.id, 'down') } },
-    { label: maximized ? 'Restore layout' : 'Maximize pane', disabled: !multi && !maximized, run: () => { props.onToggleMaximize(pane.id) } },
+    ...(props.onPanel ? [{ label: 'Changes and files', hint: shortcutText('inspect'), run: props.onPanel }] : []),
+    ...(props.terminalDock === null ? [] : [
+      props.terminalDock === 'panel'
+        ? { label: 'Pin terminals under chat', run: () => { props.onDock('under') } }
+        : { label: 'Move terminals to side panel', run: () => { props.onDock('panel') } },
+    ]),
     'separator',
+    { label: 'Rename…', hint: 'F2', run: props.onRename },
+    { label: maximized ? 'Restore layout' : 'Maximize pane', disabled: !multi && !maximized, run: () => { props.onToggleMaximize(pane.id) } },
     ...(props.onViewChange
       ? [{ label: view === 'chat' ? 'Show terminal' : 'Show chat', hint: shortcutText('chat-toggle'), run: () => { props.onViewChange?.(view === 'chat' ? 'terminal' : 'chat') } }]
       : []),
     ...(props.terminalDock === null
       ? [{ label: 'Clear', hint: 'Ctrl+L', disabled: !props.online || ended, run: props.onClear }, { label: 'Copy folder path', run: props.onCopyPath }]
-      : [
-          { label: 'New terminal', disabled: !props.online, run: props.onNewTerminal },
-          props.terminalDock === 'panel'
-            ? { label: 'Pin terminals under chat', run: () => { props.onDock('under') } }
-            : { label: 'Move terminals to side panel', run: () => { props.onDock('panel') } },
-        ]),
-    ...(props.onPanel ? [{ label: 'Changes and files', hint: shortcutText('inspect'), run: props.onPanel }] : []),
-    'separator',
-    { label: 'Close pane', danger: true, run: () => { props.onClose(pane.id) } },
+      : [{ label: 'New terminal', disabled: !props.online, run: props.onNewTerminal }]),
+    // The only pane has nothing to close but its session, which the sidebar's row does.
+    ...(multi ? ['separator' as const, { label: 'Close pane', danger: true, run: () => { props.onClose(pane.id) } }] : []),
   ]
 
   return (
