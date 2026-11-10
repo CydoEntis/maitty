@@ -1,6 +1,8 @@
 //! Saving and rebuilding sessions; recovering agents left asleep by older versions.
 
 use super::*;
+use std::collections::HashSet;
+use std::path::Path;
 
 /// What makes a pane the same session to you when its process is replaced (resumed after
 /// older-version sleep, moved to another folder): who it is and what you called it.
@@ -369,10 +371,43 @@ impl Daemon {
     /// The command that brings a saved pane back: an agent's resume command, the pane's
     /// original command, or nothing (a shell). An agent's own start command is never run
     /// again: it carries the task, and the agent would start that task over.
+    #[cfg(test)]
     pub(super) fn restore_cmd(&self, p: &persist::SavedPane) -> Option<String> {
         if p.conversation_id.is_some() {
             return None;
         }
+        self.agent_resume_cmd(p).or_else(|| self.saved_cmd(p))
+    }
+
+    /// `restore_cmd` for one pane of a restore that brings back several. A conversation comes
+    /// back in one pane: two agents on one conversation write over each other's history. Two
+    /// panes with the same session, or two of an agent with no session in one folder (each
+    /// would resume "the last one"), would both resume it, so only the first does and the
+    /// rest come back as plain shells that no longer claim to be that agent.
+    pub(super) fn restore_cmd_once(
+        &self,
+        p: &mut persist::SavedPane,
+        cwd: &Path,
+        resuming: &mut HashSet<(PathBuf, String)>,
+    ) -> Option<String> {
+        if p.conversation_id.is_some() {
+            return None;
+        }
+        let Some(resume) = self.agent_resume_cmd(p) else {
+            return self.saved_cmd(p);
+        };
+        if resuming.insert((cwd.to_path_buf(), resume.clone())) {
+            return Some(resume);
+        }
+        tracing::warn!(
+            "restore: another pane in {} already resumes this conversation; this one is a shell",
+            cwd.display()
+        );
+        (p.agent, p.session, p.cmd) = (None, None, None);
+        None
+    }
+
+    fn agent_resume_cmd(&self, p: &persist::SavedPane) -> Option<String> {
         if self.cfg.restore.agents
             && let Some(def) = p
                 .agent
@@ -392,6 +427,10 @@ impl Daemon {
                 return Some(as_account(tpl.clone()));
             }
         }
+        None
+    }
+
+    fn saved_cmd(&self, p: &persist::SavedPane) -> Option<String> {
         let starts_an_agent = p.agent.is_some()
             || p.cmd
                 .as_deref()
@@ -463,6 +502,7 @@ impl Daemon {
         let mut ids: HashMap<TermId, TermId> = HashMap::new();
         let mut started: Vec<(TermId, TermId)> = Vec::new();
         let mut owned: Vec<(TermId, TermId)> = Vec::new();
+        let mut resuming = HashSet::new();
         for sw in saved.workspaces {
             let mut tabs = Vec::new();
             for st in sw.tabs {
@@ -488,7 +528,7 @@ impl Daemon {
                         .clone()
                         .filter(|p| p.is_dir())
                         .unwrap_or_else(|| sw.cwd.clone());
-                    let cmd = self.restore_cmd(&pane);
+                    let cmd = self.restore_cmd_once(&mut pane, &cwd, &mut resuming);
                     // A desktop session's agent that died mid-turn is not started again on its
                     // own: the pane comes back as a shell and offers the resume command.
                     let interrupted = (pane.owner == Surface::Desktop && pane.was_working)

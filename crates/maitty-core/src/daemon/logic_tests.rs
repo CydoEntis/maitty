@@ -6756,6 +6756,56 @@ fn an_agent_saved_mid_turn_comes_back_as_a_resume_of_its_conversation() {
     );
 }
 
+#[test]
+fn a_conversation_comes_back_in_one_pane_only() {
+    let (d, _rx) = daemon();
+    let folder = std::env::temp_dir();
+    let mut resuming = std::collections::HashSet::new();
+    let saved = |session: Option<&str>| persist::SavedPane {
+        agent: Some("claude".into()),
+        session: session.map(Into::into),
+        ..Default::default()
+    };
+
+    // Two panes of one session: the second would resume the conversation the first holds.
+    let (mut first, mut second) = (saved(Some("abc123")), saved(Some("abc123")));
+    assert!(
+        d.restore_cmd_once(&mut first, &folder, &mut resuming)
+            .is_some_and(|resume| resume.contains("abc123"))
+    );
+    assert_eq!(d.restore_cmd_once(&mut second, &folder, &mut resuming), None);
+    assert_eq!(
+        (first.agent.as_deref(), second.agent, second.session),
+        (Some("claude"), None, None),
+        "the second is a shell and no longer claims the agent"
+    );
+
+    // Two with no session in one folder would both resume "the last one".
+    let (mut third, mut fourth) = (saved(None), saved(None));
+    assert!(d.restore_cmd_once(&mut third, &folder, &mut resuming).is_some());
+    assert_eq!(d.restore_cmd_once(&mut fourth, &folder, &mut resuming), None);
+
+    // Another session, or the same agent in another folder, is its own conversation.
+    assert!(
+        d.restore_cmd_once(&mut saved(Some("other")), &folder, &mut resuming)
+            .is_some()
+    );
+    let elsewhere = folder.join("elsewhere");
+    assert!(d.restore_cmd_once(&mut saved(None), &elsewhere, &mut resuming).is_some());
+
+    // A plain command may run in as many panes as it did.
+    let server = || persist::SavedPane {
+        cmd: Some("npm run dev".into()),
+        ..Default::default()
+    };
+    for _ in 0..2 {
+        assert_eq!(
+            d.restore_cmd_once(&mut server(), &folder, &mut resuming).as_deref(),
+            Some("npm run dev")
+        );
+    }
+}
+
 /// A hooked agent left working, its last output and hook report `secs` ago.
 fn silent_working_agent(d: &mut Daemon, secs: u64) -> TermId {
     let id = pane(d);
