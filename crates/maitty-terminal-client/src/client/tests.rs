@@ -13759,6 +13759,32 @@ mod files_panel_tests {
     }
 
     #[test]
+    fn ctrl_s_writes_the_file_off_the_ui_thread_and_keeps_what_was_typed_meanwhile() {
+        let (dir, mut app) = editing("save");
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.bg = tx;
+        let file = dir.join("src").join("main.rs");
+        press(&mut app, KeyCode::Char('a'), KeyModifiers::NONE);
+        press(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+        press(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+        press(&mut app, KeyCode::Char('b'), KeyModifiers::NONE);
+        let written = super::branch_view_tests::next_bg(&mut rx);
+        assert!(rx.try_recv().is_err(), "one save at a time");
+        app.on_bg(written);
+        assert!(
+            std::fs::read_to_string(&file).unwrap().starts_with("alet line_1"),
+            "what was there at Ctrl+S is on disk"
+        );
+        assert!(edit(&app).dirty, "the letter typed while it saved is not");
+        assert!(matches!(&app.notice, Some((said, _, _)) if said == "saved main.rs"));
+        press(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+        let written = super::branch_view_tests::next_bg(&mut rx);
+        app.on_bg(written);
+        assert!(std::fs::read_to_string(&file).unwrap().starts_with("ablet line_1"));
+        assert!(!edit(&app).dirty && !edit(&app).conflict);
+    }
+
+    #[test]
     fn copy_cut_and_paste_round_trip_in_the_editor() {
         let (dir, mut app) = editing("clip");
         let (tx, mut rx) = mpsc::unbounded_channel();

@@ -580,6 +580,38 @@ impl App {
         }
     }
 
+    /// Writes the editor's file off the UI thread, then says what happened. The editor may
+    /// have been closed by then; the file is saved all the same.
+    pub(super) fn save_edit(&mut self, job: views::SaveJob) {
+        self.spawn_bg(move || {
+            let path = job.path().to_path_buf();
+            let outcome = job.run();
+            Bg::Then(Box::new(move |app: &mut App| app.edit_saved(&path, outcome)))
+        });
+    }
+
+    fn edit_saved(&mut self, path: &std::path::Path, outcome: views::SaveOutcome) {
+        if let Some(View::Files(v)) = &mut self.view
+            && let Some(ed) = v.edit.as_mut().filter(|ed| ed.path == path)
+        {
+            ed.finish_save(&outcome);
+        }
+        match outcome {
+            Ok((views::Saved::Done, _)) => {
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                self.notify(format!("saved {name}"), false);
+            }
+            Ok((views::Saved::ChangedOnDisk, _)) => self.notify(
+                "the file changed since you opened it (an agent?): Ctrl+S again overwrites it, Esc keeps theirs".into(),
+                true,
+            ),
+            Err(e) => self.notify(e, true),
+        }
+    }
+
     /// Open a file, folder or web link in its default app, off the UI thread: say so, and say
     /// why when it didn't.
     pub(super) fn open_outside(&mut self, target: PathBuf, label: String) {

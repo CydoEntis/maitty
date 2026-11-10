@@ -254,6 +254,8 @@ pub struct Edit {
     seen: u64,
     /// Ctrl+S found it changed on disk: the next Ctrl+S overwrites anyway.
     pub conflict: bool,
+    /// A save is being written; another does not start until it is done.
+    saving: bool,
     /// Where the selection started; it runs to the cursor.
     pub anchor: Option<Pos>,
     /// Earlier text and cursors, for Ctrl+Z; what Ctrl+Z took, for Ctrl+Y.
@@ -386,6 +388,50 @@ pub enum Saved {
     ChangedOnDisk,
 }
 
+/// One save of the editor's text, taken on the UI thread so the disk work runs off it.
+pub struct SaveJob {
+    path: PathBuf,
+    text: String,
+    /// The file as the editor last saw it; `None` overwrites whatever is there.
+    unless_changed_from: Option<u64>,
+}
+
+/// What a save did, and the fingerprint of the text it was given.
+pub type SaveOutcome = Result<(Saved, u64), String>;
+
+impl SaveJob {
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Writes the text, unless the file changed on disk since the editor saw it. The write
+    /// goes to a temporary file that replaces the real one, so a crash can't leave it half
+    /// written.
+    pub fn run(self) -> SaveOutcome {
+        let written = fingerprint_bytes(self.text.as_bytes());
+        if let Some(seen) = self.unless_changed_from
+            && let Ok(now) = std::fs::read(&self.path)
+            && fingerprint_bytes(&now) != seen
+        {
+            return Ok((Saved::ChangedOnDisk, written));
+        }
+        let name = self
+            .path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let tmp = self
+            .path
+            .with_file_name(format!(".{name}.{APP_COMMAND}-save"));
+        std::fs::write(&tmp, &self.text).map_err(|e| format!("couldn't save: {e}"))?;
+        if let Err(e) = std::fs::rename(&tmp, &self.path) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(format!("couldn't save: {e}"));
+        }
+        Ok((Saved::Done, written))
+    }
+}
+
 impl Edit {
     const LARGEST_EDITABLE: u64 = 4 * 1024 * 1024;
 
@@ -434,6 +480,7 @@ impl Edit {
             trailing_newline,
             seen,
             conflict: false,
+            saving: false,
             anchor: None,
             undo: Vec::new(),
             redo: Vec::new(),
@@ -441,41 +488,53 @@ impl Edit {
         })
     }
 
-    /// Save, unless the file changed on disk since it was opened (an agent edited it): then
-    /// nothing is written and `conflict` is set, so saving again overwrites on purpose. The
-    /// write goes to a temporary file that replaces the real one, so a crash can't leave
-    /// it half written.
-    pub fn save(&mut self) -> Result<Saved, String> {
-        if !self.conflict
-            && let Ok(now) = std::fs::read(&self.path)
-            && fingerprint_bytes(&now) != self.seen
-        {
-            self.conflict = true;
-            return Ok(Saved::ChangedOnDisk);
-        }
+    /// The text as it goes to disk, with the file's own line endings.
+    fn text(&self) -> String {
         let nl = if self.crlf { "\r\n" } else { "\n" };
         let mut text = self.lines.join(nl);
         if self.trailing_newline {
             text.push_str(nl);
         }
-        let name = self
-            .path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let tmp = self
-            .path
-            .with_file_name(format!(".{name}.{APP_COMMAND}-save"));
-        std::fs::write(&tmp, &text).map_err(|e| format!("couldn't save: {e}"))?;
-        if let Err(e) = std::fs::rename(&tmp, &self.path) {
-            let _ = std::fs::remove_file(&tmp);
-            return Err(format!("couldn't save: {e}"));
+        text
+    }
+
+    /// The save to run off the UI thread, or none while one is still being written. It does
+    /// not write when the file changed on disk since it was opened (an agent edited it), unless
+    /// a save already found that: saving again overwrites on purpose.
+    pub fn save_job(&mut self) -> Option<SaveJob> {
+        if self.saving {
+            return None;
         }
-        self.seen = fingerprint_bytes(text.as_bytes());
-        self.conflict = false;
-        self.dirty = false;
-        self.warned = false;
-        Ok(Saved::Done)
+        self.saving = true;
+        Some(SaveJob {
+            path: self.path.clone(),
+            text: self.text(),
+            unless_changed_from: (!self.conflict).then_some(self.seen),
+        })
+    }
+
+    /// Takes in what a save did. Text typed while it was written stays unsaved.
+    pub fn finish_save(&mut self, outcome: &SaveOutcome) {
+        self.saving = false;
+        match outcome {
+            Ok((Saved::ChangedOnDisk, _)) => self.conflict = true,
+            Ok((Saved::Done, written)) => {
+                self.seen = *written;
+                self.conflict = false;
+                if fingerprint_bytes(self.text().as_bytes()) == *written {
+                    self.dirty = false;
+                    self.warned = false;
+                }
+            }
+            Err(_) => {}
+        }
+    }
+
+    #[cfg(test)]
+    fn save(&mut self) -> Result<Saved, String> {
+        let outcome = self.save_job().expect("no save is running").run();
+        self.finish_save(&outcome);
+        outcome.map(|(saved, _)| saved)
     }
 
     fn len(&self, row: usize) -> usize {
