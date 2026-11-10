@@ -59,6 +59,8 @@ export function WorkspacePane({ shown, pane, kept }: {
       focused={focused && !outsidePanes}
       maximized={shown.max === pane.id}
       dropTarget={dropId === pane.id && dragId !== pane.id}
+      dragging={dragId === pane.id}
+      dropWord={dragId === null ? 'Drop to show it here' : 'Drop to swap'}
       view={chat.view}
       {...(chatOnly || !hasChat(chat.availability) ? {} : { onViewChange: (view: PaneView) => { paneViews.choose(session.id, view) } })}
       chat={chat.view === 'chat' && !kept ? (

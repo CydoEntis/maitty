@@ -28,7 +28,9 @@
   /* Repaints inside a pane stay inside it. */
   contain: paint;
 }
-.mx-pane.is-drop-target { outline: 2px dashed var(--accent); outline-offset: -2px; }
+/* While a pane is dragged it dims, and the pane under the pointer says what letting go does. */
+.mx-pane.is-dragging { opacity: .6; }
+.mx-pane-drop { position: absolute; inset: 6px; z-index: 29; display: flex; align-items: center; justify-content: center; border-radius: 10px; border: 2px dashed var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); font-size: 13px; font-weight: 600; color: var(--accent-text); pointer-events: none; animation: v7scrim .12s ease-out; }
 .mx-pane-ring { position: absolute; inset: 0; z-index: 30; pointer-events: none; border-radius: var(--r14); box-shadow: inset 0 0 0 1.5px transparent; transition: box-shadow .15s; }
 .mx-pane.is-focused .mx-pane-ring { box-shadow: inset 0 0 0 1.5px var(--accent-line), 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent); }
 

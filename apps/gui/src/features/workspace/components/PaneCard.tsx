@@ -22,6 +22,10 @@ export type PaneCardProps = {
   focused: boolean
   maximized: boolean
   dropTarget: boolean
+  /** This pane is the one being dragged. */
+  dragging: boolean
+  /** What letting go over this pane does, said on it while it is the target. */
+  dropWord: string
   terminal: ReactNode
   /** The view the pane shows. The terminal stays mounted under the chat, so it keeps streaming and keeps its size. */
   view?: PaneView
@@ -119,7 +123,7 @@ export function PaneCard(props: PaneCardProps) {
     <>
     <section
       ref={box}
-      className={`mx-pane${view === 'chat' ? ' is-chat' : ' is-terminal'}${multi ? ' is-card' : ''}${focused && multi ? ' is-focused' : ''}${props.broadcast ? ' is-broadcast' : ''}${props.dropTarget ? ' is-drop-target' : ''}`}
+      className={`mx-pane${view === 'chat' ? ' is-chat' : ' is-terminal'}${multi ? ' is-card' : ''}${focused && multi ? ' is-focused' : ''}${props.broadcast ? ' is-broadcast' : ''}${props.dropTarget ? ' is-drop-target' : ''}${props.dragging ? ' is-dragging' : ''}`}
       aria-label={`Terminal ${String(props.index + 1)}: ${session.cwdLabel}${focused ? ', focused' : ''}`}
       data-session-id={session.id}
       data-pane={pane.id}
@@ -187,6 +191,7 @@ export function PaneCard(props: PaneCardProps) {
           <button type="button" className="mx-pane-ended-button" onMouseDown={stop} onClick={() => { props.onClose(pane.id) }}>Close pane</button>
         </div>
       )}
+      {props.dropTarget && <span className="mx-pane-drop" aria-hidden="true">{props.dropWord}</span>}
       <span className="mx-pane-ring" aria-hidden="true" />
     </section>
     {/* A card of its own under the pane, not a part of it. */}
