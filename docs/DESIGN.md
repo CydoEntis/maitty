@@ -390,10 +390,11 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   (the workspace card drops its own fill). A pane that is added, closed or resized takes its room at once, with no easing:
   easing a split made the terminal re-fit every frame and its text jumped. A terminal pane, header included, is one
   surface (`--main`), with no band where the header ends.
-- **Close ends the session, asking first, with Undo.** The pane's **×**, the pane menu's Close session, a row's Close
-  session and Ctrl+Shift+W (⌘W) first open the confirm dialog (`ConfirmCloseDialog`: "Close name?", Cancel and a red
-  Close, or "Stop claude" for a running agent; Enter confirms, Esc cancels) unless every session in question has already
-  ended. Confirming sends the daemon `CloseSession`: the session leaves the list at once and
+- **Close ends the session, asking first when there is work to lose, with Undo.** The pane's **×**, the pane menu's
+  Close session, a row's Close session and Ctrl+Shift+W (⌘W) first open the confirm dialog (`ConfirmCloseDialog`:
+  "Close name?", Cancel and a red Close, or "Stop claude" for a running agent; Enter confirms, Esc cancels) unless every
+  session in question has already ended or is a shell with nothing running in it, which Undo brings back as it was.
+  Closing sends the daemon `CloseSession`: the session leaves the list at once and
   its process runs on for 6 seconds. A toast "Closed name" with **Undo** stays for the same 6 seconds;
   the button or ⌘Z (Ctrl+Shift+Z elsewhere; passed to the terminal when nothing was just closed, and left to a
   text field inside one) sends `UndoClose` and puts the pane back in its place. A chat session has no terminal to

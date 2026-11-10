@@ -470,9 +470,6 @@ describe('desktop terminal multiplexer', () => {
     expect(screen.getByRole('region', { name: 'Terminal 1: ~/code/maitty/apps, focused' })).toBeInTheDocument()
 
     await user.keyboard('{Control>}{Shift>}w{/Shift}{/Control}')
-    expect(await screen.findByRole('alertdialog')).toBeInTheDocument()
-    expect(daemon.closeSessionWithUndo).not.toHaveBeenCalled()
-    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Close' }))
     await waitFor(() => { expect(screen.getAllByRole('region', { name: /^Terminal \d/ })).toHaveLength(1) })
     expect(await screen.findByText('Closed apps')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument()
@@ -510,8 +507,6 @@ describe('desktop terminal multiplexer', () => {
     await screen.findByRole('region', { name: 'Shell in ~/a' })
 
     await user.click(screen.getByRole('button', { name: 'Close pane · ends its session' }))
-    expect(daemon.closeSessionWithUndo).not.toHaveBeenCalled()
-    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Close' }))
 
     await waitFor(() => { expect(daemon.closeSessionWithUndo).toHaveBeenCalledWith(expect.objectContaining({ id: 't2' })) })
     expect((await screen.findAllByText('Closed ~/a')).length).toBeGreaterThan(0)
@@ -541,7 +536,6 @@ describe('desktop terminal multiplexer', () => {
     daemon.closeSessionWithUndo.mockReturnValue(new Promise<void>((resolve) => { ended = resolve }))
 
     await user.click(within(screen.getByRole('region', { name: 'Terminal 1: ~/a' })).getByRole('button', { name: 'Close pane · ends its session' }))
-    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Close' }))
     await waitFor(() => { expect(daemon.closeSessionWithUndo).toHaveBeenCalledWith(expect.objectContaining({ id: 't2' })) })
     await user.click(within(third).getByRole('button', { name: 'Maximize pane' }))
     await screen.findByRole('button', { name: 'Restore layout' })
@@ -562,7 +556,6 @@ describe('desktop terminal multiplexer', () => {
     expect(daemon.undoCloseSession).not.toHaveBeenCalled()
 
     await user.click(screen.getByRole('button', { name: 'Close pane · ends its session' }))
-    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Close' }))
     await screen.findAllByText('Closed ~/a')
     await user.keyboard('{Control>}{Shift>}z{/Shift}{/Control}')
 
@@ -616,16 +609,16 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     await waitFor(() => { expect(daemon.closeSessionWithUndo).toHaveBeenCalledWith(expect.objectContaining({ id: 't2' })) })
   })
 
-  it('asks before ending a plain shell from its row’s context menu', async () => {
+  it('ends a shell with nothing running in it at once, without asking, and offers Undo', async () => {
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
     renderDesktopApp()
     const row = await screen.findByRole('button', { name: 'a, shell, idle' })
 
     fireEvent.contextMenu(row)
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Close shell' }))
-    expect(daemon.closeSessionWithUndo).not.toHaveBeenCalled()
-    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Close' }))
 
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Undo' })).toBeInTheDocument()
     await waitFor(() => { expect(daemon.closeSessionWithUndo).toHaveBeenCalledWith(expect.objectContaining({ id: 't2' })) })
   })
 

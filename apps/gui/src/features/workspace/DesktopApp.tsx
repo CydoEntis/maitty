@@ -1133,9 +1133,12 @@ export function DesktopApp() {
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not end the session')) })
   }, [sessions, flash, queryClient, undoNow, layoutNow])
 
-  /** Runs `close` now when every session in `ids` has already ended; otherwise asks first. */
+  /**
+   * Runs `close` now when no session in `ids` has anything to lose: it has ended, or it is a shell with nothing
+   * running in it, which Undo brings back as it was. Otherwise asks first.
+   */
   const askToClose = useCallback((ids: string[], close: () => void) => {
-    const live = ids.flatMap((id) => paneSessions.get(id) ?? []).filter((session) => !session.ended)
+    const live = ids.flatMap((id) => paneSessions.get(id) ?? []).filter((session) => !session.ended && !(isShell(session) && !isChatSession(session.conversation)))
     const first = live[0]
     if (!first) {
       close()
