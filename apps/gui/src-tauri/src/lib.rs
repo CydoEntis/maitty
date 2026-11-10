@@ -894,18 +894,28 @@ async fn create_conversation(
     .map_err(|error| format!("{error:#}"))
 }
 
-#[tauri::command]
-fn codex_executable_path() -> Result<String, String> {
-    maitty_desktop_client::codex_app_server_executable()
-        .map(|path| path.to_string_lossy().into_owned())
-        .map_err(|error| format!("{error:#}"))
+/// Runs a search of the disk away from the window's own thread, where a plain command runs and
+/// would hold up every key and frame for as long as the search takes.
+async fn found_off_the_window_thread(
+    find: fn() -> anyhow::Result<PathBuf>,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        find()
+            .map(|path| path.to_string_lossy().into_owned())
+            .map_err(|error| format!("{error:#}"))
+    })
+    .await
+    .map_err(|error| format!("the search for the program stopped: {error}"))?
 }
 
 #[tauri::command]
-fn claude_executable_path() -> Result<String, String> {
-    maitty_desktop_client::claude_executable()
-        .map(|path| path.to_string_lossy().into_owned())
-        .map_err(|error| format!("{error:#}"))
+async fn codex_executable_path() -> Result<String, String> {
+    found_off_the_window_thread(maitty_desktop_client::codex_app_server_executable).await
+}
+
+#[tauri::command]
+async fn claude_executable_path() -> Result<String, String> {
+    found_off_the_window_thread(maitty_desktop_client::claude_executable).await
 }
 
 #[tauri::command]
@@ -946,6 +956,15 @@ pub fn run() {
                 app.handle().clone(),
                 app.state::<machines::Machines>().0.machines.clone(),
             );
+            // Bringing the shared daemon up to this release copies a file and may run it. Done
+            // here, on a thread of its own, the first command that needs the daemon finds it
+            // ready and does not do that work on whichever thread it runs on.
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                if let Err(error) = daemon_executable(&handle) {
+                    eprintln!("preparing the daemon: {error}");
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
