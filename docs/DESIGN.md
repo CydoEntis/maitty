@@ -513,7 +513,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   `Sending image`, **Cancel**), ending as `Sent the image to <machine>`. For a pane of this computer there is
   no progress: a short `Saving the image…` toast becomes `Pasted the image`.
 - **Side panel** (⌘I, a pane's side-panel button, a session's Show changes; `features/inspect/InspectPanel.tsx`). It
-  slides over a scrim at half of the window, never over the sidebar, 12px from the top and bottom and 24px
+  slides over a scrim at three-quarters of the window, never over the sidebar, 12px from the top and bottom and 24px
   from the right, radius 16; its edge drags and the width is remembered (a double-click goes back to following the
   window). Its header is one segmented control, **Changes** (with its count), **Files** and **Terminal**, each with
   its icon and the open one a raised pill, and ×. Esc closes it, except in a terminal, where Esc is the program's.

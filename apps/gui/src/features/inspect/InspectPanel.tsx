@@ -30,7 +30,7 @@ const VIEWS: readonly { id: InspectView; label: string; icon?: IconName }[] = [
 const PANEL_VIEWS: readonly InspectView[] = ['changes', 'files', 'terminal']
 
 /** The panel opens at this share of the window; the edge can be dragged and the width is remembered. */
-const DEFAULT_SHARE = 0.5
+const DEFAULT_SHARE = 0.75
 const MIN_WIDTH_PX = 420
 /** The strip of the chat that stays in sight beside the panel, to click it away. */
 const STRIP_PX = 56
