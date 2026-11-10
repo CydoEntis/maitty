@@ -13759,6 +13759,25 @@ mod files_panel_tests {
     }
 
     #[test]
+    fn the_folder_picker_lists_a_folder_after_it_is_typed_and_drops_a_late_listing() {
+        let dir = project("picker");
+        std::fs::create_dir_all(dir.join("src").join(".git")).unwrap();
+        let mut fd = screen::Finder::new(&dir);
+        assert_eq!(fd.wanted.as_deref(), Some(dir.as_path()));
+        assert!(fd.list.is_empty(), "nothing is listed on typing");
+        let names = |fd: &screen::Finder| fd.rows().into_iter().map(|(n, _, repo)| (n, repo)).collect::<Vec<_>>();
+        assert_eq!(names(&fd), [(".".to_string(), false), ("..".to_string(), false)]);
+        let (elsewhere, _) = screen::Finder::list_folders(&dir.join("src"));
+        assert!(!fd.listed(&dir.join("src"), elsewhere, true), "another folder's listing");
+        let (list, repo) = screen::Finder::list_folders(&dir);
+        assert!(fd.listed(&dir, list, repo));
+        assert_eq!(
+            names(&fd),
+            [(".".to_string(), false), ("..".to_string(), false), ("src".to_string(), true)]
+        );
+    }
+
+    #[test]
     fn ctrl_s_writes_the_file_off_the_ui_thread_and_keeps_what_was_typed_meanwhile() {
         let (dir, mut app) = editing("save");
         let (tx, mut rx) = mpsc::unbounded_channel();

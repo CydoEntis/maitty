@@ -585,6 +585,20 @@ impl App {
         });
     }
 
+    /// Lists the folder the folder picker now points at, off the UI thread.
+    pub(super) fn request_folder_list(&mut self) {
+        let Mode::Finder(fd) = &mut self.mode else {
+            return;
+        };
+        let Some(dir) = fd.wanted.take() else {
+            return;
+        };
+        self.spawn_bg(move || {
+            let (list, repo) = screen::Finder::list_folders(&dir);
+            Bg::FolderList(dir, list, repo)
+        });
+    }
+
     pub(super) fn spawn_bg(&self, f: impl FnOnce() -> Bg + Send + 'static) {
         let tx = self.bg.clone();
         let job = move || {
@@ -774,6 +788,13 @@ impl App {
                         v.in_preview = true;
                     }
                     v.refresh_preview();
+                }
+            }
+            (Bg::FolderList(dir, list, repo), _) => {
+                if let Mode::Finder(fd) = &mut self.mode
+                    && fd.listed(&dir, list, repo)
+                {
+                    self.dirty = true;
                 }
             }
             (Bg::FilesPreview(root, path, lines), _) => {
