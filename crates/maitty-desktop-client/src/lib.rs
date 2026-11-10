@@ -1470,15 +1470,148 @@ mod tests {
 /// window must be told so instead of waiting on it for ever.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// Connections kept open between questions, so each one does not connect and say hello again:
+/// an open chat asks several times a second. Only a `Query` uses them. It changes nothing, so
+/// when a kept connection turns out to be dead (its daemon restarted) the question is simply
+/// asked again on a new one; a command asked twice could act twice.
+static IDLE_CONNECTIONS: IdleConnections = std::sync::Mutex::new(Vec::new());
+const MAX_IDLE_CONNECTIONS: usize = 4;
+
+type Connection = (ipc::Reader, ipc::Writer);
+type IdleConnections = std::sync::Mutex<Vec<Connection>>;
+
+async fn ask(connection: &mut Connection, message: &ClientMsg) -> Result<Reply> {
+    ipc::send_message(&mut connection.1, message).await?;
+    receive_reply(&mut connection.0).await
+}
+
+/// Ask `message`: on a kept connection when it is a question, else on one from `open`.
+async fn ask_reusing<Open, Opening>(
+    idle: &IdleConnections,
+    message: &ClientMsg,
+    open: Open,
+) -> Result<Reply>
+where
+    Open: FnOnce() -> Opening,
+    Opening: std::future::Future<Output = Result<Connection>>,
+{
+    let reusable = matches!(message, ClientMsg::Query(_));
+    let keep = |connection: Connection| {
+        if let Ok(mut idle) = idle.lock()
+            && idle.len() < MAX_IDLE_CONNECTIONS
+        {
+            idle.push(connection);
+        }
+    };
+    let kept = if reusable {
+        idle.lock().ok().and_then(|mut idle| idle.pop())
+    } else {
+        None
+    };
+    if let Some(mut kept) = kept
+        && let Ok(reply) = ask(&mut kept, message).await
+    {
+        keep(kept);
+        return Ok(reply);
+    }
+    let mut fresh = open().await?;
+    let reply = ask(&mut fresh, message).await?;
+    if reusable {
+        keep(fresh);
+    }
+    Ok(reply)
+}
+
 async fn request(message: ClientMsg, daemon_executable: PathBuf) -> Result<Reply> {
-    answered_within(REQUEST_TIMEOUT, async {
-        let (mut reader, mut writer) = ipc::open_or_spawn_for_user(&daemon_executable)
-            .await
-            .context("connecting to the local daemon")?;
-        ipc::send_message(&mut writer, &message).await?;
-        receive_reply(&mut reader).await
-    })
+    answered_within(
+        REQUEST_TIMEOUT,
+        ask_reusing(&IDLE_CONNECTIONS, &message, || async {
+            ipc::open_or_spawn_for_user(&daemon_executable)
+                .await
+                .context("connecting to the local daemon")
+        }),
+    )
     .await
+}
+
+#[cfg(test)]
+mod kept_connection_tests {
+    use super::{Connection, IdleConnections, ask_reusing};
+    use maitty_shared::protocol::{ClientMsg, Command, Query, Reply, ServerMsg};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// A connection to a daemon that answers everything with `Ok`, until `answers` have gone out.
+    fn daemon_answering(answers: usize) -> Connection {
+        let (ours, theirs) = tokio::io::duplex(64 * 1024);
+        let (their_read, their_write) = tokio::io::split(theirs);
+        let (mut reader, mut writer) = maitty_ipc_transport::framed_parts(their_read, their_write);
+        tokio::spawn(async move {
+            for _ in 0..answers {
+                let Ok(Some(_)) = maitty_ipc_transport::receive::<ClientMsg>(&mut reader).await
+                else {
+                    return;
+                };
+                if maitty_ipc_transport::send(&mut writer, &ServerMsg::Reply(Reply::Ok))
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
+            }
+        });
+        let (our_read, our_write) = tokio::io::split(ours);
+        maitty_ipc_transport::framed_parts(our_read, our_write)
+    }
+
+    fn question() -> ClientMsg {
+        ClientMsg::Query(Query::Settings)
+    }
+
+    #[tokio::test]
+    async fn a_second_question_goes_out_on_the_connection_the_first_one_opened() {
+        let idle = IdleConnections::default();
+        let opened = Arc::new(AtomicUsize::new(0));
+        for _ in 0..3 {
+            let opened = opened.clone();
+            let reply = ask_reusing(&idle, &question(), || async move {
+                opened.fetch_add(1, Ordering::SeqCst);
+                Ok(daemon_answering(usize::MAX))
+            })
+            .await;
+            assert!(matches!(reply, Ok(Reply::Ok)));
+        }
+        assert_eq!(opened.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn a_question_on_a_kept_connection_whose_daemon_went_away_is_asked_again_on_a_new_one() {
+        let idle = IdleConnections::default();
+        let opened = Arc::new(AtomicUsize::new(0));
+        for _ in 0..2 {
+            let opened = opened.clone();
+            let reply = ask_reusing(&idle, &question(), || async move {
+                opened.fetch_add(1, Ordering::SeqCst);
+                // Each daemon answers once and is gone.
+                Ok(daemon_answering(1))
+            })
+            .await;
+            assert!(matches!(reply, Ok(Reply::Ok)));
+        }
+        assert_eq!(opened.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn a_command_never_goes_out_on_a_kept_connection_and_leaves_none_behind() {
+        let idle = IdleConnections::default();
+        idle.lock().unwrap().push(daemon_answering(0));
+        let command = ClientMsg::Command(Command::SelectWorkspace { ws: 1 });
+
+        let reply = ask_reusing(&idle, &command, || async { Ok(daemon_answering(1)) }).await;
+
+        assert!(matches!(reply, Ok(Reply::Ok)));
+        assert_eq!(idle.lock().unwrap().len(), 1, "only the one that was there");
+    }
 }
 
 async fn answered_within<T>(
