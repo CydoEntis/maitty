@@ -60,7 +60,7 @@ export function machineChip(state: MachineState): MachineChip {
     case 'needs-login':
       return { glyph: '▲', word: 'needs login', tone: 'bad' }
     case 'needs-update':
-      return { glyph: '▲', word: UPDATE_WORDS[updateActionOf(state) ?? 'update'].state, tone: 'bad' }
+      return { glyph: '▲', word: isNewerThanThisApp(state) ? 'newer than this app' : UPDATE_WORDS[updateActionOf(state) ?? 'update'].state, tone: 'bad' }
     case 'unreachable':
       return { glyph: '✕', word: 'unreachable', tone: 'bad' }
     case 'refused':
@@ -74,6 +74,8 @@ export type MachineHead = {
   /** The number the host gave the machine this run; what a command for it takes. */
   machine: number
   name: string | null
+  /** The name you gave it in the sidebar, when you did; `name` stays what its sessions go by. */
+  nickname?: string
   label: string
   chip: MachineChip | null
   why: string | null
@@ -91,6 +93,12 @@ export type MachineHead = {
 
 const UPDATE_COMMAND = /`(maitty machine update [^`]+)`/
 const INSTALL_FLAG = '--install'
+const UPDATE_HERE = 'update maitty on this computer'
+
+/** The machine runs a newer app than this one: the fix is updating this app, and nothing is done to the machine. */
+export function isNewerThanThisApp(state: MachineState): boolean {
+  return state.state === 'needs-update' && (state.why ?? '').includes(UPDATE_HERE)
+}
 
 /** The command a needs-update fix names, as the host wrote it (the machine's name is in it). */
 export function updateCommandOf(state: MachineState): string | null {
@@ -104,10 +112,11 @@ export type UpdateAction = 'install' | 'update'
 /**
  * Which fix a machine that needs update gets. The host only names `--install` when the app is not
  * on the machine at all, and the update refuses a first install without it, so the button must
- * pass it exactly then; a newer version there is refused by the update itself, never downgraded.
+ * pass it exactly then. A machine newer than this app gets no button: updating it from here would
+ * be a downgrade, which the update refuses.
  */
 export function updateActionOf(state: MachineState): UpdateAction | null {
-  if (state.state !== 'needs-update') return null
+  if (state.state !== 'needs-update' || isNewerThanThisApp(state)) return null
   return updateCommandOf(state)?.includes(INSTALL_FLAG) === true ? 'install' : 'update'
 }
 
@@ -136,12 +145,27 @@ export function installNote(name: string): string {
   return `Puts this version of Maitty on ${name} over ssh, then connects to it.`
 }
 
+type Activity = { sessions: number; busy: number; current: boolean }
+
+/** Whether the fix is only a restart: the app there is already this version and its daemon is the old one. */
+export function isRestartOnly(action: UpdateAction | null, activity: Activity | null): boolean {
+  return action === 'update' && activity?.current === true
+}
+
+/** The word on the button and in the title: Restart when only the daemon is old, else the action's own. */
+export function updateVerb(action: UpdateAction, activity: Activity | null): string {
+  return isRestartOnly(action, activity) ? 'Restart' : UPDATE_WORDS[action].verb
+}
+
 /** What an update will interrupt, said before it runs. `activity` is null when the machine could not say. */
-export function updateWarning(name: string, activity: { sessions: number; busy: number } | null): string {
+export function updateWarning(name: string, activity: Activity | null): string {
+  if (activity?.current === true) {
+    return `${name} already has this version; its daemon is still the old one. It has ${String(activity.sessions)} ${activity.sessions === 1 ? 'session' : 'sessions'} open, ${String(activity.busy)} busy. Restarting its daemon brings the sessions back with their agents resumed; an agent in the middle of a turn loses that turn if you restart now. Restart when idle restarts it once every session there is closed; it waits up to half an hour, then leaves it running.`
+  }
   const open = activity === null
     ? `Updating ${name} restarts its daemon, and ${name} could not say what is open on it. `
     : `${name} has ${String(activity.sessions)} ${activity.sessions === 1 ? 'session' : 'sessions'} open, ${String(activity.busy)} busy. Updating restarts its daemon. `
-  return `${open}Its sessions are saved and come back with their agents resumed; an agent in the middle of a turn loses that turn if you update now. Update when idle waits up to half an hour for nothing to be running first.`
+  return `${open}Its sessions are saved and come back with their agents resumed; an agent in the middle of a turn loses that turn if you update now. Update when idle installs the new version now and restarts the daemon once every session there is closed; it waits up to half an hour, then leaves it running.`
 }
 
 /** Whether a machine's sessions are shown as last seen: its line is not up and not on its first dial. */
@@ -154,9 +178,14 @@ export const THIS_COMPUTER = 'this computer'
 /** This computer's header, which the sidebar shows even when there is no other machine. */
 export const LOCAL_HEAD: MachineHead = { key: 'machine-0', machine: LOCAL_MACHINE, name: null, label: THIS_COMPUTER, chip: null, why: null, down: false, downSince: null, grants: { clipboard: false, notices: false }, updateCommand: null, updateAction: null }
 
+function nicknameOf(nicknames: Readonly<Record<string, string>>, name: string): { nickname: string } | Record<string, never> {
+  const nickname = nicknames[name.toLowerCase()]
+  return nickname === undefined ? {} : { nickname }
+}
+
 /** The name a machine heading shows. */
 export function machineTitle(head: MachineHead): string {
-  return head.name ?? 'This computer'
+  return head.nickname ?? head.name ?? 'This computer'
 }
 
 /**
@@ -164,11 +193,14 @@ export function machineTitle(head: MachineHead): string {
  * order of their ids, which only changes when the machine list does (the sidebar never reorders
  * itself). Nothing while there is no other machine, so one machine looks as it always did.
  */
-export function machineHeads(machines: ReadonlyMap<number, RemoteMachine>): MachineHead[] {
+/** The longest name you can give a machine in the sidebar. */
+export const MAX_MACHINE_NICKNAME_LENGTH = 40
+
+export function machineHeads(machines: ReadonlyMap<number, RemoteMachine>, nicknames: Readonly<Record<string, string>> = {}): MachineHead[] {
   if (machines.size === 0) return []
   const others = [...machines.entries()]
     .sort(([a], [b]) => a - b)
-    .map(([id, machine]): MachineHead => ({ key: `machine-${String(id)}`, machine: id, name: machine.state.name, label: machine.state.name, chip: machineChip(machine.state), why: machine.state.why, down: isDown(machine.state), downSince: machine.state.since ?? null, grants: { clipboard: machine.state.clipboard === true, notices: machine.state.notices === true }, updateCommand: updateCommandOf(machine.state), updateAction: updateActionOf(machine.state) }))
+    .map(([id, machine]): MachineHead => ({ key: `machine-${String(id)}`, machine: id, name: machine.state.name, ...nicknameOf(nicknames, machine.state.name), label: machine.state.name, chip: machineChip(machine.state), why: machine.state.why, down: isDown(machine.state), downSince: machine.state.since ?? null, grants: { clipboard: machine.state.clipboard === true, notices: machine.state.notices === true }, updateCommand: updateCommandOf(machine.state), updateAction: updateActionOf(machine.state) }))
   return [LOCAL_HEAD, ...others]
 }
 

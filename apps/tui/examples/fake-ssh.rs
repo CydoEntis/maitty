@@ -4,7 +4,7 @@
 //!
 //! `MAITTY_FAKE_SSH_MAITTY` names the `maitty` to run. `MAITTY_FAKE_SSH_MODE` picks the
 //! behaviour: `proxy` (default), `auth-fail`, `noise`, `noise-only`, `noise-flood`, `old`, `hang`,
-//! `mismatch`, `exit`, `unreachable` (ssh cannot connect), `not-installed` (the remote has no
+//! `mismatch` (an older daemon), `mismatch-newer`, `exit`, `unreachable` (ssh cannot connect), `not-installed` (the remote has no
 //! app), `capture-hello`, `require-pipes`, `capture-argv`.
 //! The shim also stands in for a machine's custom transport (`via`): it is then the program,
 //! the settings are its own arguments, and the remote command is its last argument.
@@ -165,10 +165,15 @@ fn main() {
         "hang" => loop {
             std::thread::sleep(std::time::Duration::from_secs(3600));
         },
-        "mismatch" => {
-            print_stdout(&welcome_frame(
-                maitty_shared::protocol::PROTOCOL_VERSION + 1,
-            ));
+        // A daemon this build cannot talk to: one from before its window (`mismatch`), or a
+        // newer one that no longer speaks this version (`mismatch-newer`).
+        "mismatch" | "mismatch-newer" => {
+            let theirs = if own.mode == "mismatch" {
+                maitty_shared::protocol::COMPATIBLE_SINCE - 1
+            } else {
+                maitty_shared::protocol::PROTOCOL_VERSION + 1
+            };
+            print_stdout(&welcome_frame(theirs));
             let mut sink = Vec::new();
             let _ = std::io::stdin().read_to_end(&mut sink);
         }
@@ -216,7 +221,11 @@ fn proxy_command(own: &Own, maitty: &std::ffi::OsStr) -> Command {
 
 fn welcome_frame(version: u32) -> Vec<u8> {
     let body =
-        maitty_shared::protocol::encode(&maitty_shared::protocol::ServerMsg::Welcome { version })
+        maitty_shared::protocol::encode(&maitty_shared::protocol::ServerMsg::Welcome {
+            version,
+            // It speaks its own version only.
+            compatible_since: version,
+        })
             .expect("encode a Welcome");
     let mut frame = (body.len() as u32).to_be_bytes().to_vec();
     frame.extend_from_slice(&body);

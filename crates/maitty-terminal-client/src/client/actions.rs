@@ -445,7 +445,26 @@ impl App {
             linked,
             confirm: None,
         })));
-        self.spawn_bg(move || Bg::Changes(top, tasks::load_review(task).map(Box::new)));
+        self.load_changes(top, task);
+    }
+
+    /// Reads a checkout's review, and its marked files, off the UI thread.
+    pub(super) fn load_changes(&self, dir: PathBuf, task: tasks::TaskRow) {
+        let marked: HashSet<String> = self
+            .screen
+            .saved
+            .reviewed
+            .get(&design::path_key(&dir))
+            .map(|marks| marks.keys().cloned().collect())
+            .unwrap_or_default();
+        self.spawn_bg(move || {
+            let review = tasks::load_review(task);
+            let now = review
+                .as_ref()
+                .map(|r| views::marked_fingerprints(&dir, &r.files, &marked))
+                .unwrap_or_default();
+            Bg::Changes(dir, review.map(Box::new), now)
+        });
     }
 
     /// The checkout `dir` is in, as a task (what Changes, merge and throw-away work on), the
@@ -558,6 +577,38 @@ impl App {
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
             self.open_outside(path, name);
+        }
+    }
+
+    /// Writes the editor's file off the UI thread, then says what happened. The editor may
+    /// have been closed by then; the file is saved all the same.
+    pub(super) fn save_edit(&mut self, job: views::SaveJob) {
+        self.spawn_bg(move || {
+            let path = job.path().to_path_buf();
+            let outcome = job.run();
+            Bg::Then(Box::new(move |app: &mut App| app.edit_saved(&path, outcome)))
+        });
+    }
+
+    fn edit_saved(&mut self, path: &std::path::Path, outcome: views::SaveOutcome) {
+        if let Some(View::Files(v)) = &mut self.view
+            && let Some(ed) = v.edit.as_mut().filter(|ed| ed.path == path)
+        {
+            ed.finish_save(&outcome);
+        }
+        match outcome {
+            Ok((views::Saved::Done, _)) => {
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                self.notify(format!("saved {name}"), false);
+            }
+            Ok((views::Saved::ChangedOnDisk, _)) => self.notify(
+                "the file changed since you opened it (an agent?): Ctrl+S again overwrites it, Esc keeps theirs".into(),
+                true,
+            ),
+            Err(e) => self.notify(e, true),
         }
     }
 

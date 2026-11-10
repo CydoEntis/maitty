@@ -97,7 +97,7 @@ fn a_daemon_of_another_protocol_fails_the_protocol_check_with_the_update_hint() 
     assert!(
         protocol
             .detail
-            .contains(&format!("protocol {}", PROTOCOL_VERSION + 1)),
+            .contains(&format!("protocol {}", crate::protocol::COMPATIBLE_SINCE - 1)),
         "{protocol:?}"
     );
     assert!(

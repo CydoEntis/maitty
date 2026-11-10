@@ -251,6 +251,26 @@ enum Cmd {
         /// Reinstall the latest release even if this is it (repairs an install).
         #[arg(long)]
         force: bool,
+        /// Install this release instead of the newest, such as 0.70.0. An older one is the way
+        /// back from an update that went wrong.
+        #[arg(long, value_name = "VERSION", conflicts_with = "check")]
+        to: Option<String>,
+    },
+    /// Check the signature beside a release's checksum file with this program's key.
+    #[command(hide = true)]
+    VerifyRelease {
+        /// The `sha256sums.txt` to check; its signature is the `.sig` beside it.
+        sums: PathBuf,
+    },
+    /// Take the app off this computer: stop the server, disconnect your agents and remove the
+    /// program. It says what it will do and asks first. Settings and saved sessions are kept.
+    Uninstall {
+        /// Go ahead without asking.
+        #[arg(long)]
+        yes: bool,
+        /// Delete settings and saved sessions too.
+        #[arg(long)]
+        purge: bool,
     },
     /// Let this repo's project-file hooks run (they don't until you allow them).
     Allow {
@@ -671,7 +691,9 @@ pub(crate) fn run() {
         Some(Cmd::Mcp) => cli::mcp::run(),
         Some(Cmd::Doctor) => cli::doctor(),
         Some(Cmd::Account { name, command }) => cli::account(&name, &command),
-        Some(Cmd::Update { check, force }) => cli::update::run(check, force),
+        Some(Cmd::Update { check, force, to }) => cli::update::run(check, force, to.as_deref()),
+        Some(Cmd::Uninstall { yes, purge }) => cli::uninstall::run(yes, purge),
+        Some(Cmd::VerifyRelease { sums }) => cli::update::verify_release(&sums),
         Some(Cmd::Machine {
             cmd:
                 MachineCmd::Update {
@@ -810,10 +832,29 @@ fn run_client(open: Option<std::path::PathBuf>) -> anyhow::Result<()> {
                 client::restart_prompt::Choice::Restart => {
                     cli::kill_server(&Target::current(), false)?
                 }
+                client::restart_prompt::Choice::Update => return update_to_reach_the_server(),
             }
         }
     }
     client::run(client::Options { open })
+}
+
+/// The running server is newer than this app: install the newest release over this app and
+/// start it in this one's place. The server and its sessions are not touched.
+fn update_to_reach_the_server() -> anyhow::Result<()> {
+    if !cli::update::latest_tag().is_ok_and(|tag| cli::update::is_newer(&tag)) {
+        anyhow::bail!(
+            "this {} {} is the newest release, but an even newer copy started the server that is \
+             running. `{} doctor` lists the copies on this computer; run the newer one.",
+            env!("APP_COMMAND"),
+            env!("APP_VERSION"),
+            env!("APP_COMMAND"),
+        );
+    }
+    eprintln!(concat!("Updating ", env!("APP_COMMAND"), "…"));
+    let (version, _) = cli::update::install_latest()?;
+    eprintln!("Updated to {version}.");
+    cli::restart::relaunch()
 }
 
 /// Stop this socket's server (saving its sessions first when it can be asked; one it can't

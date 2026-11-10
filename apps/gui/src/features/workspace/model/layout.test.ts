@@ -222,6 +222,14 @@ describe('tab layout', () => {
     expect(activeArrangement(viaFocus)?.max).toBe(second)
   })
 
+  it('gives the same layout back when the pane already has the focus', () => {
+    const { layout } = withPanes('a', 'b')
+    const second = activeArrangement(layout)?.panes[1]?.id ?? ''
+    const focused = focusPane(layout, second)
+
+    expect(focusPane(focused, second)).toBe(focused)
+  })
+
   it('leaves max alone when the tab is not maximized', () => {
     const { layout } = withPanes('a', 'b')
     const second = activeArrangement(layout)?.panes[1]?.id ?? ''

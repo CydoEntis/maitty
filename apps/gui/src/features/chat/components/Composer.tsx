@@ -4,6 +4,7 @@ import { pickFromClipboard, unsupportedMessage } from '@/features/terminal/clipb
 import type { ChatAgent } from '@/features/workspace/model/chatView'
 import { AppIcon, Icon, Spinner } from '@/features/workspace/components/glyphs'
 import { registerComposerDrop } from '../composerDrop'
+import { useComposerDraft } from '../composerStore'
 import type { ChatComposer } from '../useChatComposer'
 import { defaultChoice, useAgentChoice, type AgentChoice } from '../agentChoice'
 import { DraftAttachments } from './Attachments'
@@ -11,6 +12,9 @@ import { AgentPicker } from './AgentPicker'
 import { modelName } from '../modelName'
 import { BYPASS_MODE, modeLabel, PICKABLE_MODES } from '../chatMeta'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+
+/** A key with nothing stored under it, for a composer whose view holds its own draft. */
+const NO_CONVERSATION = -1
 
 /** What the settings tray under the box says about the session. */
 export type ComposerFacts = {
@@ -61,9 +65,21 @@ const NO_CHANGE = () => undefined
  * while a request waits for an answer, or the daemon is offline, the box is off and says why.
  */
 export function Composer({ agent, composer, conversation, question = null, facts, waiting = false }: Props) {
-  const { draft, setDraft, attachments, attach, readOnly, queue, removeQueued, submit, stop, running, sending, disabledReason, error } = composer
+  const { setDraft, attachments, attach, readOnly, queue, removeQueued, submit, stop, running, sending, disabledReason, error } = composer
+  const storedDraft = useComposerDraft(composer.conversationKey ?? NO_CONVERSATION)
+  const draft = composer.draft ?? storedDraft
   const off = disabledReason !== null
   const box = useRef<HTMLDivElement>(null)
+  const text = useRef<HTMLTextAreaElement>(null)
+  // A chat that opens takes the typing, as the terminal under it would, when nothing else on the page has it:
+  // the new-chat page has just closed, or the starting chat's box was replaced by this one.
+  useEffect(() => {
+    const active = document.activeElement
+    if (active !== null && active !== document.body) return
+    const pane = text.current?.closest('.mx-pane')
+    if (pane?.classList.contains('is-card') === true && !pane.classList.contains('is-focused')) return
+    text.current?.focus({ preventScroll: true })
+  }, [])
   // The desktop shell takes file drops for itself, so the composer asks to be told of the ones that land on it.
   const { addPaths } = attach
   useEffect(() => {
@@ -118,6 +134,7 @@ export function Composer({ agent, composer, conversation, question = null, facts
         <div className={`mx-box${off ? ' is-locked' : ''}`}>
           <DraftAttachments attachments={attachments} onRemove={attach.remove} />
           <textarea
+            ref={text}
             aria-label={`Message ${agent}`}
             rows={2}
             value={draft}

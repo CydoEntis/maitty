@@ -1,7 +1,7 @@
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { useEffect, useRef, useState } from 'react'
 import type { MachineActivity } from '@/api/machines'
-import { installNote, UPDATE_WORDS, updateWarning, type UpdateAction } from '../model/machines'
+import { installNote, UPDATE_WORDS, updateVerb, updateWarning, type UpdateAction } from '../model/machines'
 
 type Props = {
   name: string
@@ -48,7 +48,8 @@ function useFocusOnOpen(dialog: React.RefObject<HTMLDivElement | null>) {
 export function MachineUpdateDialog({ name, action, checkActivity, onUpdate, onCancel }: Props) {
   const words = UPDATE_WORDS[action]
   const asked = useActivity(name, action, checkActivity)
-  const title = `${words.verb} Maitty on ${name}`
+  const verb = updateVerb(action, asked.done ? asked.activity : null)
+  const title = `${verb} Maitty on ${name}`
   const dialog = useRef<HTMLDivElement>(null)
   useFocusOnOpen(dialog)
   return (
@@ -71,8 +72,8 @@ export function MachineUpdateDialog({ name, action, checkActivity, onUpdate, onC
           : <p role="status">Checking what is open on {name}…</p>}
         <div className="mx-rename-actions">
           <button type="button" className="mx-text-button" onClick={onCancel}>Cancel</button>
-          {action === 'update' && <button type="button" className="mx-text-button" disabled={!asked.done} onClick={() => { onUpdate(true) }}>Update when idle</button>}
-          <button type="button" className="mx-text-button is-primary" disabled={!asked.done} onClick={() => { onUpdate(false) }}>{words.verb} now</button>
+          {action === 'update' && <button type="button" className="mx-text-button" disabled={!asked.done} onClick={() => { onUpdate(true) }}>{verb} when idle</button>}
+          <button type="button" className="mx-text-button is-primary" disabled={!asked.done} onClick={() => { onUpdate(false) }}>{verb} now</button>
         </div>
       </div>
       </DialogContent>

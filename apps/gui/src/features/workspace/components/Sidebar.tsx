@@ -46,6 +46,8 @@ export type SidebarProps = {
   onNewShell: (machine: number) => void
   onAddMachine: () => void
   onMachineSettings: () => void
+  /** Asks for a name of the user's own for another machine (by its real name). */
+  onRenameMachine: (name: string) => void
   /** Installs or updates the app on a machine that needs it; the window asks first. */
   onUpdateMachine: (name: string, action: UpdateAction) => void
   onShowSession: (id: string) => void
@@ -197,6 +199,7 @@ function Expanded(props: SidebarProps) {
       { label: open ? 'Collapse' : 'Expand', run: () => { views.toggle(head.key) } },
       { label: grouped ? 'Show as one list' : 'Group by project', run: () => { views.toggleByProject(head.key) } },
       'separator',
+      ...(name === null ? [] : [{ label: 'Rename…', run: () => { props.onRenameMachine(name) } }]),
       { label: 'Machine settings…', run: props.onMachineSettings },
     ]
   }
@@ -294,7 +297,7 @@ function Expanded(props: SidebarProps) {
           : <><span className="mx-daemon-dot is-offline" aria-hidden="true" /><span className="mx-daemon-text is-offline" role="status">{props.serviceText ?? 'Reconnecting to maittyd…'}</span></>}
         <button type="button" className="mx-head-button mx-settings-button" aria-label="Settings" title={tip('Settings', 'settings')} onClick={props.onOpenSettings}><Icon name="gear" size={15} /></button>
       </div>
-      {menu && <MenuPopup title={menu.title} at={menu.at} items={menu.items} portalContainer={props.portalContainer} onClose={() => { setMenu(null) }} />}
+      {menu && <MenuPopup key={`${String(menu.at.x)},${String(menu.at.y)}`} title={menu.title} at={menu.at} items={menu.items} portalContainer={props.portalContainer} onClose={() => { setMenu(null) }} />}
     </div>
   )
 }

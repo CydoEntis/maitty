@@ -27,8 +27,22 @@ export function SplitHandle({ axis, index, onResize, onReset }: { axis: Axis; in
     const start = axis === 'columns' ? event.clientX : event.clientY
     const sizes = sizesOf(container, axis)
     handle.classList.add('is-dragging')
-    const move = (moveEvent: globalThis.PointerEvent) => { onResize(dragWidths(sizes, index, (axis === 'columns' ? moveEvent.clientX : moveEvent.clientY) - start)) }
+    // A pointer reports more often than the screen draws; only the last position of a frame is used.
+    let frame: number | null = null
+    let latest = start
+    const apply = () => {
+      frame = null
+      onResize(dragWidths(sizes, index, latest - start))
+    }
+    const move = (moveEvent: globalThis.PointerEvent) => {
+      latest = axis === 'columns' ? moveEvent.clientX : moveEvent.clientY
+      frame ??= requestAnimationFrame(apply)
+    }
     const end = () => {
+      if (frame !== null) {
+        cancelAnimationFrame(frame)
+        apply()
+      }
       handle.classList.remove('is-dragging')
       handle.removeEventListener('pointermove', move)
       handle.removeEventListener('pointerup', end)

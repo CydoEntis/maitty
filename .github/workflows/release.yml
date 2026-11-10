@@ -192,7 +192,7 @@ jobs:
               cp target/release/bundle/macos/Maitty.app.tar.gz "dist/Maitty_${ver}_aarch64.app.tar.gz"
               cp target/release/bundle/macos/Maitty.app.tar.gz.sig "dist/Maitty_${ver}_aarch64.app.tar.gz.sig"
               ;;
-            Linux) find target/release/bundle -type f \( -iname '*.deb' -o -iname '*.rpm' -o -iname '*.appimage' -o -iname '*.appimage.sig' \) -exec cp {} dist/ \; ;;
+            Linux) find target/release/bundle -type f \( -iname '*.deb' -o -iname '*.rpm' -o -iname '*.appimage' -o -iname '*.sig' \) -exec cp {} dist/ \; ;;
           esac
           test -n "$(find dist -maxdepth 1 -type f -print -quit)" \
             || { echo "No GUI installers were collected" >&2; exit 1; }
@@ -272,10 +272,40 @@ jobs:
               "windows-x86_64": {signature: $winsig, url: "\($base)/\($win)"},
               "darwin-aarch64": {signature: $macsig, url: "\($base)/\($mac)"},
               "linux-x86_64": {signature: $linsig, url: "\($base)/\($lin)"}}}' > dist/latest.json
+          # An install made by another kind of installer asks for its own kind first
+          # (`<os>-<arch>-<installer>`) and only then for the entry above, which would put a second
+          # copy beside an .msi install and cannot replace a .deb or .rpm one. Each gets its entry
+          # when the build signed that installer; without a signature it is left out and said.
+          for kind in "windows-x86_64-msi msi" "linux-x86_64-deb deb" "linux-x86_64-rpm rpm"; do
+            set -- $kind
+            file=$(find dist -maxdepth 1 -type f -iname "*.$2" -printf '%f\n' | sort | head -n 1)
+            if [ -n "$file" ] && [ -f "dist/$file.sig" ]; then
+              jq --arg key "$1" --arg sig "$(cat "dist/$file.sig")" \
+                --arg url "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$file" \
+                '.platforms[$key] = {signature: $sig, url: $url}' dist/latest.json > dist/latest.next.json
+              mv dist/latest.next.json dist/latest.json
+            else
+              echo "No signed .$2 installer was built: an install made with one cannot update itself." >&2
+            fi
+          done
           cat dist/latest.json
 
       - name: Checksums
         run: cd dist && find . -maxdepth 1 -type f ! -name sha256sums.txt -printf '%f\0' | sort -z | xargs -0 sha256sum > sha256sums.txt && cat sha256sums.txt
+
+      # The checksums vouch for every download and this signature vouches for the checksums: the
+      # app's own `update` refuses a release whose checksums are not signed with the key built
+      # into it, which is the desktop updater's. The CLI is the version the desktop build uses.
+      - name: Sign the checksums
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
+        run: |
+          npx --yes @tauri-apps/cli@2.12.4 signer sign dist/sha256sums.txt > /dev/null
+          test -s dist/sha256sums.txt.sig
+          # Checked with the program being released, so a release it would refuse is never published.
+          tar -xzf "dist/$APP-x86_64-unknown-linux-musl.tar.gz" -C "$RUNNER_TEMP"
+          "$RUNNER_TEMP/$APP-x86_64-unknown-linux-musl/$APP" verify-release dist/sha256sums.txt
 
       - name: Publish the release
         env:
@@ -318,6 +348,9 @@ jobs:
           sh ./install.sh
           ~/.local/bin/$APP --version
           ~/.local/bin/$APP update --check
+          # A real update over the install just made: download, signature, checksum, run, swap.
+          ~/.local/bin/$APP update --force
+          ~/.local/bin/$APP --version
           ~/.local/bin/$APP doctor || true
       - name: install.ps1
         if: runner.os == 'Windows'
@@ -326,3 +359,7 @@ jobs:
           ./install.ps1
           & "$env:LOCALAPPDATA\Programs\$env:APP\$env:APP.exe" --version
           & "$env:LOCALAPPDATA\Programs\$env:APP\$env:APP.exe" update --check
+          # A real update over the install just made: download, signature, checksum, run, swap.
+          & "$env:LOCALAPPDATA\Programs\$env:APP\$env:APP.exe" update --force
+          if ($LASTEXITCODE -ne 0) { throw "the update failed" }
+          & "$env:LOCALAPPDATA\Programs\$env:APP\$env:APP.exe" --version

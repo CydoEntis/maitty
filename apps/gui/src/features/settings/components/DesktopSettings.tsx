@@ -16,9 +16,9 @@ import { Keycaps } from '@/features/shortcuts/Keycaps'
 import { Icon } from '@/features/workspace/components/glyphs'
 import { errorMessage } from '@/lib/error-message'
 import { BUNDLED_FONT_NAME, fontStackFor, installedMonospaceFamilies, WEIGHT_BOLD, WEIGHT_EXTRA_BOLD, WEIGHT_LIGHT, WEIGHT_MEDIUM, WEIGHT_REGULAR, WEIGHT_SEMIBOLD, type TerminalFontWeight } from '@/lib/terminalFont'
-import type { Added, Grant, HostChoice } from '@/api/machines'
+import type { Added, Grant, HostChoice, MachineActivity } from '@/api/machines'
 import { DisconnectedSince } from '@/features/workspace/components/times'
-import { installNote, UPDATE_WORDS, updateWarning, type MachineHead, type UpdateAction } from '@/features/workspace/model/machines'
+import { installNote, UPDATE_WORDS, updateVerb, updateWarning, type MachineHead, type UpdateAction } from '@/features/workspace/model/machines'
 import { UsagePage } from '@/features/usage/UsagePage'
 import type { OpenSession } from '@/features/usage/UsageTable'
 import { FOLDER_PATH } from '@/features/workspace/components/paths'
@@ -44,7 +44,7 @@ export type MachinesInfo = {
    * How many sessions are open on a machine and how many are busy; null when it cannot say (its
    * app is too old, or it cannot be reached). The update question uses it to say what it will interrupt.
    */
-  onCheckActivity: (name: string) => Promise<{ sessions: number; busy: number } | null>
+  onCheckActivity: (name: string) => Promise<MachineActivity | null>
   /** Puts the same command on the clipboard, to run in a terminal instead. */
   onCopyCommand: (command: string) => void
   add: {
@@ -571,7 +571,7 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
         </Row>
       </Card>
       <Card title="Interface size" color="var(--ansi-green)" iconPath={<path d="M4 7h16M4 12h10M4 17h13" />}>
-        <Row label="Density" detail="How much room the sidebar rows, tabs and panes get.">
+        <Row label="Density" detail="How much room the sidebar rows, pane headers and gaps get.">
           <SegmentedChoice label="Density" value={preferences.density} options={DENSITY_OPTIONS} onChange={(value) => { update('density', value) }} />
         </Row>
         <Row label="Sidebar icons" detail="The project tiles, session icons and the collapsed rail.">
@@ -580,8 +580,8 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
         <Row label="Sidebar text" detail="Folder names and session rows.">
           <SegmentedChoice label="Sidebar text size" value={preferences.sidebarTextSize} options={UI_TEXT_OPTIONS} onChange={(value) => { update('sidebarTextSize', value) }} />
         </Row>
-        <Row label="Tab text" detail="The names on the tab bar.">
-          <SegmentedChoice label="Tab text size" value={preferences.tabTextSize} options={UI_TEXT_OPTIONS} onChange={(value) => { update('tabTextSize', value) }} />
+        <Row label="Pane title text" detail="The names on each pane's header.">
+          <SegmentedChoice label="Pane title text size" value={preferences.tabTextSize} options={UI_TEXT_OPTIONS} onChange={(value) => { update('tabTextSize', value) }} />
         </Row>
         <Row label="Sidebar width" detail="Drag the sidebar's edge to change it, or focus the edge and use the arrow keys.">
           <span className="mono" style={{ fontSize: 12, color: 'var(--fg2)' }}>{preferences.sidebarWidth}px</span>
@@ -790,7 +790,7 @@ function AddMachineCard({ add }: { add: MachinesInfo['add'] }) {
 function MachineList({ machines }: { machines: MachinesInfo }) {
   const [confirming, setConfirming] = useState<string | null>(null)
   const [confirmingUpdate, setConfirmingUpdate] = useState<string | null>(null)
-  const [activity, setActivity] = useState<{ sessions: number; busy: number } | null>(null)
+  const [activity, setActivity] = useState<MachineActivity | null>(null)
   const [checking, setChecking] = useState<string | null>(null)
   const askUpdate = (name: string, action: UpdateAction) => {
     setActivity(null)
@@ -857,8 +857,8 @@ function MachineList({ machines }: { machines: MachinesInfo }) {
               : askingUpdate && action !== null
               ? (
                 <>
-                  <button type="button" className="mx-scard-button is-danger" onClick={() => { runUpdate(name, action, false) }}>Update {name} now</button>
-                  <button type="button" className="mx-scard-button" onClick={() => { runUpdate(name, action, true) }}>Update {name} when idle</button>
+                  <button type="button" className="mx-scard-button is-danger" onClick={() => { runUpdate(name, action, false) }}>{updateVerb(action, activity)} {name} now</button>
+                  <button type="button" className="mx-scard-button" onClick={() => { runUpdate(name, action, true) }}>{updateVerb(action, activity)} {name} when idle</button>
                   <button type="button" className="mx-scard-button" onClick={() => { setConfirmingUpdate(null) }}>Cancel</button>
                 </>
               )

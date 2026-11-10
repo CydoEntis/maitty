@@ -489,6 +489,15 @@ impl Attachments {
     pub fn get(&self, attachment: u64) -> Option<&History> {
         self.histories.get(&attachment)
     }
+    /// The newest revision any attached view of the conversation holds; 0 with none attached.
+    pub fn revision_of(&self, conversation: ConversationId) -> u64 {
+        self.histories
+            .values()
+            .filter(|history| history.conversation == conversation)
+            .map(|history| history.revision)
+            .max()
+            .unwrap_or(0)
+    }
     pub fn notification(
         &mut self,
         conversation: ConversationId,

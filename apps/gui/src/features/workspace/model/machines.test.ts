@@ -3,7 +3,7 @@ import { conversationsFromSnapshot } from '@/api/daemon'
 import { forgetMachines, parseSessionId, registerMachine, type MachineKind, type MachineState } from '@/api/machines'
 import type { Conversation } from '@/data/preview'
 import type { Layout } from './layout'
-import { idsOfMachinesNotHeard, announcementFor, machineChip, machineHeads, remoteStartRefusal, remoteTargetOf, remoteTerminals, updateActionOf, updateCommandOf, type RemoteMachine } from './machines'
+import { idsOfMachinesNotHeard, announcementFor, machineChip, machineHeads, machineTitle, remoteStartRefusal, remoteTargetOf, remoteTerminals, updateActionOf, updateCommandOf, type MachineHead, type RemoteMachine } from './machines'
 import { folderNameOf, toSessionView } from './session'
 
 afterEach(() => { forgetMachines() })
@@ -220,6 +220,10 @@ describe('the command that fixes a machine that needs an update', () => {
     expect(updateActionOf(missing)).toBe('install')
     expect(updateActionOf(other)).toBe('update')
     expect(updateActionOf(state(1, 'build', 'needs-update'))).toBe('update')
+    const newer = { ...state(1, 'build', 'needs-update'), why: "it runs a newer maitty than this computer; update maitty on this computer (`maitty update`, or the desktop app's own update), then retry" }
+    expect(updateActionOf(newer)).toBeNull()
+    expect(updateCommandOf(newer)).toBeNull()
+    expect(machineChip(newer).word).toBe('newer than this app')
     expect(updateActionOf({ ...missing, state: 'unreachable' })).toBeNull()
     expect(updateActionOf(state(1, 'build'))).toBeNull()
     expect(machineChip(missing).word).toBe('not installed')
@@ -257,5 +261,15 @@ describe('starting a shell from another machine\'s pane', () => {
 
   it('lets a pane of this computer start a shell', () => {
     expect(remoteStartRefusal(false, null, 'Splitting this pane')).toBeNull()
+  })
+})
+
+describe('machine nicknames', () => {
+  it('shows the nickname while the real name stays what sessions go by', () => {
+    const state = { name: 'Build-Box', state: 'connected' } as unknown as MachineState
+    const heads = machineHeads(new Map([[1, { state, conversations: [], heard: true }]]), { 'build-box': 'Builder' })
+    expect(machineTitle(heads[1] as MachineHead)).toBe('Builder')
+    expect(heads[1]).toMatchObject({ name: 'Build-Box' })
+    expect(machineTitle(machineHeads(new Map([[1, { state, conversations: [], heard: true }]]))[1] as MachineHead)).toBe('Build-Box')
   })
 })

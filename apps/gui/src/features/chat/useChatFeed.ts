@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { readConversationPage } from '@/api/daemon'
+import { listenConversationChanged } from '@/api/conversationNews'
 import type { ApprovalDecision, ChatProvider } from './chatEvents'
 import { afterFailure, createFeed, hasPendingApproval, syncFeed, type ChatFeed, type ReadPage } from './chatFeed'
 import { recordApprovalAnswer, selectChatEvents } from './projection'
@@ -7,6 +8,13 @@ import { recordApprovalAnswer, selectChatEvents } from './projection'
 /** How often an open chat asks the daemon for news: quickly while the agent works or waits on a person, slowly otherwise. */
 export const ACTIVE_POLL_MS = 300
 export const IDLE_POLL_MS = 3000
+/**
+ * Once the daemon has said this conversation changed, it is the daemon that wakes the chat, and a
+ * working chat asks on its own only this often, in case a change went unsaid.
+ */
+export const TOLD_ACTIVE_POLL_MS = 1000
+/** Reads the daemon's news asks for are at least this far apart: a reply streams in many small changes. */
+export const NEWS_READ_GAP_MS = 100
 
 /** The feeds the window has read, so reopening a chat shows its history at once and reads only what changed. */
 const CACHE_LIMIT = 8
@@ -45,7 +53,8 @@ type Options = {
  * Follows one conversation's history for as long as the chat is open. The first read pages the
  * whole history; after that each poll asks only for the last page and applies what is new
  * (see `syncFeed`). A failed read keeps what is shown, marks the chat offline and tries again; the
- * next read starts from the beginning, so nothing is shown twice and nothing is missed.
+ * next read starts from the beginning, so nothing is shown twice and nothing is missed. The daemon
+ * also says when the conversation changed (`listenConversationChanged`), and the chat reads then.
  */
 export function useChatFeed({ conversation, generation, provider }: Options) {
   const [feed, setFeed] = useState<ChatFeed>(() => startFeed(provider, conversation, generation))
@@ -67,7 +76,10 @@ export function useChatFeed({ conversation, generation, provider }: Options) {
     const gone = () => life.stopped
     let timer = 0
     let running = false
-    let again = false
+    // A read was asked for while one ran: at once (the person did something) or after the gap (the daemon's news).
+    let again: 'now' | 'soon' | null = null
+    let told = false
+    let lastReadAt = 0
     latest.current = startFeed(provider, conversation, generation)
     const read: ReadPage = (cursor) => readConversationPage(conversation, cursor)
 
@@ -75,7 +87,7 @@ export function useChatFeed({ conversation, generation, provider }: Options) {
       if (gone()) return
       // A refresh that arrives during a read waits for it, then reads once more.
       if (running) {
-        again = true
+        again = 'now'
         return
       }
       if (document.hidden) {
@@ -101,11 +113,24 @@ export function useChatFeed({ conversation, generation, provider }: Options) {
         setReadError(reason)
       } finally {
         running = false
+        lastReadAt = Date.now()
       }
-      const delay = again ? 0 : isActive(latest.current) ? ACTIVE_POLL_MS : IDLE_POLL_MS
-      again = false
+      const poll = !isActive(latest.current) ? IDLE_POLL_MS : told ? TOLD_ACTIVE_POLL_MS : ACTIVE_POLL_MS
+      const delay = again === 'now' ? 0 : again === 'soon' ? NEWS_READ_GAP_MS : poll
+      again = null
       timer = window.setTimeout(() => { void tick() }, delay)
     }
+    const onNews = (changed: number) => {
+      if (gone() || changed !== conversation) return
+      told = true
+      if (running) {
+        again ??= 'soon'
+        return
+      }
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => { void tick() }, Math.max(0, NEWS_READ_GAP_MS - (Date.now() - lastReadAt)))
+    }
+    const listening = listenConversationChanged(onNews)
     wake.current = () => {
       window.clearTimeout(timer)
       void tick()
@@ -114,6 +139,7 @@ export function useChatFeed({ conversation, generation, provider }: Options) {
     return () => {
       life.stopped = true
       window.clearTimeout(timer)
+      void listening.then((stop) => { stop() })
     }
   }, [conversation, generation, provider])
 

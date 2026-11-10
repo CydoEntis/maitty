@@ -21,6 +21,9 @@ const LOGIN_TOKENS: [&str; 3] = [
 pub const FIX_LOGIN: &str = "ssh needs a login it cannot do without you; make plain `ssh` to that machine work in a terminal (load your key, accept its host key), then retry";
 /// `<name>` is the machine's name in the config; a fix text is one constant for every machine.
 pub const FIX_UPDATE: &str = "run `maitty machine update <name>`, then retry";
+/// The machine runs a newer app than this computer. Updating it from here is refused (never a
+/// downgrade), so the fix is on this side.
+pub const FIX_UPDATE_HERE: &str = "it runs a newer maitty than this computer; update maitty on this computer (`maitty update`, or the desktop app's own update), then retry";
 pub const FIX_INSTALL: &str =
     "run `maitty machine update <name> --install` (or set `remote_cmd` to its path), then retry";
 pub const FIX_NO_DAEMON: &str = "maitty is not running on that machine; retry to start it there";
@@ -57,8 +60,10 @@ impl std::error::Error for SshEnd {}
 pub enum FailureClass {
     /// ssh could not log in without a prompt.
     Login,
-    /// The far side runs another version of the app.
+    /// The far side runs an older version of the app.
     Update,
+    /// The far side runs a newer version of the app than this computer.
+    UpdateHere,
     /// The far side has no app on its PATH.
     Install,
     /// The app is installed there but its daemon is not running.
@@ -68,8 +73,12 @@ pub enum FailureClass {
 }
 
 pub fn classify(error: &anyhow::Error) -> FailureClass {
-    if other_version(error).is_some() {
-        return FailureClass::Update;
+    if let Some(theirs) = other_version(error) {
+        return if theirs > maitty_shared::protocol::PROTOCOL_VERSION {
+            FailureClass::UpdateHere
+        } else {
+            FailureClass::Update
+        };
     }
     let Some(end) = error.downcast_ref::<SshEnd>() else {
         return FailureClass::Unreachable(clean(&format!("{error:#}")));
@@ -180,6 +189,13 @@ mod tests {
     fn another_version_needs_an_update() {
         let error = anyhow::Error::from(OtherVersion { daemon: 3 });
         assert_eq!(classify(&error), FailureClass::Update);
+    }
+
+    #[test]
+    fn a_newer_version_there_means_updating_this_computer() {
+        let newer = maitty_shared::protocol::PROTOCOL_VERSION + 1;
+        let error = anyhow::Error::from(OtherVersion { daemon: newer });
+        assert_eq!(classify(&error), FailureClass::UpdateHere);
     }
 
     #[test]

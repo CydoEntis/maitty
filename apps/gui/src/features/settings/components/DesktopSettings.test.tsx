@@ -482,7 +482,7 @@ describe('the Machines page', () => {
 
   it('says how many sessions are open and how many are busy before it updates', async () => {
     const user = userEvent.setup()
-    const onCheckActivity = vi.fn(() => Promise.resolve({ sessions: 3, busy: 1 }))
+    const onCheckActivity = vi.fn(() => Promise.resolve({ sessions: 3, busy: 1, current: false }))
     renderSettings('machines', { machines: info({ list: others('needs-update', 'run `maitty machine update box`, then retry'), onCheckActivity }) })
     await user.click(screen.getByRole('button', { name: 'Update Maitty on box' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('box has 3 sessions open, 1 busy.')

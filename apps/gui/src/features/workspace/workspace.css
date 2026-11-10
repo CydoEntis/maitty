@@ -474,10 +474,14 @@
 .mx-broadcast-pill { height: 22px; display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; border-radius: 999px; font-size: 11.5px; color: var(--ansi-mag); background: color-mix(in srgb, var(--ansi-mag) 14%, transparent); }
 .mx-menu-caps { padding: 6px 10px 4px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
 
-/* The sidebar's and the rail's icons follow the Sidebar icons setting; tabs and pane headers keep their size. */
+/* The sidebar's and the rail's icons follow the Sidebar icons setting; pane headers keep their size. */
 .mx-sidebar .mx-app-icon.size-28 { width: calc(28px * var(--icon-scale, 1)); height: calc(28px * var(--icon-scale, 1)); font-size: calc(12px * var(--icon-scale, 1)); }
 .mx-sidebar .mx-app-icon.size-24 { width: calc(24px * var(--icon-scale, 1)); height: calc(24px * var(--icon-scale, 1)); font-size: calc(11px * var(--icon-scale, 1)); }
 .mx-sidebar .mx-app-icon.size-18 { width: calc(18px * var(--icon-scale, 1)); height: calc(18px * var(--icon-scale, 1)); font-size: calc(8.5px * var(--icon-scale, 1)); }
+.mx-sidebar .mx-app-icon.size-20 { width: calc(20px * var(--icon-scale, 1)); height: calc(20px * var(--icon-scale, 1)); font-size: calc(9px * var(--icon-scale, 1)); }
+.mx-sidebar .mx-app-icon.size-22 { width: calc(22px * var(--icon-scale, 1)); height: calc(22px * var(--icon-scale, 1)); font-size: calc(10px * var(--icon-scale, 1)); }
+.mx-sidebar .mx-app-icon.size-26 { width: calc(26px * var(--icon-scale, 1)); height: calc(26px * var(--icon-scale, 1)); font-size: calc(11.5px * var(--icon-scale, 1)); }
+.mx-sidebar .mx-app-icon.size-14 { width: calc(14px * var(--icon-scale, 1)); height: calc(14px * var(--icon-scale, 1)); font-size: calc(6.5px * var(--icon-scale, 1)); }
 
 /* First-run welcome. */
 @keyframes v9stepin { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
@@ -538,7 +542,7 @@
 .mx-notice-icon { flex: none; display: flex; align-items: flex-start; }
 .mx-notice-app { position: relative; display: block; width: 26px; height: 26px; }
 .mx-notice-app .mx-badge { right: -3px; bottom: -3px; width: 11px; height: 11px; border-radius: 3.5px; font-size: 8px; font-weight: 800; line-height: 1; color: var(--on-warn); }
-.mx-notice-app .mx-badge.is-working { border-radius: 50%; background: var(--m-well); overflow: hidden; color: var(--working); font-family: var(--mono); }
+.mx-notice-app .mx-badge.is-working { border-radius: 50%; background: var(--bg); overflow: hidden; color: var(--working); font-family: var(--mono); }
 .mx-notice-app .mx-badge.is-working .mx-spin { font-size: 8px; line-height: 1; }
 .mx-notice-app .mx-badge.is-done svg { width: 7px; height: 7px; }
 .mx-notice-app .mx-badge.is-unknown { background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }

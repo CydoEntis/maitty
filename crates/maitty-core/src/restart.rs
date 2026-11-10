@@ -66,10 +66,12 @@ fn read_from(data: &std::path::Path, pid_file: &std::path::Path) -> Option<Activ
 /// What to do about a server of another protocol that this the app can't talk to.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Plan {
-    /// Nothing is mid-turn: replace the server without asking.
+    /// No session is open: replace the server without asking.
     Replace,
-    /// Something is working or waiting: ask once. `resume` is how many sessions come back,
-    /// `busy` how many of them are mid-turn (unknown for a server that published nothing).
+    /// Sessions are open: ask once. A restart ends whatever runs in them (a build, a dev server,
+    /// an agent's turn), and only the person knows whether that can go. `resume` is how many
+    /// sessions come back, `busy` how many of them are mid-turn (unknown for a server that
+    /// published nothing).
     Ask { resume: usize, busy: Option<usize> },
 }
 
@@ -88,7 +90,7 @@ pub fn plan_for_mismatch(
         };
     }
     match published {
-        Some(a) if a.busy() == 0 => Plan::Replace,
+        Some(a) if a.sessions == 0 => Plan::Replace,
         Some(a) => Plan::Ask {
             resume: a.sessions,
             busy: Some(a.busy()),
@@ -102,9 +104,15 @@ pub fn plan_for_mismatch(
 }
 
 /// Whether a server this the app can talk to should still be replaced on launch: it is an
-/// older release than this one and nothing is mid-turn.
+/// older release than this one and holds no session. One with sessions open is left running,
+/// whatever they are doing: a restart ends the programs in them, and the window's Restart
+/// offer is where the person decides that.
 pub fn replace_older_idle_server(published: Option<&Activity>, ours: &str) -> bool {
-    published.is_some_and(|a| a.busy() == 0 && crate::version::newer_than(ours, &a.version))
+    published.is_some_and(|a| idle(a) && crate::version::newer_than(ours, &a.version))
+}
+
+fn idle(a: &Activity) -> bool {
+    a.sessions == 0
 }
 
 /// Whether the running daemon already is `ours`. A daemon that published nothing is not known
@@ -150,6 +158,13 @@ mod tests {
         }
     }
 
+    fn no_sessions() -> Activity {
+        Activity {
+            sessions: 0,
+            ..activity(0, 0)
+        }
+    }
+
     const OLDER: u32 = crate::protocol::PROTOCOL_VERSION - 1;
 
     #[test]
@@ -173,11 +188,23 @@ mod tests {
     }
 
     #[test]
-    fn an_idle_server_is_replaced_without_asking() {
+    fn a_server_with_no_session_is_replaced_without_asking() {
         assert_eq!(
-            plan_for_mismatch(OLDER, Some(&activity(0, 0)), 9),
+            plan_for_mismatch(OLDER, Some(&no_sessions()), 9),
             Plan::Replace,
-            "what is saved doesn't matter once the server says it is idle"
+            "what is saved doesn't matter once the server says it holds nothing"
+        );
+    }
+
+    #[test]
+    fn open_sessions_ask_even_when_no_agent_is_mid_turn() {
+        assert_eq!(
+            plan_for_mismatch(OLDER, Some(&activity(0, 0)), 0),
+            Plan::Ask {
+                resume: 4,
+                busy: Some(0)
+            },
+            "a shell may be running a build or a server that a restart would end"
         );
     }
 
@@ -213,17 +240,21 @@ mod tests {
 
     #[test]
     fn only_an_older_idle_server_is_replaced_on_launch() {
-        assert!(replace_older_idle_server(Some(&activity(0, 0)), "0.41.0"));
+        assert!(replace_older_idle_server(Some(&no_sessions()), "0.41.0"));
         assert!(
             !replace_older_idle_server(Some(&activity(1, 0)), "0.41.0"),
             "never under a working agent"
         );
         assert!(
-            !replace_older_idle_server(Some(&activity(0, 0)), "0.40.0"),
+            !replace_older_idle_server(Some(&activity(0, 0)), "0.41.0"),
+            "never under open sessions, whatever they are doing"
+        );
+        assert!(
+            !replace_older_idle_server(Some(&no_sessions()), "0.40.0"),
             "the same version stays"
         );
         assert!(
-            !replace_older_idle_server(Some(&activity(0, 0)), "0.39.0"),
+            !replace_older_idle_server(Some(&no_sessions()), "0.39.0"),
             concat!(
                 "a newer server is never replaced by an older ",
                 env!("APP_COMMAND")

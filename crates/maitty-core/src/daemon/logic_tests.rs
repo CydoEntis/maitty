@@ -58,6 +58,7 @@ fn report(term: TermId, token: &str, pid: u32, status: HookStatus, event: &str) 
         model: None,
         name: None,
         background: Vec::new(),
+        background_agents: Vec::new(),
         ask: None,
         call: None,
     }
@@ -515,6 +516,48 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
             }
         )
         .is_err()
+    );
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_message_sent_to_a_starting_agent_is_held_until_it_takes_input() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let held = |d: &Daemon| d.terms[&t].held_message.is_some();
+    let send = |d: &mut Daemon, text: &str| {
+        d.command(
+            0,
+            Command::SendWhenReady {
+                term: t,
+                text: text.into(),
+            },
+        )
+    };
+    assert!(send(&mut d, "   ").is_err(), "nothing to send");
+    send(&mut d, "  fix the parser ").unwrap();
+    assert!(
+        send(&mut d, "and another").is_err(),
+        "one message waits at a time"
+    );
+    // Still a shell: the agent has not started.
+    d.update_statuses();
+    assert!(held(&d));
+    // The agent is up but asking something: nothing is typed into its question.
+    {
+        let p = d.terms.get_mut(&t).unwrap();
+        (p.agent, p.hooked) = (Some("claude".into()), true);
+    }
+    d.set_status(t, Status::Blocked, "test");
+    d.update_statuses();
+    assert!(held(&d), "never into a question");
+    // It takes input: the message goes in, once.
+    d.set_status(t, Status::Idle, "test");
+    d.update_statuses();
+    assert!(!held(&d));
+    assert!(
+        d.terms[&t].queue_sent.is_some(),
+        "a queued follow-up waits for the turn this starts"
     );
     close(&mut d, &[t]);
 }
@@ -1271,6 +1314,34 @@ fn a_hooked_claude_still_animating_is_not_read_idle_from_its_prompt_box() {
     );
     assert!(d.terms[&t].alert_due.is_none(), "nothing rings yet");
     // No turn-end report ever came and the screen has gone still: the missed hook is recovered.
+    d.terms.get_mut(&t).unwrap().last_output = Instant::now() - Duration::from_secs(10);
+    d.update_statuses();
+    assert_eq!(d.terms[&t].status, Status::Done);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn an_unhooked_claude_still_animating_is_not_read_idle_from_its_prompt_box() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let mut seen = viewer(&mut d);
+    {
+        let p = d.terms.get_mut(&t).unwrap();
+        p.agent = Some("claude".into());
+        p.hooked = false;
+        p.status = Status::Working;
+        p.status_since = term::unix_now() - 60;
+        p.parser.process(CLAUDE_RUNNING_STOP_HOOKS.as_bytes());
+        p.last_output = Instant::now();
+    }
+    d.update_statuses();
+    assert_eq!(
+        d.terms[&t].status,
+        Status::Working,
+        "its input box shows all turn long: a screen still redrawing is a turn still running"
+    );
+    assert!(!told_done(&mut seen), "nothing rings mid-turn");
+    // With no hooks the screen is all there is: once it has gone still, the turn is over.
     d.terms.get_mut(&t).unwrap().last_output = Instant::now() - Duration::from_secs(10);
     d.update_statuses();
     assert_eq!(d.terms[&t].status, Status::Done);
@@ -2441,6 +2512,41 @@ fn the_usage_store_keeps_what_claude_reported_and_drops_cost_once_plan_limits_sh
 static SAVED_OUTPUT: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[test]
+fn a_message_held_for_a_starting_agent_survives_the_server_restarting() {
+    let (mut d, _rx) = daemon();
+    d.cfg.restore.enabled = true;
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
+    let t = *d.terms.keys().next().unwrap();
+    d.terms.get_mut(&t).unwrap().held_message = Some(term::HeldMessage::new("fix the login page"));
+    let saved = d.saved();
+    let (mut d2, _rx2) = daemon();
+    d2.cfg.restore.enabled = true;
+    d2.restore(saved);
+    let new = *d2.terms.keys().next().unwrap();
+    assert_eq!(
+        d2.terms[&new]
+            .held_message
+            .as_ref()
+            .map(|held| held.text.as_str()),
+        Some("fix the login page")
+    );
+    let old: persist::SavedPane =
+        serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":"claude","session":null}"#)
+            .expect("a pane saved before messages were held");
+    assert_eq!(old.held_message, None);
+    close(&mut d, &[t]);
+    close(&mut d2, &[new]);
+}
+
+#[test]
 fn a_panes_history_survives_the_server_restarting() {
     let _one_at_a_time = SAVED_OUTPUT
         .lock()
@@ -2947,6 +3053,7 @@ fn an_agent_stays_in_the_folder_it_started_in() {
             model,
             name,
             background,
+            background_agents,
             ..
         } => ClientMsg::Hook {
             term,
@@ -2964,6 +3071,7 @@ fn an_agent_stays_in_the_folder_it_started_in() {
             model,
             name,
             background,
+            background_agents,
             ask: None,
             call: None,
         },
@@ -5097,6 +5205,28 @@ fn an_agent_that_picks_itself_back_up_and_finishes_again_is_not_said_twice() {
 }
 
 #[test]
+fn a_finish_you_looked_at_straight_away_still_counts_as_said() {
+    let (mut d, _rx) = daemon();
+    let t = working_agent(&mut d);
+    let mut seen = viewer(&mut d);
+    d.terms.get_mut(&t).unwrap().last_input = Instant::now() - Duration::from_secs(30);
+    d.terms.get_mut(&t).unwrap().status_since = term::unix_now() - 60;
+    d.set_status(t, Status::Done, "test");
+    assert!(told_done(&mut seen), "the finish of what you asked is said");
+    // You were watching it: seen before the desktop alert's wait was over.
+    d.set_status(t, Status::Idle, "you looked at it");
+
+    // A background job reports in: it works a little more and stops again. Nobody typed.
+    d.set_status(t, Status::Working, "test");
+    finishes_and_settles(&mut d, t);
+    assert!(
+        !told_done(&mut seen),
+        "the window already heard this work finish: looking at it is not a reason to ring again"
+    );
+    close(&mut d, &[t]);
+}
+
+#[test]
 fn a_finish_that_did_not_last_is_not_counted_as_said() {
     let (mut d, _rx) = daemon();
     let t = working_agent(&mut d);
@@ -5301,6 +5431,45 @@ fn a_wake_up_with_an_older_task_still_running_rings() {
     say(&mut d, HookStatus::Working, "PreToolUse", &[]);
     say(&mut d, HookStatus::Done, "Stop", &["b2"]);
     assert!(announced(&heard(&mut seen), Status::Done));
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_wake_up_with_a_helper_agent_still_running_stays_paused() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let secret = d.terms[&t].token.clone();
+    let mut seen = viewer(&mut d);
+    let say = |d: &mut Daemon, status, event: &str, agents: &[&str]| {
+        let mut msg = report(t, &secret, 0, status, event);
+        if let ClientMsg::Hook {
+            background,
+            background_agents,
+            ..
+        } = &mut msg
+        {
+            *background = agents.iter().map(|id| id.to_string()).collect();
+            *background_agents = background.clone();
+        }
+        d.apply_hook(msg, Some(true), Vec::new())
+    };
+    say(&mut d, HookStatus::Working, "UserPromptSubmit", &[]);
+    say(&mut d, HookStatus::Done, "Stop", &["a1", "a2"]);
+    assert!(!announced(&heard(&mut seen), Status::Done), "both are new: paused");
+    // a1 reported in and woke it; a2 is a helper that will end and wake it again, unlike a
+    // shell that may be a server.
+    say(&mut d, HookStatus::Working, "PreToolUse", &[]);
+    say(&mut d, HookStatus::Done, "Stop", &["a2"]);
+    assert!(
+        !announced(&heard(&mut seen), Status::Done),
+        "a helper is still running: the work is not finished"
+    );
+    say(&mut d, HookStatus::Working, "PreToolUse", &[]);
+    say(&mut d, HookStatus::Done, "Stop", &[]);
+    assert!(
+        announced(&heard(&mut seen), Status::Done),
+        "the last helper is in: the real end rings"
+    );
     close(&mut d, &[t]);
 }
 
@@ -6664,6 +6833,56 @@ fn an_agent_saved_mid_turn_comes_back_as_a_resume_of_its_conversation() {
     );
 }
 
+#[test]
+fn a_conversation_comes_back_in_one_pane_only() {
+    let (d, _rx) = daemon();
+    let folder = std::env::temp_dir();
+    let mut resuming = std::collections::HashSet::new();
+    let saved = |session: Option<&str>| persist::SavedPane {
+        agent: Some("claude".into()),
+        session: session.map(Into::into),
+        ..Default::default()
+    };
+
+    // Two panes of one session: the second would resume the conversation the first holds.
+    let (mut first, mut second) = (saved(Some("abc123")), saved(Some("abc123")));
+    assert!(
+        d.restore_cmd_once(&mut first, &folder, &mut resuming)
+            .is_some_and(|resume| resume.contains("abc123"))
+    );
+    assert_eq!(d.restore_cmd_once(&mut second, &folder, &mut resuming), None);
+    assert_eq!(
+        (first.agent.as_deref(), second.agent, second.session),
+        (Some("claude"), None, None),
+        "the second is a shell and no longer claims the agent"
+    );
+
+    // Two with no session in one folder would both resume "the last one".
+    let (mut third, mut fourth) = (saved(None), saved(None));
+    assert!(d.restore_cmd_once(&mut third, &folder, &mut resuming).is_some());
+    assert_eq!(d.restore_cmd_once(&mut fourth, &folder, &mut resuming), None);
+
+    // Another session, or the same agent in another folder, is its own conversation.
+    assert!(
+        d.restore_cmd_once(&mut saved(Some("other")), &folder, &mut resuming)
+            .is_some()
+    );
+    let elsewhere = folder.join("elsewhere");
+    assert!(d.restore_cmd_once(&mut saved(None), &elsewhere, &mut resuming).is_some());
+
+    // A plain command may run in as many panes as it did.
+    let server = || persist::SavedPane {
+        cmd: Some("npm run dev".into()),
+        ..Default::default()
+    };
+    for _ in 0..2 {
+        assert_eq!(
+            d.restore_cmd_once(&mut server(), &folder, &mut resuming).as_deref(),
+            Some("npm run dev")
+        );
+    }
+}
+
 /// A hooked agent left working, its last output and hook report `secs` ago.
 fn silent_working_agent(d: &mut Daemon, secs: u64) -> TermId {
     let id = pane(d);
@@ -7454,7 +7673,7 @@ fn test_client(surface: Surface) -> Client {
 }
 
 #[test]
-fn a_desktop_agent_that_died_mid_turn_comes_back_as_a_shell_that_offers_the_resume() {
+fn an_agent_that_died_mid_turn_comes_back_as_a_shell_that_offers_the_resume() {
     let (mut d, _rx) = daemon();
     let dir = std::env::temp_dir();
     let saved_pane = |owner: Surface, was_working: bool| persist::SavedPane {
@@ -7483,6 +7702,11 @@ fn a_desktop_agent_that_died_mid_turn_comes_back_as_a_shell_that_offers_the_resu
         workspaces: vec![
             ws(saved_pane(Surface::Desktop, true)),
             ws(saved_pane(Surface::Desktop, false)),
+            // Its own session, so it is not taken for a second pane of the conversation above.
+            ws(persist::SavedPane {
+                session: Some("its-own".into()),
+                ..saved_pane(Surface::Terminal, true)
+            }),
         ],
         active: 0,
         made_worktrees: Vec::new(),
@@ -7490,7 +7714,7 @@ fn a_desktop_agent_that_died_mid_turn_comes_back_as_a_shell_that_offers_the_resu
         pending_starts: Vec::new(),
         conversation_operations: Vec::new(),
     });
-    let [interrupted, finished] = [0, 1].map(|i| d.workspaces[i].tabs[0].focus);
+    let [interrupted, finished, in_terminal] = [0, 1, 2].map(|i| d.workspaces[i].tabs[0].focus);
 
     let info = d.snapshot();
     let offered = info.terms[&interrupted]
@@ -7507,11 +7731,15 @@ fn a_desktop_agent_that_died_mid_turn_comes_back_as_a_shell_that_offers_the_resu
         info.terms[&finished].interrupted, None,
         "an agent that was not working is restored as before"
     );
+    assert!(
+        info.terms[&in_terminal].interrupted.is_some() && info.terms[&in_terminal].agent.is_none(),
+        "the terminal app's sessions are told of a cut turn the same way"
+    );
 
     // Once an agent runs in the pane again, there is nothing left to offer.
     d.terms.get_mut(&interrupted).unwrap().agent = Some("codex".into());
     assert_eq!(d.snapshot().terms[&interrupted].interrupted, None);
-    close(&mut d, &[interrupted, finished]);
+    close(&mut d, &[interrupted, finished, in_terminal]);
 }
 
 #[test]

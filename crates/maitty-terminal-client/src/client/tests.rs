@@ -5014,6 +5014,44 @@ second line
     }
 
     #[test]
+    fn a_failed_check_rings_for_a_pane_whose_turn_has_ended() {
+        let (_, mut app) = super::design_tests::render_with(100, 30);
+        app.notice = None;
+        let pane = app.snap.terms.get_mut(&2).unwrap();
+        pane.status = Status::Done;
+        pane.checks = vec![crate::protocol::CheckInfo {
+            state: crate::protocol::CheckState::Failed,
+            ..Default::default()
+        }];
+        let term = ClientTerm::local(2);
+        app.on_server(ServerMsg::Attention {
+            term: 2,
+            status: Status::Blocked,
+        });
+        // The next state the daemon sends still shows the pane done: the alert must outlive it.
+        app.on_server(ServerMsg::State(app.snap.clone()));
+        app.settling.get_mut(&term).expect("still waiting to ring").1 =
+            Instant::now() - Duration::from_millis(1);
+        app.settle_alerts();
+        assert!(
+            app.alerted.contains_key(&term),
+            "a failed check needs you, though the pane reads done"
+        );
+
+        // With the check passed it is only a finished pane: a stale needs-you says nothing.
+        app.alerted.clear();
+        app.last_alert = None;
+        app.snap.terms.get_mut(&2).unwrap().checks[0].state = crate::protocol::CheckState::Passed;
+        app.on_server(ServerMsg::Attention {
+            term: 2,
+            status: Status::Blocked,
+        });
+        app.settling.get_mut(&term).unwrap().1 = Instant::now() - Duration::from_millis(1);
+        app.settle_alerts();
+        assert!(!app.alerted.contains_key(&term));
+    }
+
+    #[test]
     fn a_blocker_in_the_pane_you_are_looking_at_makes_no_sound() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let id = app.focused().unwrap();
@@ -12848,6 +12886,19 @@ mod files_panel_tests {
             views::scan_tree(root),
             views::git_marks(root),
         ));
+        preview_read(app);
+    }
+
+    /// The selected file read, as the background read would hand it back.
+    fn preview_read(app: &mut App) {
+        let Some(View::Files(v)) = &mut app.view else {
+            return;
+        };
+        let Some(path) = v.preview_wanted.take() else {
+            return;
+        };
+        let (root, lines) = (v.root.clone(), files::preview(&path));
+        app.on_bg(Bg::FilesPreview(root, path, lines));
     }
 
     fn files(app: &App) -> &views::FilesTree {
@@ -12859,6 +12910,7 @@ mod files_panel_tests {
 
     fn key(app: &mut App, code: KeyCode) {
         app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+        preview_read(app);
     }
 
     fn select(app: &mut App, name: &str) {
@@ -12872,6 +12924,35 @@ mod files_panel_tests {
             .position(|(_, n)| n.label == name)
             .expect("the file is listed");
         v.refresh_preview();
+        preview_read(app);
+    }
+
+    #[test]
+    fn a_files_lines_arrive_after_it_is_selected_and_a_late_read_of_another_is_dropped() {
+        let dir = project("late-read");
+        let mut app = screen_in(&dir, 160, 45);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        let Some(View::Files(v)) = &mut app.view else {
+            panic!("Files is open")
+        };
+        v.expanded.insert(v.root.join("src"));
+        v.sel = v
+            .visible()
+            .iter()
+            .position(|(_, n)| n.label == "main.rs")
+            .expect("the file is listed");
+        v.refresh_preview();
+        let main = dir.join("src").join("main.rs");
+        assert_eq!(v.preview, Some((main.clone(), Vec::new())), "nothing is read on selecting");
+        assert_eq!(v.preview_wanted, Some(main.clone()));
+        let notes = dir.join("notes.txt");
+        app.on_bg(Bg::FilesPreview(dir.clone(), notes.clone(), files::preview(&notes)));
+        assert_eq!(files(&app).preview, Some((main.clone(), Vec::new())));
+        preview_read(&mut app);
+        let shown = files(&app).preview.as_ref().expect("a preview");
+        assert_eq!(shown.1.first().map(String::as_str), Some("let line_1 = 1;"));
+        assert_eq!(files(&app).preview_wanted, None, "read once");
     }
 
     #[test]
@@ -13067,6 +13148,7 @@ mod files_panel_tests {
                 modifiers,
             });
         }
+        preview_read(app);
     }
 
     /// Where a row of the tree is drawn, by its text.
@@ -13556,6 +13638,7 @@ mod files_panel_tests {
 
     fn press(app: &mut App, code: KeyCode, mods: KeyModifiers) {
         app.on_key(KeyEvent::new(code, mods));
+        preview_read(app);
     }
 
     fn mouse(app: &mut App, kind: MouseEventKind, (column, row): (u16, u16)) {
@@ -13565,6 +13648,7 @@ mod files_panel_tests {
             row,
             modifiers: KeyModifiers::NONE,
         });
+        preview_read(app);
     }
 
     #[test]
@@ -13672,6 +13756,51 @@ mod files_panel_tests {
         press(app, KeyCode::Char('v'), KeyModifiers::CONTROL);
         let read = super::branch_view_tests::next_bg(rx);
         app.on_bg(read);
+    }
+
+    #[test]
+    fn the_folder_picker_lists_a_folder_after_it_is_typed_and_drops_a_late_listing() {
+        let dir = project("picker");
+        std::fs::create_dir_all(dir.join("src").join(".git")).unwrap();
+        let mut fd = screen::Finder::new(&dir);
+        assert_eq!(fd.wanted.as_deref(), Some(dir.as_path()));
+        assert!(fd.list.is_empty(), "nothing is listed on typing");
+        let names = |fd: &screen::Finder| fd.rows().into_iter().map(|(n, _, repo)| (n, repo)).collect::<Vec<_>>();
+        assert_eq!(names(&fd), [(".".to_string(), false), ("..".to_string(), false)]);
+        let (elsewhere, _) = screen::Finder::list_folders(&dir.join("src"));
+        assert!(!fd.listed(&dir.join("src"), elsewhere, true), "another folder's listing");
+        let (list, repo) = screen::Finder::list_folders(&dir);
+        assert!(fd.listed(&dir, list, repo));
+        assert_eq!(
+            names(&fd),
+            [(".".to_string(), false), ("..".to_string(), false), ("src".to_string(), true)]
+        );
+    }
+
+    #[test]
+    fn ctrl_s_writes_the_file_off_the_ui_thread_and_keeps_what_was_typed_meanwhile() {
+        let (dir, mut app) = editing("save");
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.bg = tx;
+        let file = dir.join("src").join("main.rs");
+        press(&mut app, KeyCode::Char('a'), KeyModifiers::NONE);
+        press(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+        press(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+        press(&mut app, KeyCode::Char('b'), KeyModifiers::NONE);
+        let written = super::branch_view_tests::next_bg(&mut rx);
+        assert!(rx.try_recv().is_err(), "one save at a time");
+        app.on_bg(written);
+        assert!(
+            std::fs::read_to_string(&file).unwrap().starts_with("alet line_1"),
+            "what was there at Ctrl+S is on disk"
+        );
+        assert!(edit(&app).dirty, "the letter typed while it saved is not");
+        assert!(matches!(&app.notice, Some((said, _, _)) if said == "saved main.rs"));
+        press(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+        let written = super::branch_view_tests::next_bg(&mut rx);
+        app.on_bg(written);
+        assert!(std::fs::read_to_string(&file).unwrap().starts_with("ablet line_1"));
+        assert!(!edit(&app).dirty && !edit(&app).conflict);
     }
 
     #[test]
@@ -13924,6 +14053,8 @@ mod files_panel_tests {
         );
         assert!(edit(&app).dirty, "an undo marks the file changed");
         click_hit(&mut app, ctrl('s'));
+        let written = super::branch_view_tests::next_bg(&mut rx);
+        app.on_bg(written);
         assert!(!edit(&app).dirty, "Save saves");
         assert_eq!(
             std::fs::read_to_string(dir.join("src").join("main.rs"))

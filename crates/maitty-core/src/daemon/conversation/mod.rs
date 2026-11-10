@@ -7,6 +7,7 @@ pub(super) mod follow;
 mod follow_transcript;
 pub(super) mod history;
 mod history_provider;
+pub(super) mod news;
 mod tool_input;
 pub(super) mod history_storage;
 mod process;

@@ -40,6 +40,8 @@ struct Login {
     before: HashSet<TermId>,
     term: Option<TermId>,
     since: Instant,
+    /// An update or restart, not a first login: the app there is current once it closes.
+    updates: bool,
 }
 
 pub(super) struct Flow {
@@ -56,6 +58,9 @@ pub(super) struct Flow {
     /// Every machine removed while the window ran. An id is never given to another machine,
     /// so whatever arrives under one of these was sent before its machine was removed.
     forgotten: HashSet<MachineId>,
+    /// Machines (lowercase names) whose update ran to the end in this window. If one still
+    /// answers with another version, the app there is current and its daemon only needs a restart.
+    updated: HashSet<String>,
 }
 
 impl Default for Flow {
@@ -67,6 +72,7 @@ impl Default for Flow {
             probe: None,
             next_token: 0,
             logins: Vec::new(),
+            updated: HashSet::new(),
             dropped: Vec::new(),
             forgotten: HashSet::new(),
         }
@@ -310,6 +316,7 @@ impl App {
             before: self.popup_terms(),
             term: None,
             since: Instant::now(),
+            updates: false,
         });
         // A popup has the keys only in plain typing mode; the dialog closes and the toast says why.
         self.leave_shortcut_mode();
@@ -332,7 +339,12 @@ impl App {
             .and_then(|exe| exe.to_str().map(str::to_string))
             .unwrap_or_else(|| env!("APP_COMMAND").to_string());
         let machine = ipc::Machine::from_def_via(&def, &self.machine_flow.ssh);
-        let cmd = match machine.update_command(&program) {
+        let command = if fix == Some(AppFix::Restart) {
+            machine.restart_command(&program)
+        } else {
+            machine.update_command(&program)
+        };
+        let cmd = match command {
             Ok(cmd) => cmd,
             Err(e) => {
                 return say(
@@ -350,12 +362,14 @@ impl App {
             before: self.popup_terms(),
             term: None,
             since: Instant::now(),
+            updates: true,
         });
         // A popup has the keys only in plain typing mode, as the first login's does.
         self.leave_shortcut_mode();
         self.cmd_on(MachineId::LOCAL, Command::Popup { cmd, cwd: None });
         let doing = match fix {
             Some(AppFix::Install) => format!("Installing {} on", crate::brand::APP_NAME),
+            Some(AppFix::Restart) => format!("Restarting {} on", crate::brand::APP_NAME),
             _ => format!("Updating {} on", crate::brand::APP_NAME),
         };
         say(
@@ -374,6 +388,19 @@ impl App {
         };
         let said = self.machine_update(&name);
         self.notify(said.text, said.error);
+    }
+
+    /// Its update ran in this window and it still answers with another version: the app there is
+    /// current, so what is left is restarting its daemon.
+    pub(in crate::client) fn machine_restart_pending(&self, machine: MachineId) -> bool {
+        self.remotes
+            .get(&machine)
+            .is_some_and(|remote| self.machine_flow.updated.contains(&remote.name.to_lowercase()))
+    }
+
+    /// A machine that connects needs no more restart.
+    pub(super) fn machine_update_settled(&mut self, name: &str) {
+        self.machine_flow.updated.remove(&name.to_lowercase());
     }
 
     fn popup_terms(&self) -> HashSet<TermId> {
@@ -429,6 +456,9 @@ impl App {
     /// The popup closed: dial the machine. Whether the login
     /// worked is the connection's to say, with its own fix if it did not.
     pub(super) fn machine_login_done(&mut self, name: &str) -> Option<MachineNotice> {
+        if self.machine_flow.logins.iter().any(|l| l.updates && l.name.eq_ignore_ascii_case(name)) {
+            self.machine_flow.updated.insert(name.to_lowercase());
+        }
         self.machine_flow
             .logins
             .retain(|l| !l.name.eq_ignore_ascii_case(name));

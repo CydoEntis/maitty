@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { RECONNECT_TRIES, serviceStateOf, tryNumber } from '../model/serviceState'
-import { OfflineBanner, type RestartOffer } from './states'
+import { OfflineBanner, type AppBehindOffer, type RestartOffer } from './states'
 
 const SECOND_MS = 1000
 
@@ -104,7 +104,7 @@ function ServiceUpdateCard({ restart, onLater }: { restart: RestartOffer | null;
           <span className="mx-service-tile is-accent" aria-hidden="true">{RESTART}</span>
           <div className="mx-service-copy">
             <h2 id="mx-service-update-title">Restart Maitty to finish updating</h2>
-            <p>{restart ? `The app updated to v${String(restart.to)}, but the service is still on v${String(restart.from)}.` : 'The app updated, but the service is still on an older version.'}</p>
+            <p>The app updated, but the service behind it is still the older one.</p>
           </div>
         </div>
         {facts.length > 0 && (
@@ -132,7 +132,31 @@ function ServiceUpdateCard({ restart, onLater }: { restart: RestartOffer | null;
             </button>
           )}
           <button type="button" className="mx-svc-secondary" onClick={onLater}>Later</button>
-          {restart && <span className="mx-service-versions mono">v{restart.from} → v{restart.to}</span>}
+          {restart && <span className="mx-service-versions mono">protocol {restart.from} → {restart.to}</span>}
+        </div>
+      </section>
+    </ServiceLayer>
+  )
+}
+
+/** The service is newer than this app, so reconnecting needs the app updated. The sessions are untouched. */
+function AppBehindCard({ offer, sessions, onLater }: { offer: AppBehindOffer; sessions: number; onLater: () => void }) {
+  const first = useRef<HTMLButtonElement>(null)
+  useEffect(() => { first.current?.focus() }, [])
+  return (
+    <ServiceLayer>
+      <section className="mx-service-card" aria-labelledby="mx-service-behind-title">
+        <div className="mx-service-head">
+          <span className="mx-service-tile is-accent" aria-hidden="true">{RESTART}</span>
+          <div className="mx-service-copy">
+            <h2 id="mx-service-behind-title">Update Maitty to reconnect</h2>
+            <p>The service behind this app is newer than the app.{sessions > 0 && ` Your ${plural(sessions, 'session', 'sessions')} keep running.`}</p>
+          </div>
+        </div>
+        <div className="mx-service-actions">
+          <button ref={first} type="button" className="mx-svc-primary" disabled={offer.disabled} onClick={offer.onPress}>{offer.label}</button>
+          <button type="button" className="mx-svc-secondary" onClick={onLater}>Later</button>
+          <span className="mx-service-versions mono">protocol {offer.appProtocol} → {offer.serviceProtocol}</span>
         </div>
       </section>
     </ServiceLayer>
@@ -144,13 +168,15 @@ function ServiceUpdateCard({ restart, onLater }: { restart: RestartOffer | null;
  * Service down card after the last one, or the update card (then a bar) when the service is another
  * version. Nothing when it is connected.
  */
-export function ServiceStatus({ online, failures, mismatch, retryAt, detail, restart, sessions, onRetry, onOpenLog }: {
+export function ServiceStatus({ online, failures, mismatch, retryAt, detail, restart, appBehind, sessions, onRetry, onOpenLog }: {
   online: boolean
   failures: number
   mismatch: boolean
   retryAt: number | null
   detail: string | null
   restart: RestartOffer | null
+  /** Set when the service is newer than this app; replaces the restart card with an update one. */
+  appBehind: AppBehindOffer | null
   /** The sessions this window last knew of, for "your N sessions are saved". */
   sessions: number
   /** Tries to reach maittyd again now. The window's connection starts the service when it is not running, so this is also how it is started. */
@@ -163,6 +189,7 @@ export function ServiceStatus({ online, failures, mismatch, retryAt, detail, res
   if (state === 'ok') return null
   if (state === 'reconnecting') return <ReconnectingBar failures={failures} retryAt={retryAt} onRetry={onRetry} />
   if (state === 'down') return <ServiceDownCard detail={detail} sessions={sessions} onStart={onRetry} onRetry={onRetry} onOpenLog={onOpenLog} />
-  if (notNow) return <OfflineBanner retryAt={retryAt} detail={detail} restart={restart} onRetry={onRetry} />
+  if (notNow) return <OfflineBanner retryAt={retryAt} detail={detail} restart={restart} appBehind={appBehind !== null} onRetry={onRetry} />
+  if (appBehind) return <AppBehindCard offer={appBehind} sessions={sessions} onLater={() => { setNotNow(true) }} />
   return <ServiceUpdateCard restart={restart} onLater={() => { setNotNow(true) }} />
 }

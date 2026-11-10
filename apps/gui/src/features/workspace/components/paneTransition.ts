@@ -2,7 +2,8 @@ import { flushSync } from 'react-dom'
 
 type Transitions = { startViewTransition?: (update: () => void) => { finished: Promise<unknown> } }
 
-const NAMED = '.mx-pane[data-session-id]'
+// Only the tab showing: a tab kept mounted behind it has panes too, and they do not move.
+const NAMED = '.mx-panes:not(.is-kept) .mx-pane[data-session-id]'
 /** Moving needs two panes to move between. */
 const MIN_PANES = 2
 

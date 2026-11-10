@@ -97,14 +97,37 @@ fn gh_signed_in() -> bool {
 
 use crate::proc::system_tool;
 
+/// `with_gh` when the GitHub CLI is signed in, and the public address when it is not or when
+/// its call fails: a sign-in that expired or cannot see this repo must not stop an update the
+/// public address can serve. When both fail, both reasons are told.
+fn gh_then_public<T>(
+    signed_in: bool,
+    with_gh: impl FnOnce() -> Result<T, String>,
+    public: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    if !signed_in {
+        return public();
+    }
+    with_gh().or_else(|gh_said| {
+        public().map_err(|public_said| format!("{public_said} (and with gh: {gh_said})"))
+    })
+}
+
 /// The newest release's tag, e.g. `v0.3.0`.
 pub fn latest_tag() -> Result<String, String> {
-    if gh_signed_in() {
-        return crate::proc::run(Command::new("gh").args([
-            "release", "view", "-R", REPO, "--json", "tagName", "-q", ".tagName",
-        ]))
-        .map(|s| s.trim().to_string());
-    }
+    gh_then_public(
+        gh_signed_in(),
+        || {
+            crate::proc::run(Command::new("gh").args([
+                "release", "view", "-R", REPO, "--json", "tagName", "-q", ".tagName",
+            ]))
+            .map(|s| s.trim().to_string())
+        },
+        latest_tag_from_the_public_page,
+    )
+}
+
+fn latest_tag_from_the_public_page() -> Result<String, String> {
     // The releases/latest page redirects to the newest tag's page. Unlike GitHub's API it
     // has no per-address limit, which shared networks (offices, CI) run out of.
     let url = format!("https://github.com/{REPO}/releases/latest");
@@ -136,32 +159,36 @@ fn tag_from_url(url: &str) -> Option<String> {
 
 pub(crate) fn download(tag: &str, name: &str, dir: &Path) -> Result<PathBuf> {
     let to = dir.join(name);
-    let got = if gh_signed_in() {
-        crate::proc::run(
-            Command::new("gh")
-                .args([
-                    "release",
-                    "download",
-                    tag,
-                    "-R",
-                    REPO,
-                    "-p",
-                    name,
-                    "--clobber",
-                    "-D",
-                ])
-                .arg(dir),
-        )
-    } else {
-        let url = format!("https://github.com/{REPO}/releases/download/{tag}/{name}");
-        crate::proc::run(
-            system_tool("curl")
-                .args(["-fsSL", "--max-time", "300", "-o"])
-                .arg(&to)
-                .arg(&url),
-        )
-    };
-    got.map_err(|e| anyhow::anyhow!("downloading {name}: {e}"))?;
+    gh_then_public(
+        gh_signed_in(),
+        || {
+            crate::proc::run(
+                Command::new("gh")
+                    .args([
+                        "release",
+                        "download",
+                        tag,
+                        "-R",
+                        REPO,
+                        "-p",
+                        name,
+                        "--clobber",
+                        "-D",
+                    ])
+                    .arg(dir),
+            )
+        },
+        || {
+            let url = format!("https://github.com/{REPO}/releases/download/{tag}/{name}");
+            crate::proc::run(
+                system_tool("curl")
+                    .args(["-fsSL", "--max-time", "300", "-o"])
+                    .arg(&to)
+                    .arg(&url),
+            )
+        },
+    )
+    .map_err(|e| anyhow::anyhow!("downloading {name}: {e}"))?;
     Ok(to)
 }
 
@@ -174,12 +201,30 @@ pub(crate) fn sha256_hex(path: &Path) -> Result<String> {
         .collect())
 }
 
+/// The tag a person named with `--to`: `0.70.0` and `v0.70.0` are the same release. Anything
+/// that is not a version is refused here, before it becomes part of a download address.
+fn tag_named(to: &str) -> Result<String> {
+    let bare = to.trim().trim_start_matches('v');
+    if version(bare).is_none() {
+        bail!("`{to}` is not a version; name a release such as 0.70.0");
+    }
+    Ok(format!("v{bare}"))
+}
+
 /// `<app> update`: install the newest release over this one. `check` only says whether
-/// there is one; `force` reinstalls it even when it's this version.
-pub fn run(check: bool, force: bool) -> Result<()> {
+/// there is one; `force` reinstalls it even when it's this version; `to` installs that release
+/// instead, older ones included, which is the way back from an update that went wrong.
+pub fn run(check: bool, force: bool, to: Option<&str>) -> Result<()> {
     let current = env!("APP_VERSION");
-    let tag = latest_tag().map_err(|e| anyhow::anyhow!(e))?;
-    if !is_newer(&tag) && !force {
+    let tag = match to {
+        Some(to) => tag_named(to)?,
+        None => latest_tag().map_err(|e| anyhow::anyhow!(e))?,
+    };
+    if to.is_some() && tag.trim_start_matches('v') == current && !force {
+        println!("{APP_COMMAND} {current} is already installed.");
+        return Ok(());
+    }
+    if to.is_none() && !is_newer(&tag) && !force {
         println!("{APP_COMMAND} {current} is the latest version.");
         return Ok(());
     }
@@ -230,7 +275,31 @@ pub fn run(check: bool, force: bool) -> Result<()> {
     } else {
         println!(concat!("Run ", env!("APP_COMMAND"), " to start it."));
     }
+    let (cfg, _) = crate::config::Config::load_or_default();
+    let machines: Vec<&str> = cfg.machines.iter().map(|m| m.name.as_str()).collect();
+    if let Some(note) = machines_note(&machines) {
+        println!("{note}");
+    }
     Ok(())
+}
+
+/// What is left to update after this computer: each configured machine runs its own copy, and
+/// one on another version cannot be talked to until it has this one.
+fn machines_note(names: &[&str]) -> Option<String> {
+    let mut names = names.to_vec();
+    names.sort_by_key(|name| name.to_lowercase());
+    let commands: Vec<String> = names
+        .iter()
+        .map(|name| format!("  {APP_COMMAND} machine update {name}"))
+        .collect();
+    (!commands.is_empty()).then(|| {
+        format!(
+            "Your other machines run their own copy and need this version too:
+{}",
+            commands.join("
+")
+        )
+    })
 }
 
 /// The server still runs the old version: say what a restart costs and offer it. Without a
@@ -330,6 +399,55 @@ pub(crate) fn expected_checksum(sums: &str, asset: &str) -> Option<String> {
     })
 }
 
+/// The public key releases are signed with: the desktop updater's (`plugins.updater.pubkey` in
+/// the desktop app's `tauri.conf.json`, which a test holds this to), so one key vouches for
+/// both apps. A public key is not a secret.
+const RELEASE_KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMzNzI5RUU4NTdGMUIxNUMKUldSY3NmRlg2SjV5TTF5VTJWUTQ1VnlHSlBWTU9uYnl5ZW50UzQzSFVXcU5zRlhqOGZIZXpucUsK";
+
+/// The first release whose `sha256sums.txt` is signed. An older one, which only `--to` reaches,
+/// is checked by its checksum alone.
+const SIGNED_SINCE: &str = "0.71.0";
+
+/// The file beside `sha256sums.txt` that holds its signature.
+const SUMS_SIGNATURE: &str = "sha256sums.txt.sig";
+
+/// Whether the release at `tag` must come with a signature.
+fn is_signed(tag: &str) -> bool {
+    !newer_than(SIGNED_SINCE, tag)
+}
+
+/// Check that `signature` (as the release workflow writes it: a minisign signature, base64) is
+/// `key`'s over exactly these bytes. The checksums vouch for every download, so this is what
+/// ties a download to the people who release the app and not only to the server it came from.
+fn verify_signed(data: &[u8], signature: &str, key: &str) -> Result<()> {
+    use base64::Engine;
+    let text = |encoded: &str| -> Result<String> {
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(encoded.trim())
+            .context("not base64")?;
+        String::from_utf8(bytes).context("not text")
+    };
+    let key = minisign_verify::PublicKey::decode(&text(key)?)
+        .map_err(|e| anyhow::anyhow!("reading the release key: {e}"))?;
+    let signature = minisign_verify::Signature::decode(&text(signature)?)
+        .map_err(|e| anyhow::anyhow!("reading the signature: {e}"))?;
+    key.verify(data, &signature, true)
+        .map_err(|e| anyhow::anyhow!("the signature does not match: {e}"))
+}
+
+/// `<app> verify-release <sha256sums.txt>`: check the signature beside a checksum file with the
+/// key built into this program. The release workflow runs it on what it is about to publish, so
+/// a release this app would refuse to update to is never published.
+pub fn verify_release(sums: &Path) -> Result<()> {
+    let signature = sums.with_file_name(SUMS_SIGNATURE);
+    let data = std::fs::read(sums).with_context(|| format!("reading {}", sums.display()))?;
+    let signature = std::fs::read_to_string(&signature)
+        .with_context(|| format!("reading {}", signature.display()))?;
+    verify_signed(&data, &signature, RELEASE_KEY)?;
+    println!("{} is signed with {APP_NAME}'s release key.", sums.display());
+    Ok(())
+}
+
 fn install(tag: &str, target: &str, asset: &str, tmp: &Path, say: bool) -> Result<PathBuf> {
     if say {
         println!(
@@ -341,6 +459,12 @@ fn install(tag: &str, target: &str, asset: &str, tmp: &Path, say: bool) -> Resul
     let archive = download(tag, asset, tmp)?;
     let sums = std::fs::read_to_string(download(tag, "sha256sums.txt", tmp)?)?;
     at_step(2);
+    if is_signed(tag) {
+        let signature = std::fs::read_to_string(download(tag, SUMS_SIGNATURE, tmp)?)?;
+        verify_signed(sums.as_bytes(), &signature, RELEASE_KEY).with_context(|| {
+            format!("this release's checksums are not signed with {APP_NAME}'s key; nothing was changed")
+        })?;
+    }
     let expected =
         expected_checksum(&sums, asset).with_context(|| format!("no checksum for {asset}"))?;
     if sha256_hex(&archive)? != expected {
@@ -364,10 +488,33 @@ fn install(tag: &str, target: &str, asset: &str, tmp: &Path, say: bool) -> Resul
     if !new.is_file() {
         bail!("the download had no {name}");
     }
+    runs_as(&new, tag)?;
     let exe = std::env::current_exe().context(concat!("finding this ", env!("APP_COMMAND")))?;
     at_step(4);
     replace_exe(&new, &exe)?;
     Ok(exe)
+}
+
+/// Run the downloaded program before it replaces this one: a build that does not start here (the
+/// wrong one for this computer, or one a virus scanner broke) must not become the installed app.
+fn runs_as(new: &Path, tag: &str) -> Result<()> {
+    let said = crate::proc::run(crate::proc::quiet(Command::new(new).arg("--version")))
+        .map_err(|why| {
+            anyhow::anyhow!("the download does not run on this computer ({why}); nothing was changed")
+        })?;
+    says_version(&said, tag)
+}
+
+/// Whether `--version` output names the release that was asked for.
+fn says_version(said: &str, tag: &str) -> Result<()> {
+    let wanted = format!("{APP_COMMAND} {}", tag.trim_start_matches('v'));
+    if said.trim() != wanted {
+        bail!(
+            "the download says it is `{}`, not `{wanted}`; nothing was changed",
+            said.trim()
+        );
+    }
+    Ok(())
 }
 
 /// Put `new` where `exe` is. Windows won't overwrite a running program but lets it be
@@ -406,7 +553,7 @@ fn replace_exe(new: &Path, exe: &Path) -> Result<()> {
 /// A name for the old program that's free. An older one moved aside can still be running
 /// (an agent's `<app> mcp` keeps going until its session ends), so it can't always be
 /// removed; the next one gets a number.
-fn free_old_path(exe: &Path) -> PathBuf {
+pub(crate) fn free_old_path(exe: &Path) -> PathBuf {
     std::iter::once(exe.with_file_name(concat!(env!("APP_COMMAND"), ".old.exe")))
         .chain((2..).map(|n| exe.with_file_name(format!("{APP_COMMAND}.old-{n}.exe"))))
         .find(|p| !p.exists())
@@ -439,19 +586,21 @@ pub fn tidy() {
 /// release first. Empty when GitHub can't be reached. Slow (network): off the UI thread.
 pub fn changes_since_this() -> Vec<String> {
     let path = format!("repos/{REPO}/releases?per_page={RELEASES_LOOKED_AT}");
-    let json = if gh_signed_in() {
-        crate::proc::run(Command::new("gh").args(["api", &path]))
-    } else {
-        let url = format!("https://api.github.com/{path}");
-        crate::proc::run(system_tool("curl").args([
-            "-fsSL",
-            "--max-time",
-            "20",
-            "-H",
-            "Accept: application/vnd.github+json",
-            &url,
-        ]))
-    };
+    let json = gh_then_public(
+        gh_signed_in(),
+        || crate::proc::run(Command::new("gh").args(["api", &path])),
+        || {
+            let url = format!("https://api.github.com/{path}");
+            crate::proc::run(system_tool("curl").args([
+                "-fsSL",
+                "--max-time",
+                "20",
+                "-H",
+                "Accept: application/vnd.github+json",
+                &url,
+            ]))
+        },
+    );
     json.map(|j| changes_in(&j, env!("APP_VERSION")))
         .unwrap_or_default()
 }
@@ -494,6 +643,104 @@ fn changes_in(json: &str, current: &str) -> Vec<String> {
 mod tests {
     use super::*;
     use crate::installed_executable::installed_path;
+
+    /// A key and a signature made for this test with the same tool the release uses; the private
+    /// half was thrown away.
+    const TEST_KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY0OTA3MTExNDdERjgzQTEKUldTaGc5OUhFWEdRWkIzRFZ0WEx4amt1TStGUk1qVWJ2Ky9EMm5ubmZHN2c5NjlYNTc2aWZmbDQK";
+    const TEST_SIGNATURE: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTaGc5OUhFWEdRWkx6VGdxS2t1VnhJUGRPZ2ZPemc0WEU0S2YyaU5TenloWlpTOVRqWnVXZHd0SXlySjl4ZTZFT0JtWGt0L1gwem5obFY0cXJtU2hkRmZBU0Q2ZjFYcHcwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MzE1OTE0CWZpbGU6c2hhMjU2c3Vtcy50eHQKU0t6OU5ZZ1h2MnFEVDJhZFh1OXEyV0gxMW9OVXFpZDFsanlISlM2RmZGU2tFbno3cm9RZS9KY2FtUEtPeVFXQXJxdFJmWmpNYzdsZGMrbFhwcjJRQkE9PQo=";
+    const TEST_SUMS: &[u8] = b"abc123  maitty-x86_64-pc-windows-msvc.zip\n";
+
+    #[test]
+    fn signed_checksums_verify_and_changed_ones_do_not() {
+        verify_signed(TEST_SUMS, TEST_SIGNATURE, TEST_KEY).unwrap();
+        let changed = b"abc124  maitty-x86_64-pc-windows-msvc.zip\n";
+        let error = verify_signed(changed, TEST_SIGNATURE, TEST_KEY).unwrap_err();
+        assert!(error.to_string().contains("does not match"), "{error}");
+    }
+
+    #[test]
+    fn a_signature_from_another_key_is_refused() {
+        assert!(verify_signed(TEST_SUMS, TEST_SIGNATURE, RELEASE_KEY).is_err());
+        assert!(verify_signed(TEST_SUMS, "not a signature", TEST_KEY).is_err());
+        assert!(verify_signed(TEST_SUMS, "", TEST_KEY).is_err());
+    }
+
+    #[test]
+    fn the_release_key_is_the_desktop_updaters() {
+        let conf = concat!(env!("CARGO_MANIFEST_DIR"), "/../../apps/gui/src-tauri/tauri.conf.json");
+        let conf = std::fs::read_to_string(conf).unwrap();
+        assert!(conf.contains(&format!("\"pubkey\": \"{RELEASE_KEY}\"")));
+    }
+
+    #[test]
+    fn releases_are_signed_from_the_first_signed_one_on() {
+        assert!(!is_signed("v0.70.0"));
+        assert!(is_signed(&format!("v{SIGNED_SINCE}")));
+        assert!(is_signed("v0.71.1"));
+        assert!(is_signed("v1.0.0"));
+    }
+
+    #[test]
+    fn a_named_release_is_a_version_with_or_without_its_v() {
+        assert_eq!(tag_named("0.70.0").unwrap(), "v0.70.0");
+        assert_eq!(tag_named(" v0.70.0 ").unwrap(), "v0.70.0");
+        assert!(tag_named("latest").is_err());
+        assert!(tag_named("../../other").is_err());
+        assert!(tag_named("").is_err());
+    }
+
+    #[test]
+    fn a_download_that_is_another_version_is_not_installed() {
+        let ours = format!("{APP_COMMAND} 1.2.3\n");
+        assert!(says_version(&ours, "v1.2.3").is_ok());
+        let error = says_version(&ours, "v1.2.4").unwrap_err().to_string();
+        assert!(error.contains("nothing was changed"), "{error}");
+        assert!(says_version("something else entirely", "v1.2.3").is_err());
+    }
+
+    #[test]
+    fn a_download_that_does_not_start_is_not_installed() {
+        let dir = std::env::temp_dir().join(format!(
+            "{APP_COMMAND}-update-test-{}-broken",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let broken = dir.join(if cfg!(windows) { "broken.exe" } else { "broken" });
+        std::fs::write(&broken, b"not a program").unwrap();
+        let error = runs_as(&broken, "v1.2.3").unwrap_err().to_string();
+        assert!(error.contains("does not run on this computer"), "{error}");
+        assert!(error.contains("nothing was changed"), "{error}");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn an_update_names_the_command_for_each_machine_and_says_nothing_with_none() {
+        assert_eq!(machines_note(&[]), None);
+        let note = machines_note(&["kingdom", "Build"]).unwrap();
+        assert!(
+            note.ends_with(&format!(
+                "  {APP_COMMAND} machine update Build
+  {APP_COMMAND} machine update kingdom"
+            )),
+            "{note}"
+        );
+    }
+
+    #[test]
+    fn a_failed_gh_call_falls_back_to_the_public_address() {
+        let ok = |s: &str| Ok::<String, String>(s.to_string());
+        let no = |s: &str| Err::<String, String>(s.to_string());
+        assert_eq!(gh_then_public(true, || ok("gh"), || ok("public")), ok("gh"));
+        assert_eq!(gh_then_public(true, || no("expired"), || ok("public")), ok("public"));
+        assert_eq!(
+            gh_then_public(false, || -> Result<String, String> { panic!("gh is not signed in") }, || ok("public")),
+            ok("public")
+        );
+        assert_eq!(
+            gh_then_public(true, || no("expired"), || no("offline")),
+            no("offline (and with gh: expired)")
+        );
+    }
 
     #[test]
     fn changes_are_the_note_lines_of_newer_releases() {

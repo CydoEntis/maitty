@@ -2,6 +2,22 @@
 
 use super::*;
 
+/// Whether what a window was told about a pane still holds in its latest state. A pane's own
+/// status says so, except for a check: it fails or waits for approval after the turn ended, so
+/// the pane reads done or idle while it needs you all the same.
+fn still_asks(t: &TermInfo, status: Status) -> bool {
+    let check_asks = || {
+        matches!(t.status, Status::Done | Status::Idle)
+            && t.checks.iter().any(|check| {
+                matches!(
+                    check.state,
+                    CheckState::Failed | CheckState::NeedsApproval
+                )
+            })
+    };
+    t.status == status || (status == Status::Blocked && check_asks())
+}
+
 impl App {
     /// A message from the server can close a popup with no key pressed: shortcut mode held
     /// under it comes back then, not after a key has gone to the pane.
@@ -302,6 +318,8 @@ impl App {
             }
             ServerMsg::SettingsChanged(_) => {}
             ServerMsg::Raise => crate::reveal::raise_window(),
+            // The desktop app's chats; the daemon sends this app none.
+            ServerMsg::ConversationChanged { .. } => {}
             // The server stopped for the update: an older window can't speak to the new one, so
             // the installed the app takes its place; a current window just connects again.
             // Another machine's daemon stopping ends its connection, not the window.
@@ -328,7 +346,10 @@ impl App {
     /// alert for a pane it no longer lists, and a parser and size for each it does.
     pub(super) fn sync_terms(&mut self, machine: MachineId, s: &Snapshot) {
         self.settling.retain(|id, (status, _)| {
-            id.machine != machine || s.terms.get(&id.term).is_some_and(|t| t.status == *status)
+            id.machine != machine
+                || s.terms
+                    .get(&id.term)
+                    .is_some_and(|t| still_asks(t, *status))
         });
         self.parsers
             .retain(|id, _| id.machine != machine || s.terms.contains_key(&id.term));
@@ -389,7 +410,7 @@ impl App {
             .collect();
         for (term, status) in due {
             self.settling.remove(&term);
-            if self.term_info(term).is_some_and(|t| t.status == status) {
+            if self.term_info(term).is_some_and(|t| still_asks(t, status)) {
                 self.alert_now(term, status);
                 self.dirty = true;
             }
@@ -400,7 +421,7 @@ impl App {
     /// pane you are looking at rings neither.
     /// With no window open the server shows a desktop notification instead.
     pub(super) fn alert_now(&mut self, term: ClientTerm, status: Status) {
-        if !self.term_info(term).is_some_and(|t| t.status == status) {
+        if !self.term_info(term).is_some_and(|t| still_asks(t, status)) {
             return;
         }
         // You are looking at it: a sound adds nothing.
@@ -549,6 +570,35 @@ impl App {
         self.spawn_bg(move || Bg::Diff(dir, sel, tasks::diff_of(&job)));
     }
 
+    /// Reads the file the Files view now points at, off the UI thread.
+    pub(super) fn request_files_preview(&mut self) {
+        let Some(View::Files(v)) = &mut self.view else {
+            return;
+        };
+        let Some(path) = v.preview_wanted.take() else {
+            return;
+        };
+        let root = v.root.clone();
+        self.spawn_bg(move || {
+            let lines = files::preview(&path);
+            Bg::FilesPreview(root, path, lines)
+        });
+    }
+
+    /// Lists the folder the folder picker now points at, off the UI thread.
+    pub(super) fn request_folder_list(&mut self) {
+        let Mode::Finder(fd) = &mut self.mode else {
+            return;
+        };
+        let Some(dir) = fd.wanted.take() else {
+            return;
+        };
+        self.spawn_bg(move || {
+            let (list, repo) = screen::Finder::list_folders(&dir);
+            Bg::FolderList(dir, list, repo)
+        });
+    }
+
     pub(super) fn spawn_bg(&self, f: impl FnOnce() -> Bg + Send + 'static) {
         let tx = self.bg.clone();
         let job = move || {
@@ -598,25 +648,40 @@ impl App {
                 return;
             }
             Bg::FindFiles(dir, list) => {
+                let mut wanted = None;
                 if let Mode::Find(v) = &mut self.mode
                     && v.dir == dir
                 {
                     v.files = Some(list);
-                    v.refresh_preview();
+                    wanted = v.preview_wanted();
                 }
+                self.load_find_preview(wanted);
                 self.dirty = true;
                 return;
             }
             Bg::Grep(dir, seq, hits) => {
+                let mut wanted = None;
                 if let Mode::Find(v) = &mut self.mode
                     && v.dir == dir
                     && v.seq == seq
                 {
                     v.hits = Some(hits);
                     v.sel = 0;
-                    v.refresh_preview();
+                    wanted = v.preview_wanted();
                 }
+                self.load_find_preview(wanted);
                 self.dirty = true;
+                return;
+            }
+            Bg::FindPreview(dir, target, lines) => {
+                // The selection may have moved on while this was read.
+                if let Mode::Find(v) = &mut self.mode
+                    && v.dir == dir
+                    && v.preview_of.as_ref() == Some(&target)
+                {
+                    v.preview = lines;
+                    self.dirty = true;
+                }
                 return;
             }
             Bg::Synced(changed) => {
@@ -629,7 +694,7 @@ impl App {
             b => b,
         };
         match (b, &mut self.mode) {
-            (Bg::Changes(dir, r), _) => {
+            (Bg::Changes(dir, r, now), _) => {
                 if let Some(View::Changes(v)) = &mut self.view
                     && v.dir == dir
                 {
@@ -638,9 +703,10 @@ impl App {
                             let keep = v.review.as_ref().map(|o| o.sel);
                             let mut r = *r;
                             v.reviewed = views::still_reviewed(
-                                &v.dir,
                                 &r.files,
                                 self.screen.saved.reviewed.get(&design::path_key(&v.dir)),
+                                &now,
+                                &v.reviewed,
                             );
                             if let Some(sel) = keep {
                                 r.sel = sel.min(r.files.len().saturating_sub(1));
@@ -724,6 +790,21 @@ impl App {
                     v.refresh_preview();
                 }
             }
+            (Bg::FolderList(dir, list, repo), _) => {
+                if let Mode::Finder(fd) = &mut self.mode
+                    && fd.listed(&dir, list, repo)
+                {
+                    self.dirty = true;
+                }
+            }
+            (Bg::FilesPreview(root, path, lines), _) => {
+                if let Some(View::Files(v)) = &mut self.view
+                    && v.root == root
+                    && v.preview_read(&path, lines)
+                {
+                    self.dirty = true;
+                }
+            }
             (Bg::TreeRecent(root, list), _) => {
                 if let Some(View::Files(v)) = &mut self.view
                     && v.root == root
@@ -792,7 +873,7 @@ impl App {
                     && let Some(r) = &v.review
                 {
                     let (task, d) = (r.task.clone(), v.dir.clone());
-                    self.spawn_bg(move || Bg::Changes(d, tasks::load_review(task).map(Box::new)));
+                    self.load_changes(d, task);
                 }
             }
             _ => {} // the panel it was for has closed

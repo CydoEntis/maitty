@@ -137,11 +137,14 @@ async fn open_as(attach: bool) -> Result<(Reader, Writer)> {
         },
     )
     .await?;
-    let version = maitty_ipc_transport::welcome_version(&mut reader).await?;
-    if version == protocol::PROTOCOL_VERSION {
+    let daemon = maitty_ipc_transport::welcome_version(&mut reader).await?;
+    if daemon.speaks_with_us() {
         Ok((reader, writer))
     } else {
-        Err(OtherVersion { daemon: version }.into())
+        Err(OtherVersion {
+            daemon: daemon.version,
+        }
+        .into())
     }
 }
 

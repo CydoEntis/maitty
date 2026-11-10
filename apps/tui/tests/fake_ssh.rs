@@ -141,7 +141,7 @@ fn the_shim_is_called_the_way_the_client_calls_ssh() {
     assert_eq!(args[dashes + 1], "box", "the host follows `--`: {args:?}");
     assert_eq!(
         args[dashes + 2],
-        "'maitty' proxy",
+        r#"sh -c 'PATH="$HOME/.local/bin:$PATH"; export PATH; exec "$@"' sh 'maitty' proxy"#,
         "one quoted remote command: {args:?}"
     );
     assert_eq!(
@@ -1297,6 +1297,26 @@ mod supervised {
     }
 
     #[test]
+    fn a_newer_daemon_there_says_to_update_this_computer() {
+        let sandbox = Sandbox::new();
+        let runtime = runtime();
+        let _enter = runtime.enter();
+        let mut window = Window::new(
+            vec![(BOX, configured(&sandbox, "mismatch-newer"))],
+            quick(WAIT),
+        );
+        runtime.block_on(window.until("needs-update", |w| w.is(BOX, "needs-update")));
+        assert_eq!(
+            window.state_of(BOX),
+            Some(&ConnectionState::NeedsUpdate {
+                why: runtime::link_failure::FIX_UPDATE_HERE.into()
+            })
+        );
+        drop(window);
+        runtime.shutdown_background();
+    }
+
+    #[test]
     fn a_connection_that_hangs_is_dropped_and_dialled_again() {
         let sandbox = Sandbox::new();
         let runtime = runtime();
@@ -1588,7 +1608,7 @@ mod custom_transport {
             let args: Vec<&str> = logged.lines().filter(|l| *l != "--").collect();
             assert_eq!(
                 args.last(),
-                Some(&"'maitty' proxy --attach-only"),
+                Some(&r#"sh -c 'PATH="$HOME/.local/bin:$PATH"; export PATH; exec "$@"' sh 'maitty' proxy --attach-only"#),
                 "{args:?}"
             );
             for ssh_only in ["-o", "-a", "-T", "BatchMode=yes", "ForwardAgent=no"] {

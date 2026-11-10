@@ -57,6 +57,19 @@ export function useComposerState(conversation: number): ComposerState {
   return useSyncExternalStore(subscribe, () => read(conversation))
 }
 
+/**
+ * One part of a conversation's composer. A view that needs only the files or the held messages is
+ * not drawn again for each letter typed, which matters for the chat around the box.
+ */
+export function useComposerSlice<T>(conversation: number, pick: (state: ComposerState) => T): T {
+  return useSyncExternalStore(subscribe, () => pick(read(conversation)))
+}
+
+/** The unsent text: only the box that shows it follows every change. */
+export function useComposerDraft(conversation: number): string {
+  return useComposerSlice(conversation, (state) => state.draft)
+}
+
 /** For tests: the store belongs to the window's lifetime. */
 export function forgetComposers(): void {
   stored.clear()

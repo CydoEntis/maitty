@@ -37,22 +37,23 @@ asset="$APP-$target.tar.gz"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-# A private repo needs the GitHub CLI (signed in); a public one downloads directly.
+# A private repo needs the GitHub CLI (signed in); a public one downloads directly. A gh call
+# that fails (an expired sign-in, one that cannot see this repo) falls back to the direct download.
 fetch() {
   if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
     if [ -n "$VERSION" ]; then
-      gh release download "$VERSION" -R "$REPO" -p "$1" -D "$tmp" --clobber
+      gh release download "$VERSION" -R "$REPO" -p "$1" -D "$tmp" --clobber && return 0
     else
-      gh release download -R "$REPO" -p "$1" -D "$tmp" --clobber
+      gh release download -R "$REPO" -p "$1" -D "$tmp" --clobber && return 0
     fi
-  else
-    if [ -n "$VERSION" ]; then
-      url="https://github.com/$REPO/releases/download/$VERSION/$1"
-    else
-      url="https://github.com/$REPO/releases/latest/download/$1"
-    fi
-    curl -fsSL "$url" -o "$tmp/$1" || fail "couldn't download $1 (a private repo needs the GitHub CLI: gh auth login)"
+    say "gh couldn't download $1; trying the direct download..."
   fi
+  if [ -n "$VERSION" ]; then
+    url="https://github.com/$REPO/releases/download/$VERSION/$1"
+  else
+    url="https://github.com/$REPO/releases/latest/download/$1"
+  fi
+  curl -fsSL "$url" -o "$tmp/$1" || fail "couldn't download $1 (a private repo needs the GitHub CLI: gh auth login)"
 }
 
 say "Downloading $APP for ${target}..."

@@ -18,6 +18,7 @@ pub(crate) mod reload;
 pub(crate) mod reveal;
 pub(crate) mod secret_run;
 pub(crate) mod target;
+pub(crate) mod uninstall;
 pub(crate) mod update;
 use crate::layout::Dir;
 use crate::protocol::*;
@@ -1173,6 +1174,10 @@ pub fn kill_server(t: &Target, forget: bool) -> Result<()> {
     }
 }
 
+/// The word `restart-if-idle` leads with when it leaves the server alone; `machine update` reads it
+/// from the far side's reply, so the two must agree.
+pub(crate) const LEFT_RUNNING: &str = "left running";
+
 /// What `machine update` asks of the server it leaves running (it runs this over ssh): stop
 /// it so the next start is the new version. Without `now` only when no session is open; with
 /// `now` also when sessions are open but saved, because the next server restores them and
@@ -1196,10 +1201,10 @@ pub fn restart_if_idle(now: bool) -> Result<()> {
     if !may_restart {
         match published {
             Some(a) => println!(
-                "left running: {} open session(s); it keeps them",
+                "{LEFT_RUNNING}: {} open session(s); it keeps them",
                 a.sessions
             ),
-            None => println!("left running: it did not say whether sessions are open"),
+            None => println!("{LEFT_RUNNING}: it did not say whether sessions are open"),
         }
         return Ok(());
     }
@@ -2125,7 +2130,7 @@ pub fn hook(agent: &str, status: Option<&str>, payload: Option<&str>) -> Result<
     );
     block_on(async move {
         tokio::time::timeout(Duration::from_secs(2), async {
-            let (_r, mut w) = ipc::open(false).await?;
+            let (_r, mut w) = ipc::open_for_report().await?;
             ipc::send(&mut w, &message).await?;
             Ok::<_, anyhow::Error>(())
         })
@@ -2254,10 +2259,13 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
     {
         event = format!("Notification:{kind}");
     }
-    let background = if event == "Stop" {
-        running_background_tasks(payload_json)
+    let (background, background_agents) = if event == "Stop" {
+        (
+            running_background_tasks(payload_json, false),
+            running_background_tasks(payload_json, true),
+        )
     } else {
-        Vec::new()
+        (Vec::new(), Vec::new())
     };
     let call = call_fingerprint(&origin.agent, &event, payload_json).filter(|_| parent_facts);
     let ask = (event == "PermissionRequest" && parent_facts)
@@ -2291,6 +2299,7 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
         model,
         name,
         background,
+        background_agents,
         ask,
         call,
     }
@@ -2425,8 +2434,8 @@ const BACKGROUND_TASK_OVER: &[&str] = &[
 ];
 
 /// The ids of the background tasks Claude's Stop says are still in flight; it wakes itself when
-/// one ends.
-fn running_background_tasks(payload: &Value) -> Vec<String> {
+/// one ends. With `agents_only`, just the helper agents among them (`"type": "subagent"`).
+fn running_background_tasks(payload: &Value, agents_only: bool) -> Vec<String> {
     let tasks = payload
         .get("background_tasks")
         .and_then(Value::as_array)
@@ -2438,6 +2447,13 @@ fn running_background_tasks(payload: &Value) -> Vec<String> {
             task.get("status")
                 .and_then(Value::as_str)
                 .is_none_or(|s| !BACKGROUND_TASK_OVER.contains(&s.to_ascii_lowercase().as_str()))
+        })
+        .filter(|task| {
+            !agents_only
+                || task
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .is_some_and(|kind| kind.to_ascii_lowercase().contains("agent"))
         })
         .filter_map(|task| {
             ["id", "command", "description"]
@@ -2794,7 +2810,7 @@ pub fn statusline() {
         // Never hold up Claude's screen for it; a report that doesn't get there is skipped.
         let sent = block_on(async {
             tokio::time::timeout(Duration::from_millis(800), async {
-                let (_r, mut w) = ipc::open(false).await?;
+                let (_r, mut w) = ipc::open_for_report().await?;
                 ipc::send(&mut w, &msg).await
             })
             .await
@@ -4248,7 +4264,7 @@ mod tests {
 
     #[test]
     fn a_claude_stop_with_background_work_in_flight_says_so() {
-        let stop = |tasks: Value| {
+        let stop_of = |tasks: Value, helpers_only: bool| {
             let payload =
                 json!({"hook_event_name":"Stop","background_tasks":tasks,"session_crons":[]});
             let origin = super::HookOrigin {
@@ -4258,14 +4274,22 @@ mod tests {
                 token: String::new(),
             };
             let ClientMsg::Hook {
-                status, background, ..
+                status,
+                background,
+                background_agents,
+                ..
             } = super::hook_message(origin, &payload, super::status_from_hook(&payload).unwrap())
             else {
                 panic!("expected hook report")
             };
             assert_eq!(status, HookStatus::Done);
-            background
+            assert!(
+                background_agents.iter().all(|id| background.contains(id)),
+                "helpers are a subset of what is in flight"
+            );
+            if helpers_only { background_agents } else { background }
         };
+        let stop = |tasks: Value| stop_of(tasks, false);
         let shell = json!([{"id":"b1","type":"shell","status":"running","description":"watch CI","command":"gh pr checks 38 --watch"}]);
         assert_eq!(stop(shell), ["b1"], "still in flight");
         assert_eq!(
@@ -4278,6 +4302,12 @@ mod tests {
             stop(over),
             ["b4"],
             "finished entries don't count; one with no status might still run"
+        );
+        let mixed = json!([{"id":"b1","type":"shell","status":"running"}, {"id":"a2","type":"subagent","status":"running"}, {"id":"a3","type":"subagent","status":"completed"}]);
+        assert_eq!(
+            stop_of(mixed, true),
+            ["a2"],
+            "only a running helper agent is named as one: a shell may be a server"
         );
     }
 

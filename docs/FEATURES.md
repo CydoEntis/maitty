@@ -64,10 +64,12 @@ conversation continuity are planned in phases 34–37:
 - Night (default) and Day themes among the built-in themes (62 by v0.42.0, later 170, now cut to 16 matched dark and light themes); block MAITTY wordmark on the splash — shipped in v0.42.0 — `crates/maitty-terminal-client/src/theme.rs`, `crates/maitty-terminal-client/src/client/screen/splash.rs`
 
 **Extras**
+- A tray (Windows) or menu-bar (macOS) item in the desktop app listing the sessions that need you and the ones that finished; choosing one opens it — built 2026-11-09, tried on Windows only — `apps/gui/src-tauri/src/tray.rs`, `apps/gui/src/features/workspace/useTrayItem.ts`
 - Alert when an agent needs you: Maitty's two rising notes and an in-app notice; a desktop notification only with no window open. Completions stay quiet — `crates/maitty-core/src/alert.rs`
 - Click a notification to jump to its session — shipped — `crates/maitty-core/src/reveal.rs`, `crates/maitty-core/src/alert.rs` (#19)
 - Sidebar groups sessions by where they work now (repo, or folder outside git); no projects to open; splits stay with their session — shipped — `crates/maitty-terminal-client/src/client/screen/mod.rs`
 - Releases and installers (Windows, macOS, Linux; checksums), `maitty update` and a daily update check — shipped — `.github/workflows/release.yml`, `install.sh`, `install.ps1`, `crates/maitty-terminal-client/src/cli/update.rs`
+- `maitty uninstall`: stops the server, disconnects the agents and removes the program; `--purge` deletes settings and saved sessions too — shipped — `crates/maitty-terminal-client/src/cli/uninstall.rs`
 - CI: test and clippy on Linux and Windows, a macOS check — shipped — `.github/workflows/ci.yml`
 - Config sync across machines (local file never synced) — shipped — `crates/maitty-core/src/sync.rs`
 - SSH remotes (`--remote host`) — shipped — `crates/maitty-core/src/ipc.rs` `connect_remote`
@@ -88,6 +90,7 @@ conversation continuity are planned in phases 34–37:
 - Maitty writing Codex hook trust hashes itself — declined 2026-11-01: it would bypass Codex's own review of hook commands. You trust Maitty's hooks once in Codex's `/hooks`; a pane without trusted hooks keeps the screen guess.
 
 - Brain dump (split a pasted plan into sessions, v19 section 12) — declined 2026-11-06, the user's call.
+- Community mods (a gallery of scripts that change the app, as other multiplexers have) — declined 2026-11-09, the user's call.
 
 ## Later
 
@@ -100,4 +103,7 @@ conversation continuity are planned in phases 34–37:
 - Live GUI-to-native-TUI Codex transfer and platform acceptance — deferred until the standalone Codex/Claude GUI is usable and packaged. Existing TUI support remains required.
 - Extensions store and extension panels (v19 section 9) — deferred 2026-11-06: not built yet, on the list to add.
 - Project defaults in the project menu (Start in, Run when it opens; v19 section 3) — on hold 2026-11-06: it needs a shared-config key the terminal app also reads, and the user is not sure they want it.
+- Using Maitty from a phone (a companion app or web view of your sessions) — deferred 2026-11-09: not before the terminal app and the desktop app are solid in daily use.
+- A pop-up launcher from the tray item — deferred 2026-11-09: it needs a design first.
+- Per-turn diff and rewind in chat, on top of the existing snapshots — deferred 2026-11-09.
 - Close with a six-second Undo (v19 section 5) — open 2026-11-06: it needs the daemon to delay the kill, so it is a daemon change.

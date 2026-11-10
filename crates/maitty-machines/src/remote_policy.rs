@@ -92,6 +92,9 @@ pub fn allow(opts: &MachineOpts, msg: &ServerMsg) -> Verdict {
         ServerMsg::AutoWorkspace(_) => {
             Verdict::Ignore("a new workspace here is not another machine's to announce")
         }
+        ServerMsg::ConversationChanged { .. } => {
+            Verdict::Ignore("the chats read here are this computer's, not another machine's")
+        }
     }
 }
 
@@ -294,7 +297,10 @@ mod tests {
 
     fn every_message() -> Vec<ServerMsg> {
         vec![
-            ServerMsg::Welcome { version: 1 },
+            ServerMsg::Welcome {
+                version: 1,
+                compatible_since: 1,
+            },
             ServerMsg::State(Snapshot::default()),
             ServerMsg::TermsChanged {
                 changed: Vec::new(),
@@ -342,6 +348,10 @@ mod tests {
                 window_style: Default::default(),
             }),
             ServerMsg::Raise,
+            ServerMsg::ConversationChanged {
+                id: maitty_shared::conversation::ConversationId(1),
+                generation: 1,
+            },
             ServerMsg::Bye,
         ]
     }
@@ -362,6 +372,7 @@ mod tests {
             ServerMsg::AutoWorkspace(_) => "AutoWorkspace",
             ServerMsg::SettingsChanged(_) => "SettingsChanged",
             ServerMsg::Raise => "Raise",
+            ServerMsg::ConversationChanged { .. } => "ConversationChanged",
             ServerMsg::Bye => "Bye",
         }
     }
@@ -406,7 +417,8 @@ mod tests {
                 "Clipboard",
                 "AutoWorkspace",
                 "SettingsChanged",
-                "Raise"
+                "Raise",
+                "ConversationChanged"
             ]
         );
     }

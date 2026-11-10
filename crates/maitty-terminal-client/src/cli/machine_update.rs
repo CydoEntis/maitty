@@ -5,7 +5,8 @@
 //! a fixed script that swaps it in only after it has arrived whole and run. The far side's
 //! install script never signals a process. Afterwards the far daemon is asked to restart: only
 //! if no session is open, or with `--restart` also when its sessions are saved, because the new
-//! daemon restores them and resumes their agents (a turn in progress is lost).
+//! daemon restores them and resumes their agents (a turn in progress is lost). When sessions
+//! keep it running and a person is at the keyboard, it asks whether to restart now.
 
 pub(crate) mod binary;
 
@@ -48,7 +49,7 @@ fn failed(message: impl Into<String>) -> Failure {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Outcome {
     UpToDate { version: String },
-    Installed { destination: String },
+    Installed { version: String, destination: String },
 }
 
 impl Outcome {
@@ -57,8 +58,11 @@ impl Outcome {
             Outcome::UpToDate { version } => {
                 format!("{machine}: {APP_COMMAND} {version} is already up to date")
             }
-            Outcome::Installed { destination } => {
-                format!("{machine}: {APP_COMMAND} {APP_VERSION} installed to {destination}")
+            Outcome::Installed {
+                version,
+                destination,
+            } => {
+                format!("{machine}: {APP_COMMAND} {version} installed to {destination}")
             }
         }
     }
@@ -176,7 +180,10 @@ pub(crate) fn update(
     if had_old {
         ask_daemon_to_restart(machine, &to, &name, flags, talk);
     }
-    Ok(Outcome::Installed { destination: to })
+    Ok(Outcome::Installed {
+        version: binary.version,
+        destination: to,
+    })
 }
 
 /// Ask the far daemon to take the version installed at `program`. The far side leaves a daemon
@@ -282,8 +289,9 @@ fn upload_failure(why: &UploadError, name: &str, had_old: bool, ran: &Ran) -> St
     }
 }
 
-/// After the swap: does the machine find the app by its configured command? A default
-/// install lands in a folder that may not be on its PATH; that is told, never fixed silently.
+/// After the swap: does the machine find the app by its configured command? The default name
+/// is looked up in the install folder first, so this speaks only for a configured name that
+/// leads somewhere else; that is told, never fixed silently.
 fn check_reachable(machine: &Machine, remote_cmd: &str, to: &str, name: &str, talk: &mut dyn Talk) {
     let Ok(argv) = machine.probe_argv() else {
         return;
@@ -322,7 +330,7 @@ fn restart_when_idle(
     talk: &mut dyn Talk,
 ) {
     talk.say(&format!(
-        "waiting for {name} to be idle, then restarting its daemon…"
+        "waiting until no session is open on {name}, then restarting its daemon…"
     ));
     for ask in 0..MOST_IDLE_ASKS {
         let asked = machine
@@ -354,7 +362,7 @@ fn restart_when_idle(
         }
     }
     talk.say(&format!(
-        "note: {name} was still busy after half an hour; its daemon was left running and takes the new version when it next restarts"
+        "note: {name} still had sessions open after half an hour; its daemon was left running and takes the new version when it next restarts (`{APP_COMMAND} machine update {name} --restart` does it now)"
     ));
 }
 
@@ -372,13 +380,33 @@ fn restart_daemon(machine: &Machine, to: &str, name: &str, now: bool, talk: &mut
         .and_then(|argv| ssh_run::run(&argv, None, ASK_LIMIT));
     match asked {
         Ok(ran) if ran.code == Some(0) => {
-            talk.say(&format!("daemon: {}", last_line(&ran.stdout)));
+            let line = last_line(&ran.stdout);
+            talk.say(&format!("daemon: {line}"));
+            if !now && line.starts_with(crate::cli::LEFT_RUNNING) {
+                offer_restart_now(machine, to, name, talk);
+            }
         }
         Ok(ran) => talk.say(&format!(
             "note: could not ask the daemon ({}); running sessions are untouched, and it takes the new version when it next restarts",
             last_line(&ran.stderr)
         )),
         Err(why) => talk.say(&format!("note: could not ask the daemon ({why}); running sessions are untouched")),
+    }
+}
+
+/// The daemon kept its sessions and so still runs the old version, which the window reports as
+/// "needs update" until it restarts. Saying "updated" and leaving that standing is the trap, so
+/// a person at the keyboard is asked; otherwise the way out is spelled out.
+fn offer_restart_now(machine: &Machine, to: &str, name: &str, talk: &mut dyn Talk) {
+    let question = format!(
+        "The daemon on {name} still runs the old version until it restarts. Restart it now? Its sessions are saved and come back; an agent turn in progress is lost."
+    );
+    if talk.can_ask() && talk.confirm(&question) {
+        restart_daemon(machine, to, name, true, talk);
+    } else {
+        talk.say(&format!(
+            "note: the daemon on {name} still runs the old version, so it keeps showing as needing an update; click Update on {name} (or press u on it in Machines) again when you are ready to restart it"
+        ));
     }
 }
 
@@ -399,7 +427,22 @@ pub(crate) fn activity(name: &str, cfg: &Config) -> Result<String, Failure> {
         .map_err(|e| failed(format!("{e:#}")))?;
     let ran = ssh_run::run(&argv, None, ASK_LIMIT).map_err(Failure::Failed)?;
     reached(&ran, name)?;
-    Ok(activity_line(ran.code, &ran.stdout))
+    let mut line = activity_line(ran.code, &ran.stdout);
+    // The window words an update as a restart when the app there is already this version, so
+    // that is said beside the counts. Only a machine that answered the counts is looked at.
+    if line != UNKNOWN_ACTIVITY && installed_is_current(&machine, name) {
+        line.push_str(" current=yes");
+    }
+    Ok(line)
+}
+
+/// Whether the app on the machine is exactly this version, so only its daemon can be old.
+/// A machine that cannot be probed is "no": the window then says Update, which still works.
+pub(crate) fn installed_is_current(machine: &Machine, name: &str) -> bool {
+    probe_installed(machine, name)
+        .ok()
+        .and_then(|installed| state_of(&installed, APP_VERSION))
+        == Some(State::Matching)
 }
 
 /// The far side's answer when it ran and printed one; anything else (an older app that does not
@@ -409,8 +452,10 @@ fn activity_line(code: Option<i32>, stdout: &str) -> String {
     if code == Some(0) && line.starts_with("activity: ") {
         return sanitize(&line, false);
     }
-    "activity: unknown".into()
+    UNKNOWN_ACTIVITY.into()
 }
+
+const UNKNOWN_ACTIVITY: &str = "activity: unknown";
 
 /// Where the update stands as each stage ends, for the desktop app's progress line. The numbers are the stages
 /// themselves, not a measurement: the download and the upload have no byte count to report.

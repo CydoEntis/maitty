@@ -16,8 +16,11 @@ export function useTypedText(target: string, enabled: boolean, fromStart = false
   const [shown, setShown] = useState(fromStart ? 0 : target.length)
   const latest = useRef(target)
   useEffect(() => { latest.current = target })
+  // The timer runs only while text is waiting to be shown: every agent message on screen has one of these, and a
+  // conversation at rest should wake nothing.
+  const behind = enabled && shown < target.length
   useEffect(() => {
-    if (!enabled) return
+    if (!behind) return
     const timer = window.setInterval(() => {
       setShown((now) => {
         const left = latest.current.length - now
@@ -25,7 +28,7 @@ export function useTypedText(target: string, enabled: boolean, fromStart = false
       })
     }, TICK_MS)
     return () => { window.clearInterval(timer) }
-  }, [enabled])
+  }, [behind])
   if (!enabled) return target
   return target.slice(0, Math.min(shown, target.length))
 }

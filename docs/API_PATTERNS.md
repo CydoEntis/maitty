@@ -103,13 +103,39 @@ entry point (handler / route / command / consumer)
 Not HTTP. A private IPC protocol between client and daemon over a local socket
 (or `ssh host maitty proxy`): length-delimited frames carrying msgpack-encoded
 `ClientMsg` / `ServerMsg` enums (`crates/maitty-shared/src/protocol.rs`). The first exchange is
-`Hello { version }` → `Welcome { version }`; mismatched `PROTOCOL_VERSION`s are
-refused. Bump it when a message shape changes incompatibly: a field removed, renamed
+`Hello { version }` → `Welcome { version, compatible_since }`. The client decides whether
+the two talk (`protocol::speaks_with`): the same `PROTOCOL_VERSION` always does, and another
+one does inside the compatibility window, which is from the newer side's `COMPATIBLE_SINCE`
+up to its own version. Outside it the connection is refused. Inside it the newer side adapts:
+the daemon does not send a client a message newer than the client (`ServerMsg::introduced_in`)
+and passes over a request it cannot decode from a newer client; a client checks
+`ClientMsg::introduced_in` before sending an older daemon a request that needs an answer.
+Bump `PROTOCOL_VERSION` when a message shape changes incompatibly: a field removed, renamed
 or retyped, or a new enum variant (an old decoder rejects it). An added field with
 `#[serde(default)]` is compatible (messages are named msgpack maps and unknown fields
 are ignored) and needs no bump, provided a test decodes the old shape. Hooks say Hello
-too, so every bump stops hooked panes reporting until the daemon restarts. The CLI subcommands and the MCP server (`maitty mcp`, JSON-RPC over stdio)
+too, but a hook or usage report is also accepted by an older daemon back to
+`REPORTS_READ_SINCE` (`ipc::open_for_report`), so an update does not stop hooked panes
+reporting before the daemon restarts. When `Hook`, `Usage` or `HookStatus` changes in a way an
+older daemon cannot read, set `REPORTS_READ_SINCE` to the new version in the same change; the
+test `todays_reports_are_read_by_the_oldest_daemon_they_are_sent_to` holds the shapes. The CLI subcommands and the MCP server (`maitty mcp`, JSON-RPC over stdio)
 are thin wrappers that send the same commands.
+
+A conversation that changed is announced to the desktop app's attached clients as
+`ServerMsg::ConversationChanged { id, generation }` (`daemon/conversation/news.rs`): after each
+batch of events the daemon compares a stamp of what a `ConversationRead` would answer (history
+revision, status, error, approvals, queue) with the one it last announced, at most once per
+100 ms per conversation, and never for a conversation seen for the first time. It carries no
+content: the window reads as before, under the same checks. The host passes it to the webview as
+the `conversation-changed` event, for this computer only; another machine's is ignored
+(`remote_policy`). The terminal app is sent none.
+
+`Command::SendWhenReady { term, text }` hands the daemon a message for the agent starting in a
+pane. The daemon holds one per pane and types it in once the agent is running and at rest (idle or
+done) with its hooks reporting, or 20 s after an agent without hooks was first seen; never while
+the pane works or asks something. It is typed as a queued follow-up is (one paste when it has
+several lines), and is saved with the pane, so a daemon restart keeps it. The desktop command is
+`send_when_agent_ready` (at most 256 KiB, not blank).
 
 A state change reaches attached clients as `ServerMsg::State` (the whole `Snapshot`) or, when only
 some panes differ from what that surface's clients last received, as `ServerMsg::TermsChanged`
@@ -286,7 +312,7 @@ time so duplicate or stale reports cannot replace newer lifecycle state.
 
 A new capability adds: a `Command` variant (and any new `ServerMsg` /
 snapshot field) in `protocol.rs`, bumping `PROTOCOL_VERSION` when the change is
-incompatible (see *API style*); handling in
+incompatible and deciding `COMPATIBLE_SINCE` with it (see *API style*); handling in
 `daemon/mod.rs` (or a `daemon/<feature>.rs`); the client side as an `Action` in
 `keys.rs`, a `Mode` and `draw_*` / `on_*_key` pair in `client/`, and a CLI
 subcommand in `cli.rs` when scripts should reach it.
@@ -593,8 +619,8 @@ Protocol 67 adds, for the desktop app's Inspect panel, find, quick-look links an
   mid-turn when the daemon restarted, with the command that resumes it), `timeline` (the latest
   turn events, oldest first, from status reports and the shell's OSC 133 prompt marks, 60 kept in
   memory) and `usage.tokens` (what the provider reported, never an estimate). The daemon never
-  resumes an `interrupted` agent: a desktop-owned pane saved mid-turn comes back as a plain shell,
-  and the window offers the command. Terminal-app panes restore as before.
+  resumes an `interrupted` agent: a pane saved mid-turn comes back as a plain shell, whichever app
+  owns it, and the window offers the command.
 - `Query::PaneSearch { query }` and `Reply::Search`: where a word appears in what the app's own
   panes printed recently, case-insensitively, at most 100 hits and 20 from one pane. Human clients
   only, over the panes the client may use. The text is the pane's replay with escape sequences

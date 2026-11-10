@@ -9,15 +9,18 @@
 
 - Install an update only on a click, or when **Install updates when idle** is on (the default) and the
   app is idle: no agent working or waiting on an answer, no keyboard input for 5 minutes, and the window
-  unfocused or minimized (`features/updates/idle.ts`). The GUI checks once on launch and when asked in
-  Settings › General › Updates; it offers the version and what changed, and the user chooses.
+  unfocused or minimized (`features/updates/idle.ts`). The GUI checks on launch, hourly after that (never while an update is downloading or ready),
+  and when asked in Settings › General › Updates; it offers the version and what changed, and the user chooses.
+  When the service is newer than the app, the app cannot reconnect: the "Update Maitty to reconnect" card
+  fetches the update itself, and idle installs stay on even though the service is unreachable.
   After the restart a toast and a What's new dialog say which version this is.
 - Verify every update with the project's updater key. The public key is in `tauri.conf.json`; the
   private key lives only in the `TAURI_SIGNING_PRIVATE_KEY` repository secret and the owner's
   backup. Never commit it, print it, or put it in a fixture or log.
 - An update replaces the GUI. After the restart the new GUI brings the shared daemon file up to its
-  own release (ADR 0004), stopping a running older daemon only when its sessions are saved, so they
-  restore on the next daemon. It never stops a daemon whose sessions would be lost.
+  own release (ADR 0004) and leaves a running daemon alone: the old file is moved aside and goes on
+  running with its sessions. A daemon that speaks another protocol is restarted only when the user
+  says so on the "Restart Maitty to finish updating" card. An update never ends an agent's turn.
 - A failed or offline check is quiet: no banner, only the line in Settings. A failed install says so
   and never claims the app is updated.
 - Enable only the operations the GUI calls in its Tauri capability.
@@ -40,6 +43,12 @@ publishes the signed bundles and `latest.json` beside the installers:
 | macOS Apple Silicon | `Maitty_<version>_aarch64.app.tar.gz` |
 | Linux x64 | `Maitty_<version>_amd64.AppImage` |
 
+An install made with the `.msi`, `.deb` or `.rpm` installer asks `latest.json` for its own kind first
+(`windows-x86_64-msi`, `linux-x86_64-deb`, `linux-x86_64-rpm`) and updates with that installer. The
+release adds each of those entries when the build signed that installer, and says so in its log when
+one is missing; an install of that kind then has to be reinstalled to update. A `.dmg` install is the
+same app as the macOS update bundle and updates like it.
+
 While `apps/gui/RELEASE-HOLD` exists, a release leaves the desktop app out. The release workflow
 builds no installers or update bundles and attaches the newest release's `latest.json` to the new
 release unchanged. The app asks the newest release for that file, so desktop users go on being
@@ -49,5 +58,4 @@ Don't rebuild the release that manifest points at while the hold is on: its sign
 and rebuilt bundles would no longer match them.
 
 CI builds the installers on a push to `dev`, without `createUpdaterArtifacts` because it has no private key. On Windows
-the installer runs in `passive` mode and closes the app while it installs. The `.deb`, `.rpm`, `.msi`
-and `.dmg` installers are not update bundles; a user who installed one reinstalls to update.
+the installer runs in `passive` mode and closes the app while it installs.

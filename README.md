@@ -75,6 +75,18 @@ If Defender removes `maitty.exe` or blocks it:
 3. Optionally tell Microsoft it is safe at <https://www.microsoft.com/en-us/wdsi/filesubmission>,
    which helps other people on the same version.
 
+### Uninstall
+
+```sh
+maitty uninstall           # says what it will do, then asks
+maitty uninstall --purge   # also deletes your settings and saved sessions
+```
+
+It stops the server, takes Maitty's hooks and MCP entry out of your agents' config and removes the
+program (on Windows, its folder and PATH entry too). Without `--purge` your settings and saved
+sessions stay, so installing again picks up where you left off. The desktop app has its own
+uninstaller: Windows' **Installed apps**, the Applications folder on macOS, or your package manager.
+
 ### Desktop GUI
 
 The same release also publishes desktop installers for Windows, macOS and Linux.
@@ -85,6 +97,7 @@ the same local daemon protocol.
 
 Maitty tells you when an update is out; one click installs it and restarts without
 losing your sessions. **Settings › General › UPDATES** shows the version you have.
+If an update goes wrong, `maitty update --to 0.70.0` puts a named release back.
 
 **Coming from Vibecasso or Seshi?** Maitty is the new name. Install Maitty as above. The
 first time it starts, it brings over your config, saved sessions and history, and points your

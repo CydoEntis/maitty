@@ -9,8 +9,45 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
-/// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 77;
+/// style*). A client and a daemon on different versions talk only inside the window
+/// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
+pub const PROTOCOL_VERSION: u32 = 78;
+
+/// The oldest `PROTOCOL_VERSION` this build still talks to, in either role. It stays behind
+/// `PROTOCOL_VERSION` only across changes an older peer can live with: a new message it is never
+/// sent (`ServerMsg::introduced_in`), or a field it does not need. Set it to the current version
+/// in the change that removes, renames or retypes anything an older peer reads or writes, or
+/// that adds a value inside a message it is still sent (a new `Status`, say): such a peer would
+/// misread, and that is refused. 78 is the first version that knows about the window at all.
+pub const COMPATIBLE_SINCE: u32 = 78;
+
+/// Whether this build and a peer talk. The older of the two cannot know what came after it, so
+/// the newer one decides: `peer_compatible_since` is what the peer said in the handshake (0 from
+/// a build that says nothing, which then talks only to its own version).
+pub fn speaks_with(peer_version: u32, peer_compatible_since: u32) -> bool {
+    match peer_version.cmp(&PROTOCOL_VERSION) {
+        std::cmp::Ordering::Equal => true,
+        std::cmp::Ordering::Less => peer_version >= COMPATIBLE_SINCE,
+        std::cmp::Ordering::Greater => {
+            (1..=PROTOCOL_VERSION).contains(&peer_compatible_since)
+        }
+    }
+}
+
+/// The oldest `PROTOCOL_VERSION` whose daemon reads today's `Hook` and `Usage` reports. An
+/// agent's hooks run the installed binary, which an update replaces while the old daemon keeps
+/// running: refusing every report until that daemon restarted left each pane's status wrong for
+/// as long. Set this to the current version in the change that makes either report unreadable
+/// to an older daemon: a field removed, renamed or retyped, or a new `HookStatus`. The test
+/// `todays_reports_are_read_by_the_oldest_daemon_they_are_sent_to` holds the shapes it promises.
+pub const REPORTS_READ_SINCE: u32 = 76;
+
+/// Whether a daemon at `daemon_version` reads this build's hook and usage reports: the same
+/// version, or an older one the reports have not changed shape since. A newer daemon is refused,
+/// as nothing here can know what it expects.
+pub fn daemon_reads_reports(daemon_version: u32) -> bool {
+    (REPORTS_READ_SINCE..=PROTOCOL_VERSION).contains(&daemon_version)
+}
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -145,6 +182,11 @@ pub enum ClientMsg {
         /// Ids of the background tasks (shells, helpers) still running when a turn stopped.
         #[serde(default)]
         background: Vec<String>,
+        /// Those of `background` that are helper agents. A helper always ends and wakes the
+        /// agent, where a shell may be a server that never does, so only helpers hold a
+        /// later stop as a pause.
+        #[serde(default)]
+        background_agents: Vec<String>,
         /// The question a permission prompt asks, from the hook's own payload (a
         /// `PermissionRequest`). The daemon cleans it and decides `answerable` itself.
         #[serde(default)]
@@ -535,6 +577,12 @@ pub enum Command {
     ClearQueue {
         term: TermId,
     },
+    /// A message for the agent that is starting in a pane: the daemon holds it and types it in
+    /// once that agent takes input, so it is delivered even when the app that sent it has closed.
+    SendWhenReady {
+        term: TermId,
+        text: String,
+    },
     /// Run the pane's checkpoint `name` again (None: all of them). While its agent is working
     /// the run waits for the turn to end.
     RerunCheck {
@@ -767,8 +815,12 @@ fn replays_by_default() -> bool {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerMsg {
+    /// `compatible_since`: the oldest version this daemon still talks to (`COMPATIBLE_SINCE`),
+    /// so an older client can tell whether it is inside the window.
     Welcome {
         version: u32,
+        #[serde(default)]
+        compatible_since: u32,
     },
     State(Snapshot),
     /// Only some panes changed since the last `State` or `TermsChanged` on this connection:
@@ -818,6 +870,12 @@ pub enum ServerMsg {
     SettingsChanged(crate::settings_view::SharedSettings),
     /// Come to the front: a notification for one of this server's sessions was clicked.
     Raise,
+    /// What a `ConversationRead` of this conversation answers has changed: read it again. Sent
+    /// to the desktop app's attached clients, so an open chat need not ask several times a second.
+    ConversationChanged {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+    },
     Bye,
 }
 
@@ -1575,6 +1633,23 @@ impl WorkspaceInfo {
     }
 }
 
+impl ServerMsg {
+    /// The first version whose client reads this message. The daemon does not send a message to
+    /// a client older than that. A message added while `COMPATIBLE_SINCE` stays behind gets its
+    /// own arm here; everything else is as old as the window.
+    pub fn introduced_in(&self) -> u32 {
+        COMPATIBLE_SINCE
+    }
+}
+
+impl ClientMsg {
+    /// The first version whose daemon reads this message: what a client checks before it sends
+    /// a request to an older daemon, which would otherwise never answer it.
+    pub fn introduced_in(&self) -> u32 {
+        COMPATIBLE_SINCE
+    }
+}
+
 pub fn encode<T: Serialize>(msg: &T) -> anyhow::Result<bytes::Bytes> {
     Ok(rmp_serde::to_vec_named(msg)?.into())
 }
@@ -1586,6 +1661,38 @@ pub fn decode<'a, T: Deserialize<'a>>(buf: &'a [u8]) -> anyhow::Result<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_peer_talks_inside_the_window_and_is_refused_outside_it() {
+        const { assert!(COMPATIBLE_SINCE <= PROTOCOL_VERSION) };
+        assert!(speaks_with(PROTOCOL_VERSION, COMPATIBLE_SINCE));
+        // The same version talks even when it says nothing about a window.
+        assert!(speaks_with(PROTOCOL_VERSION, 0));
+        assert!(speaks_with(COMPATIBLE_SINCE, 0));
+        assert!(!speaks_with(COMPATIBLE_SINCE - 1, 0));
+        // A newer peer decides: it talks when it says it still speaks this version.
+        assert!(speaks_with(PROTOCOL_VERSION + 1, PROTOCOL_VERSION));
+        assert!(speaks_with(PROTOCOL_VERSION + 5, COMPATIBLE_SINCE));
+        assert!(!speaks_with(PROTOCOL_VERSION + 1, PROTOCOL_VERSION + 1));
+        assert!(!speaks_with(PROTOCOL_VERSION + 1, 0));
+    }
+
+    /// A build from before the window sends a Welcome with the version alone.
+    #[test]
+    fn a_welcome_without_a_window_still_decodes() {
+        #[derive(Serialize)]
+        enum Old {
+            Welcome { version: u32 },
+        }
+        let bytes = encode(&Old::Welcome { version: 77 }).unwrap();
+        match decode::<ServerMsg>(&bytes).unwrap() {
+            ServerMsg::Welcome {
+                version,
+                compatible_since,
+            } => assert_eq!((version, compatible_since), (77, 0)),
+            other => panic!("{other:?}"),
+        }
+    }
 
     /// Encoding what was decoded gives the same bytes: nothing is lost on the way.
     fn round_trips<T: Serialize + for<'a> Deserialize<'a>>(msg: &T) {
@@ -1640,6 +1747,7 @@ mod tests {
                 model: Some("opus".into()),
                 name: Some("api work".into()),
                 background: vec!["b1".into()],
+                background_agents: vec![],
                 ask: Some(PermissionAsk {
                     tool: "Bash".into(),
                     detail: "cargo test".into(),
@@ -1714,6 +1822,10 @@ mod tests {
                 text: "then run the tests".into(),
             }),
             ClientMsg::Command(Command::ClearQueue { term: 3 }),
+            ClientMsg::Command(Command::SendWhenReady {
+                term: 3,
+                text: "fix the parser".into(),
+            }),
             ClientMsg::Command(Command::RerunCheck {
                 term: 3,
                 name: None,
@@ -1790,6 +1902,7 @@ mod tests {
         let servers = vec![
             ServerMsg::Welcome {
                 version: PROTOCOL_VERSION,
+                compatible_since: COMPATIBLE_SINCE,
             },
             ServerMsg::State(Snapshot::default()),
             ServerMsg::TermsChanged {
@@ -1839,6 +1952,10 @@ mod tests {
             },
             ServerMsg::AutoWorkspace("api".into()),
             ServerMsg::Raise,
+            ServerMsg::ConversationChanged {
+                id: crate::conversation::ConversationId(47),
+                generation: 2,
+            },
             ServerMsg::Bye,
         ];
         for m in &servers {
@@ -1867,6 +1984,43 @@ mod tests {
         );
         // `root` and `branch` (a chat session's project, ADR 0003) are defaulted too.
         assert_eq!((summary.root, summary.branch), (None, None));
+    }
+
+    /// A message held for a starting agent is a new command, and the news that a conversation
+    /// changed a new server message: a peer built before them reads neither, which is why
+    /// protocol 78 refuses protocol 77.
+    #[test]
+    fn a_peer_from_before_held_messages_and_chat_news_cannot_read_them() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldCommand {
+            ClearQueue { term: TermId },
+        }
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldServerMsg {
+            Raise,
+            Bye,
+        }
+        let held = encode(&Command::SendWhenReady {
+            term: 3,
+            text: "fix the parser".into(),
+        })
+        .unwrap();
+        assert!(decode::<OldCommand>(&held).is_err());
+        assert!(matches!(
+            decode::<Command>(&held),
+            Ok(Command::SendWhenReady { term: 3, text }) if text == "fix the parser"
+        ));
+
+        let id = crate::conversation::ConversationId(3);
+        let news = encode(&ServerMsg::ConversationChanged { id, generation: 2 }).unwrap();
+        assert!(decode::<OldServerMsg>(&news).is_err());
+        assert!(matches!(
+            decode::<ServerMsg>(&news),
+            Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
+        ));
+        assert_eq!(PROTOCOL_VERSION, 78);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2059,7 +2213,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 77);
+        assert_eq!(PROTOCOL_VERSION, 78);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -2425,6 +2579,256 @@ mod tests {
     }
 
     #[test]
+    fn reports_go_to_this_version_and_the_older_ones_that_read_them_but_never_a_newer_one() {
+        assert!(daemon_reads_reports(PROTOCOL_VERSION));
+        assert!(daemon_reads_reports(REPORTS_READ_SINCE));
+        assert!(!daemon_reads_reports(REPORTS_READ_SINCE - 1));
+        assert!(!daemon_reads_reports(PROTOCOL_VERSION + 1));
+    }
+
+    /// The reports as the daemon at `REPORTS_READ_SINCE` declares them, copied from that
+    /// release. They change only together with `REPORTS_READ_SINCE`.
+    mod reports_at_oldest {
+        use super::super::TermId;
+        use serde::Deserialize;
+        use std::path::PathBuf;
+
+        #[derive(Debug, PartialEq, Deserialize)]
+        pub enum HookStatus {
+            Working,
+            Blocked,
+            Done,
+            Idle,
+            Gone,
+            Same,
+        }
+
+        #[derive(Debug, Deserialize)]
+        pub struct Subagent {
+            pub id: String,
+            pub kind: String,
+            pub start: bool,
+            #[serde(default)]
+            pub reported_at: u64,
+            #[serde(default)]
+            pub task: Option<String>,
+            #[serde(default)]
+            pub model: Option<String>,
+            #[serde(default)]
+            pub effort: Option<String>,
+            #[serde(default)]
+            pub activity: Option<String>,
+        }
+
+        #[derive(Debug, Deserialize)]
+        pub struct PermissionAsk {
+            pub tool: String,
+            pub detail: String,
+            #[serde(default)]
+            pub answerable: bool,
+            #[serde(default)]
+            pub choices: Vec<String>,
+        }
+
+        #[derive(Debug, Deserialize)]
+        pub struct Usage {
+            pub context: Option<f32>,
+            pub cost: Option<f64>,
+            #[serde(default)]
+            pub tokens: Option<u64>,
+            #[serde(default)]
+            pub tokens_in: Option<u64>,
+            #[serde(default)]
+            pub tokens_out: Option<u64>,
+        }
+
+        #[derive(Debug, Deserialize)]
+        pub struct Limit {
+            pub name: String,
+            pub used: f32,
+            pub resets_at: u64,
+        }
+
+        #[derive(Debug, Deserialize)]
+        #[allow(clippy::large_enum_variant)]
+        pub enum ClientMsg {
+            Hook {
+                term: TermId,
+                agent: String,
+                status: HookStatus,
+                session: Option<String>,
+                cwd: Option<PathBuf>,
+                prompt: Option<String>,
+                said: Option<String>,
+                subagent: Option<Subagent>,
+                event: String,
+                pid: u32,
+                #[serde(default)]
+                token: String,
+                transcript: Option<PathBuf>,
+                model: Option<String>,
+                name: Option<String>,
+                #[serde(default)]
+                background: Vec<String>,
+                #[serde(default)]
+                ask: Option<PermissionAsk>,
+                #[serde(default)]
+                call: Option<String>,
+            },
+            Usage {
+                term: TermId,
+                token: String,
+                usage: Usage,
+                limits: Vec<Limit>,
+            },
+        }
+    }
+
+    #[test]
+    fn todays_reports_are_read_by_the_oldest_daemon_they_are_sent_to() {
+        let hook = ClientMsg::Hook {
+            term: 3,
+            agent: "claude".into(),
+            status: HookStatus::Done,
+            session: Some("abc-123".into()),
+            cwd: Some(PathBuf::from("/code/api")),
+            prompt: Some("fix it".into()),
+            said: Some("done".into()),
+            subagent: Some(Subagent {
+                id: "s1".into(),
+                kind: "Explore".into(),
+                start: false,
+                reported_at: 7,
+                task: Some("look".into()),
+                model: Some("opus".into()),
+                effort: Some("high".into()),
+                activity: Some("reading".into()),
+            }),
+            event: "Stop".into(),
+            pid: 42,
+            token: "00ff".into(),
+            transcript: Some(PathBuf::from("/t.jsonl")),
+            model: Some("opus".into()),
+            name: Some("api work".into()),
+            background: vec!["b1".into(), "a2".into()],
+            background_agents: vec!["a2".into()],
+            ask: Some(PermissionAsk {
+                tool: "Bash".into(),
+                detail: "cargo test".into(),
+                answerable: false,
+                choices: vec!["Yes".into()],
+            }),
+            call: Some("00112233445566ff".into()),
+        };
+        let read: reports_at_oldest::ClientMsg =
+            decode(&encode(&hook).unwrap()).expect("the oldest daemon reads today's hook report");
+        let reports_at_oldest::ClientMsg::Hook {
+            term,
+            agent,
+            status,
+            session,
+            cwd,
+            prompt,
+            said,
+            subagent,
+            event,
+            pid,
+            token,
+            transcript,
+            model,
+            name,
+            background,
+            ask,
+            call,
+        } = read
+        else {
+            panic!("expected a hook report")
+        };
+        assert_eq!(
+            (term, agent.as_str(), pid, token.as_str()),
+            (3, "claude", 42, "00ff")
+        );
+        assert_eq!(status, reports_at_oldest::HookStatus::Done);
+        assert_eq!(event, "Stop");
+        assert_eq!(session.as_deref(), Some("abc-123"));
+        assert_eq!(cwd, Some(PathBuf::from("/code/api")));
+        assert_eq!(
+            (prompt.as_deref(), said.as_deref()),
+            (Some("fix it"), Some("done"))
+        );
+        assert_eq!(transcript, Some(PathBuf::from("/t.jsonl")));
+        assert_eq!(
+            (model.as_deref(), name.as_deref()),
+            (Some("opus"), Some("api work"))
+        );
+        assert_eq!(background, ["b1", "a2"]);
+        assert_eq!(call.as_deref(), Some("00112233445566ff"));
+        let subagent = subagent.expect("the helper it names");
+        assert_eq!(
+            (
+                subagent.id.as_str(),
+                subagent.kind.as_str(),
+                subagent.start,
+                subagent.reported_at
+            ),
+            ("s1", "Explore", false, 7)
+        );
+        assert_eq!(
+            (
+                subagent.task.as_deref(),
+                subagent.model.as_deref(),
+                subagent.effort.as_deref(),
+                subagent.activity.as_deref()
+            ),
+            (Some("look"), Some("opus"), Some("high"), Some("reading"))
+        );
+        let ask = ask.expect("the question it asks");
+        assert_eq!(
+            (ask.tool.as_str(), ask.detail.as_str(), ask.answerable),
+            ("Bash", "cargo test", false)
+        );
+        assert_eq!(ask.choices, ["Yes"]);
+
+        let usage = ClientMsg::Usage {
+            term: 3,
+            token: "00ff".into(),
+            usage: Usage {
+                context: Some(30.0),
+                cost: Some(1.5),
+                tokens: Some(900),
+                tokens_in: Some(600),
+                tokens_out: Some(300),
+            },
+            limits: vec![Limit {
+                name: "5h".into(),
+                used: 23.0,
+                resets_at: 100,
+            }],
+        };
+        let read: reports_at_oldest::ClientMsg =
+            decode(&encode(&usage).unwrap()).expect("the oldest daemon reads today's usage report");
+        let reports_at_oldest::ClientMsg::Usage {
+            term,
+            token,
+            usage,
+            limits,
+        } = read
+        else {
+            panic!("expected a usage report")
+        };
+        assert_eq!((term, token.as_str()), (3, "00ff"));
+        assert_eq!((usage.context, usage.cost), (Some(30.0), Some(1.5)));
+        assert_eq!(
+            (usage.tokens, usage.tokens_in, usage.tokens_out),
+            (Some(900), Some(600), Some(300))
+        );
+        assert_eq!(
+            (limits[0].name.as_str(), limits[0].used, limits[0].resets_at),
+            ("5h", 23.0, 100)
+        );
+    }
+
+    #[test]
     fn a_hook_report_reads_across_the_background_field() {
         let old = serde_json::json!({ "Hook": {
             "term": 3, "agent": "claude", "status": "Done", "session": null, "cwd": null, "prompt": null,
@@ -2436,6 +2840,7 @@ mod tests {
         let ClientMsg::Hook {
             event,
             background,
+            background_agents,
             ask,
             call,
             ..
@@ -2444,6 +2849,7 @@ mod tests {
             panic!("expected a hook report")
         };
         assert_eq!((event.as_str(), background.len(), ask), ("Stop", 0, None));
+        assert!(background_agents.is_empty(), "an older peer names no helpers");
         assert_eq!(call, None, "an older peer sends no call fingerprint");
 
         #[derive(Deserialize)]
@@ -2472,6 +2878,7 @@ mod tests {
             model: None,
             name: None,
             background: vec!["b1".into()],
+            background_agents: vec!["b1".into()],
             ask: None,
             call: None,
         };
