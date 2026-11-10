@@ -1,5 +1,5 @@
 import { installUndoRedo } from '@/features/editing/undoRedo'
-import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CircleAlert, FolderOpen, LoaderCircle, MessageSquarePlus } from 'lucide-react'
 import { toast } from '@/lib/toast'
@@ -11,7 +11,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { answerUserInput as answerDaemonInput, approveRequest, cancelTurn as cancelDaemonTurn, classifySubmissionFailure, createConversation as createDaemonConversation, defaultSessionFolder, isDesktop, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversations, loadDaemonRestartStatus, loadMachines, loadMessages, resumeConversation as resumeDaemonConversation, type SessionPermissions, startShellSession, startTerminalSession, submitMessage } from '@/api/daemon'
+import { cancelTurn as cancelDaemonTurn, isDesktop, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversations, loadDaemonRestartStatus, loadMachines, loadMessages, type SessionPermissions } from '@/api/daemon'
 import { chooseProjectFolder } from '@/api/folderPicker'
 import { type Conversation, type Message, previewConversations, previewMessages, type SessionStatus } from '@/data/preview'
 import { markConversationsDisconnected } from '@/data/connection'
@@ -21,11 +21,10 @@ import { readThemePreference } from '@/data/themePreference'
 import { readSettingsPreferences } from '@/features/settings/preferences'
 import { readSelectedConversation } from '@/data/selectedConversation'
 import { closeConversationTab, openConversationTab, readOpenConversationTabs, reconcileConversationTabs } from '@/data/openConversationTabs'
-import { PERMISSION_LABELS, readConversationPermissions, rememberConversationPermissions } from '@/data/conversationPermissions'
+import { PERMISSION_LABELS, readConversationPermissions } from '@/data/conversationPermissions'
 import { shortcutModifier } from '@/lib/shortcut-modifier'
-import { errorMessage } from '@/lib/error-message'
 import { daemonConnectionError, daemonProtocolMismatch } from '@/lib/daemon-connection'
-import { focusMainContent, HISTORY_REFRESH_INTERVAL_MS, type PanelTab, PREVIEW_APPROVAL_DELAY_MS, PREVIEW_RESPONSE_DELAY_MS, RECENT_PROJECT_LIMIT, type SendFailure, SESSION_REFRESH_INTERVAL_MS, sessionGroup } from './shared'
+import { focusMainContent, HISTORY_REFRESH_INTERVAL_MS, type PanelTab, RECENT_PROJECT_LIMIT, type SendFailure, SESSION_REFRESH_INTERVAL_MS, sessionGroup } from './shared'
 import { ConversationSidebar } from './Sidebar'
 import { NewConversationDialog } from './NewConversationDialog'
 import { ConversationTabStrip } from './TabStrip'
@@ -41,6 +40,8 @@ import { usePreviewKeys } from './usePreviewKeys'
 import { useConversationActions } from './useConversationActions'
 import { PreviewSettingsDialog } from './PreviewSettingsDialog'
 import { ServiceRestartButton, ServiceRestartDialog } from './ServiceRestart'
+import { useConversationStarts } from './useConversationStarts'
+import { useConversationSending } from './useConversationSending'
 
 export function PreviewApp() {
   const desktop = isDesktop()
@@ -458,6 +459,7 @@ export function PreviewApp() {
       : activeConversations
   }, [activeConversations, filter])
   usePreviewEffects({ desktop, sessionsQuery, sidebarPreferences, setSidebarPreferences, queryClient, drafts, selectedConversationId, openTabIds, daemonDisconnected, previousConversationStatuses, activeConversations, setStatusAnnouncement, selected, selectConversation, settingsPreferences, setActivePanel, theme, setApprovalCollapsed, setIsCompactSidebar, setSidebarDrawerOpen })
+  const { openNewSession, createConversation } = useConversationStarts({ desktop, setNewDialogOpen, daemonDisconnected, conversationCreationPendingRef, setConversationCreationPending, conversations, settingsPreferences, queryClient, selectConversation, newProject, newKind, newProvider, setStartingSessions, newPermissions, setStartedWith, setConversations, setMessagesById, setActivePanel })
   usePreviewKeys({ setCommandDialogOpen, openTabIds, selected, selectConversation, closeConversation, setSettingsDialogOpen, openNewSession, activePanel, setActivePanel, sidebarDrawerOpen, setSidebarDrawerOpen, isCompactSidebar, setSidebarCollapsed, setKeyboardDialogOpen, pendingApproval, daemonDisconnected, desktop, toggleTerminal, cancelTurn, activeConversations, chooseFolder })
   const { updateSettingsPreferences, togglePin, setArchived, renameConversation, requestEndSession, confirmEndSession } = useConversationActions({ setSidebarPreferences, settingsPreferences, setSidebarCollapsed, setSettingsPreferences, desktop, queryClient, conversations, openTabIds, closeConversation, setEndTarget, endTarget })
 
@@ -490,6 +492,7 @@ export function PreviewApp() {
           : null
       : null
 
+  const { sendMessage, resumeSelectedConversation, resolveApproval, answerInput, checkSubmissionDelivery, clearSendFailure, updateDraft, handleComposerKeyDown, denyAndSend } = useConversationSending({ setDrafts, setSendFailures, setMessagesById, setDenyQueuedFor, daemonDisconnected, deliveryNotice, draft, desktop, historyQuery, queryClient, setStatus, selected, sendFailure, setRecoveryPendingId, selectConversation, pendingApproval, denyDecision })
   useEffect(() => {
     if (
       !selected ||
@@ -707,434 +710,6 @@ export function PreviewApp() {
         </div>
       </TooltipProvider>
     )
-
-  const activeConversation = selected
-
-  function updateDraft(value: string) {
-    setDrafts((current) => ({ ...current, [activeConversation.id]: value }))
-  }
-
-  function clearSendFailure(conversationId: string) {
-    setSendFailures((current) =>
-      Object.fromEntries(
-        Object.entries(current).filter(([id]) => id !== conversationId),
-      ),
-    )
-  }
-
-  function pushMessage(conversationId: string, message: Message) {
-    setMessagesById((current) => ({
-      ...current,
-      [conversationId]: [...(current[conversationId] ?? []), message],
-    }))
-  }
-
-  function sendMessage() {
-    // A queued deny-and-send is spent the moment a send is attempted.
-    setDenyQueuedFor(null)
-    if (daemonDisconnected) return
-    if (deliveryNotice === 'unknown') return
-    const text = draft.trim()
-    if (
-      !text ||
-      activeConversation.status === 'working' ||
-      activeConversation.status === 'needs-you' ||
-      activeConversation.status === 'unknown'
-    )
-      return
-
-    const conversationId = activeConversation.id
-    if (desktop) {
-      const operation = historyQuery.data?.nextOperation ?? 1
-      const conversation = activeConversation
-      void submitMessage(conversation, operation, text)
-        .then(async () => {
-          setDrafts((current) => ({ ...current, [conversationId]: '' }))
-          clearSendFailure(conversationId)
-          await refreshAfterSubmission(conversationId)
-        })
-        .catch(async () => {
-          let outcome: ReturnType<typeof classifySubmissionFailure> = 'unknown'
-          try {
-            const latest = await queryClient.query({
-              queryKey: ['conversation-history', conversationId],
-              queryFn: () =>
-                loadMessages(conversationId, conversation.provider),
-              staleTime: 0,
-            })
-            outcome = classifySubmissionFailure(
-              latest,
-              conversation.generation ?? -1,
-              operation,
-            )
-          } catch {
-            // A failed receipt read cannot prove whether the provider received the prompt.
-          }
-          if (outcome === 'delivered') {
-            setDrafts((current) => ({ ...current, [conversationId]: '' }))
-            clearSendFailure(conversationId)
-            await refreshAfterSubmission(conversationId)
-            toast.message('Message was received; refreshing conversation')
-            return
-          }
-          setSendFailures((current) => ({
-            ...current,
-            [conversationId]: { kind: outcome, operation },
-          }))
-          toast.error(
-            outcome === 'unknown'
-              ? 'Delivery is unknown. Check the native terminal before continuing.'
-              : 'Message was not delivered. Your draft is safe to retry.',
-          )
-        })
-      return
-    }
-    updateDraft('')
-    pushMessage(conversationId, {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: text,
-      time: 'now',
-    })
-    setStatus(conversationId, 'working')
-
-    window.setTimeout(() => {
-      pushMessage(conversationId, {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content:
-          'I’ve picked that up. This preview uses sample data; the real conversation connection is still being wired in.',
-        time: 'now',
-      })
-      setStatus(conversationId, 'done')
-    }, PREVIEW_RESPONSE_DELAY_MS)
-  }
-
-  async function checkSubmissionDelivery() {
-    if (!selected) return
-    const uncertainReceipt =
-      historyQuery.data?.receipt?.delivery === 'SubmissionUncertain'
-        ? historyQuery.data.receipt
-        : null
-    const operation = sendFailure?.operation ?? uncertainReceipt?.operation
-    if (operation === undefined || selected.generation === undefined) return
-    try {
-      const latest = await loadMessages(selected.id, selected.provider)
-      queryClient.setQueryData(['conversation-history', selected.id], latest)
-      const outcome = classifySubmissionFailure(
-        latest,
-        selected.generation,
-        operation,
-      )
-      if (outcome === 'delivered') {
-        setDrafts((current) => ({ ...current, [selected.id]: '' }))
-        clearSendFailure(selected.id)
-        toast.message('The daemon confirmed this message was received')
-      } else if (outcome === 'not-delivered') {
-        setSendFailures((current) => ({
-          ...current,
-          [selected.id]: { kind: 'not-delivered', operation },
-        }))
-        toast.message(
-          'The daemon confirmed this message was not delivered. Your draft is safe to retry.',
-        )
-      } else {
-        setSendFailures((current) => ({
-          ...current,
-          [selected.id]: { kind: 'unknown', operation },
-        }))
-        toast.warning(
-          'Delivery is still unknown. Check the native terminal before continuing.',
-        )
-      }
-    } catch (error: unknown) {
-      toast.error(
-        error instanceof Error
-          ? `Could not check delivery: ${error.message}`
-          : 'Could not check delivery',
-      )
-    }
-  }
-
-  function resumeSelectedConversation() {
-    if (
-      !selected ||
-      !desktop ||
-      daemonDisconnected ||
-      selected.execution !== 'Structured' ||
-      selected.status !== 'recovery'
-    )
-      return
-    const conversation = selected
-    setRecoveryPendingId(conversation.id)
-    void resumeDaemonConversation(conversation)
-      .then(async (resumed) => {
-        selectConversation(String(resumed.id))
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['conversations'] }),
-          queryClient.invalidateQueries({
-            queryKey: ['conversation-history', conversation.id],
-          }),
-        ])
-      })
-      .catch((error: unknown) => {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : 'Could not resume this conversation',
-        )
-      })
-      .finally(() => {
-        setRecoveryPendingId(null)
-      })
-  }
-
-  async function refreshAfterSubmission(conversationId: string) {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['conversations'] }),
-      queryClient.invalidateQueries({
-        queryKey: ['conversation-history', conversationId],
-      }),
-    ])
-  }
-
-  function resolveApproval(
-    message: Message,
-    decision: 'Accept' | 'AcceptForSession' | 'Decline' | 'Cancel',
-  ) {
-    if (daemonDisconnected) return
-    if (desktop) {
-      if (message.providerRequestId === undefined) return
-      void approveRequest(
-        activeConversation,
-        message.providerRequestId,
-        decision,
-      )
-        .then(async () => {
-          await Promise.all([
-            queryClient.invalidateQueries({ queryKey: ['conversations'] }),
-            queryClient.invalidateQueries({
-              queryKey: ['conversation-history', activeConversation.id],
-            }),
-          ])
-        })
-        .catch((error: unknown) => {
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : 'Could not answer approval request',
-          )
-        })
-      return
-    }
-    const allow = decision === 'Accept' || decision === 'AcceptForSession'
-    setMessagesById((current) => ({
-      ...current,
-      [activeConversation.id]: (current[activeConversation.id] ?? []).map(
-        (item) => (item.id === message.id ? { ...item, resolved: true } : item),
-      ),
-    }))
-    pushMessage(activeConversation.id, {
-      id: crypto.randomUUID(),
-      role: 'assistant',
-      content: allow
-        ? 'Approved once. The test command is running in this preview.'
-        : 'You declined the command. The agent did not run it.',
-      time: 'now',
-    })
-    setStatus(activeConversation.id, allow ? 'working' : 'idle')
-    if (allow) {
-      window.setTimeout(() => {
-        setStatus(activeConversation.id, 'done')
-      }, PREVIEW_APPROVAL_DELAY_MS)
-    }
-  }
-
-  function answerInput(message: Message, answers: Record<string, string[]>) {
-    if (daemonDisconnected) return
-    if (message.providerRequestId === undefined) return
-    void answerDaemonInput(
-      activeConversation,
-      message.providerRequestId,
-      answers,
-    )
-      .then(async () => {
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['conversations'] }),
-          queryClient.invalidateQueries({
-            queryKey: ['conversation-history', activeConversation.id],
-          }),
-        ])
-        toast.success(`Answers sent to ${activeConversation.provider}`)
-      })
-      .catch((error: unknown) => {
-        toast.error(
-          error instanceof Error ? error.message : 'Could not send answers',
-        )
-      })
-  }
-
-  // A new session is a plain shell in the start folder; the user types what to run in it (ADR
-  // 0046). The dialog remains only for the browser preview, which has no daemon to start sessions in.
-  function openNewSession() {
-    if (!desktop) {
-      setNewDialogOpen(true)
-      return
-    }
-    if (daemonDisconnected || conversationCreationPendingRef.current) return
-    conversationCreationPendingRef.current = true
-    setConversationCreationPending(true)
-    const known = new Set(conversations.map((item) => item.id))
-    const chosen = settingsPreferences.startFolder
-    void (chosen ? Promise.resolve(chosen) : defaultSessionFolder())
-      .then((folder) => startShellSession(folder))
-      .then(async () => {
-        await queryClient.invalidateQueries({ queryKey: ['conversations'] })
-        const fresh = await queryClient.query({
-          queryKey: ['conversations'],
-          queryFn: loadConversations,
-          staleTime: 0,
-        })
-        const created = fresh.find(
-          (item) => item.kind === 'terminal' && !known.has(item.id),
-        )
-        if (created) selectConversation(created.id)
-      })
-      .catch((error: unknown) => {
-        toast.error(errorMessage(error, 'Could not start a shell'))
-      })
-      .finally(() => {
-        conversationCreationPendingRef.current = false
-        setConversationCreationPending(false)
-      })
-  }
-
-  function createConversation() {
-    if (daemonDisconnected || conversationCreationPendingRef.current) return
-    const typed = newProject.trim()
-    if (typed) {
-      startConversation(typed)
-      return
-    }
-    // No folder chosen: start in the home folder and let the user move on from there (cd), as in the terminal app.
-    void defaultSessionFolder()
-      .then((folder) => {
-        if (folder) startConversation(folder)
-        else toast.error('Choose a project folder first')
-      })
-      .catch((error: unknown) => {
-        toast.error(errorMessage(error, 'Could not find your home folder'))
-      })
-  }
-
-  function startConversation(project: string) {
-    if (daemonDisconnected || conversationCreationPendingRef.current) return
-    if (desktop && newKind === 'terminal') {
-      conversationCreationPendingRef.current = true
-      setConversationCreationPending(true)
-      const known = new Set(conversations.map((item) => item.id))
-      void startTerminalSession(project, newProvider)
-        .then(async () => {
-          setNewDialogOpen(false)
-          await queryClient.invalidateQueries({ queryKey: ['conversations'] })
-          // Open the terminal session that just appeared.
-          const fresh = await queryClient.query({
-            queryKey: ['conversations'],
-            queryFn: loadConversations,
-            staleTime: 0,
-          })
-          const created = fresh.find(
-            (item) => item.kind === 'terminal' && !known.has(item.id),
-          )
-          if (created) selectConversation(created.id)
-        })
-        .catch((error: unknown) => {
-          toast.error(
-            errorMessage(error, `Could not start ${newProvider} terminal`),
-          )
-        })
-        .finally(() => {
-          conversationCreationPendingRef.current = false
-          setConversationCreationPending(false)
-        })
-      return
-    }
-    if (desktop) {
-      conversationCreationPendingRef.current = true
-      setConversationCreationPending(true)
-      // The daemon starts the provider before it answers, which can take a few
-      // seconds: close the dialog now and show progress in the sidebar instead.
-      const startingKey = crypto.randomUUID()
-      const folderName =
-        project.split(/[\\/]/).filter(Boolean).at(-1) ?? project
-      setStartingSessions((current) => [
-        ...current,
-        {
-          key: startingKey,
-          startedAt: Date.now(),
-          label: `Starting ${newProvider} session in ${folderName}\u2026`,
-        },
-      ])
-      setNewDialogOpen(false)
-      void createDaemonConversation(project, newProvider, newPermissions)
-        .then(async ({ id }) => {
-          rememberConversationPermissions(String(id), newPermissions)
-          setStartedWith(readConversationPermissions())
-          selectConversation(String(id))
-          await queryClient.invalidateQueries({ queryKey: ['conversations'] })
-        })
-        .catch((error: unknown) => {
-          // Reopen the dialog with the same choices so nothing has to be retyped.
-          setNewDialogOpen(true)
-          toast.error(
-            errorMessage(error, `Could not start ${newProvider} conversation`),
-          )
-        })
-        .finally(() => {
-          setStartingSessions((current) =>
-            current.filter((item) => item.key !== startingKey),
-          )
-          conversationCreationPendingRef.current = false
-          setConversationCreationPending(false)
-        })
-      return
-    }
-    const conversation: Conversation = {
-      id: crypto.randomUUID(),
-      title: `New ${newProvider} conversation`,
-      project: project.split(/[\\/]/).filter(Boolean).at(-1) ?? 'project',
-      folder: project,
-      branch: 'working tree',
-      provider: newProvider,
-      status: 'idle',
-      updated: 'now',
-      model: `${newProvider} default`,
-      permission: 'Read only · approvals on request',
-      context: 0,
-      nativePane: 0,
-      hasDiff: false,
-    }
-    setConversations((current) => [conversation, ...current])
-    setMessagesById((current) => ({ ...current, [conversation.id]: [] }))
-    selectConversation(conversation.id)
-    setActivePanel('details')
-    setNewDialogOpen(false)
-    toast.message('Created in local preview')
-  }
-
-  function denyAndSend() {
-    if (!pendingApproval || !denyDecision || !draft.trim()) return
-    setDenyQueuedFor(activeConversation.id)
-    resolveApproval(pendingApproval, denyDecision)
-  }
-
-  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault()
-      if (denyDecision) denyAndSend()
-      else sendMessage()
-    }
-  }
 
   return (
     <WorkingSinceContext.Provider value={workingSince}>
