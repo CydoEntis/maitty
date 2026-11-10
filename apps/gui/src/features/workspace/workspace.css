@@ -190,7 +190,7 @@
 /* Finished is a solid green check, stopped a solid red cross, idle a hollow one: three marks, not three tints. Every
    badge takes the window style's corners: a rounded square on a rounded style, a square on a squared one. */
 .mx-badge.is-done { background: var(--ok); color: var(--bg); }
-.mx-badge.is-idle { background: var(--bg); box-shadow: 0 0 0 2px var(--card-ring), inset 0 0 0 1.5px var(--dim); animation: none; }
+.mx-badge.is-idle { background: var(--bg); box-shadow: 0 0 0 2px var(--card-ring), inset 0 0 0 1.25px color-mix(in srgb, var(--dim) 65%, transparent); animation: none; }
 .mx-badge.is-error { background: var(--danger); color: var(--bg); }
 
 /* With a single pane the workspace's own border takes the focus; with several, the focused pane does. Never both. */
