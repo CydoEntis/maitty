@@ -16,6 +16,22 @@ const diffLines = () => screen.queryAllByText((_, element) => element?.classList
 describe('command card', () => {
   const finished = (over = {}) => commandEvent('c', { command: 'pnpm test', output: 'one\ntwo\nthree\nfour\nfive', ...over })
 
+  it('shows the first lines of a long inline script, and the whole of it on request', async () => {
+    const script = ["python3 - <<'EOF'", 'one = 1', 'two = 2', 'three = 3', 'four = 4', 'EOF'].join('\n')
+    render(<CommandCard event={finished({ command: script })} />)
+
+    const group = screen.getByRole('group', { name: "Command python3 - <<'EOF'" })
+    expect(group.querySelector('code')?.textContent).toBe("python3 - <<'EOF'\none = 1\ntwo = 2")
+    await userEvent.click(screen.getByRole('button', { name: 'Show all 6 lines of the command' }))
+    expect(group.querySelector('code')?.textContent).toBe(script)
+    expect(screen.getByRole('button', { name: 'Show less of the command' })).toBeInTheDocument()
+  })
+
+  it('shows a short command whole, with nothing to unfold', () => {
+    render(<CommandCard event={finished()} />)
+    expect(screen.queryByRole('button', { name: /of the command/ })).toBeNull()
+  })
+
   it.each([
     ['exit 0 in green with the provider duration', finished({ exitCode: 0, durationMs: 1_400 }), '1s', 'exit 0'],
     ['a non-zero exit', finished({ exitCode: 2, durationMs: 2_000, status: 'failed' }), '2s', 'exit 2'],
