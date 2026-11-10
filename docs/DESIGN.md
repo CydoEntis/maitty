@@ -430,14 +430,18 @@ and timings; the feature stylesheets beside their components carry them (`sideba
 - **Terminal | Chat switch.** An agent's pane header carries a two-button switch (terminal glyph, chat bubble). The
   chat covers the pane body while the terminal stays mounted underneath, hidden by `visibility`, so it keeps streaming
   and keeps its size: switching sends nothing to the daemon. **An agent opens as its chat**; a shell opens as a
-  terminal, and a terminal for an agent exists only when you ask: **New terminal** starts a shell in the agent's
-  folder as one of its own terminals (`components/AgentTerminals.tsx`): a tab each, **+** for another, × to end one.
+  terminal. Every session on this computer, agent or shell, has terminals of its own in its folder
+  (`components/AgentTerminals.tsx`): a pill tab each with a status dot, **+** for another, × to end one. The first
+  opens by itself the first time they are shown; closing the last leaves a note with **New terminal**.
   They are tabs of the agent, not rows of the sidebar; which shell is whose is the window's own memory
   (`data/agentTerminals.ts`), so the terminal app lists them as sessions, and one whose agent is gone is a row again.
   They show in the side panel's Terminal tab, or pinned under the agent's chat (Settings › Appearance › Layout ›
-  Terminals open in, the pin button, or the pane menu): a drawer of the pane with a handle to size it (120 to 640px,
-  at most 60% of the pane; `model/terminalDrawer.ts`), folding to its 42px header, and starting folded in a window
-  under 760px tall. The drawer is part of the agent's pane card, not a card of its own as the handoff draws it.
+  Terminals open in, the layout buttons (the drawer icon pins them under, the side-panel icon moves them back), or
+  the pane menu): a glass card of its own 8px under the pane, with a centred handle to size it (120 to 640px, at most
+  60% of the two together; `model/terminalDrawer.ts`), folding to its 42px header (the **Terminals** button or ×),
+  and starting folded in a window under 760px tall. The card's height eases over .28s; the terminal inside stays
+  mounted at its open size and is only uncovered, so its text is never fitted again on the way. A shell's terminals
+  stay in the side panel: a shell is never given a card under it.
   Settings › General › Chat view picks the view each of Claude and
   Codex opens in (Chat by default). A shell, an unsupported agent or a session on another machine shows the chat
   card's empty state, "Chat view is for agent sessions", with the reason and the ways to start one.
@@ -521,8 +525,8 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   **Changes** is two columns: the branch, the changed files (a letter for added, modified or deleted, the name over
   its folder, the lines added and removed) and under them the commit message with Commit and Create PR; beside it
   the picked file's path, what happened to it, and its diff with both line numbers and without git's header lines.
-  An agent always has the Terminal tab: with its terminals pinned under the chat the tab says so and offers to show
-  them there. A shell has no Terminal tab; a chat session has no pane to ask about its repository, so Changes and
+  Every session on this computer has the Terminal tab: with an agent's terminals pinned under the chat the tab says
+  so and offers to show them there. A chat session has no pane to ask about its repository, so Changes and
   Files appear for it once it has a terminal.
   Branches, History, Timeline and References are kept in the code but nothing opens them: whether they come back
   is undecided. Changes lists the

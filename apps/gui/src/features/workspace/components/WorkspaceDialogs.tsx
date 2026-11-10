@@ -37,8 +37,8 @@ export function WorkspaceDialogs() {
               <InspectPanel
                 key={focusedSession.id}
                 term={inspectTerm}
-                terminals={!hasTerminals ? null : preferences.terminalDock === 'panel'
-                  ? <AgentTerminals agent={focusedSession} dock="panel" focused={inspectView === 'terminal'} />
+                terminals={!hasTerminals ? null : preferences.terminalDock === 'panel' || isShell(focusedSession)
+                  ? <AgentTerminals agent={focusedSession} dock="panel" focused={inspectView === 'terminal'} canPin={!isShell(focusedSession)} />
                   : (
                     <div className="mx-terms-empty">
                       <strong>Terminals are pinned under the chat</strong>

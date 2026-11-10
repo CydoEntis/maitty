@@ -186,9 +186,10 @@ export function PaneCard(props: PaneCardProps) {
           <button type="button" className="mx-pane-ended-button" onMouseDown={stop} onClick={() => { props.onClose(pane.id) }}>Close pane</button>
         </div>
       )}
-      {props.drawer}
       <span className="mx-pane-ring" aria-hidden="true" />
     </section>
+    {/* A card of its own under the pane, not a part of it. */}
+    {props.drawer}
     {/* Beside the pane, not in it: a pane has `contain: paint`, which would place the menu's fixed anchor from the pane's corner. */}
     {menuAt && <MenuPopup key={`${String(menuAt.x)},${String(menuAt.y)}`} title={title} at={menuAt} items={menuItems} portalContainer={props.portalContainer} onClose={() => { setMenuAt(null) }} />}
     </>
