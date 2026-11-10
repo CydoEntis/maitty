@@ -73,7 +73,7 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     let above = super::screen::above_bar(app, area);
     super::screen::draw_banner(app, f, &t);
     draw_overlays(app, f, above, &t);
-    if app.service == super::screen::Service::Down {
+    if app.service.is_down() {
         super::screen::draw_service_down(app, f, above, &t);
     }
     super::screen::flatten_modals(app, f.buffer_mut(), &t);

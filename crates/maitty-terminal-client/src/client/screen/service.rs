@@ -19,6 +19,9 @@ const BACKOFF: [Duration; TRIES as usize] = [
     Duration::from_secs(8),
     Duration::from_secs(15),
 ];
+/// How often a window that gave up counting still asks, quietly: another window or an update can
+/// bring the service back long after the five tries, and this one must not need a key to notice.
+const DOWN_RETRY: Duration = Duration::from_secs(15);
 /// Rows and columns of the box that says the service is down.
 const DOWN_W: u16 = 64;
 const DOWN_H: u16 = 13;
@@ -35,8 +38,27 @@ pub(in crate::client) enum Service {
     Up,
     /// Lost it just now: try `try_n` of `TRIES` is at `next_at`.
     Reconnecting { try_n: u8, next_at: Instant },
-    /// Every try failed.
-    Down,
+    /// Every counted try failed: the box is up, and a quiet try is at `next_at`.
+    Down { next_at: Instant },
+}
+
+impl Service {
+    pub(in crate::client) fn is_down(&self) -> bool {
+        matches!(self, Service::Down { .. })
+    }
+
+    fn down_from(now: Instant) -> Self {
+        Service::Down { next_at: now + DOWN_RETRY }
+    }
+
+    /// The try this is on and whether it is due at `now`. None while the window has its daemon.
+    fn try_at(&self, now: Instant) -> Option<(u8, bool)> {
+        match self {
+            Service::Up => None,
+            Service::Reconnecting { try_n, next_at } => Some((*try_n, now >= *next_at)),
+            Service::Down { next_at } => Some((TRIES, now >= *next_at)),
+        }
+    }
 }
 
 /// What the service box does with a key.
@@ -91,7 +113,7 @@ impl App {
             ServiceKey::Retry => {
                 self.service_retry_now = true;
             }
-            ServiceKey::Start if self.service == Service::Down => {
+            ServiceKey::Start if self.service.is_down() => {
                 self.service_start_now = true;
             }
             ServiceKey::Leave => self.quit = Some("left while maittyd was away".into()),
@@ -115,16 +137,12 @@ impl App {
 
     /// Once a tick: make the try that is due, and start the service when it was asked for.
     pub(in crate::client) async fn service_tick(&mut self, connections: &mut Connections) {
-        if self.service == Service::Up {
+        let Some((try_n, timed)) = self.service.try_at(Instant::now()) else {
             return;
-        }
+        };
         let asked = std::mem::take(&mut self.service_retry_now);
         let start = std::mem::take(&mut self.service_start_now);
-        let (try_n, due) = match &self.service {
-            Service::Reconnecting { try_n, next_at } => (*try_n, asked || Instant::now() >= *next_at),
-            _ => (TRIES, asked || start),
-        };
-        if !due && !start {
+        if !(timed || asked || start) {
             // The countdown on the bar changes every second.
             self.dirty = true;
             return;
@@ -144,7 +162,7 @@ impl App {
             Err(e) if ipc::other_version(&e).is_some() => {
                 self.service_changed_version(ipc::other_version(&e).unwrap_or_default());
             }
-            Err(_) if try_n >= TRIES || self.service == Service::Down => self.service = Service::Down,
+            Err(_) if try_n >= TRIES => self.service = Service::down_from(Instant::now()),
             Err(_) => {
                 let next = usize::from(try_n).min(BACKOFF.len() - 1);
                 self.service = Service::Reconnecting { try_n: try_n + 1, next_at: Instant::now() + BACKOFF[next] };
@@ -220,7 +238,7 @@ pub(in crate::client) fn draw_service_down(app: &mut App, f: &mut Frame, area: R
         ("1  r   connect again", s.fg(t.strong)),
         ("2  s   start the service", s.fg(t.strong)),
         ("3  run `maitty doctor` in another terminal", s.fg(t.strong)),
-        ("", s),
+        ("It also tries again by itself every 15 seconds.", s.fg(t.muted)),
     ];
     for (i, (text, style)) in lines.iter().enumerate() {
         put(buf, inside.x + 2, inside.y + 1 + i as u16, &[seg(*text, *style)], inside.right());
@@ -269,9 +287,19 @@ mod tests {
         assert!(rx.try_recv().is_err(), "nothing was sent to a pane");
         app.on_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE));
         assert!(app.service_retry_now, "r asks for a try now");
-        app.service = Service::Down;
+        app.service = Service::down_from(Instant::now());
         app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
         assert!(app.service_start_now, "s asks for the service to start");
+    }
+
+    #[test]
+    fn a_window_that_gave_up_counting_still_tries_by_itself() {
+        let now = Instant::now();
+        let down = Service::down_from(now);
+        assert!(down.is_down());
+        assert_eq!(down.try_at(now), Some((TRIES, false)), "not before its wait is over");
+        assert_eq!(down.try_at(now + DOWN_RETRY), Some((TRIES, true)));
+        assert_eq!(Service::Up.try_at(now), None);
     }
 
     #[test]
