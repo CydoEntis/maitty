@@ -132,10 +132,16 @@ fn path_extensions() -> &'static [&'static str] {
 }
 
 fn run_git(folder: &Path, args: &[&str]) -> Result<String, String> {
+    run_program("git", folder, args, GIT_TIMEOUT)
+}
+
+/// Runs `program` in `folder` with its arguments (never through a shell) and answers what it
+/// printed, or the last line of what it complained about. It is stopped after `limit`.
+pub(crate) fn run_program(program: &str, folder: &Path, args: &[&str], limit: Duration) -> Result<String, String> {
     if !folder.is_dir() {
         return Err("that folder is gone".into());
     }
-    let mut command = maitty_desktop_client::host_command("git");
+    let mut command = maitty_desktop_client::host_command(program);
     command
         .args(args)
         .current_dir(folder)
@@ -145,10 +151,10 @@ fn run_git(folder: &Path, args: &[&str]) -> Result<String, String> {
         .stderr(Stdio::piped());
     #[cfg(windows)]
     std::os::windows::process::CommandExt::creation_flags(&mut command, CREATE_NO_WINDOW);
-    let mut child = command.spawn().map_err(|error| format!("could not run git: {error}"))?;
+    let mut child = command.spawn().map_err(|error| format!("could not run {program}: {error}"))?;
     // The pipes are drained on their own threads so a large answer cannot block git while we wait.
-    let mut out = child.stdout.take().ok_or("git gave no output")?;
-    let mut err = child.stderr.take().ok_or("git gave no output")?;
+    let mut out = child.stdout.take().ok_or_else(|| format!("{program} gave no output"))?;
+    let mut err = child.stderr.take().ok_or_else(|| format!("{program} gave no output"))?;
     let out = std::thread::spawn(move || {
         let mut text = String::new();
         out.read_to_string(&mut text).map(|_| text)
@@ -159,22 +165,22 @@ fn run_git(folder: &Path, args: &[&str]) -> Result<String, String> {
     });
     let started = Instant::now();
     let status = loop {
-        if let Some(status) = child.try_wait().map_err(|error| format!("git: {error}"))? {
+        if let Some(status) = child.try_wait().map_err(|error| format!("{program}: {error}"))? {
             break status;
         }
-        if started.elapsed() > GIT_TIMEOUT {
+        if started.elapsed() > limit {
             let _ = child.kill();
             let _ = child.wait();
-            return Err("git took too long".into());
+            return Err(format!("{program} took too long"));
         }
         std::thread::sleep(POLL);
     };
-    let text = out.join().map_err(|_| "git output failed")?.map_err(|error| format!("git: {error}"))?;
+    let text = out.join().map_err(|_| format!("{program} output failed"))?.map_err(|error| format!("{program}: {error}"))?;
     if status.success() {
         return Ok(text);
     }
     let said = err.join().ok().and_then(Result::ok).unwrap_or_default();
-    Err(said.trim().lines().last().unwrap_or("git failed").to_string())
+    Err(said.trim().lines().last().unwrap_or("it failed").to_string())
 }
 
 fn branch_info(folder: &Path) -> Result<Option<BranchInfo>, String> {

@@ -9,6 +9,7 @@ mod daemon_log;
 mod highlight;
 mod machine_update;
 mod machines;
+mod changes;
 mod new_chat;
 mod output_socket;
 mod performance;
@@ -1003,6 +1004,8 @@ pub fn run() {
             new_chat::git_switch_branch,
             new_chat::git_add_worktree,
             new_chat::open_agent_docs,
+            changes::git_commit_all,
+            changes::git_create_pull_request,
             machines::list_machines,
             terminal_stream::list_machines_overview,
             terminal_stream::retry_machine,

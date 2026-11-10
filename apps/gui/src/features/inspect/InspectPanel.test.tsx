@@ -101,6 +101,51 @@ describe('Inspect panel', () => {
     cleanup()
   })
 
+  it('commits the changed files with the suggested message, then opens a pull request and shows where it is', async () => {
+    const asked: Array<[string, unknown]> = []
+    vi.mocked(invoke).mockReset().mockImplementation((command, args) => {
+      asked.push([command, args])
+      if (command === 'git_commit_all') return Promise.resolve('abc1234')
+      if (command === 'git_create_pull_request') return Promise.resolve('https://github.com/o/r/pull/7')
+      return Promise.resolve({ Diff: { files: [{ path: 'a.txt', additions: 1, deletions: 0, binary: false, patch: '@@ -0,0 +1 @@\n+new\n' }], additions: 1, deletions: 0, total_files: 1, truncated: false } })
+    })
+    const onNotice = vi.fn()
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <InspectPanel term={5} terminals={null} changedFiles={1} view="changes" agentWorking={false} timeline={[]} lookAt={null} changeActions={{ folder: '/home/me/app', suggested: 'Add refunds' }} onView={vi.fn()} onClose={vi.fn()} onNotice={onNotice} />
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByLabelText('Commit message')).toHaveValue('Add refunds')
+    fireEvent.click(screen.getByRole('button', { name: 'Commit 1 file' }))
+    await waitFor(() => { expect(onNotice).toHaveBeenCalledWith('Committed 1 file as abc1234') })
+    expect(asked).toContainEqual(['git_commit_all', { folder: '/home/me/app', message: 'Add refunds' }])
+    fireEvent.click(screen.getByRole('button', { name: 'Create PR' }))
+    expect(await screen.findByText('https://github.com/o/r/pull/7')).toBeTruthy()
+    expect(asked).toContainEqual(['git_create_pull_request', { folder: '/home/me/app' }])
+    cleanup()
+  })
+
+  it('says what git said when a commit fails, and offers neither button without a checkout on this computer', async () => {
+    vi.mocked(invoke).mockReset().mockImplementation((command) => {
+      if (command === 'git_commit_all') return Promise.reject(new Error('nothing to commit'))
+      return Promise.resolve({ Diff: { files: [{ path: 'a.txt', additions: 1, deletions: 0, binary: false, patch: '@@ -0,0 +1 @@\n+new\n' }], additions: 1, deletions: 0, total_files: 1, truncated: false } })
+    })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <InspectPanel term={5} terminals={null} changedFiles={1} view="changes" agentWorking={false} timeline={[]} lookAt={null} changeActions={{ folder: '/home/me/app', suggested: 'x' }} onView={vi.fn()} onClose={vi.fn()} onNotice={vi.fn()} />
+      </QueryClientProvider>,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Commit 1 file' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('nothing to commit')
+    cleanup()
+    renderPanel('changes')
+    await screen.findByText('a.txt')
+    expect(screen.queryByRole('button', { name: /^Commit/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Create PR' })).toBeNull()
+  })
+
   it('offers no comment box without an agent to tell', async () => {
     daemonAnswers({
       Diff: { files: [{ path: 'a.txt', additions: 1, deletions: 0, binary: false, patch: '@@ -0,0 +1 @@\n+new\n' }], additions: 1, deletions: 0, total_files: 1, truncated: false },

@@ -524,7 +524,11 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   headers in the accent), with line numbers drawn beside it. For an agent, a click on a code line opens a comment box
   under it with **Send to Claude** (the agent's name; Ctrl/⌘+Enter sends, Esc closes the box); the comment goes to the
   agent as a message naming the file, the line and its text (`model/agentMessage.ts`), and stays under the line. An
-  agent that is asking something is not sent one. It reads the focused pane's repository and never changes it. **Restore** on a snapshot asks
+  agent that is asking something is not sent one. Under the file list, for a checkout on this computer, is the commit
+  message (first the session's name, else the first line of its last prompt), **Commit N files** (stages everything
+  and commits) and **Create PR** (pushes the branch and runs `gh pr create --fill`; the address stays under the
+  buttons). What git or `gh` said is shown when either fails (`CommitBar.tsx`, `src-tauri/src/changes.rs`). Nothing
+  else in the panel changes the repository. **Restore** on a snapshot asks
   first and is disabled while the agent works; **Compare** picks two entries. A tab that cannot load shows one calm
   screen with Try again. A folder that is not a git project says so.
 - **Quick-look links.** ⌘-click (Ctrl-click elsewhere) on a file name in a pane's output, with an

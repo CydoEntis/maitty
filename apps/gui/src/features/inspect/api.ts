@@ -70,3 +70,15 @@ export async function restoreSnapshot(term: number, commit: string): Promise<num
   if (!isTauri()) throw new Error('Restoring is only available in the desktop app')
   return Count.parse(await invoke<unknown>('restore_snapshot', { term, commit }))
 }
+
+/** Stages and commits every change in the checkout at `folder` on this computer; resolves to the commit's short hash. */
+export async function commitAll(folder: string, message: string): Promise<string> {
+  if (!isTauri()) throw new Error('Committing is only available in the desktop app')
+  return z.string().parse(await invoke<unknown>('git_commit_all', { folder, message }))
+}
+
+/** Pushes the checkout's branch and opens a pull request for it; resolves to the pull request's address. */
+export async function createPullRequest(folder: string): Promise<string> {
+  if (!isTauri()) throw new Error('Pull requests are only available in the desktop app')
+  return z.string().parse(await invoke<unknown>('git_create_pull_request', { folder }))
+}

@@ -27,3 +27,11 @@ export async function sendAgentMessage(session: SessionView, text: string): Prom
   }
   await sendTerminalInput({ id: session.id, generation: session.conversation.generation ?? 0 }, `${PASTE_START}${text}${PASTE_END}\r`)
 }
+
+const COMMIT_SUBJECT_MAX = 72
+
+/** A first commit message for the session's changes: its name, else the first line of what the agent was last asked. */
+export function suggestedCommitMessage(session: Pick<SessionView, 'name' | 'lastPrompt'>): string {
+  const line = (session.name ?? session.lastPrompt.split('\n')[0] ?? '').trim()
+  return line.length > COMMIT_SUBJECT_MAX ? `${line.slice(0, COMMIT_SUBJECT_MAX - 1).trimEnd()}…` : line
+}

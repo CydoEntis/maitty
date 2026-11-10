@@ -21,7 +21,7 @@ import { withNickname, writeMachineNicknames } from '@/data/machineNicknames'
 import { Toast } from './states'
 import type { SessionView } from '../model/session'
 import { isShell } from '../model/sidebar'
-import { agentName, sendAgentMessage } from '../model/agentMessage'
+import { agentName, sendAgentMessage, suggestedCommitMessage } from '../model/agentMessage'
 import { Keycaps } from '@/features/shortcuts/Keycaps'
 import { folderExists, resolveStartFolder } from '../model/startFolder'
 import { useWorkspace } from '../workspaceContext'
@@ -44,6 +44,7 @@ export function WorkspaceDialogs() {
                 timeline={focusedSession.timeline}
                 lookAt={lookAt}
                 {...(isShell(focusedSession) ? {} : { comments: { agent: agentName(focusedSession.process), onSend: (message: string) => sendAgentMessage(focusedSession, message) } })}
+                {...(focusedSession.machineName === null && focusedSession.repoRoot !== null ? { changeActions: { folder: focusedSession.repoRoot, suggested: suggestedCommitMessage(focusedSession) } } : {})}
                 onView={setInspectView}
                 onClose={() => { setInspectOpen(false) }}
                 onNotice={flash}

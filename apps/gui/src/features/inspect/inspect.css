@@ -65,6 +65,12 @@ button.mx-inspect-row:hover, .mx-inspect-pick:hover { background: rgba(var(--hl)
 .mx-patch-line.is-remove { background: color-mix(in oklab, var(--danger) 16%, transparent); }
 .mx-patch-line.is-hunk { color: var(--accent-text); }
 .mx-patch-line.is-meta { color: var(--dim); }
+.mx-commit { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--pane-line); border-radius: 12px; background: var(--m-well); }
+.mx-commit-message { width: 100%; resize: vertical; border: 0; background: transparent; color: var(--fg); font: inherit; font-size: 13px; outline: none; }
+.mx-commit-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.mx-commit-error { margin: 0; font-size: 12.5px; color: var(--danger); }
+.mx-commit-link { margin: 0; font-size: 12.5px; color: var(--muted); }
+.mx-commit-link span { color: var(--accent-text); user-select: text; overflow-wrap: anywhere; }
 /* Line numbers are drawn, not written, so copying a diff copies only its text. */
 .mx-patch.is-numbered .mx-patch-line::before { content: attr(data-line); display: inline-block; width: 4ch; margin-right: 10px; text-align: right; color: var(--dim); user-select: none; }
 .mx-patch-line.is-commentable { cursor: pointer; }

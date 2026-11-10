@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { sendTerminalInput, submitMessage } from '@/api/daemon'
 import type { Conversation } from '@/data/preview'
-import { agentName, sendAgentMessage } from './agentMessage'
+import { agentName, sendAgentMessage, suggestedCommitMessage } from './agentMessage'
 import { toSessionView } from './session'
 
 vi.mock('@/api/daemon', () => ({
@@ -42,5 +42,16 @@ describe('an agent’s name', () => {
   it('starts with a capital', () => {
     expect(agentName('claude')).toBe('Claude')
     expect(agentName('codex')).toBe('Codex')
+  })
+})
+
+describe('a suggested commit message', () => {
+  it('is the session’s name, else the first line of its last prompt, cut to a subject’s length', () => {
+    expect(suggestedCommitMessage({ name: 'Add refunds', lastPrompt: 'something else' })).toBe('Add refunds')
+    expect(suggestedCommitMessage({ name: null, lastPrompt: 'fix the parser\nand more' })).toBe('fix the parser')
+    expect(suggestedCommitMessage({ name: null, lastPrompt: '' })).toBe('')
+    const long = suggestedCommitMessage({ name: 'x'.repeat(100), lastPrompt: '' })
+    expect(long).toHaveLength(72)
+    expect(long.endsWith('…')).toBe(true)
   })
 })

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { BranchesTab } from './BranchesTab'
 import { ChangesTab } from './ChangesTab'
+import type { ChangeActions } from './CommitBar'
 import type { PatchComments } from './PatchView'
 import { FilesTab, type LookAt } from './FilesTab'
 import { HistoryTab } from './HistoryTab'
@@ -82,6 +83,8 @@ type Props = {
   lookAt: LookAt | null
   /** The agent a comment on a diff line goes to; absent for a shell, which has nobody to tell. */
   comments?: Omit<PatchComments, 'path'>
+  /** Commit and Create PR on the Changes tab, for a checkout on this computer. */
+  changeActions?: ChangeActions
   onView: (view: InspectView) => void
   onClose: () => void
   onNotice: (text: string) => void
@@ -98,7 +101,7 @@ function shownView(view: InspectView, hasRepo: boolean, hasTerminals: boolean): 
  * never pushes them or covers the sidebar: the focused session's changes, its files and its own
  * terminals.
  */
-export function InspectPanel({ term, terminals, changedFiles, view: asked, agentWorking, timeline, lookAt, comments, onView, onClose, onNotice }: Props) {
+export function InspectPanel({ term, terminals, changedFiles, view: asked, agentWorking, timeline, lookAt, comments, changeActions, onView, onClose, onNotice }: Props) {
   const view = shownView(asked, term !== null, terminals !== null)
   const [dragged, setDragged] = useState(readWidth)
   const width = clampWidth(dragged ?? window.innerWidth * DEFAULT_SHARE)
@@ -164,7 +167,7 @@ export function InspectPanel({ term, terminals, changedFiles, view: asked, agent
         {view !== 'terminal' && term !== null && (
           <div className="mx-inspect-scroll" role="tabpanel">
             {view === 'files' && <FilesTab term={term} lookAt={lookAt} />}
-            {view === 'changes' && <ChangesTab term={term} {...(comments ? { comments } : {})} />}
+            {view === 'changes' && <ChangesTab term={term} {...(comments ? { comments } : {})} {...(changeActions ? { actions: changeActions } : {})} onNotice={onNotice} />}
             {view === 'branches' && <BranchesTab term={term} />}
             {view === 'history' && <HistoryTab term={term} agentWorking={agentWorking} onNotice={onNotice} />}
             {view === 'timeline' && <TimelineTab events={timeline} />}
