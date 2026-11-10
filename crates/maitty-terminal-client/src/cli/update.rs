@@ -257,7 +257,31 @@ pub fn run(check: bool, force: bool) -> Result<()> {
     } else {
         println!(concat!("Run ", env!("APP_COMMAND"), " to start it."));
     }
+    let (cfg, _) = crate::config::Config::load_or_default();
+    let machines: Vec<&str> = cfg.machines.iter().map(|m| m.name.as_str()).collect();
+    if let Some(note) = machines_note(&machines) {
+        println!("{note}");
+    }
     Ok(())
+}
+
+/// What is left to update after this computer: each configured machine runs its own copy, and
+/// one on another version cannot be talked to until it has this one.
+fn machines_note(names: &[&str]) -> Option<String> {
+    let mut names = names.to_vec();
+    names.sort_by_key(|name| name.to_lowercase());
+    let commands: Vec<String> = names
+        .iter()
+        .map(|name| format!("  {APP_COMMAND} machine update {name}"))
+        .collect();
+    (!commands.is_empty()).then(|| {
+        format!(
+            "Your other machines run their own copy and need this version too:
+{}",
+            commands.join("
+")
+        )
+    })
 }
 
 /// The server still runs the old version: say what a restart costs and offer it. Without a
@@ -523,6 +547,19 @@ fn changes_in(json: &str, current: &str) -> Vec<String> {
 mod tests {
     use super::*;
     use crate::installed_executable::installed_path;
+
+    #[test]
+    fn an_update_names_the_command_for_each_machine_and_says_nothing_with_none() {
+        assert_eq!(machines_note(&[]), None);
+        let note = machines_note(&["kingdom", "Build"]).unwrap();
+        assert!(
+            note.ends_with(&format!(
+                "  {APP_COMMAND} machine update Build
+  {APP_COMMAND} machine update kingdom"
+            )),
+            "{note}"
+        );
+    }
 
     #[test]
     fn a_failed_gh_call_falls_back_to_the_public_address() {
