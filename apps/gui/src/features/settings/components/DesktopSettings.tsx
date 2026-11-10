@@ -331,8 +331,7 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
       {updates && (
         <Card title="Updates" color="var(--ansi-green)" iconPath={<path d="M12 4v10m0 0l-4-4m4 4l4-4M5 19h14" />}>
           <Row label="Maitty updates" detail={updates.summary}>
-            <span className={`mx-upd-chip is-${updates.status}`}>{UPDATE_CHIP[updates.status]}</span>
-            <button type="button" className="mx-text-button" disabled={updates.status === 'checking' || updates.status === 'downloading'} onClick={updateAction(updates).run}>{updateAction(updates).label}</button>
+            <UpdateControl updates={updates} />
           </Row>
           <Row label="Download updates automatically" detail="A new release is fetched in the background. Installing waits until you restart.">
             <Switch aria-label="Download updates automatically" checked={preferences.autoDownloadUpdates} onCheckedChange={(value) => { update('autoDownloadUpdates', value) }} />
@@ -390,7 +389,24 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
 
 const CHAT_VIEW_OPTIONS = [['terminal', 'Terminal'], ['chat', 'Chat']] as const
 const ICON_COLOR_OPTIONS = [['color', 'Color'], ['grayscale', 'Grayscale']] as const
-const UPDATE_CHIP: Record<UpdaterState['status'], string> = { idle: 'Not checked', checking: 'Checking…', current: 'Up to date', available: 'Update available', downloading: 'Downloading', ready: 'Ready to restart', failed: 'Failed' }
+/** The chip beside the update button, only where it says something the button does not. */
+const UPDATE_CHIP: Partial<Record<UpdaterState['status'], string>> = { idle: 'Not checked', current: 'Up to date', available: 'Update available', failed: 'Failed' }
+
+/** Where the update is: one button that says it, turning while it works and asking for the restart once it is ready. */
+function UpdateControl({ updates }: { updates: NonNullable<DesktopSettingsProps['updates']> }) {
+  const chip = UPDATE_CHIP[updates.status]
+  const busy = updates.status === 'checking' || updates.status === 'downloading'
+  const action = updateAction(updates)
+  return (
+    <>
+      {chip !== undefined && <span className={`mx-upd-chip is-${updates.status}`}>{chip}</span>}
+      <button type="button" className={`mx-text-button mx-upd-button${updates.status === 'ready' ? ' is-primary is-ready' : ''}`} disabled={busy} aria-busy={busy} onClick={action.run}>
+        {busy && <span className="mx-upd-spin" aria-hidden="true" />}
+        {action.label}
+      </button>
+    </>
+  )
+}
 
 /** The one button that fits where the update is. */
 function updateAction(updates: NonNullable<DesktopSettingsProps['updates']>): { label: string; run: () => void } {
