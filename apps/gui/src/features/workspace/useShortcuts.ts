@@ -82,8 +82,8 @@ export function useShortcutKeys({ runShortcut, canUndoClose, dialogOpen, onNewCh
       }
       if (state.settingsOpen && !(state.onNewChatPage && match !== null && NEW_CHAT_PAGE_ACTIONS.has(match.action))) return
       if (!match) return
-      // Undo is the field's own inside a text field, and the terminal's own when nothing was just closed.
-      if (match.action === 'undo-close' && (!state.canUndoClose() || (event.target instanceof Element && event.target.closest('input, textarea, [contenteditable="true"]')))) return
+      // Undo is the field's own inside a text field, and the terminal's own when nothing was just closed. A terminal takes its keys through a hidden textarea, which is not a text field here.
+      if (match.action === 'undo-close' && (!state.canUndoClose() || (event.target instanceof Element && event.target.closest('input, textarea:not(.xterm-helper-textarea), [contenteditable="true"]')))) return
       event.preventDefault()
       event.stopPropagation()
       state.runShortcut(match.action)
