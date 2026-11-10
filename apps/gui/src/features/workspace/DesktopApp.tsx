@@ -26,7 +26,7 @@ import {
   startShellSession,
   undoCloseSession,
 } from '@/api/daemon'
-import { LOCAL_MACHINE, listSshHosts, listenAttention, machineActivity, startSessionOnMachine, type Attention } from '@/api/machines'
+import { LOCAL_MACHINE, listSshHosts, machineActivity, startSessionOnMachine } from '@/api/machines'
 import { TitleBar } from '@/components/TitleBar'
 import { Toaster } from '@/components/ui/sonner'
 import { markConversationsDisconnected } from '@/data/connection'
@@ -76,12 +76,8 @@ import { useFileSends } from '@/features/terminal/useFileSends'
 import { useImagePaste } from '@/features/terminal/useImagePaste'
 import { appBehindStep } from '@/features/updates/appBehind'
 import { updaterSummary, useUpdater } from '@/features/updates/useUpdater'
-import { sendNativeNotice } from '@/features/notifications/native'
 import { chooseProjectFolder } from '@/api/folderPicker'
-import { dismissSessionNotice, showSessionNotice } from '@/features/notifications/notify'
-import { sessionNoticeFor } from '@/features/notifications/noticeForSession'
-import { noticeForAttention, noticesFor, type Notice } from '@/features/notifications/transitions'
-import { enableNotificationSound, playNotificationSound } from '@/data/notificationSound'
+import { showSessionNotice } from '@/features/notifications/notify'
 import { NewWorktreeDialog } from '@/features/worktrees/NewWorktreeDialog'
 import { newWorktreeSession } from '@/features/worktrees/api'
 import type { TerminalHandle } from '@/features/terminal/handle'
@@ -107,6 +103,8 @@ import { launchFlags, yoloFlags } from './model/newChatHost'
 import { GetFileDialog } from './components/GetFileDialog'
 import { MachineUpdateDialog } from './components/MachineUpdateDialog'
 import { useMachineActions, useRemoteMachines } from './useMachines'
+import { useSessionAlerts } from './useSessionAlerts'
+import { useSystemDark, useSystemReducedMotion, useWindowNarrowerThan } from './useWindowQueries'
 import { ConfirmCloseDialog } from './components/ConfirmCloseDialog'
 import { movePanes } from './components/paneTransition'
 import { RenameDialog, RenameMachineDialog } from './components/RenameDialog'
@@ -195,57 +193,16 @@ const SECOND_MS = 1000
 const DIFF_STAT_REFRESH_MS = 8000
 /** A theme previews once the pointer rests on it, not as it passes over every row (each one repaints every terminal). */
 const THEME_PREVIEW_DELAY_MS = 140
-/** A notification's click brings the window forward; returning later than this is not that click. */
-const NOTIFICATION_CLICK_WINDOW_MS = 15_000
 const MAX_RETRY_EXPONENT = 3
 /** Failed reads in a row before the window says the service is unreachable. */
 const OFFLINE_AFTER_FAILURES = 2
 const BACKOFF_BASE = 2
-const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)'
 
 const noop = () => undefined
 /** Ctrl+L: a shell clears its screen and keeps what was typed. */
 const CLEAR_SCREEN = '\x0c'
 
 const makeId: MakeId = (prefix) => `${prefix}-${crypto.randomUUID()}`
-
-/** Whether the window is narrower than `px`. It changes only when the window crosses that width, so dragging the window's edge does not draw the app again at every pixel. */
-function useWindowNarrowerThan(px: number): boolean {
-  const [narrower, setNarrower] = useState(() => window.innerWidth < px)
-  useEffect(() => {
-    const onResize = () => { setNarrower(window.innerWidth < px) }
-    window.addEventListener('resize', onResize)
-    return () => { window.removeEventListener('resize', onResize) }
-  }, [px])
-  return narrower
-}
-
-function useSystemReducedMotion(): boolean {
-  const [query] = useState(() => (typeof window.matchMedia === 'function' ? window.matchMedia(REDUCED_MOTION_QUERY) : null))
-  const [reduced, setReduced] = useState(() => query?.matches ?? false)
-  useEffect(() => {
-    if (!query) return
-    const onChange = () => { setReduced(query.matches) }
-    query.addEventListener('change', onChange)
-    return () => { query.removeEventListener('change', onChange) }
-  }, [query])
-  return reduced
-}
-
-const DARK_SCHEME_QUERY = '(prefers-color-scheme: dark)'
-
-/** Whether the operating system is set to dark, following it as it changes (System mode needs it). */
-function useSystemDark(): boolean {
-  const [query] = useState(() => (typeof window.matchMedia === 'function' ? window.matchMedia(DARK_SCHEME_QUERY) : null))
-  const [dark, setDark] = useState(() => query?.matches ?? true)
-  useEffect(() => {
-    if (!query) return
-    const onChange = () => { setDark(query.matches) }
-    query.addEventListener('change', onChange)
-    return () => { query.removeEventListener('change', onChange) }
-  }, [query])
-  return dark
-}
 
 /**
  * The desktop app: a terminal multiplexer window over sessions maittyd owns. Tabs and
@@ -343,8 +300,6 @@ export function DesktopApp() {
   const tracksRef = useRef<ReadonlyMap<string, SessionTrack>>(new Map())
   const openedFirst = useRef(false)
   const terminalHandles = useRef(new Map<string, TerminalHandle>())
-  const lastStatuses = useRef<ReadonlyMap<string, SessionView['status']> | null>(null)
-  const lastNotified = useRef<{ sessionId: string; at: number } | null>(null)
 
   // While maittyd is unreachable, try again after 1, 2, 4, then every 8 seconds.
   const retryDelay = BACKOFF_BASE ** Math.min(MAX_RETRY_EXPONENT, Math.max(0, failures - 1)) * SECOND_MS
@@ -1491,17 +1446,6 @@ export function DesktopApp() {
       .catch((error: unknown) => { console.warn('Could not mark the session seen', error) })
   }, [online, windowFocused, viewedId, viewedStatus, queryClient])
 
-  // Clicking a notification brings the window forward; that focus shows the session it was about.
-  useEffect(() => {
-    const onFocus = () => {
-      const notified = lastNotified.current
-      lastNotified.current = null
-      if (notified && Date.now() - notified.at < NOTIFICATION_CLICK_WINDOW_MS) showSessionById(notified.sessionId)
-    }
-    window.addEventListener('focus', onFocus)
-    return () => { window.removeEventListener('focus', onFocus) }
-  }, [showSessionById])
-
   const sendTo = useCallback((target: SessionView, data: string) => {
     // A chat session has no terminal to type into; its answers go through the chat, by request id.
     if (isChatSession(target.conversation)) return Promise.reject(new Error('A chat session has no terminal. Use its chat.'))
@@ -1524,85 +1468,7 @@ export function DesktopApp() {
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not answer the session')) })
   }, [sessionMap, sendTo, flash])
 
-  // In the window but on another pane: a toast you can click. Away from the window: the system's.
-  const raiseNotice = useCallback((notice: Notice) => {
-    // Never while reconnecting, with the service down or a restart needed: the status itself is the message, and a card could not be answered.
-    if (!online) return
-    if (document.hasFocus()) {
-      const target = sessionMap.get(notice.sessionId)
-      const card = target && sessionNoticeFor(target, projectOf.get(target.id), {
-        open: () => { showSessionById(notice.sessionId) },
-        // A chat session's approval is answered in its chat, by the request's id, never by typing a letter.
-        allow: !isChatSession(target.conversation) ? () => { answerSession(notice.sessionId, 'y') } : null,
-      })
-      if (card) showSessionNotice(notice.sessionId, card)
-      return
-    }
-    lastNotified.current = { sessionId: notice.sessionId, at: Date.now() }
-    sendNativeNotice(notice.title, notice.body).catch((error: unknown) => { console.warn('Could not show a system notification', error) })
-  }, [sessionMap, projectOf, showSessionById, online, answerSession])
-
-  const { notifyNeedsYou, notifyFinished, notifyError, notificationSound } = preferences
-
-  // A session that just started needing you, finished or failed, and that you are not looking at. A chat session's
-  // alert is raised here. A terminal session's sound and system notice come from the daemon (below), which decides
-  // them once per event; but it tells only one window, and only sometimes, so the window also raises the card
-  // itself for a session it can see change. The card is keyed by its session, so the two never stack.
-  useEffect(() => {
-    const previousStatuses = lastStatuses.current
-    // What another machine's agents do raises no system notice unless its entry says notices = true.
-    const mine = sessions.filter((item) => item.machine === LOCAL_MACHINE || machines.get(item.machine)?.state.notices === true)
-    const notices = online
-      ? noticesFor(lastStatuses.current, mine, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError }, document.hasFocus() ? focusedId : null)
-      : []
-    lastStatuses.current = new Map(mine.map((item) => [item.id, item.status]))
-    // A card that said "Needs you" goes when the session stops needing you.
-    for (const item of sessions) if (item.status !== 'needs' && previousStatuses?.get(item.id) === 'needs') dismissSessionNotice(item.id)
-    for (const notice of notices) {
-      const target = mine.find((item) => item.id === notice.sessionId)
-      // Away from the window, a terminal session's system notice is the daemon's; raising it here too would say it twice.
-      if (target !== undefined && !isChatSession(target.conversation) && !document.hasFocus()) continue
-      raiseNotice(notice)
-    }
-  }, [sessions, online, focusedId, notifyNeedsYou, notifyFinished, notifyError, machines, raiseNotice])
-
-  // A terminal session the daemon says needs you, or finished. Kept in a ref so the one listener below always
-  // reads the latest sessions and settings.
-  const onAttention = useRef<(attention: Attention) => void>(() => undefined)
-  useEffect(() => {
-    onAttention.current = (attention) => {
-      const target = sessions.find((item) => item.machine === attention.machine && item.pane === attention.term)
-      if (!target || isChatSession(target.conversation)) return
-      if (target.machine !== LOCAL_MACHINE && machines.get(target.machine)?.state.notices !== true) return
-      if (document.hasFocus() && target.id === focusedId) return
-      const notice = noticeForAttention(target, attention.status, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError })
-      if (!notice) return
-      raiseNotice(notice)
-      if (notificationSound) playNotificationSound()
-    }
-  }, [sessions, machines, focusedId, notifyNeedsYou, notifyFinished, notifyError, notificationSound, raiseNotice])
-
-  useEffect(() => {
-    if (!isDesktop()) return undefined
-    let gone = false
-    let stop: (() => void) | null = null
-    listenAttention((attention) => { onAttention.current(attention) })
-      .then((off) => { if (gone) off(); else stop = off })
-      .catch((error: unknown) => { console.warn('Could not listen for alerts from the daemon', error) })
-    return () => { gone = true; stop?.() }
-  }, [])
-
-  // A browser only lets a tone play once the person has clicked or typed in the page.
-  useEffect(() => {
-    if (!notificationSound) return
-    const enable = () => { enableNotificationSound() }
-    window.addEventListener('pointerdown', enable, { once: true })
-    window.addEventListener('keydown', enable, { once: true })
-    return () => {
-      window.removeEventListener('pointerdown', enable)
-      window.removeEventListener('keydown', enable)
-    }
-  }, [notificationSound])
+  useSessionAlerts({ sessions, sessionMap, machines, projectOf, online, focusedId, preferences, showSessionById, answerSession })
 
   // Types the resume command into the session, as you would. Nothing resumes without this click.
   const resumeInterrupted = useCallback((target: SessionView) => {
