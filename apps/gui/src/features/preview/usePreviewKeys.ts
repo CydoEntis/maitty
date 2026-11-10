@@ -1,10 +1,10 @@
-import { type Dispatch, type SetStateAction, useEffect } from 'react'
+import { type Dispatch, type SetStateAction, useEffect, useRef } from 'react'
 import { toast } from '@/lib/toast'
 import type { Conversation, Message } from '@/data/preview'
 import type { PanelTab } from './shared'
 
 /** The preview app's keyboard shortcuts. */
-export function usePreviewKeys({ setCommandDialogOpen, openTabIds, selected, selectConversation, closeConversation, setSettingsDialogOpen, openNewSession, activePanel, setActivePanel, sidebarDrawerOpen, setSidebarDrawerOpen, isCompactSidebar, setSidebarCollapsed, setKeyboardDialogOpen, pendingApproval, daemonDisconnected, desktop, toggleTerminal, cancelTurn, activeConversations, chooseFolder }: {
+export function usePreviewKeys({ setCommandDialogOpen, openTabIds, selected, selectConversation, closeConversation, setSettingsDialogOpen, openNewSession, activePanel, setActivePanel, sidebarDrawerOpen, setSidebarDrawerOpen, isCompactSidebar, setSidebarCollapsed, setKeyboardDialogOpen, pendingApproval, daemonDisconnected, desktop, toggleTerminal, cancelTurn, activeConversations }: {
   setCommandDialogOpen: Dispatch<SetStateAction<boolean>>
   openTabIds: string[]
   selected: Conversation | undefined
@@ -25,10 +25,9 @@ export function usePreviewKeys({ setCommandDialogOpen, openTabIds, selected, sel
   toggleTerminal: () => void
   cancelTurn: () => void
   activeConversations: Conversation[]
-  chooseFolder: () => Promise<string | null>
 }) {
-
-
+  // The window listens once; what a key does is read from the latest render.
+  const handler = useRef<(event: globalThis.KeyboardEvent) => void>(() => undefined)
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       const hasModifier = event.ctrlKey || event.metaKey
@@ -210,9 +209,11 @@ export function usePreviewKeys({ setCommandDialogOpen, openTabIds, selected, sel
         )
       }
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => {
-      window.removeEventListener('keydown', onKeyDown)
-    }
-  }, [activeConversations, activePanel, sidebarDrawerOpen, cancelTurn, chooseFolder, daemonDisconnected, desktop, isCompactSidebar, openTabIds, pendingApproval, selected, selectConversation, closeConversation, openNewSession, toggleTerminal, setCommandDialogOpen, setSettingsDialogOpen, setActivePanel, setSidebarDrawerOpen, setSidebarCollapsed, setKeyboardDialogOpen])
+    handler.current = onKeyDown
+  })
+  useEffect(() => {
+    const listen = (event: globalThis.KeyboardEvent) => { handler.current(event) }
+    window.addEventListener('keydown', listen)
+    return () => { window.removeEventListener('keydown', listen) }
+  }, [])
 }
