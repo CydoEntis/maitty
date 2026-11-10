@@ -88,6 +88,7 @@ conversation continuity are planned in phases 34–37:
 - Maitty writing Codex hook trust hashes itself — declined 2026-11-01: it would bypass Codex's own review of hook commands. You trust Maitty's hooks once in Codex's `/hooks`; a pane without trusted hooks keeps the screen guess.
 
 - Brain dump (split a pasted plan into sessions, v19 section 12) — declined 2026-11-06, the user's call.
+- Community mods (a gallery of scripts that change the app, as other multiplexers have) — declined 2026-11-09, the user's call.
 
 ## Later
 
@@ -100,4 +101,7 @@ conversation continuity are planned in phases 34–37:
 - Live GUI-to-native-TUI Codex transfer and platform acceptance — deferred until the standalone Codex/Claude GUI is usable and packaged. Existing TUI support remains required.
 - Extensions store and extension panels (v19 section 9) — deferred 2026-11-06: not built yet, on the list to add.
 - Project defaults in the project menu (Start in, Run when it opens; v19 section 3) — on hold 2026-11-06: it needs a shared-config key the terminal app also reads, and the user is not sure they want it.
+- Using Maitty from a phone (a companion app or web view of your sessions) — deferred 2026-11-09: not before the terminal app and the desktop app are solid in daily use.
+- A tray or menu-bar item listing the sessions that need you — approved to try 2026-11-09, not built yet. The native menu only; a pop-up launcher needs a design first.
+- Per-turn diff and rewind in chat, on top of the existing snapshots — deferred 2026-11-09.
 - Close with a six-second Undo (v19 section 5) — open 2026-11-06: it needs the daemon to delay the kill, so it is a daemon change.
