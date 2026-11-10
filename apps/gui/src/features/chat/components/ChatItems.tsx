@@ -58,6 +58,8 @@ function sameRow(a: ChatRow, b: ChatRow): boolean {
       return b.kind === 'agent' && a.status === b.status && sameStrings(a.paragraphs, b.paragraphs)
     case 'agents':
       return b.kind === 'agents' && a.events.length === b.events.length && a.events.every((event, index) => event === b.events[index])
+    case 'changes':
+      return b.kind === 'changes' && sameStrings(a.files, b.files) && a.lines?.added === b.lines?.added && a.lines?.removed === b.lines?.removed
     case 'work':
       return b.kind === 'work' && a.events.length === b.events.length && a.events.every((event, index) => event === b.events[index])
     case 'approval':
@@ -175,6 +177,18 @@ export const ChatItem = memo(function ChatItem({ row, agent, workingSince, appro
           <span className="h-px flex-1 bg-line2" />
         </div>
       )
+    case 'changes': {
+      const first = row.files[0]
+      const said = `${String(row.files.length)} changed ${row.files.length === 1 ? 'file' : 'files'}`
+      const counts = row.lines !== null && <span className="mx-changed-counts"><span className="is-add">+{row.lines.added}</span><span className="is-remove">−{row.lines.removed}</span></span>
+      return (
+        <Frame>
+          {openDiff !== null && first !== undefined
+            ? <button type="button" className="mx-changed" title="Show the changes" onClick={() => { openDiff(first) }}><Icon name="changes" size={14} /><span>{said}</span>{counts}<Icon name="chevron" /></button>
+            : <p className="mx-changed is-still"><Icon name="changes" size={14} /><span>{said}</span>{counts}</p>}
+        </Frame>
+      )
+    }
     case 'working':
       // Token counts are not shown: the daemon's history carries none, and an estimate would be invented.
       return (

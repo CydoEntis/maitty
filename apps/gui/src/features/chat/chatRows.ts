@@ -17,6 +17,8 @@ export type ChatRow =
   | { readonly kind: 'agents'; readonly key: string; readonly events: readonly SubagentEvent[] }
   | { readonly kind: 'approval'; readonly key: string; readonly event: ApprovalEvent; readonly step: StepRef | null }
   | { readonly kind: 'divider'; readonly key: string; readonly event: TurnEvent }
+  /** Under a turn that edited files: how many, and the lines added and removed where every diff was kept. */
+  | { readonly kind: 'changes'; readonly key: string; readonly files: readonly string[]; readonly lines: { readonly added: number; readonly removed: number } | null }
   /** What the person just sent, shown before the history has it; `echoText` of `buildRows`. */
   | { readonly kind: 'echo'; readonly key: string; readonly text: string }
   /** A helper agent reporting back (the harness's `<task-notification>`), as one quiet line. */
@@ -70,7 +72,9 @@ function mergedStatus(a: ItemStatus, b: ItemStatus): ItemStatus {
  */
 export function buildRows(events: readonly ChatEvent[], working: boolean, root: string | null = null, echoText: string | null = null, echoThinking = true): ChatRow[] {
   const rows: ChatRow[] = []
+  const edits = new Map<string, EditEvent[]>()
   for (const event of events) {
+    if (event.kind === 'edit') edits.set(event.turnId, [...(edits.get(event.turnId) ?? []), event])
     switch (event.kind) {
       case 'message': {
         if (event.role === 'user') {
@@ -90,9 +94,12 @@ export function buildRows(events: readonly ChatEvent[], working: boolean, root: 
       case 'approval':
         rows.push({ kind: 'approval', key: event.id, event, step: null })
         break
-      case 'turn':
+      case 'turn': {
         rows.push({ kind: 'divider', key: event.id, event })
+        const changed = changesOf(edits.get(event.turnId) ?? [])
+        if (changed !== null) rows.push({ kind: 'changes', key: `changes:${event.turnId}`, ...changed })
         break
+      }
       case 'subagent': {
         const previous = rows.at(-1)
         if (previous?.kind === 'agents') rows[rows.length - 1] = { ...previous, events: [...previous.events, event] }
@@ -116,6 +123,17 @@ export function buildRows(events: readonly ChatEvent[], working: boolean, root: 
   if (echoText !== null) rows.push({ kind: 'echo', key: ECHO_ROW_KEY, text: echoText })
   if (working || (echoText !== null && echoThinking)) rows.push({ kind: 'working', key: WORKING_ROW_KEY, phrase: describeWork(events, root) })
   return linkApprovals(rows, events, root)
+}
+
+/** The files a turn's edits touched, each once, and their line counts when no diff is missing. */
+function changesOf(edits: readonly EditEvent[]): { files: string[]; lines: { added: number; removed: number } | null } | null {
+  const files = [...new Set(edits.flatMap((edit) => (edit.status === 'completed' && edit.file !== null ? [edit.file] : [])))]
+  if (files.length === 0) return null
+  const counted = edits.filter((edit) => edit.status === 'completed' && edit.file !== null)
+  const lines = counted.every((edit) => edit.diff.status === 'available' && !edit.diff.truncated)
+    ? counted.reduce((sum, edit) => (edit.diff.status === 'available' ? { added: sum.added + edit.diff.added, removed: sum.removed + edit.diff.removed } : sum), { added: 0, removed: 0 })
+    : null
+  return { files, lines }
 }
 
 /** Points each approval at the row of the tool step it is about, when the provider named one. */

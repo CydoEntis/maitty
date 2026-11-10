@@ -25,6 +25,8 @@ export function rowText(row: ChatRow): string {
     case 'agents':
       return row.events.map((event) => `${event.title ?? ''}\n${event.prompt ?? ''}\n${event.report}`).join('\n')
     // An approval is answered in its tray, and the divider and the working line say nothing of the conversation.
+    case 'changes':
+      return row.files.join('\n')
     case 'approval':
     case 'divider':
     case 'working':

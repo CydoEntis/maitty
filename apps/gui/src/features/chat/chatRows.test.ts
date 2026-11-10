@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TurnEvent } from './chatEvents'
-import { approvalEvent, commandEvent, messageEvent } from './eventFixtures'
+import { approvalEvent, commandEvent, editEvent, messageEvent } from './eventFixtures'
 import { buildRows, dividerText, formatDuration, paragraphsOf, splitLead, streamingParagraphs } from './chatRows'
 
 const message = messageEvent
@@ -27,6 +27,19 @@ describe('buildRows', () => {
     expect(rows.map((row) => row.kind)).toEqual(['agent', 'work', 'agent'])
     expect(rows[1]).toMatchObject({ key: 'c1' })
     expect(rows[1]?.kind === 'work' && rows[1].events.map((event) => event.id)).toEqual(['c1', 'c2', 'c3'])
+  })
+
+  it('says under a finished turn how many files it changed, each file once, with the lines when every diff was kept', () => {
+    const diff = (added: number, removed: number) => ({ status: 'available' as const, hunks: [], added, removed, truncated: false })
+    const rows = buildRows([editEvent('e1', { file: 'a.ts', diff: diff(3, 1) }), editEvent('e2', { file: 'a.ts', diff: diff(2, 0) }), editEvent('e3', { file: 'b.ts', diff: diff(1, 1) }), turn('completed', true)], false)
+
+    expect(rows.at(-1)).toEqual({ kind: 'changes', key: 'changes:t1', files: ['a.ts', 'b.ts'], lines: { added: 6, removed: 2 } })
+  })
+
+  it('gives no line counts when a diff was not kept, and no card for a turn that changed nothing', () => {
+    const rows = buildRows([editEvent('e1', { file: 'a.ts', diff: { status: 'unavailable' } }), turn('completed', true)], false)
+    expect(rows.at(-1)).toMatchObject({ kind: 'changes', lines: null })
+    expect(buildRows([command('c'), turn('completed', true)], false).map((row) => row.kind)).toEqual(['step', 'divider'])
   })
 
   it('never joins messages of different turns', () => {

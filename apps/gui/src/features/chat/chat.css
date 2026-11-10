@@ -76,6 +76,18 @@
 .mx-tool .mx-spin { font-size: 12px; }
 .mx-tool-detail { margin-top: 6px; }
 
+/* Under a turn that edited files: "3 changed files +111 −0", which opens the side panel on Changes. */
+.mx-changed {
+  display: inline-flex; height: 34px; max-width: 100%; align-items: center; gap: 9px; margin: 0; padding: 0 11px; border-radius: 10px;
+  border: 1px solid rgba(var(--hl), calc(.1 * var(--hk)));
+  background: linear-gradient(180deg, rgba(var(--hl), calc(.06 * var(--hk) * var(--gk))), rgba(var(--hl), calc(.02 * var(--hk) * var(--gk))));
+  font-size: 13px; font-weight: 500; color: var(--fg); transition: border-color .15s;
+}
+button.mx-changed:hover { border-color: rgba(var(--hl), calc(.18 * var(--hk) * var(--gk))); }
+.mx-changed-counts { display: flex; gap: 6px; font-family: var(--mono); font-size: 12px; }
+.mx-changed-counts .is-add { color: var(--ok); }
+.mx-changed-counts .is-remove { color: var(--danger); }
+
 /* A run of steps as one line (`WorkCard`): what it did, how long it took, and a caret that opens the steps. */
 .mx-work-head {
   display: flex; width: 100%; min-height: 34px; align-items: center; gap: 9px; padding: 0 11px; border-radius: 10px; text-align: left;

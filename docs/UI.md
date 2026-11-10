@@ -813,6 +813,8 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   Two or more steps that follow each other (edits, commands, tools; never the to-do list) fold into one **work row**
   (`workSummary.ts`, `WorkCard`): a line such as "Read 2 files, edited 3, ran 1 command" with the daemon's own time for
   the run, which opens to the steps. A run with a failed step starts open.
+  Under the divider of a turn that edited files is a **changes row**: "3 changed files +111 −0" (each file once; the
+  lines only when every diff was kept), which opens the side panel on Changes.
 - **Cards** (`features/chat/components/`). Every fact the history carries is shown, and a missing one is said to be
   unavailable (a diff the history did not keep, a checklist without items, a command time or exit code the provider
   does not report, a turn without the daemon's times shows "Turn finished", not an invented duration). Only a step
