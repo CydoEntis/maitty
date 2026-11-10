@@ -7,7 +7,6 @@ import type { DesktopSettingsSection } from '@/features/settings/components/Desk
 import { readSettingsPreferences, type SettingsPreferences, TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN } from '@/features/settings/preferences'
 import { sizeVariables } from './model/layoutSize'
 import { errorMessage } from '@/lib/error-message'
-import type { InboxEntry } from './components/InboxPanel'
 import type { InspectView } from '@/features/inspect/InspectPanel'
 import { isChatSession } from './model/chatSession'
 import { LOCAL_HEAD, machineHeads, remoteStartRefusal, type UpdateAction } from './model/machines'
@@ -33,7 +32,7 @@ import type { OpenSubagent } from './components/Sidebar'
 import { useSharedSettings } from '@/features/settings/sharedSettings'
 import { activeArrangement, dropSession, EMPTY_LAYOUT, focusedSessionId, type Layout, MAX_PANES, openArrangement, type SplitDirection, splitPane, visibleSessionIds } from './model/layout'
 import { LAYOUT_RESET_NOTICE, readLayout, writeLayout } from './model/layoutStorage'
-import { byPriority } from './model/inboxOrder'
+import { byPriority } from './model/attentionOrder'
 import { folderNameOf, inCreationOrder, type SessionView, tildePath } from './model/session'
 import { bindingFor, detectPlatform, shortcutChords } from './model/shortcuts'
 import { resolveStartFolder } from './model/startFolder'
@@ -50,7 +49,7 @@ import { usePaneDrags } from './usePaneDrags'
 import { usePreferenceEffects } from './usePreferenceEffects'
 import { useSessionSync } from './useSessionSync'
 import { useSessionActions } from './useSessionActions'
-import { useInboxActions } from './useInboxActions'
+import { useSessionReplies } from './useSessionReplies'
 import { useServiceReads } from './useServiceReads'
 import { useSessionList } from './useSessionList'
 import { usePaneFiles } from './usePaneFiles'
@@ -98,7 +97,6 @@ export function useWorkspaceState() {
   const [getFileId, setGetFileId] = useState<string | null>(null)
   const [updateAsk, setUpdateAsk] = useState<{ name: string; action: UpdateAction } | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [inboxOpen, setInboxOpen] = useState(false)
   const [focusMode, setFocusMode] = useState(false)
   const [inspectOpen, setInspectOpen] = useState(false)
   // The docked panel's width, so the Inspect drawer that overlays the window stays beside it and not under it.
@@ -114,8 +112,6 @@ export function useWorkspaceState() {
   const [inspectView, setInspectView] = useState<InspectView>('changes')
   const [lookAt, setLookAt] = useState<LookAt | null>(null)
   const [windowFocused, setWindowFocused] = useState(() => document.hasFocus())
-  // Inbox entries the user cleared, by the status they had; an entry comes back if the session changes state.
-  const [cleared, setCleared] = useState<ReadonlyMap<string, SessionView['status']>>(new Map())
   const [toastMessage, setToastMessage] = useState<{ text: string; key: number } | null>(null)
   // After a restart into an update, the first thing said is which version this is and what changed.
   const [updatedTo, setUpdatedTo] = useState<RestartedUpdate | null>(takeRestarted)
@@ -138,14 +134,6 @@ export function useWorkspaceState() {
 
   const { machines, machinesRef, machinesKnown, machineSaid } = useRemoteMachines()
   const { sessions, sessionMap, setExpectedAgents, paneSessions } = useSessionList({ sessionsQuery, online, machines, home, layout })
-  // A cleared Inbox entry stays hidden only while its session keeps the state it had when cleared;
-  // once it moves on, coming back to that state is news again.
-  const [seenForClear, setSeenForClear] = useState(sessions)
-  if (seenForClear !== sessions) {
-    setSeenForClear(sessions)
-    const stillCleared = new Map([...cleared].filter(([id, status]) => sessionMap.get(id)?.status === status))
-    if (stillCleared.size !== cleared.size) setCleared(stillCleared)
-  }
   const focusedId = focusedSessionId(layout)
   // A click anywhere outside the panes takes the border off the focused pane; a click in a pane, or focus moving to another pane, puts it back.
   const focusedPaneId = activeArrangement(layout)?.focus ?? null
@@ -310,10 +298,10 @@ export function useWorkspaceState() {
     if (isChatSession(session.conversation)) return { availability, view: 'chat' as const }
     return { availability, view: effectiveView(paneViews.choices.get(session.id), availability, preferences.chatViewDefault) }
   }, [paneViews.choices, preferences.chatViewDefault])
-  const { runShortcut } = useShortcutRunner({ newSession, focusedMachineNumber, newTerminal, setSettingsSection, startAgentSession, preferences, home, split, setLayout, layout, askToClose, endSessions, toggleSidebar, setPaletteOpen, setInboxOpen, sessions, focusedSession, flash, showSessionById, undoLastClose, chatOf, paneViews, setFocusMode, setShortcutsOpen, setTextSize, toggleInspect, setFindOpen, online, setWorktreeFrom })
+  const { runShortcut } = useShortcutRunner({ newSession, focusedMachineNumber, newTerminal, setSettingsSection, startAgentSession, preferences, home, split, setLayout, layout, askToClose, endSessions, toggleSidebar, setPaletteOpen, sessions, focusedSession, flash, showSessionById, undoLastClose, chatOf, paneViews, setFocusMode, setShortcutsOpen, setTextSize, toggleInspect, setFindOpen, online, setWorktreeFrom })
 
   // Captured on the window before xterm sees the key, so only these few keys leave the shell.
-  const overlayOpen = paletteOpen || inboxOpen
+  const overlayOpen = paletteOpen
   const drawerShown = compact && drawerOpen
   const sidebarMode: 'rail' | 'docked' = compact || preferences.compactSidebar ? 'rail' : 'docked'
   // A name is typed in its row where the full sidebar shows; the rail and Focus mode ask in a dialog.
@@ -322,9 +310,9 @@ export function useWorkspaceState() {
   const modalOpen = dialogOpen || overlayOpen
   // Only the new chat page is up, with no dialog over it.
   const onNewChatPage = newChatOpen && settingsSection === null && (renameId === null || renameInline) && getFileId === null && newSessionMachine === null && renamingMachine === null
-  useShortcutKeys({ runShortcut, canUndoClose: lastClose !== null, dialogOpen, onNewChatPage, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen, setPaletteOpen, setInboxOpen, setSettingsSection, setNewChatOpen, setDrawerOpen, setFocusMode, platform })
+  useShortcutKeys({ runShortcut, canUndoClose: lastClose !== null, dialogOpen, onNewChatPage, overlayOpen, paletteOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen, setPaletteOpen, setSettingsSection, setNewChatOpen, setDrawerOpen, setFocusMode, platform })
 
-  // The folder each session sits in, for the inbox, the notices and the palette.
+  // The folder each session sits in, for the notices and the palette.
   const projectOf = useMemo(() => new Map(sessions.map((member) => [member.id, { name: folderNameOf(member), key: member.repoRoot ?? member.cwd }])), [sessions])
 
   useEffect(() => {
@@ -337,16 +325,14 @@ export function useWorkspaceState() {
       window.removeEventListener('blur', lost)
     }
   }, [])
-  const inboxEntries: InboxEntry[] = useMemo(() => {
+  // What the tray menu lists: every session that needs you, finished or exited, but not an error you are looking at.
+  const attentionSessions = useMemo(() => {
     const activity = (id: string) => tracks.get(id)?.changedAt ?? 0
     return sessions
-      .filter((item) => (item.status === 'needs' || item.status === 'error' || item.status === 'done') && cleared.get(item.id) !== item.status && !(item.status === 'error' && item.id === focusedId && windowFocused))
+      .filter((item) => (item.status === 'needs' || item.status === 'error' || item.status === 'done') && !(item.status === 'error' && item.id === focusedId && windowFocused))
       .sort(byPriority(activity))
-      .map((item) => ({ session: item, projectName: projectOf.get(item.id)?.name ?? '' }))
-  }, [sessions, cleared, tracks, projectOf, focusedId, windowFocused])
-  const inboxSessions = useMemo(() => inboxEntries.map((entry) => entry.session), [inboxEntries])
-  useTrayItem(inboxSessions, showSessionById)
-  const needsCount = inboxEntries.filter((entry) => entry.session.status === 'needs').length
+  }, [sessions, tracks, focusedId, windowFocused])
+  useTrayItem(attentionSessions, showSessionById)
   const needsElsewhere = sessions.filter((item) => item.status === 'needs' && item.id !== focusedId).length
 
   // Inspect looks at the focused pane's own repository; the Inspector's changed-file count comes from the same daemon question.
@@ -366,7 +352,7 @@ export function useWorkspaceState() {
     retry: false,
   })
   // Looking at a pane acknowledges it: a finished agent's done goes back to idle, as when the terminal app
-  // focuses it, and an error in it leaves the inbox. Needs-you stays until the agent is answered.
+  // focuses it, and an error in it leaves the tray menu. Needs-you stays until the agent is answered.
   const viewedId = focusedSession?.id
   const viewedStatus = focusedSession?.status
   useEffect(() => {
@@ -376,7 +362,7 @@ export function useWorkspaceState() {
       .then(() => queryClient.invalidateQueries({ queryKey: ['conversations'] }))
       .catch((error: unknown) => { console.warn('Could not mark the session seen', error) })
   }, [online, windowFocused, viewedId, viewedStatus, queryClient])
-  const { answerSession, sendTo, resumeInterrupted, clearEntry, clearSettled } = useInboxActions({ sessionMap, flash, showSessionById, setDismissedRestores, setCleared, inboxEntries })
+  const { answerSession, sendTo, resumeInterrupted } = useSessionReplies({ sessionMap, flash, showSessionById, setDismissedRestores })
 
   useSessionAlerts({ sessions, sessionMap, machines, projectOf, online, focusedId, preferences, showSessionById, answerSession })
   // With broadcast on, what is typed in one pane also goes to the layout's other panes, but only the idle ones: never into a busy agent.
@@ -389,7 +375,7 @@ export function useWorkspaceState() {
     }
   }, [layout, sessionMap, sendTo])
   const { toggleAgentTerminal, startAgent } = useAgentStarts({ agentTerminals, sessionMap, endSessions, setAgentTerminals, runStart, setLayout, focusedSession, setSettingsSection, preferences, home })
-  const { paletteItems } = usePaletteItems({ paletteOpen, platform, layout, sessions, projectOf, showSessionById, home, newSession, focusedMachineNumber, newTerminal, focusedSession, toggleAgentTerminal, runShortcut, heads, online, newSessionOn, preferences, setPreferences, split, setInboxOpen, setSettingsSection, inspectRefusal, setInspectOpen, setFindOpen, setFocusMode, setShortcutsOpen, setLayout, startAgent })
+  const { paletteItems } = usePaletteItems({ paletteOpen, platform, layout, sessions, projectOf, showSessionById, home, newSession, focusedMachineNumber, newTerminal, focusedSession, toggleAgentTerminal, runShortcut, heads, online, newSessionOn, preferences, setPreferences, split, setSettingsSection, inspectRefusal, setInspectOpen, setFindOpen, setFocusMode, setShortcutsOpen, setLayout, startAgent })
   const { serviceFooterText, offlineDetail, restartOffer, appBehindOffer } = useServiceOffers({ mismatch, serviceNewer, restartStatusQuery, refetchSessions, updater, restartNow, online, failures, sessionsQuery })
   const { tab, mountedTabs } = useMountedTabs({ layout })
   const startFolderLabel = preferences.startFolder.trim() ? tildePath(resolveStartFolder(preferences.startFolder, home), home) : '~'
@@ -397,5 +383,5 @@ export function useWorkspaceState() {
   const sidebarWidth = liveSidebarWidth ?? preferences.sidebarWidth
   const rootStyle = { ...themeStyle(theme), ...sizeVariables(preferences, sidebarWidth) } as CSSProperties
 
-  return { inspectOpen, focusMode, inspectTerm, focusedSession, projectOf, diffStat, inspectView, lookAt, setInspectView, setInspectOpen, flash, shortcutsOpen, platform, root, setShortcutsOpen, welcomeOpen, preferences, setPreferences, setWelcomeOpen, newSession, focusedMachineNumber, paletteOpen, paletteItems, setPaletteOpen, inboxOpen, inboxEntries, tracks, clearEntry, clearSettled, setInboxOpen, showSessionById, focusedId, sessionMap, needsElsewhere, setFocusMode, focusModeChord, worktreeFrom, createWorktree, setWorktreeFrom, newSessionMachine, heads, sessions, home, startFromModal, setNewSessionMachine, getFileId, setGetFileId, getFile, updateAsk, setUpdateAsk, updateNamed, closeAsk, setCloseAsk, renamingMachine, machineNicknames, setMachineNicknames, setRenamingMachine, renameId, renameInline, saveName, setRenameId, settingsSection, setSettingsSection, systemReducedMotion, systemDark, previewThemeSoon, showTestNotice, updater, restartNow, setPreviewTheme, online, runningVersion, machinesKnown, retryNamed, removeNamed, grantNamed, copyCommand, addNamed, cancelAdding, usageInfo, chooseStartFolder, toastMessage, updatedTo, setUpdatedTo, restarting, newChatOpen, sidebarMachineHeads, setNewChatOpen, startNewChat, findOpen, terminalHandles, setFindOpen, dismissedRestores, resumeInterrupted, setDismissedRestores, failures, mismatch, retryAt, offlineDetail, sessionsQuery, restartOffer, appBehindOffer, refetchSessions, tab, mountedTabs, layout, narrow, setLayout, closingPanes, startFolderLabel, canStart, focusMachine, theme, shortcutChord, setThemeMode, pickTheme, openAppearance, setStyle, setTextSize, resetTextSize, openShortcuts, sidebarSessions, openSubagent, sidebarWidth, setLiveSidebarWidth, needsCount, newTerminal, showSubagent, openInSplit, splitSubagent, toggleAgentTerminal, copyPathOf, copyText, showChangesOf, endSession, serviceFooterText, updateProgress, skippedVersion, setSkippedVersion, sidebarMode, toggleSidebar, drawerShown, setDrawerOpen, reducedMotion, setRoot, rootStyle, machineSaid, paneSessions, chatOf, agentTerminals, outsidePanes, dropId, dragId, paneViews, showChanges, setOpenSubagent, togglePaneTool, startChatHere, look, modalOpen, mirrorInput, openPath, pasteImage, split, closePaneById, sendTo, restartPane }
+  return { inspectOpen, focusMode, inspectTerm, focusedSession, projectOf, diffStat, inspectView, lookAt, setInspectView, setInspectOpen, flash, shortcutsOpen, platform, root, setShortcutsOpen, welcomeOpen, preferences, setPreferences, setWelcomeOpen, newSession, focusedMachineNumber, paletteOpen, paletteItems, setPaletteOpen, tracks, showSessionById, focusedId, sessionMap, needsElsewhere, setFocusMode, focusModeChord, worktreeFrom, createWorktree, setWorktreeFrom, newSessionMachine, heads, sessions, home, startFromModal, setNewSessionMachine, getFileId, setGetFileId, getFile, updateAsk, setUpdateAsk, updateNamed, closeAsk, setCloseAsk, renamingMachine, machineNicknames, setMachineNicknames, setRenamingMachine, renameId, renameInline, saveName, setRenameId, settingsSection, setSettingsSection, systemReducedMotion, systemDark, previewThemeSoon, showTestNotice, updater, restartNow, setPreviewTheme, online, runningVersion, machinesKnown, retryNamed, removeNamed, grantNamed, copyCommand, addNamed, cancelAdding, usageInfo, chooseStartFolder, toastMessage, updatedTo, setUpdatedTo, restarting, newChatOpen, sidebarMachineHeads, setNewChatOpen, startNewChat, findOpen, terminalHandles, setFindOpen, dismissedRestores, resumeInterrupted, setDismissedRestores, failures, mismatch, retryAt, offlineDetail, sessionsQuery, restartOffer, appBehindOffer, refetchSessions, tab, mountedTabs, layout, narrow, setLayout, closingPanes, startFolderLabel, canStart, focusMachine, theme, shortcutChord, setThemeMode, pickTheme, openAppearance, setStyle, setTextSize, resetTextSize, openShortcuts, sidebarSessions, openSubagent, sidebarWidth, setLiveSidebarWidth, newTerminal, showSubagent, openInSplit, splitSubagent, toggleAgentTerminal, copyPathOf, copyText, showChangesOf, endSession, serviceFooterText, updateProgress, skippedVersion, setSkippedVersion, sidebarMode, toggleSidebar, drawerShown, setDrawerOpen, reducedMotion, setRoot, rootStyle, machineSaid, paneSessions, chatOf, agentTerminals, outsidePanes, dropId, dragId, paneViews, showChanges, setOpenSubagent, togglePaneTool, startChatHere, look, modalOpen, mirrorInput, openPath, pasteImage, split, closePaneById, sendTo, restartPane }
 }

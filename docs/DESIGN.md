@@ -211,7 +211,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   `0 18px 48px -12px` shadow. Toasts sit 96px below the top edge and 36px in from the side, clear of the title bar's
   controls. The window ground is opaque on every platform (no Mica), as in the redesign.
 - **One material, three roles (`apps/gui/src/material.css`).** The two finishes and the four styles are told apart in
-  that file and nowhere else. Every surface is a *panel* (sidebar, main card, Inbox, inspector), a *float* (menus,
+  that file and nowhere else. Every surface is a *panel* (sidebar, main card, inspector), a *float* (menus,
   popovers, dialogs, the palette, find, toasts) or a *field* (the message box and its tray), and takes its fill,
   hairline, highlight, shadow and blur from that role's `--m-*` tokens. The `glass` finish is the base for **Glass**, which
   then lays its own translucent panels on top (below); the finish's own recipe is opaque `--main` cards on the window ground. A panel
@@ -286,17 +286,28 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   **text size** (−, the size which resets it to 14px, +; Ctrl+= and Ctrl+− do the same) and the shortcuts
   keycaps, which open the shortcut overlay. Hidden in Focus mode and by Settings › General › Window ›
   Status bar (off by default).
-- **Sidebar** (`components/Sidebar.tsx`, `sidebar.css`). Agents only: no fleets, ships or tabs. The 48px header holds
-  Collapse sidebar, then **New agent chat** (opens the New session dialog), **Add a remote machine** (Settings ›
-  Machines) and the **Inbox** with its count (amber while something needs you). Under it the 32px sunken **Filter
-  sessions** field (`/` focuses it; a raised `/` keycap; its border brightens on hover). Sessions are grouped by
-  **machine**, this computer first: an uppercase 10.5px heading with a 12px caret (`--accent`; a project's caret is `--ansi-blue`), a laptop or server mark, the count, a
+- **Sidebar** (`components/Sidebar.tsx`, `sidebar.css`; layout 2e, `design-handoff/v19`). Agents only: no fleets, ships
+  or tabs. At the top, two 32px rows: **New chat** (starts an agent chat on this computer; the arrow beside it offers
+  New agent chat, New shell and Add a remote machine…, and Collapse sidebar sits at the end of the row) and **Search**
+  with its keys (opens the command palette; there is no filter field). Under them two quiet 28px buttons, each opening a
+  short list: **All projects ▾** narrows the list to one project (each with its count), and **Group by ▾** picks the
+  headings, **Status** (the default), **Project** or **Machine** (`sidebarGroup`, also Settings › Appearance › Sidebar ›
+  Group sessions by). **By status** (`statusSections`): **Needs you** (amber, "waiting on you"; an agent that stopped
+  is here too), **Working** ("running now"), **Finished** (green, "ready to review") and **Idle** ("nothing to do"; a
+  shell that exited and a session the daemon cannot read are here), each a 28px heading with its count, its few words
+  and a caret that folds it; a section with nothing in it is not listed, and rows keep creation order within one. A row
+  of another machine says `· machine` after its project. **By project** (`projectSections`): one heading per project
+  by name, with its colour square, count and needs-you count; a project on another machine gets its own heading,
+  `name · machine` with the line's dot. In both, a machine that needs the app is listed under the rows with its
+  **↑ Update** (or Install) button or its percentage, since no machine heading carries it, and a draft chat is the
+  first row of the list. **By machine**, this computer first: an uppercase 10.5px heading with a 12px caret (`--accent`; a project's caret is `--ansi-blue`), a laptop or server mark, the count, a
   group-by-project toggle, the line's 5px dot and a `+` (a click starts an agent chat on it, a right-click opens the full menu); clicking the heading's name folds the group. Within a
-  machine the rows are **most urgent first**: needs you, an agent that stopped, working, done, idle, then a shell whose
-  last command failed; creation order within each. While the new-chat page is open, a dashed **New chat** row ("waiting
-  for your first message", three stepping dots) is listed first on this computer, so the draft is never missing from the
-  sidebar; it goes when the chat starts and the chat's own row takes its place. Grouped by project, each project is a folding heading (its colour
-  square, name, needs-you count, count). A **row** (40px, radius 8) is the 20px app tile with its status badge
+  machine the rows are in the **Session order** setting (`sidebarOrder`): as created, or with what needs you first.
+  While the new-chat page is open, a draft **New chat** row (placeholders that pulse) is listed last on this computer,
+  so the draft is never missing from the sidebar; it goes when the chat starts and the chat's own row takes its place.
+  Grouped by project inside a machine, each project is a folding heading (its colour square, name, needs-you count,
+  count). A row whose status changes glides to its new place (`useFlip`) and is tinted with the accent for a moment
+  (`useStatusFlash`); Reduce motion turns both off. A **row** (40px, radius 8) is the 20px app tile with its status badge
   (spinner, amber `›`, green check, dashed square for unknown), the name (13px; 600 and `--fg` for an agent that is
   doing anything), and under it the project's 6px colour square, the project and `·` and the branch in mono
   `--ansi-mag`; a stopped agent says `stopped` and an exited shell `exited` at the right, in `--danger`, instead of a
@@ -411,7 +422,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   down, broadcast). Ctrl with a non-letter (`,` `.` `/` `[` `]` `=` `1`-`9` Tab) is the window's
   too. A binding with `available: false` (Undo close) is registered but
   its key does nothing and the overlay hides it until the feature lands.
-  Jump to the next session that needs you is ⌘J on macOS only: Ctrl+J is a terminal key.
+  Jump to the next session that needs you is ⌘J on macOS and Ctrl+Shift+J elsewhere: a bare Ctrl+J is a terminal key.
 - **Terminal | Chat switch.** An agent's pane header carries a two-button switch (terminal glyph, chat bubble). The
   chat covers the pane body while the terminal stays mounted underneath, hidden by `visibility`, so it keeps streaming
   and keeps its size: switching sends nothing to the daemon. **An agent opens as its chat**; a shell opens as a
@@ -439,7 +450,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   agent asks: a slightly narrower amber tray sliding up from behind the box (`mxRise`): "Wants to run a command" with
   its pause tile, the command in a sunken mono box, and **Yes, once** `y` (amber, the same in every theme), **This
   session** `a`, **No** `n`. y, a and n answer from anywhere in the chat but a field. Answering removes it, the box
-  unlocks and the agent is working again (its row, the Inbox and the badge follow the daemon). **2. The box**: glass
+  unlocks and the agent is working again (its row and the badge follow the daemon). **2. The box**: glass
   (`--main` under `rgba(--hl,.075)` to `.035`, a `rgba(--hl,.12)` border, radius 16), a two-line text box on top, **+**
   (attach) at the left, and at the right the model picker ("Claude Sonnet 5.5 · Medium ▾": the agent's mark, the model
   picked or the one its own file says, the effort) and the round 32px send button, teal when it can send and grey while
@@ -454,20 +465,17 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   ("Ask before running", "Plan", "Bypass permissions" in red, or "Permissions" before it has said), Subagents with their
   count, the project folder (opens Files), and the branch at the right. Queued messages are dashed bubbles above.
 - **Esc ladder.** Esc closes the topmost open layer and reaches the terminal only when none is
-  open (`model/escLadder.ts`): What's new, palette, inbox, Settings, the sidebar drawer,
+  open (`model/escLadder.ts`): What's new, palette, Settings, the sidebar drawer,
   Focus mode. A new dialog adds its id there.
-- **Jump to next (⌘⇧J, macOS only).** Opens the next session that needs you, in creation order across every machine
+- **Jump to next (⌘J, Ctrl+Shift+J).** Opens the next session that needs you, in creation order across every machine
   (`features/needs-you/model/needsYou.ts`), with the toast "Needs you · name · 1 of 2"; with nothing needing you it
-  only shows "Nothing needs you". Windows and Linux have no key for it yet.
+  only shows "Nothing needs you".
 - **Command palette (⌘K).** A 600px card 12% from the top over a dimmed scrim: type a few letters to jump to a
   session, project, action or theme (themes only once something is typed). Sessions come first, most urgent first,
   each named as its row is with its agent and project ("Needs you" in amber), then their projects, then the actions. A
   run of the typed text ranks above letters that merely appear in order; ↑ ↓ move, ↵ runs, Esc closes.
-- **Inbox (⌘J).** The sidebar header's **Inbox** button (a count, amber when something needs you) opens a 440px
-  panel from the right listing every session that needs you, finished or exited, in that order ("N across all
-  projects", **Clear done**). A needs-you card shows what the agent asks in a well and has **Yes, once**, **This
-  session** and **No**, which type `y`, `a` or `n` into that session; the window never decides for it. Done and error
-  cards have **Clear** and **Open**. With nothing: "You're all caught up".
+- **No Inbox.** What needs you, what stopped and what finished are the first sections of the sidebar's status list, and
+  the notification card and the tray menu say the same; the desktop app has no separate Inbox panel.
 - **New session dialog** (⌘T, Ctrl+Shift+T, the sidebar's New agent chat, a machine's New agent chat here). A 560px
   dialog: **Agent chat | Shell**; AGENT (Claude Code, Codex as cards); PROJECT (a chip per project the machine has
   sessions in, the focused one first, with its colour; **Other folder…** opens the folder picker on this computer);
@@ -540,7 +548,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   notes and "No session was interrupted."
 - **Sidebar position.** Settings › Appearance › Sidebar › Sidebar position, or the palette, puts the sidebar
   on the left or right. On the right the window mirrors: the resize edge is on its left, the narrow-window
-  overlay slides from the right, Inspect and the Inbox open from the left, and popovers open toward the middle.
+  overlay slides from the right, Inspect opens from the left, and popovers open toward the middle.
 - **Notifications.** Settings › Notifications has one switch each for needs you, done and error. With
   one on, a session that changes to that state while you are not looking at it (the window is in the
   background, or it is not the focused pane) sends a system notification, once per change. It names
@@ -575,8 +583,6 @@ and timings; the feature stylesheets beside their components carry them (`sideba
 - **Turn timeline.** Inspect › Timeline lists the focused pane's latest events, newest first: the
   agent started working, stopped for you, finished (with how long the turn ran), and, in a shell
   that marks its prompts, each prompt and command with its exit code.
-- **Inbox detail.** A needs-you card shows what the agent is asking, the exact command or file and its
-  choices as the agent printed them, instead of its last prompt.
 - **Status is shape and word.** Working is the user's spinner, Needs you an amber tile with a dark `›`, Done a green
   check, Unknown a dashed square, and Idle nothing; a stopped agent or an exited shell says so in words on its row.
   Amber still means needs you and only that, in every theme.
@@ -590,7 +596,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   waiting); **idle** no badge at all; **unknown** (the daemon is gone) a dashed outlined square, with the
   row dimmed. The window only displays these; the daemon decides them. There are no waves, sweeps, shimmer or glow
   on rows and tabs, and no setting for them; the only looping motion is the spinner. Reduce motion (the setting or
-  the system's) removes the pulses, slides and size animations, and the spinner holds one frame. The needs-you badge and the Inbox count pop once with a ring (.6s) and
+  the system's) removes the pulses, slides and size animations, and the spinner holds one frame. The needs-you badge pops once with a ring (.6s) and
   the update dot once (.7s), as `transform` and `opacity` on a pseudo-element. The terminal caret is steady
   (blinking is Settings › Text › Blink, xterm's own option, off by default), and nothing animates `box-shadow`,
   `filter` or `backdrop-filter` ([PERFORMANCE](PERFORMANCE.md)). The working spinner steps every 160 ms and

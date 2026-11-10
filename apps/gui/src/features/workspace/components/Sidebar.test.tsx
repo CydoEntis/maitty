@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { Conversation, SubagentActivity } from '@/data/preview'
@@ -25,7 +25,7 @@ function show(sessions: SessionView[], more: Partial<SidebarProps> = {}) {
   const none = vi.fn()
   const props: SidebarProps = {
     sessions, machines: [LOCAL_HEAD], order: 'creation', focusedId: null, openSubagent: null, mode: 'docked', online: true, canStart: true, renamingId: null, portalContainer: null,
-    onToggleRail: none, side: 'left', width: 264, onResize: none, onResizeEnd: none, inboxCount: 0, inboxNeeds: false, onOpenInbox: none,
+    onToggleRail: none, side: 'left', width: 264, onResize: none, onResizeEnd: none, grouping: 'machine', onGrouping: none, onSearch: none,
     onNewAgentChat: none, onNewShell: none, onAddMachine: none, onMachineSettings: none, onRenameMachine: none, onUpdateMachine: none, onShowSession: none, onShowSubagent: none, onRenameSession: none,
     onSetName: none, onSplitSession: none, onSplitSubagent: none, onOpenTerminal: none, onCopyPath: none, onCopyText: none, onShowChanges: none, onGetFile: none,
     onEndSession: none, onOpenSettings: none, updateSlot: null, railUpdateSlot: null,
@@ -294,7 +294,7 @@ describe('a draft chat', () => {
     show([], { draft: { machine: 0 } })
     const draft = screen.getByRole('status', { name: 'New chat, waiting for the first message' })
     expect((screen.getByRole('button', { name: /^This computer/ }).closest('.mx-machine') as HTMLElement).contains(draft)).toBe(true)
-    expect(screen.queryByText('No agents running. Use the buttons above to start one.')).toBeNull()
+    expect(screen.queryByText('No agents running. New chat starts one.')).toBeNull()
     expect(draft.querySelector('.mx-row')).not.toBeNull()
   })
 
@@ -312,19 +312,112 @@ describe('a draft chat', () => {
   })
 })
 
-describe('the filter', () => {
-  it('narrows the list by name and says when nothing matches', async () => {
-    const user = userEvent.setup()
-    show([session(1, { named: true, title: 'Alpha' }), session(2, { named: true, title: 'Beta' })])
-    await user.type(screen.getByRole('textbox', { name: 'Filter sessions' }), 'alp')
-    expect(names()).toEqual(['Alpha'])
-    await user.type(screen.getByRole('textbox', { name: 'Filter sessions' }), 'zzz')
-    expect(screen.getByText('No agent matches “alpzzz”.')).toBeTruthy()
+describe('with nothing running', () => {
+  it('says how to start one, under no heading', () => {
+    show([])
+    expect(screen.getByText('No agents running. New chat starts one.')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^This computer/ })).toBeNull()
+  })
+})
+
+describe('grouped by status', () => {
+  const mixed = () => [
+    session(1, { agent: 'claude', named: true, title: 'Idle one' }),
+    session(2, { agent: 'claude', named: true, title: 'Busy', status: 'working' }),
+    session(3, { agent: 'claude', named: true, title: 'Asking', status: 'needs-you' }),
+    session(4, { agent: 'claude', named: true, title: 'Finished one', status: 'done' }),
+  ]
+
+  it('lists what needs you, then working, finished and idle, each saying what it means, and leaves out a status nothing has', () => {
+    show(mixed(), { grouping: 'status' })
+    expect(screen.getAllByRole('list').map((list) => list.getAttribute('aria-label'))).toEqual(['Needs you', 'Working', 'Finished', 'Idle'])
+    expect(within(screen.getByRole('list', { name: 'Needs you' })).getByRole('button', { name: /^Asking,/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^Needs you\s*1\s*waiting on you/ })).toBeTruthy()
+    cleanup()
+    show([session(1, { agent: 'claude', named: true, title: 'Idle one' })], { grouping: 'status' })
+    expect(screen.getAllByRole('list').map((list) => list.getAttribute('aria-label'))).toEqual(['Idle'])
   })
 
-  it('says how to start one when nothing runs', () => {
-    show([])
-    expect(screen.getByText('No agents running. Use the buttons above to start one.')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /^This computer/ })).toBeNull()
+  it('says which other machine a row runs on, since no heading does', () => {
+    show([session(2, { machine: 4, machineName: 'devbox', agent: 'claude', named: true, title: 'There' })], { machines: [LOCAL_HEAD, DEVBOX], grouping: 'status' })
+    expect(within(screen.getByRole('button', { name: /^There,/ })).getByText('· devbox')).toBeTruthy()
+  })
+
+  it('folds a section away from its heading', async () => {
+    const user = userEvent.setup()
+    show(mixed(), { grouping: 'status' })
+    const head = screen.getByRole('button', { name: /^Working/ })
+    expect(head).toHaveAttribute('aria-expanded', 'true')
+    await user.click(head)
+    expect(head).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('lists a draft chat first, above every section', () => {
+    show(mixed(), { grouping: 'status', draft: { machine: 0 } })
+    const draft = screen.getByRole('status', { name: 'New chat, waiting for the first message' })
+    expect(Array.from(document.querySelectorAll('.mx-row-wrap'))[0]).toBe(draft)
+  })
+
+  it('still offers Update for a machine that needs the app, under the list', () => {
+    const onUpdateMachine = vi.fn()
+    show(mixed(), { grouping: 'status', machines: [LOCAL_HEAD, { ...DEVBOX, updateAction: 'update' }], onUpdateMachine })
+    const notes = screen.getByRole('group', { name: 'Machines that need Maitty' })
+    fireEvent.click(within(notes).getByRole('button', { name: 'Update Maitty on devbox' }))
+    expect(onUpdateMachine).toHaveBeenCalledWith('devbox', 'update')
+  })
+})
+
+describe('grouped by project', () => {
+  it('gives every project a heading, and a project on another machine one that names the machine', () => {
+    show([
+      session(1, { agent: 'claude', named: true, title: 'Here', cwd: '/home/me/shop' }),
+      session(2, { agent: 'claude', named: true, title: 'Also here', cwd: '/home/me/shop' }),
+      session(3, { machine: 4, machineName: 'devbox', agent: 'claude', named: true, title: 'There', cwd: '/home/me/shop' }),
+    ], { machines: [LOCAL_HEAD, DEVBOX], grouping: 'project' })
+    expect(within(screen.getByRole('list', { name: 'shop' })).getAllByRole('listitem')).toHaveLength(2)
+    expect(within(screen.getByRole('list', { name: 'shop on devbox' })).getByRole('button', { name: /^There,/ })).toBeTruthy()
+  })
+})
+
+describe('the top of the sidebar', () => {
+  it('starts a chat on this computer from New chat, and opens the search from Search', async () => {
+    const user = userEvent.setup()
+    const onNewAgentChat = vi.fn()
+    const onSearch = vi.fn()
+    show([], { onNewAgentChat, onSearch })
+    await user.click(screen.getByRole('button', { name: /^New chat/ }))
+    expect(onNewAgentChat).toHaveBeenCalledWith(0)
+    await user.click(screen.getByRole('button', { name: /^Search/ }))
+    expect(onSearch).toHaveBeenCalledTimes(1)
+  })
+
+  it('offers a shell and a remote machine from the arrow beside New chat', async () => {
+    const user = userEvent.setup()
+    const onNewShell = vi.fn()
+    show([], { onNewShell })
+    await user.click(screen.getByRole('button', { name: 'More to start' }))
+    expect(screen.getByRole('menuitem', { name: /Add a remote machine/ })).toBeTruthy()
+    await user.click(screen.getByRole('menuitem', { name: /^New shell/ }))
+    expect(onNewShell).toHaveBeenCalledWith(0)
+  })
+
+  it('narrows the list to one project, and back to all of them', async () => {
+    const user = userEvent.setup()
+    show([session(1, { named: true, title: 'Alpha', cwd: '/home/me/shop' }), session(2, { named: true, title: 'Beta', cwd: '/home/me/docs' })], { grouping: 'status' })
+    await user.click(screen.getByRole('button', { name: 'Show sessions from: All projects' }))
+    await user.click(screen.getByRole('menuitem', { name: /^docs/ }))
+    expect(names()).toEqual(['Beta'])
+    await user.click(screen.getByRole('button', { name: 'Show sessions from: docs' }))
+    await user.click(screen.getByRole('menuitem', { name: /^All projects/ }))
+    expect(names()).toEqual(['Alpha', 'Beta'])
+  })
+
+  it('asks for another grouping from Group by', async () => {
+    const user = userEvent.setup()
+    const onGrouping = vi.fn()
+    show([], { grouping: 'status', onGrouping })
+    await user.click(screen.getByRole('button', { name: 'Group by: Status' }))
+    await user.click(screen.getByRole('menuitem', { name: /^Project/ }))
+    expect(onGrouping).toHaveBeenCalledWith('project')
   })
 })

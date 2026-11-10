@@ -23,7 +23,7 @@ export function isMacPlatform(userAgent: string): boolean {
  * that leave for another session work from it. The ones that act on the pane it covers do not.
  */
 export const NEW_CHAT_PAGE_ACTIONS: ReadonlySet<ShortcutAction> = new Set<ShortcutAction>([
-  'palette', 'inbox', 'jump-needs', 'focus-previous', 'focus-next', 'new-terminal', 'toggle-sidebar', 'usage', 'performance', 'settings', 'text-larger', 'text-smaller', 'shortcuts',
+  'palette', 'jump-needs', 'focus-previous', 'focus-next', 'new-terminal', 'toggle-sidebar', 'usage', 'performance', 'settings', 'text-larger', 'text-smaller', 'shortcuts',
 ])
 
 export type ShortcutAction =
@@ -39,7 +39,6 @@ export type ShortcutAction =
   | 'toggle-sidebar'
   | 'settings'
   | 'palette'
-  | 'inbox'
   | 'jump-needs'
   | 'inspect'
   | 'find'
@@ -105,8 +104,7 @@ export const BINDINGS: readonly Binding[] = [
   { action: 'broadcast', label: 'Broadcast to the layout', group: 'Panes', mac: [cmd('B', 'shift')], other: [ctrlShift('B', 'alt')], available: true },
   { action: 'palette', label: 'Command palette', group: 'Find & jump', mac: [cmd('K')], other: [ctrlShift('K')], available: true },
   // Plain Ctrl+J is a line feed in a terminal, so Windows and Linux add Shift (the contract above).
-  { action: 'inbox', label: 'Inbox', group: 'Find & jump', mac: [cmd('J')], other: [ctrlShift('J')], available: true },
-  { action: 'jump-needs', label: 'Jump to the next session that needs you', group: 'Find & jump', mac: [cmd('J', 'shift')], other: [], available: true },
+  { action: 'jump-needs', label: 'Jump to the next session that needs you', group: 'Find & jump', mac: [cmd('J')], other: [ctrlShift('J')], available: true },
   { action: 'inspect', label: 'Inspect the repository', group: 'Find & jump', mac: [cmd('I')], other: [ctrlShift('I')], available: true },
   { action: 'find', label: 'Find in the pane or every session', group: 'Find & jump', mac: [cmd('F')], other: [ctrlShift('F')], available: true },
   { action: 'toggle-sidebar', label: 'Collapse sidebar', group: 'Window', mac: [cmd('B')], other: [ctrlShift('B')], available: true },

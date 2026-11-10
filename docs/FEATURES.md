@@ -44,6 +44,7 @@ conversation continuity are planned in phases 34–37:
 
 **The desktop app**
 - Redesign ("Maitty Desktop" handoff): an agents-only sidebar grouped by machine, most urgent first, with project and branch on each row and an in-place rename; subagents under their session, each with its own chat; one pane header for agents and shells that gives up controls as the pane narrows; mixed right and down splits with draggable dividers; an agent opens as its chat; a three-layer message box (question tray, glass box, settings tray); glass menus, dialogs and drawer — shipped — `apps/gui/src/features/workspace/components/Sidebar.tsx`, `PaneCard.tsx`, `apps/gui/src/features/chat/components/Composer.tsx`, `QuestionTray.tsx`
+- Layout 2e, sidebar (`docs/features/chat-gui/design-handoff/v19`): New chat and Search rows, an All projects filter, and sessions grouped by status (Needs you, Working, Finished, Idle; the default), project or machine; a row glides to its new section when its status changes; no Inbox, since the status sections list what it listed, and jump-to-next has a key on every platform. Kept from before: every theme, the four window styles, the chat and message box, up to four panes with right and down splits, and plain shells as rows — shipped — `apps/gui/src/features/workspace/components/Sidebar.tsx`, `apps/gui/src/features/workspace/model/sidebar.ts`
 - Fleets, ships, the tab bar and the Crewmates switch are gone from the desktop app (the redesign supersedes them); `features/crew/` stays in the tree, unmounted, until Crewmates is designed
 
 **Code and git**

@@ -1,20 +1,17 @@
 import { type Dispatch, type SetStateAction, useCallback } from 'react'
-import { displayName, type SessionStatus, type SessionView } from './model/session'
+import { displayName, type SessionView } from './model/session'
 import { toast } from '@/lib/toast'
 import { sendTerminalInput } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
-import type { InboxEntry } from './components/InboxPanel'
 import { isChatSession } from './model/chatSession'
 import { ANSWER_KEYS } from '@/features/chat/permissionAsk'
 
-/** Answering, resuming and clearing a session from the inbox, and typing into a session. */
-export function useInboxActions({ sessionMap, flash, showSessionById, setDismissedRestores, setCleared, inboxEntries }: {
+/** Answering a session that asks, resuming one that was interrupted, and typing into a session. */
+export function useSessionReplies({ sessionMap, flash, showSessionById, setDismissedRestores }: {
   sessionMap: Map<string, SessionView>
   flash: (text: string) => void
   showSessionById: (sessionId: string) => void
   setDismissedRestores: Dispatch<SetStateAction<ReadonlySet<string>>>
-  setCleared: Dispatch<SetStateAction<ReadonlyMap<string, SessionStatus>>>
-  inboxEntries: InboxEntry[]
 }) {
   const sendTo = useCallback((target: SessionView, data: string) => {
     // A chat session has no terminal to type into; its answers go through the chat, by request id.
@@ -50,17 +47,5 @@ export function useInboxActions({ sessionMap, flash, showSessionById, setDismiss
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not resume the agent')) })
   }, [sendTo, setDismissedRestores, showSessionById])
 
-  const clearEntry = useCallback((sessionId: string) => {
-    const target = sessionMap.get(sessionId)
-    if (target) setCleared((current) => new Map(current).set(sessionId, target.status))
-  }, [sessionMap, setCleared])
-
-  const clearSettled = useCallback(() => {
-    setCleared((current) => {
-      const next = new Map(current)
-      for (const entry of inboxEntries) if (entry.session.status !== 'needs') next.set(entry.session.id, entry.session.status)
-      return next
-    })
-  }, [inboxEntries, setCleared])
-  return { answerSession, sendTo, resumeInterrupted, clearEntry, clearSettled }
+  return { answerSession, sendTo, resumeInterrupted }
 }

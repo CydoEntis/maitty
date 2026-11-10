@@ -11,7 +11,7 @@ import type { PaletteItem } from './model/palette'
 import { THEMES } from './theme/themes'
 
 /** The command palette's list: sessions, their projects, actions and themes. */
-export function usePaletteItems({ paletteOpen, platform, layout, sessions, projectOf, showSessionById, home, newSession, focusedMachineNumber, newTerminal, focusedSession, toggleAgentTerminal, runShortcut, heads, online, newSessionOn, preferences, setPreferences, split, setInboxOpen, setSettingsSection, inspectRefusal, setInspectOpen, setFindOpen, setFocusMode, setShortcutsOpen, setLayout, startAgent }: {
+export function usePaletteItems({ paletteOpen, platform, layout, sessions, projectOf, showSessionById, home, newSession, focusedMachineNumber, newTerminal, focusedSession, toggleAgentTerminal, runShortcut, heads, online, newSessionOn, preferences, setPreferences, split, setSettingsSection, inspectRefusal, setInspectOpen, setFindOpen, setFocusMode, setShortcutsOpen, setLayout, startAgent }: {
   paletteOpen: boolean
   platform: Platform
   layout: Layout
@@ -31,7 +31,6 @@ export function usePaletteItems({ paletteOpen, platform, layout, sessions, proje
   preferences: SettingsPreferences
   setPreferences: Dispatch<SetStateAction<SettingsPreferences>>
   split: (paneId: string | null, direction: SplitDirection) => void
-  setInboxOpen: Dispatch<SetStateAction<boolean>>
   setSettingsSection: Dispatch<SetStateAction<DesktopSettingsSection | null>>
   inspectRefusal: string | null
   setInspectOpen: Dispatch<SetStateAction<boolean>>
@@ -75,7 +74,6 @@ export function usePaletteItems({ paletteOpen, platform, layout, sessions, proje
       action('sidebar-side', preferences.sidebarSide === 'left' ? 'Move sidebar to the right' : 'Move sidebar to the left', () => { setPreferences((current) => ({ ...current, sidebarSide: current.sidebarSide === 'left' ? 'right' : 'left' })) }),
       action('split-right', 'Split right', () => { split(null, 'right') }, keys('split-right')),
       action('split-down', 'Split down', () => { split(null, 'down') }, keys('split-down')),
-      action('inbox', 'Open the inbox', () => { setInboxOpen(true) }, keys('inbox')),
       action('usage', 'Open usage and cost', () => { setSettingsSection('usage') }, keys('usage')),
       action('jump-needs', 'Jump to the next session that needs you', () => { runShortcut('jump-needs') }, keys('jump-needs')),
       action('inspect', 'Inspect the repository', () => { if (inspectRefusal !== null) toast.message(inspectRefusal); else setInspectOpen(true) }, keys('inspect')),
@@ -92,6 +90,6 @@ export function usePaletteItems({ paletteOpen, platform, layout, sessions, proje
     ]
     for (const candidate of THEMES) items.push({ id: `theme-${candidate.name}`, label: candidate.name, detail: candidate.family, kind: 'Theme', needsQuery: true, run: () => { setPreferences((current) => ({ ...current, themeMode: candidate.light ? 'light' : 'dark', ...(candidate.light ? { lightTheme: candidate.name } : { darkTheme: candidate.name }) })) } })
     return items
-  }, [paletteOpen, layout, sessions, focusedSession, heads, preferences.sidebarSide, platform, projectOf, showSessionById, home, newSession, focusedMachineNumber, newTerminal, toggleAgentTerminal, runShortcut, online, newSessionOn, setPreferences, split, setInboxOpen, setSettingsSection, inspectRefusal, setInspectOpen, setFindOpen, setFocusMode, setShortcutsOpen, setLayout, startAgent])
+  }, [paletteOpen, layout, sessions, focusedSession, heads, preferences.sidebarSide, platform, projectOf, showSessionById, home, newSession, focusedMachineNumber, newTerminal, toggleAgentTerminal, runShortcut, online, newSessionOn, setPreferences, split, setSettingsSection, inspectRefusal, setInspectOpen, setFindOpen, setFocusMode, setShortcutsOpen, setLayout, startAgent])
   return { paletteItems }
 }

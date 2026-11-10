@@ -7,36 +7,49 @@
   border-radius: var(--r14);
   box-shadow: inset 0 1px 0 rgba(var(--hl), calc(.05 * var(--hk) * var(--gk))), 0 10px 30px -12px rgba(var(--sd), calc(.7 * var(--sk) * var(--gk)));
 }
-.mx-sidebar-head { flex: none; height: 48px; display: flex; align-items: center; gap: 4px; padding: 0 10px; }
+/* The top of the sidebar: New chat with the rest of what can start beside it, then Search. Rows, not a toolbar. */
+.mx-sidebar-top { flex: none; display: flex; flex-direction: column; gap: 2px; padding: 10px 8px 6px; }
+.mx-top-line { display: flex; align-items: center; gap: 2px; }
+.mx-top-button { flex: 1; min-width: 0; height: 32px; display: flex; align-items: center; gap: 9px; padding: 0 10px; border-radius: 8px; font-size: calc(13px * var(--sidebar-text, 1)); color: var(--fg2); text-align: left; transition: background-color .14s ease, color .14s ease; }
+.mx-top-button.is-new { font-weight: 500; color: var(--fg); }
+.mx-top-button:not(:disabled):hover { background: rgba(var(--hl), calc(.05 * var(--hk))); }
+.mx-top-button:disabled { opacity: .4; }
+.mx-top-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mx-top-keys { flex: none; font-size: 11px; font-weight: 500; color: var(--dim); }
 .mx-head-button { position: relative; width: 28px; height: 28px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 7px; color: var(--muted); transition: background-color .14s ease, color .14s ease; }
 .mx-head-button.is-small { width: 26px; height: 26px; }
 .mx-head-button:not(:disabled):hover { background: rgba(var(--hl), calc(.06 * var(--hk))); color: var(--fg); }
 .mx-head-button:disabled { opacity: .4; }
 .mx-head-button.is-rail { width: calc(36px * var(--icon-scale, 1)); height: calc(32px * var(--icon-scale, 1)); border-radius: 9px; }
-.mx-inbox-button { min-width: 28px; }
-.mx-inbox-count { position: absolute; top: -3px; right: -4px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 700; background: var(--m-raise); color: var(--fg2); font-variant-numeric: tabular-nums; animation: v9pop .28s var(--ease-out); }
-.mx-inbox-count.is-needs { background: var(--warn); color: var(--on-warn); }
 .mx-settings-button { width: auto; height: 26px; padding: 0 8px; }
 
-.mx-filter {
-  flex: none; height: 32px; margin: 0 10px 8px; display: flex; align-items: center; gap: 8px; padding: 0 6px 0 11px;
-  border-radius: 9px;
-  background: linear-gradient(180deg, rgba(var(--hl), calc(.075 * var(--hk) * var(--gk))), rgba(var(--hl), calc(.03 * var(--hk) * var(--gk))));
-  border: 1px solid rgba(var(--hl), calc(.13 * var(--hk)));
-  box-shadow: inset 0 1px 0 rgba(var(--hl), calc(.06 * var(--hk) * var(--gk))), 0 1px 2px rgba(var(--sd), calc(.35 * var(--sk) * var(--gk)));
-  color: color-mix(in oklab, var(--fg2) 70%, var(--muted));
-  transition: border-color .14s ease;
-}
-.mx-filter:hover { border-color: rgba(var(--hl), calc(.2 * var(--hk))); }
-.mx-filter:focus-within { border-color: var(--accent-line); }
-.mx-filter input { flex: 1; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--fg); font-size: 13px; }
-.mx-filter input:focus-visible { outline: none; }
-.mx-filter-hint { flex: none; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; background: rgba(var(--sd), calc(.35 * var(--sk))); border: 1px solid rgba(var(--hl), calc(.16 * var(--hk))); font-family: inherit; font-size: 11px; color: color-mix(in oklab, var(--fg) 60%, var(--fg2)); }
-.mx-filter-clear { flex: none; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--dim); }
-.mx-filter-clear:hover { color: var(--fg); background: rgba(var(--hl), calc(.06 * var(--hk))); }
+/* Which project, and what the headings are: two quiet buttons, each opening a short list. */
+.mx-sidebar-filters { flex: none; display: flex; align-items: center; gap: 6px; padding: 2px 8px 6px; }
+.mx-filter-button { flex: none; min-width: 0; height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 8px; border-radius: 7px; font-size: calc(12.5px * var(--sidebar-text, 1)); color: var(--muted); white-space: nowrap; transition: background-color .14s ease, color .14s ease; }
+.mx-filter-button.is-project { flex: 1; font-weight: 500; }
+.mx-filter-button:hover { background: rgba(var(--hl), calc(.05 * var(--hk))); color: var(--fg); }
+.mx-filter-label { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; }
 
 .mx-sidebar-list { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 0 8px 12px; display: flex; flex-direction: column; gap: 16px; }
 .mx-machines { display: flex; flex-direction: column; gap: 14px; }
+/* The status and project lists: a heading that says what the rows under it share, and folds them away. */
+.mx-sections { display: flex; flex-direction: column; gap: 6px; }
+.mx-section { display: flex; flex-direction: column; }
+.mx-section-head { height: calc(28px * var(--pad, 1)); display: flex; align-items: center; gap: 7px; padding: 0 10px; border-radius: 7px; font-size: calc(12px * var(--sidebar-text, 1)); font-weight: 600; color: var(--fg); white-space: nowrap; }
+.mx-section-head:hover { background: rgba(var(--hl), calc(.03 * var(--hk))); }
+.mx-section-head.is-needs { color: var(--warn); }
+.mx-section-head.is-working { color: var(--working); }
+.mx-section-head.is-done { color: var(--ok); }
+.mx-section-head.is-idle { color: var(--muted); }
+.mx-section-name { flex: none; }
+.mx-section-machine { flex: none; font-weight: 400; color: var(--muted); }
+.mx-section-count { flex: none; font-size: 11px; font-weight: 500; color: var(--dim); font-variant-numeric: tabular-nums; }
+.mx-section-hint { min-width: 0; font-weight: 400; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
+.mx-section-head .mx-project-square { margin: 0; }
+/* Machines that need the app, under a list that has no machine headings to say so. */
+.mx-machine-notes { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--pane-line); }
+.mx-machine-note { display: flex; align-items: center; gap: 6px; min-height: 26px; padding: 0 3px 0 10px; font-size: calc(12px * var(--sidebar-text, 1)); color: var(--muted); }
+.mx-row-machine { flex: none; }
 .mx-machine { display: flex; flex-direction: column; gap: 2px; }
 .mx-machine.is-away .mx-rows, .mx-machine.is-away .mx-projects { opacity: .6; }
 .mx-machine-head { display: flex; align-items: center; gap: 6px; min-height: 26px; padding: 0 3px 0 0; }

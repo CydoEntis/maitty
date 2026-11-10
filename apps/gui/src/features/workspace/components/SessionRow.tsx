@@ -10,6 +10,8 @@ type Props = {
   selected: boolean
   /** Inside a project group the project is in the heading, so the row leaves it out. */
   showProject: boolean
+  /** The other machine the session runs on, when no heading above the row says so. */
+  machine?: string | null
   renaming: boolean
   onShow: () => void
   onRename: () => void
@@ -19,7 +21,7 @@ type Props = {
 }
 
 /** The line under a row's name: the project's colour and name, then the branch in mono. */
-function SubLine({ session, showProject }: { session: SessionView; showProject: boolean }) {
+function SubLine({ session, showProject, machine }: { session: SessionView; showProject: boolean; machine: string | null }) {
   const project = projectOf(session)
   return (
     <span className="mx-row-sub">
@@ -29,6 +31,7 @@ function SubLine({ session, showProject }: { session: SessionView; showProject: 
           {project}
         </span>
       )}
+      {machine !== null && <span className="mx-row-machine">· {machine}</span>}
       {showProject && session.branch && <span aria-hidden="true">·</span>}
       {session.branch && <span className="mx-row-branch">{session.branch}</span>}
     </span>
@@ -36,7 +39,7 @@ function SubLine({ session, showProject }: { session: SessionView; showProject: 
 }
 
 /** One session in the sidebar: its app tile and status badge, name, project and branch, and a word when it stopped. */
-export function SessionRow({ session, selected, showProject, renaming, onShow, onRename, onSetName, onCancelRename, onContextMenu }: Props) {
+export function SessionRow({ session, selected, showProject, machine = null, renaming, onShow, onRename, onSetName, onCancelRename, onContextMenu }: Props) {
   const title = rowTitle(session)
   const active = !isShell(session) && session.status !== 'idle'
   const word = rowWord(session)
@@ -54,7 +57,7 @@ export function SessionRow({ session, selected, showProject, renaming, onShow, o
         {icon}
         <span className="mx-row-text">
           <InlineName value={session.name ?? ''} placeholder={title} label="Session name" maxLength={MAX_SESSION_NAME_LENGTH} onCommit={onSetName} onCancel={onCancelRename} />
-          <SubLine session={session} showProject={showProject} />
+          <SubLine session={session} showProject={showProject} machine={machine} />
         </span>
       </div>
     )
@@ -74,7 +77,7 @@ export function SessionRow({ session, selected, showProject, renaming, onShow, o
       {icon}
       <span className="mx-row-text">
         <span className="mx-row-name">{title}</span>
-        <SubLine session={session} showProject={showProject} />
+        <SubLine session={session} showProject={showProject} machine={machine} />
       </span>
       {word !== '' && <span className="mx-row-word">{word}</span>}
     </button>

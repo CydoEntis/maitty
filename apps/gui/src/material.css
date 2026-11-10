@@ -3,7 +3,7 @@
  *
  * Every surface in the app is one of three roles, and reads its look from the role's tokens, never
  * from its own colours:
- *   panel  the big resting surfaces (the sidebar, the main card, the Inbox, the inspector)
+ *   panel  the big resting surfaces (the sidebar, the main card, the inspector)
  *   float  what opens over them (menus, popovers, dialogs, the palette, find)
  *   field  what you type into or press (the message box and its tray)
  * A component picks its role by being listed below, or by carrying `mx-pop` (a popover or menu
@@ -146,7 +146,6 @@
 .mx-app .mx-card,
 .mx-app .mx-main,
 .mx-app .mx-sidebar,
-.mx-app .mx-inbox,
 .mx-app .mx-inspect,
 .mx-app .mx-activity {
   background: var(--m-sheen), var(--m-panel);

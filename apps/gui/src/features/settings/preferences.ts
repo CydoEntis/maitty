@@ -17,6 +17,8 @@ export type IconSize = 'small' | 'medium' | 'large'
 export type SidebarSide = 'left' | 'right'
 /** How the sidebar orders sessions: as they were created (rows never move), or with what needs you first. */
 export type SidebarOrder = 'creation' | 'priority'
+/** What the sidebar's headings are: what each session is doing, its project, or its machine. */
+export type SidebarGroup = 'status' | 'project' | 'machine'
 /** The window style: one of four looks that share one layout (`theme/windowStyles.ts`). Kept by this window alone. */
 export type StyleChoice = WindowStyle
 /** App and folder icons keep their colours, or drop to neutral gray tiles. Independent of the style. */
@@ -78,6 +80,7 @@ export type SettingsPreferences = {
   sidebarWidth: number
   sidebarSide: SidebarSide
   sidebarOrder: SidebarOrder
+  sidebarGroup: SidebarGroup
   iconSize: IconSize
   style: StyleChoice
   iconColor: IconColor
@@ -174,6 +177,7 @@ function defaults(): SettingsPreferences {
     sidebarWidth: SIDEBAR_WIDTH_DEFAULT,
     sidebarSide: 'left',
     sidebarOrder: 'creation',
+    sidebarGroup: 'status',
     iconSize: 'medium',
     iconColor: 'color',
     chatViewDefault: DEFAULT_CHAT_VIEWS,
@@ -249,6 +253,7 @@ export function readSettingsPreferences(): SettingsPreferences {
       sidebarWidth: clampNumber(preferences.sidebarWidth, SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX, fallback.sidebarWidth),
       sidebarSide: preferences.sidebarSide === 'left' || preferences.sidebarSide === 'right' ? preferences.sidebarSide : fallback.sidebarSide,
       sidebarOrder: preferences.sidebarOrder === 'creation' || preferences.sidebarOrder === 'priority' ? preferences.sidebarOrder : fallback.sidebarOrder,
+      sidebarGroup: preferences.sidebarGroup === 'status' || preferences.sidebarGroup === 'project' || preferences.sidebarGroup === 'machine' ? preferences.sidebarGroup : fallback.sidebarGroup,
       iconSize: preferences.iconSize === 'small' || preferences.iconSize === 'medium' || preferences.iconSize === 'large' ? preferences.iconSize : fallback.iconSize,
       style: styleOf(preferences.style) ?? fallback.style,
       chatViewDefault: chatViewDefault(preferences.chatViewDefault, fallback.chatViewDefault),

@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { machineTitle, UPDATE_WORDS, type MachineHead, type UpdateAction } from '../model/machines'
 import { STATUS_WORD, type SessionView } from '../model/session'
-import { isShell, machineGroups, projectGroups, rowTitle, type MachineGroup, type SidebarOrder } from '../model/sidebar'
+import { inProject, isShell, machineGroups, projectChoices, projectGroups, projectSections, rowTitle, SIDEBAR_GROUPINGS, statusSections, type MachineGroup, type SidebarGrouping, type SidebarOrder } from '../model/sidebar'
 import type { SubagentView } from '../model/subagents'
 import { useTipWithKeys, useShortcutText } from '@/features/shortcuts/platform'
 import { SidebarResizer } from './SidebarResizer'
@@ -9,6 +9,7 @@ import { AppIcon, Icon, StatusBadge } from './glyphs'
 import { Collapse } from './Collapse'
 import { useReducedMotion } from './motion'
 import { useFlip } from './useFlip'
+import { useStatusFlash } from './useStatusFlash'
 import { MenuPopup, type MenuEntry } from './MenuPopup'
 import { SessionRow } from './SessionRow'
 import { SubagentList, SubagentPeek } from './SubagentRows'
@@ -22,6 +23,11 @@ export type SidebarProps = {
   /** The machine groups: this computer first, then the others. */
   machines: readonly MachineHead[]
   order: SidebarOrder
+  /** What the headings are, and how the user picks another. */
+  grouping: SidebarGrouping
+  onGrouping: (grouping: SidebarGrouping) => void
+  /** Opens the search over every session, project and action. */
+  onSearch: () => void
   focusedId: string | null
   openSubagent: OpenSubagent | null
   mode: 'docked' | 'rail'
@@ -38,10 +44,6 @@ export type SidebarProps = {
   width: number
   onResize: (width: number) => void
   onResizeEnd: (width: number) => void
-  /** How many sessions the Inbox holds, and whether any of them needs you. */
-  inboxCount: number
-  inboxNeeds: boolean
-  onOpenInbox: () => void
   onNewAgentChat: (machine: number) => void
   onNewShell: (machine: number) => void
   onAddMachine: () => void
@@ -80,6 +82,9 @@ export type SidebarProps = {
 
 export type DraftChat = { machine: number }
 
+/** The gap between a button and the menu that opens under it. */
+const MENU_GAP_PX = 4
+
 type OpenMenu = { title: string; at: { x: number; y: number }; items: MenuEntry[] }
 
 export function Sidebar(props: SidebarProps) {
@@ -93,34 +98,7 @@ export function Sidebar(props: SidebarProps) {
   )
 }
 
-/** The Inbox button with its count; amber while anything needs you. */
-function InboxButton({ count, needs, onClick, rail = false }: { count: number; needs: boolean; onClick: () => void; rail?: boolean }) {
-  const tip = useTipWithKeys()
-  const label = `Inbox, ${String(count)}${needs ? ', something needs you' : ''}`
-  return (
-    <button type="button" className={`mx-head-button mx-inbox-button${rail ? ' is-rail' : ''}`} aria-label={label} title={tip('Inbox', 'inbox')} onClick={onClick}>
-      <Icon name="inbox" size={15} />
-      {count > 0 && <span className={`mx-inbox-count${needs ? ' is-needs' : ''}`}>{count}</span>}
-    </button>
-  )
-}
-
-/** `/` focuses the filter from anywhere outside a pane or another field. */
-function useSlashFocus(input: React.RefObject<HTMLInputElement | null>) {
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return
-      const target = event.target
-      if (target instanceof Element && target.closest('input, textarea, select, [contenteditable="true"], [data-pane], .xterm')) return
-      event.preventDefault()
-      input.current?.focus()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => { window.removeEventListener('keydown', onKeyDown) }
-  }, [input])
-}
-
-/** Which machines are folded and which are grouped by project. */
+/** Which headings are folded and which machines are grouped by project. */
 function useMachineViews() {
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set())
   const [byProject, setByProject] = useState<ReadonlySet<string>>(new Set())
@@ -136,16 +114,39 @@ function useMachineViews() {
 function Expanded(props: SidebarProps) {
   const tip = useTipWithKeys()
   const shortcutText = useShortcutText()
-  const input = useRef<HTMLInputElement>(null)
   const list = useRef<HTMLDivElement>(null)
-  const [query, setQuery] = useState('')
   const [menu, setMenu] = useState<OpenMenu | null>(null)
+  const [pickedProject, setPickedProject] = useState<string | null>(null)
   const views = useMachineViews()
-  useFlip(list, useReducedMotion())
-  useSlashFocus(input)
-  const filtering = query.trim() !== ''
-  const draft = filtering ? null : props.draft ?? null
-  const groups = machineGroups(props.sessions, props.machines, query, draft !== null, props.order)
+  const reduced = useReducedMotion()
+  useFlip(list, reduced)
+  useStatusFlash(list, props.sessions, reduced)
+  const projects = projectChoices(props.sessions)
+  // A project whose last session closed is no longer a choice, so the list goes back to all of them.
+  const project = projects.some((choice) => choice.name === pickedProject) ? pickedProject : null
+  const sessions = inProject(props.sessions, project)
+  const draft = props.draft ?? null
+  const groups = machineGroups(sessions, props.machines, draft !== null, props.order)
+  const groupingLabel = SIDEBAR_GROUPINGS.find(([grouping]) => grouping === props.grouping)?.[1] ?? ''
+  const localMachine = props.machines[0]?.machine ?? 0
+  const picked = (on: boolean, otherwise = '') => (on ? '✓' : otherwise)
+  const projectMenu = (): MenuEntry[] => [
+    { label: 'All projects', hint: picked(project === null, String(props.sessions.length)), run: () => { setPickedProject(null) } },
+    ...(projects.length > 0 ? ['separator' as const] : []),
+    ...projects.map((choice) => ({ label: choice.name, hint: picked(project === choice.name, String(choice.count)), run: () => { setPickedProject(choice.name) } })),
+  ]
+  const groupingMenu = (): MenuEntry[] => SIDEBAR_GROUPINGS.map(([grouping, label]) => ({ label, hint: picked(props.grouping === grouping), run: () => { props.onGrouping(grouping) } }))
+  const startMenu = (): MenuEntry[] => [
+    { label: 'New agent chat', hint: shortcutText('new-agent-chat'), disabled: !props.canStart, run: () => { props.onNewAgentChat(localMachine) } },
+    { label: 'New shell', hint: shortcutText('new-terminal'), disabled: !props.canStart, run: () => { props.onNewShell(localMachine) } },
+    'separator',
+    { label: 'Add a remote machine…', run: props.onAddMachine },
+  ]
+  /** A menu under the button that opens it, not at the pointer, so it opens the same from the keyboard. */
+  const openUnder = (event: MouseEvent<HTMLElement>, title: string, items: MenuEntry[]) => {
+    const box = event.currentTarget.getBoundingClientRect()
+    setMenu({ title, at: { x: box.left, y: box.bottom + MENU_GAP_PX }, items })
+  }
   const openMenu = (event: MouseEvent, title: string, items: MenuEntry[]) => {
     event.preventDefault()
     event.stopPropagation()
@@ -204,7 +205,7 @@ function Expanded(props: SidebarProps) {
     ]
   }
 
-  const renderRow = (session: SessionView, showProject: boolean) => {
+  const renderRow = (session: SessionView, showProject: boolean, showMachine = false) => {
     const selected = session.id === props.focusedId
     const subagents = session.subagents
     return (
@@ -213,6 +214,7 @@ function Expanded(props: SidebarProps) {
           session={session}
           selected={selected}
           showProject={showProject}
+          machine={showMachine ? session.machineName : null}
           renaming={props.renamingId === session.id}
           onShow={() => { props.onShowSession(session.id) }}
           onRename={() => { props.onRenameSession(session.id) }}
@@ -238,42 +240,51 @@ function Expanded(props: SidebarProps) {
 
   return (
     <div className="mx-sidebar-expanded">
-      <div className="mx-sidebar-head">
-        <button type="button" className="mx-head-button is-small" aria-label="Collapse sidebar" title={tip('Collapse sidebar', 'toggle-sidebar')} onClick={props.onToggleRail}><Icon name="collapse" /></button>
-        <span className="mx-spacer" />
-        <button type="button" className="mx-head-button" aria-label="New agent chat" title={tip('New agent chat', 'new-agent-chat')} disabled={!props.canStart} onClick={() => { props.onNewAgentChat(props.machines[0]?.machine ?? 0) }}><Icon name="chatPlus" size={15} /></button>
-        <button type="button" className="mx-head-button" aria-label="New shell" title={tip('New shell', 'new-terminal')} disabled={!props.canStart} onClick={() => { props.onNewShell(props.machines[0]?.machine ?? 0) }}><Icon name="terminal" size={15} /></button>
-        <button type="button" className="mx-head-button" aria-label="Add a remote machine" title="Add a remote machine" onClick={props.onAddMachine}><Icon name="serverPlus" size={15} /></button>
-        <InboxButton count={props.inboxCount} needs={props.inboxNeeds} onClick={props.onOpenInbox} />
+      <div className="mx-sidebar-top">
+        <div className="mx-top-line">
+          <button type="button" className="mx-top-button is-new" title={tip('New chat', 'new-agent-chat')} disabled={!props.canStart} onClick={() => { props.onNewAgentChat(localMachine) }}>
+            <Icon name="plus" size={14} /><span className="mx-top-label">New chat</span>
+          </button>
+          <button type="button" className="mx-head-button" aria-label="More to start" title="New shell, or add a remote machine" aria-haspopup="menu" onClick={(event) => { openUnder(event, 'Start', startMenu()) }}><Icon name="chevronDown" size={13} /></button>
+          <button type="button" className="mx-head-button" aria-label="Collapse sidebar" title={tip('Collapse sidebar', 'toggle-sidebar')} onClick={props.onToggleRail}><Icon name="collapse" /></button>
+        </div>
+        <button type="button" className="mx-top-button" title={tip('Search', 'palette')} onClick={props.onSearch}>
+          <Icon name="search" size={14} /><span className="mx-top-label">Search</span><span className="mx-top-keys mono" aria-hidden="true">{shortcutText('palette')}</span>
+        </button>
       </div>
-      <div className="mx-filter">
-        <Icon name="search" size={13} />
-        <input
-          ref={input}
-          type="text"
-          value={query}
-          placeholder="Filter sessions"
-          aria-label="Filter sessions"
-          spellCheck={false}
-          onChange={(event) => { setQuery(event.target.value) }}
-          onKeyDown={(event) => {
-            if (event.key !== 'Escape') return
-            // Esc empties the field and gives the keyboard back; it must not reach a pane behind it.
-            event.preventDefault()
-            event.stopPropagation()
-            setQuery('')
-            event.currentTarget.blur()
-          }}
-        />
-        {query === '' ? <kbd className="mx-filter-hint" aria-hidden="true">/</kbd> : <button type="button" className="mx-filter-clear" aria-label="Clear filter" onClick={() => { setQuery(''); input.current?.focus() }}><Icon name="close" size={11} /></button>}
+      <div className="mx-sidebar-filters">
+        <button type="button" className="mx-filter-button is-project" aria-label={`Show sessions from: ${project ?? 'All projects'}`} aria-haspopup="menu" onClick={(event) => { openUnder(event, 'Show sessions from', projectMenu()) }}>
+          <Icon name="folder" size={13} /><span className="mx-filter-label">{project ?? 'All projects'}</span><Icon name="chevronDown" size={10} />
+        </button>
+        <button type="button" className="mx-filter-button" aria-label={`Group by: ${groupingLabel}`} title="Group by" aria-haspopup="menu" onClick={(event) => { openUnder(event, 'Group by', groupingMenu()) }}>
+          <Icon name="layout" size={13} />{groupingLabel}<Icon name="chevronDown" size={10} />
+        </button>
       </div>
       <div ref={list} className="mx-sidebar-list">
+        {props.grouping !== 'machine' && (
+          <section aria-label="Agents" className="mx-sections">
+            {draft !== null && <DraftRow />}
+            {props.grouping === 'status' && statusSections(sessions).map((section) => (
+              <ListSection key={section.key} id={`status:${section.key}`} tone={section.key} name={section.name} hint={section.hint} count={section.sessions.length} label={section.name} open={views.isOpen(`status:${section.key}`)} onToggle={() => { views.toggle(`status:${section.key}`) }}>
+                {section.sessions.map((session) => renderRow(session, true, true))}
+              </ListSection>
+            ))}
+            {props.grouping === 'project' && projectSections(sessions, props.machines).map((section) => (
+              <ListSection key={section.key} id={section.key} name={section.name} color={section.color} machine={section.head.name === null ? null : section.head} needs={section.needs} count={section.sessions.length} label={section.head.name === null ? section.name : `${section.name} on ${machineTitle(section.head)}`} open={views.isOpen(section.key)} onToggle={() => { views.toggle(section.key) }}>
+                {section.sessions.map((session) => renderRow(session, false))}
+              </ListSection>
+            ))}
+            {props.sessions.length === 0 && draft === null && <div className="mx-empty-note">No agents running. New chat starts one.</div>}
+            <MachineNotes heads={props.machines} progress={props.updateProgress} onUpdate={props.onUpdateMachine} />
+          </section>
+        )}
+        {props.grouping === 'machine' && (
         <section aria-label="Agents" className="mx-machines">
           {groups.map((group) => (
             <MachineSection
               key={group.head.key}
               group={group}
-              open={filtering || views.isOpen(group.head.key) || draft?.machine === group.head.machine}
+              open={views.isOpen(group.head.key) || draft?.machine === group.head.machine}
               draft={draft?.machine === group.head.machine}
               progress={group.head.name === null ? undefined : props.updateProgress?.[group.head.name]}
               byProject={views.isByProject(group.head.key)}
@@ -287,9 +298,9 @@ function Expanded(props: SidebarProps) {
               renderRow={renderRow}
             />
           ))}
-          {filtering && groups.length === 0 && <div className="mx-empty-note">No agent matches “{query.trim()}”.</div>}
-          {!filtering && props.sessions.length === 0 && draft === null && <div className="mx-empty-note">No agents running. Use the buttons above to start one.</div>}
+          {props.sessions.length === 0 && draft === null && <div className="mx-empty-note">No agents running. New chat starts one.</div>}
         </section>
+        )}
       </div>
       <div className="mx-sidebar-foot">
         {props.online
@@ -298,6 +309,71 @@ function Expanded(props: SidebarProps) {
         <button type="button" className="mx-head-button mx-settings-button" aria-label="Settings" title={tip('Settings', 'settings')} onClick={props.onOpenSettings}><Icon name="gear" size={15} /></button>
       </div>
       {menu && <MenuPopup key={`${String(menu.at.x)},${String(menu.at.y)}`} title={menu.title} at={menu.at} items={menu.items} portalContainer={props.portalContainer} onClose={() => { setMenu(null) }} />}
+    </div>
+  )
+}
+
+type ListSectionProps = {
+  id: string
+  name: string
+  /** What the list is called for a screen reader: the heading, with its machine when it has one. */
+  label: string
+  count: number
+  open: boolean
+  onToggle: () => void
+  children: ReactNode
+  /** A status section: its colour, and the few words that say what the status means. */
+  tone?: string
+  hint?: string
+  /** A project section: its colour square, the other machine it is on, and how many of its sessions need you. */
+  color?: string
+  machine?: MachineHead | null
+  needs?: number
+}
+
+/** One heading of the status or project list, with the rows under it; the heading folds them away. */
+function ListSection({ id, name, label, count, open, onToggle, children, tone, hint, color, machine = null, needs = 0 }: ListSectionProps) {
+  return (
+    <div className="mx-section" data-section={id}>
+      <button type="button" className={`mx-section-head${tone === undefined ? '' : ` is-${tone}`}`} aria-expanded={open} onClick={onToggle}>
+        {color !== undefined && <span className="mx-project-square" style={{ background: color }} aria-hidden="true" />}
+        <span className="mx-section-name">{name}</span>
+        {machine !== null && <span className="mx-section-machine">· {machineTitle(machine)}</span>}
+        {machine !== null && <span className={`mx-machine-dot${machine.down ? ' is-offline' : ''}`} role="img" aria-label={machine.down ? `${machineTitle(machine)} is ${machine.chip?.word ?? 'not reachable'}` : `${machineTitle(machine)} is connected`} />}
+        <span className="mx-section-count mono">{count}</span>
+        {needs > 0 && <span className="mx-project-needs" aria-label={`${String(needs)} need you`}>{needs}</span>}
+        {hint !== undefined && <span className="mx-section-hint">{hint}</span>}
+        <span className="mx-spacer" />
+        <span className={`mx-caret-wrap${open ? ' is-open' : ''}`}><Icon name="caret" /></span>
+      </button>
+      <Collapse open={open}>
+        <div className="mx-rows" role="list" aria-label={label}>{children}</div>
+      </Collapse>
+    </div>
+  )
+}
+
+/**
+ * Machines that need the app, when the list is not grouped by machine: there is no machine heading
+ * to carry the Update button then, and a machine that cannot run anything must still say so.
+ */
+function MachineNotes({ heads, progress, onUpdate }: { heads: readonly MachineHead[]; progress: Readonly<Record<string, number>> | undefined; onUpdate: (name: string, action: UpdateAction) => void }) {
+  const waiting = heads.flatMap((head) => (head.name !== null && (head.updateAction !== null || progress?.[head.name] !== undefined) ? [{ head, name: head.name }] : []))
+  if (waiting.length === 0) return null
+  return (
+    <div className="mx-machine-notes" role="group" aria-label="Machines that need Maitty">
+      {waiting.map(({ head, name }) => {
+        const done = progress?.[name]
+        return (
+          <div key={head.key} className="mx-machine-note">
+            <span className="mx-machine-icon" aria-hidden="true"><Icon name="server" size={13} /></span>
+            <span className="mx-machine-name">{machineTitle(head)}</span>
+            {done !== undefined
+              ? <span className="mx-machine-pct mono">{String(done)}%</span>
+              : head.updateAction !== null && <UpdateButton name={name} action={head.updateAction} onUpdate={onUpdate} />}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -418,11 +494,11 @@ function Rail(props: SidebarProps) {
         <button type="button" className="mx-head-button is-rail" aria-label="Expand sidebar" title={tip('Expand sidebar', 'toggle-sidebar')} onClick={props.onToggleRail}><Icon name="expand" /></button>
         <button type="button" className="mx-head-button is-rail" aria-label="New agent chat" title={tip('New agent chat', 'new-agent-chat')} disabled={!props.canStart} onClick={() => { props.onNewAgentChat(props.machines[0]?.machine ?? 0) }}><Icon name="chatPlus" size={15} /></button>
         <button type="button" className="mx-head-button is-rail" aria-label="New shell" title={tip('New shell', 'new-terminal')} disabled={!props.canStart} onClick={() => { props.onNewShell(props.machines[0]?.machine ?? 0) }}><Icon name="terminal" size={15} /></button>
-        <InboxButton rail count={props.inboxCount} needs={props.inboxNeeds} onClick={props.onOpenInbox} />
+        <button type="button" className="mx-head-button is-rail" aria-label="Search" title={tip('Search', 'palette')} onClick={props.onSearch}><Icon name="search" size={15} /></button>
       </div>
       <div className="mx-rail-divider" />
       <div className="mx-rail-list mx-no-scrollbar" role="list" aria-label="Sessions">
-        {machineGroups(props.sessions, props.machines, '', false, props.order).flatMap((group) => group.sessions).map((session) => (
+        {machineGroups(props.sessions, props.machines, false, props.order).flatMap((group) => group.sessions).map((session) => (
           <button
             key={session.id}
             type="button"

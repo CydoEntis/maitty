@@ -6,7 +6,6 @@
 export const ESC_LADDER = [
   'whats-new',
   'palette',
-  'inbox',
   'settings',
   'drawer',
   'focus-mode',

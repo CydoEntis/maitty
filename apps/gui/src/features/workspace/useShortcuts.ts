@@ -16,33 +16,30 @@ import { jumpToast, nextNeedsYou, NOTHING_NEEDS_YOU } from '@/features/needs-you
 import { resolveStartFolder } from './model/startFolder'
 
 /** Listens for the keyboard: a shortcut runs its action, and Esc closes the topmost layer. */
-export function useShortcutKeys({ runShortcut, canUndoClose, dialogOpen, onNewChatPage, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen, setPaletteOpen, setInboxOpen, setSettingsSection, setNewChatOpen, setDrawerOpen, setFocusMode, platform }: {
+export function useShortcutKeys({ runShortcut, canUndoClose, dialogOpen, onNewChatPage, overlayOpen, paletteOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen, setPaletteOpen, setSettingsSection, setNewChatOpen, setDrawerOpen, setFocusMode, platform }: {
   runShortcut: (action: ShortcutAction) => void
   canUndoClose: boolean
   dialogOpen: boolean
   onNewChatPage: boolean
   overlayOpen: boolean
   paletteOpen: boolean
-  inboxOpen: boolean
   focusMode: boolean
   drawerShown: boolean
   welcomeOpen: boolean
   shortcutsOpen: boolean
   setPaletteOpen: Dispatch<SetStateAction<boolean>>
-  setInboxOpen: Dispatch<SetStateAction<boolean>>
   setSettingsSection: Dispatch<SetStateAction<DesktopSettingsSection | null>>
   setNewChatOpen: Dispatch<SetStateAction<boolean>>
   setDrawerOpen: Dispatch<SetStateAction<boolean>>
   setFocusMode: Dispatch<SetStateAction<boolean>>
   platform: Platform
 }) {
-  const shortcutState = useRef({ runShortcut, canUndoClose: () => canUndoClose, settingsOpen: dialogOpen, onNewChatPage, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
-  useEffect(() => { shortcutState.current = { runShortcut, canUndoClose: () => canUndoClose, settingsOpen: dialogOpen, onNewChatPage, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
+  const shortcutState = useRef({ runShortcut, canUndoClose: () => canUndoClose, settingsOpen: dialogOpen, onNewChatPage, overlayOpen, paletteOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
+  useEffect(() => { shortcutState.current = { runShortcut, canUndoClose: () => canUndoClose, settingsOpen: dialogOpen, onNewChatPage, overlayOpen, paletteOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
   useEffect(() => {
     // How each layer of the Esc ladder closes. A new dialog adds its closer here and its id to ESC_LADDER.
     const closers: Partial<Record<EscLayer, () => void>> = {
       palette: () => { setPaletteOpen(false) },
-      inbox: () => { setInboxOpen(false) },
       // The new chat page counts as a dialog here, so this layer is the one that closes it too.
       settings: () => { setSettingsSection(null); setNewChatOpen(false) },
       drawer: () => { setDrawerOpen(false) },
@@ -64,7 +61,7 @@ export function useShortcutKeys({ runShortcut, canUndoClose, dialogOpen, onNewCh
       if (event.key === 'Escape') {
         // A menu or list that is open (the spinner picker in Settings) takes Esc itself.
         if (event.target instanceof Element && event.target.closest('[role="menu"]')) return
-        const top = topmostOpen({ palette: state.paletteOpen, inbox: state.inboxOpen, settings: state.settingsOpen, drawer: state.drawerShown, 'focus-mode': state.focusMode })
+        const top = topmostOpen({ palette: state.paletteOpen, settings: state.settingsOpen, drawer: state.drawerShown, 'focus-mode': state.focusMode })
         if (top === null) return
         // What Esc closes is not also sent on to the terminal, where it would interrupt an agent.
         event.preventDefault()
@@ -73,7 +70,7 @@ export function useShortcutKeys({ runShortcut, canUndoClose, dialogOpen, onNewCh
         return
       }
       if (state.overlayOpen) {
-        if (match?.action === 'palette' || match?.action === 'inbox') {
+        if (match?.action === 'palette') {
           event.preventDefault()
           event.stopPropagation()
           state.runShortcut(match.action)
@@ -90,11 +87,11 @@ export function useShortcutKeys({ runShortcut, canUndoClose, dialogOpen, onNewCh
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => { window.removeEventListener('keydown', onKeyDown, true) }
-  }, [platform, setDrawerOpen, setFocusMode, setInboxOpen, setNewChatOpen, setPaletteOpen, setSettingsSection])
+  }, [platform, setDrawerOpen, setFocusMode, setNewChatOpen, setPaletteOpen, setSettingsSection])
 }
 
 /** What each shortcut does. The palette and the keyboard both go through it. */
-export function useShortcutRunner({ newSession, focusedMachineNumber, newTerminal, setSettingsSection, startAgentSession, preferences, home, split, setLayout, layout, askToClose, endSessions, toggleSidebar, setPaletteOpen, setInboxOpen, sessions, focusedSession, flash, showSessionById, undoLastClose, chatOf, paneViews, setFocusMode, setShortcutsOpen, setTextSize, toggleInspect, setFindOpen, online, setWorktreeFrom }: {
+export function useShortcutRunner({ newSession, focusedMachineNumber, newTerminal, setSettingsSection, startAgentSession, preferences, home, split, setLayout, layout, askToClose, endSessions, toggleSidebar, setPaletteOpen, sessions, focusedSession, flash, showSessionById, undoLastClose, chatOf, paneViews, setFocusMode, setShortcutsOpen, setTextSize, toggleInspect, setFindOpen, online, setWorktreeFrom }: {
   newSession: (machine?: number) => void
   focusedMachineNumber: number
   newTerminal: (machine?: number) => void
@@ -109,7 +106,6 @@ export function useShortcutRunner({ newSession, focusedMachineNumber, newTermina
   endSessions: (ids: string[], what: string) => void
   toggleSidebar: () => void
   setPaletteOpen: Dispatch<SetStateAction<boolean>>
-  setInboxOpen: Dispatch<SetStateAction<boolean>>
   sessions: SessionView[]
   focusedSession: SessionView | undefined
   flash: (text: string) => void
@@ -169,9 +165,6 @@ export function useShortcutRunner({ newSession, focusedMachineNumber, newTermina
       case 'palette':
         setPaletteOpen((open) => !open)
         return
-      case 'inbox':
-        setInboxOpen((open) => !open)
-        return
       case 'jump-needs': {
         const target = nextNeedsYou(sessions, focusedSession?.id ?? null)
         if (!target) flash(NOTHING_NEEDS_YOU)
@@ -229,6 +222,6 @@ export function useShortcutRunner({ newSession, focusedMachineNumber, newTermina
         }
         return
     }
-  }, [newSession, focusedMachineNumber, newTerminal, setSettingsSection, startAgentSession, preferences.defaultAgent, preferences.terminalFontSize, preferences.startFolder, split, setLayout, toggleSidebar, setPaletteOpen, setInboxOpen, undoLastClose, setFocusMode, setShortcutsOpen, setTextSize, toggleInspect, setFindOpen, layout, home, askToClose, endSessions, sessions, focusedSession, flash, showSessionById, chatOf, paneViews, online, setWorktreeFrom])
+  }, [newSession, focusedMachineNumber, newTerminal, setSettingsSection, startAgentSession, preferences.defaultAgent, preferences.terminalFontSize, preferences.startFolder, split, setLayout, toggleSidebar, setPaletteOpen, undoLastClose, setFocusMode, setShortcutsOpen, setTextSize, toggleInspect, setFindOpen, layout, home, askToClose, endSessions, sessions, focusedSession, flash, showSessionById, chatOf, paneViews, online, setWorktreeFrom])
   return { runShortcut }
 }

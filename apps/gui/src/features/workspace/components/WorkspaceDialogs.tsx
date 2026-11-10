@@ -2,7 +2,6 @@ import { listSshHosts, machineActivity } from '@/api/machines'
 import { DesktopSettings } from '@/features/settings/components/DesktopSettings'
 import { PerfOverlay } from './PerfOverlay'
 import { CommandPalette } from './CommandPalette'
-import { InboxPanel } from './InboxPanel'
 import { InspectPanel } from '@/features/inspect/InspectPanel'
 import { HoverTips } from './HoverTips'
 import { ShortcutOverlay } from '@/features/shortcuts/ShortcutOverlay'
@@ -24,9 +23,9 @@ import { Keycaps } from '@/features/shortcuts/Keycaps'
 import { folderExists, resolveStartFolder } from '../model/startFolder'
 import { useWorkspace } from '../workspaceContext'
 
-/** What opens over or beside the panes: Inspect, the palette, the inbox, Settings and each dialog. */
+/** What opens over or beside the panes: Inspect, the palette, Settings and each dialog. */
 export function WorkspaceDialogs() {
-  const { mismatch, inspectOpen, focusMode, inspectTerm, focusedSession, projectOf, diffStat, inspectView, lookAt, setInspectView, setInspectOpen, flash, shortcutsOpen, platform, root, setShortcutsOpen, welcomeOpen, preferences, setPreferences, setWelcomeOpen, newSession, focusedMachineNumber, paletteOpen, paletteItems, setPaletteOpen, inboxOpen, inboxEntries, tracks, clearEntry, clearSettled, setInboxOpen, showSessionById, focusedId, sessionMap, needsElsewhere, setFocusMode, focusModeChord, worktreeFrom, createWorktree, setWorktreeFrom, newSessionMachine, heads, sessions, home, startFromModal, setNewSessionMachine, getFileId, setGetFileId, getFile, updateAsk, setUpdateAsk, updateNamed, closeAsk, setCloseAsk, renamingMachine, machineNicknames, setMachineNicknames, setRenamingMachine, renameId, renameInline, saveName, setRenameId, settingsSection, setSettingsSection, systemReducedMotion, systemDark, previewThemeSoon, showTestNotice, updater, restartNow, setPreviewTheme, online, runningVersion, machinesKnown, retryNamed, removeNamed, grantNamed, copyCommand, addNamed, cancelAdding, usageInfo, chooseStartFolder, toastMessage, updatedTo, setUpdatedTo, restarting } = useWorkspace()
+  const { mismatch, inspectOpen, focusMode, inspectTerm, focusedSession, projectOf, diffStat, inspectView, lookAt, setInspectView, setInspectOpen, flash, shortcutsOpen, platform, root, setShortcutsOpen, welcomeOpen, preferences, setPreferences, setWelcomeOpen, newSession, focusedMachineNumber, paletteOpen, paletteItems, setPaletteOpen, focusedId, sessionMap, needsElsewhere, setFocusMode, focusModeChord, worktreeFrom, createWorktree, setWorktreeFrom, newSessionMachine, heads, sessions, home, startFromModal, setNewSessionMachine, getFileId, setGetFileId, getFile, updateAsk, setUpdateAsk, updateNamed, closeAsk, setCloseAsk, renamingMachine, machineNicknames, setMachineNicknames, setRenamingMachine, renameId, renameInline, saveName, setRenameId, settingsSection, setSettingsSection, systemReducedMotion, systemDark, previewThemeSoon, showTestNotice, updater, restartNow, setPreviewTheme, online, runningVersion, machinesKnown, retryNamed, removeNamed, grantNamed, copyCommand, addNamed, cancelAdding, usageInfo, chooseStartFolder, toastMessage, updatedTo, setUpdatedTo, restarting } = useWorkspace()
   return (
     <>
       {inspectOpen && !focusMode && inspectTerm !== null && focusedSession && (
@@ -59,16 +58,6 @@ export function WorkspaceDialogs() {
               />
             )}
             {paletteOpen && <CommandPalette items={paletteItems} onClose={() => { setPaletteOpen(false) }} />}
-            {inboxOpen && (
-              <InboxPanel
-                entries={inboxEntries}
-                tracks={tracks}
-                onClear={clearEntry}
-                onClearDone={clearSettled}
-                onOpen={(id) => { setInboxOpen(false); showSessionById(id) }}
-                onClose={() => { setInboxOpen(false) }}
-              />
-            )}
             {focusMode && (
               <div className="mx-focus-pill" role="status">
                 <span className="mx-focus-tag">Focus</span>

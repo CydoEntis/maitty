@@ -556,8 +556,7 @@ There is no New session dialog. `Action::PickSession` (leader `n`, palette `New 
 ## Project-specific: tray item (desktop)
 
 The desktop app keeps one item in the Windows tray or the macOS menu bar (`useTrayItem.ts`,
-`model/traySessions.ts`, the host's `tray.rs`). Its menu lists what the Inbox lists, so an entry
-cleared there is not in the menu: **Needs you (N)**, then **Finished (N)**, each session as
+`model/traySessions.ts`, the host's `tray.rs`). Its menu lists every session that needs you, finished or exited: **Needs you (N)**, then **Finished (N)**, each session as
 `agent: name`, or **Nothing needs you**; then **Show Maitty** and **Quit Maitty**. Choosing a
 session brings the window forward on it. Hovering says how many need you. The menu is the
 system's, so it takes no theme. Closing the window still closes the app; the item goes with it.

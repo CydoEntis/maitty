@@ -256,11 +256,3 @@ export function folderNameOf(session: Pick<SessionView, 'repoRoot' | 'cwd'>): st
   const place = session.repoRoot ?? session.cwd
   return baseName(place)
 }
-
-/** The filter field's match: the query is found in the name, folder, process, branch or machine, ignoring case. */
-export function matchesFilter(session: SessionView, query: string): boolean {
-  const needle = query.trim().toLowerCase()
-  if (needle === '') return true
-  const fields = [rowName(session), session.title, folderNameOf(session), session.cwdLabel, session.process, session.branch ?? '', session.machineName ?? 'this computer']
-  return fields.some((field) => field.toLowerCase().includes(needle))
-}

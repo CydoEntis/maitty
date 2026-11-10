@@ -406,6 +406,7 @@ function updateAction(updates: NonNullable<DesktopSettingsProps['updates']>): { 
 }
 const TOAST_POSITIONS = [['top-left', 'Top left'], ['top-center', 'Top center'], ['top-right', 'Top right'], ['bottom-left', 'Bottom left'], ['bottom-center', 'Bottom center'], ['bottom-right', 'Bottom right']] as const
 const ORDER_OPTIONS: ReadonlyArray<readonly [SidebarOrder, string]> = [['creation', 'Creation'], ['priority', 'Priority']]
+const GROUP_OPTIONS = [['status', 'Status'], ['project', 'Project'], ['machine', 'Machine']] as const
 const SIDE_OPTIONS = [['left', 'Left'], ['right', 'Right']] as const
 const ICON_OPTIONS = [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']] as const
 const DENSITY_OPTIONS = [['compact', 'Compact'], ['comfortable', 'Comfortable'], ['spacious', 'Spacious']] as const
@@ -561,12 +562,15 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
         </Row>
       </Card>
       <Card title="Sidebar" color="var(--accent)" iconPath={<><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M9 4v16" /></>}
-        foot="Creation order keeps rows still; Priority lifts a session that needs you."
+        foot="Session order applies when the sidebar is grouped by machine."
       >
+        <Row label="Group sessions by" detail="Status lists what needs you first, then what is working, finished and idle. Project and Machine put each under its own heading.">
+          <SegmentedChoice label="Group sessions by" value={preferences.sidebarGroup} options={GROUP_OPTIONS} onChange={(value) => { update('sidebarGroup', value) }} />
+        </Row>
         <Row label="Session order" detail="Creation keeps every row where it was put. Priority moves a session that needs you to the top.">
           <SegmentedChoice label="Session order" value={preferences.sidebarOrder} options={ORDER_OPTIONS} onChange={(value) => { update('sidebarOrder', value) }} />
         </Row>
-        <Row label="Sidebar position" detail="Which side of the window the sidebar sits on. Inspect and the inbox open from the other side.">
+        <Row label="Sidebar position" detail="Which side of the window the sidebar sits on. Inspect opens from the other side.">
           <SegmentedChoice label="Sidebar position" value={preferences.sidebarSide} options={SIDE_OPTIONS} onChange={(value) => { update('sidebarSide', value) }} />
         </Row>
       </Card>
