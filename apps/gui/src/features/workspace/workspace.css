@@ -180,11 +180,13 @@
 .mx-badge { position: absolute; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px var(--card-ring); }
 .mx-badge { animation: v9pop .26s var(--ease-out); }
 .mx-badge.is-needs { background: var(--warn); }
-/* A pulse is a ring on a pseudo-element that scales out and fades once, then rests. An animated
-   box-shadow, or any endless animation, repaints the card on every frame for as long as the state lasts
-   (docs/PERFORMANCE.md). */
+/* A pulse is a ring on a pseudo-element that scales out and fades: only `transform` and `opacity` move, never a
+   box-shadow, which repaints the card on every frame (docs/PERFORMANCE.md). The needs-you badge keeps pulsing for
+   as long as it needs you, and rests while the window is not in front; the update dot pulses once. */
 .mx-badge.is-needs::after, .mx-upd-dot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 2px rgba(242, 182, 90, .45); opacity: 0; pointer-events: none; animation: v7pulse .6s ease-out 1; }
 .mx-upd-dot::after { animation-duration: .7s; }
+.mx-badge.is-needs::after { animation: v7pulse 1.6s ease-out infinite; }
+:root[data-window="inactive"] .mx-badge.is-needs::after { animation-play-state: paused; }
 /* Finished is a solid green check, stopped a solid red cross, idle a hollow ring: three shapes, not three tints. */
 .mx-badge.is-done { background: var(--ok); color: var(--bg); }
 .mx-badge.is-idle { border-radius: 50% !important; background: var(--bg); box-shadow: 0 0 0 2px var(--card-ring), inset 0 0 0 1.5px var(--dim); animation: none; }
