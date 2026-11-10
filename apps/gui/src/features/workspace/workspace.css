@@ -185,9 +185,10 @@
    (docs/PERFORMANCE.md). */
 .mx-badge.is-needs::after, .mx-upd-dot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 2px rgba(242, 182, 90, .45); opacity: 0; pointer-events: none; animation: v7pulse .6s ease-out 1; }
 .mx-upd-dot::after { animation-duration: .7s; }
-.mx-badge.is-done { background: color-mix(in oklab, var(--ok) 24%, var(--bg)); }
-.mx-badge.is-idle { background: var(--m-raise); box-shadow: 0 0 0 2px var(--card-ring), inset 0 0 0 1px var(--line2); color: var(--muted); }
-.mx-badge.is-error { background: color-mix(in oklab, var(--danger) 24%, var(--bg)); }
+/* Finished is a solid green check, stopped a solid red cross, idle a hollow ring: three shapes, not three tints. */
+.mx-badge.is-done { background: var(--ok); color: var(--bg); }
+.mx-badge.is-idle { border-radius: 50% !important; background: var(--bg); box-shadow: 0 0 0 2px var(--card-ring), inset 0 0 0 1.5px var(--dim); animation: none; }
+.mx-badge.is-error { background: var(--danger); color: var(--bg); }
 
 /* With a single pane the workspace's own border takes the focus; with several, the focused pane does. Never both. */
 .mx-app[data-side="right"] .mx-sidebar { margin: 12px 12px 12px 0; }

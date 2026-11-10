@@ -311,7 +311,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   count). A row whose status changes glides to its new place over 420ms, and the headings and rows it passes glide with it, so
   nothing in the list snaps (`useFlip`); a new row slides in from the left. The moved row is tinted with the accent for a moment
   (`useStatusFlash`); Reduce motion turns both off. A **row** (40px, radius 8) is the 20px app tile with its status badge
-  (spinner, amber `›`, green check, dashed square for unknown), the name (13px; 600 and `--fg` for an agent that is
+  (spinner, amber `!` square, solid green check, solid red cross, hollow grey ring for idle, dashed square for unknown), the name (13px; 600 and `--fg` for an agent that is
   doing anything), and under it the project's 6px colour square, the project and `·` and the branch in mono
   `--ansi-mag`; a stopped agent says `stopped` and an exited shell `exited` at the right, in `--danger`, instead of a
   badge. Any other agent row has, at the right in 11px `--muted`, how long it has been in its state (`now`, `4m`, `3h`,

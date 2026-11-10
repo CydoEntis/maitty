@@ -29,16 +29,18 @@ describe('status marks', () => {
     expect(shapes).toEqual(['mx-badge is-working', 'mx-badge is-done', 'mx-badge is-needs', 'mx-badge is-error', 'mx-badge is-unknown'])
   })
 
-  it('draws needs you as a chevron and exited as a bang, with no word in the mark itself', () => {
+  it('draws needs you as an exclamation mark and stopped as a cross, with no word in the mark itself', () => {
     const needs = render(<StatusBadge status="needs" />)
-    expect(needs.container.textContent).toBe('›')
+    expect(needs.container.textContent).toBe('!')
     const exited = render(<StatusBadge status="error" />)
     expect(exited.container.querySelector('svg')).not.toBeNull()
+    expect(exited.container.textContent).toBe('')
   })
 
-  it('draws nothing for an idle session', () => {
+  it('draws an idle session as a hollow ring of its own', () => {
     const { container } = render(<StatusBadge status="idle" />)
-    expect(container).toBeEmptyDOMElement()
+    expect(container.querySelector('.mx-badge.is-idle')).not.toBeNull()
+    expect(container.textContent).toBe('')
   })
 
   it('still draws unknown in a row, not only in the rail', () => {
