@@ -18,6 +18,8 @@ export type FocusMachine = { name: string; word: string; tone: 'ok' | 'quiet' | 
 
 type Props = {
   online: boolean
+  /** What to say instead of Reconnecting while the service is known to need something else (a restart after an update). */
+  offlineText?: string | undefined
   machine: FocusMachine | null
   themeMode: ThemeMode
   /** Whether the theme in use is a light one: the quick list shows the themes of that kind. */
@@ -47,7 +49,7 @@ export const StatusBar = memo(function StatusBar(props: Props) {
       {!props.online && (
         <span className="mx-sb-item is-offline" role="status">
           <span className="mx-daemon-dot is-offline" aria-hidden="true" />
-          Reconnecting to maittyd…
+          {props.offlineText ?? 'Reconnecting to maittyd…'}
         </span>
       )}
       {props.machine !== null && (

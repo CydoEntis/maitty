@@ -788,6 +788,9 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     const card = await screen.findByRole('region', { name: 'Restart Maitty to finish updating' })
     expect(within(card).getByText('The app updated, but the service behind it is still the older one.')).toBeInTheDocument()
     expect(within(card).getByText('protocol 49 → 62')).toBeInTheDocument()
+    // The card is the one message: the status bar agrees with it instead of saying it is reconnecting.
+    expect(within(screen.getByLabelText('Status')).getByText('Restart needed')).toBeInTheDocument()
+    expect(within(screen.getByLabelText('Status')).queryByText(/Reconnecting/)).toBeNull()
     await user.click(within(card).getByRole('button', { name: 'Later' }))
     expect(screen.queryByRole('region', { name: 'Restart Maitty to finish updating' })).not.toBeInTheDocument()
     expect(screen.getByText('Restart needed.')).toBeInTheDocument()

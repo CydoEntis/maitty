@@ -639,7 +639,9 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         if (isMounted) {
           setLoadError(true)
           setConnecting(false)
-          toast.error(error instanceof Error ? error.message : 'Could not start the terminal emulator')
+          const message = error instanceof Error ? error.message : 'Could not start the terminal emulator'
+          // No line to the service is the window's news, not this pane's: the service card and the status bar say it once.
+          if (!message.includes(NOT_CONNECTED_YET)) toast.error(message)
         }
       }
     }
