@@ -6,6 +6,7 @@ import { oversizeMessage, saveImageLocally, sendImageToMachine } from '@/api/ima
 import { errorMessage } from '@/lib/error-message'
 import { kindOf } from './attachmentMessage'
 import { peekComposer, updateComposer, type DraftAttachment } from './composerStore'
+import { keepPicture, warmPicture } from './keptPictures'
 import { sendAttachments, type Landed } from './sendAttachments'
 
 /** What the composer can do with files; every refusal is one error toast and nothing is added. */
@@ -113,6 +114,7 @@ export function useAttachmentIntake({ conversation, blocked, machine = null }: I
       for (const path of chosen) {
         try {
           const kept = await attachLocalFile(path)
+          if (kept.kind === 'image') await warmPicture(kept.path)
           // The message may have been filled by another add while this file was copied.
           if (peekComposer(target).attachments.length >= MOST_ATTACHMENTS) {
             failed += 1
@@ -152,7 +154,10 @@ export function useAttachmentIntake({ conversation, blocked, machine = null }: I
           image: true,
           count: 1,
           start: (transfer) => sendImageToMachine(where, new Uint8Array(buffer), transfer),
-          onLanded: (landed) => { keepLanded(target, landed, preview) },
+          onLanded: (landed) => {
+            keepPicture(landed.remotePath, image)
+            keepLanded(target, landed, preview)
+          },
         }),
         (error: unknown) => { toast.error(errorMessage(error, 'Could not read the image')) },
       ).then(() => {
@@ -166,6 +171,7 @@ export function useAttachmentIntake({ conversation, blocked, machine = null }: I
     image.arrayBuffer()
       .then((buffer) => saveImageLocally(new Uint8Array(buffer)))
       .then((path) => {
+        keepPicture(path, image)
         append({ id: newId(), path, name: 'Pasted image', size: image.size, kind: 'image', preview: previewOf(image) })
         toast.success('Attached the image', { id: toastId, duration: 2000 })
       })
