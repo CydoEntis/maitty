@@ -191,7 +191,6 @@ const ABSOLUTE_PATH = /^(\/|[A-Za-z]:[\\/])/
 const TEST_NOTICE_MS = 6000
 const SECOND_MS = 1000
 const DIFF_STAT_REFRESH_MS = 8000
-const DIFF_STAT_IDLE_MS = 30_000
 /** A theme previews once the pointer rests on it, not as it passes over every row (each one repaints every terminal). */
 const THEME_PREVIEW_DELAY_MS = 140
 /** A notification's click brings the window forward; returning later than this is not that click. */
@@ -1634,10 +1633,10 @@ export function DesktopApp() {
       const diff = await repoDiff(inspectTerm ?? 0)
       return { additions: diff.additions, deletions: diff.deletions, files: diff.total_files }
     },
-    enabled: inspectTerm !== null,
-    // The counts come from a full diff, so they are read slowly unless Inspect is open, and not
-    // again just because the window came to the front.
-    refetchInterval: inspectOpen ? DIFF_STAT_REFRESH_MS : DIFF_STAT_IDLE_MS,
+    // The count shows only in the Inspect panel, and it comes from a full diff: nothing is read while the panel is
+    // closed, and not again just because the window came to the front.
+    enabled: inspectTerm !== null && inspectOpen,
+    refetchInterval: DIFF_STAT_REFRESH_MS,
     refetchOnWindowFocus: false,
     retry: false,
   })
