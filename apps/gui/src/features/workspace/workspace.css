@@ -187,9 +187,10 @@
 .mx-upd-dot::after { animation-duration: .7s; }
 .mx-badge.is-needs::after { animation: v7pulse 1.6s ease-out infinite; }
 :root[data-window="inactive"] .mx-badge.is-needs::after { animation-play-state: paused; }
-/* Finished is a solid green check, stopped a solid red cross, idle a hollow ring: three shapes, not three tints. */
+/* Finished is a solid green check, stopped a solid red cross, idle a hollow one: three marks, not three tints. Every
+   badge takes the window style's corners: a rounded square on a rounded style, a square on a squared one. */
 .mx-badge.is-done { background: var(--ok); color: var(--bg); }
-.mx-badge.is-idle { border-radius: 50% !important; background: var(--bg); box-shadow: 0 0 0 2px var(--card-ring), inset 0 0 0 1.5px var(--dim); animation: none; }
+.mx-badge.is-idle { background: var(--bg); box-shadow: 0 0 0 2px var(--card-ring), inset 0 0 0 1.5px var(--dim); animation: none; }
 .mx-badge.is-error { background: var(--danger); color: var(--bg); }
 
 /* With a single pane the workspace's own border takes the focus; with several, the focused pane does. Never both. */
@@ -516,8 +517,8 @@
 .mx-notice.is-info { --notice: var(--accent); --notice-ink: var(--on-accent); --state: var(--muted); }
 .mx-notice-icon { flex: none; display: flex; align-items: flex-start; }
 .mx-notice-app { position: relative; display: block; width: 26px; height: 26px; }
-.mx-notice-app .mx-badge { right: -3px; bottom: -3px; width: 11px; height: 11px; border-radius: 3.5px; font-size: 8px; font-weight: 800; line-height: 1; color: var(--on-warn); }
-.mx-notice-app .mx-badge.is-working { border-radius: 50%; background: var(--bg); overflow: hidden; color: var(--working); font-family: var(--mono); }
+.mx-notice-app .mx-badge { right: -3px; bottom: -3px; width: 11px; height: 11px; border-radius: calc(3.5px * var(--rk)); font-size: 8px; font-weight: 800; line-height: 1; color: var(--on-warn); }
+.mx-notice-app .mx-badge.is-working { background: var(--bg); overflow: hidden; color: var(--working); font-family: var(--mono); }
 .mx-notice-app .mx-badge.is-working .mx-spin { font-size: 8px; line-height: 1; }
 .mx-notice-app .mx-badge.is-done svg { width: 7px; height: 7px; }
 .mx-notice-app .mx-badge.is-unknown { background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
