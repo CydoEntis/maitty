@@ -512,7 +512,8 @@ pub(crate) fn remote_command(remote_cmd: &str, mode: ProxyMode) -> Result<String
     })
 }
 
-/// The remote command as one literal word for the remote shell.
+/// The remote command as one literal word for the remote shell. A bare name is looked up with
+/// the install folder first on PATH (`FIND_INSTALLED_SCRIPT`); a path is run as it is.
 fn remote_program(remote_cmd: &str) -> Result<String, SshCommandError> {
     if remote_cmd.trim().is_empty() {
         return Err(EmptyRemoteCommand);
@@ -522,7 +523,8 @@ fn remote_program(remote_cmd: &str) -> Result<String, SshCommandError> {
     }
     Ok(match remote_cmd.strip_prefix("~/") {
         Some(rest) => format!("~/{}", quote_word(rest)),
-        None => quote_word(remote_cmd),
+        None if remote_cmd != env!("APP_COMMAND") => quote_word(remote_cmd),
+        None => sh_script(crate::remote_scripts::FIND_INSTALLED_SCRIPT, &[remote_cmd]),
     })
 }
 
@@ -564,10 +566,10 @@ mod tests {
         let got = via(&["relay", "--to", "box"], "maitty", ProxyMode::AttachOnly);
         assert_eq!(
             got,
-            args(&["relay", "--to", "box", "'maitty' proxy --attach-only"])
+            args(&["relay", "--to", "box", &found("proxy --attach-only")])
         );
         let starts = via(&["relay"], "maitty", ProxyMode::StartsDaemon);
-        assert_eq!(starts, args(&["relay", "'maitty' proxy"]));
+        assert_eq!(starts, args(&["relay", &found("proxy")]));
     }
 
     #[test]
@@ -606,6 +608,13 @@ mod tests {
         );
     }
 
+    /// What the default command becomes: looked up with the install folder first on PATH.
+    fn found(rest: &str) -> String {
+        format!(
+            r#"sh -c 'PATH="$HOME/.local/bin:$PATH"; export PATH; exec "$@"' sh 'maitty' {rest}"#
+        )
+    }
+
     fn args(words: &[&str]) -> Vec<String> {
         words.iter().map(|w| w.to_string()).collect()
     }
@@ -629,7 +638,7 @@ mod tests {
         let argv = argv(&["ssh", "-p", "2222"], "me@box", "maitty");
         let dashes = position(&argv, "--");
         assert_eq!(argv[dashes + 1], "me@box");
-        assert_eq!(argv[dashes + 2], "'maitty' proxy");
+        assert_eq!(argv[dashes + 2], found("proxy"));
         assert_eq!(argv.len(), dashes + 3);
     }
 
@@ -750,11 +759,11 @@ mod tests {
     #[test]
     fn a_configured_machine_s_proxy_only_attaches() {
         let attach = |cmd| super::remote_command(cmd, ProxyMode::AttachOnly).unwrap();
-        assert_eq!(attach("maitty"), "'maitty' proxy --attach-only");
+        assert_eq!(attach("maitty"), found("proxy --attach-only"));
         assert_eq!(attach("~/bin/maitty"), "~/'bin/maitty' proxy --attach-only");
         let full = ssh_argv(&args(&["ssh"]), "box", "maitty", ProxyMode::AttachOnly).unwrap();
-        assert_eq!(full.last().unwrap(), "'maitty' proxy --attach-only");
-        assert_eq!(remote_command("maitty").unwrap(), "'maitty' proxy");
+        assert_eq!(full.last().unwrap(), &found("proxy --attach-only"));
+        assert_eq!(remote_command("maitty").unwrap(), found("proxy"));
     }
 
     /// A Windows client: its ssh program and arguments are Windows paths with backslashes.
@@ -851,7 +860,7 @@ mod tests {
         assert!(!joined.contains("ServerAlive"));
         let dashes = position(&argv, "--");
         assert_eq!(argv[dashes + 1], "me@box");
-        assert_eq!(argv[dashes + 2], "'maitty' --version");
+        assert_eq!(argv[dashes + 2], found("--version"));
     }
 
     #[test]

@@ -283,8 +283,9 @@ fn upload_failure(why: &UploadError, name: &str, had_old: bool, ran: &Ran) -> St
     }
 }
 
-/// After the swap: does the machine find the app by its configured command? A default
-/// install lands in a folder that may not be on its PATH; that is told, never fixed silently.
+/// After the swap: does the machine find the app by its configured command? The default name
+/// is looked up in the install folder first, so this speaks only for a configured name that
+/// leads somewhere else; that is told, never fixed silently.
 fn check_reachable(machine: &Machine, remote_cmd: &str, to: &str, name: &str, talk: &mut dyn Talk) {
     let Ok(argv) = machine.probe_argv() else {
         return;

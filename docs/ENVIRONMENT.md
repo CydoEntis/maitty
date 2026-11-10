@@ -205,7 +205,9 @@ needs `--yes`.
 `maitty machine update <name> [--install] [--yes] [--force]` puts this version on a configured machine
 (see the guide). The destination is `remote_cmd` when it is an absolute path or begins with `~/` (the `~`
 is expanded on the far side, from its `$HOME`, never here); a `remote_cmd` that is only a name (the
-default, `maitty`) installs to `~/.local/bin/maitty`. Only Linux and macOS on x86_64 or aarch64 are
+default, `maitty`) installs to `~/.local/bin/maitty`, and the default name is run on the far side with
+`~/.local/bin` first on its PATH (`FIND_INSTALLED_SCRIPT`), so a fresh install is found whatever PATH a
+non-interactive ssh gets. Only Linux and macOS on x86_64 or aarch64 are
 supported as a remote; a Windows machine is refused. The release assets are named
 `maitty-<target>.tar.gz` (see `cli/update.rs`) and the fetch uses the same `gh` or `curl` path as
 `maitty update`, on this computer only.

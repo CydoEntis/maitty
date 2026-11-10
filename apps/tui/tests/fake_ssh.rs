@@ -141,7 +141,7 @@ fn the_shim_is_called_the_way_the_client_calls_ssh() {
     assert_eq!(args[dashes + 1], "box", "the host follows `--`: {args:?}");
     assert_eq!(
         args[dashes + 2],
-        "'maitty' proxy",
+        r#"sh -c 'PATH="$HOME/.local/bin:$PATH"; export PATH; exec "$@"' sh 'maitty' proxy"#,
         "one quoted remote command: {args:?}"
     );
     assert_eq!(
@@ -1588,7 +1588,7 @@ mod custom_transport {
             let args: Vec<&str> = logged.lines().filter(|l| *l != "--").collect();
             assert_eq!(
                 args.last(),
-                Some(&"'maitty' proxy --attach-only"),
+                Some(&r#"sh -c 'PATH="$HOME/.local/bin:$PATH"; export PATH; exec "$@"' sh 'maitty' proxy --attach-only"#),
                 "{args:?}"
             );
             for ssh_only in ["-o", "-a", "-T", "BatchMode=yes", "ForwardAgent=no"] {

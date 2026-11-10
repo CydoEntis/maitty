@@ -483,8 +483,8 @@ A machine you add only needs the `maitty` program. There is no desktop app on it
   install it by hand. A Windows machine cannot be the remote yet.
 - **A way in.** ssh must get in without asking you anything: a key (or your ssh agent) for that user. Run plain
   `ssh <target>` once first, so its host key is known and you can see that it works.
-- **maitty on the PATH ssh uses.** A program in `~/.local/bin` is on the PATH of most logins. If ssh cannot find
-  it, set `remote_cmd` on the machine to its full path.
+- **maitty where ssh finds it.** Maitty looks in `~/.local/bin` (where it installs itself) first, then on the
+  PATH ssh gives it. Only a copy kept somewhere else needs `remote_cmd` set to its full path.
 - **The same version.** This computer, the machine and any desktop app must speak the same protocol. A machine
   on another version shows `needs update`; run `maitty machine update <name>`.
 
@@ -529,8 +529,7 @@ build: maitty 0.60.0 installed to ~/.local/bin/maitty
   run with `--version`, and only then renamed over the old one. Any failed step leaves the old maitty as it
   was and says so ("the old version is unchanged", or "nothing was installed" on a first install).
 - **Where.** At the machine's `remote_cmd` when that is an absolute path or starts with `~/`; otherwise at
-  `~/.local/bin/maitty`. If `maitty` is not found on that machine's PATH afterwards, the command says to set
-  `remote_cmd = "~/.local/bin/maitty"` for it in `config.local.toml` (it does not edit your config).
+  `~/.local/bin/maitty`, which is the first place Maitty looks on that machine, so nothing else needs setting.
 - **Running sessions survive an ordinary update.** The old daemon keeps running on the old file. The new
   maitty restarts it only when it has no session open; otherwise it says it left it running. Add `--restart`
   (the desktop app's Update button does, after asking) to restart it anyway: its sessions are saved, so the
