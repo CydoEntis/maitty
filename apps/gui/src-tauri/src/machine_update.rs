@@ -4,7 +4,7 @@
 
 use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use tauri::Emitter;
 
 /// What the window hears while an update runs: which machine, and how far along it is.
@@ -63,7 +63,7 @@ fn run(
     install: bool,
     when_idle: bool,
 ) -> Result<String, String> {
-    let mut command = Command::new(executable);
+    let mut command = maitty_desktop_client::host_command(executable);
     command
         .args(arguments(name, install, when_idle))
         .env(format!("{}_UPDATE_PROGRESS", maitty_machines::APP_ENV), "1")
@@ -155,7 +155,7 @@ fn parse_activity(text: &str) -> Option<Activity> {
 }
 
 fn ask_activity(executable: &Path, name: &str) -> Result<Option<Activity>, String> {
-    let mut command = Command::new(executable);
+    let mut command = maitty_desktop_client::host_command(executable);
     command
         .args(["machine", "activity", name])
         .stdin(Stdio::null())

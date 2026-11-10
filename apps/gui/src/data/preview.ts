@@ -13,6 +13,8 @@ export type TerminalDetails = {
   ask?: PermissionAsk | null
   /** An agent that was mid-turn when the daemon restarted; offered a resume, never resumed on its own. */
   interrupted: { agent: string; resume: string } | null
+  /** When the status last changed, in unix seconds (the daemon's `TermInfo.since`); absent or 0 when it did not say. */
+  since?: number
   /** The latest turn events, oldest first; `at` is unix seconds. */
   timeline: Array<{ at: number; kind: TurnKind; detail: string }>
   /** The last command ended in failure, as the shell reported it (a non-zero exit code); null when nothing failed. Only the daemon sets it. */

@@ -25,6 +25,7 @@ starter-owned sections forward. It never touches `Project-specific:` sections.
 | [react](react.md) | starter | 1.0.0 |
 | [shadcn-tailwind](shadcn-tailwind.md) | starter | 1.0.0 |
 | [tauri](tauri.md) | project | 2 |
+| [tauri-clipboard](tauri-clipboard.md) | project | 2.5.0 |
 | [tauri-dialog](tauri-dialog.md) | project | 2.8.4 |
 | [tauri-notification](tauri-notification.md) | project | 2.8.0 |
 | [tauri-updater](tauri-updater.md) | project | 2 |

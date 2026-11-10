@@ -21,7 +21,7 @@ fn reveal_command(file: &Path) -> Command {
         command.arg("-R").arg(file);
         command
     } else {
-        let mut command = Command::new("xdg-open");
+        let mut command = maitty_desktop_client::host_command("xdg-open");
         command.arg(file.parent().unwrap_or(file));
         command
     }

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { isPasteChord, listenForImagePaste, pickFromClipboard, unsupportedMessage } from './clipboardImage'
+import { readClipboardImage } from '@/api/clipboardImage'
+
+vi.mock('@/api/clipboardImage', () => ({ readClipboardImage: vi.fn(() => Promise.resolve(null)) }))
 
 type Item = { kind: 'file' | 'string'; type: string; file?: File | null }
 
@@ -68,6 +71,22 @@ describe('listening for a pasted image', () => {
     const stop = listenForImagePaste(host, onImage, onRefuse)
     return { host, onImage, onRefuse, stop }
   }
+
+  it('asks the host for the picture when the paste arrives empty, as it does on Linux', async () => {
+    vi.mocked(readClipboardImage).mockResolvedValueOnce(png)
+    const { host, onImage } = setup()
+    const { event } = pasteOn(host, clipboard('', []))
+    await vi.waitFor(() => { expect(onImage).toHaveBeenCalledWith(png) })
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it('leaves a paste of text to the terminal without asking the host', () => {
+    vi.mocked(readClipboardImage).mockClear()
+    const { host, onImage } = setup()
+    pasteOn(host, clipboard('hello', []))
+    expect(readClipboardImage).not.toHaveBeenCalled()
+    expect(onImage).not.toHaveBeenCalled()
+  })
 
   it('takes an image paste for the window and keeps it from the terminal', () => {
     const { host, onImage, onRefuse } = setup()

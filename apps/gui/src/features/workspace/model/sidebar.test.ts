@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Conversation } from '@/data/preview'
 import { LOCAL_HEAD, type MachineHead } from './machines'
 import { toSessionView, type SessionView } from './session'
-import { byUrgency, machineGroups, projectColor, projectGroups, rowTitle, rowWord } from './sidebar'
+import { byUrgency, inProject, machineGroups, projectChoices, projectColor, projectGroups, projectSections, rowTitle, rowWord, statusSections } from './sidebar'
 
 vi.mock('@/api/daemon', () => ({ terminalOf: (id: string) => Number(id.slice(1)) }))
 
@@ -47,22 +47,47 @@ describe('machine groups', () => {
   const devbox: MachineHead = { ...LOCAL_HEAD, key: 'machine-2', machine: 2, name: 'devbox', label: 'devbox' }
 
   it('gives every machine its own sessions, and none at all when nothing runs', () => {
-    const groups = machineGroups([session(1), session(2, { machine: 2, machineName: 'devbox' })], [LOCAL_HEAD, devbox], '')
+    const groups = machineGroups([session(1), session(2, { machine: 2, machineName: 'devbox' })], [LOCAL_HEAD, devbox])
     expect(groups.map((group) => [group.head.key, group.sessions.map((item) => item.id)])).toEqual([['machine-0', ['t1']], ['machine-2', ['t2']]])
-    expect(machineGroups([], [LOCAL_HEAD], '')).toEqual([])
+    expect(machineGroups([], [LOCAL_HEAD])).toEqual([])
   })
 
   it('keeps every machine header with no sessions anywhere once there is another machine', () => {
-    expect(machineGroups([], [LOCAL_HEAD, devbox], '').map((group) => [group.head.key, group.sessions.length])).toEqual([['machine-0', 0], ['machine-2', 0]])
-  })
-
-  it('leaves out a machine with nothing that matches the filter', () => {
-    const groups = machineGroups([session(1, { cwd: '/home/me/alpha', folder: '/home/me/alpha' }), session(2, { machine: 2, machineName: 'devbox' })], [LOCAL_HEAD, devbox], 'alpha')
-    expect(groups.map((group) => group.head.key)).toEqual(['machine-0'])
+    expect(machineGroups([], [LOCAL_HEAD, devbox]).map((group) => [group.head.key, group.sessions.length])).toEqual([['machine-0', 0], ['machine-2', 0]])
   })
 
   it('groups by project with each project’s needs-you count', () => {
     const groups = projectGroups([session(1, { cwd: '/x/a', folder: '/x/a', status: 'needs-you' }), session(2, { cwd: '/x/b', folder: '/x/b' }), session(3, { cwd: '/x/a', folder: '/x/a' })])
     expect(groups.map((group) => [group.name, group.sessions.length, group.needs])).toEqual([['a', 2, 1], ['b', 1, 0]])
+  })
+})
+
+describe('status sections', () => {
+  it('lists needs you, working, finished and idle in that order, and leaves out a status nothing has', () => {
+    const sections = statusSections([session(1), session(2, { agent: 'claude', status: 'done' }), session(3, { agent: 'claude', status: 'needs-you' })])
+    expect(sections.map((section) => [section.name, section.sessions.map((item) => item.id)])).toEqual([['Needs you', ['t3']], ['Finished', ['t2']], ['Idle', ['t1']]])
+  })
+
+  it('puts an agent that stopped with what needs you, and a shell that exited with the idle ones', () => {
+    const sections = statusSections([session(1, { details: exited }), session(2, { agent: 'claude', details: exited })])
+    expect(sections.map((section) => [section.key, section.sessions.map((item) => item.id)])).toEqual([['needs', ['t2']], ['idle', ['t1']]])
+  })
+})
+
+describe('projects', () => {
+  const devbox: MachineHead = { ...LOCAL_HEAD, key: 'machine-2', machine: 2, name: 'devbox', label: 'devbox' }
+  const sessions = () => [session(1, { cwd: '/x/b', folder: '/x/b' }), session(2, { cwd: '/x/a', folder: '/x/a' }), session(3, { machine: 2, machineName: 'devbox', cwd: '/x/a', folder: '/x/a' })]
+
+  it('lists every project by name with how many sessions it has', () => {
+    expect(projectChoices(sessions()).map((choice) => [choice.name, choice.count])).toEqual([['a', 2], ['b', 1]])
+  })
+
+  it('narrows to one project, or to none when no project is picked', () => {
+    expect(inProject(sessions(), 'a').map((item) => item.id)).toEqual(['t2', 't3'])
+    expect(inProject(sessions(), null)).toHaveLength(3)
+  })
+
+  it('gives a project on two machines a heading for each, this computer first', () => {
+    expect(projectSections(sessions(), [LOCAL_HEAD, devbox]).map((section) => [section.name, section.head.name, section.sessions.length])).toEqual([['a', null, 1], ['a', 'devbox', 1], ['b', null, 1]])
   })
 })

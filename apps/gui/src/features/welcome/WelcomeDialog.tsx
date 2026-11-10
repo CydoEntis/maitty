@@ -9,7 +9,7 @@ const FIRST_KEYS: ReadonlyArray<readonly [action: string, label: string]> = [
   ['New session', 'New session'],
   ['Split right', 'Split a pane'],
   ['Command palette', 'Command palette'],
-  ['Attention inbox', 'Inbox'],
+  ['Jump to the next session that needs you', 'Next that needs you'],
   ['Find in the pane or every session', 'Find'],
   ['Settings', 'Settings'],
 ]

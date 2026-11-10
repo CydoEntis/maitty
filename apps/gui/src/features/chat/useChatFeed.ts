@@ -27,6 +27,11 @@ function remember(feed: ChatFeed): void {
   if (cache.size > CACHE_LIMIT && !oldest.done) cache.delete(oldest.value)
 }
 
+/** The feed this window last read for the conversation, for code outside the chat that must number a message after it. */
+export function peekChatFeed(conversation: number): ChatFeed | undefined {
+  return cache.get(conversation)
+}
+
 /** For tests: the cache belongs to the window's lifetime. */
 export function forgetChatFeeds(): void {
   cache.clear()

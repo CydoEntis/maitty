@@ -129,7 +129,7 @@ describe('desktop terminal multiplexer', () => {
 
     expect(await screen.findByRole('heading', { name: 'No sessions running' })).toBeInTheDocument()
     expect(screen.getByText(/A new session opens a shell in/)).toHaveTextContent('A new session opens a shell in ~. cd into a project')
-    expect(screen.getByText('No agents running. Use the buttons above to start one.')).toBeInTheDocument()
+    expect(screen.getByText('No agents running. New chat starts one.')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Change start folder' }))
     const dialog = screen.getByRole('dialog', { name: 'Settings' })
@@ -313,7 +313,7 @@ describe('desktop terminal multiplexer', () => {
     fireEvent.contextMenu(pane)
 
     const menu = await screen.findByRole('menu', { name: 'a' })
-    expect(within(menu).getAllByRole('menuitem').map((item) => item.querySelector('.mx-ctx-label')?.textContent)).toEqual(['Split right', 'Split down', 'Maximize pane', 'Clear', 'Copy folder path', 'Files', 'Changes', 'Close pane'])
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.querySelector('.mx-ctx-label')?.textContent)).toEqual(['Split right', 'Split down', 'Maximize pane', 'Clear', 'Copy folder path', 'Changes and files', 'Close pane'])
     daemon.startShellSession.mockResolvedValue(undefined)
     await user.click(within(menu).getByRole('menuitem', { name: /^Split right/ }))
     // A split opens a new shell beside this one.
@@ -438,7 +438,7 @@ describe('desktop terminal multiplexer', () => {
     await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalledWith(`${HOME}/code`) })
   })
 
-  it('lists every session of this computer in the order it was created, each named by its folder or agent', async () => {
+  it('lists every session under what it is doing, what needs you first, each named by its folder or agent', async () => {
     daemon.loadConversations.mockResolvedValue([
       term(9, `${HOME}/Downloads`),
       inRepo(3, `${HOME}/code/maitty`, `${HOME}/code/maitty/crates/maitty-core`, { agent: 'codex', status: 'working' }),
@@ -450,7 +450,7 @@ describe('desktop terminal multiplexer', () => {
     const sidebar = await screen.findByRole('navigation', { name: 'Sessions' })
     await within(sidebar).findByRole('button', { name: 'maitty, shell, idle' })
     const rows = within(sidebar).getAllByRole('button', { name: /, (shell|codex), / }).map((row) => row.getAttribute('aria-label'))
-    expect(rows).toEqual(['maitty, shell, idle', 'codex, codex, working', 'docs, shell, needs you', 'Downloads, shell, idle'])
+    expect(rows).toEqual(['docs, shell, needs you', 'codex, codex, working', 'maitty, shell, idle', 'Downloads, shell, idle'])
     expect(sidebar).not.toHaveTextContent('maittyd ·')
   })
 
@@ -522,7 +522,8 @@ describe('desktop terminal multiplexer', () => {
     renderDesktopApp()
     await screen.findByRole('region', { name: 'Shell in ~/a' })
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`), term(3, `${HOME}/b`)])
-    await user.click(screen.getByRole('button', { name: 'Split down (Ctrl+Alt+Shift+D)' }))
+    await user.click(screen.getByRole('button', { name: 'More pane actions' }))
+    await user.click(await screen.findByRole('menuitem', { name: /^Split down/ }))
     await screen.findByRole('region', { name: 'Shell in ~/b' })
 
     const first = screen.getByRole('region', { name: /^Terminal 1:/ })
@@ -575,12 +576,16 @@ describe('desktop terminal multiplexer', () => {
 
     await user.click(within(screen.getByRole('region', { name: 'Terminal 1: ~/a' })).getByRole('button', { name: 'Close pane · ends its session' }))
     await waitFor(() => { expect(daemon.closeSessionWithUndo).toHaveBeenCalledWith(expect.objectContaining({ id: 't2' })) })
-    await user.click(within(third).getByRole('button', { name: 'Maximize pane' }))
-    await screen.findByRole('button', { name: 'Restore layout' })
+    await user.click(within(third).getByRole('button', { name: 'More pane actions' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Maximize pane' }))
+    await user.click(within(third).getByRole('button', { name: 'More pane actions' }))
+    await screen.findByRole('menuitem', { name: 'Restore layout' })
+    await user.keyboard('{Escape}')
     await act(async () => { ended(); await Promise.resolve() })
 
     await waitFor(() => { expect(screen.getAllByText('Closed ~/a').length).toBeGreaterThan(0) })
-    expect(screen.getByRole('button', { name: 'Restore layout' })).toBeInTheDocument()
+    await user.click(screen.getAllByRole('button', { name: 'More pane actions' }).at(-1) as HTMLElement)
+    expect(await screen.findByRole('menuitem', { name: 'Restore layout' })).toBeInTheDocument()
   })
 
   it('undoes the last close with Ctrl+Shift+Z, and leaves the key to the terminal when nothing was closed', async () => {
@@ -749,7 +754,7 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     expect(screen.getAllByText('Reconnecting to maittyd…')).toHaveLength(2)
     expect(within(screen.getByLabelText('Status')).getByRole('status')).toHaveTextContent('Reconnecting to maittyd…')
     expect(screen.getByRole('region', { name: 'Shell in ~/a' })).toHaveAttribute('data-input-disabled', 'true')
-    expect(screen.getByRole('button', { name: 'New agent chat' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'New chat' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'codex, codex, unknown' })).not.toHaveClass('mx-fx-working')
 
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
@@ -788,6 +793,9 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     const card = await screen.findByRole('region', { name: 'Restart Maitty to finish updating' })
     expect(within(card).getByText('The app updated, but the service behind it is still the older one.')).toBeInTheDocument()
     expect(within(card).getByText('protocol 49 → 62')).toBeInTheDocument()
+    // The card is the one message: the status bar agrees with it instead of saying it is reconnecting.
+    expect(within(screen.getByLabelText('Status')).getByText('Restart needed')).toBeInTheDocument()
+    expect(within(screen.getByLabelText('Status')).queryByText(/Reconnecting/)).toBeNull()
     await user.click(within(card).getByRole('button', { name: 'Later' }))
     expect(screen.queryByRole('region', { name: 'Restart Maitty to finish updating' })).not.toBeInTheDocument()
     expect(screen.getByText('Restart needed.')).toBeInTheDocument()
@@ -913,16 +921,15 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     expect(unnamed).toEqual([])
   })
 
-  it('opens the inbox with Ctrl+Shift+J and Settings on Performance with Ctrl+Shift+P, and ignores a bare Ctrl+J', async () => {
+  it('looks for what needs you with Ctrl+Shift+J and opens Settings on Performance with Ctrl+Shift+P, and ignores a bare Ctrl+J', async () => {
     const user = userEvent.setup()
     renderDesktopApp()
-    await screen.findByRole('button', { name: 'New agent chat' })
+    await screen.findByRole('button', { name: 'New chat' })
 
     await user.keyboard('{Control>}j{/Control}')
-    expect(screen.queryByRole('dialog', { name: 'Inbox' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Nothing needs you')).not.toBeInTheDocument()
     await user.keyboard('{Control>}{Shift>}j{/Shift}{/Control}')
-    expect(screen.getByRole('dialog', { name: 'Inbox' })).toBeInTheDocument()
-    await user.keyboard('{Escape}')
+    expect(await screen.findByText('Nothing needs you')).toBeInTheDocument()
 
     await user.keyboard('{Control>}{Shift>}p{/Shift}{/Control}')
     const settings = screen.getByRole('dialog', { name: 'Settings' })
@@ -932,7 +939,7 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
   it('opens Settings with Ctrl+comma, jumps by letter, traps focus and gives it back on Escape', async () => {
     const user = userEvent.setup()
     renderDesktopApp()
-    const newSession = await screen.findByRole('button', { name: 'New agent chat' })
+    const newSession = await screen.findByRole('button', { name: 'New chat' })
     newSession.focus()
 
     await user.keyboard('{Control>},{/Control}')
@@ -1009,6 +1016,21 @@ describe('desktop overlays and pane tools', () => {
     daemon.sendTerminalInput.mockResolvedValue(undefined)
     daemon.loadConversations.mockResolvedValue([])
     daemon.suggestProjectFolders.mockResolvedValue([])
+  })
+
+  it('undoes and redoes typing in a text box of the desktop window, where the Linux web view has no undo of its own', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
+    renderDesktopApp()
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+
+    await user.keyboard('{Control>}{Shift>}k{/Shift}{/Control}')
+    const box = within(await screen.findByRole('dialog', { name: 'Command palette' })).getByRole('combobox')
+    await user.type(box, 'codex')
+    await user.keyboard('{Control>}z{/Control}')
+    expect(box).toHaveValue('')
+    await user.keyboard('{Control>}{Shift>}z{/Shift}{/Control}')
+    expect(box).toHaveValue('codex')
   })
 
   it('opens the palette with Ctrl+K, finds a session by typing, opens it with Enter and closes with Escape', async () => {
@@ -1089,49 +1111,6 @@ describe('desktop overlays and pane tools', () => {
     } finally {
       focus.mockRestore()
     }
-  })
-
-  it('lists what needs you in the inbox as plain rows: a row opens its session and a finished one can be cleared', async () => {
-    const user = userEvent.setup()
-    daemon.loadConversations.mockResolvedValue([at(2), at(3, { status: 'needs-you', summary: 'Allow git push origin main?' }), at(4, { status: 'done' })])
-    renderDesktopApp()
-    const open = await screen.findByRole('button', { name: /^Inbox, 2, something needs you$/ })
-    expect(open.closest('.mx-sidebar-head')).not.toBeNull()
-
-    await user.click(open)
-    const inbox = await screen.findByRole('dialog', { name: 'Inbox' })
-    const rows = within(inbox).getAllByRole('listitem')
-    expect(rows).toHaveLength(2)
-    expect(rows[0]).toHaveTextContent('Needs you')
-    expect(rows[0]).toHaveTextContent('Allow git push origin main?')
-    // No preview of the session and no answer buttons: the row opens the session, where the answer is given.
-    expect(within(inbox).queryByRole('button', { name: /^Yes, once/ })).not.toBeInTheDocument()
-
-    await user.click(within(rows[1] as HTMLElement).getByRole('button', { name: /^Clear / }))
-    expect(within(inbox).getAllByRole('listitem')).toHaveLength(1)
-
-    await user.click(within(inbox).getByRole('button', { name: /needs you$/ }))
-    await waitFor(() => { expect(screen.queryByRole('dialog', { name: 'Inbox' })).not.toBeInTheDocument() })
-  })
-
-  it('shows a session in the inbox again when it comes back to a state you cleared, after it moved on', async () => {
-    const user = userEvent.setup()
-    daemon.loadConversations.mockResolvedValue([at(2, { status: 'done' })])
-    const { client } = renderDesktopApp()
-    await user.click(await screen.findByRole('button', { name: /^Inbox, 1/ }))
-    const inbox = await screen.findByRole('dialog', { name: 'Inbox' })
-    await user.click(within(within(inbox).getByRole('listitem')).getByRole('button', { name: /^Clear / }))
-    expect(within(inbox).getByText(/all caught up/)).toBeInTheDocument()
-
-    daemon.loadConversations.mockResolvedValue([at(2, { status: 'working' })])
-    await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
-    // The window has to see the session working before it is done again, or nothing moved on.
-    // The inbox is a modal now, so the page behind it is hidden from the accessibility tree.
-    await screen.findByRole('button', { name: /, working$/, hidden: true })
-    daemon.loadConversations.mockResolvedValue([at(2, { status: 'done' })])
-    await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
-
-    await waitFor(() => { expect(within(screen.getByRole('dialog', { name: 'Inbox' })).queryByText(/all caught up/)).not.toBeInTheDocument() })
   })
 
   it('marks a finished session seen once you are in its pane, and leaves a needs-you one alone', async () => {
@@ -1311,16 +1290,6 @@ describe('desktop overlays and pane tools', () => {
     renderDesktopApp()
     await screen.findByRole('region', { name: 'Shell in ~/a' })
     expect(screen.queryByLabelText('Status')).not.toBeInTheDocument()
-  })
-
-  it('says it is all caught up when nothing needs you', async () => {
-    const user = userEvent.setup()
-    daemon.loadConversations.mockResolvedValue([at(2)])
-    renderDesktopApp()
-
-    await user.click(await screen.findByRole('button', { name: 'Inbox, 0' }))
-
-    expect(await screen.findByText('You\'re all caught up')).toBeInTheDocument()
   })
 
   it('hides the sidebar in focus mode and brings it back with Escape', async () => {

@@ -2,7 +2,7 @@ import { flushSync } from 'react-dom'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type WheelEvent } from 'react'
 import { ArrowDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { buildLayout, followAfterScroll, visibleRange, type FollowState } from './windowing'
+import { buildLayout, followAfterScroll, isAtBottom, visibleRange, type FollowState } from './windowing'
 
 type Props<T> = {
   items: readonly T[]
@@ -21,6 +21,12 @@ type Props<T> = {
 /** Used until the list has been laid out, and where there is no layout (tests). */
 const FALLBACK_VIEWPORT_PX = 600
 const DEFAULT_OVERSCAN = 6
+/**
+ * A scroll is the reader's only for this long after they last touched the list (wheel, pointer, key
+ * or finger). A web view also sends scroll events nobody asked for, as it settles a view the list has
+ * just moved or resized; read as the reader moving up, one of those stopped the list following.
+ */
+const READER_SCROLL_MS = 1200
 
 /**
  * A scrolling list that draws only the rows near the view, so a conversation of thousands of items
@@ -34,6 +40,23 @@ export function VirtualList<T>({ items, getKey, estimate, renderItem, label, ove
   const follow = useRef<FollowState>({ following: true, top: 0, total: 0 })
   // Where the list itself last put the view, so the scroll event that write causes is not read as the reader's.
   const wrote = useRef<number | null>(null)
+  // When the reader last touched the list, and whether they still hold it (a scrollbar being dragged).
+  const touchedAt = useRef(Number.NEGATIVE_INFINITY)
+  const held = useRef(false)
+  const touched = useCallback(() => { touchedAt.current = performance.now() }, [])
+  useEffect(() => {
+    const release = () => {
+      if (!held.current) return
+      held.current = false
+      touched()
+    }
+    window.addEventListener('pointerup', release)
+    window.addEventListener('pointercancel', release)
+    return () => {
+      window.removeEventListener('pointerup', release)
+      window.removeEventListener('pointercancel', release)
+    }
+  }, [touched])
   const [heights, setHeights] = useState<ReadonlyMap<string, number>>(new Map())
   const [scrollTop, setScrollTop] = useState(0)
   const [viewport, setViewport] = useState(FALLBACK_VIEWPORT_PX)
@@ -118,7 +141,8 @@ export function VirtualList<T>({ items, getKey, estimate, renderItem, label, ove
       return
     }
     place(element, layout.total, layout.total)
-  }, [layout.total, place])
+    // The view's own height is a dependency too: a message box that grows must not leave the newest row under it.
+  }, [layout.total, viewport, place])
 
   // A link to a row (an approval's step) moves the view there and stops following the newest row.
   const handled = useRef<number | null>(null)
@@ -137,14 +161,19 @@ export function VirtualList<T>({ items, getKey, estimate, renderItem, label, ove
     const element = scroller.current
     if (!element) return
     setScrollTop(element.scrollTop)
-    const causedByList = wrote.current === element.scrollTop
+    const ownWrite = wrote.current === element.scrollTop
+    const byReader = held.current || performance.now() - touchedAt.current < READER_SCROLL_MS
     wrote.current = null
-    follow.current = followAfterScroll(follow.current, { scrollTop: element.scrollTop, viewport: element.clientHeight || FALLBACK_VIEWPORT_PX, total: layout.total }, causedByList)
+    const height = element.clientHeight || FALLBACK_VIEWPORT_PX
+    follow.current = followAfterScroll(follow.current, { scrollTop: element.scrollTop, viewport: height, total: layout.total }, ownWrite || !byReader)
     setFollowing(follow.current.following)
+    // A scroll nobody asked for that left a following list short of its newest row is put right.
+    if (!ownWrite && !byReader && follow.current.following && !isAtBottom(element.scrollTop, height, layout.total)) place(element, layout.total, layout.total)
   }
 
   // A wheel move up arrives before the scroll it causes, and a streaming commit in between would undo it.
   const onWheel = (event: WheelEvent) => {
+    touched()
     // Nothing above to scroll to (a short chat, or the top already) is not leaving the newest row.
     if (event.deltaY >= 0 || !follow.current.following || (scroller.current?.scrollTop ?? 0) <= 0) return
     follow.current = { ...follow.current, following: false }
@@ -162,7 +191,7 @@ export function VirtualList<T>({ items, getKey, estimate, renderItem, label, ove
   const drawn = items.slice(range.start, range.end)
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      <div ref={scroller} role="region" aria-label={label} tabIndex={0} className="mx-chat-scroller min-h-0 flex-1 overflow-y-auto overscroll-contain" onScroll={onScroll} onWheel={onWheel}>
+      <div ref={scroller} role="region" aria-label={label} tabIndex={0} className="mx-chat-scroller min-h-0 flex-1 overflow-y-auto overscroll-contain" onScroll={onScroll} onWheel={onWheel} onPointerDown={() => { held.current = true; touched() }} onKeyDown={touched} onTouchMove={touched}>
         <div className="relative" style={{ height: layout.total }}>
           {drawn.map((item, index) => {
             const at = range.start + index

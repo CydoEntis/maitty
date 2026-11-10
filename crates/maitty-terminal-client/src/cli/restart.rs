@@ -39,9 +39,17 @@ pub(crate) fn relaunch() -> Result<()> {
 }
 
 static RELAUNCH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static SERVER_STOPPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-pub(crate) fn request_relaunch() {
+/// Ask for the installed app to open in this one's place. `server_stopping` says this window
+/// asked the server to stop first, so the new app must wait for it to be gone.
+pub(crate) fn request_relaunch(server_stopping: bool) {
     RELAUNCH.store(true, std::sync::atomic::Ordering::SeqCst);
+    SERVER_STOPPING.store(server_stopping, std::sync::atomic::Ordering::SeqCst);
+}
+
+pub(crate) fn server_stopping() -> bool {
+    SERVER_STOPPING.load(std::sync::atomic::Ordering::SeqCst)
 }
 
 pub(crate) fn relaunch_requested() -> bool {

@@ -85,10 +85,7 @@ jobs:
       - name: Install Tauri Linux dependencies
         if: runner.os == 'Linux'
         timeout-minutes: 15
-        run: |
-          scripts/ci-apt-install.sh \
-            build-essential curl file libayatana-appindicator3-dev libssl-dev \
-            libwebkit2gtk-4.1-dev libxdo-dev librsvg2-dev patchelf
+        uses: ./.github/actions/linux-deps
       - uses: pnpm/action-setup@v4
         with:
           version: 10.32.1
@@ -183,10 +180,7 @@ jobs:
           cache-dependency-path: apps/gui/pnpm-lock.yaml
       - name: Install Tauri Linux dependencies
         timeout-minutes: 15
-        run: |
-          scripts/ci-apt-install.sh \
-            build-essential curl file libayatana-appindicator3-dev libssl-dev \
-            libwebkit2gtk-4.1-dev libxdo-dev librsvg2-dev patchelf rpm wget
+        uses: ./.github/actions/linux-deps
       - name: Install GUI dependencies
         working-directory: apps/gui
         run: pnpm install --frozen-lockfile

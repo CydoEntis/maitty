@@ -176,7 +176,8 @@ fn spawn_daemon(executable: &std::path::Path) -> Result<()> {
 }
 
 fn daemon_command(executable: &std::path::Path) -> std::process::Command {
-    let mut command = std::process::Command::new(executable);
+    // The daemon's environment is every session's, so it must be the user's and not the app bundle's.
+    let mut command = crate::host_env::host_command(executable);
     command
         .arg("daemon")
         .stdin(std::process::Stdio::null())

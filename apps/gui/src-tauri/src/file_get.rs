@@ -199,7 +199,7 @@ pub fn open_pulled_folder(app: tauri::AppHandle, folder: String) -> Result<(), S
     } else {
         "xdg-open"
     };
-    std::process::Command::new(program)
+    maitty_desktop_client::host_command(program)
         .arg(&folder)
         .spawn()
         .map(drop)

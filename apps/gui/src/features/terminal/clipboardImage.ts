@@ -1,4 +1,7 @@
+import { readClipboardImage } from '@/api/clipboardImage'
 import { IMAGE_TYPES } from '@/api/imagePaste'
+import { errorMessage } from '@/lib/error-message'
+import { toast } from '@/lib/toast'
 
 /** What a paste event carries, as far as a pane cares. */
 export type ClipboardPick =
@@ -26,6 +29,17 @@ export function pickFromClipboard(data: DataTransfer | null): ClipboardPick {
   return usable.length > 0 || other === undefined ? { kind: 'none' } : { kind: 'unsupported', type: other.type }
 }
 
+/**
+ * A paste that carried nothing may still be a picture: the Linux web view does not hand one to the
+ * page, so the host reads the clipboard (`api/clipboardImage`). Elsewhere this finds nothing.
+ */
+export function pasteFromHost(onImage: (image: File) => void): void {
+  readClipboardImage().then(
+    (image) => { if (image !== null) onImage(image) },
+    (error: unknown) => { toast.error(errorMessage(error, 'Could not read the picture on the clipboard')) },
+  )
+}
+
 /** The words for an image format the host will not take. */
 export function unsupportedMessage(type: string): string {
   return `A ${type.replace('image/', '').toUpperCase()} image cannot be pasted; copy it as PNG, JPEG, GIF or WebP`
@@ -35,11 +49,13 @@ export function unsupportedMessage(type: string): string {
  * Listens for pastes anywhere inside `host` (the terminal's own paste listener is on its textarea,
  * below it, so this sees the event first). A paste with text is left alone for the terminal. A paste
  * of an image is taken for `onImage` and kept from the terminal, which would otherwise paste nothing
- * for it; a format the host cannot use is reported to `onRefuse`.
+ * for it; a format the host cannot use is reported to `onRefuse`. A paste with nothing in it is asked
+ * of the host (`pasteFromHost`).
  */
 export function listenForImagePaste(host: HTMLElement, onImage: (image: File) => void, onRefuse: (message: string) => void): () => void {
   const onPaste = (event: ClipboardEvent) => {
     const pick = pickFromClipboard(event.clipboardData)
+    if (pick.kind === 'none') pasteFromHost(onImage)
     if (pick.kind === 'text' || pick.kind === 'none') return
     event.preventDefault()
     event.stopPropagation()

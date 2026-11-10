@@ -100,6 +100,19 @@ impl App {
         self.dirty = true;
     }
 
+    /// The service is back as a version this window cannot talk to (another copy of the app
+    /// updated and restarted it): no try will ever work, so stop asking. A newer app installed
+    /// here opens in this window's place; otherwise the start-up screen for a version mismatch
+    /// takes over and offers the update.
+    pub(in crate::client) fn service_changed_version(&mut self, daemon: u32) {
+        if self.window_stale() {
+            return self.relaunch_window();
+        }
+        self.service_version = Some(daemon);
+        self.quit = Some(format!("{} was updated", daemon_name()));
+        self.dirty = true;
+    }
+
     /// Once a tick: make the try that is due, and start the service when it was asked for.
     pub(in crate::client) async fn service_tick(&mut self, connections: &mut Connections) {
         if self.service == Service::Up {
@@ -127,6 +140,9 @@ impl App {
                 self.service = Service::Up;
                 self.reattached = Some(Instant::now());
                 self.notify(format!("Reconnected to {}", daemon_name()), false);
+            }
+            Err(e) if ipc::other_version(&e).is_some() => {
+                self.service_changed_version(ipc::other_version(&e).unwrap_or_default());
             }
             Err(_) if try_n >= TRIES || self.service == Service::Down => self.service = Service::Down,
             Err(_) => {
@@ -256,6 +272,26 @@ mod tests {
         app.service = Service::Down;
         app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
         assert!(app.service_start_now, "s asks for the service to start");
+    }
+
+    #[test]
+    fn a_service_that_came_back_as_another_version_ends_the_tries() {
+        let mut app = world(Stage::None);
+        app.service_lost();
+        app.installed_version = Some(Ok(env!("APP_VERSION").into()));
+        app.service_changed_version(crate::protocol::PROTOCOL_VERSION + 1);
+        assert_eq!(app.service_version, Some(crate::protocol::PROTOCOL_VERSION + 1));
+        assert!(app.quit.is_some() && !app.relaunch, "the mismatch screen takes over, in this app");
+    }
+
+    #[test]
+    fn a_newer_app_installed_here_takes_the_window_when_the_service_changed_version() {
+        let mut app = world(Stage::None);
+        app.service_lost();
+        app.installed_version = Some(Ok("999.0.0".into()));
+        app.service_changed_version(crate::protocol::PROTOCOL_VERSION + 1);
+        assert!(app.relaunch && app.quit.is_some());
+        assert_eq!(app.service_version, None, "the installed app talks to that service");
     }
 
     #[test]

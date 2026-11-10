@@ -9,6 +9,7 @@ mod daemon_log;
 mod highlight;
 mod machine_update;
 mod machines;
+mod changes;
 mod new_chat;
 mod output_socket;
 mod performance;
@@ -100,7 +101,7 @@ async fn connect_agent(app: tauri::AppHandle, agent: String) -> Result<(), Strin
     }
     let executable = daemon_executable(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let mut command = std::process::Command::new(executable);
+        let mut command = maitty_desktop_client::host_command(executable);
         command
             .args(["integrate", agent.as_str()])
             .stdin(std::process::Stdio::null());
@@ -959,6 +960,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(machines::Machines(maitty_machines::local_machines::local_machines()))
         .manage(terminal_stream::StreamState::default())
         .manage(terminal_stream::MachineStates::default())
@@ -1002,6 +1004,8 @@ pub fn run() {
             new_chat::git_switch_branch,
             new_chat::git_add_worktree,
             new_chat::open_agent_docs,
+            changes::git_commit_all,
+            changes::git_create_pull_request,
             machines::list_machines,
             terminal_stream::list_machines_overview,
             terminal_stream::retry_machine,

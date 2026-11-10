@@ -183,7 +183,7 @@
 /* A pulse is a ring on a pseudo-element that scales out and fades once, then rests. An animated
    box-shadow, or any endless animation, repaints the card on every frame for as long as the state lasts
    (docs/PERFORMANCE.md). */
-.mx-badge.is-needs::after, .mx-inbox-count.is-needs::after, .mx-upd-dot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 2px rgba(242, 182, 90, .45); opacity: 0; pointer-events: none; animation: v7pulse .6s ease-out 1; }
+.mx-badge.is-needs::after, .mx-upd-dot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 2px rgba(242, 182, 90, .45); opacity: 0; pointer-events: none; animation: v7pulse .6s ease-out 1; }
 .mx-upd-dot::after { animation-duration: .7s; }
 .mx-badge.is-done { background: color-mix(in oklab, var(--ok) 24%, var(--bg)); }
 .mx-badge.is-idle { background: var(--m-raise); box-shadow: 0 0 0 2px var(--card-ring), inset 0 0 0 1px var(--line2); color: var(--muted); }
@@ -432,38 +432,10 @@
 .mx-palette-empty { padding: 18px 12px; font-size: 13px; color: var(--dim); }
 .mx-palette-foot { flex: none; height: 36px; display: flex; align-items: center; gap: 16px; padding: 0 14px; border-top: 1px solid var(--pane-line); font-size: 11.5px; color: var(--dim); }
 
-/* Inbox */
-.mx-inbox-scrim { position: absolute; inset: 0; z-index: 55; background: rgba(0, 0, 0, .45); animation: v7scrim .2s ease-out; }
-.mx-inbox { position: absolute; top: 44px; right: 12px; bottom: 12px; width: min(440px, calc(100% - 24px)); display: flex; flex-direction: column; border-radius: 14px; background: var(--card); border: 1px solid var(--pane-line); box-shadow: var(--sh); overflow: hidden; animation: v8insp .32s var(--ease-out); }
-.mx-inbox-head { flex: none; height: 52px; display: flex; align-items: center; gap: 10px; padding: 0 10px 0 16px; border-bottom: 1px solid var(--pane-line); }
-.mx-inbox-head strong { font-size: 15px; font-weight: 600; }
-.mx-inbox-sub { font-size: 12px; color: var(--dim); }
-.mx-inbox-close { width: 28px; height: 28px; border-radius: 8px; color: var(--muted); }
-.mx-inbox-list { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-.mx-inbox-item { position: relative; flex: none; display: flex; align-items: center; border-radius: 10px; }
-.mx-inbox-item.is-needs .mx-inbox-open { box-shadow: inset 0 0 0 1px var(--warn-line); }
-.mx-inbox-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 9px 40px 9px 10px; border-radius: 10px; text-align: left; transition: background-color .12s ease; }
-.mx-inbox-open:hover { background: var(--m-hover); }
-.mx-inbox-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.mx-inbox-title { font-size: 13px; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-inbox-title strong { color: var(--fg); font-weight: 600; }
-.mx-inbox-reason { font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-inbox-aside { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
-.mx-inbox-word { font-size: 12px; }
-.mx-inbox-word.is-needs { color: var(--warn); }
-.mx-inbox-word.is-error { color: var(--danger); }
-.mx-inbox-word.is-done { color: var(--ok); }
-.mx-inbox-when { font-size: 11px; color: var(--dim); }
-.mx-inbox-clear { position: absolute; top: 50%; right: 8px; width: 24px; height: 24px; margin-top: -12px; display: grid; place-items: center; border-radius: 6px; color: var(--muted); opacity: 0; transition: opacity .12s ease, background-color .12s ease; }
-.mx-inbox-item:hover .mx-inbox-clear, .mx-inbox-clear:focus-visible { opacity: 1; }
-.mx-inbox-clear:hover { background: var(--hover); color: var(--fg); }
 .mx-restore { flex: none; display: flex; flex-direction: column; gap: 6px; margin: 0 0 8px; padding: 8px 12px; border-radius: 12px; background: color-mix(in oklab, var(--warn) 12%, var(--m-pane)); box-shadow: inset 0 0 0 1px var(--warn-line); }
 .mx-restore-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12.5px; color: var(--fg2); }
 .mx-restore-text { flex: 1; min-width: 220px; }
 .mx-restore-command { font-family: var(--mono); font-size: 11.5px; padding: 2px 6px; border-radius: 6px; background: var(--m-well); color: var(--fg); }
-.mx-inbox-empty { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; font-size: 12.5px; color: var(--dim); }
-.mx-inbox-empty strong { font-size: 15px; color: var(--fg); }
-.mx-inbox-check { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: color-mix(in oklab, var(--ok) 20%, var(--bg)); }
 
 /* Focus mode */
 .mx-focus-pill { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 45; display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 8px 0 14px; border-radius: 999px; background: var(--m-raise); border: 1px solid var(--line2); box-shadow: 0 12px 40px rgba(0, 0, 0, .45); font-size: 12.5px; color: var(--fg2); white-space: nowrap; animation: v8pane .26s var(--ease-out); }
@@ -617,7 +589,6 @@ button.mx-sb-item:hover { background: rgba(var(--hl), calc(.07 * var(--hk))); co
 :root[data-icons="grayscale"] .mx-app-icon { background: var(--m-raise); box-shadow: none; color: var(--fg2); }
 
 /* Top-bar buttons and status badges stay flat: no gradient, glow, lift or entrance. */
-:root[data-finish="flat"] .mx-inbox-count:not(.is-needs) { animation: none; }
 :root[data-finish="flat"] .mx-badge:not(.is-needs) { animation: none; }
 
 /* A web view without GPU access (no WebGL 2) rasterises in software, where every blur and shadow is paid
@@ -689,7 +660,6 @@ button.mx-sb-item:hover { background: rgba(var(--hl), calc(.07 * var(--hk))); co
 .mx-app[data-side="right"] .mx-drawer { left: auto; right: 0; animation-name: v14inspL; }
 .mx-app[data-side="right"] .mx-sidebar-resizer { right: auto; left: 0; }
 .mx-app[data-side="right"] .mx-sidebar-resizer::after { right: auto; left: 0; }
-.mx-app[data-side="right"] .mx-inbox { right: auto; left: 12px; animation-name: v14inspL; }
 
 /* The session hover card. */
 .mx-upd-chip { font-size: 11.5px; padding: 3px 9px; border-radius: 999px; background: rgba(var(--hl), calc(.06 * var(--hk))); color: var(--muted); white-space: nowrap; }

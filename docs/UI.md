@@ -115,7 +115,7 @@ saved layout survives a restart; this computer's stay `t12`). **Settings › Mac
 adds machines (the behaviour is the terminal app's [Machines dialog](#project-specific-machines-dialog),
 with the host list read off the UI thread, the look at the machine ended by a 12 s limit or Cancel, and a
 login that needs a person run in a session named `ssh <name>`); **New session** (⌘T, Ctrl+Shift+T, ⌘K, the sidebar's New agent chat, a machine's New agent chat here) opens, on this computer, the
-**new agent chat page** (`NewChatPage`) over the panes: agent, folder (the machine's projects, the focused one first; **Choose folder…** is the folder picker), model, effort and a first message. It starts the agent in a terminal the daemon owns, shown as its chat (`startAgentSession`, ADR 0003), so the terminal | chat switch works for every agent; the picked model and effort go on the launch line (`launchFlags`: Claude `--model` and `--effort`; Codex `-m` and `-c model_reasoning_effort=`, which has no Max, so Max sends nothing for Codex) and the first message waits under the session until the agent takes input. The context row is real data: the agent list comes from the programs found on this computer's PATH (`agents_installed`), with INSTALLED apart from NOT SET UP, whose **Set up** opens the agent's official page (`open_agent_docs`, a fixed list, never a caller's address) and an installed agent without a chat view is listed but not selectable; the project list is RECENT (the first three, the focused project first) and ALL ON THIS COMPUTER; the computer list ends with **Add a machine…** (Settings › Machines); the branch chip (hidden outside a git repository) lists the folder's worktrees and branches with the age of their last commit (`git_branches`), and on **This checkout** a pick runs `git switch` (`git_switch_branch`), on **New worktree** it adds a worktree beside the project (`git_add_worktree`) and the chat starts there. The branch is settled before the agent starts, and a failure stays on the page. There is no Subagents fact on the page: it counts the subagents a running chat started, which a chat that has not started has none of. On another machine it opens the
+**new agent chat page** (`NewChatPage`) over the panes: agent, folder (the machine's projects, the focused one first; **Choose folder…** is the folder picker), model, effort and a first message. Its branch chip has two tabs, **This checkout** and **New worktree**. Choosing New worktree is a choice by itself: it takes a new branch under a suggested two-word name (`model/worktreeName.ts`) at once, the chip reads `new worktree · <branch>`, and a typed name or a branch with no worktree yet can replace it; This checkout drops it. It starts the agent in a terminal the daemon owns, shown as its chat (`startAgentSession`, ADR 0003), so the terminal | chat switch works for every agent; the picked model and effort go on the launch line (`launchFlags`: Claude `--model` and `--effort`; Codex `-m` and `-c model_reasoning_effort=`, which has no Max, so Max sends nothing for Codex) and the first message waits under the session until the agent takes input. The context row is real data: the agent list comes from the programs found on this computer's PATH (`agents_installed`), with INSTALLED apart from NOT SET UP, whose **Set up** opens the agent's official page (`open_agent_docs`, a fixed list, never a caller's address) and an installed agent without a chat view is listed but not selectable; the project list is RECENT (the first three, the focused project first) and ALL ON THIS COMPUTER; the computer list ends with **Add a machine…** (Settings › Machines); the branch chip (hidden outside a git repository) lists the folder's worktrees and branches with the age of their last commit (`git_branches`), and on **This checkout** a pick runs `git switch` (`git_switch_branch`), on **New worktree** it adds a worktree beside the project (`git_add_worktree`) and the chat starts there. The branch is settled before the agent starts, and a failure stays on the page. There is no Subagents fact on the page: it counts the subagents a running chat started, which a chat that has not started has none of. On another machine it opens the
 **New session dialog** (`NewSessionModal`, look in [DESIGN](DESIGN.md#desktop-app)), as it always has: an agent chat or a shell, which
 agent, which project (the machine's projects, the focused one first; **Other folder…** is this computer's folder picker),
 where it works and a first message. It is presentation only; the window starts the session through the same paths as
@@ -556,8 +556,7 @@ There is no New session dialog. `Action::PickSession` (leader `n`, palette `New 
 ## Project-specific: tray item (desktop)
 
 The desktop app keeps one item in the Windows tray or the macOS menu bar (`useTrayItem.ts`,
-`model/traySessions.ts`, the host's `tray.rs`). Its menu lists what the Inbox lists, so an entry
-cleared there is not in the menu: **Needs you (N)**, then **Finished (N)**, each session as
+`model/traySessions.ts`, the host's `tray.rs`). Its menu lists every session that needs you, finished or exited: **Needs you (N)**, then **Finished (N)**, each session as
 `agent: name`, or **Nothing needs you**; then **Show Maitty** and **Quit Maitty**. Choosing a
 session brings the window forward on it. Hovering says how many need you. The menu is the
 system's, so it takes no theme. Closing the window still closes the app; the item goes with it.
@@ -587,6 +586,10 @@ system's, so it takes no theme. Closing the window still closes the app; the ite
   (`BACKOFF`). Typing goes nowhere; `r` tries now and `Esc` leaves. The status glyphs do not change to `┆` yet.
 - **Service down.** After five tries a red box, ` MAITTYD ISN'T RESPONDING `, says sessions are still running and
   gives three things to try: `r` connect again, `s` start the service (`ipc::open_or_spawn_installed`), `maitty doctor`.
+- **Service came back as another version** (another copy of the app updated and restarted it): no try can work, so the
+  first try that hears the other version ends them (`service_changed_version`). When a newer maitty is installed here it
+  opens in this window's place; otherwise the window closes into the *Service update needed* screen below. A connect
+  waits at most 3 s for the daemon's pipe (`ipc::CONNECT_WITHIN`), so a try never holds the keys.
 - **Service update needed** is `restart_prompt.rs`, shown before the window opens when the running daemon is another
   protocol version: an amber title, SURVIVES (shells and their scrollback), STOPS (agents), `r` restart service or `Esc`
   not now (which leaves the window; a client and daemon that cannot read each other do not talk, so there is no
@@ -709,7 +712,8 @@ toast instead.
 host `image_paste.rs`, ADR 0007 and the amendment to 0055). Ctrl+Shift+V on Windows and Linux, or Cmd+V on macOS, pastes through the
 webview's paste event, whose clipboard holds text, an image or both. **Text comes first**: any text and the
 terminal pastes it as it always has (bracketed paste included); only an image with no text becomes an image
-paste. Plain Ctrl+V on Windows and Linux is never taken: like every plain Ctrl+letter there, it goes to the program
+paste. On Linux the webview hands a pasted image over as an empty paste, so an empty paste asks the host for the
+clipboard's picture ([tauri-clipboard](stack/tauri-clipboard.md)). Plain Ctrl+V on Windows and Linux is never taken: like every plain Ctrl+letter there, it goes to the program
 in the pane as a raw `^V` (so Claude Code's own clipboard handling and vim's `^V` work). The chat composer takes any
 paste chord, since its paste event is not behind a terminal. PNG, JPEG, GIF and WebP are taken (the host checks the
 first bytes, not the name the webview gives); another image type is refused with one error toast. At most 25 MB,

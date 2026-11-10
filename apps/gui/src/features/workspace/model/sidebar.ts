@@ -1,5 +1,5 @@
 import type { MachineHead } from './machines'
-import { folderNameOf, inCreationOrder, matchesFilter, SHELL_PROCESS, type SessionStatus, type SessionView } from './session'
+import { folderNameOf, inCreationOrder, SHELL_PROCESS, type SessionStatus, type SessionView } from './session'
 
 /**
  * The most urgent first: what needs you, an agent that stopped, what is working, then what finished,
@@ -76,20 +76,89 @@ export function projectGroups(sessions: readonly SessionView[]): ProjectGroup[] 
   return [...groups.entries()].map(([name, members]) => ({ name, color: projectColor(name), sessions: members, needs: members.filter((member) => member.status === 'needs').length }))
 }
 
+/** What the sidebar's headings are: what each session is doing, its project, or the machine it runs on. */
+export type SidebarGrouping = 'status' | 'project' | 'machine'
+
+export const SIDEBAR_GROUPINGS: ReadonlyArray<readonly [SidebarGrouping, string]> = [['status', 'Status'], ['project', 'Project'], ['machine', 'Machine']]
+
+export function isSidebarGrouping(value: unknown): value is SidebarGrouping {
+  return SIDEBAR_GROUPINGS.some(([grouping]) => grouping === value)
+}
+
+export type StatusSectionKey = 'needs' | 'working' | 'done' | 'idle'
+
+/** The status sections in the order they are listed, each with the few words that say what it means. */
+const STATUS_SECTIONS: ReadonlyArray<{ key: StatusSectionKey; name: string; hint: string }> = [
+  { key: 'needs', name: 'Needs you', hint: 'waiting on you' },
+  { key: 'working', name: 'Working', hint: 'running now' },
+  { key: 'done', name: 'Finished', hint: 'ready to review' },
+  { key: 'idle', name: 'Idle', hint: 'nothing to do' },
+]
+
+/**
+ * The section a session is listed in. An agent that stopped is yours to look at, so it sits with what
+ * needs you; a shell that exited, or one the daemon cannot read, has nothing to ask and is idle.
+ */
+function sectionOf(session: SessionView): StatusSectionKey {
+  switch (session.status) {
+    case 'needs': return 'needs'
+    case 'error': return isShell(session) ? 'idle' : 'needs'
+    case 'working': return 'working'
+    case 'done': return 'done'
+    case 'idle':
+    case 'unknown': return 'idle'
+  }
+}
+
+export type StatusSection = { key: StatusSectionKey; name: string; hint: string; sessions: SessionView[] }
+
+/** The sessions under the status each has, as created within a section; a section with nothing in it is left out. */
+export function statusSections(sessions: readonly SessionView[]): StatusSection[] {
+  const created = inCreationOrder(sessions)
+  return STATUS_SECTIONS
+    .map((section) => ({ ...section, sessions: created.filter((session) => sectionOf(session) === section.key) }))
+    .filter((section) => section.sessions.length > 0)
+}
+
+export type ProjectChoice = { name: string; color: string; count: number }
+
+/** Every project that has a session, by name, for the list that narrows the sidebar to one of them. */
+export function projectChoices(sessions: readonly SessionView[]): ProjectChoice[] {
+  const counts = new Map<string, number>()
+  for (const session of sessions) counts.set(projectOf(session), (counts.get(projectOf(session)) ?? 0) + 1)
+  return [...counts.entries()]
+    .map(([name, count]) => ({ name, color: projectColor(name), count }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+/** The sessions of one project, or all of them when none is picked. */
+export function inProject(sessions: readonly SessionView[], project: string | null): SessionView[] {
+  return project === null ? [...sessions] : sessions.filter((session) => projectOf(session) === project)
+}
+
+export type ProjectSection = ProjectGroup & { key: string; head: MachineHead }
+
+/**
+ * Every project as one heading, by name. A project that is on two machines gets a heading for each,
+ * this computer's first, because the same folder name on another machine is another checkout.
+ */
+export function projectSections(sessions: readonly SessionView[], heads: readonly MachineHead[]): ProjectSection[] {
+  return heads
+    .flatMap((head) => projectGroups(inCreationOrder(sessions.filter((session) => session.machine === head.machine)))
+      .map((group) => ({ ...group, key: `${head.key}:${group.name}`, head })))
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
 export type MachineGroup = { head: MachineHead; sessions: SessionView[] }
 
 /**
- * The sidebar's groups: one per machine (this computer first), each with its sessions that match
- * the filter, most urgent first. With a filter, a machine with nothing matching is left out; with no
- * sessions anywhere and no other machine there are no groups, only the note that says how to start
- * one. Another machine keeps its header with no sessions, as a machine with no app yet has none and
- * its header is where it says so.
+ * The sidebar's groups by machine: one per machine (this computer first), each with its sessions in
+ * `order`. With no sessions anywhere and no other machine there are no groups, only the note that
+ * says how to start one. Another machine keeps its header with no sessions, as a machine with no app
+ * yet has none and its header is where it says so.
  */
-export function machineGroups(sessions: readonly SessionView[], heads: readonly MachineHead[], query: string, keepEmpty = false, order: SidebarOrder = 'creation'): MachineGroup[] {
-  const filtering = query.trim() !== ''
+export function machineGroups(sessions: readonly SessionView[], heads: readonly MachineHead[], keepEmpty = false, order: SidebarOrder = 'creation'): MachineGroup[] {
   // A lone machine with nothing on it has no heading, unless something (a draft chat) is waiting there.
   if (!keepEmpty && sessions.length === 0 && heads.length <= 1) return []
-  return heads
-    .map((head) => ({ head, sessions: bySidebarOrder(sessions.filter((session) => session.machine === head.machine && matchesFilter(session, query)), order) }))
-    .filter((group) => !filtering || group.sessions.length > 0)
+  return heads.map((head) => ({ head, sessions: bySidebarOrder(sessions.filter((session) => session.machine === head.machine), order) }))
 }

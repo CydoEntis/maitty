@@ -46,6 +46,8 @@ export type SessionView = {
   /** The permission prompt the agent's own hook says it is stopped on. */
   ask: PermissionAsk | null
   interrupted: TerminalDetails['interrupted']
+  /** When the status last changed, in milliseconds, as the daemon says; null when it did not say. */
+  statusSince: number | null
   timeline: TerminalDetails['timeline']
   usage: TerminalDetails['usage']
   /** The agent's subagents, in the order its runtime reported them. */
@@ -57,6 +59,7 @@ export type SessionView = {
 }
 
 export const SHELL_PROCESS = 'shell'
+const MS_PER_SECOND = 1000
 
 /** What leads the name of a session on another machine, so it is never taken for one here. */
 export function machinePrefix(machineName: string | null | undefined): string {
@@ -199,6 +202,7 @@ export function toSessionView(conversation: Conversation, home: string): Session
     asking: conversation.details?.asking ?? '',
     ask: conversation.details?.ask ?? null,
     interrupted: conversation.details?.interrupted ?? null,
+    statusSince: (conversation.details?.since ?? 0) > 0 ? (conversation.details?.since ?? 0) * MS_PER_SECOND : null,
     timeline: conversation.details?.timeline ?? [],
     usage: conversation.details?.usage ?? { context: null, cost: null, tokens: null },
     // A helper that has finished has reported back to the agent, so its row goes; one that stopped or still needs something stays.
@@ -255,12 +259,4 @@ export function rowName(session: Pick<SessionView, 'name' | 'process'>): string 
 export function folderNameOf(session: Pick<SessionView, 'repoRoot' | 'cwd'>): string {
   const place = session.repoRoot ?? session.cwd
   return baseName(place)
-}
-
-/** The filter field's match: the query is found in the name, folder, process, branch or machine, ignoring case. */
-export function matchesFilter(session: SessionView, query: string): boolean {
-  const needle = query.trim().toLowerCase()
-  if (needle === '') return true
-  const fields = [rowName(session), session.title, folderNameOf(session), session.cwdLabel, session.process, session.branch ?? '', session.machineName ?? 'this computer']
-  return fields.some((field) => field.toLowerCase().includes(needle))
 }

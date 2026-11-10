@@ -5,8 +5,8 @@
 use crate::brand::APP_COMMAND;
 use crate::protocol::{self, ClientMsg, ServerMsg};
 use anyhow::{Context, Result};
-use interprocess::local_socket::tokio::{Stream, prelude::*};
-use interprocess::local_socket::{ListenerOptions, Name};
+use interprocess::local_socket::tokio::Stream;
+use interprocess::local_socket::{ConnectOptions, ListenerOptions, Name};
 use maitty_ipc_transport::framed_parts;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -234,8 +234,16 @@ pub async fn proxy(attach_only: bool) -> Result<()> {
     }
 }
 
+/// How long a connect waits for a daemon whose pipe has no free end. Without a limit the wait is
+/// for ever (Windows parks a thread on the busy pipe), and a window that asks from its event loop
+/// stops reading keys.
+const CONNECT_WITHIN: std::time::Duration = std::time::Duration::from_secs(3);
+
 pub async fn connect() -> Result<Stream> {
-    Ok(Stream::connect(name()?).await?)
+    let options = ConnectOptions::new()
+        .name(name()?)
+        .wait_mode(interprocess::ConnectWaitMode::Timeout(CONNECT_WITHIN));
+    Ok(options.connect_tokio().await?)
 }
 
 /// Proof that this process is the one daemon for its socket. The OS releases it when the process

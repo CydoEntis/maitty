@@ -46,12 +46,28 @@ describe('a conversation list that follows its newest row', () => {
     rerender(list(21))
     const reading = 21 * ROW - 10
 
+    fireEvent.pointerDown(element)
     act(() => { element.scrollTop = reading })
     fireEvent.scroll(element)
     rerender(list(22))
 
     expect(element.scrollTop).toBe(reading)
     expect(latest()).not.toBeNull()
+  })
+
+  it('keeps following through a scroll the reader did not make, and comes back to the newest row', () => {
+    const { rerender } = render(list(20))
+    const element = scroller()
+    rerender(list(21))
+
+    // The web view moves the view by itself, with no wheel, pointer, key or finger before it.
+    act(() => { element.scrollTop = 100 })
+    fireEvent.scroll(element)
+    expect(element.scrollTop).toBe(21 * ROW)
+    rerender(list(22))
+
+    expect(element.scrollTop).toBe(22 * ROW)
+    expect(latest()).toBeNull()
   })
 
   it('stops at once on a wheel move up, before its scroll event', () => {

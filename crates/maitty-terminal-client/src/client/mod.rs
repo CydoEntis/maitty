@@ -545,6 +545,8 @@ pub struct App {
     /// `r` asked to try now; `s` asked to start the service. Taken by the next tick.
     service_retry_now: bool,
     service_start_now: bool,
+    /// The protocol of a service that came back as a version this window cannot talk to.
+    service_version: Option<u32>,
     /// When the daemon's last restart was first seen to have stopped agents.
     stopped_since: Option<Instant>,
     /// What happened lately, newest last: (unix secs, pane, kind, text). Kinds: '!' needs
@@ -735,8 +737,12 @@ async fn run_async(opts: Options) -> Result<()> {
 
     restore_terminal();
     result?;
+    if let Some(daemon) = app.service_version {
+        // The caller answers this as it does at start-up: the screen that offers the update.
+        return Err(ipc::OtherVersion { daemon }.into());
+    }
     if app.relaunch {
-        crate::cli::restart::request_relaunch();
+        crate::cli::restart::request_relaunch(app.daemon_restart_requested);
     } else if let Some(reason) = app.quit {
         println!("[{reason}]");
     }
@@ -844,6 +850,7 @@ impl App {
             service: Default::default(),
             service_retry_now: false,
             service_start_now: false,
+            service_version: None,
             stopped_since: None,
             history: Default::default(),
             right_down: None,

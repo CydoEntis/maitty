@@ -2,7 +2,6 @@ import { type Dispatch, type SetStateAction, useCallback } from 'react'
 import { toast } from '@/lib/toast'
 import { guardLocal } from '@/lib/localOnly'
 import type { InspectView } from '@/features/inspect/InspectPanel'
-import type { PaneTool } from './components/PaneCard'
 import { focusPane, type Layout } from './model/layout'
 import type { SessionView } from './model/session'
 
@@ -44,17 +43,17 @@ export function useInspectActions({ focusedSession, setInspectOpen, setInspectVi
     setInspectView('changes')
     setInspectOpen(true)
   }, [sessionMap, setInspectOpen, setInspectView, showSessionById])
-  // A pane's Files and Changes tray: the pane takes the focus and the drawer shows that view, or closes when it already did.
-  const togglePaneTool = useCallback((paneId: string, sessionId: string, tool: PaneTool) => {
+  // A pane's side-panel button: the pane takes the focus and the panel opens for it, on `view` when one is asked for; it closes when it already showed that.
+  const togglePanel = useCallback((paneId: string, sessionId: string, view?: InspectView) => {
     const refusal = guardLocal(sessionMap.get(sessionId), 'inspect')
     if (refusal !== null) {
       toast.message(refusal)
       return
     }
-    const showing = inspectOpen && inspectView === tool && focusedId === sessionId
+    const showing = inspectOpen && focusedId === sessionId && (view === undefined || inspectView === view)
     setLayout((current) => focusPane(current, paneId))
-    setInspectView(tool)
+    if (view !== undefined) setInspectView(view)
     setInspectOpen(!showing)
   }, [sessionMap, inspectOpen, inspectView, focusedId, setLayout, setInspectView, setInspectOpen])
-  return { toggleInspect, inspectRefusal, showChangesOf, showChanges, togglePaneTool }
+  return { toggleInspect, inspectRefusal, showChangesOf, showChanges, togglePanel }
 }

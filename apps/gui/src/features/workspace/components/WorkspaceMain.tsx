@@ -23,7 +23,7 @@ import { useWorkspace } from '../workspaceContext'
 
 /** The middle of the window: the new chat page, find, the service's state, the panes of each mounted tab and the status bar. */
 export function WorkspaceMain() {
-  const { newChatOpen, sidebarMachineHeads, setNewChatOpen, setNewSessionMachine, sessions, focusedSession, preferences, home, startNewChat, setSettingsSection, findOpen, online, heads, focusedId, terminalHandles, showSessionById, setFindOpen, dismissedRestores, resumeInterrupted, setDismissedRestores, failures, mismatch, retryAt, offlineDetail, sessionsQuery, restartOffer, appBehindOffer, refetchSessions, tab, mountedTabs, layout, narrow, setLayout, closingPanes, startFolderLabel, canStart, newSession, focusedMachineNumber, focusMode, focusMachine, theme, shortcutChord, root, setThemeMode, pickTheme, openAppearance, setStyle, setTextSize, resetTextSize, openShortcuts } = useWorkspace()
+  const { serviceFooterText, newChatOpen, sidebarMachineHeads, setNewChatOpen, setNewSessionMachine, sessions, focusedSession, preferences, home, startNewChat, setSettingsSection, findOpen, online, heads, focusedId, terminalHandles, showSessionById, setFindOpen, dismissedRestores, resumeInterrupted, setDismissedRestores, failures, mismatch, retryAt, offlineDetail, sessionsQuery, restartOffer, appBehindOffer, refetchSessions, tab, mountedTabs, layout, narrow, setLayout, closingPanes, startFolderLabel, canStart, newSession, focusedMachineNumber, focusMode, focusMachine, theme, shortcutChord, root, setThemeMode, pickTheme, openAppearance, setStyle, setTextSize, resetTextSize, openShortcuts } = useWorkspace()
   return (
     <div className="mx-main-wrap">
               <main className="mx-main" aria-label="Terminals">
@@ -117,6 +117,7 @@ export function WorkspaceMain() {
                 )}
                 {!focusMode && preferences.statusBar && (
                   <StatusBar
+                    offlineText={mismatch ? serviceFooterText : undefined}
                     online={online}
                     machine={focusMachine}
                     themeMode={preferences.themeMode}

@@ -16,6 +16,23 @@ const diffLines = () => screen.queryAllByText((_, element) => element?.classList
 describe('command card', () => {
   const finished = (over = {}) => commandEvent('c', { command: 'pnpm test', output: 'one\ntwo\nthree\nfour\nfive', ...over })
 
+  it('is one line until it is opened: the first line of a long inline script, then the whole of it and its output', async () => {
+    const script = ["python3 - <<'EOF'", 'one = 1', 'two = 2', 'EOF'].join('\n')
+    render(<CommandCard event={finished({ command: script })} />)
+
+    const group = screen.getByRole('group', { name: "Command python3 - <<'EOF'" })
+    expect(group.querySelector('code')?.textContent).toBe("python3 - <<'EOF' …")
+    expect(group).not.toHaveTextContent('five')
+    await userEvent.click(within(group).getByRole('button', { expanded: false }))
+    expect(group.querySelector('code')?.textContent).toBe(script)
+    expect(group).toHaveTextContent('three four five')
+  })
+
+  it('starts open when the command failed', () => {
+    render(<CommandCard event={finished({ exitCode: 2, status: 'failed' })} />)
+    expect(screen.getByRole('group', { name: 'Command pnpm test' })).toHaveTextContent('three four five')
+  })
+
   it.each([
     ['exit 0 in green with the provider duration', finished({ exitCode: 0, durationMs: 1_400 }), '1s', 'exit 0'],
     ['a non-zero exit', finished({ exitCode: 2, durationMs: 2_000, status: 'failed' }), '2s', 'exit 2'],
@@ -55,6 +72,7 @@ describe('command card', () => {
     render(<CommandCard event={finished({ exitCode: 0 })} />)
 
     const group = screen.getByRole('group', { name: 'Command pnpm test' })
+    await userEvent.click(screen.getByRole('button', { expanded: false }))
     expect(group).toHaveTextContent('three four five')
     expect(group).not.toHaveTextContent('one')
     await userEvent.click(screen.getByRole('button', { name: 'Show all 5 lines' }))
@@ -63,23 +81,26 @@ describe('command card', () => {
     expect(group).not.toHaveTextContent('one')
   })
 
-  it('has no toggle for output that fits', () => {
+  it('has no toggle for output that fits', async () => {
     render(<CommandCard event={finished({ output: 'a\nb' })} />)
 
-    expect(screen.queryByRole('button')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { expanded: false }))
+    expect(screen.queryByRole('button', { name: /^Show/ })).toBeNull()
   })
 
-  it('shows a masked token as it is and says the daemon hid it', () => {
+  it('shows a masked token as it is and says the daemon hid it', async () => {
     render(<CommandCard event={commandEvent('c', { command: 'echo $T', output: 'token is [redacted]', exitCode: 0 })} />)
 
+    await userEvent.click(screen.getByRole('button', { expanded: false }))
     expect(screen.getByText('token is [redacted]')).toBeInTheDocument()
     expect(screen.getByText(/looked like a secret/)).toBeInTheDocument()
     expect(screen.getByText('exit 0')).toBeInTheDocument()
   })
 
-  it('says a secret file was read instead of showing the marker as output', () => {
+  it('says a secret file was read instead of showing the marker as output', async () => {
     render(<CommandCard event={commandEvent('c', { command: 'cat .env', output: '[content of a secret file omitted]', exitCode: 0 })} />)
 
+    await userEvent.click(screen.getByRole('button', { expanded: false }))
     expect(screen.getByText(/shows a secret file/)).toBeInTheDocument()
     expect(screen.queryByText('[content of a secret file omitted]')).toBeNull()
   })
