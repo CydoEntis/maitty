@@ -1,39 +1,28 @@
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from '@/lib/toast'
-import { defaultSessionFolder, isDesktop, loadConversations, loadDaemonRestartStatus, markSeenOnDaemon, sendTerminalInput } from '@/api/daemon'
+import { defaultSessionFolder, isDesktop, markSeenOnDaemon } from '@/api/daemon'
 import { LOCAL_MACHINE } from '@/api/machines'
-import { markConversationsDisconnected } from '@/data/connection'
 import type { DesktopSettingsSection } from '@/features/settings/components/DesktopSettings'
 import { readSettingsPreferences, type SettingsPreferences, TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN } from '@/features/settings/preferences'
 import { sizeVariables } from './model/layoutSize'
-import { daemonProtocolMismatch } from '@/lib/daemon-connection'
 import { errorMessage } from '@/lib/error-message'
-import { guardLocal } from '@/lib/localOnly'
 import type { InboxEntry } from './components/InboxPanel'
 import type { InspectView } from '@/features/inspect/InspectPanel'
-import { rememberSessions, withEnded } from './model/ended'
-import { isChatSession, isListedChatSession } from './model/chatSession'
-import { LOCAL_HEAD, machineHeads, remoteStartRefusal, remoteTerminals, type UpdateAction } from './model/machines'
+import { isChatSession } from './model/chatSession'
+import { LOCAL_HEAD, machineHeads, remoteStartRefusal, type UpdateAction } from './model/machines'
 import type { FocusMachine } from './components/StatusBar'
 import { isFirstRun } from '@/features/welcome/welcomed'
 import { repoDiff } from '@/features/inspect/api'
 import { type RestartedUpdate, takeRestarted } from '@/features/updates/updateMemory'
-import { routeDrop } from '@/features/terminal/dropRoute'
-import { dropOnComposer } from '@/features/chat/composerDrop'
-import { useFileDrop } from '@/features/terminal/useFileDrop'
-import { useFileGets } from '@/features/terminal/useFileGets'
-import { useFileSends } from '@/features/terminal/useFileSends'
-import { useImagePaste } from '@/features/terminal/useImagePaste'
 import { useUpdater } from '@/features/updates/useUpdater'
 import { chooseProjectFolder } from '@/api/folderPicker'
 import { showSessionNotice } from '@/features/notifications/notify'
 import type { TerminalHandle } from '@/features/terminal/handle'
 import type { LookAt } from '@/features/inspect/FilesTab'
-import type { PaneTool } from './components/PaneCard'
 import { connectAgentOnce } from './model/agentHooks'
 import { usePaneViews } from './usePaneViews'
-import { type ChatAgent, chatAvailability, chatSourceOf, effectiveView } from './model/chatView'
+import { chatAvailability, chatSourceOf, effectiveView } from './model/chatView'
 import { useMachineActions, useRemoteMachines } from './useMachines'
 import { useSessionAlerts } from './useSessionAlerts'
 import { useTrayItem } from './useTrayItem'
@@ -42,15 +31,13 @@ import { readSplitShells, withSplitShell, writeSplitShells } from '@/data/splitS
 import { readMachineNicknames } from '@/data/machineNicknames'
 import type { OpenSubagent } from './components/Sidebar'
 import { useSharedSettings } from '@/features/settings/sharedSettings'
-import { activeArrangement, dropSession, EMPTY_LAYOUT, focusedSessionId, focusPane, type Layout, MAX_PANES, openArrangement, showSession, type SplitDirection, splitPane, visibleSessionIds } from './model/layout'
-import { keptArrangements, rememberShown } from './model/keptTabs'
+import { activeArrangement, dropSession, EMPTY_LAYOUT, focusedSessionId, type Layout, MAX_PANES, openArrangement, type SplitDirection, splitPane, visibleSessionIds } from './model/layout'
 import { LAYOUT_RESET_NOTICE, readLayout, writeLayout } from './model/layoutStorage'
 import { byPriority } from './model/inboxOrder'
-import { folderNameOf, inCreationOrder, keepLabels, type SessionView, tildePath, toSessionView } from './model/session'
+import { folderNameOf, inCreationOrder, type SessionView, tildePath } from './model/session'
 import { bindingFor, detectPlatform, shortcutChords } from './model/shortcuts'
 import { resolveStartFolder } from './model/startFolder'
-import { activeThemeName, findTheme, terminalMinimumContrast, themeStyle, xtermTheme } from './theme/themes'
-import { withWindowStyle } from './theme/windowStyles'
+import { findTheme, themeStyle } from './theme/themes'
 import { COMPACT_WIDTH_PX, NARROW_WIDTH_PX } from './model/windowSize'
 import { makeId } from './makeId'
 import { useSessionStarts } from './useSessionStarts'
@@ -64,9 +51,13 @@ import { usePreferenceEffects } from './usePreferenceEffects'
 import { useSessionSync } from './useSessionSync'
 import { useSessionActions } from './useSessionActions'
 import { useInboxActions } from './useInboxActions'
-
-/** The daemon pushes every change (`sessions-changed`); this slow poll only catches a stream that went quiet. */
-const SESSION_REFRESH_MS = 15_000
+import { useServiceReads } from './useServiceReads'
+import { useSessionList } from './useSessionList'
+import { usePaneFiles } from './usePaneFiles'
+import { useWindowTheme } from './useWindowTheme'
+import { useInspectActions } from './useInspectActions'
+import { useAgentStarts } from './useAgentStarts'
+import { useMountedTabs } from './useMountedTabs'
 
 const TOAST_MS = 2600
 
@@ -77,19 +68,7 @@ const ABSOLUTE_PATH = /^(\/|[A-Za-z]:[\\/])/
 
 const TEST_NOTICE_MS = 6000
 
-const SECOND_MS = 1000
-
 const DIFF_STAT_REFRESH_MS = 8000
-
-/** A theme previews once the pointer rests on it, not as it passes over every row (each one repaints every terminal). */
-const THEME_PREVIEW_DELAY_MS = 140
-
-const MAX_RETRY_EXPONENT = 3
-
-/** Failed reads in a row before the window says the service is unreachable. */
-const OFFLINE_AFTER_FAILURES = 2
-
-const BACKOFF_BASE = 2
 
 /** The window's state and what each action does, put together once. `DesktopApp` hands it to the window's parts through `useWorkspace`. */
 export function useWorkspaceState() {
@@ -100,17 +79,6 @@ export function useWorkspaceState() {
   const systemReducedMotion = useSystemReducedMotion()
   const systemDark = useSystemDark()
   const updater = useUpdater()
-  // A theme being hovered in Settings shows on the whole window until the pointer leaves or one is picked.
-  const [previewTheme, setPreviewTheme] = useState<string | null>(null)
-  const previewTimer = useRef<number | undefined>(undefined)
-  const previewThemeSoon = useCallback((name: string | null) => {
-    window.clearTimeout(previewTimer.current)
-    if (name === null) {
-      setPreviewTheme(null)
-      return
-    }
-    previewTimer.current = window.setTimeout(() => { setPreviewTheme(name) }, THEME_PREVIEW_DELAY_MS)
-  }, [])
   const [welcomeOpen, setWelcomeOpen] = useState(isFirstRun)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [preferences, setPreferences] = useState(readSettingsPreferences)
@@ -166,64 +134,10 @@ export function useWorkspaceState() {
   const [failures, setFailures] = useState(0)
   const [root, setRoot] = useState<HTMLDivElement | null>(null)
   const terminalHandles = useRef(new Map<string, TerminalHandle>())
-
-  // While maittyd is unreachable, try again after 1, 2, 4, then every 8 seconds.
-  const retryDelay = BACKOFF_BASE ** Math.min(MAX_RETRY_EXPONENT, Math.max(0, failures - 1)) * SECOND_MS
-  const sessionsQuery = useQuery({
-    queryKey: ['conversations'],
-    queryFn: async () => {
-      try {
-        const loaded = await loadConversations()
-        setFailures(0)
-        return loaded
-      } catch (error) {
-        setFailures((count) => count + 1)
-        throw error
-      }
-    },
-    retry: false,
-    refetchInterval: (query) => (query.state.status === 'error' ? retryDelay : SESSION_REFRESH_MS),
-  })
-  const homeQuery = useQuery({ queryKey: ['home-folder'], queryFn: defaultSessionFolder, staleTime: Infinity, retry: false })
-  const home = homeQuery.data ?? ''
-  const mismatch = sessionsQuery.isError ? daemonProtocolMismatch(sessionsQuery.error) : null
-  // One read that failed while the sessions are known is tried again a second later before anything is called
-  // unreachable: a single lost read is not an outage, and marking every session unknown for it is a false alarm.
-  // Another version is certain at once.
-  const oneLostRead = failures < OFFLINE_AFTER_FAILURES && mismatch === null && sessionsQuery.data !== undefined
-  const online = !sessionsQuery.isError || oneLostRead
-  // A service newer than this app cannot be restarted into agreement; only updating the app helps.
-  const serviceNewer = mismatch !== null && mismatch.daemonProtocol > mismatch.guiProtocol
-  const restartStatusQuery = useQuery({ queryKey: ['daemon-restart-status', mismatch?.daemonProtocol], queryFn: loadDaemonRestartStatus, enabled: Boolean(mismatch), retry: false })
+  const { sessionsQuery, online, home, retryDelay, serviceNewer, mismatch, restartStatusQuery } = useServiceReads({ failures, setFailures })
 
   const { machines, machinesRef, machinesKnown, machineSaid } = useRemoteMachines()
-  // Sessions started as a known agent, until the daemon says so itself (see `startAgentSession`).
-  const [expectedAgents, setExpectedAgents] = useState<Record<string, ChatAgent>>({})
-  const [shownLabels, setShownLabels] = useState<ReadonlyMap<string, SessionView>>(() => new Map())
-  const liveSessions = useMemo(() => {
-    // Terminal sessions, and the chat sessions the daemon owns that are not put away (ADR 0003).
-    const terminals = (sessionsQuery.data ?? []).filter((item) => item.kind === 'terminal' || isListedChatSession(item))
-    const here = online ? terminals : markConversationsDisconnected(terminals)
-    return [...here, ...remoteTerminals(machines)].map((conversation) => {
-      const expected = expectedAgents[conversation.id]
-      return toSessionView(expected !== undefined && !conversation.agent ? { ...conversation, agent: expected } : conversation, home)
-    })
-  }, [sessionsQuery.data, online, home, machines, expectedAgents])
-  const everySession = useMemo(() => liveSessions.map((view) => keepLabels(view, shownLabels.get(view.id))), [liveSessions, shownLabels])
-  // What each row shows is remembered, so a later refresh keeps it (see `keepLabels`); only a change is stored, which ends the loop.
-  const labelsChanged = everySession.length !== shownLabels.size || everySession.some((view) => shownLabels.get(view.id)?.title !== view.title || shownLabels.get(view.id)?.cwd !== view.cwd || shownLabels.get(view.id)?.branch !== view.branch)
-  if (labelsChanged) setShownLabels(new Map(everySession.map((view) => [view.id, view])))
-  const sessions = everySession
-  const sessionMap = useMemo(() => new Map(sessions.map((session) => [session.id, session])), [sessions])
-  // A session the daemon stops listing keeps its pane, shown as ended, so a refresh that misses one
-  // never closes a layout or moves your focus. A pane goes only when you close it.
-  const [remembered, setRemembered] = useState<ReadonlyMap<string, SessionView>>(() => new Map())
-  const [seenSessions, setSeenSessions] = useState(sessions)
-  if (seenSessions !== sessions) {
-    setSeenSessions(sessions)
-    setRemembered((before) => rememberSessions(before, sessions, layout))
-  }
-  const paneSessions = useMemo(() => withEnded(sessionMap, remembered), [sessionMap, remembered])
+  const { sessions, sessionMap, setExpectedAgents, paneSessions } = useSessionList({ sessionsQuery, online, machines, home, layout })
   // A cleared Inbox entry stays hidden only while its session keeps the state it had when cleared;
   // once it moves on, coming back to that state is news again.
   const [seenForClear, setSeenForClear] = useState(sessions)
@@ -249,56 +163,7 @@ export function useWorkspaceState() {
     return () => { document.removeEventListener('mousedown', onMouseDown, true) }
   }, [])
   const focusedSession = useMemo(() => (focusedId ? sessionMap.get(focusedId) : undefined), [focusedId, sessionMap])
-  // A path the machine kept a sent file at is typed into the pane the drop was for, if that pane is still open.
-  const typeIntoPane = (sessionId: string, text: string) => {
-    const handle = terminalHandles.current.get(sessionId)
-    if (!handle) return false
-    handle.paste(text)
-    return true
-  }
-  const { sendFiles, sendImage } = useFileSends({ typeInto: typeIntoPane })
-  const { getFile } = useFileGets()
-  // A pasted image goes the same two ways (ticket 19): saved here and its path typed, or sent to the pane's machine.
-  const pasteImage = useImagePaste({
-    sendImage,
-    typeInto: typeIntoPane,
-    isConnected: (name) => [...machinesRef.current.values()].some((candidate) => candidate.state.name.toLowerCase() === name.toLowerCase() && candidate.state.state === 'connected'),
-    online,
-    windows: /Windows/i.test(navigator.userAgent),
-  })
-  // Files dropped on a pane type their paths into it; the pane under the pointer, else the focused one.
-  // On another machine's pane a path here names nothing there, so the files are sent to it and the
-  // paths they land at are typed instead (ADR 0007).
-  useFileDrop((paths, at) => {
-    const under = document.elementFromPoint(at.x, at.y)
-    // A drop on a chat composer attaches the files to its message; it is not a drop on the pane around it (ticket 20).
-    if (dropOnComposer(paths, under)) return
-    const target = under?.closest<HTMLElement>('[data-session-id]')?.dataset.sessionId ?? focusedId
-    const handle = target ? terminalHandles.current.get(target) : undefined
-    if (!target || !handle) return
-    const route = routeDrop(target, paths, /Windows/i.test(navigator.userAgent))
-    if (route === null) return
-    if (route.kind === 'refuse') {
-      toast.error(route.message)
-      return
-    }
-    if (route.kind === 'send') {
-      const machine = [...machinesRef.current.values()].find((candidate) => candidate.state.name.toLowerCase() === route.machine.toLowerCase())
-      if (machine === undefined || machine.state.state !== 'connected') {
-        toast.error(`${route.machine} is not connected; reconnect before sending files to it`)
-        return
-      }
-      sendFiles(target, route.machine, route.paths)
-      handle.focus()
-      return
-    }
-    if (!online) {
-      toast.error('Reconnect to the Maitty service before dropping files on a pane')
-      return
-    }
-    handle.paste(route.text)
-    handle.focus()
-  })
+  const { getFile, pasteImage } = usePaneFiles({ terminalHandles, machinesRef, online, focusedId })
   // With the window in the background nothing is being looked at, so a session that finishes then keeps its unread dot.
   const visibleKey = windowFocused ? [...visibleSessionIds(layout)].sort().join(' ') : ''
   // Every session some layout shows: one the daemon lists before its pane is placed is kept off the sidebar until it is.
@@ -330,19 +195,7 @@ export function useWorkspaceState() {
   // New sessions go to the machine of the session in front, else this computer.
   const focusedMachineNumber = focusedSession?.machine ?? LOCAL_MACHINE
   const sidebarMachineHeads = useMemo(() => (heads.length === 0 ? [LOCAL_HEAD] : heads), [heads])
-
-  const reducedMotion = preferences.reduceMotion || systemReducedMotion
-  const themeName = previewTheme ?? activeThemeName(preferences, systemDark)
-  const theme = useMemo(() => withWindowStyle(findTheme(themeName), preferences.style), [themeName, preferences.style])
-  // The theme's tokens are on the page root as well as on the window: a menu or popover that renders outside the window
-  // (Radix portals to the page) then reads the same colours, and the shadcn names mapped on `:root` resolve to the theme.
-  useEffect(() => {
-    const names = Object.keys(themeStyle(theme)).filter((name) => name.startsWith('--'))
-    const values = themeStyle(theme)
-    for (const name of names) document.documentElement.style.setProperty(name, values[name] ?? '')
-    return () => { for (const name of names) document.documentElement.style.removeProperty(name) }
-  }, [theme])
-  const look = useMemo(() => ({ fontFamily: preferences.terminalFontFamily, fontWeight: preferences.terminalFontWeight, fontWeightBold: preferences.terminalFontWeightBold, cursorStyle: preferences.cursorStyle, scrollback: preferences.scrollback, scrollSpeed: preferences.scrollSpeed, screenReader: preferences.terminalScreenReader, seeThrough: preferences.terminalSeeThrough, cursorBlink: preferences.cursorBlink, plainDrawing: preferences.terminalPlainDrawing, theme: xtermTheme(theme.tokens), minimumContrast: terminalMinimumContrast(theme) }), [preferences.terminalFontFamily, preferences.terminalFontWeight, preferences.terminalFontWeightBold, preferences.cursorStyle, preferences.cursorBlink, preferences.scrollback, preferences.scrollSpeed, preferences.terminalScreenReader, preferences.terminalSeeThrough, preferences.terminalPlainDrawing, theme])
+  const { reducedMotion, theme, previewThemeSoon, setPreviewTheme, look } = useWindowTheme({ preferences, systemReducedMotion, systemDark })
   useSharedSettings(preferences, setPreferences, online)
 
   const flash = useCallback((text: string) => { setToastMessage({ text, key: Date.now() }) }, [])
@@ -440,45 +293,7 @@ export function useWorkspaceState() {
     if (compact) setDrawerOpen((open) => !open)
     else setPreferences((current) => ({ ...current, compactSidebar: !current.compactSidebar }))
   }, [compact])
-
-  // The repository view reads this computer's checkouts: on a pane of another machine it says so.
-  const inspectRefusal = guardLocal(focusedSession, 'inspect')
-  const toggleInspect = useCallback(() => {
-    if (inspectRefusal !== null) toast.message(inspectRefusal)
-    else setInspectOpen((open) => !open)
-  }, [inspectRefusal])
-  // An edit block's header: show the repository's changes in the Inspect panel.
-  const showChanges = useCallback(() => {
-    if (inspectRefusal !== null) {
-      toast.message(inspectRefusal)
-      return
-    }
-    setInspectView('changes')
-    setInspectOpen(true)
-  }, [inspectRefusal])
-  // A session menu's Show changes: that session in front, its repository's changes beside it.
-  const showChangesOf = useCallback((sessionId: string) => {
-    const refusal = guardLocal(sessionMap.get(sessionId), 'inspect')
-    if (refusal !== null) {
-      toast.message(refusal)
-      return
-    }
-    showSessionById(sessionId)
-    setInspectView('changes')
-    setInspectOpen(true)
-  }, [sessionMap, showSessionById])
-  // A pane's Files and Changes tray: the pane takes the focus and the drawer shows that view, or closes when it already did.
-  const togglePaneTool = useCallback((paneId: string, sessionId: string, tool: PaneTool) => {
-    const refusal = guardLocal(sessionMap.get(sessionId), 'inspect')
-    if (refusal !== null) {
-      toast.message(refusal)
-      return
-    }
-    const showing = inspectOpen && inspectView === tool && focusedId === sessionId
-    setLayout((current) => focusPane(current, paneId))
-    setInspectView(tool)
-    setInspectOpen(!showing)
-  }, [sessionMap, inspectOpen, inspectView, focusedId])
+  const { toggleInspect, inspectRefusal, showChangesOf, showChanges, togglePaneTool } = useInspectActions({ focusedSession, setInspectOpen, setInspectView, sessionMap, showSessionById, inspectOpen, inspectView, focusedId, setLayout })
   const setThemeMode = useCallback((themeMode: SettingsPreferences['themeMode']) => { setPreferences((current) => ({ ...current, themeMode })) }, [])
   const pickTheme = useCallback((name: string) => { setPreferences((current) => (findTheme(name).light ? { ...current, lightTheme: name } : { ...current, darkTheme: name })) }, [])
   const openAppearance = useCallback(() => { setSettingsSection('appearance') }, [])
@@ -573,55 +388,10 @@ export function useWorkspaceState() {
       if (other?.status === 'idle' && !isChatSession(other.conversation)) void sendTo(other, data).catch((error: unknown) => { toast.error(errorMessage(error, 'Could not broadcast to a pane')) })
     }
   }, [layout, sessionMap, sendTo])
-
-  // "Open terminal here" on an agent: a shell in its folder beside it. Again ("Close its terminal") ends that shell.
-  const toggleAgentTerminal = useCallback((agentId: string) => {
-    const opened = agentTerminals.get(agentId)
-    if (opened !== undefined && sessionMap.has(opened)) {
-      endSessions([opened], 'Terminal')
-      setAgentTerminals((current) => { const next = new Map(current); next.delete(agentId); return next })
-      return
-    }
-    const agent = sessionMap.get(agentId)
-    if (!agent) return
-    const refusal = remoteStartRefusal(agent.machine !== LOCAL_MACHINE, agent.machineName, 'Opening a terminal here')
-    if (refusal) {
-      toast.message(refusal)
-      return
-    }
-    void runStart(() => Promise.resolve(agent.cwd), (id) => {
-      setAgentTerminals((current) => new Map(current).set(agentId, id))
-      setLayout((current) => {
-        const shown = showSession(current, agentId, makeId)
-        const next = splitPane(shown, null, 'right', id, makeId)
-        return next === shown ? openArrangement(shown, id, makeId) : next
-      })
-    })
-  }, [agentTerminals, sessionMap, endSessions, runStart])
-
-  const startAgent = useCallback((program: string) => {
-    const refusal = remoteStartRefusal(focusedSession !== undefined && focusedSession.machine !== LOCAL_MACHINE, focusedSession?.machineName ?? null, `Starting ${program} here`)
-    if (refusal) {
-      toast.message(refusal)
-      return
-    }
-    setSettingsSection(null)
-    void runStart(async () => focusedSession?.cwd ?? resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => {
-      setLayout((current) => openArrangement(current, id, makeId))
-      void sendTerminalInput({ id, generation: 0 }, `${program}\r`).catch((error: unknown) => { toast.error(errorMessage(error, `Could not start ${program}`)) })
-    })
-  }, [runStart, focusedSession, preferences.startFolder, home])
+  const { toggleAgentTerminal, startAgent } = useAgentStarts({ agentTerminals, sessionMap, endSessions, setAgentTerminals, runStart, setLayout, focusedSession, setSettingsSection, preferences, home })
   const { paletteItems } = usePaletteItems({ paletteOpen, platform, layout, sessions, projectOf, showSessionById, home, newSession, focusedMachineNumber, newTerminal, focusedSession, toggleAgentTerminal, runShortcut, heads, online, newSessionOn, preferences, setPreferences, split, setInboxOpen, setSettingsSection, inspectRefusal, setInspectOpen, setFindOpen, setFocusMode, setShortcutsOpen, setLayout, startAgent })
   const { serviceFooterText, offlineDetail, restartOffer, appBehindOffer } = useServiceOffers({ mismatch, serviceNewer, restartStatusQuery, refetchSessions, updater, restartNow, online, failures, sessionsQuery })
-
-  const tab = activeArrangement(layout)
-  // The tabs shown last stay mounted behind the one showing, so going back to one does not build its terminals again.
-  const [recentTabs, setRecentTabs] = useState<readonly string[]>([])
-  const shownTabs = rememberShown(recentTabs, layout.activeId)
-  if (shownTabs !== recentTabs) setRecentTabs(shownTabs)
-  const keptTabs = useMemo(() => keptArrangements(layout, shownTabs), [layout, shownTabs])
-  // In the layout's own order, so a tab coming to the front never moves in the page.
-  const mountedTabs = tab ? layout.arrangements.filter((candidate) => candidate.id === tab.id || keptTabs.includes(candidate)) : []
+  const { tab, mountedTabs } = useMountedTabs({ layout })
   const startFolderLabel = preferences.startFolder.trim() ? tildePath(resolveStartFolder(preferences.startFolder, home), home) : '~'
   const canStart = online && !starting
   const sidebarWidth = liveSidebarWidth ?? preferences.sidebarWidth
