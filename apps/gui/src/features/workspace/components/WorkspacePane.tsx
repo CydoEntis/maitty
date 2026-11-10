@@ -1,20 +1,15 @@
-import { type TerminalLook, TerminalView } from '@/TerminalView'
-import { type ChatAgent, chatAvailability, type ChatAvailability, type PaneView } from '../model/chatView'
-import type { Dispatch, RefObject, SetStateAction } from 'react'
+import { TerminalView } from '@/TerminalView'
+import { useWorkspace } from '../workspaceContext'
+import { chatAvailability, type PaneView } from '../model/chatView'
 import { toast } from '@/lib/toast'
 import { sendTerminalInput } from '@/api/daemon'
-import type { SettingsPreferences } from '@/features/settings/preferences'
 import { errorMessage } from '@/lib/error-message'
-import type { InspectView } from '@/features/inspect/InspectPanel'
 import { isChatSession } from '../model/chatSession'
-import type { TerminalHandle } from '@/features/terminal/handle'
-import { PaneCard, type PaneTool } from './PaneCard'
+import { PaneCard } from './PaneCard'
 import { ChatPane } from '@/features/chat/components/ChatPane'
 import { NoTerminalNote } from '@/features/chat/components/NoTerminalNote'
-import { usePaneViews } from '../usePaneViews'
-import type { OpenSubagent } from './Sidebar'
-import { type Arrangement, focusPane, type Layout, type PaneSlot, type SplitDirection, toggleMaximize } from '../model/layout'
-import { folderNameOf, type SessionView } from '../model/session'
+import { type Arrangement, focusPane, type PaneSlot, toggleMaximize } from '../model/layout'
+import { folderNameOf } from '../model/session'
 import { isShell } from '../model/sidebar'
 
 /** Whether a session can show a chat at all: an agent the app reads. A shell or another program has none, so it gets no switch. */
@@ -29,42 +24,12 @@ const CLEAR_SCREEN = '\x0c'
  * One pane of the layout: its header, and the session's terminal with its chat over it when the chat shows.
  * A pane of a tab kept out of sight keeps only its terminal, paused: no chat reads, takes keys or answers for it.
  */
-export function WorkspacePane({ shown, pane, kept, paneSessions, chatOf, openSubagent, agentTerminals, sessionMap, outsidePanes, dropId, dragId, paneViews, showChanges, online, setOpenSubagent, togglePaneTool, preferences, startChatHere, inspectOpen, inspectView, toggleAgentTerminal, root, look, modalOpen, mirrorInput, openPath, pasteImage, terminalHandles, setLayout, split, closePaneById, sendTo, copyPathOf, restartPane }: {
+export function WorkspacePane({ shown, pane, kept }: {
   shown: Arrangement
   pane: PaneSlot
   kept: boolean
-  paneSessions: ReadonlyMap<string, SessionView>
-  chatOf: (session: SessionView) => { availability: ChatAvailability; view: PaneView }
-  openSubagent: OpenSubagent | null
-  agentTerminals: ReadonlyMap<string, string>
-  sessionMap: Map<string, SessionView>
-  outsidePanes: boolean
-  dropId: string | null
-  dragId: string | null
-  paneViews: ReturnType<typeof usePaneViews>
-  showChanges: () => void
-  online: boolean
-  setOpenSubagent: Dispatch<SetStateAction<OpenSubagent | null>>
-  togglePaneTool: (paneId: string, sessionId: string, tool: PaneTool) => void
-  preferences: SettingsPreferences
-  startChatHere: (from: SessionView, agent: ChatAgent, fullAccess: boolean) => void
-  inspectOpen: boolean
-  inspectView: InspectView
-  toggleAgentTerminal: (agentId: string) => void
-  root: HTMLDivElement | null
-  look: TerminalLook
-  modalOpen: boolean
-  mirrorInput: (fromSessionId: string, data: string | Uint8Array) => void
-  openPath: (session: SessionView, path: string, line?: number) => void
-  pasteImage: (sessionId: string, image: Blob) => void
-  terminalHandles: RefObject<Map<string, TerminalHandle>>
-  setLayout: Dispatch<SetStateAction<Layout>>
-  split: (paneId: string | null, direction: SplitDirection) => void
-  closePaneById: (paneId: string) => void
-  sendTo: (target: SessionView, data: string) => Promise<void>
-  copyPathOf: (sessionId: string) => void
-  restartPane: (paneId: string) => void
 }) {
+  const { paneSessions, chatOf, openSubagent, agentTerminals, sessionMap, outsidePanes, dropId, dragId, paneViews, showChanges, online, setOpenSubagent, togglePaneTool, preferences, startChatHere, inspectOpen, inspectView, toggleAgentTerminal, root, look, modalOpen, mirrorInput, openPath, pasteImage, terminalHandles, setLayout, split, closePaneById, sendTo, copyPathOf, restartPane } = useWorkspace()
   const session = paneSessions.get(pane.sessionId)
   if (!session) return null
   const focused = pane.id === shown.focus && !kept

@@ -199,6 +199,11 @@ Rules for `apps/gui/` (the look is in [DESIGN](DESIGN.md#desktop-app)).
    session closes with a 6 second Undo. Crewmates (`features/crew/`) is not mounted: the redesign leaves it undesigned.
 3. A terminal sits on the workspace card's own ground (`--main`, xterm's background and ANSI black), so a pane reads as
    part of the card and not as a box inside it.
+4. The window's state is put together once, in `features/workspace/useWorkspaceState.ts`, and `DesktopApp` hands it to
+   the window's parts (`WorkspaceSidebars`, `WorkspaceMain`, `WorkspacePane`, `WorkspaceDialogs`) through
+   `useWorkspace()` (`workspaceContext.ts`). A part of the window reads what it needs from there and is not passed the
+   window's state as props; a component used outside the window (`Sidebar`, `PaneCard`, a dialog) still takes props.
+   New window state goes in a hook of its own that `useWorkspaceState` calls, not in `DesktopApp`.
 
 ## Project-specific: usage and cost page (desktop)
 
