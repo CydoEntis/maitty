@@ -445,7 +445,26 @@ impl App {
             linked,
             confirm: None,
         })));
-        self.spawn_bg(move || Bg::Changes(top, tasks::load_review(task).map(Box::new)));
+        self.load_changes(top, task);
+    }
+
+    /// Reads a checkout's review, and its marked files, off the UI thread.
+    pub(super) fn load_changes(&self, dir: PathBuf, task: tasks::TaskRow) {
+        let marked: HashSet<String> = self
+            .screen
+            .saved
+            .reviewed
+            .get(&design::path_key(&dir))
+            .map(|marks| marks.keys().cloned().collect())
+            .unwrap_or_default();
+        self.spawn_bg(move || {
+            let review = tasks::load_review(task);
+            let now = review
+                .as_ref()
+                .map(|r| views::marked_fingerprints(&dir, &r.files, &marked))
+                .unwrap_or_default();
+            Bg::Changes(dir, review.map(Box::new), now)
+        });
     }
 
     /// The checkout `dir` is in, as a task (what Changes, merge and throw-away work on), the

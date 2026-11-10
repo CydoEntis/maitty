@@ -237,7 +237,12 @@ pub(super) enum Btn {
 }
 
 pub(super) enum Bg {
-    Changes(PathBuf, Result<Box<tasks::Review>, String>),
+    /// A review, and what its marked files were like when it was read (`views::still_reviewed`).
+    Changes(
+        PathBuf,
+        Result<Box<tasks::Review>, String>,
+        HashMap<String, u64>,
+    ),
     Tree(
         PathBuf,
         Vec<views::FileNode>,
@@ -267,6 +272,8 @@ pub(super) enum Bg {
     Switched(Result<String, String>),
     /// A code search's results: (folder, which search, hits).
     Grep(PathBuf, u64, Result<Vec<find::GrepHit>, String>),
+    /// The finder's preview of one row: (folder, row, lines).
+    FindPreview(PathBuf, find::Target, Vec<String>),
     /// A file's diff for the Changes view: (folder, which file, lines).
     Diff(PathBuf, usize, Vec<String>),
     /// Slow work done; finish it on the UI thread.

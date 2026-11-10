@@ -617,25 +617,40 @@ impl App {
                 return;
             }
             Bg::FindFiles(dir, list) => {
+                let mut wanted = None;
                 if let Mode::Find(v) = &mut self.mode
                     && v.dir == dir
                 {
                     v.files = Some(list);
-                    v.refresh_preview();
+                    wanted = v.preview_wanted();
                 }
+                self.load_find_preview(wanted);
                 self.dirty = true;
                 return;
             }
             Bg::Grep(dir, seq, hits) => {
+                let mut wanted = None;
                 if let Mode::Find(v) = &mut self.mode
                     && v.dir == dir
                     && v.seq == seq
                 {
                     v.hits = Some(hits);
                     v.sel = 0;
-                    v.refresh_preview();
+                    wanted = v.preview_wanted();
                 }
+                self.load_find_preview(wanted);
                 self.dirty = true;
+                return;
+            }
+            Bg::FindPreview(dir, target, lines) => {
+                // The selection may have moved on while this was read.
+                if let Mode::Find(v) = &mut self.mode
+                    && v.dir == dir
+                    && v.preview_of.as_ref() == Some(&target)
+                {
+                    v.preview = lines;
+                    self.dirty = true;
+                }
                 return;
             }
             Bg::Synced(changed) => {
@@ -648,7 +663,7 @@ impl App {
             b => b,
         };
         match (b, &mut self.mode) {
-            (Bg::Changes(dir, r), _) => {
+            (Bg::Changes(dir, r, now), _) => {
                 if let Some(View::Changes(v)) = &mut self.view
                     && v.dir == dir
                 {
@@ -657,9 +672,10 @@ impl App {
                             let keep = v.review.as_ref().map(|o| o.sel);
                             let mut r = *r;
                             v.reviewed = views::still_reviewed(
-                                &v.dir,
                                 &r.files,
                                 self.screen.saved.reviewed.get(&design::path_key(&v.dir)),
+                                &now,
+                                &v.reviewed,
                             );
                             if let Some(sel) = keep {
                                 r.sel = sel.min(r.files.len().saturating_sub(1));
@@ -811,7 +827,7 @@ impl App {
                     && let Some(r) = &v.review
                 {
                     let (task, d) = (r.task.clone(), v.dir.clone());
-                    self.spawn_bg(move || Bg::Changes(d, tasks::load_review(task).map(Box::new)));
+                    self.load_changes(d, task);
                 }
             }
             _ => {} // the panel it was for has closed

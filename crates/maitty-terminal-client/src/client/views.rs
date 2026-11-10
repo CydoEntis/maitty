@@ -49,21 +49,37 @@ pub fn fingerprint(dir: &Path, file: &str) -> u64 {
     })
 }
 
-/// Which of `files` are still as they were when marked.
-pub fn still_reviewed(
+/// What each marked file among `files` is like right now. This reads every one of them in
+/// full, so it runs with the rest of the review's loading, off the UI thread.
+pub fn marked_fingerprints(
     dir: &Path,
     files: &[super::tasks::Changed],
+    marked: &HashSet<String>,
+) -> HashMap<String, u64> {
+    files
+        .iter()
+        .filter(|f| marked.contains(&f.path))
+        .map(|f| (f.path.clone(), fingerprint(dir, &f.path)))
+        .collect()
+}
+
+/// Which of `files` are still as they were when marked, given what they are like `now`. A file
+/// marked after `now` was read has no fingerprint there; it keeps the mark it is `shown` with.
+pub fn still_reviewed(
+    files: &[super::tasks::Changed],
     marks: Option<&HashMap<String, u64>>,
+    now: &HashMap<String, u64>,
+    shown: &HashSet<String>,
 ) -> HashSet<String> {
     let Some(marks) = marks else {
         return HashSet::new();
     };
     files
         .iter()
-        .filter(|f| {
-            marks
-                .get(&f.path)
-                .is_some_and(|m| *m == fingerprint(dir, &f.path))
+        .filter(|f| match (marks.get(&f.path), now.get(&f.path)) {
+            (Some(mark), Some(now)) => mark == now,
+            (Some(_), None) => shown.contains(&f.path),
+            (None, _) => false,
         })
         .map(|f| f.path.clone())
         .collect()
@@ -369,15 +385,27 @@ pub enum Saved {
 }
 
 impl Edit {
+    const LARGEST_EDITABLE: u64 = 4 * 1024 * 1024;
+
     pub fn open(path: &Path) -> Result<Edit, String> {
-        let bytes = std::fs::read(path).map_err(|e| format!("can't read it: {e}"))?;
-        if bytes.len() > 4 * 1024 * 1024 || bytes.contains(&0) {
-            return Err(concat!(
+        let not_editable = || {
+            concat!(
                 "not a text file ",
                 env!("APP_COMMAND"),
                 " can edit (too big or binary); press e for your editor"
             )
-            .into());
+            .to_string()
+        };
+        // Asked before reading: a file far too big is turned away without being read through.
+        let size = std::fs::metadata(path)
+            .map_err(|e| format!("can't read it: {e}"))?
+            .len();
+        if size > Self::LARGEST_EDITABLE {
+            return Err(not_editable());
+        }
+        let bytes = std::fs::read(path).map_err(|e| format!("can't read it: {e}"))?;
+        if bytes.len() as u64 > Self::LARGEST_EDITABLE || bytes.contains(&0) {
+            return Err(not_editable());
         }
         let seen = fingerprint_bytes(&bytes);
         let text = String::from_utf8(bytes)
@@ -1374,14 +1402,35 @@ mod tests {
             ("b.rs".to_string(), fingerprint(&dir, "b.rs")),
         ]
         .into();
-        assert_eq!(still_reviewed(&dir, &files, Some(&marks)).len(), 2);
+        let marked: HashSet<String> = marks.keys().cloned().collect();
+        let nothing_shown = HashSet::new();
+        let now = marked_fingerprints(&dir, &files, &marked);
+        assert_eq!(still_reviewed(&files, Some(&marks), &now, &nothing_shown).len(), 2);
         std::fs::write(dir.join("b.rs"), "two, edited by the agent").unwrap();
+        let now = marked_fingerprints(&dir, &files, &marked);
         assert_eq!(
-            still_reviewed(&dir, &files, Some(&marks)),
+            still_reviewed(&files, Some(&marks), &now, &nothing_shown),
             HashSet::from(["a.rs".to_string()]),
             "b changed since"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_file_marked_while_the_review_was_loading_keeps_its_mark() {
+        let f = |p: &str| Changed {
+            path: p.into(),
+            added: 1,
+            removed: 0,
+            untracked: false,
+        };
+        let files = vec![f("a.rs"), f("b.rs")];
+        let marks: HashMap<String, u64> = [("a.rs".to_string(), 1), ("b.rs".to_string(), 2)].into();
+        // Read before either was marked: nothing is known of them.
+        let now = HashMap::new();
+        let shown = HashSet::from(["a.rs".to_string()]);
+
+        assert_eq!(still_reviewed(&files, Some(&marks), &now, &shown), shown);
     }
     use super::*;
     use crate::client::tasks::{Changed, Review, Stage, TaskRow};
