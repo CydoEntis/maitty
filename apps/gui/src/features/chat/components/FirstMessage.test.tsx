@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FAKE_CONVERSATION, FakeDaemonHistory } from '../fakeDaemonHistory'
 import { forgetComposers } from '../composerStore'
-import { carryDraft, forgetFirstMessages, heldFirstMessage, holdFirstMessage } from '../firstMessage'
+import { carryDraft, entrustFirstMessage, forgetFirstMessages, heldFirstMessage, holdFirstMessage } from '../firstMessage'
 import { PASTE_END, PASTE_START } from '../useChatComposer'
 import { ACTIVE_POLL_MS, IDLE_POLL_MS, forgetChatFeeds } from '../useChatFeed'
 import { chatFindOf } from '../chatSearch'
@@ -79,6 +79,46 @@ describe('a message typed while the agent was starting', () => {
     await settle()
 
     expect(screen.getByRole('textbox', { name: 'Message claude' })).toHaveValue('half a thou')
+  })
+})
+
+describe('a first message the daemon holds', () => {
+  it('is typed in by the daemon and not by the window, and its stand-in goes once the history has it', async () => {
+    holdFirstMessage('s1', 'hello there')
+    entrustFirstMessage('s1', 'hello there', () => Promise.resolve())
+    const { daemon, typeInto } = open('Idle')
+    await settle()
+    await settle(ACTIVE_POLL_MS)
+
+    expect(typeInto).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Sending')).toHaveTextContent('hello there')
+
+    daemon.upsert(daemon.message('t1', 'u1', 'User', 'hello there'))
+    await settle(IDLE_POLL_MS + 1)
+
+    expect(heldFirstMessage('s1')).toBeNull()
+    expect(typeInto).not.toHaveBeenCalled()
+  })
+
+  it('is sent by the window when the daemon does not take it', async () => {
+    holdFirstMessage('s1', 'hello there')
+    entrustFirstMessage('s1', 'hello there', () => Promise.reject(new Error('no pane 1')))
+    const { typeInto } = open('Idle')
+    await settle()
+    await settle(ACTIVE_POLL_MS)
+
+    expect(typeInto).toHaveBeenCalledExactlyOnceWith(`${PASTE_START}hello there${PASTE_END}\r`)
+    expect(heldFirstMessage('s1')).toBeNull()
+  })
+
+  it('is sent by the window for a session the daemon cannot type into', async () => {
+    holdFirstMessage('s1', 'hello there')
+    entrustFirstMessage('s1', 'hello there', () => { throw new Error('Only a terminal session holds a message for its agent') })
+    const { typeInto } = open('Idle')
+    await settle()
+    await settle(ACTIVE_POLL_MS)
+
+    expect(typeInto).toHaveBeenCalledOnce()
   })
 })
 

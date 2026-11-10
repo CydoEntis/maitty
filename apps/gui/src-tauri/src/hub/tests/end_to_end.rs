@@ -79,6 +79,7 @@ impl Host {
                 | Reaction::Notice { .. }
                 | Reaction::Attention { .. }
                 | Reaction::Clipboard { .. }
+                | Reaction::ConversationChanged { .. }
                 | Reaction::Settings(_) => {}
                 Reaction::Sessions { machine, snapshot } => {
                     self.sessions.insert(machine.0, snapshot.map(|s| *s));

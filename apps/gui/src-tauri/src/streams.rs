@@ -77,6 +77,8 @@ pub enum Out {
     WantReplay { machine: MachineId, term: TermId },
     /// The shared settings of this computer's daemon, as asked for or as they just changed.
     Settings(SharedSettings),
+    /// A conversation of this computer's daemon changed: its open chat reads it again.
+    ConversationChanged { conversation: u64, generation: u64 },
     /// A machine's answer to a question about a folder, already cleaned.
     Folders {
         machine: MachineId,
@@ -165,6 +167,13 @@ impl Streams {
                 if machine == MachineId::LOCAL =>
             {
                 out.push(Out::Settings(settings));
+            }
+            // This computer's only: the chats read here are never another machine's.
+            ServerMsg::ConversationChanged { id, generation } if machine == MachineId::LOCAL => {
+                out.push(Out::ConversationChanged {
+                    conversation: id.0,
+                    generation,
+                });
             }
             ServerMsg::Reply(Reply::Folders { tag, listing }) => {
                 out.push(Out::Folders { machine, tag, listing });

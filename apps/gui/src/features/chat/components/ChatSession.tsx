@@ -19,7 +19,7 @@ import type { ApprovalDecision } from '../chatEvents'
 import type { PermissionAsk } from '@/data/preview'
 import { ANSWER_KEY, ANSWER_KEYS, choiceKey, type AskChoice } from '../permissionAsk'
 import { keepComposerFocus } from '../keepComposerFocus'
-import { releaseFirstMessage, releaseStartChoice, startChoiceOf, takeCarriedDraft, useHeldFirstMessage } from '../firstMessage'
+import { releaseFirstMessage, releaseStartChoice, startChoiceOf, takeCarriedDraft, useHeldByDaemon, useHeldFirstMessage } from '../firstMessage'
 import { writeChoice } from '../agentChoice'
 import { Composer } from './Composer'
 import { ChatItem } from './ChatItems'
@@ -197,6 +197,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   // A first message typed while the agent started is held, and shows exactly as the starting chat showed it (the bubble, then the
   // working line) until it is sent and the history has it, so the chat never says "No messages yet" in between.
   const held = useHeldFirstMessage(sessionId)
+  const heldByDaemon = useHeldByDaemon(sessionId)
   const sentText = echo !== null && countUserMessages(events, echo.text) <= echo.baseline ? echo.text : null
   const echoText = sentText ?? held
   const echoThinking = sentText === null ? held !== null : echo !== null && !echo.quiet
@@ -225,10 +226,15 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
     if (carried !== null) setComposerDraft(carried)
   }, [sessionId, setComposerDraft])
   useEffect(() => {
-    if (sessionId === undefined || held === null || !ready || sending) return
+    if (sessionId === undefined || held === null || heldByDaemon || !ready || sending) return
     releaseFirstMessage(sessionId)
     void sendText(held).then((delivered) => { if (!delivered) setComposerDraft(held) })
-  }, [sessionId, held, ready, sending, sendText, setComposerDraft])
+  }, [sessionId, held, heldByDaemon, ready, sending, sendText, setComposerDraft])
+  // The daemon types in a message it holds: once the history has what the person said, the stand-in for it goes.
+  const personSpoke = useMemo(() => events.some((event) => event.kind === 'message' && event.role === 'user'), [events])
+  useEffect(() => {
+    if (sessionId !== undefined && held !== null && heldByDaemon && personSpoke) releaseFirstMessage(sessionId)
+  }, [sessionId, held, heldByDaemon, personSpoke])
   // The daemon does not report how a session was started, so the window remembers the sessions it started with full access.
   const fullAccess = useMemo(() => readConversationPermissions()[String(link.conversation)] === 'full-access', [link.conversation])
 

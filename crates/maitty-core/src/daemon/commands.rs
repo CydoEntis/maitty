@@ -945,6 +945,20 @@ impl Daemon {
                     self.dirty = true;
                 }
             }
+            Command::SendWhenReady { term, text } => {
+                let t = self
+                    .terms
+                    .get_mut(&term)
+                    .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+                let text = text.trim();
+                if text.is_empty() {
+                    anyhow::bail!("there's nothing to send");
+                }
+                if t.held_message.is_some() {
+                    anyhow::bail!("a message is already waiting for its agent");
+                }
+                t.held_message = Some(term::HeldMessage::new(text));
+            }
             Command::RerunCheck { term, name } => self.rerun_check(term, name.as_deref())?,
             Command::OverrideCheck { term, name, reason } => {
                 self.override_check(term, name.as_deref(), &reason, self.overrider(client))?

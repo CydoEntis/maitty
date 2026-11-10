@@ -11,6 +11,8 @@ use std::time::Duration;
 
 /// The most one keystroke message may carry.
 pub const MAX_TERMINAL_INPUT_BYTES: usize = 16 * 1024;
+/// The longest message the daemon is asked to hold for a starting agent.
+pub const MAX_HELD_MESSAGE_BYTES: usize = 256 * 1024;
 const APP_COMMAND: &str = env!("MAITTY_APP_COMMAND");
 const APP_NAME: &str = env!("MAITTY_APP_NAME");
 const APP_ENV: &str = env!("MAITTY_APP_ENV");
@@ -23,6 +25,8 @@ pub enum PaneCommand {
     WantReplay,
     Resize { cols: u16, rows: u16 },
     Rename(String),
+    /// A message for the agent starting in the pane, held by its daemon until the agent takes input.
+    SendWhenReady(String),
     Pin(bool),
     Archive(bool),
     Seen,
@@ -44,6 +48,9 @@ impl PaneCommand {
                 ClientMsg::Command(Command::TerminalResize { term, cols, rows })
             }
             PaneCommand::Rename(name) => ClientMsg::Command(Command::RenamePane { term, name }),
+            PaneCommand::SendWhenReady(text) => {
+                ClientMsg::Command(Command::SendWhenReady { term, text })
+            }
             PaneCommand::Pin(pinned) => ClientMsg::Command(Command::PinPane { term, pinned }),
             PaneCommand::Archive(archived) => {
                 ClientMsg::Command(Command::ArchivePane { term, archived })
@@ -718,6 +725,25 @@ pub async fn start_agent_session(
     match reply {
         Reply::Ok => Ok(Value::Null),
         _ => bail!("daemon returned an unexpected agent session reply"),
+    }
+}
+
+/// What may be held for a starting agent: some words, and not more than the daemon is asked to keep.
+pub fn held_message(text: String) -> Result<PaneCommand> {
+    if text.trim().is_empty() {
+        bail!("there is no message to hold");
+    }
+    if text.len() > MAX_HELD_MESSAGE_BYTES {
+        bail!("the message is too long to hold for the agent");
+    }
+    Ok(PaneCommand::SendWhenReady(text))
+}
+
+pub async fn send_when_ready(term: u32, text: String, daemon_executable: PathBuf) -> Result<Value> {
+    let reply = request(held_message(text)?.message(term), daemon_executable).await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected reply to a held message"),
     }
 }
 
@@ -1859,6 +1885,13 @@ mod pane_command_tests {
                 ClientMsg::Command(Command::RenamePane {
                     term: 4,
                     name: "build".into(),
+                }),
+            ),
+            (
+                PaneCommand::SendWhenReady("fix the parser".into()),
+                ClientMsg::Command(Command::SendWhenReady {
+                    term: 4,
+                    text: "fix the parser".into(),
                 }),
             ),
             (

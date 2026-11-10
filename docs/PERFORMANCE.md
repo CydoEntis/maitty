@@ -526,6 +526,9 @@ wait for the agent's first report. Now the agent is the new session's first comm
 (`start_agent_session`, which accepts only a known agent and plain flag words), the status hooks are
 connected once per run of the window and ahead of time (when the new chat page opens), and an open
 chat that is working asks the daemon for news every 300 ms (`ACTIVE_POLL_MS`), not every second.
+The daemon also says when a conversation changed (`ServerMsg::ConversationChanged`), so the chat
+reads then and, once told, polls only every second (`TOLD_ACTIVE_POLL_MS`); its reads go out on a
+connection kept open between them (`IDLE_CONNECTIONS` in `maitty-desktop-client`).
 What is left is the shell's own startup and the agent's own startup, which Maitty does not control.
 Measure it on Windows with a screen recording at 30 fps: count frames from Enter to the first
 "thinking" line.

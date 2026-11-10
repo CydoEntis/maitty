@@ -521,6 +521,48 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
 }
 
 #[test]
+fn a_message_sent_to_a_starting_agent_is_held_until_it_takes_input() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let held = |d: &Daemon| d.terms[&t].held_message.is_some();
+    let send = |d: &mut Daemon, text: &str| {
+        d.command(
+            0,
+            Command::SendWhenReady {
+                term: t,
+                text: text.into(),
+            },
+        )
+    };
+    assert!(send(&mut d, "   ").is_err(), "nothing to send");
+    send(&mut d, "  fix the parser ").unwrap();
+    assert!(
+        send(&mut d, "and another").is_err(),
+        "one message waits at a time"
+    );
+    // Still a shell: the agent has not started.
+    d.update_statuses();
+    assert!(held(&d));
+    // The agent is up but asking something: nothing is typed into its question.
+    {
+        let p = d.terms.get_mut(&t).unwrap();
+        (p.agent, p.hooked) = (Some("claude".into()), true);
+    }
+    d.set_status(t, Status::Blocked, "test");
+    d.update_statuses();
+    assert!(held(&d), "never into a question");
+    // It takes input: the message goes in, once.
+    d.set_status(t, Status::Idle, "test");
+    d.update_statuses();
+    assert!(!held(&d));
+    assert!(
+        d.terms[&t].queue_sent.is_some(),
+        "a queued follow-up waits for the turn this starts"
+    );
+    close(&mut d, &[t]);
+}
+
+#[test]
 fn a_queued_message_of_several_lines_goes_in_as_one_paste() {
     use super::status::queued_as_typed;
     assert_eq!(

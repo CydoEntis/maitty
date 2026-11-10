@@ -15,6 +15,7 @@ import {
   loadDaemonRestartStatus,
   openDaemonLog,
   renameConversationOnDaemon,
+  sendWhenAgentReady,
   restartMismatchedDaemon,
   sendTerminalInput,
   submitMessage,
@@ -93,7 +94,7 @@ import { ANSWER_KEYS } from '@/features/chat/permissionAsk'
 import { NoTerminalNote } from '@/features/chat/components/NoTerminalNote'
 import { rememberConversationPermissions } from '@/data/conversationPermissions'
 import { reserveOperation } from '@/features/chat/sendOperation'
-import { holdFirstMessage, holdStartChoice } from '@/features/chat/firstMessage'
+import { entrustFirstMessage, holdFirstMessage, holdStartChoice } from '@/features/chat/firstMessage'
 import { connectAgentOnce } from './model/agentHooks'
 import { machineProjects, nameFromMessage } from './model/newSession'
 import { usePaneViews } from './usePaneViews'
@@ -938,6 +939,7 @@ export function DesktopApp() {
       // A first message waits under the session and goes out once the agent takes input; its words name the session.
       if (firstMessage !== '') {
         holdFirstMessage(id, firstMessage)
+        entrustFirstMessage(id, firstMessage, sendWhenAgentReady)
         void renameConversationOnDaemon({ id }, nameFromMessage(firstMessage)).catch((error: unknown) => { console.warn('Could not name the new session', error) })
       }
       // The daemon learns which agent runs from the agent's own hook, a moment after it starts; until then the
@@ -1040,7 +1042,10 @@ export function DesktopApp() {
     if (request.machine !== LOCAL_MACHINE) {
       const id = await startOnMachine({ machine: request.machine, name: request.machineName }, request.folder)
       if (id !== null && request.startAs !== 'terminal') {
-        if (request.message !== '') holdFirstMessage(id, request.message)
+        if (request.message !== '') {
+          holdFirstMessage(id, request.message)
+          entrustFirstMessage(id, request.message, sendWhenAgentReady)
+        }
         await sendTerminalInput({ id, generation: 0 }, `${request.startAs}\r`)
       }
     } else if (request.startAs === 'terminal') {

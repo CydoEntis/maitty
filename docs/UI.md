@@ -120,7 +120,10 @@ login that needs a person run in a session named `ssh <name>`); **New session** 
 agent, which project (the machine's projects, the focused one first; **Other folder…** is this computer's folder picker),
 where it works and a first message. It is presentation only; the window starts the session through the same paths as
 before (`startShellSession` and the agent typed into the new shell, `startSessionOnMachine` on another machine) and holds
-the first message under the new session (`firstMessage.ts`) until the agent takes input. **New agent chat** (⌘⇧A,
+the first message under the new session (`firstMessage.ts`) until the agent takes input. For a terminal session the
+message is also handed to the session's daemon (`send_when_agent_ready`), which types it in, so it is delivered when
+the window closes first; the window keeps showing it until the history has it, and sends it itself only when the
+daemon does not take it. **New agent chat** (⌘⇧A,
 Ctrl+Shift+A) opens the page above, and **New shell** (⌘⇧T, Ctrl+Alt+T, the sidebar's terminal button, a
 machine's New shell here) starts a plain shell in the start folder with no dialog; another machine asks for a folder there first, so it opens the dialog. A screen reader is told when a machine goes down (`build disconnected: unreachable`) and when it is back, once each and not for every retry, through a polite live region; every state is a word as well as a shape and a colour, nothing about machines animates, and the Machines page works with the keyboard alone (Tab, Enter, Esc ends a look in progress without closing Settings). Features that read a pane's files (Inspect, worktreesFeatures that read a pane's files (Inspect, worktrees, opening a file from the output, dropping files, the screen text) are for this computer's panes only: each says `<Feature> is local-only in v1: the files are on <machine>, not on this computer.` and the Repository button shows disabled with that text.
 
@@ -773,8 +776,10 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
 - **Keyboard.** While the chat covers a pane its terminal is not focused (`TerminalView focused` is false) and is
   hidden from Tab and screen readers. The chat adds no layer to the Esc ladder.
 - **History.** `useChatFeed` follows one conversation while its chat is open (`chatFeed.ts` is the pure core). The
-  first read pages the whole history; later polls (1 s while the agent works or waits on a person, 3 s otherwise,
-  none while the window is hidden) read from the daemon's `resume` cursor, which returns only the entries added or
+  first read pages the whole history; later reads happen when the daemon says the conversation changed
+  (`conversation-changed`, at least 100 ms apart) and on a poll (300 ms while the agent works or waits on a person,
+  1 s once the daemon has announced a change for this chat, 3 s otherwise, none while the window is hidden). Each
+  reads from the daemon's `resume` cursor, which returns only the entries added or
   changed since, so a 1,000-entry conversation costs one small read per poll. A page that says `reset` (the history was
   rebuilt, or the conversation started over) replaces what the feed held. A failed read, or a daemon that predates
   `resume`, falls back to the old way: ask again for the last page read, or read from the start when that cursor is

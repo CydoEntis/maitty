@@ -157,6 +157,7 @@ mod tests {
         for command in [
             PaneCommand::Resize { cols: 80, rows: 24 },
             PaneCommand::Rename("n".into()),
+            PaneCommand::SendWhenReady("m".into()),
             PaneCommand::Pin(true),
             PaneCommand::Archive(true),
             PaneCommand::Seen,

@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from '@/lib/toast'
 import { Spinner } from '@/features/workspace/components/glyphs'
-import { connectAgent, reloadAgentOnDaemon } from '@/api/daemon'
+import { connectAgent, reloadAgentOnDaemon, sendWhenAgentReady } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
 import { NO_EVENTS_HINT_AFTER_MS, noEventsHint, waitingInTerminalHint, type ChatAgent } from '@/features/workspace/model/chatView'
 import { keepComposerFocus } from '../keepComposerFocus'
 import { buildAttachmentMessage, parseAttachmentMessage } from '../attachmentMessage'
 import { SentAttachments } from './Attachments'
 import { updateComposer, useComposerState } from '../composerStore'
-import { carryDraft, draftKeyFor, holdFirstMessage, useHeldFirstMessage, useStartChoice } from '../firstMessage'
+import { carryDraft, draftKeyFor, entrustFirstMessage, holdFirstMessage, useHeldFirstMessage, useStartChoice } from '../firstMessage'
 import { revokePreviews, useAttachmentIntake } from '../useAttachmentIntake'
 import { BYPASS_MODE, modeLabel } from '../chatMeta'
 import { AGENT_LABEL } from '../modelName'
@@ -98,7 +98,9 @@ export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', 
       const text = draft.trim()
       // One message is held at a time: a second would replace the first before it was ever sent.
       if ((text === '' && attachments.length === 0) || held !== null) return
-      holdFirstMessage(sessionId, buildAttachmentMessage(text, attachments))
+      const message = buildAttachmentMessage(text, attachments)
+      holdFirstMessage(sessionId, message)
+      entrustFirstMessage(sessionId, message, sendWhenAgentReady)
       updateComposer(draftKey, (state) => ({ ...state, attachments: [] }))
       setDraftState('')
       carryDraft(sessionId, '')

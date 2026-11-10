@@ -853,6 +853,19 @@ impl Daemon {
                 self.dirty = true;
             }
         }
+        for t in self.terms.values_mut() {
+            let agent_here = t.agent.is_some() && !t.asleep;
+            let at_rest = matches!(t.status, Status::Idle | Status::Done);
+            if t.pending_input.is_none()
+                && let Some(held) = t.held_message.as_mut()
+                && held.is_due(agent_here, at_rest, t.hooked, Instant::now())
+                && let Some(held) = t.held_message.take()
+            {
+                let typed = queued_as_typed(&held.text, t.parser.screen().bracketed_paste());
+                t.pending_input = Some((format!("{typed}\r").into_bytes(), Instant::now()));
+                t.queue_sent = Some(Instant::now());
+            }
+        }
         // Messages typed to a sleeping agent: deliver once it's ready (its hooks say idle) or
         // after a few seconds.
         for t in self.terms.values_mut() {

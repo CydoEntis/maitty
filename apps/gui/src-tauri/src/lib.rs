@@ -493,6 +493,26 @@ async fn start_terminal_session(
 }
 
 #[tauri::command]
+async fn send_when_agent_ready(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    term: u32,
+    text: String,
+) -> Result<serde_json::Value, String> {
+    if routing::is_remote(machine) {
+        let command =
+            maitty_desktop_client::held_message(text).map_err(|error| format!("{error:#}"))?;
+        return wire
+            .command(machine, term, command)
+            .map(|()| serde_json::Value::Null);
+    }
+    maitty_desktop_client::send_when_ready(term, text, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
 async fn rename_terminal_session(
     app: tauri::AppHandle,
     wire: tauri::State<'_, terminal_stream::Wire>,
@@ -1029,6 +1049,7 @@ pub fn run() {
             start_terminal_session,
             start_shell_session,
             rename_terminal_session,
+            send_when_agent_ready,
             mark_terminal_seen,
             pin_terminal_session,
             archive_terminal_session,

@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 77;
+pub const PROTOCOL_VERSION: u32 = 78;
 
 /// The oldest `PROTOCOL_VERSION` whose daemon reads today's `Hook` and `Usage` reports. An
 /// agent's hooks run the installed binary, which an update replaces while the old daemon keeps
@@ -555,6 +555,12 @@ pub enum Command {
     ClearQueue {
         term: TermId,
     },
+    /// A message for the agent that is starting in a pane: the daemon holds it and types it in
+    /// once that agent takes input, so it is delivered even when the app that sent it has closed.
+    SendWhenReady {
+        term: TermId,
+        text: String,
+    },
     /// Run the pane's checkpoint `name` again (None: all of them). While its agent is working
     /// the run waits for the turn to end.
     RerunCheck {
@@ -838,6 +844,12 @@ pub enum ServerMsg {
     SettingsChanged(crate::settings_view::SharedSettings),
     /// Come to the front: a notification for one of this server's sessions was clicked.
     Raise,
+    /// What a `ConversationRead` of this conversation answers has changed: read it again. Sent
+    /// to the desktop app's attached clients, so an open chat need not ask several times a second.
+    ConversationChanged {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+    },
     Bye,
 }
 
@@ -1735,6 +1747,10 @@ mod tests {
                 text: "then run the tests".into(),
             }),
             ClientMsg::Command(Command::ClearQueue { term: 3 }),
+            ClientMsg::Command(Command::SendWhenReady {
+                term: 3,
+                text: "fix the parser".into(),
+            }),
             ClientMsg::Command(Command::RerunCheck {
                 term: 3,
                 name: None,
@@ -1860,6 +1876,10 @@ mod tests {
             },
             ServerMsg::AutoWorkspace("api".into()),
             ServerMsg::Raise,
+            ServerMsg::ConversationChanged {
+                id: crate::conversation::ConversationId(47),
+                generation: 2,
+            },
             ServerMsg::Bye,
         ];
         for m in &servers {
@@ -1888,6 +1908,43 @@ mod tests {
         );
         // `root` and `branch` (a chat session's project, ADR 0003) are defaulted too.
         assert_eq!((summary.root, summary.branch), (None, None));
+    }
+
+    /// A message held for a starting agent is a new command, and the news that a conversation
+    /// changed a new server message: a peer built before them reads neither, which is why
+    /// protocol 78 refuses protocol 77.
+    #[test]
+    fn a_peer_from_before_held_messages_and_chat_news_cannot_read_them() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldCommand {
+            ClearQueue { term: TermId },
+        }
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldServerMsg {
+            Raise,
+            Bye,
+        }
+        let held = encode(&Command::SendWhenReady {
+            term: 3,
+            text: "fix the parser".into(),
+        })
+        .unwrap();
+        assert!(decode::<OldCommand>(&held).is_err());
+        assert!(matches!(
+            decode::<Command>(&held),
+            Ok(Command::SendWhenReady { term: 3, text }) if text == "fix the parser"
+        ));
+
+        let id = crate::conversation::ConversationId(3);
+        let news = encode(&ServerMsg::ConversationChanged { id, generation: 2 }).unwrap();
+        assert!(decode::<OldServerMsg>(&news).is_err());
+        assert!(matches!(
+            decode::<ServerMsg>(&news),
+            Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
+        ));
+        assert_eq!(PROTOCOL_VERSION, 78);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2080,7 +2137,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 77);
+        assert_eq!(PROTOCOL_VERSION, 78);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()

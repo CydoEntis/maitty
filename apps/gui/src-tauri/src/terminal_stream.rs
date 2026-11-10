@@ -46,6 +46,8 @@ const MACHINE_NOTICE_EVENT: &str = "machine-notice";
 const MACHINE_CLIPBOARD_EVENT: &str = "machine-clipboard";
 /// Carries a daemon's decision to alert for a pane: `{machine, term, status}` (`blocked` or `done`).
 const SESSION_ATTENTION_EVENT: &str = "session-attention";
+/// Says a conversation of this computer's daemon changed: `{conversation, generation}`.
+const CONVERSATION_CHANGED_EVENT: &str = "conversation-changed";
 const MACHINE_ERROR_EVENT: &str = "machine-error";
 const FOLDER_LISTING_EVENT: &str = "folder-listing";
 /// The shared settings, whenever the daemon says them: the answer to a question, or a change.
@@ -540,6 +542,8 @@ pub enum Reaction {
     Removed { machine: MachineId },
     /// The shared settings of this computer's daemon.
     Settings(SharedSettings),
+    /// A conversation of this computer's daemon changed.
+    ConversationChanged { conversation: u64, generation: u64 },
     /// A machine's answer about a folder, for the window that asked.
     Folders {
         machine: MachineId,
@@ -627,6 +631,9 @@ fn reactions(handle: &HubHandle, outs: Vec<Out>) -> Vec<Reaction> {
             Out::Clipboard { machine, text } => Some(Reaction::Clipboard { machine, text }),
             Out::Attention { machine, term, status } => Some(Reaction::Attention { machine, term, status }),
             Out::Settings(settings) => Some(Reaction::Settings(settings)),
+            Out::ConversationChanged { conversation, generation } => {
+                Some(Reaction::ConversationChanged { conversation, generation })
+            }
             Out::Folders { machine, tag, listing } => Some(Reaction::Folders { machine, tag, listing }),
             Out::Sessions { machine, snapshot } => Some(Reaction::Sessions { machine, snapshot }),
             Out::WantReplay { machine, term } => {
@@ -651,6 +658,12 @@ struct AttentionPayload {
     machine: u16,
     term: TermId,
     status: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+struct ConversationChangedPayload {
+    conversation: u64,
+    generation: u64,
 }
 
 #[derive(Clone, Serialize)]
@@ -716,6 +729,15 @@ fn perform(app: &AppHandle, reactions: Vec<Reaction>) {
             }
             Reaction::Settings(settings) => {
                 let _ = app.emit(SHARED_SETTINGS_EVENT, settings);
+            }
+            Reaction::ConversationChanged { conversation, generation } => {
+                let _ = app.emit(
+                    CONVERSATION_CHANGED_EVENT,
+                    ConversationChangedPayload {
+                        conversation,
+                        generation,
+                    },
+                );
             }
             Reaction::Folders { machine, tag, listing } => {
                 let _ = app.emit(
@@ -915,5 +937,25 @@ mod tests {
         assert!(matches!(answer.as_slice(), [Out::Settings(_)]));
         let other = streams.on_message(MachineId(1), ServerMsg::SettingsChanged(settings), now);
         assert!(other.is_empty(), "another machine's settings are not shown");
+    }
+
+    #[test]
+    fn a_changed_conversation_is_told_for_this_computer_only() {
+        let changed = || ServerMsg::ConversationChanged {
+            id: maitty_shared::conversation::ConversationId(7),
+            generation: 2,
+        };
+        let mut streams = Streams::default();
+        let now = Instant::now();
+        let local = streams.on_message(MachineId::LOCAL, changed(), now);
+        assert!(matches!(
+            local.as_slice(),
+            [Out::ConversationChanged {
+                conversation: 7,
+                generation: 2
+            }]
+        ));
+        let other = streams.on_message(MachineId(1), changed(), now);
+        assert!(other.is_empty(), "another machine's chats are not read here");
     }
 }

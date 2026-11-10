@@ -318,6 +318,8 @@ impl App {
             }
             ServerMsg::SettingsChanged(_) => {}
             ServerMsg::Raise => crate::reveal::raise_window(),
+            // The desktop app's chats; the daemon sends this app none.
+            ServerMsg::ConversationChanged { .. } => {}
             // The server stopped for the update: an older window can't speak to the new one, so
             // the installed the app takes its place; a current window just connects again.
             // Another machine's daemon stopping ends its connection, not the window.

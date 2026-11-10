@@ -115,6 +115,22 @@ older daemon cannot read, set `REPORTS_READ_SINCE` to the new version in the sam
 test `todays_reports_are_read_by_the_oldest_daemon_they_are_sent_to` holds the shapes. The CLI subcommands and the MCP server (`maitty mcp`, JSON-RPC over stdio)
 are thin wrappers that send the same commands.
 
+A conversation that changed is announced to the desktop app's attached clients as
+`ServerMsg::ConversationChanged { id, generation }` (`daemon/conversation/news.rs`): after each
+batch of events the daemon compares a stamp of what a `ConversationRead` would answer (history
+revision, status, error, approvals, queue) with the one it last announced, at most once per
+100 ms per conversation, and never for a conversation seen for the first time. It carries no
+content: the window reads as before, under the same checks. The host passes it to the webview as
+the `conversation-changed` event, for this computer only; another machine's is ignored
+(`remote_policy`). The terminal app is sent none.
+
+`Command::SendWhenReady { term, text }` hands the daemon a message for the agent starting in a
+pane. The daemon holds one per pane and types it in once the agent is running and at rest (idle or
+done) with its hooks reporting, or 20 s after an agent without hooks was first seen; never while
+the pane works or asks something. It is typed as a queued follow-up is (one paste when it has
+several lines), and is not kept across a daemon restart. The desktop command is
+`send_when_agent_ready` (at most 256 KiB, not blank).
+
 A state change reaches attached clients as `ServerMsg::State` (the whole `Snapshot`) or, when only
 some panes differ from what that surface's clients last received, as `ServerMsg::TermsChanged`
 (the panes to replace and the ids to drop); the daemon compares encoded bytes and sends nothing
