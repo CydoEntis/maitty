@@ -306,7 +306,8 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   While the new-chat page is open, a draft **New chat** row (placeholders that pulse) is listed last on this computer,
   so the draft is never missing from the sidebar; it goes when the chat starts and the chat's own row takes its place.
   Grouped by project inside a machine, each project is a folding heading (its colour square, name, needs-you count,
-  count). A row whose status changes glides to its new place (`useFlip`) and is tinted with the accent for a moment
+  count). A row whose status changes glides to its new place over 420ms, and the headings and rows it passes glide with it, so
+  nothing in the list snaps (`useFlip`); a new row slides in from the left. The moved row is tinted with the accent for a moment
   (`useStatusFlash`); Reduce motion turns both off. A **row** (40px, radius 8) is the 20px app tile with its status badge
   (spinner, amber `›`, green check, dashed square for unknown), the name (13px; 600 and `--fg` for an agent that is
   doing anything), and under it the project's 6px colour square, the project and `·` and the branch in mono

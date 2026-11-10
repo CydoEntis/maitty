@@ -338,7 +338,7 @@ type ListSectionProps = {
 function ListSection({ id, name, label, count, open, onToggle, children, tone, hint, color, machine = null, needs = 0 }: ListSectionProps) {
   return (
     <div className="mx-section" data-section={id}>
-      <button type="button" className={`mx-section-head${tone === undefined ? '' : ` is-${tone}`}`} aria-expanded={open} onClick={onToggle}>
+      <button type="button" className={`mx-section-head${tone === undefined ? '' : ` is-${tone}`}`} data-flip={`head:${id}`} aria-expanded={open} onClick={onToggle}>
         {color !== undefined && <span className="mx-project-square" style={{ background: color }} aria-hidden="true" />}
         <span className="mx-section-name">{name}</span>
         {machine !== null && <span className="mx-section-machine">· {machineTitle(machine)}</span>}
@@ -408,7 +408,7 @@ function MachineSection({ draft, progress, group, open, byProject, canStart, onT
   const projects = byProject ? projectGroups(sessions) : []
   return (
     <div className={`mx-machine${head.down ? ' is-away' : ''}`}>
-      <div className="mx-machine-head">
+      <div className="mx-machine-head" data-flip={`machine:${head.key}`}>
         <button type="button" className="mx-machine-toggle" aria-expanded={open} onClick={onToggle} onContextMenu={onContextMenu}>
           <span className={`mx-caret-wrap${open ? ' is-open' : ''}`}><Icon name="caret" /></span>
           <span className="mx-machine-icon" aria-hidden="true"><Icon name={head.name === null ? 'laptop' : 'server'} size={13} /></span>
