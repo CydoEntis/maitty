@@ -92,6 +92,9 @@ pub struct SavedPane {
     /// Follow-ups that were waiting for its turn to end.
     #[serde(default)]
     pub queue: Vec<String>,
+    /// A message that was waiting for the agent starting here to take input.
+    #[serde(default)]
+    pub held_message: Option<String>,
     /// Child activity records survive daemon restarts and completed turns.
     #[serde(default)]
     pub subagent_activity: Vec<SubagentActivity>,

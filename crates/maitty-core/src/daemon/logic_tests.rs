@@ -2512,6 +2512,41 @@ fn the_usage_store_keeps_what_claude_reported_and_drops_cost_once_plan_limits_sh
 static SAVED_OUTPUT: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[test]
+fn a_message_held_for_a_starting_agent_survives_the_server_restarting() {
+    let (mut d, _rx) = daemon();
+    d.cfg.restore.enabled = true;
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
+    let t = *d.terms.keys().next().unwrap();
+    d.terms.get_mut(&t).unwrap().held_message = Some(term::HeldMessage::new("fix the login page"));
+    let saved = d.saved();
+    let (mut d2, _rx2) = daemon();
+    d2.cfg.restore.enabled = true;
+    d2.restore(saved);
+    let new = *d2.terms.keys().next().unwrap();
+    assert_eq!(
+        d2.terms[&new]
+            .held_message
+            .as_ref()
+            .map(|held| held.text.as_str()),
+        Some("fix the login page")
+    );
+    let old: persist::SavedPane =
+        serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":"claude","session":null}"#)
+            .expect("a pane saved before messages were held");
+    assert_eq!(old.held_message, None);
+    close(&mut d, &[t]);
+    close(&mut d2, &[new]);
+}
+
+#[test]
 fn a_panes_history_survives_the_server_restarting() {
     let _one_at_a_time = SAVED_OUTPUT
         .lock()

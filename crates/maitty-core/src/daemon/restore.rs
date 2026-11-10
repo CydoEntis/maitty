@@ -20,6 +20,7 @@ struct Kept {
     started_by: Option<TermId>,
     tab_of: Option<TermId>,
     queue: std::collections::VecDeque<String>,
+    held_message: Option<String>,
 }
 
 impl Kept {
@@ -38,6 +39,7 @@ impl Kept {
             started_by: t.started_by,
             tab_of: t.tab_of,
             queue: t.queue.clone(),
+            held_message: t.held_message.as_ref().map(|held| held.text.clone()),
         }
     }
 
@@ -48,6 +50,7 @@ impl Kept {
         (t.model, t.grants, t.started_by, t.tab_of) =
             (self.model, self.grants, self.started_by, self.tab_of);
         t.queue = self.queue;
+        t.held_message = self.held_message.as_deref().map(term::HeldMessage::new);
     }
 }
 
@@ -284,6 +287,7 @@ impl Daemon {
             owner: term.owner,
             tab_of: term.tab_of,
             queue: term.queue.iter().cloned().collect(),
+            held_message: term.held_message.as_ref().map(|held| held.text.clone()),
             account: term.account.clone(),
             subagent_activity: term.subagent_activity.clone(),
             checks: term.checks.infos(),
@@ -561,6 +565,8 @@ impl Daemon {
                                 (t.pinned, t.archived) = (pane.pinned, pane.archived);
                                 t.owner = pane.owner;
                                 t.queue = pane.queue.iter().cloned().collect();
+                                t.held_message =
+                                    pane.held_message.as_deref().map(term::HeldMessage::new);
                                 t.restore_checks(&check_dir, old, &pane);
                                 let now = term::unix_now();
                                 t.subagent_activity = pane.subagent_activity.into_iter().map(|mut activity| {

@@ -128,7 +128,7 @@ the `conversation-changed` event, for this computer only; another machine's is i
 pane. The daemon holds one per pane and types it in once the agent is running and at rest (idle or
 done) with its hooks reporting, or 20 s after an agent without hooks was first seen; never while
 the pane works or asks something. It is typed as a queued follow-up is (one paste when it has
-several lines), and is not kept across a daemon restart. The desktop command is
+several lines), and is saved with the pane, so a daemon restart keeps it. The desktop command is
 `send_when_agent_ready` (at most 256 KiB, not blank).
 
 A state change reaches attached clients as `ServerMsg::State` (the whole `Snapshot`) or, when only
