@@ -167,7 +167,7 @@ function Expanded(props: SidebarProps) {
     return [
       { label: 'Open', run: () => { props.onShowSession(session.id) } },
       ...(other ? [{ label: 'Open in split right', run: () => { props.onSplitSession(session.id, 'right') } }, { label: 'Open in split down', run: () => { props.onSplitSession(session.id, 'down') } }] : []),
-      ...(agent ? [{ label: 'Open terminal here', run: () => { props.onOpenTerminal(session.id) }, disabled: !props.canStart }] : []),
+      ...(agent ? [{ label: 'New terminal', run: () => { props.onOpenTerminal(session.id) }, disabled: !props.canStart }] : []),
       'separator',
       { label: 'Rename…', hint: 'F2', run: () => { props.onRenameSession(session.id) } },
       { label: 'Copy folder path', run: () => { props.onCopyPath(session.id) } },

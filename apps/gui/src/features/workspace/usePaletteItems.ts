@@ -11,7 +11,7 @@ import type { PaletteItem } from './model/palette'
 import { THEMES } from './theme/themes'
 
 /** The command palette's list: sessions, their projects, actions and themes. */
-export function usePaletteItems({ paletteOpen, platform, layout, sessions, projectOf, showSessionById, home, newSession, focusedMachineNumber, newTerminal, focusedSession, toggleAgentTerminal, runShortcut, heads, online, newSessionOn, preferences, setPreferences, split, setSettingsSection, inspectRefusal, setInspectOpen, setFindOpen, setFocusMode, setShortcutsOpen, setLayout, startAgent }: {
+export function usePaletteItems({ paletteOpen, platform, layout, sessions, projectOf, showSessionById, home, newSession, focusedMachineNumber, newTerminal, focusedSession, addAgentTerminal, runShortcut, heads, online, newSessionOn, preferences, setPreferences, split, setSettingsSection, inspectRefusal, setInspectOpen, setFindOpen, setFocusMode, setShortcutsOpen, setLayout, startAgent }: {
   paletteOpen: boolean
   platform: Platform
   layout: Layout
@@ -23,7 +23,7 @@ export function usePaletteItems({ paletteOpen, platform, layout, sessions, proje
   focusedMachineNumber: number
   newTerminal: (machine?: number) => void
   focusedSession: SessionView | undefined
-  toggleAgentTerminal: (agentId: string) => void
+  addAgentTerminal: (agentId: string) => void
   runShortcut: (action: ShortcutAction) => void
   heads: MachineHead[]
   online: boolean
@@ -68,7 +68,7 @@ export function usePaletteItems({ paletteOpen, platform, layout, sessions, proje
       ...projectItems,
       action('new-session', 'New agent chat…', () => { newSession(focusedMachineNumber) }, keys('new-session')),
       action('new-terminal', 'New shell', () => { newTerminal(focusedMachineNumber) }, keys('new-terminal')),
-      ...(focusedSession && !isShell(focusedSession) ? [action('open-terminal', 'Open terminal here', () => { toggleAgentTerminal(focusedSession.id) })] : []),
+      ...(focusedSession && !isShell(focusedSession) ? [action('open-terminal', 'New terminal for this agent', () => { addAgentTerminal(focusedSession.id) })] : []),
       action('new-agent-chat', 'New agent chat', () => { runShortcut('new-agent-chat') }, keys('new-agent-chat')),
       ...heads.filter((head) => head.name !== null && head.chip?.tone === 'ok' && online).map((head) => action(`new-on-${head.key}`, `New shell on ${head.label}…`, () => { newSessionOn(head.machine) })),
       action('sidebar-side', preferences.sidebarSide === 'left' ? 'Move sidebar to the right' : 'Move sidebar to the left', () => { setPreferences((current) => ({ ...current, sidebarSide: current.sidebarSide === 'left' ? 'right' : 'left' })) }),
@@ -90,6 +90,6 @@ export function usePaletteItems({ paletteOpen, platform, layout, sessions, proje
     ]
     for (const candidate of THEMES) items.push({ id: `theme-${candidate.name}`, label: candidate.name, detail: candidate.family, kind: 'Theme', needsQuery: true, run: () => { setPreferences((current) => ({ ...current, themeMode: candidate.light ? 'light' : 'dark', ...(candidate.light ? { lightTheme: candidate.name } : { darkTheme: candidate.name }) })) } })
     return items
-  }, [paletteOpen, layout, sessions, focusedSession, heads, preferences.sidebarSide, platform, projectOf, showSessionById, home, newSession, focusedMachineNumber, newTerminal, toggleAgentTerminal, runShortcut, online, newSessionOn, setPreferences, split, setSettingsSection, inspectRefusal, setInspectOpen, setFindOpen, setFocusMode, setShortcutsOpen, setLayout, startAgent])
+  }, [paletteOpen, layout, sessions, focusedSession, heads, preferences.sidebarSide, platform, projectOf, showSessionById, home, newSession, focusedMachineNumber, newTerminal, addAgentTerminal, runShortcut, online, newSessionOn, setPreferences, split, setSettingsSection, inspectRefusal, setInspectOpen, setFindOpen, setFocusMode, setShortcutsOpen, setLayout, startAgent])
   return { paletteItems }
 }

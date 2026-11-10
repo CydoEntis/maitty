@@ -26,7 +26,7 @@ function renderPanel(view: InspectView, extra: { agentWorking?: boolean } = {}) 
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
-      <InspectPanel term={5} project="maitty" branch="main" changedFiles={2} view={view} agentWorking={extra.agentWorking ?? false} timeline={[]} lookAt={null} onView={vi.fn()} onClose={vi.fn()} onNotice={onNotice} />
+      <InspectPanel term={5} terminals={null} changedFiles={2} view={view} agentWorking={extra.agentWorking ?? false} timeline={[]} lookAt={null} onView={vi.fn()} onClose={vi.fn()} onNotice={onNotice} />
     </QueryClientProvider>,
   )
   return { onNotice }
@@ -35,6 +35,32 @@ function renderPanel(view: InspectView, extra: { agentWorking?: boolean } = {}) 
 beforeEach(() => { vi.mocked(isTauri).mockReturnValue(true) })
 
 describe('Inspect panel', () => {
+  it('offers Changes, Files and Terminal, and shows the session’s terminals on that tab', () => {
+    daemonAnswers({})
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <InspectPanel term={5} terminals={<p>its terminals</p>} changedFiles={0} view="terminal" agentWorking={false} timeline={[]} lookAt={null} onView={vi.fn()} onClose={vi.fn()} onNotice={vi.fn()} />
+      </QueryClientProvider>,
+    )
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Changes', 'Files', 'Terminal'])
+    expect(screen.getByText('its terminals')).toBeTruthy()
+    cleanup()
+  })
+
+  it('shows only the Terminal tab for a session with no repository to ask about', () => {
+    daemonAnswers({})
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <InspectPanel term={null} terminals={<p>its terminals</p>} changedFiles={0} view="changes" agentWorking={false} timeline={[]} lookAt={null} onView={vi.fn()} onClose={vi.fn()} onNotice={vi.fn()} />
+      </QueryClientProvider>,
+    )
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Terminal'])
+    expect(screen.getByText('its terminals')).toBeTruthy()
+    cleanup()
+  })
+
   it('lists the changed files and shows the picked file’s diff', async () => {
     daemonAnswers({
       Diff: {

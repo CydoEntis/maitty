@@ -186,7 +186,7 @@ Only one too small for the START box draws the cards.
 
 The desktop app is drawn to the redesign handoff (`design_handoff_maitty_redesign`, "Maitty Desktop.dc.html",
 Maitty Night first). One model: **sessions live in the sidebar, an agent opens as a chat, a shell opens as a terminal,
-and a terminal for an agent exists only when you ask** ("Open terminal here"). Every session is still a shell that
+and a terminal for an agent exists only when you ask** ("New terminal"). Every session is still a shell that
 maittyd owns; Claude Code and Codex sessions have a chat view ([chat view plan](features/chat-gui/chat-view-plan.md)),
 every other agent and every plain shell stays terminal-only. The prototype is the reference for exact sizes, shadows
 and timings; the feature stylesheets beside their components carry them (`sidebar.css`, `pane.css`, `menu.css`,
@@ -277,8 +277,8 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   **Subagent**: Open, Open in split right, Copy summary, Stop subagent (disabled: the agent stops its own subagents).
   **Machine**: Install Maitty or Update Maitty first (a machine that needs it), New agent chat here, New shell here, Collapse or Expand, Group by project or Show as one list, Machine
   settings…. **Pane** (⋯ or a right-click in the pane): Split right, Split down, Maximize pane, Show chat or Show
-  terminal and Open terminal here or Close its terminal (agents) or Clear and Copy folder path (shells), Files,
-  Changes, Close pane.
+  terminal, then New terminal and Pin terminals under chat or Move terminals to side panel (agents) or Clear and Copy
+  folder path (shells), Changes and files, Close pane.
 - **Status bar.** A 28px line at the bottom of the main area under a hairline, 11.5px muted, one line.
   The left is empty, except "Reconnecting to maittyd…" in amber with a dashed dot when the daemon is
   unreachable (the sidebar foot says "Service stopped" or "Restart needed" beside a red dot). The right holds quick controls: a **theme** menu (Dark, Light or System, a few themes of
@@ -347,11 +347,12 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   message; nothing is typed while it is asking something.
 - **Pane** (`components/PaneCard.tsx`, `pane.css`). Agents and shells share one 42px header: the 26px app icon with its
   status badge, the name (15px, 600) over the folder (11px `--dim`) and the branch (mono 10.5px `--ansi-mag`), then at
-  the right the terminal | chat switch (agents with a chat), the **Files** and **Changes** tray, a hairline, split right,
-  split down, maximize, ⋯ and close. The switch and the tray are one sunken tray look (`rgba(--sd,.3)`, a 1px
-  `rgba(--hl,.1)` border, radius 9); the switch's thumb slides by `transform`. As the pane narrows the header gives up,
-  in order (`model/paneHeader.ts`): the Files and Changes labels under 660px, the split buttons under 600px, Files and
-  Changes under 520px, the switch under 420px; what is gone stays in ⋯ and the title keeps its room. A lone pane is no
+  the right, icons only (layout 2e): the terminal | chat switch (agents with a chat), split right, the terminals
+  drawer (only while terminals are pinned under the chat), the **side panel** button (a green dot while the
+  repository has changes, the counts in its tip), ⋯ and close. Split down and Maximize are in ⋯ and on their keys.
+  The switch is a sunken tray (`rgba(--sd,.3)`, a 1px `rgba(--hl,.1)` border, radius 9) whose thumb slides by
+  `transform`. As the pane narrows the header gives up, in order (`model/paneHeader.ts`): split right under 440px,
+  the switch under 360px; what is gone stays in ⋯ and the title keeps its room. A lone pane is no
   card; with two or more each pane is a faint card (`rgba(--hl,.018)`, `rgba(--hl,.08)` border, radius 14) and the
   focused one gets a teal ring drawn above its content (`--accent-line` plus a 3px accent halo). A pane's status is the
   badge on its icon; there is no status chip in a corner. While broadcasting, the header says "◉ Broadcast".
@@ -426,8 +427,15 @@ and timings; the feature stylesheets beside their components carry them (`sideba
 - **Terminal | Chat switch.** An agent's pane header carries a two-button switch (terminal glyph, chat bubble). The
   chat covers the pane body while the terminal stays mounted underneath, hidden by `visibility`, so it keeps streaming
   and keeps its size: switching sends nothing to the daemon. **An agent opens as its chat**; a shell opens as a
-  terminal, and a terminal for an agent exists only when you ask: **Open terminal here** starts a shell in the agent's
-  folder beside it ("Close its terminal" ends it). Settings › General › Chat view picks the view each of Claude and
+  terminal, and a terminal for an agent exists only when you ask: **New terminal** starts a shell in the agent's
+  folder as one of its own terminals (`components/AgentTerminals.tsx`): a tab each, **+** for another, × to end one.
+  They are tabs of the agent, not rows of the sidebar; which shell is whose is the window's own memory
+  (`data/agentTerminals.ts`), so the terminal app lists them as sessions, and one whose agent is gone is a row again.
+  They show in the side panel's Terminal tab, or pinned under the agent's chat (Settings › Appearance › Layout ›
+  Terminals open in, the pin button, or the pane menu): a drawer of the pane with a handle to size it (120 to 640px,
+  at most 60% of the pane; `model/terminalDrawer.ts`), folding to its 42px header, and starting folded in a window
+  under 760px tall. The drawer is part of the agent's pane card, not a card of its own as the handoff draws it.
+  Settings › General › Chat view picks the view each of Claude and
   Codex opens in (Chat by default). A shell, an unsupported agent or a session on another machine shows the chat
   card's empty state, "Chat view is for agent sessions", with the reason and the ways to start one.
   Changing the view, or switching between sessions, plays no animation.
@@ -502,9 +510,14 @@ and timings; the feature stylesheets beside their components carry them (`sideba
 - **A pasted image.** The same toast, titled `Sending the image to <machine>` (a progress bar named
   `Sending image`, **Cancel**), ending as `Sent the image to <machine>`. For a pane of this computer there is
   no progress: a short `Saving the image…` toast becomes `Pasted the image`.
-- **Files and Changes** (⌘I, a pane's tray, a session's Show changes). The repository drawer: 680px over a scrim, 12px
-  from the top and bottom and 24px from the right, radius 16. Its header is the project and branch; text tabs (Files,
-  Changes with its count, Branches, History, Timeline, References) with a 2px accent underline; Changes lists the
+- **Side panel** (⌘I, a pane's side-panel button, a session's Show changes; `features/inspect/InspectPanel.tsx`). It
+  slides over a scrim at three-quarters of the window, never over the sidebar, 12px from the top and bottom and 24px
+  from the right, radius 16; its edge drags and the width is remembered (a double-click goes back to following the
+  window). Its header is only the tabs **Changes** (with its count), **Files** and **Terminal**, with a 2px accent
+  underline, and ×. Esc closes it, except in a terminal, where Esc is the program's. A shell has no Terminal tab; a
+  chat session has no pane to ask about its repository, so Changes and Files appear for it once it has a terminal.
+  Branches, History, Timeline and References are kept in the code but nothing opens them: whether they come back
+  is undecided. Changes lists the
   changed files (`+N −N`) and the picked file's diff (added lines tinted with `--ok`, removed with `--danger`, hunk
   headers in the accent). It reads the focused pane's repository and never changes it. **Restore** on a snapshot asks
   first and is disabled while the agent works; **Compare** picks two entries. A tab that cannot load shows one calm

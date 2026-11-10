@@ -240,7 +240,7 @@ describe('a session row', () => {
     show([session(1, { agent: 'claude', named: true, title: 'Growth' }), session(2)], { focusedId: 't2', onEndSession })
     fireEvent.contextMenu(screen.getByRole('button', { name: /^Growth,/ }))
     const menu = screen.getByRole('menu', { name: 'Growth' })
-    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Open', 'Open in split right', 'Open in split down', 'Open terminal here', 'Rename…F2', 'Copy folder path', 'Show changes', 'Stop session'])
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Open', 'Open in split right', 'Open in split down', 'New terminal', 'Rename…F2', 'Copy folder path', 'Show changes', 'Stop session'])
     await user.click(within(menu).getByRole('menuitem', { name: 'Stop session' }))
     expect(onEndSession).toHaveBeenCalledWith('t1')
   })
@@ -249,7 +249,7 @@ describe('a session row', () => {
     show([session(1)])
     fireEvent.contextMenu(screen.getByRole('button', { name: /^app1,/ }))
     expect(screen.getByRole('menuitem', { name: 'Close shell' })).toBeTruthy()
-    expect(screen.queryByRole('menuitem', { name: 'Open terminal here' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: 'New terminal' })).toBeNull()
   })
 })
 

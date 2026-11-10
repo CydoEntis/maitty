@@ -45,16 +45,14 @@
 .mx-pane-cwd { font-size: 11px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
 .mx-pane-branch { display: flex; align-items: center; gap: 4px; flex: none; font-family: var(--mono); font-size: 10.5px; color: var(--ansi-mag); }
 .mx-pane-controls { display: flex; align-items: center; gap: 0; margin-left: auto; }
-.mx-pane-gap { width: 6px; flex: none; }
-.mx-pane-divider { width: 1px; height: 16px; margin: 0 8px; flex: none; background: var(--pane-line); }
 .mx-pane-control { width: 28px; height: 28px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--dim); transition: background-color .14s ease, color .14s ease; }
 .mx-pane-control:not(:disabled):hover { background: rgba(var(--hl), calc(.09 * var(--hk))); color: var(--fg); }
 .mx-pane-control.is-close:not(:disabled):hover { background: var(--danger-soft); color: var(--danger); }
 .mx-pane-control:disabled { opacity: .3; }
 .mx-pane-control.is-armed { background: var(--danger-soft); box-shadow: inset 0 0 0 1px var(--danger-line); color: var(--danger); }
 
-/* The terminal | chat switch and the Files and Changes tray share one dark, sunken tray. */
-.mx-view-switch, .mx-pane-tray {
+/* The terminal | chat switch sits in a dark, sunken tray. */
+.mx-view-switch {
   position: relative; height: 30px; padding: 2px; border-radius: 9px; flex: none;
   background: rgba(var(--sd), calc(.3 * var(--sk))); border: 1px solid rgba(var(--hl), calc(.1 * var(--hk)));
 }
@@ -68,10 +66,10 @@
 .mx-view-switch.is-chat .mx-view-thumb { transform: translateX(calc(100% + 2px)); }
 .mx-view-option { position: relative; z-index: 1; display: flex; height: 24px; width: 30px; align-items: center; justify-content: center; border-radius: 7px; color: var(--muted); }
 .mx-view-option[aria-checked="true"] { color: var(--fg); }
-.mx-pane-tray { display: flex; align-items: center; gap: 2px; }
-.mx-tray-button { height: 24px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 7px; font-size: calc(12.5px * var(--tab-text, 1)); color: var(--fg2); }
-.mx-tray-button:hover { background: rgba(var(--hl), calc(.07 * var(--hk))); color: var(--fg); }
-.mx-tray-button.is-on { color: var(--fg); background: linear-gradient(180deg, rgba(var(--hl), calc(.12 * var(--hk) * var(--gk))), rgba(var(--hl), calc(.06 * var(--hk) * var(--gk)))); }
+.mx-view-switch { margin-right: 4px; }
+.mx-pane-control.is-on { color: var(--fg); background: rgba(var(--hl), calc(.09 * var(--hk))); }
+.mx-pane-panel { position: relative; }
+.mx-pane-dot { position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--done); box-shadow: 0 0 0 1.5px var(--m-pane); }
 
 .mx-pane-body { position: relative; flex: 1; min-height: 0; padding: 4px 10px 6px; font-family: var(--mono); line-height: 1.6; cursor: text; display: flex; }
 .mx-pane-body > * { flex: 1; min-width: 0; min-height: 0; }
@@ -112,3 +110,36 @@
    The window itself does not cross-fade. */
 ::view-transition-group(*) { animation-duration: .3s; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
 ::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+
+/* An agent's own terminals: a tab of the side panel, or a drawer under its chat. */
+.mx-terms { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.mx-terms.is-panel { flex: 1; }
+.mx-terms.is-under { position: relative; flex: none; border-top: 1px solid var(--pane-line); }
+.mx-terms-grip { position: absolute; top: -4px; left: 0; right: 0; height: 8px; cursor: row-resize; z-index: 2; }
+.mx-terms-grip::after { content: ""; position: absolute; left: 8px; right: 8px; top: 3px; height: 2px; border-radius: 2px; background: transparent; transition: background .15s; }
+.mx-terms-grip:hover::after { background: var(--accent); }
+.mx-terms-head { flex: none; height: 42px; display: flex; align-items: center; gap: 6px; padding: 0 8px; min-width: 0; }
+.mx-terms.is-panel .mx-terms-head, .mx-terms.is-under:not(.is-folded) .mx-terms-head { border-bottom: 1px solid var(--pane-line); }
+.mx-terms-fold { flex: none; height: 26px; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 4px; border-radius: 7px; font-size: 12.5px; font-weight: 600; color: var(--fg2); }
+.mx-terms-fold:not(:disabled):hover { background: rgba(var(--hl), calc(.07 * var(--hk))); color: var(--fg); }
+.mx-terms-tabs { display: flex; align-items: center; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.mx-terms-tab { flex: none; height: 26px; display: flex; align-items: center; border-radius: 7px; color: var(--muted); }
+.mx-terms-tab:hover { color: var(--fg); }
+.mx-terms-tab.is-current { background: rgba(var(--hl), calc(.08 * var(--hk))); color: var(--fg); }
+.mx-terms-pick { height: 100%; display: flex; align-items: center; gap: 6px; padding: 0 4px 0 9px; font-size: 12px; color: inherit; white-space: nowrap; }
+.mx-terms-pick .mono { font-family: var(--mono); font-size: 10.5px; color: var(--dim); }
+.mx-terms-close { width: 20px; height: 20px; margin-right: 3px; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--dim); }
+.mx-terms-add, .mx-terms-tool { width: 26px; height: 26px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 7px; color: var(--dim); }
+.mx-terms-close:not(:disabled):hover, .mx-terms-add:not(:disabled):hover, .mx-terms-tool:hover { background: rgba(var(--hl), calc(.09 * var(--hk))); color: var(--fg); }
+.mx-terms-close:disabled, .mx-terms-add:disabled { opacity: .35; }
+.mx-terms-where { min-width: 0; font-family: var(--mono); font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mx-terms-screen { flex: 1; min-height: 0; display: flex; padding: 4px 10px 6px; font-family: var(--mono); line-height: 1.6; background: var(--main); cursor: text; }
+.mx-terms-screen > * { flex: 1; min-width: 0; min-height: 0; }
+.mx-terms-screen .terminal-view { display: flex; flex-direction: column; height: 100%; gap: 0; padding: 0; }
+.mx-terms-screen .terminal-screen { flex: 1; min-height: 0; margin: 0; background: transparent; border: 0; border-radius: 0; padding: 0; }
+.mx-terms-screen .terminal-screen:focus-within { border-color: transparent; box-shadow: none; }
+.mx-terms-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 24px; font-size: 12.5px; line-height: 1.5; color: var(--dim); text-align: center; }
+.mx-terms-empty strong { font-size: 13.5px; font-weight: 600; color: var(--fg2); }
+.mx-terms-start { margin-top: 8px; height: 30px; padding: 0 14px; border-radius: 8px; font-size: 12.5px; font-weight: 600; color: var(--on-accent); background: var(--accent); }
+.mx-terms-start:not(:disabled):hover { background: color-mix(in srgb, var(--accent) 88%, #fff); }
+.mx-terms-start:disabled { opacity: .5; }

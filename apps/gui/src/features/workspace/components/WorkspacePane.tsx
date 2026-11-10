@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { TerminalView } from '@/TerminalView'
 import { useWorkspace } from '../workspaceContext'
 import { chatAvailability, type PaneView } from '../model/chatView'
@@ -6,11 +7,13 @@ import { sendTerminalInput } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
 import { isChatSession } from '../model/chatSession'
 import { PaneCard } from './PaneCard'
+import { LOCAL_MACHINE } from '@/api/machines'
+import { AgentTerminals } from './AgentTerminals'
+import { startsFolded } from '../model/terminalDrawer'
 import { ChatPane } from '@/features/chat/components/ChatPane'
 import { NoTerminalNote } from '@/features/chat/components/NoTerminalNote'
 import { type Arrangement, focusPane, type PaneSlot, toggleMaximize } from '../model/layout'
 import { folderNameOf } from '../model/session'
-import { isShell } from '../model/sidebar'
 
 /** Whether a session can show a chat at all: an agent the app reads. A shell or another program has none, so it gets no switch. */
 function hasChat(availability: ReturnType<typeof chatAvailability>): boolean {
@@ -29,7 +32,8 @@ export function WorkspacePane({ shown, pane, kept }: {
   pane: PaneSlot
   kept: boolean
 }) {
-  const { paneSessions, chatOf, openSubagent, agentTerminals, sessionMap, outsidePanes, dropId, dragId, paneViews, showChanges, online, setOpenSubagent, togglePaneTool, preferences, startChatHere, inspectOpen, inspectView, toggleAgentTerminal, root, look, modalOpen, mirrorInput, openPath, pasteImage, terminalHandles, setLayout, split, closePaneById, sendTo, copyPathOf, restartPane } = useWorkspace()
+  const { paneSessions, chatOf, openSubagent, ownsTerminals, repoPaneOf, outsidePanes, dropId, dragId, paneViews, showChanges, online, setOpenSubagent, togglePanel, preferences, setPreferences, startChatHere, inspectOpen, addAgentTerminal, root, look, modalOpen, mirrorInput, openPath, pasteImage, terminalHandles, setLayout, split, closePaneById, sendTo, copyPathOf, restartPane } = useWorkspace()
+  const [drawerFolded, setDrawerFolded] = useState(startsFolded)
   const session = paneSessions.get(pane.sessionId)
   if (!session) return null
   const focused = pane.id === shown.focus && !kept
@@ -37,7 +41,11 @@ export function WorkspacePane({ shown, pane, kept }: {
   const chatOnly = isChatSession(session.conversation)
   const subagent = openSubagent?.sessionId === session.id ? session.subagents.find((child) => child.id === openSubagent.subagentId) : undefined
   const typeInto = chatOnly ? undefined : (text: string) => sendTerminalInput({ id: session.id, generation: session.conversation.generation ?? 0 }, text)
-  const terminalOpen = isShell(session) ? null : agentTerminals.has(session.id) && sessionMap.has(agentTerminals.get(session.id) ?? '')
+  const terminals = ownsTerminals(session)
+  const dock = preferences.terminalDock
+  const pinned = terminals && dock === 'under' && !kept
+  // The panel has something for this pane: its repository, or terminals that live there. A pane of another machine keeps the button, which says why not.
+  const hasPanel = session.machine !== LOCAL_MACHINE || repoPaneOf(session) !== null || (terminals && dock === 'panel')
   return (
     <PaneCard
       pane={pane}
@@ -68,7 +76,7 @@ export function WorkspacePane({ shown, pane, kept }: {
           subagent={subagent ?? null}
           subagentCount={session.subagents.length}
           onBackToMain={() => { setOpenSubagent(null) }}
-          onOpenFiles={() => { togglePaneTool(pane.id, session.id, 'files') }}
+          onOpenFiles={() => { togglePanel(pane.id, session.id, 'files') }}
           onBackToTerminal={() => { paneViews.choose(session.id, 'terminal') }}
           onStartAgent={(agent) => {
             paneViews.choose(session.id, 'terminal')
@@ -78,10 +86,13 @@ export function WorkspacePane({ shown, pane, kept }: {
           onStartChat={(agent, fullAccess) => { startChatHere(session, agent, fullAccess) }}
         />
       ) : undefined}
-      tool={inspectOpen && focused && (inspectView === 'files' || inspectView === 'changes') ? inspectView : null}
-      onTool={(tool) => { togglePaneTool(pane.id, session.id, tool) }}
-      terminalOpen={terminalOpen}
-      onToggleTerminal={() => { toggleAgentTerminal(session.id) }}
+      panelOpen={inspectOpen && focused}
+      {...(hasPanel ? { onPanel: () => { togglePanel(pane.id, session.id) } } : {})}
+      changed={{ added: session.diffAdded, removed: session.diffRemoved }}
+      terminalDock={terminals ? dock : null}
+      onNewTerminal={() => { addAgentTerminal(session.id) }}
+      onDock={(terminalDock) => { setPreferences((current) => ({ ...current, terminalDock })) }}
+      {...(pinned ? { drawer: <AgentTerminals agent={session} dock="under" focused={false} folded={drawerFolded} onFold={setDrawerFolded} />, drawerFolded, onDrawerFold: setDrawerFolded } : {})}
       online={online}
       portalContainer={root}
       terminal={chatOnly ? <NoTerminalNote /> :

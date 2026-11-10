@@ -313,7 +313,7 @@ describe('desktop terminal multiplexer', () => {
     fireEvent.contextMenu(pane)
 
     const menu = await screen.findByRole('menu', { name: 'a' })
-    expect(within(menu).getAllByRole('menuitem').map((item) => item.querySelector('.mx-ctx-label')?.textContent)).toEqual(['Split right', 'Split down', 'Maximize pane', 'Clear', 'Copy folder path', 'Files', 'Changes', 'Close pane'])
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.querySelector('.mx-ctx-label')?.textContent)).toEqual(['Split right', 'Split down', 'Maximize pane', 'Clear', 'Copy folder path', 'Changes and files', 'Close pane'])
     daemon.startShellSession.mockResolvedValue(undefined)
     await user.click(within(menu).getByRole('menuitem', { name: /^Split right/ }))
     // A split opens a new shell beside this one.
@@ -522,7 +522,8 @@ describe('desktop terminal multiplexer', () => {
     renderDesktopApp()
     await screen.findByRole('region', { name: 'Shell in ~/a' })
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`), term(3, `${HOME}/b`)])
-    await user.click(screen.getByRole('button', { name: 'Split down (Ctrl+Alt+Shift+D)' }))
+    await user.click(screen.getByRole('button', { name: 'More pane actions' }))
+    await user.click(await screen.findByRole('menuitem', { name: /^Split down/ }))
     await screen.findByRole('region', { name: 'Shell in ~/b' })
 
     const first = screen.getByRole('region', { name: /^Terminal 1:/ })
@@ -575,12 +576,16 @@ describe('desktop terminal multiplexer', () => {
 
     await user.click(within(screen.getByRole('region', { name: 'Terminal 1: ~/a' })).getByRole('button', { name: 'Close pane · ends its session' }))
     await waitFor(() => { expect(daemon.closeSessionWithUndo).toHaveBeenCalledWith(expect.objectContaining({ id: 't2' })) })
-    await user.click(within(third).getByRole('button', { name: 'Maximize pane' }))
-    await screen.findByRole('button', { name: 'Restore layout' })
+    await user.click(within(third).getByRole('button', { name: 'More pane actions' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Maximize pane' }))
+    await user.click(within(third).getByRole('button', { name: 'More pane actions' }))
+    await screen.findByRole('menuitem', { name: 'Restore layout' })
+    await user.keyboard('{Escape}')
     await act(async () => { ended(); await Promise.resolve() })
 
     await waitFor(() => { expect(screen.getAllByText('Closed ~/a').length).toBeGreaterThan(0) })
-    expect(screen.getByRole('button', { name: 'Restore layout' })).toBeInTheDocument()
+    await user.click(screen.getAllByRole('button', { name: 'More pane actions' }).at(-1) as HTMLElement)
+    expect(await screen.findByRole('menuitem', { name: 'Restore layout' })).toBeInTheDocument()
   })
 
   it('undoes the last close with Ctrl+Shift+Z, and leaves the key to the terminal when nothing was closed', async () => {
