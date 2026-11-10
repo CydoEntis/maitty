@@ -55,16 +55,23 @@ try {
 
     Expand-Archive (Join-Path $tmp $asset) -DestinationPath $tmp -Force
     New-Item -ItemType Directory -Force $dir | Out-Null
-    # Windows locks a running exe: stop the copy being replaced (its sessions come back on the
-    # next start). A copy installed elsewhere keeps running.
+    # Windows locks a running exe but lets it be renamed: the copy that is running (the daemon, an
+    # agent's `<app> mcp`) is moved aside and goes on with its sessions. Nothing is stopped, so an
+    # install never ends an agent's turn; the next `<app>` offers the restart.
     $installed = Join-Path $dir $exe
-    $running = Get-Process -Name $app -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $installed }
-    if ($running) {
-        Write-Host "Stopping the running $app to replace it..."
-        $running | Stop-Process -Force
-        Start-Sleep -Milliseconds 500
+    $aside = $null
+    if (Test-Path $installed) {
+        # Ones moved aside earlier go when nothing runs them; one still running keeps its name.
+        Get-ChildItem $dir -Filter "$app.old*.exe" | Remove-Item -Force -ErrorAction SilentlyContinue
+        $aside = Join-Path $dir "$app.old.exe"
+        for ($n = 2; Test-Path $aside; $n++) { $aside = Join-Path $dir "$app.old-$n.exe" }
+        Move-Item $installed $aside
     }
-    Copy-Item (Join-Path $tmp "$app-$target\$exe") $installed -Force
+    try { Copy-Item (Join-Path $tmp "$app-$target\$exe") $installed -Force }
+    catch {
+        if ($aside) { Move-Item $aside $installed -Force }
+        throw
+    }
 
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
     if ((Setting 'NO_PATH') -ne '1' -and -not (($userPath -split ';') -contains $dir)) {
