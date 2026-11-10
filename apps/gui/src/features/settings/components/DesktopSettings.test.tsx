@@ -138,9 +138,20 @@ describe('desktop settings', () => {
     const updates = { summary: 'ready', status: 'ready' as const, onCheck: vi.fn(), onDownload: vi.fn(), onRestart: vi.fn() }
     renderSettings('general', { updates })
 
+    expect(screen.queryByText('Ready to restart')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Restart now' }))
 
     expect(updates.onRestart).toHaveBeenCalledTimes(1)
+  })
+
+  it('says a download once, on a busy button that cannot be pressed', () => {
+    const updates = { summary: 'Downloading Maitty 0.72.0…', status: 'downloading' as const, onCheck: vi.fn(), onDownload: vi.fn(), onRestart: vi.fn() }
+    renderSettings('general', { updates })
+
+    expect(screen.getAllByText(/^Downloading/)).toHaveLength(2)
+    const button = screen.getByRole('button', { name: 'Downloading…' })
+    expect(button).toBeDisabled()
+    expect(button).toHaveAttribute('aria-busy', 'true')
   })
 
   it('has one switch each for needs you, done and error notifications', async () => {

@@ -260,7 +260,10 @@ describe('sending', () => {
     await user.type(box, 'use this design{Enter}')
 
     expect(fake.submitMessage).toHaveBeenCalledWith(TARGET, 1, `use this design\n\n${ATTACHMENT_HEADER}\n- ${KEPT_DIR}Design_Final.zip`)
-    expect(screen.queryByRole('list', { name: 'Attached files' })).not.toBeInTheDocument()
+    // The draft's chip (the one with a Remove button) is gone; the message on its way shows the file as a chip, never its path.
+    expect(screen.queryByRole('button', { name: /^Remove / })).not.toBeInTheDocument()
+    expect(screen.getByRole('list', { name: 'Attached files' })).toHaveTextContent('Design_Final.zip')
+    expect(screen.queryByText(new RegExp(KEPT_DIR))).not.toBeInTheDocument()
     expect(box).toHaveValue('')
   })
 

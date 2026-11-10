@@ -1,4 +1,5 @@
 import { flushSync } from 'react-dom'
+import { prefersPlainDrawing } from '@/lib/gpu'
 
 type Transitions = { startViewTransition?: (update: () => void) => { finished: Promise<unknown> } }
 
@@ -22,11 +23,13 @@ const reducedMotion = (): boolean =>
 /**
  * Runs a change that moves panes (a swap) so they glide to their new places. The browser snapshots the panes before and after,
  * so the text inside never reflows in between: only pictures of the panes slide. Without View Transitions, or with
- * Reduce motion on, the change just happens.
+ * Reduce motion on, the change just happens. It also just happens on the Linux web view: a swap by drag was
+ * reported to take the whole window down there (0.72.0, Hyprland), and the glide is the one part of a swap
+ * that asks the web view for something unusual.
  */
 export function movePanes(update: () => void): void {
   const doc = document as Document & Transitions
-  if (typeof doc.startViewTransition !== 'function' || reducedMotion() || panesNow().length < MIN_PANES) {
+  if (typeof doc.startViewTransition !== 'function' || prefersPlainDrawing() || reducedMotion() || panesNow().length < MIN_PANES) {
     update()
     return
   }

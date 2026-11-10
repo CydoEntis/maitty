@@ -59,6 +59,7 @@ fn report(term: TermId, token: &str, pid: u32, status: HookStatus, event: &str) 
         name: None,
         background: Vec::new(),
         background_agents: Vec::new(),
+        background_reported: false,
         ask: None,
         call: None,
     }
@@ -2702,6 +2703,64 @@ fn a_turn_waiting_on_background_agents_stays_working() {
 }
 
 #[test]
+fn a_helper_whose_stop_never_came_clears_when_the_agent_says_none_is_running() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let helper = Subagent {
+        id: "a1".into(),
+        kind: "general-purpose".into(),
+        start: true,
+        reported_at: 0,
+        task: None,
+        model: None,
+        effort: None,
+        activity: None,
+    };
+    let stop = |running: &[&str]| {
+        let mut m = report(t, "", 0, HookStatus::Done, "Stop");
+        if let ClientMsg::Hook {
+            background,
+            background_agents,
+            background_reported,
+            ..
+        } = &mut m
+        {
+            *background = running.iter().map(|id| id.to_string()).collect();
+            *background_agents = background.clone();
+            *background_reported = true;
+        }
+        m
+    };
+    d.apply_hook(
+        report(t, "", 0, HookStatus::Working, "UserPromptSubmit"),
+        Some(true),
+        Vec::new(),
+    );
+    let mut start = report(t, "", 0, HookStatus::Working, "SubagentStart");
+    if let ClientMsg::Hook { subagent, .. } = &mut start {
+        *subagent = Some(helper);
+    }
+    d.apply_hook(start, Some(true), Vec::new());
+
+    // The agent says one helper still runs: the turn is paused on it, and it stays listed.
+    d.apply_hook(stop(&["a1"]), Some(true), Vec::new());
+    assert_eq!(d.terms[&t].status, Status::Working);
+    assert_eq!(d.terms[&t].subagents.len(), 1);
+
+    // Its stop never arrives. The next turn end lists nothing running: the agent's word wins.
+    d.apply_hook(stop(&[]), Some(true), Vec::new());
+    assert_eq!(d.terms[&t].status, Status::Done, "not held on a helper that is gone");
+    assert!(d.terms[&t].subagents.is_empty());
+    assert_eq!(
+        d.terms[&t].subagent_activity[0].state,
+        SubagentState::ConnectionLost,
+        "kept as unconfirmed, not as completed"
+    );
+    let terms: Vec<TermId> = d.terms.keys().copied().collect();
+    close(&mut d, &terms);
+}
+
+#[test]
 fn a_progress_bar_that_goes_off_while_helpers_run_is_not_a_cancel() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
@@ -3072,6 +3131,7 @@ fn an_agent_stays_in_the_folder_it_started_in() {
             name,
             background,
             background_agents,
+            background_reported: false,
             ask: None,
             call: None,
         },

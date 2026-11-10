@@ -187,6 +187,10 @@ pub enum ClientMsg {
         /// later stop as a pause.
         #[serde(default)]
         background_agents: Vec<String>,
+        /// The agent listed its background tasks with this report, so `background` and
+        /// `background_agents` are everything still running, not merely nothing said.
+        #[serde(default)]
+        background_reported: bool,
         /// The question a permission prompt asks, from the hook's own payload (a
         /// `PermissionRequest`). The daemon cleans it and decides `answerable` itself.
         #[serde(default)]
@@ -1748,6 +1752,7 @@ mod tests {
                 name: Some("api work".into()),
                 background: vec!["b1".into()],
                 background_agents: vec![],
+                background_reported: false,
                 ask: Some(PermissionAsk {
                     tool: "Bash".into(),
                     detail: "cargo test".into(),
@@ -2712,6 +2717,7 @@ mod tests {
             name: Some("api work".into()),
             background: vec!["b1".into(), "a2".into()],
             background_agents: vec!["a2".into()],
+            background_reported: true,
             ask: Some(PermissionAsk {
                 tool: "Bash".into(),
                 detail: "cargo test".into(),
@@ -2841,6 +2847,7 @@ mod tests {
             event,
             background,
             background_agents,
+            background_reported,
             ask,
             call,
             ..
@@ -2850,6 +2857,7 @@ mod tests {
         };
         assert_eq!((event.as_str(), background.len(), ask), ("Stop", 0, None));
         assert!(background_agents.is_empty(), "an older peer names no helpers");
+        assert!(!background_reported, "an older peer's empty list is nothing said, not nothing running");
         assert_eq!(call, None, "an older peer sends no call fingerprint");
 
         #[derive(Deserialize)]
@@ -2879,6 +2887,7 @@ mod tests {
             name: None,
             background: vec!["b1".into()],
             background_agents: vec!["b1".into()],
+            background_reported: true,
             ask: None,
             call: None,
         };

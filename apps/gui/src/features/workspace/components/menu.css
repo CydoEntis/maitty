@@ -5,8 +5,9 @@
   border: 1px solid rgba(var(--hl), calc(.12 * var(--hk)));
   box-shadow: inset 0 1px 0 rgba(var(--hl), calc(.07 * var(--hk) * var(--gk))), 0 18px 44px -12px rgba(var(--sd), calc(.75 * var(--sk) * var(--gk)));
   color: var(--fg); font-family: "Geist Variable", Geist, system-ui, sans-serif;
-  animation: v7scrim .12s ease-out;
+  animation: mx-pop .14s ease-out;
 }
+@keyframes mx-pop { from { opacity: 0; transform: translateY(-4px) scale(.97); } to { opacity: 1; transform: none; } }
 .mx-ctx-title { max-width: 260px; padding: 6px 10px 5px; font-size: 11px; font-weight: 600; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-ctx-sep { height: 1px; margin: 4px 8px; background: var(--pane-line); }
 .mx-ctx-item { height: 30px; display: flex; align-items: center; gap: 16px; padding: 0 10px; border-radius: 7px; font-size: 13px; text-align: left; color: var(--fg2); outline: none; }

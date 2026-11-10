@@ -1,3 +1,4 @@
+import { isChatSession } from './chatSession'
 import type { MachineHead } from './machines'
 import { folderNameOf, inCreationOrder, SHELL_PROCESS, type SessionStatus, type SessionView } from './session'
 
@@ -42,6 +43,14 @@ export function projectColor(project: string): string {
   let hash = HASH_SEED
   for (let index = 0; index < project.length; index += 1) hash = ((hash << HASH_SHIFT) + hash + project.charCodeAt(index)) | 0
   return `var(--proj-${String((Math.abs(hash) % PROJECT_COLORS) + 1)})`
+}
+
+/**
+ * Whether closing this session would lose something: it has not ended, and it is an agent, a chat, or a shell
+ * with a program running in it. A plain idle shell loses nothing that Undo does not bring back.
+ */
+export function keepsRunningUnseen(session: SessionView): boolean {
+  return !session.ended && !(isShell(session) && !isChatSession(session.conversation))
 }
 
 export function isShell(session: Pick<SessionView, 'process'>): boolean {

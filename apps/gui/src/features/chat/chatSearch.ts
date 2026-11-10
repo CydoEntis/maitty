@@ -1,4 +1,12 @@
+import type { ChatEvent } from './chatEvents'
 import type { ChatRow } from './chatRows'
+
+function stepText(event: Extract<ChatEvent, { kind: 'edit' | 'command' | 'todo' | 'tool' }>): string {
+  if (event.kind === 'command') return `${event.command}\n${event.output}`
+  if (event.kind === 'edit') return event.file ?? ''
+  if (event.kind === 'todo') return (event.items ?? []).map((item) => item.text).join('\n')
+  return `${event.name} ${event.target ?? ''}`
+}
 
 /** What a search looks through in a row: the words a person can read in it. */
 export function rowText(row: ChatRow): string {
@@ -10,16 +18,15 @@ export function rowText(row: ChatRow): string {
     case 'echo':
     case 'report':
       return row.text
-    case 'step': {
-      const event = row.event
-      if (event.kind === 'command') return `${event.command}\n${event.output}`
-      if (event.kind === 'edit') return event.file ?? ''
-      if (event.kind === 'todo') return (event.items ?? []).map((item) => item.text).join('\n')
-      return `${event.name} ${event.target ?? ''}`
-    }
+    case 'step':
+      return stepText(row.event)
+    case 'work':
+      return row.events.map(stepText).join('\n')
     case 'agents':
       return row.events.map((event) => `${event.title ?? ''}\n${event.prompt ?? ''}\n${event.report}`).join('\n')
     // An approval is answered in its tray, and the divider and the working line say nothing of the conversation.
+    case 'changes':
+      return row.files.join('\n')
     case 'approval':
     case 'divider':
     case 'working':

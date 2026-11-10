@@ -3,6 +3,7 @@ import type { ApprovalEvent, ChatEvent, CommandEvent, EditEvent, ItemStatus, Mes
 import { startsTable, streamingText } from './markdown'
 import { describeStep } from './stepInfo'
 import { describeWork } from './workPhase'
+import type { WorkStep } from './workSummary'
 
 /** What the list draws. One row per thing on screen; the events beneath keep their own ids. */
 export type ChatRow =
@@ -10,10 +11,14 @@ export type ChatRow =
   /** One agent message: the text of the agent's messages that follow each other in a turn. */
   | { readonly kind: 'agent'; readonly key: string; readonly turnId: string; readonly paragraphs: readonly string[]; readonly status: ItemStatus }
   | { readonly kind: 'step'; readonly key: string; readonly event: EditEvent | CommandEvent | TodoEvent | ToolEvent }
+  /** Two or more steps that follow each other, folded into one line that opens to them; its key is the first step's id. */
+  | { readonly kind: 'work'; readonly key: string; readonly events: readonly WorkStep[] }
   /** Helper agents that follow each other are one card; its key is the first one's id, so it stays put as more join. */
   | { readonly kind: 'agents'; readonly key: string; readonly events: readonly SubagentEvent[] }
   | { readonly kind: 'approval'; readonly key: string; readonly event: ApprovalEvent; readonly step: StepRef | null }
   | { readonly kind: 'divider'; readonly key: string; readonly event: TurnEvent }
+  /** Under a turn that edited files: how many, and the lines added and removed where every diff was kept. */
+  | { readonly kind: 'changes'; readonly key: string; readonly files: readonly string[]; readonly lines: { readonly added: number; readonly removed: number } | null }
   /** What the person just sent, shown before the history has it; `echoText` of `buildRows`. */
   | { readonly kind: 'echo'; readonly key: string; readonly text: string }
   /** A helper agent reporting back (the harness's `<task-notification>`), as one quiet line. */
@@ -67,7 +72,9 @@ function mergedStatus(a: ItemStatus, b: ItemStatus): ItemStatus {
  */
 export function buildRows(events: readonly ChatEvent[], working: boolean, root: string | null = null, echoText: string | null = null, echoThinking = true): ChatRow[] {
   const rows: ChatRow[] = []
+  const edits = new Map<string, EditEvent[]>()
   for (const event of events) {
+    if (event.kind === 'edit') edits.set(event.turnId, [...(edits.get(event.turnId) ?? []), event])
     switch (event.kind) {
       case 'message': {
         if (event.role === 'user') {
@@ -87,20 +94,29 @@ export function buildRows(events: readonly ChatEvent[], working: boolean, root: 
       case 'approval':
         rows.push({ kind: 'approval', key: event.id, event, step: null })
         break
-      case 'turn':
+      case 'turn': {
         rows.push({ kind: 'divider', key: event.id, event })
+        const changed = changesOf(edits.get(event.turnId) ?? [])
+        if (changed !== null) rows.push({ kind: 'changes', key: `changes:${event.turnId}`, ...changed })
         break
+      }
       case 'subagent': {
         const previous = rows.at(-1)
         if (previous?.kind === 'agents') rows[rows.length - 1] = { ...previous, events: [...previous.events, event] }
         else rows.push({ kind: 'agents', key: event.id, events: [event] })
         break
       }
+      case 'todo':
+        rows.push({ kind: 'step', key: event.id, event })
+        break
       case 'edit':
       case 'command':
-      case 'todo':
-      case 'tool':
-        rows.push({ kind: 'step', key: event.id, event })
+      case 'tool': {
+        const previous = rows.at(-1)
+        if (previous?.kind === 'work') rows[rows.length - 1] = { ...previous, events: [...previous.events, event] }
+        else if (previous?.kind === 'step' && previous.event.kind !== 'todo') rows[rows.length - 1] = { kind: 'work', key: previous.key, events: [previous.event, event] }
+        else rows.push({ kind: 'step', key: event.id, event })
+      }
     }
   }
   // A message just sent is drawn at once, and the agent is taken to be at work on it, until the history says so itself.
@@ -109,13 +125,24 @@ export function buildRows(events: readonly ChatEvent[], working: boolean, root: 
   return linkApprovals(rows, events, root)
 }
 
+/** The files a turn's edits touched, each once, and their line counts when no diff is missing. */
+function changesOf(edits: readonly EditEvent[]): { files: string[]; lines: { added: number; removed: number } | null } | null {
+  const files = [...new Set(edits.flatMap((edit) => (edit.status === 'completed' && edit.file !== null ? [edit.file] : [])))]
+  if (files.length === 0) return null
+  const counted = edits.filter((edit) => edit.status === 'completed' && edit.file !== null)
+  const lines = counted.every((edit) => edit.diff.status === 'available' && !edit.diff.truncated)
+    ? counted.reduce((sum, edit) => (edit.diff.status === 'available' ? { added: sum.added + edit.diff.added, removed: sum.removed + edit.diff.removed } : sum), { added: 0, removed: 0 })
+    : null
+  return { files, lines }
+}
+
 /** Points each approval at the row of the tool step it is about, when the provider named one. */
 function linkApprovals(rows: ChatRow[], events: readonly ChatEvent[], root: string | null): ChatRow[] {
   if (!rows.some((row) => row.kind === 'approval')) return rows
   const rowOf = new Map<string, string>()
   for (const row of rows) {
     if (row.kind === 'step') rowOf.set(row.key, row.key)
-    if (row.kind === 'agents') for (const event of row.events) rowOf.set(event.id, row.key)
+    if (row.kind === 'agents' || row.kind === 'work') for (const event of row.events) rowOf.set(event.id, row.key)
   }
   const labelOf = new Map<string, string>()
   for (const event of events) {

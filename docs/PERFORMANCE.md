@@ -117,7 +117,7 @@ that touches this area.
 
 Tier 1 (small changes, measured gain):
 
-1. [x] Status effects play once when a status appears and then rest: the working sweep is one pass, the needs-you glow breathes three times, the needs-you badge, Inbox count and update dot pulse three times with a `transform` ring on a pseudo-element, the idle dot is still. Nothing animates `box-shadow` or loops. `workspace.css`, `App.css`, Settings › Motion copy.
+1. [x] Status effects play once when a status appears and then rest: the working sweep is one pass, the needs-you glow breathes three times, the Inbox count and update dot pulse with a `transform` ring on a pseudo-element and rest, the idle dot is still. Nothing animates `box-shadow`. One thing loops, by the owner's decision: the needs-you badge's ring (11px, `transform` and `opacity` only, paused while the window is not in front). Re-measure on WebKitGTK before adding another. `workspace.css`, `App.css`, Settings › Motion copy.
 2. [x] Spinner outside React: `lib/spinner-clock.ts` writes each frame into the elements (`attachSpinner`) at 160 ms, and stops while the window is hidden or not focused (`lib/window-activity.ts`). `.mx-spin` has a fixed `inline-size` and `contain: layout`.
 3. [x] Cursor blink only while the pane is focused and the window is in front (`TerminalView.tsx`, `useWindowActive`).
 

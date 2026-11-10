@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 're
 import { MAX_PANES, type PaneSlot, type SplitDirection } from '../model/layout'
 import type { SessionView } from '../model/session'
 import { headerFit } from '../model/paneHeader'
-import { rowTitle } from '../model/sidebar'
+import { keepsRunningUnseen, rowTitle } from '../model/sidebar'
 import { AppIcon, Icon, StatusBadge } from './glyphs'
 import { beginPointerDrag } from './dragSession'
 import { PaneViewSwitch } from './PaneViewSwitch'
@@ -22,6 +22,10 @@ export type PaneCardProps = {
   focused: boolean
   maximized: boolean
   dropTarget: boolean
+  /** This pane is the one being dragged. */
+  dragging: boolean
+  /** What letting go over this pane does, said on it while it is the target. */
+  dropWord: string
   terminal: ReactNode
   /** The view the pane shows. The terminal stays mounted under the chat, so it keeps streaming and keeps its size. */
   view?: PaneView
@@ -53,6 +57,7 @@ export type PaneCardProps = {
   /** Clears a shell's screen, as Ctrl+L does in it. */
   onClear: () => void
   onCopyPath: () => void
+  onRename: () => void
   /** Starts a new shell in an ended pane's folder, in its place. */
   onRestart: (paneId: string) => void
 }
@@ -88,7 +93,8 @@ export function PaneCard(props: PaneCardProps) {
   const view = props.view ?? 'terminal'
   const fit = headerFit(width)
   const title = rowTitle(session)
-  const closeLabel = 'Close pane · ends its session'
+  // One pane of several closes alone when its session has work in it (`useClosing`); otherwise closing ends the session.
+  const closeLabel = multi && keepsRunningUnseen(session) ? 'Close pane · its session keeps running' : 'Close pane · ends its session'
   const hasChanges = props.changed.added + props.changed.removed > 0
   const panelTip = hasChanges ? `Side panel · +${String(props.changed.added)} −${String(props.changed.removed)}` : 'Side panel'
   const drawerTip = props.drawerFolded === true ? 'Show the terminals' : 'Hide the terminals'
@@ -96,29 +102,30 @@ export function PaneCard(props: PaneCardProps) {
   const menuItems: MenuEntry[] = [
     { label: 'Split right', hint: shortcutText('split-right'), disabled: full, run: () => { props.onSplit(pane.id, 'right') } },
     { label: 'Split down', hint: shortcutText('split-down'), disabled: full, run: () => { props.onSplit(pane.id, 'down') } },
-    { label: maximized ? 'Restore layout' : 'Maximize pane', disabled: !multi && !maximized, run: () => { props.onToggleMaximize(pane.id) } },
+    ...(props.onPanel ? [{ label: 'Changes and files', hint: shortcutText('inspect'), run: props.onPanel }] : []),
+    ...(props.terminalDock === null ? [] : [
+      props.terminalDock === 'panel'
+        ? { label: 'Pin terminals under chat', run: () => { props.onDock('under') } }
+        : { label: 'Move terminals to side panel', run: () => { props.onDock('panel') } },
+    ]),
     'separator',
+    { label: 'Rename…', hint: 'F2', run: props.onRename },
+    { label: maximized ? 'Restore layout' : 'Maximize pane', disabled: !multi && !maximized, run: () => { props.onToggleMaximize(pane.id) } },
     ...(props.onViewChange
       ? [{ label: view === 'chat' ? 'Show terminal' : 'Show chat', hint: shortcutText('chat-toggle'), run: () => { props.onViewChange?.(view === 'chat' ? 'terminal' : 'chat') } }]
       : []),
     ...(props.terminalDock === null
       ? [{ label: 'Clear', hint: 'Ctrl+L', disabled: !props.online || ended, run: props.onClear }, { label: 'Copy folder path', run: props.onCopyPath }]
-      : [
-          { label: 'New terminal', disabled: !props.online, run: props.onNewTerminal },
-          props.terminalDock === 'panel'
-            ? { label: 'Pin terminals under chat', run: () => { props.onDock('under') } }
-            : { label: 'Move terminals to side panel', run: () => { props.onDock('panel') } },
-        ]),
-    ...(props.onPanel ? [{ label: 'Changes and files', hint: shortcutText('inspect'), run: props.onPanel }] : []),
-    'separator',
-    { label: 'Close pane', danger: true, run: () => { props.onClose(pane.id) } },
+      : [{ label: 'New terminal', disabled: !props.online, run: props.onNewTerminal }]),
+    // The only pane has nothing to close but its session, which the sidebar's row does.
+    ...(multi ? ['separator' as const, { label: 'Close pane', danger: true, run: () => { props.onClose(pane.id) } }] : []),
   ]
 
   return (
     <>
     <section
       ref={box}
-      className={`mx-pane${view === 'chat' ? ' is-chat' : ' is-terminal'}${multi ? ' is-card' : ''}${focused && multi ? ' is-focused' : ''}${props.broadcast ? ' is-broadcast' : ''}${props.dropTarget ? ' is-drop-target' : ''}`}
+      className={`mx-pane${view === 'chat' ? ' is-chat' : ' is-terminal'}${multi ? ' is-card' : ''}${focused && multi ? ' is-focused' : ''}${props.broadcast ? ' is-broadcast' : ''}${props.dropTarget ? ' is-drop-target' : ''}${props.dragging ? ' is-dragging' : ''}`}
       aria-label={`Terminal ${String(props.index + 1)}: ${session.cwdLabel}${focused ? ', focused' : ''}`}
       data-session-id={session.id}
       data-pane={pane.id}
@@ -186,9 +193,11 @@ export function PaneCard(props: PaneCardProps) {
           <button type="button" className="mx-pane-ended-button" onMouseDown={stop} onClick={() => { props.onClose(pane.id) }}>Close pane</button>
         </div>
       )}
-      {props.drawer}
+      {props.dropTarget && <span className="mx-pane-drop" aria-hidden="true">{props.dropWord}</span>}
       <span className="mx-pane-ring" aria-hidden="true" />
     </section>
+    {/* A card of its own under the pane, not a part of it. */}
+    {props.drawer}
     {/* Beside the pane, not in it: a pane has `contain: paint`, which would place the menu's fixed anchor from the pane's corner. */}
     {menuAt && <MenuPopup key={`${String(menuAt.x)},${String(menuAt.y)}`} title={title} at={menuAt} items={menuItems} portalContainer={props.portalContainer} onClose={() => { setMenuAt(null) }} />}
     </>
