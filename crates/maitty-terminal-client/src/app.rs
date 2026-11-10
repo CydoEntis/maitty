@@ -252,6 +252,16 @@ enum Cmd {
         #[arg(long)]
         force: bool,
     },
+    /// Take the app off this computer: stop the server, disconnect your agents and remove the
+    /// program. It says what it will do and asks first. Settings and saved sessions are kept.
+    Uninstall {
+        /// Go ahead without asking.
+        #[arg(long)]
+        yes: bool,
+        /// Delete settings and saved sessions too.
+        #[arg(long)]
+        purge: bool,
+    },
     /// Let this repo's project-file hooks run (they don't until you allow them).
     Allow {
         /// The repo (default: here).
@@ -672,6 +682,7 @@ pub(crate) fn run() {
         Some(Cmd::Doctor) => cli::doctor(),
         Some(Cmd::Account { name, command }) => cli::account(&name, &command),
         Some(Cmd::Update { check, force }) => cli::update::run(check, force),
+        Some(Cmd::Uninstall { yes, purge }) => cli::uninstall::run(yes, purge),
         Some(Cmd::Machine {
             cmd:
                 MachineCmd::Update {

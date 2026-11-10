@@ -18,6 +18,7 @@ pub(crate) mod reload;
 pub(crate) mod reveal;
 pub(crate) mod secret_run;
 pub(crate) mod target;
+pub(crate) mod uninstall;
 pub(crate) mod update;
 use crate::layout::Dir;
 use crate::protocol::*;

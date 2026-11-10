@@ -433,7 +433,7 @@ fn replace_exe(new: &Path, exe: &Path) -> Result<()> {
 /// A name for the old program that's free. An older one moved aside can still be running
 /// (an agent's `<app> mcp` keeps going until its session ends), so it can't always be
 /// removed; the next one gets a number.
-fn free_old_path(exe: &Path) -> PathBuf {
+pub(crate) fn free_old_path(exe: &Path) -> PathBuf {
     std::iter::once(exe.with_file_name(concat!(env!("APP_COMMAND"), ".old.exe")))
         .chain((2..).map(|n| exe.with_file_name(format!("{APP_COMMAND}.old-{n}.exe"))))
         .find(|p| !p.exists())
