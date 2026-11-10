@@ -40,11 +40,13 @@ attempt() {
 
 keep=${CI_APT_KEEP:-}
 
-# Installs the kept packages. They are every package the last download brought, so apt needs
-# no index and no mirror to put them in order.
+# Installs the kept packages. They are every package the last download brought to this same
+# image, so together with what the image has they are complete. dpkg installs exactly these
+# files: apt, given them, also consults the image's older package index and then wants
+# versions that are not here.
 install_kept() {
   sudo timeout --kill-after="$KILL_AFTER_SECONDS" "$ATTEMPT_SECONDS" \
-    apt-get install -y --no-download "$keep"/*.deb
+    env DEBIAN_FRONTEND=noninteractive dpkg --install "$keep"/*.deb
 }
 
 if [ -n "$keep" ] && compgen -G "$keep/*.deb" > /dev/null; then
