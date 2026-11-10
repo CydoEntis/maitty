@@ -35,6 +35,7 @@ struct Host {
     sessions: BTreeMap<u16, Option<Snapshot>>,
     folders: Vec<(u16, u64, FolderListing)>,
     errors: Vec<(u16, String)>,
+    changed: Vec<(u64, u64)>,
 }
 
 impl Host {
@@ -56,6 +57,7 @@ impl Host {
             sessions: BTreeMap::new(),
             folders: Vec::new(),
             errors: Vec::new(),
+            changed: Vec::new(),
         }
     }
 
@@ -81,8 +83,8 @@ impl Host {
                 | Reaction::Notice { .. }
                 | Reaction::Attention { .. }
                 | Reaction::Clipboard { .. }
-                | Reaction::ConversationChanged { .. }
                 | Reaction::Settings(_) => {}
+                Reaction::ConversationChanged { conversation, generation } => self.changed.push((conversation, generation)),
                 Reaction::Sessions { machine, snapshot } => {
                     self.sessions.insert(machine.0, snapshot.map(|s| *s));
                 }
@@ -435,4 +437,134 @@ async fn a_daemon_takes_a_message_to_hold_for_a_pane_from_the_window_and_refuses
         assert!(!text.contains("held-for-the-agent"), "{text}");
     }
     assert_eq!(host.errors.len(), 1, "{:?}", host.errors);
+}
+
+#[tokio::test]
+async fn a_held_message_is_typed_in_once_the_panes_agent_says_it_is_at_rest() {
+    let (mut here, mut alpha, mut beta) = (Sandbox::new(), Sandbox::new(), Sandbox::new());
+    for sandbox in [&mut here, &mut alpha, &mut beta] {
+        sandbox.start_daemon();
+    }
+    let mut host = Host::new(&here, &alpha, &beta);
+    host.until("every machine connected", |h| {
+        [HERE, ALPHA, BETA].iter().all(|m| h.kinds(*m).last() == Some(&"connected"))
+    })
+    .await;
+    host.hub
+        .handle()
+        .send(Outgoing {
+            machine: HERE,
+            msg: ClientMsg::Command(Command::NewWorkspace { cwd: None, name: None, cmd: None }),
+        })
+        .expect("the line is up");
+    host.until("a pane here", |h| h.pane_of(HERE).is_some()).await;
+    let pane = host.pane_of(HERE).unwrap();
+    host.wire.command(None, pane, PaneCommand::WantReplay).expect("the line is up");
+    host.until("its history", |h| h.history(HERE, pane).is_some()).await;
+
+    // Held while the pane is only a shell.
+    host.wire
+        .command(None, pane, PaneCommand::SendWhenReady("echo HELD_ARRIVED_5".into()))
+        .expect("the daemon takes the command");
+    host.type_into(HERE, pane, "echo BEFORE_THE_AGENT_3");
+    host.until("the shell ran a line", |h| {
+        h.history(HERE, pane).is_some_and(|(_, text)| occurrences(&text, "BEFORE_THE_AGENT_3") >= 2)
+    })
+    .await;
+    assert_eq!(occurrences(&host.history(HERE, pane).unwrap().1, "HELD_ARRIVED_5"), 0);
+
+    // The pane's own hook says an agent is running there and at rest, as an agent's would.
+    let maitty = maitty_test_support::maitty_binary();
+    let call = if cfg!(windows) { "& " } else { "" };
+    host.type_into(HERE, pane, &format!("{call}'{}' hook claude --status idle", maitty.display()));
+    host.until("the held message typed in and run", |h| {
+        h.history(HERE, pane).is_some_and(|(_, text)| occurrences(&text, "HELD_ARRIVED_5") >= 2)
+    })
+    .await;
+    assert!(host.errors.is_empty(), "{:?}", host.errors);
+}
+
+/// The scripted `claude` the daemon's own chat tests use, built into `dir`.
+fn fake_claude(dir: &std::path::Path) -> std::path::PathBuf {
+    let executable = dir.join(if cfg!(windows) { "fake-claude.exe" } else { "fake-claude" });
+    let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../crates/maitty-core/src/daemon/conversation/fixtures/fake_claude.rs");
+    let built = std::process::Command::new("rustc")
+        .arg("--edition=2024")
+        .arg(source)
+        .arg("-o")
+        .arg(&executable)
+        .output()
+        .expect("rustc runs");
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    executable
+}
+
+#[tokio::test]
+async fn the_window_is_told_when_a_chat_of_this_computers_daemon_changes() {
+    use maitty_shared::conversation::{ApprovalPolicy, LaunchSettings, Provider, StartTarget};
+    let (mut here, mut alpha, mut beta) = (Sandbox::new(), Sandbox::new(), Sandbox::new());
+    for sandbox in [&mut here, &mut alpha, &mut beta] {
+        sandbox.start_daemon();
+    }
+    let folder = here.dir.clone();
+    let executable = tokio::task::spawn_blocking(move || fake_claude(&folder)).await.unwrap();
+    let root = std::fs::canonicalize(&here.dir).unwrap();
+    let mut host = Host::new(&here, &alpha, &beta);
+    host.until("every machine connected", |h| {
+        [HERE, ALPHA, BETA].iter().all(|m| h.kinds(*m).last() == Some(&"connected"))
+    })
+    .await;
+
+    let handle = host.hub.handle();
+    let command = |command: Command| {
+        handle
+            .send(Outgoing { machine: HERE, msg: ClientMsg::Command(command) })
+            .expect("the line is up");
+    };
+    command(Command::ConversationStart {
+        target: StartTarget::Create(LaunchSettings {
+            provider: Provider::Claude,
+            executable,
+            config_root: root.clone(),
+            cwd: root,
+            model: None,
+            model_provider: None,
+            approval_policy: ApprovalPolicy::OnRequest,
+            sandbox: maitty_shared::conversation::Sandbox::WorkspaceWrite,
+        }),
+        branch: None,
+    });
+    let chat = |h: &Host| {
+        h.sessions
+            .get(&HERE.0)
+            .and_then(Option::as_ref)
+            .and_then(|snapshot| snapshot.conversations.first())
+            // Listed while it is still starting; it takes a message once it runs.
+            .filter(|chat| chat.state == maitty_shared::conversation::RecoveryState::Running)
+            .map(|chat| (chat.id, chat.generation))
+    };
+    host.until("the daemon lists the chat as running", |h| chat(h).is_some()).await;
+    let (id, generation) = chat(&host).unwrap();
+    assert!(host.errors.is_empty(), "{:?}", host.errors);
+
+    // The window reads a chat before it sends into it; the daemon takes no message for one unread.
+    handle
+        .send(Outgoing {
+            machine: HERE,
+            msg: ClientMsg::Query(maitty_shared::protocol::Query::ConversationRead { id, cursor: None, limit: 128 }),
+        })
+        .expect("the line is up");
+    command(Command::ConversationSend {
+        id,
+        generation,
+        operation: 1,
+        text: "hello fake Claude".into(),
+        choice: None,
+    });
+    host.until("the window is told the chat changed", |h| {
+        h.changed.iter().any(|(conversation, _)| *conversation == id.0)
+    })
+    .await;
+    assert!(host.errors.is_empty(), "{:?}", host.errors);
 }
