@@ -597,7 +597,7 @@ system's, so it takes no theme. Closing the window still closes the app; the ite
 - **No sessions**: `No sessions running`, `Sessions keep running when you close the app.`, `Ctrl+T new session`.
 - **Updates box** (leader `u`; `client/screen/updates.rs`): above the sidebar footer. Available: `<current> → <version>`, the
   notes under NEW, `d Download · s Skip · l Later`; Downloading: a spinner, the step (`Downloading`, `Checking the download`, `Unpacking`, `Installing`) and a bar of the steps done, `step 2 of 4`
-  (the installer reports no byte count, so the bar moves in whole steps and never shows a percentage; `cli::update::step`); Ready: `r Restart now` (this window reopens; the daemon is never stopped by it); Failed: the error and
+  (the installer reports no byte count, so the bar moves in whole steps and never shows a percentage; `cli::update::step`); Ready: `r Restart now` (the same one step as everywhere else: the server restarts onto the installed version and this window reopens; it asks first when a session is working or waiting for you); Failed: the error and
   `r Retry`. It reads the existing state (`update_available`, `updating`, `restart_needed`) and uses `start_update` and `ask_restart`.
 
 ## Project-specific: Machines dialog
