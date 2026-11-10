@@ -14,6 +14,8 @@ pub(crate) struct Binary {
     pub path: PathBuf,
     pub len: u64,
     pub sha256: String,
+    /// The version this file is: this app's own, or the release that was fetched in its place.
+    pub version: String,
     /// The folder a fetched release was unpacked in, removed when this is dropped.
     _temp: Option<TempDir>,
 }
@@ -114,7 +116,9 @@ impl ReleaseSources<'_> {
         say("checksum verified");
         let member = format!("{APP_COMMAND}-{target}/{APP_COMMAND}");
         unpack(&archive, &temp.0, &member)?;
-        measured(temp.0.join(&member), Some(temp))
+        let mut binary = measured(temp.0.join(&member), Some(temp))?;
+        binary.version = tag.trim_start_matches('v').to_string();
+        Ok(binary)
     }
 
     /// The archive of this app's own version when the release server has it, else the latest
@@ -141,7 +145,7 @@ impl ReleaseSources<'_> {
     }
 }
 
-/// `path`'s size and digest, refusing one too big to send.
+/// `path`'s size and digest, refusing one too big to send. It is taken to be this app's version.
 pub(crate) fn measured(path: PathBuf, temp: Option<TempDir>) -> Result<Binary, String> {
     let meta =
         std::fs::symlink_metadata(&path).map_err(|e| format!("reading {}: {e}", path.display()))?;
@@ -161,6 +165,7 @@ pub(crate) fn measured(path: PathBuf, temp: Option<TempDir>) -> Result<Binary, S
         len: meta.len(),
         path,
         sha256,
+        version: APP_VERSION.to_string(),
         _temp: temp,
     })
 }
@@ -516,10 +521,10 @@ mod tests {
         );
     }
 
-    /// A real tarball through the system `tar`: the whole fetch, check and unpack path.
-    #[test]
-    fn a_good_release_is_unpacked_to_the_one_binary() {
-        let temp = scratch("good");
+    /// A real tarball through the system `tar`: the whole fetch, check and unpack path. `None`
+    /// when this machine has no usable `tar`.
+    fn fetched(name: &str, tag_missing: bool) -> Option<Binary> {
+        let temp = scratch(name);
         let target = "aarch64-unknown-linux-musl";
         let folder = temp.0.join(format!("{APP_COMMAND}-{target}"));
         std::fs::create_dir_all(&folder).unwrap();
@@ -532,18 +537,28 @@ mod tests {
             .status();
         if !made.is_ok_and(|s| s.success()) {
             eprintln!("skipped: no usable tar on this machine");
-            return;
+            return None;
         }
         let archive = std::fs::read(temp.0.join(&asset)).unwrap();
         let fake = Fake {
             calls: Default::default(),
-            tag_missing: false,
+            tag_missing,
             sums: format!("{}  {asset}\n", digest(&archive)),
             archive,
         };
-        let binary = sources(&fake)
-            .binary(&other_platform(), &mut |_| {})
-            .unwrap();
+        Some(
+            sources(&fake)
+                .binary(&other_platform(), &mut |_| {})
+                .unwrap(),
+        )
+    }
+
+    #[test]
+    fn a_good_release_is_unpacked_to_the_one_binary() {
+        let Some(binary) = fetched("good", false) else {
+            return;
+        };
+        assert_eq!(binary.version, APP_VERSION);
         assert_eq!(
             std::fs::read(&binary.path).unwrap(),
             b"#!/bin/sh\necho built\n"
@@ -555,5 +570,13 @@ mod tests {
             !kept.exists(),
             "the unpacked copy is removed with the binary"
         );
+    }
+
+    #[test]
+    fn a_release_fetched_in_place_of_this_apps_own_carries_its_own_version() {
+        let Some(binary) = fetched("latest", true) else {
+            return;
+        };
+        assert_eq!(binary.version, "9.9.9");
     }
 }

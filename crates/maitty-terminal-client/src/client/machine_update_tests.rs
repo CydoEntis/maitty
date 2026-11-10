@@ -264,6 +264,7 @@ fn a_missing_app_is_installed_with_the_flag_and_runs_afterwards() {
     assert_eq!(
         outcome,
         Outcome::Installed {
+            version: APP_VERSION.into(),
             destination: AT_HOME.into()
         }
     );
@@ -668,6 +669,7 @@ fn an_older_app_is_replaced_on_yes_and_the_daemon_is_asked_not_killed() {
     assert_eq!(
         outcome,
         Outcome::Installed {
+            version: APP_VERSION.into(),
             destination: AT_HOME.into()
         }
     );

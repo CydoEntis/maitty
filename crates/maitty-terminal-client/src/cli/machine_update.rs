@@ -49,7 +49,7 @@ fn failed(message: impl Into<String>) -> Failure {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Outcome {
     UpToDate { version: String },
-    Installed { destination: String },
+    Installed { version: String, destination: String },
 }
 
 impl Outcome {
@@ -58,8 +58,11 @@ impl Outcome {
             Outcome::UpToDate { version } => {
                 format!("{machine}: {APP_COMMAND} {version} is already up to date")
             }
-            Outcome::Installed { destination } => {
-                format!("{machine}: {APP_COMMAND} {APP_VERSION} installed to {destination}")
+            Outcome::Installed {
+                version,
+                destination,
+            } => {
+                format!("{machine}: {APP_COMMAND} {version} installed to {destination}")
             }
         }
     }
@@ -177,7 +180,10 @@ pub(crate) fn update(
     if had_old {
         ask_daemon_to_restart(machine, &to, &name, flags, talk);
     }
-    Ok(Outcome::Installed { destination: to })
+    Ok(Outcome::Installed {
+        version: binary.version,
+        destination: to,
+    })
 }
 
 /// Ask the far daemon to take the version installed at `program`. The far side leaves a daemon
