@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { repoDiff } from './api'
-import { PatchView } from './PatchView'
+import { PatchView, type PatchComments } from './PatchView'
 import { RepoError } from './RepoError'
 import { useRepoQuery } from './useRepoQuery'
 
 export const CHANGES_REFRESH_MS = 4000
 
-export function ChangesTab({ term }: { term: number }) {
+export function ChangesTab({ term, comments }: { term: number; comments?: Omit<PatchComments, 'path'> }) {
   const query = useRepoQuery(term, ['diff'], () => repoDiff(term), CHANGES_REFRESH_MS)
   const [picked, setPicked] = useState<string | null>(null)
   if (query.isPending) return <p className="mx-inspect-note">Loading…</p>
@@ -27,7 +27,7 @@ export function ChangesTab({ term }: { term: number }) {
         ))}
         {query.data.truncated && <li className="mx-inspect-note">Showing {files.length} of {query.data.total_files} files.</li>}
       </ul>
-      {selected.binary ? <p className="mx-inspect-note">Binary file; no diff to show.</p> : <PatchView patch={selected.patch} />}
+      {selected.binary ? <p className="mx-inspect-note">Binary file; no diff to show.</p> : <PatchView key={selected.path} patch={selected.patch} {...(comments ? { comments: { ...comments, path: selected.path } } : {})} />}
     </div>
   )
 }

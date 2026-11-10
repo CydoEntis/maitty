@@ -65,6 +65,18 @@ button.mx-inspect-row:hover, .mx-inspect-pick:hover { background: rgba(var(--hl)
 .mx-patch-line.is-remove { background: color-mix(in oklab, var(--danger) 16%, transparent); }
 .mx-patch-line.is-hunk { color: var(--accent-text); }
 .mx-patch-line.is-meta { color: var(--dim); }
+/* Line numbers are drawn, not written, so copying a diff copies only its text. */
+.mx-patch.is-numbered .mx-patch-line::before { content: attr(data-line); display: inline-block; width: 4ch; margin-right: 10px; text-align: right; color: var(--dim); user-select: none; }
+.mx-patch-line.is-commentable { cursor: pointer; }
+.mx-patch-line.is-commentable:hover, .mx-patch-line.is-commentable:focus-visible { box-shadow: inset 2px 0 0 var(--accent); outline: none; }
+.mx-patch-comment, .mx-patch-sent { display: block; margin: 4px 10px 6px calc(4ch + 20px); white-space: normal; font-family: var(--sans, inherit); font-size: 12.5px; }
+.mx-patch-comment { padding: 8px; border: 1px solid var(--pane-line); border-radius: 10px; background: var(--m-well); max-width: 560px; }
+.mx-patch-comment-text { display: block; width: 100%; resize: vertical; border: 0; background: transparent; color: var(--fg); font: inherit; outline: none; }
+.mx-patch-comment-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+.mx-patch-comment-error { display: block; margin-top: 4px; color: var(--danger); }
+.mx-patch-sent { padding: 6px 10px; border-left: 2px solid var(--accent); color: var(--fg); max-width: 560px; }
+.mx-patch-sent b { margin-right: 6px; }
+.mx-patch-sent i { color: var(--muted); font-style: normal; }
 .mx-preview > span.is-target { background: color-mix(in oklab, var(--warn) 22%, transparent); }
 .mx-inspect .is-add { color: var(--ok); }
 .mx-inspect .is-remove { color: var(--danger); }

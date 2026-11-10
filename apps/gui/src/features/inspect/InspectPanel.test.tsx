@@ -79,6 +79,37 @@ describe('Inspect panel', () => {
     expect(screen.getByLabelText('Diff').textContent).toContain('+z')
   })
 
+  it('opens a comment box on a clicked diff line, sends the comment to the agent and keeps it under the line', async () => {
+    daemonAnswers({
+      Diff: { files: [{ path: 'src/a.ts', additions: 1, deletions: 1, binary: false, patch: '@@ -3 +3 @@\n-old\n+new\n' }], additions: 1, deletions: 1, total_files: 1, truncated: false },
+    })
+    const onSend = vi.fn(() => Promise.resolve())
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <InspectPanel term={5} terminals={null} changedFiles={1} view="changes" agentWorking={false} timeline={[]} lookAt={null} comments={{ agent: 'Claude', onSend }} onView={vi.fn()} onClose={vi.fn()} onNotice={vi.fn()} />
+      </QueryClientProvider>,
+    )
+    fireEvent.click(await screen.findByText(/\+new/))
+    const send = screen.getByRole('button', { name: 'Send to Claude' })
+    expect(send).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Comment on line 3'), { target: { value: 'call it fresh' } })
+    fireEvent.click(send)
+    await waitFor(() => { expect(onSend).toHaveBeenCalledWith('About src/a.ts, line 3:\n> new\n\ncall it fresh') })
+    expect(await screen.findByText(/sent to Claude/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Send to Claude' })).toBeNull()
+    cleanup()
+  })
+
+  it('offers no comment box without an agent to tell', async () => {
+    daemonAnswers({
+      Diff: { files: [{ path: 'a.txt', additions: 1, deletions: 0, binary: false, patch: '@@ -0,0 +1 @@\n+new\n' }], additions: 1, deletions: 0, total_files: 1, truncated: false },
+    })
+    renderPanel('changes')
+    fireEvent.click(await screen.findByText(/\+new/))
+    expect(screen.queryByRole('textbox')).toBeNull()
+  })
+
   it('says so when the working tree is clean', async () => {
     daemonAnswers({ Diff: { files: [], additions: 0, deletions: 0, total_files: 0, truncated: false } })
     renderPanel('changes')

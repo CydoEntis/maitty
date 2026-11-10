@@ -521,7 +521,10 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   Branches, History, Timeline and References are kept in the code but nothing opens them: whether they come back
   is undecided. Changes lists the
   changed files (`+N −N`) and the picked file's diff (added lines tinted with `--ok`, removed with `--danger`, hunk
-  headers in the accent). It reads the focused pane's repository and never changes it. **Restore** on a snapshot asks
+  headers in the accent), with line numbers drawn beside it. For an agent, a click on a code line opens a comment box
+  under it with **Send to Claude** (the agent's name; Ctrl/⌘+Enter sends, Esc closes the box); the comment goes to the
+  agent as a message naming the file, the line and its text (`model/agentMessage.ts`), and stays under the line. An
+  agent that is asking something is not sent one. It reads the focused pane's repository and never changes it. **Restore** on a snapshot asks
   first and is disabled while the agent works; **Compare** picks two entries. A tab that cannot load shows one calm
   screen with Try again. A folder that is not a git project says so.
 - **Quick-look links.** ⌘-click (Ctrl-click elsewhere) on a file name in a pane's output, with an

@@ -20,6 +20,8 @@ import { RenameDialog, RenameMachineDialog } from './RenameDialog'
 import { withNickname, writeMachineNicknames } from '@/data/machineNicknames'
 import { Toast } from './states'
 import type { SessionView } from '../model/session'
+import { isShell } from '../model/sidebar'
+import { agentName, sendAgentMessage } from '../model/agentMessage'
 import { Keycaps } from '@/features/shortcuts/Keycaps'
 import { folderExists, resolveStartFolder } from '../model/startFolder'
 import { useWorkspace } from '../workspaceContext'
@@ -41,6 +43,7 @@ export function WorkspaceDialogs() {
                 agentWorking={focusedSession.status === 'working'}
                 timeline={focusedSession.timeline}
                 lookAt={lookAt}
+                {...(isShell(focusedSession) ? {} : { comments: { agent: agentName(focusedSession.process), onSend: (message: string) => sendAgentMessage(focusedSession, message) } })}
                 onView={setInspectView}
                 onClose={() => { setInspectOpen(false) }}
                 onNotice={flash}
