@@ -548,6 +548,15 @@ The sidebar shows or collapses (`App::sidebar`) to a narrow column (`side.rs` `d
 
 There is no New session dialog. `Action::PickSession` (leader `n`, palette `New session`, the splash's `n`, the empty workspace's ` n new session ` chip) does what **Shell here** does (`Action::ShellHere`: leader `t`, `Alt+N`, `Ctrl+T`): one plain shell at once in the folder you are in, or in the workspace's own when you are not in it, on the machine of the session you are on. A machine's ` + ` chip on its sidebar heading starts one on that machine. Every session this starts is a **shell**: agents start inside it. The Menu has no `Session...` row.
 
+## Project-specific: tray item (desktop)
+
+The desktop app keeps one item in the Windows tray or the macOS menu bar (`useTrayItem.ts`,
+`model/traySessions.ts`, the host's `tray.rs`). Its menu lists what the Inbox lists, so an entry
+cleared there is not in the menu: **Needs you (N)**, then **Finished (N)**, each session as
+`agent: name`, or **Nothing needs you**; then **Show Maitty** and **Quit Maitty**. Choosing a
+session brings the window forward on it. Hovering says how many need you. The menu is the
+system's, so it takes no theme. Closing the window still closes the app; the item goes with it.
+
 ## Project-specific: closing, service and update states
 
 - **Closing a session** (`client/screen/closing.rs`): closing always asks first, by whatever route: the pane's `×`, the pane

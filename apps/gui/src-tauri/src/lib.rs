@@ -18,6 +18,7 @@ pub mod streams;
 
 use std::path::PathBuf;
 mod terminal_stream;
+mod tray;
 
 use maitty_desktop_client::{FleetCommand, PaneCommand};
 use tauri::Manager;
@@ -979,6 +980,10 @@ pub fn run() {
             // Bringing the shared daemon up to this release copies a file and may run it. Done
             // here, on a thread of its own, the first command that needs the daemon finds it
             // ready and does not do that work on whichever thread it runs on.
+            // The app works without its tray item, so one the system refuses is only said.
+            if let Err(error) = tray::start(app.handle()) {
+                eprintln!("adding the tray item: {error}");
+            }
             let handle = app.handle().clone();
             tauri::async_runtime::spawn_blocking(move || {
                 if let Err(error) = daemon_executable(&handle) {
@@ -989,6 +994,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             list_sessions,
+            tray::set_tray_sessions,
             connect_agent,
             agent_models,
             new_chat::agents_installed,

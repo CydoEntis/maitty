@@ -104,6 +104,7 @@ import { GetFileDialog } from './components/GetFileDialog'
 import { MachineUpdateDialog } from './components/MachineUpdateDialog'
 import { useMachineActions, useRemoteMachines } from './useMachines'
 import { useSessionAlerts } from './useSessionAlerts'
+import { useTrayItem } from './useTrayItem'
 import { useSystemDark, useSystemReducedMotion, useWindowNarrowerThan } from './useWindowQueries'
 import { ConfirmCloseDialog } from './components/ConfirmCloseDialog'
 import { movePanes } from './components/paneTransition'
@@ -1415,6 +1416,8 @@ export function DesktopApp() {
       .sort(byPriority(activity))
       .map((item) => ({ session: item, projectName: projectOf.get(item.id)?.name ?? '' }))
   }, [sessions, cleared, tracks, projectOf, focusedId, windowFocused])
+  const inboxSessions = useMemo(() => inboxEntries.map((entry) => entry.session), [inboxEntries])
+  useTrayItem(inboxSessions, showSessionById)
   const needsCount = inboxEntries.filter((entry) => entry.session.status === 'needs').length
   const needsElsewhere = sessions.filter((item) => item.status === 'needs' && item.id !== focusedId).length
 
