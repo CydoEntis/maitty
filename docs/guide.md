@@ -486,7 +486,9 @@ A machine you add only needs the `maitty` program. There is no desktop app on it
 - **maitty where ssh finds it.** Maitty looks in `~/.local/bin` (where it installs itself) first, then on the
   PATH ssh gives it. Only a copy kept somewhere else needs `remote_cmd` set to its full path.
 - **The same version.** This computer, the machine and any desktop app must speak the same protocol. A machine
-  on another version shows `needs update`; run `maitty machine update <name>`.
+  on an older version shows `needs update`; run `maitty machine update <name>`. A machine on a newer version
+  than this computer shows `newer than this app` and has no update button: update this computer instead
+  (`maitty update`, or the desktop app's own update). A machine is never downgraded from here.
 
 Nothing else needs installing. Agents such as Claude Code or Codex run there as they do anywhere, so install
 the ones you want to use on that machine yourself.
@@ -686,7 +688,7 @@ one shows in the other the next time that app starts.
 
 With one machine the sidebar looks as it always did. Once you have another, every machine's folders sit under
 a header: **this computer** first, then the others. A machine's header carries its state as a shape and a
-word: `connected`, `connecting`, `reconnecting #2`, `needs login`, `not installed`, `needs update`, `unreachable` or `refused`
+word: `connected`, `connecting`, `reconnecting #2`, `needs login`, `not installed`, `needs update`, `newer than this app`, `unreachable` or `refused`
 (a different computer answers at that name). When you have to act, the fix is written under the header, in
 full. A machine that is down keeps its folders and sessions, dimmed, with `disconnected since 2m ago`; its
 sessions' needs-you and done marks leave the counts and the Inbox until it is back, and everything returns on

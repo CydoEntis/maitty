@@ -243,6 +243,13 @@ fn protocol(result: &Result<(), anyhow::Error>, name: &str) -> Check {
             format!("protocol {PROTOCOL_VERSION}, the same as this computer"),
         ),
         Err(e) => match other_version(e) {
+            // A newer daemon there is never downgraded from here: the fix is on this side.
+            Some(theirs) if theirs > PROTOCOL_VERSION => Check::fail(
+                PROTOCOL,
+                format!(
+                    "its daemon speaks protocol {theirs}, newer than this computer's {PROTOCOL_VERSION}; update this computer (`{APP_COMMAND} update`)"
+                ),
+            ),
             Some(theirs) => Check::fail(
                 PROTOCOL,
                 format!(
@@ -403,21 +410,31 @@ mod tests {
     }
 
     #[test]
-    fn a_daemon_of_another_protocol_says_to_update() {
-        let other = Err(anyhow::Error::from(ipc::OtherVersion {
-            daemon: PROTOCOL_VERSION + 1,
-        }));
-        let check = protocol(&other, "box");
-        assert_eq!(check.ok, Some(false));
+    fn a_daemon_of_another_protocol_says_which_side_to_update() {
+        let speaking = |daemon| {
+            protocol(
+                &Err(anyhow::Error::from(ipc::OtherVersion { daemon })),
+                "box",
+            )
+        };
+        let older = speaking(PROTOCOL_VERSION - 1);
+        assert_eq!(older.ok, Some(false));
         assert!(
-            check
+            older
                 .detail
-                .contains(&format!("protocol {}", PROTOCOL_VERSION + 1))
+                .contains(&format!("protocol {}", PROTOCOL_VERSION - 1))
         );
         assert!(
-            check.detail.contains("`maitty machine update box`"),
-            "{check:?}"
+            older.detail.contains("`maitty machine update box`"),
+            "{older:?}"
         );
+        let newer = speaking(PROTOCOL_VERSION + 1);
+        assert_eq!(newer.ok, Some(false));
+        assert!(
+            newer.detail.contains("update this computer (`maitty update`)"),
+            "{newer:?}"
+        );
+        assert!(!newer.detail.contains("machine update"), "{newer:?}");
         assert_eq!(protocol(&Ok(()), "box").ok, Some(true));
         let down = protocol(&Err(anyhow::anyhow!("closed")), "box");
         assert_eq!(down.ok, Some(false));

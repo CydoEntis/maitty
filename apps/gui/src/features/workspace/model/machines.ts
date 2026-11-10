@@ -60,7 +60,7 @@ export function machineChip(state: MachineState): MachineChip {
     case 'needs-login':
       return { glyph: '▲', word: 'needs login', tone: 'bad' }
     case 'needs-update':
-      return { glyph: '▲', word: UPDATE_WORDS[updateActionOf(state) ?? 'update'].state, tone: 'bad' }
+      return { glyph: '▲', word: isNewerThanThisApp(state) ? 'newer than this app' : UPDATE_WORDS[updateActionOf(state) ?? 'update'].state, tone: 'bad' }
     case 'unreachable':
       return { glyph: '✕', word: 'unreachable', tone: 'bad' }
     case 'refused':
@@ -93,6 +93,12 @@ export type MachineHead = {
 
 const UPDATE_COMMAND = /`(maitty machine update [^`]+)`/
 const INSTALL_FLAG = '--install'
+const UPDATE_HERE = 'update maitty on this computer'
+
+/** The machine runs a newer app than this one: the fix is updating this app, and nothing is done to the machine. */
+export function isNewerThanThisApp(state: MachineState): boolean {
+  return state.state === 'needs-update' && (state.why ?? '').includes(UPDATE_HERE)
+}
 
 /** The command a needs-update fix names, as the host wrote it (the machine's name is in it). */
 export function updateCommandOf(state: MachineState): string | null {
@@ -106,10 +112,11 @@ export type UpdateAction = 'install' | 'update'
 /**
  * Which fix a machine that needs update gets. The host only names `--install` when the app is not
  * on the machine at all, and the update refuses a first install without it, so the button must
- * pass it exactly then; a newer version there is refused by the update itself, never downgraded.
+ * pass it exactly then. A machine newer than this app gets no button: updating it from here would
+ * be a downgrade, which the update refuses.
  */
 export function updateActionOf(state: MachineState): UpdateAction | null {
-  if (state.state !== 'needs-update') return null
+  if (state.state !== 'needs-update' || isNewerThanThisApp(state)) return null
   return updateCommandOf(state)?.includes(INSTALL_FLAG) === true ? 'install' : 'update'
 }
 

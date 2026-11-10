@@ -220,6 +220,10 @@ describe('the command that fixes a machine that needs an update', () => {
     expect(updateActionOf(missing)).toBe('install')
     expect(updateActionOf(other)).toBe('update')
     expect(updateActionOf(state(1, 'build', 'needs-update'))).toBe('update')
+    const newer = { ...state(1, 'build', 'needs-update'), why: "it runs a newer maitty than this computer; update maitty on this computer (`maitty update`, or the desktop app's own update), then retry" }
+    expect(updateActionOf(newer)).toBeNull()
+    expect(updateCommandOf(newer)).toBeNull()
+    expect(machineChip(newer).word).toBe('newer than this app')
     expect(updateActionOf({ ...missing, state: 'unreachable' })).toBeNull()
     expect(updateActionOf(state(1, 'build'))).toBeNull()
     expect(machineChip(missing).word).toBe('not installed')

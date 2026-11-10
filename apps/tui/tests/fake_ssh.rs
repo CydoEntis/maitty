@@ -1297,6 +1297,26 @@ mod supervised {
     }
 
     #[test]
+    fn a_newer_daemon_there_says_to_update_this_computer() {
+        let sandbox = Sandbox::new();
+        let runtime = runtime();
+        let _enter = runtime.enter();
+        let mut window = Window::new(
+            vec![(BOX, configured(&sandbox, "mismatch-newer"))],
+            quick(WAIT),
+        );
+        runtime.block_on(window.until("needs-update", |w| w.is(BOX, "needs-update")));
+        assert_eq!(
+            window.state_of(BOX),
+            Some(&ConnectionState::NeedsUpdate {
+                why: runtime::link_failure::FIX_UPDATE_HERE.into()
+            })
+        );
+        drop(window);
+        runtime.shutdown_background();
+    }
+
+    #[test]
     fn a_connection_that_hangs_is_dropped_and_dialled_again() {
         let sandbox = Sandbox::new();
         let runtime = runtime();
