@@ -123,6 +123,14 @@ mod tests {
     }
 
     #[test]
+    fn a_push_with_nowhere_to_go_says_what_git_said_went_wrong() {
+        let folder = repository("no-remote");
+        let error = create_pull_request(&folder).expect_err("there is no origin");
+        assert!(error.starts_with("fatal:") && error.contains("origin"), "{error}");
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
     fn the_pull_request_address_is_the_last_one_gh_printed() {
         assert_eq!(
             pull_request_url("Creating pull request for a into main\n\nhttps://github.com/o/r/pull/7\n"),

@@ -45,7 +45,8 @@ export function CommitBar({ folder, suggested, files, onChanged, onNotice }: Pro
 
   return (
     <div className="mx-commit">
-      <textarea
+      {/* With nothing changed there is nothing to commit; the branch can still go up as a pull request. */}
+      {files > 0 && <textarea
         className="mx-commit-message"
         aria-label="Commit message"
         placeholder="Commit message"
@@ -53,11 +54,11 @@ export function CommitBar({ folder, suggested, files, onChanged, onNotice }: Pro
         value={message}
         disabled={busy !== null}
         onChange={(event) => { setMessage(event.target.value) }}
-      />
+      />}
       <div className="mx-commit-actions">
-        <button type="button" className="mx-text-button is-primary" disabled={busy !== null || files === 0 || message.trim() === ''} onClick={commit}>
+        {files > 0 && <button type="button" className="mx-text-button is-primary" disabled={busy !== null || message.trim() === ''} onClick={commit}>
           {busy === 'commit' ? 'Committing…' : `Commit ${String(files)} ${files === 1 ? 'file' : 'files'}`}
-        </button>
+        </button>}
         <button type="button" className="mx-text-button" disabled={busy !== null} title="Pushes this branch and opens a pull request for it with GitHub's gh" onClick={openPullRequest}>
           {busy === 'pr' ? 'Opening…' : 'Create PR'}
         </button>

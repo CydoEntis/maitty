@@ -75,7 +75,7 @@ button.mx-inspect-row:hover, .mx-inspect-pick:hover { background: rgba(var(--hl)
 .mx-patch.is-numbered .mx-patch-line::before { content: attr(data-line); display: inline-block; width: 4ch; margin-right: 10px; text-align: right; color: var(--dim); user-select: none; }
 .mx-patch-line.is-commentable { cursor: pointer; }
 .mx-patch-line.is-commentable:hover, .mx-patch-line.is-commentable:focus-visible { box-shadow: inset 2px 0 0 var(--accent); outline: none; }
-.mx-patch-comment, .mx-patch-sent { display: block; margin: 4px 10px 6px calc(4ch + 20px); white-space: normal; font-family: var(--sans, inherit); font-size: 12.5px; }
+.mx-patch-comment, .mx-patch-sent { display: block; margin: 4px 10px 6px calc(4ch + 20px); white-space: normal; font-family: var(--ui, system-ui, sans-serif); font-size: 12.5px; }
 .mx-patch-comment { padding: 8px; border: 1px solid var(--pane-line); border-radius: 10px; background: var(--m-well); max-width: 560px; }
 .mx-patch-comment-text { display: block; width: 100%; resize: vertical; border: 0; background: transparent; color: var(--fg); font: inherit; outline: none; }
 .mx-patch-comment-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }

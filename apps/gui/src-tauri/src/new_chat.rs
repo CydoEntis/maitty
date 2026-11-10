@@ -180,7 +180,18 @@ pub(crate) fn run_program(program: &str, folder: &Path, args: &[&str], limit: Du
         return Ok(text);
     }
     let said = err.join().ok().and_then(Result::ok).unwrap_or_default();
-    Err(said.trim().lines().last().unwrap_or("it failed").to_string())
+    Err(complaint(&said))
+}
+
+/// The one line of what a program complained about that says what went wrong: git's `fatal:` or
+/// `error:` line when it has one (what follows it is advice), else the last line.
+fn complaint(said: &str) -> String {
+    let lines = || said.lines().map(str::trim).filter(|line| !line.is_empty());
+    lines()
+        .find(|line| line.starts_with("fatal:") || line.starts_with("error:"))
+        .or_else(|| lines().next_back())
+        .unwrap_or("it failed")
+        .to_string()
 }
 
 fn branch_info(folder: &Path) -> Result<Option<BranchInfo>, String> {
