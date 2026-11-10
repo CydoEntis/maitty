@@ -172,8 +172,9 @@ mod tests {
     }
 
     #[test]
-    fn a_busy_process_reads_as_busy_on_its_second_sample() {
-        const BUSY_FOR: std::time::Duration = std::time::Duration::from_millis(600);
+    fn a_busy_process_reads_as_busy_within_a_few_samples() {
+        const BUSY_FOR: std::time::Duration = std::time::Duration::from_millis(400);
+        const SAMPLES: usize = 4;
         const CLEARLY_BUSY_PERCENT: f32 = 20.0;
         let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let spinning = stop.clone();
@@ -185,10 +186,18 @@ mod tests {
         let mut system = System::new();
         let pid = Pid::from_u32(std::process::id());
 
+        // Windows needs a refresh more than Linux before a share is real, so the busy thread
+        // must show within a few samples, not on an exact one.
         refresh(&mut system);
-        std::thread::sleep(BUSY_FOR);
-        refresh(&mut system);
-        let cpu = system.process(pid).expect("this process is in the table").cpu_usage();
+        let mut cpu = 0.0;
+        for _ in 0..SAMPLES {
+            std::thread::sleep(BUSY_FOR);
+            refresh(&mut system);
+            cpu = system.process(pid).expect("this process is in the table").cpu_usage();
+            if cpu > CLEARLY_BUSY_PERCENT {
+                break;
+            }
+        }
         stop.store(true, Ordering::Relaxed);
         worker.join().expect("the busy thread ends");
 
