@@ -27,14 +27,14 @@ import { makeId } from './makeId'
 
 /** How long a new session on another machine is waited for, and how often its list is looked at. */
 const REMOTE_START_WAIT_MS = 8000
+const REMOTE_START_POLL_MS = 250
 
+/** How long a session started as an agent is taken to be it while the daemon has not said so; a command that never starts one stops claiming it. */
 const EXPECTED_AGENT_MS = 30_000
 
 function omitKey<T>(record: Record<string, T>, key: string): Record<string, T> {
   return Object.fromEntries(Object.entries(record).filter(([name]) => name !== key))
 }
-
-const REMOTE_START_POLL_MS = 250
 
 /** Every way the window starts a session: a shell, an agent in a terminal, a chat, a worktree, on this computer or another machine. */
 export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLayout, flash, focusedSession, setNewChatOpen, online, starting, setStarting, setStartedFrom, sessionMap, preferences, setExpectedAgents, paneViews, setSettingsSection, setNewSessionMachine, home, machinesRef }: {

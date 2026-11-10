@@ -2,24 +2,18 @@ import { type CSSProperties, Fragment, useCallback, useEffect, useMemo, useRef, 
 import { Panel } from '@/components/ui/panel'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from '@/lib/toast'
-import { z } from 'zod'
-import { conversationsFromSnapshot, defaultSessionFolder, isDesktop, listenSessionsChanged, loadConversations, loadDaemonRestartStatus, markSeenOnDaemon, openDaemonLog, renameConversationOnDaemon, sendTerminalInput } from '@/api/daemon'
+import { defaultSessionFolder, isDesktop, loadConversations, loadDaemonRestartStatus, markSeenOnDaemon, openDaemonLog, sendTerminalInput } from '@/api/daemon'
 import { listSshHosts, LOCAL_MACHINE, machineActivity } from '@/api/machines'
 import { TitleBar } from '@/components/TitleBar'
 import { Toaster } from '@/components/ui/sonner'
 import { markConversationsDisconnected } from '@/data/connection'
-import { DesktopSettings, type DesktopSettingsSection, type UsageInfo } from '@/features/settings/components/DesktopSettings'
-import { readSettingsPreferences, type SettingsPreferences, TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN, writeSettingsPreferences } from '@/features/settings/preferences'
-import type { Conversation } from '@/data/preview'
+import { DesktopSettings, type DesktopSettingsSection } from '@/features/settings/components/DesktopSettings'
+import { readSettingsPreferences, type SettingsPreferences, TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN } from '@/features/settings/preferences'
 import { sizeVariables } from './model/layoutSize'
 import { daemonConnectionError, daemonProtocolMismatch } from '@/lib/daemon-connection'
 import { errorMessage } from '@/lib/error-message'
 import { guardLocal } from '@/lib/localOnly'
-import { markGpu } from '@/lib/gpu'
-import { isWindowShown, subscribeWindowActivity } from '@/lib/window-activity'
 import { PerfOverlay } from './components/PerfOverlay'
-import { setSpinnerStyle } from '@/lib/spinner-clock'
-import { TerminalView } from '@/TerminalView'
 import { ReducedMotionContext } from './components/motion'
 import { SplitHandle } from './components/SplitHandle'
 import { CommandPalette } from './components/CommandPalette'
@@ -27,13 +21,13 @@ import { type InboxEntry, InboxPanel } from './components/InboxPanel'
 import { InspectPanel, type InspectView } from '@/features/inspect/InspectPanel'
 import { rememberSessions, withEnded } from './model/ended'
 import { isChatSession, isListedChatSession } from './model/chatSession'
-import { idsOfMachinesNotHeard, LOCAL_HEAD, machineHeads, remoteStartRefusal, remoteTerminals, type UpdateAction } from './model/machines'
+import { LOCAL_HEAD, machineHeads, remoteStartRefusal, remoteTerminals, type UpdateAction } from './model/machines'
 import { HoverTips } from './components/HoverTips'
 import { ShortcutOverlay } from '@/features/shortcuts/ShortcutOverlay'
 import { type FocusMachine, StatusBar } from './components/StatusBar'
 import { WelcomeDialog } from '@/features/welcome/WelcomeDialog'
 import { isFirstRun, markWelcomed } from '@/features/welcome/welcomed'
-import { repoDiff, repoLocate } from '@/features/inspect/api'
+import { repoDiff } from '@/features/inspect/api'
 import { FindBar } from '@/features/find/FindBar'
 import { RestoreBanner } from './components/RestoreBanner'
 import { UpdateSlot } from '@/features/updates/UpdateSlot'
@@ -53,15 +47,11 @@ import { showSessionNotice } from '@/features/notifications/notify'
 import { NewWorktreeDialog } from '@/features/worktrees/NewWorktreeDialog'
 import type { TerminalHandle } from '@/features/terminal/handle'
 import type { LookAt } from '@/features/inspect/FilesTab'
-import { PaneCard, type PaneTool } from './components/PaneCard'
-import { registerDragHandlers } from './components/dragSession'
-import { ChatPane } from '@/features/chat/components/ChatPane'
-import { ANSWER_KEYS } from '@/features/chat/permissionAsk'
-import { NoTerminalNote } from '@/features/chat/components/NoTerminalNote'
+import type { PaneTool } from './components/PaneCard'
 import { connectAgentOnce } from './model/agentHooks'
 import { machineProjects } from './model/newSession'
 import { usePaneViews } from './usePaneViews'
-import { type ChatAgent, chatAvailability, chatSourceOf, effectiveView, type PaneView } from './model/chatView'
+import { type ChatAgent, chatAvailability, chatSourceOf, effectiveView } from './model/chatView'
 import { NewSessionHost } from './components/NewSessionHost'
 import { NewChatPage } from './components/NewChatPage'
 import { GetFileDialog } from './components/GetFileDialog'
@@ -71,7 +61,6 @@ import { useSessionAlerts } from './useSessionAlerts'
 import { useTrayItem } from './useTrayItem'
 import { useSystemDark, useSystemReducedMotion, useWindowNarrowerThan } from './useWindowQueries'
 import { ConfirmCloseDialog } from './components/ConfirmCloseDialog'
-import { movePanes } from './components/paneTransition'
 import { RenameDialog, RenameMachineDialog } from './components/RenameDialog'
 import { readSplitShells, withSplitShell, writeSplitShells } from '@/data/splitShells'
 import { readMachineNicknames, withNickname, writeMachineNicknames } from '@/data/machineNicknames'
@@ -79,18 +68,16 @@ import { type OpenSubagent, Sidebar } from './components/Sidebar'
 import { EmptyState, Toast } from './components/states'
 import { ServiceStatus } from './components/ServiceStatus'
 import { useSharedSettings } from '@/features/settings/sharedSettings'
-import { activeArrangement, type Arrangement, dropSession, EMPTY_LAYOUT, focusedSessionId, focusPane, type Layout, MAX_PANES, openArrangement, paneColumns, type PaneSlot, reconcileLayout, setColumnWidths, setPaneHeights, showSession, type SplitDirection, splitPane, swapSessions, toggleMaximize, visibleSessionIds } from './model/layout'
+import { activeArrangement, dropSession, EMPTY_LAYOUT, focusedSessionId, focusPane, type Layout, MAX_PANES, openArrangement, paneColumns, setColumnWidths, setPaneHeights, showSession, type SplitDirection, splitPane, visibleSessionIds } from './model/layout'
 import { keptArrangements, rememberShown } from './model/keptTabs'
 import { LAYOUT_RESET_NOTICE, readLayout, writeLayout } from './model/layoutStorage'
 import { byPriority } from './model/inboxOrder'
 import { displayName, folderNameOf, inCreationOrder, keepLabels, type SessionView, tildePath, toSessionView } from './model/session'
-import { isShell } from './model/sidebar'
 import { Keycaps } from '@/features/shortcuts/Keycaps'
 import { bindingFor, detectPlatform, shortcutChords } from './model/shortcuts'
 import { folderExists, resolveStartFolder } from './model/startFolder'
-import { markSeen, type SessionTrack, tracksEqual, trackSessions } from './model/tracking'
 import { activeThemeName, findTheme, terminalMinimumContrast, themeStyle, xtermTheme } from './theme/themes'
-import { finishOf, withWindowStyle } from './theme/windowStyles'
+import { withWindowStyle } from './theme/windowStyles'
 import { COMPACT_WIDTH_PX, NARROW_WIDTH_PX } from './model/windowSize'
 import { makeId } from './makeId'
 import { useSessionStarts } from './useSessionStarts'
@@ -99,6 +86,12 @@ import { useAppUpdate } from './useAppUpdate'
 import { useShortcutKeys, useShortcutRunner } from './useShortcuts'
 import { usePaletteItems } from './usePaletteItems'
 import { useServiceOffers } from './useServiceOffers'
+import { usePaneDrags } from './usePaneDrags'
+import { usePreferenceEffects } from './usePreferenceEffects'
+import { useSessionSync } from './useSessionSync'
+import { useSessionActions } from './useSessionActions'
+import { useInboxActions } from './useInboxActions'
+import { WorkspacePane } from './components/WorkspacePane'
 import './workspace.css'
 import './components/sidebar.css'
 import './components/pane.css'
@@ -108,12 +101,6 @@ import '@/features/chat/chat.css'
 
 /** The daemon pushes every change (`sessions-changed`); this slow poll only catches a stream that went quiet. */
 const SESSION_REFRESH_MS = 15_000
-
-/** How long a session started as an agent is taken to be it while the daemon has not said so; a command that never starts one stops claiming it. */
-/** Whether a session can show a chat at all: an agent the app reads. A shell or another program has none, so it gets no switch. */
-function hasChat(availability: ReturnType<typeof chatAvailability>): boolean {
-  return availability.kind === 'ready' || availability.kind === 'no-events'
-}
 
 const TOAST_MS = 2600
 
@@ -139,9 +126,6 @@ const OFFLINE_AFTER_FAILURES = 2
 const BACKOFF_BASE = 2
 
 const noop = () => undefined
-
-/** Ctrl+L: a shell clears its screen and keeps what was typed. */
-const CLEAR_SCREEN = '\x0c'
 
 export function DesktopApp() {
   const queryClient = useQueryClient()
@@ -202,9 +186,6 @@ export function DesktopApp() {
   const [toastMessage, setToastMessage] = useState<{ text: string; key: number } | null>(null)
   // After a restart into an update, the first thing said is which version this is and what changed.
   const [updatedTo, setUpdatedTo] = useState<RestartedUpdate | null>(takeRestarted)
-  const [tracks, setTracks] = useState<ReadonlyMap<string, SessionTrack>>(new Map())
-  const [dragId, setDragId] = useState<string | null>(null)
-  const [dropId, setDropId] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
   // The sessions there were when a start began: one the daemon lists before its tab is placed is kept off the sidebar until it is.
   const [startedFrom, setStartedFrom] = useState<ReadonlySet<string> | null>(null)
@@ -219,8 +200,6 @@ export function DesktopApp() {
   }, [newChatOpen, preferences.defaultAgent])
   const [failures, setFailures] = useState(0)
   const [root, setRoot] = useState<HTMLDivElement | null>(null)
-  const tracksRef = useRef<ReadonlyMap<string, SessionTrack>>(new Map())
-  const openedFirst = useRef(false)
   const terminalHandles = useRef(new Map<string, TerminalHandle>())
 
   // While maittyd is unreachable, try again after 1, 2, 4, then every 8 seconds.
@@ -402,158 +381,16 @@ export function DesktopApp() {
   useSharedSettings(preferences, setPreferences, online)
 
   const flash = useCallback((text: string) => { setToastMessage({ text, key: Date.now() }) }, [])
-  useEffect(() => registerDragHandlers({
-    start: (source) => { if (source.kind === 'pane') setDragId(source.id) },
-    over: setDropId,
-    drop: (source, paneId) => {
-      if (!paneId) return
-      if (source.kind === 'session') {
-        setLayout((current) => dropSession(current, paneId, source.id))
-        flash('Session moved into this pane')
-      } else if (source.id !== paneId) movePanes(() => { setLayout((current) => swapSessions(current, source.id, paneId)) })
-    },
-    end: () => { setDragId(null); setDropId(null) },
-  }), [flash])
+  const { dropId, dragId } = usePaneDrags({ setLayout, flash })
   useEffect(() => {
     if (!toastMessage) return
     const timer = window.setTimeout(() => { setToastMessage(null) }, TOAST_MS)
     return () => { window.clearTimeout(timer) }
   }, [toastMessage])
-
-  useEffect(() => {
-    try {
-      writeSettingsPreferences(preferences)
-    } catch (error) {
-      toast.error(errorMessage(error, 'Could not save settings'))
-    }
-    setSpinnerStyle(preferences.spinner)
-  }, [preferences])
-
-  useEffect(() => {
-    document.documentElement.dataset.reducedMotion = String(reducedMotion)
-  }, [reducedMotion])
-
-  useEffect(() => { markGpu() }, [])
-
-  // Looping effects pause in the stylesheet while the window is hidden or in the background. It is an
-  // attribute on <html>, not React state, so a focus change repaints nothing and re-renders nothing.
-  useEffect(() => {
-    const mark = () => { document.documentElement.dataset.window = isWindowShown() ? 'active' : 'inactive' }
-    mark()
-    return subscribeWindowActivity(mark)
-  }, [])
-
-  useEffect(() => {
-    document.documentElement.dataset.style = preferences.style
-    document.documentElement.dataset.finish = finishOf(preferences.style)
-  }, [preferences.style])
-
-  useEffect(() => {
-    document.documentElement.dataset.glow = preferences.backgroundGlow ? 'on' : 'off'
-  }, [preferences.backgroundGlow])
-
-  useEffect(() => {
-    document.documentElement.dataset.icons = preferences.iconColor
-  }, [preferences.iconColor])
+  usePreferenceEffects({ preferences, reducedMotion })
 
   useEffect(() => { writeLayout(layout) }, [layout])
-
-  // A drag from the sidebar ends wherever it is released; the pane's highlight must not outlast it.
-  useEffect(() => {
-    const clear = () => { setDropId(null) }
-    window.addEventListener('dragend', clear)
-    window.addEventListener('drop', clear)
-    return () => {
-      window.removeEventListener('dragend', clear)
-      window.removeEventListener('drop', clear)
-    }
-  }, [])
-
-  const refetchSessions = sessionsQuery.refetch
-  const retryAt = sessionsQuery.isError ? sessionsQuery.errorUpdatedAt + retryDelay : null
-
-  // The host forwards the daemon's snapshots as they change, so the list is current without asking.
-  // A snapshot that does not read, or a dropped stream, sends the query to ask the daemon itself.
-  useEffect(() => {
-    const askAgain = () => {
-      void queryClient.invalidateQueries({ queryKey: ['conversations'] })
-    }
-    const applySnapshot = (snapshot: unknown) => {
-      if (snapshot === null) {
-        askAgain()
-        return
-      }
-      let conversations: Conversation[]
-      try {
-        conversations = conversationsFromSnapshot(snapshot)
-      } catch (error: unknown) {
-        if (!(error instanceof z.ZodError)) throw error
-        console.warn('The daemon sent a session list this window cannot read; asking for it again', error)
-        askAgain()
-        return
-      }
-      // A poll still in flight answers with an older list than this push; it must not win.
-      void queryClient.cancelQueries({ queryKey: ['conversations'] })
-      queryClient.setQueryData(['conversations'], conversations)
-      setFailures(0)
-    }
-    let stop: (() => void) | null = null
-    let gone = false
-    listenSessionsChanged(applySnapshot).then(
-      (unlisten) => {
-        if (gone) unlisten()
-        else stop = unlisten
-      },
-      (error: unknown) => { toast.error(errorMessage(error, 'Could not follow the session list')) },
-    )
-    return () => {
-      gone = true
-      stop?.()
-    }
-  }, [queryClient])
-
-  // The first list after launch: drop panes of sessions that are gone since last time, and open
-  // something when there is nothing to restore. Later lists never remove a pane: one that stopped
-  // being listed stays, as an ended pane. `sessions` also changes when the home folder arrives; only a
-  // new list counts.
-  const reconciled = useRef<readonly Conversation[] | null>(null)
-  useEffect(() => {
-    // An unchanged list keeps its identity (structural sharing), so only a real change counts here.
-    if (!sessionsQuery.isSuccess || reconciled.current === sessionsQuery.data) return
-    reconciled.current = sessionsQuery.data
-    const listed = sessions.map((session) => session.id)
-    // This computer's first pane, else the first of another machine.
-    const first = [...sessions].sort((a, b) => a.machine - b.machine || a.pane - b.pane)[0]
-    const openFirst = !openedFirst.current
-    openedFirst.current = true
-    setLayout((current) => {
-      // A machine that has not answered yet has not lost its panes: they are unknown, not gone.
-      const live = new Set([...listed, ...idsOfMachinesNotHeard(current, machinesRef.current)])
-      const reconciled = openFirst ? reconcileLayout(current, live) : current
-      return openFirst && reconciled.arrangements.length === 0 && first ? openArrangement(reconciled, first.id, makeId) : reconciled
-    })
-  }, [sessions, sessionsQuery.data, sessionsQuery.isSuccess, machinesRef])
-
-  useEffect(() => {
-    const { tracks: next, moves } = trackSessions(tracksRef.current, sessions, new Set(visibleKey.split(' ').filter(Boolean)), Date.now())
-    if (!tracksEqual(tracksRef.current, next)) {
-      tracksRef.current = next
-      setTracks(next)
-    }
-    const move = moves.at(-1)
-    if (move) {
-      const name = (path: string | null) => path?.split(/[\\/]/).filter(Boolean).at(-1) ?? ''
-      flash(move.to ? `Session moved to ${name(move.to)}` : `Session left ${name(move.from)}`)
-    }
-  }, [sessions, visibleKey, flash])
-
-  useEffect(() => {
-    const next = markSeen(tracksRef.current, new Set(visibleKey.split(' ').filter(Boolean)))
-    if (!tracksEqual(tracksRef.current, next)) {
-      tracksRef.current = next
-      setTracks(next)
-    }
-  }, [visibleKey])
+  const { refetchSessions, retryAt, tracks } = useSessionSync({ sessionsQuery, retryDelay, queryClient, setFailures, sessions, setLayout, machinesRef, visibleKey, flash })
   const { runStart, newSession, newTerminal, startAgentSession, newSessionOn, startChatHere, startNewChat, createWorktree, startFromModal } = useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLayout, flash, focusedSession, setNewChatOpen, online, starting, setStarting, setStartedFrom, sessionMap, preferences, setExpectedAgents, paneViews, setSettingsSection, setNewSessionMachine, home, machinesRef })
 
   const split = useCallback((paneId: string | null, direction: SplitDirection) => {
@@ -603,93 +440,7 @@ export function DesktopApp() {
   }, [layout, paneSessions, runStart])
 
   const endSession = useCallback((sessionId: string) => { askToClose([sessionId], () => { endSessions([sessionId], 'Session') }) }, [askToClose, endSessions])
-
-  const saveName = useCallback((sessionId: string, name: string) => {
-    setRenameId(null)
-    void renameConversationOnDaemon({ id: sessionId }, name)
-      .then(async () => { await queryClient.invalidateQueries({ queryKey: ['conversations'] }) })
-      .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not rename the session')) })
-  }, [queryClient])
-
-  // Showing a session shows its own chat: a subagent's chat is left by picking any session, its parent too.
-  const showSessionById = useCallback((sessionId: string) => {
-    setOpenSubagent(null)
-    setLayout((current) => showSession(current, sessionId, makeId))
-  }, [])
-
-  // "Open in split": the session joins the layout beside the pane that has focus. One already in it just takes the focus.
-  const openInSplit = useCallback((sessionId: string, direction: 'right' | 'down') => {
-    const showing = activeArrangement(layout)
-    if (!showing) {
-      showSessionById(sessionId)
-      return
-    }
-    if (showing.panes.some((pane) => pane.sessionId === sessionId)) {
-      showSessionById(sessionId)
-      return
-    }
-    if (showing.panes.length >= MAX_PANES) {
-      toast.message(`A window holds ${String(MAX_PANES)} panes at most. Close one to open another beside it.`)
-      return
-    }
-    setLayout((current) => splitPane(current, null, direction, sessionId, makeId))
-  }, [layout, showSessionById])
-
-  const copyText = useCallback((text: string, what: string) => {
-    navigator.clipboard.writeText(text).then(
-      () => { flash(`${what} copied`) },
-      (error: unknown) => { toast.error(errorMessage(error, `Could not copy the ${what.toLowerCase()}`)) },
-    )
-  }, [flash])
-
-  const copyPathOf = useCallback((sessionId: string) => {
-    const target = sessionMap.get(sessionId)
-    if (target) copyText(target.cwd, 'Path')
-  }, [sessionMap, copyText])
-
-  // A subagent's own chat shows in its session's pane, in the chat view.
-  const showSubagent = useCallback((sessionId: string, subagentId: string) => {
-    setLayout((current) => showSession(current, sessionId, makeId))
-    paneViews.choose(sessionId, 'chat')
-    setOpenSubagent({ sessionId, subagentId })
-  }, [paneViews])
-
-  const splitSubagent = useCallback((sessionId: string, subagentId: string) => {
-    openInSplit(sessionId, 'right')
-    paneViews.choose(sessionId, 'chat')
-    setOpenSubagent({ sessionId, subagentId })
-  }, [openInSplit, paneViews])
-
-  // The usage report names panes of this computer's daemon by number; only a pane this window has can be opened.
-  const sessionForUsageTerm = useCallback((term: number) => {
-    const found = sessions.find((member) => member.machine === LOCAL_MACHINE && member.pane === term)
-    return found ? { id: found.id, name: displayName(found) } : null
-  }, [sessions])
-
-  const usageInfo: UsageInfo = {
-    budget: preferences.monthlyBudget,
-    onBudget: (budget: number | null) => { setPreferences((current) => ({ ...current, monthlyBudget: budget })) },
-    sessionForTerm: sessionForUsageTerm,
-    onOpenSession: (id: string) => { setSettingsSection(null); showSessionById(id) },
-  }
-
-  // Cmd/Ctrl-click on a file name in a pane's output: find it in that pane's repo, then show it in Inspect.
-  const openPath = useCallback((session: SessionView, path: string, line?: number) => {
-    // Files and Changes look at this computer's own checkouts; a pane of another machine has none here.
-    const refusal = guardLocal(session, 'path-links')
-    if (refusal !== null) {
-      toast.message(refusal)
-      return
-    }
-    void repoLocate(session.pane, path)
-      .then((relative) => {
-        showSessionById(session.id)
-        setLookAt({ path: relative, ...(line === undefined ? {} : { line }), key: Date.now() })
-        setInspectView('files')
-        setInspectOpen(true)
-      })
-      .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not open that file')) })
-  }, [showSessionById])
+  const { showSessionById, openPath, copyPathOf, showSubagent, saveName, openInSplit, splitSubagent, copyText, usageInfo } = useSessionActions({ setRenameId, queryClient, setOpenSubagent, setLayout, layout, flash, sessionMap, paneViews, sessions, preferences, setPreferences, setSettingsSection, setLookAt, setInspectView, setInspectOpen })
   const { runningVersion, skippedVersion, restartNow, setSkippedVersion, restarting } = useAppUpdate({ updater, serviceNewer, preferences, sessions, online })
 
   const chooseStartFolder = useCallback(async (current: string): Promise<string | null> => {
@@ -859,55 +610,9 @@ export function DesktopApp() {
       .then(() => queryClient.invalidateQueries({ queryKey: ['conversations'] }))
       .catch((error: unknown) => { console.warn('Could not mark the session seen', error) })
   }, [online, windowFocused, viewedId, viewedStatus, queryClient])
-
-  const sendTo = useCallback((target: SessionView, data: string) => {
-    // A chat session has no terminal to type into; its answers go through the chat, by request id.
-    if (isChatSession(target.conversation)) return Promise.reject(new Error('A chat session has no terminal. Use its chat.'))
-    return sendTerminalInput({ id: target.id, generation: target.conversation.generation ?? 0 }, data)
-  }, [])
-
-  const answerSession = useCallback((sessionId: string, answer: 'y' | 'a' | 'n') => {
-    const target = sessionMap.get(sessionId)
-    if (!target) return
-    // A card can outlast the question. Typing into a session that is not asking would land in its shell.
-    if (target.status !== 'needs') {
-      flash(`${displayName(target)} is not asking any more`)
-      return
-    }
-    // The answer is typed into the session's own prompt; the GUI never decides for it.
-    // Claude Code's permission menu numbers its choices and ignores a bare `y`; only that key is verified.
-    const keys = target.process === 'claude' && answer === 'y' ? ANSWER_KEYS.approve : answer
-    void sendTo(target, keys)
-      .then(() => { flash(`Sent “${answer}” to ${displayName(target)}`) })
-      .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not answer the session')) })
-  }, [sessionMap, sendTo, flash])
+  const { answerSession, sendTo, resumeInterrupted, clearEntry, clearSettled } = useInboxActions({ sessionMap, flash, showSessionById, setDismissedRestores, setCleared, inboxEntries })
 
   useSessionAlerts({ sessions, sessionMap, machines, projectOf, online, focusedId, preferences, showSessionById, answerSession })
-
-  // Types the resume command into the session, as you would. Nothing resumes without this click.
-  const resumeInterrupted = useCallback((target: SessionView) => {
-    const command = target.interrupted?.resume
-    if (!command) return
-    showSessionById(target.id)
-    void sendTo(target, `${command}
-`)
-      .then(() => { setDismissedRestores((current) => new Set(current).add(target.id)) })
-      .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not resume the agent')) })
-  }, [sendTo, showSessionById])
-
-  const clearEntry = useCallback((sessionId: string) => {
-    const target = sessionMap.get(sessionId)
-    if (target) setCleared((current) => new Map(current).set(sessionId, target.status))
-  }, [sessionMap])
-
-  const clearSettled = useCallback(() => {
-    setCleared((current) => {
-      const next = new Map(current)
-      for (const entry of inboxEntries) if (entry.session.status !== 'needs') next.set(entry.session.id, entry.session.status)
-      return next
-    })
-  }, [inboxEntries])
-
   // With broadcast on, what is typed in one pane also goes to the layout's other panes, but only the idle ones: never into a busy agent.
   const mirrorInput = useCallback((fromSessionId: string, data: string | Uint8Array) => {
     const showing = activeArrangement(layout)
@@ -970,98 +675,7 @@ export function DesktopApp() {
   const canStart = online && !starting
   const sidebarWidth = liveSidebarWidth ?? preferences.sidebarWidth
   const rootStyle = { ...themeStyle(theme), ...sizeVariables(preferences, sidebarWidth) } as CSSProperties
-
-  // One pane of the layout: its header, and the session's terminal with its chat over it when the chat shows.
-  // A pane of a tab kept out of sight keeps only its terminal, paused: no chat reads, takes keys or answers for it.
-  const renderPane = (shown: Arrangement, pane: PaneSlot, kept: boolean) => {
-    const session = paneSessions.get(pane.sessionId)
-    if (!session) return null
-    const focused = pane.id === shown.focus && !kept
-    const chat = chatOf(session)
-    const chatOnly = isChatSession(session.conversation)
-    const subagent = openSubagent?.sessionId === session.id ? session.subagents.find((child) => child.id === openSubagent.subagentId) : undefined
-    const typeInto = chatOnly ? undefined : (text: string) => sendTerminalInput({ id: session.id, generation: session.conversation.generation ?? 0 }, text)
-    const terminalOpen = isShell(session) ? null : agentTerminals.has(session.id) && sessionMap.has(agentTerminals.get(session.id) ?? '')
-    return (
-      <PaneCard
-        pane={pane}
-        index={shown.panes.findIndex((candidate) => candidate.id === pane.id)}
-        session={session}
-        paneCount={shown.panes.length}
-        broadcast={shown.broadcast === true}
-        focused={focused && !outsidePanes}
-        maximized={shown.max === pane.id}
-        dropTarget={dropId === pane.id && dragId !== pane.id}
-        view={chat.view}
-        {...(chatOnly || !hasChat(chat.availability) ? {} : { onViewChange: (view: PaneView) => { paneViews.choose(session.id, view) } })}
-        chat={chat.view === 'chat' && !kept ? (
-          <ChatPane
-            availability={chat.availability}
-            hasTerminal={!chatOnly}
-            root={session.repoRoot ?? session.cwd}
-            onOpenDiff={showChanges}
-            typeInto={typeInto}
-            ask={session.ask}
-            asking={session.asking}
-            sessionId={session.id}
-            paneStatus={session.status}
-            process={session.process}
-            online={online}
-            folder={folderNameOf(session)}
-            branch={session.branch}
-            subagent={subagent ?? null}
-            subagentCount={session.subagents.length}
-            onBackToMain={() => { setOpenSubagent(null) }}
-            onOpenFiles={() => { togglePaneTool(pane.id, session.id, 'files') }}
-            onBackToTerminal={() => { paneViews.choose(session.id, 'terminal') }}
-            onStartAgent={(agent) => {
-              paneViews.choose(session.id, 'terminal')
-              void sendTerminalInput({ id: session.id, generation: session.conversation.generation ?? 0 }, `${agent}\r`).catch((error: unknown) => { toast.error(errorMessage(error, `Could not start ${agent}`)) })
-            }}
-            defaultFullAccess={preferences.chatFullAccessDefault}
-            onStartChat={(agent, fullAccess) => { startChatHere(session, agent, fullAccess) }}
-          />
-        ) : undefined}
-        tool={inspectOpen && focused && (inspectView === 'files' || inspectView === 'changes') ? inspectView : null}
-        onTool={(tool) => { togglePaneTool(pane.id, session.id, tool) }}
-        terminalOpen={terminalOpen}
-        onToggleTerminal={() => { toggleAgentTerminal(session.id) }}
-        online={online}
-        portalContainer={root}
-        terminal={chatOnly ? <NoTerminalNote /> :
-          <TerminalView
-            key={session.id}
-            conversation={session.conversation}
-            desktop
-            fontSize={preferences.terminalFontSize}
-            look={look}
-            label={`Shell in ${session.cwdLabel}`}
-            inputDisabled={!online}
-            ended={session.ended}
-            focused={focused && !modalOpen && chat.view === 'terminal'}
-            paused={kept || chat.view === 'chat'}
-            onInput={(data) => { mirrorInput(session.id, data) }}
-            onOpenPath={(path, line) => { openPath(session, path, line) }}
-            onPasteImage={(image) => { pasteImage(session.id, image) }}
-            onHandle={(handle) => {
-              if (handle) terminalHandles.current.set(session.id, handle)
-              else terminalHandles.current.delete(session.id)
-            }}
-          />
-        }
-        onFocus={(paneId) => { setLayout((current) => focusPane(current, paneId)) }}
-        onSplit={(paneId, direction) => {
-          setLayout((current) => focusPane(current, paneId))
-          split(paneId, direction)
-        }}
-        onToggleMaximize={(paneId) => { setLayout((current) => toggleMaximize(current, paneId)) }}
-        onClose={closePaneById}
-        onClear={() => { void sendTo(session, CLEAR_SCREEN).catch((error: unknown) => { toast.error(errorMessage(error, 'Could not clear the screen')) }) }}
-        onCopyPath={() => { copyPathOf(session.id) }}
-        onRestart={restartPane}
-      />
-    )
-  }
+  const paneProps = { paneSessions, chatOf, openSubagent, agentTerminals, sessionMap, outsidePanes, dropId, dragId, paneViews, showChanges, online, setOpenSubagent, togglePaneTool, preferences, startChatHere, inspectOpen, inspectView, toggleAgentTerminal, root, look, modalOpen, mirrorInput, openPath, pasteImage, terminalHandles, setLayout, split, closePaneById, sendTo, copyPathOf, restartPane }
 
   // The sidebar, as the docked column or the 60px rail, or the full one inside the overlay of a narrow window.
   const renderSidebar = (mode: 'docked' | 'rail', afterPick: () => void, onToggle: () => void) => (
@@ -1195,7 +809,7 @@ export function DesktopApp() {
                               />
                             )}
                             <div className={`mx-pane-cell${closingPanes.has(pane.id) ? ' is-closing' : ''}`} style={pane.h !== undefined && tab.max === null && !narrow ? { flexGrow: pane.h } : undefined}>
-                              {renderPane(tab, pane, kept)}
+                              <WorkspacePane {...paneProps} shown={tab} pane={pane} kept={kept} />
                             </div>
                           </Fragment>
                         ))}
