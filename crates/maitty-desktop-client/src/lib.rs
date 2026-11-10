@@ -277,40 +277,6 @@ pub async fn restart_mismatched_daemon(expected_protocol: u32) -> Result<()> {
     bail!("the old daemon still holds the local service socket")
 }
 
-/// Stop a running daemon so its file can be replaced by a newer release. Its sessions must be
-/// saved (the next daemon restores them) or absent, or it is left running and this fails.
-fn stop_running_daemon_for_update() -> Result<()> {
-    if !daemon_is_running() {
-        return Ok(());
-    }
-    validate_restart_activity(read_activity().as_ref(), session_file().is_file())?;
-    stop_mismatched_daemon()?;
-    for _ in 0..50 {
-        if !daemon_is_running() {
-            ipc::remove_pid_file();
-            return Ok(());
-        }
-        std::thread::sleep(Duration::from_millis(100));
-    }
-    bail!("the old daemon still holds the local service socket")
-}
-
-/// A blocking check for callers outside the async runtime. It runs on its own thread because
-/// a runtime cannot be started from inside another.
-fn daemon_is_running() -> bool {
-    std::thread::scope(|scope| {
-        scope
-            .spawn(|| {
-                tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .is_ok_and(|runtime| runtime.block_on(ipc::is_running()))
-            })
-            .join()
-            .unwrap_or(false)
-    })
-}
-
 fn validate_restart_confirmation(daemon_protocol: u32, expected_protocol: u32) -> Result<()> {
     anyhow::ensure!(
         daemon_protocol == expected_protocol,
