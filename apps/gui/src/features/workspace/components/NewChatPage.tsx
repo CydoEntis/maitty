@@ -15,6 +15,7 @@ import { openAgentDocs } from '@/api/daemon'
 import { chatAgentOf, type ChatAgent } from '../model/chatView'
 import { AGENT_CATALOG, ageOf, nowSeconds, splitRecent, useFolderBranches, useInstalledAgents } from '../model/newChatHost'
 import type { NewSessionProject } from '../model/newSession'
+import { suggestBranchName } from '../model/worktreeName'
 import { AppIcon, Icon } from './glyphs'
 import { ChipMenu, ReasoningMeter, SegmentTabs, type ChipItem } from './NewChatMenus'
 
@@ -193,8 +194,21 @@ export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = 
   const [now] = useState(nowSeconds)
   const here = branch !== null && !branch.worktree ? branch.name : branches?.current ?? ''
   const inWorktree = new Set((branches?.worktrees ?? []).flatMap((tree) => (tree.branch === null ? [] : [tree.branch])))
-  const branchLabel = branch === null ? branches?.current ?? 'detached' : `${branch.name}${branch.worktree ? ' (worktree)' : ''}`
+  const branchLabel = branch === null ? branches?.current ?? 'detached' : branch.worktree ? `new worktree · ${branch.name}` : branch.name
   const pickBranch = (pick: BranchChoice) => { setBranchPick({ folder, pick }) }
+  // "New worktree" is a choice by itself: it takes a new branch under a suggested name at once, so the chat
+  // never starts in this checkout after all. Going back to "This checkout" drops a worktree pick.
+  const chooseWhere = (where: 'checkout' | 'worktree') => {
+    setTreeMode(where === 'worktree')
+    if (where === 'worktree' && branch?.worktree !== true) {
+      pickBranch({ name: suggestBranchName(new Set((branches?.branches ?? []).map((entry) => entry.name))), create: true, worktree: true })
+    } else if (where === 'checkout' && branch?.worktree === true) {
+      setBranchPick(null)
+    }
+  }
+  const newBranchRows: ChipItem[] = treeMode && branch?.worktree === true && branch.create
+    ? [{ key: 'tree-new-branch', label: branch.name, sub: `A new branch from ${branches?.current ?? 'here'}, in its own worktree`, icon: <Icon name="plus" size={12} />, checked: true, onPick: () => undefined }]
+    : []
   const worktreeRows: ChipItem[] = (branches?.worktrees ?? []).filter((tree) => !tree.main).map((tree) => {
     const name = tree.branch ?? tree.path.split(/[\\/]/).filter(Boolean).at(-1) ?? tree.path
     return {
@@ -212,10 +226,11 @@ export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = 
     label: entry.name,
     icon: <Icon name="branch" size={13} />,
     right: <span className="mx-chip-count">{ageOf(entry.when, now)}</span>,
-    checked: !treeMode && entry.name === here,
+    checked: treeMode ? branch?.worktree === true && !branch.create && branch.name === entry.name : entry.name === here,
     onPick: () => { pickBranch({ name: entry.name, create: false, worktree: treeMode }) },
   }))
   const branchSections = [
+    ...(newBranchRows.length > 0 ? [{ heading: 'New branch', items: newBranchRows }] : []),
     ...(worktreeRows.length > 0 ? [{ heading: 'Worktrees', items: worktreeRows }] : []),
     { heading: 'Branches', items: branchRows },
   ]
@@ -252,8 +267,8 @@ export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = 
                   <span>on</span>
                   <ChipMenu title="Branch" summary={branchLabel} label={<span className="mx-chip-mono">{branchLabel}</span>} icon={<Icon name="branch" size={12} />}
                     search="Search or create a branch" width={380} sections={branchSections} fromQuery={fromBranchName}
-                    extra={<SegmentTabs value={treeMode ? 'worktree' : 'checkout'} options={[{ value: 'checkout', label: 'This checkout' }, { value: 'worktree', label: 'New worktree' }]} onPick={(value) => { setTreeMode(value === 'worktree') }} />}
-                    footer={<p>{treeMode ? 'Makes a worktree of the branch beside the project, and the chat works there.' : `Switches the branch in ${folder}. Other sessions in this folder see the switch too.`}</p>} />
+                    extra={<SegmentTabs value={treeMode ? 'worktree' : 'checkout'} options={[{ value: 'checkout', label: 'This checkout' }, { value: 'worktree', label: 'New worktree' }]} onPick={chooseWhere} />}
+                    footer={<p>{treeMode ? 'The chat works in a new worktree beside the project. Keep the suggested branch, type a name for one, or pick a branch that has no worktree yet.' : `Switches the branch in ${folder}. Other sessions in this folder see the switch too.`}</p>} />
                 </>
               )}
             </div>

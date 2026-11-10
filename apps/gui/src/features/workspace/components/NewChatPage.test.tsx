@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('@/api/daemon', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/api/daemon')>()), loadAgentModels: () => Promise.resolve([]) }))
+vi.mock('@/api/daemon', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/api/daemon')>()), loadAgentModels: () => Promise.resolve([]), folderBranches: () => Promise.resolve({ current: 'dev', branches: [{ name: 'dev', when: 10 }], worktrees: [{ path: '/dev/growth', branch: 'dev', main: true, when: 10 }] }) }))
 
 const attach = vi.hoisted(() => ({ attachLocalFile: vi.fn(), chooseFilesToAttach: vi.fn() }))
 vi.mock('@/api/attachments', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/api/attachments')>()), ...attach }))
@@ -20,6 +20,29 @@ function page(onStart: (request: { message: string }) => Promise<void> = () => P
 }
 
 describe('the new chat page', () => {
+  it('starts in a new worktree on a new branch as soon as New worktree is chosen, and says so on the page', async () => {
+    const onStart = vi.fn<(request: { message: string; branch?: unknown }) => Promise<void>>().mockResolvedValue(undefined)
+    page(onStart)
+    await userEvent.click(await screen.findByRole('button', { name: 'Branch: dev' }))
+    await userEvent.click(screen.getByRole('tab', { name: 'New worktree' }))
+    await userEvent.keyboard('{Escape}')
+
+    expect(await screen.findByRole('button', { name: /^Branch: new worktree · [a-z]+-[a-z]+$/ })).toBeInTheDocument()
+    await userEvent.type(screen.getByRole('textbox', { name: 'First message' }), 'hello')
+    await userEvent.click(screen.getByRole('button', { name: 'Send message' }))
+    await waitFor(() => { expect(onStart).toHaveBeenCalled() })
+    expect(onStart.mock.calls[0]?.[0].branch).toEqual({ name: expect.stringMatching(/^[a-z]+-[a-z]+$/) as unknown, create: true, worktree: true })
+  })
+
+  it('goes back to this checkout when that tab is chosen again', async () => {
+    page()
+    await userEvent.click(await screen.findByRole('button', { name: 'Branch: dev' }))
+    await userEvent.click(screen.getByRole('tab', { name: 'New worktree' }))
+    await userEvent.click(screen.getByRole('tab', { name: 'This checkout' }))
+    await userEvent.keyboard('{Escape}')
+    expect(await screen.findByRole('button', { name: 'Branch: dev' })).toBeInTheDocument()
+  })
+
   it('attaches a picked file to the first message, shows it, and names it in the message', async () => {
     attach.chooseFilesToAttach.mockResolvedValue(['/home/me/errors.log'])
     attach.attachLocalFile.mockResolvedValue({ path: '/data/attachments/attach-1-errors.log', name: 'errors.log', size: 120, kind: 'file' })
