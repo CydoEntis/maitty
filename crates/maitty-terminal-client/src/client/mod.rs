@@ -274,6 +274,8 @@ pub(super) enum Bg {
     Grep(PathBuf, u64, Result<Vec<find::GrepHit>, String>),
     /// The finder's preview of one row: (folder, row, lines).
     FindPreview(PathBuf, find::Target, Vec<String>),
+    /// The Files view's preview of one file: (the view's root, file, lines).
+    FilesPreview(PathBuf, PathBuf, Vec<String>),
     /// A file's diff for the Changes view: (folder, which file, lines).
     Diff(PathBuf, usize, Vec<String>),
     /// Slow work done; finish it on the UI thread.
@@ -1027,6 +1029,7 @@ impl App {
             self.report_focus();
             self.sync_cursor_style();
             self.request_diff();
+            self.request_files_preview();
             if self.dirty
                 && last_draw.elapsed() >= frame
                 && self.sync_hold_until().is_none_or(|h| Instant::now() >= h)

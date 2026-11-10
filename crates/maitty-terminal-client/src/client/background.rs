@@ -570,6 +570,21 @@ impl App {
         self.spawn_bg(move || Bg::Diff(dir, sel, tasks::diff_of(&job)));
     }
 
+    /// Reads the file the Files view now points at, off the UI thread.
+    pub(super) fn request_files_preview(&mut self) {
+        let Some(View::Files(v)) = &mut self.view else {
+            return;
+        };
+        let Some(path) = v.preview_wanted.take() else {
+            return;
+        };
+        let root = v.root.clone();
+        self.spawn_bg(move || {
+            let lines = files::preview(&path);
+            Bg::FilesPreview(root, path, lines)
+        });
+    }
+
     pub(super) fn spawn_bg(&self, f: impl FnOnce() -> Bg + Send + 'static) {
         let tx = self.bg.clone();
         let job = move || {
@@ -759,6 +774,14 @@ impl App {
                         v.in_preview = true;
                     }
                     v.refresh_preview();
+                }
+            }
+            (Bg::FilesPreview(root, path, lines), _) => {
+                if let Some(View::Files(v)) = &mut self.view
+                    && v.root == root
+                    && v.preview_read(&path, lines)
+                {
+                    self.dirty = true;
                 }
             }
             (Bg::TreeRecent(root, list), _) => {

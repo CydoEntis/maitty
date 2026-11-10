@@ -190,6 +190,8 @@ pub struct FilesTree {
     /// rel path -> the agent changing it
     pub editing: HashMap<String, String>,
     pub preview: Option<(PathBuf, Vec<String>)>,
+    /// The selected file, not read yet: its lines are read off the UI thread and arrive later.
+    pub(super) preview_wanted: Option<PathBuf>,
     /// Showing recent files (Downloads, Desktop, …) instead of the tree.
     pub recent: bool,
     pub recent_list: Option<Vec<FileEntry>>,
@@ -758,6 +760,7 @@ impl FilesTree {
             git: HashMap::new(),
             editing: HashMap::new(),
             preview: None,
+            preview_wanted: None,
             recent: false,
             recent_list: None,
             loading: true,
@@ -1029,9 +1032,13 @@ impl FilesTree {
         self.shown_count()
     }
 
+    /// Points the preview at the selected row. A file's lines are not read here: the file can be
+    /// any size, and this runs on every move through the tree. They are asked for
+    /// (`preview_wanted`) and shown when they arrive.
     pub fn refresh_preview(&mut self) {
         let Some(n) = self.selected() else {
             self.preview = None;
+            self.preview_wanted = None;
             return;
         };
         if self.preview.as_ref().is_none_or(|(p, _)| *p != n.path) {
@@ -1044,6 +1051,7 @@ impl FilesTree {
                 .filter(|c| c.path.parent() == Some(n.path.as_path()))
                 .count();
             self.preview = Some((n.path.clone(), vec![format!("folder · {kids} items")]));
+            self.preview_wanted = None;
             return;
         }
         if self.preview.as_ref().is_some_and(|(p, _)| *p == n.path) {
@@ -1051,7 +1059,19 @@ impl FilesTree {
         }
         self.scroll = 0;
         self.drawn_cache = None;
-        self.preview = Some((n.path.clone(), super::files::preview(&n.path)));
+        self.preview = Some((n.path.clone(), Vec::new()));
+        self.preview_wanted = Some(n.path.clone());
+    }
+
+    /// The lines read for `path`, unless the selection moved on while they were read.
+    pub(super) fn preview_read(&mut self, path: &Path, lines: Vec<String>) -> bool {
+        let Some((_, text)) = self.preview.as_mut().filter(|(shown, _)| shown == path) else {
+            return false;
+        };
+        *text = lines;
+        self.drawn_cache = None;
+        self.code_cache = None;
+        true
     }
 }
 

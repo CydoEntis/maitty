@@ -12886,6 +12886,19 @@ mod files_panel_tests {
             views::scan_tree(root),
             views::git_marks(root),
         ));
+        preview_read(app);
+    }
+
+    /// The selected file read, as the background read would hand it back.
+    fn preview_read(app: &mut App) {
+        let Some(View::Files(v)) = &mut app.view else {
+            return;
+        };
+        let Some(path) = v.preview_wanted.take() else {
+            return;
+        };
+        let (root, lines) = (v.root.clone(), files::preview(&path));
+        app.on_bg(Bg::FilesPreview(root, path, lines));
     }
 
     fn files(app: &App) -> &views::FilesTree {
@@ -12897,6 +12910,7 @@ mod files_panel_tests {
 
     fn key(app: &mut App, code: KeyCode) {
         app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+        preview_read(app);
     }
 
     fn select(app: &mut App, name: &str) {
@@ -12910,6 +12924,35 @@ mod files_panel_tests {
             .position(|(_, n)| n.label == name)
             .expect("the file is listed");
         v.refresh_preview();
+        preview_read(app);
+    }
+
+    #[test]
+    fn a_files_lines_arrive_after_it_is_selected_and_a_late_read_of_another_is_dropped() {
+        let dir = project("late-read");
+        let mut app = screen_in(&dir, 160, 45);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        let Some(View::Files(v)) = &mut app.view else {
+            panic!("Files is open")
+        };
+        v.expanded.insert(v.root.join("src"));
+        v.sel = v
+            .visible()
+            .iter()
+            .position(|(_, n)| n.label == "main.rs")
+            .expect("the file is listed");
+        v.refresh_preview();
+        let main = dir.join("src").join("main.rs");
+        assert_eq!(v.preview, Some((main.clone(), Vec::new())), "nothing is read on selecting");
+        assert_eq!(v.preview_wanted, Some(main.clone()));
+        let notes = dir.join("notes.txt");
+        app.on_bg(Bg::FilesPreview(dir.clone(), notes.clone(), files::preview(&notes)));
+        assert_eq!(files(&app).preview, Some((main.clone(), Vec::new())));
+        preview_read(&mut app);
+        let shown = files(&app).preview.as_ref().expect("a preview");
+        assert_eq!(shown.1.first().map(String::as_str), Some("let line_1 = 1;"));
+        assert_eq!(files(&app).preview_wanted, None, "read once");
     }
 
     #[test]
@@ -13105,6 +13148,7 @@ mod files_panel_tests {
                 modifiers,
             });
         }
+        preview_read(app);
     }
 
     /// Where a row of the tree is drawn, by its text.
@@ -13594,6 +13638,7 @@ mod files_panel_tests {
 
     fn press(app: &mut App, code: KeyCode, mods: KeyModifiers) {
         app.on_key(KeyEvent::new(code, mods));
+        preview_read(app);
     }
 
     fn mouse(app: &mut App, kind: MouseEventKind, (column, row): (u16, u16)) {
@@ -13603,6 +13648,7 @@ mod files_panel_tests {
             row,
             modifiers: KeyModifiers::NONE,
         });
+        preview_read(app);
     }
 
     #[test]
