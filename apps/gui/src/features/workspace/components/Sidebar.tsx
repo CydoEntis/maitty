@@ -62,7 +62,6 @@ export type SidebarProps = {
   onSplitSession: (id: string, direction: 'right' | 'down') => void
   onSplitSubagent: (sessionId: string, subagentId: string) => void
   /** Opens a shell in an agent's folder, beside it. */
-  onOpenTerminal: (id: string) => void
   onCopyPath: (id: string) => void
   onCopyText: (text: string, what: string) => void
   onShowChanges: (id: string) => void
@@ -187,12 +186,11 @@ function Expanded(props: SidebarProps) {
     return [
       { label: 'Open', run: () => { props.onShowSession(session.id) } },
       ...(other ? [{ label: 'Open in split right', run: () => { props.onSplitSession(session.id, 'right') } }, { label: 'Open in split down', run: () => { props.onSplitSession(session.id, 'down') } }] : []),
-      ...(agent ? [{ label: 'New terminal', run: () => { props.onOpenTerminal(session.id) }, disabled: !props.canStart }] : []),
+      ...(agent ? [{ label: 'Show changes', run: () => { props.onShowChanges(session.id) } }] : []),
       'separator',
       { label: 'Rename…', hint: 'F2', run: () => { props.onRenameSession(session.id) } },
       { label: 'Copy folder path', run: () => { props.onCopyPath(session.id) } },
       ...(session.machineName === null ? [] : [{ label: 'Get a file…', disabled: !props.online, run: () => { props.onGetFile(session.id) } }]),
-      ...(agent ? [{ label: 'Show changes', run: () => { props.onShowChanges(session.id) } }] : []),
       // A finished agent waits under Finished until you look; this files it under Idle without opening it.
       ...(session.status === 'done' ? [{ label: 'Mark as done', disabled: !props.online, run: () => { props.onMarkDone(session.id) } }] : []),
       'separator',
