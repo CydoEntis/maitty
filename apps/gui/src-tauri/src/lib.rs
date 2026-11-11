@@ -5,6 +5,7 @@ mod file_send;
 mod attachment;
 mod image_paste;
 pub mod hub;
+mod agent_auth;
 mod daemon_log;
 mod export;
 mod highlight;
@@ -15,6 +16,7 @@ mod machines;
 mod changes;
 mod claude_models;
 mod new_chat;
+mod open_link;
 mod output_socket;
 mod performance;
 mod project_files;
@@ -366,11 +368,35 @@ fn claude_rows(config: &str, settings: &str) -> Vec<AgentModel> {
 /// Claude Code's own list of its models (`claude_models::ask`), started in the home folder so no
 /// project's settings shape it.
 async fn ask_claude_for_models(home: &std::path::Path) -> Result<Vec<claude_models::Listed>, String> {
-    let executable = tauri::async_runtime::spawn_blocking(maitty_desktop_client::claude_executable)
+    claude_models::ask(&find_claude().await?, home).await
+}
+
+/// Where Claude Code is on this computer. The search reads the disk, so it runs off the async threads.
+async fn find_claude() -> Result<PathBuf, String> {
+    tauri::async_runtime::spawn_blocking(maitty_desktop_client::claude_executable)
         .await
         .map_err(|error| format!("the search for Claude Code stopped: {error}"))?
-        .map_err(|error| format!("{error:#}"))?;
-    claude_models::ask(&executable, home).await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// The slash commands an agent takes in `folder`, for the chat's command picker. Claude Code is asked
+/// for its own list (`claude_models::ask_commands`), started in the session's folder so the project's
+/// commands and skills are among them; the other agents have no list to ask for yet. The window names
+/// the folder, so only a full path to a folder that exists is started in, and the home folder
+/// otherwise. That folder is one an agent of the person's already runs in.
+#[tauri::command]
+async fn agent_commands(app: tauri::AppHandle, agent: String, folder: String) -> Result<Vec<claude_models::Command>, String> {
+    if agent != "claude" {
+        return Ok(Vec::new());
+    }
+    let home = app.path().home_dir().map_err(|error| error.to_string())?;
+    let start = tauri::async_runtime::spawn_blocking(move || {
+        let folder = PathBuf::from(folder);
+        if folder.is_absolute() && folder.is_dir() { folder } else { home }
+    })
+    .await
+    .map_err(|error| error.to_string())?;
+    claude_models::ask_commands(&find_claude().await?, &start).await
 }
 
 /// The models an agent offers on this computer. Claude Code is asked for its own list
@@ -1207,6 +1233,9 @@ pub fn run() {
             tray::set_tray_sessions,
             connect_agent,
             agent_models,
+            agent_commands,
+            agent_auth::agent_auth_status,
+            agent_auth::agent_sign_out,
             new_chat::agents_installed,
             new_chat::git_branches,
             new_chat::git_switch_branch,
@@ -1217,7 +1246,9 @@ pub fn run() {
             machines::list_machines,
             terminal_stream::list_machines_overview,
             terminal_stream::retry_machine,
+            open_link::open_link,
             daemon_log::open_daemon_log,
+            daemon_log::export_daemon_log,
             highlight::highlight_file,
             machine_update::update_machine,
             machine_update::machine_activity,
