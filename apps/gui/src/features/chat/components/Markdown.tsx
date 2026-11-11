@@ -4,6 +4,9 @@ import { HighlightedLine } from '@/components/HighlightedLine'
 import { fileTag } from '@/features/inspect/fileTag'
 import { extensionForLanguage } from '@/lib/highlight'
 import { toast } from '@/lib/toast'
+import { copyText } from '@/lib/clipboard'
+import { errorMessage } from '@/lib/error-message'
+import { isDesktop, openLink } from '@/api/daemon'
 import { parseMarkdown, parseInline, type Block, type Inline, type TableAlign } from '../markdown'
 import { codeExtension, tableCsv, tableHtml, tableMarkdown } from '../exportBlock'
 import { OpenFileContext } from '../openFile'
@@ -12,19 +15,26 @@ import { FileBadge } from './cardParts'
 
 /**
  * Renders the agent's markdown as React elements (never as HTML; see `markdown.ts`). A link is
- * a button, not an anchor: the app has no route that opens an address outside the window, and an
- * anchor would navigate the webview away from the app. Choosing a link copies its address.
+ * a button, not an anchor: an anchor would navigate the webview away from the app. Choosing a link
+ * opens it in the person's own browser, through the host; outside the desktop app, where there is
+ * no host to ask, it copies the address.
  */
 
 function copyLink(href: string): void {
-  const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard
-  if (clipboard === undefined) {
-    toast.message(href)
+  copyText(href).then(
+    () => { toast.message('Link copied') },
+    () => { toast.error('Could not copy the link') },
+  )
+}
+
+function followLink(href: string): void {
+  if (!isDesktop()) {
+    copyLink(href)
     return
   }
-  clipboard.writeText(href).then(
-    () => { toast.message('Link copied'); },
-    () => { toast.message(href) },
+  openLink(href).then(
+    () => { toast.message('Opened in your browser', { action: { label: 'Copy link', onClick: () => { copyLink(href) } } }) },
+    (error: unknown) => { toast.error(errorMessage(error, 'Could not open the link'), { action: { label: 'Copy link', onClick: () => { copyLink(href) } } }) },
   )
 }
 
@@ -54,7 +64,7 @@ function Inlines({ nodes }: { nodes: readonly Inline[] }): ReactNode {
         return <em key={index}><Inlines nodes={node.children} /></em>
       case 'link':
         return (
-          <button key={index} type="button" title={`${node.href} (click to copy)`} className="cursor-pointer border-0 bg-transparent p-0 text-left text-[var(--accent-text)] underline underline-offset-2 hover:opacity-80" onClick={() => { copyLink(node.href) }}>
+          <button key={index} type="button" title={`${node.href} (click to open in your browser)`} className="cursor-pointer border-0 bg-transparent p-0 text-left text-[var(--accent-text)] underline underline-offset-2 hover:opacity-80" onClick={() => { followLink(node.href) }}>
             <Inlines nodes={node.children} />
           </button>
         )

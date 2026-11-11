@@ -15,6 +15,8 @@ import { forgetOperations } from './features/chat/sendOperation'
 const daemon = vi.hoisted(() => ({
   connectAgent: vi.fn(() => Promise.resolve()),
   loadAgentModels: vi.fn(() => Promise.resolve([] as { id: string; label: string; blurb: string }[])),
+  // Not a mock: a chat asks for its agent's commands as it opens, whatever a test resets.
+  loadAgentCommands: () => Promise.resolve([] as { name: string; description: string; hint: string; aliases: string[] }[]),
   loadConversations: vi.fn<() => Promise<Conversation[]>>(),
   loadPerformanceSample: vi.fn<() => Promise<never>>(() => new Promise(() => {})),
   listenSessionsChanged: vi.fn(() => Promise.resolve(() => {})),

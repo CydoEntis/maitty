@@ -1,8 +1,8 @@
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FAKE_CONVERSATION, FakeDaemonHistory } from '../fakeDaemonHistory'
-import { forgetComposers } from '../composerStore'
+import { forgetComposers, peekComposer } from '../composerStore'
 import { forgetFirstMessages, holdStartChoice, startChoiceOf } from '../firstMessage'
 import { forgetChoices } from '../agentChoice'
 import { forgetChatFeeds, IDLE_POLL_MS } from '../useChatFeed'
@@ -101,7 +101,7 @@ describe('changing the mode, the model and the reasoning of a chat that follows 
     expect(typeInto).not.toHaveBeenCalled()
   })
 
-  it('keeps both chips in place while the agent works, greyed out with the reason, and sends nothing from them', async () => {
+  it('keeps the mode chip in place while the agent works, greyed out with the reason, and sends nothing from it', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const typeInto = open('claude', 'Working')
     await settle(IDLE_POLL_MS)
@@ -109,14 +109,28 @@ describe('changing the mode, the model and the reasoning of a chat that follows 
     const mode = screen.getByRole('button', { name: /^Permission mode: Auto/ })
     expect(mode).toHaveAttribute('aria-disabled', 'true')
     expect(mode).toHaveAttribute('title', expect.stringMatching(/working/))
-    const model = screen.getByRole('button', { name: /^Agent, model and reasoning/ })
-    expect(model).toHaveAttribute('aria-disabled', 'true')
 
     await user.click(mode)
-    await user.click(model)
     expect(screen.queryByRole('menuitemradio')).not.toBeInTheDocument()
-    expect(screen.queryByRole('radio')).not.toBeInTheDocument()
     expect(typeInto).not.toHaveBeenCalled()
+  })
+
+  it('takes a model and an effort picked while the agent works, and types them in when its turn ends, the last pick of each', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const typeInto = open('claude', 'Working')
+    await settle(IDLE_POLL_MS)
+
+    const model = screen.getByRole('button', { name: /^Agent, model and reasoning/ })
+    expect(model).not.toHaveAttribute('aria-disabled', 'true')
+    await user.click(model)
+    await user.click(await screen.findByRole('radio', { name: /^Sonnet 5\.5/ }))
+    await user.click(screen.getByRole('radio', { name: /^Opus 5\.5/ }))
+    await user.click(screen.getByRole('radio', { name: 'High' }))
+
+    // Nothing is typed into the turn that is running: the picks wait in the queue, where they can be seen.
+    expect(typeInto).not.toHaveBeenCalled()
+    expect(peekComposer(FAKE_CONVERSATION).held.map((message) => message.text)).toEqual(['/effort high', '/model claude-opus-5-5'])
+    expect(within(screen.getByRole('list', { name: 'Queued messages' })).getByRole('listitem')).toHaveTextContent('/effort high')
   })
 
   it('starts from what was picked on the new-chat page, before the agent has said anything', async () => {

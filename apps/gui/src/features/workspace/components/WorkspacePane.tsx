@@ -7,6 +7,7 @@ import { toast } from '@/lib/toast'
 import { answerHelpers, sendTerminalInput } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
 import { isChatSession } from '../model/chatSession'
+import { carryDraftToTerminal } from '../model/draftCarry'
 import { PaneCard } from './PaneCard'
 import { LOCAL_MACHINE } from '@/api/machines'
 import { AgentTerminals } from './AgentTerminals'
@@ -43,6 +44,10 @@ export function WorkspacePane({ shown, pane, kept }: {
   const chatOnly = isChatSession(session.conversation)
   const subagent = openSubagent?.sessionId === session.id ? session.subagents.find((child) => child.id === openSubagent.subagentId) : undefined
   const typeInto = chatOnly ? undefined : (text: string) => sendTerminalInput({ id: session.id, generation: session.conversation.generation ?? 0 }, text)
+  const showTerminal = () => {
+    paneViews.choose(session.id, 'terminal')
+    void carryDraftToTerminal(session).catch((error: unknown) => { toast.error(errorMessage(error, 'Could not move your message to the terminal')) })
+  }
   const terminals = ownsTerminals(session)
   const dock = preferences.terminalDock
   // A shell is a terminal already: its further terminals stay in the side panel, never under it.
@@ -63,11 +68,12 @@ export function WorkspacePane({ shown, pane, kept }: {
       dragging={dragId === pane.id}
       dropWord={dragId === null ? 'Drop to show it here' : 'Drop to swap'}
       view={chat.view}
-      {...(chatOnly || !hasChat(chat.availability) ? {} : { onViewChange: (view: PaneView) => { paneViews.choose(session.id, view) } })}
+      {...(chatOnly || !hasChat(chat.availability) ? {} : { onViewChange: (view: PaneView) => { if (view === 'terminal') showTerminal(); else paneViews.choose(session.id, view) } })}
       chat={chat.view === 'chat' && !kept ? (
         <ChatPane
           availability={chat.availability}
           hasTerminal={!chatOnly}
+          worktree={chatOnly ? undefined : session.worktree}
           root={session.repoRoot ?? session.cwd}
           onOpenDiff={showChanges}
           onOpenFile={(path, line) => { openPath(session, path, line ?? undefined) }}
@@ -76,6 +82,7 @@ export function WorkspacePane({ shown, pane, kept }: {
           asking={session.asking}
           sessionId={session.id}
           paneStatus={session.status}
+          usage={{ context: session.usage.context, limits: session.limits }}
           process={session.process}
           online={online}
           folder={folderNameOf(session)}
@@ -83,7 +90,7 @@ export function WorkspacePane({ shown, pane, kept }: {
           subagent={subagent ?? null}
           onBackToMain={() => { setOpenSubagent(null) }}
           onOpenFiles={() => { togglePanel(pane.id, session.id, 'files') }}
-          onBackToTerminal={() => { paneViews.choose(session.id, 'terminal') }}
+          onBackToTerminal={showTerminal}
           onStartAgent={(agent) => {
             paneViews.choose(session.id, 'terminal')
             void sendTerminalInput({ id: session.id, generation: session.conversation.generation ?? 0 }, `${agent}\r`).catch((error: unknown) => { toast.error(errorMessage(error, `Could not start ${agent}`)) })

@@ -29,6 +29,8 @@ type StartingChatProps = {
   branch?: string | null
   /** The folder's full path, to say whether it is a worktree, as the real chat will. */
   root?: string | null
+  /** The pane runs in a linked worktree, as the daemon says; it comes before what the folder's list says. */
+  worktree?: boolean
   /** What the daemon says the session is doing: Needs before any chat events means a question only the terminal shows. */
   paneStatus?: SessionStatus
   /** The question on the agent's screen, as the daemon read it: shown here with its choices so it can be answered without the terminal. */
@@ -55,7 +57,7 @@ function echoed(message: string) {
  * box are there at once. A message sent now is held and goes out when the real chat takes over; a
  * half-typed one is carried across.
  */
-export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', branch = null, root = null, paneStatus, asking = '', typeInto }: StartingChatProps) {
+export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', branch = null, root = null, worktree: paneWorktree, paneStatus, asking = '', typeInto }: StartingChatProps) {
   const waiting = paneStatus === 'needs'
   const [branches] = useFolderBranches(root ?? '')
   const menu = waiting && typeInto !== undefined ? parseScreenMenu(asking) : null
@@ -122,8 +124,9 @@ export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', 
 
   return (
     <div className="mx-chat is-starting" onClick={keepComposerFocus}>
-      {/* It floats over the conversation (chat.css), so it comes and goes without moving anything. */}
-      {(late || waiting) && (
+      {/* It floats over the conversation (chat.css), so it comes and goes without moving anything. A question that can be
+          answered here is its own notice (the tray over the message box), so this one stays away. */}
+      {menu === null && (late || waiting) && (
         <div className="mx-chat-notices">
           <span role="note" className="is-warn">{waiting ? waitingInTerminalHint(agent) : noEventsHint(agent)}</span>
           <span className="mx-spacer" />
@@ -131,7 +134,6 @@ export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', 
           {!waiting && <button type="button" className="mx-sub-back" disabled={connecting} onClick={connect}>{connecting ? 'Connecting…' : `Connect ${agent}`}</button>}
         </div>
       )}
-      {menu !== null && <ScreenMenuTray agent={agent} menu={menu} send={sendKeys} />}
       {held === null ? (
         <p className="mx-chat-empty">Type below: it is sent as soon as {agent} is ready.</p>
       ) : (
@@ -145,13 +147,14 @@ export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', 
         agent={agent}
         composer={composer}
         waiting={held !== null}
+        question={menu === null ? null : <ScreenMenuTray agent={agent} menu={menu} send={sendKeys} />}
         facts={{
           mode: modeLabel(started?.mode ?? null),
           modeDanger: started?.mode === BYPASS_MODE,
           modeKey: started?.mode ?? null,
           folder,
           branch,
-          worktree: isWorktree(branches, root),
+          worktree: paneWorktree ?? isWorktree(branches, root),
           model: null,
           onOpenFolder: null,
           // The chips the real chat will have are drawn now, with what was picked, so nothing is added or removed when it takes over.

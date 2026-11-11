@@ -1528,3 +1528,45 @@ exe with the same isolated variables, applies the same pass rule and stops both.
 
 **Acceptance:** as ticket P5-9, on `windows-latest`: green on a push to `dev`, shown red once with
 the bundled daemon removed, no process left behind, `docs/TESTING.md` updated. The gate passes.
+
+## Follow-ups from 2026-11-11 (after the chat and daemon reliability release)
+
+Parked here because Plane was not reachable from the session that found them.
+
+### Hold a terminal agent's queued messages in the daemon
+
+Messages queued for an agent that runs in a terminal are held by the desktop window
+(`composerStore` `held`, sent by the message box or by `useHeldMessages`). They are typed in only
+while a window is open, so closing the window stops the queue; the queued card's tooltip says so.
+A chat session the daemon runs has no such limit: the daemon holds its queue.
+
+- Move the window's queue onto the daemon's own follow-up queue for panes (`Command::QueueFollowUp`,
+  `ClearQueue`, `TermInfo.queued`), which the terminal app already uses.
+- The window's queue card removes and edits one message; the daemon can only clear them all. That
+  needs a new command (remove one by position or id), so it is a protocol change: decide
+  `PROTOCOL_VERSION` and `COMPATIBLE_SINCE` with it (AGENTS.md, non-negotiable 2).
+- A model or effort picked while the agent works is held as `/model …` at the front of the same
+  queue (`holdCommand`); keep that order.
+- Labels: `daemon`, `client`, `feature`.
+
+### Stop hand-writing the agents' command lists
+
+The chat's slash-command picker has two lists written by hand: Claude Code's commands that only its
+terminal runs (`terminalCommands.ts`, from Claude Code 2.1.322) and all of Codex's
+(`codexCommands.ts`, names from OpenAI's command reference, descriptions from Codex CLI 0.167.0).
+Claude Code reports the rest itself (`agent_commands`); nothing reports these. A stale entry is
+answered by the agent ("unknown command"), a missing one is simply not offered.
+
+- First, look at how PandaCode and T3 Code get their command lists, as the owner asked: whether
+  they found an interface these agents expose, or keep a list too.
+- If there is no interface: a script that regenerates both lists from the installed agents, and a
+  test that fails when a list is behind the installed version.
+- Labels: `client`, `agents`, `chore`.
+
+### Smaller things left open on 2026-11-11
+
+- The chat does not draw the options of a dialog only the terminal shows (Claude Code's "We
+  recommend compacting earlier" chooser): it says the agent is waiting and the box is off.
+- A chat session with no pane has no usage strip (context and plan limits come from the pane).
+- "Fable 5.1" shown as the default model was reported once and not reproduced.
+- Links in the terminal view were not looked at; chat links now open in the browser.

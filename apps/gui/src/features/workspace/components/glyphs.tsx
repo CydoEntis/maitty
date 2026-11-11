@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import { SquareCheck, SquareExclamationPoint, TreePine } from 'lucide-react'
 import { attachSpinner, currentGlyph, isWebSpinner, isWideSpinner, spinnerFrames, useSpinnerStyle } from '@/lib/spinner-clock'
 import { WebSpinner } from '@/components/WebSpinner'
 import { SHELL_PROCESS, type SessionStatus } from '../model/session'
@@ -61,6 +62,8 @@ const ICON_DRAWINGS = {
   drawer: () => <Svg size={16} strokeWidth={1.6}><rect x="3" y="4.5" width="18" height="15" rx="2.5" /><path d="M3 14.5h18" /></Svg>,
   maximize: () => <Svg size={15} strokeWidth={1.8}><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></Svg>,
   restore: () => <Svg size={15} strokeWidth={1.8}><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /></Svg>,
+  /** A linked worktree: a tree, so it is not taken for the branch mark beside it. It takes the text's colour. */
+  worktree: ({ size = 11, strokeWidth = 2.2 }: IconProps) => <TreePine size={size} strokeWidth={strokeWidth} aria-hidden="true" />,
   branch: ({ size = 11, strokeWidth = 2.2, stroke = 'var(--ansi-mag)' }: IconProps) => (
     <Svg size={size} strokeWidth={strokeWidth} stroke={stroke}><circle cx="6" cy="6" r="2.5" /><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="8" r="2.5" /><path d="M6 8.5v7M18 10.5c0 4-6 3-10 5.5" /></Svg>
   ),
@@ -130,23 +133,26 @@ export function AppIcon({ process, size, dimmed = false }: { process: string; si
   return <span className={`${className} is-tinted`} style={programStyle(program)} aria-hidden="true">{program.charAt(0).toUpperCase()}</span>
 }
 
+/** Heavier than Lucide's default, so the mark inside the square still reads at a badge's 12px. */
+const BADGE_STROKE = 2.4
+
 /** The badge on a sidebar row's icon: a shape per status, so colour is never the only signal. */
 export function StatusBadge({ status }: { status: SessionStatus }) {
   switch (status) {
     case 'working':
       return <span className="mx-badge is-working"><Spinner className="" /></span>
     case 'needs':
-      return <span className="mx-badge is-needs" aria-hidden="true">!</span>
+      return <span className="mx-badge is-needs" aria-hidden="true"><SquareExclamationPoint strokeWidth={BADGE_STROKE} /></span>
     case 'done':
-      return <span className="mx-badge is-done"><Icon name="check" /></span>
+      return <span className="mx-badge is-done" aria-hidden="true"><SquareCheck strokeWidth={BADGE_STROKE} /></span>
     case 'error':
-      return <span className="mx-badge is-error"><Icon name="close" size={8} strokeWidth={3} /></span>
+      return <span className="mx-badge is-error" aria-hidden="true"><SquareExclamationPoint strokeWidth={BADGE_STROKE} /></span>
     case 'unknown':
       return <span className="mx-badge is-unknown" />
     case 'idle':
       return (
         <span className="mx-badge is-idle" aria-hidden="true">
-          <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M2.6 5.4h3.6l-3.6 4h3.6" /><path d="M7.6 2.4h2l-2 2.4h2" /></svg>
+          <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1.6 5.2h4.4l-4.4 5.2h4.4" /><path d="M7.4 1.4h3l-3 3.6h3" /></svg>
         </span>
       )
   }

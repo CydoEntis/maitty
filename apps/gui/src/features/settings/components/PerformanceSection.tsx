@@ -6,6 +6,7 @@ import { buildPerformanceReport, formatCpu, formatMemory, formatRate, sumCpu, su
 import { environmentOf, useProcessSample } from '../performance-sample'
 import { Card, Row } from './DesktopSettings'
 import { Switch } from '@/components/ui/switch'
+import { copyText } from '@/lib/clipboard'
 
 type Update = <K extends keyof SettingsPreferences>(key: K, value: SettingsPreferences[K]) => void
 
@@ -42,7 +43,7 @@ export function PerformanceSection({ preferences, update, appVersion }: Performa
   const loads = processes.data ?? null
   const copyReport = () => {
     const report = buildPerformanceReport(environmentOf(preferences, appVersion), sample, loads)
-    navigator.clipboard.writeText(report).then(
+    copyText(report).then(
       () => toast.success('Copied the performance report', { id: 'performance-report', duration: 1500 }),
       () => toast.error('Could not copy the report', { id: 'performance-report' }),
     )

@@ -1,8 +1,9 @@
 import { toast } from '@/lib/toast'
 import type { WrittenDocument } from '../writtenDocument'
+import { copyText as writeClipboard } from '@/lib/clipboard'
 
 function copyText(text: string): void {
-  navigator.clipboard.writeText(text).then(
+  writeClipboard(text).then(
     () => { toast.message('Copied') },
     () => { toast.error('Could not copy the document') },
   )

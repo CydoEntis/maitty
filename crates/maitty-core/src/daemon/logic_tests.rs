@@ -2881,6 +2881,66 @@ fn a_session_starting_again_while_helpers_run_keeps_the_agent_working() {
     close(&mut d, &[t]);
 }
 
+/// A helper's own hooks run as separate programs, each stamping its report with the second it ran
+/// in, so what it did last and that it finished can reach the daemon in either order.
+fn helper_report(t: TermId, event: &str, start: bool, reported_at: u64) -> ClientMsg {
+    let mut msg = report(t, "", 0, HookStatus::Same, event);
+    if let ClientMsg::Hook { subagent, .. } = &mut msg {
+        *subagent = Some(Subagent {
+            id: "child-1".into(),
+            kind: "reviewer".into(),
+            start,
+            reported_at,
+            task: None,
+            model: None,
+            effort: None,
+            activity: None,
+        });
+    }
+    msg
+}
+
+#[test]
+fn a_helpers_last_news_arriving_after_it_finished_does_not_bring_it_back() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.apply_hook(helper_report(t, "SubagentStart", true, 100), Some(true), Vec::new());
+    d.apply_hook(helper_report(t, "SubagentStop", false, 200), Some(true), Vec::new());
+    // Its last tool's report was slower than its stop, and stamped a second later.
+    d.apply_hook(helper_report(t, "PostToolUse", true, 201), Some(true), Vec::new());
+
+    assert_eq!(d.terms[&t].subagent_activity[0].state, SubagentState::Completed);
+    assert!(d.terms[&t].subagents.is_empty(), "a finished helper is not listed as running again");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_helper_that_says_it_finished_is_finished_whatever_its_news_was_stamped() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.apply_hook(helper_report(t, "SubagentStart", true, 100), Some(true), Vec::new());
+    // Its last tool's report ran a second after its stop did, and arrived first.
+    d.apply_hook(helper_report(t, "PostToolUse", true, 200), Some(true), Vec::new());
+    d.apply_hook(helper_report(t, "SubagentStop", false, 199), Some(true), Vec::new());
+
+    assert_eq!(d.terms[&t].subagent_activity[0].state, SubagentState::Completed);
+    assert!(d.terms[&t].subagents.is_empty());
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_helper_can_be_started_again_under_the_same_name_after_it_finished() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.apply_hook(helper_report(t, "SubagentStart", true, 100), Some(true), Vec::new());
+    d.apply_hook(helper_report(t, "SubagentStop", false, 200), Some(true), Vec::new());
+    d.apply_hook(helper_report(t, "SubagentStart", true, 300), Some(true), Vec::new());
+
+    assert_eq!(d.terms[&t].subagent_activity[0].state, SubagentState::Working);
+    assert_eq!(d.terms[&t].subagents.len(), 1);
+    close(&mut d, &[t]);
+}
+
 #[test]
 fn delayed_child_start_does_not_undo_its_completion() {
     let (mut d, _rx) = daemon();
@@ -3384,7 +3444,12 @@ fn native_hooks_cannot_keep_an_exited_agent_working_or_hide_its_replacement() {
     d.handle(Ev::Scan(vec![found(None)]));
     let startup = d.terms[&id].status;
     d.handle(Ev::Scan(vec![found(Some("pi"))]));
+    // One scan that misses the agent is a missed read, not an exit.
     d.handle(Ev::Scan(vec![found(None)]));
+    let missed_once = (d.terms[&id].agent.clone(), d.terms[&id].hooked);
+    for _ in 1..AGENT_MISSING_SCANS {
+        d.handle(Ev::Scan(vec![found(None)]));
+    }
     let exited = (
         d.terms[&id].status,
         d.terms[&id].agent.clone(),
@@ -3404,6 +3469,7 @@ fn native_hooks_cannot_keep_an_exited_agent_working_or_hide_its_replacement() {
         Status::Working,
         "initial process scan can lag a native hook"
     );
+    assert_eq!(missed_once, (Some("pi".into()), true));
     assert_eq!(exited, (Status::None, None, false));
     assert_eq!(replacement, (Some("opencode".into()), false, Status::Idle));
 }
@@ -8042,6 +8108,29 @@ fn a_desktop_replay_is_the_end_of_the_ring_and_then_the_screen() {
     close(&mut d, &[t]);
 }
 
+#[test]
+fn a_replay_cut_after_a_full_screen_program_started_still_leaves_it_cleanly() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let term = d.terms.get_mut(&t).unwrap();
+    term.output(b"\x1b[2J\x1b[Hbefore the program\r\n\x1b[?1049h\x1b[2J\x1b[Hfull screen");
+    let (rows, cols) = term.parser.screen().size();
+
+    // The cut falls after the switch to the alternate screen, so the history no longer says it.
+    let replay = term.replay_tail(4);
+    let mut view = vt100::Parser::new(rows, cols, 0);
+    view.process(&replay);
+
+    assert!(view.screen().alternate_screen());
+    assert!(view.screen().contents().contains("full screen"));
+
+    view.process(b"\x1b[?1049lleft");
+    let left = view.screen().contents();
+    assert!(!left.contains("full screen"), "{left:?}");
+    assert!(left.starts_with("before the program\nleft"), "{left:?}");
+    close(&mut d, &[t]);
+}
+
 fn permission_report(term: TermId, status: HookStatus, event: &str, agent: &str, tool: &str, detail: &str) -> ClientMsg {
     let mut msg = report(term, "", 0, status, event);
     if let ClientMsg::Hook { agent: a, ask, .. } = &mut msg {
@@ -8134,6 +8223,117 @@ fn two_panes(d: &mut Daemon) -> (TermId, TermId) {
 fn closed_ago(d: &mut Daemon, term: TermId, ago: Duration) {
     let t = d.terms.get_mut(&term).unwrap();
     t.closing = t.closing.map(|(_, by)| (crate::clock::ago(ago), by));
+}
+
+#[test]
+fn a_report_from_an_agent_the_panes_agent_started_changes_nothing() {
+    let (mut d, _rx) = daemon();
+    let id = pane(&mut d);
+    let from = |session: &str, status: HookStatus, event: &str| {
+        let ClientMsg::Hook { term, agent, cwd, prompt, said, subagent, pid, token, transcript, model, name, background, background_agents, background_reported, ask, call, .. } =
+            report(id, "", 0, status, event)
+        else {
+            unreachable!()
+        };
+        ClientMsg::Hook { term, agent, status, session: Some(session.into()), cwd, prompt, said, subagent, event: event.into(), pid, token, transcript, model, name, background, background_agents, background_reported, ask, call }
+    };
+    d.apply_hook(from("main", HookStatus::Working, "UserPromptSubmit"), Some(true), Vec::new());
+
+    // A headless agent the pane's agent ran: it starts a session of its own, works, and ends it.
+    for (status, event) in [(HookStatus::Idle, "SessionStart"), (HookStatus::Done, "Stop"), (HookStatus::Gone, "SessionEnd")] {
+        d.handle(Ev::HookChecked { msg: from("nested", status, event), verdict: Some(true), chain: vec![4242], nested: true });
+    }
+
+    let t = &d.terms[&id];
+    assert_eq!(t.session.as_deref(), Some("main"), "the pane keeps its own session");
+    assert_eq!(t.agent.as_deref(), Some("claude"), "and its agent is not gone");
+    assert_eq!(t.status, Status::Working, "and it is still working");
+    assert!(!t.trusted.contains(&4242), "nor is the nested agent taken for the pane's own");
+    close(&mut d, &[id]);
+}
+
+/// A pane the desktop app started as an agent, whose agent has said it ended `ago` ago.
+fn ended_agent_pane(d: &mut Daemon, ago: Duration) -> TermId {
+    let id = pane(d);
+    let t = d.terms.get_mut(&id).unwrap();
+    t.owner = crate::protocol::Surface::Desktop;
+    t.cmd = Some("claude".into());
+    d.hook(id, "claude".into(), HookStatus::Idle, "SessionStart", &[]);
+    d.hook(id, "claude".into(), HookStatus::Gone, "SessionEnd", &[]);
+    let t = d.terms.get_mut(&id).unwrap();
+    t.agent_ended = t.agent_ended.map(|_| crate::clock::ago(ago));
+    // Its last keys (the `/exit`) were typed before the agent ended.
+    t.last_input = crate::clock::ago(ago + Duration::from_secs(60));
+    id
+}
+
+#[test]
+fn a_pane_started_as_an_agent_closes_once_its_agent_has_ended() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let soon = ended_agent_pane(&mut d, Duration::ZERO);
+    let ended = ended_agent_pane(&mut d, AGENT_ENDED_GRACE);
+
+    d.close_ended_agents();
+
+    assert!(!d.terms.contains_key(&ended), "the shell left behind goes with its agent");
+    assert!(d.terms.contains_key(&soon), "not before the agent had the time to come back");
+    close(&mut d, &[soon]);
+}
+
+#[test]
+fn an_agent_that_started_over_keeps_its_pane() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    // `/clear` ends the session and starts the next one in the same program.
+    let id = ended_agent_pane(&mut d, AGENT_ENDED_GRACE);
+    d.hook(id, "claude".into(), HookStatus::Idle, "SessionStart", &[]);
+
+    d.close_ended_agents();
+
+    assert!(d.terms.contains_key(&id));
+    assert!(d.terms[&id].agent_ended.is_none());
+    close(&mut d, &[id]);
+}
+
+#[test]
+fn a_shell_someone_went_on_to_use_after_its_agent_ended_is_kept() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let id = ended_agent_pane(&mut d, AGENT_ENDED_GRACE);
+    d.terms.get_mut(&id).unwrap().input(b"ls\r");
+
+    d.close_ended_agents();
+
+    assert!(d.terms.contains_key(&id), "typed into after the agent ended: it is a shell in use");
+    assert!(d.terms[&id].agent_ended.is_none(), "and it is not asked about again");
+    close(&mut d, &[id]);
+}
+
+#[test]
+fn only_a_desktop_pane_started_as_an_agent_ends_with_its_agent() {
+    type Change = fn(&mut crate::daemon::term::Term);
+    let cases: [(&str, Change); 3] = [
+        ("a shell an agent was typed into", |t| t.cmd = None),
+        ("a terminal app's pane", |t| t.owner = crate::protocol::Surface::Terminal),
+        ("a popup", |t| t.popup = true),
+    ];
+    for (name, change) in cases {
+        let (rt, (mut d, _rx)) = (runtime(), daemon());
+        let _in_rt = rt.enter();
+        let id = pane(&mut d);
+        let t = d.terms.get_mut(&id).unwrap();
+        t.owner = crate::protocol::Surface::Desktop;
+        t.cmd = Some("claude".into());
+        change(t);
+        d.hook(id, "claude".into(), HookStatus::Gone, "SessionEnd", &[]);
+        assert!(d.terms[&id].agent_ended.is_none(), "{name}");
+
+        d.close_ended_agents();
+
+        assert!(d.terms.contains_key(&id), "{name}");
+        close(&mut d, &[id]);
+    }
 }
 
 #[test]

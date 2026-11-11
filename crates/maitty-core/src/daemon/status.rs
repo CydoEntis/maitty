@@ -23,11 +23,18 @@ pub(super) fn hook_thread(tx: mpsc::Sender<Ev>) -> std::sync::mpsc::Sender<HookJ
                     Some(root) => scan::descends_from(job.pid, root, &job.known),
                     None => (None, Vec::new()),
                 };
+                let nested = match (&job.msg, job.root) {
+                    (ClientMsg::Hook { agent, .. }, Some(root)) => {
+                        scan::reports_from_nested_agent(job.pid, root, agent)
+                    }
+                    _ => false,
+                };
                 if tx
                     .blocking_send(Ev::HookChecked {
                         msg: job.msg,
                         verdict,
                         chain,
+                        nested,
                     })
                     .is_err()
                 {
@@ -176,6 +183,20 @@ impl Daemon {
                         || (!sa.start && event_at == activity.updated_at)
                         || (sa.start && activity.state.active() && event_at == activity.updated_at)
                 });
+                // A helper's hooks are separate programs that stamp their own second, so what it
+                // did last and that it finished can arrive in either order. Its word that it
+                // finished stands whatever the stamps say, and only a start of its own
+                // (`SubagentStart`) brings a finished helper back: news from inside it that
+                // arrives afterwards is late, not a second run. Without this a finished helper
+                // was listed as running again, then as stopped when the turn ended.
+                let finished = current.is_some_and(|activity| {
+                    matches!(
+                        activity.state,
+                        SubagentState::Completed | SubagentState::Failed | SubagentState::Cancelled
+                    )
+                });
+                let late_news = sa.start && finished && event != "SubagentStart";
+                let event_is_current = !late_news && (event_is_current || (!sa.start && current.is_some()));
                 if sa.start {
                     // Its start, or news from one already running (listed once; one
                     // missed while the app was away joins the list here).
@@ -446,6 +467,11 @@ impl Daemon {
                 if t.conversation_id.is_none() {
                     t.agent = None;
                     t.session = None;
+                    // A pane the desktop app started as this agent ends with it, unless an agent
+                    // is back in a moment (`Daemon::close_ended_agents`).
+                    if t.owner == Surface::Desktop && t.cmd.is_some() && !t.popup && !t.spare {
+                        t.agent_ended = Some(now);
+                    }
                 }
                 t.awaiting_background = false;
                 t.background_known.clear();
@@ -467,6 +493,8 @@ impl Daemon {
             HookStatus::Done => Status::Done,
         };
         t.hooked = true;
+        // An agent is reporting from the pane again: it did not end, it started over.
+        t.agent_ended = None;
         if agent == "codex" && CODEX_LIFECYCLE_EVENTS.contains(&event) {
             t.lifecycle_hooks = true;
         }

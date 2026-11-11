@@ -4,13 +4,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Conversation } from '@/data/preview'
-import App from './App'
+import { Root } from './Root'
 import { toast } from 'sonner'
 import { hotkeyRows } from './features/workspace/model/shortcuts'
 
 const daemon = vi.hoisted(() => ({
   connectAgent: vi.fn(() => Promise.resolve()),
   loadAgentModels: vi.fn(() => Promise.resolve([] as { id: string; label: string; blurb: string }[])),
+  // Not a mock: a chat asks for its agent's commands as it opens, whatever a test resets.
+  loadAgentCommands: () => Promise.resolve([] as { name: string; description: string; hint: string; aliases: string[] }[]),
   loadConversations: vi.fn<() => Promise<Conversation[]>>(),
   // Opening Settings > Performance asks the host for a sample; this page has nothing to show before one arrives.
   loadPerformanceSample: vi.fn<() => Promise<never>>(() => new Promise(() => {})),
@@ -654,6 +656,21 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     await waitFor(() => { expect(daemon.closeSessionWithUndo).toHaveBeenCalledWith(expect.objectContaining({ id: 't2' })) })
   })
 
+  it('ends an agent\'s own terminals with it, so none is left behind as a session of its own', async () => {
+    const user = userEvent.setup()
+    window.localStorage.setItem('maitty.gui.agent-terminals.v1', JSON.stringify({ t2: ['t3'] }))
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`, { agent: 'claude', status: 'idle' }), term(3, `${HOME}/a`)])
+    renderDesktopApp()
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+
+    await user.click(screen.getByRole('button', { name: 'Close pane · ends its session' }))
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Stop claude' }))
+
+    await waitFor(() => { expect(daemon.closeSessionWithUndo.mock.calls.map(([conversation]) => conversation.id).sort()).toEqual(['t2', 't3']) })
+    // The notice names what was closed, not how many shells went with it.
+    expect(await screen.findByText(/^Closed /)).not.toHaveTextContent('2 sessions')
+  })
+
   it('ends a shell with nothing running in it at once, without asking, and offers Undo', async () => {
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
     renderDesktopApp()
@@ -691,6 +708,37 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     expect(await screen.findByRole('status', { name: 'Session ended' })).toHaveTextContent('Restart shell')
     expect(screen.getByRole('region', { name: /^Terminal 1: ~\/a/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Status:/ })).not.toBeInTheDocument()
+  })
+
+  it('takes the pane of an agent that ended by itself out of the layout, with the agent\'s own terminals', async () => {
+    window.localStorage.setItem('maitty.gui.agent-terminals.v1', JSON.stringify({ t2: ['t3'] }))
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`, { agent: 'claude', status: 'idle' }), term(3, `${HOME}/b`)])
+    const { client } = renderDesktopApp()
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+
+    // `/exit`: the daemon says the agent is gone (the pane is a bare shell for a moment), then ends the pane.
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`), term(3, `${HOME}/b`)])
+    await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
+    // The window shows it as the bare shell it is for that moment.
+    await screen.findByRole('list', { name: 'Terminals' })
+    daemon.loadConversations.mockResolvedValue([term(3, `${HOME}/b`)])
+    await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
+
+    await waitFor(() => { expect(screen.queryByRole('region', { name: 'Shell in ~/a' })).not.toBeInTheDocument() })
+    expect(screen.queryByRole('status', { name: 'Session ended' })).not.toBeInTheDocument()
+    await waitFor(() => { expect(daemon.closeSessionWithUndo.mock.calls.map(([conversation]) => conversation.id)).toEqual(['t3']) })
+  })
+
+  it('keeps the ended pane of a shell, and of an agent that went without ending its session', async () => {
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`, { agent: 'claude', status: 'idle' })])
+    const { client } = renderDesktopApp()
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+
+    // The pane died with the agent in it: what it last showed may be why, so it stays to be read.
+    daemon.loadConversations.mockResolvedValue([])
+    await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
+
+    expect(await screen.findByRole('status', { name: 'Session ended' })).toBeInTheDocument()
   })
 
   it('closes an ended pane without stopping anything', async () => {
@@ -974,7 +1022,7 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     expect(within(dialog).getByRole('button', { name: /Appearance/ })).toHaveFocus()
 
     await user.keyboard('t')
-    expect(within(dialog).getByRole('heading', { name: 'Text & cursor' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('heading', { name: 'Terminal' })).toBeInTheDocument()
     await user.keyboard('?')
     expect(within(dialog).getByRole('group', { name: 'Ctrl Alt Shift D' }).querySelectorAll('kbd')).toHaveLength(4)
 
@@ -1371,9 +1419,10 @@ function renderDesktopApp({ firstRun = false }: { firstRun?: boolean } = {}) {
   // Only a first run is greeted; every other test starts as an ordinary launch.
   if (!firstRun) window.localStorage.setItem('maitty.gui.welcomed.v1', '1')
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  // The window's real entry, as `main.tsx` renders it: what is installed there (undo and redo) is under test too.
   const view = render(
     <QueryClientProvider client={client}>
-      <App />
+      <Root />
     </QueryClientProvider>,
   )
   return { client, unmount: view.unmount }

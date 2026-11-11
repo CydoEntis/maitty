@@ -6,7 +6,18 @@ import type { SettingsPreferences } from '../preferences'
 import { machineHeads, type RemoteMachine } from '@/features/workspace/model/machines'
 import { DesktopSettings, type DesktopSettingsSection, type MachinesInfo } from './DesktopSettings'
 
-const PREFS: SettingsPreferences = { exportFolder: '', accent: 'teal', spinner: 'braille', restoreLayout: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, terminalFontFamily: '', terminalFontWeight: 400, terminalFontWeightBold: 700, startFolder: '', themeMode: 'dark', darkTheme: 'Maitty Night', lightTheme: 'Maitty Day', cursorStyle: 'block', scrollback: 10000, scrollSpeed: 1, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', sidebarOrder: 'creation', sidebarGroup: 'status', terminalDock: 'panel', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, monthlyBudget: null, iconSize: 'medium', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal', gemini: 'terminal' }, defaultAgent: 'claude', newSessionView: 'chat', chatFullAccessDefault: false, yoloClaude: false, yoloCodex: false, yoloGemini: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass' }
+const PREFS: SettingsPreferences = { exportFolder: '', accent: 'teal', spinner: 'braille', restoreLayout: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, terminalFontFamily: '', terminalFontWeight: 400, terminalFontWeightBold: 700, startFolder: '', themeMode: 'dark', darkTheme: 'Maitty Night', lightTheme: 'Maitty Day', cursorStyle: 'block', scrollback: 10000, scrollSpeed: 1, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', sidebarOrder: 'creation', sidebarGroup: 'status', terminalDock: 'panel', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, monthlyBudget: null, iconSize: 'medium', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal', gemini: 'terminal' }, defaultAgent: 'claude', newSessionView: 'chat', chatFullAccessDefault: false, yoloClaude: false, yoloCodex: false, yoloGemini: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass', chatWidth: 'auto', chatTextSize: 100 }
+
+const accounts = vi.hoisted(() => ({
+  loadAgentAuth: vi.fn<(agent: string) => Promise<{ installed: boolean; signedIn: boolean | null; account: string; plan: string }>>(),
+  signOutAgent: vi.fn<(agent: string) => Promise<void>>(),
+}))
+
+vi.mock('@/api/daemon', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/daemon')>()),
+  loadAgentAuth: accounts.loadAgentAuth,
+  signOutAgent: accounts.signOutAgent,
+}))
 
 function info(overrides: Partial<MachinesInfo> = {}): MachinesInfo {
   return { known: true, list: [], onRetry: vi.fn(), onRemove: vi.fn(), onGrant: vi.fn(), onUpdate: vi.fn(() => Promise.resolve()), onCheckActivity: vi.fn(() => Promise.resolve(null)), onCopyCommand: vi.fn(), add: { windows: false, loadHosts: () => Promise.resolve([]), onAdd: vi.fn(), onCancel: vi.fn() }, ...overrides }
@@ -21,11 +32,53 @@ function renderSettings(section: DesktopSettingsSection, overrides: Partial<Para
   return { onChange, onSection, onPreviewTheme, onShowWelcome }
 }
 
+describe('the agents page', () => {
+  it('says who each agent is signed in as, signs one out with its own command, and asks again', async () => {
+    const user = userEvent.setup()
+    accounts.loadAgentAuth.mockReset().mockImplementation((agent) => Promise.resolve(agent === 'claude'
+      ? { installed: true, signedIn: true, account: 'me@example.com', plan: 'max' }
+      : { installed: true, signedIn: false, account: '', plan: '' }))
+    accounts.signOutAgent.mockReset().mockResolvedValue(undefined)
+    renderSettings('agents')
+
+    expect(await screen.findByText('Signed in: me@example.com · max')).toBeInTheDocument()
+    expect(screen.getByText('Not signed in.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Sign in to Claude' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Sign out of Claude' }))
+
+    expect(accounts.signOutAgent).toHaveBeenCalledExactlyOnceWith('claude')
+    await waitFor(() => { expect(accounts.loadAgentAuth.mock.calls.filter(([agent]) => agent === 'claude')).toHaveLength(2) })
+  })
+
+  it('opens the agent\'s own sign-in for one that is not signed in, and offers nothing for one that is not installed', async () => {
+    const user = userEvent.setup()
+    const onSignInAgent = vi.fn()
+    accounts.loadAgentAuth.mockReset().mockImplementation((agent) => Promise.resolve(agent === 'claude'
+      ? { installed: false, signedIn: null, account: '', plan: '' }
+      : { installed: true, signedIn: false, account: '', plan: '' }))
+    renderSettings('agents', { onSignInAgent })
+
+    expect(await screen.findByText('Not installed on this computer.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Sign in to Claude' })).not.toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: 'Sign in to Codex' }))
+
+    expect(onSignInAgent).toHaveBeenCalledExactlyOnceWith('codex')
+  })
+
+  it('says when an agent could not be asked', async () => {
+    accounts.loadAgentAuth.mockReset().mockRejectedValue(new Error('The agent did not answer in time'))
+    renderSettings('agents')
+
+    expect((await screen.findAllByText('Could not check: The agent did not answer in time')).length).toBe(2)
+  })
+})
+
 describe('desktop settings', () => {
   it('groups the sections the way the design does', () => {
     renderSettings('general')
     const nav = screen.getByRole('navigation', { name: 'Settings sections' })
-    expect(nav).toHaveTextContent('ESSENTIALSGeneralGTERMINALText & cursorTAppearanceAWORKSPACEUsage & costUNotificationsNMachinesMHotkeys?ADVANCEDDaemonDPerformanceP')
+    expect(nav).toHaveTextContent('ESSENTIALSGeneralGChatCAgentsETERMINALTerminalTAppearanceASidebarSWORKSPACEUsage & costUNotificationsNMachinesMHotkeys?ADVANCEDDaemonDPerformanceP')
     expect(within(nav).getByRole('button', { name: /General/ })).toHaveAttribute('aria-current', 'page')
   })
 
@@ -78,7 +131,7 @@ describe('desktop settings', () => {
 
   it('sets which view a Claude, Codex or Gemini session opens in, one agent at a time', async () => {
     const user = userEvent.setup()
-    const { onChange } = renderSettings('general')
+    const { onChange } = renderSettings('chat')
 
     const claude = screen.getByRole('radiogroup', { name: 'Claude sessions open in' })
     expect(within(claude).getByRole('radio', { name: 'Terminal' })).toBeChecked()
@@ -88,7 +141,7 @@ describe('desktop settings', () => {
 
   it('chooses the default agent and what a new session opens as', async () => {
     const user = userEvent.setup()
-    const { onChange } = renderSettings('general')
+    const { onChange } = renderSettings('chat')
 
     const agent = screen.getByRole('radiogroup', { name: 'Default agent' })
     expect(within(agent).getByRole('radio', { name: 'Claude' })).toBeChecked()
@@ -103,7 +156,7 @@ describe('desktop settings', () => {
 
   it('has a yolo switch for each agent, all off, set from the settings screen', async () => {
     const user = userEvent.setup()
-    const { onChange } = renderSettings('general')
+    const { onChange } = renderSettings('chat')
 
     for (const agent of ['Claude', 'Codex', 'Gemini']) expect(screen.getByRole('switch', { name: `Yolo mode for ${agent}` })).not.toBeChecked()
     await user.click(screen.getByRole('switch', { name: 'Yolo mode for Codex' }))
@@ -112,7 +165,7 @@ describe('desktop settings', () => {
 
   it('chooses whether new chats get full access', async () => {
     const user = userEvent.setup()
-    const { onChange } = renderSettings('general')
+    const { onChange } = renderSettings('chat')
 
     await user.click(screen.getByRole('switch', { name: 'Full access in new chats' }))
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ chatFullAccessDefault: true }))
@@ -335,7 +388,7 @@ describe('desktop settings', () => {
 
   it('sets how big the sidebar icons are', async () => {
     const user = userEvent.setup()
-    const { onChange } = renderSettings('appearance')
+    const { onChange } = renderSettings('sidebar')
 
     await user.click(within(screen.getByRole('radiogroup', { name: 'Sidebar icon size' })).getByRole('radio', { name: 'Small' }))
 
@@ -402,7 +455,7 @@ describe('performance section', () => {
 describe('appearance section', () => {
   it('turns the see-through terminal on', async () => {
     const user = userEvent.setup()
-    const { onChange } = renderSettings('appearance')
+    const { onChange } = renderSettings('terminal')
     await user.click(screen.getByRole('switch', { name: 'See-through terminal' }))
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ terminalSeeThrough: true }))
   })

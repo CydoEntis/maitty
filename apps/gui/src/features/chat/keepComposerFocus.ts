@@ -6,7 +6,7 @@ const OWN_CLICK = 'a, button, input, textarea, select, summary, [role="button"],
 /**
  * A click on the chat's own text or empty space gives the focus back to the message box, as in any chat app, instead of
  * dropping it on the page, which left you clicking again to get back to typing. Controls keep their own click, and a drag
- * that selected text is left alone so the selection can be copied.
+ * that selected text is left alone so the selection stays for its bar (Copy, Quote).
  */
 export function keepComposerFocus(event: MouseEvent<HTMLElement>): void {
   const target = event.target

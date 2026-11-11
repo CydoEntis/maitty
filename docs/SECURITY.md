@@ -139,6 +139,38 @@ it replies or after 20 seconds, and it keeps no session. Each model name it retu
 (`is_model_name`) before it can reach a launch line. It runs as the user with the user's own Claude
 Code settings, so the person's start-up hooks run, as they do for any Claude Code session.
 
+`open_link` (`open_link.rs`) opens a web address in the person's default browser when they click a
+link in a chat. A chat's text is the agent's, so the address is untrusted: only `http` and `https`
+with a host are opened, with no whitespace or control character and at most 4096 characters, and
+the address is one argument to the system's opener (`xdg-open`, `open`, `rundll32
+url.dll,FileProtocolHandler`), never a shell line. Nothing is opened unless a link was clicked, and
+the webview itself never navigates. What the page then does is the browser's to contain.
+
+`agent_auth_status` and `agent_sign_out` (`agent_auth.rs`) ask an agent's own command line whether
+its account is signed in (`claude auth status --json`, `codex login status`) and end the sign-in
+(`claude auth logout`, `codex logout`), for Settings › Agents. The program is the one the host finds
+on PATH, the arguments are constants, the webview supplies only the agent's name (any other name is
+refused), and each run is stopped after 15 seconds. The host reads no credential file and keeps
+none: the window is told who is signed in (the account's email and plan, as the agent prints them),
+which is the person's own, shown only in Settings and never logged. Signing in is the agent's own
+interactive command in an ordinary terminal session (`start_agent_session` with `auth login` or
+`login`, each a plain word that `agent_command` allows).
+
+`export_daemon_log` (`daemon_log.rs`) saves a copy of the end of the service's log (4 MiB at most) as
+`maitty-log.txt` in the Downloads folder, for a person to send when something went wrong (Settings ›
+Daemon › Service log). The webview supplies nothing: the log, the folder and the name are the
+host's, and an existing file is never replaced (`export::save_in`). The log names folders,
+repositories and sessions, so the setting says to look before sharing it.
+
+`agent_commands` (the same module) asks the same way for the slash commands Claude Code takes, for
+the chat's command picker. It differs in one input: the webview names the folder the program is
+started in, so the project's own commands and skills are listed. The host starts it only in a full
+path to a folder that exists, and in the home folder otherwise; a compromised webview could thereby
+have Claude Code load the settings and start-up hooks of any folder on the machine, which is what
+starting an agent session there already does. What comes back is cleaned before the webview sees
+it (`command_name`, `one_line`): a name is letters, digits and `- _ : .` only, since the window
+types a picked name into a terminal, and descriptions are one line cut to 240 characters.
+
 Assets: the user's shells and agent sessions (which can run any command as the
 user), their source code, and API keys in `config.local.toml`. Threats: another
 local user or process driving the daemon's socket; a process inside one pane

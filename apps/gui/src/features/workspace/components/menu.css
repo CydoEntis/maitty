@@ -12,7 +12,9 @@
 .mx-ctx-sep { height: 1px; margin: 4px 8px; background: var(--pane-line); }
 .mx-ctx-item { height: 30px; display: flex; align-items: center; gap: 16px; padding: 0 10px; border-radius: 7px; font-size: 13px; text-align: left; color: var(--fg2); outline: none; }
 .mx-ctx-item:focus-visible { outline: none; }
-.mx-ctx-item:not(:disabled):hover, .mx-ctx-item:focus-visible { background: rgba(var(--hl), calc(.08 * var(--hk))); color: var(--fg); }
+/* The item the keys are on (the first, as the menu opens) is drawn exactly as a hovered one. `:focus`, not
+   `:focus-visible`: the menu focuses its first item itself after a right-click, which is not a keyboard focus. */
+.mx-ctx-item:not(:disabled):hover, .mx-ctx-item:focus { background: rgba(var(--hl), calc(.08 * var(--hk))); color: var(--fg); }
 .mx-ctx-item.is-danger { color: var(--danger); }
 .mx-ctx-item.is-danger:not(:disabled):hover { color: var(--danger); }
 .mx-ctx-item:disabled { opacity: .4; cursor: default; }

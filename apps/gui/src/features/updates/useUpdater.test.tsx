@@ -67,7 +67,7 @@ describe('updater', () => {
   })
 
   it('downloads with progress, then waits for a restart', async () => {
-    let report: (fraction: number | null) => void = () => {}
+    let report: (received: number, total: number | null) => void = () => {}
     let finish: () => void = () => {}
     const install = vi.fn(() => Promise.resolve())
     check.mockResolvedValue(newer((onProgress) => { report = onProgress; return new Promise<void>((resolve) => { finish = resolve }) }, install))
@@ -75,9 +75,9 @@ describe('updater', () => {
     await waitFor(() => { expect(result.current.state.status).toBe('available') })
 
     act(() => { result.current.download() })
-    expect(result.current.state).toEqual({ status: 'downloading', version: '0.59.0', progress: null })
-    act(() => { report(0.5) })
-    expect(result.current.state).toEqual({ status: 'downloading', version: '0.59.0', progress: 0.5 })
+    expect(result.current.state).toEqual({ status: 'downloading', version: '0.59.0', progress: null, transfer: null })
+    act(() => { report(50, 100) })
+    expect(result.current.state).toEqual({ status: 'downloading', version: '0.59.0', progress: 0.5, transfer: { received: 50, total: 100, bytesPerSecond: null } })
     act(() => { finish() })
     await waitFor(() => { expect(result.current.state).toEqual({ status: 'ready', version: '0.59.0' }) })
 

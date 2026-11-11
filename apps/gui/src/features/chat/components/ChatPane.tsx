@@ -9,6 +9,7 @@ import type { SubagentView } from '@/features/workspace/model/subagents'
 import { FULL_ACCESS_LABEL, FULL_ACCESS_WARNING } from '../fullAccess'
 import { AGENT_LABEL } from '../modelName'
 import { ChatSession } from './ChatSession'
+import type { SessionUsage } from '../usageStrip'
 import { StartingChat } from './StartingChat'
 
 export type ChatPaneProps = {
@@ -36,6 +37,10 @@ export type ChatPaneProps = {
   onBackToTerminal: () => void
   /** False for a chat session (ADR 0003): the agent has no terminal, so nothing here points to one. */
   hasTerminal?: boolean
+  /** What the session's agent reported using (context, plan limits), for the strip under the message box. */
+  usage?: SessionUsage | undefined
+  /** The pane runs in a linked worktree, as the daemon says; absent for a chat session, which has no pane to ask about. */
+  worktree?: boolean | undefined
   /** Types the agent's command into the shell (a shell tab only). */
   onStartAgent: (agent: ChatAgent) => void
   /** Starts a chat session (a structured conversation the daemon owns) in the shell's folder (a shell tab only). */
@@ -77,13 +82,16 @@ export function ChatPane(props: ChatPaneProps) {
             branch={props.branch ?? null}
             subagent={props.subagent ?? null}
             onOpenFolder={props.onOpenFiles ?? null}
+            {...(props.worktree === undefined ? {} : { worktree: props.worktree })}
+            {...(props.usage === undefined ? {} : { usage: props.usage })}
+            {...(props.hasTerminal === false ? {} : { onShowTerminal: props.onBackToTerminal })}
             {...(props.onBackToMain === undefined ? {} : { onBackToMain: props.onBackToMain })}
             {...(props.sessionId === undefined ? {} : { sessionId: props.sessionId })}
             {...(props.paneStatus === undefined ? {} : { paneStatus: props.paneStatus })}
           />
         )
         : availability.kind === 'no-events' && props.sessionId !== undefined
-          ? <StartingChat agent={availability.agent} sessionId={props.sessionId} onBackToTerminal={props.onBackToTerminal} folder={props.folder ?? ''} branch={props.branch ?? null} root={props.root ?? null} {...(props.paneStatus === undefined ? {} : { paneStatus: props.paneStatus })} {...(props.asking === undefined ? {} : { asking: props.asking })} {...(props.typeInto === undefined ? {} : { typeInto: props.typeInto })} />
+          ? <StartingChat {...(props.worktree === undefined ? {} : { worktree: props.worktree })} agent={availability.agent} sessionId={props.sessionId} onBackToTerminal={props.onBackToTerminal} folder={props.folder ?? ''} branch={props.branch ?? null} root={props.root ?? null} {...(props.paneStatus === undefined ? {} : { paneStatus: props.paneStatus })} {...(props.asking === undefined ? {} : { asking: props.asking })} {...(props.typeInto === undefined ? {} : { typeInto: props.typeInto })} />
           : <NoChat {...props} availability={availability} />}
     </section>
   )

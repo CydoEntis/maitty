@@ -4,7 +4,9 @@
 .mx-chat-layer { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; min-height: 0; background: transparent; font-family: "Geist Variable", Geist, system-ui, sans-serif; line-height: normal; cursor: default; }
 .mx-pane-body.is-chat > :not(.mx-chat-layer) { visibility: hidden; }
 .mx-pane-body.is-chat { padding: 0; }
-.mx-chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* The chat's size is the person's: `--chat-zoom` draws all of it larger or smaller (Settings › Chat text size), and
+   `--chat-width` is how wide its column of messages and its message box may run. */
+.mx-chat { flex: 1; min-height: 0; display: flex; flex-direction: column; zoom: var(--chat-zoom, 1); }
 .mx-chat-notices { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 10px 20px 0; padding: 6px 12px; border-radius: 10px; background: rgba(var(--hl), calc(.04 * var(--hk))); border: 1px solid rgba(var(--hl), calc(.09 * var(--hk))); font-size: 12px; color: var(--fg2); }
 .mx-chat-notices .is-warn { color: var(--warn); }
 /* In a chat that is still starting the hint floats over the top of the conversation: a bar that took its own row would push the
@@ -18,12 +20,12 @@
 
 /* The history scrolls under a fade at its top edge, so text never stops hard against the header. */
 /* The column's 760px and the scrollbar's 8px: the scrollbar sits at the column's edge, not the pane's. */
-.mx-chat-scroller { align-self: center; width: 100%; max-width: 768px; }
+.mx-chat-scroller { align-self: center; width: 100%; max-width: calc(var(--chat-width, 760px) + 8px); }
 .mx-chat-jump { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); }
 .mx-chat-scroller { -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 56px); mask-image: linear-gradient(180deg, transparent 0, #000 56px); padding: 36px 0 10px; }
 .mx-chat-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 36px 0 10px; display: flex; flex-direction: column-reverse; -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 56px); mask-image: linear-gradient(180deg, transparent 0, #000 56px); }
-.mx-chat-column { margin: 0 auto; width: 100%; max-width: 760px; padding: 0 20px; display: flex; flex-direction: column; gap: 14px; }
-.mx-chat-row { margin: 0 auto; width: 100%; max-width: 760px; padding: 7px 20px; }
+.mx-chat-column { margin: 0 auto; width: 100%; max-width: var(--chat-width, 760px); padding: 0 20px; display: flex; flex-direction: column; gap: 14px; }
+.mx-chat-row { margin: 0 auto; width: 100%; max-width: var(--chat-width, 760px); padding: 7px 20px; }
 /* The row Find stopped on. */
 .mx-chat-found { background: rgba(var(--hl), calc(.07 * var(--hk))); box-shadow: inset 3px 0 0 var(--accent); }
 
@@ -251,32 +253,50 @@ button.mx-changed:hover { border-color: var(--accent-line); }
 .mx-stack-line > :last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .mx-stack-line.is-add { color: var(--ok); }
 .mx-stack-line.is-remove { color: var(--danger); }
+.mx-stack-line.is-note { color: var(--dim); font-style: italic; }
 .mx-stack-mark { flex: none; width: 8px; }
-.mx-stack-line.is-plain > .mx-stack-mark:empty { display: none; }
+.mx-stack-line.is-plain > .mx-stack-mark:empty, .mx-stack-line.is-note > .mx-stack-mark:empty { display: none; }
+
+/* The bar over text selected in the chat: Copy and Quote, just above where the mouse let go. */
+.mx-select-bar { position: absolute; z-index: 4; display: flex; gap: 2px; padding: 3px; border-radius: 9px; border: 1px solid var(--line2); background: var(--main); box-shadow: 0 10px 28px rgba(0, 0, 0, .4); transform: translate(-50%, calc(-100% - 10px)); animation: v7fade .12s var(--ease-out); }
+.mx-select-action { display: inline-flex; height: 26px; align-items: center; gap: 6px; padding: 0 9px; border-radius: 6px; font-size: 12.5px; color: var(--fg2); cursor: pointer; }
+.mx-select-action:hover { background: rgba(var(--hl), calc(.08 * var(--hk))); color: var(--fg); }
+@media (prefers-reduced-motion: reduce) { .mx-select-bar { animation: none; } }
 
 /* The message box. */
 .mx-composer { flex-shrink: 0; padding: 4px 20px 14px; }
-.mx-composer-column { margin: 0 auto; width: 100%; max-width: 760px; display: flex; flex-direction: column; align-items: center; }
+.mx-composer-column { margin: 0 auto; width: 100%; max-width: var(--chat-width, 760px); display: flex; flex-direction: column; align-items: center; }
 .mx-composer-error { margin: 6px 0 0; align-self: stretch; font-size: 12px; color: var(--danger); }
-.mx-queue { align-self: stretch; list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
-.mx-queued { position: relative; max-width: 85%; display: flex; flex-direction: column; gap: 2px; padding: 8px 34px 8px 14px; border-radius: 16px 16px 5px 16px; border: 1px dashed var(--line2); font-size: 14px; line-height: 1.5; color: var(--fg2); }
-.mx-queued-text { white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; font: inherit; color: inherit; }
+.mx-queue-row { align-self: stretch; display: flex; justify-content: flex-end; align-items: flex-start; gap: 8px; margin: 0 0 8px; }
+.mx-queue { flex: 1; min-width: 0; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.mx-queued { position: relative; max-width: 85%; display: flex; flex-direction: column; gap: 4px; padding: 6px 8px 9px 14px; border-radius: 16px 16px 5px 16px; border: 1px dashed var(--line2); font-size: 14px; line-height: 1.5; color: var(--fg2); }
+/* Several waiting: the cards take the accent's line, so a stack is not taken for one message. */
+.mx-queued.is-many { border-color: var(--accent-line); cursor: pointer; }
+.mx-queued-head { display: flex; align-items: center; gap: 2px; min-height: 22px; font-size: 11.5px; color: var(--dim); }
+.mx-queued-place { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.mx-queue-place { flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 6px; border-radius: 999px; background: var(--accent-soft); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--accent-text, var(--accent)); }
+/* Edit and Remove sit above the text button's stretched area, so they take their own clicks. */
+.mx-queued-tool { position: relative; z-index: 1; flex: none; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; color: var(--muted); }
+.mx-queued-tool:hover { color: var(--fg); background: var(--hover); }
+.mx-queued-text { white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; font: inherit; color: inherit; padding-right: 6px; }
 button.mx-queued-text { cursor: pointer; }
-/* A long message in the stack shows its start; spread out, all of it. */
+button.mx-queued-text::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+/* In the stack the front message keeps to two lines; spread out, each shows whole. */
 .mx-queue.is-stacked .mx-queued-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-.mx-queued-note { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--dim); }
-.mx-queued-edit { flex: none; display: inline-flex; align-items: center; gap: 3px; color: var(--muted); }
-.mx-queued-edit:hover { color: var(--fg); text-decoration: underline; }
-.mx-queued-remove { position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 6px; color: var(--dim); }
-.mx-queued-remove:hover { color: var(--fg); background: var(--hover); }
 /* The stack: the next message to be sent in front, the edges of up to two more under it, each a step narrower. The ones behind
    have no content, so the stack is as wide as its front card. */
-.mx-queue.is-stacked { align-self: flex-end; max-width: 85%; align-items: stretch; gap: 0; }
+.mx-queue.is-stacked { flex: 0 1 auto; max-width: 85%; align-items: stretch; gap: 0; }
 .mx-queue.is-stacked .mx-queued { max-width: none; }
 .mx-queued.is-behind { height: 7px; margin: 0 10px; padding: 0; border-top: 0; border-radius: 0 0 10px 10px; opacity: .72; }
 .mx-queued.is-behind + .mx-queued.is-behind { margin: 0 20px; opacity: .48; }
 .mx-queued.is-behind + .mx-queued.is-behind ~ .mx-queued.is-behind { display: none; }
 .mx-queued.is-behind > * { display: none; }
+/* Beside the stack: one small card for each message behind the front one, numbered by its place. */
+.mx-queue-previews { flex: 0 1 170px; min-width: 0; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.mx-queue-preview { display: flex; width: 100%; min-width: 0; height: 26px; align-items: center; gap: 6px; padding: 0 8px 0 4px; border-radius: 8px; border: 1px dashed var(--line2); font-size: 12px; color: var(--muted); cursor: pointer; }
+.mx-queue-preview:hover { border-color: var(--accent-line); color: var(--fg); }
+.mx-queue-preview-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mx-queue-preview.is-more { justify-content: center; padding: 0 8px; }
 .mx-queue:not(.is-stacked) .mx-queued { animation: mxRise .2s cubic-bezier(.2, .8, .2, 1) both; }
 @media (prefers-reduced-motion: reduce) { .mx-queue .mx-queued { animation: none; } }
 
@@ -324,6 +344,20 @@ button.mx-queued-text { cursor: pointer; }
   transition: opacity .25s, border-color .15s;
 }
 .mx-box:focus-within { border-color: var(--accent-line); }
+/* The agent's commands, over the box while a slash and a name are typed. It floats, so the box and the chat stay put. */
+.mx-slash { position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); z-index: 3; display: flex; flex-direction: column; max-height: min(320px, 50vh); padding: 6px; border-radius: 12px; border: 1px solid var(--line2); background: var(--main); box-shadow: 0 16px 44px rgba(0, 0, 0, .45); animation: v7fade .12s var(--ease-out); }
+.mx-slash-list { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+.mx-slash-row { display: grid; grid-template-columns: minmax(120px, 34%) minmax(0, 1fr); align-items: baseline; gap: 14px; padding: 5px 9px; border-radius: 7px; cursor: pointer; }
+.mx-slash-row.is-active { background: var(--accent-soft); }
+.mx-slash-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12.5px; color: var(--fg); }
+.mx-slash-row.is-active .mx-slash-name { color: var(--accent-text, var(--accent)); }
+.mx-slash-hint { color: var(--dim); }
+.mx-slash-what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--muted); }
+.mx-slash-tag { margin-right: 6px; padding: 0 5px; border-radius: 4px; border: 1px solid var(--line2); font-size: 10.5px; color: var(--dim); }
+.mx-slash-note { margin: 0; padding: 6px 9px; font-size: 12px; color: var(--muted); }
+.mx-slash-keys { flex: none; margin: 4px 0 0; padding: 5px 9px 1px; border-top: 1px solid rgba(var(--hl), calc(.07 * var(--hk))); font-size: 11px; color: var(--dim); }
+.mx-slash-keys kbd { margin-right: 3px; padding: 0 4px; border-radius: 4px; background: rgba(var(--hl), calc(.08 * var(--hk))); font-family: var(--mono); font-size: 10.5px; }
+@media (prefers-reduced-motion: reduce) { .mx-slash { animation: none; } }
 .mx-box-text { width: 100%; min-height: 44px; max-height: 160px; resize: none; background: transparent; border: 0; padding: 0; font-size: 14px; line-height: 1.5; color: var(--fg); outline: none; field-sizing: content; }
 .mx-box-text:focus-visible { outline: none; }
 .mx-box-text::placeholder { color: var(--dim); }
@@ -368,7 +402,8 @@ button.mx-queued-text { cursor: pointer; }
 .mx-mm-bar:focus-visible { box-shadow: 0 0 0 2px var(--accent-line); }
 .mx-mm-bar:disabled { opacity: .3; cursor: not-allowed; }
 .mx-mm-mini { display: flex; align-items: flex-end; gap: 1.5px; height: 10px; margin-left: 2px; }
-.mx-mm-mini span { width: 2.5px; height: 4px; border-radius: 1px; background: rgba(var(--hl), calc(.16 * var(--hk))); }
+/* The bars of a level that was never picked are still drawn as bars: at half the old strength the meter read as missing. */
+.mx-mm-mini span { width: 2.5px; height: 4px; border-radius: 1px; background: rgba(var(--hl), calc(.34 * var(--hk))); }
 .mx-mm-mini span:nth-child(2) { height: 6px; }
 .mx-mm-mini span:nth-child(3) { height: 8px; }
 .mx-mm-mini span:nth-child(4) { height: 10px; }
@@ -413,9 +448,26 @@ button.mx-queued-text { cursor: pointer; }
   border: 1px solid rgba(var(--hl), calc(.1 * var(--hk))); border-top: 0;
   box-shadow: inset 0 -1px 0 rgba(var(--hl), calc(.04 * var(--hk) * var(--gk))), 0 10px 24px -12px rgba(var(--sd), calc(.7 * var(--sk) * var(--gk)));
 }
+/* The usage strip: a narrower, quieter layer under the tray, so the box reads box, tray, strip from front to back. */
+.mx-usage-strip {
+  width: calc(100% - 56px); margin-top: -1px; padding: 5px 12px 5px; border-radius: 0 0 12px 12px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 18px;
+  background: rgba(var(--hl), calc(.025 * var(--hk) * var(--gk))); border: 1px solid rgba(var(--hl), calc(.08 * var(--hk))); border-top: 0;
+  font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.mx-usage-item { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.mx-usage-bar { width: 54px; height: 4px; border-radius: 999px; background: rgba(var(--hl), calc(.1 * var(--hk))); overflow: hidden; }
+.mx-usage-bar span { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.mx-usage-figure { color: var(--fg2); }
+.mx-usage-reset { color: var(--dim); }
+.mx-usage-reset::before { content: "· resets in "; }
+.mx-usage-item.is-warn .mx-usage-bar span { background: var(--warn); }
+.mx-usage-item.is-warn .mx-usage-figure { color: var(--warn); }
+.mx-usage-item.is-danger .mx-usage-bar span { background: var(--danger); }
+.mx-usage-item.is-danger .mx-usage-figure { color: var(--danger); }
 .mx-tray-fact { height: 26px; display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; border-radius: 7px; color: var(--fg2); font-size: 12.5px; white-space: nowrap; }
 .mx-tray-fact.is-button:hover { background: rgba(var(--hl), calc(.05 * var(--hk))); color: var(--fg); }
 .mx-tray-fact.is-danger { color: var(--danger); }
+.mx-tray-fact.is-worktree { color: var(--ansi-blue); }
 
 /* A subagent's own chat: the bar that names it and leads back. */
 .mx-sub-bar { flex: none; display: flex; align-items: center; gap: 8px; margin: 10px 20px 0; padding: 8px 12px; border-radius: 10px; background: rgba(var(--hl), calc(.04 * var(--hk))); border: 1px solid rgba(var(--hl), calc(.09 * var(--hk))); font-size: 12.5px; color: var(--fg2); }

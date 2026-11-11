@@ -10,6 +10,7 @@ import { toast } from '@/lib/toast'
 import { runMachineUpdate } from './machineUpdate'
 import { advanceLoginWatch, LOGIN_CHECK_MS, startLoginWatch, type LoginWatch } from './model/loginWatch'
 import { announcementFor, type RemoteMachine, type UpdateAction } from './model/machines'
+import { copyText } from '@/lib/clipboard'
 
 /** The other machines as the host reports them, and what was last said about one for a screen reader. */
 export type RemoteMachines = {
@@ -84,7 +85,7 @@ export function useRemoteMachines(): RemoteMachines {
       // Text a program in a pane copied: this computer's, or a machine's that was allowed to.
       listenMachineClipboard((id, text) => {
         const said = copySaid(id, names.get(id) ?? 'A machine', text.length)
-        navigator.clipboard.writeText(text).then(
+        copyText(text).then(
           () => { toast.success(said.done, { id: COPY_TOAST_ID, duration: COPY_TOAST_MS }) },
           (error: unknown) => { toast.error(errorMessage(error, said.failed)) },
         )
@@ -187,7 +188,7 @@ export function useMachineActions(localConversations: readonly Conversation[] | 
     }
   }, [retryNamed])
   const copyCommand = useCallback((command: string) => {
-    navigator.clipboard.writeText(command).then(
+    copyText(command).then(
       () => { toast.message('Copied. Run it in a terminal on this computer.') },
       (error: unknown) => { toast.error(errorMessage(error, 'Could not copy the command')) },
     )

@@ -81,7 +81,11 @@ const TerminalSessionSchema = z.object({
     result: z.string().nullable().default(null),
   })).default([]),
 })
+const PlanLimitSchema = z.object({ name: z.string(), used: z.number(), resets_at: z.number().default(0) })
+
 const DaemonSnapshotSchema = z.object({
+  // Plan limits by agent (`Snapshot.limits`), as each agent last reported them. A shape this app cannot read is no limits, not no sessions.
+  limits: z.array(z.tuple([z.string(), z.array(PlanLimitSchema)])).default([]).catch([]),
   // Read one by one, like the terminals: a record this app can't read must not take every session offline.
   conversations: z.array(z.unknown()).default([]),
   workspaces: z.array(WorkspaceSummarySchema),
@@ -304,6 +308,17 @@ export async function openDaemonLog(): Promise<void> {
   await invoke('open_daemon_log')
 }
 
+/** Opens a web address in the default browser. Rejects for anything that is not an http(s) address. */
+export async function openLink(url: string): Promise<void> {
+  await invokeParsed('open_link', NullSchema, { url })
+}
+
+/** Saves a copy of the service's recent log in the Downloads folder, to send to someone; resolves to where it is. */
+export async function exportDaemonLog(): Promise<string> {
+  if (!isDesktop()) throw new Error('The log is available in the desktop app')
+  return invokeParsed('export_daemon_log', z.string(), {})
+}
+
 const ProcessLoadSchema = z.object({
   pid: z.number().int().nonnegative(),
   name: z.string(),
@@ -384,6 +399,7 @@ export function conversationsFromSnapshot(raw: unknown, machine?: SnapshotMachin
   // A terminal session has a chat when the daemon holds a conversation whose native terminal is that pane.
   // The daemon only follows an agent the user started there, so that chat is read-only (ADR 0003).
   const chatOf = new Map(summaries.flatMap((summary) => (summary.native_term === null ? [] : [[summary.native_term, { conversation: summary.id, generation: summary.generation, ...(summary.execution === 'Native' ? { readOnly: true } : {}) }] as const])))
+  const limitsOf = new Map(snapshot.limits)
   const listed = Object.values(snapshot.terms)
     .flatMap((term) => {
       const read = readTerminal(term, from)
@@ -393,7 +409,7 @@ export function conversationsFromSnapshot(raw: unknown, machine?: SnapshotMachin
   // A conversation that belongs to a pane in this list is that session's chat, not a session of its own.
   const shownPanes = new Set(listed.map((term) => term.id))
   const terminals = listed
-    .map((term) => toTerminalConversation(term, snapshot.workspaces, machine, machine === undefined ? chatOf.get(term.id) : undefined))
+    .map((term) => toTerminalConversation(term, snapshot.workspaces, machine, machine === undefined ? chatOf.get(term.id) : undefined, term.agent === null ? undefined : limitsOf.get(term.agent)))
   if (machine !== undefined) return terminals
   return [
     ...summaries
@@ -939,6 +955,26 @@ export async function loadAgentModels(agent: 'claude' | 'codex'): Promise<z.infe
   return invokeParsed('agent_models', AgentModelsSchema, { agent })
 }
 
+const AgentCommandsSchema = z.array(z.object({ name: z.string(), description: z.string(), hint: z.string(), aliases: z.array(z.string()) }))
+
+/** The slash commands an agent takes in a folder (its own, and the person's and the project's); empty for an agent with no list to ask for. */
+export async function loadAgentCommands(agent: string, folder: string): Promise<z.infer<typeof AgentCommandsSchema>> {
+  return invokeParsed('agent_commands', AgentCommandsSchema, { agent, folder })
+}
+
+const AgentAuthSchema = z.object({ installed: z.boolean(), signedIn: z.boolean().nullable(), account: z.string(), plan: z.string() })
+export type AgentAuth = z.infer<typeof AgentAuthSchema>
+
+/** Whether an agent is installed and its account signed in, as the agent's own command says. */
+export async function loadAgentAuth(agent: 'claude' | 'codex'): Promise<AgentAuth> {
+  return invokeParsed('agent_auth_status', AgentAuthSchema, { agent })
+}
+
+/** Signs an agent's account out, with the agent's own command. */
+export async function signOutAgent(agent: 'claude' | 'codex'): Promise<void> {
+  await invokeParsed('agent_sign_out', NullSchema, { agent })
+}
+
 const InstalledAgentsSchema = z.array(z.string())
 
 /** The agent programs found on this computer's PATH (`claude`, `codex`, `gemini`, `opencode`, `cursor-agent`). */
@@ -1009,7 +1045,7 @@ export async function resumeConversation(conversation: Conversation): Promise<{ 
   })
 }
 
-function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSummary[], machine?: SnapshotMachine, chat?: Conversation['chat']): Conversation {
+function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSummary[], machine?: SnapshotMachine, chat?: Conversation['chat'], limits: readonly z.infer<typeof PlanLimitSchema>[] = []): Conversation {
   const folder = term.root ?? term.cwd
   const repo = term.root ? (term.root.split(/[\\/]/).filter(Boolean).at(-1) ?? null) : null
   const workspace = workspaces.find((candidate) => candidate.cwd === folder || candidate.cwd === term.cwd)
@@ -1059,6 +1095,7 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
       since: term.since,
       timeline: term.timeline,
       usage: term.usage,
+      limits: limits.map((limit) => ({ name: limit.name, used: limit.used, resetsAt: limit.resets_at })),
       helperAsk: term.helper_ask,
       subagents: term.subagent_activity.map((child) => ({ id: child.id, name: child.name, state: child.state, task: child.task, startedAt: child.started_at, updatedAt: child.updated_at, latest: child.latest_activity, result: child.result })),
     },

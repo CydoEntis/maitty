@@ -16,6 +16,7 @@ import type { OpenSubagent } from './components/Sidebar'
 import { activeArrangement, type Layout, MAX_PANES, showSession, splitPane } from './model/layout'
 import { displayName, type SessionView } from './model/session'
 import { makeId } from './makeId'
+import { copyText as writeClipboard } from '@/lib/clipboard'
 
 /** What a session's row and menu do: show it, rename it, split it, copy its path, open one of its files. */
 export function useSessionActions({ setRenameId, queryClient, setOpenSubagent, setLayout, layout, flash, sessionMap, paneViews, sessions, preferences, setPreferences, setSettingsSection, setLookAt, setInspectView, setInspectOpen }: {
@@ -67,7 +68,7 @@ export function useSessionActions({ setRenameId, queryClient, setOpenSubagent, s
   }, [layout, setLayout, showSessionById])
 
   const copyText = useCallback((text: string, what: string) => {
-    navigator.clipboard.writeText(text).then(
+    writeClipboard(text).then(
       () => { flash(`${what} copied`) },
       (error: unknown) => { toast.error(errorMessage(error, `Could not copy the ${what.toLowerCase()}`)) },
     )

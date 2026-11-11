@@ -11,16 +11,21 @@ import { buildRows, type ChatRow } from '../chatRows'
 import { findRow, registerChatFind } from '../chatSearch'
 import { useLatest } from '@/lib/useLatest'
 import { useChatFeed } from '../useChatFeed'
-import { useChatComposer } from '../useChatComposer'
+import { CODEX_SUBMIT_GAP_MS, holdCommand, typeMessage, useChatComposer } from '../useChatComposer'
 import { countUserMessages } from '../workPhase'
 import { startedWithYolo } from '../yoloSessions'
 import { CODEX_MODE_COMMAND, CODEX_MODE_REFUSED, CODEX_START_MODES, DANGER_MODES, modeFromScreen, modeLabel } from '../chatMeta'
 import type { ApprovalDecision } from '../chatEvents'
 import type { PermissionAsk } from '@/data/preview'
 import { ANSWER_KEY, ANSWER_KEYS, choiceKey, type AskChoice } from '../permissionAsk'
-import { copySelection } from '../copySelection'
+import { draftWithQuote, pickedText, type PickedText } from '../selectionActions'
+import { peekComposer } from '../composerStore'
+import { COPY_TOAST_ID, COPY_TOAST_MS } from '@/features/terminal/copyToast'
+import { SelectionBar } from './SelectionBar'
 import { OpenFileContext, type OpenFile } from '../openFile'
 import { keepComposerFocus } from '../keepComposerFocus'
+import { followComposer } from '../composerStore'
+import type { SessionUsage } from '../usageStrip'
 import { releaseFirstMessage, releaseStartChoice, startChoiceOf, takeCarriedDraft, useHeldByDaemon, useHeldFirstMessage } from '../firstMessage'
 import { writeChoice } from '../agentChoice'
 import { isWorktree, useFolderBranches } from '@/features/workspace/model/newChatHost'
@@ -31,6 +36,7 @@ import { ChatSkeleton } from './ChatSkeleton'
 import { ApprovalTray, PromptTray } from './QuestionTray'
 import { SubagentBar, SubagentChat } from './SubagentChat'
 import { VirtualList } from './VirtualList'
+import { copyText } from '@/lib/clipboard'
 
 /** When a turn ends the status changes at once, but the agent's last words may not be read yet: read now and again soon, instead of waiting for the idle poll. */
 const END_OF_TURN_READ_MS = 600
@@ -43,7 +49,6 @@ const MODE_READ_MS = 400
  * How long after typing a Codex command its Enter is pressed. Codex takes keys that arrive together for a paste, and an Enter
  * that comes with them for a line break: the command then sits in its box unsent (seen on Codex 0.166 on Windows).
  */
-export const CODEX_SUBMIT_GAP_MS = 400
 /** The most presses of Shift+Tab a full turn of Claude's modes takes. */
 const MODE_CYCLE_MAX = 5
 
@@ -92,6 +97,8 @@ type Props = {
   online: boolean
   /** False for a chat session: the agent has no terminal to type in, so no text sends the reader there. */
   hasTerminal?: boolean
+  /** The pane runs in a linked worktree, as the daemon says. Without it the folder's own worktree list is asked. */
+  worktree?: boolean
   /** The session's folder, so file names read relative to it. */
   root?: string | null
   /** Opens a file's diff in the Changes panel; absent where there is none. */
@@ -114,14 +121,19 @@ type Props = {
   /** A subagent whose own chat shows instead of the session's, and the way back. */
   subagent?: SubagentView | null
   onBackToMain?: () => void
+  /** What the session's agent reported using (context, plan limits), for the strip under the message box. */
+  usage?: SessionUsage
+  /** Shows the session's terminal in place of this chat, for a command whose menu only the terminal draws. */
+  onShowTerminal?: () => void
 }
 
 /** The chat of one session: its history as a virtualised list, the daemon's status, and the composer under it. */
-export function ChatSession({ link, agent, online, hasTerminal = true, root = null, onOpenDiff = null, onOpenFile = null, typeInto, ask = null, sessionId, paneStatus, folder = '', branch = null, onOpenFolder = null, subagent = null, onBackToMain }: Props) {
-  const { feed, events, offline, readError, refresh, recordAnswer } = useChatFeed({ conversation: link.conversation, generation: link.generation, provider: agent })
+export function ChatSession({ link, agent, online, hasTerminal = true, worktree: paneWorktree, root = null, onOpenDiff = null, onOpenFile = null, typeInto, ask = null, sessionId, paneStatus, folder = '', branch = null, onOpenFolder = null, subagent = null, onBackToMain, onShowTerminal, usage }: Props) {
+  const { feed, events, offline, readError, refresh, recordAnswer, unwatchedReads } = useChatFeed({ conversation: link.conversation, generation: link.generation, provider: agent })
   const paneWorking = paneStatus === 'working'
   const [branches] = useFolderBranches(root ?? '')
-  const worktree = isWorktree(branches, root)
+  // `root` is the repository's main folder, which is never a worktree, so the pane's own answer comes first.
+  const worktree = paneWorktree ?? isWorktree(branches, root)
   const working = feed.status === 'Working' || paneWorking
   const workingSince = working ? runningTurnStartedAt(feed) : null
   const incomplete = incompleteReason(feed.completeness)
@@ -199,11 +211,16 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
     }
     if (!canChangeAgent) return {}
     return {
-      agentChips: { locked: chipsLocked },
+      // The model and the effort can be picked while the agent works: the pick is held and typed in when the turn ends.
+      agentChips: { locked: chipsLocked, pickerLocked: online ? null : chipsLocked },
       onCommand: (text: string) => {
-        if (chipsLocked !== null) return
+        if (!online) return
         const model = /^\/model (\S+)/.exec(text)?.[1]
         if (model !== undefined) setLiveModel({ base: metaModel, value: model })
+        if (chipsLocked !== null) {
+          holdCommand(link.conversation, text)
+          return
+        }
         void typeInto(text).then(refresh)
       },
       onPickMode: (target: string) => {
@@ -230,8 +247,13 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
         void step().catch((error: unknown) => { toast.error(errorMessage(error, 'Could not change the permission mode')) })
       },
     }
-  }, [canChangeAgent, canPickCodexMode, chipsLocked, typeInto, refresh, sessionId, metaMode, metaModel, shownMode])
+  }, [canChangeAgent, canPickCodexMode, chipsLocked, typeInto, refresh, sessionId, metaMode, metaModel, shownMode, online, link.conversation])
   const composer = useChatComposer({ link, agent, feed, online, refresh, answersPrompt, paneWorking, ...(typeInto ? { typeInto } : {}) })
+  // A command that opens a menu of its own is typed into the agent's terminal, which is shown: the chat cannot draw the menu.
+  const runInTerminal = typeInto === undefined || onShowTerminal === undefined || link.readOnly !== true ? undefined : (command: string) => {
+    onShowTerminal()
+    void typeMessage(typeInto, agent, command).catch((error: unknown) => { toast.error(errorMessage(error, `Could not run ${command}`)) })
+  }
   const { sendText, setDraft: setComposerDraft, ready, sending, echo } = composer
   // A message just sent shows at once, with the agent taken to be at work on it, until the history has it.
   // A first message typed while the agent started is held, and shows exactly as the starting chat showed it (the bubble, then the
@@ -249,9 +271,57 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   const holdWorking = settling && !replied
   const allRows = useMemo(() => buildRows(events, working || holdWorking, root, echoText, echoThinking), [events, working, holdWorking, root, echoText, echoThinking])
   const rows = useMemo(() => allRows.filter((row) => !isPendingApproval(row)), [allRows])
-  // The rows the history had when it loaded: what arrives after them is live, and is typed in rather than shown whole.
+  // Rows are known, and so shown whole, once a read has brought them without the person watching: the first read after
+  // the chat opened (until then it shows what this window remembered, which may be behind) and one after the window was
+  // hidden. Only a reply that comes while the chat is being looked at is typed in.
+  // Text selected in the chat gets a small bar where the mouse let go: Copy, and Quote into the message box. It goes
+  // when the selection does (a click elsewhere), on Esc, and when the chat scrolls away from under it.
+  const [picked, setPicked] = useState<PickedText | null>(null)
+  const chat = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (picked === null) return
+    const drop = () => { setPicked(null) }
+    const dropIfUnselected = () => { if (window.getSelection()?.isCollapsed !== false) drop() }
+    const dropOnEscape = (event: globalThis.KeyboardEvent) => { if (event.key === 'Escape') drop() }
+    document.addEventListener('selectionchange', dropIfUnselected)
+    document.addEventListener('keydown', dropOnEscape)
+    document.addEventListener('scroll', drop, true)
+    return () => {
+      document.removeEventListener('selectionchange', dropIfUnselected)
+      document.removeEventListener('keydown', dropOnEscape)
+      document.removeEventListener('scroll', drop, true)
+    }
+  }, [picked])
+  const copyPicked = () => {
+    if (picked === null) return
+    setPicked(null)
+    copyText(picked.text).then(
+      () => { toast.success('Copied', { id: COPY_TOAST_ID, duration: COPY_TOAST_MS }) },
+      (failure: unknown) => {
+        // Why it was refused is the web view's to say; without it a refusal cannot be told from a bug here.
+        console.warn('The web view refused to copy the selection', failure)
+        toast.error('Could not copy the selection')
+      },
+    )
+  }
+  const quotePicked = (box: HTMLElement) => {
+    if (picked === null) return
+    setComposerDraft(draftWithQuote(peekComposer(link.conversation).draft, picked.text))
+    setPicked(null)
+    window.getSelection()?.removeAllRanges()
+    // The reply is typed under the quote: the box takes the keys, with the caret at its end.
+    const field = box.querySelector<HTMLTextAreaElement>('textarea.mx-box-text:not(:disabled)')
+    window.requestAnimationFrame(() => {
+      field?.focus({ preventScroll: true })
+      field?.setSelectionRange(field.value.length, field.value.length)
+    })
+  }
   const [known, setKnown] = useState<Set<string> | null>(null)
-  if (feed.loaded && known === null) setKnown(new Set(rows.map(rowKey)))
+  const [knownAsOf, setKnownAsOf] = useState(0)
+  if (feed.loaded && knownAsOf !== unwatchedReads) {
+    setKnownAsOf(unwatchedReads)
+    setKnown(new Set(rows.map(rowKey)))
+  }
   const pending = useMemo(() => allRows.find((row): row is Extract<ChatRow, { kind: 'approval' }> => isPendingApproval(row))?.event ?? null, [allRows])
   // The model and effort picked on the new-chat page are this conversation's choice from its first frame, so the picker shows them.
   useLayoutEffect(() => {
@@ -259,6 +329,10 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
     if (started !== null) writeChoice(link.conversation, { model: started.model, reasoning: started.reasoning })
     releaseStartChoice(sessionId)
   }, [sessionId, started, link.conversation])
+  // The session's unsent text comes along when its chat was given a new conversation number.
+  useEffect(() => {
+    if (sessionId !== undefined) followComposer(sessionId, link.conversation)
+  }, [sessionId, link.conversation])
   // A draft typed while the agent started comes over once, and a message sent then goes out as soon as the agent takes input.
   useEffect(() => {
     if (sessionId === undefined) return
@@ -357,7 +431,8 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   ].filter((notice): notice is string => notice !== null)
 
   return (
-    <div className="mx-chat" onKeyDown={onKeyDown} onClick={keepComposerFocus} onMouseUp={copySelection}>
+    <div ref={chat} className="mx-chat" onKeyDown={onKeyDown} onClick={keepComposerFocus} onMouseUp={(event) => { const next = pickedText(event); if (next !== undefined) setPicked(next) }}>
+      {picked !== null && <SelectionBar picked={picked} onCopy={copyPicked} onQuote={() => { if (chat.current !== null) quotePicked(chat.current) }} />}
       {(notices.length > 0 || fullAccess) && (
         <div className="mx-chat-notices" role={offline ? 'status' : undefined}>
           {notices.map((notice) => <span key={notice}>{notice}</span>)}
@@ -387,9 +462,11 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
         agent={agent}
         composer={composer}
         conversation={link.conversation}
+        // Claude says which commands it takes, in its folder; Codex's are a list the window keeps. Gemini has none yet.
+        {...((agent === 'claude' || agent === 'codex') && root !== null ? { commandsFrom: { agent, folder: root, inTerminal: runInTerminal } } : {})}
         question={question}
         waiting={held !== null}
-        facts={{ mode: modeLabel(shownMode), modeDanger: shownMode !== null && DANGER_MODES.includes(shownMode), folder, branch, worktree, model: shownModel, onOpenFolder, modeKey: shownMode, bypassAllowed: startedWithYolo(sessionId), ...agentControls }}
+        facts={{ ...(usage === undefined ? {} : { usage }), mode: modeLabel(shownMode), modeDanger: shownMode !== null && DANGER_MODES.includes(shownMode), folder, branch, worktree, model: shownModel, onOpenFolder, modeKey: shownMode, bypassAllowed: startedWithYolo(sessionId), ...agentControls }}
       />
     </div>
   )

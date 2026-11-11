@@ -27,6 +27,14 @@ describe('noticesFor', () => {
     expect(noticesFor(before, now, { needs: true, finished: false, error: false }, null)).toEqual([])
   })
 
+  it('does not say a session finished while messages are still queued for it, and still says it needs you', () => {
+    const before = seen([['a', 'working'], ['b', 'working'], ['c', 'working']])
+    const now = [session('a', 'done'), session('b', 'done'), session('c', 'needs')]
+    const queued = (item: SessionView) => (item.id === 'b' ? 0 : 2)
+    expect(noticesFor(before, now, ALL, null, queued).map((notice) => notice.title)).toEqual(['maitty finished', 'maitty needs you'])
+    expect(noticesFor(before, now, ALL, null, queued).map((notice) => notice.sessionId)).toEqual(['b', 'c'])
+  })
+
   it('does not repeat itself while the state stays the same', () => {
     expect(noticesFor(seen([['t1', 'needs']]), [session('t1', 'needs')], ALL, null)).toEqual([])
   })

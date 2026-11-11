@@ -1,8 +1,9 @@
-//! Claude Code's own model list, asked of the program itself. Claude Code keeps no file that lists
-//! every model an account can run; it says them in the reply to the `initialize` request of its
-//! stream mode, which is what its own SDK reads. This starts the program with fixed arguments (never
-//! through a shell), sends that one request, reads the reply and stops it. No message is sent, so it
-//! uses none of the account's allowance, and the session is not kept.
+//! Claude Code's own lists of its models and its slash commands, asked of the program itself. Claude
+//! Code keeps no file that lists every model an account can run or every command it takes (its own,
+//! and the person's commands, skills and plugins); it says them in the reply to the `initialize`
+//! request of its stream mode, which is what its own SDK reads. This starts the program with fixed
+//! arguments (never through a shell), sends that one request, reads the reply and stops it. No
+//! message is sent, so it uses none of the account's allowance, and the session is not kept.
 
 use serde_json::Value;
 use std::path::Path;
@@ -38,6 +39,72 @@ pub struct Listed {
     pub resolved: String,
     /// The effort levels the model takes; empty when it takes none.
     pub efforts: Vec<String>,
+}
+
+/// One slash command as Claude Code lists it, cleaned for the window (`commands`).
+#[derive(Debug, PartialEq, serde::Serialize)]
+pub struct Command {
+    /// What is typed after the slash: `compact`, or `plugin:command`.
+    pub name: String,
+    pub description: String,
+    /// What the command takes after its name, as its author wrote it; empty when it takes nothing.
+    pub hint: String,
+    /// Other names it answers to.
+    pub aliases: Vec<String>,
+}
+
+/// A reply longer than this is cut: no installation has this many commands.
+const MAX_COMMANDS: usize = 2000;
+const MAX_NAME_CHARS: usize = 100;
+/// The picker shows a line or two of a description; skills write paragraphs.
+const MAX_DESCRIPTION_CHARS: usize = 240;
+const MAX_HINT_CHARS: usize = 80;
+/// Claude Code's own plumbing, which nobody types.
+const INTERNAL_PREFIX: &str = "__";
+
+/// A name the window may put in a text box and send to a terminal: letters, digits and the marks
+/// command names are written with. Anything else (a space, a control character, an escape) is not a
+/// command name, so the entry is left out.
+fn command_name(raw: &str) -> Option<String> {
+    let name = raw.trim();
+    let allowed = |c: char| c.is_alphanumeric() || matches!(c, '-' | '_' | ':' | '.');
+    (!name.is_empty()
+        && !name.starts_with(INTERNAL_PREFIX)
+        && name.chars().count() <= MAX_NAME_CHARS
+        && name.chars().all(allowed))
+    .then(|| name.to_string())
+}
+
+/// Text for one line of the picker: runs of whitespace and control characters become one space, and
+/// it is cut at `limit` characters.
+fn one_line(raw: &str, limit: usize) -> String {
+    let words: Vec<&str> = raw.split(|c: char| c.is_whitespace() || c.is_control()).filter(|word| !word.is_empty()).collect();
+    words.join(" ").chars().take(limit).collect()
+}
+
+fn commands(reply: &Value) -> Vec<Command> {
+    reply
+        .get("commands")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|command| {
+            let text = |key: &str| command.get(key).and_then(Value::as_str).unwrap_or_default();
+            Some(Command {
+                name: command_name(text("name"))?,
+                description: one_line(text("description"), MAX_DESCRIPTION_CHARS),
+                hint: one_line(text("argumentHint"), MAX_HINT_CHARS),
+                aliases: command
+                    .get("aliases")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|alias| command_name(alias.as_str()?))
+                    .collect(),
+            })
+        })
+        .take(MAX_COMMANDS)
+        .collect()
 }
 
 /// The reply to our request, when this line of output is it. A refusal is an error.
@@ -90,6 +157,17 @@ fn listed(reply: &Value) -> Vec<Listed> {
 
 /// Asks the Claude Code at `executable` for its models, started in `folder`.
 pub async fn ask(executable: &Path, folder: &Path) -> Result<Vec<Listed>, String> {
+    initialize(executable, folder).await.map(|reply| listed(&reply))
+}
+
+/// Asks the Claude Code at `executable` for the slash commands it takes in `folder`: its own, and
+/// the commands, skills and plugins of the person and of that project.
+pub async fn ask_commands(executable: &Path, folder: &Path) -> Result<Vec<Command>, String> {
+    initialize(executable, folder).await.map(|reply| commands(&reply))
+}
+
+/// Starts Claude Code in `folder`, sends the one `initialize` request and returns its reply.
+async fn initialize(executable: &Path, folder: &Path) -> Result<Value, String> {
     let mut command = tokio::process::Command::new(executable);
     command
         .args(ARGUMENTS)
@@ -116,7 +194,7 @@ pub async fn ask(executable: &Path, folder: &Path) -> Result<Vec<Listed>, String
         input
             .write_all(format!("{request}\n").as_bytes())
             .await
-            .map_err(|error| format!("Could not ask Claude Code for its models: {error}"))?;
+            .map_err(|error| format!("Could not ask Claude Code what it offers: {error}"))?;
         let mut lines = BufReader::new(output).lines();
         let mut read = 0usize;
         while let Some(line) =
@@ -124,25 +202,25 @@ pub async fn ask(executable: &Path, folder: &Path) -> Result<Vec<Listed>, String
         {
             read += line.len();
             if read > MAX_REPLY_BYTES {
-                return Err("Claude Code's reply is too long to be its model list".to_string());
+                return Err("Claude Code's reply is too long to be its list".to_string());
             }
             if let Some(reply) = reply_in(&line) {
-                return reply.map(|reply| listed(&reply));
+                return reply;
             }
         }
-        Err("Claude Code closed before it listed its models".to_string())
+        Err("Claude Code closed before it answered".to_string())
     })
     .await
-    .unwrap_or_else(|_| Err("Claude Code did not list its models in time".to_string()));
+    .unwrap_or_else(|_| Err("Claude Code did not answer in time".to_string()));
     if let Err(error) = child.kill().await {
-        tracing::warn!("stopping the Claude Code that listed its models: {error}");
+        tracing::warn!("stopping the Claude Code that was asked what it offers: {error}");
     }
     answer
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{listed, reply_in, Listed};
+    use super::{commands, listed, reply_in, Command, Listed, MAX_DESCRIPTION_CHARS};
 
     const REPLY: &str = r#"{"type":"control_response","response":{"request_id":"maitty-models","subtype":"success","response":{"models":[
         {"value":"default","resolvedModel":"claude-fable-5-2","displayName":"Default (recommended)","description":"Fable 5.2","supportsEffort":true,"supportedEffortLevels":["low","medium","high","xhigh","max"]},
@@ -176,6 +254,41 @@ mod tests {
         assert!(reply_in(r#"{"type":"control_response","response":{"request_id":"someone-else","subtype":"success"}}"#).is_none());
         let refused = r#"{"type":"control_response","response":{"request_id":"maitty-models","subtype":"error","error":"no"}}"#;
         assert!(reply_in(refused).unwrap().is_err());
+    }
+
+    #[test]
+    fn the_reply_lists_each_command_with_its_one_line_description_hint_and_other_names() {
+        let reply = serde_json::json!({"commands": [
+            {"name": "compact", "description": "Clear history\n  but keep a summary", "argumentHint": "", "builtin": true},
+            {"name": "developer:pr", "description": "Open a pull request", "argumentHint": "[title]", "aliases": ["pr", "bad name"]},
+        ]});
+        assert_eq!(
+            commands(&reply),
+            [
+                Command { name: "compact".into(), description: "Clear history but keep a summary".into(), hint: String::new(), aliases: vec![] },
+                Command { name: "developer:pr".into(), description: "Open a pull request".into(), hint: "[title]".into(), aliases: vec!["pr".into()] },
+            ]
+        );
+    }
+
+    #[test]
+    fn a_name_that_is_not_a_command_name_is_left_out_and_a_long_description_is_cut() {
+        let long = "word ".repeat(200);
+        let reply = serde_json::json!({"commands": [
+            {"name": "ok", "description": long},
+            {"name": "two words"},
+            {"name": "esc\u{1b}[31m"},
+            {"name": "new\nline"},
+            {"name": "__remote-workflow"},
+            {"name": ""},
+            {"description": "no name"},
+            "not an object",
+        ]});
+        let listed = commands(&reply);
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].name, "ok");
+        assert_eq!(listed[0].description.chars().count(), MAX_DESCRIPTION_CHARS);
+        assert!(commands(&serde_json::json!({})).is_empty());
     }
 
     #[test]

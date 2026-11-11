@@ -3,6 +3,14 @@ import { displayName, type SessionStatus, type SessionView } from '@/features/wo
 export type NotifySwitches = { needs: boolean; finished: boolean; error: boolean }
 export type Notice = { sessionId: string; title: string; body: string }
 
+/**
+ * A turn that ended with messages still queued for the agent is not the session finishing: the next one goes in
+ * and it works on. `queued` says how many wait for the session in this window.
+ */
+export function finishedForNow(session: SessionView, queued: (session: SessionView) => number): boolean {
+  return session.status === 'done' && queued(session) > 0
+}
+
 /** What a notice calls a session. One on another machine starts with the machine in brackets, as that machine's own notices do. */
 function nameFor(session: SessionView): string {
   return session.machineName ? `[${session.machineName}] ${session.name ?? session.title}` : displayName(session)
@@ -23,7 +31,7 @@ const WANTED: Record<'needs' | 'done' | 'error', keyof NotifySwitches> = { needs
  * The text names the session and where it is, never what it was asked or is asking: a
  * notification can show on a locked screen.
  */
-export function noticesFor(before: ReadonlyMap<string, SessionStatus> | null, sessions: readonly SessionView[], switches: NotifySwitches, attending: string | null): Notice[] {
+export function noticesFor(before: ReadonlyMap<string, SessionStatus> | null, sessions: readonly SessionView[], switches: NotifySwitches, attending: string | null, queued: (session: SessionView) => number = () => 0): Notice[] {
   if (before === null) return []
   const notices: Notice[] = []
   for (const session of sessions) {
@@ -31,6 +39,7 @@ export function noticesFor(before: ReadonlyMap<string, SessionStatus> | null, se
     if (previous === undefined || previous === 'unknown' || previous === session.status) continue
     if (session.status !== 'needs' && session.status !== 'done' && session.status !== 'error') continue
     if (!switches[WANTED[session.status]] || session.id === attending) continue
+    if (finishedForNow(session, queued)) continue
     const title = TITLES[session.status]?.(nameFor(session))
     if (title) notices.push({ sessionId: session.id, title, body: `${session.process} in ${session.cwdLabel}` })
   }
