@@ -4,7 +4,7 @@ import { TerminalView } from '@/TerminalView'
 import { useWorkspace } from '../workspaceContext'
 import { chatAvailability, type PaneView } from '../model/chatView'
 import { toast } from '@/lib/toast'
-import { answerHelpers, sendTerminalInput } from '@/api/daemon'
+import { answerHelpers, dropQueuedFollowUp, queueFollowUp, sendTerminalInput } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
 import { isChatSession } from '../model/chatSession'
 import { carryDraftToTerminal } from '../model/draftCarry'
@@ -44,6 +44,12 @@ export function WorkspacePane({ shown, pane, kept }: {
   const chatOnly = isChatSession(session.conversation)
   const subagent = openSubagent?.sessionId === session.id ? session.subagents.find((child) => child.id === openSubagent.subagentId) : undefined
   const typeInto = chatOnly ? undefined : (text: string) => sendTerminalInput({ id: session.id, generation: session.conversation.generation ?? 0 }, text)
+  // A pane's daemon holds what is sent while its agent works; a chat session's own daemon queue is its conversation's.
+  const paneQueue = chatOnly ? undefined : {
+    queued: session.queued,
+    add: (text: string, first: boolean) => queueFollowUp(session, text, first),
+    drop: (index: number, text: string) => dropQueuedFollowUp(session, index, text),
+  }
   const showTerminal = () => {
     paneViews.choose(session.id, 'terminal')
     void carryDraftToTerminal(session).catch((error: unknown) => { toast.error(errorMessage(error, 'Could not move your message to the terminal')) })
@@ -78,6 +84,7 @@ export function WorkspacePane({ shown, pane, kept }: {
           onOpenDiff={showChanges}
           onOpenFile={(path, line) => { openPath(session, path, line ?? undefined) }}
           typeInto={typeInto}
+          paneQueue={paneQueue}
           ask={session.ask}
           asking={session.asking}
           sessionId={session.id}

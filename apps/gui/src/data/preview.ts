@@ -23,6 +23,8 @@ export type TerminalDetails = {
   usage: { context: number | null; cost: number | null; tokens: number | null }
   /** The plan limits of the session's agent, as it last reported them (`5h`, `week`); absent from an older daemon. */
   limits?: Array<{ name: string; used: number; resetsAt: number }>
+  /** The follow-ups the pane's daemon holds for its working agent, oldest first. */
+  queued?: string[]
   /** The helpers the session asked to start and waits on the person for, one task each; absent from an older daemon. */
   helperAsk?: string[]
   /** The agent's subagents as its runtime reports them; absent from an older daemon. */

@@ -359,13 +359,13 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   session, so they never stack). The theme's tokens are on the page root, so a menu or popover that renders outside the window
   reads the same colours and is never see-through.
 - **Typing while an agent works.** A chat run by the daemon queues what you send, and the daemon sends it when the turn
-  ends. A chat that follows an agent in a terminal does the same on this side: the message is held in the composer store
-  (shown under the box in the queue, removable) and typed into the agent's prompt, one at a time, once it is ready for a
-  message; nothing is typed while it is asking something. The message box sends them while it shows the chat; with
-  the chat off screen the window sends them itself (`useHeldMessages`), by the pane's status, so a queue never waits to
-  be looked at. While messages are still queued for a session, a turn that ends raises no "finished" notice or sound:
-  the session has not finished. They are the window's, so they go only while the window is open, and the queued card's
-  tooltip says so. What a box holds (unsent text, files, held messages) is kept
+  ends. A chat that follows an agent in a terminal does the same: the message is left with the pane's daemon
+  (`queue_follow_up`, the queue the terminal app uses; shown under the box in the queue, removable and editable through
+  `drop_queued_follow_up`) and the daemon types it into the agent's prompt, one at a time, when a turn ends; nothing is
+  typed while it is asking something. The window types none of them, so a queue goes on with the window closed, and
+  the chat draws a message as sent when it leaves the front of the daemon's queue. While messages are still queued
+  for a session (`SessionView.queued`), a turn that ends raises no "finished" notice or sound: the session has not
+  finished. What a box holds (unsent text, files) is kept
   by conversation number and belongs to its session: when the daemon gives the session's chat a new number, it moves
   to that number (`followComposer`).
 - **Settings pages.** ESSENTIALS: **General** (start and export folders, window, updates, sessions) and **Chat** (how a
@@ -403,7 +403,10 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   list the window keeps (`codexCommands.ts`: names from OpenAI's command reference, descriptions from Codex CLI
   0.167.0). The few whose result the conversation shows are sent from the chat; the rest open a picker or a page in
   Codex's terminal, are tagged `terminal`, and run there with the terminal shown. A Codex command is typed and Enter
-  follows 400ms later (`typeMessage`), since Codex loses an Enter sent with it.
+  follows 400ms later (`typeMessage`), since Codex loses an Enter sent with it. Codex does list its **skills**
+  (`agent_commands` asks its app server, `skills/list`), so those are offered too, tagged `skill` and written `$name`
+  as Codex's own box takes them: beside the commands after a slash, alone after a `$`. Picking one leaves `$name ` in
+  the box to write the message around; a skill is never sent by itself.
 - **Queued messages.** Each waits as a dashed card over the box whose header reads **Queued** (and `1 of 3` in an accent
   pill when several wait; the tooltip says when it is sent) with Edit (a pencil) and Remove (×) at its right. Several
   stack with the next one to be sent in front, in the accent's line; the `1 of 3` is what says more wait behind it,

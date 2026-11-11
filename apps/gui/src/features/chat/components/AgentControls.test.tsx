@@ -2,6 +2,7 @@ import { act, cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FAKE_CONVERSATION, FakeDaemonHistory } from '../fakeDaemonHistory'
+import { useFakePaneQueue } from '../fakePaneQueue'
 import { forgetComposers } from '../composerStore'
 import { forgetFirstMessages, holdStartChoice, startChoiceOf } from '../firstMessage'
 import { forgetChoices } from '../agentChoice'
@@ -45,8 +46,19 @@ function open(agent: 'claude' | 'codex', status: 'Idle' | 'Working' = 'Idle') {
   daemon.meta = { mode: 'auto', model: 'claude-sonnet-5-5' }
   fake.current = daemon
   const typeInto = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
-  render(<ChatSession link={{ conversation: FAKE_CONVERSATION, generation: 1, readOnly: true }} agent={agent} online typeInto={typeInto} sessionId="s1" />)
+  render(<WithPaneQueue agent={agent} typeInto={typeInto} />)
   return typeInto
+}
+
+/** The chat with a pane queue that behaves as the daemon's does; what it holds is written out, oldest first. */
+function WithPaneQueue({ agent, typeInto }: { agent: 'claude' | 'codex'; typeInto: (text: string) => Promise<void> }) {
+  const paneQueue = useFakePaneQueue()
+  return (
+    <>
+      <ChatSession link={{ conversation: FAKE_CONVERSATION, generation: 1, readOnly: true }} agent={agent} online typeInto={typeInto} paneQueue={paneQueue} sessionId="s1" />
+      <output aria-label="The daemon holds">{paneQueue.queued.join(' | ')}</output>
+    </>
+  )
 }
 
 describe('changing the mode, the model and the reasoning of a chat that follows the terminal', () => {

@@ -979,7 +979,9 @@ impl Daemon {
             | Command::TidyWorktrees { .. }
             | Command::KillServer { .. } => self.may(client, Grant::Admin, None),
             // Typing into another pane, only later.
-            Command::QueueFollowUp { term, .. } | Command::ClearQueue { term } => {
+            Command::QueueFollowUp { term, .. }
+            | Command::ClearQueue { term }
+            | Command::DropQueued { term, .. } => {
                 self.may(client, Grant::Write, Some(*term))
             }
             Command::SendWhenReady { term, .. } => {

@@ -33,9 +33,8 @@ export function QueuedMessages({ agent, queue, onRemove, onEdit, onSendNow }: Pr
   if (spread && !many) setSpread(false)
   const stacked = many && !spread
   if (queue.length === 0) return null
-  // The daemon holds a chat session's own messages (their numbers are its operations); one for an agent in a
-  // terminal is held by this window, so it goes only while the window is open.
-  const sentWhen = (id: number) => `Sent when ${agent} finishes this turn${id < 0 ? ', while this window is open' : ', even if you close the window'}`
+  // The agent's daemon holds every one of them, so they go in whether or not this window stays open.
+  const sentWhen = `Sent when ${agent} finishes this turn, even if you close the window`
   const messages = queue.map((message) => {
     const parsed = parseAttachmentMessage(message.text)
     const files = parsed?.files ?? []
@@ -50,7 +49,7 @@ export function QueuedMessages({ agent, queue, onRemove, onEdit, onSendNow }: Pr
           return (
             <li key={message.id} className={`mx-queued${many ? ' is-many' : ''}${behind ? ' is-behind' : ''}`} aria-hidden={behind || undefined}>
               <span className="mx-queued-head">
-                <span className="mx-queued-place" title={sentWhen(message.id)}>Queued{many && <span className="mx-queue-place">{`${String(index + 1)} of ${String(queue.length)}`}</span>}</span>
+                <span className="mx-queued-place" title={sentWhen}>Queued{many && <span className="mx-queue-place">{`${String(index + 1)} of ${String(queue.length)}`}</span>}</span>
                 <span className="mx-spacer" />
                 {onSendNow !== undefined && message.id < 0 && (
                   <button type="button" className="mx-queued-tool is-send" aria-label="Send now" title={`Send it to ${agent} now, without waiting for the turn to end`} onClick={() => { onSendNow(message.id) }}><Icon name="arrowUp" size={12} /></button>
