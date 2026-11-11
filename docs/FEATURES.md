@@ -63,7 +63,7 @@ conversation continuity are planned in phases 34–37:
 
 **Identity**
 - Renamed hydra → Seshi (v0.30.1), Seshi → Vibecasso, then Vibecasso → Maitty: the name lives in `Cargo.toml`; one-time move of an old install — `config::migrate_old_names`
-- Night (default) and Day themes among the built-in themes (62 by v0.42.0, later 170, now cut to 16 matched dark and light themes); block MAITTY wordmark on the splash — shipped in v0.42.0 — `crates/maitty-terminal-client/src/theme.rs`, `crates/maitty-terminal-client/src/client/screen/splash.rs`
+- Night (default) and Day themes among the built-in themes (62 by v0.42.0, later 170, later cut to 16, now 50: 25 dark and 25 light); block MAITTY wordmark on the splash — shipped in v0.42.0 — `crates/maitty-terminal-client/src/theme.rs`, `crates/maitty-terminal-client/src/client/screen/splash.rs`
 
 **Extras**
 - A tray (Windows) or menu-bar (macOS) item in the desktop app listing the sessions that need you and the ones that finished; choosing one opens it — built 2026-11-09, tried on Windows only — `apps/gui/src-tauri/src/tray.rs`, `apps/gui/src/features/workspace/useTrayItem.ts`

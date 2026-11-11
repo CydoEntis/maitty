@@ -474,7 +474,7 @@ mod tests {
     #[test]
     fn theme_browser_opens_on_the_theme_an_old_name_became_even_a_removed_one() {
         let mut app = app();
-        app.cfg.theme_dark = "melange".into();
+        app.cfg.theme_dark = "monokai".into();
         app.open_themes_on(false);
         assert!(
             matches!(app.mode, Mode::Themes { sel, .. } if matching("", false)[sel] == "gruvbox")
