@@ -230,6 +230,18 @@ pub struct PermissionAsk {
     /// the chat view can offer one button each. Empty for any other prompt.
     #[serde(default)]
     pub choices: Vec<String>,
+    /// A prompt that asks several questions at once, each with one answer, in the order the agent
+    /// shows them. The chat view offers each question's choices and answers them in that order.
+    /// Empty for any other prompt.
+    #[serde(default)]
+    pub questions: Vec<AskQuestion>,
+}
+
+/// One question of a prompt that asks several, and its choices as the agent numbers them.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AskQuestion {
+    pub question: String,
+    pub choices: Vec<String>,
 }
 
 /// What an agent's session has used.
@@ -1799,6 +1811,7 @@ mod tests {
                     detail: "cargo test".into(),
                     answerable: true,
                     choices: vec![],
+                    questions: Vec::new(),
                 }),
                 call: Some("00112233445566ff".into()),
             },
@@ -2129,6 +2142,30 @@ mod tests {
     }
 
     /// `choice` was added to `ConversationSend` as a defaulted field: a send from before it still
+    /// `questions` was added to a permission ask as a defaulted field: one from a hook or a daemon
+    /// built before it still decodes, as a prompt with none, so the version stays as it was.
+    #[test]
+    fn a_permission_ask_from_before_several_questions_still_decodes() {
+        #[derive(Serialize)]
+        struct OldAsk {
+            tool: String,
+            detail: String,
+            answerable: bool,
+            choices: Vec<String>,
+        }
+        let bytes = encode(&OldAsk { tool: "AskUserQuestion".into(), detail: "Which?".into(), answerable: false, choices: vec!["A".into(), "B".into()] }).unwrap();
+        let ask: PermissionAsk = decode(&bytes).unwrap();
+        assert_eq!((ask.choices.len(), ask.questions.len()), (2, 0));
+
+        let several = PermissionAsk {
+            tool: "AskUserQuestion".into(),
+            questions: vec![AskQuestion { question: "Which?".into(), choices: vec!["A".into(), "B".into()] }; 2],
+            ..PermissionAsk::default()
+        };
+        let back: PermissionAsk = decode(&encode(&several).unwrap()).unwrap();
+        assert_eq!(back, several);
+    }
+
     /// decodes, as "nothing picked", and one that carries a choice round-trips.
     #[test]
     fn a_send_from_before_the_model_choice_still_decodes() {
@@ -2592,6 +2629,7 @@ mod tests {
             detail: "cargo test".into(),
             answerable: true,
             choices: vec!["A".into(), "B".into()],
+            questions: Vec::new(),
         });
         round_trips(&ServerMsg::State(Snapshot {
             terms: [(3, term)].into(),
@@ -2764,6 +2802,7 @@ mod tests {
                 detail: "cargo test".into(),
                 answerable: false,
                 choices: vec!["Yes".into()],
+                questions: Vec::new(),
             }),
             call: Some("00112233445566ff".into()),
         };

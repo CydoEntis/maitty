@@ -5,7 +5,7 @@
 //! the screen (ADR 0003). It is cleaned here before it is kept or sent to any client.
 
 use super::conversation::mask_secrets;
-use crate::protocol::{PermissionAsk, Status};
+use crate::protocol::{AskQuestion, PermissionAsk, Status};
 use maitty_shared::hidden;
 
 /// Longest tool name and subject kept for a permission prompt, in characters.
@@ -14,6 +14,8 @@ pub(super) const MAX_ASK_DETAIL_CHARS: usize = 300;
 /// Most choices and longest choice kept for a question prompt; the menu itself holds four.
 const MAX_ASK_CHOICES: usize = 4;
 const MAX_ASK_CHOICE_CHARS: usize = 80;
+/// Most questions kept for a prompt that asks several: the agent's own limit.
+const MAX_ASK_QUESTIONS: usize = 4;
 
 /// The tool Claude asks a multiple-choice question with. Its menu is not the allow-or-refuse menu,
 /// so the key that allows a tool there would pick the first choice for the person.
@@ -54,11 +56,34 @@ pub(super) fn clean_ask(ask: PermissionAsk, agent: &str) -> Option<PermissionAsk
     } else {
         Vec::new()
     };
+    // Several questions are answered by a key each, in order: all of them clean, or none, since a
+    // choice dropped from one would put every number after it on the wrong line.
+    let clean = |text: &str, most: usize| -> String {
+        mask_secrets(&hidden::sanitize(text, false)).trim().chars().take(most).collect()
+    };
+    let questions: Vec<AskQuestion> = if tool == QUESTION_TOOL && knows_answer_keys(agent) && ask.questions.len() <= MAX_ASK_QUESTIONS {
+        ask.questions
+            .iter()
+            .map(|asked| AskQuestion {
+                question: clean(&asked.question, MAX_ASK_DETAIL_CHARS),
+                choices: asked.choices.iter().map(|choice| clean(choice, MAX_ASK_CHOICE_CHARS)).collect(),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let whole = questions.len() >= 2
+        && questions.iter().all(|asked| {
+            !asked.question.is_empty()
+                && (2..=MAX_ASK_CHOICES).contains(&asked.choices.len())
+                && asked.choices.iter().all(|choice| !choice.is_empty())
+        });
     Some(PermissionAsk {
         tool,
         detail,
         answerable,
         choices,
+        questions: if whole { questions } else { Vec::new() },
     })
 }
 
@@ -80,6 +105,7 @@ mod tests {
             detail: detail.into(),
             answerable: true,
             choices: Vec::new(),
+            questions: Vec::new(),
         }
     }
 
@@ -100,6 +126,26 @@ mod tests {
         let cleaned = clean_ask(asked.clone(), "claude").unwrap();
         assert_eq!(cleaned.choices, ["A", "B"], "cleaned, and an empty one dropped");
         assert!(clean_ask(asked, "codex").unwrap().choices.is_empty(), "no keys known, no buttons");
+    }
+
+    #[test]
+    fn several_questions_are_kept_whole_or_not_at_all() {
+        let asked = |choices: &[&str]| AskQuestion {
+            question: " Which?\u{1b} ".into(),
+            choices: choices.iter().map(|choice| choice.to_string()).collect(),
+        };
+        let mut prompt = ask("AskUserQuestion", "Which? / Which?");
+        prompt.questions = vec![asked(&["A", "B"]), asked(&["C", " D ", "E"])];
+        let cleaned = clean_ask(prompt.clone(), "claude").unwrap();
+        assert_eq!(cleaned.questions.len(), 2);
+        assert_eq!((cleaned.questions[0].question.as_str(), cleaned.questions[1].choices.clone()), ("Which?", vec!["C".to_string(), "D".into(), "E".into()]));
+        assert!(clean_ask(prompt.clone(), "codex").unwrap().questions.is_empty(), "no keys known");
+        // A choice that cleans to nothing would shift every number after it.
+        prompt.questions[1].choices[1] = "\u{1b}".into();
+        assert!(clean_ask(prompt.clone(), "claude").unwrap().questions.is_empty());
+        // One question is the single-choice prompt's, not this one's.
+        prompt.questions = vec![asked(&["A", "B"])];
+        assert!(clean_ask(prompt, "claude").unwrap().questions.is_empty());
     }
 
     #[test]
