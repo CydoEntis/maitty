@@ -155,16 +155,28 @@ const SOURCES: &[&str] = manifests!(
     "qwen"
 );
 
+/// Maitty's own rules, by agent: each file's rules join the vendored manifest of the same id, so
+/// the vendored snapshot is never edited.
+const OWN_SOURCES: &[&str] = &[include_str!("../rules/claude.toml")];
+
 static MANIFESTS: LazyLock<Vec<CompiledManifest>> = LazyLock::new(|| {
+    let own: Vec<Manifest> = OWN_SOURCES
+        .iter()
+        .map(|source| toml::from_str(source).expect("bundled detection manifest must parse"))
+        .collect();
+    let mut own_rules: std::collections::HashMap<String, Vec<Rule>> =
+        own.into_iter().map(|manifest| (manifest.id, manifest.rules)).collect();
     SOURCES
         .iter()
         .map(|source| {
             // These are checked-in source assets, never user files; the test gate validates them.
             let manifest: Manifest =
                 toml::from_str(source).expect("bundled detection manifest must parse");
+            let added = own_rules.remove(&manifest.id).unwrap_or_default();
             let mut rules: Vec<_> = manifest
                 .rules
                 .into_iter()
+                .chain(added)
                 .map(|rule| {
                     let gate = CompiledGate::compile(&rule.gate)
                         .expect("bundled detection expressions must compile");
@@ -216,6 +228,24 @@ pub fn detect(agent: &str, input: DetectionInput<'_>) -> Signal<'static> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const COMPACT_CHOOSER: &str = "* Cooked for 12m 8s · done 10:47 AM\n\n────────────────────────────────\n We recommend compacting earlier\n\n   Want to autocompact at 400k tokens instead? Your model doesn't change.\n\n     Autocompact at ‹ 400k › tokens\n     Keep auto (1m tokens)\n\n   ↑/↓ choose · ←/→ change size · enter confirm · esc not now          agents/reviewer-ui.md (untracked)\n                                                                      ──────────────────────────\n";
+
+    #[test]
+    fn claudes_own_chooser_needs_you_though_no_hook_says_so() {
+        let signal = detect("claude", DetectionInput { screen: COMPACT_CHOOSER, osc_title: "", osc_progress: "" });
+        assert_eq!(signal.rule, "live_chooser_footer");
+        assert_eq!(signal.status, Some(Status::Blocked));
+        assert!(signal.visible_blocker);
+    }
+
+    #[test]
+    fn the_choosers_words_quoted_in_a_conversation_are_not_a_chooser() {
+        // The same footer, written about further up, with the idle prompt box under it.
+        let quoted = format!("{COMPACT_CHOOSER}\n● The footer reads \"↑/↓ choose · ←/→ change size · enter confirm · esc not now\".\n\n────────────────────────────────\n❯ \n────────────────────────────────\n  ~/code │ main\n  ⏵⏵ auto mode on (shift+tab to cycle)\n");
+        let signal = detect("claude", DetectionInput { screen: &quoted, osc_title: "", osc_progress: "" });
+        assert_ne!(signal.rule, "live_chooser_footer");
+    }
 
     #[test]
     fn every_screen_agent_recognizes_its_native_chrome() {

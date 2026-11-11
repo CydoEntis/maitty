@@ -262,6 +262,12 @@ pub struct Term {
     pub pending_move: Option<PathBuf>,
     /// A prewarmed agent waiting in a spare worktree: not shown anywhere until it's used.
     pub spare: bool,
+    /// How many process scans in a row found no agent here while the pane has one
+    /// (`AGENT_MISSING_SCANS`).
+    pub agent_missed: u8,
+    /// When the agent this pane was started as said its session ended (its own hook), while the
+    /// pane still waits to end with it; see `Daemon::close_ended_agents`. In memory only.
+    pub agent_ended: Option<Instant>,
     /// Closed with an undo window: when, and by which client. Hidden from snapshots and saves
     /// while its process keeps running, until `finish_closes` ends it or `UndoClose` clears this.
     pub closing: Option<(Instant, super::ClientId)>,
@@ -976,6 +982,8 @@ impl Term {
             continued: None,
             pending_move: None,
             spare: false,
+            agent_missed: 0,
+            agent_ended: None,
             closing: None,
             mem: 0,
             cpu: 0.0,
@@ -1187,6 +1195,15 @@ impl Term {
         let mut out = Vec::with_capacity((a.len() + b.len()).min(limit) + 4096);
         out.extend_from_slice(&a[skip.min(a.len())..]);
         out.extend_from_slice(&b[skip.saturating_sub(a.len()).min(b.len())..]);
+        // A full-screen program's switch to the alternate screen may be older than the cut. A
+        // view left on its main screen would ignore the program's switch back when it exits and
+        // keep its last frame, so the view is put on the screen the pane is on, with the main
+        // screen it returns to underneath.
+        if self.parser.screen().alternate_screen() {
+            out.extend_from_slice(b"\x1b[?1049l");
+            out.extend(self.parser.screen().main_contents_formatted());
+            out.extend_from_slice(b"\x1b[?1049h");
+        }
         out.extend_from_slice(b"\x1b[0m\x1b[2J\x1b[H");
         out.extend(self.parser.screen().state_formatted());
         out
