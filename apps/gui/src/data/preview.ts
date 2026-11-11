@@ -3,7 +3,7 @@ export type SessionStatus = 'working' | 'needs-you' | 'done' | 'idle' | 'recover
 export type TurnKind = 'Working' | 'NeedsYou' | 'Done' | 'Idle' | 'Prompt' | 'CommandStarted' | 'CommandFinished'
 
 /** The question a permission prompt asks, from the agent's own hook. */
-export type PermissionAsk = { tool: string; detail: string; answerable: boolean; choices?: readonly string[] }
+export type PermissionAsk = { tool: string; detail: string; answerable: boolean; choices?: readonly string[]; /** A prompt that asks several questions at once, each with one answer, in the order the agent shows them. */ questions?: readonly { question: string; choices: readonly string[] }[] }
 
 /** What the daemon reports about a terminal session beyond its status. */
 export type TerminalDetails = {

@@ -69,19 +69,6 @@ const NO_QUEUED: readonly string[] = []
 const paneQueuedId = (index: number): number => -(index + 1)
 const paneQueuedIndex = (id: number): number => -id - 1
 
-/**
- * Queues one of the agent's own commands (`/model …`, `/effort …`) picked while it works: ahead of the messages
- * that wait, so they run under it. A command of the same name already queued is taken back: the last pick stands.
- */
-export async function queueCommand(queue: PaneQueue, text: string): Promise<void> {
-  const name = text.split(' ')[0]
-  // From the back, so taking one out does not move the ones still to check.
-  for (let index = queue.queued.length - 1; index >= 0; index -= 1) {
-    const waiting = queue.queued[index]
-    if (waiting !== undefined && waiting.split(' ')[0] === name) await queue.drop(index, waiting)
-  }
-  await queue.add(text, true)
-}
 
 /** What was just sent into the terminal, and how many times those words were already in the history. */
 export type SentEcho = { readonly text: string; readonly baseline: number; readonly quiet: boolean }
@@ -131,6 +118,11 @@ export type ChatComposer = {
   removeQueued: (id: number) => void
   /** Takes a queued message back into the message box, ahead of anything typed there, so it can be changed and sent again. */
   editQueued: (id: number) => void
+  /**
+   * Types a queued message into the agent now, in the turn that is running, as typing in its terminal does: the agent
+   * reads it at its next step instead of when the turn ends. Only for an agent in a terminal.
+   */
+  sendQueuedNow?: ((id: number) => void) | undefined
   /** Sends the draft; while the agent works the daemon holds it and sends it when the turn ends. */
   submit: () => void
   /** Interrupts the running turn. */
@@ -307,6 +299,21 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
     announceOutsideSend(link.conversation, first)
   }, [paneQueued, link.conversation])
 
+  const sendQueuedNow = useCallback((operation: number) => {
+    // Typed text answers a prompt the agent is showing, so nothing is pushed in while it asks something.
+    if (operation >= 0 || disabledReason !== null || sending) return
+    const taking = takeBack(operation)
+    if (taking === null) return
+    // Typed in only once the daemon has let go of it, or it would go in twice.
+    taking.gone.then(
+      () => send(taking.text),
+      (failure: unknown) => {
+        taken.current.delete(taking.text)
+        setError(errorMessage(failure, 'Could not send the queued message now'))
+      },
+    )
+  }, [disabledReason, sending, send, takeBack])
+
   const removeQueued = useCallback((operation: number) => {
     if (operation < 0) {
       const taking = takeBack(operation)
@@ -375,5 +382,5 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
       .catch((failure: unknown) => { setError(errorMessage(failure, 'Could not interrupt the turn')) })
   }, [running, feed.cancelling, conversation, link.generation, refresh, typeText])
 
-  return { conversationKey: link.conversation, setDraft, attachments, attach, readOnly, attachable: !readOnly || typing, queue, removeQueued, editQueued, submit, stop, running, sending, disabledReason, ready: disabledReason === null && !holding, error, sendText: send, echo }
+  return { conversationKey: link.conversation, setDraft, attachments, attach, readOnly, attachable: !readOnly || typing, queue, removeQueued, editQueued, sendQueuedNow: typing ? sendQueuedNow : undefined, submit, stop, running, sending, disabledReason, ready: disabledReason === null && !holding, error, sendText: send, echo }
 }

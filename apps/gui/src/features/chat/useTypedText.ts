@@ -1,9 +1,26 @@
 import { useEffect, useRef, useState } from 'react'
 
-/** How often the shown text catches up toward what has arrived. */
-const TICK_MS = 24
-/** Each tick shows this share of what is still unshown (at least one character), so a big chunk eases in and a trickle types one letter at a time. */
-const CATCH_UP_DIVISOR = 14
+/** How often the shown text moves on toward what has arrived: a few words at a time, not letter by letter. */
+export const TICK_MS = 40
+/** The steady pace: this many characters a tick, about 300 a second, a little faster than anyone reads. */
+const PACE_CHARS = 12
+/** A backlog larger than the steady pace clears in a second or two goes faster: each tick shows this share of it, so a long reply does not take a minute. */
+const CATCH_UP_DIVISOR = 45
+/** A step ends on a whole word when the word's end is within this many characters, so words appear, not halves of them. */
+const WORD_REACH = 24
+
+/**
+ * How much of `text` shows after one more tick, from `shown` characters. It moves at a steady pace, faster while a
+ * lot is waiting, and stops at the end of a word. A reply read from an agent's file arrives whole or in large
+ * pieces, and shown by share alone most of it appeared within a quarter of a second, which read as a flash.
+ */
+export function nextShown(text: string, shown: number): number {
+  const left = text.length - shown
+  if (left <= 0) return text.length
+  const reach = Math.min(text.length, shown + Math.max(PACE_CHARS, Math.ceil(left / CATCH_UP_DIVISOR)))
+  const wordEnd = text.slice(reach, reach + WORD_REACH).search(/\s/)
+  return wordEnd === -1 ? Math.min(text.length, reach) : reach + wordEnd
+}
 
 /**
  * The text as if it were being typed. A reply arrives in chunks (the history is read every second or so), and
@@ -22,10 +39,7 @@ export function useTypedText(target: string, enabled: boolean, fromStart = false
   useEffect(() => {
     if (!behind) return
     const timer = window.setInterval(() => {
-      setShown((now) => {
-        const left = latest.current.length - now
-        return left > 0 ? now + Math.max(1, Math.ceil(left / CATCH_UP_DIVISOR)) : now
-      })
+      setShown((now) => nextShown(latest.current, now))
     }, TICK_MS)
     return () => { window.clearInterval(timer) }
   }, [behind])

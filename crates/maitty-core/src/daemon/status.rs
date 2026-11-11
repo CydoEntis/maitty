@@ -495,6 +495,8 @@ impl Daemon {
         t.hooked = true;
         // An agent is reporting from the pane again: it did not end, it started over.
         t.agent_ended = None;
+        // Any report after a typed message's Enter means the agent took it (or moved on).
+        t.enter_sent = None;
         if agent == "codex" && CODEX_LIFECYCLE_EVENTS.contains(&event) {
             t.lifecycle_hooks = true;
         }
@@ -918,10 +920,25 @@ impl Daemon {
                         t.pending_input = Some((b"\r".to_vec(), Instant::now()));
                     } else {
                         t.input(&data);
+                        // The Enter of a message typed for the agent: checked on below.
+                        if data == b"\r" {
+                            t.enter_sent = Some(t.last_input);
+                        }
                     }
                 } else {
                     t.pending_input = Some((data, by));
                 }
+            }
+        }
+        // A message whose Enter the agent read as a new line is still in its box: Enter once more.
+        for t in self.terms.values_mut() {
+            let at_rest = matches!(t.status, Status::Idle | Status::Done);
+            if t.enter_again_due(at_rest, Instant::now()) {
+                tracing::info!("pane {}: the agent reported no prompt after Enter; pressing it again", t.id);
+                t.enter_sent = None;
+                t.input(b"\r");
+            } else if t.enter_sent.is_some_and(|sent| sent.elapsed() >= term::ENTER_AGAIN_AFTER) {
+                t.enter_sent = None;
             }
         }
         let window = Duration::from_millis(self.cfg.detection.working_window_ms);

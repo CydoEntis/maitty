@@ -218,6 +218,31 @@ describe('desktop settings', () => {
     expect(button).toHaveAttribute('aria-busy', 'true')
   })
 
+  it('shows how far a download is: a bar, what has arrived, the percent and the time left', () => {
+    const download = { progress: 0.42, transfer: { received: 42 * 1024 * 1024, total: 100 * 1024 * 1024, bytesPerSecond: 1024 * 1024 } }
+    const updates = { summary: 'Downloading Maitty 0.74.0…', status: 'downloading' as const, download, onCheck: vi.fn(), onDownload: vi.fn(), onRestart: vi.fn() }
+    renderSettings('general', { updates })
+
+    expect(screen.getByRole('progressbar', { name: 'Download' })).toHaveAttribute('aria-valuenow', '42')
+    expect(screen.getByText('42.0 MB of 100 MB')).toBeInTheDocument()
+    expect(screen.getByText('42% · about 1 min left')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Downloading 42%' })).toBeDisabled()
+  })
+
+  it('keeps the bar moving before the size of a download is known', () => {
+    const updates = { summary: 'Downloading Maitty 0.74.0…', status: 'downloading' as const, onCheck: vi.fn(), onDownload: vi.fn(), onRestart: vi.fn() }
+    renderSettings('general', { updates })
+    const bar = screen.getByRole('progressbar', { name: 'Download' })
+    expect(bar).not.toHaveAttribute('aria-valuenow')
+    expect(bar).toHaveClass('is-unknown')
+    expect(screen.getByText('Starting…')).toBeInTheDocument()
+  })
+
+  it('shows no download bar when nothing is downloading', () => {
+    renderSettings('general', { updates: { summary: 'You are on the latest version.', status: 'current' as const, onCheck: vi.fn(), onDownload: vi.fn(), onRestart: vi.fn() } })
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+  })
+
   it('has one switch each for needs you, done and error notifications', async () => {
     const user = userEvent.setup()
     const { onChange } = renderSettings('notifications')

@@ -268,6 +268,9 @@ pub struct Term {
     /// When the agent this pane was started as said its session ended (its own hook), while the
     /// pane still waits to end with it; see `Daemon::close_ended_agents`. In memory only.
     pub agent_ended: Option<Instant>,
+    /// When the Enter that ends a message the daemon typed for the agent was sent, while the agent
+    /// has not yet reported anything since; see `enter_again_due`. In memory only.
+    pub enter_sent: Option<Instant>,
     /// Closed with an undo window: when, and by which client. Hidden from snapshots and saves
     /// while its process keeps running, until `finish_closes` ends it or `UndoClose` clears this.
     pub closing: Option<(Instant, super::ClientId)>,
@@ -458,8 +461,12 @@ fn worktree_agents(cfg: &Config) -> Vec<String> {
     names
 }
 
+/// This program's path, for the shell functions written into a pane's start-up file. An update
+/// replaces the file while the daemon still runs the old image, and the kernel then names the
+/// running one `<path> (deleted)`: written as it is, every agent function called a program that
+/// does not exist until the daemon was restarted. The installed path is the one that is there.
 fn own_exe() -> String {
-    std::env::current_exe()
+    crate::installed_executable::installed_executable()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|_| env!("APP_COMMAND").into())
 }
@@ -616,6 +623,8 @@ fn remove_remote_route(cmd: &mut CommandBuilder) {
 /// How long an agent with no hooks is given to finish starting before a held message goes in.
 /// One with hooks says when it is up, and is not kept waiting.
 const UNHOOKED_AGENT_STARTS_WITHIN: std::time::Duration = std::time::Duration::from_secs(20);
+/// How long an agent with hooks may take to report a prompt it was sent, before the Enter is pressed again.
+pub const ENTER_AGAIN_AFTER: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// A message held for the agent that is starting in a pane.
 pub struct HeldMessage {
@@ -984,6 +993,7 @@ impl Term {
             spare: false,
             agent_missed: 0,
             agent_ended: None,
+            enter_sent: None,
             closing: None,
             mem: 0,
             cpu: 0.0,
@@ -1207,6 +1217,23 @@ impl Term {
         out.extend_from_slice(b"\x1b[0m\x1b[2J\x1b[H");
         out.extend(self.parser.screen().state_formatted());
         out
+    }
+
+    /// Whether the Enter after a message the daemon typed should be pressed once more. An Enter
+    /// that reaches an agent together with the text, because the agent was still starting or the
+    /// machine was busy, is read as a new line in its box, and the message sits there unsent
+    /// while the chat shows it as sent. An agent with hooks reports a prompt the moment it is
+    /// submitted and that report clears `enter_sent`, so none after `ENTER_AGAIN_AFTER` means the
+    /// message was not submitted. Never when something was typed into the pane since: a second
+    /// Enter would send what the person is writing.
+    pub fn enter_again_due(&self, at_rest: bool, now: Instant) -> bool {
+        self.enter_sent.is_some_and(|sent| {
+            self.hooked
+                && self.agent.is_some()
+                && at_rest
+                && self.last_input <= sent
+                && now.duration_since(sent) >= ENTER_AGAIN_AFTER
+        })
     }
 
     pub fn input(&mut self, data: &[u8]) {

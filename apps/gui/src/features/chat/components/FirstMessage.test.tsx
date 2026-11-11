@@ -204,6 +204,26 @@ describe('finding text in the chat a session shows', () => {
 })
 
 describe('a message written while a terminal agent works', () => {
+  it('can be sent into the running turn from its card, as typing in the terminal does, and goes exactly once', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const { typeInto } = open('Working')
+    await settle()
+    await user.type(screen.getByRole('textbox', { name: 'Message claude' }), 'stop, use the other branch{Enter}')
+    await settle(1)
+    expect(typeInto).not.toHaveBeenCalled()
+    expect(screen.getByRole('status', { name: 'The daemon holds' })).toHaveTextContent('stop, use the other branch')
+
+    await user.click(screen.getByRole('button', { name: 'Send now' }))
+    await settle(10)
+
+    expect(typeInto).toHaveBeenCalledExactlyOnceWith(`${PASTE_START}stop, use the other branch${PASTE_END}\r`)
+    expect(screen.queryByRole('list', { name: 'Queued messages' })).not.toBeInTheDocument()
+
+    // The daemon no longer holds it, so the turn ending sends nothing more.
+    expect(screen.getByRole('status', { name: 'The daemon holds' })).toHaveTextContent('')
+  })
+
+
   it('is left with the daemon and shown in the queue, and drawn as sent when the daemon types it in', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const { typeInto } = open('Working')

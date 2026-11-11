@@ -1,6 +1,6 @@
 import { memo, useContext, useEffect, type ReactNode } from 'react'
 import { FileText } from 'lucide-react'
-import { Icon, Spinner } from '@/features/workspace/components/glyphs'
+import { Icon } from '@/features/workspace/components/glyphs'
 import { ElapsedSince } from '@/features/workspace/components/times'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
 import { dividerText, paragraphsOf, splitLead, streamingParagraphs, type ChatRow } from '../chatRows'
@@ -8,6 +8,7 @@ import type { ItemStatus } from '../chatEvents'
 import { KnownRowsContext } from '../knownRows'
 import { isWaitingStep } from '../stepInfo'
 import { useTypedText } from '../useTypedText'
+import { WorkingMark } from './WorkingMark'
 import { ReducedMotionContext } from '@/features/workspace/components/motion'
 import { parseAttachmentMessage } from '../attachmentMessage'
 import { AgentsCard } from './AgentsCard'
@@ -185,7 +186,7 @@ export const ChatItem = memo(function ChatItem({ row, agent, workingSince, appro
       return (
         <Frame>
           <div className="mx-working">
-            <Spinner />
+            <WorkingMark agent={agent} />
             <span>{agent} is {row.phrase}{workingSince !== null && <> · <ElapsedSince since={workingSince} /></>}</span>
           </div>
         </Frame>

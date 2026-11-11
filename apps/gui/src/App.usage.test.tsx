@@ -25,6 +25,9 @@ const daemon = vi.hoisted(() => ({
 vi.mock('@/api/daemon', () => ({
   ...daemon,
   isDesktop: () => true,
+  // The service is the app's own release: nothing to say and nothing to restart.
+  loadDaemonUpdateStatus: () => Promise.resolve({ daemonVersion: null, behind: false, canRestart: false, sessionCount: 0, activeTurnCount: 0 }),
+  restartStaleDaemon: () => Promise.resolve(),
   terminalOf: (id: string) => {
     const match = /^t(\d+)$/.exec(id)
     return match?.[1] === undefined ? null : Number(match[1])

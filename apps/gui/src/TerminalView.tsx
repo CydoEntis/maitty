@@ -4,14 +4,15 @@ import { toast } from '@/lib/toast'
 import type { ITheme, Terminal as XtermTerminal } from '@xterm/xterm'
 import type { WebglAddon } from '@xterm/addon-webgl'
 import { Button } from '@/components/ui/button'
-import { isDesktop, loadTerminalReplay, resizeTerminal, sendTerminalInput } from '@/api/daemon'
+import { isDesktop, loadTerminalReplay, openLink, resizeTerminal, sendTerminalInput } from '@/api/daemon'
 import { listenTerminalChunks, loadTerminalHistory, type TerminalChunk, type TerminalHistory } from '@/api/terminalStream'
 import type { Conversation } from '@/data/preview'
 import type { TerminalHandle } from '@/features/terminal/handle'
 import { brightBlackGround, type Channels } from '@/features/terminal/brightBlackGround'
 import { isPasteChord, listenForImagePaste } from '@/features/terminal/clipboardImage'
 import { COPY_TOAST_ID, COPY_TOAST_MS } from '@/features/terminal/copyToast'
-import { findPathLinks } from '@/features/terminal/pathLinks'
+import { findPathLinks, findWebLinks } from '@/features/terminal/pathLinks'
+import { errorMessage } from '@/lib/error-message'
 import { appendToScreen, cachedScreen, replaceScreen, screenKey } from '@/features/terminal/screenCache'
 import { isWindowActive, useWindowActive } from '@/lib/window-activity'
 import { hasWebgl2 } from '@/lib/gpu'
@@ -432,6 +433,24 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         }
         terminalInstance.parser.registerOscHandler(OSC_FOREGROUND, answerColorQuery('foreground'))
         terminalInstance.parser.registerOscHandler(OSC_BACKGROUND, answerColorQuery('background'))
+        // Cmd/Ctrl-click on a web address opens it in the person's own browser, through the host (`open_link`).
+        terminalInstance.registerLinkProvider({
+          provideLinks: (y, callback) => {
+            const text = terminalInstance.buffer.active.getLine(y - 1)?.translateToString(true)
+            const links = (text ? findWebLinks(text) : []).map((link) => ({
+              range: { start: { x: link.start + 1, y }, end: { x: link.end, y } },
+              text: link.url,
+              activate: (event: MouseEvent) => {
+                if (!event.metaKey && !event.ctrlKey) return
+                openLink(link.url).then(
+                  () => { toast.message('Opened in your browser') },
+                  (error: unknown) => { toast.error(errorMessage(error, 'Could not open the link')) },
+                )
+              },
+            }))
+            callback(links.length > 0 ? links : undefined)
+          },
+        })
         // Cmd/Ctrl-click on a file name in the output opens it in the Inspect panel.
         terminalInstance.registerLinkProvider({
           provideLinks: (y, callback) => {

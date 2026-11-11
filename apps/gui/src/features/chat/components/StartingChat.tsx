@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from '@/lib/toast'
-import { Spinner } from '@/features/workspace/components/glyphs'
+import { WorkingMark } from './WorkingMark'
 import { connectAgent, reloadAgentOnDaemon, sendWhenAgentReady } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
 import { NO_EVENTS_HINT_AFTER_MS, noEventsHint, waitingInTerminalHint, type ChatAgent } from '@/features/workspace/model/chatView'
@@ -140,7 +140,7 @@ export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', 
         // The same list the real chat uses, so the message and the line under it are already where they will stay.
         <div className="mx-chat-scroller min-h-0 flex-1 overflow-y-auto">
           <div className="mx-chat-row"><div className="mx-msg-user is-echo" aria-label="Sending">{echoed(held)}</div></div>
-          <div className="mx-chat-row"><div className="mx-working"><Spinner /><span>{agent} is starting…</span></div></div>
+          <div className="mx-chat-row"><div className="mx-working"><WorkingMark agent={agent} /><span>{agent} is starting…</span></div></div>
         </div>
       )}
       <Composer

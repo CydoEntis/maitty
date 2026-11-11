@@ -31,7 +31,9 @@ function show(sessions: SessionView[], more: Partial<SidebarProps> = {}) {
     onEndSession: none, onOpenSettings: none, updateSlot: null, railUpdateSlot: null,
     ...more,
   }
-  return render(<Sidebar {...props} />)
+  const view = render(<Sidebar {...props} />)
+  // Draws the same sidebar again with some props changed, as the window does when the selection moves.
+  return { ...view, again: (next: Partial<SidebarProps>) => { view.rerender(<Sidebar {...props} {...next} />) } }
 }
 
 const rows = () => screen.getAllByRole('button', { name: /, (idle|working|needs you|done|exited|unknown)$/ })
@@ -66,11 +68,13 @@ describe('the sidebar', () => {
     expect(names()).toEqual(['Asking', 'Exited shell', 'Idle agent', 'Working', 'Finished'])
   })
 
-  it('shows the project and branch under the name, and names a shell by its folder', () => {
+  it('says where a session is over its name: the folder at the left, the branch at the right', () => {
     show([session(1, { agent: 'claude', named: true, title: 'Growth', repo: 'AeVoxGrowth', branch: 'agent/grow-025', folder: '/home/me/AeVoxGrowth', cwd: '/home/me/AeVoxGrowth' }), session(2, { cwd: '/home/me/dev', folder: '/home/me/dev' })])
     const growth = screen.getByRole('button', { name: /^Growth,/ })
     expect(growth).toHaveTextContent('AeVoxGrowth')
     expect(growth).toHaveTextContent('agent/grow-025')
+    // Folder, branch, then the title under them.
+    expect(growth.querySelector('.mx-row-text')?.textContent).toBe('AeVoxGrowthagent/grow-025Growth')
     expect(screen.getByRole('button', { name: /^dev, shell/ })).toBeTruthy()
   })
 
@@ -161,6 +165,30 @@ describe('a machine that needs maitty installed or updated', () => {
 
 describe('subagents', () => {
   const parent = (extra: Partial<Conversation> = {}) => session(1, { agent: 'claude', named: true, title: 'Growth', status: 'working', details: { asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, subagents: [child('a', 'Check migration order', 'Completed'), child('b', 'Write drafts tests', 'Working'), child('c', 'Load test', 'AwaitingApproval')] }, ...extra })
+
+  it('keeps every row in place when the selection moves to and from a session with subagents: nothing is built again, only the folds turn', () => {
+    const other = session(2, { agent: 'claude', named: true, title: 'Other' })
+    const view = show([parent(), other], { focusedId: 't2' })
+    const wraps = () => Array.from(document.querySelectorAll<HTMLElement>('[data-flip]'))
+    const before = wraps()
+    const fold = (selector: string) => document.querySelector(selector)?.closest('.mx-collapse-grid')
+    const peek = fold('.mx-sub-peek')
+    const rows = fold('.mx-sub-list')
+    expect([peek?.getAttribute('data-open'), rows?.getAttribute('data-open')]).toEqual(['true', 'false'])
+
+    // To the session with subagents, and away again, the way a click does.
+    view.again({ focusedId: 't1' })
+    expect([peek?.getAttribute('data-open'), rows?.getAttribute('data-open')]).toEqual(['false', 'true'])
+    view.again({ focusedId: 't2' })
+    expect([peek?.getAttribute('data-open'), rows?.getAttribute('data-open')]).toEqual(['true', 'false'])
+
+    // The same elements throughout, in the same order: a row that was built again would snap, not fold.
+    const after = wraps()
+    expect(after).toHaveLength(before.length)
+    expect(after.every((wrap, at) => wrap === before[at])).toBe(true)
+    expect(fold('.mx-sub-peek')).toBe(peek)
+    expect(fold('.mx-sub-list')).toBe(rows)
+  })
 
   it('shows small icons under a session that is not selected, saying each one’s state; a finished one has reported back and is gone', () => {
     show([parent()])

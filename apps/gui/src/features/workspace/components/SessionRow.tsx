@@ -21,27 +21,34 @@ type Props = {
   onContextMenu: (event: MouseEvent) => void
 }
 
-/** The line under a row's name: the project's colour and name, then the branch in mono. */
-function SubLine({ session, showProject, machine }: { session: SessionView; showProject: boolean; machine: string | null }) {
+/**
+ * The line over a row's name, saying where the session is: the project's colour and folder at the left, and at the
+ * right the branch in the theme's colour, or the tree and the branch in the worktree's when the session runs in one.
+ * Nothing when there is none of those.
+ */
+function PlaceLine({ session, showProject, machine }: { session: SessionView; showProject: boolean; machine: string | null }) {
   const project = projectOf(session)
+  if (!showProject && machine === null && !session.branch) return null
   return (
     <span className="mx-row-sub">
       {showProject && (
         <span className="mx-row-project">
           <span className="mx-row-square" style={{ background: projectColor(project) }} aria-hidden="true" />
-          {project}
+          <span className="mx-row-project-name">{project}</span>
         </span>
       )}
       {machine !== null && <span className="mx-row-machine">· {machine}</span>}
-      {showProject && session.branch && <span aria-hidden="true">·</span>}
-      {session.branch && (session.worktree
-        ? <span className="mx-row-branch is-worktree" title={`Worktree on branch ${session.branch}`}><Icon name="worktree" size={10} />{session.branch}</span>
-        : <span className="mx-row-branch" title={`Branch ${session.branch}`}>{session.branch}</span>)}
+      {session.branch && (
+        <span className={`mx-row-branch${session.worktree ? ' is-worktree' : ''}`} title={session.worktree ? `Worktree on branch ${session.branch}` : `Branch ${session.branch}`}>
+          <Icon name={session.worktree ? 'worktree' : 'branch'} size={10} />
+          <span className="mx-row-branch-name">{session.branch}</span>
+        </span>
+      )}
     </span>
   )
 }
 
-/** One session in the sidebar: its app tile and status badge, name, project and branch, and at the right a word when it stopped, else how long it has been in its state. */
+/** One session in the sidebar: its app tile and status badge, where it is over its name (the folder at the left, the branch or worktree at the right), and beside the name a word when it stopped, else how long it has been in its state. */
 export function SessionRow({ session, selected, showProject, machine = null, renaming, onShow, onRename, onSetName, onCancelRename, onContextMenu }: Props) {
   const title = rowTitle(session)
   const active = !isShell(session) && session.status !== 'idle'
@@ -58,8 +65,8 @@ export function SessionRow({ session, selected, showProject, machine = null, ren
       <div className={className} onContextMenu={onContextMenu}>
         {icon}
         <span className="mx-row-text">
+          <PlaceLine session={session} showProject={showProject} machine={machine} />
           <InlineName value={session.name ?? ''} placeholder={title} label="Session name" maxLength={MAX_SESSION_NAME_LENGTH} onCommit={onSetName} onCancel={onCancelRename} />
-          <SubLine session={session} showProject={showProject} machine={machine} />
         </span>
       </div>
     )
@@ -78,12 +85,14 @@ export function SessionRow({ session, selected, showProject, machine = null, ren
     >
       {icon}
       <span className="mx-row-text">
-        <span className="mx-row-name">{title}</span>
-        <SubLine session={session} showProject={showProject} machine={machine} />
+        <PlaceLine session={session} showProject={showProject} machine={machine} />
+        <span className="mx-row-title">
+          <span className="mx-row-name">{title}</span>
+          {word !== '' && <span className="mx-row-word">{word}</span>}
+          {/* How long the agent has been in this state; a shell has no state worth timing. */}
+          {word === '' && !isShell(session) && session.statusSince !== null && <span className="mx-row-when"><Ago at={session.statusSince} /></span>}
+        </span>
       </span>
-      {word !== '' && <span className="mx-row-word">{word}</span>}
-      {/* How long the agent has been in this state; a shell has no state worth timing. */}
-      {word === '' && !isShell(session) && session.statusSince !== null && <span className="mx-row-when"><Ago at={session.statusSince} /></span>}
     </button>
   )
 }
