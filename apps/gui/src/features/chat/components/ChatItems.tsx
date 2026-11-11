@@ -1,10 +1,12 @@
-import { memo, useContext, type ReactNode } from 'react'
+import { memo, useContext, useEffect, type ReactNode } from 'react'
+import { FileText } from 'lucide-react'
 import { Icon, Spinner } from '@/features/workspace/components/glyphs'
 import { ElapsedSince } from '@/features/workspace/components/times'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
 import { dividerText, paragraphsOf, splitLead, streamingParagraphs, type ChatRow } from '../chatRows'
 import type { ItemStatus } from '../chatEvents'
 import { KnownRowsContext } from '../knownRows'
+import { isWaitingStep } from '../stepInfo'
 import { useTypedText } from '../useTypedText'
 import { ReducedMotionContext } from '@/features/workspace/components/motion'
 import { parseAttachmentMessage } from '../attachmentMessage'
@@ -12,7 +14,9 @@ import { AgentsCard } from './AgentsCard'
 import { SentAttachments } from './Attachments'
 import { ApprovalCard, type ApprovalActions } from './ApprovalCard'
 import { InlineMarkdown, Markdown } from './Markdown'
-import { CommandCard, EditCard, TodoCard, ToolChip } from './StepCards'
+import { PlanCard } from './PlanCard'
+import { StepView } from './StepCards'
+import { WorkCard } from './WorkCard'
 
 /**
  * The rows of the chat (v18 C.1). Every fact the daemon's history carries is shown, and one it does
@@ -37,6 +41,8 @@ export type ChatItemContext = {
   /** Opens a file's diff in the Changes panel; `null` where there is none. */
   openDiff: ((file: string) => void) | null
   goToStep: ((key: string) => void) | null
+  /** The id of the tool step a pending request is about, so that step says it is waiting. */
+  waitingStep: string | null
 }
 
 type RowProps = { row: ChatRow } & ChatItemContext
@@ -56,6 +62,10 @@ function sameRow(a: ChatRow, b: ChatRow): boolean {
       return b.kind === 'agent' && a.status === b.status && sameStrings(a.paragraphs, b.paragraphs)
     case 'agents':
       return b.kind === 'agents' && a.events.length === b.events.length && a.events.every((event, index) => event === b.events[index])
+    case 'changes':
+      return b.kind === 'changes' && sameStrings(a.files, b.files) && a.lines?.added === b.lines?.added && a.lines?.removed === b.lines?.removed
+    case 'work':
+      return b.kind === 'work' && a.events.length === b.events.length && a.events.every((event, index) => event === b.events[index])
     case 'approval':
       return b.kind === 'approval' && a.event === b.event && a.step?.key === b.step?.key && a.step?.label === b.step?.label
     case 'working':
@@ -72,7 +82,7 @@ function sameRow(a: ChatRow, b: ChatRow): boolean {
 }
 
 function sameProps(a: RowProps, b: RowProps): boolean {
-  return a.agent === b.agent && a.workingSince === b.workingSince && a.approval === b.approval && a.root === b.root && a.openDiff === b.openDiff && a.goToStep === b.goToStep && sameRow(a.row, b.row)
+  return a.agent === b.agent && a.workingSince === b.workingSince && a.approval === b.approval && a.root === b.root && a.openDiff === b.openDiff && a.goToStep === b.goToStep && a.waitingStep === b.waitingStep && sameRow(a.row, b.row)
 }
 
 /**
@@ -84,68 +94,92 @@ function AgentMessage({ rowKey, paragraphs, status }: { rowKey: string; paragrap
   const known = useContext(KnownRowsContext)
   const target = (status === 'running' ? streamingParagraphs(paragraphs) : paragraphs).join('\n\n')
   const typed = useTypedText(target, !reduced, known !== null && !known.has(rowKey))
+  // Typed in once: drawn again, this row shows whole.
+  useEffect(() => { known?.add(rowKey) }, [known, rowKey])
   const { lead, rest } = splitLead(typed === target ? (status === 'running' ? streamingParagraphs(paragraphs) : paragraphs) : paragraphsOf(typed))
   const empty = lead === '' && rest.length === 0
   return (
     <div className="mx-msg-agent">
       {lead !== '' && <p className="mx-msg-lead"><InlineMarkdown text={lead} /></p>}
       {rest.length > 0 && <Markdown text={rest.join('\n\n')} className="mx-msg-rest" />}
-      {empty && <p className="mx-msg-empty">{status === 'running' ? 'Writing…' : 'An empty reply.'}</p>}
+      {empty && <p className="mx-msg-empty">{status === 'running' ? 'Writing…' : 'The agent finished without writing a reply.'}</p>}
+    </div>
+  )
+}
+
+/**
+ * What the person said: its text, and its attached files as chips. A message on its way is drawn the
+ * same as one the history holds, so the files never show as the paths that carry them.
+ */
+function SaidText({ text }: { text: string }) {
+  const attached = parseAttachmentMessage(text)
+  if (attached === null) return <p>{text}</p>
+  return (
+    <div className="flex max-w-[85%] flex-col items-end">
+      {attached.text !== '' && <p className="mx-bubble">{attached.text}</p>}
+      <SentAttachments files={attached.files} />
     </div>
   )
 }
 
 /** One row of the list. Memoised: a streamed update re-renders only the rows whose events changed. */
-export const ChatItem = memo(function ChatItem({ row, agent, workingSince, approval, root, openDiff, goToStep }: RowProps) {
+export const ChatItem = memo(function ChatItem({ row, agent, workingSince, approval, root, openDiff, goToStep, waitingStep }: RowProps) {
   switch (row.kind) {
     case 'user': {
-      const attached = parseAttachmentMessage(row.event.text)
+      // Only the daemon's own time: when the window first saw a message is not when it was sent.
+      const sentAt = row.event.timing.startedAtMs ?? row.event.timing.completedAtMs
       return (
         <Frame>
           <div className="mx-msg-user">
-            {attached !== null ? (
-              <div className="flex max-w-[85%] flex-col items-end">
-                {attached.text !== '' && <p className="mx-bubble">{attached.text}</p>}
-                <SentAttachments files={attached.files} />
-              </div>
-            ) : (
-              <p>{row.event.text}</p>
-            )}
+            <SaidText text={row.event.text} />
+            {sentAt !== null && <time className="mx-msg-time" dateTime={new Date(sentAt).toISOString()}>{clock(sentAt)}</time>}
           </div>
         </Frame>
       )
     }
     case 'report':
-      return <Frame><p className="mx-report"><Icon name="check" size={11} />{row.text}</p></Frame>
+      return <Frame><p className="mx-report"><span aria-hidden="true">↳</span>{row.text}</p></Frame>
     case 'echo':
       return (
         <Frame>
-          <div className="mx-msg-user is-echo" aria-label="Sending"><p>{row.text}</p></div>
+          <div className="mx-msg-user is-echo" aria-label="Sending"><SaidText text={row.text} /></div>
         </Frame>
       )
     case 'agent':
       return <Frame><AgentMessage rowKey={row.key} paragraphs={row.paragraphs} status={row.status} /></Frame>
     case 'step':
-      return (
-        <Frame>
-          {row.event.kind === 'edit' ? <EditCard event={row.event} root={root} onOpen={openDiff} />
-            : row.event.kind === 'command' ? <CommandCard event={row.event} />
-              : row.event.kind === 'todo' ? <TodoCard event={row.event} />
-                : <ToolChip event={row.event} />}
-        </Frame>
-      )
+      return <Frame>{row.event.kind === 'todo' ? <PlanCard event={row.event} /> : <StepView event={row.event} root={root} openDiff={openDiff} alone waiting={isWaitingStep(waitingStep, row.event.id)} />}</Frame>
+    case 'work':
+      return <Frame><WorkCard steps={row.events} root={root} openDiff={openDiff} waitingStep={waitingStep} /></Frame>
     case 'agents':
-      return <Frame><AgentsCard agents={row.events} /></Frame>
+      return <Frame><AgentsCard agents={row.events} process={agent} /></Frame>
     case 'approval':
       return <Frame><ApprovalCard event={row.event} actions={approval} step={row.step} onGoToStep={goToStep} /></Frame>
     case 'divider':
       return (
-        <div className="mx-chat-row flex items-center gap-3" role="separator" aria-label={dividerText(row.event, clock)}>
-          <span className="h-px flex-1 bg-line2" />
-          <span className="text-[11.5px] text-dim">{dividerText(row.event, clock)}</span>
-          <span className="h-px flex-1 bg-line2" />
+        <div className={`mx-chat-row mx-divider${row.event.outcome === 'failed' ? ' is-failed' : ''}`} role="separator" aria-label={dividerText(row.event, clock)}>
+          <span className="mx-divider-line" />
+          <span className="mx-divider-text">{dividerText(row.event, clock)}</span>
+          <span className="mx-divider-line" />
         </div>
       )
+    case 'changes': {
+      const first = row.files[0]
+      const body = (
+        <>
+          <FileText className="size-[15px] shrink-0 text-muted" aria-hidden="true" />
+          <span className="mx-changed-said">{row.files.length} changed {row.files.length === 1 ? 'file' : 'files'}</span>
+          {row.lines !== null && <span className="mx-changed-counts"><span className="is-add">+{row.lines.added}</span><span className="is-remove">−{row.lines.removed}</span></span>}
+        </>
+      )
+      return (
+        <Frame>
+          {openDiff !== null && first !== undefined
+            ? <button type="button" className="mx-changed" title="Show the changes" onClick={() => { openDiff(first) }}>{body}<span className="mx-spacer" /><span className="mx-changed-review">Review</span><span className="mx-caret-wrap"><Icon name="caret" /></span></button>
+            : <p className="mx-changed is-still">{body}</p>}
+        </Frame>
+      )
+    }
     case 'working':
       // Token counts are not shown: the daemon's history carries none, and an estimate would be invented.
       return (

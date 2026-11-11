@@ -1,8 +1,9 @@
+import { movePanes } from './components/paneTransition'
 import { type Dispatch, type RefObject, type SetStateAction, useCallback, useMemo, useState } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import { type RemoteMachine, remoteStartRefusal, remoteTargetOf } from './model/machines'
 import { toast } from '@/lib/toast'
-import { addWorktree, defaultSessionFolder, startAgentSession as launchAgentSession, loadConversations, renameConversationOnDaemon, sendTerminalInput, sendWhenAgentReady, startChatSession, startShellSession, submitMessage, switchBranch } from '@/api/daemon'
+import { addWorktree, defaultSessionFolder, dropPrewarmedAgent, prewarmAgentSession, startAgentSession as launchAgentSession, loadConversations, renameConversationOnDaemon, sendTerminalInput, sendWhenAgentReady, startChatSession, startShellSession, submitMessage, switchBranch } from '@/api/daemon'
 import { LOCAL_MACHINE, startSessionOnMachine } from '@/api/machines'
 import type { DesktopSettingsSection } from '@/features/settings/components/DesktopSettings'
 import type { SettingsPreferences } from '@/features/settings/preferences'
@@ -12,14 +13,17 @@ import { rememberConversationPermissions } from '@/data/conversationPermissions'
 import { reserveOperation } from '@/features/chat/sendOperation'
 import { entrustFirstMessage, holdFirstMessage, holdStartChoice } from '@/features/chat/firstMessage'
 import { connectAgentOnce } from './model/agentHooks'
+import type { WarmAgent } from './useWarmAgent'
 import { nameFromMessage } from './model/newSession'
 import { usePaneViews } from './usePaneViews'
 import type { ChatAgent, PaneView, StructuredAgent } from './model/chatView'
+import { rememberShellStart } from './model/shellStarts'
 import type { NewSessionRequest } from './components/NewSessionModal'
 import type { NewChatRequest } from './components/NewChatPage'
 import type { WireChoice } from '@/features/chat/agentChoice'
 import { rememberYoloSession } from '@/features/chat/yoloSessions'
 import { launchFlags, yoloFlags } from './model/newChatHost'
+import { CODEX_FULL_MODE } from '@/features/chat/chatMeta'
 import { type Layout, openArrangement } from './model/layout'
 import type { SessionView } from './model/session'
 import { resolveStartFolder } from './model/startFolder'
@@ -77,7 +81,7 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
     await newWorktreeSession(from.pane, branch, base)
     const id = await newSessionSince(known)
     setWorktreeFrom(null)
-    if (id) setLayout((current) => openArrangement(current, id, makeId))
+    if (id) movePanes(() => { setLayout((current) => openArrangement(current, id, makeId)) })
     flash(`Worktree ${branch} ready`)
   }, [sessions, newSessionSince, setWorktreeFrom, setLayout, flash])
 
@@ -86,7 +90,7 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
     const id = String(started.id)
     await queryClient.invalidateQueries({ queryKey: ['conversations'] })
     await queryClient.query({ queryKey: ['conversations'], queryFn: loadConversations, staleTime: 0 })
-    setLayout((current) => openArrangement(current, id, makeId))
+    movePanes(() => { setLayout((current) => openArrangement(current, id, makeId)) })
     if (prompt !== '') {
       // The start has answered, so the agent is up: the first prompt is an ordinary send, number 1.
       const operation = reserveOperation(started.id, { receipt: null, queued: [] })
@@ -137,10 +141,26 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
   // shell is ready. Its status hooks are connected first: an agent already running never loads them, and its chat would
   // wait on them until it was restarted.
   const yolo = useMemo(() => ({ claude: preferences.yoloClaude, codex: preferences.yoloCodex, gemini: preferences.yoloGemini }), [preferences.yoloClaude, preferences.yoloCodex, preferences.yoloGemini])
+  // The words an agent is started with. A warm agent is taken only for exactly these, so both ask through here.
+  const startWords = useCallback((agent: ChatAgent, flags: string) => `${flags}${yoloFlags(agent, yolo)}`.split(' ').filter((word) => word !== ''), [yolo])
   const launchAgent = useCallback((agent: ChatAgent, flags: string) => async (folder: string): Promise<void> => {
     await connectAgentOnce(agent).catch((error: unknown) => { console.warn(`Could not connect ${agent}'s status hooks`, error) })
-    await launchAgentSession(folder, agent, `${flags}${yoloFlags(agent, yolo)}`.split(' ').filter((word) => word !== ''))
-  }, [yolo])
+    await launchAgentSession(folder, agent, startWords(agent, flags))
+  }, [startWords])
+
+  // The agent of the chat being written is started while it is written (`useWarmAgent`), so the first message does not wait
+  // for it. It is a head start only: when it fails, the chat starts its agent as it always has.
+  const warmNewChat = useCallback<WarmAgent>((spec) => {
+    if (spec === null) {
+      void dropPrewarmedAgent().catch((error: unknown) => { console.warn('Could not stop the agent started ahead', error) })
+      return
+    }
+    if (!online) return
+    void connectAgentOnce(spec.agent)
+      .catch((error: unknown) => { console.warn(`Could not connect ${spec.agent}'s status hooks`, error) })
+      .then(() => prewarmAgentSession(spec.folder, spec.agent, startWords(spec.agent, launchFlags(spec.agent, spec.model, spec.reasoning, spec.mode))))
+      .catch((error: unknown) => { console.warn(`Could not start ${spec.agent} ahead of the first message`, error) })
+  }, [online, startWords])
 
   const startAgentSession = useCallback((folder: () => Promise<string>, agent: ChatAgent, view: PaneView, firstMessage = '', flags = '', afterPlace?: (id: string) => void): Promise<boolean> => {
     return runStart(folder, (id) => {
@@ -155,7 +175,7 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
       setExpectedAgents((current) => ({ ...current, [id]: agent }))
       if (yoloFlags(agent, yolo) !== '') rememberYoloSession(id)
       window.setTimeout(() => { setExpectedAgents((current) => omitKey(current, id)) }, EXPECTED_AGENT_MS)
-      setLayout((current) => openArrangement(current, id, makeId))
+      movePanes(() => { setLayout((current) => openArrangement(current, id, makeId)) })
       if (view === 'chat') paneViews.choose(id, 'chat')
       // In the same update as the new session opens, so the window never shows the page between the two.
       afterPlace?.(id)
@@ -192,10 +212,12 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
     // The page stays, with the message in it, until the chat that replaces it is there: closing it first showed the
     // empty window (or the last chat) for a moment between the two.
     await startAgentSession(() => Promise.resolve(folder), request.agent, 'chat', request.message, launchFlags(request.agent, request.model, request.reasoning, request.mode), (id) => {
-      holdStartChoice(id, { model: request.model, reasoning: request.reasoning, mode: request.agent === 'claude' ? request.mode : null })
+      // Codex has no file that says its mode, so what it was started in is what its chat shows: Full access under its Yolo setting.
+      const codexMode = yolo.codex ? CODEX_FULL_MODE : request.mode === 'default' ? null : request.mode
+      holdStartChoice(id, { model: request.model, reasoning: request.reasoning, mode: request.agent === 'claude' ? request.mode : request.agent === 'codex' ? codexMode : null })
       setNewChatOpen(false)
     })
-  }, [online, setNewChatOpen, startAgentSession])
+  }, [online, setNewChatOpen, startAgentSession, yolo.codex])
 
   // New session (the shortcut, the palette, the sidebar's chat button): on this computer it is the new chat page.
   // Chats are this computer's, so another machine's session is asked for in the dialog, on that machine.
@@ -218,7 +240,7 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
       setNewSessionMachine(target)
       return
     }
-    void runStart(async () => resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => { setLayout((current) => openArrangement(current, id, makeId)) })
+    void runStart(async () => resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => { rememberShellStart(id); movePanes(() => { setLayout((current) => openArrangement(current, id, makeId)) }) })
   }, [setSettingsSection, focusedSession, runStart, setNewSessionMachine, preferences.startFolder, home, setLayout])
 
   // The sidebar's header for a machine and the palette both choose where the session goes.
@@ -236,7 +258,7 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
     while (Date.now() < deadline) {
       const fresh = machinesRef.current.get(target.machine)?.conversations.find((item) => item.kind === 'terminal' && !known.has(item.id))
       if (fresh) {
-        setLayout((current) => openArrangement(current, fresh.id, makeId))
+        movePanes(() => { setLayout((current) => openArrangement(current, fresh.id, makeId)) })
         return fresh.id
       }
       await new Promise((resolve) => { setTimeout(resolve, REMOTE_START_POLL_MS) })
@@ -257,11 +279,11 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
         await sendTerminalInput({ id, generation: 0 }, `${request.startAs}\r`)
       }
     } else if (request.startAs === 'terminal') {
-      void runStart(() => Promise.resolve(request.folder), (id) => { setLayout((current) => openArrangement(current, id, makeId)) })
+      void runStart(() => Promise.resolve(request.folder), (id) => { rememberShellStart(id); movePanes(() => { setLayout((current) => openArrangement(current, id, makeId)) }) })
     } else {
       void startAgentSession(() => Promise.resolve(request.folder), request.startAs, preferences.newSessionView, request.message)
     }
     setNewSessionMachine(null)
   }, [setNewSessionMachine, startOnMachine, runStart, setLayout, startAgentSession, preferences.newSessionView])
-  return { runStart, newSession, newTerminal, startAgentSession, newSessionOn, startChatHere, startNewChat, createWorktree, startFromModal }
+  return { runStart, newSession, newTerminal, startAgentSession, newSessionOn, startChatHere, startNewChat, warmNewChat, createWorktree, startFromModal }
 }

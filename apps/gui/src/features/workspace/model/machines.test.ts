@@ -11,7 +11,7 @@ afterEach(() => { forgetMachines() })
 function term(id: number, cwd: string) {
   return {
     id, cols: 80, rows: 24, title: 't', process: 'bash', agent: null, status: 'Idle', cwd, summary: '', name: 'n',
-    label: '', pinned: false, archived: false, model: '', said: '', branch: null, linked: false, subagents: [],
+    label: '', pinned: false, archived: false, model: '', said: '', branch: null, linked: false, helperAsk: [], subagents: [],
     conversation_id: null, popup: false, remote: null, root: null, top: null, since: 0, asleep: false, win32_input: false,
   }
 }

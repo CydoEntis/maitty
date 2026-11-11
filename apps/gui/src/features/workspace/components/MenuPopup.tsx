@@ -20,6 +20,8 @@ export type MenuEntry =
 type Props = {
   /** The menu's dim heading: what it is for (a session's name, a machine). */
   title: string
+  /** The heading is not drawn, only read out: for a menu opened on the thing it names, such as a pane. */
+  untitled?: boolean
   at: { x: number; y: number }
   items: readonly MenuEntry[]
   /** Where the menu mounts, so it reads the theme's colours. */
@@ -38,7 +40,7 @@ function focusFirstItem(menu: HTMLDivElement | null): void {
   queueMicrotask(() => { menu.querySelector<HTMLElement>('[data-radix-collection-item]:not([data-disabled])')?.focus() })
 }
 
-export function MenuPopup({ title, at, items, portalContainer, onClose }: Props) {
+export function MenuPopup({ title, untitled = false, at, items, portalContainer, onClose }: Props) {
   const returnTo = useRef(document.activeElement instanceof HTMLElement ? document.activeElement : null)
   const choose = (entry: Exclude<MenuEntry, 'separator'>) => {
     onClose()
@@ -67,7 +69,7 @@ export function MenuPopup({ title, at, items, portalContainer, onClose }: Props)
         }}
         onContextMenu={(event) => { event.preventDefault() }}
       >
-        <span className="mx-ctx-title">{title}</span>
+        {!untitled && <span className="mx-ctx-title">{title}</span>}
         {items.map((entry, index) => entry === 'separator'
           ? <DropdownMenuSeparator key={`sep-${String(index)}`} className="mx-ctx-sep" />
           : (

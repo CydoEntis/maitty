@@ -147,7 +147,7 @@ describe('approvals in the chat', () => {
     await settle()
 
     const card = screen.getByRole('group', { name: /Approval/ })
-    expect(card).toHaveTextContent('You answered: This session')
+    expect(card).toHaveTextContent('Allowed for this session')
     expect(within(card).queryByRole('button', { name: /This session/ })).toBeNull()
   })
 
@@ -163,7 +163,7 @@ describe('approvals in the chat', () => {
     daemon.upsert(daemon.message('t1', 'u2', 'User', 'ping'))
     await settle(IDLE_POLL_MS)
 
-    expect(screen.getByRole('group', { name: /Approval/ })).toHaveTextContent('You answered: No')
+    expect(screen.getByRole('group', { name: /Approval/ })).toHaveTextContent('Denied')
     expect(screen.queryByRole('region', { name: /Approval/ })).toBeNull()
   })
 

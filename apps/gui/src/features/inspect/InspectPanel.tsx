@@ -8,14 +8,15 @@ import { HistoryTab } from './HistoryTab'
 import { ReferencesTab } from './ReferencesTab'
 import { TimelineTab } from './TimelineTab'
 import type { TerminalDetails } from '@/data/preview'
+import { Icon, type IconName } from '@/features/workspace/components/glyphs'
 import './inspect.css'
 
 export type InspectView = 'changes' | 'files' | 'terminal' | 'branches' | 'history' | 'timeline' | 'references'
 
-const VIEWS: readonly { id: InspectView; label: string }[] = [
-  { id: 'changes', label: 'Changes' },
-  { id: 'files', label: 'Files' },
-  { id: 'terminal', label: 'Terminal' },
+const VIEWS: readonly { id: InspectView; label: string; icon?: IconName }[] = [
+  { id: 'changes', label: 'Changes', icon: 'changes' },
+  { id: 'files', label: 'Files', icon: 'files' },
+  { id: 'terminal', label: 'Terminal', icon: 'terminal' },
   { id: 'branches', label: 'Branches' },
   { id: 'history', label: 'History' },
   { id: 'timeline', label: 'Timeline' },
@@ -29,16 +30,17 @@ const VIEWS: readonly { id: InspectView; label: string }[] = [
 const PANEL_VIEWS: readonly InspectView[] = ['changes', 'files', 'terminal']
 
 /** The panel opens at this share of the window; the edge can be dragged and the width is remembered. */
-const DEFAULT_SHARE = 0.75
+const DEFAULT_SHARE = 0.5
 const MIN_WIDTH_PX = 420
 /** The strip of the chat that stays in sight beside the panel, to click it away. */
 const STRIP_PX = 56
 /** The gap between the window's edge and the panel. */
 const EDGE_PX = 24
 const KEY_STEP_PX = 24
-const WIDTH_KEY = 'maitty.inspect.width.v2'
+// A new key when the opening width changes, so a width kept from the wider panel does not undo it.
+const WIDTH_KEY = 'maitty.inspect.width.v3'
 /** The exit animation's length: the panel is unmounted when it ends, not at once. */
-const EXIT_MS = 210
+const EXIT_MS = 190
 
 /** The widest the panel may be: it never covers the sidebar, and leaves a strip of the chat. */
 function roomPx(): number {
@@ -76,13 +78,15 @@ type Props = {
   terminals: ReactNode | null
   /** How many files the repository says changed, shown beside Changes. */
   changedFiles: number
+  /** The branch the session's checkout is on, shown above the changed files. */
+  branch?: string
   view: InspectView
   agentWorking: boolean
   /** What the pane's agent and shell reported lately, for the Timeline view. */
   timeline: TerminalDetails['timeline']
   lookAt: LookAt | null
   /** The agent a comment on a diff line goes to; absent for a shell, which has nobody to tell. */
-  comments?: Omit<PatchComments, 'path'>
+  comments?: Omit<PatchComments, 'path' | 'sent' | 'onSent'>
   /** Commit and Create PR on the Changes tab, for a checkout on this computer. */
   changeActions?: ChangeActions
   onView: (view: InspectView) => void
@@ -101,7 +105,7 @@ function shownView(view: InspectView, hasRepo: boolean, hasTerminals: boolean): 
  * never pushes them or covers the sidebar: the focused session's changes, its files and its own
  * terminals.
  */
-export function InspectPanel({ term, terminals, changedFiles, view: asked, agentWorking, timeline, lookAt, comments, changeActions, onView, onClose, onNotice }: Props) {
+export function InspectPanel({ term, terminals, changedFiles, branch, view: asked, agentWorking, timeline, lookAt, comments, changeActions, onView, onClose, onNotice }: Props) {
   const view = shownView(asked, term !== null, terminals !== null)
   const [dragged, setDragged] = useState(readWidth)
   const width = clampWidth(dragged ?? window.innerWidth * DEFAULT_SHARE)
@@ -156,6 +160,7 @@ export function InspectPanel({ term, terminals, changedFiles, view: asked, agent
           <div role="tablist" aria-label="Side panel views" className={`mx-inspect-tabs is-${towards}`}>
             {VIEWS.filter((item) => item.id === view || (PANEL_VIEWS.includes(item.id) && shownView(item.id, term !== null, terminals !== null) === item.id)).map((item) => (
               <button key={item.id} type="button" role="tab" aria-selected={view === item.id} className={view === item.id ? 'is-current' : undefined} onClick={() => { onView(item.id) }}>
+                {item.icon !== undefined && <Icon name={item.icon} size={13} />}
                 {item.label}
                 {item.id === 'changes' && changedFiles > 0 && <span className="mx-inspect-count">{changedFiles}</span>}
               </button>
@@ -167,7 +172,7 @@ export function InspectPanel({ term, terminals, changedFiles, view: asked, agent
         {view !== 'terminal' && term !== null && (
           <div className="mx-inspect-scroll" role="tabpanel">
             {view === 'files' && <FilesTab term={term} lookAt={lookAt} />}
-            {view === 'changes' && <ChangesTab term={term} {...(comments ? { comments } : {})} {...(changeActions ? { actions: changeActions } : {})} onNotice={onNotice} />}
+            {view === 'changes' && <ChangesTab term={term} {...(branch !== undefined ? { branch } : {})} {...(comments ? { comments } : {})} {...(changeActions ? { actions: changeActions } : {})} onNotice={onNotice} />}
             {view === 'branches' && <BranchesTab term={term} />}
             {view === 'history' && <HistoryTab term={term} agentWorking={agentWorking} onNotice={onNotice} />}
             {view === 'timeline' && <TimelineTab events={timeline} />}

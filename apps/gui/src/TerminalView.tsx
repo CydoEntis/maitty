@@ -8,7 +8,9 @@ import { isDesktop, loadTerminalReplay, resizeTerminal, sendTerminalInput } from
 import { listenTerminalChunks, loadTerminalHistory, type TerminalChunk, type TerminalHistory } from '@/api/terminalStream'
 import type { Conversation } from '@/data/preview'
 import type { TerminalHandle } from '@/features/terminal/handle'
+import { brightBlackGround, type Channels } from '@/features/terminal/brightBlackGround'
 import { isPasteChord, listenForImagePaste } from '@/features/terminal/clipboardImage'
+import { COPY_TOAST_ID, COPY_TOAST_MS } from '@/features/terminal/copyToast'
 import { findPathLinks } from '@/features/terminal/pathLinks'
 import { appendToScreen, cachedScreen, replaceScreen, screenKey } from '@/features/terminal/screenCache'
 import { isWindowActive, useWindowActive } from '@/lib/window-activity'
@@ -16,13 +18,12 @@ import { hasWebgl2 } from '@/lib/gpu'
 import { oscColor } from '@/lib/osc-color'
 import { beginFlush, countKeyReply, forgetRenderer, reportRenderer } from '@/lib/perf-meter'
 import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, fontStackFor, type TerminalFontWeight } from '@/lib/terminalFont'
+import { saysNotConnected } from '@/lib/serviceLine'
 import '@xterm/xterm/css/xterm.css'
 
 const DEFAULT_SCROLLBACK_LINES = 10000
 const DEFAULT_SCROLL_SPEED = 1
 const LINE_HEIGHT = 1.6
-/** The host says this while it is still dialling the daemon, in the first moments after the window opens. */
-const NOT_CONNECTED_YET = 'not connected to the daemon'
 const CONNECT_RETRY_MS = 250
 const CONNECT_RETRIES = 24
 /** How long a pane waits for its font before it opens with the fallback: a slow disk must not hold the terminal back. */
@@ -50,7 +51,7 @@ async function loadReplayOnceConnected(binding: Parameters<typeof loadTerminalRe
       return await loadTerminalReplay(binding)
     } catch (failure) {
       const text = failure instanceof Error ? failure.message : String(failure)
-      if (attempt >= CONNECT_RETRIES || !text.includes(NOT_CONNECTED_YET)) throw failure
+      if (attempt >= CONNECT_RETRIES || !saysNotConnected(text)) throw failure
       await new Promise((resolve) => { window.setTimeout(resolve, CONNECT_RETRY_MS) })
     }
   }
@@ -131,6 +132,8 @@ export type TerminalLook = {
   plainDrawing?: boolean
   screenReader?: boolean
   theme?: ITheme
+  /** What a program's bright black background is drawn as; absent, it is the palette's bright black. */
+  slab?: Channels
   /** xterm's own floor for the contrast of any foreground a program picks; 1 leaves colours as asked. */
   minimumContrast?: number
 }
@@ -295,6 +298,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     let missed = false
     const screen = screenKey(machine, term, binding.generation)
 
+    const calmSlabs = brightBlackGround(() => lookRef.current.slab ?? null)
     const writeQueued = () => {
       if (frame !== 0) cancelAnimationFrame(frame)
       frame = 0
@@ -312,7 +316,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
       queuedReplay = false
       if (replaying) replayWrites += 1
       const flushed = beginFlush()
-      emulator.write(bytes, () => {
+      emulator.write(calmSlabs(bytes), () => {
         flushed()
         if (replaying) replayWrites -= 1
       })
@@ -643,7 +647,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         const copySelection = () => {
           if (!terminalInstance.hasSelection()) return
           navigator.clipboard.writeText(terminalInstance.getSelection()).then(
-            () => { toast.success('Copied', { id: 'terminal-copy', duration: 1500 }) },
+            () => { toast.success('Copied', { id: COPY_TOAST_ID, duration: COPY_TOAST_MS }) },
             () => { toast.error('Could not copy the selection') },
           )
         }
@@ -660,8 +664,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
           setLoadError(true)
           setConnecting(false)
           const message = error instanceof Error ? error.message : 'Could not start the terminal emulator'
-          // No line to the service is the window's news, not this pane's: the service card and the status bar say it once.
-          if (!message.includes(NOT_CONNECTED_YET)) toast.error(message)
+          toast.error(message)
         }
       }
     }

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { Conversation, SubagentActivity } from '@/data/preview'
@@ -27,7 +27,7 @@ function show(sessions: SessionView[], more: Partial<SidebarProps> = {}) {
     sessions, machines: [LOCAL_HEAD], order: 'creation', focusedId: null, openSubagent: null, mode: 'docked', online: true, canStart: true, renamingId: null, portalContainer: null,
     onToggleRail: none, side: 'left', width: 264, onResize: none, onResizeEnd: none, grouping: 'machine', onGrouping: none, onSearch: none,
     onNewAgentChat: none, onNewShell: none, onAddMachine: none, onMachineSettings: none, onRenameMachine: none, onUpdateMachine: none, onShowSession: none, onShowSubagent: none, onRenameSession: none,
-    onSetName: none, onSplitSession: none, onSplitSubagent: none, onOpenTerminal: none, onCopyPath: none, onCopyText: none, onShowChanges: none, onMarkDone: none, onGetFile: none,
+    onSetName: none, onSplitSession: none, onSplitSubagent: none, onCopyPath: none, onCopyText: none, onShowChanges: none, onMarkDone: none, onGetFile: none,
     onEndSession: none, onOpenSettings: none, updateSlot: null, railUpdateSlot: null,
     ...more,
   }
@@ -258,13 +258,32 @@ describe('a session row', () => {
     expect(onSetName).toHaveBeenCalledWith('t1', 'Login fix')
   })
 
+  it('shows a card beside a row the pointer rests on, and puts it away when the pointer leaves', () => {
+    vi.useFakeTimers()
+    try {
+      show([session(1, { agent: 'claude', named: true, title: 'Growth', status: 'needs-you' })])
+      const row = screen.getByRole('button', { name: /^Growth,/ }).closest('.mx-row-wrap') as HTMLElement
+      fireEvent.mouseEnter(row)
+      expect(screen.queryByRole('tooltip')).toBeNull()
+      act(() => { vi.advanceTimersByTime(450) })
+      const card = screen.getByRole('tooltip')
+      expect(card).toHaveTextContent('Growth')
+      expect(card).toHaveTextContent('Needs you')
+      expect(card).toHaveTextContent('No changes')
+      fireEvent.mouseLeave(row)
+      expect(screen.queryByRole('tooltip')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('offers the session menu on right-click, and hands Stop session to the app, which asks first', async () => {
     const user = userEvent.setup()
     const onEndSession = vi.fn()
     show([session(1, { agent: 'claude', named: true, title: 'Growth' }), session(2)], { focusedId: 't2', onEndSession })
     fireEvent.contextMenu(screen.getByRole('button', { name: /^Growth,/ }))
     const menu = screen.getByRole('menu', { name: 'Growth' })
-    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Open', 'Open in split right', 'Open in split down', 'New terminal', 'Rename…F2', 'Copy folder path', 'Show changes', 'Stop session'])
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Open', 'Open in split right', 'Open in split down', 'Show changes', 'Rename…F2', 'Copy folder path', 'Stop session'])
     await user.click(within(menu).getByRole('menuitem', { name: 'Stop session' }))
     expect(onEndSession).toHaveBeenCalledWith('t1')
   })
@@ -360,6 +379,13 @@ describe('grouped by status', () => {
     cleanup()
     show([session(1, { agent: 'claude', named: true, title: 'Idle one' })], { grouping: 'status' })
     expect(screen.getAllByRole('list').map((list) => list.getAttribute('aria-label'))).toEqual(['Idle'])
+  })
+
+  it('lists terminals in a section of their own at the bottom, whatever they are doing', () => {
+    show([session(9, { named: true, title: 'Dev server', status: 'working' }), ...mixed()], { grouping: 'status' })
+    expect(screen.getAllByRole('list').map((list) => list.getAttribute('aria-label'))).toEqual(['Needs you', 'Working', 'Finished', 'Idle', 'Terminals'])
+    expect(within(screen.getByRole('list', { name: 'Terminals' })).getByRole('button', { name: /^Dev server,/ })).toBeTruthy()
+    expect(within(screen.getByRole('list', { name: 'Working' })).queryByRole('button', { name: /^Dev server,/ })).toBeNull()
   })
 
   it('says which other machine a row runs on, since no heading does', () => {

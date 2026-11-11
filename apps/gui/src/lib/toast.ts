@@ -1,6 +1,7 @@
 import { createElement, type ReactNode } from 'react'
 import { toast as sonner } from 'sonner'
 import { DEFAULT_TOAST_MS, PlainToast, type ToastKind } from '@/features/notifications/PlainToast'
+import { saysNotConnected } from '@/lib/serviceLine'
 
 export type ToastAction = {
   label: string
@@ -20,6 +21,14 @@ export type ToastOptions = {
   action?: ToastAction | undefined
 }
 
+/** The id an error that was not shown answers with, so a caller that keeps the id has one that names no toast. */
+const NOT_SHOWN = 'service-not-connected'
+
+/** No line to the service is the window's news, not one action's: the service bar, the card and the sidebar foot say it once. */
+function showError(title: string, options?: ToastOptions): string | number {
+  return saysNotConnected(title) ? NOT_SHOWN : show('error', title, options)
+}
+
 function show(kind: ToastKind, title: string, options: ToastOptions = {}): string | number {
   const duration = options.duration ?? (kind === 'loading' ? Infinity : DEFAULT_TOAST_MS)
   return sonner.custom((id) => createElement(PlainToast, { id, kind, title, options }), { ...(options.id === undefined ? {} : { id: options.id }), duration })
@@ -35,7 +44,7 @@ export const toast = Object.assign(
   {
     message: (title: string, options?: ToastOptions) => show('message', title, options),
     success: (title: string, options?: ToastOptions) => show('success', title, options),
-    error: (title: string, options?: ToastOptions) => show('error', title, options),
+    error: showError,
     warning: (title: string, options?: ToastOptions) => show('warning', title, options),
     loading: (title: string, options?: ToastOptions) => show('loading', title, options),
     custom: sonner.custom,

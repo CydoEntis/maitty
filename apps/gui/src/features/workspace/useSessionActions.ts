@@ -1,3 +1,4 @@
+import { movePanes } from './components/paneTransition'
 import { type Dispatch, type SetStateAction, useCallback } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import { toast } from '@/lib/toast'
@@ -44,7 +45,7 @@ export function useSessionActions({ setRenameId, queryClient, setOpenSubagent, s
   // Showing a session shows its own chat: a subagent's chat is left by picking any session, its parent too.
   const showSessionById = useCallback((sessionId: string) => {
     setOpenSubagent(null)
-    setLayout((current) => showSession(current, sessionId, makeId))
+    movePanes(() => { setLayout((current) => showSession(current, sessionId, makeId)) })
   }, [setLayout, setOpenSubagent])
 
   // "Open in split": the session joins the layout beside the pane that has focus. One already in it just takes the focus.
@@ -62,7 +63,7 @@ export function useSessionActions({ setRenameId, queryClient, setOpenSubagent, s
       toast.message(`A window holds ${String(MAX_PANES)} panes at most. Close one to open another beside it.`)
       return
     }
-    setLayout((current) => splitPane(current, null, direction, sessionId, makeId))
+    movePanes(() => { setLayout((current) => splitPane(current, null, direction, sessionId, makeId)) })
   }, [layout, setLayout, showSessionById])
 
   const copyText = useCallback((text: string, what: string) => {
@@ -79,7 +80,7 @@ export function useSessionActions({ setRenameId, queryClient, setOpenSubagent, s
 
   // A subagent's own chat shows in its session's pane, in the chat view.
   const showSubagent = useCallback((sessionId: string, subagentId: string) => {
-    setLayout((current) => showSession(current, sessionId, makeId))
+    movePanes(() => { setLayout((current) => showSession(current, sessionId, makeId)) })
     paneViews.choose(sessionId, 'chat')
     setOpenSubagent({ sessionId, subagentId })
   }, [paneViews, setLayout, setOpenSubagent])

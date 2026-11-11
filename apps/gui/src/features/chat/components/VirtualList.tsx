@@ -174,6 +174,9 @@ export function VirtualList<T>({ items, getKey, estimate, renderItem, label, ove
   // A wheel move up arrives before the scroll it causes, and a streaming commit in between would undo it.
   const onWheel = (event: WheelEvent) => {
     touched()
+    // The scrolling region is only as wide as the chat column; a wheel turn over the space beside it scrolls it too.
+    const element = scroller.current
+    if (element !== null && event.target instanceof Node && !element.contains(event.target)) element.scrollTop += event.deltaY
     // Nothing above to scroll to (a short chat, or the top already) is not leaving the newest row.
     if (event.deltaY >= 0 || !follow.current.following || (scroller.current?.scrollTop ?? 0) <= 0) return
     follow.current = { ...follow.current, following: false }
@@ -190,8 +193,8 @@ export function VirtualList<T>({ items, getKey, estimate, renderItem, label, ove
 
   const drawn = items.slice(range.start, range.end)
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
-      <div ref={scroller} role="region" aria-label={label} tabIndex={0} className="mx-chat-scroller min-h-0 flex-1 overflow-y-auto overscroll-contain" onScroll={onScroll} onWheel={onWheel} onPointerDown={() => { held.current = true; touched() }} onKeyDown={touched} onTouchMove={touched}>
+    <div className="relative flex min-h-0 flex-1 flex-col" onWheel={onWheel}>
+      <div ref={scroller} role="region" aria-label={label} tabIndex={0} className="mx-chat-scroller min-h-0 flex-1 overflow-y-auto overscroll-contain" onScroll={onScroll} onPointerDown={() => { held.current = true; touched() }} onKeyDown={touched} onTouchMove={touched}>
         <div className="relative" style={{ height: layout.total }}>
           {drawn.map((item, index) => {
             const at = range.start + index
@@ -205,7 +208,7 @@ export function VirtualList<T>({ items, getKey, estimate, renderItem, label, ove
         </div>
       </div>
       {!following && layout.total > viewport && (
-        <Button type="button" variant="outline" size="icon" className="absolute right-4 bottom-3 size-8 rounded-full bg-raise" aria-label="Jump to the latest message" onClick={jumpToLatest}>
+        <Button type="button" variant="outline" size="icon" className="mx-chat-jump size-8 rounded-full bg-raise" aria-label="Jump to the latest message" onClick={jumpToLatest}>
           <ArrowDown className="size-4" aria-hidden="true" />
         </Button>
       )}

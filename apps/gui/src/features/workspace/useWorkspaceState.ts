@@ -1,3 +1,4 @@
+import { movePanes } from './components/paneTransition'
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from '@/lib/toast'
@@ -9,7 +10,6 @@ import { sizeVariables } from './model/layoutSize'
 import { errorMessage } from '@/lib/error-message'
 import type { InspectView } from '@/features/inspect/InspectPanel'
 import { isChatSession } from './model/chatSession'
-import { isShell } from './model/sidebar'
 import { LOCAL_HEAD, machineHeads, remoteStartRefusal, type UpdateAction } from './model/machines'
 import type { FocusMachine } from './components/StatusBar'
 import { isFirstRun } from '@/features/welcome/welcomed'
@@ -23,6 +23,7 @@ import type { LookAt } from '@/features/inspect/FilesTab'
 import { connectAgentOnce } from './model/agentHooks'
 import { usePaneViews } from './usePaneViews'
 import { chatAvailability, chatSourceOf, effectiveView } from './model/chatView'
+import { startedAsShell } from './model/shellStarts'
 import { useMachineActions, useRemoteMachines } from './useMachines'
 import { useSessionAlerts } from './useSessionAlerts'
 import { useTrayItem } from './useTrayItem'
@@ -204,7 +205,7 @@ export function useWorkspaceState() {
 
   useEffect(() => { writeLayout(layout) }, [layout])
   const { refetchSessions, retryAt, tracks } = useSessionSync({ sessionsQuery, retryDelay, queryClient, setFailures, sessions, setLayout, machinesRef, visibleKey, flash })
-  const { runStart, newSession, newTerminal, startAgentSession, newSessionOn, startChatHere, startNewChat, createWorktree, startFromModal } = useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLayout, flash, focusedSession, setNewChatOpen, online, starting, setStarting, setStartedFrom, sessionMap, preferences, setExpectedAgents, paneViews, setSettingsSection, setNewSessionMachine, home, machinesRef })
+  const { runStart, newSession, newTerminal, startAgentSession, newSessionOn, startChatHere, startNewChat, warmNewChat, createWorktree, startFromModal } = useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLayout, flash, focusedSession, setNewChatOpen, online, starting, setStarting, setStartedFrom, sessionMap, preferences, setExpectedAgents, paneViews, setSettingsSection, setNewSessionMachine, home, machinesRef })
 
   const split = useCallback((paneId: string | null, direction: SplitDirection) => {
     const tab = activeArrangement(layout)
@@ -249,7 +250,7 @@ export function useWorkspaceState() {
       toast.message(refusal)
       return
     }
-    void runStart(() => Promise.resolve(old.cwd), (id) => { setLayout((current) => dropSession(current, paneId, id)) })
+    void runStart(() => Promise.resolve(old.cwd), (id) => { movePanes(() => { setLayout((current) => dropSession(current, paneId, id)) }) })
   }, [layout, paneSessions, runStart])
 
   const endSession = useCallback((sessionId: string) => { askToClose([sessionId], () => { endSessions([sessionId], 'Session') }) }, [askToClose, endSessions])
@@ -303,7 +304,7 @@ export function useWorkspaceState() {
     const availability = chatAvailability(chatSourceOf(session))
     // A chat session has no terminal to switch to: its pane is the chat, always.
     if (isChatSession(session.conversation)) return { availability, view: 'chat' as const }
-    return { availability, view: effectiveView(paneViews.choices.get(session.id), availability, preferences.chatViewDefault) }
+    return { availability, view: effectiveView(paneViews.choices.get(session.id) ?? (startedAsShell(session.id) ? 'terminal' : undefined), availability, preferences.chatViewDefault) }
   }, [paneViews.choices, preferences.chatViewDefault])
   const { runShortcut } = useShortcutRunner({ newSession, focusedMachineNumber, newTerminal, setSettingsSection, startAgentSession, preferences, home, split, setLayout, layout, askToClose, endSessions, toggleSidebar, setPaletteOpen, sessions, focusedSession, flash, showSessionById, undoLastClose, chatOf, paneViews, setFocusMode, setShortcutsOpen, setTextSize, toggleInspect, setFindOpen, online, setWorktreeFrom })
 
@@ -351,7 +352,7 @@ export function useWorkspaceState() {
     return sessionMap.get(agentTerminals.get(session.id)?.[0] ?? '')?.pane ?? null
   }, [online, sessionMap, agentTerminals])
   // An agent of this computer can have terminals of its own; a shell is one already.
-  const ownsTerminals = useCallback((session: SessionView) => online && isDesktop() && session.machine === LOCAL_MACHINE && !isShell(session), [online])
+  const ownsTerminals = useCallback((session: SessionView) => online && isDesktop() && session.machine === LOCAL_MACHINE, [online])
   const inspectTerm = focusedSession ? repoPaneOf(focusedSession) : null
   const diffStat = useQuery({
     queryKey: ['repo', inspectTerm, 'diff-stat'],
@@ -412,5 +413,5 @@ export function useWorkspaceState() {
   const sidebarWidth = liveSidebarWidth ?? preferences.sidebarWidth
   const rootStyle = { ...themeStyle(theme), ...sizeVariables(preferences, sidebarWidth) } as CSSProperties
 
-  return { activeTerminals, setActiveTerminals, closeAgentTerminal, ownsTerminals, repoPaneOf, inspectOpen, focusMode, inspectTerm, focusedSession, projectOf, diffStat, inspectView, lookAt, setInspectView, setInspectOpen, flash, shortcutsOpen, platform, root, setShortcutsOpen, welcomeOpen, preferences, setPreferences, setWelcomeOpen, newSession, focusedMachineNumber, paletteOpen, paletteItems, setPaletteOpen, tracks, showSessionById, focusedId, sessionMap, needsElsewhere, setFocusMode, focusModeChord, worktreeFrom, createWorktree, setWorktreeFrom, newSessionMachine, heads, sessions, home, startFromModal, setNewSessionMachine, getFileId, setGetFileId, getFile, updateAsk, setUpdateAsk, updateNamed, closeAsk, setCloseAsk, renamingMachine, machineNicknames, setMachineNicknames, setRenamingMachine, renameId, renameInline, saveName, setRenameId, settingsSection, setSettingsSection, systemReducedMotion, systemDark, previewThemeSoon, showTestNotice, updater, restartNow, setPreviewTheme, online, runningVersion, machinesKnown, retryNamed, removeNamed, grantNamed, copyCommand, addNamed, cancelAdding, usageInfo, chooseStartFolder, toastMessage, updatedTo, setUpdatedTo, restarting, newChatOpen, sidebarMachineHeads, setNewChatOpen, startNewChat, findOpen, terminalHandles, setFindOpen, dismissedRestores, resumeInterrupted, setDismissedRestores, failures, mismatch, retryAt, offlineDetail, sessionsQuery, restartOffer, appBehindOffer, refetchSessions, tab, mountedTabs, layout, narrow, setLayout, closingPanes, startFolderLabel, canStart, focusMachine, theme, shortcutChord, setThemeMode, pickTheme, openAppearance, setStyle, setTextSize, resetTextSize, openShortcuts, sidebarSessions, openSubagent, sidebarWidth, setLiveSidebarWidth, newTerminal, showSubagent, openInSplit, splitSubagent, addAgentTerminal, copyPathOf, copyText, showChangesOf, markDone, endSession, serviceFooterText, updateProgress, skippedVersion, setSkippedVersion, sidebarMode, toggleSidebar, drawerShown, setDrawerOpen, reducedMotion, setRoot, rootStyle, machineSaid, paneSessions, chatOf, agentTerminals, outsidePanes, dropId, dragId, paneViews, showChanges, setOpenSubagent, togglePanel, startChatHere, look, modalOpen, mirrorInput, openPath, pasteImage, split, closePaneById, sendTo, restartPane }
+  return { activeTerminals, setActiveTerminals, closeAgentTerminal, ownsTerminals, repoPaneOf, inspectOpen, focusMode, inspectTerm, focusedSession, projectOf, diffStat, inspectView, lookAt, setInspectView, setInspectOpen, flash, shortcutsOpen, platform, root, setShortcutsOpen, welcomeOpen, preferences, setPreferences, setWelcomeOpen, newSession, focusedMachineNumber, paletteOpen, paletteItems, setPaletteOpen, tracks, showSessionById, focusedId, sessionMap, needsElsewhere, setFocusMode, focusModeChord, worktreeFrom, createWorktree, setWorktreeFrom, newSessionMachine, heads, sessions, home, startFromModal, setNewSessionMachine, getFileId, setGetFileId, getFile, updateAsk, setUpdateAsk, updateNamed, closeAsk, setCloseAsk, renamingMachine, machineNicknames, setMachineNicknames, setRenamingMachine, renameId, renameInline, saveName, setRenameId, settingsSection, setSettingsSection, systemReducedMotion, systemDark, previewThemeSoon, showTestNotice, updater, restartNow, setPreviewTheme, online, runningVersion, machinesKnown, retryNamed, removeNamed, grantNamed, copyCommand, addNamed, cancelAdding, usageInfo, chooseStartFolder, toastMessage, updatedTo, setUpdatedTo, restarting, newChatOpen, sidebarMachineHeads, setNewChatOpen, startNewChat, warmNewChat, findOpen, terminalHandles, setFindOpen, dismissedRestores, resumeInterrupted, setDismissedRestores, failures, mismatch, retryAt, offlineDetail, sessionsQuery, restartOffer, appBehindOffer, refetchSessions, tab, mountedTabs, layout, narrow, setLayout, closingPanes, startFolderLabel, canStart, focusMachine, theme, shortcutChord, setThemeMode, pickTheme, openAppearance, setStyle, setTextSize, resetTextSize, openShortcuts, sidebarSessions, openSubagent, sidebarWidth, setLiveSidebarWidth, newTerminal, showSubagent, openInSplit, splitSubagent, addAgentTerminal, copyPathOf, copyText, showChangesOf, markDone, endSession, serviceFooterText, updateProgress, skippedVersion, setSkippedVersion, sidebarMode, toggleSidebar, drawerShown, setDrawerOpen, reducedMotion, setRoot, rootStyle, machineSaid, paneSessions, chatOf, agentTerminals, outsidePanes, dropId, dragId, paneViews, showChanges, setOpenSubagent, togglePanel, startChatHere, look, modalOpen, mirrorInput, openPath, pasteImage, split, closePaneById, sendTo, restartPane }
 }

@@ -4,7 +4,8 @@
 use super::Ev;
 use crate::config::Config;
 use crate::protocol::{
-    ExitInfo, Interrupted, PermissionAsk, Status, SubagentActivity, Surface, TermId, TurnEvent, TurnKind,
+    ExitInfo, Interrupted, PermissionAsk, Status, SubagentActivity, SubagentState, Surface, TermId, TurnEvent,
+    TurnKind,
 };
 use anyhow::{Context, Result};
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
@@ -692,6 +693,21 @@ impl Term {
         let paused = running.iter().any(|id| !self.background_known.contains(id));
         self.background_known = running.to_vec();
         paused
+    }
+
+    /// Drops every helper still counted as running, with `why` as each one's last word. True
+    /// when there was one.
+    pub fn forget_unreported_subagents(&mut self, why: &str) -> bool {
+        let mut forgot = !self.subagents.is_empty();
+        self.subagents.clear();
+        let now = unix_now();
+        for activity in self.subagent_activity.iter_mut().filter(|a| a.state.active()) {
+            activity.state = SubagentState::ConnectionLost;
+            activity.updated_at = now;
+            activity.latest_activity = Some(why.to_string());
+            forgot = true;
+        }
+        forgot
     }
 
     /// Where its alerts say it works: repository and branch, else its folder.

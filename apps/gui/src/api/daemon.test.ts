@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { forgetMachines, registerMachine } from './machines'
-import { startTerminalSession, loadTerminalScreen, loadTerminalReplay, sendTerminalInput, resizeTerminal, archiveConversationOnDaemon, renameConversationOnDaemon, classifySubmissionFailure, createConversation, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversationDiff, loadConversationFile, loadConversationFiles, loadConversations, conversationsFromSnapshot, markSeenOnDaemon, archiveSessionOnDaemon, reloadAgentOnDaemon, loadDaemonRestartStatus, loadMachines, loadMessages, restartMismatchedDaemon, resumeConversation } from './daemon'
+import { startTerminalSession, loadTerminalScreen, loadTerminalReplay, sendTerminalInput, resizeTerminal, archiveConversationOnDaemon, renameConversationOnDaemon, classifySubmissionFailure, createConversation, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversationDiff, loadConversationFile, loadConversationFiles, loadConversations, conversationsFromSnapshot, markSeenOnDaemon, archiveSessionOnDaemon, reloadAgentOnDaemon, loadDaemonRestartStatus, loadDaemonUpdateStatus, loadMachines, loadMessages, restartMismatchedDaemon, restartStaleDaemon, resumeConversation } from './daemon'
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
@@ -132,6 +132,36 @@ describe('Claude executable lookup and creation', () => {
       provider: 'Claude',
       permissions: 'full-access',
     })
+  })
+})
+
+describe('a service a release behind', () => {
+  beforeEach(() => {
+    vi.mocked(isTauri).mockReturnValue(true)
+    vi.mocked(invoke).mockReset().mockResolvedValue({ daemonVersion: '0.71.0', behind: true, canRestart: true, sessionCount: 11, activeTurnCount: 1 })
+  })
+
+  it('loads what the host reports', async () => {
+    await expect(loadDaemonUpdateStatus()).resolves.toMatchObject({ daemonVersion: '0.71.0', behind: true, sessionCount: 11 })
+    expect(invoke).toHaveBeenCalledWith('daemon_update_status', undefined)
+  })
+
+  it('accepts a service that is not behind, which has no version to show', async () => {
+    vi.mocked(invoke).mockResolvedValue({ daemonVersion: null, behind: false, canRestart: false, sessionCount: 0, activeTurnCount: null })
+    await expect(loadDaemonUpdateStatus()).resolves.toMatchObject({ behind: false, daemonVersion: null })
+  })
+
+  it('names the version it was shown when it asks for the restart', async () => {
+    await restartStaleDaemon('0.71.0')
+    expect(invoke).toHaveBeenCalledWith('restart_stale_daemon', { expectedVersion: '0.71.0' })
+  })
+
+  it('rejects an empty version and browser-side requests', async () => {
+    await expect(restartStaleDaemon('')).rejects.toThrow('Service version is invalid')
+    vi.mocked(isTauri).mockReturnValue(false)
+    await expect(loadDaemonUpdateStatus()).rejects.toThrow('Service update status is available in the desktop app')
+    await expect(restartStaleDaemon('0.71.0')).rejects.toThrow('Service restart is available in the desktop app')
+    expect(invoke).not.toHaveBeenCalled()
   })
 })
 

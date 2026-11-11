@@ -1,4 +1,5 @@
 import { sendTerminalInput, submitMessage } from '@/api/daemon'
+import { announceOutsideSend } from '@/features/chat/outsideSends'
 import { reserveOperation } from '@/features/chat/sendOperation'
 import { PASTE_END, PASTE_START } from '@/features/chat/useChatComposer'
 import { peekChatFeed } from '@/features/chat/useChatFeed'
@@ -23,9 +24,11 @@ export async function sendAgentMessage(session: SessionView, text: string): Prom
     const feed = peekChatFeed(chat.conversation)
     if (feed === undefined) throw new Error('Open the chat once, then send the comment again.')
     await submitMessage({ id: String(chat.conversation), generation: chat.generation }, reserveOperation(chat.conversation, feed), text)
+    announceOutsideSend(chat.conversation, text)
     return
   }
   await sendTerminalInput({ id: session.id, generation: session.conversation.generation ?? 0 }, `${PASTE_START}${text}${PASTE_END}\r`)
+  if (chat !== undefined) announceOutsideSend(chat.conversation, text)
 }
 
 const COMMIT_SUBJECT_MAX = 72

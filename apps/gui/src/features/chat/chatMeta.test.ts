@@ -6,7 +6,7 @@ describe('the mode and model in plain words', () => {
     expect(modeLabel('auto')).toBe('Auto')
     expect(modeLabel('acceptEdits')).toBe('Accept edits')
     expect(modeLabel('bypassPermissions')).toBe('Bypass permissions')
-    expect(modeLabel('plan')).toBe('Plan')
+    expect(modeLabel('plan')).toBe('Plan mode')
   })
 
   it('shows a mode it does not know as it was written, and nothing for none', () => {

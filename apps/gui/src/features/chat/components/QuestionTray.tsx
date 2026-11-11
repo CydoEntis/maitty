@@ -20,11 +20,11 @@ const TITLE: Record<ApprovalEvent['approvalKind'], string> = {
 
 const ANSWER_LABEL: Record<Exclude<ApprovalDecision, 'Cancel'>, string> = { Accept: 'Yes, once', AcceptForSession: 'This session', Decline: 'No' }
 
-/** The amber tray's frame: the pause tile and the title, then whatever the request holds. */
-function Tray({ label, title, children }: { label: string; title: string; children: ReactNode }) {
+/** The tray's frame: "Needs you" and the title in amber for a request, the question alone in the accent when the agent asks. */
+function Tray({ label, title, asking = false, children }: { label: string; title: string; asking?: boolean; children: ReactNode }) {
   return (
-    <section className="mx-question" aria-label={label}>
-      <span className="mx-question-title"><span className="mx-question-tile" aria-hidden="true"><i /><i /></span>{title}</span>
+    <section className={`mx-question${asking ? ' is-asking' : ''}`} aria-label={label}>
+      <span className="mx-question-title">{!asking && <span className="mx-question-needs">Needs you</span>}<span>{title}</span></span>
       {children}
     </section>
   )
@@ -44,7 +44,7 @@ export function ScreenMenuTray({ agent, menu, send }: { agent: string; menu: Scr
       .finally(() => { setBusy(false) })
   }
   return (
-    <Tray label={`${agent} is asking`} title={`${agent} is asking`}>
+    <Tray label={`${agent} is asking`} title={`${agent} is asking`} asking>
       {menu.question !== '' && <p className="mx-question-reason" style={{ whiteSpace: 'pre-wrap' }}>{menu.question}</p>}
       <div className="mx-question-answers is-choices">
         {menu.options.map((option, index) => (
@@ -68,7 +68,7 @@ export function ApprovalTray({ event, actions }: { event: ApprovalEvent; actions
   const detail = event.command ?? event.changes.map((change) => change.path).join('\n')
   const answerable = event.choices.filter((choice): choice is Exclude<ApprovalDecision, 'Cancel'> => choice !== 'Cancel')
   return (
-    <Tray label={`Approval: ${TITLE[event.approvalKind]}`} title={TITLE[event.approvalKind]}>
+    <Tray label={`Approval: ${TITLE[event.approvalKind]}`} title={TITLE[event.approvalKind]} asking={event.approvalKind === 'UserInput'}>
       {event.reason !== null && event.reason !== '' && <p className="mx-question-reason">{event.reason}</p>}
       {detail !== '' && <code className="mx-question-code">{detail}</code>}
       {event.approvalKind === 'UserInput' && actions !== null && event.questions.length > 0 ? (
@@ -113,7 +113,7 @@ export function PromptTray({ agent, ask, online, answer, pick }: PromptProps) {
   const isQuestion = ask?.tool === QUESTION_TOOL
   const title = ask === null ? `${agent} is waiting for you` : isQuestion ? `${agent} has a question for you` : ask.tool === 'Bash' ? 'Wants to run a command' : `Wants to use ${ask.tool}`
   return (
-    <Tray label={`${agent} needs your permission`} title={title}>
+    <Tray label={`${agent} needs your permission`} title={title} asking={isQuestion}>
       {ask !== null && ask.detail !== '' && (isQuestion ? <p className="mx-question-reason">{ask.detail}</p> : <code className="mx-question-code">{ask.detail}</code>)}
       {picker !== undefined ? (
         <div className="mx-question-answers is-choices">

@@ -123,6 +123,16 @@ pub async fn open_stream_for_user(daemon_executable: &std::path::Path) -> Result
 }
 
 async fn open_as(attach: bool) -> Result<(Reader, Writer)> {
+    open_knowing_version(attach).await.map(|(connection, _)| connection)
+}
+
+/// A connection to the daemon that is running, and the protocol version it said: what a caller
+/// checks before a request an older daemon would pass over without an answer.
+pub async fn open_for_user_knowing_version() -> Result<((Reader, Writer), u32)> {
+    open_knowing_version(false).await
+}
+
+async fn open_knowing_version(attach: bool) -> Result<((Reader, Writer), u32)> {
     let (mut reader, mut writer) = framed(connect().await?);
     send(
         &mut writer,
@@ -139,7 +149,7 @@ async fn open_as(attach: bool) -> Result<(Reader, Writer)> {
     .await?;
     let daemon = maitty_ipc_transport::welcome_version(&mut reader).await?;
     if daemon.speaks_with_us() {
-        Ok((reader, writer))
+        Ok(((reader, writer), daemon.version))
     } else {
         Err(OtherVersion {
             daemon: daemon.version,

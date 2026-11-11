@@ -73,6 +73,15 @@ describe('a message typed while the agent was starting', () => {
     expect(typeInto).toHaveBeenCalledExactlyOnceWith(`${PASTE_START}hello there${PASTE_END}\r`)
   })
 
+  it('keeps the held message on screen while the history is first read, with no skeleton in between', () => {
+    holdFirstMessage('s1', 'hello there')
+    open('Working')
+
+    // Before anything has been read: the frame the person sees when the real chat takes over from the starting one.
+    expect(screen.getByLabelText('Sending')).toHaveTextContent('hello there')
+    expect(screen.queryByRole('status', { name: 'Reading the conversation' })).not.toBeInTheDocument()
+  })
+
   it('brings a half-typed message over into the box', async () => {
     carryDraft('s1', 'half a thou')
     open('Idle')

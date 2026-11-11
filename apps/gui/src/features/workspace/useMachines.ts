@@ -4,6 +4,7 @@ import { conversationsFromSnapshot, isDesktop } from '@/api/daemon'
 import { LOCAL_MACHINE, addMachine, cancelAddMachine, listenMachineClipboard, listenMachineError, listenMachineNotice, listenMachineRemoved, listenMachineSessions, listenMachineState, listenMachineUpdateProgress, loadMachinesOverview, removeMachine, retryMachine, setMachineGrant, terminalOf, unregisterMachine, type Grant, type MachineState } from '@/api/machines'
 import type { Conversation } from '@/data/preview'
 import { sendNativeNotice } from '@/features/notifications/native'
+import { COPY_TOAST_ID, COPY_TOAST_MS, copySaid } from '@/features/terminal/copyToast'
 import { errorMessage } from '@/lib/error-message'
 import { toast } from '@/lib/toast'
 import { runMachineUpdate } from './machineUpdate'
@@ -80,12 +81,12 @@ export function useRemoteMachines(): RemoteMachines {
       listenMachineState(settle),
       listenMachineError((text) => { toast.error(text) }),
       // A machine that was allowed to raise notices: in the window as a toast, away from it as the system's.
-      // Text a machine that was allowed to asks to put on the clipboard.
+      // Text a program in a pane copied: this computer's, or a machine's that was allowed to.
       listenMachineClipboard((id, text) => {
-        const name = names.get(id) ?? 'A machine'
+        const said = copySaid(id, names.get(id) ?? 'A machine', text.length)
         navigator.clipboard.writeText(text).then(
-          () => { toast.message(`${name} copied ${String(text.length)} characters to your clipboard`) },
-          (error: unknown) => { toast.error(errorMessage(error, `Could not copy what ${name} sent`)) },
+          () => { toast.success(said.done, { id: COPY_TOAST_ID, duration: COPY_TOAST_MS }) },
+          (error: unknown) => { toast.error(errorMessage(error, said.failed)) },
         )
       }),
       listenMachineNotice((text) => {

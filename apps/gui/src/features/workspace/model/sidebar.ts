@@ -1,3 +1,4 @@
+import { isChatSession } from './chatSession'
 import type { MachineHead } from './machines'
 import { folderNameOf, inCreationOrder, SHELL_PROCESS, type SessionStatus, type SessionView } from './session'
 
@@ -44,6 +45,14 @@ export function projectColor(project: string): string {
   return `var(--proj-${String((Math.abs(hash) % PROJECT_COLORS) + 1)})`
 }
 
+/**
+ * Whether closing this session would lose something: it has not ended, and it is an agent, a chat, or a shell
+ * with a program running in it. A plain idle shell loses nothing that Undo does not bring back.
+ */
+export function keepsRunningUnseen(session: SessionView): boolean {
+  return !session.ended && !(isShell(session) && !isChatSession(session.conversation))
+}
+
 export function isShell(session: Pick<SessionView, 'process'>): boolean {
   return session.process === SHELL_PROCESS
 }
@@ -81,6 +90,19 @@ export type SidebarGrouping = 'status' | 'project' | 'machine'
 
 export const SIDEBAR_GROUPINGS: ReadonlyArray<readonly [SidebarGrouping, string]> = [['status', 'Status'], ['project', 'Project'], ['machine', 'Machine']]
 
+/**
+ * A session listed under Terminals: one with no agent in it (a shell, or a program running in one, such as `pnpm dev`).
+ * One that needs you stays with the agents, because what needs you is never at the bottom of the list.
+ */
+export function isTerminal(session: Pick<SessionView, 'conversation' | 'status'>): boolean {
+  return !session.conversation.agent && session.status !== 'needs'
+}
+
+/** The terminals, as created: the last section of the status and project lists, so agents are never sorted among dev servers. */
+export function terminalSessions(sessions: readonly SessionView[]): SessionView[] {
+  return inCreationOrder(sessions.filter(isTerminal))
+}
+
 export function isSidebarGrouping(value: unknown): value is SidebarGrouping {
   return SIDEBAR_GROUPINGS.some(([grouping]) => grouping === value)
 }
@@ -95,14 +117,11 @@ const STATUS_SECTIONS: ReadonlyArray<{ key: StatusSectionKey; name: string; hint
   { key: 'idle', name: 'Idle', hint: 'nothing to do' },
 ]
 
-/**
- * The section a session is listed in. An agent that stopped is yours to look at, so it sits with what
- * needs you; a shell that exited, or one the daemon cannot read, has nothing to ask and is idle.
- */
+/** The section a session is listed in. An agent that stopped is yours to look at, so it sits with what needs you. */
 function sectionOf(session: SessionView): StatusSectionKey {
   switch (session.status) {
     case 'needs': return 'needs'
-    case 'error': return isShell(session) ? 'idle' : 'needs'
+    case 'error': return 'needs'
     case 'working': return 'working'
     case 'done': return 'done'
     case 'idle':
@@ -112,9 +131,9 @@ function sectionOf(session: SessionView): StatusSectionKey {
 
 export type StatusSection = { key: StatusSectionKey; name: string; hint: string; sessions: SessionView[] }
 
-/** The sessions under the status each has, as created within a section; a section with nothing in it is left out. */
+/** The agents under the status each has, as created within a section; a section with nothing in it is left out. Terminals have their own section (`terminalSessions`). */
 export function statusSections(sessions: readonly SessionView[]): StatusSection[] {
-  const created = inCreationOrder(sessions)
+  const created = inCreationOrder(sessions.filter((session) => !isTerminal(session)))
   return STATUS_SECTIONS
     .map((section) => ({ ...section, sessions: created.filter((session) => sectionOf(session) === section.key) }))
     .filter((section) => section.sessions.length > 0)
@@ -141,10 +160,11 @@ export type ProjectSection = ProjectGroup & { key: string; head: MachineHead }
 /**
  * Every project as one heading, by name. A project that is on two machines gets a heading for each,
  * this computer's first, because the same folder name on another machine is another checkout.
+ * Agents only: terminals have their own section (`terminalSessions`).
  */
 export function projectSections(sessions: readonly SessionView[], heads: readonly MachineHead[]): ProjectSection[] {
   return heads
-    .flatMap((head) => projectGroups(inCreationOrder(sessions.filter((session) => session.machine === head.machine)))
+    .flatMap((head) => projectGroups(inCreationOrder(sessions.filter((session) => session.machine === head.machine && !isTerminal(session))))
       .map((group) => ({ ...group, key: `${head.key}:${group.name}`, head })))
     .sort((a, b) => a.name.localeCompare(b.name))
 }

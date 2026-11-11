@@ -2267,6 +2267,10 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
     } else {
         (Vec::new(), Vec::new())
     };
+    let background_reported = event == "Stop"
+        && payload_json
+            .get("background_tasks")
+            .is_some_and(Value::is_array);
     let call = call_fingerprint(&origin.agent, &event, payload_json).filter(|_| parent_facts);
     let ask = (event == "PermissionRequest" && parent_facts)
         .then(|| permission_ask(payload_json))
@@ -2300,6 +2304,7 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
         name,
         background,
         background_agents,
+        background_reported,
         ask,
         call,
     }
@@ -4309,6 +4314,29 @@ mod tests {
             ["a2"],
             "only a running helper agent is named as one: a shell may be a server"
         );
+    }
+
+    #[test]
+    fn a_stop_says_whether_the_agent_listed_its_background_work() {
+        let reported = |payload: Value| {
+            let origin = super::HookOrigin {
+                term: 1,
+                agent: "claude".into(),
+                pid: 0,
+                token: String::new(),
+            };
+            let ClientMsg::Hook {
+                background_reported,
+                ..
+            } = super::hook_message(origin, &payload, super::status_from_hook(&payload).unwrap())
+            else {
+                panic!("expected hook report")
+            };
+            background_reported
+        };
+        assert!(reported(json!({"hook_event_name":"Stop","background_tasks":[]})), "an empty list is nothing running");
+        assert!(!reported(json!({"hook_event_name":"Stop"})), "no list is nothing said");
+        assert!(!reported(json!({"hook_event_name":"PostToolUse","background_tasks":[]})), "only a stop is asked");
     }
 
     #[test]

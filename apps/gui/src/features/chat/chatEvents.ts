@@ -155,7 +155,7 @@ export type ApprovalEvent = {
   readonly resolution: ApprovalResolution
 }
 
-/** Closes a turn: the "Cooked for 7s" divider. Only emitted once the turn has ended. */
+/** Closes a turn: the "Finished in 7s" divider. Only emitted once the turn has ended. */
 export type TurnEvent = {
   readonly kind: 'turn'
   readonly id: string

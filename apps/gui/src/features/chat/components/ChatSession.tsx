@@ -14,13 +14,16 @@ import { useChatFeed } from '../useChatFeed'
 import { useChatComposer } from '../useChatComposer'
 import { countUserMessages } from '../workPhase'
 import { startedWithYolo } from '../yoloSessions'
-import { BYPASS_MODE, modeFromScreen, modeLabel } from '../chatMeta'
+import { CODEX_MODE_COMMAND, CODEX_MODE_REFUSED, CODEX_START_MODES, DANGER_MODES, modeFromScreen, modeLabel } from '../chatMeta'
 import type { ApprovalDecision } from '../chatEvents'
 import type { PermissionAsk } from '@/data/preview'
 import { ANSWER_KEY, ANSWER_KEYS, choiceKey, type AskChoice } from '../permissionAsk'
+import { copySelection } from '../copySelection'
+import { OpenFileContext, type OpenFile } from '../openFile'
 import { keepComposerFocus } from '../keepComposerFocus'
 import { releaseFirstMessage, releaseStartChoice, startChoiceOf, takeCarriedDraft, useHeldByDaemon, useHeldFirstMessage } from '../firstMessage'
 import { writeChoice } from '../agentChoice'
+import { isWorktree, useFolderBranches } from '@/features/workspace/model/newChatHost'
 import { Composer } from './Composer'
 import { ChatItem } from './ChatItems'
 import { KnownRowsContext } from '../knownRows'
@@ -36,6 +39,11 @@ const SETTLE_MS = 650
 /** Shift+Tab, which cycles the agent's permission mode, and how long after it the new mode is read back. */
 const SHIFT_TAB = '\x1b[Z'
 const MODE_READ_MS = 400
+/**
+ * How long after typing a Codex command its Enter is pressed. Codex takes keys that arrive together for a paste, and an Enter
+ * that comes with them for a line break: the command then sits in its box unsent (seen on Codex 0.166 on Windows).
+ */
+export const CODEX_SUBMIT_GAP_MS = 400
 /** The most presses of Shift+Tab a full turn of Claude's modes takes. */
 const MODE_CYCLE_MAX = 5
 
@@ -88,6 +96,8 @@ type Props = {
   root?: string | null
   /** Opens a file's diff in the Changes panel; absent where there is none. */
   onOpenDiff?: ((file: string) => void) | null
+  /** Opens a file a reply names, at its line when it gave one. */
+  onOpenFile?: OpenFile | null
   /** Types into the terminal the agent runs in, for a chat that follows it (ADR 0003). */
   typeInto?: ((text: string) => Promise<void>) | undefined
   /** The permission prompt the agent's hook says its terminal is stopped on, for a chat that follows it. */
@@ -99,8 +109,6 @@ type Props = {
   /** The project folder's name and the branch, for the tray under the message box. */
   folder?: string
   branch?: string | null
-  /** How many subagents the session has, for the tray. */
-  subagentCount?: number
   /** Shows the session's files beside the pane (the tray's folder). */
   onOpenFolder?: (() => void) | null
   /** A subagent whose own chat shows instead of the session's, and the way back. */
@@ -109,9 +117,11 @@ type Props = {
 }
 
 /** The chat of one session: its history as a virtualised list, the daemon's status, and the composer under it. */
-export function ChatSession({ link, agent, online, hasTerminal = true, root = null, onOpenDiff = null, typeInto, ask = null, sessionId, paneStatus, folder = '', branch = null, subagentCount = 0, onOpenFolder = null, subagent = null, onBackToMain }: Props) {
+export function ChatSession({ link, agent, online, hasTerminal = true, root = null, onOpenDiff = null, onOpenFile = null, typeInto, ask = null, sessionId, paneStatus, folder = '', branch = null, onOpenFolder = null, subagent = null, onBackToMain }: Props) {
   const { feed, events, offline, readError, refresh, recordAnswer } = useChatFeed({ conversation: link.conversation, generation: link.generation, provider: agent })
   const paneWorking = paneStatus === 'working'
+  const [branches] = useFolderBranches(root ?? '')
+  const worktree = isWorktree(branches, root)
   const working = feed.status === 'Working' || paneWorking
   const workingSince = working ? runningTurnStartedAt(feed) : null
   const incomplete = incompleteReason(feed.completeness)
@@ -154,9 +164,39 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   const shownMode = (liveMode !== null && liveMode.base === metaMode ? liveMode.value : metaMode) ?? started?.mode ?? null
   const shownModel = liveModel !== null && liveModel.base === metaModel ? liveModel.value : metaModel
   const canChangeAgent = typeInto !== undefined && agent === 'claude' && link.readOnly === true
+  const canPickCodexMode = typeInto !== undefined && agent === 'codex' && link.readOnly === true
   // The chips stay drawn while their keys would land in a turn or nowhere; they are only greyed out, so the box does not rearrange.
   const chipsLocked = !online ? 'The daemon is offline' : working ? `${agent} is working. Change this when it finishes.` : null
   const agentControls = useMemo(() => {
+    if (canPickCodexMode) {
+      return {
+        modes: CODEX_START_MODES,
+        modeAgent: 'Codex',
+        onPickMode: (target: string) => {
+          const command = CODEX_MODE_COMMAND[target]
+          if (sessionId === undefined || command === undefined) return
+          if (chipsLocked !== null) {
+            toast.error(chipsLocked)
+            return
+          }
+          // Codex has no file that says its mode, so the pick stands unless its screen says the command was refused.
+          const before = shownMode
+          setLiveMode({ base: metaMode, value: target })
+          const step = async () => {
+            await typeInto(command)
+            await new Promise<void>((resolve) => { window.setTimeout(resolve, CODEX_SUBMIT_GAP_MS) })
+            await typeInto('\r')
+            await new Promise<void>((resolve) => { window.setTimeout(resolve, MODE_READ_MS) })
+            if (CODEX_MODE_REFUSED.test(await loadTerminalScreen({ id: sessionId, generation: 0 }))) {
+              setLiveMode(before === null ? null : { base: metaMode, value: before })
+              toast.error(`Codex did not switch to ${modeLabel(target) ?? target}. Its terminal says why.`)
+            }
+            refresh()
+          }
+          void step().catch((error: unknown) => { toast.error(errorMessage(error, 'Could not change the permission mode')) })
+        },
+      }
+    }
     if (!canChangeAgent) return {}
     return {
       agentChips: { locked: chipsLocked },
@@ -190,7 +230,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
         void step().catch((error: unknown) => { toast.error(errorMessage(error, 'Could not change the permission mode')) })
       },
     }
-  }, [canChangeAgent, chipsLocked, typeInto, refresh, sessionId, metaMode, metaModel])
+  }, [canChangeAgent, canPickCodexMode, chipsLocked, typeInto, refresh, sessionId, metaMode, metaModel, shownMode])
   const composer = useChatComposer({ link, agent, feed, online, refresh, answersPrompt, paneWorking, ...(typeInto ? { typeInto } : {}) })
   const { sendText, setDraft: setComposerDraft, ready, sending, echo } = composer
   // A message just sent shows at once, with the agent taken to be at work on it, until the history has it.
@@ -210,7 +250,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   const allRows = useMemo(() => buildRows(events, working || holdWorking, root, echoText, echoThinking), [events, working, holdWorking, root, echoText, echoThinking])
   const rows = useMemo(() => allRows.filter((row) => !isPendingApproval(row)), [allRows])
   // The rows the history had when it loaded: what arrives after them is live, and is typed in rather than shown whole.
-  const [known, setKnown] = useState<ReadonlySet<string> | null>(null)
+  const [known, setKnown] = useState<Set<string> | null>(null)
   if (feed.loaded && known === null) setKnown(new Set(rows.map(rowKey)))
   const pending = useMemo(() => allRows.find((row): row is Extract<ChatRow, { kind: 'approval' }> => isPendingApproval(row))?.event ?? null, [allRows])
   // The model and effort picked on the new-chat page are this conversation's choice from its first frame, so the picker shows them.
@@ -278,12 +318,13 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
     })
   }, [sessionId, rowsNow, foundNow, goToStep])
 
+  const waitingStep = pending?.stepId ?? null
   const renderRow = useCallback(
     (row: ChatRow) => {
-      const item = <ChatItem row={row} agent={agent} workingSince={workingSince} approval={approval} root={root} openDiff={onOpenDiff} goToStep={goToStep} />
+      const item = <ChatItem row={row} agent={agent} workingSince={workingSince} approval={approval} root={root} openDiff={onOpenDiff} goToStep={goToStep} waitingStep={waitingStep} />
       return row.key === found ? <div className="mx-chat-found" data-found="true">{item}</div> : item
     },
-    [agent, workingSince, approval, root, onOpenDiff, goToStep, found],
+    [agent, workingSince, approval, root, onOpenDiff, goToStep, found, waitingStep],
   )
 
   // y, a and n answer the tray from anywhere in the chat but a field, as the same letters do in the terminal.
@@ -300,6 +341,12 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
     }
   }
 
+  // The pane hands a new function on every render; the rows are given one that stays the same, so they are not drawn again for it.
+  const openFileRef = useRef(onOpenFile)
+  useEffect(() => { openFileRef.current = onOpenFile }, [onOpenFile])
+  const canOpenFile = onOpenFile !== null
+  const openFile = useMemo<OpenFile | null>(() => (canOpenFile ? (path, line) => { openFileRef.current?.(path, line) } : null), [canOpenFile])
+
   const question = pending !== null
     ? <ApprovalTray event={pending} actions={approval} />
     : stoppedOnPrompt ? <PromptTray agent={agent} ask={ask} online={online} answer={answerPrompt} pick={pickChoice} /> : null
@@ -310,7 +357,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   ].filter((notice): notice is string => notice !== null)
 
   return (
-    <div className="mx-chat" onKeyDown={onKeyDown} onClick={keepComposerFocus}>
+    <div className="mx-chat" onKeyDown={onKeyDown} onClick={keepComposerFocus} onMouseUp={copySelection}>
       {(notices.length > 0 || fullAccess) && (
         <div className="mx-chat-notices" role={offline ? 'status' : undefined}>
           {notices.map((notice) => <span key={notice}>{notice}</span>)}
@@ -326,9 +373,12 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
         </>
       ) : feed.loaded && rows.length === 0 ? (
         <p className="mx-chat-empty">{hasTerminal ? 'No messages yet. Send one below, or type in the terminal.' : 'No messages yet. Send one below.'}</p>
-      ) : feed.loaded ? (
+      ) : feed.loaded || rows.length > 0 ? (
+        // A message held from the starting chat is a row before the history is read, so it stays where it was and no skeleton replaces it.
         <KnownRowsContext.Provider value={known}>
+          <OpenFileContext.Provider value={openFile}>
           <VirtualList items={rows} getKey={rowKey} estimate={ESTIMATED_ROW_PX} renderItem={renderRow} label={`Conversation with ${agent}`} scrollTarget={scrollTarget} />
+          </OpenFileContext.Provider>
         </KnownRowsContext.Provider>
       ) : (
         <ChatSkeleton />
@@ -339,7 +389,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
         conversation={link.conversation}
         question={question}
         waiting={held !== null}
-        facts={{ mode: modeLabel(shownMode), modeDanger: shownMode === BYPASS_MODE, subagents: subagentCount, folder, branch, model: shownModel, onOpenFolder, modeKey: shownMode, bypassAllowed: startedWithYolo(sessionId), ...agentControls }}
+        facts={{ mode: modeLabel(shownMode), modeDanger: shownMode !== null && DANGER_MODES.includes(shownMode), folder, branch, worktree, model: shownModel, onOpenFolder, modeKey: shownMode, bypassAllowed: startedWithYolo(sessionId), ...agentControls }}
       />
     </div>
   )

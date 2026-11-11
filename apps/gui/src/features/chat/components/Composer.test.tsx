@@ -148,7 +148,7 @@ describe('while a request waits for an answer', () => {
     await settle()
     expect(fake.approveRequest).toHaveBeenCalledWith(TARGET, 9, 'AcceptForSession')
     const card = screen.getByRole('group', { name: /Approval/ })
-    expect(card).toHaveTextContent('You answered: This session')
+    expect(card).toHaveTextContent('Allowed for this session')
     expect(within(card).queryByRole('button')).not.toBeInTheDocument()
     daemon.status = 'Working'
     daemon.approvals = []
@@ -228,6 +228,78 @@ describe('while the agent works', () => {
 
     expect(fake.dequeueMessage).toHaveBeenCalledWith(TARGET, 1)
     expect(screen.queryByRole('list', { name: 'Queued messages' })).not.toBeInTheDocument()
+  })
+
+  it('takes a queued message back into the box to edit, ahead of what was typed there', async () => {
+    const { daemon, user, box } = await open((setup) => { setup.status = 'Working' })
+    daemonQueues(daemon)
+    await user.type(box, 'lint it{Enter}')
+    await settle()
+    await user.type(box, 'and more')
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }))
+    await settle()
+
+    expect(fake.dequeueMessage).toHaveBeenCalledWith(TARGET, 1)
+    expect(box).toHaveValue('lint it\n\nand more')
+    expect(box).toHaveFocus()
+    expect(screen.queryByRole('list', { name: 'Queued messages' })).not.toBeInTheDocument()
+  })
+
+  it('shows a queued message with its files as chips, never the lines that name them, and gives both back on Edit', async () => {
+    const withFile = 'look at this\n\nAttached files (kept by Maitty; read them with your file tools):\n- C:\\kept\\attach-1794395248212-6aebc0c8-notes.txt'
+    const { daemon, user, box } = await open((setup) => {
+      setup.status = 'Working'
+      setup.queued.push({ operation: 7, text: withFile })
+    })
+    daemonQueues(daemon)
+
+    const queued = screen.getByRole('list', { name: 'Queued messages' })
+    expect(queued).toHaveTextContent('look at this')
+    expect(queued).not.toHaveTextContent('Attached files (kept by Maitty')
+    expect(within(queued).getByRole('list', { name: 'Attached files' })).toHaveTextContent('notes.txt')
+
+    await user.click(within(queued).getByRole('button', { name: 'Edit' }))
+    await settle()
+
+    expect(fake.dequeueMessage).toHaveBeenCalledWith(TARGET, 7)
+    expect(box).toHaveValue('look at this')
+    expect(screen.getByText('notes.txt')).toBeInTheDocument()
+  })
+
+  it('leaves the box alone when the message to edit was already sent', async () => {
+    const { daemon, user, box } = await open((setup) => { setup.status = 'Working' })
+    daemonQueues(daemon)
+    await user.type(box, 'lint it{Enter}')
+    await settle()
+    fake.dequeueMessage.mockRejectedValue(new Error('not queued'))
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }))
+    await settle()
+
+    expect(box).toHaveValue('')
+  })
+
+  it('stacks several queued messages behind the first one sent, and spreads them out on a click', async () => {
+    const { daemon, user, box } = await open((setup) => { setup.status = 'Working' })
+    daemonQueues(daemon)
+    for (const text of ['first', 'second', 'third']) {
+      await user.type(box, `${text}{Enter}`)
+      await settle()
+    }
+
+    const list = screen.getByRole('list', { name: 'Queued messages' })
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1)
+    expect(within(list).getByRole('listitem')).toHaveTextContent('first')
+    expect(within(list).getByRole('listitem')).toHaveTextContent('first of 3')
+
+    await user.click(within(list).getByRole('button', { name: 'first' }))
+    expect(within(list).getAllByRole('listitem').map((item) => item.querySelector('.mx-queued-text')?.textContent)).toEqual(['first', 'second', 'third'])
+
+    await user.click(within(within(list).getAllByRole('listitem')[1] as HTMLElement).getByRole('button', { name: 'Remove queued message' }))
+    await settle()
+    expect(fake.dequeueMessage).toHaveBeenCalledWith(TARGET, 2)
+    expect(within(list).getAllByRole('listitem').map((item) => item.querySelector('.mx-queued-text')?.textContent)).toEqual(['first', 'third'])
   })
 
   it('says so when a message was sent a moment before it could be removed, and shows the daemon\'s state', async () => {

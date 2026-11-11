@@ -38,6 +38,8 @@ pub enum PaneCommand {
     /// End the session after an undo window; `UndoClose` inside it brings the session back.
     CloseSession,
     UndoClose,
+    /// The person's answer to a session that asked to start helpers.
+    AnswerHelpers(maitty_shared::protocol::HelperChoice),
 }
 
 impl PaneCommand {
@@ -62,6 +64,9 @@ impl PaneCommand {
             PaneCommand::Close => ClientMsg::Command(Command::ClosePane { term }),
             PaneCommand::CloseSession => ClientMsg::Command(Command::CloseSession { term }),
             PaneCommand::UndoClose => ClientMsg::Command(Command::UndoClose { term }),
+            PaneCommand::AnswerHelpers(choice) => {
+                ClientMsg::Command(Command::AnswerHelpers { term, choice })
+            }
         }
     }
 }
@@ -110,11 +115,38 @@ fn can_restart_mismatched_daemon(
     sessions_saved: bool,
 ) -> bool {
     daemon_protocol < maitty_shared::protocol::PROTOCOL_VERSION
-        && (sessions_saved || activity.is_some_and(|activity| activity.sessions == 0))
+        && sessions_survive_restart(activity, sessions_saved)
+}
+
+/// Whether stopping the daemon loses nothing: its sessions are saved on disk, or it has none.
+fn sessions_survive_restart(activity: Option<&Activity>, sessions_saved: bool) -> bool {
+    sessions_saved || activity.is_some_and(|activity| activity.sessions == 0)
+}
+
+/// Whether the local daemon runs an older release than this app though the two still talk to each
+/// other. Such a daemon is never replaced unasked (it may hold running sessions), so the window
+/// says so and offers the restart.
+pub fn daemon_update_status(app_version: &str) -> Value {
+    update_status(
+        read_activity().as_ref(),
+        app_version,
+        session_file().is_file(),
+    )
+}
+
+fn update_status(activity: Option<&Activity>, app_version: &str, sessions_saved: bool) -> Value {
+    let behind = activity.is_some_and(|a| shared_daemon::is_older(&a.version, app_version));
+    json!({
+        "daemonVersion": activity.map(|a| a.version.as_str()).filter(|_| behind),
+        "behind": behind,
+        "canRestart": behind && sessions_survive_restart(activity, sessions_saved),
+        "sessionCount": activity.map_or(0, |a| a.sessions),
+        "activeTurnCount": activity.map(Activity::busy),
+    })
 }
 
 fn validate_restart_activity(activity: Option<&Activity>, sessions_saved: bool) -> Result<()> {
-    if sessions_saved || activity.is_some_and(|activity| activity.sessions == 0) {
+    if sessions_survive_restart(activity, sessions_saved) {
         return Ok(());
     }
     match activity {
@@ -131,6 +163,9 @@ fn validate_restart_activity(activity: Option<&Activity>, sessions_saved: bool) 
 #[derive(serde::Deserialize)]
 struct Activity {
     pid: u32,
+    /// Empty for a daemon from before it published its version.
+    #[serde(default)]
+    version: String,
     sessions: usize,
     working: usize,
     waiting: usize,
@@ -265,6 +300,25 @@ pub async fn restart_mismatched_daemon(expected_protocol: u32) -> Result<()> {
         }
     };
     validate_restart_confirmation(daemon_protocol, expected_protocol)?;
+    stop_local_daemon().await
+}
+
+/// Stop the exact older release the user confirmed replacing. It must still be the version the
+/// prompt named and still older than this app, so a daemon another window already replaced is
+/// never stopped by a stale prompt.
+pub async fn restart_stale_daemon(app_version: &str, expected_version: &str) -> Result<()> {
+    let activity = read_activity();
+    let running = activity.as_ref().map_or("", |a| a.version.as_str());
+    anyhow::ensure!(
+        running == expected_version && shared_daemon::is_older(running, app_version),
+        "the local {APP_NAME} service changed since the restart prompt opened"
+    );
+    stop_local_daemon().await
+}
+
+/// Stop the local daemon, after checking that its sessions are saved or that it has none, and
+/// wait until it lets go of the socket.
+async fn stop_local_daemon() -> Result<()> {
     validate_restart_activity(read_activity().as_ref(), session_file().is_file())?;
     tokio::task::spawn_blocking(stop_mismatched_daemon)
         .await
@@ -696,6 +750,52 @@ pub async fn start_agent_session(
     }
 }
 
+/// The command that keeps an agent warm in a folder: the same line `start_agent_session` sends, so the session started
+/// next with the same agent, flags and folder is the one already running.
+pub fn prewarm_message(cwd: PathBuf, agent: &str, flags: &[String]) -> Result<ClientMsg> {
+    let cmd = agent_command(agent, flags)?;
+    let cwd = cwd.canonicalize().context("resolving the start folder")?;
+    if !cwd.is_dir() {
+        bail!("the start folder is not a directory");
+    }
+    Ok(ClientMsg::Command(Command::Prewarm { cwd, cmd }))
+}
+
+/// Start an agent ahead of its first message, hidden until its session is started. False when the daemon running is
+/// from before this and was not asked.
+pub async fn prewarm_agent_session(cwd: PathBuf, agent: String, flags: Vec<String>) -> Result<Value> {
+    let asked = ask_if_known(prewarm_message(cwd, &agent, &flags)?).await?;
+    Ok(Value::Bool(asked))
+}
+
+/// Stop the agent kept warm, if no session took it.
+pub async fn drop_prewarmed_agent() -> Result<Value> {
+    ask_if_known(ClientMsg::Command(Command::DropPrewarm)).await?;
+    Ok(Value::Null)
+}
+
+/// Whether a daemon at `daemon_version` reads `message`. An older one passes over what it cannot read and never answers.
+fn daemon_reads(message: &ClientMsg, daemon_version: u32) -> bool {
+    daemon_version >= message.introduced_in()
+}
+
+/// Ask the running daemon for something it may be too old to know: true when it was asked and said yes.
+async fn ask_if_known(message: ClientMsg) -> Result<bool> {
+    answered_within(REQUEST_TIMEOUT, async {
+        let (mut connection, version) = ipc::open_for_user_knowing_version()
+            .await
+            .context("connecting to the local daemon")?;
+        if !daemon_reads(&message, version) {
+            return Ok(false);
+        }
+        match ask(&mut connection, &message).await? {
+            Reply::Ok => Ok(true),
+            _ => bail!("daemon returned an unexpected reply"),
+        }
+    })
+    .await
+}
+
 /// What may be held for a starting agent: some words, and not more than the daemon is asked to keep.
 pub fn held_message(text: String) -> Result<PaneCommand> {
     if text.trim().is_empty() {
@@ -913,6 +1013,29 @@ pub async fn reload_terminal_session(term: u32, daemon_executable: PathBuf) -> R
 }
 
 /// The user looked at a pane: the daemon turns a finished agent's done into idle.
+/// The words the window uses for each answer to a helper request.
+pub fn helper_choice(word: &str) -> Result<maitty_shared::protocol::HelperChoice> {
+    use maitty_shared::protocol::HelperChoice;
+    match word {
+        "allow" => Ok(HelperChoice::Allow),
+        "always" => Ok(HelperChoice::Always),
+        "no" => Ok(HelperChoice::No),
+        _ => bail!("unknown answer to a helper request"),
+    }
+}
+
+pub async fn answer_helpers(
+    term: u32,
+    choice: maitty_shared::protocol::HelperChoice,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let reply = request(PaneCommand::AnswerHelpers(choice).message(term), daemon_executable).await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected helper answer reply"),
+    }
+}
+
 pub async fn mark_terminal_seen(term: u32, daemon_executable: PathBuf) -> Result<Value> {
     let reply = request(PaneCommand::Seen.message(term), daemon_executable).await?;
     match reply {
@@ -1660,7 +1783,7 @@ async fn receive_reply(reader: &mut ipc::Reader) -> Result<Reply> {
 #[cfg(test)]
 mod restart_confirmation_tests {
     use super::{
-        Activity, can_restart_mismatched_daemon, is_daemon_command_line,
+        Activity, can_restart_mismatched_daemon, is_daemon_command_line, update_status,
         validate_restart_activity, validate_restart_confirmation,
     };
 
@@ -1700,6 +1823,7 @@ mod restart_confirmation_tests {
     fn activity(sessions: usize, working: usize, waiting: usize) -> Activity {
         Activity {
             pid: 1,
+            version: "0.71.0".into(),
             sessions,
             working,
             waiting,
@@ -1740,6 +1864,37 @@ mod restart_confirmation_tests {
         assert!(validate_restart_activity(None, false).is_err());
         assert!(validate_restart_activity(Some(&activity(2, 1, 0)), true).is_ok());
         assert!(validate_restart_activity(Some(&activity(0, 0, 0)), false).is_ok());
+    }
+
+    #[test]
+    fn a_daemon_a_release_behind_is_reported_with_what_a_restart_costs() {
+        let status = update_status(Some(&activity(11, 1, 0)), "0.72.0", true);
+
+        assert_eq!(status["behind"], true);
+        assert_eq!(status["daemonVersion"], "0.71.0");
+        assert_eq!(status["canRestart"], true, "its sessions are saved");
+        assert_eq!(status["sessionCount"], 11);
+        assert_eq!(status["activeTurnCount"], 1);
+    }
+
+    #[test]
+    fn a_behind_daemon_whose_sessions_are_not_saved_is_reported_but_not_restartable() {
+        let status = update_status(Some(&activity(3, 0, 0)), "0.72.0", false);
+
+        assert_eq!(status["behind"], true);
+        assert_eq!(status["canRestart"], false);
+    }
+
+    #[test]
+    fn a_daemon_on_this_release_or_newer_or_silent_is_not_behind() {
+        for version in ["0.72.0", "0.73.0", ""] {
+            let mut current = activity(2, 0, 0);
+            current.version = version.into();
+            let status = update_status(Some(&current), "0.72.0", true);
+            assert_eq!(status["behind"], false, "{version:?}");
+            assert_eq!(status["canRestart"], false, "{version:?}");
+        }
+        assert_eq!(update_status(None, "0.72.0", true)["behind"], false);
     }
 
     #[test]
@@ -1819,6 +1974,33 @@ mod agent_command_tests {
         for bad in ["a;b", "$(x)", "a b", "`x`", "a&&b", "a|b", "", "a\nb"] {
             assert!(agent_command("claude", &words(&[bad])).is_err(), "{bad:?} was allowed");
         }
+    }
+
+    #[test]
+    fn keeping_an_agent_warm_asks_for_the_same_line_a_start_sends_and_refuses_what_a_start_refuses() {
+        use super::{ClientMsg, Command, prewarm_message};
+        let here = std::env::temp_dir();
+        let flags = words(&["--model", "opus"]);
+        match prewarm_message(here.clone(), "claude", &flags).unwrap() {
+            ClientMsg::Command(Command::Prewarm { cwd, cmd }) => {
+                assert_eq!(cmd, agent_command("claude", &flags).unwrap());
+                assert_eq!(cwd, here.canonicalize().unwrap());
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(prewarm_message(here.clone(), "rm", &[]).is_err());
+        assert!(prewarm_message(here.clone(), "claude", &words(&["a;b"])).is_err());
+        assert!(prewarm_message(here.join("no-such-folder-here"), "claude", &[]).is_err());
+    }
+
+    #[test]
+    fn a_daemon_from_before_warm_agents_is_not_asked_for_one() {
+        use super::{ClientMsg, Command, daemon_reads};
+        use maitty_shared::protocol::{PREWARM_SINCE, PROTOCOL_VERSION};
+        let drop = ClientMsg::Command(Command::DropPrewarm);
+        assert!(daemon_reads(&drop, PROTOCOL_VERSION));
+        assert!(daemon_reads(&drop, PREWARM_SINCE));
+        assert!(!daemon_reads(&drop, PREWARM_SINCE - 1));
     }
 }
 

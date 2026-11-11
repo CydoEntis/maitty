@@ -87,9 +87,9 @@ pub const DEFAULT_LIGHT: &str = "day";
 const ALIASES: &[(&str, &str)] = &[
     ("maitty-night", "night"),
     ("maitty-day", "day"),
-    ("gruvbox-material", "gruvbox"),
+    ("gruvbox-material", "gruvbox-material-dark"),
     ("koda", "github-dark"),
-    ("melange", "gruvbox"),
+    ("melange", "melange-dark"),
     ("apprentice", "gruvbox"),
     ("aquarium", "catppuccin-mocha"),
     ("arcade", "maitty-dark"),
@@ -117,9 +117,7 @@ const ALIASES: &[(&str, &str)] = &[
     ("atelier-sulphurpool-dark", "one-dark"),
     ("atelier-sulphurpool-light", "one-light"),
     ("aurora", "github-dark"),
-    ("ayu-dark", "github-dark"),
-    ("ayu-light", "one-light"),
-    ("ayu-mirage", "one-dark"),
+    ("ayu-mirage", "ayu-dark"),
     ("badwolf", "tokyo-night"),
     ("bamboo", "gruvbox"),
     ("bamboo-light", "solarized-light"),
@@ -136,33 +134,21 @@ const ALIASES: &[(&str, &str)] = &[
     ("code-2026-dark", "github-dark"),
     ("code-2026-light", "github-light"),
     ("code-dark", "tokyo-night"),
-    ("cyberdream", "tokyo-night"),
-    ("cyberdream-light", "github-light"),
-    ("cyberdream-muted", "tokyo-night"),
+    ("cyberdream-muted", "cyberdream"),
     ("dawnfox", "solarized-light"),
-    ("dayfox", "catppuccin-latte"),
     ("dogrun", "catppuccin-mocha"),
-    ("doom-one", "one-dark"),
-    ("doom-one-light", "one-light"),
-    ("dracula", "one-dark"),
     ("duskfox", "catppuccin-mocha"),
     ("edge", "one-dark"),
     ("eldar", "maitty-dark"),
     ("embark", "catppuccin-mocha"),
     ("ember", "github-dark"),
-    ("everforest-dark", "one-dark"),
-    ("everforest-light", "solarized-light"),
     ("falcon", "maitty-dark"),
-    ("flexoki-dark", "github-dark"),
-    ("flexoki-light", "one-light"),
     ("fluoromachine", "catppuccin-mocha"),
     ("github-dark-dimmed", "gruvbox"),
     ("goodwolf", "github-dark"),
     ("gotham", "github-dark"),
     ("gruber-darker", "tokyo-night"),
     ("gruvbox-baby", "tokyo-night"),
-    ("gruvbox-material-dark", "gruvbox"),
-    ("gruvbox-material-light", "gruvbox-light"),
     ("harbor", "night"),
     ("harbor-day", "catppuccin-latte"),
     ("horizon", "tokyo-night"),
@@ -173,10 +159,8 @@ const ALIASES: &[(&str, &str)] = &[
     ("iceberg", "tokyo-night"),
     ("ink", "github-dark"),
     ("jellybeans", "github-dark"),
-    ("kanagawa-dragon", "github-dark"),
-    ("kanagawa-lotus", "gruvbox-light"),
-    ("kanagawa-paper", "catppuccin-mocha"),
-    ("kanagawa-wave", "catppuccin-mocha"),
+    ("kanagawa-dragon", "kanagawa-wave"),
+    ("kanagawa-paper", "kanagawa-wave"),
     ("koda-dark", "github-dark"),
     ("koda-glade", "one-light"),
     ("koda-light", "one-light"),
@@ -184,8 +168,6 @@ const ALIASES: &[(&str, &str)] = &[
     ("lackluster", "maitty-dark"),
     ("lucario", "one-dark"),
     ("luna", "maitty-dark"),
-    ("melange-dark", "gruvbox"),
-    ("melange-light", "catppuccin-latte"),
     ("mellifluous", "tokyo-night"),
     ("mellow", "github-dark"),
     ("mellow-light", "one-light"),
@@ -203,24 +185,16 @@ const ALIASES: &[(&str, &str)] = &[
     ("neovim-light", "tokyo-night-day"),
     ("night-owl", "night"),
     ("nightfly", "night"),
-    ("nightfox", "catppuccin-mocha"),
-    ("nord", "one-dark"),
     ("nordfox", "one-dark"),
     ("nordic", "one-dark"),
     ("oceanic-next", "one-dark"),
-    ("one-half-dark", "one-dark"),
-    ("one-half-light", "one-light"),
     ("onenord", "one-dark"),
     ("oxocarbon", "github-dark"),
     ("palenight", "one-dark"),
     ("panda", "gruvbox"),
     ("paper", "one-light"),
-    ("papercolor-dark", "tokyo-night"),
-    ("papercolor-light", "maitty-light"),
     ("rigel", "solarized-dark"),
-    ("rose-pine", "tokyo-night"),
-    ("rose-pine-dawn", "solarized-light"),
-    ("rose-pine-moon", "catppuccin-mocha"),
+    ("rose-pine-moon", "rose-pine"),
     ("selenized-light", "solarized-light"),
     ("shades-of-purple", "catppuccin-mocha"),
     ("simple-dark", "maitty-dark"),
@@ -238,8 +212,6 @@ const ALIASES: &[(&str, &str)] = &[
     ("token", "gruvbox"),
     ("tokyo-night-moon", "catppuccin-mocha"),
     ("tokyo-night-storm", "one-dark"),
-    ("tomorrow", "github-light"),
-    ("tomorrow-night", "tokyo-night"),
     ("tomorrow-night-bright", "maitty-dark"),
     ("tomorrow-night-eighties", "one-dark"),
     ("turtles", "tokyo-night"),
@@ -248,8 +220,6 @@ const ALIASES: &[(&str, &str)] = &[
     ("vscode", "tokyo-night"),
     ("yui-dark", "catppuccin-mocha"),
     ("yui-light", "maitty-light"),
-    ("zenbones-dark", "tokyo-night"),
-    ("zenbones-light", "maitty-light"),
     ("zephyr", "one-dark"),
 ];
 
@@ -269,42 +239,110 @@ pub fn is_light(name: &str) -> bool {
 /// Every built-in theme, kept in alphabetical order of its display name: the theme browser,
 /// the Theme setting's cycling and the unknown-theme warning all list it as written.
 pub const BUILTIN: &[&str] = &[
+    "alucard",
+    "ayu-dark",
+    "ayu-light",
     "catppuccin-latte",
     "catppuccin-mocha",
+    "cyberdream",
+    "cyberdream-light",
+    "dayfox",
+    "doom-one",
+    "doom-one-light",
+    "dracula",
+    "everforest-dark",
+    "everforest-light",
+    "flexoki-dark",
+    "flexoki-light",
     "github-dark",
     "github-light",
     "gruvbox",
     "gruvbox-light",
+    "gruvbox-material-dark",
+    "gruvbox-material-light",
+    "kanagawa-lotus",
+    "kanagawa-wave",
     "maitty-dark",
     "day",
     "maitty-light",
     "night",
+    "maitty-retro-dark",
+    "maitty-retro-light",
+    "melange-dark",
+    "melange-light",
+    "nightfox",
+    "nord",
+    "nord-light",
     "one-dark",
+    "one-half-dark",
+    "one-half-light",
     "one-light",
+    "papercolor-dark",
+    "papercolor-light",
+    "rose-pine",
+    "rose-pine-dawn",
     "solarized-dark",
     "solarized-light",
     "tokyo-night",
     "tokyo-night-day",
+    "tomorrow",
+    "tomorrow-night",
+    "zenbones-dark",
+    "zenbones-light",
 ];
 
 /// The display names Settings shows; a theme missing here shows its config name in title case.
 pub const DESIGN: &[(&str, &str)] = &[
+    ("alucard", "Alucard"),
+    ("ayu-dark", "Ayu Dark"),
+    ("ayu-light", "Ayu Light"),
     ("catppuccin-latte", "Catppuccin Latte"),
     ("catppuccin-mocha", "Catppuccin Mocha"),
+    ("cyberdream", "Cyberdream"),
+    ("cyberdream-light", "Cyberdream Light"),
+    ("dayfox", "Dayfox"),
+    ("doom-one", "Doom One"),
+    ("doom-one-light", "Doom One Light"),
+    ("dracula", "Dracula"),
+    ("everforest-dark", "Everforest Dark"),
+    ("everforest-light", "Everforest Light"),
+    ("flexoki-dark", "Flexoki Dark"),
+    ("flexoki-light", "Flexoki Light"),
     ("github-dark", "GitHub Dark"),
     ("github-light", "GitHub Light"),
     ("gruvbox", "Gruvbox Dark"),
     ("gruvbox-light", "Gruvbox Light"),
+    ("gruvbox-material-dark", "Gruvbox Material Dark"),
+    ("gruvbox-material-light", "Gruvbox Material Light"),
+    ("kanagawa-lotus", "Kanagawa Lotus"),
+    ("kanagawa-wave", "Kanagawa Wave"),
     ("maitty-dark", "Maitty Dark"),
     ("day", "Maitty Day"),
     ("maitty-light", "Maitty Light"),
     ("night", "Maitty Night"),
+    ("maitty-retro-dark", "Maitty Retro Dark"),
+    ("maitty-retro-light", "Maitty Retro Light"),
+    ("melange-dark", "Melange Dark"),
+    ("melange-light", "Melange Light"),
+    ("nightfox", "Nightfox"),
+    ("nord", "Nord"),
+    ("nord-light", "Nord Light"),
     ("one-dark", "One Dark"),
+    ("one-half-dark", "One Half Dark"),
+    ("one-half-light", "One Half Light"),
     ("one-light", "One Light"),
+    ("papercolor-dark", "PaperColor Dark"),
+    ("papercolor-light", "PaperColor Light"),
+    ("rose-pine", "Rosé Pine"),
+    ("rose-pine-dawn", "Rosé Pine Dawn"),
     ("solarized-dark", "Solarized Dark"),
     ("solarized-light", "Solarized Light"),
     ("tokyo-night", "Tokyo Night"),
     ("tokyo-night-day", "Tokyo Night Day"),
+    ("tomorrow", "Tomorrow"),
+    ("tomorrow-night", "Tomorrow Night"),
+    ("zenbones-dark", "Zenbones Dark"),
+    ("zenbones-light", "Zenbones Light"),
 ];
 
 /// Needs-you ambers: gold-orange on dark grounds, a deeper brown-orange on light ones, and a
@@ -792,6 +830,211 @@ impl Theme {
                     "#cf222e", "#116329", "#4d2d00", "#0969da", "#8250df", "#1b7c83", "#57606a",
                 ],
             ),
+            "maitty-retro-dark" => Theme::palette(
+                ["#222538", "#e0f8cf", "#94a98a", "#a7f070"],
+                [
+                    "#ff004d", "#a7f070", "#ffec27", "#29adff", "#ef7d57", "#73eff7", "#7f92a8",
+                ],
+            ),
+            "maitty-retro-light" => Theme::palette(
+                ["#ffffff", "#1a1c2c", "#4d5670", "#2e8b1e"],
+                [
+                    "#d0003c", "#2e8b1e", "#b05a00", "#1868c8", "#c24a24", "#1868c8", "#566c86",
+                ],
+            ),
+            "dracula" => Theme::classic([
+                "#282a36", "#f8f8f2", "#7a8ac0", "#bd93f9", "#44475a", "#bd93f9", "#21222c",
+                "#44475a", "#bd93f9", "#282a36", "#f1fa8c", "#ff5555", "#8be9fd", "#50fa7b",
+            ]),
+            "alucard" => Theme::palette(
+                ["#fffbeb", "#1f1f1f", "#6c664b", "#644ac9"],
+                [
+                    "#cb3a2a", "#14710a", "#846e15", "#036a96", "#a3144d", "#036a96", "#6c664b",
+                ],
+            ),
+            "nord" => Theme::classic([
+                "#2e3440", "#eceff4", "#8390a8", "#a3be8c", "#434c5e", "#a3be8c", "#272c36",
+                "#3b4252", "#a3be8c", "#2e3440", "#ebcb8b", "#e0707a", "#81a1c1", "#a3be8c",
+            ]),
+            "nord-light" => Theme::palette(
+                ["#eceff4", "#2e3440", "#4c566a", "#5e81ac"],
+                [
+                    "#bf616a", "#a3be8c", "#d08770", "#5e81ac", "#b48ead", "#88c0d0", "#4c566a",
+                ],
+            ),
+            "ayu-dark" => Theme::palette(
+                ["#0f1419", "#e6e1cf", "#5c6773", "#36a3d9"],
+                [
+                    "#f07178", "#b8cc52", "#f29718", "#36a3d9", "#ffee99", "#95e6cb", "#ffffff",
+                ],
+            ),
+            "ayu-light" => Theme::palette(
+                ["#fafafa", "#5c6773", "#abb0b6", "#36a3d9"],
+                [
+                    "#f07178", "#86b300", "#ff6a00", "#36a3d9", "#a37acc", "#4cbf99", "#ffffff",
+                ],
+            ),
+            "everforest-dark" => Theme::palette(
+                ["#2d353b", "#d3c6aa", "#859289", "#7fbbb3"],
+                [
+                    "#e67e80", "#a7c080", "#dbbc7f", "#7fbbb3", "#d699b6", "#83c092", "#d3c6aa",
+                ],
+            ),
+            "everforest-light" => Theme::palette(
+                ["#fdf6e3", "#5c6a72", "#939f91", "#3a94c5"],
+                [
+                    "#f85552", "#8da101", "#dfa000", "#3a94c5", "#df69ba", "#35a77c", "#5c6a72",
+                ],
+            ),
+            "rose-pine" => Theme::palette(
+                ["#191724", "#e0def4", "#6e6a86", "#c4a7e7"],
+                [
+                    "#eb6f92", "#31748f", "#f6c177", "#9ccfd8", "#c4a7e7", "#ebbcba", "#e0def4",
+                ],
+            ),
+            "rose-pine-dawn" => Theme::palette(
+                ["#faf4ed", "#575279", "#9893a5", "#907aa9"],
+                [
+                    "#b4637a", "#286983", "#ea9d34", "#56949f", "#907aa9", "#d7827e", "#575279",
+                ],
+            ),
+            "kanagawa-wave" => Theme::palette(
+                ["#1f1f28", "#dcd7ba", "#727169", "#7e9cd8"],
+                [
+                    "#c34043", "#76946a", "#c0a36e", "#7e9cd8", "#957fb8", "#6a9589", "#c8c093",
+                ],
+            ),
+            "kanagawa-lotus" => Theme::palette(
+                ["#f2ecbc", "#545464", "#8a8980", "#4d699b"],
+                [
+                    "#c84053", "#6f894e", "#77713f", "#4d699b", "#b35b79", "#597b75", "#545464",
+                ],
+            ),
+            "nightfox" => Theme::palette(
+                ["#192330", "#cdcecf", "#738091", "#719cd6"],
+                [
+                    "#c94f6d", "#81b29a", "#dbc074", "#719cd6", "#9d79d6", "#63cdcf", "#575860",
+                ],
+            ),
+            "dayfox" => Theme::palette(
+                ["#f6f2ee", "#3d2b5a", "#837a72", "#2848a9"],
+                [
+                    "#a5222f", "#396847", "#ac5402", "#2848a9", "#6e33ce", "#287980", "#534c45",
+                ],
+            ),
+            "flexoki-dark" => Theme::palette(
+                ["#100f0f", "#cecdc3", "#575653", "#da702c"],
+                [
+                    "#d14d41", "#879a39", "#d0a215", "#4385be", "#ce5d97", "#3aa99f", "#575653",
+                ],
+            ),
+            "flexoki-light" => Theme::palette(
+                ["#fffcf0", "#100f0f", "#6f6e69", "#205ea6"],
+                [
+                    "#af3029", "#66800b", "#ad8301", "#205ea6", "#a02f6f", "#24837b", "#6f6e69",
+                ],
+            ),
+            "gruvbox-material-dark" => Theme::palette(
+                ["#282828", "#d4be98", "#928374", "#7daea3"],
+                [
+                    "#ea6962", "#a9b665", "#d8a657", "#7daea3", "#d3869b", "#89b482", "#5a524c",
+                ],
+            ),
+            "gruvbox-material-light" => Theme::palette(
+                ["#fbf1c7", "#654735", "#928374", "#45707a"],
+                [
+                    "#c14a4a", "#6c782e", "#b47109", "#45707a", "#945e80", "#4c7a5d", "#654735",
+                ],
+            ),
+            "one-half-dark" => Theme::palette(
+                ["#282c34", "#dcdfe4", "#5d677a", "#61afef"],
+                [
+                    "#e06c75", "#98c379", "#e5c07b", "#61afef", "#c678dd", "#56b6c2", "#dcdfe4",
+                ],
+            ),
+            "one-half-light" => Theme::palette(
+                ["#fafafa", "#383a42", "#383a42", "#0184bc"],
+                [
+                    "#e45649", "#40a14f", "#c18401", "#0184bc", "#a626a4", "#0997b3", "#fafafa",
+                ],
+            ),
+            "papercolor-dark" => Theme::design(
+                [
+                    "#1c1c1c", "#d0d0d0", "#262626", "#303030", "#3a3a3a", "#444444", "#808080",
+                    "#b2b2b2", "#eeeeee", "#00afaf", "#1c1c1c", "#ffaf00", "#5faf00", "#ff5f87",
+                    "#3a3a3a", "#5f5faf",
+                ],
+                ["#af87d7", "#5fafd7", "#ff5faf", "#5f8787"],
+                [
+                    "#ff5f87", "#5faf00", "#d7af5f", "#5fafd7", "#af87d7", "#00afaf", "#808080",
+                ],
+            ),
+            "papercolor-light" => Theme::palette(
+                ["#eeeeee", "#444444", "#878787", "#005f87"],
+                [
+                    "#af0000", "#008700", "#d75f00", "#005faf", "#8700af", "#005f87", "#878787",
+                ],
+            ),
+            "tomorrow-night" => Theme::palette(
+                ["#1d1f21", "#c5c8c6", "#969896", "#81a2be"],
+                [
+                    "#cc6666", "#b5bd68", "#f0c674", "#81a2be", "#b294bb", "#8abeb7", "#666666",
+                ],
+            ),
+            "tomorrow" => Theme::palette(
+                ["#ffffff", "#4d4d4c", "#8e908c", "#4271ae"],
+                [
+                    "#c82829", "#718c00", "#eab700", "#4271ae", "#8959a8", "#3e999f", "#666666",
+                ],
+            ),
+            "melange-dark" => Theme::palette(
+                ["#292522", "#ece1d7", "#c1a78e", "#7f91b2"],
+                [
+                    "#bd8183", "#78997a", "#e49b5d", "#7f91b2", "#b380b0", "#7b9695", "#867462",
+                ],
+            ),
+            "melange-light" => Theme::palette(
+                ["#f1f1f1", "#54433a", "#7d6658", "#7892bd"],
+                [
+                    "#c77b8b", "#6e9b72", "#bc5c00", "#7892bd", "#be79bb", "#739797", "#a98a78",
+                ],
+            ),
+            "cyberdream" => Theme::palette(
+                ["#16181a", "#ffffff", "#7b8496", "#5ea1ff"],
+                [
+                    "#ff6e5e", "#5eff6c", "#f1ff5e", "#5ea1ff", "#bd5eff", "#5ef1ff", "#3c4048",
+                ],
+            ),
+            "cyberdream-light" => Theme::palette(
+                ["#ffffff", "#16181a", "#7b8496", "#0057d1"],
+                [
+                    "#d11500", "#008b0c", "#997b00", "#0057d1", "#a018ff", "#008c99", "#acacac",
+                ],
+            ),
+            "doom-one" => Theme::palette(
+                ["#282c34", "#bbc2cf", "#5b6268", "#51afef"],
+                [
+                    "#ff6c6b", "#98be65", "#ecbe7b", "#51afef", "#a9a1e1", "#46d9ff", "#5b6268",
+                ],
+            ),
+            "doom-one-light" => Theme::palette(
+                ["#fafafa", "#383a42", "#9ca0a4", "#4078f2"],
+                [
+                    "#e45649", "#50a14f", "#986801", "#4078f2", "#b751b6", "#0184bc", "#9ca0a4",
+                ],
+            ),
+            "zenbones-dark" => Theme::palette(
+                ["#1c1917", "#b4bdc3", "#403833", "#6099c0"],
+                [
+                    "#de6e7c", "#819b69", "#b77e64", "#6099c0", "#b279a7", "#66a5ad", "#b4bdc3",
+                ],
+            ),
+            "zenbones-light" => Theme::palette(
+                ["#f0edec", "#2c363c", "#cfc1ba", "#286486"],
+                [
+                    "#a8334c", "#4f6c31", "#944927", "#286486", "#88507d", "#3b8992", "#2c363c",
+                ],
+            ),
             "gruvbox-light" => Theme::palette(
                 ["#fbf1c7", "#3c3836", "#928374", "#076678"],
                 [
@@ -1211,8 +1454,8 @@ mod audit {
         assert!(near.is_empty(), "grounds near the line: {near:?}");
         assert!(!super::is_light("not-a-theme"));
         let light = super::BUILTIN.iter().filter(|n| super::is_light(n)).count();
-        assert_eq!(light, 8, "eight light themes");
-        assert_eq!(super::BUILTIN.len() - light, 8, "and eight dark ones");
+        assert_eq!(light, 25, "twenty-five light themes");
+        assert_eq!(super::BUILTIN.len() - light, 25, "and twenty-five dark ones");
     }
 
     /// Every theme gives each status its own colour, as the design's roles do: working,
@@ -1464,13 +1707,13 @@ mod manifest {
     }
 
     #[test]
-    fn the_built_in_themes_are_exactly_the_manifests_sixteen() {
+    fn the_built_in_themes_are_exactly_the_manifests_fifty() {
         let manifest = themes();
         let mut ids: Vec<&str> = manifest.iter().map(|t| text(t, "id")).collect();
         let mut built: Vec<&str> = BUILTIN.to_vec();
         ids.sort_unstable();
         built.sort_unstable();
-        assert_eq!(ids.len(), 16);
+        assert_eq!(ids.len(), 50);
         assert_eq!(built, ids, "BUILTIN and themes.json list the same themes");
     }
 
@@ -1500,10 +1743,11 @@ mod manifest {
             assert!(BUILTIN.contains(new), "{old} -> {new} is built in");
         }
         // The side a removed theme was drawn on is the side its survivor is drawn on.
-        for (old, light) in [("dracula", false), ("nord", false), ("mono", false), ("papercolor-light", true), ("modus-operandi", true), ("rose-pine-dawn", true)] {
+        for (old, light) in [("monokai", false), ("solarized-osaka", false), ("mono", false), ("hybrid-light", true), ("modus-operandi", true), ("solarized-osaka-light", true)] {
             assert_eq!(is_light(old), light, "{old} keeps its side");
         }
-        assert_eq!(canonical("dracula"), "one-dark");
+        assert_eq!(canonical("monokai"), "gruvbox");
+        assert_eq!(canonical("dracula"), "dracula");
         assert_eq!(canonical("gruvbox-material"), canonical("gruvbox-material-dark"));
         assert_eq!(canonical("maitty-night"), "night");
         assert_eq!(canonical("github-dark"), "github-dark");

@@ -136,14 +136,18 @@ export function StatusBadge({ status }: { status: SessionStatus }) {
     case 'working':
       return <span className="mx-badge is-working"><Spinner className="" /></span>
     case 'needs':
-      return <span className="mx-badge is-needs" aria-hidden="true">›</span>
+      return <span className="mx-badge is-needs" aria-hidden="true">!</span>
     case 'done':
       return <span className="mx-badge is-done"><Icon name="check" /></span>
     case 'error':
-      return <span className="mx-badge is-error"><Icon name="bang" /></span>
+      return <span className="mx-badge is-error"><Icon name="close" size={8} strokeWidth={3} /></span>
     case 'unknown':
       return <span className="mx-badge is-unknown" />
     case 'idle':
-      return null
+      return (
+        <span className="mx-badge is-idle" aria-hidden="true">
+          <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M2.6 5.4h3.6l-3.6 4h3.6" /><path d="M7.6 2.4h2l-2 2.4h2" /></svg>
+        </span>
+      )
   }
 }

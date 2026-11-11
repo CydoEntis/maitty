@@ -1,3 +1,4 @@
+import { movePanes } from './components/paneTransition'
 import { type Dispatch, type SetStateAction, useCallback, useState } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import { toast } from '@/lib/toast'
@@ -6,9 +7,9 @@ import { errorMessage } from '@/lib/error-message'
 import { useLatest } from '@/lib/useLatest'
 import { runsProgram } from './components/runsProgram'
 import { isChatSession } from './model/chatSession'
-import { type Layout, removeSessions, showSession } from './model/layout'
+import { type Layout, removePane, removeSessions, showSession } from './model/layout'
 import { displayName, type SessionView } from './model/session'
-import { isShell } from './model/sidebar'
+import { keepsRunningUnseen } from './model/sidebar'
 import { makeId } from './makeId'
 
 /** How long a closed session can be brought back; the daemon keeps its process running this long. */
@@ -55,7 +56,7 @@ export function useClosing({ setLayout, queryClient, layout, sessions, flash, pa
     const running = sessions.filter((session) => gone.has(session.id))
     // Panes of sessions that already ended have nothing to stop: they just close.
     if (running.length === 0) {
-      setLayout((current) => removeSessions(current, gone))
+      movePanes(() => { setLayout((current) => removeSessions(current, gone)) })
       return
     }
     // A chat session has no terminal to hide: it is ended for good, as before. Terminals get the undo window.
@@ -68,7 +69,7 @@ export function useClosing({ setLayout, queryClient, layout, sessions, flash, pa
       .then(async () => {
         const before = layoutNow()
         const after = removeSessions(before, gone)
-        setLayout(after)
+        movePanes(() => { setLayout(after) })
         if (terminals.length > 0) {
           const label = terminals.length === 1 && terminals[0] ? displayName(terminals[0]) : `${String(terminals.length)} sessions`
           const toastId = toast(`Closed ${label}`, { duration: UNDO_CLOSE_MS, action: { label: 'Undo', onClick: undoNow } })
@@ -87,7 +88,7 @@ export function useClosing({ setLayout, queryClient, layout, sessions, flash, pa
    * running in it, which Undo brings back as it was. Otherwise asks first.
    */
   const askToClose = useCallback((ids: string[], close: () => void) => {
-    const live = ids.flatMap((id) => paneSessions.get(id) ?? []).filter((session) => !session.ended && !(isShell(session) && !isChatSession(session.conversation)))
+    const live = ids.flatMap((id) => paneSessions.get(id) ?? []).filter(keepsRunningUnseen)
     const first = live[0]
     if (!first) {
       close()
@@ -129,9 +130,18 @@ export function useClosing({ setLayout, queryClient, layout, sessions, flash, pa
     }, PANE_EXIT_MS)
   }, [endSessions, layout])
   const closePaneById = useCallback((paneId: string) => {
-    const pane = layout.arrangements.flatMap((tab) => tab.panes).find((candidate) => candidate.id === paneId)
-    if (!pane) return
+    const tab = layout.arrangements.find((candidate) => candidate.panes.some((pane) => pane.id === paneId))
+    const pane = tab?.panes.find((candidate) => candidate.id === paneId)
+    if (!tab || !pane) return
+    const session = paneSessions.get(pane.sessionId)
+    // One pane of several, with an agent or a running program in it: only the pane goes. The session keeps
+    // running and stays in the sidebar, where a click shows it again. Ending it is the sidebar's Stop.
+    if (tab.panes.length > 1 && session !== undefined && keepsRunningUnseen(session)) {
+      movePanes(() => { setLayout((current) => removePane(current, paneId)) })
+      flash(`Pane closed · ${displayName(session)} keeps running`)
+      return
+    }
     askToClose([pane.sessionId], () => { closePaneNow(paneId) })
-  }, [layout, askToClose, closePaneNow])
+  }, [layout, paneSessions, setLayout, flash, askToClose, closePaneNow])
   return { askToClose, endSessions, undoLastClose, lastClose, closePaneById, closingPanes, closeAsk, setCloseAsk }
 }

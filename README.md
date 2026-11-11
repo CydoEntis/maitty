@@ -35,7 +35,7 @@ natively on Windows, macOS and Linux.
 - **Agents that work together.** Agents can list, read, message and start other sessions
   through MCP tools, within limits you set, and find the project's reference images there.
 - **Your look.** Floating boxes, each pane in its own colour if you like, rounded or square corners,
-  padding round the screen, your cursor's shape, 16 themes (a dark and a light of each) with every colour configurable,
+  padding round the screen, your cursor's shape, 50 themes (25 dark and 25 light) with every colour configurable,
   and rebindable shortcuts.
 
 ## Install
