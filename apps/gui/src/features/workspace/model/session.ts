@@ -50,6 +50,8 @@ export type SessionView = {
   statusSince: number | null
   timeline: TerminalDetails['timeline']
   usage: TerminalDetails['usage']
+  /** The tasks of the helpers the session asked to start and waits on the person for; empty when it asked for none. */
+  helperAsk: readonly string[]
   /** The agent's subagents, in the order its runtime reported them. */
   subagents: SubagentView[]
   status: SessionStatus
@@ -205,6 +207,7 @@ export function toSessionView(conversation: Conversation, home: string): Session
     statusSince: (conversation.details?.since ?? 0) > 0 ? (conversation.details?.since ?? 0) * MS_PER_SECOND : null,
     timeline: conversation.details?.timeline ?? [],
     usage: conversation.details?.usage ?? { context: null, cost: null, tokens: null },
+    helperAsk: conversation.details?.helperAsk ?? [],
     // A helper that has finished has reported back to the agent, so its row goes; one that stopped or still needs something stays.
     subagents: (conversation.details?.subagents ?? []).map(toSubagentView).filter((subagent) => subagent.status !== 'done'),
     status,

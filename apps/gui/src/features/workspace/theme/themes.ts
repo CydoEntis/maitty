@@ -1,7 +1,7 @@
 import type { ITheme } from '@xterm/xterm'
 import maittyTokens from '@tokens/maitty-tokens.json'
 import themeManifest from '@tokens/themes.json'
-import { composite, contrastRatio, luminance, mixOklab, withAlpha } from './color'
+import { channelsOf, composite, contrastRatio, luminance, mixOklab, withAlpha } from './color'
 
 /** Every colour role the desktop app reads, set as CSS custom properties on the app root. */
 export type ThemeTokens = {
@@ -268,6 +268,14 @@ export function themeStyle(theme: ThemeEntry): Record<string, string> {
  */
 function selectionColors(tokens: ThemeTokens): { background: string; foreground: string } {
   return { background: tokens.accent, foreground: tokens.onAccent }
+}
+
+/**
+ * What a program's "bright black" background is drawn as: the hovered row's ground, a faint slab on the card.
+ * The palette's bright black is dim text, which as a background is a glaring bar (`brightBlackGround.ts`).
+ */
+export function terminalSlab(tokens: ThemeTokens): readonly [number, number, number] {
+  return channelsOf(composite(tokens.hover, tokens.main))
 }
 
 /**

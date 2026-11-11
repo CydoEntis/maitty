@@ -29,7 +29,7 @@ function DraftLabel({ attachment }: { attachment: DraftAttachment }) {
   return (
     <span className="flex min-w-0 flex-col leading-tight">
       <span className="truncate text-fg" title={attachment.name}>{attachment.name}</span>
-      <span className="text-[11px] text-dim">{sizeText(attachment.size)}</span>
+      {attachment.size !== null && <span className="text-[11px] text-dim">{sizeText(attachment.size)}</span>}
     </span>
   )
 }

@@ -1,9 +1,10 @@
+import { movePanes } from './paneTransition'
 import { useState } from 'react'
 import { TerminalView } from '@/TerminalView'
 import { useWorkspace } from '../workspaceContext'
 import { chatAvailability, type PaneView } from '../model/chatView'
 import { toast } from '@/lib/toast'
-import { sendTerminalInput } from '@/api/daemon'
+import { answerHelpers, sendTerminalInput } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
 import { isChatSession } from '../model/chatSession'
 import { PaneCard } from './PaneCard'
@@ -69,6 +70,7 @@ export function WorkspacePane({ shown, pane, kept }: {
           hasTerminal={!chatOnly}
           root={session.repoRoot ?? session.cwd}
           onOpenDiff={showChanges}
+          onOpenFile={(path, line) => { openPath(session, path, line ?? undefined) }}
           typeInto={typeInto}
           ask={session.ask}
           asking={session.asking}
@@ -79,7 +81,6 @@ export function WorkspacePane({ shown, pane, kept }: {
           folder={folderNameOf(session)}
           branch={session.branch}
           subagent={subagent ?? null}
-          subagentCount={session.subagents.length}
           onBackToMain={() => { setOpenSubagent(null) }}
           onOpenFiles={() => { togglePanel(pane.id, session.id, 'files') }}
           onBackToTerminal={() => { paneViews.choose(session.id, 'terminal') }}
@@ -126,12 +127,13 @@ export function WorkspacePane({ shown, pane, kept }: {
         setLayout((current) => focusPane(current, paneId))
         split(paneId, direction)
       }}
-      onToggleMaximize={(paneId) => { setLayout((current) => toggleMaximize(current, paneId)) }}
+      onToggleMaximize={(paneId) => { movePanes(() => { setLayout((current) => toggleMaximize(current, paneId)) }) }}
       onClose={closePaneById}
       onClear={() => { void sendTo(session, CLEAR_SCREEN).catch((error: unknown) => { toast.error(errorMessage(error, 'Could not clear the screen')) }) }}
       onCopyPath={() => { copyPathOf(session.id) }}
       onRename={() => { setRenameId(session.id) }}
       onRestart={restartPane}
+      onAnswerHelpers={(choice) => { void answerHelpers(session.conversation, choice).catch((error: unknown) => { toast.error(errorMessage(error, 'Could not answer the helper request')) }) }}
     />
   )
 }

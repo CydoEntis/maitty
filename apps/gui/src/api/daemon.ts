@@ -67,6 +67,8 @@ const TerminalSessionSchema = z.object({
     cost: z.number().nullable().default(null),
     tokens: z.number().nullable().default(null),
   }).default({ context: null, cost: null, tokens: null }),
+  // The helpers the session asked to start and waits on the person for, one task each (`TermInfo.helper_ask`).
+  helper_ask: z.array(z.string()).default([]),
   // The agent's subagents as its runtime reports them (`TermInfo.subagent_activity`); times are unix seconds.
   subagent_activity: z.array(z.object({
     id: z.string(),
@@ -835,6 +837,13 @@ export async function undoCloseSession(conversation: Pick<Conversation, 'id'>): 
   if (pane !== null) await invokeParsed('undo_close_terminal_session', NullSchema, { term: pane.term, ...machineArgs(pane) })
 }
 
+/** The person's answer to a session that asked to start helpers: this session, every session of its project, or none. */
+export async function answerHelpers(conversation: Pick<Conversation, 'id'>, choice: 'allow' | 'always' | 'no'): Promise<void> {
+  if (!isDesktop()) return
+  const pane = addressOf(conversation.id)
+  if (pane !== null) await invokeParsed('answer_helpers', NullSchema, { term: pane.term, choice, ...machineArgs(pane) })
+}
+
 /** The user is looking at this pane: a finished agent's "done" becomes idle, as when the terminal app focuses it. */
 export async function markSeenOnDaemon(conversation: Pick<Conversation, 'id'>): Promise<void> {
   if (!isDesktop()) return
@@ -923,10 +932,10 @@ export async function connectAgent(agent: 'claude' | 'codex' | 'gemini'): Promis
   await invokeParsed('connect_agent', NullSchema, { agent })
 }
 
-const AgentModelsSchema = z.array(z.object({ id: z.string(), label: z.string(), blurb: z.string() }))
+const AgentModelsSchema = z.array(z.object({ id: z.string(), label: z.string(), blurb: z.string(), isDefault: z.boolean().optional(), efforts: z.array(z.string()).nullish(), more: z.boolean().optional() }))
 
 /** The models an agent offers on this computer; empty when it has no list to read. */
-export async function loadAgentModels(agent: 'claude' | 'codex'): Promise<{ id: string; label: string; blurb: string }[]> {
+export async function loadAgentModels(agent: 'claude' | 'codex'): Promise<z.infer<typeof AgentModelsSchema>> {
   return invokeParsed('agent_models', AgentModelsSchema, { agent })
 }
 
@@ -972,6 +981,19 @@ export async function startShellSession(folder: string): Promise<void> {
 /** Starts an agent as the first command of a new terminal session; its flags are separate words. */
 export async function startAgentSession(folder: string, agent: 'claude' | 'codex' | 'gemini', flags: readonly string[]): Promise<void> {
   await invokeParsed('start_agent_session', NullSchema, { cwd: folder, agent, flags })
+}
+
+/**
+ * Starts an agent ahead of its first message, hidden. A session started next with the same folder, agent and flags is that
+ * agent, already running. False when the daemon running is from before this and was not asked.
+ */
+export async function prewarmAgentSession(folder: string, agent: 'claude' | 'codex' | 'gemini', flags: readonly string[]): Promise<boolean> {
+  return invokeParsed('prewarm_agent_session', z.boolean(), { cwd: folder, agent, flags })
+}
+
+/** Stops the agent `prewarmAgentSession` started, if no session took it. */
+export async function dropPrewarmedAgent(): Promise<void> {
+  await invokeParsed('drop_prewarmed_agent', NullSchema, {})
 }
 
 export async function startTerminalSession(folder: string, provider: 'Codex' | 'Claude'): Promise<void> {
@@ -1037,6 +1059,7 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
       since: term.since,
       timeline: term.timeline,
       usage: term.usage,
+      helperAsk: term.helper_ask,
       subagents: term.subagent_activity.map((child) => ({ id: child.id, name: child.name, state: child.state, task: child.task, startedAt: child.started_at, updatedAt: child.updated_at, latest: child.latest_activity, result: child.result })),
     },
     ...(chat ? { chat } : {}),

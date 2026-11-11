@@ -21,6 +21,8 @@ export type TerminalDetails = {
   exit?: { code: number | null; at: number } | null
   /** What the provider reports the session has used; each is null when it did not say. */
   usage: { context: number | null; cost: number | null; tokens: number | null }
+  /** The helpers the session asked to start and waits on the person for, one task each; absent from an older daemon. */
+  helperAsk?: string[]
   /** The agent's subagents as its runtime reports them; absent from an older daemon. */
   subagents?: SubagentActivity[]
 }

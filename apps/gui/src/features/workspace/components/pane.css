@@ -104,8 +104,9 @@
 .mx-pane-body .terminal-input-error p { margin: 0; color: var(--danger); }
 .mx-pane.is-broadcast { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--ansi-mag) 60%, transparent), 0 14px 34px rgba(0, 0, 0, .3); }
 
-/* A pane that appears, or goes, takes its room at once. Easing a split's size made the terminal re-fit on every
-   frame, so its text reflowed and jumped until it settled; a pane that is closing only stops taking pointer input. */
+/* A pane that appears, or goes, takes its room at once in the page. Easing a split's size made the terminal re-fit on every
+   frame, so its text reflowed and jumped until it settled; the glide below moves pictures instead. A pane that is closing only
+   stops taking pointer input. */
 .mx-pane-cell.is-closing, .mx-pane-column.is-closing { pointer-events: none; }
 
 /* The label that follows the pointer while a pane or a sidebar session is dragged (dragSession.ts). */
@@ -115,6 +116,13 @@
    The window itself does not cross-fade. */
 ::view-transition-group(*) { animation-duration: .3s; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
 ::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+/* A pane that changes size is shown at its own scale and cropped, not stretched, so its text keeps its shape on the way. */
+::view-transition-old(*), ::view-transition-new(*) { width: 100%; height: 100%; object-fit: none; object-position: left top; }
+/* A pane with no picture after the change is closing, and one with none before is opening: they slide a little as they fade. */
+@keyframes mx-pane-leave { to { opacity: 0; transform: translateY(12px) scale(.98); } }
+@keyframes mx-pane-enter { from { opacity: 0; transform: translateY(12px) scale(.98); } }
+::view-transition-old(*):only-child { animation: mx-pane-leave .22s cubic-bezier(.4, 0, 1, 1) both; }
+::view-transition-new(*):only-child { animation: mx-pane-enter .3s cubic-bezier(.2, .8, .2, 1) both; }
 
 /* An agent's own terminals: a tab of the side panel, or a drawer under its chat. */
 .mx-terms { display: flex; flex-direction: column; min-width: 0; min-height: 0; }

@@ -219,7 +219,7 @@ describe('the Terminal | Chat view of a pane', () => {
 
     expect(await within(pane).findByText('fix the failing test')).toBeInTheDocument()
     expect(within(pane).getByText('I found the cause.')).toBeInTheDocument()
-    expect(within(pane).getByRole('separator', { name: /Cooked for 7s/ })).toBeInTheDocument()
+    expect(within(pane).getByRole('separator', { name: /Finished in 7s/ })).toBeInTheDocument()
     expect(daemon.readConversationPage).toHaveBeenCalledWith(42, null)
     expect(daemon.sendTerminalInput).not.toHaveBeenCalled()
     expect(daemon.resizeTerminal).not.toHaveBeenCalled()

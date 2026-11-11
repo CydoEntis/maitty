@@ -30,14 +30,15 @@ const VIEWS: readonly { id: InspectView; label: string; icon?: IconName }[] = [
 const PANEL_VIEWS: readonly InspectView[] = ['changes', 'files', 'terminal']
 
 /** The panel opens at this share of the window; the edge can be dragged and the width is remembered. */
-const DEFAULT_SHARE = 0.75
+const DEFAULT_SHARE = 0.5
 const MIN_WIDTH_PX = 420
 /** The strip of the chat that stays in sight beside the panel, to click it away. */
 const STRIP_PX = 56
 /** The gap between the window's edge and the panel. */
 const EDGE_PX = 24
 const KEY_STEP_PX = 24
-const WIDTH_KEY = 'maitty.inspect.width.v2'
+// A new key when the opening width changes, so a width kept from the wider panel does not undo it.
+const WIDTH_KEY = 'maitty.inspect.width.v3'
 /** The exit animation's length: the panel is unmounted when it ends, not at once. */
 const EXIT_MS = 190
 

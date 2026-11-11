@@ -9,12 +9,15 @@ import { forgetOperations } from './sendOperation'
  * while an agent in a terminal works are kept here as `held`, and typed into it once it is ready.
  */
 
-/** A file kept for the message being written. `preview` is an object URL for a thumbnail, when the window holds the image's bytes. */
+/**
+ * A file kept for the message being written. `preview` is an object URL for a thumbnail, when the window holds the image's bytes.
+ * `size` is null for a file that came back with a message taken out of the queue: the message names its path, not its size.
+ */
 export type DraftAttachment = {
   readonly id: string
   readonly path: string
   readonly name: string
-  readonly size: number
+  readonly size: number | null
   readonly kind: AttachmentKind
   readonly preview: string | null
 }

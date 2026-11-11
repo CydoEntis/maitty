@@ -48,11 +48,10 @@ export function UserInputForm({ questions, busy, onSubmit }: Props) {
           <fieldset key={question.id} className="m-0 grid gap-1.5 border-0 p-0">
             <legend className="p-0 text-[12.5px] font-semibold text-fg">{question.header !== '' ? `${question.header}: ` : ''}{question.question}</legend>
             {question.options.map((option) => (
-              <label key={option.label} className="flex cursor-pointer items-start gap-2 text-[12.5px] text-fg2">
+              <label key={option.label} className="mx-choice">
                 <input
                   type="radio"
                   name={`${name}-${question.id}`}
-                  className="mt-0.5"
                   checked={choice === option.label}
                   disabled={busy}
                   onChange={() => { setChoices((current) => ({ ...current, [question.id]: option.label })) }}

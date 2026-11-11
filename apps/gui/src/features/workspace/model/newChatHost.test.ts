@@ -1,7 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import { ageOf, launchFlags, splitRecent, yoloFlags } from './newChatHost'
+import { ageOf, isWorktree, launchFlags, splitRecent, yoloFlags } from './newChatHost'
 
 const project = (name: string) => ({ folder: `/dev/${name}`, name, color: 'red' })
+
+describe('isWorktree', () => {
+  const branches = { current: 'dev', branches: [], worktrees: [{ path: 'C:/dev/app', branch: 'dev', main: true, when: 1 }, { path: 'C:/dev/app-worktrees/keen-otter', branch: 'fix', main: false, when: 2 }] }
+
+  it('tells a worktree from the main checkout, however the path is spelled', () => {
+    expect(isWorktree(branches, 'C:\\dev\\app-worktrees\\Keen-Otter\\')).toBe(true)
+    expect(isWorktree(branches, 'C:\\dev\\app')).toBe(false)
+  })
+
+  it('says nothing when git has not answered or does not list the folder', () => {
+    expect(isWorktree(null, 'C:/dev/app')).toBeNull()
+    expect(isWorktree(branches, 'C:/elsewhere')).toBeNull()
+  })
+})
 
 describe('launchFlags', () => {
   it('puts a picked Claude model and effort on the launch line', () => {
@@ -18,8 +32,16 @@ describe('launchFlags', () => {
     expect(launchFlags('codex', 'default', 'default')).toBe('')
   })
 
-  it('leaves out an effort Codex has no level for', () => {
-    expect(launchFlags('codex', 'default', 'max')).toBe('')
+  it('puts Max on the Codex launch line too: the menu only offers it for a model that takes it', () => {
+    expect(launchFlags('codex', 'default', 'max')).toBe(' -c model_reasoning_effort=max')
+  })
+
+  it('starts Codex in the picked permission mode, and sends nothing for Auto or a mode that is not its own', () => {
+    expect(launchFlags('codex', 'default', 'default', 'codexReadOnly')).toBe(' --sandbox read-only --ask-for-approval on-request')
+    expect(launchFlags('codex', 'gpt-x', 'default', 'codexFullAccess')).toBe(' --sandbox danger-full-access --ask-for-approval never -m gpt-x')
+    expect(launchFlags('codex', 'default', 'default', 'codexAuto')).toBe('')
+    expect(launchFlags('codex', 'default', 'default', 'plan')).toBe('')
+    expect(launchFlags('claude', 'default', 'default', 'codexReadOnly')).toBe('')
   })
 
   it('drops a model name that is not plain model-id characters', () => {

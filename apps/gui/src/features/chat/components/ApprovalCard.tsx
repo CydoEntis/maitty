@@ -1,8 +1,9 @@
 import type { KeyboardEvent } from 'react'
 import { TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import type { ApprovalDecision, ApprovalEvent } from '../chatEvents'
+import type { ApprovalDecision, ApprovalEvent, ItemStatus } from '../chatEvents'
 import type { StepRef } from '../chatRows'
+import { StepGlyph } from './cardParts'
 import { UserInputForm } from './UserInputForm'
 
 /** What answering an approval needs from the chat; `null` while the answer cannot be sent from here. */
@@ -21,11 +22,13 @@ const CHOICE_LABEL: Record<ApprovalDecision, string> = {
   Cancel: 'Cancel',
 }
 
-const ANSWER_WORD: Record<ApprovalDecision, string> = {
-  Accept: 'Yes, once',
-  AcceptForSession: 'This session',
-  Decline: 'No',
-  Cancel: 'Cancel',
+/** How an answered request reads once it has folded into one line, and the mark it carries. */
+const ANSWERED: Record<ApprovalDecision | 'unknown', { word: string; status: ItemStatus }> = {
+  Accept: { word: 'Allowed', status: 'completed' },
+  AcceptForSession: { word: 'Allowed for this session', status: 'completed' },
+  Decline: { word: 'Denied', status: 'failed' },
+  Cancel: { word: 'Cancelled', status: 'interrupted' },
+  unknown: { word: 'Answered', status: 'interrupted' },
 }
 
 /** The keys that answer the focused card, the fallback to typing the same letter in the terminal. */
@@ -49,14 +52,29 @@ type Props = {
 }
 
 /**
- * A request the agent is waiting on (v18 C.1). While it is pending the composer is off. Once
- * answered, here or anywhere else (the daemon keeps the choice), it says what was chosen and the
- * buttons are gone. While it is pending and focused, y, a and n answer it.
+ * A request the agent is waiting on. While it is pending the composer is off. Once answered, here
+ * or anywhere else (the daemon keeps the choice), it folds into one line that says what was chosen.
+ * While it is pending and focused, y, a and n answer it.
  */
 export function ApprovalCard({ event, actions, step, onGoToStep }: Props) {
   const pending = event.resolution.status === 'pending'
   const detail = event.command ?? event.changes.map((change) => change.path).join('\n')
   const canAnswer = pending && actions !== null && event.approvalKind !== 'UserInput'
+
+  if (event.resolution.status === 'answered') {
+    // A question's answer is not a permission, so it is never said to be allowed or denied.
+    const answered = event.approvalKind === 'UserInput' ? ANSWERED.unknown : ANSWERED[event.resolution.answer]
+    return (
+      <div role="group" aria-label={`Approval: ${TITLE[event.approvalKind]}`} className="mx-answered">
+        <StepGlyph status={answered.status} />
+        <strong>{answered.word}</strong>
+        {detail !== '' && <span className="mx-answered-detail">{detail.split(/\r?\n/)[0]}</span>}
+        <span className="mx-spacer" />
+        {step !== null && onGoToStep !== null && <button type="button" className="mx-answered-step" aria-label={`Go to the step this is about: ${step.label}`} onClick={() => { onGoToStep(step.key) }}>Go to step ↑</button>}
+        {event.resolution.answeredAtMs != null && <span className="mx-step-meta is-dim">{clock(event.resolution.answeredAtMs)}</span>}
+      </div>
+    )
+  }
 
   const onKeyDown = (key: KeyboardEvent<HTMLDivElement>) => {
     if (!canAnswer || actions.busy || key.ctrlKey || key.metaKey || key.altKey) return
@@ -87,12 +105,7 @@ export function ApprovalCard({ event, actions, step, onGoToStep }: Props) {
       )}
       {event.reason !== null && event.reason !== '' && <p className="mt-1.5 mb-0 text-[12.5px] text-fg2">{event.reason}</p>}
       {detail !== '' && <pre className="mt-2 mb-0 max-h-40 overflow-auto rounded-lg border border-line2 bg-term p-2.5 font-mono text-[12px] leading-[1.5] whitespace-pre-wrap text-fg [overflow-wrap:anywhere]">{detail}</pre>}
-      {event.resolution.status === 'answered' ? (
-        <p className="mt-2 mb-0 text-[12.5px] text-fg2">
-          {event.resolution.answer === 'unknown' ? 'Answered.' : `You answered: ${ANSWER_WORD[event.resolution.answer]}`}
-          {event.resolution.answeredAtMs != null && <span className="text-dim"> · {clock(event.resolution.answeredAtMs)}</span>}
-        </p>
-      ) : event.approvalKind === 'UserInput' && actions !== null && event.questions.length > 0 ? (
+      {event.approvalKind === 'UserInput' && actions !== null && event.questions.length > 0 ? (
         <UserInputForm questions={event.questions} busy={actions.busy} onSubmit={(answers) => { actions.answerInput(event.requestId, answers) }} />
       ) : event.approvalKind === 'UserInput' || actions === null ? (
         <p className="mt-2 mb-0 text-[12.5px] text-fg2">Waiting for your answer. Answer it in the terminal.</p>

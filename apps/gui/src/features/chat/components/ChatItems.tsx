@@ -1,10 +1,12 @@
-import { memo, useContext, useEffect, useState, type ReactNode } from 'react'
+import { memo, useContext, useEffect, type ReactNode } from 'react'
+import { FileText } from 'lucide-react'
 import { Icon, Spinner } from '@/features/workspace/components/glyphs'
 import { ElapsedSince } from '@/features/workspace/components/times'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
 import { dividerText, paragraphsOf, splitLead, streamingParagraphs, type ChatRow } from '../chatRows'
 import type { ItemStatus } from '../chatEvents'
 import { KnownRowsContext } from '../knownRows'
+import { isWaitingStep } from '../stepInfo'
 import { useTypedText } from '../useTypedText'
 import { ReducedMotionContext } from '@/features/workspace/components/motion'
 import { parseAttachmentMessage } from '../attachmentMessage'
@@ -12,9 +14,9 @@ import { AgentsCard } from './AgentsCard'
 import { SentAttachments } from './Attachments'
 import { ApprovalCard, type ApprovalActions } from './ApprovalCard'
 import { InlineMarkdown, Markdown } from './Markdown'
-import { CommandCard, EditCard, TodoCard, ToolChip } from './StepCards'
-import { tookText } from '../stepInfo'
-import { workDurationMs, workStatus, workSummary, type WorkStep } from '../workSummary'
+import { PlanCard } from './PlanCard'
+import { StepView } from './StepCards'
+import { WorkCard } from './WorkCard'
 
 /**
  * The rows of the chat (v18 C.1). Every fact the daemon's history carries is shown, and one it does
@@ -39,6 +41,8 @@ export type ChatItemContext = {
   /** Opens a file's diff in the Changes panel; `null` where there is none. */
   openDiff: ((file: string) => void) | null
   goToStep: ((key: string) => void) | null
+  /** The id of the tool step a pending request is about, so that step says it is waiting. */
+  waitingStep: string | null
 }
 
 type RowProps = { row: ChatRow } & ChatItemContext
@@ -78,7 +82,7 @@ function sameRow(a: ChatRow, b: ChatRow): boolean {
 }
 
 function sameProps(a: RowProps, b: RowProps): boolean {
-  return a.agent === b.agent && a.workingSince === b.workingSince && a.approval === b.approval && a.root === b.root && a.openDiff === b.openDiff && a.goToStep === b.goToStep && sameRow(a.row, b.row)
+  return a.agent === b.agent && a.workingSince === b.workingSince && a.approval === b.approval && a.root === b.root && a.openDiff === b.openDiff && a.goToStep === b.goToStep && a.waitingStep === b.waitingStep && sameRow(a.row, b.row)
 }
 
 /**
@@ -98,7 +102,7 @@ function AgentMessage({ rowKey, paragraphs, status }: { rowKey: string; paragrap
     <div className="mx-msg-agent">
       {lead !== '' && <p className="mx-msg-lead"><InlineMarkdown text={lead} /></p>}
       {rest.length > 0 && <Markdown text={rest.join('\n\n')} className="mx-msg-rest" />}
-      {empty && <p className="mx-msg-empty">{status === 'running' ? 'Writing…' : 'An empty reply.'}</p>}
+      {empty && <p className="mx-msg-empty">{status === 'running' ? 'Writing…' : 'The agent finished without writing a reply.'}</p>}
     </div>
   )
 }
@@ -118,41 +122,23 @@ function SaidText({ text }: { text: string }) {
   )
 }
 
-function Step({ event, root, openDiff }: { event: WorkStep | Extract<ChatRow, { kind: 'step' }>['event']; root: string | null; openDiff: ((file: string) => void) | null }) {
-  if (event.kind === 'edit') return <EditCard event={event} root={root} onOpen={openDiff} />
-  if (event.kind === 'command') return <CommandCard event={event} />
-  if (event.kind === 'todo') return <TodoCard event={event} />
-  return <ToolChip event={event} />
-}
-
-/**
- * A run of steps as one line saying what it did; a click opens the steps themselves. One that failed starts open,
- * so a failure is never folded away.
- */
-function WorkCard({ steps, root, openDiff }: { steps: readonly WorkStep[]; root: string | null; openDiff: ((file: string) => void) | null }) {
-  const status = workStatus(steps)
-  const [open, setOpen] = useState(status === 'failed')
-  const took = workDurationMs(steps)
-  return (
-    <div className={`mx-work${open ? ' is-open' : ''}`}>
-      <button type="button" className="mx-work-head" aria-expanded={open} title={open ? 'Hide the steps' : 'Show the steps'} onClick={() => { setOpen((current) => !current) }}>
-        {status === 'running' ? <Spinner /> : <span className={`mx-work-mark is-${status}`} aria-hidden="true"><Icon name={status === 'failed' ? 'close' : 'check'} size={10} /></span>}
-        <span className="mx-work-text">{workSummary(steps)}{status === 'failed' && ' · a step failed'}</span>
-        {took !== null && status !== 'running' && <span className="mx-work-took">{tookText(took)}</span>}
-        <span className={`mx-caret-wrap${open ? ' is-open' : ''}`}><Icon name="caret" /></span>
-      </button>
-      {open && <div className="mx-work-steps">{steps.map((step) => <Step key={step.id} event={step} root={root} openDiff={openDiff} />)}</div>}
-    </div>
-  )
-}
-
 /** One row of the list. Memoised: a streamed update re-renders only the rows whose events changed. */
-export const ChatItem = memo(function ChatItem({ row, agent, workingSince, approval, root, openDiff, goToStep }: RowProps) {
+export const ChatItem = memo(function ChatItem({ row, agent, workingSince, approval, root, openDiff, goToStep, waitingStep }: RowProps) {
   switch (row.kind) {
-    case 'user':
-      return <Frame><div className="mx-msg-user"><SaidText text={row.event.text} /></div></Frame>
+    case 'user': {
+      // Only the daemon's own time: when the window first saw a message is not when it was sent.
+      const sentAt = row.event.timing.startedAtMs ?? row.event.timing.completedAtMs
+      return (
+        <Frame>
+          <div className="mx-msg-user">
+            <SaidText text={row.event.text} />
+            {sentAt !== null && <time className="mx-msg-time" dateTime={new Date(sentAt).toISOString()}>{clock(sentAt)}</time>}
+          </div>
+        </Frame>
+      )
+    }
     case 'report':
-      return <Frame><p className="mx-report"><Icon name="check" size={11} />{row.text}</p></Frame>
+      return <Frame><p className="mx-report"><span aria-hidden="true">↳</span>{row.text}</p></Frame>
     case 'echo':
       return (
         <Frame>
@@ -162,30 +148,35 @@ export const ChatItem = memo(function ChatItem({ row, agent, workingSince, appro
     case 'agent':
       return <Frame><AgentMessage rowKey={row.key} paragraphs={row.paragraphs} status={row.status} /></Frame>
     case 'step':
-      return <Frame><Step event={row.event} root={root} openDiff={openDiff} /></Frame>
+      return <Frame>{row.event.kind === 'todo' ? <PlanCard event={row.event} /> : <StepView event={row.event} root={root} openDiff={openDiff} alone waiting={isWaitingStep(waitingStep, row.event.id)} />}</Frame>
     case 'work':
-      return <Frame><WorkCard steps={row.events} root={root} openDiff={openDiff} /></Frame>
+      return <Frame><WorkCard steps={row.events} root={root} openDiff={openDiff} waitingStep={waitingStep} /></Frame>
     case 'agents':
-      return <Frame><AgentsCard agents={row.events} /></Frame>
+      return <Frame><AgentsCard agents={row.events} process={agent} /></Frame>
     case 'approval':
       return <Frame><ApprovalCard event={row.event} actions={approval} step={row.step} onGoToStep={goToStep} /></Frame>
     case 'divider':
       return (
-        <div className="mx-chat-row flex items-center gap-3" role="separator" aria-label={dividerText(row.event, clock)}>
-          <span className="h-px flex-1 bg-line2" />
-          <span className="text-[11.5px] text-dim">{dividerText(row.event, clock)}</span>
-          <span className="h-px flex-1 bg-line2" />
+        <div className={`mx-chat-row mx-divider${row.event.outcome === 'failed' ? ' is-failed' : ''}`} role="separator" aria-label={dividerText(row.event, clock)}>
+          <span className="mx-divider-line" />
+          <span className="mx-divider-text">{dividerText(row.event, clock)}</span>
+          <span className="mx-divider-line" />
         </div>
       )
     case 'changes': {
       const first = row.files[0]
-      const said = `${String(row.files.length)} changed ${row.files.length === 1 ? 'file' : 'files'}`
-      const counts = row.lines !== null && <span className="mx-changed-counts"><span className="is-add">+{row.lines.added}</span><span className="is-remove">−{row.lines.removed}</span></span>
+      const body = (
+        <>
+          <FileText className="size-[15px] shrink-0 text-muted" aria-hidden="true" />
+          <span className="mx-changed-said">{row.files.length} changed {row.files.length === 1 ? 'file' : 'files'}</span>
+          {row.lines !== null && <span className="mx-changed-counts"><span className="is-add">+{row.lines.added}</span><span className="is-remove">−{row.lines.removed}</span></span>}
+        </>
+      )
       return (
         <Frame>
           {openDiff !== null && first !== undefined
-            ? <button type="button" className="mx-changed" title="Show the changes" onClick={() => { openDiff(first) }}><Icon name="changes" size={14} /><span>{said}</span>{counts}<Icon name="chevron" /></button>
-            : <p className="mx-changed is-still"><Icon name="changes" size={14} /><span>{said}</span>{counts}</p>}
+            ? <button type="button" className="mx-changed" title="Show the changes" onClick={() => { openDiff(first) }}>{body}<span className="mx-spacer" /><span className="mx-changed-review">Review</span><span className="mx-caret-wrap"><Icon name="caret" /></span></button>
+            : <p className="mx-changed is-still">{body}</p>}
         </Frame>
       )
     }

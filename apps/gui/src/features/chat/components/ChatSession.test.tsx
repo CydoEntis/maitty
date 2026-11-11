@@ -200,7 +200,7 @@ describe('the chat history', () => {
     render(<ChatSession link={link()} agent="claude" online />)
     await settle()
 
-    expect(screen.getByText(/did not keep this change/)).toBeInTheDocument()
+    expect(screen.getByText(/didn.t keep this diff/)).toBeInTheDocument()
   })
 })
 

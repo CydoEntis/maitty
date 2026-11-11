@@ -4,13 +4,13 @@ import { errorMessage } from '@/lib/error-message'
 import { useLatest } from '@/lib/useLatest'
 import type { ChatAgent, ChatLink } from '@/features/workspace/model/chatView'
 import { hasPendingApproval, type ChatFeed } from './chatFeed'
-import { buildAttachmentMessage } from './attachmentMessage'
+import { buildAttachmentMessage, parseAttachmentMessage } from './attachmentMessage'
 import { onOutsideSend } from './outsideSends'
 import { selectChatEvents } from './projection'
 import { countUserMessages } from './workPhase'
-import { peekComposer, updateComposer, useComposerSlice, type DraftAttachment } from './composerStore'
+import { peekComposer, updateComposer, useComposerSlice, type ComposerState, type DraftAttachment } from './composerStore'
 
-import { revokePreviews, useAttachmentIntake, type AttachmentIntake } from './useAttachmentIntake'
+import { newId, revokePreviews, useAttachmentIntake, type AttachmentIntake } from './useAttachmentIntake'
 import { wireChoice } from './agentChoice'
 import { reserveOperation, STALE_OPERATION } from './sendOperation'
 
@@ -82,6 +82,8 @@ export type ChatComposer = {
   /** What the daemon holds for the running turn, oldest first. */
   queue: readonly QueuedItem[]
   removeQueued: (id: number) => void
+  /** Takes a queued message back into the message box, ahead of anything typed there, so it can be changed and sent again. */
+  editQueued: (id: number) => void
   /** Sends the draft; while the agent works the daemon holds it and sends it when the turn ends. */
   submit: () => void
   /** Interrupts the running turn. */
@@ -244,6 +246,34 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
       })
   }, [conversation, link.generation, refresh])
 
+  const editQueued = useCallback((operation: number) => {
+    const message = queue.find((item) => item.id === operation)
+    if (message === undefined) return
+    // Its files come back as attachments, as they were when it was written, not as the lines that name them.
+    const parsed = parseAttachmentMessage(message.text)
+    const words = parsed?.text ?? message.text
+    const files = (parsed?.files ?? []).map((file) => ({ id: newId(), path: file.path, name: file.name, size: null, kind: file.kind, preview: null }))
+    const intoDraft = (state: ComposerState): ComposerState => ({
+      ...state,
+      draft: state.draft.trim() === '' ? words : words === '' ? state.draft : `${words}\n\n${state.draft}`,
+      attachments: [...files, ...state.attachments],
+    })
+    if (operation < 0) {
+      updateComposer(conversation, (state) => intoDraft({ ...state, held: state.held.filter((item) => item.id !== operation) }))
+      return
+    }
+    // The words go back in the box only once the daemon has let go of them, or a message sent a moment ago would be sent twice.
+    dequeueMessage({ id: String(conversation), generation: link.generation }, operation)
+      .then(() => {
+        updateComposer(conversation, intoDraft)
+        refresh()
+      })
+      .catch((failure: unknown) => {
+        setError(errorMessage(failure, 'Could not take the queued message back'))
+        refresh()
+      })
+  }, [queue, conversation, link.generation, refresh])
+
   const stop = useCallback(() => {
     if (!running || feed.cancelling) return
     if (typeText !== undefined) {
@@ -272,5 +302,5 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
     return () => { window.clearTimeout(timer) }
   }, [typing, first, online, waitingForMessage, awaitingAnswer, sending, conversation, send])
 
-  return { conversationKey: link.conversation, setDraft, attachments, attach, readOnly, attachable: !readOnly || typing, queue, removeQueued, submit, stop, running, sending, disabledReason, ready: disabledReason === null && !holding, error, sendText: send, echo }
+  return { conversationKey: link.conversation, setDraft, attachments, attach, readOnly, attachable: !readOnly || typing, queue, removeQueued, editQueued, submit, stop, running, sending, disabledReason, ready: disabledReason === null && !holding, error, sendText: send, echo }
 }

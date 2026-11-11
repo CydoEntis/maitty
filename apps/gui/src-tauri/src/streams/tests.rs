@@ -473,7 +473,7 @@ fn what_another_machine_wants_shown_is_given_and_this_computers_is_not() {
 }
 
 #[test]
-fn what_another_machine_asks_to_copy_is_given_and_this_computers_is_not() {
+fn what_a_program_copies_is_given_from_another_machine_and_from_this_computer() {
     let mut streams = Streams::default();
     let now = Instant::now();
     let msg = || ServerMsg::Clipboard { term: 1, text: "ls".into() };
@@ -482,7 +482,11 @@ fn what_another_machine_asks_to_copy_is_given_and_this_computers_is_not() {
         &said[..],
         [Out::Clipboard { machine, text }] if *machine == BOX && text == "ls"
     ));
-    assert!(streams.on_message(LOCAL, msg(), now).is_empty());
+    let here = streams.on_message(LOCAL, msg(), now);
+    assert!(matches!(
+        &here[..],
+        [Out::Clipboard { machine, text }] if *machine == LOCAL && text == "ls"
+    ));
 }
 
 #[test]

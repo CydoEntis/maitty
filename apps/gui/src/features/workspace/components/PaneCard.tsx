@@ -60,6 +60,8 @@ export type PaneCardProps = {
   onRename: () => void
   /** Starts a new shell in an ended pane's folder, in its place. */
   onRestart: (paneId: string) => void
+  /** Answers the session's request to start helpers; absent where it cannot be answered. */
+  onAnswerHelpers?: (choice: 'allow' | 'always' | 'no') => void
 }
 
 /** The pane's width as it is laid out, so its header can give up controls as it narrows. */
@@ -186,6 +188,17 @@ export function PaneCard(props: PaneCardProps) {
         {props.terminal}
         {view === 'chat' && props.chat}
       </div>
+      {session.helperAsk.length > 0 && props.onAnswerHelpers && (
+        <div className="mx-pane-ended is-ask" role="alert" aria-label="Wants to start helpers">
+          <span className="mx-pane-ended-text">
+            <strong>{`Wants to start ${String(session.helperAsk.length)} helper${session.helperAsk.length === 1 ? '' : 's'}`}</strong>
+            <small title={session.helperAsk.join('\n')}>{session.helperAsk.join(' · ')}</small>
+          </span>
+          <button type="button" className="mx-pane-ended-button is-primary" disabled={!props.online} title="This session may start helpers from now on" onMouseDown={stop} onClick={() => { props.onAnswerHelpers?.('allow') }}>Allow</button>
+          <button type="button" className="mx-pane-ended-button" disabled={!props.online} title="Every session of this project may, from now on" onMouseDown={stop} onClick={() => { props.onAnswerHelpers?.('always') }}>Always in this project</button>
+          <button type="button" className="mx-pane-ended-button" disabled={!props.online} title="It does the work alone" onMouseDown={stop} onClick={() => { props.onAnswerHelpers?.('no') }}>No</button>
+        </div>
+      )}
       {ended && (
         <div className="mx-pane-ended" role="status" aria-label="Session ended">
           <span className="mx-pane-ended-text"><strong>Session ended</strong><small>Its output is kept above.</small></span>
@@ -199,7 +212,7 @@ export function PaneCard(props: PaneCardProps) {
     {/* A card of its own under the pane, not a part of it. */}
     {props.drawer}
     {/* Beside the pane, not in it: a pane has `contain: paint`, which would place the menu's fixed anchor from the pane's corner. */}
-    {menuAt && <MenuPopup key={`${String(menuAt.x)},${String(menuAt.y)}`} title={title} at={menuAt} items={menuItems} portalContainer={props.portalContainer} onClose={() => { setMenuAt(null) }} />}
+    {menuAt && <MenuPopup key={`${String(menuAt.x)},${String(menuAt.y)}`} title={title} untitled at={menuAt} items={menuItems} portalContainer={props.portalContainer} onClose={() => { setMenuAt(null) }} />}
     </>
   )
 }

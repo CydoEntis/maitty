@@ -8,7 +8,9 @@ import { isDesktop, loadTerminalReplay, resizeTerminal, sendTerminalInput } from
 import { listenTerminalChunks, loadTerminalHistory, type TerminalChunk, type TerminalHistory } from '@/api/terminalStream'
 import type { Conversation } from '@/data/preview'
 import type { TerminalHandle } from '@/features/terminal/handle'
+import { brightBlackGround, type Channels } from '@/features/terminal/brightBlackGround'
 import { isPasteChord, listenForImagePaste } from '@/features/terminal/clipboardImage'
+import { COPY_TOAST_ID, COPY_TOAST_MS } from '@/features/terminal/copyToast'
 import { findPathLinks } from '@/features/terminal/pathLinks'
 import { appendToScreen, cachedScreen, replaceScreen, screenKey } from '@/features/terminal/screenCache'
 import { isWindowActive, useWindowActive } from '@/lib/window-activity'
@@ -130,6 +132,8 @@ export type TerminalLook = {
   plainDrawing?: boolean
   screenReader?: boolean
   theme?: ITheme
+  /** What a program's bright black background is drawn as; absent, it is the palette's bright black. */
+  slab?: Channels
   /** xterm's own floor for the contrast of any foreground a program picks; 1 leaves colours as asked. */
   minimumContrast?: number
 }
@@ -294,6 +298,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     let missed = false
     const screen = screenKey(machine, term, binding.generation)
 
+    const calmSlabs = brightBlackGround(() => lookRef.current.slab ?? null)
     const writeQueued = () => {
       if (frame !== 0) cancelAnimationFrame(frame)
       frame = 0
@@ -311,7 +316,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
       queuedReplay = false
       if (replaying) replayWrites += 1
       const flushed = beginFlush()
-      emulator.write(bytes, () => {
+      emulator.write(calmSlabs(bytes), () => {
         flushed()
         if (replaying) replayWrites -= 1
       })
@@ -642,7 +647,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         const copySelection = () => {
           if (!terminalInstance.hasSelection()) return
           navigator.clipboard.writeText(terminalInstance.getSelection()).then(
-            () => { toast.success('Copied', { id: 'terminal-copy', duration: 1500 }) },
+            () => { toast.success('Copied', { id: COPY_TOAST_ID, duration: COPY_TOAST_MS }) },
             () => { toast.error('Could not copy the selection') },
           )
         }

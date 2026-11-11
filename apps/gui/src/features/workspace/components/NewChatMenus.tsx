@@ -1,4 +1,3 @@
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { ChoiceItem, ChoiceList } from '@/components/ui/choice-list'
 import { useState, type ReactNode } from 'react'
 import { Popover } from 'radix-ui'
@@ -28,10 +27,12 @@ type Props = {
   /** A line the search can turn into a row of its own (a pasted path); null when it cannot. */
   fromQuery?: (query: string) => ChipItem | null
   width?: number
+  /** Which way the list opens from the chip: up from the message box, or down from the top of a page. */
+  side?: 'top' | 'bottom'
 }
 
 /** One fact of the context row over the message box, as a small chip that opens a searchable list above it. */
-export function ChipMenu({ label, summary, title, icon, search, sections, footer, extra, below, fromQuery, width = 340 }: Props) {
+export function ChipMenu({ label, summary, title, icon, search, sections, footer, extra, below, fromQuery, width = 340, side = 'top' }: Props) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const needle = query.trim().toLowerCase()
@@ -46,7 +47,7 @@ export function ChipMenu({ label, summary, title, icon, search, sections, footer
       <Popover.Trigger asChild>
         <button type="button" className="mx-chip" title={title} aria-label={`${title}: ${summary ?? (typeof label === 'string' ? label : '')}`}>{icon}{label}<Icon name="chevronDown" /></button>
       </Popover.Trigger>
-      <PopupContent side="top" align="start" aria-label={title} className="mx-chip-menu" style={{ width: `min(${String(width)}px, calc(100vw - 32px))` }}>
+      <PopupContent side={side} align="start" aria-label={title} className="mx-chip-menu" style={{ width: `min(${String(width)}px, calc(100vw - 32px))` }}>
         {search !== undefined && (
           <label className="mx-chip-search">
             <Icon name="search" size={13} />
@@ -84,33 +85,5 @@ function ChipRow({ item, onPick }: { item: ChipItem; onPick: (item: ChipItem) =>
       {item.right}
       {item.checked && <Icon name="check" size={12} stroke="var(--accent)" strokeWidth={2.4} />}
     </ChoiceItem>
-  )
-}
-
-/** The reasoning levels as a row of segments under the model list: Auto sends nothing. */
-export function ReasoningMeter<T extends string>({ levels, value, labels, onPick }: { levels: readonly T[]; value: T; labels: Readonly<Record<T, string>>; onPick: (level: T) => void }) {
-  return (
-    <RadioGroup className="mx-chip-meter" aria-label="Reasoning" orientation="horizontal" value={value} onValueChange={(next) => { const picked = levels.find((level) => level === next); if (picked !== undefined) onPick(picked) }}>
-      <p className="mx-chip-meter-head"><strong>Reasoning</strong><span>{labels[value]}</span></p>
-      <div className="mx-chip-meter-bars">
-        {levels.map((level) => (
-          <RadioGroupItem key={level} value={level} className={`mx-chip-meter-step${level === value ? ' is-on' : ''}`}>
-            <span className="mx-chip-meter-bar" aria-hidden="true" />
-            <span>{labels[level]}</span>
-          </RadioGroupItem>
-        ))}
-      </div>
-    </RadioGroup>
-  )
-}
-
-/** Two or three choices as a row of tabs at the top of a list (this checkout or a new worktree). */
-export function SegmentTabs<T extends string>({ value, options, onPick }: { value: T; options: readonly { value: T; label: string }[]; onPick: (value: T) => void }) {
-  return (
-    <div className="mx-chip-tabs" role="tablist">
-      {options.map((option) => (
-        <button key={option.value} type="button" role="tab" aria-selected={option.value === value} className={`mx-chip-tab${option.value === value ? ' is-on' : ''}`} onClick={() => { onPick(option.value) }}>{option.label}</button>
-      ))}
-    </div>
   )
 }

@@ -3,6 +3,8 @@ import { DesktopSettings } from '@/features/settings/components/DesktopSettings'
 import { PerfOverlay } from './PerfOverlay'
 import { CommandPalette } from './CommandPalette'
 import { InspectPanel } from '@/features/inspect/InspectPanel'
+import { repoTree } from '@/features/inspect/api'
+import { usePreloadFiles } from '@/features/inspect/useRepoQuery'
 import { AgentTerminals } from './AgentTerminals'
 import { HoverTips } from './HoverTips'
 import { ShortcutOverlay } from '@/features/shortcuts/ShortcutOverlay'
@@ -26,11 +28,14 @@ import { Keycaps } from '@/features/shortcuts/Keycaps'
 import { folderExists, resolveStartFolder } from '../model/startFolder'
 import { useWorkspace } from '../workspaceContext'
 
+const loadTopFolder = (term: number) => repoTree(term, null)
+
 /** What opens over or beside the panes: Inspect, the palette, Settings and each dialog. */
 export function WorkspaceDialogs() {
   const { mismatch, inspectOpen, focusMode, inspectTerm, ownsTerminals, focusedSession, projectOf, diffStat, inspectView, lookAt, setInspectView, setInspectOpen, flash, shortcutsOpen, platform, root, setShortcutsOpen, welcomeOpen, preferences, setPreferences, setWelcomeOpen, newSession, focusedMachineNumber, paletteOpen, paletteItems, setPaletteOpen, focusedId, sessionMap, needsElsewhere, setFocusMode, focusModeChord, worktreeFrom, createWorktree, setWorktreeFrom, newSessionMachine, heads, sessions, home, startFromModal, setNewSessionMachine, getFileId, setGetFileId, getFile, updateAsk, setUpdateAsk, updateNamed, closeAsk, setCloseAsk, renamingMachine, machineNicknames, setMachineNicknames, setRenamingMachine, renameId, renameInline, saveName, setRenameId, settingsSection, setSettingsSection, systemReducedMotion, systemDark, previewThemeSoon, showTestNotice, updater, restartNow, setPreviewTheme, online, runningVersion, machinesKnown, retryNamed, removeNamed, grantNamed, copyCommand, addNamed, cancelAdding, usageInfo, chooseStartFolder, toastMessage, updatedTo, setUpdatedTo, restarting } = useWorkspace()
   // An agent always has a Terminal tab. Pinned under the chat, its terminals are in the pane, and the tab offers to bring them back.
   const hasTerminals = focusedSession !== undefined && ownsTerminals(focusedSession)
+  usePreloadFiles(inspectTerm, loadTopFolder)
   return (
     <>
       {inspectOpen && !focusMode && focusedSession && (inspectTerm !== null || hasTerminals) && (

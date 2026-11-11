@@ -28,6 +28,9 @@ const daemon = vi.hoisted(() => ({
   openDaemonLog: vi.fn<() => Promise<void>>(),
   suggestProjectFolders: vi.fn<(typed: string) => Promise<string[]>>(),
   sendTerminalInput: vi.fn<(conversation: { id: string; generation: number }, input: string | Uint8Array) => Promise<void>>(),
+  answerHelpers: vi.fn<(conversation: { id: string }, choice: 'allow' | 'always' | 'no') => Promise<void>>(),
+  prewarmAgentSession: vi.fn<(folder: string, agent: string, flags: readonly string[]) => Promise<boolean>>(() => Promise.resolve(true)),
+  dropPrewarmedAgent: vi.fn<() => Promise<void>>(() => Promise.resolve()),
   loadMachines: vi.fn(() => Promise.resolve({ names: [], error: null })),
 }))
 
@@ -158,12 +161,11 @@ describe('desktop terminal multiplexer', () => {
 
     await user.keyboard('{Control>}{Shift>}t{/Shift}{/Control}')
     const page = await screen.findByRole('region', { name: 'New agent chat' })
-    // The pickers sit in the box and the tray under it, as in a chat.
-    expect(within(page).getByRole('button', { name: /^Model and reasoning/ })).toBeInTheDocument()
-    expect(within(page).getByRole('button', { name: /^Folder/ })).toBeInTheDocument()
+    // The model button sits in the tray under the box, as in a chat; the folder is asked for first.
+    expect(within(page).getByRole('button', { name: /^Agent, model and reasoning/ })).toBeInTheDocument()
     expect(daemon.startShellSession).not.toHaveBeenCalled()
 
-    await waitFor(() => { expect(within(page).getByRole('textbox', { name: 'First message' })).toHaveFocus() })
+    await waitFor(() => { expect(within(page).getByRole('textbox', { name: 'Search projects or paste a path' })).toHaveFocus() })
     await user.keyboard('{Escape}')
     await waitFor(() => { expect(screen.queryByRole('region', { name: 'New agent chat' })).not.toBeInTheDocument() })
   })
@@ -720,6 +722,30 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalledWith(`${HOME}/a`) })
     await waitFor(() => { expect(screen.queryByRole('status', { name: 'Session ended' })).not.toBeInTheDocument() })
     expect(screen.getByRole('region', { name: /^Terminal 1: ~\/a/ })).toBeInTheDocument()
+  })
+
+  it('asks in the pane when a session wants to start helpers, and sends the answer you pick', async () => {
+    const user = userEvent.setup()
+    daemon.answerHelpers.mockResolvedValue(undefined)
+    const waiting = { asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, helperAsk: ['Search the docs', 'Run the tests'] }
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`, { status: 'needs-you', details: waiting })])
+    renderDesktopApp()
+
+    const bar = await screen.findByRole('alert', { name: 'Wants to start helpers' })
+    expect(bar).toHaveTextContent('Wants to start 2 helpers')
+    expect(bar).toHaveTextContent('Search the docs · Run the tests')
+    expect(within(bar).getAllByRole('button').map((button) => button.textContent)).toEqual(['Allow', 'Always in this project', 'No'])
+
+    await user.click(within(bar).getByRole('button', { name: 'No' }))
+    expect(daemon.answerHelpers).toHaveBeenCalledWith(expect.objectContaining({ id: 't2' }), 'no')
+  })
+
+  it('shows no helper bar on a session that asked for none', async () => {
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
+    renderDesktopApp()
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+
+    expect(screen.queryByRole('alert', { name: 'Wants to start helpers' })).not.toBeInTheDocument()
   })
 
   it('keeps every session as it was after one lost read, and reads again', async () => {

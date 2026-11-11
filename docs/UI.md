@@ -115,7 +115,13 @@ saved layout survives a restart; this computer's stay `t12`). **Settings › Mac
 adds machines (the behaviour is the terminal app's [Machines dialog](#project-specific-machines-dialog),
 with the host list read off the UI thread, the look at the machine ended by a 12 s limit or Cancel, and a
 login that needs a person run in a session named `ssh <name>`); **New session** (⌘T, Ctrl+Shift+T, ⌘K, the sidebar's New agent chat, a machine's New agent chat here) opens, on this computer, the
-**new agent chat page** (`NewChatPage`) over the panes: agent, folder (the machine's projects, the focused one first; **Choose folder…** is the folder picker), model, effort and a first message. Its branch chip has two tabs, **This checkout** and **New worktree**. Choosing New worktree is a choice by itself: it takes a new branch under a suggested two-word name (`model/worktreeName.ts`) at once, the chip reads `new worktree · <branch>`, and a typed name or a branch with no worktree yet can replace it; This checkout drops it. It starts the agent in a terminal the daemon owns, shown as its chat (`startAgentSession`, ADR 0003), so the terminal | chat switch works for every agent; the picked model and effort go on the launch line (`launchFlags`: Claude `--model` and `--effort`; Codex `-m` and `-c model_reasoning_effort=`, which has no Max, so Max sends nothing for Codex) and the first message waits under the session until the agent takes input. The context row is real data: the agent list comes from the programs found on this computer's PATH (`agents_installed`), with INSTALLED apart from NOT SET UP, whose **Set up** opens the agent's official page (`open_agent_docs`, a fixed list, never a caller's address) and an installed agent without a chat view is listed but not selectable; the project list is RECENT (the first three, the focused project first) and ALL ON THIS COMPUTER; the computer list ends with **Add a machine…** (Settings › Machines); the branch chip (hidden outside a git repository) lists the folder's worktrees and branches with the age of their last commit (`git_branches`), and on **This checkout** a pick runs `git switch` (`git_switch_branch`), on **New worktree** it adds a worktree beside the project (`git_add_worktree`) and the chat starts there. The branch is settled before the agent starts, and a failure stays on the page. There is no Subagents fact on the page: it counts the subagents a running chat started, which a chat that has not started has none of. On another machine it opens the
+**new agent chat page** (`NewChatPage`, layout 2f) over the panes, under the heading "What should we work on?" (the same for every agent, with no logo). It asks for a folder first: a search field over the machine's projects ("Recent projects", "Matching projects" while typing, "Open folder" for a typed path that is not in the list, and "No projects match. Paste a full path, or use Browse…"), with **Browse…** for the system's folder picker. No folder is chosen for the person: the message box cannot send until one is. Once a folder is picked, three buttons in one row replace the list: the **project** (a dropdown with a search, RECENT PROJECTS (the first three, the focused project first) and ALL ON THIS COMPUTER, then **Browse for a folder…**, a row for each other machine and **Add a machine…**), the **branch** (hidden outside a git repository; the folder's worktrees and branches with the age of their last commit (`git_branches`), and a typed name creates one) and **New worktree | This folder**, each with a line saying what it means. Choosing New worktree is a choice by itself: it takes a new branch under a suggested two-word name (`model/worktreeName.ts`) at once, which the branch button then shows, and a typed name or a branch with no worktree yet can replace it; This folder drops it. Under the buttons are three suggested tasks as plain rows; a click starts the chat with that task. The agent, its model and its effort are on the model button in the tray under the message box (see *Agent, model and effort*), where the agent switch shows because the chat has not started; an agent that is not installed says so under the box, with **set it up** opening the agent's official page (`open_agent_docs`, a fixed list, never a caller's address). The permission mode the chat starts in is beside it (`PermissionMenu`): Claude's modes, or for Codex **Read only**,
+**Auto** (nothing is sent, so Codex's own settings stand) and **Full access** in red, which go on the launch line as
+`--sandbox` and `--ask-for-approval`. While Yolo mode is on for Codex the page says Full access and offers no menu, since
+that setting already starts it so. A running Codex chat has the same three modes on its permission button: a pick types
+Codex's own `/permissions` command with a built-in profile (`CODEX_MODE_COMMAND`; the command is typed and its Enter pressed 400 ms later, `CODEX_SUBMIT_GAP_MS`, because Codex takes an Enter that arrives with the text for a line break and leaves the command unsent; checked against Codex 0.166), and is put back, with a toast, when
+Codex's screen says it refused the command. Codex has no file that says its mode, so the button shows what the chat was
+started in or last moved to, and "Permissions" where neither is known. It starts the agent in a terminal the daemon owns, shown as its chat (`startAgentSession`, ADR 0003), so the terminal | chat switch works for every agent; the picked model and effort go on the launch line (`launchFlags`: Claude `--model` and `--effort`; Codex `-m` and `-c model_reasoning_effort=`) and the first message waits under the session until the agent takes input. **The agent is started while the message is written** (`useWarmAgent`): once a folder is picked, and 400 ms after the last change of agent, model, effort or mode, the page asks the daemon to keep that agent warm (`prewarm_agent_session`, API_PATTERNS), asks again every four minutes while it stays open, and says none is wanted when it closes; the start then takes the warm agent, because it asks for the same words (`startWords`). It is a head start only: with a branch to switch to or a worktree to make, on a daemon from before it, or when it fails, the agent starts on send as before. On **This folder** a branch pick runs `git switch` (`git_switch_branch`); on **New worktree** it adds a worktree beside the project (`git_add_worktree`) and the chat starts there. The branch is settled before the agent starts, and a failure stays on the page. There is no Subagents fact on the page: it counts the subagents a running chat started, which a chat that has not started has none of. On another machine it opens the
 **New session dialog** (`NewSessionModal`, look in [DESIGN](DESIGN.md#desktop-app)), as it always has: an agent chat or a shell, which
 agent, which project (the machine's projects, the focused one first; **Other folder…** is this computer's folder picker),
 where it works and a first message. It is presentation only; the window starts the session through the same paths as
@@ -342,7 +348,7 @@ theme is on is read from its background (`theme::is_light`), not from a list. Th
 shows palette swatches, an applied marker for that slot, a result count, and a preview.
 Themes are listed alphabetically by display name, ignoring case (`BUILTIN` in
 `theme.rs` is kept in that order, and every list of themes follows it); there are
-no user-defined themes, only overrides of a built-in's colours. **Sixteen themes are built in**, eight dark and eight light: Maitty's four and a dark and a light of each of GitHub, One, Catppuccin (Mocha, Latte), Solarized, Gruvbox and Tokyo Night. The list is `crates/maitty-settings/themes.json`, the same file the desktop app reads, and a test holds `BUILTIN`, the display names, each theme's side and each family's ground and text equal to it. A theme id from an older build, one of the 160 or so removed in the cut, still loads: `ALIASES` in `theme.rs` maps it to the nearest survivor on the same side (by the colour of its ground), so a config that says `dracula` shows One Dark.
+no user-defined themes, only overrides of a built-in's colours. **Fifty themes are built in**, twenty-five dark and twenty-five light: Maitty's six (Night, Day, Dark, Light, and Retro Dark and Retro Light, which carry the Retro Pixel design's colours as a theme for any window style) and a dark and a light of each of GitHub, One, Catppuccin (Mocha, Latte), Solarized, Gruvbox, Tokyo Night, Dracula (with Alucard), Nord, Ayu, Everforest, Rosé Pine, Kanagawa, Nightfox (with Dayfox), Flexoki, Gruvbox Material, One Half, PaperColor, Tomorrow, Melange, Cyberdream, Doom One and Zenbones. The list is `crates/maitty-settings/themes.json`, the same file the desktop app reads, and a test holds `BUILTIN`, the display names, each theme's side and each family's ground and text equal to it. A theme id from an older build, one of the 160 or so removed in the cut, still loads: `ALIASES` in `theme.rs` maps it to the nearest survivor on the same side (by the colour of its ground), so a config that says `dracula` shows One Dark.
 On a theme row in Settings, Left and Right step through that slot's themes and apply each at
 once (`themes.rs` `step_theme`), so the whole screen shows the change; Enter or Space opens the
 browser below for searching.
@@ -785,14 +791,27 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
 - **Choosing the agent for one session.** A small chevron beside the sidebar's + opens **New Claude chat** / **New Codex chat**
   (the default is marked); the + still starts the default from Settings. It starts the chosen agent in the start folder and
   opens in the view Settings names. Beside a session on another machine it opens the New session modal on that machine, as + does.
-- **Agent, model and reasoning.** In the message box a button names the agent's mark, the model (the one picked, else
-  the one the agent's own file says, else just the agent) and the effort, and opens one popover with
-  three radio columns (`AgentPicker`): Agent (the other agent is greyed out with "Fixed for this chat · start a new chat
-  to use Codex"), Model (the agent's list, a one-line description each) and Reasoning (Default, then Low, Medium, High,
-  Max with a four-bar meter). Picking ticks the choice and leaves the popover open; Esc or a click outside closes it; the
-  footer says "Changes apply from your next message". The choice is kept per conversation in this window's storage
-  (`agentChoice.ts`) and goes to the daemon with every message (`send_conversation`'s `model` and `effort`). "Default"
-  sends nothing, so the chat keeps what it started with and the button never claims a model the chat is not using.
+- **Agent, model and effort.** A button names the agent's mark and the model (the one picked, else the one the agent's
+  own file says, else just the agent) with a four-bar meter for the effort, and opens one small menu (`AgentPicker`, 248px,
+  one column): the agent switch, only before a chat starts (after that its agent is already running); the models, a row
+  each with its description as the tooltip, a tick on the picked one and a dim "default" on the model the agent's settings
+  name; then **Effort** as four rising bars (Low, Medium, High, Max) with the level's name beside them. Earlier models wait
+  under a **More models** row, so the newest lead; the picked one shows wherever it is. Picking leaves the menu open; Esc
+  or a click outside closes it. The default model (the one the settings name, else the one Claude Code says it
+  would pick) stands for "nothing picked": there is no separate Default row then, and picking it sends no model. Where
+  no default is known (and for Codex), a Default row stays, because which model it means cannot be read. Effort starts as "Agent's own" with no bar filled, since the level the
+  agent uses cannot be read; pressing the picked bar again goes back to it. A level a model does not take is dimmed with
+  "not on this model": the levels come from the agent's own list for each model (for Codex's Default row, whose model cannot be read, Max
+  is left out). Codex's default is the top-level `model` of its `config.toml`, where its list has that model.
+  Picking a model that does not take the picked level drops to Medium, or to the agent's own where it takes none.
+  Claude's models are asked of Claude Code itself (`agent_models`, `claude_models.rs`): the app starts it once, reads the
+  model list from its start-up reply and stops it, so every model the account can run is there under Claude Code's own
+  names. Where it cannot be asked, its files are read instead (the account's extra models, the ones it has settings for
+  and the one its settings name) and added to the fixed aliases. The list is this computer's, also for a chat on
+  another machine. The choice is kept per conversation in this window's storage
+  (`agentChoice.ts`) and goes to the daemon with every message (`send_conversation`'s `model` and `effort`); what was
+  not picked sends nothing, so the chat keeps what it started with and the button never claims a model the chat is not
+  using.
   Claude offers Sonnet, Opus and Haiku (`KNOWN_MODELS`, a fixed list because the daemon does not report models);
   Codex offers only its account default, because its models depend on the account and version. The agent never changes.
 - **Switching changes the window, not the session.** The choice is per session (`usePaneViews`), the terminal stays
@@ -800,6 +819,14 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   (Ctrl+Shift+E, Cmd+Shift+E) on the focused pane.
 - **Keyboard.** While the chat covers a pane its terminal is not focused (`TerminalView focused` is false) and is
   hidden from Tab and screen readers. The chat adds no layer to the Esc ladder.
+- **Selecting copies.** Releasing the mouse on a selection copies it and a "Copied" toast says so: in a terminal pane
+  (xterm's own selection, `TerminalView.tsx`) and in the chat (`copySelection.ts`; never from the message box, and only
+  a selection that started in that chat). A program that handles the mouse itself (a full-screen agent) copies what was
+  selected in it with OSC 52; the daemon passes that on as `Clipboard` and the window puts it on the clipboard with the
+  same toast (`useMachines.ts`), for this computer and for a machine that was allowed to.
+- **A program's "bright black" background** is drawn as the hovered row's ground (`terminalSlab`), not the palette's
+  bright black, which is dim text and as a background is a glaring bar. xterm has one colour per slot, so
+  `brightBlackGround.ts` rewrites `100` and `48;5;8` to a true colour on the way in. The TUI does the same when it draws.
 - **History.** `useChatFeed` follows one conversation while its chat is open (`chatFeed.ts` is the pure core). The
   first read pages the whole history; later reads happen when the daemon says the conversation changed
   (`conversation-changed`, at least 100 ms apart) and on a poll (300 ms while the agent works or waits on a person,
@@ -819,29 +846,41 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   two messages keeps their order), user bubbles, step cards, approvals, turn dividers, and the working line last.
   Two or more steps that follow each other (edits, commands, tools; never the to-do list) fold into one **work row**
   (`workSummary.ts`, `WorkCard`): a line such as "Read 2 files, edited 3, ran 1 command" with the daemon's own time for
-  the run, which opens to the steps. A run with a failed step starts open.
+  the run, which opens to the steps. Under the line is a stack of the run's latest commands and edits, three at most
+  (`workStack.ts`), with "+N more" on the line when it leaves steps out; reads and searches get no card. The stack is a
+  second place to click, not a second Tab stop. A run with a failed step starts open.
   Under the divider of a turn that edited files is a **changes row**: "3 changed files +111 −0" (each file once; the
   lines only when every diff was kept), which opens the side panel on Changes.
 - **Cards** (`features/chat/components/`). Every fact the history carries is shown, and a missing one is said to be
   unavailable (a diff the history did not keep, a checklist without items, a command time or exit code the provider
   does not report, a turn without the daemon's times shows "Turn finished", not an invented duration). Only a step
   that is running animates (its spinner).
-  - *Tool chip:* a 28px mono chip with the tool's name and what it acted on (read from the tool's input; Codex: its
-    label); click opens the input and the result, bounded.
-  - *Edit block:* header (pencil, verb, file relative to the session's folder, `+N` `-N`), the diff with tinted
-    lines (theme tokens at 10%), folded past 12 lines with "N more lines" / "Show less". The header opens the file's
-    diff in the Inspect panel's Changes view.
-  - *Command card:* the command, then `Running · m:ss` (live) or the elapsed time and an `exit N` pill, and the last
-    3 lines of output with "Show all N lines". The elapsed time is the provider's duration, else the daemon's start
-    and completion times; the exit code exists for Codex only, so for Claude it reads "exit code unavailable".
+  - *Step row* (`cardParts.tsx` `StepRow`): the mark, a verb, what the step acted on, and how it ended. Every step
+    is one; a step with detail is a button that opens it.
+  - *Tool step:* the verb and target are read from the tool's own input (`toolFacts.ts`): "Read `src/a.ts` lines
+    40–88", "Search `pattern` in src", "Fetch example.com/docs", an extension's server and tool. Nothing the input does
+    not hold (hit counts, a status code) is shown. Click opens the input and the result, bounded.
+  - *Edit step:* the file as a badge, Added / Modified / Deleted where the history says, `+N` `−N`; it opens to the
+    diff, folded past 12 lines with "Show all N lines" / "Show less", and "Open in side panel" (the Inspect panel's
+    Changes view). A diff too large, one the history did not keep and a secret file each say so. A finished Write of a
+    Markdown file whose text the history kept is a document card instead (`writtenDocument.ts`).
+  - *Command step:* the command's first line, then the live clock or `exit N · time`; it opens to the whole command
+    and the last 3 lines of output with "Show all N lines". The elapsed time is the provider's duration, else the
+    daemon's start and completion times; the exit code exists for Codex only, so for Claude it reads "exit code not
+    reported". One that failed starts open.
   - *Approval card:* see Approvals. *Helper agents:* consecutive helper calls are one card, "3 agents, 2 working",
-    a row each (title, type, elapsed or "Done · 5m 30s"); a row opens what it was asked and its report. *Checklist:*
-    the agent's own to-do items with a progress bar. *Working line:* "claude is working · m:ss"; no token count,
+    a row each (title, type, what it was asked, its time); a row opens what it was asked and its report. *Plan:*
+    the agent's own to-do items, "N of M done" and a progress bar. *Working line:* "claude is working · m:ss"; no token count,
     because the daemon's history carries none.
   - *Markdown* (`markdown.ts`, `components/Markdown.tsx`): an agent message is read into a data tree and drawn as
     elements. There is no HTML anywhere (no `dangerouslySetInnerHTML`), raw tags are text, images are never loaded
     (their alt text shows), and a link is kept only for an `http(s)` address. The app has no route that opens an
     address outside the window, so a link is a button that copies its address; it never navigates the webview.
+  - *Saving a block* (`exportBlock.ts`, `saveBlock.ts`): a code block has **Copy** and **Save**; a table has **Copy**
+    (as Markdown) and **Markdown**, **CSV** and **HTML**. A save goes to the export folder of Settings › General
+    (Downloads until one is picked with the system's folder picker) under "what date time.ext", and a toast says where.
+    A code block saves as `.md`, `.html`, `.csv` or `.json` when that is its language and as `.txt` otherwise. A CSV
+    cell that a spreadsheet would run as a formula is written with a leading `'`; an HTML table's cells are escaped text.
     A table (a header line, a `| --- |` delimiter row of the same width, then rows, with `:` for alignment) is a
     real `<table>` drawn as a hairline grid in existing tokens, inside its own named, focusable, sideways-scrolling
     region, so a wide table never widens the message; cells hold inline markdown, and a right-aligned column stays on
@@ -864,7 +903,7 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   step still running (`workPhase.ts`): "reading src/app.ts", "writing hello.txt", "running npm test", "thinking". It says
   only what the history says.
 - **Mode and model.** The settings tray under the message box says how Claude is set up, from its own transcript and
-  never a guess: the permission mode (`Ask before running`, `Auto`, `Plan`, `Accept edits`; `Bypass permissions` in the
+  never a guess: the permission mode (`Ask before edits`, `Accept edits`, `Plan mode`, `Auto`; `Bypass permissions` in the
   danger colour, like Full access), "Permissions" until the file has said one. A Claude chat that follows a terminal agent
   changes both from the tray, by typing the agent's own commands into its terminal (not while it works): the mode chip is
   a dropdown that presses Shift+Tab until the agent's screen shows the pick (`modeFromScreen`), and the model and reasoning
@@ -878,7 +917,7 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   the running turn (`cancel_conversation`). It is off, with the reason as its placeholder, while an approval is
   pending ("Answer the request above first") or the daemon is offline. While the daemon reports the turn working,
   Enter still sends: the daemon holds the message (`ReadResult.queued`) and delivers it when the turn ends, in order
-  and once each, so it is shown as a dashed pending bubble with Remove (`dequeue_conversation`) for as long as the
+  and once each, so it is shown as a dashed pending bubble with remove and Edit (both `dequeue_conversation`; Edit puts the words back in the box only after the daemon has let go of them, so a message sent a moment ago is never sent twice) for as long as the
   daemon holds it, and closing the window loses nothing. The queue is the daemon's memory: a daemon restart drops it,
   and a message queued for a conversation that has since started over is dropped, not sent into the new one. The
   boundary is the end of the turn, the one the daemon can observe for both providers; a message is never delivered
@@ -910,7 +949,7 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   terminal" as its placeholder, and offers no Stop or queue wording; the daemon refuses send, approve and cancel
   for such a conversation. The history and status still follow the agent.
 - **Approvals.** A pending request is the message box's question tray (`QuestionTray.tsx`), not a row of the list; it
-  answers through `approve_conversation` by request id, and the request then shows in the list as "You answered: ...",
+  answers through `approve_conversation` by request id, and the request then folds into one line in the list ("Allowed", "Allowed for this session", "Denied"),
   with the buttons gone. While it is pending, `y` (once), `a` (this session) and `n` (no) answer it from anywhere in the
   chat but a field, the same letters as typing into the terminal, which stays a working fallback. The daemon's `answered_approvals` are
   read with every page, so a request answered in the terminal or in another window shows as answered with the real

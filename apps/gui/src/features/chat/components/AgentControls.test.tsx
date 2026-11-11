@@ -77,10 +77,28 @@ describe('changing the mode, the model and the reasoning of a chat that follows 
     expect(typeInto).toHaveBeenLastCalledWith('/effort high\r')
   })
 
-  it('has no mode dropdown for another agent', async () => {
-    open('codex')
+  it('moves a running Codex to the picked mode with its own /permissions command', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const typeInto = open('codex')
     await settle(IDLE_POLL_MS)
-    expect(screen.queryByRole('button', { name: /^Permission mode/ })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /^Permission mode: .* Pick another/ }))
+    expect(await screen.findAllByRole('menuitemradio')).toHaveLength(3)
+    await user.click(screen.getByRole('menuitemradio', { name: /^Read only/ }))
+    await settle(IDLE_POLL_MS)
+    // The command first and its Enter a moment later: Codex takes an Enter that comes with the text for a line break.
+    expect(typeInto.mock.calls.map(([text]) => text)).toEqual(['/permissions :read-only --approval-policy=on-request', '\r'])
+    expect(screen.getByRole('button', { name: /^Permission mode: Read only/ })).toBeInTheDocument()
+  })
+
+  it('sends a working Codex nothing and says why', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const typeInto = open('codex', 'Working')
+    await settle(IDLE_POLL_MS)
+
+    await user.click(screen.getByRole('button', { name: /^Permission mode: .* Pick another/ }))
+    await user.click(await screen.findByRole('menuitemradio', { name: /^Full access/ }))
+    expect(typeInto).not.toHaveBeenCalled()
   })
 
   it('keeps both chips in place while the agent works, greyed out with the reason, and sends nothing from them', async () => {
@@ -109,7 +127,8 @@ describe('changing the mode, the model and the reasoning of a chat that follows 
     render(<ChatSession link={{ conversation: FAKE_CONVERSATION, generation: 1, readOnly: true }} agent="claude" online typeInto={vi.fn()} sessionId="s1" />)
     await settle(IDLE_POLL_MS)
 
-    expect(screen.getByRole('button', { name: /^Agent, model and reasoning: Claude · Opus 5.5 · High/ })).toHaveTextContent('High')
+    // The effort is drawn as bars on the button, so it is in the button's name, not its text.
+    expect(screen.getByRole('button', { name: /^Agent, model and reasoning: Claude · Opus 5.5 · High/ })).toHaveTextContent('Opus 5.5')
     expect(screen.getByRole('button', { name: /^Permission mode: Plan/ })).toBeInTheDocument()
     expect(startChoiceOf('s1')).toBeNull()
   })

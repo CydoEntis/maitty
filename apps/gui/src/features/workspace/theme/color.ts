@@ -105,6 +105,13 @@ export function formatColor(color: Rgba): string {
   return `rgba(${String(channel(color.r))},${String(channel(color.g))},${String(channel(color.b))},${String(Math.round(color.a * PERCENT) / PERCENT)})`
 }
 
+/** An opaque colour as its three channels, 0 to 255, as a terminal's true-colour sequence takes them. */
+export function channelsOf(color: string): readonly [number, number, number] {
+  const { r, g, b } = parseColor(color)
+  const channel = (value: number) => Math.round(clamp(value) * CHANNEL_MAX)
+  return [channel(r), channel(g), channel(b)]
+}
+
 /** Paints a translucent colour over an opaque one. */
 export function composite(top: string, under: string): string {
   const t = parseColor(top)

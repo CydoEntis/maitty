@@ -16,7 +16,7 @@ export function usePaneDrags({ setLayout, flash }: {
     drop: (source, paneId) => {
       if (!paneId) return
       if (source.kind === 'session') {
-        setLayout((current) => dropSession(current, paneId, source.id))
+        movePanes(() => { setLayout((current) => dropSession(current, paneId, source.id)) })
         flash('Session moved into this pane')
       } else if (source.id !== paneId) movePanes(() => { setLayout((current) => swapSessions(current, source.id, paneId)) })
     },

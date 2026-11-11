@@ -35,6 +35,24 @@ function FileName({ name }: { name: string }) {
 const ROW_PAD_PX = 8
 const LEVEL_PAD_PX = 14
 
+/** How many bars stand in for the file list and for a file while each is read; the stylesheet gives them their widths. */
+const TREE_BARS = 8
+const PREVIEW_BARS = 12
+
+/**
+ * The shape of what is being read, so the panel does not jump when it arrives. Still on purpose:
+ * the wait is short, and an animation here repaints the panel every frame (docs/PERFORMANCE.md).
+ * Not a status region: that role is the tab's own note, such as a folder that is not a repository.
+ */
+function Bars({ label, count, className }: { label: string; count: number; className: string }) {
+  return (
+    <div aria-busy="true" className={className}>
+      <p className="sr-only">{label}</p>
+      {Array.from({ length: count }, (_, index) => <span key={index} aria-hidden="true" />)}
+    </div>
+  )
+}
+
 /** Each folder on the way to a path, so opening a file from a link shows where it is. */
 function ancestorsOf(path: string): string[] {
   const parts = path.split('/').slice(0, -1)
@@ -132,7 +150,7 @@ export function FilesTab({ term, lookAt }: { term: number; lookAt: LookAt | null
             </header>
             {asDiff && <PatchView key={file} patch={change.patch} />}
             {!asDiff && change?.kind.letter === 'D' && <p className="mx-inspect-note">This file was deleted.</p>}
-            {!asDiff && change?.kind.letter !== 'D' && preview.isPending && <p className="mx-inspect-note">Loading…</p>}
+            {!asDiff && change?.kind.letter !== 'D' && preview.isPending && <Bars label="Reading the file" count={PREVIEW_BARS} className="mx-files-wait is-preview" />}
             {preview.isError && <p className="mx-inspect-note is-error" role="alert">{messageOf(preview.error)}</p>}
             {!asDiff && preview.data !== undefined && (
               <pre className="mx-preview">
@@ -165,7 +183,7 @@ type FolderProps = { term: number; folder: string; depth: number; open: Readonly
 /** One folder's entries; a folder inside it that is open reads and shows its own. */
 function Folder({ term, folder, depth, open, file, changed, marked, onToggle, onPick }: FolderProps) {
   const tree = useRepoQuery(term, ['tree', folder], () => repoTree(term, folder || null))
-  if (tree.isPending) return depth === 0 ? <p className="mx-inspect-note">Loading…</p> : null
+  if (tree.isPending) return depth === 0 ? <Bars label="Reading the files" count={TREE_BARS} className="mx-files-wait" /> : null
   if (tree.isError) return <RepoError error={tree.error} tab="files" onRetry={() => { void tree.refetch() }} retrying={tree.isFetching} />
   return (
     <ul className="mx-files-list">

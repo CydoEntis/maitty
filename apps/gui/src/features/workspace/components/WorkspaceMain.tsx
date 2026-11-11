@@ -23,7 +23,7 @@ import { useWorkspace } from '../workspaceContext'
 
 /** The middle of the window: the new chat page, find, the service's state, the panes of each mounted tab and the status bar. */
 export function WorkspaceMain() {
-  const { serviceFooterText, newChatOpen, sidebarMachineHeads, setNewChatOpen, setNewSessionMachine, sessions, focusedSession, preferences, home, startNewChat, setSettingsSection, findOpen, online, heads, focusedId, terminalHandles, showSessionById, setFindOpen, dismissedRestores, resumeInterrupted, setDismissedRestores, failures, mismatch, retryAt, offlineDetail, sessionsQuery, restartOffer, appBehindOffer, refetchSessions, tab, mountedTabs, layout, narrow, setLayout, closingPanes, startFolderLabel, canStart, newSession, focusedMachineNumber, focusMode, focusMachine, theme, shortcutChord, root, setThemeMode, pickTheme, openAppearance, setStyle, setTextSize, resetTextSize, openShortcuts } = useWorkspace()
+  const { serviceFooterText, newChatOpen, sidebarMachineHeads, setNewChatOpen, setNewSessionMachine, sessions, focusedSession, preferences, home, startNewChat, warmNewChat, setSettingsSection, findOpen, online, heads, focusedId, terminalHandles, showSessionById, setFindOpen, dismissedRestores, resumeInterrupted, setDismissedRestores, failures, mismatch, retryAt, offlineDetail, sessionsQuery, restartOffer, appBehindOffer, refetchSessions, tab, mountedTabs, layout, narrow, setLayout, closingPanes, startFolderLabel, canStart, newSession, focusedMachineNumber, focusMode, focusMachine, theme, shortcutChord, root, setThemeMode, pickTheme, openAppearance, setStyle, setTextSize, resetTextSize, openShortcuts } = useWorkspace()
   return (
     <div className="mx-main-wrap">
               <main className="mx-main" aria-label="Terminals">
@@ -34,8 +34,10 @@ export function WorkspaceMain() {
                     projects={machineProjects(sessions, LOCAL_MACHINE, focusedSession, resolveStartFolder(preferences.startFolder, home))}
                     defaultAgent={preferences.defaultAgent}
                     bypassAllowed={preferences.yoloClaude}
+                    codexYolo={preferences.yoloCodex}
                     browse={() => chooseProjectFolder()}
                     onStart={startNewChat}
+                    onWarm={warmNewChat}
                     onAddMachine={() => { setNewChatOpen(false); setSettingsSection('machines') }}
                     onCancel={() => { setNewChatOpen(false) }}
                   />
