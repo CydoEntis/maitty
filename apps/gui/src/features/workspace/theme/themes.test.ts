@@ -4,12 +4,18 @@ import type { ThemeEntry } from './themes'
 import { findTheme, generateTheme, MIN_TEXT_CONTRAST, terminalMinimumContrast, themeStyle, THEMES, xtermTheme } from './themes'
 
 describe('themes', () => {
-  it('ships sixteen themes: Maitty\'s four, then six families with a dark and a light each', () => {
-    expect(THEMES).toHaveLength(16)
-    expect(THEMES.filter((theme) => theme.light)).toHaveLength(8)
-    expect(THEMES.slice(0, 4).map((theme) => theme.name)).toEqual(['Maitty Night', 'Maitty Day', 'Maitty Dark', 'Maitty Light'])
+  it("ships fifty themes, twenty-five dark and twenty-five light: Maitty's six, then twenty-two families with a dark and a light each", () => {
+    expect(THEMES).toHaveLength(50)
+    expect(THEMES.filter((theme) => theme.light)).toHaveLength(25)
+    expect(THEMES.slice(0, 6).map((theme) => theme.name)).toEqual(['Maitty Night', 'Maitty Day', 'Maitty Dark', 'Maitty Light', 'Maitty Retro Dark', 'Maitty Retro Light'])
     expect(findTheme('Catppuccin Mocha').family).toBe('Catppuccin · dark')
-    expect(THEMES.map((theme) => theme.id)).toEqual(['night', 'day', 'maitty-dark', 'maitty-light', 'github-dark', 'github-light', 'one-dark', 'one-light', 'catppuccin-mocha', 'catppuccin-latte', 'solarized-dark', 'solarized-light', 'gruvbox', 'gruvbox-light', 'tokyo-night', 'tokyo-night-day'])
+    expect(findTheme('Maitty Retro Light').family).toBe('Maitty · light')
+    // Every family after Maitty's own has exactly one dark and one light.
+    const sides = new Map<string, boolean[]>()
+    for (const theme of THEMES.slice(6)) sides.set(theme.family.split(' · ')[0] ?? '', [...(sides.get(theme.family.split(' · ')[0] ?? '') ?? []), theme.light])
+    expect(sides.size).toBe(22)
+    for (const [family, lights] of sides) expect([family, [...lights].sort()]).toEqual([family, [false, true]])
+    expect(new Set(THEMES.map((theme) => theme.id)).size).toBe(50)
     expect(findTheme('Gruvbox Light').light).toBe(true)
     expect(findTheme('No such theme').name).toBe('Maitty Night')
   })

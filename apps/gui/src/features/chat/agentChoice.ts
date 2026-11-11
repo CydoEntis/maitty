@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import { loadAgentModels } from '@/api/daemon'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
+import { modelLabel } from './chatMeta'
 
 /** How much the model thinks before it answers. */
 export type Reasoning = 'low' | 'medium' | 'high' | 'max'
@@ -10,7 +11,17 @@ export const DEFAULT_PICK = 'default'
 export type ReasoningPick = Reasoning | typeof DEFAULT_PICK
 export const REASONING_PICKS: readonly ReasoningPick[] = [DEFAULT_PICK, ...REASONING_LEVELS]
 
-export type ModelOption = { readonly id: string; readonly label: string; readonly blurb: string }
+export type ModelOption = {
+  readonly id: string
+  readonly label: string
+  readonly blurb: string
+  /** The model the agent runs when none is picked, where its own settings name one. */
+  readonly isDefault?: boolean | undefined
+  /** The effort levels the model takes, where the agent lists them; absent when it does not say. */
+  readonly efforts?: readonly string[] | null | undefined
+  /** An earlier model: the menu keeps it under "More models". */
+  readonly more?: boolean | undefined
+}
 
 /**
  * The models each agent's command line accepts by name, as a fixed list: the daemon does not report
@@ -47,13 +58,57 @@ export function modelsFor(agent: ChatAgent): readonly ModelOption[] {
  */
 export function setDiscoveredModels(agent: ChatAgent, models: readonly ModelOption[]): void {
   if (models.length === 0) return
-  const read = models.filter((model) => model.id !== DEFAULT_PICK)
+  // The agent's own name and description for a model win ("Opus 5.5"). A model read by its id alone takes a fixed
+  // alias's words, else is named as the chat names models.
+  const read = models.filter((model) => model.id !== DEFAULT_PICK).map((model) => {
+    const alias = KNOWN_MODELS[agent].find((known) => known.id === model.id)
+    const label = model.label !== model.id ? model.label : (alias?.label ?? titleCase(modelLabel(model.id) ?? model.id))
+    return { ...model, label, blurb: model.blurb !== '' ? model.blurb : (alias?.blurb ?? '') }
+  })
   // A Default the agent described (the model it will run) says what it is, instead of the generic line.
   const described = models.find((model) => model.id === DEFAULT_PICK)
   const first = described === undefined ? KNOWN_MODELS[agent][0] as ModelOption : { ...(KNOWN_MODELS[agent][0] as ModelOption), blurb: described.blurb }
   const fixed = agent === 'claude' ? KNOWN_MODELS.claude.slice(1).filter((model) => !read.some((r) => r.id === model.id)) : []
   discovered = { ...discovered, [agent]: [first, ...read, ...fixed] }
   for (const listener of modelListeners) listener()
+}
+
+function titleCase(text: string): string {
+  return text.replace(/\b[a-z]/g, (letter) => letter.toUpperCase())
+}
+
+/**
+ * The rows the model menu shows. Where the agent's settings name the model it runs by default, that
+ * model's row stands for "nothing picked" and there is no separate Default row; where they do not,
+ * Default stays, because which model it means cannot be read.
+ */
+export function menuModels(models: readonly ModelOption[]): readonly ModelOption[] {
+  return models.some((model) => model.isDefault === true) ? models.filter((model) => model.id !== DEFAULT_PICK) : models
+}
+
+/** The row that is ticked for a stored choice: the default's row while nothing is picked. */
+export function pickedModel(models: readonly ModelOption[], choice: string): ModelOption | undefined {
+  const rows = menuModels(models)
+  return rows.find((model) => model.id === choice) ?? rows.find((model) => model.isDefault === true) ?? rows[0]
+}
+
+/** What picking a row stores: the default's row stores "nothing picked", so no model is sent for it. */
+export function choiceFor(model: ModelOption): string {
+  return model.isDefault === true ? DEFAULT_PICK : model.id
+}
+
+/**
+ * Whether a model takes a reasoning level: what the agent listed for the model, where it did. Where it did
+ * not, every level is offered except Max for Codex, which only some of its models take.
+ */
+export function effortAllowed(agent: ChatAgent, model: ModelOption | undefined, level: Reasoning): boolean {
+  if (model?.efforts != null) return model.efforts.includes(level)
+  return !(agent === 'codex' && level === 'max')
+}
+
+/** The models the menu shows before "More models" is opened: the newest, and the picked one wherever it is. */
+export function leadingModels(rows: readonly ModelOption[], picked: string): readonly ModelOption[] {
+  return rows.filter((row) => row.more !== true || row.id === picked)
 }
 
 /** For tests. */

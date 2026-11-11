@@ -34,6 +34,7 @@ mod status;
 mod term;
 mod usage;
 mod usage_store;
+mod warm;
 mod worktrees;
 
 use crate::brand::APP_COMMAND;
@@ -445,6 +446,8 @@ struct Daemon {
     adopt: Option<(PathBuf, TermId)>,
     /// The spare's folder, handed over: its on_create hook already ran.
     adopted: Option<PathBuf>,
+    /// An agent a window asked for ahead of its first message (`Command::Prewarm`).
+    warm: Option<warm::Warm>,
     last_vanished_check: Instant,
     /// The last automatic workspace move, for undo.
     auto_undo: Option<AutoUndo>,
@@ -906,6 +909,16 @@ impl Daemon {
             Command::TerminalInput { term, .. } | Command::TerminalResize { term, .. } => {
                 self.may(client, Grant::Write, Some(*term))
             }
+            Command::Prewarm { .. } | Command::DropPrewarm
+                if structured
+                    || self
+                        .clients
+                        .get(&client)
+                        .is_some_and(|client| client.from.is_some()) =>
+            {
+                anyhow::bail!("Only an app window can keep an agent warm")
+            }
+            Command::Prewarm { .. } | Command::DropPrewarm => Ok(()),
             Command::NewWorkspace { .. }
             | Command::NewTab { .. }
             | Command::NewFleet { .. }
@@ -1162,6 +1175,7 @@ impl Daemon {
             next_starter: None,
             spare: None,
             spare_making: false,
+            warm: None,
             adopt: None,
             adopted: None,
             last_vanished_check: crate::clock::ago(VANISHED_CHECK_EVERY - VANISHED_CHECK_FIRST),
@@ -1184,6 +1198,7 @@ impl Daemon {
                 _ = tick.tick() => {
                     self.sync_scan_interval();
                     self.finish_closes();
+                    self.expire_warm();
                     self.update_statuses();
                     self.settled_alerts();
                     self.phone_alerts();

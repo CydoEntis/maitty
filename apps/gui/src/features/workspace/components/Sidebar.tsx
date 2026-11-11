@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { machineTitle, UPDATE_WORDS, type MachineHead, type UpdateAction } from '../model/machines'
 import { STATUS_WORD, type SessionView } from '../model/session'
-import { inProject, isShell, machineGroups, projectChoices, projectGroups, projectSections, rowTitle, SIDEBAR_GROUPINGS, statusSections, type MachineGroup, type SidebarGrouping, type SidebarOrder } from '../model/sidebar'
+import { inProject, isShell, machineGroups, projectChoices, projectGroups, projectSections, rowTitle, SIDEBAR_GROUPINGS, statusSections, terminalSessions, type MachineGroup, type SidebarGrouping, type SidebarOrder } from '../model/sidebar'
 import type { SubagentView } from '../model/subagents'
 import { useTipWithKeys, useShortcutText } from '@/features/shortcuts/platform'
 import { SidebarResizer } from './SidebarResizer'
@@ -100,6 +100,8 @@ export function Sidebar(props: SidebarProps) {
   )
 }
 
+const TERMINALS_SECTION = 'terminals'
+
 /** Which headings are folded and which machines are grouped by project. */
 function useMachineViews() {
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set())
@@ -146,6 +148,7 @@ function Expanded(props: SidebarProps) {
   const sessions = inProject(props.sessions, project)
   const draft = props.draft ?? null
   const groups = machineGroups(sessions, props.machines, draft !== null, props.order)
+  const terminals = terminalSessions(sessions)
   const groupingLabel = SIDEBAR_GROUPINGS.find(([grouping]) => grouping === props.grouping)?.[1] ?? ''
   const localMachine = props.machines[0]?.machine ?? 0
   const picked = (on: boolean, otherwise = '') => (on ? '✓' : otherwise)
@@ -294,6 +297,11 @@ function Expanded(props: SidebarProps) {
                 {section.sessions.map((session) => renderRow(session, false))}
               </ListSection>
             ))}
+            {terminals.length > 0 && (
+              <ListSection id={TERMINALS_SECTION} name="Terminals" count={terminals.length} label="Terminals" open={views.isOpen(TERMINALS_SECTION)} onToggle={() => { views.toggle(TERMINALS_SECTION) }}>
+                {terminals.map((session) => renderRow(session, true, true))}
+              </ListSection>
+            )}
             {props.sessions.length === 0 && draft === null && <div className="mx-empty-note">No agents running. New chat starts one.</div>}
             <MachineNotes heads={props.machines} progress={props.updateProgress} onUpdate={props.onUpdateMachine} />
           </section>

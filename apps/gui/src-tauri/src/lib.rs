@@ -6,12 +6,14 @@ mod attachment;
 mod image_paste;
 pub mod hub;
 mod daemon_log;
+mod export;
 mod highlight;
 #[cfg(target_os = "linux")]
 mod linux_gpu;
 mod machine_update;
 mod machines;
 mod changes;
+mod claude_models;
 mod new_chat;
 mod output_socket;
 mod performance;
@@ -157,11 +159,18 @@ async fn conversation_diff(
 }
 
 /// One model an agent offers, as its own cache of them lists it.
-#[derive(Debug, PartialEq, serde::Serialize)]
+#[derive(Debug, Default, PartialEq, serde::Serialize)]
 struct AgentModel {
     id: String,
     label: String,
     blurb: String,
+    /// The model the agent runs when none is picked, where the agent says which that is.
+    #[serde(rename = "isDefault")]
+    is_default: bool,
+    /// The effort levels the model takes, where the agent lists them; `None` when it does not say.
+    efforts: Option<Vec<String>>,
+    /// An earlier model, kept under "More models" so the newest ones lead the list.
+    more: bool,
 }
 
 /// The models listed in Codex's own cache (`models_cache.json`, which Codex refreshes from the
@@ -185,12 +194,44 @@ fn codex_models_from(cache: &str) -> Result<Vec<AgentModel>, String> {
                     id: id.to_string(),
                     label: text("display_name").unwrap_or(id).to_string(),
                     blurb: text("description").unwrap_or_default().to_string(),
+                    efforts: codex_efforts(model),
+                    ..Default::default()
                 },
             ))
         })
         .collect();
     listed.sort_by_key(|(priority, _)| *priority);
     Ok(listed.into_iter().map(|(_, model)| model).collect())
+}
+
+/// The model Codex runs when none is picked: the top-level `model` in its `config.toml`. Only that
+/// one line is read, so a table's own `model` key (a profile's) is never taken for it.
+fn codex_default_model(config: &str) -> Option<String> {
+    config
+        .lines()
+        .map(str::trim)
+        .take_while(|line| !line.starts_with('['))
+        .find_map(|line| {
+            let value = line.strip_prefix("model")?.trim_start().strip_prefix('=')?.trim();
+            let name = value.strip_prefix('"')?.split('"').next()?;
+            is_model_name(name).then(|| name.to_string())
+        })
+}
+
+/// Marks the model Codex's settings name as the default, where the list has it.
+fn mark_codex_default(mut models: Vec<AgentModel>, config: &str) -> Vec<AgentModel> {
+    if let Some(name) = codex_default_model(config) {
+        for model in &mut models {
+            model.is_default = model.id == name;
+        }
+    }
+    models
+}
+
+/// The effort levels a model in Codex's cache says it takes (`supported_reasoning_levels`).
+fn codex_efforts(model: &serde_json::Value) -> Option<Vec<String>> {
+    let levels = model.get("supported_reasoning_levels")?.as_array()?;
+    Some(levels.iter().filter_map(|level| level.get("effort")?.as_str().map(str::to_string)).collect())
 }
 
 /// The extra models Claude Code offers this account, from `additionalModelOptionsCache` in its own
@@ -214,26 +255,127 @@ fn claude_models_from(config: &str) -> Vec<AgentModel> {
             let text = option.get("description").and_then(serde_json::Value::as_str).unwrap_or_default();
             let (name, blurb) = text.split_once(" · ").unwrap_or((text, ""));
             let label = if name.is_empty() { option.get("label")?.as_str()? } else { name };
-            Some(AgentModel { id: id.to_string(), label: label.to_string(), blurb: blurb.to_string() })
+            Some(AgentModel { id: id.to_string(), label: label.to_string(), blurb: blurb.to_string(), ..Default::default() })
         })
         .collect()
 }
 
-/// The "Default" row for Claude: what Claude Code will run when no model is picked, from the
-/// `model` in its `settings.json`. Without one, Claude Code picks by account, which cannot be read.
-fn claude_default_from(settings: &str) -> AgentModel {
-    let named = serde_json::from_str::<serde_json::Value>(settings)
-        .ok()
-        .and_then(|value| value.get("model").and_then(serde_json::Value::as_str).map(str::trim).filter(|name| !name.is_empty()).map(str::to_string));
-    let blurb = match named {
+/// The longest model name taken from a settings file.
+const MAX_MODEL_NAME_CHARS: usize = 100;
+
+/// A name `--model` could take: plain model-id characters, so nothing read from a file reaches a
+/// launch line as anything else.
+fn is_model_name(name: &str) -> bool {
+    let plain = |c: char| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '/' | '[' | ']' | '-');
+    !name.is_empty() && name.chars().count() <= MAX_MODEL_NAME_CHARS && name.chars().all(plain)
+}
+
+/// The model Claude Code runs when none is picked: the `model` in its `settings.json`. Without
+/// one, Claude Code picks by account, which cannot be read.
+fn claude_default_model(settings: &serde_json::Value) -> Option<String> {
+    let name = settings.get("model")?.as_str()?.trim();
+    is_model_name(name).then(|| name.to_string())
+}
+
+/// The models this account has settings of its own for (`modelSettings` in `settings.json`, keyed
+/// by model id): Claude Code writes one when a model is used, so these are models the account runs.
+fn claude_used_models(settings: &serde_json::Value) -> Vec<AgentModel> {
+    settings
+        .get("modelSettings")
+        .and_then(serde_json::Value::as_object)
+        .into_iter()
+        .flat_map(|models| models.keys())
+        .filter(|name| is_model_name(name))
+        .map(|name| AgentModel { id: name.clone(), label: name.clone(), blurb: String::new(), ..Default::default() })
+        .collect()
+}
+
+/// A full model id, not an alias: an alias follows the newest model of its family, so the ids are
+/// the earlier models.
+const FULL_MODEL_ID_PREFIX: &str = "claude-";
+/// The entry Claude Code lists for "whatever I would pick": not a model, but it says which one that is.
+const CLAUDE_DEFAULT_ENTRY: &str = "default";
+
+/// Claude's rows from the list Claude Code itself gave: every model with the efforts it takes, the
+/// newest first and the earlier ones marked `more`. The default is the model the settings name, else
+/// the one Claude Code's own "default" entry stands for; it leads the list.
+fn claude_rows_from_list(listed: Vec<claude_models::Listed>, settings: &str) -> Vec<AgentModel> {
+    let settings = serde_json::from_str::<serde_json::Value>(settings).unwrap_or_default();
+    let named = claude_default_model(&settings);
+    let own_pick = listed.iter().find(|model| model.id == CLAUDE_DEFAULT_ENTRY).map(|model| model.resolved.clone());
+    let default = named.clone().or(own_pick);
+    let blurb = match &default {
+        Some(name) => format!("Claude Code's own choice: {name}"),
+        None => "Whatever Claude Code picks for your account".to_string(),
+    };
+    let models: Vec<&claude_models::Listed> =
+        listed.iter().filter(|model| model.id != CLAUDE_DEFAULT_ENTRY && is_model_name(&model.id)).collect();
+    // An alias is preferred to the full id it stands for, so the default follows new releases.
+    let default_id = default.as_ref().and_then(|name| {
+        models
+            .iter()
+            .find(|model| &model.id == name)
+            .or_else(|| models.iter().find(|model| &model.resolved == name))
+            .map(|model| model.id.clone())
+    });
+    let mut rows: Vec<AgentModel> = models
+        .into_iter()
+        .map(|model| AgentModel {
+            id: model.id.clone(),
+            label: model.label.clone(),
+            blurb: model.blurb.clone(),
+            is_default: Some(&model.id) == default_id.as_ref(),
+            efforts: Some(model.efforts.clone()),
+            more: model.id.starts_with(FULL_MODEL_ID_PREFIX),
+        })
+        .collect();
+    // The settings name a model the list does not have: it still runs, so it is still offered.
+    if let (None, Some(name)) = (&default_id, named) {
+        rows.push(AgentModel { id: name.clone(), label: name, is_default: true, ..Default::default() });
+    }
+    rows.sort_by_key(|row| (row.more, !row.is_default));
+    rows.insert(0, AgentModel { id: CLAUDE_DEFAULT_ENTRY.into(), label: "Default".into(), blurb, ..Default::default() });
+    rows
+}
+
+/// Claude's rows when Claude Code could not be asked: a "Default" that says what it stands for, the
+/// account's extra models, the models it has used, and the one its settings name, marked as the
+/// default. This is only what its own files show; the window adds its fixed aliases.
+fn claude_rows(config: &str, settings: &str) -> Vec<AgentModel> {
+    let settings = serde_json::from_str::<serde_json::Value>(settings).unwrap_or_default();
+    let named = claude_default_model(&settings);
+    let blurb = match &named {
         Some(name) => format!("Claude Code's own setting: {name}"),
         None => "Whatever Claude Code picks for your account".to_string(),
     };
-    AgentModel { id: "default".into(), label: "Default".into(), blurb }
+    let mut rows = vec![AgentModel { id: "default".into(), label: "Default".into(), blurb, ..Default::default() }];
+    for model in claude_models_from(config).into_iter().chain(claude_used_models(&settings)) {
+        if !rows.iter().any(|row| row.id == model.id) {
+            rows.push(model);
+        }
+    }
+    if let Some(name) = named {
+        match rows.iter_mut().find(|row| row.id == name) {
+            Some(row) => row.is_default = true,
+            None => rows.push(AgentModel { id: name.clone(), label: name, blurb: String::new(), is_default: true, ..Default::default() }),
+        }
+    }
+    rows
 }
 
-/// The models an agent offers on this computer. Codex keeps a list under its own folder; Claude
-/// keeps its account's extra models in `.claude.json`. Gemini has none.
+/// Claude Code's own list of its models (`claude_models::ask`), started in the home folder so no
+/// project's settings shape it.
+async fn ask_claude_for_models(home: &std::path::Path) -> Result<Vec<claude_models::Listed>, String> {
+    let executable = tauri::async_runtime::spawn_blocking(maitty_desktop_client::claude_executable)
+        .await
+        .map_err(|error| format!("the search for Claude Code stopped: {error}"))?
+        .map_err(|error| format!("{error:#}"))?;
+    claude_models::ask(&executable, home).await
+}
+
+/// The models an agent offers on this computer. Claude Code is asked for its own list
+/// (`claude_rows_from_list`), and when it cannot be, its files are read instead (`claude_rows`).
+/// Codex keeps a list under its own folder. Gemini has none.
 #[tauri::command]
 async fn agent_models(app: tauri::AppHandle, agent: String) -> Result<Vec<AgentModel>, String> {
     if agent == "claude" {
@@ -242,13 +384,19 @@ async fn agent_models(app: tauri::AppHandle, agent: String) -> Result<Vec<AgentM
             None => app.path().home_dir().map_err(|error| error.to_string())?,
         };
         // A missing or unreadable file is no list, not a failure: the fixed aliases stay.
-        let extras = std::fs::read_to_string(folder.join(".claude.json")).map(|text| claude_models_from(&text)).unwrap_or_default();
+        let config = std::fs::read_to_string(folder.join(".claude.json")).unwrap_or_default();
         let settings = match std::env::var_os("CLAUDE_CONFIG_DIR") {
             Some(path) => PathBuf::from(path),
             None => folder.join(".claude"),
         };
-        let default = claude_default_from(&std::fs::read_to_string(settings.join("settings.json")).unwrap_or_default());
-        return Ok(std::iter::once(default).chain(extras).collect());
+        let settings = std::fs::read_to_string(settings.join("settings.json")).unwrap_or_default();
+        let home = app.path().home_dir().map_err(|error| error.to_string())?;
+        match ask_claude_for_models(&home).await {
+            Ok(listed) if !listed.is_empty() => return Ok(claude_rows_from_list(listed, &settings)),
+            Ok(_) => tracing::warn!("Claude Code listed no models; reading its files instead"),
+            Err(error) => tracing::warn!("{error}; reading Claude Code's files instead"),
+        }
+        return Ok(claude_rows(&config, &settings));
     }
     if agent != "codex" {
         return Ok(Vec::new());
@@ -259,7 +407,9 @@ async fn agent_models(app: tauri::AppHandle, agent: String) -> Result<Vec<AgentM
     };
     let cache = folder.join("models_cache.json");
     match std::fs::read_to_string(&cache) {
-        Ok(text) => codex_models_from(&text),
+        // A missing or unreadable settings file names no default: the Default row stays.
+        Ok(text) => codex_models_from(&text)
+            .map(|models| mark_codex_default(models, &std::fs::read_to_string(folder.join("config.toml")).unwrap_or_default())),
         // Codex has not fetched its list yet: nothing to show beyond its default.
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
         Err(error) => Err(format!("Could not read {}: {error}", cache.display())),
@@ -485,6 +635,22 @@ async fn start_agent_session(
         .map_err(|error| format!("{error:#}"))
 }
 
+/// Start an agent ahead of its first message (see `maitty_desktop_client::prewarm_agent_session`): the same agent
+/// names and flag rules as `start_agent_session`.
+#[tauri::command]
+async fn prewarm_agent_session(cwd: PathBuf, agent: String, flags: Vec<String>) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::prewarm_agent_session(cwd, agent, flags)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn drop_prewarmed_agent() -> Result<serde_json::Value, String> {
+    maitty_desktop_client::drop_prewarmed_agent()
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
 #[tauri::command]
 async fn start_terminal_session(
     app: tauri::AppHandle,
@@ -600,6 +766,26 @@ async fn mark_terminal_seen(
             .map(|()| serde_json::Value::Null);
     }
     maitty_desktop_client::mark_terminal_seen(term, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// The person's answer to a session that asked to start helpers: `allow`, `always` or `no`.
+#[tauri::command]
+async fn answer_helpers(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    term: u32,
+    choice: String,
+) -> Result<serde_json::Value, String> {
+    let choice = maitty_desktop_client::helper_choice(&choice).map_err(|error| format!("{error:#}"))?;
+    if routing::is_remote(machine) {
+        return wire
+            .command(machine, term, PaneCommand::AnswerHelpers(choice))
+            .map(|()| serde_json::Value::Null);
+    }
+    maitty_desktop_client::answer_helpers(term, choice, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
 }
@@ -1051,6 +1237,7 @@ pub fn run() {
             attachment::attachments_exist,
             attachment::attachment_image,
             image_paste::save_pasted_image,
+            export::save_export,
             image_paste::send_pasted_image,
             read_conversation,
             conversation_diff,
@@ -1078,11 +1265,14 @@ pub fn run() {
             new_worktree_session,
             restore_snapshot,
             start_agent_session,
+            prewarm_agent_session,
+            drop_prewarmed_agent,
             start_terminal_session,
             start_shell_session,
             rename_terminal_session,
             send_when_agent_ready,
             mark_terminal_seen,
+            answer_helpers,
             pin_terminal_session,
             archive_terminal_session,
             reload_terminal_session,
@@ -1129,7 +1319,69 @@ mod tests {
         let ids: Vec<&str> = models.iter().map(|model| model.id.as_str()).collect();
         assert_eq!(ids, ["a", "b"]);
         assert_eq!(models[0].label, "A");
+        assert_eq!(models[0].efforts, None);
         assert!(super::codex_models_from("not json").is_err());
+    }
+
+    #[test]
+    fn codex_models_say_the_efforts_they_take() {
+        let cache = r#"{"models":[{"slug":"a","visibility":"list","supported_reasoning_levels":[{"effort":"low"},{"effort":"max"}]}]}"#;
+        let models = super::codex_models_from(cache).unwrap();
+        assert_eq!(models[0].efforts, Some(vec!["low".to_string(), "max".to_string()]));
+    }
+
+    #[test]
+    fn codex_marks_the_model_its_settings_name_and_not_a_profiles() {
+        let cache = r#"{"models":[{"slug":"a","visibility":"list"},{"slug":"b","visibility":"list"}]}"#;
+        let models = || super::codex_models_from(cache).unwrap();
+        let defaults = |config: &str| -> Vec<String> {
+            super::mark_codex_default(models(), config).into_iter().filter(|model| model.is_default).map(|model| model.id).collect()
+        };
+        assert_eq!(defaults("approval_policy = \"never\"\nmodel = \"b\" # mine\n[profiles.x]\nmodel = \"a\"\n"), ["b"]);
+        assert!(defaults("model_reasoning_effort = \"high\"\n[profiles.x]\nmodel = \"a\"\n").is_empty());
+        assert!(defaults("model = \"not listed\"").is_empty());
+    }
+
+    fn listed(id: &str, resolved: &str, efforts: &[&str]) -> super::claude_models::Listed {
+        super::claude_models::Listed {
+            id: id.into(),
+            label: id.to_uppercase(),
+            blurb: String::new(),
+            resolved: resolved.into(),
+            efforts: efforts.iter().map(|level| level.to_string()).collect(),
+        }
+    }
+
+    fn claude_list() -> Vec<super::claude_models::Listed> {
+        vec![
+            listed("default", "claude-fable-5-2", &["low"]),
+            listed("opus", "claude-opus-5-5", &["low", "max"]),
+            listed("fable", "claude-fable-5-2", &["low", "max"]),
+            listed("claude-opus-4-8", "claude-opus-4-8", &[]),
+            listed("bad name; rm", "x", &[]),
+        ]
+    }
+
+    #[test]
+    fn claude_lists_what_claude_code_listed_with_its_own_pick_first_and_earlier_models_as_more() {
+        let rows = super::claude_rows_from_list(claude_list(), "{}");
+        let ids: Vec<&str> = rows.iter().map(|row| row.id.as_str()).collect();
+        assert_eq!(ids, ["default", "fable", "opus", "claude-opus-4-8"]);
+        let fable = &rows[1];
+        assert!(fable.is_default);
+        assert_eq!(fable.efforts, Some(vec!["low".to_string(), "max".to_string()]));
+        assert_eq!(rows.iter().filter(|row| row.more).map(|row| row.id.as_str()).collect::<Vec<_>>(), ["claude-opus-4-8"]);
+        assert_eq!(rows[3].efforts, Some(Vec::new()));
+    }
+
+    #[test]
+    fn claude_marks_the_model_its_settings_name_over_claude_codes_own_pick() {
+        let by_alias = super::claude_rows_from_list(claude_list(), r#"{"model":"claude-opus-5-5"}"#);
+        assert_eq!(by_alias.iter().filter(|row| row.is_default).map(|row| row.id.as_str()).collect::<Vec<_>>(), ["opus"]);
+        let unlisted = super::claude_rows_from_list(claude_list(), r#"{"model":"opus[1m]"}"#);
+        let named: Vec<(&str, Option<&Vec<String>>)> =
+            unlisted.iter().filter(|row| row.is_default).map(|row| (row.id.as_str(), row.efforts.as_ref())).collect();
+        assert_eq!(named, [("opus[1m]", None)]);
     }
 
     #[test]
@@ -1137,12 +1389,31 @@ mod tests {
         let config = r#"{"additionalModelOptionsCache":[{"description":"Fable 5.1 · Most capable for your hardest tasks","label":"Fable","value":"claude-fable-5-1[1m]"}]}"#;
         assert_eq!(
             super::claude_models_from(config),
-            vec![super::AgentModel { id: "claude-fable-5-1[1m]".into(), label: "Fable 5.1".into(), blurb: "Most capable for your hardest tasks".into() }]
+            vec![super::AgentModel { id: "claude-fable-5-1[1m]".into(), label: "Fable 5.1".into(), blurb: "Most capable for your hardest tasks".into(), ..Default::default() }]
         );
         assert!(super::claude_models_from("not json").is_empty());
-        assert_eq!(super::claude_default_from(r#"{"model":"sonnet"}"#).blurb, "Claude Code's own setting: sonnet");
-        assert!(super::claude_default_from("{}").blurb.starts_with("Whatever Claude Code picks"));
         assert!(super::claude_models_from("{}").is_empty());
+    }
+
+    #[test]
+    fn claude_lists_the_models_it_has_used_and_marks_the_one_its_settings_name() {
+        let config = r#"{"additionalModelOptionsCache":[{"description":"Fable 5.1 · Hardest tasks","label":"Fable","value":"claude-fable-5-1[1m]"}]}"#;
+        let settings = r#"{"model":"claude-fable-5-2","modelSettings":{"claude-sonnet-5-5":{},"claude-fable-5-2":{},"bad name; rm":{}}}"#;
+        let rows = super::claude_rows(config, settings);
+        let ids: Vec<&str> = rows.iter().map(|row| row.id.as_str()).collect();
+        assert_eq!(ids, ["default", "claude-fable-5-1[1m]", "claude-fable-5-2", "claude-sonnet-5-5"]);
+        let defaults: Vec<&str> = rows.iter().filter(|row| row.is_default).map(|row| row.id.as_str()).collect();
+        assert_eq!(defaults, ["claude-fable-5-2"]);
+        assert_eq!(rows[0].blurb, "Claude Code's own setting: claude-fable-5-2");
+    }
+
+    #[test]
+    fn claude_adds_a_default_its_settings_name_that_no_list_has_and_says_when_there_is_none() {
+        let rows = super::claude_rows("{}", r#"{"model":"fable"}"#);
+        assert_eq!(rows.last().map(|row| (row.id.as_str(), row.is_default)), Some(("fable", true)));
+        let none = super::claude_rows("not json", "not json");
+        assert_eq!(none.len(), 1);
+        assert!(none[0].blurb.starts_with("Whatever Claude Code picks"));
     }
 
     use super::first_existing_daemon;

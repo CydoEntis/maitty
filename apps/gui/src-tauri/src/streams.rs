@@ -71,7 +71,8 @@ pub enum Out {
         term: TermId,
         status: Status,
     },
-    /// Text another machine's daemon asks to be put on this computer's clipboard (it was allowed to).
+    /// Text a program in a pane copied (OSC 52), to be put on this computer's clipboard. Another
+    /// machine's reaches here only when that machine was allowed to.
     Clipboard { machine: MachineId, text: String },
     /// Ask the machine's daemon for the pane's replay.
     WantReplay { machine: MachineId, term: TermId },
@@ -155,7 +156,9 @@ impl Streams {
             ServerMsg::Error(text) if machine != MachineId::LOCAL => {
                 out.push(Out::Error { machine, text });
             }
-            ServerMsg::Clipboard { text, .. } if machine != MachineId::LOCAL => {
+            // This computer's too: a program that handles the mouse itself (a full-screen agent) copies
+            // what was selected in it this way, and nothing else would put it on the clipboard.
+            ServerMsg::Clipboard { text, .. } => {
                 out.push(Out::Clipboard { machine, text });
             }
             ServerMsg::Notice(text) if machine != MachineId::LOCAL => {

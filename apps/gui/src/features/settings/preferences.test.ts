@@ -18,6 +18,7 @@ const DEFAULTS: SettingsPreferences = {
   terminalFontWeight: 400,
   terminalFontWeightBold: 700,
   startFolder: '',
+  exportFolder: '',
   themeMode: 'system',
   darkTheme: 'Maitty Night',
   lightTheme: 'Maitty Day',

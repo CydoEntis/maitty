@@ -6,7 +6,7 @@ import type { SettingsPreferences } from '../preferences'
 import { machineHeads, type RemoteMachine } from '@/features/workspace/model/machines'
 import { DesktopSettings, type DesktopSettingsSection, type MachinesInfo } from './DesktopSettings'
 
-const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreLayout: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, terminalFontFamily: '', terminalFontWeight: 400, terminalFontWeightBold: 700, startFolder: '', themeMode: 'dark', darkTheme: 'Maitty Night', lightTheme: 'Maitty Day', cursorStyle: 'block', scrollback: 10000, scrollSpeed: 1, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', sidebarOrder: 'creation', sidebarGroup: 'status', terminalDock: 'panel', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, monthlyBudget: null, iconSize: 'medium', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal', gemini: 'terminal' }, defaultAgent: 'claude', newSessionView: 'chat', chatFullAccessDefault: false, yoloClaude: false, yoloCodex: false, yoloGemini: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass' }
+const PREFS: SettingsPreferences = { exportFolder: '', accent: 'teal', spinner: 'braille', restoreLayout: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, terminalFontFamily: '', terminalFontWeight: 400, terminalFontWeightBold: 700, startFolder: '', themeMode: 'dark', darkTheme: 'Maitty Night', lightTheme: 'Maitty Day', cursorStyle: 'block', scrollback: 10000, scrollSpeed: 1, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', sidebarOrder: 'creation', sidebarGroup: 'status', terminalDock: 'panel', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, monthlyBudget: null, iconSize: 'medium', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal', gemini: 'terminal' }, defaultAgent: 'claude', newSessionView: 'chat', chatFullAccessDefault: false, yoloClaude: false, yoloCodex: false, yoloGemini: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass' }
 
 function info(overrides: Partial<MachinesInfo> = {}): MachinesInfo {
   return { known: true, list: [], onRetry: vi.fn(), onRemove: vi.fn(), onGrant: vi.fn(), onUpdate: vi.fn(() => Promise.resolve()), onCheckActivity: vi.fn(() => Promise.resolve(null)), onCopyCommand: vi.fn(), add: { windows: false, loadHosts: () => Promise.resolve([]), onAdd: vi.fn(), onCancel: vi.fn() }, ...overrides }
@@ -40,6 +40,17 @@ describe('desktop settings', () => {
     await user.click(close)
 
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('saves exports to Downloads until a folder is picked with the system picker', async () => {
+    const user = userEvent.setup()
+    const onChooseFolder = vi.fn().mockResolvedValue('/home/casey/exports')
+    const { onChange } = renderSettings('general', { onChooseFolder })
+
+    expect(screen.getByText('Your Downloads folder')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Choose the export folder' }))
+
+    await waitFor(() => { expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ exportFolder: '/home/casey/exports' })) })
   })
 
   it('picks the start folder with the system picker and saves it like a typed one', async () => {
@@ -228,7 +239,7 @@ describe('desktop settings', () => {
   it('picks a dark and a light theme separately, from searchable dropdowns that list the one in use first', async () => {
     const user = userEvent.setup()
     const { onChange } = renderSettings('appearance', { preferences: { ...PREFS, darkTheme: 'Gruvbox Dark' } })
-    expect(screen.getByText('16 themes installed')).toBeInTheDocument()
+    expect(screen.getByText('50 themes installed')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Dark theme: Gruvbox Dark' }))
     const dark = (await screen.findByRole('radiogroup', { name: 'Dark themes' }))

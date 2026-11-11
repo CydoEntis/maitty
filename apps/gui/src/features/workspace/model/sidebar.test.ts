@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Conversation } from '@/data/preview'
 import { LOCAL_HEAD, type MachineHead } from './machines'
 import { toSessionView, type SessionView } from './session'
-import { byUrgency, inProject, machineGroups, projectChoices, projectColor, projectGroups, projectSections, rowTitle, rowWord, statusSections } from './sidebar'
+import { byUrgency, inProject, machineGroups, projectChoices, projectColor, projectGroups, projectSections, rowTitle, rowWord, statusSections, terminalSessions } from './sidebar'
 
 vi.mock('@/api/daemon', () => ({ terminalOf: (id: string) => Number(id.slice(1)) }))
 
@@ -64,19 +64,34 @@ describe('machine groups', () => {
 
 describe('status sections', () => {
   it('lists needs you, working, finished and idle in that order, and leaves out a status nothing has', () => {
-    const sections = statusSections([session(1), session(2, { agent: 'claude', status: 'done' }), session(3, { agent: 'claude', status: 'needs-you' })])
+    const sections = statusSections([session(1, { agent: 'codex' }), session(2, { agent: 'claude', status: 'done' }), session(3, { agent: 'claude', status: 'needs-you' })])
     expect(sections.map((section) => [section.name, section.sessions.map((item) => item.id)])).toEqual([['Needs you', ['t3']], ['Finished', ['t2']], ['Idle', ['t1']]])
   })
 
-  it('puts an agent that stopped with what needs you, and a shell that exited with the idle ones', () => {
-    const sections = statusSections([session(1, { details: exited }), session(2, { agent: 'claude', details: exited })])
-    expect(sections.map((section) => [section.key, section.sessions.map((item) => item.id)])).toEqual([['needs', ['t2']], ['idle', ['t1']]])
+  it('puts an agent that stopped with what needs you', () => {
+    const sections = statusSections([session(2, { agent: 'claude', details: exited })])
+    expect(sections.map((section) => [section.key, section.sessions.map((item) => item.id)])).toEqual([['needs', ['t2']]])
+  })
+})
+
+describe('terminals', () => {
+  it('are left out of the status and project sections and listed on their own, as created', () => {
+    const all = [session(3, { process: 'pnpm' }), session(1), session(2, { agent: 'claude' }), session(4, { details: exited })]
+    expect(terminalSessions(all).map((item) => item.id)).toEqual(['t1', 't3', 't4'])
+    expect(statusSections(all).flatMap((section) => section.sessions.map((item) => item.id))).toEqual(['t2'])
+    expect(projectSections(all, [LOCAL_HEAD]).flatMap((section) => section.sessions.map((item) => item.id))).toEqual(['t2'])
+  })
+
+  it('stay with the agents while they need you', () => {
+    const all = [session(1, { status: 'needs-you' }), session(2)]
+    expect(terminalSessions(all).map((item) => item.id)).toEqual(['t2'])
+    expect(statusSections(all).map((section) => [section.key, section.sessions.map((item) => item.id)])).toEqual([['needs', ['t1']]])
   })
 })
 
 describe('projects', () => {
   const devbox: MachineHead = { ...LOCAL_HEAD, key: 'machine-2', machine: 2, name: 'devbox', label: 'devbox' }
-  const sessions = () => [session(1, { cwd: '/x/b', folder: '/x/b' }), session(2, { cwd: '/x/a', folder: '/x/a' }), session(3, { machine: 2, machineName: 'devbox', cwd: '/x/a', folder: '/x/a' })]
+  const sessions = () => [session(1, { agent: 'claude', cwd: '/x/b', folder: '/x/b' }), session(2, { agent: 'claude', cwd: '/x/a', folder: '/x/a' }), session(3, { agent: 'claude', machine: 2, machineName: 'devbox', cwd: '/x/a', folder: '/x/a' })]
 
   it('lists every project by name with how many sessions it has', () => {
     expect(projectChoices(sessions()).map((choice) => [choice.name, choice.count])).toEqual([['a', 2], ['b', 1]])

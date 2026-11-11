@@ -323,6 +323,24 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
           </div>
         </div>
       </Card>
+      <Card
+        title="Export folder"
+        color="var(--ansi-green)"
+        iconPath={<path d={FOLDER_PATH} />}
+        foot="Code blocks and tables you save from a chat go here. An existing file is never replaced; the new one gets a number."
+      >
+        <div style={{ padding: '0 16px 14px' }}>
+          <div className="mx-folder-row">
+            <div className="mx-folder-field">
+              <span className="mono" style={{ fontSize: 12, color: preferences.exportFolder === '' ? 'var(--dim)' : 'var(--fg)' }}>{preferences.exportFolder === '' ? 'Your Downloads folder' : preferences.exportFolder}</span>
+            </div>
+            {onChooseFolder && (
+              <button type="button" className="mx-text-button" aria-label="Choose the export folder" onClick={() => { void onChooseFolder(preferences.exportFolder).then((picked) => { if (picked) update('exportFolder', picked) }) }}>Browse…</button>
+            )}
+            {preferences.exportFolder !== '' && <button type="button" className="mx-text-button" onClick={() => { update('exportFolder', '') }}>Use Downloads</button>}
+          </div>
+        </div>
+      </Card>
       <Card title="Window" color="var(--ansi-blue)" iconPath={<><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M3 16h18" /></>}>
         <Row label="Status bar" detail="A line at the bottom with quick controls for theme, layout, text size and shortcuts.">
           <Switch aria-label="Status bar" checked={preferences.statusBar} onCheckedChange={(value) => { update('statusBar', value) }} />

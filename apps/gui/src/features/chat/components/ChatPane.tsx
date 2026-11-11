@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { MessageSquare } from 'lucide-react'
 import { CHAT_AGENTS, noChatReason, type ChatAgent, type ChatAvailability } from '@/features/workspace/model/chatView'
 import { Button } from '@/components/ui/button'
+import type { OpenFile } from '../openFile'
 import type { PermissionAsk } from '@/data/preview'
 import type { SessionStatus } from '@/features/workspace/model/session'
 import type { SubagentView } from '@/features/workspace/model/subagents'
@@ -16,6 +17,8 @@ export type ChatPaneProps = {
   root?: string | null
   /** Shows a file's diff in the Changes panel. */
   onOpenDiff?: ((file: string) => void) | null
+  /** Opens a file a reply names, at its line when it gave one. */
+  onOpenFile?: OpenFile | null
   /** Types into the terminal the agent runs in, so a chat that follows it can talk to it (ADR 0003). */
   typeInto?: ((text: string) => Promise<void>) | undefined
   /** What the daemon read off the screen of a pane that is stopped on a question: the text and its choices. */
@@ -42,7 +45,6 @@ export type ChatPaneProps = {
   /** The project folder's name and the branch, for the tray under the message box. */
   folder?: string
   branch?: string | null
-  subagentCount?: number
   /** A subagent whose own chat shows instead of the session's, and the way back. */
   subagent?: SubagentView | null
   onBackToMain?: () => void
@@ -68,11 +70,11 @@ export function ChatPane(props: ChatPaneProps) {
             hasTerminal={props.hasTerminal ?? true}
             root={props.root ?? null}
             onOpenDiff={props.onOpenDiff ?? null}
+            onOpenFile={props.onOpenFile ?? null}
             typeInto={props.typeInto}
             ask={props.ask ?? null}
             folder={props.folder ?? ''}
             branch={props.branch ?? null}
-            subagentCount={props.subagentCount ?? 0}
             subagent={props.subagent ?? null}
             onOpenFolder={props.onOpenFiles ?? null}
             {...(props.onBackToMain === undefined ? {} : { onBackToMain: props.onBackToMain })}
@@ -81,7 +83,7 @@ export function ChatPane(props: ChatPaneProps) {
           />
         )
         : availability.kind === 'no-events' && props.sessionId !== undefined
-          ? <StartingChat agent={availability.agent} sessionId={props.sessionId} onBackToTerminal={props.onBackToTerminal} folder={props.folder ?? ''} branch={props.branch ?? null} {...(props.paneStatus === undefined ? {} : { paneStatus: props.paneStatus })} {...(props.asking === undefined ? {} : { asking: props.asking })} {...(props.typeInto === undefined ? {} : { typeInto: props.typeInto })} />
+          ? <StartingChat agent={availability.agent} sessionId={props.sessionId} onBackToTerminal={props.onBackToTerminal} folder={props.folder ?? ''} branch={props.branch ?? null} root={props.root ?? null} {...(props.paneStatus === undefined ? {} : { paneStatus: props.paneStatus })} {...(props.asking === undefined ? {} : { asking: props.asking })} {...(props.typeInto === undefined ? {} : { typeInto: props.typeInto })} />
           : <NoChat {...props} availability={availability} />}
     </section>
   )

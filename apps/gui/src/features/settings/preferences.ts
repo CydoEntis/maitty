@@ -60,6 +60,8 @@ export type SettingsPreferences = {
   terminalFontWeightBold: TerminalFontWeight
   /** Where a new session starts. Empty: your home folder. */
   startFolder: string
+  /** Where a block saved from a chat goes; empty is the Downloads folder. */
+  exportFolder: string
   /** How the sidebar groups sessions: by git repository, or by the folder they are in. */
   /** Which theme is in use: your dark one, your light one, or whichever the system asks for. */
   themeMode: ThemeMode
@@ -164,6 +166,7 @@ function defaults(): SettingsPreferences {
     terminalFontWeight: DEFAULT_FONT_WEIGHT,
     terminalFontWeightBold: DEFAULT_FONT_WEIGHT_BOLD,
     startFolder: '',
+    exportFolder: '',
     // The theme chosen before there were two slots keeps its look; otherwise follow the system.
     themeMode: legacy === DEFAULT_LIGHT_THEME ? 'light' : 'system',
     darkTheme: DEFAULT_THEME,
@@ -246,6 +249,7 @@ export function readSettingsPreferences(): SettingsPreferences {
       terminalFontWeight: isFontWeight(preferences.terminalFontWeight) ? preferences.terminalFontWeight : fallback.terminalFontWeight,
       terminalFontWeightBold: isFontWeight(preferences.terminalFontWeightBold) ? preferences.terminalFontWeightBold : fallback.terminalFontWeightBold,
       startFolder: typeof preferences.startFolder === 'string' ? preferences.startFolder.trim() : fallback.startFolder,
+      exportFolder: typeof preferences.exportFolder === 'string' ? preferences.exportFolder.trim() : fallback.exportFolder,
       ...themeChoice(preferences, fallback),
       cursorStyle: isCursorStyle(preferences.cursorStyle) ? preferences.cursorStyle : fallback.cursorStyle,
       scrollback: isScrollback(preferences.scrollback) ? preferences.scrollback : fallback.scrollback,

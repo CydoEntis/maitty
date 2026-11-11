@@ -1,3 +1,4 @@
+import { movePanes } from './components/paneTransition'
 import { type Dispatch, type SetStateAction, useCallback } from 'react'
 import { toast } from '@/lib/toast'
 import { defaultSessionFolder, sendTerminalInput } from '@/api/daemon'
@@ -52,7 +53,7 @@ export function useAgentStarts({ sessionMap, endSessions, setAgentTerminals, onT
     }
     setSettingsSection(null)
     void runStart(async () => focusedSession?.cwd ?? resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => {
-      setLayout((current) => openArrangement(current, id, makeId))
+      movePanes(() => { setLayout((current) => openArrangement(current, id, makeId)) })
       void sendTerminalInput({ id, generation: 0 }, `${program}\r`).catch((error: unknown) => { toast.error(errorMessage(error, `Could not start ${program}`)) })
     })
   }, [focusedSession, setSettingsSection, runStart, preferences.startFolder, home, setLayout])

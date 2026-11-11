@@ -91,7 +91,11 @@ impl Daemon {
                     .unwrap_or_else(home);
                 let (cols, rows) = self.guess_size();
                 let by = self.starting(client, &helpers::task_label(cmd.as_deref(), None))?;
-                let term = self.spawn(cmd.as_deref(), &cwd, cols, rows)?;
+                // An agent kept warm for exactly this is the session: it is already running.
+                let term = match self.take_warm(&cwd, cmd.as_deref(), cols, rows) {
+                    Some(term) => term,
+                    None => self.spawn(cmd.as_deref(), &cwd, cols, rows)?,
+                };
                 self.started(term, by);
                 // The app that asked for it owns it: only that app may use this session.
                 let owner = self.surface_of(client);
@@ -123,6 +127,8 @@ impl Daemon {
                 self.active_ws = Some(id);
                 self.poll_git_soon();
             }
+            Command::Prewarm { cwd, cmd } => self.prewarm_agent(cwd, cmd)?,
+            Command::DropPrewarm => self.drop_warm(),
             Command::CloseWorkspace { ws } => {
                 let terms = self.workspace_panes(ws);
                 let tops = self.worktrees_of(&terms);

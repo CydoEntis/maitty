@@ -144,6 +144,10 @@ export function StatusBadge({ status }: { status: SessionStatus }) {
     case 'unknown':
       return <span className="mx-badge is-unknown" />
     case 'idle':
-      return <span className="mx-badge is-idle" />
+      return (
+        <span className="mx-badge is-idle" aria-hidden="true">
+          <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M2.6 5.4h3.6l-3.6 4h3.6" /><path d="M7.6 2.4h2l-2 2.4h2" /></svg>
+        </span>
+      )
   }
 }

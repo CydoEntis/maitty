@@ -175,11 +175,11 @@ export function formatDuration(ms: number): string {
 /** The words of a turn divider. Without the daemon's times it claims no duration and no clock time. */
 export function dividerText(turn: TurnEvent, clock: (ms: number) => string): string {
   const outcome = turn.outcome
-  if (!turn.timed) return outcome === 'completed' ? 'Turn finished' : outcome === 'failed' ? 'Turn failed' : 'Turn interrupted'
+  if (!turn.timed) return outcome === 'completed' ? 'Turn finished' : outcome === 'failed' ? 'Turn failed' : 'Turn stopped'
   const took = formatDuration(turn.endedAtMs - turn.startedAtMs)
   const done = clock(turn.endedAtMs)
-  if (outcome === 'completed') return `Cooked for ${took} · done ${done}`
-  return `${outcome === 'failed' ? 'Failed' : 'Interrupted'} after ${took} · ${done}`
+  if (outcome === 'completed') return `Finished in ${took} · ${done}`
+  return `${outcome === 'failed' ? 'Failed' : 'Stopped'} after ${took} · ${done}`
 }
 
 /** The lead sentence of an agent message: its first sentence, cut at 220 characters. The rest is the body. */

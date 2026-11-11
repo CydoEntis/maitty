@@ -1,44 +1,96 @@
 import { useState } from 'react'
-import { Check, Circle, CircleDot } from 'lucide-react'
+import { ArrowUpRight, Lock } from 'lucide-react'
 import { HighlightedLine } from '@/components/HighlightedLine'
-import { Spinner } from '@/features/workspace/components/glyphs'
 import { ElapsedSince } from '@/features/workspace/components/times'
-import type { CommandEvent, EditEvent, TodoEvent, ToolEvent } from '../chatEvents'
+import type { CommandEvent, EditEvent, ToolEvent } from '../chatEvents'
 import { isOmitted, redactionNote } from '../redaction'
-import { elapsedMs, relativePath, todoProgress, tookText } from '../stepInfo'
-import { Detail, StatusMark, StatusWord } from './cardParts'
+import { commandMeta, relativePath } from '../stepInfo'
+import { toolFacts, type ToolFacts } from '../toolFacts'
+import type { WorkStep } from '../workSummary'
+import { documentOf } from '../writtenDocument'
+import { ChangePill, FileBadge, Pill, StepRow, type MetaTone } from './cardParts'
 import { diffRows, type DiffRow } from './diffRows'
+import { DocumentCard } from './DocumentCard'
 
 /**
- * The step cards of the chat (v18 C.1): tool chip, command card, edit block and checklist. A fact
- * the daemon's history does not carry is said to be unavailable, never guessed. Colours are theme
+ * The steps an agent takes, each a row that opens to its detail (handoff items 8 to 15). A fact the
+ * daemon's history does not carry is said to be unavailable, never guessed. Colours are theme
  * tokens, and nothing here animates except the spinner of a step that is running.
  */
 
 export const FOLD_LINES = 12
 export const COMMAND_TAIL_LINES = 3
-const CHIP_TARGET_CHARS = 90
 
-/** A compact mono chip: what ran and on what; click opens its input and result, bounded. */
-export function ToolChip({ event }: { event: ToolEvent }) {
-  const [open, setOpen] = useState(false)
-  const target = event.target?.slice(0, CHIP_TARGET_CHARS) ?? ''
+const STOPPED_WORD = 'stopped'
+const FAILED_WORD = 'failed'
+
+/** A muted line saying the daemon hid a secret in the text above it; nothing when it hid none. */
+function RedactionNote({ texts }: { texts: readonly (string | null)[] }) {
+  const note = redactionNote(...texts)
+  return note === null ? null : <p className="mx-step-note">{note}</p>
+}
+
+/** Opens by itself when the step failed, until the person opens or closes it themselves. */
+function useOpen(byItself: boolean): [boolean, () => void] {
+  const [chosen, setChosen] = useState<boolean | null>(null)
+  const open = chosen ?? byItself
+  return [open, () => { setChosen(!open) }]
+}
+
+const looksLikeFile = (target: string) => /^[^\s"'`]+\.[A-Za-z0-9]+$/.test(target)
+
+function ToolTarget({ facts }: { facts: ToolFacts }) {
+  switch (facts.kind) {
+    case 'file':
+    case 'folder':
+      return <FileBadge path={facts.kind === 'folder' && !facts.path.endsWith('/') ? `${facts.path}/` : facts.path} />
+    case 'pattern':
+      return <><code className="mx-code-chip">{facts.pattern}</code>{facts.where !== null && <span className="mx-step-where">in {facts.where}</span>}</>
+    case 'address':
+      return <span className="mx-step-mono">{facts.address}</span>
+    case 'query':
+      return <span className="mx-step-quoted">“{facts.query}”</span>
+    case 'extension':
+    case 'other':
+      if (facts.target === null) return null
+      return looksLikeFile(facts.target) ? <FileBadge path={facts.target} /> : <span className="mx-step-plain">{facts.target}</span>
+  }
+}
+
+type ToolStepProps = {
+  event: ToolEvent
+  /** The session's folder, so paths are shown relative to it. */
+  root?: string | null
+  waiting?: boolean
+}
+
+/** Any tool with no card of its own: a read, a search, a fetch, an extension's tool. Opens to its input and result. */
+export function ToolStep({ event, root = null, waiting = false }: ToolStepProps) {
+  const [open, toggle] = useOpen(false)
+  const facts = toolFacts(event, root)
+  const meta = event.status === 'failed' ? FAILED_WORD : event.status === 'interrupted' ? STOPPED_WORD : facts.kind === 'file' ? facts.lines : null
+  const result = event.detail.trim()
   return (
-    <div>
-      <button type="button" aria-expanded={open} className="mx-tool" onClick={() => { setOpen((current) => !current) }}>
-        <StatusMark status={event.status} />
-        <span className="mx-tool-text">{event.name}{target !== '' && ` ${target}`}</span>
-      </button>
+    <div className="mx-step">
+      <StepRow
+        status={event.status}
+        verb={facts.kind === 'extension' ? <><span className="mx-step-server">{facts.server}</span>{facts.tool}</> : facts.verb}
+        target={<ToolTarget facts={facts} />}
+        meta={meta}
+        metaTone={event.status === 'failed' ? 'danger' : 'dim'}
+        open={open}
+        onToggle={toggle}
+        waiting={waiting}
+      />
       {open && (
-        <div className="mx-tool-detail">
-          {event.input !== null && (
-            <>
-              <p className="mt-1.5 mb-0 text-[11px] font-semibold text-dim">Input</p>
-              <Detail text={event.input} empty="" />
-            </>
+        <div className="mx-step-body">
+          {event.input === null && result === '' ? <p className="mx-step-absent">The conversation history kept no detail for this step.</p> : (
+            <dl className="mx-step-io">
+              {event.input !== null && <><dt>input</dt><dd>{event.input}</dd></>}
+              <dt>result</dt>
+              <dd className={result === '' ? 'is-absent' : undefined}>{result === '' ? 'It returned nothing, or the history did not keep it.' : event.detail}</dd>
+            </dl>
           )}
-          {event.input !== null && event.detail.trim() !== '' && <p className="mt-1.5 mb-0 text-[11px] font-semibold text-dim">Result</p>}
-          <Detail text={event.detail} empty={event.input === null ? 'The conversation history kept no detail for this step.' : 'It returned nothing, or the history did not keep it.'} />
           <RedactionNote texts={[event.input, event.detail]} />
         </div>
       )}
@@ -46,134 +98,52 @@ export function ToolChip({ event }: { event: ToolEvent }) {
   )
 }
 
-/** A muted line saying the daemon hid a secret in the text above it; nothing when it hid none. */
-function RedactionNote({ texts }: { texts: readonly (string | null)[] }) {
-  const note = redactionNote(...texts)
-  return note === null ? null : <p className="mt-1 mb-0 text-[11.5px] text-dim">{note}</p>
-}
-
-function ExitPill({ event }: { event: CommandEvent }) {
-  if (event.exitCode === null) {
-    // Claude reports no exit code: say only what is known (it finished), without claiming it passed.
-    return event.status === 'failed'
-      ? <StatusWord status="failed" />
-      : <Check className="size-3.5 text-dim" aria-label="Finished" role="img"><title>Finished. This provider does not report an exit code.</title></Check>
-  }
-  const ok = event.exitCode === 0
-  return (
-    <span className={`rounded-full px-2 py-px font-mono text-[11px] ${ok ? 'bg-[color-mix(in_srgb,var(--ok)_14%,transparent)] text-[var(--ok)]' : 'bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] text-[var(--danger)]'}`}>
-      exit {event.exitCode}
-    </span>
-  )
-}
-
-function CommandState({ event }: { event: CommandEvent }) {
-  if (event.status === 'running') {
-    return (
-      <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] px-2 py-0.5 text-[11.5px] text-[var(--accent-text)]">
-        <Spinner className="mx-spin" />
-        <span>Running · <ElapsedSince since={event.timing.startedAtMs ?? event.observed.firstSeenAtMs} /></span>
-      </span>
-    )
-  }
-  const took = elapsedMs(event, event.durationMs, 0)
-  return (
-    <span className="flex shrink-0 items-center gap-2">
-      {took !== null && <span className="font-mono text-[11.5px] text-fg2">{tookText(took)}</span>}
-      {event.status === 'completed' || event.status === 'failed' ? <ExitPill event={event} /> : <StatusWord status={event.status} />}
-    </span>
-  )
-}
+type CommandStepProps = { event: CommandEvent; waiting?: boolean }
 
 /**
  * A command the agent ran. Closed it is one line, the command's first line and how it ended, as the
  * agent's own terminal shows it; opened it is the whole command and the last three lines of its
  * output (all of it on request). One that failed starts open: that is the one worth reading.
  */
-export function CommandCard({ event }: { event: CommandEvent }) {
-  const [open, setOpen] = useState(event.status === 'failed')
+export function CommandStep({ event, waiting = false }: CommandStepProps) {
+  const [open, toggle] = useOpen(event.status === 'failed')
   const [all, setAll] = useState(false)
   const omitted = isOmitted(event.output)
   const lines = event.output === '' || omitted ? [] : event.output.replace(/\n+$/, '').split('\n')
   const shown = all ? lines : lines.slice(-COMMAND_TAIL_LINES)
   const typed = event.command.split('\n')
   const first = typed[0] ?? ''
-  const folded = typed.length > 1 ? `${first} …` : first
+  const running = event.status === 'running'
   return (
-    <div role="group" aria-label={`Command ${first}`} className="mx-step-card">
-      <button type="button" className="mx-step-head" aria-expanded={open} title={open ? 'Hide the command and its output' : 'Show the command and its output'} onClick={() => { setOpen((current) => !current) }}>
-        <span className="self-start py-[7px] font-mono text-[12px] leading-[18px] text-dim" aria-hidden="true">$</span>
-        <code className={`mx-step-command${open ? '' : ' is-folded'}`}>{event.command === '' ? 'A command' : open ? event.command : folded}</code>
-        <CommandState event={event} />
-      </button>
-      {open && <CommandOutput event={event} omitted={omitted} shown={shown} total={lines.length} all={all} onAll={() => { setAll((current) => !current) }} />}
-    </div>
-  )
-}
-
-function CommandOutput({ event, omitted, shown, total, all, onAll }: { event: CommandEvent; omitted: boolean; shown: readonly string[]; total: number; all: boolean; onAll: () => void }) {
-  return (
-    <>
-      {omitted && <p className="mx-step-note">The output shows a secret file, so the history does not keep it.</p>}
-      {shown.length > 0 && <pre className="mx-step-output">{shown.join('\n')}</pre>}
-      {shown.length > 0 && <RedactionNote texts={[event.output]} />}
-      {total > COMMAND_TAIL_LINES && (
-        <button type="button" aria-expanded={all} className="mx-step-more" onClick={onAll}>
-          {all ? 'Show less' : `Show all ${String(total)} lines`}
-        </button>
-      )}
-    </>
-  )
-}
-
-const CHANGE_WORD = { add: 'Created', update: 'Edited', delete: 'Deleted', unknown: 'Changed' } as const
-
-type EditCardProps = {
-  event: EditEvent
-  /** The session's folder, so the file is shown relative to it. */
-  root: string | null
-  /** Opens this file's diff in the Changes panel; absent where there is no repository. */
-  onOpen: ((file: string) => void) | null
-}
-
-/** A file change: header with counts, the diff folded past 12 lines. */
-export function EditCard({ event, root, onOpen }: EditCardProps) {
-  const [all, setAll] = useState(false)
-  const file = event.file === null ? null : relativePath(event.file, root)
-  const name = file ?? 'a file'
-  const rows = event.diff.status === 'available' ? diffRows(event.diff.hunks) : []
-  const shown = all ? rows : rows.slice(0, FOLD_LINES)
-  const headerBody = (
-    <>
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
-      <span>{CHANGE_WORD[event.change]}</span>
-      <code className="mx-step-path" title={name}>{name}</code>
-      {event.diff.status === 'available' && event.diff.added > 0 && <span className="mx-step-add">+{event.diff.added}</span>}
-      {event.diff.status === 'available' && event.diff.removed > 0 && <span className="mx-step-del">−{event.diff.removed}</span>}
-      {event.status !== 'completed' && <StatusWord status={event.status} />}
-    </>
-  )
-  return (
-    <div role="group" aria-label={`${CHANGE_WORD[event.change]} ${name}`} className="mx-step-card">
-      {onOpen !== null && event.file !== null ? (
-        <button type="button" aria-label={`Open the diff of ${name} in the Changes panel`} className="mx-step-head" onClick={() => { if (event.file !== null) onOpen(event.file) }}>
-          {headerBody}
-        </button>
-      ) : (
-        <div className="mx-step-head">{headerBody}</div>
-      )}
-      {event.diff.status === 'unavailable' && <p className="mx-step-note">The conversation history did not keep this change&apos;s content, so its diff is unavailable.</p>}
-      {event.diff.status === 'omitted' && <p className="mx-step-note">This looks like a secret file, so the history keeps its name but not its content.</p>}
-      {shown.length > 0 && (
-        <div className="mx-diff">
-          {shown.map((row) => <DiffLine key={row.key} row={row} path={file ?? ''} />)}
-          {event.diff.status === 'available' && event.diff.truncated && <p className="mx-step-note">The daemon cut this diff at its size limit.</p>}
+    <div role="group" aria-label={`Command ${first}`} className="mx-step">
+      <StepRow
+        status={event.status}
+        verb="Run"
+        target={<code className="mx-code-chip">{event.command === '' ? 'A command' : typed.length > 1 ? `${first} …` : first}</code>}
+        meta={running ? <ElapsedSince since={event.timing.startedAtMs ?? event.observed.firstSeenAtMs} /> : commandMeta(event)}
+        metaTone={running ? 'working' : event.status === 'failed' ? 'danger' : 'dim'}
+        open={open}
+        onToggle={toggle}
+        waiting={waiting}
+      />
+      {open && (
+        <div className="mx-step-body">
+          <div className="mx-step-card">
+            <div className="mx-step-head is-command">
+              <span className="mx-step-prompt" aria-hidden="true">$</span>
+              <span className="mx-step-command">{event.command}</span>
+              {event.status === 'failed' && event.exitCode !== null && <Pill tone="danger">exit {event.exitCode}</Pill>}
+            </div>
+            {omitted && <p className="mx-step-note">The output shows a secret file, so the history does not keep it.</p>}
+            {shown.length > 0 && <pre className="mx-step-output">{shown.join('\n')}</pre>}
+            {shown.length > 0 && <RedactionNote texts={[event.output]} />}
+            {lines.length > COMMAND_TAIL_LINES && (
+              <button type="button" aria-expanded={all} className="mx-step-more" onClick={() => { setAll((current) => !current) }}>
+                {all ? 'Show less' : `Show all ${String(lines.length)} lines`}
+              </button>
+            )}
+          </div>
         </div>
-      )}
-      {rows.length > FOLD_LINES && (
-        <button type="button" aria-expanded={all} className="mx-step-more" onClick={() => { setAll((current) => !current) }}>
-          {all ? 'Show less' : `${String(rows.length - FOLD_LINES)} more lines`}
-        </button>
       )}
     </div>
   )
@@ -192,31 +162,99 @@ function DiffLine({ row, path }: { row: DiffRow; path: string }) {
   )
 }
 
-/** The agent's own to-do list as the history carried it. Maitty adds no items. */
-export function TodoCard({ event }: { event: TodoEvent }) {
-  const progress = event.items === null ? null : todoProgress(event.items)
+function EditMeta({ event }: { event: EditEvent }) {
+  if (event.status === 'running') return 'writing…'
+  if (event.status === 'failed') return FAILED_WORD
+  if (event.status === 'interrupted') return STOPPED_WORD
+  if (event.diff.status === 'unavailable') return 'no diff'
+  if (event.diff.status === 'omitted') return 'contents hidden'
+  const { added, removed } = event.diff
   return (
-    <div role="group" aria-label="Checklist" className="mx-step-card px-3 py-2">
-      <p className="m-0 mb-1 text-[11.5px] font-semibold text-fg2">
-        {progress === null ? 'Checklist' : `Checklist · ${String(progress.done)} of ${String(progress.total)}`}
-      </p>
-      {progress !== null && progress.total > 0 && (
-        <div className="mb-1.5 h-[3px] overflow-hidden rounded-full bg-line2" aria-hidden="true">
-          <div className="h-full origin-left bg-[var(--accent)]" style={{ transform: `scaleX(${String(progress.done / progress.total)})` }} />
+    <>
+      {added > 0 && <span className="mx-step-add">+{added}</span>}
+      {added > 0 && removed > 0 && ' '}
+      {removed > 0 && <span className="mx-step-del">−{removed}</span>}
+    </>
+  )
+}
+
+const EDIT_TONE: Partial<Record<EditEvent['status'], MetaTone>> = { running: 'working', failed: 'danger' }
+
+type EditStepProps = {
+  event: EditEvent
+  /** The session's folder, so the file is shown relative to it. */
+  root: string | null
+  /** Opens this file's diff in the Changes panel; absent where there is no repository. */
+  onOpen: ((file: string) => void) | null
+  /** Its diff shows from the start, as a step outside a folded run does. */
+  startOpen?: boolean
+  waiting?: boolean
+}
+
+/** A file change: the file, what happened to it and its counts, opening to the first lines of its diff. */
+export function EditStep({ event, root, onOpen, startOpen = false, waiting = false }: EditStepProps) {
+  const [open, toggle] = useOpen(startOpen || event.status === 'failed')
+  const [all, setAll] = useState(false)
+  const file = event.file === null ? null : relativePath(event.file, root)
+  const name = file ?? 'a file'
+  const verb = event.tool === 'Write' ? 'Write' : 'Edit'
+  const openFile = onOpen !== null && event.file !== null ? () => { if (event.file !== null) onOpen(event.file) } : null
+  const document = documentOf(event)
+  if (document !== null && file !== null) return <DocumentCard path={file} document={document} onOpen={openFile} />
+
+  const tooLarge = event.diff.status === 'available' && event.diff.truncated
+  const rows = event.diff.status === 'available' && !tooLarge ? diffRows(event.diff.hunks) : []
+  const shown = all ? rows : rows.slice(0, FOLD_LINES)
+  const sidePanel = openFile !== null && <button type="button" className="mx-ghost-btn" onClick={openFile}>Open in side panel<ArrowUpRight className="size-3" aria-hidden="true" /></button>
+  return (
+    <div role="group" aria-label={`${verb} ${name}`} className="mx-step">
+      <StepRow
+        status={event.status}
+        verb={verb}
+        target={<>{file === null ? <span className="mx-step-plain">a file</span> : <FileBadge path={file} />}<ChangePill change={event.change} /></>}
+        meta={<EditMeta event={event} />}
+        metaTone={EDIT_TONE[event.status] ?? 'dim'}
+        open={open}
+        onToggle={toggle}
+        waiting={waiting}
+      />
+      {open && (
+        <div className="mx-step-body">
+          {event.diff.status === 'unavailable' && <p className="mx-step-absent">The history didn&apos;t keep this diff.</p>}
+          {event.diff.status === 'omitted' && <p className="mx-step-secret"><Lock className="size-3 shrink-0" aria-hidden="true" />Secret file: Maitty doesn&apos;t show its contents.</p>}
+          {tooLarge && <div className="mx-step-toolarge">Diff too large to show here{sidePanel}</div>}
+          {rows.length > 0 && (
+            <div className="mx-step-card">
+              <div className="mx-step-head">
+                <span className="mx-step-path" title={name}>{name}</span>
+                {sidePanel}
+              </div>
+              <div className="mx-diff">{shown.map((row) => <DiffLine key={row.key} row={row} path={file ?? ''} />)}</div>
+              {rows.length > FOLD_LINES && (
+                <button type="button" aria-expanded={all} className="mx-step-more" onClick={() => { setAll((current) => !current) }}>
+                  {all ? 'Show less' : `Show all ${String(rows.length)} lines`}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
-      {event.items === null
-        ? <p className="m-0 text-[12px] text-dim">The conversation history did not keep this checklist&apos;s items.</p>
-        : (
-          <ul className="m-0 list-none p-0">
-            {event.items.map((item, index) => (
-              <li key={index} className="flex items-start gap-2 py-0.5 text-[13px]">
-                {item.state === 'done' ? <Check className="mt-0.5 size-3.5 shrink-0 text-[var(--ok)]" aria-label="Done" /> : item.state === 'current' ? <CircleDot className="mt-0.5 size-3.5 shrink-0 text-[var(--accent-text)]" aria-label="In progress" /> : <Circle className="mt-0.5 size-3.5 shrink-0 text-dim" aria-label="To do" />}
-                <span className={item.state === 'done' ? 'text-dim line-through' : item.state === 'current' ? 'font-semibold text-fg' : 'text-fg2'}>{item.text}</span>
-              </li>
-            ))}
-          </ul>
-        )}
     </div>
   )
+}
+
+type StepViewProps = {
+  event: WorkStep
+  root: string | null
+  openDiff: ((file: string) => void) | null
+  /** A step on its own in the chat, not one line of an opened run: an edit shows its diff from the start. */
+  alone?: boolean
+  waiting?: boolean
+}
+
+/** The row for one step, whatever kind it is. */
+export function StepView({ event, root, openDiff, alone = false, waiting = false }: StepViewProps) {
+  if (event.kind === 'edit') return <EditStep event={event} root={root} onOpen={openDiff} startOpen={alone} waiting={waiting} />
+  if (event.kind === 'command') return <CommandStep event={event} waiting={waiting} />
+  return <ToolStep event={event} root={root} waiting={waiting} />
 }

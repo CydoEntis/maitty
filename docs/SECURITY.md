@@ -112,13 +112,32 @@ it out in the handoff.
 The Tauri webview is an untrusted client. Keep capabilities limited to the
 application's own windows; validate command inputs in Rust; expose no generic
 filesystem, process or shell bridge. Conversation authority and credentials
-remain in the daemon and its authenticated IPC.
+remain in the daemon and its authenticated IPC. `prewarm_agent_session`, which starts a
+chat's agent while its first message is written, takes what `start_agent_session` takes and
+checks it the same way (one of the known agent names, flags that are single plain words, a
+folder that exists), so it can start nothing a start could not; the daemon keeps one such
+agent, hidden, and stops it when it is not taken.
 
 The native host may start only the bundled CLI sidecar with the fixed `daemon`
 argument. Resolve its path from the application bundle; never accept a program
 path or argument list from the webview. Remove inherited pane, structured
 conversation and remote-route variables before starting it, while preserving
 the user's local config, data and socket overrides.
+
+`save_export` (`apps/gui/src-tauri/src/export.rs`) writes a block of a chat as a file, and is not a
+filesystem bridge: the name must be a plain file name ending in `.md`, `.html`, `.csv`, `.txt` or
+`.json`, the text is at most 5 MB, the folder must already exist, and a file that exists is never
+replaced (the new one is numbered). The folder is the person's choice from Settings, which the
+webview holds, so a compromised webview could add a text file of those types to any existing folder
+the user can write; it cannot overwrite, and cannot write a program.
+
+`agent_models` (`apps/gui/src-tauri/src/claude_models.rs`) starts the installed Claude Code to read
+its model list, and is not a process bridge: the program is the `claude` found on `PATH` by the host,
+the arguments are a constant, the folder is the home folder, and the webview supplies only the
+agent's name. One fixed request is written to it, nothing the webview sent; it is stopped as soon as
+it replies or after 20 seconds, and it keeps no session. Each model name it returns is checked
+(`is_model_name`) before it can reach a launch line. It runs as the user with the user's own Claude
+Code settings, so the person's start-up hooks run, as they do for any Claude Code session.
 
 Assets: the user's shells and agent sessions (which can run any command as the
 user), their source code, and API keys in `config.local.toml`. Threats: another
@@ -175,7 +194,7 @@ that has been given to another process is never signalled; ids 0 and 1 and negat
 
 An agent can start helpers only if you say so. Who is asking is proven the way status reports are
 (the pane's `MAITTY_PANE_TOKEN` on the connection); the answer is `AnswerHelpers`, which the daemon
-refuses from any pane and accepts only for a request it holds. "Always in this project" is kept in
+refuses from any pane and accepts only for a request it holds. The desktop app sends it through its own command (`answer_helpers`), which takes one of three words (`allow`, `always`, `no`) and refuses anything else. "Always in this project" is kept in
 `helper-projects.json` in Maitty's data folder, never in the repo, so an agent that can write the
 repo cannot grant itself helpers. A helper's own permission prompts still come to you.
 
@@ -420,7 +439,7 @@ that is not this one (`remote_policy.rs`, `remote_snapshot.rs` in `maitty-machin
 | `TermsChanged` | apply, cleaned | the panes that changed, cleaned like a `State`'s, merged into only that machine's snapshot and then judged as a whole `State` (daemon-id check, caps); an unclean or oversized delta is dropped and the last good snapshot stays |
 | `Replay`, `Output` | apply | feed that machine's own pane screens; a screen's size is held to 1-1000 |
 | `Attention` | apply | queues that machine's alert; the sound plays only with `sounds`, the toast shows only with `notices` |
-| `Clipboard` | gated by `clipboard` (on by default; `clipboard = false` refuses) | writes this computer's clipboard; cut to 64 KiB; the toast says which machine, and a refused copy says so |
+| `Clipboard` | gated by `clipboard` (on by default; `clipboard = false` refuses) | writes this computer's clipboard; cut to 64 KiB; the toast says which machine, and a refused copy says so. This computer's own daemon is not gated: a program in a local pane copies as it would in any terminal |
 | `Notice` | gated by `notices` | a toast, cleaned and led by `[machine]`; it does not touch this computer's undo hint |
 | `Raise` | gated by `notices` | brings the window to the front, the same "may get my attention" grant as a toast (there is no separate `raise` setting) |
 | `Error`, `Reply` | answer, cleaned | applied only while this window has a command or query out to that machine that nothing has answered yet (client-side bookkeeping, see API_PATTERNS "client routing"; the wire is unchanged); otherwise ignored. An error's toast leads with `[machine]`; reply text is cleaned and cut to 256 KiB. A `Worktrees` reply never fills this computer's picker, and a check's output is taken only when the open sheet or the failure waiting for it is on that machine |

@@ -89,10 +89,10 @@ describe('turn dividers', () => {
   const clock = () => '10:11 AM'
 
   it('says how long a turn took only when the daemon gave its times', () => {
-    expect(dividerText(turn('completed', true), clock)).toBe('Cooked for 7s · done 10:11 AM')
+    expect(dividerText(turn('completed', true), clock)).toBe('Finished in 7s · 10:11 AM')
     expect(dividerText(turn('failed', true), clock)).toBe('Failed after 7s · 10:11 AM')
     expect(dividerText(turn('completed', false), clock)).toBe('Turn finished')
-    expect(dividerText(turn('interrupted', false), clock)).toBe('Turn interrupted')
+    expect(dividerText(turn('interrupted', false), clock)).toBe('Turn stopped')
   })
 
   it('writes a duration in the largest units that fit', () => {

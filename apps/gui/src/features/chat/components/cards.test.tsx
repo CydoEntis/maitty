@@ -6,90 +6,89 @@ import { approvalEvent, commandEvent, editEvent, subagentEvent, todoEvent, toolE
 import { AgentsCard } from './AgentsCard'
 import { ApprovalCard } from './ApprovalCard'
 import { Markdown } from './Markdown'
-import { CommandCard, EditCard, TodoCard, ToolChip } from './StepCards'
+import { PlanCard } from './PlanCard'
+import { CommandStep, EditStep, ToolStep } from './StepCards'
 
 afterEach(cleanup)
 
 /** The diff's lines as drawn, each its own row of syntax-coloured text. */
 const diffLines = () => screen.queryAllByText((_, element) => element?.classList.contains('mx-diff-text') === true && /^line \d+$/.test(element.textContent))
 
-describe('command card', () => {
+describe('command step', () => {
   const finished = (over = {}) => commandEvent('c', { command: 'pnpm test', output: 'one\ntwo\nthree\nfour\nfive', ...over })
 
   it('is one line until it is opened: the first line of a long inline script, then the whole of it and its output', async () => {
     const script = ["python3 - <<'EOF'", 'one = 1', 'two = 2', 'EOF'].join('\n')
-    render(<CommandCard event={finished({ command: script })} />)
+    render(<CommandStep event={finished({ command: script })} />)
 
     const group = screen.getByRole('group', { name: "Command python3 - <<'EOF'" })
     expect(group.querySelector('code')?.textContent).toBe("python3 - <<'EOF' …")
     expect(group).not.toHaveTextContent('five')
     await userEvent.click(within(group).getByRole('button', { expanded: false }))
-    expect(group.querySelector('code')?.textContent).toBe(script)
+    expect(group.querySelector('.mx-step-command')?.textContent).toBe(script)
     expect(group).toHaveTextContent('three four five')
   })
 
   it('starts open when the command failed', () => {
-    render(<CommandCard event={finished({ exitCode: 2, status: 'failed' })} />)
+    render(<CommandStep event={finished({ exitCode: 2, status: 'failed' })} />)
     expect(screen.getByRole('group', { name: 'Command pnpm test' })).toHaveTextContent('three four five')
   })
 
   it.each([
-    ['exit 0 in green with the provider duration', finished({ exitCode: 0, durationMs: 1_400 }), '1s', 'exit 0'],
+    ['exit 0 with the provider duration', finished({ exitCode: 0, durationMs: 1_400 }), '1s', 'exit 0'],
     ['a non-zero exit', finished({ exitCode: 2, durationMs: 2_000, status: 'failed' }), '2s', 'exit 2'],
   ])('shows %s', (_name, event, took, exit) => {
-    render(<CommandCard event={event} />)
+    render(<CommandStep event={event} />)
 
-    expect(screen.getByText(took)).toBeInTheDocument()
-    expect(screen.getByText(exit)).toBeInTheDocument()
+    expect(screen.getByText(`${exit} · ${took}`)).toBeInTheDocument()
   })
 
-  it('marks a command with no exit code as finished, without claiming it passed', () => {
-    render(<CommandCard event={{ ...finished(), timing: { startedAtMs: 1_000, completedAtMs: 4_000 } }} />)
+  it('says a command reported no exit code, without claiming it passed', () => {
+    render(<CommandStep event={{ ...finished(), timing: { startedAtMs: 1_000, completedAtMs: 4_000 } }} />)
 
-    expect(screen.getByText('3s')).toBeInTheDocument()
-    expect(screen.getByRole('img', { name: 'Finished' })).toBeInTheDocument()
+    expect(screen.getByText('exit code not reported · 3s')).toBeInTheDocument()
     expect(screen.queryByText(/^exit [0-9]/)).toBeNull()
   })
 
   it('says nothing of the time when the history kept none', () => {
-    render(<CommandCard event={finished({ exitCode: 0 })} />)
+    render(<CommandStep event={finished({ exitCode: 0 })} />)
 
     expect(screen.getByText('exit 0')).toBeInTheDocument()
     expect(screen.queryByText(/unavailable/)).toBeNull()
   })
 
-  it('shows Running with a live clock while it runs, and no exit code', () => {
+  it('shows a live clock while it runs, and no exit code', () => {
     vi.useFakeTimers()
     vi.setSystemTime(10_000)
-    render(<CommandCard event={commandEvent('c', { status: 'running', timing: { startedAtMs: 7_000, completedAtMs: null } })} />)
+    render(<CommandStep event={commandEvent('c', { status: 'running', timing: { startedAtMs: 7_000, completedAtMs: null } })} />)
 
-    expect(screen.getByText(/Running · 0:03/)).toBeInTheDocument()
+    expect(screen.getByText('0:03')).toBeInTheDocument()
     expect(screen.queryByText(/exit/)).toBeNull()
     vi.useRealTimers()
   })
 
   it('shows the last 3 lines and all of them on request', async () => {
-    render(<CommandCard event={finished({ exitCode: 0 })} />)
+    render(<CommandStep event={finished({ exitCode: 0 })} />)
 
     const group = screen.getByRole('group', { name: 'Command pnpm test' })
     await userEvent.click(screen.getByRole('button', { expanded: false }))
     expect(group).toHaveTextContent('three four five')
-    expect(group).not.toHaveTextContent('one')
+    expect(within(group).queryByText(/^one/)).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: 'Show all 5 lines' }))
     expect(group).toHaveTextContent('one two three four five')
     await userEvent.click(screen.getByRole('button', { name: 'Show less' }))
-    expect(group).not.toHaveTextContent('one')
+    expect(within(group).queryByText(/^one/)).toBeNull()
   })
 
   it('has no toggle for output that fits', async () => {
-    render(<CommandCard event={finished({ output: 'a\nb' })} />)
+    render(<CommandStep event={finished({ output: 'a\nb' })} />)
 
     await userEvent.click(screen.getByRole('button', { expanded: false }))
     expect(screen.queryByRole('button', { name: /^Show/ })).toBeNull()
   })
 
   it('shows a masked token as it is and says the daemon hid it', async () => {
-    render(<CommandCard event={commandEvent('c', { command: 'echo $T', output: 'token is [redacted]', exitCode: 0 })} />)
+    render(<CommandStep event={commandEvent('c', { command: 'echo $T', output: 'token is [redacted]', exitCode: 0 })} />)
 
     await userEvent.click(screen.getByRole('button', { expanded: false }))
     expect(screen.getByText('token is [redacted]')).toBeInTheDocument()
@@ -98,7 +97,7 @@ describe('command card', () => {
   })
 
   it('says a secret file was read instead of showing the marker as output', async () => {
-    render(<CommandCard event={commandEvent('c', { command: 'cat .env', output: '[content of a secret file omitted]', exitCode: 0 })} />)
+    render(<CommandStep event={commandEvent('c', { command: 'cat .env', output: '[content of a secret file omitted]', exitCode: 0 })} />)
 
     await userEvent.click(screen.getByRole('button', { expanded: false }))
     expect(screen.getByText(/shows a secret file/)).toBeInTheDocument()
@@ -106,12 +105,12 @@ describe('command card', () => {
   })
 })
 
-describe('edit block', () => {
+describe('edit step', () => {
   it('names a secret file and says its content is not kept, not that the diff failed or is empty', () => {
-    render(<EditCard event={editEvent('e', { file: 'app/.env', change: 'add', diff: { status: 'omitted' } })} root={null} onOpen={null} />)
+    render(<EditStep event={editEvent('e', { file: 'app/.env', change: 'add', diff: { status: 'omitted' } })} root={null} onOpen={null} startOpen />)
 
-    expect(screen.getByRole('group', { name: 'Created app/.env' })).toBeInTheDocument()
-    expect(screen.getByText(/keeps its name but not its content/)).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Edit app/.env' })).toBeInTheDocument()
+    expect(screen.getByText(/Secret file: Maitty doesn.t show its contents/)).toBeInTheDocument()
     expect(screen.queryByText(/unavailable/)).toBeNull()
     expect(screen.queryByText(/^[+−]\d+$/)).toBeNull()
   })
@@ -120,26 +119,26 @@ describe('edit block', () => {
   const long = (count: number) => editEvent('e', { diff: { status: 'available', hunks: [{ header: '', lines: lines(count) }], added: count, removed: 0, truncated: false } })
 
   it('shows the file relative to the project, with +N and −N hidden at zero', () => {
-    render(<EditCard event={editEvent('e', { file: '/repo/src/a.ts' })} root="/repo" onOpen={null} />)
+    render(<EditStep event={editEvent('e', { file: '/repo/src/a.ts' })} root="/repo" onOpen={null} />)
 
-    expect(screen.getByRole('group', { name: 'Edited src/a.ts' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Edit src/a.ts' })).toBeInTheDocument()
     expect(screen.getByText('+1')).toBeInTheDocument()
     expect(screen.getByText('−1')).toBeInTheDocument()
     cleanup()
-    render(<EditCard event={long(3)} root={null} onOpen={null} />)
+    render(<EditStep event={long(3)} root={null} onOpen={null} />)
     expect(screen.queryByText(/^−/)).toBeNull()
   })
 
   it.each([
     [12, null],
-    [13, '1 more lines'],
-    [35, '23 more lines'],
+    [13, 'Show all 13 lines'],
+    [35, 'Show all 35 lines'],
   ])('folds %i lines to 12 (%s)', async (count, footer) => {
-    render(<EditCard event={long(count)} root={null} onOpen={null} />)
+    render(<EditStep event={long(count)} root={null} onOpen={null} startOpen />)
 
     expect(diffLines()).toHaveLength(Math.min(count, 12))
     if (footer === null) {
-      expect(screen.queryByRole('button')).toBeNull()
+      expect(screen.queryByRole('button', { name: /^Show/ })).toBeNull()
       return
     }
     await userEvent.click(screen.getByRole('button', { name: footer }))
@@ -147,71 +146,72 @@ describe('edit block', () => {
     expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true')
   })
 
-  it('says the diff is unavailable instead of inventing one', () => {
-    render(<EditCard event={editEvent('e', { file: null, diff: { status: 'unavailable' } })} root={null} onOpen={null} />)
+  it('says the history kept no diff instead of inventing one', () => {
+    render(<EditStep event={editEvent('e', { file: null, diff: { status: 'unavailable' } })} root={null} onOpen={null} startOpen />)
 
-    expect(screen.getByText(/diff is unavailable/)).toBeInTheDocument()
+    expect(screen.getByText(/didn.t keep this diff/)).toBeInTheDocument()
   })
 
-  it('opens the file in the Changes panel from its header', async () => {
+  it('opens the file in the side panel from its diff', async () => {
     const onOpen = vi.fn()
-    render(<EditCard event={editEvent('e', { file: '/repo/src/a.ts' })} root="/repo" onOpen={onOpen} />)
+    render(<EditStep event={editEvent('e', { file: '/repo/src/a.ts' })} root="/repo" onOpen={onOpen} startOpen />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open the diff of src/a.ts in the Changes panel' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Open in side panel' }))
     expect(onOpen).toHaveBeenCalledWith('/repo/src/a.ts')
   })
 })
 
-describe('tool chip', () => {
+describe('tool step', () => {
   it('shows name and target, and opens the input and result', async () => {
-    render(<ToolChip event={toolEvent('t', { name: 'Read', target: 'src/a.ts', input: '{\n  "file_path": "src/a.ts"\n}', detail: 'file text' })} />)
+    render(<ToolStep event={toolEvent('t', { name: 'Read', target: 'src/a.ts', input: '{\n  "file_path": "src/a.ts"\n}', detail: 'file text' })} />)
 
-    const chip = screen.getByRole('button', { name: /Read.*src\/a\.ts/ })
+    const chip = screen.getByRole('button', { name: /Read.*a[.]ts/ })
     expect(chip).toHaveAttribute('aria-expanded', 'false')
     await userEvent.click(chip)
-    expect(screen.getByText('Input')).toBeInTheDocument()
+    expect(screen.getByText('input')).toBeInTheDocument()
     expect(screen.getByText('file text')).toBeInTheDocument()
   })
 
   it('says so when the history kept nothing for the step', async () => {
-    render(<ToolChip event={toolEvent('t', { name: 'Glob' })} />)
+    render(<ToolStep event={toolEvent('t', { name: 'Glob' })} />)
 
-    await userEvent.click(screen.getByRole('button', { name: /Glob/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Find files/ }))
     expect(screen.getByText('The conversation history kept no detail for this step.')).toBeInTheDocument()
   })
 })
 
-describe('checklist card', () => {
+describe('plan card', () => {
   it('counts what is done and marks each item', () => {
-    render(<TodoCard event={todoEvent('d', [{ text: 'Plan', state: 'done' }, { text: 'Build', state: 'current' }, { text: 'Ship', state: 'pending' }])} />)
+    render(<PlanCard event={todoEvent('d', [{ text: 'Plan', state: 'done' }, { text: 'Build', state: 'current' }, { text: 'Ship', state: 'pending' }])} />)
 
-    expect(screen.getByText('Checklist · 1 of 3')).toBeInTheDocument()
+    expect(screen.getByText('1 of 3 done')).toBeInTheDocument()
     expect(screen.getByLabelText('Done')).toBeInTheDocument()
     expect(screen.getByLabelText('In progress')).toBeInTheDocument()
     expect(screen.getByLabelText('To do')).toBeInTheDocument()
   })
 
   it('does not invent items the history lacks', () => {
-    render(<TodoCard event={todoEvent('d', null)} />)
+    render(<PlanCard event={todoEvent('d', null)} />)
 
-    expect(screen.getByText(/did not keep this checklist/)).toBeInTheDocument()
+    expect(screen.getByText(/the history didn.t save it/)).toBeInTheDocument()
   })
 })
 
 describe('helper agents card', () => {
   it('summarises, shows done time, and opens the prompt and report', async () => {
     const done = { ...subagentEvent('a', { title: 'Audit', prompt: 'Read parser.rs', report: 'Found 3 issues.' }), timing: { startedAtMs: 0, completedAtMs: 330_000 } }
-    render(<AgentsCard agents={[done, subagentEvent('b', { title: 'Search', status: 'running' })]} />)
+    render(<AgentsCard agents={[done, subagentEvent('b', { title: 'Search', status: 'running' })]} process="claude" />)
 
     expect(screen.getByRole('group', { name: '2 agents, 1 working' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Ran a subagent: Audit · 5m 30s/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Audit.*5m 30s/ })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /Audit/ }))
-    expect(screen.getByText('Read parser.rs')).toBeInTheDocument()
+    // Once in the row, where a long ask is cut short, and whole in the opened detail.
+    expect(screen.getAllByText('Read parser.rs')).toHaveLength(2)
     expect(screen.getByText('Found 3 issues.')).toBeInTheDocument()
   })
 
   it('has nothing to open for a helper with no prompt or report', () => {
-    render(<AgentsCard agents={[subagentEvent('a', { title: 'Quiet' })]} />)
+    render(<AgentsCard agents={[subagentEvent('a', { title: 'Quiet' })]} process="claude" />)
 
     expect(screen.getByRole('button', { name: /Quiet/ })).toBeDisabled()
   })
@@ -270,17 +270,17 @@ describe('approval card', () => {
     expect(handlers.answer).toHaveBeenCalledExactlyOnceWith(7, 'AcceptForSession')
   })
 
-  it('reads "You answered" with no buttons when it was answered elsewhere', () => {
+  it('folds into one line saying what was chosen, with no buttons, once answered', () => {
     render(<ApprovalCard event={approvalEvent(1, { resolution: { status: 'answered', answer: 'AcceptForSession', answeredAtMs: 1_000 } })} actions={actions()} step={null} onGoToStep={null} />)
 
-    expect(screen.getByText(/You answered: This session/)).toBeInTheDocument()
+    expect(screen.getByText('Allowed for this session')).toBeInTheDocument()
     expect(screen.queryByRole('button')).toBeNull()
   })
 
-  it('says only "Answered." when the choice was never recorded', () => {
+  it('says only "Answered" when the choice was never recorded', () => {
     render(<ApprovalCard event={approvalEvent(1, { resolution: { status: 'answered', answer: 'unknown' } })} actions={actions()} step={null} onGoToStep={null} />)
 
-    expect(screen.getByText('Answered.')).toBeInTheDocument()
+    expect(screen.getByText('Answered')).toBeInTheDocument()
   })
 
   it('links to its tool step', async () => {
@@ -341,5 +341,25 @@ describe('markdown view of untrusted agent text', () => {
     expect(container.querySelector('a')).toBeNull()
     await userEvent.click(within(container).getByRole('button', { name: 'the docs' }))
     expect(writeText).toHaveBeenCalledWith('https://example.com/docs')
+  })
+})
+
+describe('saving a block of a reply', () => {
+  it('offers Copy and Save on a code block, and Copy and three file types on a table', () => {
+    render(<Markdown text={'```md\n# Plan\n```\n\n| A | B |\n| --- | --- |\n| 1 | 2 |'} />)
+
+    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
+    const table = screen.getByRole('group', { name: 'Copy or save this table' })
+    expect(within(table).getAllByRole('button').map((button) => button.textContent)).toEqual(['Copy', 'Markdown', 'CSV', 'HTML'])
+  })
+
+  it('copies a table as the Markdown it came from', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    render(<Markdown text={'| A | B |\n| --- | ---: |\n| 1 | 2 |'} />)
+
+    await userEvent.click(within(screen.getByRole('group', { name: 'Copy or save this table' })).getByRole('button', { name: 'Copy' }))
+
+    expect(writeText).toHaveBeenCalledWith('| A | B |\n| --- | ---: |\n| 1 | 2 |\n')
   })
 })

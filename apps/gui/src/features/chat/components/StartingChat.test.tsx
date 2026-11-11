@@ -41,6 +41,14 @@ describe('the chat of a session that is still starting', () => {
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
   })
 
+  it('draws the Codex permission button while Codex starts, greyed, so it is already there when the chat takes over', () => {
+    holdStartChoice('s1', { model: 'default', reasoning: 'default', mode: 'codexReadOnly' })
+    render(<StartingChat agent="codex" sessionId="s1" onBackToTerminal={noop} typeInto={() => Promise.resolve()} />)
+
+    const button = screen.getByRole('button', { name: /^Permission mode: Read only\. Codex is starting/ })
+    expect(button).toHaveAttribute('aria-disabled', 'true')
+  })
+
   it('holds a file attached now with the message, and shows it as a chip, not as the block that names it', async () => {
     attach.chooseFilesToAttach.mockResolvedValue(['/home/me/errors.log'])
     attach.attachLocalFile.mockResolvedValue({ path: '/data/attachments/attach-1-errors.log', name: 'errors.log', size: 120, kind: 'file' })

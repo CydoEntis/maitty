@@ -137,6 +137,16 @@ the pane works or asks something. It is typed as a queued follow-up is (one past
 several lines), and is saved with the pane, so a daemon restart keeps it. The desktop command is
 `send_when_agent_ready` (at most 256 KiB, not blank).
 
+`Command::Prewarm { cwd, cmd }` starts an agent ahead of its first message (`daemon/warm.rs`). It runs hidden, as a spare
+(no client is shown it, it alerts nobody and it is not saved), and the next `NewWorkspace` with the same command in the
+same folder is that agent, already running, instead of a new one. One is kept at a time: asking for another stops the
+first, asking again for the same one keeps it, `Command::DropPrewarm` stops it, and the daemon stops one nobody asked
+for in ten minutes, so a window that closed or crashed leaves nothing running. Only an app window may ask, never a pane
+or a structured runtime. Both commands came in protocol 79 (`PREWARM_SINCE`, each with its arm in
+`ClientMsg::introduced_in`); `COMPATIBLE_SINCE` stays 78, since an older daemon is simply not asked. The desktop
+commands are `prewarm_agent_session` (the agent names and flag rules of `start_agent_session`; it answers false when the
+daemon running is older) and `drop_prewarmed_agent`.
+
 A state change reaches attached clients as `ServerMsg::State` (the whole `Snapshot`) or, when only
 some panes differ from what that surface's clients last received, as `ServerMsg::TermsChanged`
 (the panes to replace and the ids to drop); the daemon compares encoded bytes and sends nothing

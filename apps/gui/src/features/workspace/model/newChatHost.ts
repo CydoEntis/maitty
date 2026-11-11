@@ -1,18 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { agentsInstalled, folderBranches, type FolderBranches } from '@/api/daemon'
 import { DEFAULT_PICK, type ReasoningPick } from '@/features/chat/agentChoice'
-import { PICKABLE_MODES } from '@/features/chat/chatMeta'
+import { CODEX_FULL_MODE, PICKABLE_MODES } from '@/features/chat/chatMeta'
 import type { ChatAgent } from './chatView'
 import type { NewSessionProject } from './newSession'
-
-/** The agents the new chat page knows by program name, in the order the list shows them. */
-export const AGENT_CATALOG: readonly { readonly id: string; readonly label: string }[] = [
-  { id: 'claude', label: 'Claude Code' },
-  { id: 'codex', label: 'Codex' },
-  { id: 'gemini', label: 'Gemini CLI' },
-  { id: 'opencode', label: 'OpenCode' },
-  { id: 'cursor-agent', label: 'Cursor Agent' },
-]
 
 /** Projects the list calls recent: the focused one and the newest. */
 const RECENT_PROJECTS = 3
@@ -24,12 +15,17 @@ export function splitRecent(projects: readonly NewSessionProject[]): { recent: N
 
 const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:/[\]-]*$/
 const CLAUDE_EFFORT = new Set<ReasoningPick>(['low', 'medium', 'high', 'max'])
-const CODEX_EFFORT = new Set<ReasoningPick>(['low', 'medium', 'high'])
+const CODEX_EFFORT = new Set<ReasoningPick>(['low', 'medium', 'high', 'max'])
+/** What each Codex start mode puts on the launch line: its sandbox and when it asks. Auto is absent: it sends nothing, so the settings Codex has stand. */
+const CODEX_MODE_FLAGS: Readonly<Record<string, readonly string[]>> = {
+  codexReadOnly: ['--sandbox', 'read-only', '--ask-for-approval', 'on-request'],
+  [CODEX_FULL_MODE]: ['--sandbox', 'danger-full-access', '--ask-for-approval', 'never'],
+}
 
 /**
- * The flags that put a picked model and effort on an agent's launch line (the text after its name,
+ * The flags that put a picked permission mode, model and effort on an agent's launch line (the text after its name,
  * with a leading space, or nothing). Claude: `--model`, `--effort`. Codex: `-m`, and the effort as
- * the `model_reasoning_effort` setting, which has no Max. A name that is not plain model-id
+ * the `model_reasoning_effort` setting. A name that is not plain model-id
  * characters is dropped rather than typed into a shell, and so is any level the agent lacks.
  */
 export function launchFlags(agent: ChatAgent, model: string, effort: ReasoningPick, mode = 'default'): string {
@@ -40,6 +36,7 @@ export function launchFlags(agent: ChatAgent, model: string, effort: ReasoningPi
     if (named) flags.push('--model', model)
     if (CLAUDE_EFFORT.has(effort)) flags.push('--effort', effort)
   } else if (agent === 'codex') {
+    flags.push(...(CODEX_MODE_FLAGS[mode] ?? []))
     if (named) flags.push('-m', model)
     if (CODEX_EFFORT.has(effort)) flags.push('-c', `model_reasoning_effort=${effort}`)
   }
@@ -97,6 +94,16 @@ export function useInstalledAgents(): readonly string[] | null {
 }
 
 /** A folder's branches and worktrees (null when it is not a git repository or is still being read), and a way to read them again. */
+/** One spelling of a path, to compare what git wrote with what the session has: forward slashes, no trailing one, and no case (Windows has none). */
+const samePath = (path: string): string => path.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+
+/** Whether a folder is a worktree of its repository and not the main checkout; null when git has not said, or it is not a repository's folder. */
+export function isWorktree(branches: FolderBranches | null, folder: string | null): boolean | null {
+  if (branches === null || folder === null) return null
+  const here = branches.worktrees.find((tree) => samePath(tree.path) === samePath(folder))
+  return here === undefined ? null : !here.main
+}
+
 export function useFolderBranches(folder: string): [FolderBranches | null, () => void] {
   const [read, setRead] = useState<{ folder: string; data: FolderBranches | null }>({ folder: '', data: null })
   const [again, setAgain] = useState(0)

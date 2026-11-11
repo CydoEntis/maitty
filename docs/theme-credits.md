@@ -1,8 +1,10 @@
 # Theme sources
 
-> The built-in list has since been cut to sixteen themes: Maitty's four and a dark and a light of GitHub, One, Catppuccin,
-> Solarized, Gruvbox and Tokyo Night (`crates/maitty-settings/themes.json`). The rest of this page records where the
-> palettes of the themes that were built in earlier came from; only the families named here still ship.
+> The built-in list is fifty themes: Maitty's six and a dark and a light of twenty-two families
+> (`crates/maitty-settings/themes.json` names them). This page records where the palettes came from, including themes
+> that were built in earlier and no longer ship. Three palettes are newer than the research below: Alucard is Dracula's
+> own light theme (draculatheme.com, MIT), Nord Light uses Nord's Snow Storm ground with its Polar Night text
+> (nordtheme.com, MIT), and the Maitty Retro pair is Maitty's own.
 
 Research checked on 2026-10-14 against the creators' source repositories. The
 catalog covers all 25 requested families with 42 palettes. Before this expansion,

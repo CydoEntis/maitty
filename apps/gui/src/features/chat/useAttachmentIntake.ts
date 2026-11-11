@@ -36,7 +36,7 @@ const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path
 
 const noun = (count: number) => (count === 1 ? 'file' : 'files')
 
-function newId(): string {
+export function newId(): string {
   return `attachment-${crypto.randomUUID()}`
 }
 

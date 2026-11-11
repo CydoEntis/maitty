@@ -1,4 +1,4 @@
-import type { ChatEvent, ItemFields, SubagentEvent, TodoItem } from './chatEvents'
+import type { ChatEvent, CommandEvent, ItemFields, SubagentEvent, TodoItem } from './chatEvents'
 
 /**
  * Facts the step cards show, computed from the projection's events. Pure: the clock comes in as an
@@ -80,4 +80,19 @@ export function agentsSummary(agents: readonly SubagentEvent[]): string {
   const working = agents.filter((agent) => agent.status === 'running').length
   const noun = agents.length === 1 ? 'agent' : 'agents'
   return `${String(agents.length)} ${noun}, ${working === 0 ? 'all done' : `${String(working)} working`}`
+}
+
+/**
+ * How a command that is no longer running ended, in the row's few words: "exit 0 · 4s". A provider that
+ * reports no exit code is said to have reported none, so a finished command never reads as one that passed.
+ */
+export function commandMeta(event: CommandEvent): string {
+  const took = elapsedMs(event, event.durationMs, 0)
+  const ended = event.status === 'interrupted' ? 'stopped' : event.exitCode !== null ? `exit ${String(event.exitCode)}` : event.status === 'failed' ? 'failed' : 'exit code not reported'
+  return took === null ? ended : `${ended} · ${tookText(took)}`
+}
+
+/** Whether a request's step id names this event. A Codex patch of several files is one item drawn as `id#0`, `id#1`. */
+export function isWaitingStep(waitingStep: string | null, eventId: string): boolean {
+  return waitingStep !== null && (eventId === waitingStep || eventId.startsWith(`${waitingStep}#`))
 }

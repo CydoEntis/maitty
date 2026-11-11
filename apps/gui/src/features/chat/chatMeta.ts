@@ -3,12 +3,27 @@ export type ChatMeta = { readonly mode: string | null; readonly model: string | 
 
 /** Claude's permission modes in plain words. A mode not listed is shown as it was written. */
 const MODE_WORDS: Readonly<Record<string, string>> = {
-  default: 'Ask before running',
-  plan: 'Plan',
+  default: 'Ask before edits',
+  plan: 'Plan mode',
   acceptEdits: 'Accept edits',
   auto: 'Auto',
   dontAsk: "Don't ask",
   bypassPermissions: 'Bypass permissions',
+  codexReadOnly: 'Read only',
+  codexAuto: 'Auto',
+  codexFullAccess: 'Full access',
+}
+
+/** What each mode that can be picked does, in a line, and the few words beside its name. */
+export const MODE_FACTS: Readonly<Record<string, { readonly what: string; readonly tag?: string }>> = {
+  default: { what: 'Asks before it changes a file or runs a command.', tag: 'default' },
+  acceptEdits: { what: 'Edits files without asking. Still asks before running commands.' },
+  plan: { what: 'Reads and plans only. Changes nothing until you approve the plan.' },
+  auto: { what: 'Runs what it judges safe without asking, and asks about the rest.' },
+  bypassPermissions: { what: 'Never asks. Use only in a container or VM.', tag: 'sandbox only' },
+  codexReadOnly: { what: 'Reads files and answers. Asks before it changes a file or runs a command.' },
+  codexAuto: { what: 'Follows your Codex settings: normally it works inside the folder and asks before going outside it.', tag: 'default' },
+  codexFullAccess: { what: 'Changes any file and runs any command without asking. Use only in a container or VM.', tag: 'no sandbox' },
 }
 
 /**
@@ -34,6 +49,31 @@ export const PICKABLE_MODES: readonly string[] = ['default', 'acceptEdits', 'pla
 
 /** A mode that asks about nothing: the header marks it, so it is never a quiet default. */
 export const BYPASS_MODE = 'bypassPermissions'
+
+/** The Codex mode with no sandbox and no questions. */
+export const CODEX_FULL_MODE = 'codexFullAccess'
+
+/** The modes a Codex chat can start in. Codex has no key that cycles them, so they are picked before it starts. */
+export const CODEX_START_MODES: readonly string[] = ['codexReadOnly', 'codexAuto', CODEX_FULL_MODE]
+
+/** The mode each agent starts a new chat in until another is picked: the one that puts nothing on its launch line. */
+export const START_MODE: Readonly<Record<'claude' | 'codex' | 'gemini', string>> = { claude: 'default', codex: 'codexAuto', gemini: 'default' }
+
+/**
+ * What moves a running Codex to each mode: its own `/permissions` command with one of its built-in profiles and when it asks.
+ * Auto is the profile Codex calls Default (works in the folder, asks for the rest).
+ */
+export const CODEX_MODE_COMMAND: Readonly<Record<string, string>> = {
+  codexReadOnly: '/permissions :read-only --approval-policy=on-request',
+  codexAuto: '/permissions :workspace --approval-policy=on-request',
+  [CODEX_FULL_MODE]: '/permissions :danger-full-access --approval-policy=never',
+}
+
+/** What Codex prints when it did not take a `/permissions` command. */
+export const CODEX_MODE_REFUSED = /Unknown permission profile|Usage: \/permissions|Failed to set (?:permission profile|approval policy)/
+
+/** The modes drawn in red: nothing is asked in them. */
+export const DANGER_MODES: readonly string[] = [BYPASS_MODE, CODEX_FULL_MODE]
 
 export function modeLabel(mode: string | null): string | null {
   return mode === null ? null : (MODE_WORDS[mode] ?? mode)
