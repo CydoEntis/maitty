@@ -5,8 +5,8 @@ import { forgetOperations } from './sendOperation'
 /**
  * What a conversation's composer holds between views: the unsent text and the files attached to it. It lives here, not in the
  * component, so switching to the terminal and back (which closes and reopens the chat) loses
- * nothing. Messages sent while a chat-run agent works are not kept here: the daemon holds them. Those written
- * while an agent in a terminal works are kept here as `held`, and typed into it once it is ready.
+ * nothing. Messages sent while an agent works are not kept here: its daemon holds them, for a chat-run agent
+ * and for one in a terminal alike, so they go in whether or not this window is open.
  */
 
 /**
@@ -22,14 +22,10 @@ export type DraftAttachment = {
   readonly preview: string | null
 }
 
-/** A message written while a terminal agent was busy. `id` is negative so it never meets a daemon operation number. */
-export type HeldMessage = { readonly id: number; readonly text: string }
-
-export type ComposerState = { readonly draft: string; readonly attachments: readonly DraftAttachment[]; readonly held: readonly HeldMessage[] }
+export type ComposerState = { readonly draft: string; readonly attachments: readonly DraftAttachment[] }
 
 const NO_ATTACHMENTS: readonly DraftAttachment[] = []
-const NO_HELD: readonly HeldMessage[] = []
-const EMPTY: ComposerState = { draft: '', attachments: NO_ATTACHMENTS, held: NO_HELD }
+const EMPTY: ComposerState = { draft: '', attachments: NO_ATTACHMENTS }
 const stored = new Map<number, ComposerState>()
 const listeners = new Set<() => void>()
 
@@ -46,7 +42,7 @@ export function updateComposer(conversation: number, change: (state: ComposerSta
   const before = read(conversation)
   const after = change(before)
   if (after === before) return
-  if (after.draft === '' && after.attachments.length === 0 && after.held.length === 0) stored.delete(conversation)
+  if (after.draft === '' && after.attachments.length === 0) stored.delete(conversation)
   else stored.set(conversation, after)
   for (const listener of listeners) listener()
 }
@@ -61,7 +57,7 @@ export function useComposerState(conversation: number): ComposerState {
 }
 
 /**
- * One part of a conversation's composer. A view that needs only the files or the held messages is
+ * One part of a conversation's composer. A view that needs only the files is
  * not drawn again for each letter typed, which matters for the chat around the box.
  */
 export function useComposerSlice<T>(conversation: number, pick: (state: ComposerState) => T): T {
@@ -93,48 +89,9 @@ export function followComposer(sessionId: string, conversation: number): void {
   for (const listener of listeners) listener()
 }
 
-const NO_CONVERSATIONS: readonly number[] = []
-let waiting: readonly number[] = NO_CONVERSATIONS
-
-/** The conversations with a message held for their agent, the same list until it changes. */
-function conversationsWithHeld(): readonly number[] {
-  const now = [...stored].filter(([, state]) => state.held.length > 0).map(([conversation]) => conversation)
-  if (now.length !== waiting.length || now.some((conversation, index) => conversation !== waiting[index])) waiting = now.length === 0 ? NO_CONVERSATIONS : now
-  return waiting
-}
-
-/** Which conversations hold a message for their agent, for the window to send them whichever chat is showing. */
-export function useHeldConversations(): readonly number[] {
-  return useSyncExternalStore(subscribe, conversationsWithHeld)
-}
-
-/** How many messages wait for the conversation's agent in this window. */
-export function heldCount(conversation: number): number {
-  return read(conversation).held.length
-}
-
-/** The message boxes on screen that send their own held messages (they draw each as it goes), by conversation. */
-const sending = new Map<number, number>()
-
-/** Says a message box for the conversation is on screen and sends its held messages itself; returns the undo. */
-export function claimHeld(conversation: number): () => void {
-  sending.set(conversation, (sending.get(conversation) ?? 0) + 1)
-  return () => {
-    const left = (sending.get(conversation) ?? 1) - 1
-    if (left > 0) sending.set(conversation, left)
-    else sending.delete(conversation)
-  }
-}
-
-export function heldClaimed(conversation: number): boolean {
-  return sending.has(conversation)
-}
-
 /** For tests: the store belongs to the window's lifetime. */
 export function forgetComposers(): void {
   stored.clear()
-  sending.clear()
-  waiting = NO_CONVERSATIONS
   lastConversation.clear()
   forgetOperations()
 }

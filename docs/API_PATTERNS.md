@@ -147,6 +147,15 @@ or a structured runtime. Both commands came in protocol 79 (`PREWARM_SINCE`, eac
 commands are `prewarm_agent_session` (the agent names and flag rules of `start_agent_session`; it answers false when the
 daemon running is older) and `drop_prewarmed_agent`.
 
+A pane's follow-up queue (`TermInfo.queued`) is the daemon's: it types the oldest into the agent when a turn ends, never
+into a question, and keeps the rest across a restart. `Command::QueueFollowUp { term, text, first }` adds one (`first`,
+a defaulted field, puts it ahead of the ones waiting, for an agent's own command picked while it works),
+`Command::ClearQueue` drops them all, and `Command::DropQueued { term, index, text }` drops one: the one at `index`, and
+only while it still reads `text`, since the queue moves when a turn ends. `DropQueued` came in protocol 80
+(`DROP_QUEUED_SINCE`, with its arm in `ClientMsg::introduced_in`); `COMPATIBLE_SINCE` stays 78. The desktop commands are
+`queue_follow_up` and `drop_queued_follow_up`; the second says the service is from an older release instead of asking a
+daemon that would never answer. A daemon on another machine that is older is asked anyway and does not answer.
+
 A state change reaches attached clients as `ServerMsg::State` (the whole `Snapshot`) or, when only
 some panes differ from what that surface's clients last received, as `ServerMsg::TermsChanged`
 (the panes to replace and the ids to drop); the daemon compares encoded bytes and sends nothing

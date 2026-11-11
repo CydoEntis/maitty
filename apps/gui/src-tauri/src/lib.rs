@@ -708,6 +708,48 @@ async fn send_when_agent_ready(
         .map_err(|error| format!("{error:#}"))
 }
 
+/// Holds a message with the pane's daemon for its working agent: typed in when the turn is over,
+/// whether or not this window is still open.
+#[tauri::command]
+async fn queue_follow_up(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    term: u32,
+    text: String,
+    first: bool,
+) -> Result<serde_json::Value, String> {
+    if routing::is_remote(machine) {
+        let command = maitty_desktop_client::queued_message(text, first)
+            .map_err(|error| format!("{error:#}"))?;
+        return wire
+            .command(machine, term, command)
+            .map(|()| serde_json::Value::Null);
+    }
+    maitty_desktop_client::queue_follow_up(term, text, first, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// Takes one queued message back from the pane's daemon.
+#[tauri::command]
+async fn drop_queued_follow_up(
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    term: u32,
+    index: u32,
+    text: String,
+) -> Result<serde_json::Value, String> {
+    if routing::is_remote(machine) {
+        return wire
+            .command(machine, term, PaneCommand::DropQueued { index, text })
+            .map(|()| serde_json::Value::Null);
+    }
+    maitty_desktop_client::drop_queued(term, index, text)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
 #[tauri::command]
 async fn rename_terminal_session(
     app: tauri::AppHandle,
@@ -1301,6 +1343,8 @@ pub fn run() {
             start_terminal_session,
             start_shell_session,
             rename_terminal_session,
+            queue_follow_up,
+            drop_queued_follow_up,
             send_when_agent_ready,
             mark_terminal_seen,
             answer_helpers,
