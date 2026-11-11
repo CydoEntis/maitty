@@ -65,7 +65,7 @@ const INTERNAL_PREFIX: &str = "__";
 /// A name the window may put in a text box and send to a terminal: letters, digits and the marks
 /// command names are written with. Anything else (a space, a control character, an escape) is not a
 /// command name, so the entry is left out.
-fn command_name(raw: &str) -> Option<String> {
+pub(crate) fn command_name(raw: &str) -> Option<String> {
     let name = raw.trim();
     let allowed = |c: char| c.is_alphanumeric() || matches!(c, '-' | '_' | ':' | '.');
     (!name.is_empty()
@@ -77,7 +77,7 @@ fn command_name(raw: &str) -> Option<String> {
 
 /// Text for one line of the picker: runs of whitespace and control characters become one space, and
 /// it is cut at `limit` characters.
-fn one_line(raw: &str, limit: usize) -> String {
+pub(crate) fn one_line(raw: &str, limit: usize) -> String {
     let words: Vec<&str> = raw.split(|c: char| c.is_whitespace() || c.is_control()).filter(|word| !word.is_empty()).collect();
     words.join(" ").chars().take(limit).collect()
 }

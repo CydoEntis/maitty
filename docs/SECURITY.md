@@ -171,6 +171,11 @@ starting an agent session there already does. What comes back is cleaned before 
 it (`command_name`, `one_line`): a name is letters, digits and `- _ : .` only, since the window
 types a picked name into a terminal, and descriptions are one line cut to 240 characters.
 
+For Codex the same command asks for its skills instead (`codex_skills.rs`): it starts `codex
+app-server` with that one fixed argument in the same checked folder, sends `initialize` and
+`skills/list` for that folder, reads the answer and stops it. No message is sent. The names and
+descriptions are cleaned the same way before the webview sees them.
+
 Assets: the user's shells and agent sessions (which can run any command as the
 user), their source code, and API keys in `config.local.toml`. Threats: another
 local user or process driving the daemon's socket; a process inside one pane

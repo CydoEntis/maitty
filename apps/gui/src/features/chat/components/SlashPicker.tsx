@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { ResultsList, ResultsOption } from '@/components/ui/results-list'
-import type { SlashCommand } from '../slashCommands'
+import { commandLabel, type SlashCommand } from '../slashCommands'
 
 /** The most rows drawn: past this a name is typed further, not scrolled to. */
 export const MAX_SHOWN = 50
@@ -40,15 +40,15 @@ export function SlashPicker({ agent, matches, active, loading, error, onPick, on
         <ResultsList ref={list} id="mx-slash-list" className="mx-slash-list" aria-label={`${agent} commands`}>
           {shown.map((command, index) => (
             <ResultsOption
-              key={command.name}
+              key={commandLabel(command)}
               id={`mx-slash-${String(index)}`}
               selected={index === active}
               className={`mx-slash-row${index === active ? ' is-active' : ''}`}
               onMouseMove={() => { if (index !== active) onHover(index) }}
               onClick={() => { onPick(command) }}
             >
-              <span className="mx-slash-name">/{command.name}{command.hint !== '' && <span className="mx-slash-hint"> {command.hint}</span>}</span>
-              <span className="mx-slash-what">{command.terminal === true && <span className="mx-slash-tag" title="Opens in the terminal">terminal</span>}{command.description}</span>
+              <span className="mx-slash-name">{commandLabel(command)}{command.hint !== '' && <span className="mx-slash-hint"> {command.hint}</span>}</span>
+              <span className="mx-slash-what">{command.terminal === true && <span className="mx-slash-tag" title="Opens in the terminal">terminal</span>}{command.skill === true && <span className="mx-slash-tag" title="Named in your message for the agent to use">skill</span>}{command.description}</span>
             </ResultsOption>
           ))}
         </ResultsList>
