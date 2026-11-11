@@ -66,7 +66,7 @@ async function open(setup: (daemon: FakeDaemonHistory) => void = () => undefined
 }
 
 describe('the usage strip', () => {
-  it('shows what the agent reported using under the box: the context and each plan limit, with when it starts over', async () => {
+  it('shows what the agent reported using at the right of the tray: the context, and each plan limit with its window', async () => {
     const soon = Math.floor(Date.now() / 1000) + 3 * 3600 + 30
     const daemon = new FakeDaemonHistory()
     fake.current = daemon
@@ -76,7 +76,9 @@ describe('the usage strip', () => {
     const strip = screen.getByRole('group', { name: 'Usage' })
     expect(within(strip).getByRole('meter', { name: 'Context' })).toHaveAttribute('aria-valuenow', '9')
     expect(within(strip).getByRole('meter', { name: '5-hour limit' })).toHaveAttribute('aria-valuenow', '12')
-    expect(strip).toHaveTextContent('5-hour limit12%3h')
+    expect(strip).toHaveTextContent('9%12% 5h')
+    // When a limit starts over is in its tooltip, not on the line.
+    expect(within(strip).getByRole('meter', { name: '5-hour limit' }).parentElement).toHaveAttribute('title', '5-hour limit: 12% used, starts over in 3h')
   })
 
   it('is not drawn when the agent reported nothing', async () => {
@@ -316,8 +318,10 @@ describe('while the agent works', () => {
     expect(within(list).getAllByRole('listitem')).toHaveLength(1)
     expect(within(list).getByRole('listitem')).toHaveTextContent('first')
     expect(within(list).getByRole('listitem')).toHaveTextContent('1 of 3')
-    // The two behind it each have a small card beside the stack.
-    expect(within(screen.getByRole('list', { name: 'More queued messages' })).getAllByRole('button').map((preview) => preview.textContent)).toEqual(['2second', '3third'])
+    // A chat the daemon runs takes a message only when the turn ends, so its cards offer no way to push one in.
+    expect(screen.queryByRole('button', { name: 'Send now' })).not.toBeInTheDocument()
+    // The count in its header is what says more wait behind it; nothing sits beside the stack.
+    expect(screen.queryByRole('list', { name: 'More queued messages' })).not.toBeInTheDocument()
 
     await user.click(within(list).getByRole('button', { name: 'first' }))
     expect(within(list).getAllByRole('listitem').map((item) => item.querySelector('.mx-queued-text')?.textContent)).toEqual(['first', 'second', 'third'])

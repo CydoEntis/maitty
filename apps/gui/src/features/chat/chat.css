@@ -26,6 +26,9 @@
 .mx-chat-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 36px 0 10px; display: flex; flex-direction: column-reverse; -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 56px); mask-image: linear-gradient(180deg, transparent 0, #000 56px); }
 .mx-chat-column { margin: 0 auto; width: 100%; max-width: var(--chat-width, 760px); padding: 0 20px; display: flex; flex-direction: column; gap: 14px; }
 .mx-chat-row { margin: 0 auto; width: 100%; max-width: var(--chat-width, 760px); padding: 7px 20px; }
+/* Inside the scroller the rows fill it: the scroller is already the column's width, and a width that is a share of
+   the pane (`auto`) would be taken a second time, of the scroller, leaving the messages narrower than the box under them. */
+.mx-chat-scroller :is(.mx-chat-row, .mx-chat-column) { max-width: none; }
 /* The row Find stopped on. */
 .mx-chat-found { background: rgba(var(--hl), calc(.07 * var(--hk))); box-shadow: inset 3px 0 0 var(--accent); }
 
@@ -41,6 +44,8 @@
 .mx-msg-empty { margin: 0; font-size: 13px; font-style: italic; color: var(--dim); }
 .mx-working { display: flex; align-items: center; gap: 9px; padding: 2px 0; font-size: 13px; color: var(--muted); }
 .mx-working .mx-spin { color: var(--working); }
+/* The agent's tile with the spinner at its corner; the ring round the badge is the page behind it. */
+.mx-working-mark { --card-ring: var(--main); margin-right: 3px; }
 .mx-report { margin: 0; display: flex; align-items: baseline; gap: 7px; font-size: 12.5px; line-height: 1.5; color: var(--muted); overflow-wrap: anywhere; }
 
 /* Rich text in a reply. */
@@ -117,11 +122,17 @@ button.mx-step-row:hover { background: rgba(var(--hl), calc(.05 * var(--hk))); }
 .mx-step-note { margin: 0; padding: 8px 14px; font-size: 12px; color: var(--dim); }
 .mx-step-body > .mx-step-note { padding: 0; }
 
-/* Cards: a command's output, a diff, a code block, a plan, helper agents. Glass on the pane. */
+/* Cards: a command's output, a diff, a code block, a plan, helper agents. Each is a well sunk into the pane (darker
+   than the text around it), with a hairline, a light along its top edge and a soft shadow, so it reads as an object in
+   the conversation and not as more of the page. */
 .mx-step-card {
-  overflow: hidden; border-radius: 12px; border: 1px solid rgba(var(--hl), calc(.09 * var(--hk)));
-  background: linear-gradient(180deg, rgba(var(--hl), calc(.045 * var(--hk) * var(--gk))), rgba(var(--hl), calc(.015 * var(--hk) * var(--gk))));
+  overflow: hidden; border-radius: 12px; border: 1px solid var(--chat-card-line);
+  background: var(--chat-card-sheen), var(--m-well);
+  box-shadow: var(--chat-card-edge);
 }
+:is(.mx-step-card, .mx-stack-card) { --chat-card-line: rgba(var(--hl), calc(.14 * var(--hk))); --chat-card-sheen: linear-gradient(180deg, rgba(var(--hl), calc(.05 * var(--hk) * var(--gk))), rgba(var(--hl), 0) 44px); --chat-card-edge: inset 0 1px 0 rgba(var(--hl), calc(.06 * var(--hk))), 0 10px 24px -14px rgba(var(--sd), calc(.6 * var(--sk))); }
+/* A card's header is a shade lighter than its body, over the line that parts them. */
+:is(.mx-step-head, .mx-plan-head, .mx-stack-head) { background: rgba(var(--hl), calc(.03 * var(--hk))); }
 .mx-step-head { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 6px 0 12px; border-bottom: 1px solid rgba(var(--hl), calc(.07 * var(--hk))); font-size: 12.5px; color: var(--fg2); }
 .mx-step-head:last-child { border-bottom: 0; }
 .mx-step-head.is-command { align-items: flex-start; padding-right: 10px; }
@@ -233,9 +244,10 @@ button.mx-changed:hover { border-color: var(--accent-line); }
 .mx-stack.has-3 { height: 98px; }
 .mx-stack-card {
   position: absolute; top: 0; right: 0; left: 0; z-index: 3; display: flex; height: 80px; flex-direction: column; overflow: hidden; border-radius: 12px;
-  border: 1px solid rgba(var(--hl), calc(.09 * var(--hk)));
+  border: 1px solid var(--chat-card-line);
   /* Opaque under the glass, so the cards behind show only as edges below this one. */
-  background: linear-gradient(180deg, rgba(var(--hl), calc(.045 * var(--hk) * var(--gk))), rgba(var(--hl), calc(.015 * var(--hk) * var(--gk)))), var(--main);
+  background: var(--chat-card-sheen), linear-gradient(var(--m-well), var(--m-well)), var(--main);
+  box-shadow: var(--chat-card-edge);
   transform-origin: bottom center; transition: transform .3s cubic-bezier(.2, .8, .2, 1), opacity .3s cubic-bezier(.2, .8, .2, 1);
 }
 .mx-stack-card.is-depth-1 { z-index: 2; opacity: .7; transform: translateY(9px) scale(.95); }
@@ -278,6 +290,7 @@ button.mx-changed:hover { border-color: var(--accent-line); }
 /* Edit and Remove sit above the text button's stretched area, so they take their own clicks. */
 .mx-queued-tool { position: relative; z-index: 1; flex: none; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; color: var(--muted); }
 .mx-queued-tool:hover { color: var(--fg); background: var(--hover); }
+.mx-queued-tool.is-send:hover { color: var(--accent-text); }
 .mx-queued-text { white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; font: inherit; color: inherit; padding-right: 6px; }
 button.mx-queued-text { cursor: pointer; }
 button.mx-queued-text::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
@@ -292,11 +305,6 @@ button.mx-queued-text::after { content: ""; position: absolute; inset: 0; border
 .mx-queued.is-behind + .mx-queued.is-behind ~ .mx-queued.is-behind { display: none; }
 .mx-queued.is-behind > * { display: none; }
 /* Beside the stack: one small card for each message behind the front one, numbered by its place. */
-.mx-queue-previews { flex: 0 1 170px; min-width: 0; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.mx-queue-preview { display: flex; width: 100%; min-width: 0; height: 26px; align-items: center; gap: 6px; padding: 0 8px 0 4px; border-radius: 8px; border: 1px dashed var(--line2); font-size: 12px; color: var(--muted); cursor: pointer; }
-.mx-queue-preview:hover { border-color: var(--accent-line); color: var(--fg); }
-.mx-queue-preview-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mx-queue-preview.is-more { justify-content: center; padding: 0 8px; }
 .mx-queue:not(.is-stacked) .mx-queued { animation: mxRise .2s cubic-bezier(.2, .8, .2, 1) both; }
 @media (prefers-reduced-motion: reduce) { .mx-queue .mx-queued { animation: none; } }
 
@@ -325,6 +333,10 @@ button.mx-queued-text::after { content: ""; position: absolute; inset: 0; border
 .mx-answer { height: 30px; display: inline-flex; align-items: center; gap: 8px; padding: 0 8px 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--fg); background: rgba(var(--hl), calc(.06 * var(--hk))); box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.1 * var(--hk))); }
 .mx-answer:not(:disabled):hover { background: rgba(var(--hl), calc(.1 * var(--hk))); }
 .mx-answer:disabled { opacity: .55; }
+/* Several questions: each with its choices under it, picked like the options of any form here. */
+.mx-question-form { display: flex; flex-direction: column; gap: 12px; margin: 0; }
+.mx-question-group { margin: 0; padding: 0; border: 0; display: grid; gap: 6px; }
+.mx-question-group > legend { padding: 0; margin-bottom: 2px; font-size: 13px; font-weight: 600; color: var(--fg); }
 .mx-answer kbd { font-family: var(--mono); font-size: 10.5px; font-weight: 600; min-width: 18px; height: 18px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; background: rgba(var(--hl), calc(.08 * var(--hk))); box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.12 * var(--hk))); color: inherit; }
 .mx-answer.is-y { font-weight: 600; color: var(--on-accent); background: var(--accent); box-shadow: inset 0 1px 0 rgba(var(--hl), calc(.2 * var(--hk))), 0 2px 10px -3px color-mix(in srgb, var(--accent) 60%, transparent); }
 .mx-answer.is-y:not(:disabled):hover { background: var(--accent); filter: brightness(1.08); }
@@ -428,13 +440,10 @@ button.mx-queued-text::after { content: ""; position: absolute; inset: 0; border
 .mx-send.is-off { background: rgba(var(--hl), calc(.06 * var(--hk))); color: var(--dim); box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.1 * var(--hk))); }
 .mx-send.is-stop { background: rgba(var(--hl), calc(.08 * var(--hk))); color: var(--fg); box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.14 * var(--hk))); }
 .mx-stop-square { width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
-/* Working: the shared spinner sits where the send arrow was. When the turn can be stopped, hovering or focusing the button shows the
-   stop square in its place, so the spinner is the only thing that moves (an infinite CSS animation here would cost every frame, PERFORMANCE). */
+/* Working: the stop square sits where the send arrow was, and nothing in the button moves; the line over the box is what
+   says the agent is at work. Just after a send, before there is a turn to stop, the square is there and off. */
+.mx-send.is-stop.is-off { color: var(--dim); }
 .mx-send.is-busy { cursor: progress; }
-.mx-send .mx-spin { font-size: 15px; color: currentColor; }
-.mx-send.is-working .mx-stop-square { display: none; }
-.mx-send.is-working:hover .mx-spin, .mx-send.is-working:focus-visible .mx-spin { display: none; }
-.mx-send.is-working:hover .mx-stop-square, .mx-send.is-working:focus-visible .mx-stop-square { display: block; }
 /* A chip that cannot be changed right now keeps its place and size; only its look says so. */
 .mx-model-button.is-locked, .mx-tray-fact.is-locked { cursor: not-allowed; opacity: .6; }
 .mx-model-button.is-locked:hover { background: none; }
@@ -448,18 +457,16 @@ button.mx-queued-text::after { content: ""; position: absolute; inset: 0; border
   border: 1px solid rgba(var(--hl), calc(.1 * var(--hk))); border-top: 0;
   box-shadow: inset 0 -1px 0 rgba(var(--hl), calc(.04 * var(--hk) * var(--gk))), 0 10px 24px -12px rgba(var(--sd), calc(.7 * var(--sk) * var(--gk)));
 }
-/* The usage strip: a narrower, quieter layer under the tray, so the box reads box, tray, strip from front to back. */
-.mx-usage-strip {
-  width: calc(100% - 56px); margin-top: -1px; padding: 5px 12px 5px; border-radius: 0 0 12px 12px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 18px;
-  background: rgba(var(--hl), calc(.025 * var(--hk) * var(--gk))); border: 1px solid rgba(var(--hl), calc(.08 * var(--hk))); border-top: 0;
-  font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums;
-}
+/* What the agent has used, at the right of the tray: a ring for the context, a bar for each plan limit. */
+.mx-usage { display: inline-flex; align-items: center; gap: 14px; padding: 0 6px 0 8px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.mx-usage-ring { --share: 0%; flex: none; width: 13px; height: 13px; border-radius: 50%; background: conic-gradient(var(--usage-ink, var(--accent)) var(--share), rgba(var(--hl), calc(.16 * var(--hk))) 0); -webkit-mask: radial-gradient(circle, transparent 3.5px, #000 4px); mask: radial-gradient(circle, transparent 3.5px, #000 4px); }
+.mx-usage-window { color: var(--dim); }
+.mx-usage-item.is-warn { --usage-ink: var(--warn); }
+.mx-usage-item.is-danger { --usage-ink: var(--danger); }
 .mx-usage-item { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
-.mx-usage-bar { width: 54px; height: 4px; border-radius: 999px; background: rgba(var(--hl), calc(.1 * var(--hk))); overflow: hidden; }
+.mx-usage-bar { width: 28px; height: 4px; border-radius: 999px; background: rgba(var(--hl), calc(.1 * var(--hk))); overflow: hidden; }
 .mx-usage-bar span { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
 .mx-usage-figure { color: var(--fg2); }
-.mx-usage-reset { color: var(--dim); }
-.mx-usage-reset::before { content: "· resets in "; }
 .mx-usage-item.is-warn .mx-usage-bar span { background: var(--warn); }
 .mx-usage-item.is-warn .mx-usage-figure { color: var(--warn); }
 .mx-usage-item.is-danger .mx-usage-bar span { background: var(--danger); }
@@ -467,6 +474,9 @@ button.mx-queued-text::after { content: ""; position: absolute; inset: 0; border
 .mx-tray-fact { height: 26px; display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; border-radius: 7px; color: var(--fg2); font-size: 12.5px; white-space: nowrap; }
 .mx-tray-fact.is-button:hover { background: rgba(var(--hl), calc(.05 * var(--hk))); color: var(--fg); }
 .mx-tray-fact.is-danger { color: var(--danger); }
+.mx-tray-fact.is-branch { min-width: 0; color: var(--ansi-mag); }
+.mx-tray-fact.is-branch svg { flex: none; }
+.mx-tray-branch { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); font-size: 12px; }
 .mx-tray-fact.is-worktree { color: var(--ansi-blue); }
 
 /* A subagent's own chat: the bar that names it and leads back. */

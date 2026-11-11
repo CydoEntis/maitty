@@ -59,15 +59,6 @@ const FOLLOW_UP_REFRESH_MS = 700
 let heldCounter = 0
 const nextHeldId = (): number => { heldCounter -= 1; return heldCounter }
 
-/**
- * Holds one of the agent's own commands (`/model opus`) to be typed in when its turn ends, ahead of the messages
- * that wait, so they run under it. A command of the same name already held is replaced: the last pick stands.
- */
-export function holdCommand(conversation: number, command: string): void {
-  const text = command.trim()
-  const name = text.split(' ')[0] ?? text
-  updateComposer(conversation, (state) => ({ ...state, held: [{ id: nextHeldId(), text }, ...state.held.filter((message) => message.text.split(' ')[0] !== name)] }))
-}
 /** After a held message is typed in, the next waits this long for the agent to start on it, so two never go at once. */
 export const HELD_GAP_MS = 4_000
 
@@ -117,6 +108,11 @@ export type ChatComposer = {
   removeQueued: (id: number) => void
   /** Takes a queued message back into the message box, ahead of anything typed there, so it can be changed and sent again. */
   editQueued: (id: number) => void
+  /**
+   * Types a queued message into the agent now, in the turn that is running, as typing in its terminal does: the agent
+   * reads it at its next step instead of when the turn ends. Only for an agent in a terminal.
+   */
+  sendQueuedNow?: ((id: number) => void) | undefined
   /** Sends the draft; while the agent works the daemon holds it and sends it when the turn ends. */
   submit: () => void
   /** Interrupts the running turn. */
@@ -264,6 +260,18 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
     })
   }, [disabledReason, sending, conversation, send, holding])
 
+  const sendQueuedNow = useCallback((operation: number) => {
+    // Typed text answers a prompt the agent is showing, so nothing is pushed in while it asks something.
+    if (operation >= 0 || disabledReason !== null || sending) return
+    const message = peekComposer(conversation).held.find((item) => item.id === operation)
+    if (message === undefined) return
+    updateComposer(conversation, (state) => ({ ...state, held: state.held.filter((item) => item.id !== operation) }))
+    void send(message.text).then((delivered) => {
+      // One that did not go is put back at the front, to be sent when the turn ends.
+      if (!delivered) updateComposer(conversation, (state) => ({ ...state, held: [message, ...state.held] }))
+    })
+  }, [conversation, disabledReason, sending, send])
+
   const removeQueued = useCallback((operation: number) => {
     if (operation < 0) {
       updateComposer(conversation, (state) => ({ ...state, held: state.held.filter((message) => message.id !== operation) }))
@@ -337,5 +345,5 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
     return () => { window.clearTimeout(timer) }
   }, [typing, first, online, waitingForMessage, awaitingAnswer, sending, conversation, send])
 
-  return { conversationKey: link.conversation, setDraft, attachments, attach, readOnly, attachable: !readOnly || typing, queue, removeQueued, editQueued, submit, stop, running, sending, disabledReason, ready: disabledReason === null && !holding, error, sendText: send, echo }
+  return { conversationKey: link.conversation, setDraft, attachments, attach, readOnly, attachable: !readOnly || typing, queue, removeQueued, editQueued, sendQueuedNow: typing ? sendQueuedNow : undefined, submit, stop, running, sending, disabledReason, ready: disabledReason === null && !holding, error, sendText: send, echo }
 }

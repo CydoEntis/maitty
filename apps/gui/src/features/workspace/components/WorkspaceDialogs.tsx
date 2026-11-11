@@ -13,6 +13,7 @@ import { markWelcomed } from '@/features/welcome/welcomed'
 import { UpdatedNotice } from '@/features/updates/UpdatedNotice'
 import { indexRemoteFiles, listRemoteFolder } from '@/api/fileGets'
 import { updaterSummary } from '@/features/updates/useUpdater'
+import { ServiceBehindNotice } from '@/features/updates/ServiceBehindNotice'
 import { NewWorktreeDialog } from '@/features/worktrees/NewWorktreeDialog'
 import { NewSessionHost } from './NewSessionHost'
 import { GetFileDialog } from './GetFileDialog'
@@ -32,12 +33,14 @@ const loadTopFolder = (term: number) => repoTree(term, null)
 
 /** What opens over or beside the panes: Inspect, the palette, Settings and each dialog. */
 export function WorkspaceDialogs() {
-  const { signInAgent, mismatch, inspectOpen, focusMode, inspectTerm, ownsTerminals, focusedSession, projectOf, diffStat, inspectView, lookAt, setInspectView, setInspectOpen, flash, shortcutsOpen, platform, root, setShortcutsOpen, welcomeOpen, preferences, setPreferences, setWelcomeOpen, newSession, focusedMachineNumber, paletteOpen, paletteItems, setPaletteOpen, focusedId, sessionMap, needsElsewhere, setFocusMode, focusModeChord, worktreeFrom, createWorktree, setWorktreeFrom, newSessionMachine, heads, sessions, home, startFromModal, setNewSessionMachine, getFileId, setGetFileId, getFile, updateAsk, setUpdateAsk, updateNamed, closeAsk, setCloseAsk, renamingMachine, machineNicknames, setMachineNicknames, setRenamingMachine, renameId, renameInline, saveName, setRenameId, settingsSection, setSettingsSection, systemReducedMotion, systemDark, previewThemeSoon, showTestNotice, updater, restartNow, setPreviewTheme, online, runningVersion, machinesKnown, retryNamed, removeNamed, grantNamed, copyCommand, addNamed, cancelAdding, usageInfo, chooseStartFolder, toastMessage, updatedTo, setUpdatedTo, restarting } = useWorkspace()
+  const { signInAgent, sessionsQuery, mismatch, inspectOpen, focusMode, inspectTerm, ownsTerminals, focusedSession, projectOf, diffStat, inspectView, lookAt, setInspectView, setInspectOpen, flash, shortcutsOpen, platform, root, setShortcutsOpen, welcomeOpen, preferences, setPreferences, setWelcomeOpen, newSession, focusedMachineNumber, paletteOpen, paletteItems, setPaletteOpen, focusedId, sessionMap, needsElsewhere, setFocusMode, focusModeChord, worktreeFrom, createWorktree, setWorktreeFrom, newSessionMachine, heads, sessions, home, startFromModal, setNewSessionMachine, getFileId, setGetFileId, getFile, updateAsk, setUpdateAsk, updateNamed, closeAsk, setCloseAsk, renamingMachine, machineNicknames, setMachineNicknames, setRenamingMachine, renameId, renameInline, saveName, setRenameId, settingsSection, setSettingsSection, systemReducedMotion, systemDark, previewThemeSoon, showTestNotice, updater, restartNow, setPreviewTheme, online, runningVersion, machinesKnown, retryNamed, removeNamed, grantNamed, copyCommand, addNamed, cancelAdding, usageInfo, chooseStartFolder, toastMessage, updatedTo, setUpdatedTo, restarting } = useWorkspace()
   // An agent always has a Terminal tab. Pinned under the chat, its terminals are in the pane, and the tab offers to bring them back.
   const hasTerminals = focusedSession !== undefined && ownsTerminals(focusedSession)
   usePreloadFiles(inspectTerm, loadTopFolder)
   return (
     <>
+      {/* A service on another protocol has its own card; this is for one that still talks but runs an older release. */}
+      {mismatch === null && <ServiceBehindNotice sessionsQuery={sessionsQuery} restartWhenIdle={preferences.restartWhenIdle} />}
       {inspectOpen && !focusMode && focusedSession && (inspectTerm !== null || hasTerminals) && (
               <InspectPanel
                 key={focusedSession.id}
@@ -160,7 +163,7 @@ export function WorkspaceDialogs() {
                 systemDark={systemDark}
                 onPreviewTheme={previewThemeSoon}
                 onTestNotice={showTestNotice}
-                updates={{ summary: updaterSummary(updater.state), status: updater.state.status, onCheck: updater.check, onDownload: updater.download, onRestart: restartNow }}
+                updates={{ summary: updaterSummary(updater.state), status: updater.state.status, download: updater.state.status === 'downloading' ? { progress: updater.state.progress, transfer: updater.state.transfer } : undefined, onCheck: updater.check, onDownload: updater.download, onRestart: restartNow }}
                 onShowWelcome={() => { setPreviewTheme(null); setSettingsSection(null); setWelcomeOpen(true) }}
                 platform={platform}
                 daemon={{ online, sessionCount: sessions.length }}

@@ -1,5 +1,7 @@
 import { toast } from '@/lib/toast'
 import type { UpdaterState } from '@/features/updates/useUpdater'
+import { percentOf, type Transfer } from '@/features/updates/downloadEta'
+import { DownloadProgress } from '@/features/updates/DownloadProgress'
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
 import { THEMES } from '@/features/workspace/theme/themes'
 import { ThemePicker } from './ThemePicker'
@@ -75,7 +77,7 @@ type DesktopSettingsProps = {
   /** The app's update check, when there is one to ask. */
   /** Shows a sample notification where notifications appear. */
   onTestNotice?: () => void
-  updates?: { summary: string; status: UpdaterState['status']; onCheck: () => void; onDownload: () => void; onRestart: () => void }
+  updates?: { summary: string; status: UpdaterState['status']; /** How far the download is, while one runs. */ download?: { progress: number | null; transfer: Transfer | null } | undefined; onCheck: () => void; onDownload: () => void; onRestart: () => void }
   onSection: (section: DesktopSettingsSection) => void
   preferences: SettingsPreferences
   onChange: (preferences: SettingsPreferences) => void
@@ -368,6 +370,11 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
           <Row label="Maitty updates" detail={updates.summary}>
             <UpdateControl updates={updates} />
           </Row>
+          {updates.status === 'downloading' && (
+            <div className="mx-scard-progress">
+              <DownloadProgress progress={updates.download?.progress ?? null} transfer={updates.download?.transfer ?? null} />
+            </div>
+          )}
           <Row label="Download updates automatically" detail="A new release is fetched in the background. Installing waits until you restart.">
             <Switch aria-label="Download updates automatically" checked={preferences.autoDownloadUpdates} onCheckedChange={(value) => { update('autoDownloadUpdates', value) }} />
           </Row>
@@ -419,7 +426,10 @@ function updateAction(updates: NonNullable<DesktopSettingsProps['updates']>): { 
     case 'ready': return { label: 'Restart now', run: updates.onRestart }
     case 'failed': return { label: 'Retry', run: updates.onCheck }
     case 'checking': return { label: 'Checking…', run: updates.onCheck }
-    case 'downloading': return { label: 'Downloading…', run: updates.onCheck }
+    case 'downloading': {
+      const percent = percentOf(updates.download?.progress ?? null)
+      return { label: percent === null ? 'Downloading…' : `Downloading ${String(percent)}%`, run: updates.onCheck }
+    }
     case 'idle':
     case 'current': return { label: 'Check now', run: updates.onCheck }
   }

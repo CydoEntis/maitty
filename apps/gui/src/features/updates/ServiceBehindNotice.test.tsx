@@ -14,18 +14,19 @@ vi.mock('@/api/daemon', () => daemon)
 const toasts = vi.hoisted(() => ({
   warning: vi.fn<(title: string, options?: { action?: { label: string; onClick: () => void } }) => void>(),
   error: vi.fn(),
+  success: vi.fn(),
   dismiss: vi.fn(),
 }))
 vi.mock('@/lib/toast', () => ({ toast: toasts }))
 
 const behind = { daemonVersion: '0.71.0', behind: true, canRestart: true, sessionCount: 11, activeTurnCount: 1 }
 
-function renderNotice() {
+function renderNotice(restartWhenIdle = false) {
   const refetch = vi.fn(() => Promise.resolve())
   const sessionsQuery = { isSuccess: true, refetch } as unknown as UseQueryResult<Conversation[]>
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <ServiceBehindNotice sessionsQuery={sessionsQuery} />
+      <ServiceBehindNotice sessionsQuery={sessionsQuery} restartWhenIdle={restartWhenIdle} />
     </QueryClientProvider>,
   )
   return { refetch }
@@ -35,6 +36,51 @@ beforeEach(() => {
   vi.clearAllMocks()
   daemon.loadDaemonUpdateStatus.mockResolvedValue(behind)
   daemon.restartStaleDaemon.mockResolvedValue()
+})
+
+describe('a service a release behind, with nobody mid-turn', () => {
+  const idle = { ...behind, activeTurnCount: 0 }
+
+  it('is restarted without asking, once, and says the sessions came back', async () => {
+    daemon.loadDaemonUpdateStatus.mockResolvedValue(idle)
+    const { refetch } = renderNotice(true)
+
+    await waitFor(() => { expect(toasts.success).toHaveBeenCalledTimes(1) })
+    expect(daemon.restartStaleDaemon).toHaveBeenCalledExactlyOnceWith('0.71.0')
+    expect(refetch).toHaveBeenCalled()
+    expect(toasts.success.mock.calls[0]).toEqual(['Maitty service updated', { description: 'It was restarted to finish the update. 11 sessions came back.' }])
+    expect(toasts.warning).not.toHaveBeenCalled()
+  })
+
+  it('is left alone and asked about when an agent is working', async () => {
+    renderNotice(true)
+    await waitFor(() => { expect(toasts.warning).toHaveBeenCalledTimes(1) })
+    expect(daemon.restartStaleDaemon).not.toHaveBeenCalled()
+  })
+
+  it('is asked about when the setting is off, even with nobody working', async () => {
+    daemon.loadDaemonUpdateStatus.mockResolvedValue(idle)
+    renderNotice(false)
+    await waitFor(() => { expect(toasts.warning).toHaveBeenCalledTimes(1) })
+    expect(daemon.restartStaleDaemon).not.toHaveBeenCalled()
+  })
+
+  it('is never restarted unasked when it cannot say whether agents are working', async () => {
+    daemon.loadDaemonUpdateStatus.mockResolvedValue({ ...behind, activeTurnCount: null })
+    renderNotice(true)
+    await waitFor(() => { expect(toasts.warning).toHaveBeenCalledTimes(1) })
+    expect(daemon.restartStaleDaemon).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the notice and its button when the restart fails', async () => {
+    daemon.loadDaemonUpdateStatus.mockResolvedValue(idle)
+    daemon.restartStaleDaemon.mockRejectedValueOnce(new Error('busy'))
+    renderNotice(true)
+
+    await waitFor(() => { expect(toasts.warning).toHaveBeenCalledTimes(1) })
+    expect(daemon.restartStaleDaemon).toHaveBeenCalledTimes(1)
+    expect(toasts.warning.mock.calls[0]?.[1]?.action?.label).toBe('Restart…')
+  })
 })
 
 describe('the notice that the service is a release behind', () => {

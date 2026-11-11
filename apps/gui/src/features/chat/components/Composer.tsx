@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
 import { toast } from '@/lib/toast'
 import { pasteFromHost, pickFromClipboard, unsupportedMessage } from '@/features/terminal/clipboardImage'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
-import { AppIcon, Icon, Spinner } from '@/features/workspace/components/glyphs'
+import { AppIcon, Icon } from '@/features/workspace/components/glyphs'
 import { registerComposerDrop } from '../composerDrop'
 import { useComposerDraft } from '../composerStore'
 import type { ChatComposer } from '../useChatComposer'
@@ -92,7 +92,7 @@ const PERCENT = 100
  * while a request waits for an answer, or the daemon is offline, the box is off and says why.
  */
 export function Composer({ agent, composer, conversation, commandsFrom, question = null, facts, waiting = false }: Props) {
-  const { setDraft, attachments, attach, readOnly, queue, removeQueued, editQueued, submit, stop, running, sending, disabledReason, error } = composer
+  const { setDraft, attachments, attach, readOnly, queue, removeQueued, editQueued, sendQueuedNow, submit, stop, running, sending, disabledReason, error } = composer
   const storedDraft = useComposerDraft(composer.conversationKey ?? NO_CONVERSATION)
   const draft = composer.draft ?? storedDraft
   const off = disabledReason !== null
@@ -206,7 +206,7 @@ export function Composer({ agent, composer, conversation, commandsFrom, question
   return (
     <div ref={box} className="mx-composer">
       <div className="mx-composer-column">
-        <QueuedMessages agent={agent} queue={queue} onRemove={removeQueued} onEdit={(id) => { editQueued(id); text.current?.focus() }} />
+        <QueuedMessages agent={agent} queue={queue} onRemove={removeQueued} onEdit={(id) => { editQueued(id); text.current?.focus() }} onSendNow={sendQueuedNow} />
         {question}
         <div className={`mx-box${off ? ' is-locked' : ''}`}>
           {picking && (
@@ -245,9 +245,10 @@ export function Composer({ agent, composer, conversation, commandsFrom, question
               </>
             )}
             {stopping ? (
-              <button type="button" className="mx-send is-stop is-working" aria-label={`Stop ${agent}`} title={`${agent} is working. Stop it (Esc)`} onClick={stop}><Spinner /><span className="mx-stop-square" aria-hidden="true" /></button>
+              <button type="button" className="mx-send is-stop" aria-label={`Stop ${agent}`} title={`${agent} is working. Stop it (Esc)`} onClick={stop}><span className="mx-stop-square" aria-hidden="true" /></button>
             ) : busy ? (
-              <button type="button" className="mx-send is-off is-busy" aria-label={`${agent} is working`} aria-busy="true" title={`${agent} is working`} disabled><Spinner /></button>
+              // Sent, and not yet a turn to stop: the same square, off until there is one.
+              <button type="button" className="mx-send is-stop is-off is-busy" aria-label={`${agent} is working`} aria-busy="true" title={`${agent} is working`} disabled><span className="mx-stop-square" aria-hidden="true" /></button>
             ) : (
               <button type="button" className={`mx-send${off || empty ? ' is-off' : ''}`} aria-label={running ? 'Queue message' : 'Send message'} disabled={off || sending || empty} onClick={submit}>
                 <Icon name="arrowUp" size={15} strokeWidth={2.2} />
@@ -256,7 +257,6 @@ export function Composer({ agent, composer, conversation, commandsFrom, question
           </div>
         </div>
         <SettingsTray facts={facts} />
-        {facts.usage !== undefined && <UsageStrip usage={facts.usage} />}
         {error !== null && <p role="alert" className="mx-composer-error">{error}. Your message is kept; send it again to retry.</p>}
       </div>
     </div>
@@ -272,36 +272,43 @@ function modeLockedWhy(facts: Pick<ComposerFacts, 'modeLocked' | 'agentChips'>):
 }
 
 /**
- * The strip tucked under the tray: how full the session's context is and how much of the plan's limits is used, each
- * as a small meter with its figure. Only what the agent reported is drawn (ADR 0009); with nothing reported there is no strip.
+ * The meters at the right of the tray: how full the session's context is, as a small ring, and how much of each of the
+ * plan's limits is used, as a bar with its window (`49% week`). Only what the agent reported is drawn (ADR 0009); with
+ * nothing reported there is none. When a limit starts over is in its tooltip.
  */
-function UsageStrip({ usage }: { usage: SessionUsage }) {
+function UsageMeters({ usage }: { usage: SessionUsage }) {
   const items = usageItems(usage, nowSeconds())
   if (items.length === 0) return null
   return (
-    <div className="mx-usage-strip" role="group" aria-label="Usage">
+    <span className="mx-usage" role="group" aria-label="Usage">
       {items.map((item) => {
         const title = item.resetsIn === null ? `${item.label}: ${String(item.percent)}% used` : `${item.label}: ${String(item.percent)}% used, starts over in ${item.resetsIn}`
         return (
           <span key={item.key} className={`mx-usage-item is-${item.tone}`} title={title}>
-            <span className="mx-usage-label">{item.label}</span>
-            <span className="mx-usage-bar" role="meter" aria-label={item.label} aria-valuemin={0} aria-valuemax={PERCENT} aria-valuenow={item.percent}><span style={{ width: `${String(item.percent)}%` }} /></span>
-            <span className="mx-usage-figure">{item.percent}%</span>
-            {item.resetsIn !== null && <span className="mx-usage-reset">{item.resetsIn}</span>}
+            {item.window === null
+              ? <span className="mx-usage-ring" role="meter" aria-label={item.label} aria-valuemin={0} aria-valuemax={PERCENT} aria-valuenow={item.percent} style={{ '--share': `${String(item.percent)}%` } as CSSProperties} />
+              : <span className="mx-usage-bar" role="meter" aria-label={item.label} aria-valuemin={0} aria-valuemax={PERCENT} aria-valuenow={item.percent}><span style={{ width: `${String(item.percent)}%` }} /></span>}
+            <span className="mx-usage-figure">{item.percent}%{item.window !== null && <span className="mx-usage-window"> {item.window}</span>}</span>
           </span>
         )
       })}
-    </div>
+    </span>
   )
 }
 
-/** The darker tray under the box: the folder, how the agent is set up, and the branch with whether it is a worktree. */
+/** The darker tray under the box, one line: the folder, the branch (or the worktree, in its own colour and with its tree), how the agent is set up, and at the right what it has used. */
 function SettingsTray({ facts }: { facts: ComposerFacts }) {
   return (
     <div className="mx-settings-tray">
       {facts.onOpenFolder === null
         ? <span className="mx-tray-fact"><Icon name="folder" />{facts.folder}</span>
         : <button type="button" className="mx-tray-fact is-button" title="Show its files" onClick={facts.onOpenFolder}><Icon name="folder" />{facts.folder}</button>}
+      {facts.branch !== null && (
+        <span className={`mx-tray-fact is-branch${facts.worktree === true ? ' is-worktree' : ''}`} title={facts.worktree === true ? `Worktree: its own copy of the project, on branch ${facts.branch}` : facts.worktree === false ? `Branch ${facts.branch}, in the project's own folder` : `Branch ${facts.branch}`} aria-label={`${facts.worktree === true ? 'Worktree' : 'Branch'} ${facts.branch}`}>
+          <Icon name={facts.worktree === true ? 'worktree' : 'branch'} size={13} strokeWidth={1.9} stroke="currentColor" />
+          <span className="mx-tray-branch">{facts.branch}</span>
+        </span>
+      )}
       {facts.modeLocked !== undefined || (facts.agentChips !== undefined && (facts.agentChips.locked !== null || facts.onPickMode === undefined)) ? (
         // aria-disabled, not disabled: a disabled button gets no tooltip, and the reason is the point.
         <button type="button" aria-disabled="true" className={`mx-tray-fact is-locked${facts.modeDanger ? ' is-danger' : ''}`} title={modeLockedWhy(facts)} aria-label={`Permission mode: ${facts.mode ?? 'not reported yet'}. ${modeLockedWhy(facts)}`}>
@@ -329,13 +336,7 @@ function SettingsTray({ facts }: { facts: ComposerFacts }) {
         </PermissionMenu>
       )}
       <span className="mx-spacer" />
-      {facts.branch !== null && (
-        <span className={`mx-tray-fact is-branch${facts.worktree === true ? ' is-worktree' : ''}`} title={facts.worktree === true ? 'A worktree: its own copy of the project on this branch' : facts.worktree === false ? "The project's own folder, on this branch" : undefined}>
-          <Icon name={facts.worktree === true ? 'worktree' : 'branch'} size={13} strokeWidth={1.9} stroke="currentColor" />
-          {facts.worktree === true ? 'Worktree' : facts.worktree === false ? 'Branch' : null}
-          <span className="mx-tray-branch">{facts.branch}</span>
-        </span>
-      )}
+      {facts.usage !== undefined && <UsageMeters usage={facts.usage} />}
     </div>
   )
 }

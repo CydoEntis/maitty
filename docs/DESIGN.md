@@ -329,7 +329,8 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   The foot holds the update slot (or "Reconnecting to maittyd…") and the Settings gear. The edge drags (208 to 440px;
   double-click resets). The **rail** of a narrow window is the starters, then one tile per session.
 - **Replies are typed in.** An agent's reply types toward the text that came in (`useTypedText`), so a chunk eases in instead
-  of flashing. A reply that arrives after the history has loaded types from its first letter even when it arrives whole; what
+  of flashing: a few whole words every 40ms at about 300 characters a second, faster while a lot is waiting, so a
+  long reply that arrives whole takes a few seconds and a short one a moment (`nextShown`). A reply that arrives after the history has loaded types from its first letter even when it arrives whole; what
   the history already held shows at once (`knownRows.ts`), and Reduce motion shows everything at once. A helper agent reporting back (the harness's `<task-notification>` block, which the history keeps as a
   user message) is one quiet line, "Agent "name" finished · 11s · 50.5k tokens", never the markup; once it has reported,
   its row leaves the sidebar. One that still needs something stays; one that stopped without finishing stays while the
@@ -391,11 +392,13 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   that has a terminal: running one types it there and shows the terminal, since its menu is the terminal's to draw,
   and it is refused with a toast while the agent works. A listed command that opens a menu (`/model`, `/config`)
   still shows that menu in the terminal, not in the chat.
-- **Usage strip.** Under the message box's tray sits a narrower, quieter strip (`UsageStrip`, `usageStrip.ts`) with a
-  small meter and figure for what the session's agent reported: **Context**, then each plan limit the daemon holds for
-  that agent (`Snapshot.limits`: **5-hour limit**, **Weekly limit**) with how long until it starts over (`resets in 2d
-  4h`). A meter is amber from 75% and red from 90%. Only reported figures are drawn, never a zero (ADR 0009), and with
-  none there is no strip. A chat session with no pane has none yet. Tokens and cost stay in Settings › Usage & cost.
+- **The tray under the message box** is one line (`SettingsTray`). At the left: the folder, the branch in mono in
+  the theme's magenta with the branch mark (or the tree and the worktree's blue; the tooltip says which), then the
+  permission mode. At the right, what the agent reported using (`UsageMeters`, `usageStrip.ts`): the context as a
+  small ring with its percent, then each plan limit as a short bar with its percent and window (`49% week`,
+  `12% 5h`). From 75% a meter is amber and from 90% red. When a limit starts over is in its tooltip. Only what the
+  agent reported is drawn (ADR 0009); a chat session with no pane has none yet. Tokens and cost stay in Settings ›
+  Usage & cost.
 - **Codex's commands.** A Codex chat has the same picker. Codex cannot be asked what it takes, so its commands are a
   list the window keeps (`codexCommands.ts`: names from OpenAI's command reference, descriptions from Codex CLI
   0.167.0). The few whose result the conversation shows are sent from the chat; the rest open a picker or a page in
@@ -403,8 +406,11 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   follows 400ms later (`typeMessage`), since Codex loses an Enter sent with it.
 - **Queued messages.** Each waits as a dashed card over the box whose header reads **Queued** (and `1 of 3` in an accent
   pill when several wait; the tooltip says when it is sent) with Edit (a pencil) and Remove (×) at its right. Several
-  stack with the next one to be sent in front, in the accent's line, and beside the stack sits a small numbered card
-  for each one behind (three at most, then `+N more`). A click anywhere on a card or a preview spreads them all out.
+  stack with the next one to be sent in front, in the accent's line; the `1 of 3` is what says more wait behind it,
+  and nothing sits beside the stack. A click anywhere on the card spreads them all out. For an agent in a terminal
+  the header also has **Send now** (an up arrow): it types the message into the turn that is running, as typing in the
+  terminal does, so the agent reads it at its next step; it is off while the agent asks something, since typed text
+  would answer the question. A chat the daemon runs has no such button: it takes a message only when the turn ends.
 - **Pane** (`components/PaneCard.tsx`, `pane.css`). Agents and shells share one 42px header: the 26px app icon with its
   status badge, the name (15px, 600) over the folder (11px `--dim`) and the branch (mono 10.5px `--ansi-mag`), then at
   the right, icons only (layout 2e): the terminal | chat switch (agents with a chat), split right, the terminals
@@ -561,8 +567,9 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   (`--main` under `rgba(--hl,.075)` to `.035`, a `rgba(--hl,.12)` border, radius 16), a two-line text box on top, **+**
   (attach) at the left, and at the right the model picker ("Claude Sonnet 5.5 · Medium ▾": the agent's mark, the model
   picked or the one its own file says, the effort) and the round 32px send button, teal when it can send and grey while
-  a question waits. While the agent works, or a message is held until it starts, the send button is the shared working spinner
-  (`Spinner`, so no extra animation); when the turn can be stopped (nothing typed) hovering or focusing it shows the Stop square.
+  a question waits. While the agent works and nothing is typed, the send button is the Stop square, still (the line over the
+  box says the agent is at work, so the button does not spin); just after a send, before there is a turn to stop, the
+  square is there and off.
   Claude's model chip and mode chip are always there, from the first frame of a new chat: while the agent starts or works they
   stay where they are, greyed out with the reason as their tooltip, so the box never gains or loses a control. A chat that
   follows another agent (Codex, Gemini) draws its model label from the start, with just the agent's name until it says its
@@ -672,10 +679,27 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   between them, since each terminal holds a GPU context): the same box, not painted, `inert` and hidden from
   screen readers, their terminals paused and their chats unmounted, so going back builds no terminal and a
   hidden chat reads nothing and answers no key. A paused terminal catches up from the kept screen when shown.
+- **Cards in the chat** (a command and its output, a diff, a code block, the plan, helpers; `.mx-step-card`,
+  `.mx-stack-card`). Each is a well sunk into the pane (`--m-well`, darker than the page), with a hairline at 14% of
+  the theme's light, a faint light along its top edge and a soft drop shadow, and its header is a shade lighter than
+  its body. The point is that a card reads as an object in the conversation, not as more of the page.
+- **Jump to the latest message.** The round arrow over the chat glides to the newest row instead of cutting to it
+  (0.18 to 0.42s by distance, easing in; `glidePlan`). From far up it starts two screens above the bottom, so a long
+  chat is not drawn on the way. The reader's own wheel, key or touch ends the glide where it is, and with motion
+  reduced it is a plain jump.
+- **A session's row.** The agent's tile and status badge at the left. To its right, two lines. First, small and
+  dim, where the session is: the project's colour square and folder at the left, and at the right the branch in mono
+  in the theme's magenta with the branch mark, or the tree and the branch in blue when it runs in a worktree. Under
+  it the title, with the time or the stop word at its right. Inside a project group the folder is in the heading, so
+  the first line is the branch alone, and a session with neither has only its title (`SessionRow.tsx`, `PlaceLine`).
+  The close button shows on hover over the time.
+- **Rows slide, folds fold, never both.** A row that changes place slides there (`useFlip`). A section or a
+  session's subagents folding moves what is under it by itself, so while a fold runs nothing slides, and where things
+  are when it ends is where the next slide starts from; the two together made the list bounce.
 - **Sidebar footer and updates.** The footer's left slot shows the version, or what an update needs
   from you: a pill that opens a card upward with the matching actions. An update waiting to be downloaded or
   installed is a glass button, a sheen sweeping across it, a tile with an arrow falling into a tray, **Update** and the
-  version in mono (**Restart to update** once downloaded); the download's percent and **Update failed** keep a tinted pill. Every card closes with an X in its corner; the download's card shows the bar, what has arrived of the whole (`34.9 MB of 102 MB`) and, on the right, the percent and the time left from the last ten seconds' speed (`about 12 min left`, `downloadEta.ts`). The updater downloads first and installs only on
+  version in mono (**Restart to update** once downloaded); the download's percent and **Update failed** keep a tinted pill. Every card closes with an X in its corner; the download's card shows the bar, what has arrived of the whole (`34.9 MB of 102 MB`) and, on the right, the percent and the time left from the last ten seconds' speed (`about 12 min left`, `downloadEta.ts`). Settings shows the same bar and line under its update row while a download runs, with the percent on its button (`DownloadProgress`); a light passes along the bar, and with no size yet a short run slides across, so it never reads as stuck. The updater downloads first and installs only on
   **Restart now**, or by itself when the app is idle, so sessions keep running either way. Settings › General › Updates shows the state with
   one fitting button and two switches: download automatically (on) and **Install updates when idle** (on, helper
   "Never while an agent is working"). Idle means no agent working or waiting on an answer, no keyboard input

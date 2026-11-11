@@ -3,11 +3,11 @@ import { Popover } from 'radix-ui'
 import { PopupContent } from '@/components/ui/popup'
 import { Icon } from '@/features/workspace/components/glyphs'
 import { noteLines } from './noteLines'
-import { amountWords, timeLeftWords } from './downloadEta'
+import { DownloadProgress } from './DownloadProgress'
+import { percentOf } from './downloadEta'
 import type { UpdaterState } from './useUpdater'
 import { copyText } from '@/lib/clipboard'
 
-const PERCENT = 100
 const CARD_GAP_PX = 8
 const CARD_EDGE_PX = 12
 
@@ -45,7 +45,7 @@ export function UpdateSlot({ variant, state, version, skipped, portalContainer, 
     return <span className="mx-version">Version <span className="mono">{version}</span></span>
   }
 
-  const percent = offer.status === 'downloading' && offer.progress !== null ? Math.round(offer.progress * PERCENT) : null
+  const percent = offer.status === 'downloading' ? percentOf(offer.progress) : null
   const label = offer.status === 'available' ? `Update to ${offer.version}`
     : offer.status === 'downloading' ? (percent === null ? 'Downloading…' : `${String(percent)}%`)
     : offer.status === 'ready' ? 'Restart to update'
@@ -69,20 +69,13 @@ export function UpdateSlot({ variant, state, version, skipped, portalContainer, 
           </>
         )
       }
-      case 'downloading': {
-        const left = offer.transfer === null ? null : timeLeftWords(offer.transfer)
-        const share = percent === null ? null : `${String(percent)}%`
+      case 'downloading':
         return (
           <>
             <h3>Downloading Maitty {offer.version}</h3>
-            <div className="mx-upd-bar" role="progressbar" aria-valuemin={0} aria-valuemax={PERCENT} aria-valuenow={percent ?? undefined}><span style={{ width: `${String(percent ?? 0)}%` }} /></div>
-            <p className="mx-upd-progress">
-              <span>{offer.transfer === null ? 'Starting…' : amountWords(offer.transfer)}</span>
-              <span>{[share, left].filter((part) => part !== null).join(' · ')}</span>
-            </p>
+            <DownloadProgress progress={offer.progress} transfer={offer.transfer} />
           </>
         )
-      }
       case 'ready':
         return (
           <>

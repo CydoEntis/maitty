@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
 import { LoaderCircle } from 'lucide-react'
 import { toast } from '@/lib/toast'
@@ -12,18 +12,31 @@ const STATUS_KEY = ['daemon-update-status']
 
 type ServiceBehindNoticeProps = {
   sessionsQuery: UseQueryResult<Conversation[]>
+  /**
+   * Restart the older service without asking when it can be done with nothing lost: its sessions are saved and no
+   * agent is working or waiting, so each one comes back as it was (Settings › General › Install updates when idle).
+   */
+  restartWhenIdle?: boolean
+}
+
+/** Whether restarting the service now interrupts nobody: it can be restarted, and it says no agent is mid-turn. */
+function restartsUnasked(status: { behind: boolean; canRestart: boolean; activeTurnCount: number | null } | undefined, restartWhenIdle: boolean): boolean {
+  return restartWhenIdle && status !== undefined && status.behind && status.canRestart && status.activeTurnCount === 0
 }
 
 const plural = (count: number, word: string) => `${String(count)} ${word}${count === 1 ? '' : 's'}`
 
 /**
  * A new release leaves a running service alone, because it may hold sessions. Without this the app says it is up to
- * date while the service still runs the old code, so say so once and offer the restart, which asks first.
+ * date while the service still runs the old code, and none of the release's fixes to the service apply. When no
+ * agent is mid-turn the service is restarted at once (idle agents come back resumed); otherwise this says so and
+ * offers the restart, which asks first.
  */
-export function ServiceBehindNotice({ sessionsQuery }: ServiceBehindNoticeProps) {
+export function ServiceBehindNotice({ sessionsQuery, restartWhenIdle = false }: ServiceBehindNoticeProps) {
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [pending, setPending] = useState(false)
+  const [autoFailed, setAutoFailed] = useState(false)
   const statusQuery = useQuery({
     queryKey: STATUS_KEY,
     queryFn: loadDaemonUpdateStatus,
@@ -34,9 +47,31 @@ export function ServiceBehindNotice({ sessionsQuery }: ServiceBehindNoticeProps)
   const status = statusQuery.data
   const version = status?.behind ? status.daemonVersion : null
   const canRestart = Boolean(status?.canRestart)
+  const unasked = restartsUnasked(status, restartWhenIdle)
+  const sessionCount = status?.sessionCount ?? 0
+  const refetchSessions = sessionsQuery.refetch
+
+  // Tried once for each version found behind: a restart that failed leaves the notice and its button.
+  const tried = useRef<string | null>(null)
+  useEffect(() => {
+    if (!version || !unasked || tried.current === version) return
+    tried.current = version
+    restartStaleDaemon(version).then(
+      async () => {
+        await refetchSessions()
+        await queryClient.invalidateQueries({ queryKey: STATUS_KEY })
+        toast.success('Maitty service updated', { description: sessionCount === 0 ? 'It was restarted to finish the update.' : `It was restarted to finish the update. ${plural(sessionCount, 'session')} came back.` })
+      },
+      (error: unknown) => {
+        console.warn('Could not restart the older Maitty service', error)
+        setAutoFailed(true)
+      },
+    )
+  }, [version, unasked, sessionCount, refetchSessions, queryClient])
 
   useEffect(() => {
-    if (!version) return
+    // While the unasked restart runs there is nothing to ask.
+    if (!version || (unasked && !autoFailed)) return
     toast.warning(`The Maitty service is still on ${version}`, {
       id: TOAST_ID,
       duration: Infinity,
@@ -48,7 +83,7 @@ export function ServiceBehindNotice({ sessionsQuery }: ServiceBehindNoticeProps)
     return () => {
       toast.dismiss(TOAST_ID)
     }
-  }, [version, canRestart])
+  }, [version, canRestart, unasked, autoFailed])
 
   if (!status || !version) return null
 
