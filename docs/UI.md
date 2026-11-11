@@ -912,7 +912,7 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   changes both from the tray, by typing the agent's own commands into its terminal: the mode chip is
   a dropdown that presses Shift+Tab until the agent's screen shows the pick (`modeFromScreen`), and is off while the
   agent works; the model and reasoning picker sends `/model` and `/effort`, and a pick made while the agent works is
-  held at the front of the queue (`holdCommand`, the last pick of each) and typed in when the turn ends. The agent
+  queued with the pane's daemon ahead of the messages that wait (`queueCommand`, the last pick of each) and typed in when the turn ends. The agent
   itself is never changed in a chat that has started. Other agents show them read-only. A Codex chat shows none yet (`chatMeta.ts`,
   `SessionMeta` in the read result). Bypass permissions is pickable only when Claude started allowing it: **Settings >
   General > Yolo mode** has one switch per agent, off by default, that adds the agent's own launch flag to sessions started

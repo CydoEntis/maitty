@@ -11,7 +11,7 @@ import { buildRows, type ChatRow } from '../chatRows'
 import { findRow, registerChatFind } from '../chatSearch'
 import { useLatest } from '@/lib/useLatest'
 import { useChatFeed } from '../useChatFeed'
-import { CODEX_SUBMIT_GAP_MS, holdCommand, typeMessage, useChatComposer } from '../useChatComposer'
+import { CODEX_SUBMIT_GAP_MS, queueCommand, typeMessage, useChatComposer, type PaneQueue } from '../useChatComposer'
 import { countUserMessages } from '../workPhase'
 import { startedWithYolo } from '../yoloSessions'
 import { CODEX_MODE_COMMAND, CODEX_MODE_REFUSED, CODEX_START_MODES, DANGER_MODES, modeFromScreen, modeLabel } from '../chatMeta'
@@ -107,6 +107,8 @@ type Props = {
   onOpenFile?: OpenFile | null
   /** Types into the terminal the agent runs in, for a chat that follows it (ADR 0003). */
   typeInto?: ((text: string) => Promise<void>) | undefined
+  /** What the pane's daemon holds for its working agent: a message or a pick made while it works joins it. */
+  paneQueue?: PaneQueue | undefined
   /** The permission prompt the agent's hook says its terminal is stopped on, for a chat that follows it. */
   ask?: PermissionAsk | null
   /** The pane's own status, live in the sidebar: the chat shows working at once and reads then, instead of at its next poll. */
@@ -128,7 +130,7 @@ type Props = {
 }
 
 /** The chat of one session: its history as a virtualised list, the daemon's status, and the composer under it. */
-export function ChatSession({ link, agent, online, hasTerminal = true, worktree: paneWorktree, root = null, onOpenDiff = null, onOpenFile = null, typeInto, ask = null, sessionId, paneStatus, folder = '', branch = null, onOpenFolder = null, subagent = null, onBackToMain, onShowTerminal, usage }: Props) {
+export function ChatSession({ link, agent, online, hasTerminal = true, worktree: paneWorktree, root = null, onOpenDiff = null, onOpenFile = null, typeInto, paneQueue, ask = null, sessionId, paneStatus, folder = '', branch = null, onOpenFolder = null, subagent = null, onBackToMain, onShowTerminal, usage }: Props) {
   const { feed, events, offline, readError, refresh, recordAnswer, unwatchedReads } = useChatFeed({ conversation: link.conversation, generation: link.generation, provider: agent })
   const paneWorking = paneStatus === 'working'
   const [branches] = useFolderBranches(root ?? '')
@@ -218,7 +220,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
         const model = /^\/model (\S+)/.exec(text)?.[1]
         if (model !== undefined) setLiveModel({ base: metaModel, value: model })
         if (chipsLocked !== null) {
-          holdCommand(link.conversation, text)
+          if (paneQueue !== undefined) void queueCommand(paneQueue, text).catch((error: unknown) => { toast.error(errorMessage(error, 'Could not queue that for the agent')) })
           return
         }
         void typeInto(text).then(refresh)
@@ -247,8 +249,8 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
         void step().catch((error: unknown) => { toast.error(errorMessage(error, 'Could not change the permission mode')) })
       },
     }
-  }, [canChangeAgent, canPickCodexMode, chipsLocked, typeInto, refresh, sessionId, metaMode, metaModel, shownMode, online, link.conversation])
-  const composer = useChatComposer({ link, agent, feed, online, refresh, answersPrompt, paneWorking, ...(typeInto ? { typeInto } : {}) })
+  }, [canChangeAgent, canPickCodexMode, chipsLocked, typeInto, refresh, sessionId, metaMode, metaModel, shownMode, online, paneQueue])
+  const composer = useChatComposer({ link, agent, feed, online, refresh, answersPrompt, paneWorking, ...(typeInto ? { typeInto } : {}), ...(paneQueue ? { paneQueue } : {}) })
   // A command that opens a menu of its own is typed into the agent's terminal, which is shown: the chat cannot draw the menu.
   const runInTerminal = typeInto === undefined || onShowTerminal === undefined || link.readOnly !== true ? undefined : (command: string) => {
     onShowTerminal()

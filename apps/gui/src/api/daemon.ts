@@ -52,6 +52,8 @@ const TerminalSessionSchema = z.object({
   // When the status last changed, in unix seconds; the sidebar row's time.
   since: z.number().nonnegative().default(0),
   asking: z.string().default(''),
+  // The follow-ups its daemon holds for the working agent, oldest first (`TermInfo.queued`).
+  queued: z.array(z.string()).default([]),
   // The agent's own hook said what its permission prompt asks (not read off the screen).
   ask: z.object({ tool: z.string(), detail: z.string(), answerable: z.boolean().default(false), choices: z.array(z.string()).default([]) }).nullable().default(null),
   interrupted: z.object({ agent: z.string(), resume: z.string() }).nullable().default(null),
@@ -725,6 +727,23 @@ export async function loadTerminalReplay(conversation: Pick<Conversation, 'id'> 
   return bytesOf(reply)
 }
 
+/**
+ * Leaves a message with the pane's daemon for its working agent: typed in when the turn is over, whether or not
+ * this window is open. `first` puts it ahead of the ones already waiting.
+ */
+export async function queueFollowUp(conversation: Pick<Conversation, 'id'>, text: string, first: boolean): Promise<void> {
+  const pane = addressOf(conversation.id)
+  if (!isDesktop() || pane === null) throw new Error('Only an agent in a terminal takes a queued message')
+  await invokeParsed('queue_follow_up', NullSchema, { term: pane.term, text, first, ...machineArgs(pane) })
+}
+
+/** Takes back the queued message at `index`, while it still reads `text`: the queue moves when a turn ends. */
+export async function dropQueuedFollowUp(conversation: Pick<Conversation, 'id'>, index: number, text: string): Promise<void> {
+  const pane = addressOf(conversation.id)
+  if (!isDesktop() || pane === null) throw new Error('Only an agent in a terminal has queued messages')
+  await invokeParsed('drop_queued_follow_up', NullSchema, { term: pane.term, index, text, ...machineArgs(pane) })
+}
+
 export async function sendTerminalInput(conversation: Pick<Conversation, 'id'> & { generation: number }, input: string | Uint8Array): Promise<void> {
   if (!isDesktop()) throw new Error('The native terminal is only available in the desktop app')
   const data = Array.from(typeof input === 'string' ? new TextEncoder().encode(input) : input)
@@ -1095,6 +1114,7 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
       since: term.since,
       timeline: term.timeline,
       usage: term.usage,
+      queued: term.queued,
       limits: limits.map((limit) => ({ name: limit.name, used: limit.used, resetsAt: limit.resets_at })),
       helperAsk: term.helper_ask,
       subagents: term.subagent_activity.map((child) => ({ id: child.id, name: child.name, state: child.state, task: child.task, startedAt: child.started_at, updatedAt: child.updated_at, latest: child.latest_activity, result: child.result })),

@@ -31,7 +31,6 @@ import { useSystemDark, useSystemReducedMotion, useWindowNarrowerThan } from './
 import { readSplitShells, withSplitShell, writeSplitShells } from '@/data/splitShells'
 import { liveAgentTerminals, ownedTerminalIds, readAgentTerminals, writeAgentTerminals } from '@/data/agentTerminals'
 import { useAgentExits } from './useAgentExits'
-import { useHeldMessages } from './useHeldMessages'
 import { readMachineNicknames } from '@/data/machineNicknames'
 import type { OpenSubagent } from './components/Sidebar'
 import { useSharedSettings } from '@/features/settings/sharedSettings'
@@ -238,7 +237,6 @@ export function useWorkspaceState() {
     })
   }, [layout, sessionMap, runStart, preferences.startFolder, home])
   const { askToClose, endSessions, undoLastClose, lastClose, closePaneById, closingPanes, closeAsk, setCloseAsk } = useClosing({ setLayout, queryClient, layout, sessions, flash, paneSessions, agentTerminals })
-  useHeldMessages({ sessions, online })
   useAgentExits({ sessions, listed: online && sessionsQuery.isSuccess, setLayout, agentTerminals: savedAgentTerminals, endSessions })
 
   const restartPane = useCallback((paneId: string) => {

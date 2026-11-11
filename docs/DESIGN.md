@@ -358,13 +358,13 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   session, so they never stack). The theme's tokens are on the page root, so a menu or popover that renders outside the window
   reads the same colours and is never see-through.
 - **Typing while an agent works.** A chat run by the daemon queues what you send, and the daemon sends it when the turn
-  ends. A chat that follows an agent in a terminal does the same on this side: the message is held in the composer store
-  (shown under the box in the queue, removable) and typed into the agent's prompt, one at a time, once it is ready for a
-  message; nothing is typed while it is asking something. The message box sends them while it shows the chat; with
-  the chat off screen the window sends them itself (`useHeldMessages`), by the pane's status, so a queue never waits to
-  be looked at. While messages are still queued for a session, a turn that ends raises no "finished" notice or sound:
-  the session has not finished. They are the window's, so they go only while the window is open, and the queued card's
-  tooltip says so. What a box holds (unsent text, files, held messages) is kept
+  ends. A chat that follows an agent in a terminal does the same: the message is left with the pane's daemon
+  (`queue_follow_up`, the queue the terminal app uses; shown under the box in the queue, removable and editable through
+  `drop_queued_follow_up`) and the daemon types it into the agent's prompt, one at a time, when a turn ends; nothing is
+  typed while it is asking something. The window types none of them, so a queue goes on with the window closed, and
+  the chat draws a message as sent when it leaves the front of the daemon's queue. While messages are still queued
+  for a session (`SessionView.queued`), a turn that ends raises no "finished" notice or sound: the session has not
+  finished. What a box holds (unsent text, files) is kept
   by conversation number and belongs to its session: when the daemon gives the session's chat a new number, it moves
   to that number (`followComposer`).
 - **Settings pages.** ESSENTIALS: **General** (start and export folders, window, updates, sessions) and **Chat** (how a

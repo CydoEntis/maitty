@@ -1533,22 +1533,6 @@ the bundled daemon removed, no process left behind, `docs/TESTING.md` updated. T
 
 Parked here because Plane was not reachable from the session that found them.
 
-### Hold a terminal agent's queued messages in the daemon
-
-Messages queued for an agent that runs in a terminal are held by the desktop window
-(`composerStore` `held`, sent by the message box or by `useHeldMessages`). They are typed in only
-while a window is open, so closing the window stops the queue; the queued card's tooltip says so.
-A chat session the daemon runs has no such limit: the daemon holds its queue.
-
-- Move the window's queue onto the daemon's own follow-up queue for panes (`Command::QueueFollowUp`,
-  `ClearQueue`, `TermInfo.queued`), which the terminal app already uses.
-- The window's queue card removes and edits one message; the daemon can only clear them all. That
-  needs a new command (remove one by position or id), so it is a protocol change: decide
-  `PROTOCOL_VERSION` and `COMPATIBLE_SINCE` with it (AGENTS.md, non-negotiable 2).
-- A model or effort picked while the agent works is held as `/model …` at the front of the same
-  queue (`holdCommand`); keep that order.
-- Labels: `daemon`, `client`, `feature`.
-
 ### Stop hand-writing the agents' command lists
 
 The chat's slash-command picker has two lists written by hand: Claude Code's commands that only its

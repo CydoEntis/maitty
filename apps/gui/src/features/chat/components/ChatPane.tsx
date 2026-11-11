@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import type { OpenFile } from '../openFile'
 import type { PermissionAsk } from '@/data/preview'
 import type { SessionStatus } from '@/features/workspace/model/session'
+import type { PaneQueue } from '../useChatComposer'
 import type { SubagentView } from '@/features/workspace/model/subagents'
 import { FULL_ACCESS_LABEL, FULL_ACCESS_WARNING } from '../fullAccess'
 import { AGENT_LABEL } from '../modelName'
@@ -22,6 +23,8 @@ export type ChatPaneProps = {
   onOpenFile?: OpenFile | null
   /** Types into the terminal the agent runs in, so a chat that follows it can talk to it (ADR 0003). */
   typeInto?: ((text: string) => Promise<void>) | undefined
+  /** What the pane's daemon holds for its working agent, and the ways to add to it and take one back. */
+  paneQueue?: PaneQueue | undefined
   /** What the daemon read off the screen of a pane that is stopped on a question: the text and its choices. */
   asking?: string
   /** The permission prompt the agent's hook says the pane is stopped on. */
@@ -77,6 +80,7 @@ export function ChatPane(props: ChatPaneProps) {
             onOpenDiff={props.onOpenDiff ?? null}
             onOpenFile={props.onOpenFile ?? null}
             typeInto={props.typeInto}
+            paneQueue={props.paneQueue}
             ask={props.ask ?? null}
             folder={props.folder ?? ''}
             branch={props.branch ?? null}
