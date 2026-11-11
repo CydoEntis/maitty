@@ -2353,23 +2353,52 @@ const QUESTION_TOOL: &str = "AskUserQuestion";
 /// pick them stop at nine, so this stays well inside what one key can name.
 const MAX_QUESTION_CHOICES: usize = 4;
 
-/// The choices of a prompt that is one question with one answer: the labels, in the order the menu
-/// numbers them. A prompt with several questions or with several answers is answered in the
-/// terminal, since one key cannot answer it.
-fn single_question_choices(input: Option<&Value>) -> Option<(String, Vec<String>)> {
-    let questions = input?.get("questions")?.as_array()?;
-    let [only] = questions.as_slice() else { return None };
-    if only.get("multiSelect").and_then(Value::as_bool) == Some(true) {
+/// The most questions one prompt asks at once: Claude's own limit.
+const MAX_QUESTIONS: usize = 4;
+
+/// One question with one answer and its choices: the labels, in the order the menu numbers them.
+/// None for a question that takes several answers, has no text, or has more choices than a key
+/// can name, and for one with a label that is empty (the numbers would no longer match the menu).
+fn question_choices(entry: &Value) -> Option<(String, Vec<String>)> {
+    if entry.get("multiSelect").and_then(Value::as_bool) == Some(true) {
         return None;
     }
-    let question = one_line(only.get("question")?.as_str()?, 2000);
-    let labels: Vec<String> = only
+    let question = one_line(entry.get("question")?.as_str()?, 2000);
+    let labels: Vec<String> = entry
         .get("options")?
         .as_array()?
         .iter()
-        .filter_map(|option| option.get("label")?.as_str().map(|label| one_line(label, 200)))
-        .collect();
-    (!question.is_empty() && (2..=MAX_QUESTION_CHOICES).contains(&labels.len())).then_some((question, labels))
+        .map(|option| option.get("label").and_then(Value::as_str).map(|label| one_line(label, 200)))
+        .collect::<Option<_>>()?;
+    (!question.is_empty()
+        && (2..=MAX_QUESTION_CHOICES).contains(&labels.len())
+        && labels.iter().all(|label| !label.is_empty()))
+    .then_some((question, labels))
+}
+
+/// The choices of a prompt that is one question with one answer. A prompt with several answers
+/// is answered in the terminal, since one key cannot answer it.
+fn single_question_choices(input: Option<&Value>) -> Option<(String, Vec<String>)> {
+    let questions = input?.get("questions")?.as_array()?;
+    let [only] = questions.as_slice() else { return None };
+    question_choices(only)
+}
+
+/// A prompt that asks several questions, each with one answer: every question with its choices, in
+/// the order the prompt shows them. All of them or none: one that cannot be answered with a key
+/// leaves the whole prompt to the terminal.
+fn several_questions(input: Option<&Value>) -> Vec<AskQuestion> {
+    let Some(questions) = input.and_then(|input| input.get("questions")).and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    if !(2..=MAX_QUESTIONS).contains(&questions.len()) {
+        return Vec::new();
+    }
+    questions
+        .iter()
+        .map(|entry| question_choices(entry).map(|(question, choices)| AskQuestion { question, choices }))
+        .collect::<Option<Vec<_>>>()
+        .unwrap_or_default()
 }
 
 /// A question Claude asks with its choices, on one line: `Which? 1 Fast · 2 Safe`. A tool input
@@ -2420,6 +2449,7 @@ fn permission_ask(payload: &Value) -> Option<PermissionAsk> {
         detail,
         answerable: false,
         choices,
+        questions: if tool == QUESTION_TOOL { several_questions(input) } else { Vec::new() },
     })
 }
 
@@ -4753,6 +4783,33 @@ mod tests {
         }))
         .expect("a multi-select question");
         assert_eq!((many.detail.as_str(), many.choices.len()), ("Which? 1 A · 2 B", 0));
+        assert!(many.questions.is_empty());
+        // Several questions with one answer each are carried whole, in order, for the chat to answer.
+        let several = report(json!({
+            "hook_event_name": "PermissionRequest",
+            "tool_name": "AskUserQuestion",
+            "tool_input": {"questions": [
+                {"question": "Which database?", "header": "DB", "options": [{"label": "SQLite"}, {"label": "Postgres"}, {"label": "MySQL"}]},
+                {"question": "Which language?", "header": "Lang", "options": [{"label": "Rust"}, {"label": "Go"}]},
+            ]},
+        }))
+        .expect("two questions");
+        assert!(several.choices.is_empty(), "no one key answers it");
+        assert_eq!(
+            several.questions.iter().map(|q| (q.question.as_str(), q.choices.len())).collect::<Vec<_>>(),
+            [("Which database?", 3), ("Which language?", 2)]
+        );
+        // One of them takes several answers: the whole prompt stays the terminal's.
+        let mixed = report(json!({
+            "hook_event_name": "PermissionRequest",
+            "tool_name": "AskUserQuestion",
+            "tool_input": {"questions": [
+                {"question": "Which?", "options": [{"label": "A"}, {"label": "B"}]},
+                {"question": "Which ones?", "multiSelect": true, "options": [{"label": "C"}, {"label": "D"}]},
+            ]},
+        }))
+        .expect("a mixed prompt");
+        assert!(mixed.questions.is_empty());
 
         // A tool with no subject field is still a question; one with no tool is not reported.
         let bare = report(json!({"hook_event_name": "PermissionRequest", "tool_name": "ExitPlanMode"}))

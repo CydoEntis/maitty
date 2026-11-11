@@ -52,6 +52,8 @@ export type SessionView = {
   usage: TerminalDetails['usage']
   /** The plan limits of its agent, as last reported; empty when it reported none. */
   limits: NonNullable<TerminalDetails['limits']>
+  /** The messages its daemon holds for the working agent, oldest first: each is typed in when a turn ends. */
+  queued: readonly string[]
   /** The tasks of the helpers the session asked to start and waits on the person for; empty when it asked for none. */
   helperAsk: readonly string[]
   /** The agent's subagents, in the order its runtime reported them. */
@@ -210,6 +212,7 @@ export function toSessionView(conversation: Conversation, home: string): Session
     timeline: conversation.details?.timeline ?? [],
     usage: conversation.details?.usage ?? { context: null, cost: null, tokens: null },
     limits: conversation.details?.limits ?? [],
+    queued: conversation.details?.queued ?? [],
     helperAsk: conversation.details?.helperAsk ?? [],
     // Which helpers a row lists (`listedSubagents`): not one that finished, nor one that stopped once the turn is over.
     subagents: listedSubagents((conversation.details?.subagents ?? []).map(toSubagentView), status === 'working'),

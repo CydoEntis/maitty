@@ -445,6 +445,7 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
         Command::QueueFollowUp {
             term: t,
             text: "  then run the tests ".into(),
+            first: false,
         },
     )
     .unwrap();
@@ -453,6 +454,7 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
         Command::QueueFollowUp {
             term: t,
             text: "and open a PR".into(),
+            first: false,
         },
     )
     .unwrap();
@@ -466,7 +468,8 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
             0,
             Command::QueueFollowUp {
                 term: t,
-                text: "  ".into()
+                text: "  ".into(),
+                first: false,
             }
         )
         .is_err(),
@@ -502,18 +505,49 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
         Command::QueueFollowUp {
             term: t,
             text: "never mind".into(),
+            first: false,
         },
     )
     .unwrap();
     d.command(0, Command::ClearQueue { term: t }).unwrap();
     assert!(queued(&d).is_empty());
+    // One goes to the front; one is dropped by where it is and what it says.
+    for (text, first) in [("one", false), ("two", false), ("/model opus", true)] {
+        d.command(
+            0,
+            Command::QueueFollowUp {
+                term: t,
+                text: text.into(),
+                first,
+            },
+        )
+        .unwrap();
+    }
+    assert_eq!(queued(&d), ["/model opus", "one", "two"]);
+    let drop = |d: &mut Daemon, index, text: &str| {
+        d.command(
+            0,
+            Command::DropQueued {
+                term: t,
+                index,
+                text: text.into(),
+            },
+        )
+    };
+    assert!(drop(&mut d, 1, "two").is_err(), "not the one there");
+    assert!(drop(&mut d, 9, "one").is_err());
+    assert_eq!(queued(&d).len(), 3, "naming the wrong one drops nothing");
+    drop(&mut d, 1, "one").unwrap();
+    assert_eq!(queued(&d), ["/model opus", "two"]);
+    d.command(0, Command::ClearQueue { term: t }).unwrap();
     d.terms.get_mut(&t).unwrap().agent = None;
     assert!(
         d.command(
             0,
             Command::QueueFollowUp {
                 term: t,
-                text: "ls".into()
+                text: "ls".into(),
+                first: false,
             }
         )
         .is_err()
@@ -560,6 +594,37 @@ fn a_message_sent_to_a_starting_agent_is_held_until_it_takes_input() {
         d.terms[&t].queue_sent.is_some(),
         "a queued follow-up waits for the turn this starts"
     );
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn enter_is_pressed_again_only_when_a_hooked_agent_never_reported_the_message() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let again_after = super::term::ENTER_AGAIN_AFTER;
+    let sent = Instant::now();
+    {
+        let p = d.terms.get_mut(&t).unwrap();
+        (p.agent, p.hooked, p.status) = (Some("claude".into()), true, Status::Idle);
+        p.last_input = sent;
+        p.enter_sent = Some(sent);
+    }
+    let due = |d: &Daemon, rest: bool, now: Instant| d.terms[&t].enter_again_due(rest, now);
+    assert!(!due(&d, true, sent + again_after / 2), "the agent has a moment to report it");
+    assert!(due(&d, true, sent + again_after), "no report: the message is still in its box");
+    assert!(!due(&d, false, sent + again_after), "it is working or asking: it took something");
+    // Something was typed into the pane since: Enter would send what the person is writing.
+    d.terms.get_mut(&t).unwrap().last_input = sent + Duration::from_millis(500);
+    assert!(!due(&d, true, sent + again_after));
+    d.terms.get_mut(&t).unwrap().last_input = sent;
+    // An agent without hooks reports nothing either way, so nothing can be told.
+    d.terms.get_mut(&t).unwrap().hooked = false;
+    assert!(!due(&d, true, sent + again_after));
+    d.terms.get_mut(&t).unwrap().hooked = true;
+    // The agent's report of the prompt is what says it was submitted.
+    d.apply_hook(report(t, "", 0, HookStatus::Working, "UserPromptSubmit"), Some(true), Vec::new());
+    assert!(d.terms[&t].enter_sent.is_none());
+    assert!(!due(&d, true, sent + again_after));
     close(&mut d, &[t]);
 }
 
@@ -8141,6 +8206,7 @@ fn permission_report(term: TermId, status: HookStatus, event: &str, agent: &str,
             // A hook cannot claim it; the daemon decides.
             answerable: true,
             choices: Vec::new(),
+            questions: Vec::new(),
         });
     }
     msg

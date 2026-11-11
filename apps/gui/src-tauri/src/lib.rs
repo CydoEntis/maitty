@@ -15,6 +15,7 @@ mod machine_update;
 mod machines;
 mod changes;
 mod claude_models;
+mod codex_skills;
 mod new_chat;
 mod open_link;
 mod output_socket;
@@ -381,12 +382,13 @@ async fn find_claude() -> Result<PathBuf, String> {
 
 /// The slash commands an agent takes in `folder`, for the chat's command picker. Claude Code is asked
 /// for its own list (`claude_models::ask_commands`), started in the session's folder so the project's
-/// commands and skills are among them; the other agents have no list to ask for yet. The window names
+/// commands and skills are among them. Codex is asked for its skills (`codex_skills::ask_skills`), which
+/// are all it lists. The other agents have no list to ask for yet. The window names
 /// the folder, so only a full path to a folder that exists is started in, and the home folder
 /// otherwise. That folder is one an agent of the person's already runs in.
 #[tauri::command]
 async fn agent_commands(app: tauri::AppHandle, agent: String, folder: String) -> Result<Vec<claude_models::Command>, String> {
-    if agent != "claude" {
+    if agent != "claude" && agent != "codex" {
         return Ok(Vec::new());
     }
     let home = app.path().home_dir().map_err(|error| error.to_string())?;
@@ -396,6 +398,14 @@ async fn agent_commands(app: tauri::AppHandle, agent: String, folder: String) ->
     })
     .await
     .map_err(|error| error.to_string())?;
+    if agent == "codex" {
+        // Codex lists only its skills (typed after a `$`); its own commands are a list the window keeps.
+        let codex = tauri::async_runtime::spawn_blocking(maitty_desktop_client::codex_app_server_executable)
+            .await
+            .map_err(|error| format!("the search for Codex stopped: {error}"))?
+            .map_err(|error| format!("{error:#}"))?;
+        return codex_skills::ask_skills(&codex, &start).await;
+    }
     claude_models::ask_commands(&find_claude().await?, &start).await
 }
 
@@ -704,6 +714,48 @@ async fn send_when_agent_ready(
             .map(|()| serde_json::Value::Null);
     }
     maitty_desktop_client::send_when_ready(term, text, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// Holds a message with the pane's daemon for its working agent: typed in when the turn is over,
+/// whether or not this window is still open.
+#[tauri::command]
+async fn queue_follow_up(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    term: u32,
+    text: String,
+    first: bool,
+) -> Result<serde_json::Value, String> {
+    if routing::is_remote(machine) {
+        let command = maitty_desktop_client::queued_message(text, first)
+            .map_err(|error| format!("{error:#}"))?;
+        return wire
+            .command(machine, term, command)
+            .map(|()| serde_json::Value::Null);
+    }
+    maitty_desktop_client::queue_follow_up(term, text, first, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// Takes one queued message back from the pane's daemon.
+#[tauri::command]
+async fn drop_queued_follow_up(
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    term: u32,
+    index: u32,
+    text: String,
+) -> Result<serde_json::Value, String> {
+    if routing::is_remote(machine) {
+        return wire
+            .command(machine, term, PaneCommand::DropQueued { index, text })
+            .map(|()| serde_json::Value::Null);
+    }
+    maitty_desktop_client::drop_queued(term, index, text)
         .await
         .map_err(|error| format!("{error:#}"))
 }
@@ -1301,6 +1353,8 @@ pub fn run() {
             start_terminal_session,
             start_shell_session,
             rename_terminal_session,
+            queue_follow_up,
+            drop_queued_follow_up,
             send_when_agent_ready,
             mark_terminal_seen,
             answer_helpers,

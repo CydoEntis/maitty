@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Spinner } from '@/features/workspace/components/glyphs'
+import { WorkingMark } from './WorkingMark'
 import { subagentWord, type SubagentView } from '@/features/workspace/model/subagents'
 import { splitLead, paragraphsOf } from '../chatRows'
 import { InlineMarkdown, Markdown } from './Markdown'
@@ -49,7 +49,7 @@ export function SubagentChat({ subagent, agent }: { subagent: SubagentView; agen
         )}
         {subagent.status === 'working' && (
           <div className="mx-working">
-            <Spinner className="mx-spin" />
+            <WorkingMark agent={agent} />
             <span>{subagent.latest ?? `${agent} is working`}</span>
           </div>
         )}

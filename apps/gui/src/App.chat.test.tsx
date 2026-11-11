@@ -13,6 +13,9 @@ const daemon = vi.hoisted(() => ({
   loadAgentModels: vi.fn(() => Promise.resolve([] as { id: string; label: string; blurb: string }[])),
   // Not a mock: a chat asks for its agent's commands as it opens, whatever a test resets.
   loadAgentCommands: () => Promise.resolve([] as { name: string; description: string; hint: string; aliases: string[] }[]),
+  // The service is the app's own release: nothing to say and nothing to restart.
+  loadDaemonUpdateStatus: () => Promise.resolve({ daemonVersion: null, behind: false, canRestart: false, sessionCount: 0, activeTurnCount: 0 }),
+  restartStaleDaemon: () => Promise.resolve(),
   loadConversations: vi.fn<() => Promise<Conversation[]>>(),
   loadPerformanceSample: vi.fn<() => Promise<never>>(() => new Promise(() => {})),
   listenSessionsChanged: vi.fn(() => Promise.resolve(() => {})),

@@ -268,6 +268,7 @@ impl App {
             Command::QueueFollowUp {
                 term: term.term,
                 text: text.to_string(),
+                first: false,
             },
         );
     }

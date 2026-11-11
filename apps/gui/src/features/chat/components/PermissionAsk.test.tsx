@@ -104,6 +104,36 @@ describe('the chat of an agent stopped on a permission prompt', () => {
     expect(screen.getByRole('textbox', { name: 'Message claude' })).toHaveAttribute('placeholder', PENDING_APPROVAL_NOTE)
   })
 
+  it('shows each of several questions with its choices, and answers them all at once: a key each in order, then the one that submits', async () => {
+    const questions = [
+      { question: 'Which database?', choices: ['SQLite', 'Postgres', 'MySQL'] },
+      { question: 'Which language?', choices: ['Rust', 'Go'] },
+    ]
+    const { typeInto, user } = await open('Blocked', { tool: 'AskUserQuestion', detail: 'Which database? 1 SQLite · 2 Postgres · 3 MySQL / Which language? 1 Rust · 2 Go', answerable: false, choices: [], questions })
+
+    // Each question is its own group; the line that ran them together is gone, and so is "Answer in the terminal".
+    expect(screen.getByRole('group', { name: 'Which database?' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Which language?' })).toBeInTheDocument()
+    expect(screen.queryByText(/1 SQLite · 2 Postgres/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Answer in the terminal.')).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Message claude' })).toHaveAttribute('placeholder', PENDING_APPROVAL_NOTE)
+
+    // Nothing is typed until every question has an answer, so one can be changed first.
+    const send = screen.getByRole('button', { name: 'Send answers' })
+    expect(send).toBeDisabled()
+    await user.click(screen.getByRole('radio', { name: 'SQLite' }))
+    await user.click(screen.getByRole('radio', { name: 'Postgres' }))
+    expect(send).toBeDisabled()
+    expect(screen.getByText('1 more to answer.')).toBeInTheDocument()
+    await user.click(screen.getByRole('radio', { name: 'Go' }))
+    expect(typeInto).not.toHaveBeenCalled()
+
+    await user.click(send)
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000) })
+
+    expect(typeInto.mock.calls.map(([key]) => key)).toEqual(['2', '2', '1'])
+  })
+
   it('still says the agent is waiting when its hook reported no question', async () => {
     await open('Blocked', null)
 

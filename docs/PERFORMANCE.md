@@ -591,7 +591,7 @@ Measure it on Windows with a screen recording at 30 fps: count frames from Enter
 
 The chat reads snapshots, at least 100 ms apart, so the daemon's news never arrives faster than
 that. The cost while a reply streams is the typing effect: `useTypedText` moves the shown text
-forward every 24 ms, and each step parsed and rendered the whole message again. Measured in the
+forward every 40 ms (24 ms when this was measured), and each step parsed and rendered the whole message again. Measured in the
 test renderer on a 2.2 KB reply of 40 blocks: 1.27 ms a step, 0.07 ms of it parsing. Blocks whose
 parse did not change are now left as they are (`BlockView` in `Markdown.tsx`): 0.48 ms a step. The
 timer also stops once the text has caught up, so messages at rest wake nothing. To re-measure,

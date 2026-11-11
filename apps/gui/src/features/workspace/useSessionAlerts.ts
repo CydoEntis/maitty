@@ -9,10 +9,9 @@ import { noticeForAttention, noticesFor, type Notice } from '@/features/notifica
 import { isChatSession } from './model/chatSession'
 import type { RemoteMachine } from './model/machines'
 import type { SessionView } from './model/session'
-import { heldCount } from '@/features/chat/composerStore'
 
 /** How many messages this window holds for the session's agent, to be typed in as its turns end. */
-const queuedFor = (session: SessionView): number => (session.conversation.chat === undefined ? 0 : heldCount(session.conversation.chat.conversation))
+const queuedFor = (session: SessionView): number => session.queued.length
 
 /** A notification's click brings the window forward; returning later than this is not that click. */
 const NOTIFICATION_CLICK_WINDOW_MS = 15_000

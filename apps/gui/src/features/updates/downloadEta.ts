@@ -5,6 +5,12 @@ export type Transfer = { readonly received: number; readonly total: number | nul
 export type Sample = { readonly at: number; readonly received: number }
 
 const MS_PER_SECOND = 1000
+export const PERCENT = 100
+
+/** The share of a download that has arrived, as a whole percent; null while the size is unknown. */
+export function percentOf(progress: number | null): number | null {
+  return progress === null ? null : Math.round(progress * PERCENT)
+}
 const SECONDS_PER_MINUTE = 60
 const MINUTES_PER_HOUR = 60
 const KB = 1024

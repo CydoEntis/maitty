@@ -29,6 +29,11 @@ pub enum PaneCommand {
     Rename(String),
     /// A message for the agent starting in the pane, held by its daemon until the agent takes input.
     SendWhenReady(String),
+    /// A message for the agent working in the pane, held by its daemon until the turn is over;
+    /// `first` puts it ahead of the ones already waiting.
+    Queue { text: String, first: bool },
+    /// Takes back the queued message at `index`, while it still reads `text`.
+    DropQueued { index: u32, text: String },
     Pin(bool),
     Archive(bool),
     Seen,
@@ -54,6 +59,12 @@ impl PaneCommand {
             PaneCommand::Rename(name) => ClientMsg::Command(Command::RenamePane { term, name }),
             PaneCommand::SendWhenReady(text) => {
                 ClientMsg::Command(Command::SendWhenReady { term, text })
+            }
+            PaneCommand::Queue { text, first } => {
+                ClientMsg::Command(Command::QueueFollowUp { term, text, first })
+            }
+            PaneCommand::DropQueued { index, text } => {
+                ClientMsg::Command(Command::DropQueued { term, index, text })
             }
             PaneCommand::Pin(pinned) => ClientMsg::Command(Command::PinPane { term, pinned }),
             PaneCommand::Archive(archived) => {
@@ -812,6 +823,40 @@ pub async fn send_when_ready(term: u32, text: String, daemon_executable: PathBuf
     match reply {
         Reply::Ok => Ok(Value::Null),
         _ => bail!("daemon returned an unexpected reply to a held message"),
+    }
+}
+
+/// What may be queued for a working agent: some words, and not more than the daemon is asked to keep.
+pub fn queued_message(text: String, first: bool) -> Result<PaneCommand> {
+    if text.trim().is_empty() {
+        bail!("there is no message to queue");
+    }
+    if text.len() > MAX_HELD_MESSAGE_BYTES {
+        bail!("the message is too long to queue for the agent");
+    }
+    Ok(PaneCommand::Queue { text, first })
+}
+
+pub async fn queue_follow_up(
+    term: u32,
+    text: String,
+    first: bool,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let reply = request(queued_message(text, first)?.message(term), daemon_executable).await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected reply to a queued message"),
+    }
+}
+
+/// Takes one queued message back. A daemon from before this could only drop them all, and would
+/// never answer, so it is not asked.
+pub async fn drop_queued(term: u32, index: u32, text: String) -> Result<Value> {
+    if ask_if_known(PaneCommand::DropQueued { index, text }.message(term)).await? {
+        Ok(Value::Null)
+    } else {
+        bail!("the Maitty service is from an older release: restart it to take back one queued message")
     }
 }
 
@@ -1991,6 +2036,29 @@ mod agent_command_tests {
         assert!(prewarm_message(here.clone(), "rm", &[]).is_err());
         assert!(prewarm_message(here.clone(), "claude", &words(&["a;b"])).is_err());
         assert!(prewarm_message(here.join("no-such-folder-here"), "claude", &[]).is_err());
+    }
+
+    #[test]
+    fn a_message_queued_for_a_working_agent_is_checked_and_one_is_dropped_only_by_a_daemon_that_can() {
+        use super::{ClientMsg, Command, PaneCommand, daemon_reads, queued_message};
+        use maitty_shared::protocol::{DROP_QUEUED_SINCE, PROTOCOL_VERSION};
+        assert!(queued_message("  ".into(), false).is_err());
+        assert!(queued_message("x".repeat(super::MAX_HELD_MESSAGE_BYTES + 1), false).is_err());
+        assert!(matches!(
+            queued_message("/model opus".into(), true).unwrap().message(4),
+            ClientMsg::Command(Command::QueueFollowUp { term: 4, text, first: true }) if text == "/model opus"
+        ));
+        let drop = PaneCommand::DropQueued {
+            index: 1,
+            text: "then test".into(),
+        }
+        .message(4);
+        assert!(matches!(
+            &drop,
+            ClientMsg::Command(Command::DropQueued { term: 4, index: 1, text }) if text == "then test"
+        ));
+        assert!(daemon_reads(&drop, PROTOCOL_VERSION));
+        assert!(!daemon_reads(&drop, DROP_QUEUED_SINCE - 1));
     }
 
     #[test]

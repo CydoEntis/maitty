@@ -1,8 +1,9 @@
 import { flushSync } from 'react-dom'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type WheelEvent } from 'react'
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type WheelEvent } from 'react'
 import { ArrowDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { buildLayout, followAfterScroll, isAtBottom, visibleRange, type FollowState } from './windowing'
+import { ReducedMotionContext } from '@/features/workspace/components/motion'
+import { buildLayout, followAfterScroll, glidePlan, glideTop, isAtBottom, visibleRange, type FollowState } from './windowing'
 
 type Props<T> = {
   items: readonly T[]
@@ -174,6 +175,7 @@ export function VirtualList<T>({ items, getKey, estimate, renderItem, label, ove
   // A wheel move up arrives before the scroll it causes, and a streaming commit in between would undo it.
   const onWheel = (event: WheelEvent) => {
     touched()
+    stopGlide()
     // The scrolling region is only as wide as the chat column; a wheel turn over the space beside it scrolls it too.
     const element = scroller.current
     if (element !== null && event.target instanceof Node && !element.contains(event.target)) element.scrollTop += event.deltaY
@@ -183,18 +185,52 @@ export function VirtualList<T>({ items, getKey, estimate, renderItem, label, ove
     setFollowing(false)
   }
 
+  // The jump to the newest row glides there, so the reader sees which way the chat went; the reader's own scroll, a
+  // new jump or the list going away ends it, and with motion reduced it is a plain jump.
+  const reducedMotion = useContext(ReducedMotionContext)
+  const glide = useRef<number | null>(null)
+  const totalNow = useRef(layout.total)
+  useLayoutEffect(() => { totalNow.current = layout.total }, [layout.total])
+  const stopGlide = useCallback(() => {
+    if (glide.current !== null) cancelAnimationFrame(glide.current)
+    glide.current = null
+  }, [])
+  useEffect(() => stopGlide, [stopGlide])
   const jumpToLatest = () => {
     const element = scroller.current
     if (!element) return
-    follow.current = { ...follow.current, following: true }
-    place(element, layout.total, layout.total)
-    setFollowing(true)
+    stopGlide()
+    const arrive = () => {
+      glide.current = null
+      follow.current = { ...follow.current, following: true }
+      place(element, totalNow.current, totalNow.current)
+      setFollowing(true)
+    }
+    const bottomNow = () => element.scrollHeight - element.clientHeight
+    const plan = reducedMotion ? null : glidePlan(element.scrollTop, bottomNow(), element.clientHeight)
+    if (plan === null) {
+      arrive()
+      return
+    }
+    const began = performance.now()
+    const step = (now: number) => {
+      const share = (now - began) / plan.ms
+      if (share >= 1) {
+        arrive()
+        return
+      }
+      // The bottom is read each frame: a reply that is still arriving moves it.
+      place(element, glideTop(plan.from, bottomNow(), share), totalNow.current)
+      glide.current = requestAnimationFrame(step)
+    }
+    place(element, plan.from, totalNow.current)
+    glide.current = requestAnimationFrame(step)
   }
 
   const drawn = items.slice(range.start, range.end)
   return (
     <div className="relative flex min-h-0 flex-1 flex-col" onWheel={onWheel}>
-      <div ref={scroller} role="region" aria-label={label} tabIndex={0} className="mx-chat-scroller min-h-0 flex-1 overflow-y-auto overscroll-contain" onScroll={onScroll} onPointerDown={() => { held.current = true; touched() }} onKeyDown={touched} onTouchMove={touched}>
+      <div ref={scroller} role="region" aria-label={label} tabIndex={0} className="mx-chat-scroller min-h-0 flex-1 overflow-y-auto overscroll-contain" onScroll={onScroll} onPointerDown={() => { held.current = true; touched(); stopGlide() }} onKeyDown={() => { touched(); stopGlide() }} onTouchMove={() => { touched(); stopGlide() }}>
         <div className="relative" style={{ height: layout.total }}>
           {drawn.map((item, index) => {
             const at = range.start + index

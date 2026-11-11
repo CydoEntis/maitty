@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildLayout, followAfterScroll, FOLLOW_THRESHOLD_PX, isAtBottom, visibleRange, type FollowState } from './windowing'
+import { buildLayout, followAfterScroll, FOLLOW_THRESHOLD_PX, glidePlan, glideTop, isAtBottom, visibleRange, type FollowState } from './windowing'
 
 const keys = (count: number) => Array.from({ length: count }, (_, index) => `row-${String(index)}`)
 
@@ -88,5 +88,31 @@ describe('whether the list follows its newest row after a scroll', () => {
 
   it('remembers where the view is, so the next move has a direction', () => {
     expect(followAfterScroll(reading, at(400), false).top).toBe(400)
+  })
+})
+
+describe('gliding to the newest row', () => {
+  it('has nothing to do when the view is already there', () => {
+    expect(glidePlan(900, 900, 600)).toBeNull()
+    expect(glidePlan(950, 900, 600)).toBeNull()
+  })
+
+  it('takes longer the further it goes, between a least and a most', () => {
+    const near = glidePlan(880, 900, 600)
+    const far = glidePlan(0, 900, 600)
+    expect(near).toEqual({ from: 880, ms: 185 })
+    expect(far).toEqual({ from: 0, ms: 405 })
+    expect(glidePlan(0, 1200, 600)?.ms).toBe(420)
+  })
+
+  it('starts two screens above the bottom from further up, so a long chat is not drawn row by row on the way', () => {
+    expect(glidePlan(0, 50_000, 600)).toEqual({ from: 48_800, ms: 420 })
+  })
+
+  it('moves quickly at first and eases into the newest row', () => {
+    expect(glideTop(0, 1000, 0)).toBe(0)
+    expect(glideTop(0, 1000, 0.5)).toBe(875)
+    expect(glideTop(0, 1000, 1)).toBe(1000)
+    expect(glideTop(0, 1000, 2)).toBe(1000)
   })
 })

@@ -82,6 +82,41 @@ describe('a conversation list that follows its newest row', () => {
     expect(latest()).not.toBeNull()
   })
 
+  it('glides to the newest row from the button, and stops where it is when the reader scrolls meanwhile', () => {
+    vi.useFakeTimers()
+    try {
+      const { rerender } = render(list(20))
+      const element = scroller()
+      // A real view: 600px tall over 1050px of rows, so the bottom is at 450.
+      Object.defineProperty(element, 'clientHeight', { configurable: true, value: 600 })
+      Object.defineProperty(element, 'scrollHeight', { configurable: true, value: 21 * ROW })
+      rerender(list(21))
+      fireEvent.wheel(element, { deltaY: -3 })
+      act(() => { element.scrollTop = 0 })
+      fireEvent.scroll(element)
+
+      fireEvent.click(latest() as HTMLElement)
+      act(() => { vi.advanceTimersByTime(100) })
+      const partWay = element.scrollTop
+      expect(partWay).toBeGreaterThan(0)
+      expect(partWay).toBeLessThan(450)
+
+      // The reader takes over: the glide ends there and the list does not follow.
+      fireEvent.wheel(element, { deltaY: -3 })
+      act(() => { vi.advanceTimersByTime(1000) })
+      expect(element.scrollTop).toBe(partWay)
+      expect(latest()).not.toBeNull()
+
+      // Left alone, it arrives and follows again.
+      fireEvent.click(latest() as HTMLElement)
+      act(() => { vi.advanceTimersByTime(1000) })
+      expect(element.scrollTop).toBe(21 * ROW)
+      expect(latest()).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('follows again from the button, and when the reader scrolls back down to the bottom', () => {
     const { rerender } = render(list(20))
     const element = scroller()

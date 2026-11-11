@@ -1,8 +1,9 @@
-import { act, cleanup, render, screen, within } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FAKE_CONVERSATION, FakeDaemonHistory } from '../fakeDaemonHistory'
-import { forgetComposers, peekComposer } from '../composerStore'
+import { useFakePaneQueue } from '../fakePaneQueue'
+import { forgetComposers } from '../composerStore'
 import { forgetFirstMessages, holdStartChoice, startChoiceOf } from '../firstMessage'
 import { forgetChoices } from '../agentChoice'
 import { forgetChatFeeds, IDLE_POLL_MS } from '../useChatFeed'
@@ -45,8 +46,19 @@ function open(agent: 'claude' | 'codex', status: 'Idle' | 'Working' = 'Idle') {
   daemon.meta = { mode: 'auto', model: 'claude-sonnet-5-5' }
   fake.current = daemon
   const typeInto = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
-  render(<ChatSession link={{ conversation: FAKE_CONVERSATION, generation: 1, readOnly: true }} agent={agent} online typeInto={typeInto} sessionId="s1" />)
+  render(<WithPaneQueue agent={agent} typeInto={typeInto} />)
   return typeInto
+}
+
+/** The chat with a pane queue that behaves as the daemon's does; what it holds is written out, oldest first. */
+function WithPaneQueue({ agent, typeInto }: { agent: 'claude' | 'codex'; typeInto: (text: string) => Promise<void> }) {
+  const paneQueue = useFakePaneQueue()
+  return (
+    <>
+      <ChatSession link={{ conversation: FAKE_CONVERSATION, generation: 1, readOnly: true }} agent={agent} online typeInto={typeInto} paneQueue={paneQueue} sessionId="s1" />
+      <output aria-label="The daemon holds">{paneQueue.queued.join(' | ')}</output>
+    </>
+  )
 }
 
 describe('changing the mode, the model and the reasoning of a chat that follows the terminal', () => {
@@ -115,7 +127,7 @@ describe('changing the mode, the model and the reasoning of a chat that follows 
     expect(typeInto).not.toHaveBeenCalled()
   })
 
-  it('takes a model and an effort picked while the agent works, and types them in when its turn ends, the last pick of each', async () => {
+  it('sends a model and an effort picked while the agent works at once, as typing them in the terminal does', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const typeInto = open('claude', 'Working')
     await settle(IDLE_POLL_MS)
@@ -123,14 +135,12 @@ describe('changing the mode, the model and the reasoning of a chat that follows 
     const model = screen.getByRole('button', { name: /^Agent, model and reasoning/ })
     expect(model).not.toHaveAttribute('aria-disabled', 'true')
     await user.click(model)
-    await user.click(await screen.findByRole('radio', { name: /^Sonnet 5\.5/ }))
-    await user.click(screen.getByRole('radio', { name: /^Opus 5\.5/ }))
+    await user.click(await screen.findByRole('radio', { name: /^Opus 5\.5/ }))
     await user.click(screen.getByRole('radio', { name: 'High' }))
 
-    // Nothing is typed into the turn that is running: the picks wait in the queue, where they can be seen.
-    expect(typeInto).not.toHaveBeenCalled()
-    expect(peekComposer(FAKE_CONVERSATION).held.map((message) => message.text)).toEqual(['/effort high', '/model claude-opus-5-5'])
-    expect(within(screen.getByRole('list', { name: 'Queued messages' })).getByRole('listitem')).toHaveTextContent('/effort high')
+    // Nothing waits for the turn to end, and nothing is left in the queue.
+    expect(typeInto.mock.calls.map(([text]) => text)).toEqual(['/model claude-opus-5-5\r', '/effort high\r'])
+    expect(screen.queryByRole('list', { name: 'Queued messages' })).not.toBeInTheDocument()
   })
 
   it('starts from what was picked on the new-chat page, before the agent has said anything', async () => {

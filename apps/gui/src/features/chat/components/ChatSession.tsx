@@ -11,13 +11,13 @@ import { buildRows, type ChatRow } from '../chatRows'
 import { findRow, registerChatFind } from '../chatSearch'
 import { useLatest } from '@/lib/useLatest'
 import { useChatFeed } from '../useChatFeed'
-import { CODEX_SUBMIT_GAP_MS, holdCommand, typeMessage, useChatComposer } from '../useChatComposer'
+import { CODEX_SUBMIT_GAP_MS, typeMessage, useChatComposer, type PaneQueue } from '../useChatComposer'
 import { countUserMessages } from '../workPhase'
 import { startedWithYolo } from '../yoloSessions'
 import { CODEX_MODE_COMMAND, CODEX_MODE_REFUSED, CODEX_START_MODES, DANGER_MODES, modeFromScreen, modeLabel } from '../chatMeta'
 import type { ApprovalDecision } from '../chatEvents'
 import type { PermissionAsk } from '@/data/preview'
-import { ANSWER_KEY, ANSWER_KEYS, choiceKey, type AskChoice } from '../permissionAsk'
+import { ANSWER_KEY, ANSWER_KEYS, ANSWER_STEP_MS, answerKeys, choiceKey, type AskChoice } from '../permissionAsk'
 import { draftWithQuote, pickedText, type PickedText } from '../selectionActions'
 import { peekComposer } from '../composerStore'
 import { COPY_TOAST_ID, COPY_TOAST_MS } from '@/features/terminal/copyToast'
@@ -107,6 +107,8 @@ type Props = {
   onOpenFile?: OpenFile | null
   /** Types into the terminal the agent runs in, for a chat that follows it (ADR 0003). */
   typeInto?: ((text: string) => Promise<void>) | undefined
+  /** What the pane's daemon holds for its working agent: a message or a pick made while it works joins it. */
+  paneQueue?: PaneQueue | undefined
   /** The permission prompt the agent's hook says its terminal is stopped on, for a chat that follows it. */
   ask?: PermissionAsk | null
   /** The pane's own status, live in the sidebar: the chat shows working at once and reads then, instead of at its next poll. */
@@ -128,7 +130,7 @@ type Props = {
 }
 
 /** The chat of one session: its history as a virtualised list, the daemon's status, and the composer under it. */
-export function ChatSession({ link, agent, online, hasTerminal = true, worktree: paneWorktree, root = null, onOpenDiff = null, onOpenFile = null, typeInto, ask = null, sessionId, paneStatus, folder = '', branch = null, onOpenFolder = null, subagent = null, onBackToMain, onShowTerminal, usage }: Props) {
+export function ChatSession({ link, agent, online, hasTerminal = true, worktree: paneWorktree, root = null, onOpenDiff = null, onOpenFile = null, typeInto, paneQueue, ask = null, sessionId, paneStatus, folder = '', branch = null, onOpenFolder = null, subagent = null, onBackToMain, onShowTerminal, usage }: Props) {
   const { feed, events, offline, readError, refresh, recordAnswer, unwatchedReads } = useChatFeed({ conversation: link.conversation, generation: link.generation, provider: agent })
   const paneWorking = paneStatus === 'working'
   const [branches] = useFolderBranches(root ?? '')
@@ -161,9 +163,17 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
   }, [working, refresh])
   // The transcript has no entry for a terminal agent's prompt until it is answered, so the chat shows it from the hook's report.
   const stoppedOnPrompt = link.readOnly === true && feed.status === 'Blocked'
-  const answersPrompt = stoppedOnPrompt && typeInto !== undefined && (ask?.answerable === true || (ask?.choices?.length ?? 0) > 0)
+  const answersPrompt = stoppedOnPrompt && typeInto !== undefined && (ask?.answerable === true || (ask?.choices?.length ?? 0) > 0 || (ask?.questions?.length ?? 0) > 1)
   const answerPrompt = typeInto === undefined ? undefined : (choice: AskChoice) => typeInto(ANSWER_KEYS[choice]).then(refresh)
   const pickChoice = typeInto === undefined ? undefined : (index: number) => typeInto(choiceKey(index)).then(refresh)
+  // Several questions are answered a key at a time, as a person would: the prompt moves on after each.
+  const pickChoices = typeInto === undefined ? undefined : async (picked: readonly number[]) => {
+    for (const [at, key] of answerKeys(picked).entries()) {
+      if (at > 0) await new Promise<void>((resolve) => { window.setTimeout(resolve, ANSWER_STEP_MS) })
+      await typeInto(key)
+    }
+    refresh()
+  }
   // A chat that follows the agent's own terminal changes its mode, model and reasoning the way its user would: by typing the agent's commands
   // (Shift+Tab, /model, /effort). Offered for Claude, and not while it works, when the keys would land in its turn.
   // What it shows meanwhile is read back from its screen (mode) or taken from what was picked (model), until the agent's own file says it.
@@ -178,6 +188,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
   const canChangeAgent = typeInto !== undefined && agent === 'claude' && link.readOnly === true
   const canPickCodexMode = typeInto !== undefined && agent === 'codex' && link.readOnly === true
   // The chips stay drawn while their keys would land in a turn or nowhere; they are only greyed out, so the box does not rearrange.
+  const pickerLocked = !online ? 'The daemon is offline' : stoppedOnPrompt ? `${agent} is asking something. Answer it first.` : null
   const chipsLocked = !online ? 'The daemon is offline' : working ? `${agent} is working. Change this when it finishes.` : null
   const agentControls = useMemo(() => {
     if (canPickCodexMode) {
@@ -211,16 +222,14 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
     }
     if (!canChangeAgent) return {}
     return {
-      // The model and the effort can be picked while the agent works: the pick is held and typed in when the turn ends.
-      agentChips: { locked: chipsLocked, pickerLocked: online ? null : chipsLocked },
+      // The model and the effort can be picked while the agent works: the pick is typed in at once, as it would be in
+      // the terminal, and the agent takes it as soon as it can. Only a question it is asking holds the picker, since
+      // typed text would answer the question.
+      agentChips: { locked: chipsLocked, pickerLocked },
       onCommand: (text: string) => {
-        if (!online) return
+        if (pickerLocked !== null) return
         const model = /^\/model (\S+)/.exec(text)?.[1]
         if (model !== undefined) setLiveModel({ base: metaModel, value: model })
-        if (chipsLocked !== null) {
-          holdCommand(link.conversation, text)
-          return
-        }
         void typeInto(text).then(refresh)
       },
       onPickMode: (target: string) => {
@@ -247,8 +256,8 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
         void step().catch((error: unknown) => { toast.error(errorMessage(error, 'Could not change the permission mode')) })
       },
     }
-  }, [canChangeAgent, canPickCodexMode, chipsLocked, typeInto, refresh, sessionId, metaMode, metaModel, shownMode, online, link.conversation])
-  const composer = useChatComposer({ link, agent, feed, online, refresh, answersPrompt, paneWorking, ...(typeInto ? { typeInto } : {}) })
+  }, [canChangeAgent, canPickCodexMode, chipsLocked, typeInto, refresh, sessionId, metaMode, metaModel, shownMode, pickerLocked])
+  const composer = useChatComposer({ link, agent, feed, online, refresh, answersPrompt, paneWorking, ...(typeInto ? { typeInto } : {}), ...(paneQueue ? { paneQueue } : {}) })
   // A command that opens a menu of its own is typed into the agent's terminal, which is shown: the chat cannot draw the menu.
   const runInTerminal = typeInto === undefined || onShowTerminal === undefined || link.readOnly !== true ? undefined : (command: string) => {
     onShowTerminal()
@@ -423,7 +432,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
 
   const question = pending !== null
     ? <ApprovalTray event={pending} actions={approval} />
-    : stoppedOnPrompt ? <PromptTray agent={agent} ask={ask} online={online} answer={answerPrompt} pick={pickChoice} /> : null
+    : stoppedOnPrompt ? <PromptTray agent={agent} ask={ask} online={online} answer={answerPrompt} pick={pickChoice} pickAll={pickChoices} /> : null
   const notices = [
     offline ? `Reconnecting to the daemon. What is shown may be out of date.${readError !== null ? ` (${truncateError(readError)})` : ''}` : null,
     !offline && incomplete !== null ? `History is incomplete: ${incomplete}.` : null,

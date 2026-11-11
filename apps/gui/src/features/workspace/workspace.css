@@ -655,7 +655,16 @@ button.mx-sb-item:hover { background: rgba(var(--hl), calc(.07 * var(--hk))); co
 .mx-upd-notes.is-safe { margin-top: 10px; }
 .mx-upd-error { margin: 8px 0 12px; padding: 8px 10px; border-radius: 8px; background: var(--danger-soft); box-shadow: inset 0 0 0 1px var(--danger-line); font: 11.5px/1.5 var(--mono); color: var(--fg2); word-break: break-word; }
 .mx-upd-bar { height: 6px; margin: 12px 0 8px; border-radius: 999px; background: var(--m-well); overflow: hidden; }
-.mx-upd-bar span { display: block; height: 100%; background: var(--accent); transition: width .2s ease; }
+.mx-upd-bar span { position: relative; display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width .2s ease; overflow: hidden; }
+/* A light passes along what has arrived, so a slow download still reads as moving; with no size yet, a short run slides across. */
+.mx-upd-bar span::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgb(255 255 255 / .35), transparent); transform: translateX(-100%); animation: mx-upd-sheen 1.6s ease-in-out infinite; }
+.mx-upd-bar.is-unknown span { width: 30%; animation: mx-upd-slide 1.4s ease-in-out infinite; }
+@keyframes mx-upd-sheen { to { transform: translateX(100%); } }
+@keyframes mx-upd-slide { from { transform: translateX(-100%); } to { transform: translateX(334%); } }
+:root:has(.mx-app[data-motion="reduced"]) :is(.mx-upd-bar span, .mx-upd-bar span::after) { animation: none; }
+@media (prefers-reduced-motion: reduce) { :is(.mx-upd-bar span, .mx-upd-bar span::after) { animation: none; } }
+.mx-scard-progress { padding: 0 16px 12px; }
+.mx-scard-progress .mx-upd-bar { margin-top: 0; }
 .mx-upd-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .mx-upd-primary { height: 30px; padding: 0 14px; border-radius: 8px; background: var(--accent); color: var(--on-accent); font-weight: 600; font-size: 12.5px; cursor: pointer; }
 .mx-upd-primary:hover { background: color-mix(in srgb, var(--accent) 88%, #fff); }

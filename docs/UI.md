@@ -602,11 +602,20 @@ system's, so it takes no theme. Closing the window still closes the app; the ite
   protocol version: an amber title, SURVIVES (shells and their scrollback), STOPS (agents), `r` restart service or `Esc`
   not now (which leaves the window; a client and daemon that cannot read each other do not talk, so there is no
   read-only mode).
-- **Service a release behind (desktop)** (`features/preview/ServiceBehindNotice.tsx`): an update leaves a running
-  daemon alone while it holds sessions, so the window can be newer than the service it talks to. A toast that stays
-  says `The Maitty service is still on <version>` with `Restart…`, which opens a dialog saying how many sessions
-  come back and how many agent turns stop before anything is restarted. With sessions that are not saved the toast
-  says so and offers no restart.
+- **Links in the terminal view.** Cmd/Ctrl-click on a file name opens it in the Inspect panel (`findPathLinks`).
+  Cmd/Ctrl-click on a web address opens it in the person's default browser through the host's `open_link`
+  (`findWebLinks`): an address with its scheme, or a bare site name with a common ending (`app.hubspot.com`), which
+  is opened as `https://` and is no longer offered as a file.
+- **Service a release behind (desktop)** (`features/updates/ServiceBehindNotice.tsx`, shown by the workspace's
+  dialogs when the service is on the app's protocol): an update leaves a running daemon alone while it holds
+  sessions, so the window can be newer than the service it talks to, and none of the release's fixes to the service
+  apply until it restarts. When the service can be restarted with nothing lost and says no agent is working or
+  waiting, and **Install updates when idle** is on, the window restarts it at once and says `Maitty service updated`
+  with how many sessions came back (idle agents are resumed by the restore). Otherwise a toast that stays says
+  `The Maitty service is still on <version>` with `Restart…`, which opens a dialog saying how many sessions come
+  back and how many agent turns stop before anything is restarted. A service that cannot say whether agents are
+  working is never restarted unasked, and a restart that fails falls back to the toast. With sessions that are not
+  saved the toast says so and offers no restart.
 - **After a restart** a line reads `maittyd restarted · N agents stopped · Enter on its row resumes` for 30 seconds
   while any session has `TermInfo.interrupted`; Enter on that row in the sidebar types its resume command.
   Resuming is never automatic.
@@ -783,8 +792,18 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   `PermissionRequest` hook and never the screen: "<agent> wants to use <tool>" and one line of what it acts on. For
   Claude the card has **Approve once** (sends `1`) and **Deny** (sends Esc); for an agent whose answer keys are not
   verified (Codex) it says "Answer in the terminal." and sends nothing. The card is the message box's question tray
-  ("Yes, once" sends `1`, "No" sends Esc). The box stays off while the tray shows, because typed text would answer
-  that prompt. Attachments are off for it. **New terminal** (the sidebar button, Ctrl/Cmd+Shift+T,
+  ("Yes, once" sends `1`, "No" sends Esc). A question Claude asks (`AskUserQuestion`) with one answer has a button
+  for each choice, which sends its number. A prompt of several such questions (`PermissionAsk.questions`) shows each
+  question with its choices to pick from and one **Send answers** button, off until every question has an answer;
+  it then types the number of each pick in the prompt's order, a quarter second apart, and `1`, which is "Submit
+  answers" on the page that reviews them (checked against Claude Code 2.1.322 in a terminal). A question that takes
+  several answers, or the prompt's own "Type something", is still answered in the terminal. The box stays off while
+  the tray shows, because typed text would answer that prompt. A message the daemon types for an agent (the
+  first message of a new chat, or a queued one) is its text and then Enter a tick later; when the agent was still
+  starting or the machine was busy the two can arrive together, and the agent reads the Enter as a new line and leaves
+  the message unsent in its box. An agent with hooks reports a prompt the moment it is submitted, so when no report
+  comes within three seconds the daemon presses Enter once more (`Term::enter_again_due`), never when something was
+  typed into the pane since. Attachments are off for it. **New terminal** (the sidebar button, Ctrl/Cmd+Shift+T,
   a project's **New terminal here**, the palette) is a plain shell with no chat view. A chat session of ADR 0003, with
   no terminal, still starts from a shell's empty chat card (**Start a Claude chat** / **Start a Codex chat**) and
   stops the agent when closed (`closeChatSession`: end, then put away; if the stop fails it stays open).
@@ -912,7 +931,7 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   changes both from the tray, by typing the agent's own commands into its terminal: the mode chip is
   a dropdown that presses Shift+Tab until the agent's screen shows the pick (`modeFromScreen`), and is off while the
   agent works; the model and reasoning picker sends `/model` and `/effort`, and a pick made while the agent works is
-  held at the front of the queue (`holdCommand`, the last pick of each) and typed in when the turn ends. The agent
+  typed in at once, as it would be in the terminal, for the agent to take as soon as it can; only a question the agent is asking holds the picker, since typed text would answer it. The agent
   itself is never changed in a chat that has started. Other agents show them read-only. A Codex chat shows none yet (`chatMeta.ts`,
   `SessionMeta` in the read result). Bypass permissions is pickable only when Claude started allowing it: **Settings >
   General > Yolo mode** has one switch per agent, off by default, that adds the agent's own launch flag to sessions started

@@ -78,3 +78,24 @@ export function followAfterScroll(
   if (now.scrollTop > previous.top && isAtBottom(now.scrollTop, now.viewport, now.total)) return { ...next, following: true }
   return next
 }
+
+/** The jump to the newest row glides for this long at least, and longer the further it goes, up to the most. */
+const GLIDE_MIN_MS = 180
+const GLIDE_MAX_MS = 420
+const GLIDE_MS_PER_PX = 0.25
+/** A glide never covers more than this many screens: from further up the view starts this close, so a long chat is not drawn row by row on the way. */
+const GLIDE_SCREENS = 2
+const EASE_POWER = 3
+
+/** Where a glide to `bottom` starts from and how long it takes; null when the view is already there. */
+export function glidePlan(from: number, bottom: number, viewport: number): { from: number; ms: number } | null {
+  if (bottom - from <= 0) return null
+  const start = Math.max(from, bottom - viewport * GLIDE_SCREENS)
+  return { from: start, ms: Math.min(GLIDE_MAX_MS, GLIDE_MIN_MS + (bottom - start) * GLIDE_MS_PER_PX) }
+}
+
+/** Where the view is `share` (0 to 1) of the way through a glide: quick at first, easing into the newest row. */
+export function glideTop(from: number, bottom: number, share: number): number {
+  const eased = 1 - (1 - Math.min(1, Math.max(0, share))) ** EASE_POWER
+  return from + (bottom - from) * eased
+}

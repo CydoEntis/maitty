@@ -20,3 +20,15 @@ export const ANSWER_KEYS: Record<AskChoice, string> = { approve: '1', deny: '\x1
  * are left to the terminal.
  */
 export const choiceKey = (index: number): string => String(index + 1)
+
+/**
+ * The keys that answer a prompt of several questions, checked against Claude Code 2.1.322: the number of each
+ * question's choice, in the order the prompt shows the questions (each one moves it on to the next), then `1`,
+ * which is "Submit answers" on the page that reviews them.
+ */
+export function answerKeys(picked: readonly number[]): string[] {
+  return [...picked.map(choiceKey), SUBMIT_ANSWERS_KEY]
+}
+const SUBMIT_ANSWERS_KEY = '1'
+/** The prompt redraws after each key; the next one waits this long, so it lands on the question that follows. */
+export const ANSWER_STEP_MS = 250

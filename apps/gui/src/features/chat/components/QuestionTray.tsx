@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import { toast } from '@/lib/toast'
 import { errorMessage } from '@/lib/error-message'
 import type { PermissionAsk } from '@/data/preview'
@@ -92,6 +92,52 @@ type PromptProps = {
   answer: ((choice: AskChoice) => Promise<void>) | undefined
   /** Picks the numbered choice of a question the agent asks; absent where the window cannot type for the agent. */
   pick?: ((index: number) => Promise<void>) | undefined
+  /** Answers a prompt of several questions: the choice picked for each, in the prompt's order. */
+  pickAll?: ((picked: readonly number[]) => Promise<void>) | undefined
+}
+
+type AskedQuestion = NonNullable<PermissionAsk['questions']>[number]
+
+/**
+ * A prompt that asks several questions: each with its choices to pick from, and one button that sends them all once
+ * every question has an answer. Nothing is typed into the agent until then, so an answer can be changed first.
+ */
+function QuestionsForm({ questions, busy, onSend }: { questions: readonly AskedQuestion[]; busy: boolean; onSend: (picked: readonly number[]) => void }) {
+  const name = useId()
+  const [picked, setPicked] = useState<readonly (number | null)[]>(() => questions.map(() => null))
+  const answers = picked.filter((choice): choice is number => choice !== null)
+  const left = questions.length - answers.length
+  return (
+    <form
+      className="mx-question-form"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (left === 0 && !busy) onSend(answers)
+      }}
+    >
+      {questions.map((asked, at) => (
+        <fieldset key={`${String(at)}-${asked.question}`} className="mx-question-group">
+          <legend>{asked.question}</legend>
+          {asked.choices.map((choice, index) => (
+            <label key={`${String(index)}-${choice}`} className="mx-choice">
+              <input
+                type="radio"
+                name={`${name}-${String(at)}`}
+                checked={picked[at] === index}
+                disabled={busy}
+                onChange={() => { setPicked((now) => now.map((was, place) => (place === at ? index : was))) }}
+              />
+              <span>{choice}</span>
+            </label>
+          ))}
+        </fieldset>
+      ))}
+      <div className="mx-question-answers">
+        <button type="submit" className="mx-answer is-y" disabled={busy || left > 0}>{busy ? 'Sending…' : 'Send answers'}</button>
+        {left > 0 && <span className="mx-question-note">{left === questions.length ? 'Pick an answer for each question.' : `${String(left)} more to answer.`}</span>}
+      </div>
+    </form>
+  )
 }
 
 /**
@@ -99,7 +145,7 @@ type PromptProps = {
  * buttons exist only where the daemon knows the keys that answer this agent; otherwise the tray says
  * to answer in the terminal rather than guess.
  */
-export function PromptTray({ agent, ask, online, answer, pick }: PromptProps) {
+export function PromptTray({ agent, ask, online, answer, pick, pickAll }: PromptProps) {
   const [busy, setBusy] = useState(false)
   const run = (action: Promise<void>) => {
     setBusy(true)
@@ -109,13 +155,18 @@ export function PromptTray({ agent, ask, online, answer, pick }: PromptProps) {
   }
   const choices = ask?.choices ?? []
   const picker = choices.length > 0 && online ? pick : undefined
+  const questions = ask?.questions ?? []
+  const sendAll = questions.length > 1 && online ? pickAll : undefined
   const canAnswer = ask !== null && ask.answerable && online && answer !== undefined
   const isQuestion = ask?.tool === QUESTION_TOOL
   const title = ask === null ? `${agent} is waiting for you` : isQuestion ? `${agent} has a question for you` : ask.tool === 'Bash' ? 'Wants to run a command' : `Wants to use ${ask.tool}`
   return (
     <Tray label={`${agent} needs your permission`} title={title} asking={isQuestion}>
-      {ask !== null && ask.detail !== '' && (isQuestion ? <p className="mx-question-reason">{ask.detail}</p> : <code className="mx-question-code">{ask.detail}</code>)}
-      {picker !== undefined ? (
+      {/* Several questions are each shown with their choices; the one line that runs them together is for where they cannot be. */}
+      {ask !== null && ask.detail !== '' && sendAll === undefined && (isQuestion ? <p className="mx-question-reason">{ask.detail}</p> : <code className="mx-question-code">{ask.detail}</code>)}
+      {sendAll !== undefined ? (
+        <QuestionsForm questions={questions} busy={busy} onSend={(picked) => { run(sendAll(picked)) }} />
+      ) : picker !== undefined ? (
         <div className="mx-question-answers is-choices">
           {choices.map((choice, index) => (
             <button key={`${String(index)}-${choice}`} type="button" className="mx-answer" disabled={busy} onClick={() => { run(picker(index)) }}>

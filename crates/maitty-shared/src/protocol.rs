@@ -11,7 +11,10 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 79;
+pub const PROTOCOL_VERSION: u32 = 80;
+
+/// The first version whose daemon drops one queued follow-up (`Command::DropQueued`).
+pub const DROP_QUEUED_SINCE: u32 = 80;
 
 /// The first version whose daemon keeps an agent warm (`Command::Prewarm`, `Command::DropPrewarm`).
 pub const PREWARM_SINCE: u32 = 79;
@@ -229,6 +232,18 @@ pub struct PermissionAsk {
     /// The choices of a one-question multiple-choice prompt, in the order the agent numbers them, so
     /// the chat view can offer one button each. Empty for any other prompt.
     #[serde(default)]
+    pub choices: Vec<String>,
+    /// A prompt that asks several questions at once, each with one answer, in the order the agent
+    /// shows them. The chat view offers each question's choices and answers them in that order.
+    /// Empty for any other prompt.
+    #[serde(default)]
+    pub questions: Vec<AskQuestion>,
+}
+
+/// One question of a prompt that asks several, and its choices as the agent numbers them.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AskQuestion {
+    pub question: String,
     pub choices: Vec<String>,
 }
 
@@ -579,10 +594,21 @@ pub enum Command {
     QueueFollowUp {
         term: TermId,
         text: String,
+        /// Ahead of the ones already waiting: an agent's own command (`/model …`) picked while
+        /// it works runs before the messages queued behind it.
+        #[serde(default)]
+        first: bool,
     },
     /// Drop the follow-ups queued for a pane.
     ClearQueue {
         term: TermId,
+    },
+    /// Drop one queued follow-up: the one at `index`, and only while it still reads `text`. The
+    /// queue moves when a turn ends, so a position alone could name a different message.
+    DropQueued {
+        term: TermId,
+        index: u32,
+        text: String,
     },
     /// A message for the agent that is starting in a pane: the daemon holds it and types it in
     /// once that agent takes input, so it is delivered even when the app that sent it has closed.
@@ -1664,6 +1690,7 @@ impl ClientMsg {
     pub fn introduced_in(&self) -> u32 {
         match self {
             ClientMsg::Command(Command::Prewarm { .. } | Command::DropPrewarm) => PREWARM_SINCE,
+            ClientMsg::Command(Command::DropQueued { .. }) => DROP_QUEUED_SINCE,
             _ => COMPATIBLE_SINCE,
         }
     }
@@ -1799,6 +1826,7 @@ mod tests {
                     detail: "cargo test".into(),
                     answerable: true,
                     choices: vec![],
+                    questions: Vec::new(),
                 }),
                 call: Some("00112233445566ff".into()),
             },
@@ -1866,6 +1894,7 @@ mod tests {
             ClientMsg::Command(Command::QueueFollowUp {
                 term: 3,
                 text: "then run the tests".into(),
+                first: false,
             }),
             ClientMsg::Command(Command::ClearQueue { term: 3 }),
             ClientMsg::Command(Command::SendWhenReady {
@@ -2066,7 +2095,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 79);
+        assert_eq!(PROTOCOL_VERSION, 80);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2126,6 +2155,50 @@ mod tests {
         }))
         .expect("a read from before the queue");
         assert!(read.queued.is_empty() && read.history.resume.is_none() && !read.history.reset);
+    }
+
+    /// `questions` was added to a permission ask as a defaulted field: one from a hook or a daemon
+    /// built before it still decodes, as a prompt with none, so the version stays as it was.
+    #[test]
+    fn a_permission_ask_from_before_several_questions_still_decodes() {
+        #[derive(Serialize)]
+        struct OldAsk {
+            tool: String,
+            detail: String,
+            answerable: bool,
+            choices: Vec<String>,
+        }
+        let bytes = encode(&OldAsk { tool: "AskUserQuestion".into(), detail: "Which?".into(), answerable: false, choices: vec!["A".into(), "B".into()] }).unwrap();
+        let ask: PermissionAsk = decode(&bytes).unwrap();
+        assert_eq!((ask.choices.len(), ask.questions.len()), (2, 0));
+
+        let several = PermissionAsk {
+            tool: "AskUserQuestion".into(),
+            questions: vec![AskQuestion { question: "Which?".into(), choices: vec!["A".into(), "B".into()] }; 2],
+            ..PermissionAsk::default()
+        };
+        let back: PermissionAsk = decode(&encode(&several).unwrap()).unwrap();
+        assert_eq!(back, several);
+    }
+
+    /// `first` was added to `QueueFollowUp` as a defaulted field: a peer that does not send it
+    /// still decodes, as "at the back". Dropping one queued follow-up is a new command, read only
+    /// by a daemon that says it is new enough.
+    #[test]
+    fn a_follow_up_from_before_first_still_decodes_and_dropping_one_needs_a_daemon_that_knows_it() {
+        #[derive(Serialize)]
+        enum OldCommand {
+            QueueFollowUp { term: TermId, text: String },
+        }
+        let bytes = encode(&OldCommand::QueueFollowUp { term: 3, text: "next".into() }).unwrap();
+        let Command::QueueFollowUp { first, .. } = decode(&bytes).unwrap() else {
+            panic!("expected a follow-up")
+        };
+        assert!(!first);
+
+        let drop = ClientMsg::Command(Command::DropQueued { term: 3, index: 0, text: "next".into() });
+        assert_eq!(drop.introduced_in(), DROP_QUEUED_SINCE);
+        const { assert!(DROP_QUEUED_SINCE > COMPATIBLE_SINCE && DROP_QUEUED_SINCE <= PROTOCOL_VERSION) };
     }
 
     /// `choice` was added to `ConversationSend` as a defaulted field: a send from before it still
@@ -2259,7 +2332,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 79);
+        assert_eq!(PROTOCOL_VERSION, 80);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -2592,6 +2665,7 @@ mod tests {
             detail: "cargo test".into(),
             answerable: true,
             choices: vec!["A".into(), "B".into()],
+            questions: Vec::new(),
         });
         round_trips(&ServerMsg::State(Snapshot {
             terms: [(3, term)].into(),
@@ -2764,6 +2838,7 @@ mod tests {
                 detail: "cargo test".into(),
                 answerable: false,
                 choices: vec!["Yes".into()],
+                questions: Vec::new(),
             }),
             call: Some("00112233445566ff".into()),
         };

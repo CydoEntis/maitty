@@ -3,7 +3,7 @@ export type SessionStatus = 'working' | 'needs-you' | 'done' | 'idle' | 'recover
 export type TurnKind = 'Working' | 'NeedsYou' | 'Done' | 'Idle' | 'Prompt' | 'CommandStarted' | 'CommandFinished'
 
 /** The question a permission prompt asks, from the agent's own hook. */
-export type PermissionAsk = { tool: string; detail: string; answerable: boolean; choices?: readonly string[] }
+export type PermissionAsk = { tool: string; detail: string; answerable: boolean; choices?: readonly string[]; /** A prompt that asks several questions at once, each with one answer, in the order the agent shows them. */ questions?: readonly { question: string; choices: readonly string[] }[] }
 
 /** What the daemon reports about a terminal session beyond its status. */
 export type TerminalDetails = {
@@ -23,6 +23,8 @@ export type TerminalDetails = {
   usage: { context: number | null; cost: number | null; tokens: number | null }
   /** The plan limits of the session's agent, as it last reported them (`5h`, `week`); absent from an older daemon. */
   limits?: Array<{ name: string; used: number; resetsAt: number }>
+  /** The follow-ups the pane's daemon holds for its working agent, oldest first. */
+  queued?: string[]
   /** The helpers the session asked to start and waits on the person for, one task each; absent from an older daemon. */
   helperAsk?: string[]
   /** The agent's subagents as its runtime reports them; absent from an older daemon. */

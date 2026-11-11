@@ -2,7 +2,7 @@ import { usePreviewState } from './usePreviewState'
 import { PreviewContext } from './previewContext'
 import { PreviewWorkspace } from './PreviewWorkspace'
 import { PreviewEmpty } from './PreviewEmpty'
-import { ServiceBehindNotice } from './ServiceBehindNotice'
+import { ServiceBehindNotice } from '@/features/updates/ServiceBehindNotice'
 
 export function PreviewApp() {
   const preview = usePreviewState()

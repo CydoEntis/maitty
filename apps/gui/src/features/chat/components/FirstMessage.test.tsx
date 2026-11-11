@@ -1,6 +1,7 @@
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { useFakePaneQueue } from '../fakePaneQueue'
 import { FAKE_CONVERSATION, FakeDaemonHistory } from '../fakeDaemonHistory'
 import { forgetComposers } from '../composerStore'
 import { carryDraft, entrustFirstMessage, forgetFirstMessages, heldFirstMessage, holdFirstMessage } from '../firstMessage'
@@ -43,8 +44,20 @@ function open(status: 'Idle' | 'Working' | 'None') {
   daemon.status = status
   fake.current = daemon
   const typeInto = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
-  render(<ChatSession link={LINK} agent="claude" online typeInto={typeInto} sessionId="s1" />)
+  render(<WithPaneQueue typeInto={typeInto} />)
   return { daemon, typeInto }
+}
+
+/** The chat with a pane queue that behaves as the daemon's does; the button is the daemon typing the oldest one in. */
+function WithPaneQueue({ typeInto }: { typeInto: (text: string) => Promise<void> }) {
+  const paneQueue = useFakePaneQueue()
+  return (
+    <>
+      <ChatSession link={LINK} agent="claude" online typeInto={typeInto} paneQueue={paneQueue} sessionId="s1" />
+      <output aria-label="The daemon holds">{paneQueue.queued.join(' | ')}</output>
+      <button type="button" onClick={paneQueue.sendNext}>The turn ends</button>
+    </>
+  )
 }
 
 describe('a message typed while the agent was starting', () => {
@@ -132,21 +145,20 @@ describe('a first message the daemon holds', () => {
 })
 
 describe('a chat whose agent has not said what it is doing yet', () => {
-  it('takes a message at once, holds it, and types it in when the agent is ready', async () => {
+  it('takes a message at once and leaves it with the daemon, which types it in when the agent is ready', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-    const { daemon, typeInto } = open('None')
+    const { typeInto } = open('None')
     await settle()
     const box = screen.getByRole('textbox', { name: 'Message claude' })
     expect(box).not.toBeDisabled()
 
     await user.type(box, 'start on the parser{Enter}')
+    await settle(1)
+    // The window types nothing itself: the daemon holds the message, so it goes whether or not the window stays open.
     expect(typeInto).not.toHaveBeenCalled()
+    expect(screen.getByRole('status', { name: 'The daemon holds' })).toHaveTextContent('start on the parser')
     expect(screen.getByRole('list', { name: 'Queued messages' })).toHaveTextContent('start on the parser')
-
-    daemon.status = 'Idle'
-    await settle(IDLE_POLL_MS + 1)
-    await settle(10)
-    expect(typeInto).toHaveBeenCalledExactlyOnceWith(`${PASTE_START}start on the parser${PASTE_END}\r`)
+    expect(box).toHaveValue('')
   })
 
   it('puts the cursor in the message box when nothing else has it', async () => {
@@ -192,20 +204,60 @@ describe('finding text in the chat a session shows', () => {
 })
 
 describe('a message written while a terminal agent works', () => {
-  it('is held in the queue, and typed in once the agent is ready, exactly once', async () => {
+  it('can be sent into the running turn from its card, as typing in the terminal does, and goes exactly once', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-    const { daemon, typeInto } = open('Working')
+    const { typeInto } = open('Working')
+    await settle()
+    await user.type(screen.getByRole('textbox', { name: 'Message claude' }), 'stop, use the other branch{Enter}')
+    await settle(1)
+    expect(typeInto).not.toHaveBeenCalled()
+    expect(screen.getByRole('status', { name: 'The daemon holds' })).toHaveTextContent('stop, use the other branch')
+
+    await user.click(screen.getByRole('button', { name: 'Send now' }))
+    await settle(10)
+
+    expect(typeInto).toHaveBeenCalledExactlyOnceWith(`${PASTE_START}stop, use the other branch${PASTE_END}\r`)
+    expect(screen.queryByRole('list', { name: 'Queued messages' })).not.toBeInTheDocument()
+
+    // The daemon no longer holds it, so the turn ending sends nothing more.
+    expect(screen.getByRole('status', { name: 'The daemon holds' })).toHaveTextContent('')
+  })
+
+
+  it('is left with the daemon and shown in the queue, and drawn as sent when the daemon types it in', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const { typeInto } = open('Working')
     await settle()
 
     await user.type(screen.getByRole('textbox', { name: 'Message claude' }), 'and then add tests')
     await user.click(screen.getByRole('button', { name: 'Queue message' }))
+    await settle(1)
     expect(typeInto).not.toHaveBeenCalled()
+    expect(screen.getByRole('status', { name: 'The daemon holds' })).toHaveTextContent('and then add tests')
     expect(screen.getByRole('list', { name: 'Queued messages' })).toHaveTextContent('and then add tests')
 
-    daemon.status = 'Idle'
-    await settle(ACTIVE_POLL_MS + 1)
-    await settle(10)
-    expect(typeInto).toHaveBeenCalledExactlyOnceWith(`${PASTE_START}and then add tests${PASTE_END}\r`)
+    // The turn ends and the daemon types it in: it leaves the queue and shows in the chat at once.
+    await user.click(screen.getByRole('button', { name: 'The turn ends' }))
+    await settle(1)
+    expect(typeInto).not.toHaveBeenCalled()
     expect(screen.queryByRole('list', { name: 'Queued messages' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Sending')).toHaveTextContent('and then add tests')
+  })
+
+  it('takes one back from the daemon to edit it, without drawing it as sent', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    open('Working')
+    await settle()
+    const box = screen.getByRole('textbox', { name: 'Message claude' })
+    await user.type(box, 'and then add tests{Enter}')
+    await settle(1)
+
+    await user.click(within(screen.getByRole('list', { name: 'Queued messages' })).getByRole('button', { name: /^Edit/ }))
+    await settle(1)
+
+    expect(screen.getByRole('status', { name: 'The daemon holds' })).toHaveTextContent('')
+    expect(screen.queryByRole('list', { name: 'Queued messages' })).not.toBeInTheDocument()
+    expect(box).toHaveValue('and then add tests')
+    expect(screen.queryByLabelText('Sending')).not.toBeInTheDocument()
   })
 })
