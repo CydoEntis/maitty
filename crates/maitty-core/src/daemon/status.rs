@@ -676,6 +676,10 @@ impl Daemon {
 
     /// Tell a window `term` needs attention, and queue the desktop alert for it.
     pub(super) fn announce(&mut self, term: TermId, status: Status) {
+        // A spare is shown nowhere, so nobody could find what the alert is about.
+        if self.terms.get(&term).is_some_and(|t| t.spare) {
+            return;
+        }
         if status == Status::Done && self.terms.get(&term).is_some_and(|t| t.awaiting_background) {
             return;
         }
@@ -808,7 +812,7 @@ impl Daemon {
             return;
         }
         let now = term::unix_now();
-        for t in self.terms.values_mut().filter(|t| t.closing.is_none()) {
+        for t in self.terms.values_mut().filter(|t| t.closing.is_none() && !t.spare) {
             let Some(agent) = t.agent.clone() else {
                 continue;
             };

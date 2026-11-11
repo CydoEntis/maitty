@@ -38,6 +38,8 @@ pub enum PaneCommand {
     /// End the session after an undo window; `UndoClose` inside it brings the session back.
     CloseSession,
     UndoClose,
+    /// The person's answer to a session that asked to start helpers.
+    AnswerHelpers(maitty_shared::protocol::HelperChoice),
 }
 
 impl PaneCommand {
@@ -62,6 +64,9 @@ impl PaneCommand {
             PaneCommand::Close => ClientMsg::Command(Command::ClosePane { term }),
             PaneCommand::CloseSession => ClientMsg::Command(Command::CloseSession { term }),
             PaneCommand::UndoClose => ClientMsg::Command(Command::UndoClose { term }),
+            PaneCommand::AnswerHelpers(choice) => {
+                ClientMsg::Command(Command::AnswerHelpers { term, choice })
+            }
         }
     }
 }
@@ -745,6 +750,52 @@ pub async fn start_agent_session(
     }
 }
 
+/// The command that keeps an agent warm in a folder: the same line `start_agent_session` sends, so the session started
+/// next with the same agent, flags and folder is the one already running.
+pub fn prewarm_message(cwd: PathBuf, agent: &str, flags: &[String]) -> Result<ClientMsg> {
+    let cmd = agent_command(agent, flags)?;
+    let cwd = cwd.canonicalize().context("resolving the start folder")?;
+    if !cwd.is_dir() {
+        bail!("the start folder is not a directory");
+    }
+    Ok(ClientMsg::Command(Command::Prewarm { cwd, cmd }))
+}
+
+/// Start an agent ahead of its first message, hidden until its session is started. False when the daemon running is
+/// from before this and was not asked.
+pub async fn prewarm_agent_session(cwd: PathBuf, agent: String, flags: Vec<String>) -> Result<Value> {
+    let asked = ask_if_known(prewarm_message(cwd, &agent, &flags)?).await?;
+    Ok(Value::Bool(asked))
+}
+
+/// Stop the agent kept warm, if no session took it.
+pub async fn drop_prewarmed_agent() -> Result<Value> {
+    ask_if_known(ClientMsg::Command(Command::DropPrewarm)).await?;
+    Ok(Value::Null)
+}
+
+/// Whether a daemon at `daemon_version` reads `message`. An older one passes over what it cannot read and never answers.
+fn daemon_reads(message: &ClientMsg, daemon_version: u32) -> bool {
+    daemon_version >= message.introduced_in()
+}
+
+/// Ask the running daemon for something it may be too old to know: true when it was asked and said yes.
+async fn ask_if_known(message: ClientMsg) -> Result<bool> {
+    answered_within(REQUEST_TIMEOUT, async {
+        let (mut connection, version) = ipc::open_for_user_knowing_version()
+            .await
+            .context("connecting to the local daemon")?;
+        if !daemon_reads(&message, version) {
+            return Ok(false);
+        }
+        match ask(&mut connection, &message).await? {
+            Reply::Ok => Ok(true),
+            _ => bail!("daemon returned an unexpected reply"),
+        }
+    })
+    .await
+}
+
 /// What may be held for a starting agent: some words, and not more than the daemon is asked to keep.
 pub fn held_message(text: String) -> Result<PaneCommand> {
     if text.trim().is_empty() {
@@ -962,6 +1013,29 @@ pub async fn reload_terminal_session(term: u32, daemon_executable: PathBuf) -> R
 }
 
 /// The user looked at a pane: the daemon turns a finished agent's done into idle.
+/// The words the window uses for each answer to a helper request.
+pub fn helper_choice(word: &str) -> Result<maitty_shared::protocol::HelperChoice> {
+    use maitty_shared::protocol::HelperChoice;
+    match word {
+        "allow" => Ok(HelperChoice::Allow),
+        "always" => Ok(HelperChoice::Always),
+        "no" => Ok(HelperChoice::No),
+        _ => bail!("unknown answer to a helper request"),
+    }
+}
+
+pub async fn answer_helpers(
+    term: u32,
+    choice: maitty_shared::protocol::HelperChoice,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let reply = request(PaneCommand::AnswerHelpers(choice).message(term), daemon_executable).await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected helper answer reply"),
+    }
+}
+
 pub async fn mark_terminal_seen(term: u32, daemon_executable: PathBuf) -> Result<Value> {
     let reply = request(PaneCommand::Seen.message(term), daemon_executable).await?;
     match reply {
@@ -1900,6 +1974,33 @@ mod agent_command_tests {
         for bad in ["a;b", "$(x)", "a b", "`x`", "a&&b", "a|b", "", "a\nb"] {
             assert!(agent_command("claude", &words(&[bad])).is_err(), "{bad:?} was allowed");
         }
+    }
+
+    #[test]
+    fn keeping_an_agent_warm_asks_for_the_same_line_a_start_sends_and_refuses_what_a_start_refuses() {
+        use super::{ClientMsg, Command, prewarm_message};
+        let here = std::env::temp_dir();
+        let flags = words(&["--model", "opus"]);
+        match prewarm_message(here.clone(), "claude", &flags).unwrap() {
+            ClientMsg::Command(Command::Prewarm { cwd, cmd }) => {
+                assert_eq!(cmd, agent_command("claude", &flags).unwrap());
+                assert_eq!(cwd, here.canonicalize().unwrap());
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(prewarm_message(here.clone(), "rm", &[]).is_err());
+        assert!(prewarm_message(here.clone(), "claude", &words(&["a;b"])).is_err());
+        assert!(prewarm_message(here.join("no-such-folder-here"), "claude", &[]).is_err());
+    }
+
+    #[test]
+    fn a_daemon_from_before_warm_agents_is_not_asked_for_one() {
+        use super::{ClientMsg, Command, daemon_reads};
+        use maitty_shared::protocol::{PREWARM_SINCE, PROTOCOL_VERSION};
+        let drop = ClientMsg::Command(Command::DropPrewarm);
+        assert!(daemon_reads(&drop, PROTOCOL_VERSION));
+        assert!(daemon_reads(&drop, PREWARM_SINCE));
+        assert!(!daemon_reads(&drop, PREWARM_SINCE - 1));
     }
 }
 

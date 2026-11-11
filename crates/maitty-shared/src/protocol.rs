@@ -11,7 +11,10 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 78;
+pub const PROTOCOL_VERSION: u32 = 79;
+
+/// The first version whose daemon keeps an agent warm (`Command::Prewarm`, `Command::DropPrewarm`).
+pub const PREWARM_SINCE: u32 = 79;
 
 /// The oldest `PROTOCOL_VERSION` this build still talks to, in either role. It stays behind
 /// `PROTOCOL_VERSION` only across changes an older peer can live with: a new message it is never
@@ -645,6 +648,15 @@ pub enum Command {
     KillServer {
         forget: bool,
     },
+    /// Start `cmd` in `cwd` ahead of its first message, hidden. The next `NewWorkspace` with the
+    /// same command in the same folder is that agent, already running. One is kept at a time, and
+    /// for ten minutes after it was last asked for: asking again for the same one keeps it.
+    Prewarm {
+        cwd: PathBuf,
+        cmd: String,
+    },
+    /// Stop the agent `Prewarm` started, if no session took it.
+    DropPrewarm,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1650,7 +1662,10 @@ impl ClientMsg {
     /// The first version whose daemon reads this message: what a client checks before it sends
     /// a request to an older daemon, which would otherwise never answer it.
     pub fn introduced_in(&self) -> u32 {
-        COMPATIBLE_SINCE
+        match self {
+            ClientMsg::Command(Command::Prewarm { .. } | Command::DropPrewarm) => PREWARM_SINCE,
+            _ => COMPATIBLE_SINCE,
+        }
     }
 }
 
@@ -1679,6 +1694,32 @@ mod tests {
         assert!(speaks_with(PROTOCOL_VERSION + 5, COMPATIBLE_SINCE));
         assert!(!speaks_with(PROTOCOL_VERSION + 1, PROTOCOL_VERSION + 1));
         assert!(!speaks_with(PROTOCOL_VERSION + 1, 0));
+    }
+
+    /// Keeping an agent warm is two new commands: a daemon built before them cannot read them, so a
+    /// client asks only a daemon that says it is new enough.
+    #[test]
+    fn keeping_an_agent_warm_is_asked_only_of_a_daemon_that_knows_it() {
+        let warm = ClientMsg::Command(Command::Prewarm {
+            cwd: PathBuf::from("/code"),
+            cmd: "claude".into(),
+        });
+        assert_eq!(warm.introduced_in(), PREWARM_SINCE);
+        assert_eq!(ClientMsg::Command(Command::DropPrewarm).introduced_in(), PREWARM_SINCE);
+        assert_eq!(
+            ClientMsg::Command(Command::KillServer { forget: false }).introduced_in(),
+            COMPATIBLE_SINCE
+        );
+        const { assert!(PREWARM_SINCE > COMPATIBLE_SINCE && PREWARM_SINCE <= PROTOCOL_VERSION) };
+
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldCommand {
+            KillServer { forget: bool },
+        }
+        let bytes = encode(&Command::DropPrewarm).unwrap();
+        assert!(decode::<OldCommand>(&bytes).is_err());
+        assert!(decode::<Command>(&bytes).is_ok());
     }
 
     /// A build from before the window sends a Welcome with the version alone.
@@ -2025,7 +2066,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 78);
+        assert_eq!(PROTOCOL_VERSION, 79);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2218,7 +2259,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 78);
+        assert_eq!(PROTOCOL_VERSION, 79);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()

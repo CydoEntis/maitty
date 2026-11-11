@@ -8372,3 +8372,114 @@ fn a_session_moves_to_another_fleet_of_the_same_machine() {
     let terms: Vec<_> = d.terms.keys().copied().collect();
     close(&mut d, &terms);
 }
+
+fn prewarm(d: &mut Daemon, cmd: &str) -> anyhow::Result<bool> {
+    d.command(
+        0,
+        Command::Prewarm {
+            cwd: std::env::temp_dir(),
+            cmd: cmd.into(),
+        },
+    )
+}
+
+fn start_in_temp(d: &mut Daemon, cmd: &str) {
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: Some(cmd.into()),
+        },
+    )
+    .unwrap();
+}
+
+#[test]
+fn an_agent_kept_warm_is_hidden_until_the_session_it_was_started_for_takes_it() {
+    let (mut d, _rx) = daemon();
+    prewarm(&mut d, "echo warm").unwrap();
+    let spare = d.warm_term().expect("a spare is running");
+    assert!(d.terms[&spare].spare);
+    let shown = d.snapshot();
+    assert!(shown.terms.is_empty() && shown.workspaces.is_empty());
+
+    start_in_temp(&mut d, "echo warm");
+    assert_eq!(d.terms.len(), 1, "the session is the spare, not a second agent");
+    assert!(d.warm_term().is_none() && !d.terms[&spare].spare);
+    assert_eq!(d.workspaces[0].tabs[0].focus, spare);
+    assert!(d.snapshot().terms.contains_key(&spare));
+    close(&mut d, &[spare]);
+}
+
+#[test]
+fn a_session_asked_for_differently_starts_its_own_and_the_spare_stops_when_dropped() {
+    let (mut d, _rx) = daemon();
+    prewarm(&mut d, "echo warm").unwrap();
+    let spare = d.warm_term().unwrap();
+
+    start_in_temp(&mut d, "echo other");
+    assert_eq!(d.terms.len(), 2);
+    assert_eq!(d.warm_term(), Some(spare), "another command is not the spare");
+    let started = d.workspaces[0].tabs[0].focus;
+    assert_ne!(started, spare);
+
+    // Asking for another one stops the first; dropping stops whatever is kept.
+    prewarm(&mut d, "echo next").unwrap();
+    let next = d.warm_term().unwrap();
+    assert!(next != spare && !d.terms.contains_key(&spare));
+    d.command(0, Command::DropPrewarm).unwrap();
+    assert!(d.warm_term().is_none() && !d.terms.contains_key(&next));
+    assert_eq!(d.terms.len(), 1);
+    close(&mut d, &[started]);
+}
+
+#[test]
+fn a_spare_nobody_asks_for_again_is_stopped_and_asking_again_keeps_it() {
+    let (mut d, _rx) = daemon();
+    prewarm(&mut d, "echo warm").unwrap();
+    let spare = d.warm_term().unwrap();
+
+    d.age_warm(super::warm::WARM_KEEP - Duration::from_secs(5));
+    d.expire_warm();
+    assert_eq!(d.warm_term(), Some(spare));
+
+    d.age_warm(super::warm::WARM_KEEP + Duration::from_secs(1));
+    prewarm(&mut d, "echo warm").unwrap();
+    d.expire_warm();
+    assert_eq!(d.warm_term(), Some(spare), "asked for again: kept, and not started twice");
+    assert_eq!(d.terms.len(), 1);
+
+    d.age_warm(super::warm::WARM_KEEP + Duration::from_secs(1));
+    d.expire_warm();
+    assert!(d.warm_term().is_none() && d.terms.is_empty());
+}
+
+#[test]
+fn a_spare_alerts_nobody_and_a_pane_cannot_ask_for_one() {
+    let (mut d, _rx) = daemon();
+    prewarm(&mut d, "echo warm").unwrap();
+    let spare = d.warm_term().unwrap();
+    d.terms.get_mut(&spare).unwrap().status = Status::Blocked;
+    d.announce(spare, Status::Blocked);
+    assert!(d.terms[&spare].alert_due.is_none(), "nothing is due for a session shown nowhere");
+
+    let starter = pane(&mut d);
+    let token = d.terms[&starter].token.clone();
+    let mut from = from_pane(&mut d, 1, starter, &token);
+    d.handle(Ev::Msg(
+        1,
+        ClientMsg::Command(Command::Prewarm {
+            cwd: std::env::temp_dir(),
+            cmd: "echo other".into(),
+        }),
+    ));
+    let refused = std::iter::from_fn(|| from.try_recv().ok()).find_map(|m| match m {
+        ServerMsg::Error(e) => Some(e),
+        _ => None,
+    });
+    assert!(refused.is_some_and(|why| why.contains("Only an app window")));
+    assert_eq!(d.warm_term(), Some(spare));
+    d.drop_warm();
+    close(&mut d, &[starter]);
+}
