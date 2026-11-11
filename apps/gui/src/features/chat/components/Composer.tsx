@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { toast } from '@/lib/toast'
 import { pasteFromHost, pickFromClipboard, unsupportedMessage } from '@/features/terminal/clipboardImage'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
@@ -12,12 +12,20 @@ import { AgentPicker } from './AgentPicker'
 import { modelName } from '../modelName'
 import { PermissionMenu } from './PermissionMenu'
 import { QueuedMessages } from './QueuedMessages'
+import { MAX_SHOWN, SlashPicker } from './SlashPicker'
+import { commandText, matchCommands, slashQuery, useSlashCommands, withTerminalCommands, type SlashCommand } from '../slashCommands'
+import { CLAUDE_TERMINAL_COMMANDS } from '../terminalCommands'
+import { CODEX_COMMANDS } from '../codexCommands'
+import { usageItems, type SessionUsage } from '../usageStrip'
+import { nowSeconds } from '@/features/workspace/model/newChatHost'
 
 /** A key with nothing stored under it, for a composer whose view holds its own draft. */
 const NO_CONVERSATION = -1
 
 /** What the settings tray under the box says about the session. */
 export type ComposerFacts = {
+  /** What the session's agent reported using; the strip under the tray shows it, and is not drawn when there is nothing. */
+  usage?: SessionUsage | undefined
   /** The permission mode in words, from the agent's own file; null when it has not said. */
   mode: string | null
   /** The mode asks about nothing, so it is drawn in the danger colour. */
@@ -47,7 +55,12 @@ export type ComposerFacts = {
    * now (the agent is starting or working) they stay where they are, greyed out with `locked` as the reason, so the box never
    * rearranges. `start` is what a chat with no conversation yet was started with.
    */
-  agentChips?: { readonly locked: string | null; readonly start?: AgentChoice } | undefined
+  agentChips?: {
+    readonly locked: string | null
+    /** Why the model and effort cannot be picked, when that differs from `locked`: a pick made while the agent works is held for the turn's end, so only the mode waits. */
+    readonly pickerLocked?: string | null
+    readonly start?: AgentChoice
+  } | undefined
 }
 
 type Props = {
@@ -55,6 +68,13 @@ type Props = {
   composer: ChatComposer
   /** The chat's conversation number; with it the composer offers the agent, model and reasoning picker. */
   conversation?: number
+  /** Whose slash commands the box offers as a slash is typed, and the folder they are the commands of; absent for an agent with none to list. */
+  commandsFrom?: {
+    readonly agent: string
+    readonly folder: string
+    /** For an agent with a terminal: types a command there and shows it. With it the box also offers the commands only the terminal runs. */
+    readonly inTerminal?: ((command: string) => void) | undefined
+  } | undefined
   /** The question tray: what the agent asks, slid up from behind the box. Null when it asks nothing. */
   question?: ReactNode
   facts: ComposerFacts
@@ -63,6 +83,7 @@ type Props = {
 }
 
 const NO_CHANGE = () => undefined
+const PERCENT = 100
 
 /**
  * The message box, in three layers (README: message box): the question tray when the agent asks, the
@@ -70,7 +91,7 @@ const NO_CHANGE = () => undefined
  * adds a line, Esc interrupts the running turn. While the agent works, sending queues the message;
  * while a request waits for an answer, or the daemon is offline, the box is off and says why.
  */
-export function Composer({ agent, composer, conversation, question = null, facts, waiting = false }: Props) {
+export function Composer({ agent, composer, conversation, commandsFrom, question = null, facts, waiting = false }: Props) {
   const { setDraft, attachments, attach, readOnly, queue, removeQueued, editQueued, submit, stop, running, sending, disabledReason, error } = composer
   const storedDraft = useComposerDraft(composer.conversationKey ?? NO_CONVERSATION)
   const draft = composer.draft ?? storedDraft
@@ -109,9 +130,70 @@ export function Composer({ agent, composer, conversation, question = null, facts
   const stopping = running && empty && !off
   const busy = sending || waiting
 
+  // The agent's commands, offered while a slash and a name are typed. Esc puts the list away until the text changes.
+  const query = off || commandsFrom === undefined ? null : slashQuery(draft)
+  const [closedFor, setClosedFor] = useState<string | null>(null)
+  const picking = query !== null && closedFor !== draft
+  const slash = useSlashCommands(commandsFrom ?? null, picking)
+  const inTerminal = commandsFrom?.inTerminal
+  // Claude's are its own list plus the ones only its terminal runs; Codex's are the window's list. The terminal's
+  // commands are offered only to an agent that has a terminal to run them in.
+  const offered = useMemo(() => {
+    const own = commandsFrom?.agent === 'codex' ? CODEX_COMMANDS : withTerminalCommands(slash.commands, CLAUDE_TERMINAL_COMMANDS)
+    return inTerminal === undefined ? own.filter((command) => command.terminal !== true) : own
+  }, [slash.commands, inTerminal, commandsFrom?.agent])
+  const matches = useMemo(() => (query === null ? [] : matchCommands(offered, query)), [offered, query])
+  // The keys start at the closest match each time the typed name changes.
+  const [cursor, setCursor] = useState({ query: '', index: 0 })
+  const active = cursor.query === query ? Math.min(cursor.index, Math.max(0, Math.min(matches.length, MAX_SHOWN) - 1)) : 0
+  const complete = (command: SlashCommand) => {
+    setDraft(commandText(command))
+    text.current?.focus()
+  }
+  // A command that takes nothing runs at once, as it does in the terminal; one that takes something waits for it.
+  const run = (command: SlashCommand) => {
+    if (command.hint !== '') {
+      complete(command)
+      return
+    }
+    if (command.terminal === true && inTerminal !== undefined) {
+      // Its menu is the terminal's to show, and its keys would land in a running turn.
+      if (running) {
+        toast.message(`${agent} is working. Run /${command.name} when it finishes.`)
+        return
+      }
+      setDraft('')
+      inTerminal(`/${command.name}`)
+      return
+    }
+    setDraft(`/${command.name}`)
+    submit()
+    text.current?.focus()
+  }
+  const pickerKey = (event: KeyboardEvent<HTMLTextAreaElement>): boolean => {
+    if (!picking) return false
+    if (event.key === 'Escape') {
+      setClosedFor(draft)
+      return true
+    }
+    const chosen = matches[active]
+    if (chosen === undefined) return false
+    const shown = Math.min(matches.length, MAX_SHOWN)
+    if (event.key === 'ArrowDown') setCursor({ query, index: (active + 1) % shown })
+    else if (event.key === 'ArrowUp') setCursor({ query, index: (active + shown - 1) % shown })
+    else if (event.key === 'Tab' && !event.shiftKey) complete(chosen)
+    else if (event.key === 'Enter' && !event.shiftKey) run(chosen)
+    else return false
+    return true
+  }
+
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter while an input method is composing text confirms the text; it is not a send.
     if (event.nativeEvent.isComposing) return
+    if (pickerKey(event)) {
+      event.preventDefault()
+      return
+    }
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       submit()
@@ -127,10 +209,14 @@ export function Composer({ agent, composer, conversation, question = null, facts
         <QueuedMessages agent={agent} queue={queue} onRemove={removeQueued} onEdit={(id) => { editQueued(id); text.current?.focus() }} />
         {question}
         <div className={`mx-box${off ? ' is-locked' : ''}`}>
+          {picking && (
+            <SlashPicker agent={agent} matches={matches} active={active} loading={slash.loading} error={slash.error} onPick={run} onHover={(index) => { setCursor({ query, index }) }} />
+          )}
           <DraftAttachments attachments={attachments} onRemove={attach.remove} />
           <textarea
             ref={text}
             aria-label={`Message ${agent}`}
+            {...(picking && matches.length > 0 ? { role: 'combobox', 'aria-expanded': true, 'aria-controls': 'mx-slash-list', 'aria-activedescendant': `mx-slash-${String(active)}` } : {})}
             rows={2}
             value={draft}
             disabled={off}
@@ -150,7 +236,7 @@ export function Composer({ agent, composer, conversation, question = null, facts
             <span className="mx-spacer" />
             {facts.agentChips !== undefined ? (
               conversation !== undefined
-                ? <ModelPicker agent={agent} conversation={conversation} model={facts.model} live={readOnly ? facts.onCommand : undefined} locked={facts.agentChips.locked} />
+                ? <ModelPicker agent={agent} conversation={conversation} model={facts.model} live={readOnly ? facts.onCommand : undefined} locked={facts.agentChips.pickerLocked === undefined ? facts.agentChips.locked : facts.agentChips.pickerLocked} />
                 : <AgentPicker agent={agent} choice={facts.agentChips.start ?? defaultChoice()} onChange={NO_CHANGE} locked={facts.agentChips.locked ?? undefined} />
             ) : (
               <>
@@ -170,6 +256,7 @@ export function Composer({ agent, composer, conversation, question = null, facts
           </div>
         </div>
         <SettingsTray facts={facts} />
+        {facts.usage !== undefined && <UsageStrip usage={facts.usage} />}
         {error !== null && <p role="alert" className="mx-composer-error">{error}. Your message is kept; send it again to retry.</p>}
       </div>
     </div>
@@ -182,6 +269,30 @@ function ModeIcon() {
 
 function modeLockedWhy(facts: Pick<ComposerFacts, 'modeLocked' | 'agentChips'>): string {
   return facts.modeLocked ?? facts.agentChips?.locked ?? 'Not available for this chat'
+}
+
+/**
+ * The strip tucked under the tray: how full the session's context is and how much of the plan's limits is used, each
+ * as a small meter with its figure. Only what the agent reported is drawn (ADR 0009); with nothing reported there is no strip.
+ */
+function UsageStrip({ usage }: { usage: SessionUsage }) {
+  const items = usageItems(usage, nowSeconds())
+  if (items.length === 0) return null
+  return (
+    <div className="mx-usage-strip" role="group" aria-label="Usage">
+      {items.map((item) => {
+        const title = item.resetsIn === null ? `${item.label}: ${String(item.percent)}% used` : `${item.label}: ${String(item.percent)}% used, starts over in ${item.resetsIn}`
+        return (
+          <span key={item.key} className={`mx-usage-item is-${item.tone}`} title={title}>
+            <span className="mx-usage-label">{item.label}</span>
+            <span className="mx-usage-bar" role="meter" aria-label={item.label} aria-valuemin={0} aria-valuemax={PERCENT} aria-valuenow={item.percent}><span style={{ width: `${String(item.percent)}%` }} /></span>
+            <span className="mx-usage-figure">{item.percent}%</span>
+            {item.resetsIn !== null && <span className="mx-usage-reset">{item.resetsIn}</span>}
+          </span>
+        )
+      })}
+    </div>
+  )
 }
 
 /** The darker tray under the box: the folder, how the agent is set up, and the branch with whether it is a worktree. */
@@ -219,8 +330,8 @@ function SettingsTray({ facts }: { facts: ComposerFacts }) {
       )}
       <span className="mx-spacer" />
       {facts.branch !== null && (
-        <span className="mx-tray-fact is-branch" title={facts.worktree === true ? 'A worktree: its own copy of the project on this branch' : facts.worktree === false ? "The project's own folder, on this branch" : undefined}>
-          <Icon name={facts.worktree === true ? 'splitRight' : 'branch'} size={13} strokeWidth={1.9} stroke="currentColor" />
+        <span className={`mx-tray-fact is-branch${facts.worktree === true ? ' is-worktree' : ''}`} title={facts.worktree === true ? 'A worktree: its own copy of the project on this branch' : facts.worktree === false ? "The project's own folder, on this branch" : undefined}>
+          <Icon name={facts.worktree === true ? 'worktree' : 'branch'} size={13} strokeWidth={1.9} stroke="currentColor" />
           {facts.worktree === true ? 'Worktree' : facts.worktree === false ? 'Branch' : null}
           <span className="mx-tray-branch">{facts.branch}</span>
         </span>

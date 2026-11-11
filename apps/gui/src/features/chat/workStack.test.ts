@@ -26,6 +26,19 @@ describe('the stack under a run of steps', () => {
     ])
   })
 
+  it('shows the rest of a command that has printed nothing, so a running script is not an empty card', () => {
+    const script = commandEvent('c', { command: "python3 - <<'EOF'\nimport os\n\nprint(os.getcwd())\nEOF", output: '', status: 'running' })
+    expect(stackLines(script)).toEqual([
+      { mark: '', text: 'import os', tone: 'plain' },
+      { mark: '', text: 'print(os.getcwd())', tone: 'plain' },
+    ])
+  })
+
+  it('says a one-line command is running, or printed nothing, when there is no output to show', () => {
+    expect(stackLines(commandEvent('c', { command: 'sleep 5', output: '', status: 'running' }))).toEqual([{ mark: '', text: 'Running…', tone: 'note' }])
+    expect(stackLines(commandEvent('c', { command: 'true', output: '\n', status: 'completed' }))).toEqual([{ mark: '', text: 'No output', tone: 'note' }])
+  })
+
   it('shows nothing for output the history withheld, or a diff it did not keep', () => {
     expect(stackLines(commandEvent('c', { output: '[content of a secret file omitted]' }))).toEqual([])
     expect(stackLines(editEvent('e', { diff: { status: 'omitted' } }))).toEqual([])

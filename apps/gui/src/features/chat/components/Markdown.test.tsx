@@ -1,6 +1,43 @@
-import { render, screen, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { isDesktop, openLink } from '@/api/daemon'
+import { copyText } from '@/lib/clipboard'
 import { Markdown } from './Markdown'
+
+vi.mock('@/api/daemon', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/daemon')>()),
+  isDesktop: vi.fn(() => false),
+  openLink: vi.fn(() => Promise.resolve()),
+}))
+vi.mock('@/lib/clipboard', () => ({ copyText: vi.fn(() => Promise.resolve()) }))
+
+describe('a link in a message', () => {
+  beforeEach(() => { vi.clearAllMocks() })
+
+  it('opens in the person\'s own browser when it is clicked in the desktop app, and is never an anchor', async () => {
+    vi.mocked(isDesktop).mockReturnValue(true)
+    const user = userEvent.setup()
+    const { container } = render(<Markdown text="See [the docs](https://example.com/a?b=1&c=2)." />)
+
+    await user.click(screen.getByRole('button', { name: 'the docs' }))
+
+    expect(openLink).toHaveBeenCalledExactlyOnceWith('https://example.com/a?b=1&c=2')
+    expect(copyText).not.toHaveBeenCalled()
+    expect(container.querySelector('a')).toBeNull()
+  })
+
+  it('copies its address outside the desktop app, where there is no browser to hand it to', async () => {
+    vi.mocked(isDesktop).mockReturnValue(false)
+    const user = userEvent.setup()
+    render(<Markdown text="See [the docs](https://example.com/)." />)
+
+    await user.click(screen.getByRole('button', { name: 'the docs' }))
+
+    await waitFor(() => { expect(copyText).toHaveBeenCalledExactlyOnceWith('https://example.com/') })
+    expect(openLink).not.toHaveBeenCalled()
+  })
+})
 
 const TABLE = '| Name | Qty | Note |\n| :--- | ---: | :---: |\n| `a` | **1** | x |\n| b | 22 | y |'
 

@@ -29,15 +29,17 @@ describe('status marks', () => {
     expect(shapes).toEqual(['mx-badge is-working', 'mx-badge is-done', 'mx-badge is-needs', 'mx-badge is-error', 'mx-badge is-unknown'])
   })
 
-  it('draws needs you as an exclamation mark and stopped as a cross, with no word in the mark itself', () => {
+  it('draws needs you and stopped as the same exclamation square, and done as a checked one, with no word in the mark itself', () => {
     const needs = render(<StatusBadge status="needs" />)
-    expect(needs.container.textContent).toBe('!')
     const exited = render(<StatusBadge status="error" />)
-    expect(exited.container.querySelector('svg')).not.toBeNull()
-    expect(exited.container.textContent).toBe('')
+    const done = render(<StatusBadge status="done" />)
+    expect(needs.container.querySelector('svg.lucide-square-exclamation-point')).not.toBeNull()
+    expect(exited.container.querySelector('svg.lucide-square-exclamation-point')).not.toBeNull()
+    expect(done.container.querySelector('svg.lucide-square-check')).not.toBeNull()
+    expect(`${needs.container.textContent}${exited.container.textContent}${done.container.textContent}`).toBe('')
   })
 
-  it('draws an idle session as a hollow ring of its own', () => {
+  it('draws an idle session as a sleeping mark of its own', () => {
     const { container } = render(<StatusBadge status="idle" />)
     expect(container.querySelector('.mx-badge.is-idle')).not.toBeNull()
     expect(container.textContent).toBe('')

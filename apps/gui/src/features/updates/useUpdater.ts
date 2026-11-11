@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { checkForUpdate, restartApp, type UpdateHandle } from './updater'
+import { downloadRate, keepSamples, type Sample, type Transfer } from './downloadEta'
 
 export type UpdaterState =
   | { status: 'idle' }
   | { status: 'checking' }
   | { status: 'current' }
   | { status: 'available'; version: string; notes: string }
-  | { status: 'downloading'; version: string; progress: number | null }
+  /** `progress` is the share that arrived (null while the size is unknown); `transfer` the bytes behind it, null until the first arrive. */
+  | { status: 'downloading'; version: string; progress: number | null; transfer: Transfer | null }
   | { status: 'ready'; version: string }
   /** `during` says whether the check or the update itself failed: only the latter is something you started. */
   | { status: 'failed'; message: string; during: 'check' | 'update' }
@@ -60,9 +62,14 @@ export function useUpdater() {
     const found = handle.current
     if (!found) return
     const { version } = found.info
-    setState({ status: 'downloading', version, progress: null })
+    setState({ status: 'downloading', version, progress: null, transfer: null })
+    let samples: Sample[] = []
     found
-      .download((progress) => { setState({ status: 'downloading', version, progress }) })
+      .download((received, total) => {
+        samples = keepSamples(samples, { at: performance.now(), received })
+        const progress = total === null ? null : Math.min(received / total, 1)
+        setState({ status: 'downloading', version, progress, transfer: { received, total, bytesPerSecond: downloadRate(samples) } })
+      })
       .then(() => { setState({ status: 'ready', version }) })
       .catch((error: unknown) => { setState({ status: 'failed', message: messageOf(error), during: 'update' }) })
   }, [])

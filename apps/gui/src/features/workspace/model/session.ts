@@ -1,6 +1,6 @@
 import { terminalOf } from '@/api/daemon'
 import type { Conversation, PermissionAsk, TerminalDetails } from '@/data/preview'
-import { toSubagentView, type SubagentView } from './subagents'
+import { listedSubagents, toSubagentView, type SubagentView } from './subagents'
 
 /** The status vocabulary of the desktop app. Each one has its own shape, never colour alone. */
 export type SessionStatus = 'working' | 'needs' | 'done' | 'error' | 'idle' | 'unknown'
@@ -50,6 +50,8 @@ export type SessionView = {
   statusSince: number | null
   timeline: TerminalDetails['timeline']
   usage: TerminalDetails['usage']
+  /** The plan limits of its agent, as last reported; empty when it reported none. */
+  limits: NonNullable<TerminalDetails['limits']>
   /** The tasks of the helpers the session asked to start and waits on the person for; empty when it asked for none. */
   helperAsk: readonly string[]
   /** The agent's subagents, in the order its runtime reported them. */
@@ -207,9 +209,10 @@ export function toSessionView(conversation: Conversation, home: string): Session
     statusSince: (conversation.details?.since ?? 0) > 0 ? (conversation.details?.since ?? 0) * MS_PER_SECOND : null,
     timeline: conversation.details?.timeline ?? [],
     usage: conversation.details?.usage ?? { context: null, cost: null, tokens: null },
+    limits: conversation.details?.limits ?? [],
     helperAsk: conversation.details?.helperAsk ?? [],
-    // A helper that has finished has reported back to the agent, so its row goes; one that stopped or still needs something stays.
-    subagents: (conversation.details?.subagents ?? []).map(toSubagentView).filter((subagent) => subagent.status !== 'done'),
+    // Which helpers a row lists (`listedSubagents`): not one that finished, nor one that stopped once the turn is over.
+    subagents: listedSubagents((conversation.details?.subagents ?? []).map(toSubagentView), status === 'working'),
     status,
     lastKnownStatus: lastKnown,
     conversation,

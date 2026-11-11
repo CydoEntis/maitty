@@ -179,7 +179,12 @@
 
 .mx-badge { position: absolute; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px var(--card-ring); }
 .mx-badge { animation: v9pop .26s var(--ease-out); }
-.mx-badge.is-needs { background: var(--warn); }
+/* Needs you, blocked and finished are one outlined square each (Lucide's), told apart by the mark inside and by
+   colour: amber `!`, red `!`, green check. Lucide draws its square inside a margin, so the icon is scaled up until
+   the square fills the badge. Idle is a sleeping "Zz" with no square. All four sit on the window's background. */
+.mx-badge.is-needs, .mx-badge.is-done, .mx-badge.is-error, .mx-badge.is-idle { background: var(--bg); }
+.mx-badge.is-needs svg, .mx-badge.is-done svg, .mx-badge.is-error svg { flex: none; width: 134%; height: 134%; }
+.mx-badge.is-needs { color: var(--warn); }
 /* A pulse is a ring on a pseudo-element that scales out and fades: only `transform` and `opacity` move, never a
    box-shadow, which repaints the card on every frame (docs/PERFORMANCE.md). The needs-you badge keeps pulsing for
    as long as it needs you, and rests while the window is not in front; the update dot pulses once. */
@@ -187,12 +192,11 @@
 .mx-upd-dot::after { animation-duration: .7s; }
 .mx-badge.is-needs::after { animation: v7pulse 1.6s ease-out infinite; }
 :root[data-window="inactive"] .mx-badge.is-needs::after { animation-play-state: paused; }
-/* Finished is a solid green check, stopped a solid red cross, idle a hollow one: three marks, not three tints. Every
-   badge takes the window style's corners: a rounded square on a rounded style, a square on a squared one. */
-.mx-badge.is-done { background: var(--ok); color: var(--bg); }
+/* Every badge takes the window style's corners: a rounded square on a rounded style, a square on a squared one. */
+.mx-badge.is-done { color: var(--ok); }
 .mx-badge.is-idle svg { width: 100%; height: 100%; }
-.mx-badge.is-idle { color: var(--muted); background: var(--bg); box-shadow: 0 0 0 2px var(--card-ring), inset 0 0 0 1.25px color-mix(in srgb, var(--dim) 65%, transparent); animation: none; }
-.mx-badge.is-error { background: var(--danger); color: var(--bg); }
+.mx-badge.is-idle { color: var(--muted); animation: none; }
+.mx-badge.is-error { color: var(--danger); }
 
 /* With a single pane the workspace's own border takes the focus; with several, the focused pane does. Never both. */
 .mx-app[data-side="right"] .mx-sidebar { margin: 12px 12px 12px 0; }
@@ -518,10 +522,9 @@
 .mx-notice.is-info { --notice: var(--accent); --notice-ink: var(--on-accent); --state: var(--muted); }
 .mx-notice-icon { flex: none; display: flex; align-items: flex-start; }
 .mx-notice-app { position: relative; display: block; width: 26px; height: 26px; }
-.mx-notice-app .mx-badge { right: -3px; bottom: -3px; width: 11px; height: 11px; border-radius: calc(3.5px * var(--rk)); font-size: 8px; font-weight: 800; line-height: 1; color: var(--on-warn); }
+.mx-notice-app .mx-badge { right: -3px; bottom: -3px; width: 11px; height: 11px; border-radius: calc(3.5px * var(--rk)); font-size: 8px; font-weight: 800; line-height: 1; }
 .mx-notice-app .mx-badge.is-working { background: var(--bg); overflow: hidden; color: var(--working); font-family: var(--mono); }
 .mx-notice-app .mx-badge.is-working .mx-spin { font-size: 8px; line-height: 1; }
-.mx-notice-app .mx-badge.is-done svg { width: 7px; height: 7px; }
 .mx-notice-app .mx-badge.is-unknown { background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
 .mx-notice-mark { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 7px; background: var(--m-well); box-shadow: inset 0 0 0 1px var(--m-line, var(--pane-line)); }
 .mx-notice-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
@@ -641,12 +644,17 @@ button.mx-sb-item:hover { background: rgba(var(--hl), calc(.07 * var(--hk))); co
 .mx-upd-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
 .mx-upd-ring { width: 14px; height: 14px; border-radius: 50%; background: conic-gradient(var(--accent) var(--p, 0%), color-mix(in srgb, var(--accent) 22%, transparent) 0); -webkit-mask: radial-gradient(circle, transparent 4px, #000 4.5px); mask: radial-gradient(circle, transparent 4px, #000 4.5px); }
 .mx-upd-card { width: 360px; max-width: calc(100vw - 24px); padding: 16px; border-radius: 14px; background: var(--main); border: 1px solid var(--line2); box-shadow: 0 16px 44px rgba(0, 0, 0, .5); color: var(--fg); animation: v7fade .18s var(--ease-out); }
-.mx-upd-card h3 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+.mx-upd-card { position: relative; }
+.mx-upd-card h3 { margin: 0 0 4px; padding-right: 28px; font-size: 14px; font-weight: 600; }
+.mx-upd-close { position: absolute; top: 10px; right: 10px; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; color: var(--muted); cursor: pointer; }
+.mx-upd-close:hover { background: rgba(var(--hl), calc(.06 * var(--hk))); color: var(--fg); }
+/* What has arrived on the left, the share and the time left on the right; figures keep their width as they change. */
+.mx-upd-progress { display: flex; justify-content: space-between; gap: 12px; margin: 0; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .mx-upd-sub { margin: 0 0 10px; font-size: 12px; color: var(--muted); }
 .mx-upd-notes { margin: 8px 0 12px; padding-left: 18px; font-size: 12.5px; color: var(--fg2); display: flex; flex-direction: column; gap: 4px; }
 .mx-upd-notes.is-safe { margin-top: 10px; }
 .mx-upd-error { margin: 8px 0 12px; padding: 8px 10px; border-radius: 8px; background: var(--danger-soft); box-shadow: inset 0 0 0 1px var(--danger-line); font: 11.5px/1.5 var(--mono); color: var(--fg2); word-break: break-word; }
-.mx-upd-bar { height: 6px; margin: 10px 0 6px; border-radius: 999px; background: var(--m-well); overflow: hidden; }
+.mx-upd-bar { height: 6px; margin: 12px 0 8px; border-radius: 999px; background: var(--m-well); overflow: hidden; }
 .mx-upd-bar span { display: block; height: 100%; background: var(--accent); transition: width .2s ease; }
 .mx-upd-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .mx-upd-primary { height: 30px; padding: 0 14px; border-radius: 8px; background: var(--accent); color: var(--on-accent); font-weight: 600; font-size: 12.5px; cursor: pointer; }

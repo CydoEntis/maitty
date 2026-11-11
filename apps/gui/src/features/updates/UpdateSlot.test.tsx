@@ -52,13 +52,17 @@ describe('update slot', () => {
     expect(screen.getByText(/^Version/)).toBeInTheDocument()
   })
 
-  it('shows the percent while downloading, and closes the card with Hide', async () => {
+  it('shows the percent, the size and the time left while downloading, and closes the card with its X', async () => {
     const user = userEvent.setup()
-    setup({ status: 'downloading', version: '0.61.0', progress: 0.42 })
+    const MB = 1024 * 1024
+    setup({ status: 'downloading', version: '0.61.0', progress: 0.42, transfer: { received: 42 * MB, total: 100 * MB, bytesPerSecond: MB / 6 } })
 
     await user.click(screen.getByRole('button', { name: '42%' }))
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '42')
-    await user.click(screen.getByRole('button', { name: 'Hide' }))
+    expect(screen.getByText('42.0 MB of 100 MB')).toBeInTheDocument()
+    expect(screen.getByText('42% · about 6 min left')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Hide' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Close' }))
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })

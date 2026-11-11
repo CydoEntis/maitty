@@ -9,6 +9,10 @@ import { noticeForAttention, noticesFor, type Notice } from '@/features/notifica
 import { isChatSession } from './model/chatSession'
 import type { RemoteMachine } from './model/machines'
 import type { SessionView } from './model/session'
+import { heldCount } from '@/features/chat/composerStore'
+
+/** How many messages this window holds for the session's agent, to be typed in as its turns end. */
+const queuedFor = (session: SessionView): number => (session.conversation.chat === undefined ? 0 : heldCount(session.conversation.chat.conversation))
 
 /** A notification's click brings the window forward; returning later than this is not that click. */
 const NOTIFICATION_CLICK_WINDOW_MS = 15_000
@@ -73,7 +77,7 @@ export function useSessionAlerts({ sessions, sessionMap, machines, projectOf, on
     // What another machine's agents do raises no system notice unless its entry says notices = true.
     const mine = sessions.filter((item) => item.machine === LOCAL_MACHINE || machines.get(item.machine)?.state.notices === true)
     const notices = online
-      ? noticesFor(lastStatuses.current, mine, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError }, document.hasFocus() ? focusedId : null)
+      ? noticesFor(lastStatuses.current, mine, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError }, document.hasFocus() ? focusedId : null, queuedFor)
       : []
     lastStatuses.current = new Map(mine.map((item) => [item.id, item.status]))
     // A card that said "Needs you" goes when the session stops needing you.
@@ -95,6 +99,8 @@ export function useSessionAlerts({ sessions, sessionMap, machines, projectOf, on
       if (!target || isChatSession(target.conversation)) return
       if (target.machine !== LOCAL_MACHINE && machines.get(target.machine)?.state.notices !== true) return
       if (document.hasFocus() && target.id === focusedId) return
+      // More is queued for it: the turn ended, the session did not finish, so it neither rings nor says so.
+      if (attention.status === 'done' && queuedFor(target) > 0) return
       const notice = noticeForAttention(target, attention.status, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError })
       if (!notice) return
       raiseNotice(notice)

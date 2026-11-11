@@ -247,15 +247,21 @@ function Expanded(props: SidebarProps) {
         />
         {/* A sibling of the row, not inside it (a button cannot hold a button): it shows on hover and focus. */}
         <button type="button" className="mx-row-close" aria-label={`${isShell(session) ? 'Close' : 'Stop'} ${rowTitle(session)}`} title={isShell(session) ? 'Close shell' : 'Stop session'} disabled={!props.online} onClick={() => { props.onEndSession(session.id) }}><Icon name="close" size={12} /></button>
-        {subagents.length > 0 && !selected && <SubagentPeek process={session.process} subagents={subagents} />}
-        {subagents.length > 0 && selected && (
-          <SubagentList
-            process={session.process}
-            subagents={subagents}
-            openId={props.openSubagent?.sessionId === session.id ? props.openSubagent.subagentId : null}
-            onOpen={(id) => { props.onShowSubagent(session.id, id) }}
-            onContextMenu={(subagent, event) => { openMenu(event, subagent.name, subagentMenu(session, subagent)) }}
-          />
+        {/* Both are kept, each folded while the other shows, so choosing another session eases the rows shut and
+            the next session's open, instead of the list under it jumping by their height. */}
+        {subagents.length > 0 && (
+          <>
+            <Collapse open={!selected}><SubagentPeek process={session.process} subagents={subagents} /></Collapse>
+            <Collapse open={selected}>
+              <SubagentList
+                process={session.process}
+                subagents={subagents}
+                openId={props.openSubagent?.sessionId === session.id ? props.openSubagent.subagentId : null}
+                onOpen={(id) => { props.onShowSubagent(session.id, id) }}
+                onContextMenu={(subagent, event) => { openMenu(event, subagent.name, subagentMenu(session, subagent)) }}
+              />
+            </Collapse>
+          </>
         )}
       </div>
     )
@@ -297,11 +303,6 @@ function Expanded(props: SidebarProps) {
                 {section.sessions.map((session) => renderRow(session, false))}
               </ListSection>
             ))}
-            {terminals.length > 0 && (
-              <ListSection id={TERMINALS_SECTION} name="Terminals" count={terminals.length} label="Terminals" open={views.isOpen(TERMINALS_SECTION)} onToggle={() => { views.toggle(TERMINALS_SECTION) }}>
-                {terminals.map((session) => renderRow(session, true, true))}
-              </ListSection>
-            )}
             {props.sessions.length === 0 && draft === null && <div className="mx-empty-note">No agents running. New chat starts one.</div>}
             <MachineNotes heads={props.machines} progress={props.updateProgress} onUpdate={props.onUpdateMachine} />
           </section>
@@ -330,6 +331,14 @@ function Expanded(props: SidebarProps) {
         </section>
         )}
       </div>
+      {/* Terminals keep to the foot of the sidebar, under the agents however many there are, so they are always in the same place. */}
+      {props.grouping !== 'machine' && terminals.length > 0 && (
+        <section aria-label="Terminals" className="mx-sidebar-terminals" onScroll={endHover}>
+          <ListSection id={TERMINALS_SECTION} name="Terminals" count={terminals.length} label="Terminals" open={views.isOpen(TERMINALS_SECTION)} onToggle={() => { views.toggle(TERMINALS_SECTION) }}>
+            {terminals.map((session) => renderRow(session, true, true))}
+          </ListSection>
+        </section>
+      )}
       <div className="mx-sidebar-foot">
         {props.online
           ? <span className="mx-foot-slot">{props.updateSlot}</span>

@@ -166,6 +166,11 @@ describe('subagents', () => {
     show([parent()])
     expect(screen.getByRole('img', { name: 'Subagents: Write drafts tests working, Load test needs you' })).toBeTruthy()
     expect(screen.queryByRole('group', { name: 'Subagents' })).toBeNull()
+    // The rows are there, folded shut and out of reach, so choosing the session eases them open instead of jumping.
+    const rows = document.querySelector('.mx-sub-list')?.closest('.mx-collapse-grid')
+    expect(rows).toHaveAttribute('data-open', 'false')
+    expect(rows?.querySelector('.mx-collapse-inner')).toHaveAttribute('inert')
+    expect(document.querySelector('.mx-sub-peek')?.closest('.mx-collapse-grid')).toHaveAttribute('data-open', 'true')
   })
 
   it('lists them under the selected session, and opening one asks for its own chat', async () => {
@@ -385,6 +390,9 @@ describe('grouped by status', () => {
     show([session(9, { named: true, title: 'Dev server', status: 'working' }), ...mixed()], { grouping: 'status' })
     expect(screen.getAllByRole('list').map((list) => list.getAttribute('aria-label'))).toEqual(['Needs you', 'Working', 'Finished', 'Idle', 'Terminals'])
     expect(within(screen.getByRole('list', { name: 'Terminals' })).getByRole('button', { name: /^Dev server,/ })).toBeTruthy()
+    // Terminals are pinned over the sidebar's foot, outside the list of agents that scrolls.
+    expect(screen.getByRole('list', { name: 'Terminals' }).closest('.mx-sidebar-list')).toBeNull()
+    expect(screen.getByRole('list', { name: 'Terminals' }).closest('.mx-sidebar-terminals')).not.toBeNull()
     expect(within(screen.getByRole('list', { name: 'Working' })).queryByRole('button', { name: /^Dev server,/ })).toBeNull()
   })
 

@@ -52,6 +52,16 @@ export function toSubagentView(activity: SubagentActivity): SubagentView {
   }
 }
 
+/**
+ * The subagents a session's row lists. One that finished has reported back to the agent, so it goes. One that
+ * stopped without finishing stays while the agent still works, since it may be why the turn goes wrong, and goes
+ * when the turn is over: nothing is left to do about it, and the daemon marks every helper still running at a
+ * turn's end as stopped, so they piled up under the session. One that works or waits for you always stays.
+ */
+export function listedSubagents(subagents: readonly SubagentView[], sessionWorking: boolean): SubagentView[] {
+  return subagents.filter((subagent) => subagent.status !== 'done' && (subagent.status !== 'stopped' || sessionWorking))
+}
+
 const SECONDS_PER_MINUTE = 60
 const SECONDS_PER_HOUR = 3600
 /** Minutes after the hours are always two digits: `1h 05m`. */

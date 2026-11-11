@@ -463,6 +463,30 @@ describe('terminal sessions shown beside chats', () => {
     warn.mockRestore()
   })
 
+  it('gives each agent session the plan limits its agent last reported, and none to a shell', async () => {
+    vi.mocked(invoke).mockResolvedValue({
+      conversations: [],
+      workspaces: [],
+      limits: [['claude', [{ name: '5h', used: 12.5, resets_at: 900 }, { name: 'week', used: 43, resets_at: 5000 }]]],
+      terms: { '5': term({ id: 5, agent: 'claude' }), '6': term({ id: 6, agent: null }) },
+    })
+
+    const listed = await loadConversations()
+
+    expect(listed.map((item) => item.details?.limits)).toEqual([
+      [{ name: '5h', used: 12.5, resetsAt: 900 }, { name: 'week', used: 43, resetsAt: 5000 }],
+      [],
+    ])
+  })
+
+  it('still lists the sessions, without limits, when the limits cannot be read', async () => {
+    vi.mocked(invoke).mockResolvedValue({ conversations: [], workspaces: [], limits: 'soon', terms: { '5': term({ id: 5, agent: 'claude' }) } })
+
+    const listed = await loadConversations()
+
+    expect(listed.map((item) => item.details?.limits)).toEqual([[]])
+  })
+
   it('still lists the terminals when one chat record cannot be read', async () => {
     vi.mocked(invoke).mockResolvedValue({
       conversations: [{ id: 'not a conversation' }],
