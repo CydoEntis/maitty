@@ -445,6 +445,7 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
         Command::QueueFollowUp {
             term: t,
             text: "  then run the tests ".into(),
+            first: false,
         },
     )
     .unwrap();
@@ -453,6 +454,7 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
         Command::QueueFollowUp {
             term: t,
             text: "and open a PR".into(),
+            first: false,
         },
     )
     .unwrap();
@@ -466,7 +468,8 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
             0,
             Command::QueueFollowUp {
                 term: t,
-                text: "  ".into()
+                text: "  ".into(),
+                first: false,
             }
         )
         .is_err(),
@@ -502,18 +505,49 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
         Command::QueueFollowUp {
             term: t,
             text: "never mind".into(),
+            first: false,
         },
     )
     .unwrap();
     d.command(0, Command::ClearQueue { term: t }).unwrap();
     assert!(queued(&d).is_empty());
+    // One goes to the front; one is dropped by where it is and what it says.
+    for (text, first) in [("one", false), ("two", false), ("/model opus", true)] {
+        d.command(
+            0,
+            Command::QueueFollowUp {
+                term: t,
+                text: text.into(),
+                first,
+            },
+        )
+        .unwrap();
+    }
+    assert_eq!(queued(&d), ["/model opus", "one", "two"]);
+    let drop = |d: &mut Daemon, index, text: &str| {
+        d.command(
+            0,
+            Command::DropQueued {
+                term: t,
+                index,
+                text: text.into(),
+            },
+        )
+    };
+    assert!(drop(&mut d, 1, "two").is_err(), "not the one there");
+    assert!(drop(&mut d, 9, "one").is_err());
+    assert_eq!(queued(&d).len(), 3, "naming the wrong one drops nothing");
+    drop(&mut d, 1, "one").unwrap();
+    assert_eq!(queued(&d), ["/model opus", "two"]);
+    d.command(0, Command::ClearQueue { term: t }).unwrap();
     d.terms.get_mut(&t).unwrap().agent = None;
     assert!(
         d.command(
             0,
             Command::QueueFollowUp {
                 term: t,
-                text: "ls".into()
+                text: "ls".into(),
+                first: false,
             }
         )
         .is_err()

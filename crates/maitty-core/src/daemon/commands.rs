@@ -927,7 +927,7 @@ impl Daemon {
                 self.set_status(q.term, Status::Working, "you answered it");
                 self.dirty = true;
             }
-            Command::QueueFollowUp { term, text } => {
+            Command::QueueFollowUp { term, text, first } => {
                 let t = self
                     .terms
                     .get_mut(&term)
@@ -942,7 +942,11 @@ impl Daemon {
                 if t.queue.len() >= QUEUE_MOST {
                     anyhow::bail!("{QUEUE_MOST} follow-ups are already waiting for it");
                 }
-                t.queue.push_back(text.to_string());
+                if first {
+                    t.queue.push_front(text.to_string());
+                } else {
+                    t.queue.push_back(text.to_string());
+                }
                 self.dirty = true;
             }
             Command::ClearQueue { term } => {
@@ -950,6 +954,19 @@ impl Daemon {
                     t.queue.clear();
                     self.dirty = true;
                 }
+            }
+            Command::DropQueued { term, index, text } => {
+                let t = self
+                    .terms
+                    .get_mut(&term)
+                    .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+                let index = index as usize;
+                // It went to the agent, or the queue moved, since the asker last saw it.
+                if t.queue.get(index).map(String::as_str) != Some(text.as_str()) {
+                    anyhow::bail!("that follow-up is no longer queued there");
+                }
+                t.queue.remove(index);
+                self.dirty = true;
             }
             Command::SendWhenReady { term, text } => {
                 let t = self

@@ -2439,6 +2439,7 @@ async fn structured_runtime_claims_apply_grants_without_human_or_pane_exemptions
         let write = crate::protocol::ClientMsg::Command(crate::protocol::Command::QueueFollowUp {
             term: pane,
             text: "Synthetic scoped write".into(),
+            first: false,
         });
         let denied =
             exchange_claim(&mut s, 231, write.clone(), None, Some(claim.clone()), None).await;
