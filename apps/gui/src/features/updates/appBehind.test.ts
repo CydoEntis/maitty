@@ -12,7 +12,7 @@ describe('app behind the service', () => {
 
   it('gives nothing to press while checking or downloading', () => {
     expect(appBehindStep({ status: 'checking' }).action).toBeNull()
-    expect(appBehindStep({ status: 'downloading', version: '0.70.0', progress: 0.4 }).action).toBeNull()
+    expect(appBehindStep({ status: 'downloading', version: '0.70.0', progress: 0.4, transfer: null }).action).toBeNull()
   })
 
   it('lets a failed or empty check be run again', () => {

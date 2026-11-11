@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { isNotARepository, messageOf } from './useRepoQuery'
+import { copyText } from '@/lib/clipboard'
 
 /** Git says this when another git command holds the repository's lock, which clears by itself. */
 const GIT_BUSY_WORDS = ['index.lock', 'another git process']
@@ -88,7 +89,7 @@ export function RepoError({ error, tab, onRetry, retrying = false }: Props) {
       {detailsOpen && (
         <div className="mx-inspect-fail-details">
           <pre>{details}</pre>
-          <button type="button" onClick={() => { void navigator.clipboard.writeText(details) }}>Copy details</button>
+          <button type="button" onClick={() => { void copyText(details) }}>Copy details</button>
         </div>
       )}
     </div>

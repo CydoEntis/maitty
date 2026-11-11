@@ -65,6 +65,29 @@ async function open(setup: (daemon: FakeDaemonHistory) => void = () => undefined
   return { daemon, user, box: screen.getByRole('textbox', { name: 'Message claude' }) }
 }
 
+describe('the usage strip', () => {
+  it('shows what the agent reported using under the box: the context and each plan limit, with when it starts over', async () => {
+    const soon = Math.floor(Date.now() / 1000) + 3 * 3600 + 30
+    const daemon = new FakeDaemonHistory()
+    fake.current = daemon
+    render(<ChatSession link={LINK} agent="claude" online usage={{ context: 9, limits: [{ name: '5h', used: 12, resetsAt: soon }] }} />)
+    await settle()
+
+    const strip = screen.getByRole('group', { name: 'Usage' })
+    expect(within(strip).getByRole('meter', { name: 'Context' })).toHaveAttribute('aria-valuenow', '9')
+    expect(within(strip).getByRole('meter', { name: '5-hour limit' })).toHaveAttribute('aria-valuenow', '12')
+    expect(strip).toHaveTextContent('5-hour limit12%3h')
+  })
+
+  it('is not drawn when the agent reported nothing', async () => {
+    fake.current = new FakeDaemonHistory()
+    render(<ChatSession link={LINK} agent="claude" online usage={{ context: null, limits: [] }} />)
+    await settle()
+
+    expect(screen.queryByRole('group', { name: 'Usage' })).not.toBeInTheDocument()
+  })
+})
+
 describe('sending', () => {
   it('sends on Enter through the conversation with the next operation number, and clears the box', async () => {
     const { user, box } = await open()
@@ -184,7 +207,8 @@ describe('while the agent works', () => {
     expect(fake.submitMessage).toHaveBeenCalledWith(TARGET, 1, 'and then lint it')
     const queued = screen.getByRole('list', { name: 'Queued messages' })
     expect(queued).toHaveTextContent('and then lint it')
-    expect(queued).toHaveTextContent('even if you close the window')
+    // When it is sent is the header's tooltip now, not a line on the card.
+    expect(within(queued).getByTitle(/even if you close the window/)).toHaveTextContent('Queued')
     expect(box).toHaveValue('')
   })
 
@@ -291,7 +315,9 @@ describe('while the agent works', () => {
     const list = screen.getByRole('list', { name: 'Queued messages' })
     expect(within(list).getAllByRole('listitem')).toHaveLength(1)
     expect(within(list).getByRole('listitem')).toHaveTextContent('first')
-    expect(within(list).getByRole('listitem')).toHaveTextContent('first of 3')
+    expect(within(list).getByRole('listitem')).toHaveTextContent('1 of 3')
+    // The two behind it each have a small card beside the stack.
+    expect(within(screen.getByRole('list', { name: 'More queued messages' })).getAllByRole('button').map((preview) => preview.textContent)).toEqual(['2second', '3third'])
 
     await user.click(within(list).getByRole('button', { name: 'first' }))
     expect(within(list).getAllByRole('listitem').map((item) => item.querySelector('.mx-queued-text')?.textContent)).toEqual(['first', 'second', 'third'])

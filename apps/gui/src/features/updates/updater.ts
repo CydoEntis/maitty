@@ -4,8 +4,8 @@ export type AvailableUpdate = { version: string; notes: string }
 
 export type UpdateHandle = {
   info: AvailableUpdate
-  /** Downloads it and leaves it ready. The fraction is null while the size is unknown. */
-  download: (onProgress: (fraction: number | null) => void) => Promise<void>
+  /** Downloads it and leaves it ready, reporting the bytes that arrived and the whole size (null when the server did not say). */
+  download: (onProgress: (received: number, total: number | null) => void) => Promise<void>
   /** Installs what was downloaded. On Windows the installer quits the app; elsewhere restart afterwards. */
   install: () => Promise<void>
 }
@@ -29,7 +29,7 @@ export async function checkForUpdate(): Promise<UpdateHandle | null> {
         if (event.event === 'Started') total = event.data.contentLength ?? 0
         if (event.event === 'Progress') {
           received += event.data.chunkLength
-          onProgress(total > 0 ? Math.min(received / total, 1) : null)
+          onProgress(received, total > 0 ? total : null)
         }
       })
     },

@@ -155,7 +155,9 @@ client merges a delta into the snapshot it holds and treats the result as a stat
 and the delta is cleaned first (SECURITY, "remote daemon"). Replays follow `Hello.replays`: a terminal client takes every pane's replay on attach, the desktop window
 attaches without and sends `ClientMsg::WantReplay { term }` on its stream when it shows a pane; a
 desktop replay carries the last mebibyte of the ring and then the screen as it is, which is all the
-window's scrollback holds.
+window's scrollback holds. Any replay of a pane on the alternate screen repaints the main screen,
+switches, then repaints the alternate one, so the view is on the right screen even when the
+program's own switch is older than the ring.
 
 Over ssh, `maitty proxy` writes `STREAM_MARKER` (`maitty-ipc-transport`) to stdout once, after it
 reaches the daemon and before it relays a byte. The marker sits outside the frames, so it is

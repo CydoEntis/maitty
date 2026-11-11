@@ -108,6 +108,9 @@ describe('the chat of a session that is still starting', () => {
     const asking = 'Quick safety check: do you trust this folder?\n❯ 1. No, exit\n2. Yes, I trust this folder'
     render(<StartingChat agent="claude" sessionId="s1" paneStatus="needs" asking={asking} typeInto={typeInto} onBackToTerminal={noop} />)
     expect(screen.getByText(/do you trust this folder/)).toBeInTheDocument()
+    // The question sits over the message box, as every other one does, and is the only notice: it can be answered here.
+    expect(screen.getByRole('region', { name: 'claude is asking' }).closest('.mx-composer')).not.toBeNull()
+    expect(screen.queryByRole('note')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Yes, I trust this folder' }))
     expect(typeInto.mock.calls.map(([keys]) => keys)).toEqual([String.fromCharCode(27) + '[B', String.fromCharCode(13)])
   })

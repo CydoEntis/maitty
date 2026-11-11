@@ -7,7 +7,8 @@ import type { WorkStep } from './workSummary'
  * Reads, searches and fetches get no card, so a run of only those is the summary row alone.
  */
 export type StackStep = CommandEvent | EditEvent
-export type StackLine = { readonly mark: string; readonly text: string; readonly tone: 'add' | 'remove' | 'plain' }
+/** `note` is the card's own words where the step has none to show. */
+export type StackLine = { readonly mark: string; readonly text: string; readonly tone: 'add' | 'remove' | 'plain' | 'note' }
 
 export const STACK_MAX_CARDS = 3
 const STACK_BODY_LINES = 2
@@ -24,12 +25,22 @@ export function stepsBeyondStack(steps: readonly WorkStep[]): number {
   return steps.filter(isStackStep).length > STACK_MAX_CARDS ? steps.length - STACK_MAX_CARDS : 0
 }
 
-/** What a card shows under its header: the end of a command's output, or the first changed lines of an edit. */
+const textLines = (text: string): string[] => text.split('\n').filter((line) => line.trim() !== '')
+const plain = (text: string): StackLine => ({ mark: '', text, tone: 'plain' })
+
+/**
+ * What a card shows under its header: the end of a command's output, or the first changed lines of an edit. A command
+ * that has printed nothing (most are still running) shows the lines after its first, which the header cuts off: the
+ * script it was handed. With neither it says so, since an empty card reads as a broken one.
+ */
 export function stackLines(step: StackStep): StackLine[] {
   if (step.kind === 'command') {
     if (isOmitted(step.output)) return []
-    const lines = step.output.split('\n').filter((line) => line.trim() !== '')
-    return lines.slice(-STACK_BODY_LINES).map((line) => ({ mark: '', text: line, tone: 'plain' }))
+    const printed = textLines(step.output)
+    if (printed.length > 0) return printed.slice(-STACK_BODY_LINES).map(plain)
+    const script = textLines(step.command.split('\n').slice(1).join('\n'))
+    if (script.length > 0) return script.slice(0, STACK_BODY_LINES).map(plain)
+    return [{ mark: '', text: step.status === 'running' ? 'Running…' : 'No output', tone: 'note' }]
   }
   if (step.diff.status !== 'available') return []
   const lines = step.diff.hunks.flatMap((hunk) => hunk.lines)

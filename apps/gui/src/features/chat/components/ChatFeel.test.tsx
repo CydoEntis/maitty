@@ -108,6 +108,33 @@ describe('how the chat feels while it waits', () => {
     expect(screen.getByText('the answer')).toBeInTheDocument()
   })
 
+  it('shows a reply that arrived while the chat was closed whole when it is opened again, and does not type it in', async () => {
+    const { daemon } = open()
+    await settle()
+    cleanup()
+
+    // The agent answered while another view was showing.
+    daemon.upsert(daemon.message('t1', 'a1', 'Assistant', 'the answer that came while you were away'))
+    render(<ChatSession link={LINK} agent="claude" online />)
+    await settle()
+
+    expect(screen.getByText('the answer that came while you were away')).toBeInTheDocument()
+  })
+
+  it('shows a reply that arrived while the window was hidden whole, and does not type it in', async () => {
+    const { daemon } = open()
+    await settle()
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
+    await settle(IDLE_POLL_MS)
+
+    daemon.upsert(daemon.message('t1', 'a1', 'Assistant', 'the answer that came while you were away'))
+    hidden.mockReturnValue(false)
+    await settle(IDLE_POLL_MS)
+    hidden.mockRestore()
+
+    expect(screen.getByText('the answer that came while you were away')).toBeInTheDocument()
+  })
+
   it('shows the agent working as soon as the pane says so, before the conversation has been read again', async () => {
     const { daemon, setPaneStatus } = open('Idle')
     await settle()

@@ -15,6 +15,7 @@ import { CHAT_AGENTS } from '@/features/workspace/model/chatView'
 import { Keycaps } from '@/features/shortcuts/Keycaps'
 import { Icon } from '@/features/workspace/components/glyphs'
 import { errorMessage } from '@/lib/error-message'
+import { exportDaemonLog, loadAgentAuth, openDaemonLog, signOutAgent, type AgentAuth } from '@/api/daemon'
 import { BUNDLED_FONT_NAME, fontStackFor, installedMonospaceFamilies, WEIGHT_BOLD, WEIGHT_EXTRA_BOLD, WEIGHT_LIGHT, WEIGHT_MEDIUM, WEIGHT_REGULAR, WEIGHT_SEMIBOLD, type TerminalFontWeight } from '@/lib/terminalFont'
 import type { Added, Grant, HostChoice, MachineActivity } from '@/api/machines'
 import { DisconnectedSince } from '@/features/workspace/components/times'
@@ -22,9 +23,9 @@ import { installNote, UPDATE_WORDS, updateVerb, updateWarning, type MachineHead,
 import { UsagePage } from '@/features/usage/UsagePage'
 import type { OpenSession } from '@/features/usage/UsageTable'
 import { FOLDER_PATH } from '@/features/workspace/components/paths'
-import { SCROLL_SPEED_CHOICES, SCROLLBACK_CHOICES, SIDEBAR_WIDTH_DEFAULT, TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN, UI_TEXT_SIZE_DEFAULT, UI_TEXT_SIZE_LARGE, UI_TEXT_SIZE_SMALL, type CursorStyle, type ScrollbackLines, type SidebarOrder, type ScrollSpeed, type SettingsPreferences } from '../preferences'
+import { CHAT_TEXT_SIZES, SCROLL_SPEED_CHOICES, SCROLLBACK_CHOICES, SIDEBAR_WIDTH_DEFAULT, TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN, UI_TEXT_SIZE_DEFAULT, UI_TEXT_SIZE_LARGE, UI_TEXT_SIZE_SMALL, type CursorStyle, type ScrollbackLines, type SidebarOrder, type ScrollSpeed, type SettingsPreferences } from '../preferences'
 
-export type DesktopSettingsSection = 'general' | 'terminal' | 'appearance' | 'usage' | 'notifications' | 'machines' | 'keys' | 'daemon' | 'performance'
+export type DesktopSettingsSection = 'general' | 'chat' | 'agents' | 'terminal' | 'appearance' | 'sidebar' | 'usage' | 'notifications' | 'machines' | 'keys' | 'daemon' | 'performance'
 
 /** The other machines, for the Machines page: what the window knows of each, and what it can ask of the host. */
 export type MachinesInfo = {
@@ -97,18 +98,28 @@ type DesktopSettingsProps = {
   onChooseFolder?: (current: string) => Promise<string | null>
   /** What the Usage & cost page needs from the window. */
   usage: UsageInfo
+  /** Opens the agent's own sign-in in a terminal of its own; without it the Agents page offers no sign-in. */
+  onSignInAgent?: (agent: 'claude' | 'codex') => void
   onClose: () => void
 }
 
 type NavItem = { id: DesktopSettingsSection; label: string; key: string; tint: string; path: string }
 
 const NAV: Array<{ label: string; items: NavItem[] }> = [
-  { label: 'ESSENTIALS', items: [{ id: 'general', label: 'General', key: 'G', tint: 'var(--accent)', path: 'M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4' }] },
+  {
+    label: 'ESSENTIALS',
+    items: [
+      { id: 'general', label: 'General', key: 'G', tint: 'var(--accent)', path: 'M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4' },
+      { id: 'chat', label: 'Chat', key: 'C', tint: 'var(--ansi-green)', path: 'M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-7l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z' },
+      { id: 'agents', label: 'Agents', key: 'E', tint: 'var(--ansi-mag)', path: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 20a8 8 0 0 1 16 0' },
+    ],
+  },
   {
     label: 'TERMINAL',
     items: [
-      { id: 'terminal', label: 'Text & cursor', key: 'T', tint: 'var(--ansi-blue)', path: 'M4 7V4h16v3M9 20h6M12 4v16' },
+      { id: 'terminal', label: 'Terminal', key: 'T', tint: 'var(--ansi-blue)', path: 'M4 7V4h16v3M9 20h6M12 4v16' },
       { id: 'appearance', label: 'Appearance', key: 'A', tint: 'var(--ansi-mag)', path: 'M12 3a9 9 0 1 0 0 18c1 0 1.5-.8 1.5-1.6 0-.9-.8-1.3-.8-2.2 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-4.4-4-7.6-9-7.6zM7.5 11.5h.01M10.5 7.5h.01M15.5 8.5h.01' },
+      { id: 'sidebar', label: 'Sidebar', key: 'S', tint: 'var(--accent)', path: 'M3 4h18v16H3zM9 4v16' },
     ],
   },
   {
@@ -131,8 +142,11 @@ const NAV: Array<{ label: string; items: NavItem[] }> = [
 
 const PAGE: Record<DesktopSettingsSection, [string, string]> = {
   general: ['General', 'Where sessions start and what happens to them.'],
-  terminal: ['Text & cursor', 'How every pane renders. Changes apply instantly.'],
+  chat: ['Chat', 'How a chat starts, and how wide and large it is drawn.'],
+  agents: ['Agents', 'The accounts your agents are signed in to.'],
+  terminal: ['Terminal', 'How every pane renders. Changes apply instantly.'],
   appearance: ['Appearance', 'Colours, spinner and motion for the whole window.'],
+  sidebar: ['Sidebar', 'What the sidebar lists, in what order, where and how large.'],
   usage: ['Usage & cost', 'What the agents reported using, by session. Never estimated.'],
   notifications: ['Notifications', 'When the system should tell you a session needs you.'],
   machines: ['Machines', 'Other computers whose sessions show up beside this one.'],
@@ -141,7 +155,7 @@ const PAGE: Record<DesktopSettingsSection, [string, string]> = {
   performance: ['Performance', 'What the window is spending its time on, measured live.'],
 }
 
-const KEY_TO_SECTION: Record<string, DesktopSettingsSection> = { g: 'general', t: 'terminal', a: 'appearance', u: 'usage', n: 'notifications', m: 'machines', '?': 'keys', d: 'daemon', p: 'performance' }
+const KEY_TO_SECTION: Record<string, DesktopSettingsSection> = { g: 'general', c: 'chat', e: 'agents', t: 'terminal', a: 'appearance', s: 'sidebar', u: 'usage', n: 'notifications', m: 'machines', '?': 'keys', d: 'daemon', p: 'performance' }
 
 /** Esc ends an open theme list, or a running add-machine, first; Settings stays. A part that handles Esc itself is marked `data-owns-escape`. */
 const keepForOpenList = (event: globalThis.KeyboardEvent) => {
@@ -206,6 +220,9 @@ export function DesktopSettings(props: DesktopSettingsProps) {
           <div className="mx-settings-scroll">
             <div className="mx-settings-sections" key={section}>
               {section === 'general' && <GeneralSection preferences={preferences} update={update} validateFolder={props.validateFolder} onChooseFolder={props.onChooseFolder} onShowWelcome={props.onShowWelcome} updates={props.updates} />}
+              {section === 'chat' && <ChatSection preferences={preferences} update={update} />}
+              {section === 'agents' && <AgentsSection onSignIn={props.onSignInAgent} />}
+              {section === 'sidebar' && <SidebarSection preferences={preferences} update={update} />}
               {section === 'terminal' && <TerminalSection preferences={preferences} update={update} />}
               {section === 'appearance' && <AppearanceSection preferences={preferences} update={update} systemReducedMotion={props.systemReducedMotion} systemDark={props.systemDark} onPreviewTheme={props.onPreviewTheme} />}
               {section === 'usage' && <UsageSection usage={props.usage} />}
@@ -370,37 +387,6 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
           <button type="button" className="mx-scard-button" onClick={onShowWelcome}>Show the welcome again</button>
         </Row>
       </Card>
-      <Card
-        title="Yolo mode"
-        color="var(--danger)"
-        iconPath={<path d="M12 3 5 6v6c0 4.4 3 7.6 7 9 4-1.4 7-4.6 7-9V6z" />}
-        foot="Off for every agent by default. Only sessions started after you turn one on get it. Every session already running has to be closed and started again."
-      >
-        {YOLO_AGENTS.map(({ key, label, detail }) => (
-          <Row key={key} label={label} detail={detail}>
-            <Switch aria-label={`Yolo mode for ${label}`} checked={preferences[key]} onCheckedChange={(value) => {
-              update(key, value)
-              if (value) toast.message(`Yolo mode for ${label} is on for new sessions only`, { description: `Sessions already running keep how they started. Restart one, or start a new session, to get it.` })
-            }} />
-          </Row>
-        ))}
-      </Card>
-      <Card title="Chat view" color="var(--accent)" iconPath={<path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-7l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" />}>
-        <Row label="Default agent" detail="The agent a new session starts. A plain terminal is always one click away.">
-          <SegmentedChoice label="Default agent" value={preferences.defaultAgent} options={AGENT_OPTIONS} onChange={(value) => { update('defaultAgent', value) }} />
-        </Row>
-        <Row label="New sessions open as" detail="Which view a new session opens in. The agent runs in a terminal either way, so you can switch between its chat and its terminal at any time.">
-          <SegmentedChoice label="New sessions open as" value={preferences.newSessionView} options={VIEW_OPTIONS} onChange={(value) => { update('newSessionView', value) }} />
-        </Row>
-        <Row label="Full access in new chats" detail="Start new chats with the agent's skip-permissions mode: no sandbox and no approval prompts, so the agent can change files and run commands without asking. Each chat can still turn it off or on when it starts.">
-          <Switch aria-label="Full access in new chats" checked={preferences.chatFullAccessDefault} onCheckedChange={(value) => { update('chatFullAccessDefault', value) }} />
-        </Row>
-        {CHAT_AGENTS.map((agent) => (
-          <Row key={agent} label={`${agent === 'claude' ? 'Claude' : 'Codex'} sessions open in`} detail="Only a session with a chat opens in it; the switch on each pane changes one session.">
-            <SegmentedChoice label={`${agent === 'claude' ? 'Claude' : 'Codex'} sessions open in`} value={preferences.chatViewDefault[agent]} options={CHAT_VIEW_OPTIONS} onChange={(value) => { update('chatViewDefault', { ...preferences.chatViewDefault, [agent]: value }) }} />
-          </Row>
-        ))}
-      </Card>
     </>
   )
 }
@@ -542,6 +528,14 @@ function TerminalSection({ preferences, update }: { preferences: SettingsPrefere
           <Switch aria-label="Screen reader support" checked={preferences.terminalScreenReader} onCheckedChange={(value) => { update('terminalScreenReader', value) }} />
         </Row>
       </Card>
+      <Card title="Panes" color="var(--ansi-mag)" iconPath={<><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M3 14h18M9 4v10" /></>}>
+        <Row label="Terminals open in" detail="An agent's own terminals: a tab of the side panel, or a drawer pinned under its chat.">
+          <SegmentedChoice label="Terminals open in" value={preferences.terminalDock} options={DOCK_OPTIONS} onChange={(value) => { update('terminalDock', value) }} />
+        </Row>
+        <Row label="See-through terminal" detail="Lets the card show behind a pane's text when WebGL draws it. Programs that paint their own backgrounds, like Claude Code under its prompt, then show as boxes.">
+          <Switch aria-label="See-through terminal" checked={preferences.terminalSeeThrough} onCheckedChange={(value) => { update('terminalSeeThrough', value) }} />
+        </Row>
+      </Card>
     </>
   )
 }
@@ -592,21 +586,140 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
         <Row label="Background glow" detail="Two faint tints of the theme behind the cards. Off is a flat ground; a web view without WebGL always uses the flat one.">
           <Switch aria-label="Background glow" checked={preferences.backgroundGlow} onCheckedChange={(value) => { update('backgroundGlow', value) }} />
         </Row>
-        <Row label="See-through terminal" detail="Lets the card show behind a pane's text when WebGL draws it. Programs that paint their own backgrounds, like Claude Code under its prompt, then show as boxes.">
-          <Switch aria-label="See-through terminal" checked={preferences.terminalSeeThrough} onCheckedChange={(value) => { update('terminalSeeThrough', value) }} />
+      </Card>
+      <Card title="Interface size" color="var(--ansi-green)" iconPath={<path d="M4 7h16M4 12h10M4 17h13" />}>
+        <Row label="Density" detail="How much room the sidebar rows, pane headers and gaps get.">
+          <SegmentedChoice label="Density" value={preferences.density} options={DENSITY_OPTIONS} onChange={(value) => { update('density', value) }} />
+        </Row>
+        <Row label="Pane title text" detail="The names on each pane's header.">
+          <SegmentedChoice label="Pane title text size" value={preferences.tabTextSize} options={UI_TEXT_OPTIONS} onChange={(value) => { update('tabTextSize', value) }} />
         </Row>
       </Card>
-      <Card title="Layout" color="var(--ansi-blue)" iconPath={<><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M3 14h18M9 4v10" /></>}>
+      <Card title="Motion" color="var(--ansi-blue)" iconPath={<><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 0 0 16" /></>}>
+        <Row label="Reduce motion" detail="Turns off pulses, slide-ins and size animations, and holds spinners still. Your system setting is always respected.">
+          <Switch aria-label="Reduce motion" checked={preferences.reduceMotion} onCheckedChange={(value) => { update('reduceMotion', value) }} />
+        </Row>
+      </Card>
+    </>
+  )
+}
+
+/** How chats start and how they are drawn. */
+function ChatSection({ preferences, update }: { preferences: SettingsPreferences; update: Update }) {
+  return (
+    <>
+      <Card title="Chat view" color="var(--accent)" iconPath={<path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-7l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" />}>
+        <Row label="Default agent" detail="The agent a new session starts. A plain terminal is always one click away.">
+          <SegmentedChoice label="Default agent" value={preferences.defaultAgent} options={AGENT_OPTIONS} onChange={(value) => { update('defaultAgent', value) }} />
+        </Row>
+        <Row label="New sessions open as" detail="Which view a new session opens in. The agent runs in a terminal either way, so you can switch between its chat and its terminal at any time.">
+          <SegmentedChoice label="New sessions open as" value={preferences.newSessionView} options={VIEW_OPTIONS} onChange={(value) => { update('newSessionView', value) }} />
+        </Row>
+        <Row label="Chat width" detail="How wide the messages and the message box run. Auto grows with the pane, so a large screen is used; Narrow keeps the original column.">
+          <SegmentedChoice label="Chat width" value={preferences.chatWidth} options={CHAT_WIDTH_OPTIONS} onChange={(value) => { update('chatWidth', value) }} />
+        </Row>
+        <Row label="Chat text size" detail="Draws everything in the chat larger or smaller: its messages, its cards and its message box.">
+          <SegmentedChoice label="Chat text size" value={preferences.chatTextSize} options={CHAT_TEXT_SIZE_OPTIONS} onChange={(value) => { update('chatTextSize', value) }} />
+        </Row>
+        <Row label="Full access in new chats" detail="Start new chats with the agent's skip-permissions mode: no sandbox and no approval prompts, so the agent can change files and run commands without asking. Each chat can still turn it off or on when it starts.">
+          <Switch aria-label="Full access in new chats" checked={preferences.chatFullAccessDefault} onCheckedChange={(value) => { update('chatFullAccessDefault', value) }} />
+        </Row>
+        {CHAT_AGENTS.map((agent) => (
+          <Row key={agent} label={`${agent === 'claude' ? 'Claude' : 'Codex'} sessions open in`} detail="Only a session with a chat opens in it; the switch on each pane changes one session.">
+            <SegmentedChoice label={`${agent === 'claude' ? 'Claude' : 'Codex'} sessions open in`} value={preferences.chatViewDefault[agent]} options={CHAT_VIEW_OPTIONS} onChange={(value) => { update('chatViewDefault', { ...preferences.chatViewDefault, [agent]: value }) }} />
+          </Row>
+        ))}
+      </Card>
+      <Card
+        title="Yolo mode"
+        color="var(--danger)"
+        iconPath={<path d="M12 3 5 6v6c0 4.4 3 7.6 7 9 4-1.4 7-4.6 7-9V6z" />}
+        foot="Off for every agent by default. Only sessions started after you turn one on get it. Every session already running has to be closed and started again."
+      >
+        {YOLO_AGENTS.map(({ key, label, detail }) => (
+          <Row key={key} label={label} detail={detail}>
+            <Switch aria-label={`Yolo mode for ${label}`} checked={preferences[key]} onCheckedChange={(value) => {
+              update(key, value)
+              if (value) toast.message(`Yolo mode for ${label} is on for new sessions only`, { description: `Sessions already running keep how they started. Restart one, or start a new session, to get it.` })
+            }} />
+          </Row>
+        ))}
+      </Card>
+    </>
+  )
+}
+
+const ACCOUNT_AGENTS = [['claude', 'Claude'], ['codex', 'Codex']] as const
+type AccountAgent = (typeof ACCOUNT_AGENTS)[number][0]
+type AccountState = { status: 'loading' } | { status: 'ready'; auth: AgentAuth } | { status: 'failed'; message: string }
+
+/** What the account's row says, and whether it is the line of a problem. */
+function accountWords(state: AccountState): string {
+  if (state.status === 'loading') return 'Checking…'
+  if (state.status === 'failed') return `Could not check: ${state.message}`
+  const { installed, signedIn, account, plan } = state.auth
+  if (!installed) return 'Not installed on this computer.'
+  if (signedIn === null) return 'Installed. It did not say whether it is signed in.'
+  if (!signedIn) return 'Not signed in.'
+  return [account === '' ? 'Signed in' : `Signed in: ${account}`, plan].filter((part) => part !== '').join(' · ')
+}
+
+/**
+ * The accounts the agents are signed in to, as each agent's own command says, with sign in and sign out. Signing in
+ * is the agent's own interactive command, opened in a terminal; signing out runs its command here. The window keeps
+ * no credentials: it only asks the agent and tells it.
+ */
+function AgentsSection({ onSignIn }: { onSignIn: ((agent: AccountAgent) => void) | undefined }) {
+  const [states, setStates] = useState<Readonly<Record<AccountAgent, AccountState>>>({ claude: { status: 'loading' }, codex: { status: 'loading' } })
+  const [asked, setAsked] = useState(0)
+  useEffect(() => {
+    let current = true
+    for (const [agent] of ACCOUNT_AGENTS) {
+      loadAgentAuth(agent).then(
+        (auth) => { if (current) setStates((now) => ({ ...now, [agent]: { status: 'ready', auth } })) },
+        (error: unknown) => { if (current) setStates((now) => ({ ...now, [agent]: { status: 'failed', message: errorMessage(error, 'the agent did not answer') } })) },
+      )
+    }
+    return () => { current = false }
+  }, [asked])
+  const again = () => { setAsked((count) => count + 1) }
+  const signOut = (agent: AccountAgent, label: string) => {
+    signOutAgent(agent).then(
+      () => { toast.success(`${label} signed out`, { description: 'Sessions already running keep their sign-in until they are restarted.' }); again() },
+      (error: unknown) => { toast.error(errorMessage(error, `Could not sign ${label} out`)) },
+    )
+  }
+  return (
+    <Card title="Accounts" color="var(--ansi-mag)" iconPath={<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 20a8 8 0 0 1 16 0" />}
+      meta={<button type="button" className="mx-text-button" onClick={again}>Check again</button>}
+      foot="Sign in opens the agent's own sign-in in a terminal: finish it there, then check again. Maitty keeps no passwords or keys."
+    >
+      {ACCOUNT_AGENTS.map(([agent, label]) => {
+        const state = states[agent]
+        const auth = state.status === 'ready' ? state.auth : null
+        return (
+          <Row key={agent} label={label} detail={accountWords(state)}>
+            <span style={{ display: 'flex', gap: 8 }}>
+              {auth?.installed === true && auth.signedIn !== true && onSignIn !== undefined && <button type="button" className="mx-scard-button" aria-label={`Sign in to ${label}`} onClick={() => { onSignIn(agent) }}>Sign in</button>}
+              {auth?.signedIn === true && <button type="button" className="mx-scard-button" aria-label={`Sign out of ${label}`} onClick={() => { signOut(agent, label) }}>Sign out</button>}
+            </span>
+          </Row>
+        )
+      })}
+    </Card>
+  )
+}
+
+/** What the sidebar lists, in what order, where and how large. */
+function SidebarSection({ preferences, update }: { preferences: SettingsPreferences; update: Update }) {
+  return (
+    <>
+      <Card title="Sessions" color="var(--accent)" iconPath={<><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M9 4v16" /></>}
+        foot="Session order applies when the sidebar is grouped by machine."
+      >
         <Row label="Group sessions by" detail="Status lists what needs you first, then what is working, finished and idle. Project and Machine put each under its own heading.">
           <SegmentedChoice label="Group sessions by" value={preferences.sidebarGroup} options={GROUP_OPTIONS} onChange={(value) => { update('sidebarGroup', value) }} />
         </Row>
-        <Row label="Terminals open in" detail="An agent's own terminals: a tab of the side panel, or a drawer pinned under its chat.">
-          <SegmentedChoice label="Terminals open in" value={preferences.terminalDock} options={DOCK_OPTIONS} onChange={(value) => { update('terminalDock', value) }} />
-        </Row>
-      </Card>
-      <Card title="Sidebar" color="var(--accent)" iconPath={<><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M9 4v16" /></>}
-        foot="Session order applies when the sidebar is grouped by machine."
-      >
         <Row label="Session order" detail="Creation keeps every row where it was put. Priority moves a session that needs you to the top.">
           <SegmentedChoice label="Session order" value={preferences.sidebarOrder} options={ORDER_OPTIONS} onChange={(value) => { update('sidebarOrder', value) }} />
         </Row>
@@ -614,27 +727,16 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
           <SegmentedChoice label="Sidebar position" value={preferences.sidebarSide} options={SIDE_OPTIONS} onChange={(value) => { update('sidebarSide', value) }} />
         </Row>
       </Card>
-      <Card title="Interface size" color="var(--ansi-green)" iconPath={<path d="M4 7h16M4 12h10M4 17h13" />}>
-        <Row label="Density" detail="How much room the sidebar rows, pane headers and gaps get.">
-          <SegmentedChoice label="Density" value={preferences.density} options={DENSITY_OPTIONS} onChange={(value) => { update('density', value) }} />
-        </Row>
+      <Card title="Size" color="var(--ansi-green)" iconPath={<path d="M4 7h16M4 12h10M4 17h13" />}>
         <Row label="Sidebar icons" detail="The project tiles, session icons and the collapsed rail.">
           <SegmentedChoice label="Sidebar icon size" value={preferences.iconSize} options={ICON_OPTIONS} onChange={(value) => { update('iconSize', value) }} />
         </Row>
         <Row label="Sidebar text" detail="Folder names and session rows.">
           <SegmentedChoice label="Sidebar text size" value={preferences.sidebarTextSize} options={UI_TEXT_OPTIONS} onChange={(value) => { update('sidebarTextSize', value) }} />
         </Row>
-        <Row label="Pane title text" detail="The names on each pane's header.">
-          <SegmentedChoice label="Pane title text size" value={preferences.tabTextSize} options={UI_TEXT_OPTIONS} onChange={(value) => { update('tabTextSize', value) }} />
-        </Row>
         <Row label="Sidebar width" detail="Drag the sidebar's edge to change it, or focus the edge and use the arrow keys.">
           <span className="mono" style={{ fontSize: 12, color: 'var(--fg2)' }}>{preferences.sidebarWidth}px</span>
           <button type="button" className="mx-text-button" disabled={preferences.sidebarWidth === SIDEBAR_WIDTH_DEFAULT} onClick={() => { update('sidebarWidth', SIDEBAR_WIDTH_DEFAULT) }}>Reset</button>
-        </Row>
-      </Card>
-      <Card title="Motion" color="var(--ansi-blue)" iconPath={<><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 0 0 16" /></>}>
-        <Row label="Reduce motion" detail="Turns off pulses, slide-ins and size animations, and holds spinners still. Your system setting is always respected.">
-          <Switch aria-label="Reduce motion" checked={preferences.reduceMotion} onCheckedChange={(value) => { update('reduceMotion', value) }} />
         </Row>
       </Card>
     </>
@@ -670,6 +772,8 @@ function UsageSection({ usage }: { usage: UsageInfo }) {
 
 const AGENT_OPTIONS = [['claude', 'Claude'], ['codex', 'Codex']] as const
 const VIEW_OPTIONS = [['chat', 'Chat'], ['terminal', 'Terminal']] as const
+const CHAT_WIDTH_OPTIONS = [['auto', 'Auto'], ['narrow', 'Narrow'], ['wide', 'Wide'], ['full', 'Full']] as const
+const CHAT_TEXT_SIZE_OPTIONS: ReadonlyArray<readonly [number, string]> = CHAT_TEXT_SIZES.map((size) => [size, `${String(size)}%`] as const)
 
 function NotificationsSection({ preferences, update, onTestNotice }: { preferences: SettingsPreferences; update: Update; onTestNotice: (() => void) | undefined }) {
   return (
@@ -702,6 +806,13 @@ function NotificationsSection({ preferences, update, onTestNotice }: { preferenc
 
 function DaemonSection({ daemon }: { daemon: DaemonInfo }) {
   const color = daemon.online ? 'var(--ok)' : 'var(--danger)'
+  const saveLog = () => {
+    exportDaemonLog().then(
+      (path) => { toast.success('Log saved', { description: path }) },
+      (error: unknown) => { toast.error(errorMessage(error, 'Could not save the log')) },
+    )
+  }
+  const showLog = () => { openDaemonLog().catch((error: unknown) => { toast.error(errorMessage(error, 'Could not open the log')) }) }
   return (
     <Card title="maittyd" color="var(--ansi-green)" iconPath={<><rect x="4" y="4" width="16" height="7" rx="2" /><rect x="4" y="13" width="16" height="7" rx="2" /><path d="M8 7.5h.01M8 16.5h.01" /></>}
       meta={<span role="status" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: color }} />{daemon.online ? 'Connected' : 'Disconnected'}</span>}
@@ -709,6 +820,12 @@ function DaemonSection({ daemon }: { daemon: DaemonInfo }) {
       {daemon.version && <Row label="Version" detail="Shared by the GUI and the Maitty TUI."><span className="mx-scard-value">{daemon.version}</span></Row>}
       {daemon.socket && <Row label="Socket" detail="Where clients connect."><span className="mx-scard-value">{daemon.socket}</span></Row>}
       <Row label="Sessions" detail="Owned by the daemon. The GUI only attaches."><span className="mx-scard-value">{daemon.sessionCount}</span></Row>
+      <Row label="Service log" detail="What the service did lately, for working out a problem. Save a copy puts it in your Downloads folder as maitty-log.txt, ready to send. It names your folders and repositories, so look before you share it.">
+        <span style={{ display: 'flex', gap: 8 }}>
+          <button type="button" className="mx-scard-button" onClick={saveLog}>Save a copy</button>
+          <button type="button" className="mx-scard-button" onClick={showLog}>Show in folder</button>
+        </span>
+      </Row>
     </Card>
   )
 }

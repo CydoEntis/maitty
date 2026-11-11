@@ -38,15 +38,15 @@
 .mx-pane-head.is-draggable { cursor: grab; }
 .mx-pane-icon { position: relative; width: 26px; height: 26px; flex: none; }
 .mx-pane-icon .mx-app-icon.size-26 { width: 26px; height: 26px; border-radius: 8px; font-size: 11.5px; }
-.mx-pane-icon .mx-badge { right: -4px; bottom: -4px; width: 14px; height: 14px; border-radius: calc(4px * var(--rk)); font-size: 9px; font-weight: 800; line-height: 1; color: var(--on-warn); }
+.mx-pane-icon .mx-badge { right: -4px; bottom: -4px; width: 14px; height: 14px; border-radius: calc(4px * var(--rk)); font-size: 9px; font-weight: 800; line-height: 1; }
 .mx-pane-icon .mx-badge.is-working { background: var(--bg); overflow: hidden; color: var(--working); font-family: var(--mono); }
 .mx-pane-icon .mx-badge.is-working .mx-spin { font-size: 9px; line-height: 1; }
-.mx-pane-icon .mx-badge.is-done svg { width: 8px; height: 8px; }
 .mx-pane-icon .mx-badge.is-unknown { width: 13px; height: 13px; background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
 .mx-pane-title { flex: 1; min-width: 64px; display: flex; flex-direction: column; gap: 1px; white-space: nowrap; overflow: hidden; }
 .mx-pane-name { font-size: calc(15px * var(--tab-text, 1)); line-height: calc(19px * var(--tab-text, 1)); font-weight: 600; letter-spacing: -.01em; color: var(--fg); overflow: hidden; text-overflow: ellipsis; }
 .mx-pane-where { display: flex; align-items: center; gap: 8px; min-width: 0; line-height: 14px; }
 .mx-pane-cwd { font-size: 11px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
+.mx-pane-branch.is-worktree { color: var(--ansi-blue); }
 .mx-pane-branch { display: flex; align-items: center; gap: 4px; flex: none; font-family: var(--mono); font-size: 10.5px; color: var(--ansi-mag); }
 .mx-pane-controls { display: flex; align-items: center; gap: 0; margin-left: auto; }
 .mx-pane-control { width: 28px; height: 28px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--dim); transition: background-color .14s ease, color .14s ease; }

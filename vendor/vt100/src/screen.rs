@@ -252,6 +252,17 @@ impl Screen {
         contents
     }
 
+    /// Returns the formatted contents of the main screen, whichever screen
+    /// is in use: what a program on the alternate screen will go back to.
+    #[must_use]
+    pub fn main_contents_formatted(&self) -> Vec<u8> {
+        let mut contents = vec![];
+        let prev_attrs = self.grid.write_contents_formatted(&mut contents);
+        crate::attrs::Attrs::default()
+            .write_escape_code_diff(&mut contents, &prev_attrs);
+        contents
+    }
+
     fn write_contents_formatted(&self, contents: &mut Vec<u8>) {
         crate::term::HideCursor::new(self.hide_cursor()).write_buf(contents);
         let prev_attrs = self.grid().write_contents_formatted(contents);

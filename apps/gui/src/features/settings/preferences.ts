@@ -12,6 +12,16 @@ export type Density = 'compact' | 'comfortable' | 'spacious'
 export const DENSITIES: readonly Density[] = ['compact', 'comfortable', 'spacious']
 /** How big the sidebar's and the rail's icons and tiles are. */
 export type IconSize = 'small' | 'medium' | 'large'
+/** How wide the chat's column of messages may be: sized to the pane, a fixed narrow or wide column, or the whole pane. */
+export type ChatWidth = 'auto' | 'narrow' | 'wide' | 'full'
+export const CHAT_WIDTHS: readonly ChatWidth[] = ['auto', 'narrow', 'wide', 'full']
+/** The sizes the chat's text can be drawn at, as a percentage of its design size. */
+const CHAT_TEXT_SMALL = 90
+export const CHAT_TEXT_SIZE_DEFAULT = 100
+const CHAT_TEXT_LARGE = 110
+const CHAT_TEXT_LARGER = 125
+const CHAT_TEXT_LARGEST = 140
+export const CHAT_TEXT_SIZES: readonly number[] = [CHAT_TEXT_SMALL, CHAT_TEXT_SIZE_DEFAULT, CHAT_TEXT_LARGE, CHAT_TEXT_LARGER, CHAT_TEXT_LARGEST]
 /** Which side of the window the sidebar sits on. */
 export type SidebarSide = 'left' | 'right'
 /** How the sidebar orders sessions: as they were created (rows never move), or with what needs you first. */
@@ -88,6 +98,10 @@ export type SettingsPreferences = {
   iconSize: IconSize
   style: StyleChoice
   iconColor: IconColor
+  /** How wide the chat's messages run; `auto` grows with the pane, so a large screen is used. */
+  chatWidth: ChatWidth
+  /** The size of everything in the chat, as a percentage (`CHAT_TEXT_SIZES`). */
+  chatTextSize: number
   /** Which view a Claude or Codex session opens in. Terminal until you change it. */
   chatViewDefault: ChatViewDefaults
   /** The agent a new session starts. */
@@ -186,6 +200,8 @@ function defaults(): SettingsPreferences {
     terminalDock: 'panel',
     iconSize: 'medium',
     iconColor: 'color',
+    chatWidth: 'auto',
+    chatTextSize: CHAT_TEXT_SIZE_DEFAULT,
     chatViewDefault: DEFAULT_CHAT_VIEWS,
     defaultAgent: 'claude',
     newSessionView: 'chat',
@@ -265,6 +281,8 @@ export function readSettingsPreferences(): SettingsPreferences {
       terminalDock: preferences.terminalDock === 'panel' || preferences.terminalDock === 'under' ? preferences.terminalDock : fallback.terminalDock,
       iconSize: preferences.iconSize === 'small' || preferences.iconSize === 'medium' || preferences.iconSize === 'large' ? preferences.iconSize : fallback.iconSize,
       style: styleOf(preferences.style) ?? fallback.style,
+      chatWidth: CHAT_WIDTHS.find((width) => width === preferences.chatWidth) ?? fallback.chatWidth,
+      chatTextSize: CHAT_TEXT_SIZES.find((size) => size === preferences.chatTextSize) ?? fallback.chatTextSize,
       chatViewDefault: chatViewDefault(preferences.chatViewDefault, fallback.chatViewDefault),
       defaultAgent: preferences.defaultAgent === 'claude' || preferences.defaultAgent === 'codex' ? preferences.defaultAgent : fallback.defaultAgent,
       newSessionView: paneView(preferences.newSessionView, fallback.newSessionView),

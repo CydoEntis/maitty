@@ -35,6 +35,8 @@ const REMOTE_START_POLL_MS = 250
 
 /** How long a session started as an agent is taken to be it while the daemon has not said so; a command that never starts one stops claiming it. */
 const EXPECTED_AGENT_MS = 30_000
+/** The words each agent's command line takes to sign its account in. */
+const SIGN_IN_WORDS: Readonly<Record<'claude' | 'codex', readonly string[]>> = { claude: ['auth', 'login'], codex: ['login'] }
 
 function omitKey<T>(record: Record<string, T>, key: string): Record<string, T> {
   return Object.fromEntries(Object.entries(record).filter(([name]) => name !== key))
@@ -182,6 +184,17 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
     }, launchAgent(agent, flags))
   }, [runStart, launchAgent, setExpectedAgents, yolo, setLayout, paneViews])
 
+  // Signing an agent's account in is the agent's own interactive command, so it runs in a terminal of its own, in
+  // the home folder: a browser opens from it, or it asks for a code. The session is a terminal, never a chat.
+  const signInAgent = useCallback((agent: 'claude' | 'codex') => {
+    setSettingsSection(null)
+    void runStart(
+      async () => home || (await defaultSessionFolder()),
+      (id) => { rememberShellStart(id); movePanes(() => { setLayout((current) => openArrangement(current, id, makeId)) }) },
+      (folder) => launchAgentSession(folder, agent, SIGN_IN_WORDS[agent]),
+    )
+  }, [runStart, home, setLayout, setSettingsSection])
+
   // "Start a Claude chat" on a shell's empty chat card: a chat session in that shell's folder.
   const startChatHere = useCallback((from: SessionView, agent: ChatAgent, fullAccess: boolean) => {
     const refusal = remoteStartRefusal(from.machine !== LOCAL_MACHINE, from.machineName, 'A chat session')
@@ -285,5 +298,5 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
     }
     setNewSessionMachine(null)
   }, [setNewSessionMachine, startOnMachine, runStart, setLayout, startAgentSession, preferences.newSessionView])
-  return { runStart, newSession, newTerminal, startAgentSession, newSessionOn, startChatHere, startNewChat, warmNewChat, createWorktree, startFromModal }
+  return { signInAgent, runStart, newSession, newTerminal, startAgentSession, newSessionOn, startChatHere, startNewChat, warmNewChat, createWorktree, startFromModal }
 }

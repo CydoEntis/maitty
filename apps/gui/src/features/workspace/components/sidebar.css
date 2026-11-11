@@ -121,10 +121,9 @@
 .mx-row:hover { background: rgba(var(--hl), calc(.045 * var(--hk))); }
 .mx-row.is-selected, .mx-row.is-selected:hover { background: var(--c-sel-bg); box-shadow: var(--c-sel-sh); }
 .mx-row-icon { position: relative; flex: none; display: flex; }
-.mx-row-icon .mx-badge { right: -4px; bottom: -4px; width: 12px; height: 12px; border-radius: calc(3.5px * var(--rk)); font-size: 9px; font-weight: 800; line-height: 1; color: var(--on-warn); }
+.mx-row-icon .mx-badge { right: -4px; bottom: -4px; width: 12px; height: 12px; border-radius: calc(3.5px * var(--rk)); font-size: 9px; font-weight: 800; line-height: 1; }
 .mx-row-icon .mx-badge.is-working { background: var(--bg); overflow: hidden; color: var(--working); font-family: var(--mono); }
 .mx-row-icon .mx-badge.is-working .mx-spin, .mx-sub-mark .mx-spin { font-size: 9px; line-height: 1; }
-.mx-row-icon .mx-badge.is-done svg { width: 8px; height: 8px; }
 .mx-row-icon .mx-badge.is-unknown { width: 11px; height: 11px; background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
 /* A shell's tile in the sidebar is a flat raised square, so agents stand out among shells. */
 .mx-row.is-shell .mx-app-icon.is-shell, .mx-rail-session .mx-app-icon.is-shell { background: var(--m-raise); color: var(--accent-text); box-shadow: var(--c-tile-ring); }
@@ -137,13 +136,16 @@
 .mx-row-project { display: inline-flex; align-items: center; gap: 5px; flex: none; }
 .mx-row-square { width: 6px; height: 6px; border-radius: 2px; }
 .mx-row-branch { font-family: var(--mono); color: var(--ansi-mag); overflow: hidden; text-overflow: ellipsis; }
+/* A worktree is told from a branch by its tree and its blue, on the row, the pane's header and under the message box. */
+.mx-row-branch.is-worktree { color: var(--ansi-blue); }
+.mx-row-branch.is-worktree svg { flex: none; margin-right: 3px; vertical-align: -1px; }
 .mx-row-word { flex: none; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--danger); }
 .mx-row-when { flex: none; align-self: flex-start; margin-top: 2px; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--muted); transition: opacity .12s ease; }
 /* The close button takes this corner on hover and focus. */
 .mx-row-wrap:hover .mx-row-when, .mx-row-wrap:focus-within .mx-row-when { opacity: 0; }
 
 /* Subagents: an elbow and small icons under a session that is not selected, a row each under the one that is. */
-.mx-sub-peek { display: flex; align-items: center; gap: 6px; margin: -4px 0 2px 40px; height: 18px; }
+.mx-sub-peek { display: flex; align-items: center; gap: 6px; margin: 0 0 2px 40px; padding-top: 2px; height: 20px; }
 .mx-sub-elbow { width: 8px; height: 9px; margin-top: -6px; border-left: 1px solid var(--line2); border-bottom: 1px solid var(--line2); border-bottom-left-radius: 4px; }
 .mx-sub-peek-icons { display: flex; gap: 7px; }
 .mx-sub-icon { position: relative; flex: none; display: flex; }
@@ -154,7 +156,7 @@
 .mx-sub-mark.is-working .mx-spin { font-size: 7px; }
 .mx-sub-mark.is-needs { right: -3px; bottom: -3px; width: 8px; height: 8px; border-radius: 2.5px; background: var(--warn); }
 .mx-sub-mark.is-done { border-radius: 3px; background: color-mix(in oklab, var(--ok) 24%, var(--bg)); }
-.mx-sub-list { position: relative; display: flex; flex-direction: column; margin: 0 0 4px; animation: v7fade .22s ease-out; }
+.mx-sub-list { position: relative; display: flex; flex-direction: column; margin: 0 0 4px; }
 .mx-sub-row { position: relative; display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px 0 40px; border-radius: 7px; text-align: left; }
 .mx-sub-row:hover { background: rgba(var(--hl), calc(.05 * var(--hk))); }
 .mx-sub-row.is-open { background: rgba(var(--hl), calc(.07 * var(--hk))); }
@@ -162,6 +164,8 @@
 .mx-sub-bend { position: absolute; left: 19px; top: 7px; width: 12px; height: 7px; border-left: 1px solid var(--line2); border-bottom: 1px solid var(--line2); border-bottom-left-radius: 5px; }
 .mx-sub-name { flex: 1; min-width: 0; font-size: 12px; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* The Terminals section: pinned over the foot, with a share of the height at most, past which it scrolls on its own. */
+.mx-sidebar-terminals { flex: none; max-height: 34%; overflow-y: auto; padding: 4px 8px 6px; border-top: 1px solid var(--pane-line); }
 .mx-sidebar-foot { flex: none; padding: 10px 12px 12px; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--pane-line); }
 
 /* The rail of a narrow window: the starters, then a tile per session. */

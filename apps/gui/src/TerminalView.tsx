@@ -20,6 +20,7 @@ import { beginFlush, countKeyReply, forgetRenderer, reportRenderer } from '@/lib
 import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, fontStackFor, type TerminalFontWeight } from '@/lib/terminalFont'
 import { saysNotConnected } from '@/lib/serviceLine'
 import '@xterm/xterm/css/xterm.css'
+import { copyText } from '@/lib/clipboard'
 
 const DEFAULT_SCROLLBACK_LINES = 10000
 const DEFAULT_SCROLL_SPEED = 1
@@ -646,7 +647,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         // Selecting text copies it, once the mouse is released (not on every drag step).
         const copySelection = () => {
           if (!terminalInstance.hasSelection()) return
-          navigator.clipboard.writeText(terminalInstance.getSelection()).then(
+          copyText(terminalInstance.getSelection()).then(
             () => { toast.success('Copied', { id: COPY_TOAST_ID, duration: COPY_TOAST_MS }) },
             () => { toast.error('Could not copy the selection') },
           )

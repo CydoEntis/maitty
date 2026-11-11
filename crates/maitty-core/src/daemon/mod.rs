@@ -81,6 +81,13 @@ const VANISHED_CHECK_EVERY: Duration = Duration::from_secs(10 * 60);
 const VANISHED_CHECK_FIRST: Duration = Duration::from_secs(60);
 /// How long a closed session can still be brought back; its process runs until then.
 pub(crate) const UNDO_WINDOW: Duration = Duration::from_secs(6);
+/// How many process scans in a row must find no agent in a pane that had one before the agent is
+/// taken to have left. Scans run about a second apart.
+pub(crate) const AGENT_MISSING_SCANS: u8 = 3;
+/// How long a pane the desktop app started as an agent is kept after that agent said its session
+/// ended. `/clear` and `/resume` end a session and start the next in the same program within a
+/// moment, so a pane is only closed when no agent came back in this long.
+pub(crate) const AGENT_ENDED_GRACE: Duration = Duration::from_secs(3);
 /// A daemon nothing ever used (no panes, no clients) exits after this.
 const EXIT_WHEN_UNUSED_FOR: Duration = Duration::from_secs(30);
 /// How long a pane or agent ending on its own is kept out of the saved session. A shutdown
@@ -248,6 +255,8 @@ pub enum Ev {
         msg: ClientMsg,
         verdict: Option<bool>,
         chain: Vec<u32>,
+        /// It came from an agent the pane's agent started (`scan::reports_from_nested_agent`).
+        nested: bool,
     },
     /// A run's checkpoints, resolved and gated, and the worktree's tree as it started (see
     /// `Daemon::turn_ended`).
@@ -1198,6 +1207,7 @@ impl Daemon {
                 _ = tick.tick() => {
                     self.sync_scan_interval();
                     self.finish_closes();
+                    self.close_ended_agents();
                     self.expire_warm();
                     self.update_statuses();
                     self.settled_alerts();
@@ -1778,6 +1788,18 @@ impl Daemon {
                         t.refresh_head();
                         self.dirty = true;
                     }
+                    // One scan that finds no agent where there was one is not the agent leaving:
+                    // a read of the process table can miss a process for a moment, and taking
+                    // that as an exit dropped the pane's agent, its session and the chat that
+                    // follows it. Only several scans in a row say it is gone; an agent that
+                    // really ended has usually said so itself by then (`HookStatus::Gone`).
+                    if t.agent.is_some() && f.agent.is_none() {
+                        t.agent_missed = t.agent_missed.saturating_add(1);
+                        if t.agent_missed < AGENT_MISSING_SCANS {
+                            continue;
+                        }
+                    }
+                    t.agent_missed = 0;
                     // Hooks own live sessions, not processes that have exited. Allow the
                     // process scanner to catch up to a newly loaded native integration.
                     let mut hook_expired = false;
@@ -2018,7 +2040,20 @@ impl Daemon {
                 msg,
                 verdict,
                 chain,
-            } => self.apply_hook(msg, verdict, chain),
+                nested,
+            } => {
+                // An agent the pane's agent ran (a headless `claude -p`) says its own session
+                // started and ended. Taken for the pane's, that moved the pane to the nested
+                // session and then said the agent was gone, so the chat stopped showing the real
+                // conversation. Its reports are not the pane's: the pane's agent says what it does.
+                if nested {
+                    if let ClientMsg::Hook { term, event, .. } = &msg {
+                        tracing::debug!("pane {term}: ignoring {event} from an agent its agent started");
+                    }
+                    return;
+                }
+                self.apply_hook(msg, verdict, chain)
+            }
             Ev::ChecksResolved {
                 term,
                 run,
@@ -3201,6 +3236,46 @@ impl Daemon {
             && t.closing.take().is_some()
         {
             self.dirty = true;
+        }
+    }
+
+    /// End the panes the desktop app started as an agent whose agent has ended (`/exit`). Such a
+    /// pane runs the agent inside a shell, which is left behind when the agent goes: the window
+    /// then showed a session that had turned into a terminal. Only the agent's own report that
+    /// its session ended starts this (`hook`, `HookStatus::Gone`), never a process scan that
+    /// missed the agent, and a pane is kept when an agent came back (`/clear`) or someone has
+    /// typed into the shell since.
+    fn close_ended_agents(&mut self) {
+        let due: Vec<(TermId, Instant)> = self
+            .terms
+            .values()
+            .filter_map(|t| {
+                t.agent_ended
+                    .filter(|at| at.elapsed() >= AGENT_ENDED_GRACE)
+                    .map(|at| (t.id, at))
+            })
+            .collect();
+        for (term, ended) in due {
+            let Some(t) = self.terms.get_mut(&term) else {
+                continue;
+            };
+            t.agent_ended = None;
+            if t.agent.is_some() || t.last_input > ended || t.closing.is_some() {
+                continue;
+            }
+            // The agent's word that it ended is checked against what runs in the pane now: a
+            // pane with anything but a shell in it is never closed here.
+            if let Some((program, _)) = t.pid.and_then(scan::leaf_program)
+                && !scan::is_shell(&program)
+            {
+                tracing::info!("pane {term}: kept, {program} still runs in it after its agent ended");
+                continue;
+            }
+            tracing::info!("pane {term}: closed, the agent it was started as has ended");
+            let tops = self.worktrees_of(&[term]);
+            self.close_term(term);
+            // No client asked for this close, so there is none to tell what became of a worktree.
+            self.cleanup_worktrees(ClientId::MAX, tops);
         }
     }
 

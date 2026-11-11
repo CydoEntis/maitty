@@ -73,8 +73,68 @@ export function useComposerDraft(conversation: number): string {
   return useComposerSlice(conversation, (state) => state.draft)
 }
 
+/** The conversation each session's chat last had, so what its box holds can follow it to a new one. */
+const lastConversation = new Map<string, number>()
+
+/**
+ * Says which conversation a session's chat is now. The daemon gives a pane's agent a new conversation
+ * number when it stops recognising the agent for a moment and then finds it again, and the box is kept by
+ * that number: without this the text being written vanished with the old one. What the box held moves
+ * to the new number, unless something was already written there.
+ */
+export function followComposer(sessionId: string, conversation: number): void {
+  const before = lastConversation.get(sessionId)
+  lastConversation.set(sessionId, conversation)
+  if (before === undefined || before === conversation) return
+  const state = stored.get(before)
+  if (state === undefined || stored.has(conversation)) return
+  stored.delete(before)
+  stored.set(conversation, state)
+  for (const listener of listeners) listener()
+}
+
+const NO_CONVERSATIONS: readonly number[] = []
+let waiting: readonly number[] = NO_CONVERSATIONS
+
+/** The conversations with a message held for their agent, the same list until it changes. */
+function conversationsWithHeld(): readonly number[] {
+  const now = [...stored].filter(([, state]) => state.held.length > 0).map(([conversation]) => conversation)
+  if (now.length !== waiting.length || now.some((conversation, index) => conversation !== waiting[index])) waiting = now.length === 0 ? NO_CONVERSATIONS : now
+  return waiting
+}
+
+/** Which conversations hold a message for their agent, for the window to send them whichever chat is showing. */
+export function useHeldConversations(): readonly number[] {
+  return useSyncExternalStore(subscribe, conversationsWithHeld)
+}
+
+/** How many messages wait for the conversation's agent in this window. */
+export function heldCount(conversation: number): number {
+  return read(conversation).held.length
+}
+
+/** The message boxes on screen that send their own held messages (they draw each as it goes), by conversation. */
+const sending = new Map<number, number>()
+
+/** Says a message box for the conversation is on screen and sends its held messages itself; returns the undo. */
+export function claimHeld(conversation: number): () => void {
+  sending.set(conversation, (sending.get(conversation) ?? 0) + 1)
+  return () => {
+    const left = (sending.get(conversation) ?? 1) - 1
+    if (left > 0) sending.set(conversation, left)
+    else sending.delete(conversation)
+  }
+}
+
+export function heldClaimed(conversation: number): boolean {
+  return sending.has(conversation)
+}
+
 /** For tests: the store belongs to the window's lifetime. */
 export function forgetComposers(): void {
   stored.clear()
+  sending.clear()
+  waiting = NO_CONVERSATIONS
+  lastConversation.clear()
   forgetOperations()
 }

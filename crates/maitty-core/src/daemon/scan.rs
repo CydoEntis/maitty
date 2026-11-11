@@ -43,6 +43,46 @@ pub fn descends_from(
 }
 use tokio::sync::mpsc;
 
+/// The most processes walked from a reporter up to its pane.
+const MAX_ANCESTORS: usize = 32;
+
+/// Whether the process that sent a status report runs under more than one `agent` program on its
+/// way up to the pane's own process (`ancestor`): an agent started by the pane's agent (a headless
+/// `claude -p` the agent ran as a command), not the pane's agent itself. Such a nested agent
+/// reports its own session starting and ending, which is not the pane's. False when the processes
+/// cannot be read, or the agent runs under another program's name (`node`): then nothing is known.
+pub fn reports_from_nested_agent(pid: u32, ancestor: u32, agent: &str) -> bool {
+    let mut sys = System::new();
+    let mut names = Vec::new();
+    let mut cur = pid;
+    for _ in 0..MAX_ANCESTORS {
+        let p = Pid::from_u32(cur);
+        sys.refresh_processes_specifics(
+            ProcessesToUpdate::Some(&[p]),
+            true,
+            ProcessRefreshKind::nothing(),
+        );
+        let Some(process) = sys.process(p) else {
+            break;
+        };
+        names.push(stem(process.name()));
+        if cur == ancestor {
+            break;
+        }
+        match process.parent() {
+            Some(parent) if parent.as_u32() != cur && parent.as_u32() != 0 => cur = parent.as_u32(),
+            _ => break,
+        }
+    }
+    is_nested(&names, agent)
+}
+
+/// More than one program of the agent's name among a reporter's ancestors: one agent runs inside
+/// another.
+fn is_nested(ancestors: &[String], agent: &str) -> bool {
+    !agent.is_empty() && ancestors.iter().filter(|name| name.as_str() == agent).count() > 1
+}
+
 #[derive(Default)]
 pub struct Shared {
     pub roots: Vec<(TermId, u32)>,
@@ -67,6 +107,24 @@ pub struct Found {
     pub cpu: f32,
     /// The machine an ssh (or mosh, …) client in the pane is connected to.
     pub remote: Option<String>,
+}
+
+/// The programs that are a shell, by the name `leaf_program` gives them.
+const SHELLS: [&str; 9] = [
+    "pwsh",
+    "powershell",
+    "cmd",
+    "bash",
+    "zsh",
+    "fish",
+    "nu",
+    "sh",
+    "dash",
+];
+
+/// Whether a program `leaf_program` named is a shell, and not something someone runs in one.
+pub fn is_shell(name: &str) -> bool {
+    SHELLS.contains(&name)
 }
 
 /// The program running in a pane (the deepest one under its shell, not a helper): its name
@@ -105,17 +163,7 @@ pub fn leaf_program(root: u32) -> Option<(String, Vec<String>)> {
     }
     // The shallowest non-shell program is what you started (its helpers are deeper); fall
     // back to the deepest.
-    let shells = [
-        "pwsh",
-        "powershell",
-        "cmd",
-        "bash",
-        "zsh",
-        "fish",
-        "nu",
-        "sh",
-        "dash",
-    ];
+    let shells = SHELLS;
     let pick = queue
         .iter()
         .filter(|(_, d)| *d > 0)
@@ -454,6 +502,7 @@ mod walk_tests {
         }
         eprintln!("ancestors: {chain:?}");
         let up = chain[chain.len().min(4) - 1];
+        assert!(!super::reports_from_nested_agent(me, up, "claude"));
         let r = super::descends_from(me, up, &Default::default());
         eprintln!("descends_from(me, {up}) = {:?}", r.0);
         assert_eq!(r.0, Some(true));
@@ -591,5 +640,16 @@ mod refresh_tests {
         let _ = child.kill();
         let _ = child.wait();
     }
-}
 
+    #[test]
+    fn an_agent_is_nested_when_another_of_its_name_is_above_it() {
+        let path = |names: &[&str]| names.iter().map(|name| (*name).to_string()).collect::<Vec<_>>();
+        // The pane's own agent: its hook, the agent, the shells the pane started it in.
+        assert!(!super::is_nested(&path(&["maitty", "sh", "claude", "bash", "bash"]), "claude"));
+        // An agent the pane's agent ran as a command.
+        assert!(super::is_nested(&path(&["maitty", "claude", "bash", "claude", "bash"]), "claude"));
+        // Another agent's name, or none: nothing to tell.
+        assert!(!super::is_nested(&path(&["maitty", "claude", "bash", "claude"]), "codex"));
+        assert!(!super::is_nested(&path(&["maitty", "node", "node"]), ""));
+    }
+}

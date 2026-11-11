@@ -3,7 +3,9 @@ import { Popover } from 'radix-ui'
 import { PopupContent } from '@/components/ui/popup'
 import { Icon } from '@/features/workspace/components/glyphs'
 import { noteLines } from './noteLines'
+import { amountWords, timeLeftWords } from './downloadEta'
 import type { UpdaterState } from './useUpdater'
+import { copyText } from '@/lib/clipboard'
 
 const PERCENT = 100
 const CARD_GAP_PX = 8
@@ -67,15 +69,20 @@ export function UpdateSlot({ variant, state, version, skipped, portalContainer, 
           </>
         )
       }
-      case 'downloading':
+      case 'downloading': {
+        const left = offer.transfer === null ? null : timeLeftWords(offer.transfer)
+        const share = percent === null ? null : `${String(percent)}%`
         return (
           <>
             <h3>Downloading Maitty {offer.version}</h3>
             <div className="mx-upd-bar" role="progressbar" aria-valuemin={0} aria-valuemax={PERCENT} aria-valuenow={percent ?? undefined}><span style={{ width: `${String(percent ?? 0)}%` }} /></div>
-            <p className="mx-upd-sub">{percent === null ? 'Working out the size…' : `${String(percent)}%`}</p>
-            <div className="mx-upd-actions"><button type="button" className="mx-upd-ghost" onClick={() => { setOpen(false) }}>Hide</button></div>
+            <p className="mx-upd-progress">
+              <span>{offer.transfer === null ? 'Starting…' : amountWords(offer.transfer)}</span>
+              <span>{[share, left].filter((part) => part !== null).join(' · ')}</span>
+            </p>
           </>
         )
+      }
       case 'ready':
         return (
           <>
@@ -98,7 +105,7 @@ export function UpdateSlot({ variant, state, version, skipped, portalContainer, 
             <p className="mx-upd-error">{offer.message}</p>
             <div className="mx-upd-actions">
               <button type="button" className="mx-upd-primary" onClick={() => { onCheck() }}>Retry</button>
-              <button type="button" className="mx-upd-ghost" onClick={() => { void navigator.clipboard.writeText(offer.message) }}>Copy details</button>
+              <button type="button" className="mx-upd-ghost" onClick={() => { void copyText(offer.message) }}>Copy details</button>
             </div>
           </>
         )
@@ -131,7 +138,10 @@ export function UpdateSlot({ variant, state, version, skipped, portalContainer, 
         )}
       </button>
       </Popover.Trigger>
-      <PopupContent side="top" align={portalContainer?.dataset.side === 'right' ? 'end' : 'start'} sideOffset={CARD_GAP_PX} collisionPadding={CARD_EDGE_PX} aria-label="Update" className="mx-upd-card" onEscapeKeyDown={(event) => { event.stopPropagation() }}>{cardBody}</PopupContent>
+      <PopupContent side="top" align={portalContainer?.dataset.side === 'right' ? 'end' : 'start'} sideOffset={CARD_GAP_PX} collisionPadding={CARD_EDGE_PX} aria-label="Update" className="mx-upd-card" onEscapeKeyDown={(event) => { event.stopPropagation() }}>
+        <button type="button" className="mx-upd-close" aria-label="Close" onClick={() => { setOpen(false) }}><Icon name="close" /></button>
+        {cardBody}
+      </PopupContent>
     </Popover.Root>
   )
 }

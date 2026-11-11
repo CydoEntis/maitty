@@ -3,6 +3,7 @@ import { readSettingsPreferences } from '@/features/settings/preferences'
 import { errorMessage } from '@/lib/error-message'
 import { toast } from '@/lib/toast'
 import { exportName } from './exportBlock'
+import { copyText } from '@/lib/clipboard'
 
 /** Saves a block of a reply into the export folder chosen in Settings, and says where it went or why it did not. */
 export function saveBlock(what: string, extension: string, text: string): void {
@@ -15,7 +16,7 @@ export function saveBlock(what: string, extension: string, text: string): void {
 }
 
 export function copyBlock(text: string, failed: string): void {
-  navigator.clipboard.writeText(text).then(
+  copyText(text).then(
     () => { toast.message('Copied') },
     () => { toast.error(failed) },
   )

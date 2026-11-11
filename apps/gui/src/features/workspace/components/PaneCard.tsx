@@ -156,7 +156,9 @@ export function PaneCard(props: PaneCardProps) {
           <span className="mx-pane-name">{title}</span>
           <span className="mx-pane-where">
             <span className="mx-pane-cwd" title={session.cwd}>{session.cwdLabel}</span>
-            {session.branch && <span className="mx-pane-branch" title={`Branch ${session.branch}`}><Icon name="branch" size={10} />{session.branch}</span>}
+            {session.branch && (session.worktree
+              ? <span className="mx-pane-branch is-worktree" title={`Worktree on branch ${session.branch}`}><Icon name="worktree" size={10} />{session.branch}</span>
+              : <span className="mx-pane-branch" title={`Branch ${session.branch}`}><Icon name="branch" size={10} />{session.branch}</span>)}
           </span>
         </span>
         {props.broadcast && <span className="mx-broadcast-pill">◉ Broadcast</span>}

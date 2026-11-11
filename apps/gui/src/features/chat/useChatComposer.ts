@@ -8,11 +8,12 @@ import { buildAttachmentMessage, parseAttachmentMessage } from './attachmentMess
 import { onOutsideSend } from './outsideSends'
 import { selectChatEvents } from './projection'
 import { countUserMessages } from './workPhase'
-import { peekComposer, updateComposer, useComposerSlice, type ComposerState, type DraftAttachment } from './composerStore'
+import { claimHeld, peekComposer, updateComposer, useComposerSlice, type ComposerState, type DraftAttachment } from './composerStore'
 
 import { newId, revokePreviews, useAttachmentIntake, type AttachmentIntake } from './useAttachmentIntake'
 import { wireChoice } from './agentChoice'
 import { reserveOperation, STALE_OPERATION } from './sendOperation'
+import { isSlashLine } from './slashCommands'
 
 export const PENDING_APPROVAL_NOTE = 'Answer the request above first'
 export const READ_ONLY_NOTE = 'Read-only: talk to the agent in the terminal'
@@ -22,6 +23,28 @@ export const TYPING_ASKING_NOTE = 'The agent is asking something in the terminal
 /** Sent to the terminal around a message, so a multi-line message is one paste and not several Enters. */
 export const PASTE_START = '\x1b[200~'
 export const PASTE_END = '\x1b[201~'
+
+/**
+ * A message as it is typed into an agent's terminal: one paste and Enter, so a multi-line message is one message. The
+ * agent's own command is typed instead, as its picker's commands are: it reads a typed slash as a command.
+ */
+export function asTyped(text: string): string {
+  return isSlashLine(text) ? `${text}\r` : `${PASTE_START}${text}${PASTE_END}\r`
+}
+
+/** Codex takes a typed command only when Enter comes a moment after it: sent together, the Enter is lost. */
+export const CODEX_SUBMIT_GAP_MS = 400
+
+/** Types a message into an agent's terminal with `type`, the way that agent takes it (`asTyped`; Codex's commands with a pause before Enter). */
+export async function typeMessage(type: (text: string) => Promise<void>, agent: string | undefined, text: string): Promise<void> {
+  if (agent === 'codex' && isSlashLine(text)) {
+    await type(text)
+    await new Promise<void>((resolve) => { window.setTimeout(resolve, CODEX_SUBMIT_GAP_MS) })
+    await type('\r')
+    return
+  }
+  await type(asTyped(text))
+}
 /** The key that interrupts the agent's turn. */
 export const INTERRUPT_KEY = '\x1b'
 
@@ -35,8 +58,18 @@ const FOLLOW_UP_REFRESH_MS = 700
 /** Held messages count down from -1, so they never share a number with the daemon's own operations. */
 let heldCounter = 0
 const nextHeldId = (): number => { heldCounter -= 1; return heldCounter }
+
+/**
+ * Holds one of the agent's own commands (`/model opus`) to be typed in when its turn ends, ahead of the messages
+ * that wait, so they run under it. A command of the same name already held is replaced: the last pick stands.
+ */
+export function holdCommand(conversation: number, command: string): void {
+  const text = command.trim()
+  const name = text.split(' ')[0] ?? text
+  updateComposer(conversation, (state) => ({ ...state, held: [{ id: nextHeldId(), text }, ...state.held.filter((message) => message.text.split(' ')[0] !== name)] }))
+}
 /** After a held message is typed in, the next waits this long for the agent to start on it, so two never go at once. */
-const HELD_GAP_MS = 4_000
+export const HELD_GAP_MS = 4_000
 
 /** What was just sent into the terminal, and how many times those words were already in the history. */
 export type SentEcho = { readonly text: string; readonly baseline: number; readonly quiet: boolean }
@@ -157,8 +190,7 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
     setError(null)
     if (typeText !== undefined) {
       try {
-        // One paste, then Enter: the agent takes a multi-line message as one message.
-        await typeText(`${PASTE_START}${text}${PASTE_END}\r`)
+        await typeMessage(typeText, agent, text)
         // Drawn at once: the history only has it when the agent next writes its file.
         setEcho({ text, baseline: countUserMessages(selectChatEvents(feed.projection), text), quiet: false })
         // The "thinking" line it brings is only a stand-in until the agent's own status says so: it stops after a few seconds, the message stays.
@@ -285,6 +317,9 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
       .catch((failure: unknown) => { setError(errorMessage(failure, 'Could not interrupt the turn')) })
   }, [running, feed.cancelling, conversation, link.generation, refresh, typeText])
 
+  // While this box is on screen it sends the held messages itself, and draws each as it goes; with no box showing
+  // the conversation, the window sends them (`useHeldMessages`), so a queue does not wait to be looked at.
+  useEffect(() => (typing ? claimHeld(conversation) : undefined), [typing, conversation])
   // The agent is ready for a message: type in the oldest held one, then give the agent time to start on it.
   const heldSentAt = useRef(0)
   const first = held[0]

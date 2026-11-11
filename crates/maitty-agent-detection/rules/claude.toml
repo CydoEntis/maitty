@@ -1,0 +1,16 @@
+# Maitty's own screen rules for Claude Code, added to the vendored Herdr manifest of the same id
+# (vendor/herdr-detection/claude.toml stays an unmodified snapshot; see its NOTICE.md).
+id = "claude"
+
+# A chooser Claude Code opens by itself, which no hook reports, and whose footer is not the
+# "enter to confirm · esc to cancel" the vendored `live_blocked_form` looks for: its "We recommend
+# compacting earlier" prompt ends "↑/↓ choose · ←/→ change size · enter confirm · esc not now".
+# Left as idle, the chat typed the next message into the chooser. Only the last lines of the screen
+# are read, at the start of a line, so the same words quoted in a conversation do not match.
+[[rules]]
+id = "live_chooser_footer"
+state = "blocked"
+priority = 985
+region = "bottom_non_empty_lines(4)"
+visible_blocker = true
+line_regex = ['^\s*↑/↓ choose · .*\benter confirm · esc \w']
