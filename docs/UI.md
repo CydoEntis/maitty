@@ -772,7 +772,7 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   approval is answered by request id (y / a / n) and a user-input request by a form (`UserInputForm`), so neither
   points to a terminal.
   **A new session** (the New session dialog, or New agent chat) starts the chosen
-  agent (Settings › General › Chat view › **Default agent**, Claude, Codex or Gemini, unless the dialog picks the other) in a new
+  agent (Settings › Chat › Chat view › **Default agent**, Claude, Codex or Gemini, unless the dialog picks the other) in a new
   shell the daemon owns and types the agent's command into it, and opens the pane in the view **New sessions open as**
   names (Chat by default). It is
   one session either way: **the switch between Terminal and Chat never restarts the agent**
@@ -819,9 +819,12 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   (Ctrl+Shift+E, Cmd+Shift+E) on the focused pane.
 - **Keyboard.** While the chat covers a pane its terminal is not focused (`TerminalView focused` is false) and is
   hidden from Tab and screen readers. The chat adds no layer to the Esc ladder.
-- **Selecting copies.** Releasing the mouse on a selection copies it and a "Copied" toast says so: in a terminal pane
-  (xterm's own selection, `TerminalView.tsx`) and in the chat (`copySelection.ts`; never from the message box, and only
-  a selection that started in that chat). A program that handles the mouse itself (a full-screen agent) copies what was
+- **Selecting.** In a terminal pane, releasing the mouse on a selection copies it and a "Copied" toast says so
+  (xterm's own selection, `TerminalView.tsx`). In the chat nothing is copied by itself: a small bar appears where the
+  mouse let go (`SelectionBar`, `selectionActions.ts`; never for the message box, and only for a selection that
+  started in that chat) with **Copy**, which copies with the same toast, and **Quote**, which adds the text to the
+  message box as a Markdown quote under what is already written and puts the caret after it. The bar goes when the
+  selection does, on Esc, and when the chat scrolls. A program that handles the mouse itself (a full-screen agent) copies what was
   selected in it with OSC 52; the daemon passes that on as `Clipboard` and the window puts it on the clipboard with the
   same toast (`useMachines.ts`), for this computer and for a machine that was allowed to.
 - **A program's "bright black" background** is drawn as the hovered row's ground (`terminalSlab`), not the palette's
@@ -874,8 +877,9 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
     because the daemon's history carries none.
   - *Markdown* (`markdown.ts`, `components/Markdown.tsx`): an agent message is read into a data tree and drawn as
     elements. There is no HTML anywhere (no `dangerouslySetInnerHTML`), raw tags are text, images are never loaded
-    (their alt text shows), and a link is kept only for an `http(s)` address. The app has no route that opens an
-    address outside the window, so a link is a button that copies its address; it never navigates the webview.
+    (their alt text shows), and a link is kept only for an `http(s)` address. A link is a button, never an anchor, so it
+    never navigates the webview: a click hands the address to the host (`open_link`), which opens it in the person's
+    default browser, and the toast that says so offers **Copy link**. Outside the desktop app a click copies it.
   - *Saving a block* (`exportBlock.ts`, `saveBlock.ts`): a code block has **Copy** and **Save**; a table has **Copy**
     (as Markdown) and **Markdown**, **CSV** and **HTML**. A save goes to the export folder of Settings › General
     (Downloads until one is picked with the system's folder picker) under "what date time.ext", and a toast says where.
@@ -905,9 +909,11 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
 - **Mode and model.** The settings tray under the message box says how Claude is set up, from its own transcript and
   never a guess: the permission mode (`Ask before edits`, `Accept edits`, `Plan mode`, `Auto`; `Bypass permissions` in the
   danger colour, like Full access), "Permissions" until the file has said one. A Claude chat that follows a terminal agent
-  changes both from the tray, by typing the agent's own commands into its terminal (not while it works): the mode chip is
-  a dropdown that presses Shift+Tab until the agent's screen shows the pick (`modeFromScreen`), and the model and reasoning
-  picker sends `/model` and `/effort`. Other agents show them read-only. A Codex chat shows none yet (`chatMeta.ts`,
+  changes both from the tray, by typing the agent's own commands into its terminal: the mode chip is
+  a dropdown that presses Shift+Tab until the agent's screen shows the pick (`modeFromScreen`), and is off while the
+  agent works; the model and reasoning picker sends `/model` and `/effort`, and a pick made while the agent works is
+  held at the front of the queue (`holdCommand`, the last pick of each) and typed in when the turn ends. The agent
+  itself is never changed in a chat that has started. Other agents show them read-only. A Codex chat shows none yet (`chatMeta.ts`,
   `SessionMeta` in the read result). Bypass permissions is pickable only when Claude started allowing it: **Settings >
   General > Yolo mode** has one switch per agent, off by default, that adds the agent's own launch flag to sessions started
   afterwards (`yoloFlags`).
