@@ -1541,10 +1541,14 @@ terminal runs (`terminalCommands.ts`, from Claude Code 2.1.322) and all of Codex
 Claude Code reports the rest itself (`agent_commands`); nothing reports these. A stale entry is
 answered by the agent ("unknown command"), a missing one is simply not offered.
 
-- First, look at how PandaCode and T3 Code get their command lists, as the owner asked: whether
-  they found an interface these agents expose, or keep a list too.
-- If there is no interface: a script that regenerates both lists from the installed agents, and a
-  test that fails when a list is behind the installed version.
+- Looked at on 2026-11-11: T3 Code and PandaCode both keep hand-written lists for these. Neither
+  agent exposes them. Claude Code 2.1.322 leaves `/help`, `/permissions`, `/resume` and the like
+  out of `initialize.commands` and out of `system/init.slash_commands`; its
+  `terminal_slash_commands` names four others (`color`, `doctor`, `focus`, `reload-plugins`).
+  Codex's app server has no command listing; its built-ins are the `SlashCommand` enum in
+  `codex-rs/tui/src/slash_command.rs`. Its skills are listed (`skills/list`) and are now offered.
+- Left to do: a script that checks `codexCommands.ts` against that enum for a Codex release tag,
+  run when Codex is updated, so a list that is behind is found.
 - Labels: `client`, `agents`, `chore`.
 
 ### Smaller things left open on 2026-11-11

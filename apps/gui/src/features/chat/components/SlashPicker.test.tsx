@@ -170,6 +170,7 @@ describe('the agent\'s commands in the message box', () => {
   })
 
   it('offers Codex its own commands, and types one with a pause before Enter, as Codex takes it', async () => {
+    fake.loadAgentCommands.mockResolvedValue([])
     const typeInto = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
     const { user, box } = await open({ agent: 'codex', link: { conversation: FAKE_CONVERSATION, generation: 1, readOnly: true }, typeInto })
     expect(fake.loadAgentCommands).toHaveBeenCalledWith('codex', ROOT)
@@ -180,6 +181,38 @@ describe('the agent\'s commands in the message box', () => {
     await settle(1000)
 
     expect(typeInto.mock.calls.map(([text]) => text)).toEqual(['/compact', '\r'])
+  })
+
+  it('offers the skills Codex lists, named after a dollar sign, and leaves one in the box to write the message around', async () => {
+    fake.loadAgentCommands.mockResolvedValue([
+      { name: 'pdf', description: 'Read and write PDFs', hint: '', aliases: [] },
+      { name: 'review', description: 'Review a diff the careful way', hint: '', aliases: [] },
+    ])
+    const typeInto = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
+    const { user, box } = await open({ agent: 'codex', link: { conversation: FAKE_CONVERSATION, generation: 1, readOnly: true }, typeInto })
+
+    // After a slash they sit beside Codex's own commands, told apart by their sign.
+    await user.type(box, '/review')
+    expect(offered('codex')).toEqual(['/reviewReview my current changes and find issues', '$reviewskillReview a diff the careful way'])
+
+    // After a dollar sign, as in Codex's own box, only the skills.
+    await user.clear(box)
+    await user.type(box, '$')
+    expect(offered('codex')).toEqual(['$pdfskillRead and write PDFs', '$reviewskillReview a diff the careful way'])
+    await user.type(box, 'p')
+    await user.keyboard('{Enter}')
+    await settle(1000)
+
+    expect(box).toHaveValue('$pdf ')
+    expect(typeInto).not.toHaveBeenCalled()
+  })
+
+  it('opens no list for a dollar sign in a Claude chat, which has no such thing', async () => {
+    const { user, box } = await open()
+
+    await user.type(box, '$cl')
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   })
 
   it('offers nothing in a box that is not a command: a path in a sentence, or a slash after a space', async () => {

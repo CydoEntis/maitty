@@ -400,7 +400,10 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   list the window keeps (`codexCommands.ts`: names from OpenAI's command reference, descriptions from Codex CLI
   0.167.0). The few whose result the conversation shows are sent from the chat; the rest open a picker or a page in
   Codex's terminal, are tagged `terminal`, and run there with the terminal shown. A Codex command is typed and Enter
-  follows 400ms later (`typeMessage`), since Codex loses an Enter sent with it.
+  follows 400ms later (`typeMessage`), since Codex loses an Enter sent with it. Codex does list its **skills**
+  (`agent_commands` asks its app server, `skills/list`), so those are offered too, tagged `skill` and written `$name`
+  as Codex's own box takes them: beside the commands after a slash, alone after a `$`. Picking one leaves `$name ` in
+  the box to write the message around; a skill is never sent by itself.
 - **Queued messages.** Each waits as a dashed card over the box whose header reads **Queued** (and `1 of 3` in an accent
   pill when several wait; the tooltip says when it is sent) with Edit (a pencil) and Remove (×) at its right. Several
   stack with the next one to be sent in front, in the accent's line, and beside the stack sits a small numbered card

@@ -13,7 +13,7 @@ import { modelName } from '../modelName'
 import { PermissionMenu } from './PermissionMenu'
 import { QueuedMessages } from './QueuedMessages'
 import { MAX_SHOWN, SlashPicker } from './SlashPicker'
-import { commandText, matchCommands, slashQuery, useSlashCommands, withTerminalCommands, type SlashCommand } from '../slashCommands'
+import { asSkills, commandText, matchCommands, skillQuery, slashQuery, useSlashCommands, withTerminalCommands, type SlashCommand } from '../slashCommands'
 import { CLAUDE_TERMINAL_COMMANDS } from '../terminalCommands'
 import { CODEX_COMMANDS } from '../codexCommands'
 import { usageItems, type SessionUsage } from '../usageStrip'
@@ -131,17 +131,25 @@ export function Composer({ agent, composer, conversation, commandsFrom, question
   const busy = sending || waiting
 
   // The agent's commands, offered while a slash and a name are typed. Esc puts the list away until the text changes.
-  const query = off || commandsFrom === undefined ? null : slashQuery(draft)
+  // Codex's own box names a skill after a `$`, so that opens the list too, with only its skills.
+  const naming = off || commandsFrom?.agent !== 'codex' ? null : skillQuery(draft)
+  const query = off || commandsFrom === undefined ? null : slashQuery(draft) ?? naming
   const [closedFor, setClosedFor] = useState<string | null>(null)
   const picking = query !== null && closedFor !== draft
   const slash = useSlashCommands(commandsFrom ?? null, picking)
   const inTerminal = commandsFrom?.inTerminal
-  // Claude's are its own list plus the ones only its terminal runs; Codex's are the window's list. The terminal's
-  // commands are offered only to an agent that has a terminal to run them in.
+  // Claude's are its own list plus the ones only its terminal runs; Codex's are the window's list and the skills
+  // Codex itself lists. The terminal's commands are offered only to an agent that has a terminal to run them in.
+  const skillsOnly = naming !== null
   const offered = useMemo(() => {
-    const own = commandsFrom?.agent === 'codex' ? CODEX_COMMANDS : withTerminalCommands(slash.commands, CLAUDE_TERMINAL_COMMANDS)
+    if (commandsFrom?.agent === 'codex') {
+      const skills = asSkills(slash.commands)
+      if (skillsOnly) return skills
+      return [...(inTerminal === undefined ? CODEX_COMMANDS.filter((command) => command.terminal !== true) : CODEX_COMMANDS), ...skills]
+    }
+    const own = withTerminalCommands(slash.commands, CLAUDE_TERMINAL_COMMANDS)
     return inTerminal === undefined ? own.filter((command) => command.terminal !== true) : own
-  }, [slash.commands, inTerminal, commandsFrom?.agent])
+  }, [slash.commands, inTerminal, commandsFrom?.agent, skillsOnly])
   const matches = useMemo(() => (query === null ? [] : matchCommands(offered, query)), [offered, query])
   // The keys start at the closest match each time the typed name changes.
   const [cursor, setCursor] = useState({ query: '', index: 0 })
@@ -152,7 +160,8 @@ export function Composer({ agent, composer, conversation, commandsFrom, question
   }
   // A command that takes nothing runs at once, as it does in the terminal; one that takes something waits for it.
   const run = (command: SlashCommand) => {
-    if (command.hint !== '') {
+    // A skill is named in a message, never run by itself.
+    if (command.hint !== '' || command.skill === true) {
       complete(command)
       return
     }

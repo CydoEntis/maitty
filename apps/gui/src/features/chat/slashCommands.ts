@@ -9,6 +9,18 @@ export type SlashCommand = {
   readonly aliases: readonly string[]
   /** It opens a menu or a page in the agent's terminal, which the chat cannot show (`terminalCommands.ts`). */
   readonly terminal?: true
+  /** A Codex skill: named in a message after a `$`, not run as a command. */
+  readonly skill?: true
+}
+
+/** Codex lists only its skills (`agent_commands`); each is offered beside the window's list of its commands. */
+export function asSkills(listed: readonly SlashCommand[]): SlashCommand[] {
+  return listed.map((command) => ({ ...command, skill: true as const }))
+}
+
+/** A command as it is typed and shown: after a slash, or a skill after a `$`. */
+export function commandLabel(command: SlashCommand): string {
+  return `${command.skill === true ? '$' : '/'}${command.name}`
 }
 
 /** The agent's own list with the terminal's commands added, leaving out any the agent has started to list itself. */
@@ -23,6 +35,11 @@ export function withTerminalCommands(listed: readonly SlashCommand[], terminal: 
  */
 export function slashQuery(draft: string): string | null {
   return /^\/\S*$/.test(draft) ? draft.slice(1) : null
+}
+
+/** The skill being named at the start of the message box, without its `$`, as Codex's own box takes it; null otherwise. */
+export function skillQuery(draft: string): string | null {
+  return /^\$\S*$/.test(draft) ? draft.slice(1) : null
 }
 
 /** A message that is one line starting with a slash: the agent's own command, not words for it to read. */
@@ -63,7 +80,7 @@ export function matchCommands(commands: readonly SlashCommand[], query: string):
 
 /** What picking a command leaves in the box: its name and a space, ready for what it takes. */
 export function commandText(command: SlashCommand): string {
-  return `/${command.name} `
+  return `${commandLabel(command)} `
 }
 
 export type SlashCommands = { readonly commands: readonly SlashCommand[]; readonly loading: boolean; readonly error: string | null }
