@@ -61,6 +61,15 @@ impl Daemon {
                 self.conversation_dequeue(client, id, generation, operation)?;
                 return Ok(false);
             }
+            Command::ForgetAllowedCommand { project, command_sha256 } => {
+                self.chat_allowed.forget(&project, &command_sha256);
+                let file = self.chat_allowed_file.clone();
+                tokio::task::spawn_blocking(move || {
+                    if let Err(e) = conversation::allowed::forget(&file, &project, &command_sha256) {
+                        tracing::warn!("forgetting an approved command: {e:#}");
+                    }
+                });
+            }
             Command::ConversationClose { id, generation } => {
                 self.conversation_close(client, id, generation)?;
                 return Ok(false);

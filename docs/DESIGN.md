@@ -565,7 +565,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
 - **Message box** (`features/chat/components/Composer.tsx`), in three layers. **1. The question tray**, only while the
   agent asks: a slightly narrower tray rising from behind the box (`mxRise`, 0.28s). A request is tinted amber: "Needs
   you" and "Wants to run a command", the command in a sunken mono box, and **Yes, once** `y` (filled with the accent),
-  **This session** `a`, **No** `n`, and for a command request **Always in this project** (the daemon then approves that exact command in that project without asking; see ADR 0005). A question the agent asks is tinted with the accent instead, its choices as rows
+  **This session** `a`, **No** `n`, and for a command request **Always in this project** (the daemon then approves that exact command in that project without asking; see ADR 0005). Settings → Agents lists these under "Commands approved for a project" (`ApprovedCommands.tsx`), each with **Forget**. A question the agent asks is tinted with the accent instead, its choices as rows
   that light up when picked. y, a and n answer from anywhere in the chat but a field. Answering removes it, the box
   unlocks and the agent is working again (its row and the badge follow the daemon). **2. The box**: glass
   (`--main` under `rgba(--hl,.075)` to `.035`, a `rgba(--hl,.12)` border, radius 16), a two-line text box on top, **+**

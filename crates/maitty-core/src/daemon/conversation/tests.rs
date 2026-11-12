@@ -1868,6 +1868,58 @@ async fn an_approved_command_is_remembered_for_the_project_and_nothing_else_is()
 }
 
 #[tokio::test]
+async fn approved_commands_are_listed_and_taken_back_by_a_person_only() {
+    let mut session = conversation_fixture("conversation-approval").await;
+    let outcome = AssertUnwindSafe(async {
+        let file = session.fixture.directory.path().join("chat-allowed-commands.json");
+        session.daemon.chat_allowed_file = file.clone();
+        let rule = super::allowed::Rule {
+            project: std::path::PathBuf::from("/code/app"),
+            command_sha256: crate::protocol::command_hash("cargo test"),
+            command: "cargo test".into(),
+            at: 5,
+        };
+        // Another daemon wrote it: the list reads the file as it is now.
+        super::allowed::remember(&file, rule.clone()).unwrap();
+        let list = crate::protocol::ClientMsg::Query(crate::protocol::Query::AllowedCommands);
+        let from = authenticated_pane(&mut session);
+        let refused = exchange(&mut session, 430, list.clone(), Some(from)).await;
+        assert!(matches!(refused, ServerMsg::Error(ref message) if message.contains("Only a human")), "{refused:?}");
+        let ServerMsg::Reply(crate::protocol::Reply::AllowedCommands(listed)) = exchange(&mut session, 431, list.clone(), None).await else {
+            panic!("expected the approved commands");
+        };
+        assert_eq!(listed.len(), 1);
+        assert_eq!((listed[0].command.as_str(), listed[0].at), ("cargo test", 5));
+
+        let forget = crate::protocol::ClientMsg::Command(crate::protocol::Command::ForgetAllowedCommand {
+            project: rule.project.clone(),
+            command_sha256: rule.command_sha256.clone(),
+        });
+        let from = authenticated_pane(&mut session);
+        let refused = exchange(&mut session, 432, forget.clone(), Some(from)).await;
+        assert!(matches!(refused, ServerMsg::Error(_)), "{refused:?}");
+        assert_eq!(session.daemon.chat_allowed.rules.len(), 1, "a pane cannot take it back either");
+        let done = exchange(&mut session, 433, forget, None).await;
+        assert!(matches!(done, ServerMsg::Reply(crate::protocol::Reply::Ok)), "{done:?}");
+        assert!(session.daemon.chat_allowed.rules.is_empty(), "asks again from now on");
+        // The file follows, off the loop.
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !super::allowed::Allowed::load(&file).unwrap().rules.is_empty() {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("the file forgot it too");
+    })
+    .catch_unwind()
+    .await;
+    session.cleanup().await;
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[tokio::test]
 async fn a_file_change_request_cannot_be_remembered() {
     let mut session = conversation_fixture("conversation-file-approval").await;
     let outcome = AssertUnwindSafe(async {

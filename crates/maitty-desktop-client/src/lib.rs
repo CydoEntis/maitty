@@ -1512,6 +1512,32 @@ pub async fn undo_close_conversation(id: u64, daemon_executable: PathBuf) -> Res
     }
 }
 
+/// The commands approved "always in this project" for chats.
+pub async fn allowed_commands(daemon_executable: PathBuf) -> Result<Value> {
+    let reply = request(ClientMsg::Query(Query::AllowedCommands), daemon_executable).await?;
+    match reply {
+        Reply::AllowedCommands(commands) => Ok(serde_json::to_value(commands)?),
+        _ => bail!("daemon returned an unexpected approved commands reply"),
+    }
+}
+
+/// Take back a command approved "always in this project".
+pub async fn forget_allowed_command(
+    project: PathBuf,
+    command_sha256: String,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Command(Command::ForgetAllowedCommand { project, command_sha256 }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected forget reply"),
+    }
+}
+
 /// Stop a chat conversation's agent. Its record and history stay.
 pub async fn end_conversation(
     id: u64,

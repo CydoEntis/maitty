@@ -901,6 +901,10 @@ impl Daemon {
                 anyhow::bail!("Only a human client can answer provider requests")
             }
             Command::ConversationAllowAlways { .. } => self.may(client, Grant::Respond, None),
+            Command::ForgetAllowedCommand { .. } if self.client_is_agent(client) => {
+                anyhow::bail!("taking back an approval is yours to do, not a pane's")
+            }
+            Command::ForgetAllowedCommand { .. } => self.may(client, Grant::Respond, None),
             Command::ConversationDequeue { .. }
                 if structured
                     || self
@@ -2679,6 +2683,28 @@ impl Daemon {
                         }) =>
                     {
                         ServerMsg::Error("Only a human client can read usage".into())
+                    }
+                    Query::AllowedCommands if self.client_is_agent(client) => {
+                        ServerMsg::Error("Only a human client can read the approved commands".into())
+                    }
+                    Query::AllowedCommands => {
+                        // The file is shared by every daemon, so it is read as it is now.
+                        match conversation::allowed::Allowed::load(&self.chat_allowed_file) {
+                            Ok(fresh) => self.chat_allowed = fresh,
+                            Err(e) => tracing::warn!("chat allowed commands: {e:#}"),
+                        }
+                        ServerMsg::Reply(Reply::AllowedCommands(
+                            self.chat_allowed
+                                .rules
+                                .iter()
+                                .map(|rule| crate::protocol::AllowedCommand {
+                                    project: rule.project.clone(),
+                                    command: rule.command.clone(),
+                                    command_sha256: rule.command_sha256.clone(),
+                                    at: rule.at,
+                                })
+                                .collect(),
+                        ))
                     }
                     Query::Settings
                         if self.clients.get(&client).is_some_and(|client| {

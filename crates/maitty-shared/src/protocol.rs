@@ -11,7 +11,24 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 83;
+pub const PROTOCOL_VERSION: u32 = 84;
+
+/// The first version whose daemon lists and forgets the commands approved "always in this project"
+/// (`Query::AllowedCommands`, `Command::ForgetAllowedCommand`).
+pub const ALLOWED_COMMANDS_SINCE: u32 = 84;
+
+/// A command a person approved "always in this project" for a chat.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AllowedCommand {
+    /// The project's main checkout.
+    pub project: PathBuf,
+    /// The command as it was shown (secrets hidden).
+    pub command: String,
+    /// What the rule holds to; sent back to forget it.
+    pub command_sha256: String,
+    /// When it was approved (unix seconds).
+    pub at: u64,
+}
 
 /// The first version whose daemon closes a chat with an undo window (`Command::ConversationClose`,
 /// `Command::ConversationUndoClose`).
@@ -349,6 +366,11 @@ pub enum Command {
         id: crate::conversation::ConversationId,
         generation: u64,
         request_id: crate::conversation::ProviderRequestId,
+    },
+    /// Take back a command approved "always in this project".
+    ForgetAllowedCommand {
+        project: PathBuf,
+        command_sha256: String,
     },
     ConversationEnd {
         id: crate::conversation::ConversationId,
@@ -739,6 +761,8 @@ pub enum Command {
 pub enum Query {
     /// The shared settings; answered with `Reply::Settings`.
     Settings,
+    /// The commands approved "always in this project"; answered with `Reply::AllowedCommands`.
+    AllowedCommands,
     ConversationRead {
         id: crate::conversation::ConversationId,
         cursor: Option<crate::conversation::history::Cursor>,
@@ -987,6 +1011,7 @@ pub enum Reply {
     ConversationFile(String),
     TerminalReplay(#[serde(with = "serde_bytes")] Vec<u8>),
     Ok,
+    AllowedCommands(Vec<AllowedCommand>),
     List(Snapshot),
     Text(String),
     Worktrees(Vec<WorktreeEntry>),
@@ -1745,6 +1770,7 @@ impl ClientMsg {
             ClientMsg::Command(Command::WriteFile { .. }) => WRITE_FILE_SINCE,
             ClientMsg::Command(Command::ConversationClose { .. } | Command::ConversationUndoClose { .. }) => CHAT_CLOSE_SINCE,
             ClientMsg::Command(Command::ConversationAllowAlways { .. }) => ALLOW_ALWAYS_SINCE,
+            ClientMsg::Query(Query::AllowedCommands) | ClientMsg::Command(Command::ForgetAllowedCommand { .. }) => ALLOWED_COMMANDS_SINCE,
             _ => COMPATIBLE_SINCE,
         }
     }
@@ -2149,7 +2175,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 83);
+        assert_eq!(PROTOCOL_VERSION, 84);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2421,7 +2447,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 83);
+        assert_eq!(PROTOCOL_VERSION, 84);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -3242,5 +3268,13 @@ mod tests {
         assert_eq!((close.introduced_in(), undo.introduced_in()), (CHAT_CLOSE_SINCE, CHAT_CLOSE_SINCE));
         assert_eq!(always.introduced_in(), ALLOW_ALWAYS_SINCE);
         const { assert!(CHAT_CLOSE_SINCE > COMPATIBLE_SINCE && ALLOW_ALWAYS_SINCE <= PROTOCOL_VERSION) };
+    }
+
+    #[test]
+    fn listing_and_forgetting_approved_commands_are_asked_only_of_a_daemon_that_knows_them() {
+        let list = ClientMsg::Query(Query::AllowedCommands);
+        let forget = ClientMsg::Command(Command::ForgetAllowedCommand { project: PathBuf::from("/code"), command_sha256: "ab".into() });
+        assert_eq!((list.introduced_in(), forget.introduced_in()), (ALLOWED_COMMANDS_SINCE, ALLOWED_COMMANDS_SINCE));
+        const { assert!(ALLOWED_COMMANDS_SINCE > COMPATIBLE_SINCE && ALLOWED_COMMANDS_SINCE <= PROTOCOL_VERSION) };
     }
 }

@@ -62,6 +62,14 @@ impl Allowed {
             .any(|r| r.command_sha256 == command_sha256 && same_path(&r.project, project))
     }
 
+    /// Drop the rule for `project` and `command_sha256`; false when there was none.
+    pub fn forget(&mut self, project: &Path, command_sha256: &str) -> bool {
+        let before = self.rules.len();
+        self.rules
+            .retain(|r| !(r.command_sha256 == command_sha256 && same_path(&r.project, project)));
+        self.rules.len() != before
+    }
+
     /// Add `rule`; false when the project already approved this command.
     pub fn add(&mut self, rule: Rule) -> bool {
         let new = !self
@@ -82,6 +90,18 @@ pub fn remember(file: &Path, rule: Rule) -> Result<()> {
     let _one_at_a_time = WRITING.lock().unwrap_or_else(|e| e.into_inner());
     let mut on_disk = Allowed::load(file)?;
     if on_disk.add(rule) {
+        on_disk.save(file)?;
+    }
+    Ok(())
+}
+
+/// Drop a rule from the file as it is now, not this daemon's copy. A damaged file is left as it
+/// is. Blocks.
+pub fn forget(file: &Path, project: &Path, command_sha256: &str) -> Result<()> {
+    static WRITING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _one_at_a_time = WRITING.lock().unwrap_or_else(|e| e.into_inner());
+    let mut on_disk = Allowed::load(file)?;
+    if on_disk.forget(project, command_sha256) {
         on_disk.save(file)?;
     }
     Ok(())
@@ -123,6 +143,10 @@ mod tests {
         let back = Allowed::load(&file).unwrap();
         assert_eq!(back.rules.len(), 2);
         assert!(back.allows(Path::new("/code/app"), "cargo build"));
+        forget(&file, Path::new("/code/app"), &command_hash("cargo build")).unwrap();
+        let back = Allowed::load(&file).unwrap();
+        assert!(back.allows(Path::new("/code/app"), "cargo test") && !back.allows(Path::new("/code/app"), "cargo build"));
+        remember(&file, rule("/code/app", "cargo build")).unwrap();
         std::fs::write(&file, "not json").unwrap();
         assert!(remember(&file, rule("/code/app", "x")).is_err(), "a damaged file is left alone");
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "not json");
