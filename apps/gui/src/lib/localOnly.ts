@@ -1,3 +1,4 @@
+import { machineLabel } from '@/data/machineNicknames'
 import { machineNameOf } from '@/api/machines'
 
 /**
@@ -26,7 +27,7 @@ export type LocalFeature = keyof typeof LOCAL_FEATURES
 export type PaneWhere = { machine: number; machineName: string | null }
 
 export function localOnlyMessage(feature: LocalFeature, machineName: string | null): string {
-  return `${LOCAL_FEATURES[feature]} is local-only in v1: the files are on ${machineName ?? 'another machine'}, not on this computer.`
+  return `${LOCAL_FEATURES[feature]} is local-only in v1: the files are on ${machineLabel(machineName) ?? 'another machine'}, not on this computer.`
 }
 
 /** The words to show when `feature` cannot be used on the pane, or null when it can. Nothing is a pane of this computer. */

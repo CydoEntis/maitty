@@ -1,3 +1,4 @@
+import { machineLabel } from '@/data/machineNicknames'
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { machineTitle, UPDATE_WORDS, type MachineHead, type UpdateAction } from '../model/machines'
 import { STATUS_WORD, type SessionView } from '../model/session'
@@ -193,6 +194,7 @@ function Expanded(props: SidebarProps) {
       'separator',
       { label: 'Rename…', hint: 'F2', run: () => { props.onRenameSession(session.id) } },
       { label: 'Copy folder path', run: () => { props.onCopyPath(session.id) } },
+      ...(session.machineName === null ? [] : [{ label: 'Rename machine…', run: () => { props.onRenameMachine(session.machineName ?? '') } }]),
       ...(session.machineName === null ? [] : [{ label: 'Get a file…', disabled: !props.online, run: () => { props.onGetFile(session.id) } }]),
       // A finished agent waits under Finished until you look; this files it under Idle without opening it.
       ...(session.status === 'done' ? [{ label: 'Mark as done', disabled: !props.online, run: () => { props.onMarkDone(session.id) } }] : []),
@@ -237,7 +239,7 @@ function Expanded(props: SidebarProps) {
           session={session}
           selected={selected}
           showProject={showProject}
-          machine={showMachine ? session.machineName : null}
+          machine={showMachine ? machineLabel(session.machineName) : null}
           renaming={props.renamingId === session.id}
           onShow={() => { props.onShowSession(session.id) }}
           onRename={() => { props.onRenameSession(session.id) }}

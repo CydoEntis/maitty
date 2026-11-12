@@ -10,7 +10,7 @@ import { sizeVariables } from './model/layoutSize'
 import { errorMessage } from '@/lib/error-message'
 import type { InspectView } from '@/features/inspect/InspectPanel'
 import { isChatSession } from './model/chatSession'
-import { LOCAL_HEAD, machineHeads, remoteStartRefusal, type UpdateAction } from './model/machines'
+import { LOCAL_HEAD, machineHeads, machineTitle, remoteStartRefusal, type UpdateAction } from './model/machines'
 import type { FocusMachine } from './components/StatusBar'
 import { isFirstRun } from '@/features/welcome/welcomed'
 import { repoDiff } from '@/features/inspect/api'
@@ -176,7 +176,7 @@ export function useWorkspaceState() {
     if (focusedMachine === LOCAL_MACHINE) return { name: 'This computer', word: 'local', tone: 'ok' }
     const head = heads.find((candidate) => candidate.machine === focusedMachine)
     if (head === undefined) return null
-    return { name: head.name ?? head.label, word: head.chip?.word ?? 'unknown', tone: head.chip?.tone ?? 'quiet' }
+    return { name: machineTitle(head), word: head.chip?.word ?? 'unknown', tone: head.chip?.tone ?? 'quiet' }
   }, [heads, focusedMachine])
   const { retryNamed, addNamed, grantNamed, updateNamed, updateProgress, copyCommand, cancelAdding, removeNamed } = useMachineActions(sessionsQuery.data)
   // The sidebar is one flat list in creation order; a status change, a pin or a focus never moves a row.

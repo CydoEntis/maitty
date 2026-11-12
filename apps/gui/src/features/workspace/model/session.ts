@@ -1,3 +1,4 @@
+import { machineLabel } from '@/data/machineNicknames'
 import { terminalOf } from '@/api/daemon'
 import type { Conversation, PermissionAsk, TerminalDetails } from '@/data/preview'
 import type { Check } from '@/features/inspect/checks'
@@ -82,7 +83,7 @@ const MS_PER_SECOND = 1000
 
 /** What leads the name of a session on another machine, so it is never taken for one here. */
 export function machinePrefix(machineName: string | null | undefined): string {
-  return machineName ? `${machineName} · ` : ''
+  return machineName ? `${machineLabel(machineName)} · ` : ''
 }
 
 /** What a row calls a session: the name you gave it, else where it is, led by its machine when it is not this computer. */

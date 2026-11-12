@@ -1,3 +1,4 @@
+import { machineLabel } from '@/data/machineNicknames'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CircleAlert, LoaderCircle, TerminalSquare } from 'lucide-react'
 import { toast } from '@/lib/toast'
@@ -786,7 +787,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     {machine !== 0 && connecting && catchUpMs !== null && !loadError && (
       <div className="terminal-catch-up" role="status">
         <LoaderCircle size={13} aria-hidden="true" />
-        <span>Catching up from {conversation.machineName ?? 'the machine'} · {catchUpMs} ms</span>
+        <span>Catching up from {machineLabel(conversation.machineName ?? null) ?? 'the machine'} · {catchUpMs} ms</span>
       </div>
     )}
     {loadError && <div className="terminal-input-error" role="status"><p>Could not load the terminal. Check the daemon connection and reopen this session.</p></div>}

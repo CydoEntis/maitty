@@ -138,9 +138,12 @@ const BADGE_STROKE = 2.4
 
 /** The badge on a sidebar row's icon: a shape per status, so colour is never the only signal. */
 export function StatusBadge({ status }: { status: SessionStatus }) {
+  const reduced = useReducedMotion()
   switch (status) {
     case 'working':
-      return <span className="mx-badge is-working"><Spinner className="" /></span>
+      // A small ring turning inside the filled square, whatever spinner Settings picked: a text frame (Braille dots) at 9px
+      // inside a coloured square reads as a block of specks. The square itself stays still.
+      return <span className="mx-badge is-working"><WebSpinner kind="circle" className="" still={reduced} /></span>
     case 'needs':
       return <span className="mx-badge is-needs" aria-hidden="true"><SquareExclamationPoint strokeWidth={BADGE_STROKE} /></span>
     case 'done':
