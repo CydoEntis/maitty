@@ -23,19 +23,21 @@ import { useWorkspace } from '../workspaceContext'
 
 /** The middle of the window: the new chat page, find, the service's state, the panes of each mounted tab and the status bar. */
 export function WorkspaceMain() {
-  const { serviceFooterText, newChatOpen, sidebarMachineHeads, setNewChatOpen, setNewSessionMachine, sessions, focusedSession, preferences, home, startNewChat, warmNewChat, setSettingsSection, findOpen, online, heads, focusedId, terminalHandles, showSessionById, setFindOpen, dismissedRestores, resumeInterrupted, setDismissedRestores, failures, mismatch, retryAt, offlineDetail, sessionsQuery, restartOffer, appBehindOffer, refetchSessions, tab, mountedTabs, layout, narrow, setLayout, closingPanes, startFolderLabel, canStart, newSession, focusedMachineNumber, focusMode, focusMachine, theme, shortcutChord, root, setThemeMode, pickTheme, openAppearance, setStyle, setTextSize, resetTextSize, openShortcuts } = useWorkspace()
+  const { serviceFooterText, newChatOpen, newChatMachine, setNewChatMachine, sidebarMachineHeads, setNewChatOpen, sessions, focusedSession, preferences, home, startNewChat, warmNewChat, setSettingsSection, findOpen, online, heads, focusedId, terminalHandles, showSessionById, setFindOpen, dismissedRestores, resumeInterrupted, setDismissedRestores, failures, mismatch, retryAt, offlineDetail, sessionsQuery, restartOffer, appBehindOffer, refetchSessions, tab, mountedTabs, layout, narrow, setLayout, closingPanes, startFolderLabel, canStart, newSession, focusedMachineNumber, focusMode, focusMachine, theme, shortcutChord, root, setThemeMode, pickTheme, openAppearance, setStyle, setTextSize, resetTextSize, openShortcuts } = useWorkspace()
   return (
     <div className="mx-main-wrap">
               <main className="mx-main" aria-label="Terminals">
                 {newChatOpen && (
                   <NewChatPage
+                    key={newChatMachine}
+                    machine={newChatMachine}
                     machines={sidebarMachineHeads.filter((head) => head.machine === LOCAL_MACHINE || head.chip?.tone === 'ok').map((head) => ({ machine: head.machine, label: head.label, local: head.machine === LOCAL_MACHINE }))}
-                    onOtherMachine={(machine) => { setNewChatOpen(false); setNewSessionMachine(machine) }}
-                    projects={machineProjects(sessions, LOCAL_MACHINE, focusedSession, resolveStartFolder(preferences.startFolder, home))}
+                    onOtherMachine={setNewChatMachine}
+                    projects={machineProjects(sessions, newChatMachine, focusedSession, newChatMachine === LOCAL_MACHINE ? resolveStartFolder(preferences.startFolder, home) : '~')}
                     defaultAgent={preferences.defaultAgent}
                     bypassAllowed={preferences.yoloClaude}
                     codexYolo={preferences.yoloCodex}
-                    browse={() => chooseProjectFolder()}
+                    browse={newChatMachine === LOCAL_MACHINE ? () => chooseProjectFolder() : null}
                     onStart={startNewChat}
                     onWarm={warmNewChat}
                     onAddMachine={() => { setNewChatOpen(false); setSettingsSection('machines') }}

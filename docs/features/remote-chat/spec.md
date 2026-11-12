@@ -64,8 +64,8 @@ with the agent in it, followed by the first message held until the agent is read
   so. A remote model list is out of scope.
 - **Worktree:** decided by the remote daemon's own `worktree.per_agent`. The page does not claim a
   worktree it cannot promise.
-- **The old dialog** (`NewSessionModal`, `startFromModal`) is removed once the page works on a
-  machine. The interim wording fix (MAITTY-262) covers the time until then.
+- **The old dialog** (`NewSessionModal`, `startFromModal`) is removed. A plain shell on a machine
+  (palette, New shell) starts in that machine's home folder with no dialog.
 
 ## Trust
 

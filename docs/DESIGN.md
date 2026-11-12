@@ -592,14 +592,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   run of the typed text ranks above letters that merely appear in order; ↑ ↓ move, ↵ runs, Esc closes.
 - **No Inbox.** What needs you, what stopped and what finished are the first sections of the sidebar's status list, and
   the notification card and the tray menu say the same; the desktop app has no separate Inbox panel.
-- **New session dialog** (⌘T, Ctrl+Shift+T, the sidebar's New agent chat, a machine's New agent chat here). A 560px
-  dialog: **Agent chat | Shell**; AGENT (Claude Code, Codex as cards); PROJECT (a chip per project the machine has
-  sessions in, the focused one first, with its colour; **Other folder…** opens the folder picker on this computer);
-  a one-line note that it opens a terminal on the machine and starts the agent in it (a worktree is that machine's
-  `worktree.per_agent` setting, not a choice made here); FIRST MESSAGE (held
-  under the new session and sent when the agent takes input; its first three words name the session). **Cancel** and
-  **Start agent** or **Open shell** with `Ctrl ↵`. On another machine the title names it (its nickname, else its name)
-  and the agent is typed into a shell there.
+- **New chat page on another machine.** The same page as on this computer (layout 2f), titled by the machine's tray fact `On <nickname or name>`: its projects, a pasted path, no Browse…, no branch, worktree or attach controls, and a model button that holds only the agent switch. There is no New session dialog.
 - **Focus mode (⌘.).** Hides the sidebar; a pill at the bottom says where you are and
   how many sessions need you elsewhere. Esc or the pill's Exit leaves it.
 - **Broadcast (⌘⇧B).** Per layout. While on, every pane of the layout has a violet outline and a

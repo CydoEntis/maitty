@@ -14,7 +14,7 @@ const PROJECTS = [{ folder: '/dev/growth', name: 'growth', color: 'teal', sessio
 function page(onStart: (request: { message: string }) => Promise<void> = () => Promise.resolve()) {
   return render(
     <div className="mx-app">
-      <NewChatPage machines={[{ machine: 0, label: 'This computer', local: true }]} projects={PROJECTS} defaultAgent="claude" browse={() => Promise.resolve(null)} onStart={onStart} onOtherMachine={() => undefined} onCancel={() => undefined} />
+      <NewChatPage machine={0} machines={[{ machine: 0, label: 'This computer', local: true }]} projects={PROJECTS} defaultAgent="claude" browse={() => Promise.resolve(null)} onStart={onStart} onOtherMachine={() => undefined} onCancel={() => undefined} />
     </div>,
   )
 }
@@ -22,7 +22,7 @@ function page(onStart: (request: { message: string }) => Promise<void> = () => P
 function codexPage(onStart: () => Promise<void>, codexYolo = false) {
   return render(
     <div className="mx-app">
-      <NewChatPage machines={[{ machine: 0, label: 'This computer', local: true }]} projects={PROJECTS} defaultAgent="codex" codexYolo={codexYolo} browse={() => Promise.resolve(null)} onStart={onStart} onOtherMachine={() => undefined} onCancel={() => undefined} />
+      <NewChatPage machine={0} machines={[{ machine: 0, label: 'This computer', local: true }]} projects={PROJECTS} defaultAgent="codex" codexYolo={codexYolo} browse={() => Promise.resolve(null)} onStart={onStart} onOtherMachine={() => undefined} onCancel={() => undefined} />
     </div>,
   )
 }
@@ -59,7 +59,7 @@ describe('the new chat page', () => {
     const onWarm = vi.fn()
     const { unmount } = render(
       <div className="mx-app">
-        <NewChatPage machines={[{ machine: 0, label: 'This computer', local: true }]} projects={PROJECTS} defaultAgent="claude" browse={() => Promise.resolve(null)} onStart={() => Promise.resolve()} onWarm={onWarm} onOtherMachine={() => undefined} onCancel={() => undefined} />
+        <NewChatPage machine={0} machines={[{ machine: 0, label: 'This computer', local: true }]} projects={PROJECTS} defaultAgent="claude" browse={() => Promise.resolve(null)} onStart={() => Promise.resolve()} onWarm={onWarm} onOtherMachine={() => undefined} onCancel={() => undefined} />
       </div>,
     )
     // No folder yet: nothing to start in.
@@ -173,5 +173,46 @@ describe('the new chat page', () => {
     await pickProject('growth')
     await userEvent.click(screen.getByRole('button', { name: 'Start chat' }))
     await waitFor(() => { expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ agent: 'codex', mode: 'default' })) })
+  })
+})
+
+describe('the new chat page on another machine', () => {
+  const MACHINES = [{ machine: 0, label: 'This computer', local: true }, { machine: 2, label: 'Shipyard', local: false }]
+  const folders = [{ folder: '/srv/app', name: 'app', color: 'teal', sessions: 3 }]
+  function remotePage(onStart: (request: { machine: number; machineName: string; branch: unknown; folder: string; message: string }) => Promise<void>, onOtherMachine = vi.fn()) {
+    return render(
+      <div className="mx-app">
+        <NewChatPage machine={2} machines={MACHINES} projects={folders} defaultAgent="claude" browse={null} onStart={onStart} onOtherMachine={onOtherMachine} onCancel={() => undefined} />
+      </div>,
+    )
+  }
+
+  it('lists that machine\'s projects, has no folder picker, and starts there with no branch', async () => {
+    const onStart = vi.fn(() => Promise.resolve())
+    remotePage(onStart)
+    expect(screen.queryByRole('button', { name: 'Browse…' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^app/ })).toHaveTextContent('Shipyard · 3 sessions')
+    await pickProject('app')
+    expect(screen.queryByRole('button', { name: /^Branch/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Attach files' })).not.toBeInTheDocument()
+    await userEvent.type(screen.getByRole('textbox', { name: 'First message' }), 'hello')
+    await userEvent.click(screen.getByRole('button', { name: 'Send message' }))
+    expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ machine: 2, machineName: 'Shipyard', folder: '/srv/app', message: 'hello', branch: null }))
+  })
+
+  it('offers the agent only on the model button: no model list or effort that this computer would have to guess', async () => {
+    remotePage(() => Promise.resolve())
+    await pickProject('app')
+    await userEvent.click(screen.getByRole('button', { name: /^Agent, / }))
+    expect(screen.getByRole('radiogroup', { name: 'Agent' })).toBeInTheDocument()
+    expect(screen.queryByRole('radiogroup', { name: 'Model' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('radiogroup', { name: 'Effort' })).not.toBeInTheDocument()
+  })
+
+  it('offers this computer as another place to start', async () => {
+    const onOtherMachine = vi.fn()
+    remotePage(() => Promise.resolve(), onOtherMachine)
+    await userEvent.click(screen.getByRole('button', { name: /Start on This computer/ }))
+    expect(onOtherMachine).toHaveBeenCalledWith(0)
   })
 })

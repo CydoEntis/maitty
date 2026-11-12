@@ -35,7 +35,7 @@ const GIT = {
 function page(onStart: (request: NewChatRequest) => Promise<void> = () => Promise.resolve(), onAddMachine?: () => void) {
   return render(
     <div className="mx-app">
-      <NewChatPage machines={[{ machine: 0, label: 'This computer', local: true }]} projects={PROJECTS} defaultAgent="claude" browse={() => Promise.resolve(null)}
+      <NewChatPage machine={0} machines={[{ machine: 0, label: 'This computer', local: true }]} projects={PROJECTS} defaultAgent="claude" browse={() => Promise.resolve(null)}
         onStart={onStart} onOtherMachine={() => undefined} {...(onAddMachine ? { onAddMachine } : {})} onCancel={() => undefined} />
     </div>,
   )
