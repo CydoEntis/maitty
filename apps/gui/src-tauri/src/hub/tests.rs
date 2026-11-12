@@ -314,10 +314,12 @@ async fn removing_a_machine_stops_it_and_forgets_it_and_its_daemon_id() {
     assert!(MachineIds::load(&ids_file(&sandbox)).forget("box"));
 
     let handle = watch.hub.handle();
+    assert!(handle.route(BOX).is_some(), "a listed machine can be reached by a request line");
     handle.remove("Box");
     watch
         .until("the machine is removed", |w| w.removed == [BOX])
         .await;
+    assert!(handle.route(BOX).is_none());
     assert!(!handle.is_up(BOX));
     assert_eq!(handle.name_of(BOX), None);
     assert!(!watch.hub.retry(BOX), "nothing supervises it any more");
@@ -341,6 +343,7 @@ async fn a_machine_added_while_the_app_runs_connects_under_a_new_number() {
         })
         .await;
     assert_eq!(watch.hub.name_of(MachineId(1)), Some("late"));
+    assert!(watch.hub.handle().route(MachineId(1)).is_some());
     assert_eq!(watch.hub.handle().name_of(MachineId(1)).as_deref(), Some("late"));
     assert_eq!(watch.kinds(MachineId(1)), ["connecting", "connected"]);
 
@@ -783,4 +786,36 @@ mod local_line {
         assert_eq!(watch.up, [MachineId::LOCAL, MachineId::LOCAL]);
         assert!(!watch.hub.handle().is_up(MachineId(3)));
     }
+}
+
+#[tokio::test]
+async fn a_chat_request_reaches_a_machines_daemon_on_a_line_of_its_own() {
+    use crate::terminal_stream::Wire;
+    use maitty_desktop_client::Daemon;
+    let mut sandbox = Sandbox::new();
+    sandbox.start_daemon();
+    let mut watch = Watch::new(&[machine("box", &sandbox, "proxy")], &sandbox, quick(WAIT));
+    watch
+        .until("connected and a snapshot", |w| {
+            w.is(BOX, "connected") && w.snapshots(BOX) > 0
+        })
+        .await;
+    let wire = Wire::reaching(watch.hub.handle());
+
+    let daemon = wire
+        .daemon(Some(BOX.0), || Err("this computer's daemon is not asked".into()))
+        .expect("a connected machine is asked on a line of its own");
+    let failure = maitty_desktop_client::read_conversation(424_242, None, 10, daemon)
+        .await
+        .expect_err("the machine has no such conversation");
+    assert!(
+        format!("{failure:#}").to_lowercase().contains("conversation"),
+        "the daemon answered, so the request got there: {failure:#}"
+    );
+
+    assert!(wire.daemon(Some(BOX.0 + 5), || Err("unused".into())).is_err(), "a machine that is not listed takes nothing");
+    assert!(matches!(
+        wire.daemon(None, || Ok(PathBuf::from("maitty"))),
+        Ok(Daemon::Local(_))
+    ));
 }

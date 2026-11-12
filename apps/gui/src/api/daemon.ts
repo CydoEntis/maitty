@@ -784,13 +784,14 @@ export type MessageChoice = { readonly model?: string; readonly effort?: string 
  * when the turn ends, in order, even if this window closes, and answers with a `QueuedReceipt`.
  */
 export async function submitMessage(conversation: Pick<Conversation, 'id' | 'generation'>, operation: number, text: string, choice?: MessageChoice): Promise<ConversationReceipt | QueuedReceipt> {
+  // What was picked rides together, so the host command stays within the argument limit; nothing picked sends none.
+  const picked = { ...(choice?.model === undefined ? {} : { model: choice.model }), ...(choice?.effort === undefined ? {} : { effort: choice.effort }) }
   return invokeParsed('send_conversation', z.union([ConversationReceiptSchema, QueuedReceiptSchema]), {
     id: Number(conversation.id),
     generation: conversation.generation,
     operation,
     text,
-    ...(choice?.model === undefined ? {} : { model: choice.model }),
-    ...(choice?.effort === undefined ? {} : { effort: choice.effort }),
+    ...(Object.keys(picked).length === 0 ? {} : { choice: picked }),
   })
 }
 

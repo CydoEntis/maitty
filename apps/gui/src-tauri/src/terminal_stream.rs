@@ -219,6 +219,37 @@ impl Wire {
         wire
     }
 
+    /// Where a conversation request goes: this computer's daemon (`local` says where it is), or
+    /// another machine's, over request lines of its own beside its long one (ADR 0007). A
+    /// machine that is down or was refused takes nothing, and what it answers is vetted before
+    /// anything reads it.
+    pub fn daemon(
+        &self,
+        machine: Option<u16>,
+        local: impl FnOnce() -> Result<std::path::PathBuf, String>,
+    ) -> Result<maitty_desktop_client::Daemon, String> {
+        use maitty_desktop_client::{Daemon, RemoteDaemon};
+        if !routing::is_remote(machine) {
+            return local().map(Daemon::Local);
+        }
+        let id = machine_of(machine);
+        let handle = self.handle()?;
+        if !handle.is_up(id) || handle.is_refused(id) {
+            return Err(refusal(handle, id));
+        }
+        let route = handle.route(id).ok_or_else(|| refusal(handle, id))?;
+        let name = handle.name_of(id).ok_or_else(|| refusal(handle, id))?;
+        Ok(Daemon::Remote(RemoteDaemon::new(
+            id.0,
+            name,
+            move || {
+                let route = route.clone();
+                Box::pin(async move { maitty_machines::open_remote(&route, crate::hub::dial()?).await })
+            },
+            maitty_machines::remote_chat::vet_chat_reply,
+        )))
+    }
+
     /// Refuse a request about a pane's files when the pane is on another machine.
     pub fn require_local(&self, machine: Option<u16>, label: &str) -> Result<(), String> {
         routing::require_local(machine, label, |id| {
@@ -750,6 +781,7 @@ fn perform(app: &AppHandle, reactions: Vec<Reaction>) {
                 );
             }
             Reaction::Removed { machine } => {
+                maitty_desktop_client::forget_remote(machine.0);
                 if let Ok(mut states) = app.state::<MachineStates>().0.lock() {
                     states.remove(&machine.0);
                 }

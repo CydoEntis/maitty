@@ -141,11 +141,13 @@ async fn list_sessions(app: tauri::AppHandle) -> Result<serde_json::Value, Strin
 #[tauri::command]
 async fn read_conversation(
     app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
     id: u64,
     cursor: Option<serde_json::Value>,
     limit: usize,
 ) -> Result<serde_json::Value, String> {
-    maitty_desktop_client::read_conversation(id, cursor, limit, daemon_executable(&app)?)
+    maitty_desktop_client::read_conversation(id, cursor, limit, wire.daemon(machine, || daemon_executable(&app))?)
         .await
         .map_err(|error| format!("{error:#}"))
 }
@@ -1011,22 +1013,23 @@ async fn start_shell_in_fleet(
 #[tauri::command]
 async fn send_conversation(
     app: tauri::AppHandle,
+    machine: Option<u16>,
     id: u64,
     generation: u64,
     operation: u64,
     text: String,
-    model: Option<String>,
-    effort: Option<String>,
+    choice: Option<maitty_shared::conversation::TurnChoice>,
 ) -> Result<serde_json::Value, String> {
-    let choice = maitty_shared::conversation::TurnChoice { model, effort };
+    let choice = choice.unwrap_or_default();
     choice.validate().map_err(str::to_owned)?;
+    let wire = app.state::<terminal_stream::Wire>();
     maitty_desktop_client::send_conversation(
         id,
         generation,
         operation,
         text,
         Some(choice),
-        daemon_executable(&app)?,
+        wire.daemon(machine, || daemon_executable(&app))?,
     )
     .await
     .map_err(|error| format!("{error:#}"))
@@ -1035,6 +1038,8 @@ async fn send_conversation(
 #[tauri::command]
 async fn approve_conversation(
     app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
     id: u64,
     generation: u64,
     request_id: maitty_shared::conversation::ProviderRequestId,
@@ -1045,7 +1050,7 @@ async fn approve_conversation(
         generation,
         request_id,
         decision,
-        daemon_executable(&app)?,
+        wire.daemon(machine, || daemon_executable(&app))?,
     )
     .await
     .map_err(|error| format!("{error:#}"))
@@ -1054,6 +1059,8 @@ async fn approve_conversation(
 #[tauri::command]
 async fn answer_conversation_input(
     app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
     id: u64,
     generation: u64,
     request_id: maitty_shared::conversation::ProviderRequestId,
@@ -1064,7 +1071,7 @@ async fn answer_conversation_input(
         generation,
         request_id,
         answers,
-        daemon_executable(&app)?,
+        wire.daemon(machine, || daemon_executable(&app))?,
     )
     .await
     .map_err(|error| format!("{error:#}"))
@@ -1073,10 +1080,12 @@ async fn answer_conversation_input(
 #[tauri::command]
 async fn cancel_conversation(
     app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
     id: u64,
     generation: u64,
 ) -> Result<serde_json::Value, String> {
-    maitty_desktop_client::cancel_conversation(id, generation, daemon_executable(&app)?)
+    maitty_desktop_client::cancel_conversation(id, generation, wire.daemon(machine, || daemon_executable(&app))?)
         .await
         .map_err(|error| format!("{error:#}"))
 }
@@ -1084,11 +1093,13 @@ async fn cancel_conversation(
 #[tauri::command]
 async fn dequeue_conversation(
     app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
     id: u64,
     generation: u64,
     operation: u64,
 ) -> Result<serde_json::Value, String> {
-    maitty_desktop_client::dequeue_conversation(id, generation, operation, daemon_executable(&app)?)
+    maitty_desktop_client::dequeue_conversation(id, generation, operation, wire.daemon(machine, || daemon_executable(&app))?)
         .await
         .map_err(|error| format!("{error:#}"))
 }

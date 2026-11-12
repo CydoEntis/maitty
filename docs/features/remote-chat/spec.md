@@ -85,6 +85,15 @@ A remote daemon is untrusted (ADR 0007). Everything a remote conversation suppli
   and to no other.
 - Request lines never carry a pane's id or secret to another machine (`hello` drops them).
 
+## Known limits
+
+- A request line does not re-check the daemon id the long connection recorded (ADR 0007). If a
+  machine's name starts answering as a different computer, the long connection notices and refuses
+  it, and requests stop with it (a refused machine takes nothing); in the moment between, a request
+  is told apart only by the conversation id and its generation, which the daemon checks.
+- A command (send, approve, answer, cancel) always opens a fresh line; only questions reuse one,
+  as on this computer, because a command asked twice could act twice.
+
 ## Older and newer machines
 
 A machine whose daemon is outside the client's compatibility window is already refused with a
