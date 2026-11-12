@@ -2826,6 +2826,35 @@ fn a_helper_whose_stop_never_came_clears_when_the_agent_says_none_is_running() {
 }
 
 #[test]
+fn a_helper_recorded_as_stopped_no_longer_holds_its_session_working() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let mut start = report(t, "", 0, HookStatus::Working, "SubagentStart");
+    if let ClientMsg::Hook { subagent, .. } = &mut start {
+        *subagent = Some(Subagent {
+            id: "a1".into(),
+            kind: "general-purpose".into(),
+            start: true,
+            reported_at: 0,
+            task: None,
+            model: None,
+            effort: None,
+            activity: None,
+        });
+    }
+    d.apply_hook(start, Some(true), Vec::new());
+    assert_eq!(d.terms[&t].subagents.len(), 1);
+    // Some path marked it lost without dropping it from the count.
+    for record in &mut d.terms.get_mut(&t).expect("pane").subagent_activity {
+        record.state = SubagentState::ConnectionLost;
+    }
+    d.update_statuses();
+    assert!(d.terms[&t].subagents.is_empty(), "a stopped helper is not counted as running");
+    let terms: Vec<TermId> = d.terms.keys().copied().collect();
+    close(&mut d, &terms);
+}
+
+#[test]
 fn a_progress_bar_that_goes_off_while_helpers_run_is_not_a_cancel() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
