@@ -1,3 +1,4 @@
+import { markClosed } from './closedSessions'
 import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react'
 import type { AgentTerminals } from '@/data/agentTerminals'
 import { LOCAL_MACHINE } from '@/api/machines'
@@ -40,6 +41,8 @@ export function useAgentExits({ sessions, listed, setLayout, agentTerminals, end
     lastSeen.current = now
     if (ended.length === 0) return
     const gone = ended.map((session) => session.id)
+    // The agent ended on purpose: its row goes now, not after the grace a lost row gets.
+    markClosed(gone)
     const theirs = ended.flatMap((session) => agentTerminals.get(session.id) ?? []).filter((id) => now.has(id))
     // With terminals to end, the close takes the agents' panes out as well, in the one layout change it makes when
     // the daemon has answered: a change made here first would be undone by it.

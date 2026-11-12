@@ -1,7 +1,9 @@
 import type { UseQueryResult } from '@tanstack/react-query'
 import type { Conversation } from '@/data/preview'
 import type { RemoteMachine } from './model/machines'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { wasClosed } from './closedSessions'
+import { heldView, LINGER_MS, LINGER_SLACK_MS, pruneMissing, trackMissing, type Missing } from './model/lingering'
 import { markConversationsDisconnected } from '@/data/connection'
 import { rememberSessions, withEnded } from './model/ended'
 import { isListedChatSession } from './model/chatSession'
@@ -34,7 +36,20 @@ export function useSessionList({ sessionsQuery, online, machines, home, layout }
   // What each row shows is remembered, so a later refresh keeps it (see `keepLabels`); only a change is stored, which ends the loop.
   const labelsChanged = everySession.length !== shownLabels.size || everySession.some((view) => shownLabels.get(view.id)?.title !== view.title || shownLabels.get(view.id)?.cwd !== view.cwd || shownLabels.get(view.id)?.branch !== view.branch)
   if (labelsChanged) setShownLabels(new Map(everySession.map((view) => [view.id, view])))
-  const sessions = everySession
+  // A list that misses a session for a moment must not take its row away (see `trackMissing`).
+  const [previousList, setPreviousList] = useState(everySession)
+  const [missing, setMissing] = useState<ReadonlyMap<string, Missing>>(() => new Map())
+  if (previousList !== everySession) {
+    setPreviousList(everySession)
+    setMissing((before) => trackMissing(before, previousList, everySession, Date.now(), wasClosed))
+  }
+  useEffect(() => {
+    if (missing.size === 0) return undefined
+    const timer = window.setTimeout(() => { setMissing((before) => pruneMissing(before, Date.now())) }, LINGER_MS + LINGER_SLACK_MS)
+    return () => { window.clearTimeout(timer) }
+  }, [missing])
+  const held = useMemo(() => [...missing.values()].map(heldView), [missing])
+  const sessions = useMemo(() => (held.length === 0 ? everySession : [...everySession, ...held]), [everySession, held])
   const sessionMap = useMemo(() => new Map(sessions.map((session) => [session.id, session])), [sessions])
   // A session the daemon stops listing keeps its pane, shown as ended, so a refresh that misses one
   // never closes a layout or moves your focus. A pane goes only when you close it.

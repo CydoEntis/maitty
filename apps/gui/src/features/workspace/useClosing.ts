@@ -1,3 +1,4 @@
+import { markClosed, unmarkClosed } from './closedSessions'
 import { movePanes } from './components/paneTransition'
 import { type Dispatch, type SetStateAction, useCallback, useState } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
@@ -42,6 +43,7 @@ export function useClosing({ setLayout, queryClient, layout, sessions, flash, pa
     if (closed === null) return
     setLastClose(null)
     toast.dismiss(closed.toastId)
+    unmarkClosed(closed.sessions.map((session) => session.id))
     void Promise.all(closed.sessions.map((session) => undoCloseSession(session.conversation)))
       .then(async () => {
         setLayout((current) => (current === closed.after ? closed.before : closed.sessions.reduce((layoutNow, session) => showSession(layoutNow, session.id, makeId), current)))
@@ -59,6 +61,7 @@ export function useClosing({ setLayout, queryClient, layout, sessions, flash, pa
     // so stopping an agent looked as if it had turned into a terminal. Undo brings them back with it.
     const gone = new Set(ids.flatMap((id) => [id, ...(agentTerminals.get(id) ?? [])]))
     const asked = new Set(ids)
+    markClosed(gone)
     const running = sessions.filter((session) => gone.has(session.id))
     // Panes of sessions that already ended have nothing to stop: they just close.
     if (running.length === 0) {
