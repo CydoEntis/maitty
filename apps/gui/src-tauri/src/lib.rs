@@ -1194,6 +1194,32 @@ async fn approve_conversation(
 }
 
 #[tauri::command]
+async fn allow_conversation_always(
+    app: tauri::AppHandle,
+    id: u64,
+    generation: u64,
+    request_id: maitty_shared::conversation::ProviderRequestId,
+) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::allow_conversation_always(id, generation, request_id, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn close_conversation_with_undo(app: tauri::AppHandle, id: u64, generation: u64) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::close_conversation_with_undo(id, generation, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn undo_close_conversation(app: tauri::AppHandle, id: u64) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::undo_close_conversation(id, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
 async fn answer_conversation_input(
     app: tauri::AppHandle,
     id: u64,
@@ -1524,6 +1550,9 @@ pub fn run() {
             start_shell_in_fleet,
             send_conversation,
             approve_conversation,
+            allow_conversation_always,
+            close_conversation_with_undo,
+            undo_close_conversation,
             answer_conversation_input,
             cancel_conversation,
             dequeue_conversation,

@@ -155,7 +155,7 @@ export function useShortcutRunner({ newSession, focusedMachineNumber, newTermina
         const single = tab.panes.length > 1
         const targets = single ? tab.panes.filter((pane) => pane.id === tab.focus) : tab.panes
         const ids = targets.map((pane) => pane.sessionId)
-        askToClose(ids, () => { endSessions(ids, single ? 'Pane' : 'Session') })
+        askToClose(ids, () => { endSessions(ids) })
         return
       }
       case 'toggle-sidebar':

@@ -195,6 +195,7 @@ const ApprovalRequestSchema = z.object({
   questions: z.array(UserInputQuestionSchema),
   permissions: z.unknown().nullable().optional(),
   choices: z.array(z.enum(['Accept', 'AcceptForSession', 'Decline', 'Cancel'])),
+  can_remember: z.boolean().default(false),
 })
 const ReadResultSchema = z.object({
   conversation: z.number().int().nonnegative(),
@@ -847,6 +848,15 @@ export async function approveRequest(conversation: Pick<Conversation, 'id' | 'ge
   })
 }
 
+/** Approves a command request and has the daemon remember it for the conversation's project: the same command is then allowed without asking. */
+export async function allowAlways(conversation: Pick<Conversation, 'id' | 'generation'>, requestId: number | string): Promise<void> {
+  await invokeParsed('allow_conversation_always', NullSchema, {
+    id: Number(conversation.id),
+    generation: conversation.generation,
+    requestId,
+  })
+}
+
 export async function answerUserInput(conversation: Pick<Conversation, 'id' | 'generation'>, requestId: number | string, answers: Record<string, string[]>): Promise<void> {
   await invokeParsed('answer_conversation_input', NullSchema, {
     id: Number(conversation.id),
@@ -881,16 +891,26 @@ export async function reloadAgentOnDaemon(conversation: Pick<Conversation, 'id'>
  * Ends a terminal session with a six-second undo window: the daemon hides it at once and closes it
  * for real when the window passes. `undoCloseSession` brings it back while the window is open.
  */
-export async function closeSessionWithUndo(conversation: Pick<Conversation, 'id'>): Promise<void> {
+export async function closeSessionWithUndo(conversation: Pick<Conversation, 'id' | 'generation'>): Promise<void> {
   if (!isDesktop()) return
   const pane = addressOf(conversation.id)
-  if (pane !== null) await invokeParsed('close_session_with_undo', NullSchema, { term: pane.term, ...machineArgs(pane) })
+  if (pane !== null) {
+    await invokeParsed('close_session_with_undo', NullSchema, { term: pane.term, ...machineArgs(pane) })
+    return
+  }
+  // A chat: the daemon archives it at once and ends its agent when the window passes.
+  if (conversation.generation === undefined) throw new Error('Conversation generation is unavailable')
+  await invokeParsed('close_conversation_with_undo', NullSchema, { id: Number(conversation.id), generation: conversation.generation })
 }
 
 export async function undoCloseSession(conversation: Pick<Conversation, 'id'>): Promise<void> {
   if (!isDesktop()) return
   const pane = addressOf(conversation.id)
-  if (pane !== null) await invokeParsed('undo_close_terminal_session', NullSchema, { term: pane.term, ...machineArgs(pane) })
+  if (pane !== null) {
+    await invokeParsed('undo_close_terminal_session', NullSchema, { term: pane.term, ...machineArgs(pane) })
+    return
+  }
+  await invokeParsed('undo_close_conversation', NullSchema, { id: Number(conversation.id) })
 }
 
 /** The person's answer to a session that asked to start helpers: this session, every session of its project, or none. */
