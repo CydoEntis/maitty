@@ -2,6 +2,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { z } from 'zod'
 import { bytesOf } from './ipcBytes'
+import { CheckSchema } from '@/features/inspect/checks'
 import { assertLocal, type LocalFeature } from '@/lib/localOnly'
 import { LOCAL_MACHINE, addressOf, machineArgs, terminalOf, terminalSessionId } from './machines'
 import { previewConversations, type Conversation, type Message, type SessionStatus } from '@/data/preview'
@@ -52,6 +53,19 @@ const TerminalSessionSchema = z.object({
   // When the status last changed, in unix seconds; the sidebar row's time.
   since: z.number().nonnegative().default(0),
   asking: z.string().default(''),
+  // The pane's checks (`TermInfo.checks`); absent from an older daemon.
+  checks: z.array(CheckSchema).default([]),
+  // The pull request of the pane's branch, as the daemon polls it (`TermInfo.pr`); absent from an older daemon.
+  pr: z.object({
+    number: z.number().int().nonnegative(),
+    url: z.string().default(''),
+    title: z.string().default(''),
+    state: z.enum(['Open', 'Merged', 'Closed']).default('Open'),
+    draft: z.boolean().default(false),
+    checks: z.object({ passed: z.number().int().default(0), pending: z.number().int().default(0), failed: z.array(z.string()).default([]) }).default({ passed: 0, pending: 0, failed: [] }),
+    review: z.enum(['None', 'Required', 'Approved', 'ChangesRequested']).default('None'),
+    conflicting: z.boolean().default(false),
+  }).nullable().default(null),
   // The follow-ups its daemon holds for the working agent, oldest first (`TermInfo.queued`).
   queued: z.array(z.string()).default([]),
   // The agent's own hook said what its permission prompt asks (not read off the screen).
@@ -85,7 +99,12 @@ const TerminalSessionSchema = z.object({
 })
 const PlanLimitSchema = z.object({ name: z.string(), used: z.number(), resets_at: z.number().default(0) })
 
+/** What an agent asked the person for with `maitty_request_secret` (`SecretRequest` in the protocol). */
+const SecretAskSchema = z.object({ id: z.number().int().nonnegative(), term: z.number().int().nonnegative(), label: z.string(), reason: z.string().default('') })
+
 const DaemonSnapshotSchema = z.object({
+  // Secrets agents are waiting for. Never the values: those only ever go from the person to the daemon.
+  secret_requests: z.array(SecretAskSchema).default([]).catch([]),
   // Plan limits by agent (`Snapshot.limits`), as each agent last reported them. A shape this app cannot read is no limits, not no sessions.
   limits: z.array(z.tuple([z.string(), z.array(PlanLimitSchema)])).default([]).catch([]),
   // Read one by one, like the terminals: a record this app can't read must not take every session offline.
@@ -402,6 +421,8 @@ export function conversationsFromSnapshot(raw: unknown, machine?: SnapshotMachin
   // The daemon only follows an agent the user started there, so that chat is read-only (ADR 0003).
   const chatOf = new Map(summaries.flatMap((summary) => (summary.native_term === null ? [] : [[summary.native_term, { conversation: summary.id, generation: summary.generation, ...(summary.execution === 'Native' ? { readOnly: true } : {}) }] as const])))
   const limitsOf = new Map(snapshot.limits)
+  const secretsOf = new Map<number, z.infer<typeof SecretAskSchema>[]>()
+  for (const ask of snapshot.secret_requests) secretsOf.set(ask.term, [...(secretsOf.get(ask.term) ?? []), ask])
   const listed = Object.values(snapshot.terms)
     .flatMap((term) => {
       const read = readTerminal(term, from)
@@ -411,7 +432,7 @@ export function conversationsFromSnapshot(raw: unknown, machine?: SnapshotMachin
   // A conversation that belongs to a pane in this list is that session's chat, not a session of its own.
   const shownPanes = new Set(listed.map((term) => term.id))
   const terminals = listed
-    .map((term) => toTerminalConversation(term, snapshot.workspaces, machine, machine === undefined ? chatOf.get(term.id) : undefined, term.agent === null ? undefined : limitsOf.get(term.agent)))
+    .map((term) => toTerminalConversation(term, snapshot.workspaces, machine, machine === undefined ? chatOf.get(term.id) : undefined, term.agent === null ? undefined : limitsOf.get(term.agent), secretsOf.get(term.id) ?? []))
   if (machine !== undefined) return terminals
   return [
     ...summaries
@@ -1013,14 +1034,26 @@ export async function folderBranches(folder: string): Promise<FolderBranches | n
   return invokeParsed('git_branches', FolderBranchesSchema, { folder })
 }
 
+/**
+ * The person's answer to an agent's request for a secret: the value, or null to decline. Only this computer's
+ * daemon is asked. The value is not logged or kept anywhere on the way.
+ */
+export async function answerSecret(id: number, machine: number, value: string | null): Promise<void> {
+  if (!isTauri()) throw new Error('Secrets are only available in the desktop app')
+  await invoke('answer_secret', { machine, id, value })
+}
+
 /** Switches the folder's checkout to a branch, made first when `create`. */
 export async function switchBranch(folder: string, branch: string, create: boolean): Promise<void> {
   await invokeParsed('git_switch_branch', NullSchema, { folder, branch, create })
 }
 
-/** Adds a worktree of the folder's repository for a branch (made first when `create`); resolves to its folder. */
-export async function addWorktree(folder: string, branch: string, create: boolean): Promise<string> {
-  return invokeParsed('git_add_worktree', z.string(), { folder, branch, create })
+/**
+ * A worktree of the folder's project on a branch (an existing one, else a new one), made by the daemon the way every
+ * other is: trusted like its repo, the repo's setup run, tracked for tidy-up. Resolves to its folder.
+ */
+export async function addWorktree(folder: string, branch: string): Promise<string> {
+  return invokeParsed('add_branch_worktree', z.string(), { folder, branch })
 }
 
 /** Opens an agent's official setup page in the browser. */
@@ -1064,7 +1097,7 @@ export async function resumeConversation(conversation: Conversation): Promise<{ 
   })
 }
 
-function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSummary[], machine?: SnapshotMachine, chat?: Conversation['chat'], limits: readonly z.infer<typeof PlanLimitSchema>[] = []): Conversation {
+function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSummary[], machine?: SnapshotMachine, chat?: Conversation['chat'], limits: readonly z.infer<typeof PlanLimitSchema>[] = [], secrets: readonly z.infer<typeof SecretAskSchema>[] = []): Conversation {
   const folder = term.root ?? term.cwd
   const repo = term.root ? (term.root.split(/[\\/]/).filter(Boolean).at(-1) ?? null) : null
   const workspace = workspaces.find((candidate) => candidate.cwd === folder || candidate.cwd === term.cwd)
@@ -1115,6 +1148,9 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
       timeline: term.timeline,
       usage: term.usage,
       queued: term.queued,
+      pr: term.pr,
+      checks: term.checks,
+      secretAsk: secrets.map((ask) => ({ id: ask.id, label: ask.label, reason: ask.reason })),
       limits: limits.map((limit) => ({ name: limit.name, used: limit.used, resetsAt: limit.resets_at })),
       helperAsk: term.helper_ask,
       subagents: term.subagent_activity.map((child) => ({ id: child.id, name: child.name, state: child.state, task: child.task, startedAt: child.started_at, updatedAt: child.updated_at, latest: child.latest_activity, result: child.result })),

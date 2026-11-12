@@ -9,6 +9,8 @@ import { PaneViewSwitch } from './PaneViewSwitch'
 import { MenuPopup, type MenuEntry } from './MenuPopup'
 import { menuPoint } from './menuPoint'
 import type { PaneView } from '../model/chatView'
+import { SecretAskBar } from './SecretAskBar'
+import { pullRequestHeadline, pullRequestTone } from '../model/pullRequest'
 import type { TerminalDock } from '@/features/settings/preferences'
 import { useShortcutText, useTipWithKeys } from '@/features/shortcuts/platform'
 
@@ -159,6 +161,9 @@ export function PaneCard(props: PaneCardProps) {
             {session.branch && (session.worktree
               ? <span className="mx-pane-branch is-worktree" title={`Worktree on branch ${session.branch}`}><Icon name="worktree" size={10} />{session.branch}</span>
               : <span className="mx-pane-branch" title={`Branch ${session.branch}`}><Icon name="branch" size={10} />{session.branch}</span>)}
+            {session.pr && (
+              <span className={`mx-pane-pr is-${pullRequestTone(session.pr)}`} title={`${session.pr.title} (${session.pr.url})`}>{pullRequestHeadline(session.pr)}</span>
+            )}
           </span>
         </span>
         {props.broadcast && <span className="mx-broadcast-pill">◉ Broadcast</span>}
@@ -201,6 +206,7 @@ export function PaneCard(props: PaneCardProps) {
           <button type="button" className="mx-pane-ended-button" disabled={!props.online} title="It does the work alone" onMouseDown={stop} onClick={() => { props.onAnswerHelpers?.('no') }}>No</button>
         </div>
       )}
+      {session.secretAsk.map((ask) => <SecretAskBar key={ask.id} ask={ask} machine={session.machine} online={props.online} />)}
       {ended && (
         <div className="mx-pane-ended" role="status" aria-label="Session ended">
           <span className="mx-pane-ended-text"><strong>Session ended</strong><small>Its output is kept above.</small></span>

@@ -1,5 +1,5 @@
 //! What the new chat page asks of this computer: which agent programs are installed, a folder's
-//! branches and worktrees, and the two git actions it takes (switch a branch, add a worktree).
+//! branches and worktrees, and the git action it takes (switch a branch; a worktree is the daemon's to make).
 //! Git runs as a program with its arguments (never through a shell), off the UI thread, and is
 //! stopped after `GIT_TIMEOUT`.
 
@@ -108,12 +108,6 @@ fn valid_branch(name: &str) -> bool {
         && !name.chars().any(|c| c.is_whitespace() || c.is_control() || "~^:?*[\\".contains(c))
 }
 
-/// The sibling folder a branch's worktree goes in: `<repo>-<branch with / as ->`.
-fn worktree_folder(repo: &Path, branch: &str) -> Option<PathBuf> {
-    let name = repo.file_name()?.to_string_lossy().into_owned();
-    Some(repo.parent()?.join(format!("{name}-{}", branch.replace('/', "-"))))
-}
-
 /// Whether `name` is a program in one of the folders of `path`; on Windows with any of `extensions`.
 fn on_path(name: &str, path: &OsStr, extensions: &[&str]) -> bool {
     std::env::split_paths(path).any(|dir| {
@@ -215,25 +209,6 @@ fn switch_branch(folder: &Path, branch: &str, create: bool) -> Result<(), String
     run_git(folder, args).map(drop)
 }
 
-fn add_worktree(folder: &Path, branch: &str, create: bool) -> Result<String, String> {
-    if !valid_branch(branch) {
-        return Err("that is not a branch name".into());
-    }
-    let root = PathBuf::from(run_git(folder, &["rev-parse", "--show-toplevel"])?.trim());
-    let target = worktree_folder(&root, branch).ok_or("could not place the worktree")?;
-    if target.exists() {
-        return Err(format!("{} already exists", target.display()));
-    }
-    let target_text = target.to_string_lossy().into_owned();
-    let args: Vec<&str> = if create {
-        vec!["worktree", "add", "-b", branch, &target_text]
-    } else {
-        vec!["worktree", "add", &target_text, branch]
-    };
-    run_git(&root, &args)?;
-    Ok(target_text)
-}
-
 /// The names of the agent programs found on this computer's PATH.
 #[tauri::command]
 pub async fn agents_installed() -> Result<Vec<String>, String> {
@@ -261,15 +236,6 @@ pub async fn git_branches(folder: String) -> Result<Option<BranchInfo>, String> 
 #[tauri::command]
 pub async fn git_switch_branch(folder: String, branch: String, create: bool) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || switch_branch(Path::new(&folder), &branch, create))
-        .await
-        .map_err(|error| error.to_string())?
-}
-
-/// Adds a worktree of the folder's repository for `branch` (made first when `create`) beside it,
-/// and answers its path.
-#[tauri::command]
-pub async fn git_add_worktree(folder: String, branch: String, create: bool) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || add_worktree(Path::new(&folder), &branch, create))
         .await
         .map_err(|error| error.to_string())?
 }
@@ -338,14 +304,6 @@ mod tests {
     }
 
     #[test]
-    fn a_worktree_goes_beside_the_repository_named_for_its_branch() {
-        assert_eq!(
-            worktree_folder(Path::new("/dev/growth"), "agent/grow-028"),
-            Some(PathBuf::from("/dev/growth-agent-grow-028"))
-        );
-    }
-
-    #[test]
     fn a_program_is_found_on_the_path_by_any_extension() {
         let dir = std::env::temp_dir().join(format!("maitty-newchat-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("temp folder");
@@ -377,8 +335,10 @@ mod tests {
         assert_eq!(info.current.as_deref(), Some("feature/x"));
         assert!(switch_branch(&repo, "-f", false).is_err());
 
-        let made = add_worktree(&repo, "agent/grow-1", true).expect("adds a worktree");
-        assert!(Path::new(&made).ends_with("growth-agent-grow-1"));
+        // A worktree is made by the daemon in the app; here one is added directly so the listing of
+        // the repository's worktrees is still read from a real one.
+        let beside = root.join("growth-agent-grow-1");
+        git(&["worktree", "add", "-b", "agent/grow-1", &beside.to_string_lossy()]).expect("adds a worktree");
         let info = branch_info(&repo).expect("reads").expect("a repository");
         assert!(info.worktrees.iter().any(|tree| tree.branch.as_deref() == Some("agent/grow-1")));
         let _ = std::fs::remove_dir_all(&root);

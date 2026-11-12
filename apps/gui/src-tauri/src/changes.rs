@@ -54,9 +54,56 @@ fn create_pull_request(folder: &Path) -> Result<String, String> {
     pull_request_url(&printed).ok_or_else(|| "gh did not say where the pull request is".to_string())
 }
 
+/// What the Changes tab's remote button asks of the checkout's remote.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SyncAction {
+    /// Learn what the remote has; no branch moves.
+    Fetch,
+    /// Bring the branch up to its upstream when that is only a fast-forward.
+    Pull,
+    /// Send the branch, setting its upstream on `origin` the first time.
+    Push,
+}
+
+/// Fetches, pulls (fast-forward only) or pushes the checkout; answers a line to show.
+fn sync(folder: &Path, action: SyncAction) -> Result<String, String> {
+    match action {
+        SyncAction::Fetch => {
+            run_program("git", folder, &["fetch", "--prune"], NETWORK_TIMEOUT)?;
+            Ok("Fetched".into())
+        }
+        SyncAction::Pull => {
+            let before = run_program("git", folder, &["rev-parse", "HEAD"], QUICK)?;
+            run_program("git", folder, &["pull", "--ff-only"], NETWORK_TIMEOUT)?;
+            let after = run_program("git", folder, &["rev-parse", "HEAD"], QUICK)?;
+            Ok(if before == after { "Already up to date".into() } else { "Pulled".into() })
+        }
+        SyncAction::Push => {
+            let branch = current_branch(folder).map_err(|_| "this checkout is on no branch, so there is nothing to push".to_string())?;
+            if run_program("git", folder, &["rev-parse", "--abbrev-ref", "@{upstream}"], QUICK).is_ok() {
+                run_program("git", folder, &["push"], NETWORK_TIMEOUT)?;
+            } else {
+                run_program("git", folder, &["push", "-u", "origin", &branch], NETWORK_TIMEOUT)?;
+            }
+            Ok(format!("Pushed {branch}"))
+        }
+    }
+}
+
+/// Fetches, pulls or pushes `folder`'s checkout.
+#[tauri::command]
+pub async fn git_sync(wire: tauri::State<'_, crate::terminal_stream::Wire>, machine: Option<u16>, folder: String, action: SyncAction) -> Result<String, String> {
+    wire.require_local(machine, "Changes")?;
+    tauri::async_runtime::spawn_blocking(move || sync(Path::new(&folder), action))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
 /// Commits every change in `folder`'s checkout with `message`.
 #[tauri::command]
-pub async fn git_commit_all(folder: String, message: String) -> Result<String, String> {
+pub async fn git_commit_all(wire: tauri::State<'_, crate::terminal_stream::Wire>, machine: Option<u16>, folder: String, message: String) -> Result<String, String> {
+    wire.require_local(machine, "Changes")?;
     tauri::async_runtime::spawn_blocking(move || commit_all(Path::new(&folder), &message))
         .await
         .map_err(|error| error.to_string())?
@@ -64,7 +111,8 @@ pub async fn git_commit_all(folder: String, message: String) -> Result<String, S
 
 /// Pushes `folder`'s branch and opens a pull request for it.
 #[tauri::command]
-pub async fn git_create_pull_request(folder: String) -> Result<String, String> {
+pub async fn git_create_pull_request(wire: tauri::State<'_, crate::terminal_stream::Wire>, machine: Option<u16>, folder: String) -> Result<String, String> {
+    wire.require_local(machine, "Changes")?;
     tauri::async_runtime::spawn_blocking(move || create_pull_request(Path::new(&folder)))
         .await
         .map_err(|error| error.to_string())?
@@ -128,6 +176,35 @@ mod tests {
         let error = create_pull_request(&folder).expect_err("there is no origin");
         assert!(error.starts_with("fatal:") && error.contains("origin"), "{error}");
         let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_push_sets_the_upstream_and_a_pull_only_fast_forwards() {
+        let mine = repository("sync-mine");
+        let remote = std::env::temp_dir().join(format!("maitty-changes-sync-remote-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&remote);
+        std::fs::create_dir_all(&remote).expect("a folder");
+        git(&remote, &["init", "-q", "--bare", "-b", "main"]);
+        git(&mine, &["remote", "add", "origin", remote.to_str().expect("a path")]);
+        assert_eq!(sync(&mine, SyncAction::Push), Ok("Pushed main".into()));
+        assert_eq!(git(&mine, &["rev-parse", "--abbrev-ref", "@{upstream}"]).trim(), "origin/main");
+        assert_eq!(sync(&mine, SyncAction::Fetch), Ok("Fetched".into()));
+        assert_eq!(sync(&mine, SyncAction::Pull), Ok("Already up to date".into()));
+        // Someone else pushes; a pull brings it in.
+        let other = repository("sync-other");
+        git(&other, &["remote", "add", "origin", remote.to_str().expect("a path")]);
+        git(&other, &["pull", "-q", "origin", "main", "--allow-unrelated-histories", "--no-edit"]);
+        std::fs::write(other.join("b.txt"), "two\n").expect("a file");
+        git(&other, &["add", "-A"]);
+        git(&other, &["commit", "-q", "-m", "two"]);
+        git(&other, &["push", "-q", "origin", "main"]);
+        assert_eq!(sync(&mine, SyncAction::Pull), Ok("Pulled".into()));
+        assert!(mine.join("b.txt").is_file());
+        git(&mine, &["checkout", "-q", "--detach"]);
+        assert!(sync(&mine, SyncAction::Push).is_err_and(|error| error.contains("on no branch")));
+        for folder in [&mine, &other, &remote] {
+            let _ = std::fs::remove_dir_all(folder);
+        }
     }
 
     #[test]

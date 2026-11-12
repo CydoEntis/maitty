@@ -59,9 +59,11 @@ export function WorkspaceDialogs() {
                 view={inspectView}
                 agentWorking={focusedSession.status === 'working'}
                 timeline={focusedSession.timeline}
+                checks={focusedSession.checks}
+                machine={focusedSession.machine}
                 lookAt={lookAt}
                 {...(isShell(focusedSession) ? {} : { comments: { agent: agentName(focusedSession.process), onSend: (message: string) => sendAgentMessage(focusedSession, message) } })}
-                {...(focusedSession.machineName === null && focusedSession.repoRoot !== null ? { changeActions: { folder: focusedSession.repoRoot, suggested: suggestedCommitMessage(focusedSession) } } : {})}
+                {...(focusedSession.machineName === null && focusedSession.repoRoot !== null ? { changeActions: { folder: focusedSession.repoRoot, machine: focusedSession.machine, suggested: suggestedCommitMessage(focusedSession) } } : {})}
                 onView={setInspectView}
                 onClose={() => { setInspectOpen(false) }}
                 onNotice={flash}
@@ -93,6 +95,7 @@ export function WorkspaceDialogs() {
               <NewWorktreeDialog
                 term={worktreeFrom.pane}
                 repoName={worktreeFrom.repoName ?? worktreeFrom.cwdLabel}
+                machine={worktreeFrom.machine}
                 onCreate={(branch, base) => createWorktree(worktreeFrom, branch, base)}
                 onCancel={() => { setWorktreeFrom(null) }}
               />

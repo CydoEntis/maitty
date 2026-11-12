@@ -390,6 +390,23 @@
 .mx-text-button:disabled { opacity: .4; }
 
 /* Naming a session. */
+.mx-check { display: flex; flex-direction: column; gap: 4px; padding: 10px 0; border-bottom: 1px solid var(--pane-line); }
+.mx-check-head { display: flex; justify-content: space-between; gap: 10px; }
+.mx-check-head span, .mx-check small { color: var(--muted); font-size: 12px; }
+.mx-check.is-bad .mx-check-head span { color: var(--danger); }
+.mx-check.is-good .mx-check-head span { color: var(--ok); }
+.mx-check-command { font-family: var(--mono); font-size: 11.5px; color: var(--dim); overflow-wrap: anywhere; }
+.mx-check-actions, .mx-check-reason { display: flex; flex-wrap: wrap; gap: 6px; }
+.mx-check-reason input { flex: 1; min-width: 160px; }
+.mx-check-output { max-height: 240px; overflow: auto; margin: 0; padding: 8px; font-family: var(--mono); font-size: 11px; background: var(--m-well); border-radius: 8px; white-space: pre-wrap; }
+.mx-files-editor { width: 100%; min-height: 320px; box-sizing: border-box; resize: vertical; white-space: pre; overflow: auto; color: inherit; background: transparent; border: 0; outline: 0; }
+.mx-secret-form { display: flex; gap: 6px; align-items: center; }
+.mx-secret-form input { min-width: 180px; }
+.mx-worktree-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px 0; }
+.mx-worktree-row > span:not(.mx-worktree-row-actions) { color: var(--muted); font-size: 12px; }
+.mx-worktree-row-actions { margin-left: auto; display: flex; gap: 6px; }
+.mx-worktree-row small { flex-basis: 100%; color: var(--muted); }
+.mx-text-button.is-danger { color: var(--danger); }
 .mx-rename { width: 100%; max-width: 420px; padding: 20px; border-radius: 16px; background: var(--m-pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); backdrop-filter: var(--blur-pop); display: flex; flex-direction: column; gap: 10px; animation: v8pane .3s var(--ease-out); }
 .mx-folder-row { display: flex; gap: 8px; align-items: center; }
 .mx-folder-row input { flex: 1; min-width: 0; height: 38px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--pane-line); background: var(--well, var(--m-raise)); color: var(--fg); font-family: var(--mono, monospace); font-size: 13px; }

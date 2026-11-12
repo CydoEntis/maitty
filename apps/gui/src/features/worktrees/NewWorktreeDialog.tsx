@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { repoBranches, repoWorktrees } from '@/features/inspect/api'
 import { messageOf, useRepoQuery } from '@/features/inspect/useRepoQuery'
 import { branchNameProblem } from './branchName'
+import { WorktreeManager } from './WorktreeManager'
 
 const CURRENT_COMMIT = ''
 
@@ -10,12 +11,14 @@ type Props = {
   /** The daemon's pane number of the session the worktree is made from. */
   term: number
   repoName: string
+  /** The machine the session is on; worktrees are managed on this computer only. */
+  machine: number
   onCreate: (branch: string, base: string | null) => Promise<void>
   onCancel: () => void
 }
 
 /** ⌘⇧N: a new branch in a folder of its own next to the repo, with a session open in it. */
-export function NewWorktreeDialog({ term, repoName, onCreate, onCancel }: Props) {
+export function NewWorktreeDialog({ term, repoName, machine, onCreate, onCancel }: Props) {
   const [branch, setBranch] = useState('')
   const [base, setBase] = useState(CURRENT_COMMIT)
   const [error, setError] = useState<string | null>(null)
@@ -73,12 +76,7 @@ export function NewWorktreeDialog({ term, repoName, onCreate, onCancel }: Props)
           )}
         {(error ?? problem) && <p className="mx-worktree-error" role="alert">{error ?? problem}</p>}
         {worktrees.data && worktrees.data.length > 1 && (
-          <div className="mx-worktree-list" aria-label="Existing worktrees">
-            <span className="mx-menu-caps">Worktrees of {repoName}</span>
-            <ul>
-              {worktrees.data.map((entry) => <li key={entry.path}><strong>{entry.branch}</strong> <span>{entry.main ? 'main checkout' : entry.path}</span></li>)}
-            </ul>
-          </div>
+          <WorktreeManager worktrees={worktrees.data} machine={machine} repoName={repoName} onChanged={() => { void worktrees.refetch() }} />
         )}
         <div className="mx-rename-actions">
           <button type="button" className="mx-text-button" onClick={onCancel}>Cancel</button>

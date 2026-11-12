@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Icon } from '@/features/workspace/components/glyphs'
-import { repoDiff, type RepoDiff } from './api'
+import { repoDiff, repoStatus, type RepoDiff } from './api'
 import { changeKind } from './changeKind'
 import { CommitBar, type ChangeActions } from './CommitBar'
 import { PatchView, type PatchComments, type SentComment } from './PatchView'
@@ -52,6 +52,8 @@ function FileRow({ file, current, onPick }: { file: ChangedFile; current: boolea
 /** The session's uncommitted changes: the files down the left with the commit under them, the picked file's diff beside. */
 export function ChangesTab({ term, branch, comments, actions, onNotice }: Props) {
   const query = useRepoQuery(term, ['diff'], () => repoDiff(term), CHANGES_REFRESH_MS)
+  // How far the branch is from its upstream, for the remote button; without it (an error, no upstream) the branch reads as level.
+  const status = useRepoQuery(term, ['status'], () => repoStatus(term), CHANGES_REFRESH_MS)
   const [picked, setPicked] = useState<string | null>(null)
   // Comments sent in this look at the changes, by file: a comment stays pinned on its line while other files are read.
   const [sent, setSent] = useState<ReadonlyMap<string, readonly SentComment[]>>(() => new Map())
@@ -71,7 +73,7 @@ export function ChangesTab({ term, branch, comments, actions, onNotice }: Props)
           ))}
           {query.data.truncated && <li className="mx-inspect-note">Showing {files.length} of {query.data.total_files} files.</li>}
         </ul>
-        {actions && <CommitBar {...actions} files={files.length} onChanged={() => { void query.refetch() }} onNotice={onNotice} />}
+        {actions && <CommitBar {...actions} files={files.length} ahead={status.data?.ahead ?? 0} behind={status.data?.behind ?? 0} onChanged={() => { void query.refetch(); void status.refetch() }} onNotice={onNotice} />}
       </div>
       <div className="mx-changes-main">
         {selected && kind && where ? (

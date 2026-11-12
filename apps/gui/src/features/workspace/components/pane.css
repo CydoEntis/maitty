@@ -48,6 +48,10 @@
 .mx-pane-cwd { font-size: 11px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
 .mx-pane-branch.is-worktree { color: var(--ansi-blue); }
 .mx-pane-branch { display: flex; align-items: center; gap: 4px; flex: none; font-family: var(--mono); font-size: 10.5px; color: var(--ansi-mag); }
+.mx-pane-pr { flex: none; font-family: var(--mono); font-size: 10.5px; color: var(--dim); }
+.mx-pane-pr.is-bad { color: var(--danger); }
+.mx-pane-pr.is-good { color: var(--ok); }
+.mx-pane-pr.is-waiting { color: var(--working); }
 .mx-pane-controls { display: flex; align-items: center; gap: 0; margin-left: auto; }
 .mx-pane-control { width: 28px; height: 28px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--dim); transition: background-color .14s ease, color .14s ease; }
 .mx-pane-control:not(:disabled):hover { background: rgba(var(--hl), calc(.09 * var(--hk))); color: var(--fg); }

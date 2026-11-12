@@ -220,7 +220,7 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
     if (!online) throw new Error('The daemon is not reachable')
     // The branch is settled before the agent starts, and a failure stays on the page with its words.
     let folder = request.folder
-    if (request.branch?.worktree) folder = await addWorktree(folder, request.branch.name, request.branch.create)
+    if (request.branch?.worktree) folder = await addWorktree(folder, request.branch.name)
     else if (request.branch) await switchBranch(folder, request.branch.name, request.branch.create)
     // The page stays, with the message in it, until the chat that replaces it is there: closing it first showed the
     // empty window (or the last chat) for a moment between the two.

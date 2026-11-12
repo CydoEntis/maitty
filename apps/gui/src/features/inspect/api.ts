@@ -72,13 +72,28 @@ export async function restoreSnapshot(term: number, commit: string): Promise<num
 }
 
 /** Stages and commits every change in the checkout at `folder` on this computer; resolves to the commit's short hash. */
-export async function commitAll(folder: string, message: string): Promise<string> {
+export async function commitAll(folder: string, message: string, machine: number): Promise<string> {
   if (!isTauri()) throw new Error('Committing is only available in the desktop app')
-  return z.string().parse(await invoke<unknown>('git_commit_all', { folder, message }))
+  return z.string().parse(await invoke<unknown>('git_commit_all', { machine, folder, message }))
+}
+
+/** Saves the text of an existing file of the checkout `term` is in; the daemon refuses anything but a plain file inside it. */
+export async function writeProjectFile(term: number, machine: number, path: string, contents: string): Promise<void> {
+  if (!isTauri()) throw new Error('Editing is only available in the desktop app')
+  await invoke('write_project_file', { machine, term, path, contents })
+}
+
+/** What the remote button can do for a checkout. */
+export type SyncAction = 'fetch' | 'pull' | 'push'
+
+/** Fetches, pulls (fast-forward only) or pushes the checkout at `folder` on this computer; resolves to a line to show. */
+export async function syncRemote(folder: string, action: SyncAction, machine: number): Promise<string> {
+  if (!isTauri()) throw new Error('Syncing is only available in the desktop app')
+  return z.string().parse(await invoke<unknown>('git_sync', { machine, folder, action }))
 }
 
 /** Pushes the checkout's branch and opens a pull request for it; resolves to the pull request's address. */
-export async function createPullRequest(folder: string): Promise<string> {
+export async function createPullRequest(folder: string, machine: number): Promise<string> {
   if (!isTauri()) throw new Error('Pull requests are only available in the desktop app')
-  return z.string().parse(await invoke<unknown>('git_create_pull_request', { folder }))
+  return z.string().parse(await invoke<unknown>('git_create_pull_request', { machine, folder }))
 }
