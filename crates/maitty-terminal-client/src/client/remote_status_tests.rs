@@ -6,7 +6,6 @@
 use super::*;
 use crate::client::connections::Connections;
 use crate::client::screen::Proj;
-use std::path::Path;
 use std::process::{Command as Process, Stdio};
 
 const WAIT: Duration = Duration::from_secs(20);
@@ -76,37 +75,10 @@ impl Drop for Sandbox {
 
 /// The `maitty` binary and the shim, built here: `cargo test -p <this crate>` builds neither.
 pub(super) fn built() -> (PathBuf, PathBuf) {
-    static BUILT: std::sync::OnceLock<(PathBuf, PathBuf)> = std::sync::OnceLock::new();
-    BUILT
-        .get_or_init(|| {
-            let exe = std::env::current_exe().expect("the test's own path");
-            let profile = exe
-                .parent()
-                .and_then(Path::parent)
-                .expect("target/<profile>");
-            let suffix = std::env::consts::EXE_SUFFIX;
-            let maitty = profile.join(format!("maitty{suffix}"));
-            let shim = profile.join("examples").join(format!("fake-ssh{suffix}"));
-            let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-            let status = Process::new(cargo)
-                .args([
-                    "build",
-                    "--package",
-                    "maitty",
-                    "--bin",
-                    "maitty",
-                    "--example",
-                    "fake-ssh",
-                ])
-                .status()
-                .expect("run cargo");
-            assert!(
-                status.success(),
-                "building maitty and the fake-ssh shim failed"
-            );
-            (maitty, shim)
-        })
-        .clone()
+    (
+        maitty_test_support::maitty_binary(),
+        maitty_test_support::fake_ssh(),
+    )
 }
 
 /// The window under test, fed from the daemon's connection the way the event loop feeds it.

@@ -57,6 +57,7 @@ jsonc-parser = { version = "=0.33.1", default-features = false, features = ["cst
 
 [dev-dependencies]
 tokio = { version = "1", features = ["fs"] }
+maitty-test-support = { path = "../maitty-test-support" }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Console", "Win32_System_Diagnostics_ToolHelp", "Win32_System_JobObjects", "Win32_System_Registry", "Win32_System_Threading", "Win32_System_Time", "Win32_UI_WindowsAndMessaging"] }

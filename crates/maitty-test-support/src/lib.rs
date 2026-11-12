@@ -7,31 +7,34 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
-/// `target/<profile>/examples/fake-ssh`, built here: `cargo test --test <name>` does not
-/// build examples.
+/// The built `fake-ssh` example: `cargo test --test <name>` does not build examples.
 pub fn fake_ssh() -> PathBuf {
     static BUILT: OnceLock<PathBuf> = OnceLock::new();
     BUILT
-        .get_or_init(|| {
-            let exe = std::env::current_exe().expect("the test's own path");
-            let profile = exe
-                .parent()
-                .and_then(Path::parent)
-                .expect("target/<profile>");
-            let path = profile
-                .join("examples")
-                .join(format!("fake-ssh{}", std::env::consts::EXE_SUFFIX));
-            // Always ask cargo: it is a no-op when current, and `cargo test --test` would
-            // otherwise leave a stale shim from an earlier build.
-            let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-            let built = Command::new(cargo)
-                .args(["build", "--package", "maitty", "--example", "fake-ssh"])
-                .status()
-                .expect("run cargo");
-            assert!(built.success(), "building the fake-ssh example failed");
-            path
-        })
+        .get_or_init(|| build_with_cargo(&["--example", "fake-ssh"], "fake-ssh"))
         .clone()
+}
+
+/// Builds with cargo and returns the file it reports. Always asks cargo: a no-op when
+/// current, and it would otherwise leave a stale build from earlier. The path comes from
+/// cargo's own output, because guessing it from the test binary's folder broke when a newer
+/// Rust moved intermediate build files out of `target/<profile>/`.
+fn build_with_cargo(what: &[&str], target_name: &str) -> PathBuf {
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let built = Command::new(cargo)
+        .args(["build", "--package", "maitty"])
+        .args(what)
+        .arg("--message-format=json-render-diagnostics")
+        .stderr(Stdio::inherit())
+        .output()
+        .expect("run cargo");
+    assert!(built.status.success(), "building {target_name} failed");
+    String::from_utf8_lossy(&built.stdout)
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter(|msg| msg["reason"] == "compiler-artifact" && msg["target"]["name"] == target_name)
+        .find_map(|msg| msg["executable"].as_str().map(PathBuf::from))
+        .unwrap_or_else(|| panic!("cargo did not say where it built {target_name}"))
 }
 
 /// Runs to completion, or is killed once `limit` passes (a hung connection must fail the
@@ -84,26 +87,12 @@ pub fn text(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
-/// `target/<profile>/maitty`, built here: a test of another crate does not get the terminal
-/// app's binary built for it.
+/// The terminal app's binary, built here: a test of another crate does not get it built
+/// for it.
 pub fn maitty_binary() -> PathBuf {
     static BUILT: OnceLock<PathBuf> = OnceLock::new();
     BUILT
-        .get_or_init(|| {
-            let exe = std::env::current_exe().expect("the test's own path");
-            let profile = exe
-                .parent()
-                .and_then(Path::parent)
-                .expect("target/<profile>");
-            let path = profile.join(format!("maitty{}", std::env::consts::EXE_SUFFIX));
-            let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-            let built = Command::new(cargo)
-                .args(["build", "--package", "maitty", "--bin", "maitty"])
-                .status()
-                .expect("run cargo");
-            assert!(built.success(), "building the maitty binary failed");
-            path
-        })
+        .get_or_init(|| build_with_cargo(&["--bin", "maitty"], "maitty"))
         .clone()
 }
 
