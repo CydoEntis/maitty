@@ -121,6 +121,7 @@ pub(super) fn term(
         subagents: Vec::new(),
         subagent_activity: Vec::new(),
         session: None,
+        effort: None,
         started_by: None,
         tab_of: None,
         helper_ask: Vec::new(),

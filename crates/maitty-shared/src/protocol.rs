@@ -1384,6 +1384,9 @@ pub struct TermInfo {
     /// Provider conversation ID that owns these child records.
     #[serde(default)]
     pub session: Option<String>,
+    /// The effort level the agent runs at (`low`, `medium`, `high`, ...), as its own files say; none when they do not.
+    #[serde(default)]
+    pub effort: Option<String>,
     /// The pane whose agent started this one, if one did.
     #[serde(default)]
     pub started_by: Option<TermId>,
@@ -2579,6 +2582,14 @@ mod tests {
         assert_eq!((old.diff_added, old.diff_removed), (0, 0));
         let new = pane_from(serde_json::json!({"diff_added": 7, "diff_removed": 2}));
         assert_eq!((new.diff_added, new.diff_removed), (7, 2));
+    }
+
+    /// A peer from before the effort field sends none: the pane reads as not saying, and one that does is read.
+    #[test]
+    fn a_pane_from_before_the_effort_field_reads_as_not_saying() {
+        assert_eq!(pane_from(serde_json::json!({})).effort, None);
+        let new = pane_from(serde_json::json!({"effort": "medium"}));
+        assert_eq!(new.effort.as_deref(), Some("medium"));
     }
 
     /// Pin and archive are new commands: a peer built before them can't read them.

@@ -1,4 +1,5 @@
 import type { ChatPage, HistoryCursor } from '@/api/daemon'
+import { splitConversationKey } from '@/api/conversationKey'
 import type { ChatProvider } from './chatEvents'
 import { applyAnsweredApprovals, applyApprovals, applyHistoryEntries, createChatProjection, type ChatProjection } from './projection'
 
@@ -148,6 +149,8 @@ export async function syncFeed(start: ChatFeed, read: ReadPage, now: () => numbe
     page = await read(null)
   }
 
+  // The feed is kept under the conversation's key, which names another machine's chat too; the daemon's cursors carry its own number.
+  const own = splitConversationKey(start.conversation).id
   let feed = applyPage(start, page, now())
   // Without the daemon's `resume` (an older daemon) the feed asks again for the last page it read.
   let lastPageStart = from
@@ -155,7 +158,7 @@ export async function syncFeed(start: ChatFeed, read: ReadPage, now: () => numbe
   const visited = new Set<string>()
   for (let pages = 1; page.history.next; pages += 1) {
     const next = page.history.next
-    if (next.conversation !== start.conversation || next.generation !== page.generation) {
+    if (next.conversation !== own || next.generation !== page.generation) {
       throw new Error('Conversation history cursor belongs to a different conversation')
     }
     const key = JSON.stringify(next)

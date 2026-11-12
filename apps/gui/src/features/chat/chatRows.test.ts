@@ -7,7 +7,16 @@ const message = messageEvent
 const command = (id: string, turnId = 't1') => ({ ...commandEvent(id), turnId })
 const turn = (outcome: TurnEvent['outcome'], timed: boolean): TurnEvent => ({ kind: 'turn', id: 'turn:t1', turnId: 't1', outcome, startedAtMs: 1_000, endedAtMs: 8_000, timed })
 
+const writtenDoc = (id: string) => editEvent(id, { tool: 'Write', file: '/home/me/Downloads/plan.md', status: 'completed', change: 'add', diff: { status: 'available', hunks: [{ header: '@@ -0,0 +1,2 @@', lines: [{ kind: 'add', text: '# Plan' }, { kind: 'add', text: 'Do it.' }] }], added: 2, removed: 0, truncated: false } })
+
 describe('buildRows', () => {
+  it('shows a Markdown document the agent wrote as a row of its own, not folded into the run around it', () => {
+    const rows = buildRows([command('c1'), command('c2'), writtenDoc('doc'), command('c3'), command('c4')], false)
+
+    expect(rows.map((row) => row.kind)).toEqual(['work', 'step', 'work'])
+    expect(rows[1]).toMatchObject({ key: 'doc' })
+  })
+
   it('joins the agent messages of one turn that follow each other into one message', () => {
     const rows = buildRows([message('u', 'user', 'go'), message('a1', 'agent', 'First.\n\nSecond.'), message('a2', 'agent', 'Third.')], false)
 

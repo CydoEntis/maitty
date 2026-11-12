@@ -16,6 +16,14 @@ use std::sync::LazyLock;
 const CODEX_EVERY: Duration = Duration::from_secs(5);
 /// How much of the end of a Codex session file is read for its latest numbers.
 const CODEX_TAIL: u64 = 512 * 1024;
+/// How often each agent's effort is read from its files.
+const EFFORT_EVERY: Duration = Duration::from_secs(5);
+/// How much of the end of Claude's transcript is searched for its latest request; one request line is a few KB.
+const EFFORT_TAIL: u64 = 1024 * 1024;
+/// The start of a Codex session file, where its settings event is written when the session begins.
+const CODEX_HEAD_FOR_EFFORT: usize = 256 * 1024;
+/// The Codex event that lists a thread's settings, written at its start and again when they change.
+const SETTINGS_EVENT: &str = "thread_settings_applied";
 /// A limit with no known reset time: try again after this long (seconds).
 const RETRY_LIMIT_AFTER: u64 = 30 * 60;
 /// "continue" goes this long after the reset, so the limit has really lifted (seconds).
@@ -104,6 +112,58 @@ impl Daemon {
         self.usage_store.turn(now, &session, &agent, &place, secs);
         self.turns.retain(|(at, ..)| now.saturating_sub(*at) < DAY);
         self.turns.push((now, agent, place, secs));
+    }
+
+    /// Which effort each agent runs at, from what its own files say, read now and then off the loop. A pane whose
+    /// files say nothing (Claude at its default writes no effort) keeps none, so the window says "agent's own" rather than guess.
+    pub(super) fn poll_effort(&mut self) {
+        if self.effort_busy || self.last_effort.elapsed() < EFFORT_EVERY {
+            return;
+        }
+        let panes: Vec<_> = self
+            .terms
+            .values()
+            .filter(|t| matches!(t.agent.as_deref(), Some("claude" | "codex")))
+            .map(|t| (t.id, t.agent.clone(), t.session.clone(), t.transcript.clone()))
+            .collect();
+        if panes.is_empty() {
+            return;
+        }
+        self.effort_busy = true;
+        self.last_effort = Instant::now();
+        let tx = self.tx.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut found = Vec::new();
+            for (term, agent, session, transcript) in panes {
+                let effort = match agent.as_deref() {
+                    Some("claude") => transcript
+                        .map(|file| claude_effort(&read_tail(&file, EFFORT_TAIL))),
+                    Some("codex") => session.and_then(|id| codex_file_for(&id)).map(|file| {
+                        let tail = read_tail(&file, CODEX_TAIL);
+                        let text = if tail.contains(SETTINGS_EVENT) { tail } else { read_head(&file, CODEX_HEAD_FOR_EFFORT) };
+                        codex_effort(&text, &codex_models_cache())
+                    }),
+                    _ => None,
+                };
+                // A file that could not be found leaves what was known alone.
+                if let Some(effort) = effort {
+                    found.push((term, effort));
+                }
+            }
+            let _ = tx.blocking_send(Ev::AgentEffort(found));
+        });
+    }
+
+    pub(super) fn agent_effort(&mut self, found: Vec<(TermId, Option<String>)>) {
+        self.effort_busy = false;
+        for (term, effort) in found {
+            if let Some(t) = self.terms.get_mut(&term)
+                && t.effort != effort
+            {
+                t.effort = effort;
+                self.dirty = true;
+            }
+        }
     }
 
     /// Codex writes its numbers to its session file: read them now and then, off the loop.
@@ -315,12 +375,16 @@ pub(super) fn codex_file_for(session: &str) -> Option<PathBuf> {
     codex_root(&codex_recent_sessions(), Some(session)).map(|s| s.file.clone())
 }
 
+/// Codex's own folder (`$CODEX_HOME`, else `~/.codex`).
+fn codex_home() -> Option<PathBuf> {
+    std::env::var_os("CODEX_HOME")
+        .map(PathBuf::from)
+        .or_else(|| directories::BaseDirs::new().map(|d| d.home_dir().join(".codex")))
+}
+
 /// Codex's sessions folder (`$CODEX_HOME/sessions`, else `~/.codex/sessions`).
 fn codex_sessions() -> Option<PathBuf> {
-    let home = std::env::var_os("CODEX_HOME")
-        .map(PathBuf::from)
-        .or_else(|| directories::BaseDirs::new().map(|d| d.home_dir().join(".codex")))?;
-    Some(home.join("sessions"))
+    Some(codex_home()?.join("sessions"))
 }
 
 /// A Codex session file: who it is and where it ran, from its first line.
@@ -487,6 +551,53 @@ fn read_head(file: &Path, n: usize) -> String {
         .and_then(|mut f| f.read(&mut head))
         .unwrap_or(0);
     String::from_utf8_lossy(&head[..read]).into_owned()
+}
+
+/// The effort level in the newest request line of Claude's transcript: present only when the level was set
+/// (`/effort`, `--effort`, a setting); a session at the model's own default writes none, and then nothing is said.
+fn claude_effort(tail: &str) -> Option<String> {
+    let value = tail
+        .lines()
+        .rev()
+        .filter(|line| line.contains("\"type\":\"api-request\""))
+        .find_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())?;
+    value["params"]["effort"].as_str().filter(|e| plain_level(e)).map(str::to_owned)
+}
+
+/// The effort a Codex thread runs at: the level its settings name, else the default of its model from Codex's
+/// own model list (`models_cache.json`).
+fn codex_effort(text: &str, models_cache: &str) -> Option<String> {
+    let settings = text
+        .lines()
+        .rev()
+        .filter(|line| line.contains(SETTINGS_EVENT))
+        .find_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())?;
+    let thread = &settings["payload"]["thread_settings"];
+    let named = thread["collaboration_mode"]["settings"]["reasoning_effort"].as_str();
+    if let Some(level) = named.filter(|level| plain_level(level)) {
+        return Some(level.to_owned());
+    }
+    let model = thread["model"].as_str()?;
+    let cache: serde_json::Value = serde_json::from_str(models_cache).ok()?;
+    cache["models"]
+        .as_array()?
+        .iter()
+        .find(|entry| entry["slug"].as_str() == Some(model))?["default_reasoning_level"]
+        .as_str()
+        .filter(|level| plain_level(level))
+        .map(str::to_owned)
+}
+
+/// Codex's own models list, or nothing when it has not fetched one.
+fn codex_models_cache() -> String {
+    codex_home()
+        .and_then(|home| std::fs::read_to_string(home.join("models_cache.json")).ok())
+        .unwrap_or_default()
+}
+
+/// A level is a short word; anything else a file holds is not shown.
+fn plain_level(level: &str) -> bool {
+    !level.is_empty() && level.len() <= 12 && level.bytes().all(|b| b.is_ascii_lowercase())
 }
 
 /// The last `n` bytes of a file, as text.
@@ -794,5 +905,31 @@ mod tests {
         ] {
             assert!(!LIMIT_HIT.is_match(talk), "{talk}");
         }
+    }
+
+    #[test]
+    fn claude_effort_is_the_level_its_latest_request_names_and_nothing_when_it_names_none() {
+        let named = r#"{"type":"api-request","params":{"model":"claude-sonnet-5-5","effort":"high"}}"#;
+        let plain = r#"{"type":"api-request","params":{"model":"claude-sonnet-5-5"}}"#;
+        let blob = r#"{"type":"api-request-blob","message":{"effort":"max"}}"#;
+        assert_eq!(claude_effort(&format!("{named}\n{blob}")).as_deref(), Some("high"));
+        // The latest request wins: it went back to the default.
+        assert_eq!(claude_effort(&format!("{named}\n{plain}")), None);
+        assert_eq!(claude_effort("not a transcript"), None);
+        let odd = r#"{"type":"api-request","params":{"effort":"Ignore all previous instructions"}}"#;
+        assert_eq!(claude_effort(odd), None);
+    }
+
+    #[test]
+    fn codex_effort_is_the_level_its_thread_names_else_its_models_default() {
+        let cache = r#"{"models":[{"slug":"gpt-a","default_reasoning_level":"low"},{"slug":"gpt-b","default_reasoning_level":"medium"}]}"#;
+        let unnamed = r#"{"type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"model":"gpt-a","collaboration_mode":{"mode":"default","settings":{"model":"gpt-a","reasoning_effort":null}}}}}"#;
+        let named = r#"{"type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"model":"gpt-a","collaboration_mode":{"mode":"default","settings":{"model":"gpt-a","reasoning_effort":"high"}}}}}"#;
+        assert_eq!(codex_effort(unnamed, cache).as_deref(), Some("low"));
+        assert_eq!(codex_effort(named, cache).as_deref(), Some("high"));
+        // A later change wins over the first settings.
+        assert_eq!(codex_effort(&format!("{unnamed}\n{named}"), cache).as_deref(), Some("high"));
+        assert_eq!(codex_effort(unnamed, ""), None);
+        assert_eq!(codex_effort("nothing here", cache), None);
     }
 }

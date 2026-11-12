@@ -8,7 +8,7 @@ import { updateComposer, useComposerState } from '@/features/chat/composerStore'
 import { revokePreviews, useAttachmentIntake } from '@/features/chat/useAttachmentIntake'
 import { DraftAttachments } from '@/features/chat/components/Attachments'
 import { errorMessage } from '@/lib/error-message'
-import { DEFAULT_PICK, modelsFor, type AgentChoice } from '@/features/chat/agentChoice'
+import { DEFAULT_PICK, modelsFor, START_REASONING, type AgentChoice } from '@/features/chat/agentChoice'
 import { AGENT_LABEL } from '@/features/chat/modelName'
 import { CODEX_FULL_MODE, CODEX_START_MODES, DANGER_MODES, modeLabel, PICKABLE_MODES, START_MODE } from '@/features/chat/chatMeta'
 import { AgentPicker } from '@/features/chat/components/AgentPicker'
@@ -82,7 +82,7 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
   const targetLabel = target?.label ?? 'This computer'
   const [agent, setAgent] = useState<ChatAgent>(defaultAgent)
   const [mode, setMode] = useState(START_MODE[defaultAgent])
-  const [choice, setChoice] = useState<AgentChoice>({ model: DEFAULT_PICK, reasoning: DEFAULT_PICK })
+  const [choice, setChoice] = useState<AgentChoice>({ model: DEFAULT_PICK, reasoning: START_REASONING })
   const [picked, setFolder] = useState<string | null>(seed?.folder ?? null)
   const [extra, setExtra] = useState<NewSessionProject | null>(seed === null ? null : { folder: seed.folder, name: lastPart(seed.folder), color: 'var(--dim)' })
   const [message, setMessage] = useState(seed?.message ?? '')

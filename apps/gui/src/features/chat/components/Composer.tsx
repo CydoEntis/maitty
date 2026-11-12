@@ -40,6 +40,8 @@ export type ComposerFacts = {
   branch: string | null
   /** The model the agent's own file says it uses; null when it has not said. */
   model: string | null
+  /** The effort the agent's own files say it runs at, when they do. */
+  effort?: string | null | undefined
   onOpenFolder: (() => void) | null
   /** For a chat that follows the agent's terminal and can type into it: send the agent one of its own commands (`/model x`). */
   onCommand?: ((text: string) => void) | undefined
@@ -249,11 +251,11 @@ export function Composer({ agent, composer, conversation, commandsFrom, question
             <span className="mx-spacer" />
             {facts.agentChips !== undefined ? (
               conversation !== undefined
-                ? <ModelPicker agent={agent} conversation={conversation} model={facts.model} live={readOnly ? facts.onCommand : undefined} locked={facts.agentChips.pickerLocked === undefined ? facts.agentChips.locked : facts.agentChips.pickerLocked} />
+                ? <ModelPicker agent={agent} conversation={conversation} model={facts.model} effort={facts.effort ?? null} live={readOnly ? facts.onCommand : undefined} locked={facts.agentChips.pickerLocked === undefined ? facts.agentChips.locked : facts.agentChips.pickerLocked} />
                 : <AgentPicker agent={agent} choice={facts.agentChips.start ?? defaultChoice()} onChange={NO_CHANGE} locked={facts.agentChips.locked ?? undefined} />
             ) : (
               <>
-                {conversation !== undefined && (!readOnly || facts.onCommand !== undefined) && <ModelPicker agent={agent} conversation={conversation} model={facts.model} live={readOnly ? facts.onCommand : undefined} locked={null} />}
+                {conversation !== undefined && (!readOnly || facts.onCommand !== undefined) && <ModelPicker agent={agent} conversation={conversation} model={facts.model} effort={facts.effort ?? null} live={readOnly ? facts.onCommand : undefined} locked={null} />}
                 {readOnly && facts.onCommand === undefined && <ModelLabel agent={agent} model={facts.model} />}
               </>
             )}
@@ -369,7 +371,7 @@ function ModelLabel({ agent, model }: { agent: ChatAgent; model: string | null }
 }
 
 /** The model and reasoning the next message uses, from the agent picker. */
-function ModelPicker({ agent, conversation, model, live, locked }: { agent: ChatAgent; conversation: number; model: string | null; live?: ((command: string) => void) | undefined; locked: string | null }) {
+function ModelPicker({ agent, conversation, model, effort, live, locked }: { agent: ChatAgent; conversation: number; model: string | null; effort: string | null; live?: ((command: string) => void) | undefined; locked: string | null }) {
   const [choice, change] = useAgentChoice(conversation, agent)
-  return <AgentPicker agent={agent} choice={choice} onChange={change} currentModel={model} locked={locked ?? undefined} {...(live ? { live } : {})} />
+  return <AgentPicker agent={agent} choice={choice} onChange={change} currentModel={model} currentEffort={effort} locked={locked ?? undefined} {...(live ? { live } : {})} />
 }

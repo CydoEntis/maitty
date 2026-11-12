@@ -169,6 +169,8 @@ pub struct Term {
     pub cmd: Option<String>,
     /// Agent session id from hooks, for resuming after a restart.
     pub session: Option<String>,
+    /// The effort the agent's own files say it runs at (`usage::poll_effort`); not kept across a restart.
+    pub effort: Option<String>,
     pub cwd: PathBuf,
     /// The agent's last prompt, for its card.
     pub summary: String,
@@ -956,6 +958,7 @@ impl Term {
                 .map(str::to_string)
                 .or(direct_label),
             session: None,
+            effort: None,
             cwd: spec.cwd.to_path_buf(),
             summary: String::new(),
             said: String::new(),

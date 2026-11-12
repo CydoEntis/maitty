@@ -140,6 +140,7 @@ const BADGE_STROKE = 2.4
 export function StatusBadge({ status }: { status: SessionStatus }) {
   switch (status) {
     case 'working':
+      // The spinner Settings picked, in the working colour on the tile's own background.
       return <span className="mx-badge is-working"><Spinner className="" /></span>
     case 'needs':
       return <span className="mx-badge is-needs" aria-hidden="true"><SquareExclamationPoint strokeWidth={BADGE_STROKE} /></span>

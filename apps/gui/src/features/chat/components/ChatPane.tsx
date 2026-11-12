@@ -64,6 +64,8 @@ export type ChatPaneProps = {
   problem?: ChatProblem | null
   /** Where the tray's branch button can move the chat. */
   branchMenu?: BranchMenuSpec | undefined
+  /** The effort the agent's own files say it runs at. */
+  effort?: string | null | undefined
 }
 
 /**
@@ -98,6 +100,7 @@ export function ChatPane(props: ChatPaneProps) {
             {...(props.onBackToMain === undefined ? {} : { onBackToMain: props.onBackToMain })}
             problem={props.problem ?? null}
             {...(props.branchMenu === undefined ? {} : { branchMenu: props.branchMenu })}
+            effort={props.effort ?? null}
             {...(props.sessionId === undefined ? {} : { sessionId: props.sessionId })}
             {...(props.paneStatus === undefined ? {} : { paneStatus: props.paneStatus })}
           />

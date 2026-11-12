@@ -1,3 +1,4 @@
+import { machineLabel } from '@/data/machineNicknames'
 import { markConversationsDisconnected } from '@/data/connection'
 import type { Conversation } from '@/data/preview'
 import type { MachineState } from '@/api/machines'
@@ -231,5 +232,5 @@ export function announcementFor(before: MachineState | undefined, after: Machine
  * only a string it chose, and not a place to start a process here.
  */
 export function remoteStartRefusal(remote: boolean, machineName: string | null, what: string): string | null {
-  return remote ? `${what} is not available on ${machineName ?? 'another machine'} yet` : null
+  return remote ? `${what} is not available on ${machineLabel(machineName) ?? 'another machine'} yet` : null
 }

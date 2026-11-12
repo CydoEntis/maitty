@@ -89,7 +89,7 @@ The dev server and the window use port 1420 (`server.port` in `vite.config.ts`, 
 `tauri.conf.json`) with `strictPort`: if something else holds 1420, `pnpm desktop:dev` stops with
 an error instead of letting the window load that other server. To try a build without touching
 the sessions of a running daemon, give it its own server, as for any nested test:
-`MAITTY_DATA_DIR=/tmp/maitty-try-data MAITTY_SOCKET=try pnpm desktop:dev`. On NVIDIA under
+`MAITTY_INSTALL_DIR=/tmp/maitty-try-bin MAITTY_DATA_DIR=/tmp/maitty-try-data MAITTY_SOCKET=try pnpm desktop:dev`. The install folder matters: the app runs the one shared `maitty` file (ADR 0004) and keeps an installed file that is newer than the app, so without its own `MAITTY_INSTALL_DIR` a build from a checkout runs the daemon you installed, a release behind it, and asks to restart it. On NVIDIA under
 Wayland, WebKitGTK can die with `Error 71 (Protocol error) dispatching to Wayland display`; start
 with `WEBKIT_DISABLE_DMABUF_RENDERER=1` (verified on Hyprland, RTX 4060, WebKitGTK 2.52.6).
 

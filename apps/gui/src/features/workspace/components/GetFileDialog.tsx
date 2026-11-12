@@ -1,3 +1,4 @@
+import { machineLabel } from '@/data/machineNicknames'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { ResultsList, ResultsOption } from '@/components/ui/results-list'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
@@ -64,7 +65,7 @@ function Marked({ text, marks }: { text: string; marks: readonly number[] }) {
  * a whole path. Everything shown came from the machine and was cleaned by the host.
  */
 export function GetFileDialog({ session, onGet, onCancel, browse }: { session: SessionView; onGet: (path: string) => void; onCancel: () => void; browse?: Browse }) {
-  const machine = session.machineName ?? 'this computer'
+  const machine = machineLabel(session.machineName) ?? 'this computer'
   const start = session.cwd.endsWith('/') ? session.cwd : `${session.cwd}/`
   const [typed, setTyped] = useState(start)
   const [folder, setFolder] = useState(session.cwd)

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { afterFailure, createFeed, syncFeed } from './chatFeed'
 import { FAKE_CONVERSATION, FakeDaemonHistory } from './fakeDaemonHistory'
 import { selectChatEvents } from './projection'
+import { conversationKey } from '@/api/conversationKey'
 
 const NOW = 1_700_000_000_000
 const now = () => NOW
@@ -95,6 +96,18 @@ describe('reading a conversation', () => {
     daemon.approvals = []
     const second = await syncFeed(first, daemon.read, now)
     expect(second.projection.approvals).toMatchObject([{ requestId: 7, resolution: { status: 'answered', answer: 'unknown' } }])
+  })
+})
+
+describe('reading a conversation of another machine', () => {
+  it('pages the whole history under its key while the daemon numbers it its own way', async () => {
+    const daemon = conversationOf(5, 2)
+    const key = conversationKey(2, FAKE_CONVERSATION)
+    expect(key).not.toBeNull()
+
+    const feed = await syncFeed(createFeed('claude', key ?? 0), daemon.read, now)
+
+    expect(selectChatEvents(feed.projection)).toHaveLength(5)
   })
 })
 

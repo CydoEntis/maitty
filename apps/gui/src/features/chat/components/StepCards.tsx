@@ -200,7 +200,7 @@ export function EditStep({ event, root, onOpen, startOpen = false, waiting = fal
   const verb = event.tool === 'Write' ? 'Write' : 'Edit'
   const openFile = onOpen !== null && event.file !== null ? () => { if (event.file !== null) onOpen(event.file) } : null
   const document = documentOf(event)
-  if (document !== null && file !== null) return <DocumentCard path={file} document={document} onOpen={openFile} />
+  if (document !== null && file !== null) return <DocumentCard path={file} document={document} />
 
   const tooLarge = event.diff.status === 'available' && event.diff.truncated
   const rows = event.diff.status === 'available' && !tooLarge ? diffRows(event.diff.hunks) : []

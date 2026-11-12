@@ -68,7 +68,7 @@ describe('the new chat page', () => {
     // Own copy is on: a worktree is made when the chat starts, so there is no checkout to start the agent in ahead.
     await screen.findByRole('switch', { name: 'Own copy' })
     await userEvent.click(screen.getByRole('switch', { name: 'Own copy' }))
-    await waitFor(() => { expect(onWarm).toHaveBeenLastCalledWith({ folder: '/dev/growth', agent: 'claude', model: 'default', reasoning: 'default', mode: 'default' }) })
+    await waitFor(() => { expect(onWarm).toHaveBeenLastCalledWith({ folder: '/dev/growth', agent: 'claude', model: 'default', reasoning: 'medium', mode: 'default' }) })
 
     unmount()
     expect(onWarm).toHaveBeenLastCalledWith(null)
@@ -169,6 +169,13 @@ describe('the new chat page', () => {
     const message = onStart.mock.calls[0]?.[0].message ?? ''
     expect(message).toContain('why does this fail?')
     expect(message).toContain('/data/attachments/attach-1-errors.log')
+  })
+
+  it('starts on medium effort and says so on the button and in the menu', async () => {
+    page()
+    expect(screen.getByRole('button', { name: /^Agent, model and reasoning: Claude · .* · Medium/ })).toHaveTextContent('Medium')
+    await userEvent.click(screen.getByRole('button', { name: /^Agent, model and reasoning/ }))
+    expect(screen.getByRole('radio', { name: 'Medium' })).toBeChecked()
   })
 
   it('has the agent, model and effort on one button under the message box, and the permission mode beside it', async () => {
