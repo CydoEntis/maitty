@@ -6,26 +6,28 @@ const TERMINAL_FIRST: ChatViewDefaults = { claude: 'terminal', codex: 'terminal'
 
 describe('chatAvailability', () => {
   it('is ready for a Claude or Codex session the daemon holds a conversation for', () => {
-    expect(chatAvailability({ agent: 'claude', machineName: null, chat: LINK })).toEqual({ kind: 'ready', agent: 'claude', link: LINK })
-    expect(chatAvailability({ agent: 'Codex', machineName: null, chat: LINK })).toEqual({ kind: 'ready', agent: 'codex', link: LINK })
+    expect(chatAvailability({ agent: 'claude', chat: LINK })).toEqual({ kind: 'ready', agent: 'claude', link: LINK })
+    expect(chatAvailability({ agent: 'Codex', chat: LINK })).toEqual({ kind: 'ready', agent: 'codex', link: LINK })
   })
 
   it('says there are no events for a supported agent without a conversation', () => {
-    expect(chatAvailability({ agent: 'claude', machineName: null, chat: null })).toEqual({ kind: 'no-events', agent: 'claude' })
+    expect(chatAvailability({ agent: 'claude', chat: null })).toEqual({ kind: 'no-events', agent: 'claude' })
   })
 
   it('leaves a plain shell and other agents terminal-only', () => {
-    expect(chatAvailability({ agent: null, machineName: null, chat: null })).toEqual({ kind: 'shell' })
-    expect(chatAvailability({ agent: 'opencode', machineName: null, chat: LINK })).toEqual({ kind: 'unsupported', agent: 'opencode' })
+    expect(chatAvailability({ agent: null, chat: null })).toEqual({ kind: 'shell' })
+    expect(chatAvailability({ agent: 'opencode', chat: LINK })).toEqual({ kind: 'unsupported', agent: 'opencode' })
   })
 
   it('gives Gemini CLI the same chat as Claude and Codex, read from its transcript', () => {
-    expect(chatAvailability({ agent: 'gemini', machineName: null, chat: LINK })).toEqual({ kind: 'ready', agent: 'gemini', link: LINK })
-    expect(chatAvailability({ agent: 'Gemini', machineName: null, chat: null })).toEqual({ kind: 'no-events', agent: 'gemini' })
+    expect(chatAvailability({ agent: 'gemini', chat: LINK })).toEqual({ kind: 'ready', agent: 'gemini', link: LINK })
+    expect(chatAvailability({ agent: 'Gemini', chat: null })).toEqual({ kind: 'no-events', agent: 'gemini' })
   })
 
-  it('keeps another machine terminal-only, whatever it runs', () => {
-    expect(chatAvailability({ agent: 'claude', machineName: 'build', chat: LINK })).toEqual({ kind: 'remote', agent: 'claude', machineName: 'build' })
+  it('gives a session of another machine the chat its daemon holds, kept apart by the key', () => {
+    const remote = { conversation: 2 * 2 ** 32 + 7, generation: 2, machine: 'build' }
+    expect(chatAvailability({ agent: 'claude', chat: remote })).toEqual({ kind: 'ready', agent: 'claude', link: remote })
+    expect(chatAvailability({ agent: 'claude', chat: remote }).kind).toBe('ready')
   })
 })
 
@@ -52,9 +54,5 @@ describe('effectiveView', () => {
 describe('noChatReason', () => {
   it('names the shell case the way the design does', () => {
     expect(noChatReason({ kind: 'shell' })).toContain('Chat view is for agent sessions')
-  })
-
-  it('says why a remote session shows the terminal only', () => {
-    expect(noChatReason({ kind: 'remote', agent: 'claude', machineName: 'build' })).toContain('local-only in v1')
   })
 })

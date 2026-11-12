@@ -2,8 +2,9 @@ import { invoke, isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { z } from 'zod'
 import { bytesOf } from './ipcBytes'
-import { assertLocal, type LocalFeature } from '@/lib/localOnly'
+import { assertLocal, localOnlyMessage, type LocalFeature } from '@/lib/localOnly'
 import { LOCAL_MACHINE, addressOf, machineArgs, terminalOf, terminalSessionId } from './machines'
+import { conversationKey, machineArgOfKey, splitConversationKey } from './conversationKey'
 import { previewConversations, type Conversation, type Message, type SessionStatus } from '@/data/preview'
 
 const StatusSchema = z.enum(['None', 'Idle', 'Working', 'Blocked', 'Done'])
@@ -392,15 +393,18 @@ export function conversationsFromSnapshot(raw: unknown, machine?: SnapshotMachin
   for (const key of lastGoodTerm.keys()) {
     if (isOfMachine(key, from) && !(String(termOfKey(key)) in snapshot.terms)) lastGoodTerm.delete(key)
   }
-  const summaries = machine === undefined
-    ? snapshot.conversations.flatMap((raw) => {
-      const parsed = ConversationSummarySchema.safeParse(raw)
-      return parsed.success ? [parsed.data] : []
-    })
-    : []
+  const summaries = snapshot.conversations.flatMap((raw) => {
+    const parsed = ConversationSummarySchema.safeParse(raw)
+    return parsed.success ? [parsed.data] : []
+  })
   // A terminal session has a chat when the daemon holds a conversation whose native terminal is that pane.
-  // The daemon only follows an agent the user started there, so that chat is read-only (ADR 0003).
-  const chatOf = new Map(summaries.flatMap((summary) => (summary.native_term === null ? [] : [[summary.native_term, { conversation: summary.id, generation: summary.generation, ...(summary.execution === 'Native' ? { readOnly: true } : {}) }] as const])))
+  // The daemon only follows an agent the user started there, so that chat is read-only (ADR 0003). Another
+  // machine's chat is named by a key that holds the machine too, so its number never meets this computer's.
+  const chatOf = new Map(summaries.flatMap((summary) => {
+    const key = machine === undefined ? summary.id : conversationKey(machine.id, summary.id)
+    if (summary.native_term === null || key === null) return []
+    return [[summary.native_term, { conversation: key, generation: summary.generation, ...(summary.execution === 'Native' ? { readOnly: true } : {}), ...(machine === undefined ? {} : { machine: machine.name }) }] as const]
+  }))
   const limitsOf = new Map(snapshot.limits)
   const listed = Object.values(snapshot.terms)
     .flatMap((term) => {
@@ -411,7 +415,8 @@ export function conversationsFromSnapshot(raw: unknown, machine?: SnapshotMachin
   // A conversation that belongs to a pane in this list is that session's chat, not a session of its own.
   const shownPanes = new Set(listed.map((term) => term.id))
   const terminals = listed
-    .map((term) => toTerminalConversation(term, snapshot.workspaces, machine, machine === undefined ? chatOf.get(term.id) : undefined, term.agent === null ? undefined : limitsOf.get(term.agent)))
+    .map((term) => toTerminalConversation(term, snapshot.workspaces, machine, chatOf.get(term.id), term.agent === null ? undefined : limitsOf.get(term.agent)))
+  // Another machine's conversations are only the chats of its panes; it has no session list of its own here.
   if (machine !== undefined) return terminals
   return [
     ...summaries
@@ -612,8 +617,10 @@ export type ChatPage = z.infer<typeof ChatPageSchema>
 export async function readConversationPage(id: number, cursor: HistoryCursor | null): Promise<ChatPage> {
   if (!isDesktop()) throw new Error('Chat needs the desktop app')
   if (!Number.isSafeInteger(id) || id < 0) throw new Error('Conversation id is invalid')
-  const page = await invokeParsed('read_conversation', ChatPageSchema, { id, cursor, limit: ReadPageLimit })
-  if (page.conversation !== id) throw new Error('Daemon returned a different conversation')
+  // `id` is a conversation key: another machine's chat is asked of that machine, under its own number.
+  const { id: own } = splitConversationKey(id)
+  const page = await invokeParsed('read_conversation', ChatPageSchema, { id: own, cursor, limit: ReadPageLimit, ...machineArgOfKey(id) })
+  if (page.conversation !== own) throw new Error('Daemon returned a different conversation')
   return page
 }
 
@@ -667,6 +674,8 @@ export type ConversationTarget = { conversation: number; generation: number }
 function requireProjectAccess(target: ConversationTarget): void {
   if (!isDesktop()) throw new Error('Project files are available in the desktop app')
   if (!Number.isSafeInteger(target.conversation) || target.conversation < 0) throw new Error('Conversation id is invalid')
+  // The diff and the files are read from this computer's disk, so a chat of another machine has none here.
+  if (splitConversationKey(target.conversation).machine !== LOCAL_MACHINE) throw new Error(localOnlyMessage('files', null))
 }
 
 export async function loadTargetDiff(target: ConversationTarget): Promise<ConversationDiff> {
@@ -787,7 +796,8 @@ export async function submitMessage(conversation: Pick<Conversation, 'id' | 'gen
   // What was picked rides together, so the host command stays within the argument limit; nothing picked sends none.
   const picked = { ...(choice?.model === undefined ? {} : { model: choice.model }), ...(choice?.effort === undefined ? {} : { effort: choice.effort }) }
   return invokeParsed('send_conversation', z.union([ConversationReceiptSchema, QueuedReceiptSchema]), {
-    id: Number(conversation.id),
+    id: splitConversationKey(Number(conversation.id)).id,
+    ...machineArgOfKey(Number(conversation.id)),
     generation: conversation.generation,
     operation,
     text,
@@ -812,7 +822,8 @@ export function classifySubmissionFailure(
 /** Takes a message back out of the daemon's queue before it is sent; it fails when it was already sent. */
 export async function dequeueMessage(conversation: Pick<Conversation, 'id' | 'generation'>, operation: number): Promise<void> {
   await invokeParsed('dequeue_conversation', NullSchema, {
-    id: Number(conversation.id),
+    id: splitConversationKey(Number(conversation.id)).id,
+    ...machineArgOfKey(Number(conversation.id)),
     generation: conversation.generation,
     operation,
   })
@@ -820,7 +831,8 @@ export async function dequeueMessage(conversation: Pick<Conversation, 'id' | 'ge
 
 export async function approveRequest(conversation: Pick<Conversation, 'id' | 'generation'>, requestId: number | string, decision: 'Accept' | 'AcceptForSession' | 'Decline' | 'Cancel'): Promise<void> {
   await invokeParsed('approve_conversation', NullSchema, {
-    id: Number(conversation.id),
+    id: splitConversationKey(Number(conversation.id)).id,
+    ...machineArgOfKey(Number(conversation.id)),
     generation: conversation.generation,
     requestId,
     decision,
@@ -829,7 +841,8 @@ export async function approveRequest(conversation: Pick<Conversation, 'id' | 'ge
 
 export async function answerUserInput(conversation: Pick<Conversation, 'id' | 'generation'>, requestId: number | string, answers: Record<string, string[]>): Promise<void> {
   await invokeParsed('answer_conversation_input', NullSchema, {
-    id: Number(conversation.id),
+    id: splitConversationKey(Number(conversation.id)).id,
+    ...machineArgOfKey(Number(conversation.id)),
     generation: conversation.generation,
     requestId,
     answers,
@@ -838,7 +851,8 @@ export async function answerUserInput(conversation: Pick<Conversation, 'id' | 'g
 
 export async function cancelTurn(conversation: Pick<Conversation, 'id' | 'generation'>): Promise<void> {
   await invokeParsed('cancel_conversation', NullSchema, {
-    id: Number(conversation.id),
+    id: splitConversationKey(Number(conversation.id)).id,
+    ...machineArgOfKey(Number(conversation.id)),
     generation: conversation.generation,
   })
 }
