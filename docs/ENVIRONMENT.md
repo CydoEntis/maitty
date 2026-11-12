@@ -55,6 +55,12 @@ Rust stable (edition 2024, so 1.85+) with `cargo`; for the cross-checks, the
 (`rustup target add …`). Optional at runtime: `git`, `gh` (opening a PR from Changes), the
 agent CLIs you want to run, a Nerd Font for icons.
 
+CI installs the current stable toolchain on every run, so a new Rust release can bring a clippy
+lint that an older local toolchain never shows. When CI fails the clippy step on code the gate
+passed locally, run `rustup update stable` and the gate again before changing anything.
+`scripts/release.sh` needs `cargo`, `git` and `gh` on `PATH` for its own steps, so run it where
+they are: on a host that keeps Rust in a container, from inside that container.
+
 ## Project-specific: setup
 
 ```sh
