@@ -290,7 +290,7 @@ fn a_worktree_asked_by_folder_is_made_tracked_and_answered_with_its_folder() {
     assert!(
         d.made_worktrees
             .iter()
-            .any(|made| same_path(made, &expected)),
+            .any(|made| made.canonicalize().ok() == expected.canonicalize().ok()),
         "listed with the checkouts the app made, so tidy-up offers it"
     );
     assert_eq!(d.pending_ops, before, "the operation is over");

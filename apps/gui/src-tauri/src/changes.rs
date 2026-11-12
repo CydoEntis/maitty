@@ -242,7 +242,7 @@ mod tests {
         // Someone else pushes; a pull brings it in.
         let other = repository("sync-other");
         git(&other, &["remote", "add", "origin", remote.to_str().expect("a path")]);
-        git(&other, &["pull", "-q", "origin", "main", "--allow-unrelated-histories", "--no-edit"]);
+        git(&other, &["pull", "-q", "origin", "main", "--no-rebase", "--allow-unrelated-histories", "--no-edit"]);
         std::fs::write(other.join("b.txt"), "two\n").expect("a file");
         git(&other, &["add", "-A"]);
         git(&other, &["commit", "-q", "-m", "two"]);
