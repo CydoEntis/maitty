@@ -122,7 +122,7 @@
 .mx-row.is-selected, .mx-row.is-selected:hover { background: var(--c-sel-bg); box-shadow: var(--c-sel-sh); }
 .mx-row-icon { position: relative; flex: none; display: flex; }
 .mx-row-icon .mx-badge { right: -4px; bottom: -4px; width: 12px; height: 12px; border-radius: calc(3.5px * var(--rk)); font-size: 9px; font-weight: 800; line-height: 1; }
-.mx-row-icon .mx-badge.is-working { border-radius: calc(3px * var(--rk)); background: var(--working); overflow: hidden; color: var(--on-accent); font-family: var(--mono); }
+.mx-row-icon .mx-badge.is-working { background: var(--bg); overflow: hidden; color: var(--working); font-family: var(--mono); }
 .mx-row-icon .mx-badge.is-working .mx-spin, .mx-sub-mark .mx-spin { font-size: 9px; line-height: 1; }
 .mx-row-icon .mx-badge.is-unknown { width: 11px; height: 11px; background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
 /* A shell's tile in the sidebar is a flat raised square, so agents stand out among shells. */
