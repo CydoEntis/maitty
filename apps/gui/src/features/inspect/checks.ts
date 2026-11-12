@@ -75,7 +75,9 @@ export function checkActions(check: Check): readonly ('rerun' | 'override' | 'un
     case 'Pending':
     case 'Never':
       return []
-    default:
+    case 'Passed':
+    case 'Stale':
+    case 'CouldNotRun':
       return ['rerun']
   }
 }

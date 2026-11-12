@@ -1,11 +1,13 @@
 import type { WorktreeStanding } from './api'
 
+const TWO_CHECKOUTS = 2
+
 /** The first file that more than one checkout changed, in a line ("orders and rate-limit both changed checkout.ts"). */
 export function overlapWords(overlaps: readonly { file: string; checkouts: readonly string[] }[]): string {
   const [first] = overlaps
   if (first === undefined) return ''
   const [a, b] = first.checkouts
-  const who = first.checkouts.length === 2 && a !== undefined && b !== undefined ? `${a} and ${b} both` : `${String(first.checkouts.length)} checkouts`
+  const who = first.checkouts.length === TWO_CHECKOUTS && a !== undefined && b !== undefined ? `${a} and ${b} both` : `${String(first.checkouts.length)} checkouts`
   const name = first.file.slice(first.file.lastIndexOf('/') + 1)
   const more = overlaps.length - 1
   return `${who} changed ${name}${more > 0 ? ` (and ${String(more)} more ${more === 1 ? 'file' : 'files'})` : ''}`

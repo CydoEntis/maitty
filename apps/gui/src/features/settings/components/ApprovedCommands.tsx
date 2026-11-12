@@ -4,6 +4,7 @@ import { forgetAllowedCommand, loadAllowedCommands, type AllowedCommand } from '
 import { errorMessage } from '@/lib/error-message'
 
 const QUERY_KEY = ['allowed-commands']
+const MS_PER_SECOND = 1000
 
 /** The folder's own name: enough to tell projects apart in a short list; the full path is the tooltip. */
 function projectName(path: string): string {
@@ -35,7 +36,7 @@ export function ApprovedCommands() {
         {(list.data ?? []).map((item) => (
           <li key={`${item.project}\n${item.command_sha256}`} className="mx-approved-row">
             <code title={item.command}>{item.command}</code>
-            <small title={item.project}>{projectName(item.project)} · {new Date(item.at * 1000).toLocaleDateString()}</small>
+            <small title={item.project}>{projectName(item.project)} · {new Date(item.at * MS_PER_SECOND).toLocaleDateString()}</small>
             <button type="button" className="mx-text-button" onClick={() => { forget(item) }}>Forget</button>
           </li>
         ))}

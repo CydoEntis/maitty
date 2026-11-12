@@ -81,7 +81,7 @@ export function ChecksTab({ term, machine, checks, onNotice }: Props) {
   }
   return (
     <ul className="mx-inspect-list mx-checks" aria-label="Checks">
-      {checks.map((check) => <CheckRow key={`${check.name}-${check.turn}`} term={term} machine={machine} check={check} onNotice={onNotice} />)}
+      {checks.map((check) => <CheckRow key={`${check.name}-${String(check.turn)}`} term={term} machine={machine} check={check} onNotice={onNotice} />)}
     </ul>
   )
 }

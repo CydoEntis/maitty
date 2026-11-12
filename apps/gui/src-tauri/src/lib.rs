@@ -900,6 +900,7 @@ async fn answer_helpers(
 /// repo's check command (`choice`: `once`, `always` or `never`; `command` is the one the person was shown). Works for
 /// a pane on another machine as well: the checks are that machine's daemon's.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn check_action(
     app: tauri::AppHandle,
     wire: tauri::State<'_, terminal_stream::Wire>,

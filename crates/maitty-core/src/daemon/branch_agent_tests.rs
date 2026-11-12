@@ -276,8 +276,11 @@ fn a_worktree_asked_by_folder_is_made_tracked_and_answered_with_its_folder() {
     };
     let folder = PathBuf::from(folder);
     let expected = root.join("repo-worktrees").join("feat-x");
-    assert!(
-        same_path(&folder, &expected),
+    // Both exist; compared as the filesystem names them, since a temp folder can be spelled with a
+    // short (8.3) user name on Windows.
+    assert_eq!(
+        folder.canonicalize().unwrap(),
+        expected.canonicalize().unwrap(),
         "{folder:?} is the usual worktree folder"
     );
     assert_eq!(
