@@ -1,9 +1,11 @@
 ﻿pub mod clock;
 pub mod conversation;
+pub mod handoff;
 pub mod hidden;
 pub mod host_env;
 pub mod layout;
 pub mod output_line;
+pub mod overlap;
 pub mod protocol;
 pub mod repo;
 pub mod settings_view;

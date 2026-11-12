@@ -573,6 +573,63 @@ pub async fn resize_terminal(
     }
 }
 
+/// What the checkout has changed and not committed, as the handoff brief lists it. Git is run as a program
+/// with fixed arguments, never through a shell. The branch's committed changes are not listed here, and the
+/// brief says so.
+fn uncommitted_changes(checkout: &std::path::Path) -> std::result::Result<maitty_shared::handoff::Changed, String> {
+    let status = run_git(checkout, &["status", "--porcelain", "-z", "--untracked-files=all"])?;
+    let mut files = maitty_shared::handoff::uncommitted(&status);
+    files.sort();
+    files.dedup();
+    Ok(maitty_shared::handoff::Changed { files, committed_unknown: Some("only uncommitted files are listed here".into()) })
+}
+
+/// Runs git with fixed arguments in `dir`; its output, or the first line it complained with.
+fn run_git(dir: &std::path::Path, args: &[&str]) -> std::result::Result<String, String> {
+    let out = std::process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|error| format!("could not run git: {error}"))?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).lines().next().unwrap_or("git failed").trim().to_string())
+    }
+}
+
+/// The files that more than one of these checkouts (name, folder) changed since their branches parted. Git runs
+/// off the caller's thread; a checkout git cannot read is left out.
+pub async fn checkout_overlaps(checkouts: Vec<(String, PathBuf)>) -> Result<Vec<maitty_shared::overlap::Overlap>> {
+    tokio::task::spawn_blocking(move || maitty_shared::overlap::between(&checkouts, &run_git))
+        .await
+        .map_err(|error| anyhow::anyhow!("{error}"))
+}
+
+/// The text a new agent starts with when the work of the agent in pane `term` is handed to it: the task, the
+/// branch, the uncommitted files and the end of the screen. This computer's panes only.
+pub async fn handoff_brief(
+    term: u32,
+    agent: String,
+    task: String,
+    last_prompt: String,
+    branch: Option<String>,
+    checkout: PathBuf,
+    daemon_executable: PathBuf,
+) -> Result<String> {
+    let screen = pane_terminal_screen(term, daemon_executable).await?;
+    let folder = checkout.clone();
+    let changed = tokio::task::spawn_blocking(move || uncommitted_changes(&folder))
+        .await
+        .map_err(|error| anyhow::anyhow!("{error}"))?;
+    Ok(maitty_shared::handoff::brief(
+        &maitty_shared::handoff::Facts { pane: term, agent, task, last_prompt, branch, checkout, changed, screen },
+        env!("MAITTY_APP_COMMAND"),
+    ))
+}
+
 /// The visible screen of a terminal session, by its pane number.
 pub async fn pane_terminal_screen(term: u32, daemon_executable: PathBuf) -> Result<String> {
     let reply = request(
@@ -2472,5 +2529,26 @@ mod fleet_tests {
             panic!("expected NewShip")
         };
         assert_eq!(cwd, Some("/srv/app".into()));
+    }
+}
+
+#[cfg(test)]
+mod handoff_tests {
+    use super::*;
+
+    #[test]
+    fn the_brief_lists_uncommitted_files_and_says_the_commits_are_not_listed() {
+        let folder = std::env::temp_dir().join(format!("maitty-handoff-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("a folder");
+        let git = |args: &[&str]| assert!(std::process::Command::new("git").args(args).current_dir(&folder).status().expect("git").success());
+        git(&["init", "-q"]);
+        std::fs::write(folder.join("b.txt"), "x").expect("a file");
+        std::fs::write(folder.join("a.txt"), "x").expect("a file");
+        let changed = uncommitted_changes(&folder).expect("a status");
+        assert_eq!(changed.files, ["a.txt", "b.txt"]);
+        assert!(changed.committed_unknown.is_some());
+        assert!(uncommitted_changes(&folder.join("missing")).is_err());
+        let _ = std::fs::remove_dir_all(&folder);
     }
 }
