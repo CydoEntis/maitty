@@ -227,6 +227,9 @@ export function findTheme(name: string): ThemeEntry {
  */
 const DARK_GLASS = { '--hl': '255,255,255', '--hs': '255,255,255', '--hk': '1', '--sd': '0,0,0', '--sk': '1' }
 // A light theme's tints (hovers, raised fills, tracks, hairlines) are a warm brown ink, not a blue-grey one, so they read as cream over a pale ground.
+/** The colour of every branch name and icon, one violet per ground (the design's `--branch`); the light one is deep enough to read on cream. */
+const BRANCH_DARK = '#A78BFA'
+const BRANCH_LIGHT = '#6B46C1'
 const LIGHT_GLASS = { '--hl': '112,92,52', '--hs': '255,255,255', '--hk': '.85', '--sd': '70,52,24', '--sk': '.3' }
 
 /** A dark ground at or above this luminance (One Dark's grey) is as light as the glass's sheen can sit on without turning grey. */
@@ -246,7 +249,7 @@ function frostOf(main: string): Record<string, string> {
 
 /** The theme as CSS custom properties, for the app root's style. */
 export function themeStyle(theme: ThemeEntry): Record<string, string> {
-  const style: Record<string, string> = { '--card-ring': theme.cardRing, colorScheme: theme.light ? 'light' : 'dark', ...(theme.light ? LIGHT_GLASS : DARK_GLASS) }
+  const style: Record<string, string> = { '--card-ring': theme.cardRing, colorScheme: theme.light ? 'light' : 'dark', '--branch': theme.light ? BRANCH_LIGHT : BRANCH_DARK, ...(theme.light ? LIGHT_GLASS : DARK_GLASS) }
   for (const [key, variable] of Object.entries(CSS_VARIABLES)) style[variable] = theme.tokens[key as keyof ThemeTokens]
   if (!theme.light) Object.assign(style, frostOf(theme.tokens.main))
   const { look } = theme

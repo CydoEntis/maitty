@@ -93,7 +93,7 @@
 .mx-nc-picks .mx-chip:hover, .mx-nc-picks .mx-chip[data-state="open"] { background: rgba(var(--hl), calc(.08 * var(--hk))); color: var(--fg); }
 .mx-nc-picks .mx-chip:focus-visible { box-shadow: inset 0 0 0 1.5px var(--accent-line); }
 .mx-nc-picks .mx-chip strong { color: var(--fg); }
-.mx-nc-branch { display: inline-flex; font-family: var(--mono); font-size: 12.5px; color: var(--ansi-mag); }
+.mx-nc-branch { display: inline-flex; font-family: var(--mono); font-size: 12.5px; color: var(--branch); }
 .mx-nc-tasks { list-style: none; margin: -10px auto 0; padding: 0; display: flex; flex-direction: column; align-items: stretch; width: max-content; max-width: 100%; }
 .mx-nc-tasks button { width: 100%; height: 36px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: 8px; font-size: 13.5px; color: var(--muted); text-align: left; }
 .mx-nc-tasks button span { color: var(--dim); }

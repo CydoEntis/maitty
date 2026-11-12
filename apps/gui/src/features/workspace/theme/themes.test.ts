@@ -37,6 +37,9 @@ describe('themes', () => {
     expect(day['--accent-text']).toBe('#8a5a00')
     expect(day['--working']).toBe('#09605a')
     expect(day['--warn']).toBe('#9e2e12')
+    // One violet for every branch name, deeper on a light ground.
+    expect(night['--branch']).toBe('#A78BFA')
+    expect(day['--branch']).toBe('#6B46C1')
   })
 
   it('gives every theme an opaque pane that is its main surface', () => {

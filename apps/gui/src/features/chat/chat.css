@@ -22,8 +22,8 @@
 /* The column's 760px and the scrollbar's 8px: the scrollbar sits at the column's edge, not the pane's. */
 .mx-chat-scroller { align-self: center; width: 100%; max-width: calc(var(--chat-width, 760px) + 8px); }
 .mx-chat-jump { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); }
-.mx-chat-scroller { -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 56px); mask-image: linear-gradient(180deg, transparent 0, #000 56px); padding: 36px 0 10px; }
-.mx-chat-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 36px 0 10px; display: flex; flex-direction: column-reverse; -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 56px); mask-image: linear-gradient(180deg, transparent 0, #000 56px); }
+.mx-chat-scroller { -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 36px); mask-image: linear-gradient(180deg, transparent 0, #000 36px); padding: 36px 0 10px; }
+.mx-chat-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 36px 0 10px; display: flex; flex-direction: column-reverse; -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 36px); mask-image: linear-gradient(180deg, transparent 0, #000 36px); }
 .mx-chat-column { margin: 0 auto; width: 100%; max-width: var(--chat-width, 760px); padding: 0 20px; display: flex; flex-direction: column; gap: 14px; }
 .mx-chat-row { margin: 0 auto; width: 100%; max-width: var(--chat-width, 760px); padding: 7px 20px; }
 /* Inside the scroller the rows fill it: the scroller is already the column's width, and a width that is a share of
@@ -478,7 +478,7 @@ button.mx-queued-text::after { content: ""; position: absolute; inset: 0; border
 .mx-tray-fact { height: 26px; display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; border-radius: 7px; color: var(--fg2); font-size: 12.5px; white-space: nowrap; }
 .mx-tray-fact.is-button:hover { background: rgba(var(--hl), calc(.05 * var(--hk))); color: var(--fg); }
 .mx-tray-fact.is-danger { color: var(--danger); }
-.mx-tray-fact.is-branch { min-width: 0; color: var(--ansi-mag); }
+.mx-tray-fact.is-branch { min-width: 0; color: var(--branch); }
 .mx-tray-fact.is-branch svg { flex: none; }
 .mx-tray-branch { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); font-size: 12px; }
 .mx-tray-fact.is-worktree { color: var(--ansi-blue); }

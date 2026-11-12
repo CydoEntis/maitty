@@ -415,7 +415,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   terminal does, so the agent reads it at its next step; it is off while the agent asks something, since typed text
   would answer the question. A chat the daemon runs has no such button: it takes a message only when the turn ends.
 - **Pane** (`components/PaneCard.tsx`, `pane.css`). Agents and shells share one 42px header: the 26px app icon with its
-  status badge, the name (15px, 600) over the folder (11px `--dim`) and the branch (mono 10.5px `--ansi-mag`), then at
+  status badge, the name (15px, 600) over the folder (11px `--dim`) and the branch (mono 10.5px `--branch`), then at
   the right, icons only (layout 2e): the terminal | chat switch (agents with a chat), split right, the terminals
   drawer (only while terminals are pinned under the chat), the **side panel** button (a green dot while the
   repository has changes, the counts in its tip), ⋯ and close. Split down and Maximize are in ⋯ and on their keys.
@@ -653,8 +653,8 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   project's right-click menu has a **Worktrees** submenu that opens a shell in any of the repo's
   worktrees, and a **New worktree…** row. Worktrees group under their parent repo. A folder's row shows
   only its name: a branch belongs to a session, and a worktree's branch is not the folder's.
-- **Branch or worktree.** A session in the project's own folder shows its branch in `--ansi-mag` with the branch mark;
-  one in a linked worktree (the daemon's `TermInfo.linked`, never worked out from the folder) shows it in `--ansi-blue`
+- **Branch or worktree.** A session in the project's own folder shows its branch in `--branch` (violet: #A78BFA on a dark ground, #6B46C1 on a light one, set by `themeStyle`; every branch name and icon uses it) with the branch mark;
+  one in a linked worktree (the daemon's `TermInfo.linked`, never worked out from the folder) shows it in `--branch`
   with a tree, on its sidebar row, its pane header and under the message box, where the word reads **Worktree** or
   **Branch**. The tooltip says which.
 - **A session that asks to start helpers** shows a bar across the top of its pane, in the needs-you colour: "Wants to start N helpers", the
@@ -806,3 +806,5 @@ and timings; the feature stylesheets beside their components carry them (`sideba
 ### Notification cards
 
 Every toast is drawn by one component, `NotificationCard` (`apps/gui/src/features/notifications/`): the agent's icon with its status badge on the left, a bold title with a close button, a muted line saying what it wants (a command in mono), the buttons, and "just now" at the bottom right. It is a float, so it takes the material roles from `material.css` and sets only its tone colour (`needs`, `done`, `error`, `info`). `SessionNotice` (terminal sessions) and `NoticeToast` (conversation views) only map their data onto it; plain Sonner toasts (messages, errors) wear the same float material without the icon and buttons. Allow appears only when the session is stopped on a choice the GUI can answer.
+
+- **Working badge.** A `--working` rounded square (3px radius) with the spinner in `--on-accent`; it is the same square at every size (sidebar row, pane header). The chat's scroll area fades to transparent over its top 36px.
