@@ -334,7 +334,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   the history already held shows at once (`knownRows.ts`), and Reduce motion shows everything at once. A helper agent reporting back (the harness's `<task-notification>` block, which the history keeps as a
   user message) is one quiet line, "Agent "name" finished · 11s · 50.5k tokens", never the markup; once it has reported,
   its row leaves the sidebar. One that still needs something stays; one that stopped without finishing stays while the
-  agent works and goes when its turn is over (`listedSubagents`). Under a session that is not selected they are a row of
+  agent works, for up to two minutes after its last report, and goes when its turn is over (`listedSubagents`). Under a session that is not selected they are a row of
   small icons; under the selected one, a row each. Both are kept mounted and folded with `Collapse`, so selecting
   another session eases one shut and the other open (0.2s) instead of the sidebar jumping by their height. The daemon
   takes a helper's own report that it finished as final, whatever second its other reports were stamped with, and only
