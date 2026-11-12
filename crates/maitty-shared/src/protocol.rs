@@ -11,7 +11,14 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 80;
+pub const PROTOCOL_VERSION: u32 = 82;
+
+/// The first version whose daemon writes a file of a pane's checkout for the person (`Command::WriteFile`).
+pub const WRITE_FILE_SINCE: u32 = 82;
+
+/// The first version whose daemon makes a trusted, tracked worktree for a branch from a folder
+/// (`Command::BranchWorktree`).
+pub const BRANCH_WORKTREE_SINCE: u32 = 81;
 
 /// The first version whose daemon drops one queued follow-up (`Command::DropQueued`).
 pub const DROP_QUEUED_SINCE: u32 = 80;
@@ -475,6 +482,15 @@ pub enum Command {
         a: TermId,
         b: TermId,
     },
+    /// Replace the text of one existing file of the checkout `term` is in (a path relative to its top, no
+    /// links, not under `.git`, text of at most the preview limit). Only you can, and only a file that is
+    /// already there: it makes none. The answer is `Reply::Repo { tag, Written }`.
+    WriteFile {
+        term: TermId,
+        tag: u64,
+        path: String,
+        contents: String,
+    },
     /// `git worktree add` next to the workspace's repo, then open it as a new workspace.
     /// `split`: open the worktree as a pane beside this one instead of as a workspace.
     /// `from`: the repo to branch from (default: the workspace's folder).
@@ -491,6 +507,16 @@ pub enum Command {
         agent: Option<String>,
         #[serde(default)]
         prompt: Option<String>,
+    },
+    /// A worktree of `project` on `branch` (an existing local or remote branch, else a new one
+    /// from HEAD), made the way every other worktree is: named by the `worktree.dir` template,
+    /// trusted like its repo, the repo's setup hook run, and listed with the checkouts the app
+    /// made so the usual tidy-up offers it. Replies with the new folder as text. For a window
+    /// that has no pane to ask from (the new chat page). `project` must be one the daemon has
+    /// been shown, so this cannot make worktrees, or run hooks, anywhere on disk.
+    BranchWorktree {
+        project: PathBuf,
+        branch: String,
     },
     /// From a pane about to start an agent in `dir`: a new worktree for it when `dir` is
     /// in a repo's main checkout (and per-agent worktrees are on). Replies with the folder
@@ -1691,6 +1717,8 @@ impl ClientMsg {
         match self {
             ClientMsg::Command(Command::Prewarm { .. } | Command::DropPrewarm) => PREWARM_SINCE,
             ClientMsg::Command(Command::DropQueued { .. }) => DROP_QUEUED_SINCE,
+            ClientMsg::Command(Command::BranchWorktree { .. }) => BRANCH_WORKTREE_SINCE,
+            ClientMsg::Command(Command::WriteFile { .. }) => WRITE_FILE_SINCE,
             _ => COMPATIBLE_SINCE,
         }
     }
@@ -2095,7 +2123,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 80);
+        assert_eq!(PROTOCOL_VERSION, 82);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2229,6 +2257,41 @@ mod tests {
         assert_eq!(choice, Some(picked));
     }
 
+    /// A worktree from a folder is a new command: a daemon built before it cannot read it, so a
+    /// client asks only a daemon that says it is new enough, and the window stays where it was.
+    #[test]
+    fn a_branch_worktree_is_asked_only_of_a_daemon_that_knows_it() {
+        let ask = ClientMsg::Command(Command::BranchWorktree {
+            project: PathBuf::from("/code"),
+            branch: "feat/x".into(),
+        });
+        assert_eq!(ask.introduced_in(), BRANCH_WORKTREE_SINCE);
+        const { assert!(BRANCH_WORKTREE_SINCE > COMPATIBLE_SINCE && BRANCH_WORKTREE_SINCE <= PROTOCOL_VERSION) };
+        let Command::BranchWorktree { project, branch } = decode(&encode(&Command::BranchWorktree {
+            project: PathBuf::from("/code"),
+            branch: "feat/x".into(),
+        })
+        .unwrap())
+        .unwrap() else {
+            panic!("expected a branch worktree request")
+        };
+        assert_eq!((project, branch.as_str()), (PathBuf::from("/code"), "feat/x"));
+    }
+
+    /// Writing a file is a new command: a daemon built before it cannot read it, so a client asks only a
+    /// daemon that says it is new enough.
+    #[test]
+    fn a_file_write_is_asked_only_of_a_daemon_that_knows_it() {
+        let ask = ClientMsg::Command(Command::WriteFile {
+            term: 3,
+            tag: 1,
+            path: "src/a.rs".into(),
+            contents: "fn a() {}\n".into(),
+        });
+        assert_eq!(ask.introduced_in(), WRITE_FILE_SINCE);
+        const { assert!(WRITE_FILE_SINCE > COMPATIBLE_SINCE && WRITE_FILE_SINCE <= PROTOCOL_VERSION) };
+    }
+
     /// `agent` and `prompt` were added to `NewWorktree` as defaulted fields: a peer that does not
     /// send them still decodes, as "no agent", so the version stays as it was.
     #[test]
@@ -2332,7 +2395,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 80);
+        assert_eq!(PROTOCOL_VERSION, 82);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()

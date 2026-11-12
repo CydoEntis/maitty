@@ -147,6 +147,18 @@ or a structured runtime. Both commands came in protocol 79 (`PREWARM_SINCE`, eac
 commands are `prewarm_agent_session` (the agent names and flag rules of `start_agent_session`; it answers false when the
 daemon running is older) and `drop_prewarmed_agent`.
 
+`Command::BranchWorktree { project, branch }` makes a worktree for a window with no pane to ask from (the desktop
+app's new chat page, where "New worktree" used to run a plain `git worktree add` beside the project, skipping the
+trust copy, the repo's setup hook and the tidy-up list). The daemon checks `branch` as `NewWorktree`'s branch agent
+does, requires `project` to be one the app shows and a git repository, then makes the checkout with
+`create_trusted_worktree` (the `worktree.dir` template, an existing local or remote branch else a new one from HEAD,
+trusted like its repo), runs the repo's `on_create` setup, lists the folder in `made_worktrees` and replies
+`Reply::Text(folder)`. The window starts its agent in that folder. It came in protocol 81 (`BRANCH_WORKTREE_SINCE`, with
+its arm in `ClientMsg::introduced_in`); `COMPATIBLE_SINCE` stays 78 because an older peer is never sent it. The desktop
+command is `add_branch_worktree` (`maitty_desktop_client::branch_worktree`); it waits up to eleven minutes, since the
+setup hook may take ten, and says the service is from an older release instead of asking a daemon that would never
+answer. It is this computer's daemon only. Structured runtimes may not ask for it.
+
 A pane's follow-up queue (`TermInfo.queued`) is the daemon's: it types the oldest into the agent when a turn ends, never
 into a question, and keeps the rest across a restart. `Command::QueueFollowUp { term, text, first }` adds one (`first`,
 a defaulted field, puts it ahead of the ones waiting, for an agent's own command picked while it works),
@@ -912,7 +924,7 @@ focus never takes the keys.
 | `NewTab` (`SpawnTab`) | this computer | `target_machine()` with that machine's active workspace |
 | `RenameTab`, `CloseWorkspace` (prompts carrying `WsId` / `TabId`) | this computer | `focus_machine()` (the ids came from its active workspace) |
 | `ConversationRename`, `ConversationArchive` | this computer | `conversation_machine(id)`: the selected session's machine if it lists the chat, else the first machine that does |
-| `NewWorktree` (also with `agent` and `prompt`), `RemoveWorktree`, `TidyWorktrees`, `CloseWorktree`, `AgentWorktree` | this computer | this computer; refused for another machine's project or pane |
+| `NewWorktree` (also with `agent` and `prompt`), `BranchWorktree`, `RemoveWorktree`, `TidyWorktrees`, `CloseWorktree`, `AgentWorktree` | this computer | this computer; refused for another machine's project or pane |
 | `ForgetCheckApproval`, `ReloadConfig`, `KillServer`, first-state `SelectWorkspace` / `NewWorkspace` | this computer | this computer (no owning machine) |
 
 **Local-only features.** `Feature` (Files, Changes, Find, Branches, References, image paste, agent

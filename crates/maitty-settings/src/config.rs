@@ -333,6 +333,9 @@ pub struct Worktree {
     /// Keep this agent (e.g. "claude") booted in a spare worktree of the repo you last
     /// used, so the next one starts instantly. Costs one idle agent. Empty: off.
     pub prewarm: String,
+    /// A new branch's worktree starts from the repository's default branch (what `origin/HEAD`
+    /// names, else `main` or `master`) rather than from whatever the main checkout has out.
+    pub base_on_default: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -399,6 +402,7 @@ impl Default for Worktree {
             per_agent: true,
             delete_with_last: true,
             prewarm: String::new(),
+            base_on_default: false,
         }
     }
 }

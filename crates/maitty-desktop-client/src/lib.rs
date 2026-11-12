@@ -45,6 +45,19 @@ pub enum PaneCommand {
     UndoClose,
     /// The person's answer to a session that asked to start helpers.
     AnswerHelpers(maitty_shared::protocol::HelperChoice),
+    /// Run the pane's check `name` again (None: all of them).
+    RerunCheck { name: Option<String> },
+    /// Accept a failed check as it is (None: the headline one), for the reason given (it may be empty).
+    OverrideCheck { name: Option<String>, reason: String },
+    /// Take an override back: the check reads as failed again.
+    UndoOverride { name: Option<String> },
+    /// The person's answer to a repo-supplied check command, as shown (`command` is hashed here, so the
+    /// daemon refuses the answer if a different command waits by then).
+    ApproveCheck {
+        name: String,
+        choice: maitty_shared::protocol::ApprovalChoice,
+        command: String,
+    },
 }
 
 impl PaneCommand {
@@ -77,6 +90,21 @@ impl PaneCommand {
             PaneCommand::UndoClose => ClientMsg::Command(Command::UndoClose { term }),
             PaneCommand::AnswerHelpers(choice) => {
                 ClientMsg::Command(Command::AnswerHelpers { term, choice })
+            }
+            PaneCommand::RerunCheck { name } => ClientMsg::Command(Command::RerunCheck { term, name }),
+            PaneCommand::OverrideCheck { name, reason } => {
+                ClientMsg::Command(Command::OverrideCheck { term, name, reason })
+            }
+            PaneCommand::UndoOverride { name } => {
+                ClientMsg::Command(Command::UndoOverride { term, name })
+            }
+            PaneCommand::ApproveCheck { name, choice, command } => {
+                ClientMsg::Command(Command::ApproveCheck {
+                    term,
+                    name,
+                    choice,
+                    command_sha256: maitty_shared::protocol::command_hash(&command),
+                })
             }
         }
     }
@@ -936,6 +964,43 @@ pub async fn new_worktree_session(
     }
 }
 
+/// Remove worktrees (a folder and whether to go on with uncommitted changes in it, which are lost).
+/// The daemon closes what runs in a worktree before it goes and answers at once; one something
+/// still runs in is left alone.
+pub async fn tidy_worktrees(items: Vec<(PathBuf, bool)>, daemon_executable: PathBuf) -> Result<Value> {
+    match request(ClientMsg::Command(Command::TidyWorktrees { items }), daemon_executable).await? {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected worktree reply"),
+    }
+}
+
+/// How long a worktree for a branch may take, connecting included. The repo's setup hook runs
+/// before the daemon answers (it may take ten minutes), so the usual request limit is too short.
+const BRANCH_WORKTREE_TIMEOUT: Duration = Duration::from_secs(11 * 60);
+
+/// A worktree of `project` on `branch`, made by the daemon the way every other one is: trusted
+/// like its repo, the repo's setup run, tracked for tidy-up. The answer is its folder, the place
+/// to start an agent. A daemon built before the command is told so in words, since it would never
+/// answer.
+pub async fn branch_worktree(project: PathBuf, branch: String) -> Result<Value> {
+    let message = ClientMsg::Command(Command::BranchWorktree { project, branch });
+    answered_within(BRANCH_WORKTREE_TIMEOUT, async {
+        let (mut connection, version) = ipc::open_for_user_knowing_version()
+            .await
+            .context("connecting to the local daemon")?;
+        if !daemon_reads(&message, version) {
+            bail!(
+                "the Maitty service running is older than this app and cannot make a worktree yet: restart it (Settings › Daemon), then try again"
+            );
+        }
+        match ask(&mut connection, &message).await? {
+            Reply::Text(folder) => Ok(Value::String(folder)),
+            _ => bail!("daemon returned an unexpected worktree reply"),
+        }
+    })
+    .await
+}
+
 /// Where `query` appears in what the app's terminal sessions printed recently.
 pub async fn search_panes(query: String, daemon_executable: PathBuf) -> Result<Value> {
     let reply = request(
@@ -988,6 +1053,39 @@ pub async fn restore_snapshot(
         } => Ok(changed as u64),
         _ => bail!("daemon returned an unexpected restore reply"),
     }
+}
+
+/// Replace the text of one existing file of the checkout `term` is in (the daemon checks the path and refuses
+/// anything but a plain file of the checkout).
+pub async fn write_project_file(
+    term: u32,
+    path: String,
+    contents: String,
+) -> Result<Value> {
+    let message = ClientMsg::Command(Command::WriteFile {
+        term,
+        tag: 0,
+        path,
+        contents,
+    });
+    answered_within(Duration::from_secs(30), async {
+        let (mut connection, version) = ipc::open_for_user_knowing_version()
+            .await
+            .context("connecting to the local daemon")?;
+        if !daemon_reads(&message, version) {
+            bail!(
+                "the Maitty service running is older than this app and cannot save a file yet: restart it (Settings › Daemon), then try again"
+            );
+        }
+        match ask(&mut connection, &message).await? {
+            Reply::Repo {
+                reply: maitty_shared::repo::RepoReply::Written,
+                ..
+            } => Ok(Value::Null),
+            _ => bail!("daemon returned an unexpected save reply"),
+        }
+    })
+    .await
 }
 
 /// End a terminal session: its process stops, as when it is closed in the terminal app.
@@ -1078,6 +1176,46 @@ pub async fn answer_helpers(
     match reply {
         Reply::Ok => Ok(Value::Null),
         _ => bail!("daemon returned an unexpected helper answer reply"),
+    }
+}
+
+/// What the person chose for a repo-supplied check command: `once`, `always` or `never`.
+pub fn approval_choice(word: &str) -> Result<maitty_shared::protocol::ApprovalChoice> {
+    use maitty_shared::protocol::ApprovalChoice;
+    match word {
+        "once" => Ok(ApprovalChoice::Once),
+        "always" => Ok(ApprovalChoice::Always),
+        "never" => Ok(ApprovalChoice::Never),
+        _ => bail!("unknown answer to a check approval"),
+    }
+}
+
+/// Ask this computer's daemon to do something to a pane's checks (see `PaneCommand`).
+pub async fn check_command(term: u32, command: PaneCommand, daemon_executable: PathBuf) -> Result<Value> {
+    match request(command.message(term), daemon_executable).await? {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected check reply"),
+    }
+}
+
+/// The tail of a pane's last output for check `name` (None: the headline one).
+pub async fn check_output(term: u32, name: Option<String>, daemon_executable: PathBuf) -> Result<Value> {
+    match request(ClientMsg::Query(Query::CheckOutput { term, name }), daemon_executable).await? {
+        Reply::Text(output) => Ok(Value::String(output)),
+        _ => bail!("daemon returned an unexpected check output reply"),
+    }
+}
+
+/// The person's answer to an agent's request for a secret (`value`: the secret, or None to decline). The value
+/// goes into the message as `SecretText`, which prints as `<hidden>`, and is not kept or logged here.
+pub async fn answer_secret(id: u64, value: Option<String>, daemon_executable: PathBuf) -> Result<Value> {
+    let message = ClientMsg::Command(Command::AnswerSecret {
+        id,
+        value: value.map(maitty_shared::protocol::SecretText),
+    });
+    match request(message, daemon_executable).await? {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected secret reply"),
     }
 }
 

@@ -631,8 +631,14 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   Every session on this computer has the Terminal tab: with an agent's terminals pinned under the chat the tab says
   so and offers to show them there. A chat session has no pane to ask about its repository, so Changes and
   Files appear for it once it has a terminal.
-  Branches, History, Timeline and References are kept in the code but nothing opens them: whether they come back
-  is undecided. Changes lists the
+  **Checks** lists what the repository's checks said about the agent's last turns: each check's command, its state in
+  words (Running, Passed, Failed, Accepted as it is, Could not run, Needs your approval, …) and the first failing
+  line, with **Run again**, **Accept the failure…** (an optional reason, up to 280 characters; **Undo accept** takes it
+  back), **Run once / Always run this / Never run** for a command the repository brought, and **Output** for the
+  tail of its last run. The tab's count is the checks that want you (`ChecksTab.tsx`, `checks.ts`). Branches (with
+  each branch's distance from its upstream), History (the commit log and the agent's snapshots),
+  Timeline (what the pane reported lately) and References follow Terminal as tabs of their own; the tab strip scrolls
+  when the panel is narrow. Changes lists the
   changed files (`+N −N`) and the picked file's diff (added lines tinted with `--ok`, removed with `--danger`, hunk
   headers in the accent), with line numbers drawn beside it. For an agent, a click on a code line opens a comment box
   under it with **Send to Claude** (the agent's name; Ctrl/⌘+Enter sends, Esc closes the box); the comment goes to the
@@ -640,9 +646,14 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   agent that is asking something is not sent one. Under the file list, for a checkout on this computer, is the commit
   message (first the session's name, else the first line of its last prompt), **Commit N files** (stages everything
   and commits) and **Create PR** (pushes the branch and runs `gh pr create --fill`; the address stays under the
-  buttons). What git or `gh` said is shown when either fails (`CommitBar.tsx`, `src-tauri/src/changes.rs`). Nothing
-  else in the panel changes the repository. **Restore** on a snapshot asks
-  first and is disabled while the agent works; **Compare** picks two entries. A tab that cannot load shows one calm
+  buttons). Between them is one **remote button** that follows where the branch stands against its upstream:
+  **Pull ↓N** when it is behind (fast-forward only), **Push ↑N** when it is ahead, **Fetch** when it is level; when it
+  is both ahead and behind the button is disabled and its tooltip says why (`remoteAction.ts`). What git or `gh` said
+  is shown when any of them fails (`CommitBar.tsx`, `src-tauri/src/changes.rs`). The one other thing the panel
+  changes is a file: **Edit** in the Files tab (this computer only, never in a diff) replaces an existing file whole;
+  **Save** (Ctrl+S) first re-reads it and asks before overwriting a file that changed since the edit began. The daemon
+  refuses links, `.git`, new files and anything over 256 KiB (`WriteFile`). In the History tab, **Restore** on a
+  snapshot asks first and is disabled while the agent works, and **Compare** picks two entries. A tab that cannot load shows one calm
   screen with Try again. A folder that is not a git project says so.
   **Files** (`FilesTab.tsx`) lists the changed files first (**Changed**, each with its A, M or D mark), then the tree
   (**All files**): a file carries a type tag (`fileTag.ts`: TS, TSX, `{ }`, MD…) and its mark when changed, a folder a
@@ -658,12 +669,21 @@ and timings; the feature stylesheets beside their components carry them (`sideba
 - **Worktrees (⌘⇧N).** The New worktree dialog names a branch and what to start it from (an
   existing branch is checked out instead), then opens a session in the new folder in a new tab. A
   project's right-click menu has a **Worktrees** submenu that opens a shell in any of the repo's
-  worktrees, and a **New worktree…** row. Worktrees group under their parent repo. A folder's row shows
+  worktrees, and a **New worktree…** row. The dialog also lists the project's other worktrees with where each stands
+  ("merged, nothing uncommitted", "3 uncommitted changes", "not merged anywhere"), each with **Merge** (its committed
+  work into the main checkout's branch, no fast-forward; refused while either side has uncommitted changes, and a
+  conflict leaves the main checkout as it was) and **Remove** (the daemon closes what runs in it and removes the folder;
+  it asks again first when that would lose changes or unmerged commits). This computer's worktrees only
+  (`WorktreeManager.tsx`, `src-tauri/src/worktrees.rs`). Worktrees group under their parent repo. A folder's row shows
   only its name: a branch belongs to a session, and a worktree's branch is not the folder's.
 - **Branch or worktree.** A session in the project's own folder shows its branch in `--ansi-mag` with the branch mark;
   one in a linked worktree (the daemon's `TermInfo.linked`, never worked out from the folder) shows it in `--ansi-blue`
   with a tree, on its sidebar row, its pane header and under the message box, where the word reads **Worktree** or
   **Branch**. The tooltip says which.
+- **A session whose agent asks for a secret** (`maitty_request_secret`) shows a bar across the top of its pane with the
+  label and the reason the agent gave, and **Provide…** (a masked box; Enter gives it) and **Decline**. The value goes
+  from that box to the daemon and nowhere else: it is not kept in the window's state and not shown in the chat, and the
+  agent gets a single-use reference (ADR 0006, `SecretAskBar.tsx`). This computer's sessions only.
 - **A session that asks to start helpers** shows a bar across the top of its pane, in the needs-you colour: "Wants to start N helpers", the
   tasks, and **Allow** (this session, from now on), **Always in this project** and **No**. It is the only place the desktop app
   answers that request, and it stays until the daemon says the request is answered.

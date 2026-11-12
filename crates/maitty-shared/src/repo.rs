@@ -51,6 +51,8 @@ pub enum RepoReply {
     References(Vec<RepoReference>),
     /// A restore finished: how many files changed.
     Restored(usize),
+    /// A file was written.
+    Written,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

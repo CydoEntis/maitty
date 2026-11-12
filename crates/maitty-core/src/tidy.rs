@@ -11,8 +11,9 @@ pub struct Standing {
     pub dirty: usize,
     /// Its branch (none: a detached HEAD).
     pub branch: Option<String>,
-    /// Every commit it has is also on another branch or on a remote: its own branch could
-    /// go and nothing would be lost.
+    /// Every commit it has is also on another branch or on a remote, or its pull request was
+    /// merged at exactly this commit (a squash merge leaves the commits on no other branch):
+    /// its own branch could go and nothing would be lost.
     pub merged: bool,
     /// When it last committed, as git says it ("3 days ago").
     pub last_commit: String,
@@ -40,6 +41,46 @@ impl Standing {
             ),
         }
     }
+}
+
+/// Whether a pull request from `branch` was merged with `head` as its last commit. Asks `gh`
+/// (blocks); when it isn't installed, isn't logged in or can't be reached, the answer is no,
+/// which only means the person is asked.
+fn merged_by_pull_request(dir: &Path, branch: &str, head: &str) -> bool {
+    if head.is_empty() || !crate::proc::on_path("gh") {
+        return false;
+    }
+    let mut cmd = std::process::Command::new("gh");
+    if let Some(path) = crate::login_path::resolved() {
+        cmd.env("PATH", path);
+    }
+    cmd.current_dir(dir)
+        .args([
+            "pr",
+            "list",
+            "--head",
+            branch,
+            "--state",
+            "merged",
+            "--json",
+            "headRefOid",
+            "--limit",
+            "10",
+        ])
+        .env("GH_PROMPT_DISABLED", "1")
+        .env("NO_COLOR", "1");
+    crate::proc::run(&mut cmd).is_ok_and(|json| merged_with_head(&json, head))
+}
+
+/// Whether `gh pr list --json headRefOid` output has a pull request whose last commit is `head`.
+fn merged_with_head(json: &str, head: &str) -> bool {
+    #[derive(serde::Deserialize)]
+    struct Listed {
+        #[serde(rename = "headRefOid")]
+        head: String,
+    }
+    serde_json::from_str::<Vec<Listed>>(json)
+        .is_ok_and(|list| list.iter().any(|pr| pr.head == head))
 }
 
 pub fn standing(dir: &Path) -> Standing {
@@ -73,6 +114,12 @@ pub fn standing(dir: &Path) -> Standing {
             || (r != format!("refs/heads/{own}")
                 && !(r.starts_with("refs/remotes/") && r.ends_with(&format!("/{own}"))))
     });
+    // A squash or rebase merge puts no commit of this branch on another one, so git alone calls
+    // it unmerged. The pull request says otherwise, but only for the commit it merged.
+    let merged = merged
+        || branch
+            .as_deref()
+            .is_some_and(|b| merged_by_pull_request(dir, b, &git(&["rev-parse", "HEAD"])));
     Standing {
         dirty,
         branch,
@@ -154,5 +201,15 @@ mod tests {
             "a commit no branch has would be lost"
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_merged_pull_request_counts_only_at_the_commit_it_merged() {
+        let listed = r#"[{"headRefOid":"abc123"},{"headRefOid":"def456"}]"#;
+        assert!(merged_with_head(listed, "def456"));
+        // Commits made after the merge are not in it.
+        assert!(!merged_with_head(listed, "fff000"));
+        assert!(!merged_with_head("[]", "abc123"));
+        assert!(!merged_with_head("not json", "abc123"));
     }
 }

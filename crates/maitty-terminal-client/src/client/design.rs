@@ -734,6 +734,12 @@ pub(super) fn draw_changes(
                     Hit::Button(super::Btn::ViewKey('p')),
                 ),
                 (
+                    "Merge PR",
+                    "M",
+                    BtnKind::Normal,
+                    Hit::Button(super::Btn::ViewKey('M')),
+                ),
+                (
                     "Editor",
                     "e",
                     BtnKind::Normal,
@@ -787,6 +793,12 @@ pub(super) fn draw_changes(
                     "p",
                     BtnKind::Normal,
                     Hit::Button(super::Btn::ViewKey('p')),
+                ),
+                (
+                    "Merge PR",
+                    "M",
+                    BtnKind::Normal,
+                    Hit::Button(super::Btn::ViewKey('M')),
                 ),
                 (
                     "Editor",
@@ -1570,7 +1582,7 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
             "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.rounded" => "PANES",
             "sessions.agent" | "sessions.where" => "NEW SESSIONS",
             "ui.sidebar_tabs" => "SIDEBAR",
-            "worktree.delete_with_last" | "worktree.per_agent" | "worktree.command" => "WORKTREES",
+            "worktree.delete_with_last" | "worktree.per_agent" | "worktree.command" | "worktree.base_on_default" => "WORKTREES",
             p if p.starts_with("restore.") => "RESTARTS",
             "scrollback" => "HISTORY",
             "notify.sound" | "notify.sound_on_needs" | "notify.sound_on_done" | "notify.volume" => "SOUND",

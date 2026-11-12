@@ -71,7 +71,16 @@ pub(super) fn create_trusted_worktree(
     branch: &str,
     base: Option<&str>,
     template: &str,
+    from_default: bool,
 ) -> Result<(PathBuf, String), String> {
+    // A base the caller named wins; `from_default` only fills in for one it did not.
+    let default = base
+        .is_none()
+        .then_some(from_default)
+        .filter(|on| *on)
+        .and_then(|_| crate::gitfs::head(dir))
+        .and_then(|h| git::default_base(&h.main_root));
+    let base = base.or(default.as_deref());
     let made = git::create_worktree(dir, branch, base, template).map_err(|e| format!("{e:#}"))?;
     if let Some(h) = crate::gitfs::head(&made.0) {
         trust_like_repo(&h.main_root, &made.0);
@@ -92,7 +101,11 @@ pub(super) fn made_up_branch(taken: &[String], seed: usize) -> String {
 /// A new worktree for an agent about to start in `dir`, a folder of the repo's main
 /// checkout, on a made-up branch. Returns the folder to start in: the same subfolder of the
 /// new worktree.
-pub(super) fn agent_worktree(dir: &std::path::Path, template: &str) -> Result<PathBuf, String> {
+pub(super) fn agent_worktree(
+    dir: &std::path::Path,
+    template: &str,
+    from_default: bool,
+) -> Result<PathBuf, String> {
     let head = crate::gitfs::head(dir).ok_or("not in a git repository")?;
     let taken = git::branch_names_in_use(&head.main_root);
     let n = std::time::SystemTime::now()
@@ -100,7 +113,7 @@ pub(super) fn agent_worktree(dir: &std::path::Path, template: &str) -> Result<Pa
         .map(|d| d.as_secs() as usize)
         .unwrap_or(0);
     let branch = made_up_branch(&taken, n);
-    let (path, _) = create_trusted_worktree(&head.main_root, &branch, None, template)?;
+    let (path, _) = create_trusted_worktree(&head.main_root, &branch, None, template, from_default)?;
     let sub = dir
         .strip_prefix(&head.top)
         .ok()
@@ -262,6 +275,7 @@ impl Daemon {
         }
         self.spare_making = true;
         let template = self.cfg.worktree.dir.clone();
+        let from_default = self.cfg.worktree.base_on_default;
         let tx = self.tx.clone();
         let n = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -269,7 +283,7 @@ impl Daemon {
             .unwrap_or(0);
         let name = format!("spare-{:04x}", n & 0xffff);
         tokio::task::spawn_blocking(move || {
-            let result = create_trusted_worktree(&repo, &name, None, &template);
+            let result = create_trusted_worktree(&repo, &name, None, &template, from_default);
             let _ = tx.blocking_send(Ev::SpareMade(repo, result));
         });
     }

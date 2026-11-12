@@ -396,11 +396,12 @@ impl Daemon {
                     )
                 });
                 let template = self.cfg.worktree.dir.clone();
+                let from_default = self.cfg.worktree.base_on_default;
                 let tx = self.tx.clone();
                 self.pending_ops += 1;
                 let b = branch.clone();
                 tokio::task::spawn_blocking(move || {
-                    let result = create_trusted_worktree(&dir, &b, None, &template);
+                    let result = create_trusted_worktree(&dir, &b, None, &template, from_default);
                     let _ = tx.blocking_send(Ev::MoveReady {
                         client,
                         term,
@@ -530,6 +531,7 @@ impl Daemon {
                     .filter(|d| d.is_dir())
                     .unwrap_or(ws_dir);
                 let template = self.cfg.worktree.dir.clone();
+                let from_default = self.cfg.worktree.base_on_default;
                 let cmd = cmd
                     .or_else(|| Some(self.cfg.worktree.command.clone()).filter(|c| !c.is_empty()));
                 let repo = crate::gitfs::head(&dir).map(|h| h.main_root);
@@ -584,7 +586,7 @@ impl Daemon {
                 let tx = self.tx.clone();
                 self.pending_ops += 1;
                 tokio::task::spawn_blocking(move || {
-                    let result = create_trusted_worktree(&dir, &branch, base.as_deref(), &template);
+                    let result = create_trusted_worktree(&dir, &branch, base.as_deref(), &template, from_default);
                     let _ = tx.blocking_send(Ev::WorktreeCreated {
                         client,
                         branch,
@@ -614,11 +616,42 @@ impl Daemon {
                     return Ok(false);
                 }
                 let template = self.cfg.worktree.dir.clone();
+                let from_default = self.cfg.worktree.base_on_default;
                 let tx = self.tx.clone();
                 self.pending_ops += 1;
                 tokio::task::spawn_blocking(move || {
-                    let result = agent_worktree(&dir, &template);
+                    let result = agent_worktree(&dir, &template, from_default);
                     let _ = tx.blocking_send(Ev::AgentWorktreeMade { client, result });
+                });
+                return Ok(false);
+            }
+            Command::BranchWorktree { project, branch } => {
+                if let Some(problem) = branch_agent::branch_problem(&branch) {
+                    anyhow::bail!("{problem}");
+                }
+                // The same limit as a chat on a branch: no checkout (and no setup hook) in a
+                // repository the app has never been shown.
+                let project = Some(clean_path(project))
+                    .filter(|dir| dir.is_absolute() && dir.is_dir() && self.is_known_project(dir))
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "that is not a project in the app: open a session in it first"
+                        )
+                    })?;
+                if crate::gitfs::head(&project).is_none() {
+                    anyhow::bail!("{} is not in a git repository", project.display());
+                }
+                let template = self.cfg.worktree.dir.clone();
+                let from_default = self.cfg.worktree.base_on_default;
+                let tx = self.tx.clone();
+                self.pending_ops += 1;
+                tokio::task::spawn_blocking(move || {
+                    let result = create_trusted_worktree(&project, &branch, None, &template, from_default);
+                    let _ = tx.blocking_send(Ev::BranchWorktreeMade {
+                        client,
+                        set_up: false,
+                        result,
+                    });
                 });
                 return Ok(false);
             }
@@ -755,6 +788,29 @@ impl Daemon {
                 let tx = self.tx.clone();
                 tokio::task::spawn_blocking(move || {
                     let result = repo::restore(&dir, &commit).map_err(|e| format!("{e:#}"));
+                    let _ = tx.blocking_send(Ev::RepoReady {
+                        client,
+                        tag,
+                        result,
+                    });
+                });
+                return Ok(false);
+            }
+            Command::WriteFile {
+                term,
+                tag,
+                path,
+                contents,
+            } => {
+                let dir = self
+                    .terms
+                    .get(&term)
+                    .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?
+                    .cwd
+                    .clone();
+                let tx = self.tx.clone();
+                tokio::task::spawn_blocking(move || {
+                    let result = repo::write_file(&dir, &path, &contents).map_err(|e| format!("{e:#}"));
                     let _ = tx.blocking_send(Ev::RepoReady {
                         client,
                         tag,

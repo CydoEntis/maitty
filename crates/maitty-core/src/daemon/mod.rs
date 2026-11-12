@@ -192,6 +192,13 @@ pub enum Ev {
         client: ClientId,
         result: Result<PathBuf, String>,
     },
+    /// A worktree made for a branch asked from a folder (`Command::BranchWorktree`); `set_up`
+    /// once the repo's setup hook has run in it.
+    BranchWorktreeMade {
+        client: ClientId,
+        set_up: bool,
+        result: Result<(PathBuf, String), String>,
+    },
     /// What became of a worktree after you closed its last pane.
     WorktreeAutoRemoved {
         client: ClientId,
@@ -822,6 +829,7 @@ impl Daemon {
                     | Command::NewShip { .. }
                     | Command::Split { .. }
                     | Command::NewWorktree { .. }
+                    | Command::BranchWorktree { .. }
                     | Command::Popup { .. }
             )
         {
@@ -934,6 +942,7 @@ impl Daemon {
             | Command::NewShip { .. }
             | Command::Split { .. }
             | Command::NewWorktree { .. }
+            | Command::BranchWorktree { .. }
             | Command::Popup { .. } => self.may(client, Grant::Start, None),
             Command::ClosePane { term }
             | Command::CloseSession { term }
@@ -971,6 +980,14 @@ impl Daemon {
                 anyhow::bail!("restoring a snapshot is yours to do, not a pane's")
             }
             Command::RestoreSnapshot { term, .. } => {
+                self.may_use_terminal(client, *term)?;
+                self.may(client, Grant::Write, Some(*term))
+            }
+            // An agent edits its own files itself; a file the person edits in the window is theirs.
+            Command::WriteFile { .. } if self.client_is_agent(client) => {
+                anyhow::bail!("editing a file is yours to do, not a pane's")
+            }
+            Command::WriteFile { term, .. } => {
                 self.may_use_terminal(client, *term)?;
                 self.may(client, Grant::Write, Some(*term))
             }
@@ -2019,6 +2036,11 @@ impl Daemon {
                 set_up,
                 result,
             } => self.chat_worktree_created(client, settings, branch, set_up, result),
+            Ev::BranchWorktreeMade {
+                client,
+                set_up,
+                result,
+            } => self.branch_worktree_made(client, set_up, result),
             Ev::AgentWorktreeMade { client, result } => {
                 self.pending_ops -= 1;
                 match result {
