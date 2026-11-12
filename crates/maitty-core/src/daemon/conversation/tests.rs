@@ -739,8 +739,10 @@ impl Fixture {
         tokio::task::spawn_blocking(move || {
             // Windows refuses to delete a folder while a just-killed process or a scanner still
             // holds a handle in it, and the guard's own removal tries once and ignores failure.
-            // Retry here until a deadline, then let the assertions judge the result.
-            let until = std::time::Instant::now() + Duration::from_secs(10);
+            // Retry here until a deadline, then let the assertions judge the result. A CI runner
+            // once held the freshly compiled provider past ten seconds, so the deadline is long;
+            // a passing test leaves the loop as soon as the removal succeeds.
+            let until = std::time::Instant::now() + Duration::from_secs(60);
             while directory.exists() && std::fs::remove_dir_all(&directory).is_err() {
                 if std::time::Instant::now() >= until {
                     break;
