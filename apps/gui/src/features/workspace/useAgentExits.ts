@@ -23,7 +23,7 @@ export function useAgentExits({ sessions, listed, setLayout, agentTerminals, end
   setLayout: Dispatch<SetStateAction<Layout>>
   /** The terminals each agent opened for itself, as the window keeps them (the gone agent's among them). */
   agentTerminals: AgentTerminals
-  endSessions: (ids: string[], what: string) => void
+  endSessions: (ids: string[]) => void
 }): void {
   const wasAgent = useRef(new Set<string>())
   const lastSeen = useRef<ReadonlyMap<string, SessionView>>(new Map())

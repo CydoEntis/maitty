@@ -105,7 +105,7 @@ export function useShortcutRunner({ newSession, focusedMachineNumber, newTermina
   setLayout: Dispatch<SetStateAction<Layout>>
   layout: Layout
   askToClose: (ids: string[], close: () => void) => void
-  endSessions: (ids: string[], what: string) => void
+  endSessions: (ids: string[]) => void
   toggleSidebar: () => void
   setPaletteOpen: Dispatch<SetStateAction<boolean>>
   sessions: SessionView[]

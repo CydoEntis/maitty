@@ -16,7 +16,7 @@ import { makeId } from './makeId'
 /** Starts for what is in front: another terminal for an agent, or an agent in the focused folder. */
 export function useAgentStarts({ sessionMap, endSessions, setAgentTerminals, onTerminalAdded, runStart, setLayout, focusedSession, setSettingsSection, preferences, home }: {
   sessionMap: Map<string, SessionView>
-  endSessions: (ids: string[], what: string) => void
+  endSessions: (ids: string[]) => void
   setAgentTerminals: Dispatch<SetStateAction<AgentTerminals>>
   /** A terminal was started for an agent: the window shows it where terminals open. */
   onTerminalAdded: (agentId: string, terminalId: string) => void
