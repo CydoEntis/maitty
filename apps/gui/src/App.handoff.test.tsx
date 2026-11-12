@@ -1314,7 +1314,7 @@ describe('desktop overlays and pane tools', () => {
     const bar = await screen.findByLabelText('Status')
 
     await user.click(within(bar).getByRole('button', { name: /^Layout style/ }))
-    await user.click(await screen.findByRole('menuitemradio', { name: 'Mono Type' }))
+    await user.click(await screen.findByRole('menuitemradio', { name: 'Squared' }))
 
     expect(document.documentElement.dataset.style).toBe('mono')
     expect(document.documentElement.dataset.finish).toBe('flat')

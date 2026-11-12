@@ -10,7 +10,7 @@
  * from a library) or `mx-field`. A new surface joins a list here; it does not set a background of
  * its own. Terminal panes stay solid in both finishes: the terminal draws its own ground.
  *
- * The four window styles (Glass, Mono Type, Console, Retro Pixel) sit on two finishes, chosen by
+ * The four window styles (Glass, Squared, Flat, Retro Pixel; ids glass, mono, console, pixel) sit on two finishes, chosen by
  * `data-finish` (Glass is `glass`; the other three are `flat`), and differ in the component
  * tokens (`--c-*`) and the few shape rules keyed by `data-style` at the end of this file. A component
  * never asks which style is on; it reads the tokens.
@@ -252,7 +252,7 @@
 
 /* ---- style rules ----
    What the tokens cannot say: corners, borders, type and the few surfaces a style draws its own way.
-   Only the flat styles lose their blur; Mono Type and Retro Pixel square every corner. */
+   Only the flat styles lose their blur; Squared and Retro Pixel square every corner. */
 :root[data-style="mono"] .mx-app *, :root[data-style="pixel"] .mx-app * { border-radius: 0 !important; }
 :root:not([data-style="glass"]) .mx-app * { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
 :root[data-style="mono"] .mx-app * { letter-spacing: -.01em; }

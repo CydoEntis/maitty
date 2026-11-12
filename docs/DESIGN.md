@@ -218,13 +218,13 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   has a faint top highlight (`rgba(--hl, .035)` fading to `.012` over 120px on the sidebar, a flat `.018` on the
   workspace card), a `rgba(--hl, .09)` hairline, an inner top edge and a `0 10px 30px -12px` shadow; a float has a
   stronger highlight (`.07` to `.03`), a `.12` hairline and a `0 18px 44px -12px` shadow, with a 14px blur behind it; a
-  field sits between (`.075` to `.035`). **Flat** (Mono Type, Console, Retro Pixel): solid fills, a hairline, no blur, no
+  field sits between (`.075` to `.035`). The **flat finish** (the Squared, Flat and Retro Pixel styles; not to be mixed up with the Flat style): solid fills, a hairline, no blur, no
   highlight (`--gk` is 0, which turns off every gradient and lift that multiplies by it; hover tints stay), one plain
   shadow on floats. A new surface is added to a role's list in `material.css`; it does not set a background of its
   own. A popover opens through `PopupContent` (`components/ui/popup.tsx`) or carries `mx-pop`, so it is portalled into
   the window root and takes the float role. **Inside a surface**, nothing reads the theme's solid colours directly: a
   sunken control is `--m-well`, a raised or current row `--m-raise`, a picked row `--m-sel`, a hovered one
-  `--m-hover`, a dialog's own ground `--m-pane`. Flat maps them to the theme's `--well`/`--raise`/`--sel`/`--hover`/
+  `--m-hover`, a dialog's own ground `--m-pane`. The flat finish maps them to the theme's `--well`/`--raise`/`--sel`/`--hover`/
   `--pane`; Glass maps them to tints of the light (`--hl`) and shade (`--sd`). Tints are written
   `rgba(var(--hl), calc(.06 * var(--hk)))`, never a fixed white. The hairline uses `--hl` (ink on a light theme).
   `src/material.test.ts` fails when a stylesheet reads a solid surface colour or a fixed white. Left on purpose:
@@ -234,8 +234,8 @@ and timings; the feature stylesheets beside their components carry them (`sideba
 - **Window style: four shapes, any theme** (Settings › Appearance › Look › Window style, `style`; the root carries
   `data-style` and `data-finish`). A style is shape and type, never colour: whatever theme is in use is what every style
   wears. **Glass** (the default: frosted panels with 22px corners — mostly opaque, a milky sheen, a strong blur (28px, saturate 140%) and a bright edge, so what is behind them is only a soft wash of colour — over an atmosphere of three blobs (the theme's accent, blue and magenta) drawn from the theme; the terminal is see-through by default so its text sits on the frost,
-  Inter and JetBrains Mono; a saved `frosted` reads as Glass), **Mono Type** (Space Mono everywhere, square corners),
-  **Console** (IBM Plex Sans and JetBrains Mono, hairline borders, a marker on the selected row) and **Retro Pixel**
+  Inter and JetBrains Mono; a saved `frosted` reads as Glass), **Squared** (id `mono`: Space Mono everywhere, square corners),
+  **Flat** (id `console`: IBM Plex Sans and JetBrains Mono, hairline borders, a marker on the selected row) and **Retro Pixel**
   (Pixelify Sans, square corners, 3px borders, hard offset shadows, scanlines). Layout and features never change. A style is data
   in `theme/windowStyles.ts` (fonts and the glass dials `--hk`/`--sk`, per dark and light side); `withWindowStyle` lays it over the
   theme in use and touches no colour. **Components are built once and read tokens, never the style.** Besides the
@@ -243,11 +243,11 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   state: a sidebar row, a settings nav item, a chosen segment, a palette row), `--c-field-*` (dropdown buttons, pickers,
   the new-session segments, inputs), `--c-track-*` (the tray behind a segmented control), `--c-sw-*` and `--c-knob-*`
   (the switch), `--c-tile-ring` (agent and shell tiles) and `--c-head-bg` (sticky headers). Glass uses the
-  defaults; Mono, Console and Pixel override them. What tokens cannot say (square corners, Pixel's borders and
+  defaults; Squared, Flat and Pixel override them. What tokens cannot say (square corners, Pixel's borders and
   scanlines, Glass's panels, no blur outside Glass) is the one `[data-style]` block at the end of
   `material.css`. `data-finish` is derived (`finishOf`): Glass is `glass`, the others `flat`. The style is
   the desktop app's own: it is not in the shared `window_style` setting, which stays Flat or Glass for the config file. A
-  saved Flat or Tiled reads as Console. A new control gets tokens first and is checked in all four styles and both
+  saved Flat or Tiled reads as the Flat style. A new control gets tokens first and is checked in all four styles and both
   themes (Settings › Appearance shows each style live). **Icons** (Settings › Appearance › Icons, `iconColor`,
   `data-icons`): `color` keeps app icons in their own colours; `grayscale` makes them neutral `--raise` tiles.
 - **Title bar.** 32px with no background of its own, so it sits on the window ground (`--tbar` is `transparent`): the
