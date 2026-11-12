@@ -165,6 +165,9 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
   const stoppedOnPrompt = link.readOnly === true && feed.status === 'Blocked'
   const answersPrompt = stoppedOnPrompt && typeInto !== undefined && (ask?.answerable === true || (ask?.choices?.length ?? 0) > 0 || (ask?.questions?.length ?? 0) > 1)
   const answerPrompt = typeInto === undefined ? undefined : (choice: AskChoice) => typeInto(ANSWER_KEYS[choice]).then(refresh)
+  // A menu the chat has no buttons for is answered with the keys a person would press, in the agent's own terminal.
+  const sendKeys = typeInto === undefined ? undefined : (keys: string) => typeInto(keys).then(refresh)
+  const readScreen = useMemo(() => (sessionId === undefined ? undefined : () => loadTerminalScreen({ id: sessionId, generation: 0 })), [sessionId])
   const pickChoice = typeInto === undefined ? undefined : (index: number) => typeInto(choiceKey(index)).then(refresh)
   // Several questions are answered a key at a time, as a person would: the prompt moves on after each.
   const pickChoices = typeInto === undefined ? undefined : async (picked: readonly number[]) => {
@@ -432,7 +435,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
 
   const question = pending !== null
     ? <ApprovalTray event={pending} actions={approval} />
-    : stoppedOnPrompt ? <PromptTray agent={agent} ask={ask} online={online} answer={answerPrompt} pick={pickChoice} pickAll={pickChoices} /> : null
+    : stoppedOnPrompt ? <PromptTray agent={agent} ask={ask} online={online} answer={answerPrompt} pick={pickChoice} pickAll={pickChoices} sendKeys={sendKeys} readScreen={readScreen} /> : null
   const notices = [
     offline ? `Reconnecting to the daemon. What is shown may be out of date.${readError !== null ? ` (${truncateError(readError)})` : ''}` : null,
     !offline && incomplete !== null ? `History is incomplete: ${incomplete}.` : null,

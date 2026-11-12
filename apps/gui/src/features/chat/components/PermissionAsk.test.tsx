@@ -74,12 +74,12 @@ describe('the chat of an agent stopped on a permission prompt', () => {
     expect(screen.getByRole('textbox', { name: 'Message claude' })).toHaveAttribute('placeholder', PENDING_APPROVAL_NOTE)
   })
 
-  it('offers no buttons for a prompt whose answer key is not known, and says where to answer', async () => {
+  it('offers no allow button for a prompt whose answer key is not known, only the keys to answer it in the terminal', async () => {
     const { typeInto } = await open('Blocked', { ...WRITE_ASK, answerable: false })
 
     expect(screen.getByText('Wants to use Write')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Yes, once/ })).not.toBeInTheDocument()
-    expect(screen.getByText('Answer in the terminal.')).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: "Keys for the agent's terminal" })).toBeInTheDocument()
     expect(typeInto).not.toHaveBeenCalled()
   })
 
@@ -89,7 +89,7 @@ describe('the chat of an agent stopped on a permission prompt', () => {
     expect(screen.getByText('claude has a question for you')).toBeInTheDocument()
     expect(screen.getByText('Which database? 1 SQLite · 2 Postgres')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Yes, once/ })).not.toBeInTheDocument()
-    expect(screen.getByText('Answer in the terminal.')).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: "Keys for the agent's terminal" })).toBeInTheDocument()
     expect(typeInto).not.toHaveBeenCalled()
   })
 
