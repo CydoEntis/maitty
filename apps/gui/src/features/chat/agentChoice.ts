@@ -9,6 +9,8 @@ export const REASONING_LEVELS: readonly Reasoning[] = ['low', 'medium', 'high', 
 /** Nothing picked: the chat keeps the effort its agent already uses, and nothing is sent. */
 export const DEFAULT_PICK = 'default'
 export type ReasoningPick = Reasoning | typeof DEFAULT_PICK
+/** The effort a chat started from the new chat page begins with: medium thinks enough for most work without the wait and cost of high. A second press on it lets go, and the agent keeps its own. A chat started elsewhere is not claimed to be on it. */
+export const START_REASONING: Reasoning = 'medium'
 export const REASONING_PICKS: readonly ReasoningPick[] = [DEFAULT_PICK, ...REASONING_LEVELS]
 
 export type ModelOption = {

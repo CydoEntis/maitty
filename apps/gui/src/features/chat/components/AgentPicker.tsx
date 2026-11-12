@@ -80,6 +80,7 @@ export function AgentPicker({ agent, choice, onChange, currentModel = null, onAg
           <span className="mx-model-icon"><AppIcon process={agent} size={14} /></span>
           <span className="mx-model-name">{/* With nothing picked, what the agent says it runs is the better name than the row that stands for it. */}
             {agentOnly ? AGENT_LABEL[agent] : modelName(agent, choice.model === DEFAULT_PICK && currentModel !== null ? undefined : model, currentModel)}</span>
+          {!agentOnly && choice.reasoning !== DEFAULT_PICK && <span className="mx-model-level">{REASONING_LABEL[choice.reasoning]}</span>}
           {!agentOnly && <MiniMeter level={choice.reasoning} />}
           <Icon name="chevronDown" />
         </button>

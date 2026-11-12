@@ -389,6 +389,7 @@ button.mx-queued-text::after { content: ""; position: absolute; inset: 0; border
 .mx-model-icon .mx-app-icon.size-14 { width: 16px; height: 16px; border-radius: 4px; box-shadow: none; }
 .mx-model-icon .mx-app-icon svg { width: 72%; height: 72%; }
 .mx-model-name { color: var(--fg); font-weight: 500; white-space: nowrap; }
+.mx-model-level { color: var(--muted); white-space: nowrap; }
 .mx-model-effort { color: var(--dim); white-space: nowrap; }
 /* The model menu: one column of models, then the effort as four rising bars. */
 .mx-mm { width: 248px; display: flex; flex-direction: column; padding: 6px; border-radius: 12px; }
