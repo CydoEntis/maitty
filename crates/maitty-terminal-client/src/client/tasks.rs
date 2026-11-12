@@ -5,8 +5,8 @@
 use crate::client::ids::ClientTerm;
 use crate::proc::git;
 use crate::protocol::WsId;
-use std::path::PathBuf;
-use std::process::Command;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Stage {
@@ -236,6 +236,96 @@ pub fn pull_request(t: &TaskRow) -> Result<String, String> {
     ))
 }
 
+/// What the Branch view's keys do with the remote.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sync {
+    /// Learn what the remote has, changing no branch.
+    Fetch,
+    /// Bring the branch up to its upstream when that is only a fast-forward.
+    Pull,
+    /// Send the branch, and set where it goes the first time.
+    Push,
+}
+
+/// git in `dir` as a program with its arguments. It never asks for a password on the terminal
+/// the window is drawn on (that would hang the key that started it); a remote that needs one
+/// says so as an error.
+fn remote_git(dir: &Path, args: &[&str]) -> Result<String, String> {
+    crate::proc::run(
+        Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .stdin(Stdio::null()),
+    )
+}
+
+/// Fetch, pull or push `dir`'s checkout; answers a line for the status bar. Blocks on the
+/// network: run it off the UI thread.
+pub fn sync(dir: &Path, op: Sync) -> Result<String, String> {
+    let branch = || {
+        let b = remote_git(dir, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+        let b = b.trim();
+        if b.is_empty() || b == "HEAD" {
+            Err("this checkout is on no branch".to_string())
+        } else {
+            Ok(b.to_string())
+        }
+    };
+    match op {
+        Sync::Fetch => {
+            remote_git(dir, &["fetch", "--prune"])?;
+            Ok("fetched".into())
+        }
+        Sync::Pull => {
+            let before = remote_git(dir, &["rev-parse", "HEAD"])?;
+            remote_git(dir, &["pull", "--ff-only"])?;
+            let after = remote_git(dir, &["rev-parse", "HEAD"])?;
+            Ok(if before == after {
+                "already up to date".into()
+            } else {
+                "pulled".into()
+            })
+        }
+        Sync::Push => {
+            let branch = branch()?;
+            let has_upstream = remote_git(dir, &["rev-parse", "--abbrev-ref", "@{upstream}"]).is_ok();
+            if has_upstream {
+                remote_git(dir, &["push"])?;
+            } else {
+                remote_git(dir, &["push", "-u", "origin", &branch])?;
+            }
+            Ok(format!("pushed {branch}"))
+        }
+    }
+}
+
+/// Squash-merge the branch's pull request. First as "merge when ready" (`--auto`: the checks and
+/// reviews the repository requires decide when); when the repository doesn't allow that, now.
+/// The branch and its worktree are left alone: the pull request being merged is what tidy sees.
+pub fn merge_pull_request(t: &TaskRow) -> Result<String, String> {
+    let ask = |args: &[&str]| {
+        let mut cmd = Command::new("gh");
+        cmd.current_dir(&t.dir)
+            .args(["pr", "merge"])
+            .args(args)
+            .env("GH_PROMPT_DISABLED", "1")
+            .stdin(Stdio::null());
+        crate::proc::run(&mut cmd)
+    };
+    match ask(&["--squash", "--auto"]) {
+        Ok(_) => Ok(format!("{} will merge when its checks pass", t.branch)),
+        Err(e) if e.to_lowercase().contains("auto") => {
+            ask(&["--squash"]).map(|_| format!("merged the pull request for {}", t.branch))
+        }
+        Err(e) if e.starts_with("couldn't run gh") => {
+            Err("the GitHub CLI (gh) is needed to merge a pull request: https://cli.github.com".into())
+        }
+        Err(e) => Err(e),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::brand::APP_COMMAND;
@@ -265,5 +355,52 @@ mod tests {
             "no checkout there"
         );
         let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    #[test]
+    fn fetch_pull_and_push_go_through_a_remote_and_say_what_they_did() {
+        let root = std::env::temp_dir().join(format!("{APP_COMMAND}-sync-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (remote, mine, other) = (root.join("remote.git"), root.join("mine"), root.join("other"));
+        std::fs::create_dir_all(&root).unwrap();
+        let git = |dir: &std::path::Path, args: &[&str]| crate::proc::git(dir, args).unwrap();
+        git(&root, &["init", "-q", "--bare", "-b", "main", remote.to_str().unwrap()]);
+        for dir in [&mine, &other] {
+            git(&root, &["init", "-q", "-b", "main", dir.to_str().unwrap()]);
+            git(dir, &["config", "user.email", "t@t"]);
+            git(dir, &["config", "user.name", "t"]);
+            git(dir, &["remote", "add", "origin", remote.to_str().unwrap()]);
+        }
+        std::fs::write(mine.join("a.txt"), "one\n").unwrap();
+        git(&mine, &["add", "."]);
+        git(&mine, &["commit", "-qm", "one"]);
+        // No upstream yet: the first push sets it.
+        assert_eq!(super::sync(&mine, super::Sync::Push), Ok("pushed main".into()));
+        git(&other, &["pull", "-q", "origin", "main"]);
+        git(&other, &["branch", "-q", "--set-upstream-to=origin/main", "main"]);
+        // Someone else pushes; fetching learns of it without moving the branch.
+        std::fs::write(other.join("b.txt"), "two\n").unwrap();
+        git(&other, &["add", "."]);
+        git(&other, &["commit", "-qm", "two"]);
+        git(&other, &["push", "-q"]);
+        let tip = git(&mine, &["rev-parse", "HEAD"]);
+        assert_eq!(super::sync(&mine, super::Sync::Fetch), Ok("fetched".into()));
+        assert_eq!(git(&mine, &["rev-parse", "HEAD"]), tip);
+        assert_eq!(super::sync(&mine, super::Sync::Pull), Ok("pulled".into()));
+        assert!(mine.join("b.txt").is_file());
+        assert_eq!(super::sync(&mine, super::Sync::Pull), Ok("already up to date".into()));
+        // A pull that is not a fast-forward is refused, not merged.
+        std::fs::write(mine.join("c.txt"), "mine\n").unwrap();
+        git(&mine, &["add", "."]);
+        git(&mine, &["commit", "-qm", "mine"]);
+        std::fs::write(other.join("d.txt"), "theirs\n").unwrap();
+        git(&other, &["add", "."]);
+        git(&other, &["commit", "-qm", "theirs"]);
+        git(&other, &["push", "-q"]);
+        assert!(super::sync(&mine, super::Sync::Pull).is_err());
+        // A checkout on no branch has nothing to push.
+        git(&mine, &["checkout", "-q", "--detach"]);
+        assert!(super::sync(&mine, super::Sync::Push).is_err_and(|e| e.contains("no branch")));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

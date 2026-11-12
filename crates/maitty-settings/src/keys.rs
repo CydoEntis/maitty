@@ -612,9 +612,9 @@ impl FromStr for Action {
 }
 
 /// Bindings in key mode (after the leader): one key each, as the TUI redesign lists them. Three
-/// need Shift (`S` splits down, `_` up, `?` is the keys help). Copy mode, hide sidebar, find in
-/// the pane, prompt jumps, new worktree, updates and send-prefix have no default key; search
-/// commands (Ctrl+K) finds them.
+/// need Shift (`S` splits down, `_` up, `?` is the keys help). Hide
+/// sidebar, find in the pane, prompt jumps, new worktree, updates and send-prefix have no
+/// default key; search commands (Ctrl+K) finds them.
 pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     // Sessions
     ("n", "pick-session"),
@@ -670,6 +670,8 @@ pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     ("h", "history"),
     ("e", "references"),
     ("o", "find-file"),
+    ("l", "worktrees"),
+    ("y", "copy-mode"),
     // The app
     ("space", "palette"),
     (".", "menu"),

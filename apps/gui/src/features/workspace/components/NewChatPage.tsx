@@ -24,7 +24,7 @@ import { Icon } from './glyphs'
 import { ChipMenu, type ChipItem } from './NewChatMenus'
 
 /** The branch a chat starts on when it is not the folder's current one: switch to it, or work in a new worktree of it. */
-export type BranchChoice = { name: string; create: boolean; worktree: boolean; /** The upstream a new worktree branch starts from (fetched just before), when the folder follows one. */ base?: string | null }
+export type BranchChoice = { name: string; create: boolean; worktree: boolean }
 
 /** What the page asks the window to start: a chat with this agent, model and effort, in this folder, and its first message. */
 export type NewChatRequest = { folder: string; agent: ChatAgent; model: string; reasoning: AgentChoice['reasoning']; mode: string; message: string; branch: BranchChoice | null; machine: number; machineName: string }
@@ -128,9 +128,7 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
   // With Own copy on and no branch chosen, the chat gets a new branch under a suggested name, in a worktree.
   const suggested = useMemo(() => (treeMode && branches !== null ? suggestBranchName(new Set(branches.branches.map((entry) => entry.name))) : null), [treeMode, branches])
   const chosen = useMemo(() => explicit ?? (treeMode && suggested !== null ? { name: suggested, create: true, worktree: true } : null), [explicit, treeMode, suggested])
-  // A new worktree branch starts from the latest of the branch it was made from, when the remote answered just now.
-  const upstream = sync?.fetched === true ? sync.upstream : null
-  const branch = useMemo<BranchChoice | null>(() => (chosen !== null && chosen.worktree && chosen.create && upstream !== null ? { ...chosen, base: upstream } : chosen), [chosen, upstream])
+  const branch = chosen
   const isInstalled = (id: string) => (installed === null ? chatAgentOf(id) !== null : installed.includes(id))
   const agentMissing = !remote && !isInstalled(agent)
 
@@ -324,7 +322,7 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
                 {treeMode ? (
                   <>
                     <span className="mx-nc-dot" aria-hidden="true" />
-                    {sync.upstream === null ? `Starts from ${sync.branch ?? 'here'}` : `Starts from latest ${sync.upstream}${sync.fetched ? ' · fetched just now' : ' · could not reach the remote'}`}
+                    {`Starts from ${sync.branch ?? 'here'}`}{sync.upstream !== null && sync.behind > 0 ? ` · ↓${String(sync.behind)} behind ${sync.upstream}` : ''}
                   </>
                 ) : sync.upstream !== null && sync.behind > 0 ? (
                   <>

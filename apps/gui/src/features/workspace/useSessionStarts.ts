@@ -4,7 +4,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import { type RemoteMachine, remoteStartRefusal, remoteTargetOf } from './model/machines'
 import { toast } from '@/lib/toast'
 import { DEFAULT_PICK } from '@/features/chat/agentChoice'
-import { addWorktree, defaultSessionFolder, dropPrewarmedAgent, prewarmAgentSession, startAgentSession as launchAgentSession, loadConversations, renameConversationOnDaemon, sendTerminalInput, sendWhenAgentReady, startChatSession, startShellSession, submitMessage, switchBranch } from '@/api/daemon'
+import { addWorktree, defaultSessionFolder, handoffBrief, dropPrewarmedAgent, prewarmAgentSession, startAgentSession as launchAgentSession, loadConversations, renameConversationOnDaemon, sendTerminalInput, sendWhenAgentReady, startChatSession, startShellSession, submitMessage, switchBranch } from '@/api/daemon'
 import { LOCAL_MACHINE, startSessionOnMachine } from '@/api/machines'
 import type { DesktopSettingsSection } from '@/features/settings/components/DesktopSettings'
 import type { SettingsPreferences } from '@/features/settings/preferences'
@@ -217,6 +217,21 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
       .finally(() => { setStarting(false) })
   }, [online, starting, setStarting, startChat, startAgentSession])
 
+  // "Hand off to …": a new session of another agent in the same folder, starting with a text brief of this one's work.
+  const handoffSession = useCallback(async (from: SessionView, to: ChatAgent) => {
+    const refusal = remoteStartRefusal(from.machine !== LOCAL_MACHINE, from.machineName, 'A handoff')
+    if (refusal) {
+      toast.message(refusal)
+      return
+    }
+    if (!online || starting) return
+    try {
+      await startAgentSession(() => Promise.resolve(from.cwd), to, preferences.newSessionView, await handoffBrief(from))
+    } catch (error: unknown) {
+      toast.error(errorMessage(error, `Could not hand off to ${to}`))
+    }
+  }, [online, starting, startAgentSession, preferences.newSessionView])
+
   // Starts a shell on another machine and opens it once the machine lists it; resolves to its id.
   const startOnMachine = useCallback(async (target: { machine: number; name: string }, folder: string): Promise<string | null> => {
     const known = new Set((machinesRef.current.get(target.machine)?.conversations ?? []).map((item) => item.id))
@@ -260,7 +275,7 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
     if (request.machine !== LOCAL_MACHINE) return startRemoteChat(request)
     // The branch is settled before the agent starts, and a failure stays on the page with its words.
     let folder = request.folder
-    if (request.branch?.worktree) folder = await addWorktree(folder, request.branch.name, request.branch.create, request.branch.base ?? null)
+    if (request.branch?.worktree) folder = await addWorktree(folder, request.branch.name)
     else if (request.branch) await switchBranch(folder, request.branch.name, request.branch.create)
     // The page stays, with the message in it, until the chat that replaces it is there: closing it first showed the
     // empty window (or the last chat) for a moment between the two.
@@ -302,5 +317,5 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
     void runStart(async () => resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => { rememberShellStart(id); movePanes(() => { setLayout((current) => openArrangement(current, id, makeId)) }) })
   }, [setSettingsSection, focusedSession, runStart, startOnMachine, preferences.startFolder, home, setLayout])
 
-  return { signInAgent, runStart, newSession, newTerminal, startAgentSession, startChatHere, newChatWithSummary, startNewChat, warmNewChat, createWorktree }
+  return { signInAgent, runStart, newSession, newTerminal, startAgentSession, startChatHere, handoffSession, newChatWithSummary, startNewChat, warmNewChat, createWorktree }
 }

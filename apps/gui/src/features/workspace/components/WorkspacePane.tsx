@@ -38,7 +38,7 @@ export function WorkspacePane({ shown, pane, kept }: {
   pane: PaneSlot
   kept: boolean
 }) {
-  const { paneSessions, chatOf, openSubagent, ownsTerminals, repoPaneOf, outsidePanes, dropId, dragId, paneViews, showChanges, online, setOpenSubagent, togglePanel, preferences, setPreferences, startChatHere, inspectOpen, addAgentTerminal, root, look, modalOpen, mirrorInput, openPath, pasteImage, terminalHandles, setLayout, split, closePaneById, sendTo, copyPathOf, restartPane, setRenameId , heads, retryNamed, newChatWithSummary , moveToWorktree } = useWorkspace()
+  const { paneSessions, chatOf, openSubagent, ownsTerminals, repoPaneOf, outsidePanes, dropId, dragId, paneViews, showChanges, online, setOpenSubagent, togglePanel, preferences, setPreferences, startChatHere, handoffSession, inspectOpen, addAgentTerminal, root, look, modalOpen, mirrorInput, openPath, pasteImage, terminalHandles, setLayout, split, closePaneById, sendTo, copyPathOf, restartPane, setRenameId , heads, retryNamed, newChatWithSummary , moveToWorktree } = useWorkspace()
   const [drawerFolded, setDrawerFolded] = useState(startsFolded)
   const session = paneSessions.get(pane.sessionId)
   if (!session) return null
@@ -161,6 +161,7 @@ export function WorkspacePane({ shown, pane, kept }: {
       onClear={() => { void sendTo(session, CLEAR_SCREEN).catch((error: unknown) => { toast.error(errorMessage(error, 'Could not clear the screen')) }) }}
       onCopyPath={() => { copyPathOf(session.id) }}
       onRename={() => { setRenameId(session.id) }}
+      onHandoff={(agent) => { void handoffSession(session, agent) }}
       onRestart={restartPane}
       onAnswerHelpers={(choice) => { void answerHelpers(session.conversation, choice).catch((error: unknown) => { toast.error(errorMessage(error, 'Could not answer the helper request')) }) }}
     />

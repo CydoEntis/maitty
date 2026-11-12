@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { toast } from '@/lib/toast'
-import { answerUserInput, approveRequest, loadTerminalScreen } from '@/api/daemon'
+import { allowAlways, answerUserInput, approveRequest, loadTerminalScreen } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
 import { readConversationPermissions } from '@/data/conversationPermissions'
 import type { ChatAgent, ChatLink } from '@/features/workspace/model/chatView'
@@ -380,6 +380,14 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not send your answer')) })
       .finally(() => { setAnswering(false) })
   }, [link.conversation, link.generation, recordAnswer, refresh])
+  // "Always in this project": this one is allowed now, and the daemon allows the same command in this project from then on.
+  const remember = useCallback((requestId: number | string) => {
+    setAnswering(true)
+    allowAlways({ id: String(link.conversation), generation: link.generation }, requestId)
+      .then(() => { recordAnswer(requestId, 'Accept'); refresh() })
+      .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not remember your answer')) })
+      .finally(() => { setAnswering(false) })
+  }, [link.conversation, link.generation, recordAnswer, refresh])
   // A user-input answer is relayed once and recorded nowhere: it can be a secret.
   const answerInput = useCallback((requestId: number | string, answers: Record<string, string[]>) => {
     setAnswering(true)
@@ -389,7 +397,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
       .finally(() => { setAnswering(false) })
   }, [link.conversation, link.generation, refresh])
   // A chat that follows a terminal pane is answered in that terminal (ADR 0003), so it offers no buttons.
-  const approval = useMemo(() => (online && link.readOnly !== true ? { answer, answerInput, busy: answering } : null), [online, link.readOnly, answer, answerInput, answering])
+  const approval = useMemo(() => (online && link.readOnly !== true ? { answer, answerInput, remember, busy: answering } : null), [online, link.readOnly, answer, answerInput, remember, answering])
 
   // An approval's link to its tool step scrolls the list there; the nonce makes a second click on the same link scroll again.
   const [scrollTarget, setScrollTarget] = useState<{ key: string; nonce: number } | null>(null)

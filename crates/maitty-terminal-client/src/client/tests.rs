@@ -8030,7 +8030,7 @@ second line
             since: crate::clock::ago(std::time::Duration::from_secs(10)),
             acted: false,
         };
-        tap(&mut app, 'y');
+        tap(&mut app, 'p');
         assert!(
             matches!(app.mode, Mode::KeyMap(_)),
             "before any shortcut, a letter with the map up searches it"
@@ -8039,7 +8039,7 @@ second line
             since: crate::clock::ago(std::time::Duration::from_secs(10)),
             acted: true,
         };
-        tap(&mut app, 'y');
+        tap(&mut app, 'p');
         assert!(
             matches!(app.mode, Mode::Prefix { .. }),
             "after one, the mode just stays"
@@ -14678,11 +14678,11 @@ mod leader_key_tests {
     }
 
     #[test]
-    fn copy_mode_has_no_key_and_search_commands_finds_it() {
+    fn copy_mode_has_a_key_and_search_commands_still_finds_it() {
         let (_, app) = super::design_tests::render_with(160, 45);
         assert!(
-            !app.keymap.prefixed.values().any(|a| *a == Action::CopyMode),
-            "no default key"
+            app.keymap.prefixed.values().any(|a| *a == Action::CopyMode),
+            "leader y"
         );
         let km = screen::KeyMap {
             query: "select text".into(),

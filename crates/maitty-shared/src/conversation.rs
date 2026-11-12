@@ -217,6 +217,10 @@ pub struct ApprovalRequest {
     #[serde(default)]
     pub permissions: Option<serde_json::Value>,
     pub choices: Vec<ApprovalDecision>,
+    /// A command request the person may approve "always in this project". Absent from a peer that
+    /// predates it, which then offers no such choice.
+    #[serde(default)]
+    pub can_remember: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

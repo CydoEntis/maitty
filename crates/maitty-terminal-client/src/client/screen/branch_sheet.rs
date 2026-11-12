@@ -6,6 +6,8 @@
 use super::check;
 use super::*;
 use crate::client::menu::Act;
+use crate::client::routing::Feature;
+use crate::client::tasks::{Sync, sync};
 use crate::client::{Bg, Btn, View};
 use crate::proc::git;
 use crate::snapshot::Snapshot;
@@ -314,9 +316,37 @@ impl App {
             }
             KeyCode::Up | KeyCode::Char('k') => v.sel = v.sel.saturating_sub(1),
             KeyCode::Enter => self.branch_sheet_enter(v),
+            KeyCode::Char('f') => self.branch_sheet_sync(v, Sync::Fetch),
+            KeyCode::Char('p') => self.branch_sheet_sync(v, Sync::Pull),
+            KeyCode::Char('P') => self.branch_sheet_sync(v, Sync::Push),
             _ => {}
         }
         true
+    }
+
+    /// `f`, `p`, `P`: talk to the remote for this checkout, off the UI thread, then say how it
+    /// went and read git again.
+    fn branch_sheet_sync(&mut self, v: &BranchSheet, op: Sync) {
+        if !self.guard_local(v.term.machine, Feature::Branches) {
+            return;
+        }
+        let dir = v.dir.clone();
+        let doing = match op {
+            Sync::Fetch => "fetching…",
+            Sync::Pull => "pulling…",
+            Sync::Push => "pushing…",
+        };
+        self.notify(doing.into(), false);
+        self.spawn_bg(move || {
+            let result = sync(&dir, op);
+            Bg::Then(Box::new(move |app: &mut App| {
+                match result {
+                    Ok(done) => app.notify(done, false),
+                    Err(e) => app.notify(e, true),
+                }
+                app.branch_sheet_reload();
+            }))
+        });
     }
 
     fn branch_sheet_enter(&mut self, v: &BranchSheet) {
@@ -415,6 +445,12 @@ fn repo_lines(app: &App, v: &BranchSheet, r: &Repo, c: Style, t: &Theme) -> Vec<
         None => vec![seg("none has run", c.fg(t.muted))],
     };
     out.push(labelled("Check", check, c, t));
+    out.push(labelled(
+        "Remote",
+        vec![seg("f fetch · p pull · P push", c.fg(t.muted))],
+        c,
+        t,
+    ));
     out.push(Line::default());
     out.push(heading("COMMITS", c, t));
     match &r.commits {

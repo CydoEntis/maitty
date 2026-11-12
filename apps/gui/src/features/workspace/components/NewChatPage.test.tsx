@@ -91,14 +91,14 @@ describe('the new chat page', () => {
     expect(await screen.findByRole('button', { name: 'Project: api' })).toBeInTheDocument()
   })
 
-  it('starts in a worktree of its own on a new branch by default, from the latest of its upstream', async () => {
+  it('starts in a worktree of its own on a new branch by default, from where the checkout is', async () => {
     const onStart = vi.fn<(request: { message: string; branch?: unknown }) => Promise<void>>().mockResolvedValue(undefined)
     page(onStart)
-    await screen.findByText(/Starts from latest origin\/dev · fetched just now/)
+    await screen.findByText(/Starts from dev · ↓2 behind origin\/dev/)
     await userEvent.type(screen.getByRole('textbox', { name: 'First message' }), 'hello')
     await userEvent.click(screen.getByRole('button', { name: 'Send message' }))
     await waitFor(() => { expect(onStart).toHaveBeenCalled() })
-    expect(onStart.mock.calls[0]?.[0].branch).toEqual({ name: expect.stringMatching(/^[a-z]+-[a-z]+$/) as unknown, create: true, worktree: true, base: 'origin/dev' })
+    expect(onStart.mock.calls[0]?.[0].branch).toEqual({ name: expect.stringMatching(/^[a-z]+-[a-z]+$/) as unknown, create: true, worktree: true })
   })
 
   it('edits the checkout on its own branch when Own copy is turned off', async () => {

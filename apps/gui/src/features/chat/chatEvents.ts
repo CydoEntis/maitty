@@ -152,6 +152,8 @@ export type ApprovalEvent = {
   /** The questions of a user-input request; empty for every other kind. */
   readonly questions: readonly UserInputQuestion[]
   readonly choices: readonly ApprovalDecision[]
+  /** A command request the daemon can remember an approval of for the project ("Always in this project"). */
+  readonly canRemember: boolean
   readonly resolution: ApprovalResolution
 }
 

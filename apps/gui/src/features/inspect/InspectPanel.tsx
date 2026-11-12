@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { BranchesTab } from './BranchesTab'
 import { ChangesTab } from './ChangesTab'
+import { ChecksTab } from './ChecksTab'
+import { checksNeedingYou, type Check } from './checks'
 import type { ChangeActions } from './CommitBar'
 import type { PatchComments } from './PatchView'
 import { FilesTab, type LookAt } from './FilesTab'
@@ -11,23 +13,18 @@ import type { TerminalDetails } from '@/data/preview'
 import { Icon, type IconName } from '@/features/workspace/components/glyphs'
 import './inspect.css'
 
-export type InspectView = 'changes' | 'files' | 'terminal' | 'branches' | 'history' | 'timeline' | 'references'
+export type InspectView = 'changes' | 'files' | 'terminal' | 'checks' | 'branches' | 'history' | 'timeline' | 'references'
 
 const VIEWS: readonly { id: InspectView; label: string; icon?: IconName }[] = [
   { id: 'changes', label: 'Changes', icon: 'changes' },
   { id: 'files', label: 'Files', icon: 'files' },
   { id: 'terminal', label: 'Terminal', icon: 'terminal' },
+  { id: 'checks', label: 'Checks' },
   { id: 'branches', label: 'Branches' },
   { id: 'history', label: 'History' },
   { id: 'timeline', label: 'Timeline' },
   { id: 'references', label: 'References' },
 ]
-
-/**
- * The panel's own tabs (layout 2e). The other views are kept but nothing opens them: whether they
- * come back is undecided, so each shows its tab only while it is the one open.
- */
-const PANEL_VIEWS: readonly InspectView[] = ['changes', 'files', 'terminal']
 
 /** The panel opens at this share of the window; the edge can be dragged and the width is remembered. */
 const DEFAULT_SHARE = 0.5
@@ -82,6 +79,10 @@ type Props = {
   branch?: string
   view: InspectView
   agentWorking: boolean
+  /** The session's checks, for the Checks view. */
+  checks?: readonly Check[]
+  /** The machine the session is on (0: this computer), for what the Checks view asks of its daemon. */
+  machine?: number
   /** What the pane's agent and shell reported lately, for the Timeline view. */
   timeline: TerminalDetails['timeline']
   lookAt: LookAt | null
@@ -97,7 +98,7 @@ type Props = {
 /** The asked view when the panel can show it, or else the first one it can. */
 function shownView(view: InspectView, hasRepo: boolean, hasTerminals: boolean): InspectView {
   const can = (id: InspectView) => (id === 'terminal' ? hasTerminals : hasRepo)
-  return can(view) ? view : (PANEL_VIEWS.find(can) ?? view)
+  return can(view) ? view : (VIEWS.map((item) => item.id).find(can) ?? view)
 }
 
 /**
@@ -105,7 +106,7 @@ function shownView(view: InspectView, hasRepo: boolean, hasTerminals: boolean): 
  * never pushes them or covers the sidebar: the focused session's changes, its files and its own
  * terminals.
  */
-export function InspectPanel({ term, terminals, changedFiles, branch, view: asked, agentWorking, timeline, lookAt, comments, changeActions, onView, onClose, onNotice }: Props) {
+export function InspectPanel({ term, terminals, changedFiles, branch, view: asked, agentWorking, timeline, checks = [], machine = 0, lookAt, comments, changeActions, onView, onClose, onNotice }: Props) {
   const view = shownView(asked, term !== null, terminals !== null)
   const [dragged, setDragged] = useState(readWidth)
   const width = clampWidth(dragged ?? window.innerWidth * DEFAULT_SHARE)
@@ -158,11 +159,12 @@ export function InspectPanel({ term, terminals, changedFiles, branch, view: aske
         <div className="mx-inspect-grip" role="separator" aria-orientation="vertical" aria-label="Resize the side panel" tabIndex={0} onPointerDown={startDrag} onKeyDown={nudge} onDoubleClick={() => { save(null) }} />
         <header className="mx-inspect-head">
           <div role="tablist" aria-label="Side panel views" className={`mx-inspect-tabs is-${towards}`}>
-            {VIEWS.filter((item) => item.id === view || (PANEL_VIEWS.includes(item.id) && shownView(item.id, term !== null, terminals !== null) === item.id)).map((item) => (
+            {VIEWS.filter((item) => shownView(item.id, term !== null, terminals !== null) === item.id).map((item) => (
               <button key={item.id} type="button" role="tab" aria-selected={view === item.id} className={view === item.id ? 'is-current' : undefined} onClick={() => { onView(item.id) }}>
                 {item.icon !== undefined && <Icon name={item.icon} size={13} />}
                 {item.label}
                 {item.id === 'changes' && changedFiles > 0 && <span className="mx-inspect-count">{changedFiles}</span>}
+                {item.id === 'checks' && checksNeedingYou(checks) > 0 && <span className="mx-inspect-count">{checksNeedingYou(checks)}</span>}
               </button>
             ))}
           </div>
@@ -171,8 +173,9 @@ export function InspectPanel({ term, terminals, changedFiles, branch, view: aske
         {view === 'terminal' && <div className="mx-inspect-terminals" role="tabpanel">{terminals}</div>}
         {view !== 'terminal' && term !== null && (
           <div className="mx-inspect-scroll" role="tabpanel">
-            {view === 'files' && <FilesTab term={term} lookAt={lookAt} />}
+            {view === 'files' && <FilesTab term={term} machine={machine} lookAt={lookAt} />}
             {view === 'changes' && <ChangesTab term={term} {...(branch !== undefined ? { branch } : {})} {...(comments ? { comments } : {})} {...(changeActions ? { actions: changeActions } : {})} onNotice={onNotice} />}
+            {view === 'checks' && <ChecksTab term={term} machine={machine} checks={checks} onNotice={onNotice} />}
             {view === 'branches' && <BranchesTab term={term} />}
             {view === 'history' && <HistoryTab term={term} agentWorking={agentWorking} onNotice={onNotice} />}
             {view === 'timeline' && <TimelineTab events={timeline} />}

@@ -1,3 +1,4 @@
+import { ApprovedCommands } from './ApprovedCommands'
 import { toast } from '@/lib/toast'
 import type { UpdaterState } from '@/features/updates/useUpdater'
 import { percentOf, type Transfer } from '@/features/updates/downloadEta'
@@ -223,7 +224,7 @@ export function DesktopSettings(props: DesktopSettingsProps) {
             <div className="mx-settings-sections" key={section}>
               {section === 'general' && <GeneralSection preferences={preferences} update={update} validateFolder={props.validateFolder} onChooseFolder={props.onChooseFolder} onShowWelcome={props.onShowWelcome} updates={props.updates} />}
               {section === 'chat' && <ChatSection preferences={preferences} update={update} />}
-              {section === 'agents' && <AgentsSection onSignIn={props.onSignInAgent} />}
+              {section === 'agents' && <><AgentsSection onSignIn={props.onSignInAgent} /><ApprovedCommands /></>}
               {section === 'sidebar' && <SidebarSection preferences={preferences} update={update} />}
               {section === 'terminal' && <TerminalSection preferences={preferences} update={update} />}
               {section === 'appearance' && <AppearanceSection preferences={preferences} update={update} systemReducedMotion={props.systemReducedMotion} systemDark={props.systemDark} onPreviewTheme={props.onPreviewTheme} />}

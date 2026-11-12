@@ -420,8 +420,10 @@ impl Daemon {
                     }
                     _ => None,
                 };
+                let mut arrived = None;
                 if let Some(kind) = kind {
                     let request_id: crate::conversation::ProviderRequestId = request.into();
+                    arrived = Some(request_id.clone());
                     let item_id = params
                         .get("itemId")
                         .and_then(serde_json::Value::as_str)
@@ -460,6 +462,10 @@ impl Daemon {
                         ],
                         _ => supported_approval_choices(&params),
                     };
+                    // Only a command request can be remembered, by the command exactly as sent.
+                    let remembered_hash = (kind == crate::conversation::ApprovalRequestKind::Command)
+                        .then(|| command.map(crate::protocol::command_hash))
+                        .flatten();
                     let approval = crate::conversation::ApprovalRequest {
                         request_id: request_id.clone(),
                         kind,
@@ -483,7 +489,11 @@ impl Daemon {
                             .map(std::path::PathBuf::from),
                         changes,
                         choices,
+                        can_remember: remembered_hash.is_some(),
                     };
+                    if let Some(hash) = remembered_hash {
+                        state.command_hashes.insert(request_id.clone(), hash);
+                    }
                     if state.approvals.insert(request_id, approval).is_some() {
                         bail!("Codex reused a pending approval request ID");
                     }
@@ -502,6 +512,9 @@ impl Daemon {
                         .unsupported_requests
                         .insert(request_id, message.clone());
                     state.error = Some(message);
+                }
+                if let Some(arrived) = arrived {
+                    self.auto_approve_remembered(id, &arrived);
                 }
                 Ok(())
             }

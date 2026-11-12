@@ -39,6 +39,7 @@ export const approvalEvent = (requestId: number | string, over: Partial<Approval
   changes: [],
   questions: [],
   choices: ['Accept', 'AcceptForSession', 'Decline'],
+  canRemember: false,
   resolution: { status: 'pending' },
   ...over,
 })

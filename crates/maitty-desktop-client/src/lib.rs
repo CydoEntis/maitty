@@ -49,6 +49,19 @@ pub enum PaneCommand {
     UndoClose,
     /// The person's answer to a session that asked to start helpers.
     AnswerHelpers(maitty_shared::protocol::HelperChoice),
+    /// Run the pane's check `name` again (None: all of them).
+    RerunCheck { name: Option<String> },
+    /// Accept a failed check as it is (None: the headline one), for the reason given (it may be empty).
+    OverrideCheck { name: Option<String>, reason: String },
+    /// Take an override back: the check reads as failed again.
+    UndoOverride { name: Option<String> },
+    /// The person's answer to a repo-supplied check command, as shown (`command` is hashed here, so the
+    /// daemon refuses the answer if a different command waits by then).
+    ApproveCheck {
+        name: String,
+        choice: maitty_shared::protocol::ApprovalChoice,
+        command: String,
+    },
 }
 
 impl PaneCommand {
@@ -81,6 +94,21 @@ impl PaneCommand {
             PaneCommand::UndoClose => ClientMsg::Command(Command::UndoClose { term }),
             PaneCommand::AnswerHelpers(choice) => {
                 ClientMsg::Command(Command::AnswerHelpers { term, choice })
+            }
+            PaneCommand::RerunCheck { name } => ClientMsg::Command(Command::RerunCheck { term, name }),
+            PaneCommand::OverrideCheck { name, reason } => {
+                ClientMsg::Command(Command::OverrideCheck { term, name, reason })
+            }
+            PaneCommand::UndoOverride { name } => {
+                ClientMsg::Command(Command::UndoOverride { term, name })
+            }
+            PaneCommand::ApproveCheck { name, choice, command } => {
+                ClientMsg::Command(Command::ApproveCheck {
+                    term,
+                    name,
+                    choice,
+                    command_sha256: maitty_shared::protocol::command_hash(&command),
+                })
             }
         }
     }
@@ -549,6 +577,63 @@ pub async fn resize_terminal(
     }
 }
 
+/// What the checkout has changed and not committed, as the handoff brief lists it. Git is run as a program
+/// with fixed arguments, never through a shell. The branch's committed changes are not listed here, and the
+/// brief says so.
+fn uncommitted_changes(checkout: &std::path::Path) -> std::result::Result<maitty_shared::handoff::Changed, String> {
+    let status = run_git(checkout, &["status", "--porcelain", "-z", "--untracked-files=all"])?;
+    let mut files = maitty_shared::handoff::uncommitted(&status);
+    files.sort();
+    files.dedup();
+    Ok(maitty_shared::handoff::Changed { files, committed_unknown: Some("only uncommitted files are listed here".into()) })
+}
+
+/// Runs git with fixed arguments in `dir`; its output, or the first line it complained with.
+fn run_git(dir: &std::path::Path, args: &[&str]) -> std::result::Result<String, String> {
+    let out = std::process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|error| format!("could not run git: {error}"))?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).lines().next().unwrap_or("git failed").trim().to_string())
+    }
+}
+
+/// The files that more than one of these checkouts (name, folder) changed since their branches parted. Git runs
+/// off the caller's thread; a checkout git cannot read is left out.
+pub async fn checkout_overlaps(checkouts: Vec<(String, PathBuf)>) -> Result<Vec<maitty_shared::overlap::Overlap>> {
+    tokio::task::spawn_blocking(move || maitty_shared::overlap::between(&checkouts, &run_git))
+        .await
+        .map_err(|error| anyhow::anyhow!("{error}"))
+}
+
+/// The text a new agent starts with when the work of the agent in pane `term` is handed to it: the task, the
+/// branch, the uncommitted files and the end of the screen. This computer's panes only.
+pub async fn handoff_brief(
+    term: u32,
+    agent: String,
+    task: String,
+    last_prompt: String,
+    branch: Option<String>,
+    checkout: PathBuf,
+    daemon_executable: PathBuf,
+) -> Result<String> {
+    let screen = pane_terminal_screen(term, daemon_executable).await?;
+    let folder = checkout.clone();
+    let changed = tokio::task::spawn_blocking(move || uncommitted_changes(&folder))
+        .await
+        .map_err(|error| anyhow::anyhow!("{error}"))?;
+    Ok(maitty_shared::handoff::brief(
+        &maitty_shared::handoff::Facts { pane: term, agent, task, last_prompt, branch, checkout, changed, screen },
+        env!("MAITTY_APP_COMMAND"),
+    ))
+}
+
 /// The visible screen of a terminal session, by its pane number.
 pub async fn pane_terminal_screen(term: u32, daemon_executable: PathBuf) -> Result<String> {
     let reply = request(
@@ -940,6 +1025,43 @@ pub async fn new_worktree_session(
     }
 }
 
+/// Remove worktrees (a folder and whether to go on with uncommitted changes in it, which are lost).
+/// The daemon closes what runs in a worktree before it goes and answers at once; one something
+/// still runs in is left alone.
+pub async fn tidy_worktrees(items: Vec<(PathBuf, bool)>, daemon_executable: PathBuf) -> Result<Value> {
+    match request(ClientMsg::Command(Command::TidyWorktrees { items }), daemon_executable).await? {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected worktree reply"),
+    }
+}
+
+/// How long a worktree for a branch may take, connecting included. The repo's setup hook runs
+/// before the daemon answers (it may take ten minutes), so the usual request limit is too short.
+const BRANCH_WORKTREE_TIMEOUT: Duration = Duration::from_secs(11 * 60);
+
+/// A worktree of `project` on `branch`, made by the daemon the way every other one is: trusted
+/// like its repo, the repo's setup run, tracked for tidy-up. The answer is its folder, the place
+/// to start an agent. A daemon built before the command is told so in words, since it would never
+/// answer.
+pub async fn branch_worktree(project: PathBuf, branch: String) -> Result<Value> {
+    let message = ClientMsg::Command(Command::BranchWorktree { project, branch });
+    answered_within(BRANCH_WORKTREE_TIMEOUT, async {
+        let (mut connection, version) = ipc::open_for_user_knowing_version()
+            .await
+            .context("connecting to the local daemon")?;
+        if !daemon_reads(&message, version) {
+            bail!(
+                "the Maitty service running is older than this app and cannot make a worktree yet: restart it (Settings › Daemon), then try again"
+            );
+        }
+        match ask(&mut connection, &message).await? {
+            Reply::Text(folder) => Ok(Value::String(folder)),
+            _ => bail!("daemon returned an unexpected worktree reply"),
+        }
+    })
+    .await
+}
+
 /// Where `query` appears in what the app's terminal sessions printed recently.
 pub async fn search_panes(query: String, daemon_executable: PathBuf) -> Result<Value> {
     let reply = request(
@@ -992,6 +1114,39 @@ pub async fn restore_snapshot(
         } => Ok(changed as u64),
         _ => bail!("daemon returned an unexpected restore reply"),
     }
+}
+
+/// Replace the text of one existing file of the checkout `term` is in (the daemon checks the path and refuses
+/// anything but a plain file of the checkout).
+pub async fn write_project_file(
+    term: u32,
+    path: String,
+    contents: String,
+) -> Result<Value> {
+    let message = ClientMsg::Command(Command::WriteFile {
+        term,
+        tag: 0,
+        path,
+        contents,
+    });
+    answered_within(Duration::from_secs(30), async {
+        let (mut connection, version) = ipc::open_for_user_knowing_version()
+            .await
+            .context("connecting to the local daemon")?;
+        if !daemon_reads(&message, version) {
+            bail!(
+                "the Maitty service running is older than this app and cannot save a file yet: restart it (Settings › Daemon), then try again"
+            );
+        }
+        match ask(&mut connection, &message).await? {
+            Reply::Repo {
+                reply: maitty_shared::repo::RepoReply::Written,
+                ..
+            } => Ok(Value::Null),
+            _ => bail!("daemon returned an unexpected save reply"),
+        }
+    })
+    .await
 }
 
 /// End a terminal session: its process stops, as when it is closed in the terminal app.
@@ -1082,6 +1237,46 @@ pub async fn answer_helpers(
     match reply {
         Reply::Ok => Ok(Value::Null),
         _ => bail!("daemon returned an unexpected helper answer reply"),
+    }
+}
+
+/// What the person chose for a repo-supplied check command: `once`, `always` or `never`.
+pub fn approval_choice(word: &str) -> Result<maitty_shared::protocol::ApprovalChoice> {
+    use maitty_shared::protocol::ApprovalChoice;
+    match word {
+        "once" => Ok(ApprovalChoice::Once),
+        "always" => Ok(ApprovalChoice::Always),
+        "never" => Ok(ApprovalChoice::Never),
+        _ => bail!("unknown answer to a check approval"),
+    }
+}
+
+/// Ask this computer's daemon to do something to a pane's checks (see `PaneCommand`).
+pub async fn check_command(term: u32, command: PaneCommand, daemon_executable: PathBuf) -> Result<Value> {
+    match request(command.message(term), daemon_executable).await? {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected check reply"),
+    }
+}
+
+/// The tail of a pane's last output for check `name` (None: the headline one).
+pub async fn check_output(term: u32, name: Option<String>, daemon_executable: PathBuf) -> Result<Value> {
+    match request(ClientMsg::Query(Query::CheckOutput { term, name }), daemon_executable).await? {
+        Reply::Text(output) => Ok(Value::String(output)),
+        _ => bail!("daemon returned an unexpected check output reply"),
+    }
+}
+
+/// The person's answer to an agent's request for a secret (`value`: the secret, or None to decline). The value
+/// goes into the message as `SecretText`, which prints as `<hidden>`, and is not kept or logged here.
+pub async fn answer_secret(id: u64, value: Option<String>, daemon_executable: PathBuf) -> Result<Value> {
+    let message = ClientMsg::Command(Command::AnswerSecret {
+        id,
+        value: value.map(maitty_shared::protocol::SecretText),
+    });
+    match request(message, daemon_executable).await? {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected secret reply"),
     }
 }
 
@@ -1265,6 +1460,85 @@ pub async fn resume_codex_conversation(
             Ok(json!({"id": id.0, "generation": generation}))
         }
         _ => bail!("daemon returned an unexpected conversation resume reply"),
+    }
+}
+
+/// Approve a command request of a chat and have the daemon remember it for the chat's project.
+pub async fn allow_conversation_always(
+    id: u64,
+    generation: u64,
+    request_id: maitty_shared::conversation::ProviderRequestId,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Command(Command::ConversationAllowAlways {
+            id: maitty_shared::conversation::ConversationId(id),
+            generation,
+            request_id,
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected remembered approval reply"),
+    }
+}
+
+/// Close a chat with an undo window: the daemon hides it at once and ends it when the window passes.
+pub async fn close_conversation_with_undo(id: u64, generation: u64, daemon_executable: PathBuf) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Command(Command::ConversationClose {
+            id: maitty_shared::conversation::ConversationId(id),
+            generation,
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected close reply"),
+    }
+}
+
+/// Bring back a chat closed with `close_conversation_with_undo` while its window is open.
+pub async fn undo_close_conversation(id: u64, daemon_executable: PathBuf) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Command(Command::ConversationUndoClose {
+            id: maitty_shared::conversation::ConversationId(id),
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected undo reply"),
+    }
+}
+
+/// The commands approved "always in this project" for chats.
+pub async fn allowed_commands(daemon_executable: PathBuf) -> Result<Value> {
+    let reply = request(ClientMsg::Query(Query::AllowedCommands), daemon_executable).await?;
+    match reply {
+        Reply::AllowedCommands(commands) => Ok(serde_json::to_value(commands)?),
+        _ => bail!("daemon returned an unexpected approved commands reply"),
+    }
+}
+
+/// Take back a command approved "always in this project".
+pub async fn forget_allowed_command(
+    project: PathBuf,
+    command_sha256: String,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Command(Command::ForgetAllowedCommand { project, command_sha256 }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected forget reply"),
     }
 }
 
@@ -2466,5 +2740,26 @@ mod fleet_tests {
             panic!("expected NewShip")
         };
         assert_eq!(cwd, Some("/srv/app".into()));
+    }
+}
+
+#[cfg(test)]
+mod handoff_tests {
+    use super::*;
+
+    #[test]
+    fn the_brief_lists_uncommitted_files_and_says_the_commits_are_not_listed() {
+        let folder = std::env::temp_dir().join(format!("maitty-handoff-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("a folder");
+        let git = |args: &[&str]| assert!(std::process::Command::new("git").args(args).current_dir(&folder).status().expect("git").success());
+        git(&["init", "-q"]);
+        std::fs::write(folder.join("b.txt"), "x").expect("a file");
+        std::fs::write(folder.join("a.txt"), "x").expect("a file");
+        let changed = uncommitted_changes(&folder).expect("a status");
+        assert_eq!(changed.files, ["a.txt", "b.txt"]);
+        assert!(changed.committed_unknown.is_some());
+        assert!(uncommitted_changes(&folder.join("missing")).is_err());
+        let _ = std::fs::remove_dir_all(&folder);
     }
 }

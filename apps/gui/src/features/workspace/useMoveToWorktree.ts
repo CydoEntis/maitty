@@ -31,7 +31,7 @@ export function useMoveToWorktree({ sessionMap, sendTo }: {
     try {
       const known = await folderBranches(session.cwd)
       const taken = [...(known?.branches.map((b) => b.name) ?? []), ...(known?.worktrees.flatMap((w) => (w.branch === null ? [] : [w.branch])) ?? [])]
-      const folder = await addWorktree(session.cwd, worktreeBranch(taken), true, null)
+      const folder = await addWorktree(session.cwd, worktreeBranch(taken))
       const line = resumeLine(agent, id, folder, IS_WINDOWS)
       if (line === null) throw new Error('The new worktree folder has a name that cannot be typed safely. It was made, but the chat was not moved.')
       await typeMessage((text) => sendTo(session, text), agent, '/exit')

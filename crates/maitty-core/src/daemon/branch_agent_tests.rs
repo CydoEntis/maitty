@@ -198,3 +198,102 @@ fn the_agent_starts_in_a_new_worktree_with_the_prompt_as_one_argument() {
     close_all(&mut d);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn a_worktree_asked_by_folder_is_refused_before_anything_is_made_when_it_is_wrong() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _in_rt = rt.enter();
+    let (mut d, _rx) = daemon_with(Config::default());
+    let root = scratch("branch-worktree-refuse");
+    let repo = repo_in(&root);
+    open_workspace(&mut d, &repo);
+    let plain = root.join("plain");
+    std::fs::create_dir_all(&plain).unwrap();
+    open_workspace(&mut d, &plain);
+    let unseen = root.join("unseen");
+    std::fs::create_dir_all(&unseen).unwrap();
+    let before = d.pending_ops;
+
+    let ask = |project: &Path, branch: &str| Command::BranchWorktree {
+        project: project.to_path_buf(),
+        branch: branch.into(),
+    };
+    let cases = [
+        (ask(&repo, "bad name"), "letters, digits"),
+        (ask(&repo, "a..b"), "cannot hold .."),
+        (ask(&unseen, "feat/x"), "not a project"),
+        (ask(&plain, "feat/x"), "not in a git repository"),
+    ];
+    for (command, why) in cases {
+        let error = d.command(0, command).expect_err("refused").to_string();
+        assert!(error.contains(why), "{error:?} should mention {why:?}");
+    }
+    assert_eq!(d.pending_ops, before, "nothing was started");
+    assert!(d.made_worktrees.is_empty());
+    assert!(!root.join("repo-worktrees").exists(), "and no folder made");
+    close_all(&mut d);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_worktree_asked_by_folder_is_made_tracked_and_answered_with_its_folder() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _in_rt = rt.enter();
+    let (mut d, mut rx) = daemon_with(Config::default());
+    let root = scratch("branch-worktree-make");
+    let repo = repo_in(&root);
+    open_workspace(&mut d, &repo);
+    let (tx, mut client_rx) = mpsc::channel(64);
+    d.handle(Ev::Connected(
+        1,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+        true,
+    ));
+    let before = d.pending_ops;
+
+    d.handle(Ev::Msg(
+        1,
+        ClientMsg::Command(Command::BranchWorktree {
+            project: repo.clone(),
+            branch: "feat/x".into(),
+        }),
+    ));
+    let until = Instant::now() + Duration::from_secs(60);
+    let answer = loop {
+        if let Ok(msg) = client_rx.try_recv() {
+            break msg;
+        }
+        assert!(Instant::now() < until, "the daemon never answered");
+        match rx.try_recv() {
+            Ok(ev) => d.handle(ev),
+            Err(_) => std::thread::sleep(Duration::from_millis(20)),
+        }
+    };
+    let ServerMsg::Reply(Reply::Text(folder)) = answer else {
+        panic!("expected the new folder, got {answer:?}")
+    };
+    let folder = PathBuf::from(folder);
+    let expected = root.join("repo-worktrees").join("feat-x");
+    // Both exist; compared as the filesystem names them, since a temp folder can be spelled with a
+    // short (8.3) user name on Windows.
+    assert_eq!(
+        folder.canonicalize().unwrap(),
+        expected.canonicalize().unwrap(),
+        "{folder:?} is the usual worktree folder"
+    );
+    assert_eq!(
+        crate::gitfs::head(&folder).map(|h| h.branch).as_deref(),
+        Some("feat/x")
+    );
+    assert!(
+        d.made_worktrees
+            .iter()
+            .any(|made| made.canonicalize().ok() == expected.canonicalize().ok()),
+        "listed with the checkouts the app made, so tidy-up offers it"
+    );
+    assert_eq!(d.pending_ops, before, "the operation is over");
+    close_all(&mut d);
+    let _ = std::fs::remove_dir_all(&root);
+}

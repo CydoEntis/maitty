@@ -35,7 +35,7 @@ function renderPanel(view: InspectView, extra: { agentWorking?: boolean } = {}) 
 beforeEach(() => { vi.mocked(isTauri).mockReturnValue(true) })
 
 describe('Inspect panel', () => {
-  it('offers Changes, Files and Terminal, and shows the session’s terminals on that tab', () => {
+  it('offers every view, and shows the session’s terminals on that tab', () => {
     daemonAnswers({})
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
@@ -43,7 +43,7 @@ describe('Inspect panel', () => {
         <InspectPanel term={5} terminals={<p>its terminals</p>} changedFiles={0} view="terminal" agentWorking={false} timeline={[]} lookAt={null} onView={vi.fn()} onClose={vi.fn()} onNotice={vi.fn()} />
       </QueryClientProvider>,
     )
-    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Changes', 'Files', 'Terminal'])
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Changes', 'Files', 'Terminal', 'Checks', 'Branches', 'History', 'Timeline', 'References'])
     expect(screen.getByText('its terminals')).toBeTruthy()
     cleanup()
   })
@@ -116,16 +116,18 @@ describe('Inspect panel', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
       <QueryClientProvider client={client}>
-        <InspectPanel term={5} terminals={null} changedFiles={1} view="changes" agentWorking={false} timeline={[]} lookAt={null} changeActions={{ folder: '/home/me/app', suggested: 'Add refunds' }} onView={vi.fn()} onClose={vi.fn()} onNotice={onNotice} />
+        <InspectPanel term={5} terminals={null} changedFiles={1} view="changes" agentWorking={false} timeline={[]} lookAt={null} changeActions={{ folder: '/home/me/app', machine: 0, suggested: 'Add refunds' }} onView={vi.fn()} onClose={vi.fn()} onNotice={onNotice} />
       </QueryClientProvider>,
     )
     expect(await screen.findByLabelText('Commit message')).toHaveValue('Add refunds')
     fireEvent.click(screen.getByRole('button', { name: 'Commit 1 file' }))
     await waitFor(() => { expect(onNotice).toHaveBeenCalledWith('Committed 1 file as abc1234') })
-    expect(asked).toContainEqual(['git_commit_all', { folder: '/home/me/app', message: 'Add refunds' }])
+    expect(asked).toContainEqual(['git_commit_all', { machine: 0, folder: '/home/me/app', message: 'Add refunds', paths: null }])
+    fireEvent.click(screen.getByLabelText('Commit a.txt'))
+    expect(screen.getByRole('button', { name: 'Commit 0 files' })).toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: 'Create PR' }))
     expect(await screen.findByText('https://github.com/o/r/pull/7')).toBeTruthy()
-    expect(asked).toContainEqual(['git_create_pull_request', { folder: '/home/me/app' }])
+    expect(asked).toContainEqual(['git_create_pull_request', { machine: 0, folder: '/home/me/app' }])
     cleanup()
   })
 
@@ -137,7 +139,7 @@ describe('Inspect panel', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
       <QueryClientProvider client={client}>
-        <InspectPanel term={5} terminals={null} changedFiles={1} view="changes" agentWorking={false} timeline={[]} lookAt={null} changeActions={{ folder: '/home/me/app', suggested: 'x' }} onView={vi.fn()} onClose={vi.fn()} onNotice={vi.fn()} />
+        <InspectPanel term={5} terminals={null} changedFiles={1} view="changes" agentWorking={false} timeline={[]} lookAt={null} changeActions={{ folder: '/home/me/app', machine: 0, suggested: 'x' }} onView={vi.fn()} onClose={vi.fn()} onNotice={vi.fn()} />
       </QueryClientProvider>,
     )
     fireEvent.click(await screen.findByRole('button', { name: 'Commit 1 file' }))

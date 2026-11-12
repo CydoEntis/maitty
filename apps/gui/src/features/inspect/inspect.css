@@ -185,3 +185,7 @@ button.mx-inspect-row:hover, .mx-inspect-pick:hover { background: rgba(var(--hl)
 .mx-preview .tok-comment { color: var(--dim); font-style: italic; }
 .mx-preview .tok-variable { color: var(--ansi-mag); }
 .mx-preview .tok-flag { color: var(--ansi-blue); }
+
+.mx-changes-line { display: flex; align-items: center; gap: 4px; }
+.mx-changes-line .mx-changes-row { flex: 1; min-width: 0; }
+.mx-changes-tick { flex: none; margin: 0 0 0 6px; accent-color: var(--accent, currentColor); }
