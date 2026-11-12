@@ -204,6 +204,18 @@ describe('the new chat page', () => {
   })
 })
 
+describe('the new chat page opened from a full chat', () => {
+  it('opens on that chat\'s folder with the summary as the first message, ready to edit', async () => {
+    render(
+      <div className="mx-app">
+        <NewChatPage machine={0} machines={[{ machine: 0, label: 'This computer', local: true }]} projects={PROJECTS} defaultAgent="claude" browse={() => Promise.resolve(null)} onStart={() => Promise.resolve()} onOtherMachine={() => undefined} onCancel={() => undefined} seed={{ folder: '/dev/api', message: 'This continues an earlier chat' }} />
+      </div>,
+    )
+    expect(await screen.findByRole('button', { name: 'Project: api' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'First message' })).toHaveValue('This continues an earlier chat')
+  })
+})
+
 describe('the new chat page on another machine', () => {
   const MACHINES = [{ machine: 0, label: 'This computer', local: true }, { machine: 2, label: 'Shipyard', local: false }]
   const folders = [{ folder: '/srv/app', name: 'app', color: 'teal', sessions: 3 }]

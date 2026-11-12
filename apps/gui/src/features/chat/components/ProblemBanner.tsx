@@ -4,7 +4,7 @@ import { agoWords, exitWords, type ChatProblem } from '../problem'
 const TICK_MS = 5000
 
 /** A banner that rises out of the message box when the chat has a problem: the agent stopped, its machine is out of reach, or its context is nearly full. */
-export function ProblemBanner({ problem }: { problem: ChatProblem }) {
+export function ProblemBanner({ problem, summarize }: { problem: ChatProblem; /** Writes the summary a new chat starts from. */ summarize?: () => string }) {
   const [now, setNow] = useState(() => Date.now())
   const timed = problem.kind === 'offline'
   useEffect(() => {
@@ -36,6 +36,7 @@ export function ProblemBanner({ problem }: { problem: ChatProblem }) {
     <section className="mx-problem is-warn" aria-label="Context almost full">
       <span className="mx-problem-tile" aria-hidden="true">!</span>
       <span className="mx-problem-text"><strong>Context is almost full · {problem.percent}%</strong><small>{problem.agent} will start forgetting the earliest messages soon.</small></span>
+      {summarize !== undefined && <button type="button" className="mx-answer" onClick={() => { problem.onNewWithSummary(summarize()) }}>New chat with summary</button>}
       <button type="button" className="mx-answer is-y" onClick={problem.onCompact}>Compact</button>
     </section>
   )

@@ -8,7 +8,7 @@ const PERCENT_MAX = 100
 export type ChatProblem =
   | { kind: 'crashed'; agent: string; code: number | null; onViewLog: () => void; onRestart: (() => void) | null }
   | { kind: 'offline'; machine: string; since: number | null; onRetry: () => void }
-  | { kind: 'context'; agent: string; percent: number; onCompact: () => void }
+  | { kind: 'context'; agent: string; percent: number; onCompact: () => void; /** Opens a new chat in the same folder with the summary as its first message. */ onNewWithSummary: (summary: string) => void }
 
 /** The share of the context used when it is nearly full, else null. */
 export function contextFull(usage: SessionUsage | undefined): number | null {

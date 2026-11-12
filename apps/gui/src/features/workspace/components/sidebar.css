@@ -203,3 +203,5 @@
 .mx-collapse-grid[data-open="false"] > .mx-collapse-inner { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .mx-collapse-grid, .mx-collapse-inner { transition: none; } }
 .mx-section-key { flex: none; font-family: var(--mono); font-size: 10.5px; font-weight: 500; color: var(--dim); }
+.mx-row.is-offline { opacity: .5; }
+.mx-row.is-offline .mx-row-word { color: var(--muted); }

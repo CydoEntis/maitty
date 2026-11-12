@@ -36,6 +36,7 @@ import { ChatSkeleton } from './ChatSkeleton'
 import { ApprovalTray, PromptTray } from './QuestionTray'
 import type { BranchMenuSpec } from './BranchMenu'
 import { ProblemBanner } from './ProblemBanner'
+import { summaryOf } from '../summary'
 import type { ChatProblem } from '../problem'
 import { SubagentBar, SubagentChat } from './SubagentChat'
 import { VirtualList } from './VirtualList'
@@ -442,7 +443,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
 
   const question = pending !== null
     ? <ApprovalTray event={pending} actions={approval} />
-    : stoppedOnPrompt ? <PromptTray agent={agent} ask={ask} online={online} answer={answerPrompt} pick={pickChoice} pickAll={pickChoices} sendKeys={sendKeys} readScreen={readScreen} /> : problem !== null ? <ProblemBanner problem={problem} /> : null
+    : stoppedOnPrompt ? <PromptTray agent={agent} ask={ask} online={online} answer={answerPrompt} pick={pickChoice} pickAll={pickChoices} sendKeys={sendKeys} readScreen={readScreen} /> : problem !== null ? <ProblemBanner problem={problem} summarize={() => summaryOf(rows)} /> : null
   const notices = [
     offline ? `Reconnecting to the daemon. What is shown may be out of date.${readError !== null ? ` (${truncateError(readError)})` : ''}` : null,
     !offline && incomplete !== null ? `History is incomplete: ${incomplete}.` : null,

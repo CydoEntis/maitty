@@ -37,7 +37,7 @@ export function WorkspacePane({ shown, pane, kept }: {
   pane: PaneSlot
   kept: boolean
 }) {
-  const { paneSessions, chatOf, openSubagent, ownsTerminals, repoPaneOf, outsidePanes, dropId, dragId, paneViews, showChanges, online, setOpenSubagent, togglePanel, preferences, setPreferences, startChatHere, inspectOpen, addAgentTerminal, root, look, modalOpen, mirrorInput, openPath, pasteImage, terminalHandles, setLayout, split, closePaneById, sendTo, copyPathOf, restartPane, setRenameId , heads, retryNamed , setWorktreeFrom } = useWorkspace()
+  const { paneSessions, chatOf, openSubagent, ownsTerminals, repoPaneOf, outsidePanes, dropId, dragId, paneViews, showChanges, online, setOpenSubagent, togglePanel, preferences, setPreferences, startChatHere, inspectOpen, addAgentTerminal, root, look, modalOpen, mirrorInput, openPath, pasteImage, terminalHandles, setLayout, split, closePaneById, sendTo, copyPathOf, restartPane, setRenameId , heads, retryNamed, newChatWithSummary , setWorktreeFrom } = useWorkspace()
   const [drawerFolded, setDrawerFolded] = useState(startsFolded)
   const session = paneSessions.get(pane.sessionId)
   if (!session) return null
@@ -64,7 +64,7 @@ export function WorkspacePane({ shown, pane, kept }: {
     : session.status === 'error' && !session.ended && !isShell(session)
       ? { kind: 'crashed', agent: session.process, code: session.conversation.details?.exit?.code ?? null, onViewLog: () => { showTerminal() }, onRestart: chatOnly ? null : () => { restartPane(pane.id) } }
       : fullPercent !== null && typeInto !== undefined
-        ? { kind: 'context', agent: session.process, percent: fullPercent, onCompact: () => { void typeInto('/compact').then(() => new Promise((resolve) => { window.setTimeout(resolve, CODEX_SUBMIT_GAP_MS) })).then(() => typeInto('\r')).catch((error: unknown) => { toast.error(errorMessage(error, 'Could not compact')) }) } }
+        ? { kind: 'context', agent: session.process, percent: fullPercent, onNewWithSummary: (summary) => { newChatWithSummary(session, summary) }, onCompact: () => { void typeInto('/compact').then(() => new Promise((resolve) => { window.setTimeout(resolve, CODEX_SUBMIT_GAP_MS) })).then(() => typeInto('\r')).catch((error: unknown) => { toast.error(errorMessage(error, 'Could not compact')) }) } }
         : null
   const terminals = ownsTerminals(session)
   const dock = preferences.terminalDock

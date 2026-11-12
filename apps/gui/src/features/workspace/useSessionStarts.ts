@@ -45,7 +45,7 @@ function omitKey<T>(record: Record<string, T>, key: string): Record<string, T> {
 }
 
 /** Every way the window starts a session: a shell, an agent in a terminal, a chat, a worktree, on this computer or another machine. */
-export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLayout, flash, focusedSession, setNewChatOpen, online, starting, setStarting, setStartedFrom, sessionMap, preferences, setExpectedAgents, paneViews, setSettingsSection, setNewChatMachine, home, machinesRef }: {
+export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLayout, flash, focusedSession, setNewChatOpen, online, starting, setStarting, setStartedFrom, sessionMap, preferences, setExpectedAgents, paneViews, setSettingsSection, setNewChatMachine, setNewChatSeed, home, machinesRef }: {
   queryClient: QueryClient
   sessions: SessionView[]
   setWorktreeFrom: Dispatch<SetStateAction<SessionView | null>>
@@ -63,6 +63,7 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
   paneViews: ReturnType<typeof usePaneViews>
   setSettingsSection: Dispatch<SetStateAction<DesktopSettingsSection | null>>
   setNewChatMachine: Dispatch<SetStateAction<number>>
+  setNewChatSeed: Dispatch<SetStateAction<{ folder: string; message: string } | null>>
   home: string
   machinesRef: RefObject<ReadonlyMap<number, RemoteMachine>>
 }) {
@@ -276,8 +277,18 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
   const newSession = useCallback((machine?: number) => {
     setSettingsSection(null)
     setNewChatMachine(machine ?? remoteTargetOf(focusedSession)?.machine ?? LOCAL_MACHINE)
+    setNewChatSeed(null)
     setNewChatOpen(true)
-  }, [focusedSession, setNewChatOpen, setNewChatMachine, setSettingsSection])
+  }, [focusedSession, setNewChatOpen, setNewChatMachine, setNewChatSeed, setSettingsSection])
+
+  // "New chat with summary" on a chat whose context is nearly full: the new chat page, on the same machine and folder, with
+  // the summary as its first message to read and edit before it is sent.
+  const newChatWithSummary = useCallback((from: SessionView, summary: string) => {
+    setSettingsSection(null)
+    setNewChatMachine(from.machine)
+    setNewChatSeed({ folder: from.cwd, message: summary })
+    setNewChatOpen(true)
+  }, [setNewChatOpen, setNewChatMachine, setNewChatSeed, setSettingsSection])
 
   // A plain shell in the start folder: terminal view only, whatever the default agent is.
   // On another machine it starts in that machine's home folder.
@@ -291,5 +302,5 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
     void runStart(async () => resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => { rememberShellStart(id); movePanes(() => { setLayout((current) => openArrangement(current, id, makeId)) }) })
   }, [setSettingsSection, focusedSession, runStart, startOnMachine, preferences.startFolder, home, setLayout])
 
-  return { signInAgent, runStart, newSession, newTerminal, startAgentSession, startChatHere, startNewChat, warmNewChat, createWorktree }
+  return { signInAgent, runStart, newSession, newTerminal, startAgentSession, startChatHere, newChatWithSummary, startNewChat, warmNewChat, createWorktree }
 }

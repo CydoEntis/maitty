@@ -55,6 +55,8 @@ type Props = {
   /** Opens the dialog that adds a machine; without it the list has no such row. */
   onAddMachine?: () => void
   onCancel: () => void
+  /** A folder and first message to open with (a chat continued from a full one). */
+  seed?: { folder: string; message: string } | null
 }
 
 /** How many other recent projects the page offers to switch to. */
@@ -73,7 +75,7 @@ const isPath = (text: string): boolean => /^(~|\/|[A-Za-z]:[\\/])/.test(text)
  * agent, model and effort on its model button and the permission mode beside it. The chat it starts
  * is the agent in a terminal the daemon owns, shown as its chat (ADR 0003). Enter sends, Esc goes back.
  */
-export function NewChatPage({ machines, machine, projects, defaultAgent, bypassAllowed = false, codexYolo = false, browse, onStart, onWarm, onOtherMachine, onAddMachine, onCancel }: Props) {
+export function NewChatPage({ machines, machine, projects, defaultAgent, bypassAllowed = false, codexYolo = false, browse, onStart, onWarm, onOtherMachine, onAddMachine, onCancel, seed = null }: Props) {
   // On another machine the chat is the agent started in a shell there: this computer's models, branches, files and installed agents say nothing of it.
   const remote = machine !== LOCAL_MACHINE
   const target = machines.find((candidate) => candidate.machine === machine)
@@ -81,9 +83,9 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
   const [agent, setAgent] = useState<ChatAgent>(defaultAgent)
   const [mode, setMode] = useState(START_MODE[defaultAgent])
   const [choice, setChoice] = useState<AgentChoice>({ model: DEFAULT_PICK, reasoning: DEFAULT_PICK })
-  const [picked, setFolder] = useState<string | null>(null)
-  const [extra, setExtra] = useState<NewSessionProject | null>(null)
-  const [message, setMessage] = useState('')
+  const [picked, setFolder] = useState<string | null>(seed?.folder ?? null)
+  const [extra, setExtra] = useState<NewSessionProject | null>(seed === null ? null : { folder: seed.folder, name: lastPart(seed.folder), color: 'var(--dim)' })
+  const [message, setMessage] = useState(seed?.message ?? '')
   const [branchPick, setBranchPick] = useState<{ folder: string; pick: BranchChoice } | null>(null)
   // Own copy: the agent works in a worktree of its own, so the checkout is untouched. On unless it is turned off.
   const [treeMode, setTreeMode] = useState(true)

@@ -33,10 +33,13 @@ describe('the problem banner', () => {
 
   it('warns when the context is nearly full and offers to compact', async () => {
     const onCompact = vi.fn()
-    render(<ProblemBanner problem={{ kind: 'context', agent: 'Claude', percent: 96, onCompact }} />)
+    const onNewWithSummary = vi.fn()
+    render(<ProblemBanner problem={{ kind: 'context', agent: 'Claude', percent: 96, onCompact, onNewWithSummary }} summarize={() => 'the summary'} />)
     expect(screen.getByText('Context is almost full · 96%')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Compact' }))
     expect(onCompact).toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: 'New chat with summary' }))
+    expect(onNewWithSummary).toHaveBeenCalledWith('the summary')
   })
 })
 
