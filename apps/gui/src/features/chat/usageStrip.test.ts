@@ -18,8 +18,8 @@ describe('the usage strip under the message box', () => {
     expect(usageItems({ context: null, limits: [{ name: 'week', used: 5, resetsAt: 0 }] }, NOW).map((item) => [item.label, item.resetsIn])).toEqual([['Weekly limit', null]])
   })
 
-  it('turns a meter amber from three quarters and red from nine tenths', () => {
-    const tones = [10, 74, 75, 89, 90, 140].map((used) => usageItems({ context: used, limits: [] }, NOW)[0]?.tone)
+  it('turns a meter amber from four fifths and red from nine tenths', () => {
+    const tones = [10, 79, 80, 89, 90, 140].map((used) => usageItems({ context: used, limits: [] }, NOW)[0]?.tone)
     expect(tones).toEqual(['plain', 'plain', 'warn', 'warn', 'danger', 'danger'])
     expect(usageItems({ context: 140, limits: [] }, NOW)[0]?.percent).toBe(100)
   })

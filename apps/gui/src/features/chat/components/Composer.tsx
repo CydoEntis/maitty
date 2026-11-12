@@ -16,6 +16,7 @@ import { MAX_SHOWN, SlashPicker } from './SlashPicker'
 import { asSkills, commandText, matchCommands, skillQuery, slashQuery, useSlashCommands, withTerminalCommands, type SlashCommand } from '../slashCommands'
 import { CLAUDE_TERMINAL_COMMANDS } from '../terminalCommands'
 import { CODEX_COMMANDS } from '../codexCommands'
+import { BranchMenu, type BranchMenuSpec } from './BranchMenu'
 import { usageItems, type SessionUsage } from '../usageStrip'
 import { nowSeconds } from '@/features/workspace/model/newChatHost'
 
@@ -32,6 +33,8 @@ export type ComposerFacts = {
   modeDanger: boolean
   /** Whether the folder is a worktree of its repository, not the main checkout; null when that is not known. */
   worktree?: boolean | null | undefined
+  /** Given where the branch can be changed from the tray (a session on this computer); without it the branch is only said. */
+  branchMenu?: BranchMenuSpec | undefined
   folder: string
   branch: string | null
   /** The model the agent's own file says it uses; null when it has not said. */
@@ -282,22 +285,24 @@ function modeLockedWhy(facts: Pick<ComposerFacts, 'modeLocked' | 'agentChips'>):
 
 /**
  * The meters at the right of the tray: how full the session's context is, as a small ring, and how much of each of the
- * plan's limits is used, as a bar with its window (`49% week`). Only what the agent reported is drawn (ADR 0009); with
+ * plan's limits is used, as a ring with its window (`Week 49%`). Only what the agent reported is drawn (ADR 0009); with
  * nothing reported there is none. When a limit starts over is in its tooltip.
  */
+/** The short name a meter wears beside its figure: Context, 5h, Week. */
+const usageName = (item: { window: string | null }): string => (item.window === null ? 'Context' : item.window === 'week' ? 'Week' : item.window)
+
 function UsageMeters({ usage }: { usage: SessionUsage }) {
   const items = usageItems(usage, nowSeconds())
   if (items.length === 0) return null
   return (
     <span className="mx-usage" role="group" aria-label="Usage">
       {items.map((item) => {
-        const title = item.resetsIn === null ? `${item.label}: ${String(item.percent)}% used` : `${item.label}: ${String(item.percent)}% used, starts over in ${item.resetsIn}`
+        const used = item.window === null ? `How much of this chat's memory is used: ${String(item.percent)}%` : item.resetsIn === null ? `${item.label}: ${String(item.percent)}% used` : `${item.label}: ${String(item.percent)}% used · resets in ${item.resetsIn}`
         return (
-          <span key={item.key} className={`mx-usage-item is-${item.tone}`} title={title}>
-            {item.window === null
-              ? <span className="mx-usage-ring" role="meter" aria-label={item.label} aria-valuemin={0} aria-valuemax={PERCENT} aria-valuenow={item.percent} style={{ '--share': `${String(item.percent)}%` } as CSSProperties} />
-              : <span className="mx-usage-bar" role="meter" aria-label={item.label} aria-valuemin={0} aria-valuemax={PERCENT} aria-valuenow={item.percent}><span style={{ width: `${String(item.percent)}%` }} /></span>}
-            <span className="mx-usage-figure">{item.percent}%{item.window !== null && <span className="mx-usage-window"> {item.window}</span>}</span>
+          <span key={item.key} className={`mx-usage-item is-${item.tone}`} title={used}>
+            <span className="mx-usage-name">{usageName(item)}</span>
+            <span className="mx-usage-figure">{item.percent}%</span>
+            <span className="mx-usage-ring" role="meter" aria-label={item.label} aria-valuemin={0} aria-valuemax={PERCENT} aria-valuenow={item.percent} style={{ '--share': `${String(item.percent)}%` } as CSSProperties} />
           </span>
         )
       })}
@@ -312,7 +317,8 @@ function SettingsTray({ facts }: { facts: ComposerFacts }) {
       {facts.onOpenFolder === null
         ? <span className="mx-tray-fact"><Icon name="folder" />{facts.folder}</span>
         : <button type="button" className="mx-tray-fact is-button" title="Show its files" onClick={facts.onOpenFolder}><Icon name="folder" />{facts.folder}</button>}
-      {facts.branch !== null && (
+      {facts.branch !== null && facts.branchMenu !== undefined && <BranchMenu spec={facts.branchMenu} branch={facts.branch} worktree={facts.worktree === true} />}
+      {facts.branch !== null && facts.branchMenu === undefined && (
         <span className={`mx-tray-fact is-branch${facts.worktree === true ? ' is-worktree' : ''}`} title={facts.worktree === true ? `Worktree: its own copy of the project, on branch ${facts.branch}` : facts.worktree === false ? `Branch ${facts.branch}, in the project's own folder` : `Branch ${facts.branch}`} aria-label={`${facts.worktree === true ? 'Worktree' : 'Branch'} ${facts.branch}`}>
           <Icon name={facts.worktree === true ? 'worktree' : 'branch'} size={13} strokeWidth={1.9} stroke="currentColor" />
           <span className="mx-tray-branch">{facts.branch}</span>
