@@ -16,8 +16,12 @@ describe('nextNeedsYou', () => {
   const sessions = [session(1, 'needs'), session(2, 'working'), session(3, 'needs'), session(4, 'done'), session(5, 'needs')]
 
   it('is null when nothing needs you, even if something is done', () => {
-    expect(nextNeedsYou([session(1, 'done'), session(2, 'error'), session(3, 'idle')], '0:1')).toBeNull()
+    expect(nextNeedsYou([session(1, 'done'), session(3, 'idle')], '0:1')).toBeNull()
     expect(nextNeedsYou([], null)).toBeNull()
+  })
+
+  it('counts an agent that stopped on an error, as the sidebar lists it with what needs you', () => {
+    expect(nextNeedsYou([session(1, 'done'), session(2, 'error')], '0:1')?.session.id).toBe('0:2')
   })
 
   it('starts at the first one when nothing is focused', () => {

@@ -56,7 +56,7 @@ export function SessionRow({ session, selected, showProject, machine = null, ren
   const className = `mx-row${selected ? ' is-selected' : ''}${active ? ' is-active' : ''}${isShell(session) ? ' is-shell' : ''}`
   const icon = (
     <span className="mx-row-icon">
-      <AppIcon process={session.process} size={20} dimmed={session.status === 'unknown'} />
+      <AppIcon process={session.process} size={26} dimmed={session.status === 'unknown'} />
       <StatusBadge status={session.status} />
     </span>
   )
