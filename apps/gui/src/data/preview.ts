@@ -1,3 +1,5 @@
+import type { Check } from '@/features/inspect/checks'
+import type { PullRequest } from '@/features/workspace/model/pullRequest'
 export type SessionStatus = 'working' | 'needs-you' | 'done' | 'idle' | 'recovery' | 'unknown'
 
 export type TurnKind = 'Working' | 'NeedsYou' | 'Done' | 'Idle' | 'Prompt' | 'CommandStarted' | 'CommandFinished'
@@ -13,6 +15,10 @@ export type TerminalDetails = {
   ask?: PermissionAsk | null
   /** An agent that was mid-turn when the daemon restarted; offered a resume, never resumed on its own. */
   interrupted: { agent: string; resume: string } | null
+  /** The agent's own conversation id, for resuming it elsewhere; null when the daemon did not say. */
+  agentSession?: string | null
+  /** The effort the agent's own files say it runs at; null when they do not say. */
+  agentEffort?: string | null
   /** When the status last changed, in unix seconds (the daemon's `TermInfo.since`); absent or 0 when it did not say. */
   since?: number
   /** The latest turn events, oldest first; `at` is unix seconds. */
@@ -23,6 +29,12 @@ export type TerminalDetails = {
   usage: { context: number | null; cost: number | null; tokens: number | null }
   /** The plan limits of the session's agent, as it last reported them (`5h`, `week`); absent from an older daemon. */
   limits?: Array<{ name: string; used: number; resetsAt: number }>
+  /** Secrets the session's agent is waiting for the person to give. */
+  secretAsk?: Array<{ id: number; label: string; reason: string }>
+  /** The pane's checks, as the daemon reports them; absent from an older daemon. */
+  checks?: Check[]
+  /** The pull request of the pane's branch, as the daemon polls it; null or absent when it has none. */
+  pr?: PullRequest | null
   /** The follow-ups the pane's daemon holds for its working agent, oldest first. */
   queued?: string[]
   /** The helpers the session asked to start and waits on the person for, one task each; absent from an older daemon. */

@@ -3,7 +3,12 @@ import type { ApprovalEvent, ChatEvent, CommandEvent, EditEvent, ItemStatus, Mes
 import { startsTable, streamingText } from './markdown'
 import { describeStep } from './stepInfo'
 import { describeWork } from './workPhase'
+import { documentOf } from './writtenDocument'
 import type { WorkStep } from './workSummary'
+
+function isDocument(event: ChatEvent): boolean {
+  return event.kind === 'edit' && documentOf(event) !== null
+}
 
 /** What the list draws. One row per thing on screen; the events beneath keep their own ids. */
 export type ChatRow =
@@ -113,8 +118,10 @@ export function buildRows(events: readonly ChatEvent[], working: boolean, root: 
       case 'command':
       case 'tool': {
         const previous = rows.at(-1)
-        if (previous?.kind === 'work') rows[rows.length - 1] = { ...previous, events: [...previous.events, event] }
-        else if (previous?.kind === 'step' && previous.event.kind !== 'todo') rows[rows.length - 1] = { kind: 'work', key: previous.key, events: [previous.event, event] }
+        // A document the agent wrote is something to read, so it stands on its own instead of folding into a run's summary.
+        if (isDocument(event)) rows.push({ kind: 'step', key: event.id, event })
+        else if (previous?.kind === 'work') rows[rows.length - 1] = { ...previous, events: [...previous.events, event] }
+        else if (previous?.kind === 'step' && previous.event.kind !== 'todo' && !isDocument(previous.event)) rows[rows.length - 1] = { kind: 'work', key: previous.key, events: [previous.event, event] }
         else rows.push({ kind: 'step', key: event.id, event })
       }
     }

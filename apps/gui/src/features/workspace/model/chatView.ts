@@ -23,6 +23,7 @@ export const DEFAULT_CHAT_VIEWS: ChatViewDefaults = { claude: 'chat', codex: 'ch
 
 /** The daemon conversation that carries a session's structured events. */
 export type ChatLink = {
+  /** The conversation's key: its number on this computer, or another machine's number kept apart from it (`api/conversationKey.ts`). */
   readonly conversation: number
   readonly generation: number
   /**
@@ -39,8 +40,6 @@ export type ChatAvailability =
   | { readonly kind: 'ready'; readonly agent: ChatAgent; readonly link: ChatLink }
   /** A Claude, Codex or Gemini session the daemon has no conversation for, so there is no event stream to show. */
   | { readonly kind: 'no-events'; readonly agent: ChatAgent }
-  /** The session lives on another machine; its conversation cannot be read from here in v1. */
-  | { readonly kind: 'remote'; readonly agent: ChatAgent | null; readonly machineName: string }
   /** An agent without a structured event stream. */
   | { readonly kind: 'unsupported'; readonly agent: string }
   /** A plain shell. */
@@ -49,8 +48,6 @@ export type ChatAvailability =
 export type ChatSource = {
   /** The agent the daemon reports in the session; null for a plain shell. */
   readonly agent: string | null | undefined
-  /** The machine's name; null for this computer. */
-  readonly machineName: string | null
   readonly chat: ChatLink | null | undefined
 }
 
@@ -61,7 +58,6 @@ export function chatAgentOf(agent: string | null | undefined): ChatAgent | null 
 
 export function chatAvailability(source: ChatSource): ChatAvailability {
   const agent = chatAgentOf(source.agent)
-  if (source.machineName !== null) return { kind: 'remote', agent, machineName: source.machineName }
   if (agent === null) {
     const other = source.agent?.trim()
     return other ? { kind: 'unsupported', agent: other } : { kind: 'shell' }
@@ -85,8 +81,6 @@ export function noChatReason(availability: Exclude<ChatAvailability, { kind: 're
       return 'Chat view is for agent sessions. Start claude or codex here to use it.'
     case 'unsupported':
       return `Chat view is for agent sessions. ${availability.agent} has no event stream to show, so it stays in the terminal.`
-    case 'remote':
-      return `Chat view is local-only in v1: this session runs on ${availability.machineName}, so its conversation is not read from this computer. The terminal works as usual.`
     case 'no-events':
       return `The chat fills in as soon as ${availability.agent} is ready. The terminal works as usual.`
   }
@@ -102,6 +96,6 @@ export const noEventsHint = (agent: ChatAgent): string => `Still nothing. ${agen
 export const waitingInTerminalHint = (agent: ChatAgent): string => `${agent} is waiting for you in the terminal, for example to trust this folder. Answer it there and the chat takes over.`
 
 /** What a session tells the chat view about itself, from the fields every session view carries. */
-export function chatSourceOf(session: { machineName: string | null; conversation: { agent?: string | null; chat?: ChatLink | undefined } }): ChatSource {
-  return { agent: session.conversation.agent, machineName: session.machineName, chat: session.conversation.chat }
+export function chatSourceOf(session: { conversation: { agent?: string | null; chat?: ChatLink | undefined } }): ChatSource {
+  return { agent: session.conversation.agent, chat: session.conversation.chat }
 }

@@ -7,21 +7,16 @@ import { CHAT_AGENTS, type ChatAgent } from '@/features/workspace/model/chatView
 import { AppIcon, Icon } from '@/features/workspace/components/glyphs'
 import { AGENT_LABEL, modelName } from '../modelName'
 import {
-  choiceFor, DEFAULT_PICK, effortAllowed, leadingModels, menuModels, pickedModel, REASONING_LABEL, REASONING_LEVELS, useAgentModels, useDiscoveredModels,
+  choiceFor, DEFAULT_PICK, effortAllowed, effortBars, effortWord, leadingModels, menuModels, pickedModel, REASONING_LABEL, REASONING_LEVELS, useAgentModels, useDiscoveredModels,
   type AgentChoice, type ModelOption, type Reasoning, type ReasoningPick,
 } from '../agentChoice'
 
 /** The level a chat drops to when its new model does not take the one it had. */
 const FALLBACK_LEVEL: Reasoning = 'medium'
 
-/** How many of the four bars a level fills; none while the agent's own level is kept. */
-function filledBars(level: ReasoningPick): number {
-  return level === DEFAULT_PICK ? 0 : REASONING_LEVELS.indexOf(level) + 1
-}
-
-/** The small strength meter on the button: four rising bars, filled up to the picked level. */
-function MiniMeter({ level }: { level: ReasoningPick }) {
-  const filled = filledBars(level)
+/** The small strength meter on the button: four rising bars, filled up to the level in use. */
+function MiniMeter({ level }: { level: string }) {
+  const filled = effortBars(level)
   return (
     <span aria-hidden="true" className="mx-mm-mini">
       {REASONING_LEVELS.map((name, index) => <span key={name} className={index < filled ? 'is-on' : undefined} />)}
@@ -35,12 +30,16 @@ type PickerProps = {
   onChange: (change: Partial<AgentChoice>) => void
   /** The model the agent's own file says it runs; null when it has not said. */
   currentModel?: string | null
+  /** The effort the agent's own files say it runs at, which is what the button shows while none was picked; null when they do not say. */
+  currentEffort?: string | null
   /** Given where the agent is still to be chosen (a chat that has not started): the menu has the agent switch. */
   onAgent?: (agent: ChatAgent) => void
   /** Given for a chat that follows the agent's own terminal: a pick is sent to it now, as its own `/model` and `/effort` commands. */
   live?: (command: string) => void
   /** Why the choice cannot be changed right now. The button stays where it is, greyed out, so the message box never rearranges. */
   locked?: string | undefined
+  /** Only the agent is a choice: no model list or effort, because they are read from this computer and mean nothing elsewhere. */
+  agentOnly?: boolean
 }
 
 /**
@@ -50,7 +49,7 @@ type PickerProps = {
  * What is picked goes to the agent with the next message; the account's default model and a level
  * that was never picked send nothing, so the chat keeps what it started with.
  */
-export function AgentPicker({ agent, choice, onChange, currentModel = null, onAgent, live, locked }: PickerProps) {
+export function AgentPicker({ agent, choice, onChange, currentModel = null, currentEffort = null, onAgent, live, locked, agentOnly = false }: PickerProps) {
   const [open, setOpen] = useState(false)
   const [allModels, setAllModels] = useState(false)
   useDiscoveredModels(agent)
@@ -60,7 +59,10 @@ export function AgentPicker({ agent, choice, onChange, currentModel = null, onAg
   const modelId = model?.id ?? DEFAULT_PICK
   const leading = leadingModels(rows, modelId)
   const shown = allModels ? rows : leading
-  const summary = `${AGENT_LABEL[agent]} · ${model?.label ?? ''} · ${REASONING_LABEL[choice.reasoning]}`
+  // Nothing picked means the agent's own, and its files may say which: that is what is true, so that is what shows.
+  const inUse = choice.reasoning === DEFAULT_PICK ? currentEffort : choice.reasoning
+  const inUseWord = effortWord(inUse)
+  const summary = `${AGENT_LABEL[agent]} · ${model?.label ?? ''} · ${inUseWord ?? REASONING_LABEL[choice.reasoning]}`
   const pickModel = (option: ModelOption) => {
     onChange({ model: choiceFor(option) })
     live?.(`/model ${choiceFor(option)}\r`)
@@ -77,8 +79,9 @@ export function AgentPicker({ agent, choice, onChange, currentModel = null, onAg
         <button type="button" aria-label={`Agent, model and reasoning: ${summary}`} title={locked ?? 'Model and effort'} aria-disabled={locked !== undefined} className={`mx-model-button${locked === undefined ? '' : ' is-locked'}`}>
           <span className="mx-model-icon"><AppIcon process={agent} size={14} /></span>
           <span className="mx-model-name">{/* With nothing picked, what the agent says it runs is the better name than the row that stands for it. */}
-            {modelName(agent, choice.model === DEFAULT_PICK && currentModel !== null ? undefined : model, currentModel)}</span>
-          <MiniMeter level={choice.reasoning} />
+            {agentOnly ? AGENT_LABEL[agent] : modelName(agent, choice.model === DEFAULT_PICK && currentModel !== null ? undefined : model, currentModel)}</span>
+          {!agentOnly && inUseWord !== null && <span className="mx-model-level">{inUseWord}</span>}
+          {!agentOnly && <MiniMeter level={inUse ?? DEFAULT_PICK} />}
           <Icon name="chevronDown" />
         </button>
       </Popover.Trigger>
@@ -90,6 +93,7 @@ export function AgentPicker({ agent, choice, onChange, currentModel = null, onAg
             ))}
           </Segmented>
         )}
+        {!agentOnly && (<>
         <RadioGroup aria-label="Model" value={modelId} onValueChange={(value) => { const option = rows.find((row) => row.id === value); if (option) pickModel(option) }} className="mx-mm-models">
           {shown.map((option) => (
             <RadioGroupItem key={option.id} value={option.id} title={option.blurb === '' ? undefined : option.blurb} className="mx-mm-model">
@@ -120,7 +124,7 @@ export function AgentPicker({ agent, choice, onChange, currentModel = null, onAg
                   disabled={!allowed}
                   aria-label={REASONING_LABEL[level]}
                   title={allowed ? REASONING_LABEL[level] : `${REASONING_LABEL[level]}: not on this model`}
-                  className={`mx-mm-bar${index < filledBars(choice.reasoning) ? ' is-on' : ''}`}
+                  className={`mx-mm-bar${index < effortBars(inUse) ? ' is-on' : ''}`}
                   // A second press on the picked level lets go of it: the chat keeps the agent's own again.
                   onClick={() => { if (level === choice.reasoning) pickLevel(DEFAULT_PICK) }}
                 />
@@ -128,8 +132,9 @@ export function AgentPicker({ agent, choice, onChange, currentModel = null, onAg
             })}
           </RadioGroup>
           <span className="mx-spacer" />
-          <span className="mx-mm-level">{choice.reasoning === DEFAULT_PICK ? "Agent's own" : REASONING_LABEL[choice.reasoning]}</span>
+          <span className="mx-mm-level">{choice.reasoning !== DEFAULT_PICK ? REASONING_LABEL[choice.reasoning] : inUseWord !== null ? `${inUseWord} · agent's own` : "Agent's own"}</span>
         </div>
+        </>)}
       </PopupContent>
     </Popover.Root>
   )

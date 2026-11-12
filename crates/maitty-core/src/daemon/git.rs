@@ -145,6 +145,26 @@ fn sanitize_branch(b: &str) -> String {
 
 /// Create a worktree for `branch` (new from `base`/HEAD, or the existing local / remote
 /// branch). Returns (path, repo name).
+/// What a new branch should start from, for a repository whose main checkout is at `root`: the
+/// remote's default branch (as of the last fetch), else a local `main` or `master`. None when it
+/// has neither, and the branch then starts from HEAD.
+pub fn default_base(root: &Path) -> Option<String> {
+    let has = |r: &str| git(root, &["show-ref", "--verify", "--quiet", r]).is_ok();
+    git(
+        root,
+        &["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+    )
+    .ok()
+    .map(|r| r.trim().to_string())
+    .filter(|r| !r.is_empty() && has(&format!("refs/remotes/{r}")))
+    .or_else(|| {
+        ["main", "master"]
+            .into_iter()
+            .find(|b| has(&format!("refs/heads/{b}")))
+            .map(String::from)
+    })
+}
+
 pub fn create_worktree(
     dir: &Path,
     branch: &str,
@@ -197,6 +217,11 @@ pub fn create_worktree(
         git(&root, &["worktree", "add", &p, branch])?;
     } else {
         let mut args = vec!["worktree", "add", "-b", branch, &p];
+        // Cut from a remote branch, the new one would otherwise track it and `git pull` would
+        // pull the default branch into it.
+        if base.is_some_and(|b| has(&format!("refs/remotes/{b}"))) {
+            args.insert(2, "--no-track");
+        }
         if let Some(b) = base {
             // A base that looks like an option would be read as one.
             if b.starts_with('-') {
@@ -519,6 +544,42 @@ pub fn conversation_file(root: &Path, relative: &str) -> Result<String> {
     }
     let content = std::fs::read(path).context("reading project file")?;
     String::from_utf8(content).context("The selected file is not UTF-8 text")
+}
+
+/// Replaces an existing project file's text (see `repo::write_file`). Nothing is created: a path that is
+/// not already a regular file is refused, so a typo cannot make a new file.
+pub fn conversation_write(root: &Path, relative: &str, contents: &str) -> Result<()> {
+    use std::io::Write;
+    use std::path::Component;
+
+    if Path::new(relative).components().next() == Some(Component::Normal(".git".as_ref())) {
+        bail!("Files under .git are not edited here");
+    }
+    if contents.len() as u64 > MAX_FILE_BROWSER_BYTES {
+        bail!("This text is too large to save here");
+    }
+    let path = resolve_conversation_path(root, relative)?;
+    let metadata = std::fs::symlink_metadata(&path).context("That file is not there")?;
+    if !metadata.is_file() {
+        bail!("The selected project path is not a file");
+    }
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .context("The project path is invalid")?;
+    let staged = path.with_file_name(format!(".{name}.{}.saving", std::process::id()));
+    let written = (|| -> std::io::Result<()> {
+        let mut file = std::fs::File::create(&staged)?;
+        file.write_all(contents.as_bytes())?;
+        file.sync_all()?;
+        std::fs::set_permissions(&staged, metadata.permissions())?;
+        std::fs::rename(&staged, &path)
+    })();
+    if let Err(error) = written {
+        let _ = std::fs::remove_file(&staged);
+        return Err(error).context("saving the file");
+    }
+    Ok(())
 }
 
 pub(super) fn resolve_conversation_path(root: &Path, relative: &str) -> Result<PathBuf> {

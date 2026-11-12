@@ -263,8 +263,9 @@ impl Copy {
             return String::new();
         };
         let mut out = Vec::new();
-        for l in s.0..=e.0.min(self.last_line()) {
-            let chars: Vec<char> = self.lines[l].chars().collect();
+        let last = e.0.min(self.last_line());
+        for (l, line) in self.lines.iter().enumerate().take(last + 1).skip(s.0) {
+            let chars: Vec<char> = line.chars().collect();
             let from = if l == s.0 { s.1.min(chars.len()) } else { 0 };
             let to = if l == e.0 {
                 e.1.saturating_add(1).min(chars.len())

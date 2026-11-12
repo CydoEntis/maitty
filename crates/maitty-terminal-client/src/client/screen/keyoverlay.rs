@@ -655,12 +655,13 @@ fn step_items(app: &App, step: Step) -> Vec<(char, &'static str, String, Action)
                     Action::NewWorktree(None),
                 ),
                 (
-                    's',
-                    "Switch to…",
+                    'c',
+                    "Clean up…",
                     format!("{n} worktree{}", if n == 1 { "" } else { "s" }),
-                    Action::Jump,
+                    Action::TidyWorktrees,
                 ),
-                ('m', "Merge into main", branch, Action::Changes),
+                // Merging is a key of the Changes view this opens (m there, then y to confirm).
+                ('m', "Merge into main", format!("opens Changes · {branch}"), Action::Changes),
                 (
                     'd',
                     "Delete worktree",

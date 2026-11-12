@@ -69,6 +69,8 @@ export function rowTitle(session: SessionView): string {
 
 /** The words at the right of a row: only a stopped agent or an exited shell says anything. */
 export function rowWord(session: SessionView): string {
+  // Its machine or the daemon is out of reach, or the list just missed it: the last status is not known to be true.
+  if (session.status === 'unknown') return 'offline'
   if (session.status !== 'error') return ''
   return isShell(session) ? 'exited' : 'stopped'
 }

@@ -43,6 +43,11 @@ export function skillQuery(draft: string): string | null {
 }
 
 /** A message that is one line starting with a slash: the agent's own command, not words for it to read. */
+/** A one-line shell command in the agent's `!` form (`!ls`, `! gh auth login`): Claude Code and Gemini run it themselves, in the terminal. */
+export function isBangLine(text: string): boolean {
+  return /^!\s*\S[^\n]*$/.test(text)
+}
+
 export function isSlashLine(text: string): boolean {
   return /^\/\S[^\n]*$/.test(text)
 }

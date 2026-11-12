@@ -49,7 +49,7 @@
 /* Machines that need the app, under a list that has no machine headings to say so. */
 .mx-machine-notes { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--pane-line); }
 .mx-machine-note { display: flex; align-items: center; gap: 6px; min-height: 26px; padding: 0 3px 0 10px; font-size: calc(12px * var(--sidebar-text, 1)); color: var(--muted); }
-.mx-row-machine { flex: none; }
+.mx-row-machine { flex: 0 1 auto; min-width: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mx-machine { display: flex; flex-direction: column; gap: 2px; }
 .mx-machine.is-away .mx-rows, .mx-machine.is-away .mx-projects { opacity: .6; }
 .mx-machine-head { display: flex; align-items: center; gap: 6px; min-height: 26px; padding: 0 3px 0 0; }
@@ -133,18 +133,17 @@
 .mx-row.is-selected .mx-row-name { color: var(--fg); }
 .mx-row .mx-inline-name { height: 20px; flex: none; width: 100%; margin-left: -5px; padding: 0 5px; border-radius: 5px; font-size: 13px; font-weight: 600; background: var(--m-well); border: 1px solid var(--accent-line); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
 .mx-row-sub { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: calc(10.5px * var(--sidebar-text, 1)); line-height: calc(14px * var(--sidebar-text, 1)); color: var(--dim); white-space: nowrap; overflow: hidden; }
-.mx-row-project { display: inline-flex; align-items: center; gap: 5px; flex: 0 1 auto; min-width: 0; }
+.mx-row-project { display: inline-flex; align-items: center; gap: 5px; flex: 0 .2 auto; min-width: 7ch; }
 .mx-row-project-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* The name and, at its right, the time or the word for how it stopped. */
 .mx-row-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .mx-row-title > .mx-row-name { flex: 1; min-width: 0; }
 .mx-row-square { width: 6px; height: 6px; border-radius: 2px; }
 /* The icon and the name share one line: the name alone gives way when the row is narrow. */
-.mx-row-branch { display: inline-flex; align-items: center; gap: 3px; min-width: 0; margin-left: auto; font-family: var(--mono); color: var(--ansi-mag); }
+.mx-row-branch { display: inline-flex; align-items: center; gap: 3px; min-width: 0; margin-left: auto; max-width: 58%; font-family: var(--mono); color: var(--branch); }
 .mx-row-branch svg { flex: none; }
 .mx-row-branch-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* A worktree is told from a branch by its tree and its blue, on the row, the pane's header and under the message box. */
-.mx-row-branch.is-worktree { color: var(--ansi-blue); }
 .mx-row-branch.is-worktree svg { flex: none; }
 .mx-row-word { flex: none; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--danger); }
 .mx-row-when { flex: none; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--muted); transition: opacity .12s ease; }
@@ -203,3 +202,6 @@
 .mx-collapse-inner { min-height: 0; overflow: hidden; transition: opacity .16s ease; }
 .mx-collapse-grid[data-open="false"] > .mx-collapse-inner { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .mx-collapse-grid, .mx-collapse-inner { transition: none; } }
+.mx-section-key { flex: none; font-family: var(--mono); font-size: 10.5px; font-weight: 500; color: var(--dim); }
+.mx-row.is-offline { opacity: .5; }
+.mx-row.is-offline .mx-row-word { color: var(--muted); }

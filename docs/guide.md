@@ -58,7 +58,7 @@ values that conflict with its reserved identity fail with a native-terminal
 alternative. Runtime MCP environment allowlists are augmented without editing
 your configuration or storing authentication values in thread settings.
 
-Click **menu** at the bottom of the sidebar (or press the leader, then `m`) for the common
+Click **menu** at the bottom of the sidebar (or press the leader, then `.`) for the common
 commands: new session, shell, pane, tab, Inbox, Search commands, All keys, the sidebar and Settings.
 **Search commands** (leader, then `Space`) finds every command, including **Connect agents**
 and your configured custom ones; rows click and the wheel scrolls.
@@ -99,7 +99,7 @@ and your configured custom ones; rows click and the wheel scrolls.
 - One card is selected: a neutral tint with a **▎** bar at its left edge (lime while the sidebar
   has the keys, dim when a pane does). The open session keeps a dim bar while you browse with the
   keyboard. Hover is a separate, quieter tint.
-- Collapsing the sidebar (the `«` chip on its top border, or leader then `z`) leaves a narrow box down the side with one state glyph per session and, in amber, how many need you: click a glyph to go to it, `»` (`«` with the sidebar on the right) or `…` to expand the sidebar again. `[` in the sidebar steps through full, narrow and hidden; hidden, a `»` chip at the start of the tabs brings it back.
+- Collapsing the sidebar (the `«` chip on its top border) leaves a narrow box down the side with one state glyph per session and, in amber, how many need you: click a glyph to go to it, `»` (`«` with the sidebar on the right) or `…` to expand the sidebar again. Leader then `b` hides the sidebar and brings it back; hidden, a `»` chip at the start of the tabs also brings it back. After the leader, `[` and `]` make the sidebar narrower and wider.
 - A machine whose line is down, or that has no sessions, is its header and one line instead of its
   projects; click it for the Machines dialog. See *Machines* below.
 - Nothing moves in the sidebar by itself: a session that needs you or finishes keeps its row (its mark and name say so, and the Inbox lists what needs you). Idle agents stay running; no sleep screen is shown for sessions saved by older releases.
@@ -123,7 +123,7 @@ popup returns to key mode. While the sidebar, a popup or a panel has the keys, t
 lists its keys (` FILES ` … `/ filter  i edit  enter insert path  esc close`). With **Leader waits for
 next key** on (Settings › General; off by default), a pause after the leader shows the compact key map:
 a key runs its command, Tab (or typing a letter that is no key) searches every command, and keys marked
-`›` open a second step (`g` worktrees: new, switch, merge, delete; Backspace goes back). `?` is the
+`›` open a second step (Worktrees: new, switch, merge, delete; Backspace goes back). `?` is the
 keys help. Only `?`, `S` and `_` need Shift, and each key does one thing; no letter acts by itself in
 the sidebar. Every default shortcut, and every screen's own keys, are in [shortcuts](shortcuts.md).
 
@@ -155,7 +155,7 @@ if the file changes again), `r` goes to its agent. In a worktree, `m` merges and
 it away, also after asking.
 
 The side panel's width is kept for each view. While the panel has the keys, `[` and `]`
-narrow or widen it and `=` puts it back (after the leader, `[` and `]` switch tabs instead);
+narrow or widen it and `=` puts it back (after the leader, `[` and `]` resize the sidebar instead);
 or drag its left edge. A markdown file in Files is drawn by default; `m` switches
 between drawn and raw text.
 
@@ -252,7 +252,7 @@ the row, and the row's menu drops it.
 
 Each time an agent's turn begins, maitty keeps the checkout's files as they are (tracked or
 not; never what git ignores). **Snapshots…** in the agent's menu lists the last nine, and
-the Branch view (leader + `b`) lists them all; picking one puts the files back as they were then. What's there now is kept as a snapshot
+the Branch view (leader + `g`) lists them all; picking one puts the files back as they were then. What's there now is kept as a snapshot
 first, so a restore can be taken back the same way. It is refused while the agent is working,
 since it would keep writing into the files being put back. Snapshots are commits under the
 worktree's own refs (`refs/worktree/maitty/snapshots`): no branch, nothing in your history,
@@ -298,7 +298,7 @@ They show up in + New as `⚙ feature`.
 ## References
 
 Keep the screenshots and design files an agent should build from in the References view
-(leader + `a`). They are plain files in `.maitty/references/` at the repo's main checkout (a
+(leader + `e`). They are plain files in `.maitty/references/` at the repo's main checkout (a
 folder outside git keeps its own), so every agent, in every worktree, sees the same set, and
 any agent can read them by path. The first time Maitty makes the folder in a repo it adds
 `.maitty/references/` to the repo's `.git/info/exclude`, so references stay out of git without
@@ -324,8 +324,8 @@ and delivered files are removed within a day or when the daemon starts. They nev
 chat, the state or a log.
 
 **Pull requests.** With the GitHub CLI (`gh`) installed and logged in, Maitty finds the pull
-request open on each pane's branch every couple of minutes and shows the focused pane's in the
-bottom bar: `#7 2 failing`, `#7 changes requested`, `#7 conflict`, `#7 checking`, `#7 approved`,
+request open on each pane's branch every couple of minutes and shows it on the session's row in
+the sidebar (and in the desktop app's pane header): `#7 2 failing`, `#7 changes requested`, `#7 conflict`, `#7 checking`, `#7 approved`,
 `#7 passing`, `#7 merged`. `maitty ls --json` and `maitty_list` carry the details. When the
 checks fail, a review remark arrives or a merge conflict appears, the agent is told once its turn
 is over (never into a question), at most ten times per commit; Settings › Agents › "Tell agents
@@ -752,8 +752,8 @@ to paste. In the chat box any paste key attaches an image.
 |---|---|---|
 | `f` | **Files** | The project's tree, with the file you pick beside it. `r` switches to recent files (just appeared in Downloads, Desktop, Documents or the project), `/` filters. Enter types the path into your prompt; `e` your editor, `i` edit it in place (Shift+arrows or the mouse select; Ctrl+C, Ctrl+X, Ctrl+V copy, cut and paste), `o` open it outside, `y` copy the path. `f` again or Esc closes it. |
 | `c` | **Changes** | A checkout's changed files and the diff: `c` commit, `p` push and open a pull request, `x` mark reviewed, `r` go to its agent; in a worktree `m` merges into the base branch and `d` throws it away. Each of `c`, `p`, `m` and `d` asks first. |
-| `a` | **References** | The project's screenshots and design files, newest first: `p` adds the clipboard image, `n` a file by its path (type it or drop it in), Enter opens one in your image viewer, `y` copies its path, `d` removes it (asked first). `a` again or Esc closes it. See *References* below. |
-| `b` | **Branch** | Where the session's checkout stands, in the side panel: its branch, how far it is ahead of and behind its upstream and its base branch, the last 10 commits, the last check result and its snapshots. Its first row, **Switch branch…**, opens the branch switcher; Enter on a snapshot restores it (asked first). `b` again or Esc closes it. |
+| `e` | **References** | The project's screenshots and design files, newest first: `p` adds the clipboard image, `n` a file by its path (type it or drop it in), Enter opens one in your image viewer, `y` copies its path, `d` removes it (asked first). `e` again or Esc closes it. See *References* below. |
+| `g` | **Branch** | Where the session's checkout stands, in the side panel: its branch, how far it is ahead of and behind its upstream and its base branch, the last 10 commits, the last check result and its snapshots. Its first row, **Switch branch…**, opens the branch switcher (local and remote branches; type `#123` to check out a pull request with `gh`); `f` fetches, `p` pulls (fast-forward only) and `P` pushes; Enter on a snapshot restores it (asked first). `g` again or Esc closes it. |
 
 ## Agents
 
@@ -833,9 +833,14 @@ The same dialog has a **Session** choice: **Terminal** (the default, as above) o
 session is Claude or Codex run by Maitty's background service instead of in a terminal, so the chat
 has a message box that works: Enter sends, Stop interrupts, a message sent while the agent is busy
 waits in a queue (with Remove), and each permission the agent asks for appears in the chat with
-**Yes, once (y)**, **This session (a)** and **No (n)**. It always asks first; there is no option to
-skip the questions. A chat session has no terminal (to use the agent's own screen, start a terminal
-session), it keeps running when you close the window, and closing its tab or pane stops the agent. A
+**Yes, once (y)**, **This session (a)** and **No (n)**; a command also has **Always in this project**,
+which approves that exact command (written the same) in that project from then on. Those are kept
+in `chat-allowed-commands.json` in Maitty's data folder, never in the repo. Settings → Agents lists
+them with a **Forget** for each, which takes effect at once (a second service running on the same
+computer drops it only when it next starts). Nothing else is ever remembered: a file change, an extra permission or a
+question always asks. A chat session has no terminal (to use the agent's own screen, start a terminal
+session), it keeps running when you close the window, and closing its tab or pane stops the agent a
+few seconds later, so Undo can bring it back. A
 shell's empty chat card also offers **Start a Claude chat** and **Start a Codex chat** for the shell's
 folder. If you typed `claude` or `codex` in a shell yourself, its chat is read-only: it shows what
 the agent did and you answer in the terminal.

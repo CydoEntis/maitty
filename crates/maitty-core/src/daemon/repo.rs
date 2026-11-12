@@ -69,6 +69,15 @@ pub fn restore(dir: &Path, commit: &str) -> Result<RepoReply> {
     Ok(RepoReply::Restored(changed))
 }
 
+/// Replace the text of an existing file of the checkout `dir` is in. The path is checked as every
+/// read of a project file is (relative, no `..`, no links), and `.git` is never written. The new
+/// text is put beside the file and moved over it, so a failure leaves the old file whole.
+pub fn write_file(dir: &Path, relative: &str, contents: &str) -> Result<RepoReply> {
+    let top = git(dir, &["rev-parse", "--show-toplevel"]).unwrap_or_else(|_| dir.to_string_lossy().into_owned());
+    super::git::conversation_write(Path::new(&top), relative, contents)?;
+    Ok(RepoReply::Written)
+}
+
 fn references(root: &Path) -> Result<Vec<RepoReference>> {
     let project = crate::references::project_root(root);
     let found = crate::references::of_project(&project).map_err(anyhow::Error::msg)?;
@@ -287,6 +296,44 @@ mod tests {
             "git {args:?}: {}",
             String::from_utf8_lossy(&output.stderr)
         );
+    }
+
+    #[test]
+    fn a_file_is_replaced_whole_and_nothing_else_can_be_written() {
+        let dir = crate::daemon::persist::scratch_dir();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("src")).expect("folder");
+        std::fs::create_dir_all(root.join(".git")).expect("git dir");
+        std::fs::write(root.join("src/a.txt"), "old").expect("file");
+        std::fs::write(root.join(".git/config"), "keep").expect("file");
+
+        assert_eq!(write_file(root, "src/a.txt", "new text\n").expect("written"), RepoReply::Written);
+        assert_eq!(std::fs::read_to_string(root.join("src/a.txt")).unwrap(), "new text\n");
+        let stray: Vec<_> = std::fs::read_dir(root.join("src")).unwrap().flatten().map(|e| e.file_name()).collect();
+        assert_eq!(stray.len(), 1, "no staging file is left behind: {stray:?}");
+
+        // It makes no file, climbs out of nowhere, and leaves .git alone.
+        for bad in ["src/new.txt", "../outside.txt", "/etc/passwd", "src", ".git/config", "src/../.git/config"] {
+            assert!(write_file(root, bad, "x").is_err(), "{bad} must be refused");
+        }
+        assert_eq!(std::fs::read_to_string(root.join(".git/config")).unwrap(), "keep");
+        assert!(!root.parent().unwrap().join("outside.txt").exists());
+        // A text past the preview limit is refused rather than cut.
+        assert!(write_file(root, "src/a.txt", &"x".repeat(300 * 1024)).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_is_never_followed_to_write_through_it() {
+        let dir = crate::daemon::persist::scratch_dir();
+        let root = dir.path();
+        let outside = crate::daemon::persist::scratch_dir();
+        std::fs::create_dir_all(root).expect("folder");
+        std::fs::create_dir_all(outside.path()).expect("folder");
+        std::fs::write(outside.path().join("secret.txt"), "untouched").expect("file");
+        std::os::unix::fs::symlink(outside.path().join("secret.txt"), root.join("link.txt")).expect("link");
+        assert!(write_file(root, "link.txt", "changed").is_err());
+        assert_eq!(std::fs::read_to_string(outside.path().join("secret.txt")).unwrap(), "untouched");
     }
 
     #[test]

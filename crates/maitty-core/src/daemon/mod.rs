@@ -187,10 +187,19 @@ pub enum Ev {
         facts: Vec<usage::CodexPaneFacts>,
         limits: Option<Vec<Limit>>,
     },
+    /// The effort each agent's own files say it runs at (`usage::poll_effort`).
+    AgentEffort(Vec<(TermId, Option<String>)>),
     /// A worktree made for an agent started from a shell (`Command::AgentWorktree`).
     AgentWorktreeMade {
         client: ClientId,
         result: Result<PathBuf, String>,
+    },
+    /// A worktree made for a branch asked from a folder (`Command::BranchWorktree`); `set_up`
+    /// once the repo's setup hook has run in it.
+    BranchWorktreeMade {
+        client: ClientId,
+        set_up: bool,
+        result: Result<(PathBuf, String), String>,
     },
     /// What became of a worktree after you closed its last pane.
     WorktreeAutoRemoved {
@@ -408,6 +417,11 @@ struct Daemon {
     conversation_states: BTreeMap<crate::conversation::ConversationId, conversation::State>,
     /// Conversations whose agent was stopped on purpose, so its exit is not a failure.
     conversation_ending: std::collections::BTreeSet<crate::conversation::ConversationId>,
+    /// Chats closed with an undo window, and when each was: ended for real when the window passes.
+    conversation_closing: std::collections::BTreeMap<crate::conversation::ConversationId, Instant>,
+    /// Commands you approved "always in this project" for chats, read once at start.
+    chat_allowed: conversation::allowed::Allowed,
+    chat_allowed_file: PathBuf,
     conversation_requests: BTreeMap<u64, conversation::commands::Pending>,
     conversation_request_id: u64,
     conversation_barriers: BTreeMap<u64, u64>,
@@ -443,6 +457,8 @@ struct Daemon {
     usage_store: usage_store::UsageStore,
     codex_busy: bool,
     last_codex: Instant,
+    effort_busy: bool,
+    last_effort: Instant,
     /// The next pane runs its command once and ends with it (a popup).
     next_once: bool,
     /// The pane the next session is started for, when its connection can't say (the
@@ -551,6 +567,10 @@ pub fn run(on_start: impl FnOnce()) -> Result<()> {
         match helpers::Projects::load(&d.helper_projects_file) {
             Ok(p) => d.helper_projects = p,
             Err(e) => tracing::warn!("helper projects: {e:#}; every project asks again"),
+        }
+        match conversation::allowed::Allowed::load(&d.chat_allowed_file) {
+            Ok(a) => d.chat_allowed = a,
+            Err(e) => tracing::warn!("chat allowed commands: {e:#}; every command asks again"),
         }
         d.drop_saved_outputs();
         if d.cfg.restore.enabled
@@ -822,6 +842,7 @@ impl Daemon {
                     | Command::NewShip { .. }
                     | Command::Split { .. }
                     | Command::NewWorktree { .. }
+                    | Command::BranchWorktree { .. }
                     | Command::Popup { .. }
             )
         {
@@ -862,6 +883,32 @@ impl Daemon {
                 anyhow::bail!("Only a human client can end a conversation")
             }
             Command::ConversationEnd { .. } => self.may(client, Grant::Write, None),
+            Command::ConversationClose { .. } | Command::ConversationUndoClose { .. }
+                if structured
+                    || self
+                        .clients
+                        .get(&client)
+                        .is_some_and(|client| client.from.is_some()) =>
+            {
+                anyhow::bail!("Only a human client can close a conversation")
+            }
+            Command::ConversationClose { .. } | Command::ConversationUndoClose { .. } => {
+                self.may(client, Grant::Write, None)
+            }
+            Command::ConversationAllowAlways { .. }
+                if structured
+                    || self
+                        .clients
+                        .get(&client)
+                        .is_some_and(|client| client.from.is_some()) =>
+            {
+                anyhow::bail!("Only a human client can answer provider requests")
+            }
+            Command::ConversationAllowAlways { .. } => self.may(client, Grant::Respond, None),
+            Command::ForgetAllowedCommand { .. } if self.client_is_agent(client) => {
+                anyhow::bail!("taking back an approval is yours to do, not a pane's")
+            }
+            Command::ForgetAllowedCommand { .. } => self.may(client, Grant::Respond, None),
             Command::ConversationDequeue { .. }
                 if structured
                     || self
@@ -934,6 +981,7 @@ impl Daemon {
             | Command::NewShip { .. }
             | Command::Split { .. }
             | Command::NewWorktree { .. }
+            | Command::BranchWorktree { .. }
             | Command::Popup { .. } => self.may(client, Grant::Start, None),
             Command::ClosePane { term }
             | Command::CloseSession { term }
@@ -971,6 +1019,14 @@ impl Daemon {
                 anyhow::bail!("restoring a snapshot is yours to do, not a pane's")
             }
             Command::RestoreSnapshot { term, .. } => {
+                self.may_use_terminal(client, *term)?;
+                self.may(client, Grant::Write, Some(*term))
+            }
+            // An agent edits its own files itself; a file the person edits in the window is theirs.
+            Command::WriteFile { .. } if self.client_is_agent(client) => {
+                anyhow::bail!("editing a file is yours to do, not a pane's")
+            }
+            Command::WriteFile { term, .. } => {
                 self.may_use_terminal(client, *term)?;
                 self.may(client, Grant::Write, Some(*term))
             }
@@ -1148,6 +1204,9 @@ impl Daemon {
             resumable_conversations: Vec::new(),
             conversation_states: BTreeMap::new(),
             conversation_ending: std::collections::BTreeSet::new(),
+            conversation_closing: std::collections::BTreeMap::new(),
+            chat_allowed: conversation::allowed::Allowed::default(),
+            chat_allowed_file: conversation::allowed::path(),
             conversation_requests: BTreeMap::new(),
             conversation_request_id: 0,
             conversation_barriers: BTreeMap::new(),
@@ -1182,6 +1241,8 @@ impl Daemon {
             },
             codex_busy: false,
             last_codex: Instant::now() - Duration::from_secs(3600),
+            effort_busy: false,
+            last_effort: Instant::now() - Duration::from_secs(3600),
             next_once: false,
             next_starter: None,
             spare: None,
@@ -1209,6 +1270,7 @@ impl Daemon {
                 _ = tick.tick() => {
                     self.sync_scan_interval();
                     self.finish_closes();
+                    self.finish_chat_closes();
                     self.close_ended_agents();
                     self.expire_warm();
                     self.update_statuses();
@@ -1216,6 +1278,7 @@ impl Daemon {
                     self.phone_alerts();
                     self.auto_continue();
                     self.poll_codex();
+                    self.poll_effort();
                     self.follow_tick();
                     self.deliver_queued();
                     self.usage_store.save_if_due(term::unix_now());
@@ -2019,6 +2082,11 @@ impl Daemon {
                 set_up,
                 result,
             } => self.chat_worktree_created(client, settings, branch, set_up, result),
+            Ev::BranchWorktreeMade {
+                client,
+                set_up,
+                result,
+            } => self.branch_worktree_made(client, set_up, result),
             Ev::AgentWorktreeMade { client, result } => {
                 self.pending_ops -= 1;
                 match result {
@@ -2243,6 +2311,7 @@ impl Daemon {
                 self.dirty = true;
             }
             Ev::CodexUsage { facts, limits } => self.codex_usage(facts, limits),
+            Ev::AgentEffort(found) => self.agent_effort(found),
             Ev::WorktreeRemoved {
                 client,
                 path,
@@ -2623,6 +2692,28 @@ impl Daemon {
                     {
                         ServerMsg::Error("Only a human client can read usage".into())
                     }
+                    Query::AllowedCommands if self.client_is_agent(client) => {
+                        ServerMsg::Error("Only a human client can read the approved commands".into())
+                    }
+                    Query::AllowedCommands => {
+                        // The file is shared by every daemon, so it is read as it is now.
+                        match conversation::allowed::Allowed::load(&self.chat_allowed_file) {
+                            Ok(fresh) => self.chat_allowed = fresh,
+                            Err(e) => tracing::warn!("chat allowed commands: {e:#}"),
+                        }
+                        ServerMsg::Reply(Reply::AllowedCommands(
+                            self.chat_allowed
+                                .rules
+                                .iter()
+                                .map(|rule| crate::protocol::AllowedCommand {
+                                    project: rule.project.clone(),
+                                    command: rule.command.clone(),
+                                    command_sha256: rule.command_sha256.clone(),
+                                    at: rule.at,
+                                })
+                                .collect(),
+                        ))
+                    }
                     Query::Settings
                         if self.clients.get(&client).is_some_and(|client| {
                             client.from.is_some() || client.structured.is_some()
@@ -2881,6 +2972,7 @@ impl Daemon {
                             t.name.clone()
                         },
                         model: t.model.clone(),
+                        effort: t.effort.clone(),
                         label: t.label.clone(),
                         pinned: t.pinned,
                         archived: t.archived,

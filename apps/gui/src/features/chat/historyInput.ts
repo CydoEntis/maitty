@@ -45,6 +45,8 @@ export const ApprovalRequestSchema = z.object({
   reason: z.string().nullable().optional(),
   changes: z.array(z.object({ path: z.string(), kind: z.string(), diff: z.string() })).default([]),
   choices: z.array(ApprovalChoiceSchema).default([]),
+  // A command the daemon will remember an approval of for the project.
+  can_remember: z.boolean().default(false),
   // What a user-input request asks (Codex); empty for every other kind.
   questions: z.array(z.object({
     id: z.string(),

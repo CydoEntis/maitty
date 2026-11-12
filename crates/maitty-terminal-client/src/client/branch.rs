@@ -63,6 +63,8 @@ pub struct BranchView {
 /// One row in the list: an existing branch, or "create <query>".
 #[derive(Debug, Clone, PartialEq)]
 pub enum Row {
+    /// `#123` typed: check out that pull request's branch with `gh`.
+    Pull(u32),
     Create(String),
     Existing(Branch),
 }
@@ -86,6 +88,10 @@ impl BranchView {
                 .map(|(_, b)| Row::Existing(b.clone()))
                 .collect()
         };
+        if let Some(n) = pull_number(q) {
+            out.insert(0, Row::Pull(n));
+            return out;
+        }
         let exact = list.iter().any(|b| {
             b.name == q
                 || b.name
@@ -98,6 +104,32 @@ impl BranchView {
         }
         out
     }
+}
+
+/// What Ctrl+D and Ctrl+R do to the branch under the cursor.
+enum Edit {
+    Delete(Branch),
+    /// To the name typed in the filter.
+    Rename(Branch, String),
+}
+
+/// `git branch -d`: it refuses a branch with commits nothing else has, so no work is lost.
+pub fn delete_branch(dir: &Path, name: &str) -> Result<String, String> {
+    git(dir, &["branch", "-d", name])
+        .map(|_| format!("deleted {name}"))
+        .map_err(|e| format!("{e} (not deleted: it may have work that isn't merged)"))
+}
+
+/// `git branch -m`: the new name must not be taken (git would refuse without `-M`).
+pub fn rename_branch(dir: &Path, from: &str, to: &str) -> Result<String, String> {
+    git(dir, &["branch", "-m", from, to]).map(|_| format!("renamed {from} to {to}"))
+}
+
+/// `#123` (or `123` after a `#` was typed): a pull request number.
+fn pull_number(q: &str) -> Option<u32> {
+    q.strip_prefix('#')
+        .filter(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+        .and_then(|n| n.parse().ok())
 }
 
 fn valid_name(n: &str) -> bool {
@@ -225,7 +257,9 @@ pub fn switch(
         Some(Carry::Bring) => note = " (bringing your changes along)".into(),
         None => {}
     }
-    let r = if create {
+    let r = if let Some(number) = pull_number(name) {
+        pull_request_checkout(dir, number)
+    } else if create {
         git(dir, &["switch", "-c", name])
     } else if let Some((_, short)) = name.split_once('/').filter(|_| {
         git(
@@ -259,6 +293,24 @@ pub fn switch(
         )),
         Err(e) => Err(e),
     }
+}
+
+/// `gh pr checkout`: fetches the pull request's branch and switches to it, wherever it came
+/// from (a fork too). Never asks anything on the terminal the window is drawn on.
+fn pull_request_checkout(dir: &Path, number: u32) -> Result<String, String> {
+    let mut cmd = std::process::Command::new("gh");
+    cmd.current_dir(dir)
+        .args(["pr", "checkout", &number.to_string()])
+        .env("GH_PROMPT_DISABLED", "1")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(std::process::Stdio::null());
+    crate::proc::run(&mut cmd).map_err(|e| {
+        if e.starts_with("couldn't run gh") {
+            "the GitHub CLI (gh) is needed to check out a pull request: https://cli.github.com".to_string()
+        } else {
+            e
+        }
+    })
 }
 
 const CHOICES: [(&str, &str, Carry); 4] = [
@@ -313,6 +365,55 @@ impl App {
         });
     }
 
+    /// Ctrl+D / Ctrl+R on a row of the list: delete the branch (only if git calls it merged), or
+    /// rename it to what is typed. Answers whether it was started. The list is read again after.
+    fn branch_edit(&mut self, v: &BranchView, edit: Edit) -> bool {
+        let refusal = match &edit {
+            Edit::Delete(b) | Edit::Rename(b, _) if b.remote => {
+                Some("that branch is on the remote: only local branches are changed here".to_string())
+            }
+            Edit::Delete(b) | Edit::Rename(b, _) if b.elsewhere.is_some() => {
+                Some(format!("{} is open in another worktree", b.name))
+            }
+            Edit::Delete(b) if b.name == v.current => {
+                Some("that is the branch you are on; switch away first".to_string())
+            }
+            Edit::Rename(b, to) if to.is_empty() => Some(format!(
+                "type the new name for {} first, then Ctrl+R",
+                b.name
+            )),
+            Edit::Rename(_, to) if !valid_name(to) => Some(format!("{to} is not a branch name")),
+            _ => None,
+        };
+        if let Some(why) = refusal {
+            self.notify(why, true);
+            return false;
+        }
+        let dir = v.dir.clone();
+        self.spawn_bg(move || {
+            let done = match &edit {
+                Edit::Delete(b) => delete_branch(&dir, &b.name),
+                Edit::Rename(b, to) => rename_branch(&dir, &b.name, to),
+            };
+            let (current, list, dirty) = load(&dir);
+            Bg::Then(Box::new(move |app: &mut App| {
+                match done {
+                    Ok(said) => app.notify(said, false),
+                    Err(e) => app.notify(e, true),
+                }
+                if let Mode::Branch(v) = &mut app.mode
+                    && v.dir == dir
+                {
+                    v.current = current;
+                    v.list = Some(list);
+                    v.dirty = dirty;
+                }
+                app.dirty = true;
+            }))
+        });
+        true
+    }
+
     fn branch_go(&mut self, v: BranchView, carry: Option<Carry>, message: String) {
         let Some((name, create)) = v.target.clone() else {
             return;
@@ -354,6 +455,7 @@ impl App {
                         Some(row) => {
                             v.target = Some(match row {
                                 Row::Create(n) => (n.clone(), true),
+                                Row::Pull(n) => (format!("#{n}"), false),
                                 Row::Existing(b) => (b.name.clone(), false),
                             });
                             if v.dirty == 0 {
@@ -366,6 +468,20 @@ impl App {
                     KeyCode::Backspace => {
                         v.query.pop();
                         v.sel = 0;
+                    }
+                    KeyCode::Char('d') if ctrl => {
+                        if let Some(Row::Existing(b)) = rows.get(v.sel) {
+                            self.branch_edit(&v, Edit::Delete(b.clone()));
+                        }
+                    }
+                    KeyCode::Char('r') if ctrl => {
+                        if let Some(Row::Existing(b)) = rows.get(v.sel) {
+                            let to = v.query.trim().to_string();
+                            if self.branch_edit(&v, Edit::Rename(b.clone(), to)) {
+                                v.query.clear();
+                                v.sel = 0;
+                            }
+                        }
                     }
                     KeyCode::Char(c) if !ctrl => {
                         v.query.push(c);
@@ -543,6 +659,14 @@ pub(super) fn draw_branches(app: &mut App, f: &mut Frame, area: Rect, t: &Theme,
                     );
                 }
                 let segs = match row {
+                    Row::Pull(n) => vec![
+                        seg(
+                            "+ pull request ",
+                            st.fg(t.accent).add_modifier(Modifier::BOLD),
+                        ),
+                        seg(format!("#{n}"), st.fg(t.strong).add_modifier(Modifier::BOLD)),
+                        seg("  check out its branch (gh)", st.fg(t.muted)),
+                    ],
                     Row::Create(n) => vec![
                         seg(
                             "+ new branch ",
@@ -594,7 +718,13 @@ pub(super) fn draw_branches(app: &mut App, f: &mut Frame, area: Rect, t: &Theme,
                 buf,
                 r,
                 t,
-                &[("Enter", "switch"), ("↑↓", "choose"), ("Esc", "close")],
+                &[
+                    ("Enter", "switch"),
+                    ("↑↓", "choose"),
+                    ("^D", "delete"),
+                    ("^R", "rename to typed"),
+                    ("Esc", "close"),
+                ],
             );
         }
         Step::Changes(sel) => {
@@ -793,6 +923,62 @@ mod tests {
             "changes came along"
         );
         assert_eq!(load(&dir).0, "new-thing");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_pull_request_number_offers_a_checkout_not_a_branch_named_with_a_hash() {
+        assert_eq!(pull_number("#42"), Some(42));
+        assert_eq!(pull_number("#"), None);
+        assert_eq!(pull_number("#4x"), None);
+        assert_eq!(pull_number("42"), None);
+        let v = BranchView {
+            dir: PathBuf::new(),
+            current: "main".into(),
+            query: "#42".into(),
+            sel: 0,
+            list: Some(Vec::new()),
+            dirty: 0,
+            running: 0,
+            step: Step::Pick,
+            target: None,
+        };
+        assert_eq!(v.rows(), vec![Row::Pull(42)]);
+    }
+
+    #[test]
+    fn a_merged_branch_is_deleted_and_an_unmerged_one_is_kept() {
+        let dir = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-branch-edit-{}"),
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        run(&dir, &["init", "-q", "-b", "main"]);
+        run(&dir, &["config", "user.email", "t@t"]);
+        run(&dir, &["config", "user.name", "t"]);
+        std::fs::write(dir.join("a.txt"), "1").unwrap();
+        run(&dir, &["add", "-A"]);
+        run(&dir, &["commit", "-qm", "one"]);
+        run(&dir, &["branch", "merged"]);
+        assert_eq!(delete_branch(&dir, "merged"), Ok("deleted merged".into()));
+        run(&dir, &["switch", "-q", "-c", "work"]);
+        std::fs::write(dir.join("w.txt"), "w").unwrap();
+        run(&dir, &["add", "."]);
+        run(&dir, &["commit", "-qm", "work"]);
+        run(&dir, &["switch", "-q", "-"]);
+        assert!(
+            delete_branch(&dir, "work").is_err_and(|e| e.contains("isn't merged")),
+            "work only there is kept"
+        );
+        assert_eq!(
+            rename_branch(&dir, "work", "better"),
+            Ok("renamed work to better".into())
+        );
+        assert!(
+            rename_branch(&dir, "better", "main").is_err(),
+            "a name that is taken is refused"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

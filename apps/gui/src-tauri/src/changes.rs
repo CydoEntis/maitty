@@ -14,14 +14,39 @@ const QUICK: Duration = Duration::from_secs(5);
 /// What git calls the checkout's branch when it is on no branch.
 const DETACHED: &str = "HEAD";
 
-/// Stages every change in the checkout and commits it; answers the new commit's short hash.
-fn commit_all(folder: &Path, message: &str) -> Result<String, String> {
+/// A path the commit may name: inside the checkout, never an option or an escape from it.
+fn commit_path(path: &str) -> Result<&str, String> {
+    let escapes = Path::new(path).components().any(|part| matches!(part, std::path::Component::ParentDir | std::path::Component::RootDir | std::path::Component::Prefix(_)));
+    if path.is_empty() || path.starts_with('-') || path.contains('\0') || escapes {
+        return Err(format!("`{path}` is not a file of this checkout"));
+    }
+    Ok(path)
+}
+
+/// Stages the changes and commits them; answers the new commit's short hash. With `paths` only those
+/// files go in, whatever else is staged stays out; without, everything that changed does.
+fn commit_all(folder: &Path, message: &str, paths: Option<&[String]>) -> Result<String, String> {
     let message = message.trim();
     if message.is_empty() {
         return Err("write a commit message first".into());
     }
-    run_program("git", folder, &["add", "-A"], QUICK)?;
-    run_program("git", folder, &["commit", "-m", message], COMMIT_TIMEOUT)?;
+    match paths {
+        None => {
+            run_program("git", folder, &["add", "-A"], QUICK)?;
+            run_program("git", folder, &["commit", "-m", message], COMMIT_TIMEOUT)?;
+        }
+        Some([]) => return Err("pick at least one file to commit".into()),
+        Some(paths) => {
+            let named = paths.iter().map(|path| commit_path(path)).collect::<Result<Vec<_>, _>>()?;
+            let mut add = vec!["add", "-A", "--"];
+            add.extend(&named);
+            run_program("git", folder, &add, QUICK)?;
+            // `--only` is what a path on `git commit` means; saying it keeps other staged files out.
+            let mut commit = vec!["commit", "--only", "-m", message, "--"];
+            commit.extend(&named);
+            run_program("git", folder, &commit, COMMIT_TIMEOUT)?;
+        }
+    }
     Ok(run_program("git", folder, &["rev-parse", "--short", "HEAD"], QUICK)?.trim().to_string())
 }
 
@@ -54,17 +79,65 @@ fn create_pull_request(folder: &Path) -> Result<String, String> {
     pull_request_url(&printed).ok_or_else(|| "gh did not say where the pull request is".to_string())
 }
 
+/// What the Changes tab's remote button asks of the checkout's remote.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SyncAction {
+    /// Learn what the remote has; no branch moves.
+    Fetch,
+    /// Bring the branch up to its upstream when that is only a fast-forward.
+    Pull,
+    /// Send the branch, setting its upstream on `origin` the first time.
+    Push,
+}
+
+/// Fetches, pulls (fast-forward only) or pushes the checkout; answers a line to show.
+fn sync(folder: &Path, action: SyncAction) -> Result<String, String> {
+    match action {
+        SyncAction::Fetch => {
+            run_program("git", folder, &["fetch", "--prune"], NETWORK_TIMEOUT)?;
+            Ok("Fetched".into())
+        }
+        SyncAction::Pull => {
+            let before = run_program("git", folder, &["rev-parse", "HEAD"], QUICK)?;
+            run_program("git", folder, &["pull", "--ff-only"], NETWORK_TIMEOUT)?;
+            let after = run_program("git", folder, &["rev-parse", "HEAD"], QUICK)?;
+            Ok(if before == after { "Already up to date".into() } else { "Pulled".into() })
+        }
+        SyncAction::Push => {
+            let branch = current_branch(folder).map_err(|_| "this checkout is on no branch, so there is nothing to push".to_string())?;
+            if run_program("git", folder, &["rev-parse", "--abbrev-ref", "@{upstream}"], QUICK).is_ok() {
+                run_program("git", folder, &["push"], NETWORK_TIMEOUT)?;
+            } else {
+                run_program("git", folder, &["push", "-u", "origin", &branch], NETWORK_TIMEOUT)?;
+            }
+            Ok(format!("Pushed {branch}"))
+        }
+    }
+}
+
+/// Fetches, pulls or pushes `folder`'s checkout.
+#[tauri::command]
+pub async fn git_sync(wire: tauri::State<'_, crate::terminal_stream::Wire>, machine: Option<u16>, folder: String, action: SyncAction) -> Result<String, String> {
+    wire.require_local(machine, "Changes")?;
+    tauri::async_runtime::spawn_blocking(move || sync(Path::new(&folder), action))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
 /// Commits every change in `folder`'s checkout with `message`.
 #[tauri::command]
-pub async fn git_commit_all(folder: String, message: String) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || commit_all(Path::new(&folder), &message))
+pub async fn git_commit_all(wire: tauri::State<'_, crate::terminal_stream::Wire>, machine: Option<u16>, folder: String, message: String, paths: Option<Vec<String>>) -> Result<String, String> {
+    wire.require_local(machine, "Changes")?;
+    tauri::async_runtime::spawn_blocking(move || commit_all(Path::new(&folder), &message, paths.as_deref()))
         .await
         .map_err(|error| error.to_string())?
 }
 
 /// Pushes `folder`'s branch and opens a pull request for it.
 #[tauri::command]
-pub async fn git_create_pull_request(folder: String) -> Result<String, String> {
+pub async fn git_create_pull_request(wire: tauri::State<'_, crate::terminal_stream::Wire>, machine: Option<u16>, folder: String) -> Result<String, String> {
+    wire.require_local(machine, "Changes")?;
     tauri::async_runtime::spawn_blocking(move || create_pull_request(Path::new(&folder)))
         .await
         .map_err(|error| error.to_string())?
@@ -98,7 +171,7 @@ mod tests {
         let folder = repository("commit");
         std::fs::write(folder.join("a.txt"), "two\n").expect("a change");
         std::fs::write(folder.join("new.txt"), "new\n").expect("a new file");
-        let hash = commit_all(&folder, "  change a and add new  ").expect("the commit");
+        let hash = commit_all(&folder, "  change a and add new  ", None).expect("the commit");
         assert_eq!(git(&folder, &["rev-parse", "--short", "HEAD"]).trim(), hash);
         assert_eq!(git(&folder, &["log", "-1", "--format=%s"]).trim(), "change a and add new");
         assert_eq!(git(&folder, &["status", "--porcelain"]).trim(), "", "nothing is left uncommitted");
@@ -106,10 +179,34 @@ mod tests {
     }
 
     #[test]
+    fn a_commit_of_chosen_files_leaves_the_rest_out() {
+        let folder = repository("only");
+        std::fs::write(folder.join("a.txt"), "two\n").expect("a change");
+        std::fs::write(folder.join("new.txt"), "new\n").expect("a new file");
+        std::fs::write(folder.join("other.txt"), "other\n").expect("another new file");
+        git(&folder, &["add", "other.txt"]);
+        commit_all(&folder, "only the new one", Some(&["new.txt".to_string()])).expect("the commit");
+        assert_eq!(git(&folder, &["show", "--name-only", "--format=", "HEAD"]).trim(), "new.txt");
+        let left = git(&folder, &["status", "--porcelain"]);
+        assert!(left.contains("a.txt") && left.contains("other.txt"), "the rest is still waiting: {left}");
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_commit_names_only_files_inside_the_checkout() {
+        let folder = repository("paths");
+        for bad in ["../x", "/etc/passwd", "-A", ""] {
+            assert!(commit_all(&folder, "m", Some(&[bad.to_string()])).is_err(), "{bad}");
+        }
+        assert_eq!(commit_all(&folder, "m", Some(&[])), Err("pick at least one file to commit".into()));
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
     fn a_commit_needs_a_message_and_something_to_commit() {
         let folder = repository("refuse");
-        assert_eq!(commit_all(&folder, "   "), Err("write a commit message first".into()));
-        assert!(commit_all(&folder, "nothing changed").is_err(), "git refuses an empty commit");
+        assert_eq!(commit_all(&folder, "   ", None), Err("write a commit message first".into()));
+        assert!(commit_all(&folder, "nothing changed", None).is_err(), "git refuses an empty commit");
         let _ = std::fs::remove_dir_all(&folder);
     }
 
@@ -128,6 +225,35 @@ mod tests {
         let error = create_pull_request(&folder).expect_err("there is no origin");
         assert!(error.starts_with("fatal:") && error.contains("origin"), "{error}");
         let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_push_sets_the_upstream_and_a_pull_only_fast_forwards() {
+        let mine = repository("sync-mine");
+        let remote = std::env::temp_dir().join(format!("maitty-changes-sync-remote-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&remote);
+        std::fs::create_dir_all(&remote).expect("a folder");
+        git(&remote, &["init", "-q", "--bare", "-b", "main"]);
+        git(&mine, &["remote", "add", "origin", remote.to_str().expect("a path")]);
+        assert_eq!(sync(&mine, SyncAction::Push), Ok("Pushed main".into()));
+        assert_eq!(git(&mine, &["rev-parse", "--abbrev-ref", "@{upstream}"]).trim(), "origin/main");
+        assert_eq!(sync(&mine, SyncAction::Fetch), Ok("Fetched".into()));
+        assert_eq!(sync(&mine, SyncAction::Pull), Ok("Already up to date".into()));
+        // Someone else pushes; a pull brings it in.
+        let other = repository("sync-other");
+        git(&other, &["remote", "add", "origin", remote.to_str().expect("a path")]);
+        git(&other, &["pull", "-q", "origin", "main", "--no-rebase", "--allow-unrelated-histories", "--no-edit"]);
+        std::fs::write(other.join("b.txt"), "two\n").expect("a file");
+        git(&other, &["add", "-A"]);
+        git(&other, &["commit", "-q", "-m", "two"]);
+        git(&other, &["push", "-q", "origin", "main"]);
+        assert_eq!(sync(&mine, SyncAction::Pull), Ok("Pulled".into()));
+        assert!(mine.join("b.txt").is_file());
+        git(&mine, &["checkout", "-q", "--detach"]);
+        assert!(sync(&mine, SyncAction::Push).is_err_and(|error| error.contains("on no branch")));
+        for folder in [&mine, &other, &remote] {
+            let _ = std::fs::remove_dir_all(folder);
+        }
     }
 
     #[test]

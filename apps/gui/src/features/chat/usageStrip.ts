@@ -17,8 +17,8 @@ export type UsageItem = {
 }
 
 const FULL = 100
-/** From here a meter is amber: worth a look before it is a problem. */
-const WARN_FROM = 75
+/** From here a meter is amber (layout 2g: four fifths): worth a look before it is a problem. */
+const WARN_FROM = 80
 /** From here it is red: the next long turn may not fit. */
 const DANGER_FROM = 90
 const MINUTE = 60

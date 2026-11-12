@@ -2,8 +2,10 @@ import { invoke, isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { z } from 'zod'
 import { bytesOf } from './ipcBytes'
-import { assertLocal, type LocalFeature } from '@/lib/localOnly'
+import { CheckSchema } from '@/features/inspect/checks'
+import { assertLocal, localOnlyMessage, type LocalFeature } from '@/lib/localOnly'
 import { LOCAL_MACHINE, addressOf, machineArgs, terminalOf, terminalSessionId } from './machines'
+import { conversationKey, machineArgOfKey, splitConversationKey } from './conversationKey'
 import { previewConversations, type Conversation, type Message, type SessionStatus } from '@/data/preview'
 
 const StatusSchema = z.enum(['None', 'Idle', 'Working', 'Blocked', 'Done'])
@@ -44,6 +46,10 @@ const TerminalSessionSchema = z.object({
   hooked: z.boolean().default(false),
   archived: z.boolean().default(false),
   conversation_id: z.number().nullable().default(null),
+  // The agent's own conversation id (the daemon's `TermInfo.session`), which its resume command takes.
+  session: z.string().nullable().default(null),
+  // The effort the agent's own files say it runs at (`TermInfo.effort`); null when they do not say.
+  effort: z.string().nullable().default(null),
   // Lines added and removed in the session's checkout against HEAD; zero outside git.
   diff_added: z.number().int().nonnegative().default(0),
   diff_removed: z.number().int().nonnegative().default(0),
@@ -52,6 +58,19 @@ const TerminalSessionSchema = z.object({
   // When the status last changed, in unix seconds; the sidebar row's time.
   since: z.number().nonnegative().default(0),
   asking: z.string().default(''),
+  // The pane's checks (`TermInfo.checks`); absent from an older daemon.
+  checks: z.array(CheckSchema).default([]),
+  // The pull request of the pane's branch, as the daemon polls it (`TermInfo.pr`); absent from an older daemon.
+  pr: z.object({
+    number: z.number().int().nonnegative(),
+    url: z.string().default(''),
+    title: z.string().default(''),
+    state: z.enum(['Open', 'Merged', 'Closed']).default('Open'),
+    draft: z.boolean().default(false),
+    checks: z.object({ passed: z.number().int().default(0), pending: z.number().int().default(0), failed: z.array(z.string()).default([]) }).default({ passed: 0, pending: 0, failed: [] }),
+    review: z.enum(['None', 'Required', 'Approved', 'ChangesRequested']).default('None'),
+    conflicting: z.boolean().default(false),
+  }).nullable().default(null),
   // The follow-ups its daemon holds for the working agent, oldest first (`TermInfo.queued`).
   queued: z.array(z.string()).default([]),
   // The agent's own hook said what its permission prompt asks (not read off the screen).
@@ -85,7 +104,12 @@ const TerminalSessionSchema = z.object({
 })
 const PlanLimitSchema = z.object({ name: z.string(), used: z.number(), resets_at: z.number().default(0) })
 
+/** What an agent asked the person for with `maitty_request_secret` (`SecretRequest` in the protocol). */
+const SecretAskSchema = z.object({ id: z.number().int().nonnegative(), term: z.number().int().nonnegative(), label: z.string(), reason: z.string().default('') })
+
 const DaemonSnapshotSchema = z.object({
+  // Secrets agents are waiting for. Never the values: those only ever go from the person to the daemon.
+  secret_requests: z.array(SecretAskSchema).default([]).catch([]),
   // Plan limits by agent (`Snapshot.limits`), as each agent last reported them. A shape this app cannot read is no limits, not no sessions.
   limits: z.array(z.tuple([z.string(), z.array(PlanLimitSchema)])).default([]).catch([]),
   // Read one by one, like the terminals: a record this app can't read must not take every session offline.
@@ -176,6 +200,7 @@ const ApprovalRequestSchema = z.object({
   questions: z.array(UserInputQuestionSchema),
   permissions: z.unknown().nullable().optional(),
   choices: z.array(z.enum(['Accept', 'AcceptForSession', 'Decline', 'Cancel'])),
+  can_remember: z.boolean().default(false),
 })
 const ReadResultSchema = z.object({
   conversation: z.number().int().nonnegative(),
@@ -392,16 +417,21 @@ export function conversationsFromSnapshot(raw: unknown, machine?: SnapshotMachin
   for (const key of lastGoodTerm.keys()) {
     if (isOfMachine(key, from) && !(String(termOfKey(key)) in snapshot.terms)) lastGoodTerm.delete(key)
   }
-  const summaries = machine === undefined
-    ? snapshot.conversations.flatMap((raw) => {
-      const parsed = ConversationSummarySchema.safeParse(raw)
-      return parsed.success ? [parsed.data] : []
-    })
-    : []
+  const summaries = snapshot.conversations.flatMap((raw) => {
+    const parsed = ConversationSummarySchema.safeParse(raw)
+    return parsed.success ? [parsed.data] : []
+  })
   // A terminal session has a chat when the daemon holds a conversation whose native terminal is that pane.
-  // The daemon only follows an agent the user started there, so that chat is read-only (ADR 0003).
-  const chatOf = new Map(summaries.flatMap((summary) => (summary.native_term === null ? [] : [[summary.native_term, { conversation: summary.id, generation: summary.generation, ...(summary.execution === 'Native' ? { readOnly: true } : {}) }] as const])))
+  // The daemon only follows an agent the user started there, so that chat is read-only (ADR 0003). Another
+  // machine's chat is named by a key that holds the machine too, so its number never meets this computer's.
+  const chatOf = new Map(summaries.flatMap((summary) => {
+    const key = machine === undefined ? summary.id : conversationKey(machine.id, summary.id)
+    if (summary.native_term === null || key === null) return []
+    return [[summary.native_term, { conversation: key, generation: summary.generation, ...(summary.execution === 'Native' ? { readOnly: true } : {}), ...(machine === undefined ? {} : { machine: machine.name }) }] as const]
+  }))
   const limitsOf = new Map(snapshot.limits)
+  const secretsOf = new Map<number, z.infer<typeof SecretAskSchema>[]>()
+  for (const ask of snapshot.secret_requests) secretsOf.set(ask.term, [...(secretsOf.get(ask.term) ?? []), ask])
   const listed = Object.values(snapshot.terms)
     .flatMap((term) => {
       const read = readTerminal(term, from)
@@ -411,7 +441,8 @@ export function conversationsFromSnapshot(raw: unknown, machine?: SnapshotMachin
   // A conversation that belongs to a pane in this list is that session's chat, not a session of its own.
   const shownPanes = new Set(listed.map((term) => term.id))
   const terminals = listed
-    .map((term) => toTerminalConversation(term, snapshot.workspaces, machine, machine === undefined ? chatOf.get(term.id) : undefined, term.agent === null ? undefined : limitsOf.get(term.agent)))
+    .map((term) => toTerminalConversation(term, snapshot.workspaces, machine, chatOf.get(term.id), term.agent === null ? undefined : limitsOf.get(term.agent), secretsOf.get(term.id) ?? []))
+  // Another machine's conversations are only the chats of its panes; it has no session list of its own here.
   if (machine !== undefined) return terminals
   return [
     ...summaries
@@ -612,8 +643,10 @@ export type ChatPage = z.infer<typeof ChatPageSchema>
 export async function readConversationPage(id: number, cursor: HistoryCursor | null): Promise<ChatPage> {
   if (!isDesktop()) throw new Error('Chat needs the desktop app')
   if (!Number.isSafeInteger(id) || id < 0) throw new Error('Conversation id is invalid')
-  const page = await invokeParsed('read_conversation', ChatPageSchema, { id, cursor, limit: ReadPageLimit })
-  if (page.conversation !== id) throw new Error('Daemon returned a different conversation')
+  // `id` is a conversation key: another machine's chat is asked of that machine, under its own number.
+  const { id: own } = splitConversationKey(id)
+  const page = await invokeParsed('read_conversation', ChatPageSchema, { id: own, cursor, limit: ReadPageLimit, ...machineArgOfKey(id) })
+  if (page.conversation !== own) throw new Error('Daemon returned a different conversation')
   return page
 }
 
@@ -667,6 +700,8 @@ export type ConversationTarget = { conversation: number; generation: number }
 function requireProjectAccess(target: ConversationTarget): void {
   if (!isDesktop()) throw new Error('Project files are available in the desktop app')
   if (!Number.isSafeInteger(target.conversation) || target.conversation < 0) throw new Error('Conversation id is invalid')
+  // The diff and the files are read from this computer's disk, so a chat of another machine has none here.
+  if (splitConversationKey(target.conversation).machine !== LOCAL_MACHINE) throw new Error(localOnlyMessage('files', null))
 }
 
 export async function loadTargetDiff(target: ConversationTarget): Promise<ConversationDiff> {
@@ -784,13 +819,15 @@ export type MessageChoice = { readonly model?: string; readonly effort?: string 
  * when the turn ends, in order, even if this window closes, and answers with a `QueuedReceipt`.
  */
 export async function submitMessage(conversation: Pick<Conversation, 'id' | 'generation'>, operation: number, text: string, choice?: MessageChoice): Promise<ConversationReceipt | QueuedReceipt> {
+  // What was picked rides together, so the host command stays within the argument limit; nothing picked sends none.
+  const picked = { ...(choice?.model === undefined ? {} : { model: choice.model }), ...(choice?.effort === undefined ? {} : { effort: choice.effort }) }
   return invokeParsed('send_conversation', z.union([ConversationReceiptSchema, QueuedReceiptSchema]), {
-    id: Number(conversation.id),
+    id: splitConversationKey(Number(conversation.id)).id,
+    ...machineArgOfKey(Number(conversation.id)),
     generation: conversation.generation,
     operation,
     text,
-    ...(choice?.model === undefined ? {} : { model: choice.model }),
-    ...(choice?.effort === undefined ? {} : { effort: choice.effort }),
+    ...(Object.keys(picked).length === 0 ? {} : { choice: picked }),
   })
 }
 
@@ -811,7 +848,8 @@ export function classifySubmissionFailure(
 /** Takes a message back out of the daemon's queue before it is sent; it fails when it was already sent. */
 export async function dequeueMessage(conversation: Pick<Conversation, 'id' | 'generation'>, operation: number): Promise<void> {
   await invokeParsed('dequeue_conversation', NullSchema, {
-    id: Number(conversation.id),
+    id: splitConversationKey(Number(conversation.id)).id,
+    ...machineArgOfKey(Number(conversation.id)),
     generation: conversation.generation,
     operation,
   })
@@ -819,16 +857,40 @@ export async function dequeueMessage(conversation: Pick<Conversation, 'id' | 'ge
 
 export async function approveRequest(conversation: Pick<Conversation, 'id' | 'generation'>, requestId: number | string, decision: 'Accept' | 'AcceptForSession' | 'Decline' | 'Cancel'): Promise<void> {
   await invokeParsed('approve_conversation', NullSchema, {
-    id: Number(conversation.id),
+    id: splitConversationKey(Number(conversation.id)).id,
+    ...machineArgOfKey(Number(conversation.id)),
     generation: conversation.generation,
     requestId,
     decision,
   })
 }
 
+const AllowedCommandsSchema = z.array(z.object({ project: z.string(), command: z.string(), command_sha256: z.string(), at: z.number().int().nonnegative() }))
+export type AllowedCommand = z.infer<typeof AllowedCommandsSchema>[number]
+
+/** The commands approved "always in this project" for chats, as the background service holds them now. */
+export async function loadAllowedCommands(): Promise<AllowedCommand[]> {
+  return invokeParsed('allowed_commands', AllowedCommandsSchema)
+}
+
+/** Takes one approved command back; the service stops approving it at once. */
+export async function forgetAllowedCommand(item: Pick<AllowedCommand, 'project' | 'command_sha256'>): Promise<void> {
+  await invokeParsed('forget_allowed_command', NullSchema, { project: item.project, commandSha256: item.command_sha256 })
+}
+
+/** Approves a command request and has the daemon remember it for the conversation's project: the same command is then allowed without asking. */
+export async function allowAlways(conversation: Pick<Conversation, 'id' | 'generation'>, requestId: number | string): Promise<void> {
+  await invokeParsed('allow_conversation_always', NullSchema, {
+    id: Number(conversation.id),
+    generation: conversation.generation,
+    requestId,
+  })
+}
+
 export async function answerUserInput(conversation: Pick<Conversation, 'id' | 'generation'>, requestId: number | string, answers: Record<string, string[]>): Promise<void> {
   await invokeParsed('answer_conversation_input', NullSchema, {
-    id: Number(conversation.id),
+    id: splitConversationKey(Number(conversation.id)).id,
+    ...machineArgOfKey(Number(conversation.id)),
     generation: conversation.generation,
     requestId,
     answers,
@@ -837,7 +899,8 @@ export async function answerUserInput(conversation: Pick<Conversation, 'id' | 'g
 
 export async function cancelTurn(conversation: Pick<Conversation, 'id' | 'generation'>): Promise<void> {
   await invokeParsed('cancel_conversation', NullSchema, {
-    id: Number(conversation.id),
+    id: splitConversationKey(Number(conversation.id)).id,
+    ...machineArgOfKey(Number(conversation.id)),
     generation: conversation.generation,
   })
 }
@@ -860,16 +923,26 @@ export async function reloadAgentOnDaemon(conversation: Pick<Conversation, 'id'>
  * Ends a terminal session with a six-second undo window: the daemon hides it at once and closes it
  * for real when the window passes. `undoCloseSession` brings it back while the window is open.
  */
-export async function closeSessionWithUndo(conversation: Pick<Conversation, 'id'>): Promise<void> {
+export async function closeSessionWithUndo(conversation: Pick<Conversation, 'id' | 'generation'>): Promise<void> {
   if (!isDesktop()) return
   const pane = addressOf(conversation.id)
-  if (pane !== null) await invokeParsed('close_session_with_undo', NullSchema, { term: pane.term, ...machineArgs(pane) })
+  if (pane !== null) {
+    await invokeParsed('close_session_with_undo', NullSchema, { term: pane.term, ...machineArgs(pane) })
+    return
+  }
+  // A chat: the daemon archives it at once and ends its agent when the window passes.
+  if (conversation.generation === undefined) throw new Error('Conversation generation is unavailable')
+  await invokeParsed('close_conversation_with_undo', NullSchema, { id: Number(conversation.id), generation: conversation.generation })
 }
 
 export async function undoCloseSession(conversation: Pick<Conversation, 'id'>): Promise<void> {
   if (!isDesktop()) return
   const pane = addressOf(conversation.id)
-  if (pane !== null) await invokeParsed('undo_close_terminal_session', NullSchema, { term: pane.term, ...machineArgs(pane) })
+  if (pane !== null) {
+    await invokeParsed('undo_close_terminal_session', NullSchema, { term: pane.term, ...machineArgs(pane) })
+    return
+  }
+  await invokeParsed('undo_close_conversation', NullSchema, { id: Number(conversation.id) })
 }
 
 /** The person's answer to a session that asked to start helpers: this session, every session of its project, or none. */
@@ -1013,14 +1086,59 @@ export async function folderBranches(folder: string): Promise<FolderBranches | n
   return invokeParsed('git_branches', FolderBranchesSchema, { folder })
 }
 
+/**
+ * The person's answer to an agent's request for a secret: the value, or null to decline. Only this computer's
+ * daemon is asked. The value is not logged or kept anywhere on the way.
+ */
+export async function answerSecret(id: number, machine: number, value: string | null): Promise<void> {
+  if (!isTauri()) throw new Error('Secrets are only available in the desktop app')
+  await invoke('answer_secret', { machine, id, value })
+}
+
+/** The text a new agent starts with when the work of the agent in pane `term` is handed to it (this computer's panes only). */
+export async function handoffBrief(session: { pane: number; machine: number; process: string; name: string | null; title: string; lastPrompt: string; branch: string | null; cwd: string }): Promise<string> {
+  return invokeParsed('handoff_brief', z.string(), {
+    machine: session.machine,
+    term: session.pane,
+    agent: session.process,
+    task: session.name ?? session.title,
+    lastPrompt: session.lastPrompt,
+    branch: session.branch,
+    checkout: session.cwd,
+  })
+}
+
 /** Switches the folder's checkout to a branch, made first when `create`. */
 export async function switchBranch(folder: string, branch: string, create: boolean): Promise<void> {
   await invokeParsed('git_switch_branch', NullSchema, { folder, branch, create })
 }
 
-/** Adds a worktree of the folder's repository for a branch (made first when `create`); resolves to its folder. */
-export async function addWorktree(folder: string, branch: string, create: boolean): Promise<string> {
-  return invokeParsed('git_add_worktree', z.string(), { folder, branch, create })
+/**
+ * A worktree of the folder's project on a branch (an existing one, else a new one), made by the daemon the way every
+ * other is: trusted like its repo, the repo's setup run, tracked for tidy-up. Resolves to its folder.
+ */
+export async function addWorktree(folder: string, branch: string): Promise<string> {
+  return invokeParsed('add_branch_worktree', z.string(), { folder, branch })
+}
+
+const SyncStateSchema = z.object({
+  branch: z.string().nullable(),
+  upstream: z.string().nullable(),
+  behind: z.number().int().nonnegative(),
+  ahead: z.number().int().nonnegative(),
+  dirty: z.boolean(),
+  fetched: z.boolean(),
+}).nullable()
+export type SyncState = NonNullable<z.infer<typeof SyncStateSchema>>
+
+/** How a folder's checkout stands against its upstream, asking the remote first when `fetch`; null outside a git repository. */
+export async function folderSyncState(folder: string, fetch: boolean): Promise<SyncState | null> {
+  return invokeParsed('git_sync_state', SyncStateSchema, { folder, fetch })
+}
+
+/** Fast-forwards the folder's checkout to its upstream; refused with the reason when it has uncommitted changes. */
+export async function pullFolder(folder: string): Promise<void> {
+  await invokeParsed('git_pull', NullSchema, { folder })
 }
 
 /** Opens an agent's official setup page in the browser. */
@@ -1064,7 +1182,7 @@ export async function resumeConversation(conversation: Conversation): Promise<{ 
   })
 }
 
-function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSummary[], machine?: SnapshotMachine, chat?: Conversation['chat'], limits: readonly z.infer<typeof PlanLimitSchema>[] = []): Conversation {
+function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSummary[], machine?: SnapshotMachine, chat?: Conversation['chat'], limits: readonly z.infer<typeof PlanLimitSchema>[] = [], secrets: readonly z.infer<typeof SecretAskSchema>[] = []): Conversation {
   const folder = term.root ?? term.cwd
   const repo = term.root ? (term.root.split(/[\\/]/).filter(Boolean).at(-1) ?? null) : null
   const workspace = workspaces.find((candidate) => candidate.cwd === folder || candidate.cwd === term.cwd)
@@ -1110,11 +1228,16 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
       asking: term.asking,
       ask: term.ask,
       interrupted: term.interrupted,
+      agentSession: term.session,
+      agentEffort: term.effort,
       exit: term.exit,
       since: term.since,
       timeline: term.timeline,
       usage: term.usage,
       queued: term.queued,
+      pr: term.pr,
+      checks: term.checks,
+      secretAsk: secrets.map((ask) => ({ id: ask.id, label: ask.label, reason: ask.reason })),
       limits: limits.map((limit) => ({ name: limit.name, used: limit.used, resetsAt: limit.resets_at })),
       helperAsk: term.helper_ask,
       subagents: term.subagent_activity.map((child) => ({ id: child.id, name: child.name, state: child.state, task: child.task, startedAt: child.started_at, updatedAt: child.updated_at, latest: child.latest_activity, result: child.result })),

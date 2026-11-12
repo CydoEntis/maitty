@@ -7,6 +7,7 @@ import { ANSWER_KEY, type AskChoice } from '../permissionAsk'
 import { keysToPick, type ScreenMenu } from '../screenMenu'
 import type { ApprovalActions } from './ApprovalCard'
 import { UserInputForm } from './UserInputForm'
+import { TerminalPrompt } from './TerminalPrompt'
 
 /** The tool Claude asks a multiple-choice question with; it is a question to the person, not a request to act. */
 const QUESTION_TOOL = 'AskUserQuestion'
@@ -78,6 +79,11 @@ export function ApprovalTray({ event, actions }: { event: ApprovalEvent; actions
       ) : (
         <div className="mx-question-answers">
           {answerable.map((choice) => <AnswerButton key={choice} decision={choice} busy={actions.busy} onAnswer={() => { actions.answer(event.requestId, choice) }} />)}
+          {event.canRemember && actions.remember !== undefined && (
+            <button type="button" className="mx-answer" disabled={actions.busy} title="Allows this exact command in this project from now on, without asking" onClick={() => { actions.remember?.(event.requestId) }}>
+              Always in this project
+            </button>
+          )}
         </div>
       )}
     </Tray>
@@ -94,6 +100,10 @@ type PromptProps = {
   pick?: ((index: number) => Promise<void>) | undefined
   /** Answers a prompt of several questions: the choice picked for each, in the prompt's order. */
   pickAll?: ((picked: readonly number[]) => Promise<void>) | undefined
+  /** Types a key into the agent's terminal, for a menu the chat has no buttons for; absent where the window cannot type for the agent. */
+  sendKeys?: ((keys: string) => Promise<void>) | undefined
+  /** Reads the agent's terminal screen, to show that menu; absent where the screen cannot be read. */
+  readScreen?: (() => Promise<string>) | undefined
 }
 
 type AskedQuestion = NonNullable<PermissionAsk['questions']>[number]
@@ -145,7 +155,7 @@ function QuestionsForm({ questions, busy, onSend }: { questions: readonly AskedQ
  * buttons exist only where the daemon knows the keys that answer this agent; otherwise the tray says
  * to answer in the terminal rather than guess.
  */
-export function PromptTray({ agent, ask, online, answer, pick, pickAll }: PromptProps) {
+export function PromptTray({ agent, ask, online, answer, pick, pickAll, sendKeys, readScreen }: PromptProps) {
   const [busy, setBusy] = useState(false)
   const run = (action: Promise<void>) => {
     setBusy(true)
@@ -179,6 +189,8 @@ export function PromptTray({ agent, ask, online, answer, pick, pickAll }: Prompt
           <AnswerButton decision="Accept" busy={busy} onAnswer={() => { run(answer('approve')) }} />
           <AnswerButton decision="Decline" busy={busy} onAnswer={() => { run(answer('deny')) }} />
         </div>
+      ) : sendKeys !== undefined && online ? (
+        <TerminalPrompt readScreen={readScreen} sendKeys={sendKeys} />
       ) : (
         <p className="mx-question-note">Answer in the terminal.</p>
       )}

@@ -20,6 +20,28 @@ beforeEach(() => {
   forgetDiscoveredModels()
 })
 
+describe('the effort the agent runs at', () => {
+  const picker = (currentEffort: string | null) => render(<AgentPicker agent="codex" choice={{ model: 'default', reasoning: 'default' }} onChange={() => undefined} currentEffort={currentEffort} />)
+
+  it('shows what the agent\'s own files say while nothing is picked, and calls it the agent\'s own', async () => {
+    picker('medium')
+    const button = screen.getByRole('button', { name: /Agent, model and reasoning: Codex · .* · Medium/ })
+    expect(button).toHaveTextContent('Medium')
+    await userEvent.click(button)
+    expect(screen.getByText("Medium · agent's own")).toBeInTheDocument()
+  })
+
+  it('names a level above the menu\'s, and says nothing where the files do not say', () => {
+    picker('xhigh')
+    expect(screen.getByRole('button', { name: /Agent, model and reasoning/ })).toHaveTextContent('Xhigh')
+  })
+
+  it('shows no level when the agent says none', () => {
+    picker(null)
+    expect(screen.getByRole('button', { name: /Agent, model and reasoning/ })).not.toHaveTextContent(/Low|Medium|High|Max/)
+  })
+})
+
 describe('the model button and its menu', () => {
   it('shows the current choice on its button and opens one column: the models, then the effort', async () => {
     const user = userEvent.setup()

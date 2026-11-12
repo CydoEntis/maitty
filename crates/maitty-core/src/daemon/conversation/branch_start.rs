@@ -3,7 +3,8 @@
 
 use crate::conversation::{LaunchSettings, StartTarget};
 use crate::daemon::{
-    ClientId, Daemon, Ev, Grant, ServerMsg, branch_agent, clean_path, create_trusted_worktree,
+    ClientId, Daemon, Ev, Grant, Reply, ServerMsg, branch_agent, clean_path,
+    create_trusted_worktree,
 };
 use anyhow::{Result, bail};
 use std::path::PathBuf;
@@ -33,10 +34,11 @@ impl Daemon {
             bail!("{} is not in a git repository", project.display());
         }
         let template = self.cfg.worktree.dir.clone();
+        let from_default = self.cfg.worktree.base_on_default;
         let tx = self.tx.clone();
         self.pending_ops += 1;
         tokio::task::spawn_blocking(move || {
-            let result = create_trusted_worktree(&project, &branch, None, &template);
+            let result = create_trusted_worktree(&project, &branch, None, &template, from_default);
             let _ = tx.blocking_send(Ev::ChatWorktreeCreated {
                 client,
                 settings,
@@ -46,6 +48,48 @@ impl Daemon {
             });
         });
         Ok(())
+    }
+
+    /// A worktree asked for by folder and branch (`Command::BranchWorktree`) is made: the repo's
+    /// setup runs in it first, so the agent the window starts there finds it ready, then the
+    /// checkout is listed with the ones the app made and its folder is the reply.
+    pub(in crate::daemon) fn branch_worktree_made(
+        &mut self,
+        client: ClientId,
+        set_up: bool,
+        result: Result<(PathBuf, String), String>,
+    ) {
+        if !set_up
+            && let Ok((path, _)) = &result
+            && let Some(job) = self.hook_job(path, true)
+        {
+            let tx = self.tx.clone();
+            tokio::task::spawn_blocking(move || {
+                let _ = tx.blocking_send(Ev::HookRan(job()));
+                let _ = tx.blocking_send(Ev::BranchWorktreeMade {
+                    client,
+                    set_up: true,
+                    result,
+                });
+            });
+            return;
+        }
+        self.pending_ops -= 1;
+        match result.map_err(anyhow::Error::msg).and_then(|(path, _)| {
+            let folder = clean_path(path.canonicalize()?);
+            self.made_worktrees.push(path);
+            Ok(folder)
+        }) {
+            Ok(folder) => {
+                self.poll_git_soon();
+                self.send(
+                    client,
+                    ServerMsg::Reply(Reply::Text(folder.to_string_lossy().into_owned())),
+                );
+            }
+            Err(error) => self.send(client, ServerMsg::Error(format!("{error:#}"))),
+        }
+        self.dirty = true;
     }
 
     pub(in crate::daemon) fn chat_worktree_created(

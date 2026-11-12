@@ -1,16 +1,18 @@
 //! What the new chat page asks of this computer: which agent programs are installed, a folder's
-//! branches and worktrees, and the two git actions it takes (switch a branch, add a worktree).
+//! branches and worktrees, and the git action it takes (switch a branch; a worktree is the daemon's to make).
 //! Git runs as a program with its arguments (never through a shell), off the UI thread, and is
 //! stopped after `GIT_TIMEOUT`.
 
 use serde::Serialize;
 use std::ffi::OsStr;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 const GIT_TIMEOUT: Duration = Duration::from_secs(5);
+/// A fetch or a pull talks to the network, so it gets longer than a local read.
+const GIT_NETWORK_TIMEOUT: Duration = Duration::from_secs(30);
 const POLL: Duration = Duration::from_millis(20);
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -106,12 +108,6 @@ fn valid_branch(name: &str) -> bool {
         && !name.contains("@{")
         && name != "@"
         && !name.chars().any(|c| c.is_whitespace() || c.is_control() || "~^:?*[\\".contains(c))
-}
-
-/// The sibling folder a branch's worktree goes in: `<repo>-<branch with / as ->`.
-fn worktree_folder(repo: &Path, branch: &str) -> Option<PathBuf> {
-    let name = repo.file_name()?.to_string_lossy().into_owned();
-    Some(repo.parent()?.join(format!("{name}-{}", branch.replace('/', "-"))))
 }
 
 /// Whether `name` is a program in one of the folders of `path`; on Windows with any of `extensions`.
@@ -215,23 +211,51 @@ fn switch_branch(folder: &Path, branch: &str, create: bool) -> Result<(), String
     run_git(folder, args).map(drop)
 }
 
-fn add_worktree(folder: &Path, branch: &str, create: bool) -> Result<String, String> {
-    if !valid_branch(branch) {
-        return Err("that is not a branch name".into());
+/// How a checkout stands against its upstream branch.
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub struct SyncState {
+    /// The branch the checkout is on; none when detached.
+    branch: Option<String>,
+    /// The branch it follows, such as `origin/main`; none when it follows nothing.
+    upstream: Option<String>,
+    behind: u32,
+    ahead: u32,
+    /// Tracked files have uncommitted changes (untracked files do not count: a pull never touches them).
+    dirty: bool,
+    /// The remote was asked just now and answered.
+    fetched: bool,
+}
+
+/// `git rev-list --left-right --count HEAD...@{u}` output: commits only here, then only there.
+fn parse_counts(text: &str) -> (u32, u32) {
+    let mut parts = text.split_whitespace().map(|part| part.parse::<u32>().unwrap_or(0));
+    let ahead = parts.next().unwrap_or(0);
+    let behind = parts.next().unwrap_or(0);
+    (ahead, behind)
+}
+
+fn sync_state(folder: &Path, fetch: bool) -> Result<Option<SyncState>, String> {
+    if run_git(folder, &["rev-parse", "--is-inside-work-tree"]).is_err() {
+        return Ok(None);
     }
-    let root = PathBuf::from(run_git(folder, &["rev-parse", "--show-toplevel"])?.trim());
-    let target = worktree_folder(&root, branch).ok_or("could not place the worktree")?;
-    if target.exists() {
-        return Err(format!("{} already exists", target.display()));
-    }
-    let target_text = target.to_string_lossy().into_owned();
-    let args: Vec<&str> = if create {
-        vec!["worktree", "add", "-b", branch, &target_text]
-    } else {
-        vec!["worktree", "add", &target_text, branch]
+    // Offline or no remote is not an error: the page then says what it last knew.
+    let fetched = fetch && run_program("git", folder, &["fetch", "--quiet"], GIT_NETWORK_TIMEOUT).is_ok();
+    let branch = run_git(folder, &["symbolic-ref", "--quiet", "--short", "HEAD"]).ok().map(|text| text.trim().to_string()).filter(|text| !text.is_empty());
+    let upstream = run_git(folder, &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]).ok().map(|text| text.trim().to_string()).filter(|text| !text.is_empty());
+    let (ahead, behind) = match upstream {
+        Some(_) => run_git(folder, &["rev-list", "--left-right", "--count", "HEAD...@{u}"]).map(|text| parse_counts(&text)).unwrap_or((0, 0)),
+        None => (0, 0),
     };
-    run_git(&root, &args)?;
-    Ok(target_text)
+    let dirty = !run_git(folder, &["status", "--porcelain", "--untracked-files=no"])?.trim().is_empty();
+    Ok(Some(SyncState { branch, upstream, behind, ahead, dirty, fetched }))
+}
+
+/// Brings the checkout up to its upstream, only by fast-forwarding, and never over uncommitted changes.
+fn pull_fast_forward(folder: &Path) -> Result<(), String> {
+    if !run_git(folder, &["status", "--porcelain", "--untracked-files=no"])?.trim().is_empty() {
+        return Err("You have uncommitted changes. Commit or stash first.".into());
+    }
+    run_program("git", folder, &["pull", "--ff-only", "--quiet"], GIT_NETWORK_TIMEOUT).map(drop)
 }
 
 /// The names of the agent programs found on this computer's PATH.
@@ -265,11 +289,18 @@ pub async fn git_switch_branch(folder: String, branch: String, create: bool) -> 
         .map_err(|error| error.to_string())?
 }
 
-/// Adds a worktree of the folder's repository for `branch` (made first when `create`) beside it,
-/// and answers its path.
+/// How a folder's checkout stands against its upstream, after asking the remote when `fetch` is set; nothing when it is not in a git repository.
 #[tauri::command]
-pub async fn git_add_worktree(folder: String, branch: String, create: bool) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || add_worktree(Path::new(&folder), &branch, create))
+pub async fn git_sync_state(folder: String, fetch: bool) -> Result<Option<SyncState>, String> {
+    tauri::async_runtime::spawn_blocking(move || sync_state(Path::new(&folder), fetch))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+/// Fast-forwards the folder's checkout to its upstream (`git pull --ff-only`).
+#[tauri::command]
+pub async fn git_pull(folder: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || pull_fast_forward(Path::new(&folder)))
         .await
         .map_err(|error| error.to_string())?
 }
@@ -338,14 +369,6 @@ mod tests {
     }
 
     #[test]
-    fn a_worktree_goes_beside_the_repository_named_for_its_branch() {
-        assert_eq!(
-            worktree_folder(Path::new("/dev/growth"), "agent/grow-028"),
-            Some(PathBuf::from("/dev/growth-agent-grow-028"))
-        );
-    }
-
-    #[test]
     fn a_program_is_found_on_the_path_by_any_extension() {
         let dir = std::env::temp_dir().join(format!("maitty-newchat-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("temp folder");
@@ -377,10 +400,50 @@ mod tests {
         assert_eq!(info.current.as_deref(), Some("feature/x"));
         assert!(switch_branch(&repo, "-f", false).is_err());
 
-        let made = add_worktree(&repo, "agent/grow-1", true).expect("adds a worktree");
-        assert!(Path::new(&made).ends_with("growth-agent-grow-1"));
+        // A worktree is made by the daemon in the app; here one is added directly so the listing of
+        // the repository's worktrees is still read from a real one.
+        let beside = root.join("growth-agent-grow-1");
+        git(&["worktree", "add", "-b", "agent/grow-1", &beside.to_string_lossy()]).expect("adds a worktree");
         let info = branch_info(&repo).expect("reads").expect("a repository");
         assert!(info.worktrees.iter().any(|tree| tree.branch.as_deref() == Some("agent/grow-1")));
+        let state = sync_state(&repo, false).expect("reads").expect("a repository");
+        assert_eq!((state.branch.as_deref(), state.upstream.as_deref(), state.behind, state.dirty), (Some("feature/x"), None, 0, false));
+        assert!(sync_state(&root, false).expect("a plain folder is fine").is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn commit_counts_are_read_as_ahead_then_behind() {
+        assert_eq!(parse_counts("2\t5\n"), (2, 5));
+        assert_eq!(parse_counts(""), (0, 0));
+    }
+
+    #[test]
+    fn a_checkout_behind_its_upstream_is_pulled_only_when_clean() {
+        let root = std::env::temp_dir().join(format!("maitty-newchat-pull-{}", std::process::id()));
+        let origin = root.join("origin");
+        let clone = root.join("clone");
+        std::fs::create_dir_all(&origin).expect("temp folder");
+        let git = |dir: &Path, args: &[&str]| run_git(dir, args);
+        if git(&origin, &["init", "-b", "main"]).is_err() {
+            return;
+        }
+        let commit = |dir: &Path, name: &str| {
+            std::fs::write(dir.join(name), name).expect("file");
+            git(dir, &["add", name]).expect("add");
+            git(dir, &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", name]).expect("commit");
+        };
+        commit(&origin, "a");
+        git(&root, &["clone", "--quiet", "origin", "clone"]).expect("clone");
+        commit(&origin, "b");
+        let state = sync_state(&clone, true).expect("reads").expect("a repository");
+        assert!(state.fetched);
+        assert_eq!((state.behind, state.ahead, state.dirty), (1, 0, false));
+        std::fs::write(clone.join("a"), "changed").expect("edit");
+        assert!(pull_fast_forward(&clone).is_err(), "a dirty checkout is not pulled");
+        git(&clone, &["checkout", "--", "a"]).expect("restore");
+        pull_fast_forward(&clone).expect("pulls");
+        assert_eq!(sync_state(&clone, false).expect("reads").expect("a repository").behind, 0);
         let _ = std::fs::remove_dir_all(&root);
     }
 

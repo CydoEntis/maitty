@@ -336,7 +336,7 @@ function isAccent(value: unknown): value is SettingsPreferences['accent'] {
 
 /**
  * "minimal" and "expressive" were the names before the window styles; they read as Flat and Glass, and
- * Flat (like the retired Tiled) reads as Console, the flat, solid-panel look.
+ * Flat (like the retired Tiled) reads as the Flat style, id `console`: the solid-panel look.
  */
 function styleOf(value: unknown): StyleChoice | null {
   if (value === 'flat' || value === 'tiled' || value === 'minimal') return 'console'

@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { forgetMachines, registerMachine } from './machines'
-import { startTerminalSession, loadTerminalScreen, loadTerminalReplay, sendTerminalInput, resizeTerminal, archiveConversationOnDaemon, renameConversationOnDaemon, classifySubmissionFailure, createConversation, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversationDiff, loadConversationFile, loadConversationFiles, loadConversations, conversationsFromSnapshot, markSeenOnDaemon, archiveSessionOnDaemon, reloadAgentOnDaemon, loadDaemonRestartStatus, loadDaemonUpdateStatus, loadMachines, loadMessages, restartMismatchedDaemon, restartStaleDaemon, resumeConversation } from './daemon'
+import { conversationKey } from './conversationKey'
+import { startTerminalSession, loadTerminalScreen, loadTerminalReplay, sendTerminalInput, resizeTerminal, archiveConversationOnDaemon, renameConversationOnDaemon, classifySubmissionFailure, createConversation, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversationDiff, loadConversationFile, loadConversationFiles, loadConversations, conversationsFromSnapshot, markSeenOnDaemon, readConversationPage, submitMessage, cancelTurn, loadTargetDiff, archiveSessionOnDaemon, reloadAgentOnDaemon, loadDaemonRestartStatus, loadDaemonUpdateStatus, loadMachines, loadMessages, restartMismatchedDaemon, restartStaleDaemon, resumeConversation } from './daemon'
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
@@ -210,6 +211,53 @@ describe('conversation recovery', () => {
     const { generation, ...conversationWithoutGeneration } = conversation
     expect(generation).toBe(7)
     await expect(resumeConversation(conversationWithoutGeneration)).rejects.toThrow('Conversation generation is unavailable')
+  })
+})
+
+describe('the chat of a session on another machine', () => {
+  const pane = { id: 7, agent: 'claude', process: 'claude', status: 'Idle', cwd: '/srv', summary: '', name: 'n', label: '', pinned: false, archived: false, branch: null, root: null, conversation_id: null, popup: false, remote: null }
+  const snapshot = {
+    terms: { '7': pane },
+    workspaces: [],
+    conversations: [{ id: 5, generation: 4, execution: 'Native', provider: 'Claude', cwd: '/srv', worktree: null, state: 'Running', status: 'Idle', native_term: 7, checks: [] }],
+  }
+  const key = conversationKey(3, 5) ?? -1
+
+  beforeEach(() => {
+    forgetMachines()
+    registerMachine('build', 3)
+    vi.mocked(isTauri).mockReturnValue(true)
+    vi.mocked(invoke).mockReset().mockResolvedValue(null)
+  })
+
+  it('gets a chat link under a key that holds the machine, and lists no session of its own', () => {
+    const [shown, ...others] = conversationsFromSnapshot(snapshot, { id: 3, name: 'build' })
+    expect(others).toEqual([])
+    expect(shown?.chat).toEqual({ conversation: key, generation: 4, readOnly: true, machine: 'build' })
+    expect(key).not.toBe(5)
+    expect(conversationsFromSnapshot(snapshot)[0]?.chat).toEqual({ conversation: 5, generation: 4, readOnly: true })
+  })
+
+  it('is read, sent to and stopped on its own machine under its own number', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce({ conversation: 5, generation: 4, status: 'Idle', receipt: null, error: null, cancelling: false, history: { entries: [], next: null, completeness: 'Complete' }, checks: [], approvals: [] })
+    vi.mocked(invoke).mockResolvedValueOnce({ conversation: 5, generation: 4, operation: 1 })
+    await readConversationPage(key, null)
+    await submitMessage({ id: String(key), generation: 4 }, 1, 'hello')
+    await cancelTurn({ id: String(key), generation: 4 })
+    const calls = vi.mocked(invoke).mock.calls
+    expect(calls[0]?.[1]).toMatchObject({ id: 5, machine: 3 })
+    expect(calls[1]).toEqual(['send_conversation', { id: 5, machine: 3, generation: 4, operation: 1, text: 'hello' }])
+    expect(calls[2]).toEqual(['cancel_conversation', { id: 5, machine: 3, generation: 4 }])
+  })
+
+  it('asks this computer\'s daemon with no machine for a local chat, exactly as before', async () => {
+    await cancelTurn({ id: '5', generation: 4 })
+    expect(vi.mocked(invoke).mock.calls[0]).toEqual(['cancel_conversation', { id: 5, generation: 4 }])
+  })
+
+  it('has no diff or files here, since they are on the other machine\'s disk', async () => {
+    await expect(loadTargetDiff({ conversation: key, generation: 4 })).rejects.toThrow('local-only in v1')
+    expect(invoke).not.toHaveBeenCalled()
   })
 })
 

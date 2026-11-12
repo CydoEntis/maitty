@@ -35,8 +35,9 @@ Codex and Claude sessions, local IPC, CLI, TUI and optional desktop client.
 ## Out of scope
 
 A replacement TUI chat renderer, a Maitty-built agent/tool loop, more structured
-providers, a workflow runner, cloud sync, a browser service and new remote GUI
-support. Existing SSH/TUI functionality remains supported. Arbitrary historical
+providers, a workflow runner, cloud sync and a browser service. Chat on another machine
+is its own feature ([remote-chat](../remote-chat/intent.md)). Existing SSH/TUI functionality
+remains supported. Arbitrary historical
 chat browsing and attachments wait for separate scope.
 
 ## Open questions

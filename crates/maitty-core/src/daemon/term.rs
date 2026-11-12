@@ -169,6 +169,8 @@ pub struct Term {
     pub cmd: Option<String>,
     /// Agent session id from hooks, for resuming after a restart.
     pub session: Option<String>,
+    /// The effort the agent's own files say it runs at (`usage::poll_effort`); not kept across a restart.
+    pub effort: Option<String>,
     pub cwd: PathBuf,
     /// The agent's last prompt, for its card.
     pub summary: String,
@@ -725,6 +727,16 @@ impl Term {
         forgot
     }
 
+    /// Stops counting a helper whose own record says it is no longer running (it stopped, failed or was lost). A
+    /// helper still counted held its session as working for up to an hour, listed as stopped. True when one was dropped.
+    pub fn drop_settled_subagents(&mut self) -> bool {
+        let before = self.subagents.len();
+        let records = &self.subagent_activity;
+        self.subagents
+            .retain(|(id, _)| records.iter().find(|record| record.id == *id).is_none_or(|record| record.state.active()));
+        self.subagents.len() != before
+    }
+
     /// Where its alerts say it works: repository and branch, else its folder.
     pub fn alert_place(&self) -> String {
         match &self.head {
@@ -946,6 +958,7 @@ impl Term {
                 .map(str::to_string)
                 .or(direct_label),
             session: None,
+            effort: None,
             cwd: spec.cwd.to_path_buf(),
             summary: String::new(),
             said: String::new(),

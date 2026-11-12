@@ -27,6 +27,8 @@ const daemon = vi.hoisted(() => ({
   startShellSession: vi.fn(),
   archiveConversationOnDaemon: vi.fn(() => Promise.resolve()),
   closeChatSession: vi.fn(() => Promise.resolve()),
+  closeSessionWithUndo: vi.fn(() => Promise.resolve()),
+  undoCloseSession: vi.fn(() => Promise.resolve()),
   startChatSession: vi.fn<(folder: string, agent: string, branch?: string | null) => Promise<{ id: number; generation: number }>>(),
   renameConversationOnDaemon: vi.fn(),
   markSeenOnDaemon: vi.fn(() => Promise.resolve()),
@@ -165,7 +167,7 @@ describe('a chat session in the desktop window', () => {
     expect(daemon.sendTerminalInput).not.toHaveBeenCalled()
   })
 
-  it('closing it stops its agent first and does not close a terminal pane', async () => {
+  it('closing it hides it with an undo window, the daemon stops its agent, and no terminal pane is closed', async () => {
     const user = userEvent.setup()
     serveHistory()
     daemon.loadConversations.mockResolvedValue([chatSession(44)])
@@ -176,9 +178,10 @@ describe('a chat session in the desktop window', () => {
     const pane = screen.getByRole('region', { name: /^Terminal 1/ })
     // An agent is running in it, so closing asks first.
     await user.click(within(pane).getByRole('button', { name: 'Close pane · ends its session' }))
-    expect(daemon.closeChatSession).not.toHaveBeenCalled()
+    expect(daemon.closeSessionWithUndo).not.toHaveBeenCalled()
     await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Stop claude' }))
-    await waitFor(() => { expect(daemon.closeChatSession).toHaveBeenCalledTimes(1) })
+    await waitFor(() => { expect(daemon.closeSessionWithUndo).toHaveBeenCalledTimes(1) })
+    expect(daemon.closeChatSession).not.toHaveBeenCalled()
     expect(daemon.archiveConversationOnDaemon).not.toHaveBeenCalled()
   })
 
@@ -277,7 +280,8 @@ describe('the chat that follows an agent in a pane', () => {
     await user.type(composer, 'run the tests{Enter}')
 
     // One paste then Enter, into the terminal; nothing goes to the daemon's conversation.
-    await waitFor(() => { expect(daemon.sendTerminalInput).toHaveBeenCalledWith({ id: 't2', generation: 0 }, '\x1b[200~run the tests\x1b[201~\r') })
+    await waitFor(() => { expect(daemon.sendTerminalInput).toHaveBeenCalledWith({ id: 't2', generation: 0 }, '\x1b[200~run the tests\x1b[201~') })
+    await waitFor(() => { expect(daemon.sendTerminalInput).toHaveBeenLastCalledWith({ id: 't2', generation: 0 }, '\r') })
     expect(daemon.submitMessage).not.toHaveBeenCalled()
   })
 })

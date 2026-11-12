@@ -17,6 +17,7 @@ pub mod machine_probe;
 mod remote_browse;
 mod remote_folder;
 mod remote_get;
+pub mod remote_chat;
 pub mod remote_paste;
 pub mod remote_policy;
 mod remote_scripts;

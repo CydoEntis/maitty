@@ -1,3 +1,4 @@
+import { machineLabel } from '@/data/machineNicknames'
 import { displayName, type SessionStatus, type SessionView } from '@/features/workspace/model/session'
 
 export type NotifySwitches = { needs: boolean; finished: boolean; error: boolean }
@@ -13,7 +14,7 @@ export function finishedForNow(session: SessionView, queued: (session: SessionVi
 
 /** What a notice calls a session. One on another machine starts with the machine in brackets, as that machine's own notices do. */
 function nameFor(session: SessionView): string {
-  return session.machineName ? `[${session.machineName}] ${session.name ?? session.title}` : displayName(session)
+  return session.machineName ? `[${machineLabel(session.machineName)}] ${session.name ?? session.title}` : displayName(session)
 }
 
 const TITLES: Partial<Record<SessionStatus, (name: string) => string>> = {

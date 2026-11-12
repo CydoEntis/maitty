@@ -11,7 +11,38 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 80;
+pub const PROTOCOL_VERSION: u32 = 84;
+
+/// The first version whose daemon lists and forgets the commands approved "always in this project"
+/// (`Query::AllowedCommands`, `Command::ForgetAllowedCommand`).
+pub const ALLOWED_COMMANDS_SINCE: u32 = 84;
+
+/// A command a person approved "always in this project" for a chat.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AllowedCommand {
+    /// The project's main checkout.
+    pub project: PathBuf,
+    /// The command as it was shown (secrets hidden).
+    pub command: String,
+    /// What the rule holds to; sent back to forget it.
+    pub command_sha256: String,
+    /// When it was approved (unix seconds).
+    pub at: u64,
+}
+
+/// The first version whose daemon closes a chat with an undo window (`Command::ConversationClose`,
+/// `Command::ConversationUndoClose`).
+pub const CHAT_CLOSE_SINCE: u32 = 83;
+
+/// The first version whose daemon remembers a command approval for a project (`Command::ConversationAllowAlways`).
+pub const ALLOW_ALWAYS_SINCE: u32 = 83;
+
+/// The first version whose daemon writes a file of a pane's checkout for the person (`Command::WriteFile`).
+pub const WRITE_FILE_SINCE: u32 = 82;
+
+/// The first version whose daemon makes a trusted, tracked worktree for a branch from a folder
+/// (`Command::BranchWorktree`).
+pub const BRANCH_WORKTREE_SINCE: u32 = 81;
 
 /// The first version whose daemon drops one queued follow-up (`Command::DropQueued`).
 pub const DROP_QUEUED_SINCE: u32 = 80;
@@ -319,6 +350,28 @@ pub enum Command {
         generation: u64,
     },
     /// Stop a chat conversation's agent. Its record stays, stopped, so history is kept.
+    /// Close a chat with an undo window: it is hidden at once and ended for real when the window passes.
+    ConversationClose {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+    },
+    /// Bring back a chat closed with `ConversationClose` while its window is open.
+    ConversationUndoClose {
+        id: crate::conversation::ConversationId,
+    },
+    /// Approve a command request and remember the approval for the conversation's project: the same
+    /// command, written the same, is then approved without asking (ADR 0005). Only a command request
+    /// can be remembered.
+    ConversationAllowAlways {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+        request_id: crate::conversation::ProviderRequestId,
+    },
+    /// Take back a command approved "always in this project".
+    ForgetAllowedCommand {
+        project: PathBuf,
+        command_sha256: String,
+    },
     ConversationEnd {
         id: crate::conversation::ConversationId,
         generation: u64,
@@ -475,6 +528,15 @@ pub enum Command {
         a: TermId,
         b: TermId,
     },
+    /// Replace the text of one existing file of the checkout `term` is in (a path relative to its top, no
+    /// links, not under `.git`, text of at most the preview limit). Only you can, and only a file that is
+    /// already there: it makes none. The answer is `Reply::Repo { tag, Written }`.
+    WriteFile {
+        term: TermId,
+        tag: u64,
+        path: String,
+        contents: String,
+    },
     /// `git worktree add` next to the workspace's repo, then open it as a new workspace.
     /// `split`: open the worktree as a pane beside this one instead of as a workspace.
     /// `from`: the repo to branch from (default: the workspace's folder).
@@ -491,6 +553,16 @@ pub enum Command {
         agent: Option<String>,
         #[serde(default)]
         prompt: Option<String>,
+    },
+    /// A worktree of `project` on `branch` (an existing local or remote branch, else a new one
+    /// from HEAD), made the way every other worktree is: named by the `worktree.dir` template,
+    /// trusted like its repo, the repo's setup hook run, and listed with the checkouts the app
+    /// made so the usual tidy-up offers it. Replies with the new folder as text. For a window
+    /// that has no pane to ask from (the new chat page). `project` must be one the daemon has
+    /// been shown, so this cannot make worktrees, or run hooks, anywhere on disk.
+    BranchWorktree {
+        project: PathBuf,
+        branch: String,
     },
     /// From a pane about to start an agent in `dir`: a new worktree for it when `dir` is
     /// in a repo's main checkout (and per-agent worktrees are on). Replies with the folder
@@ -689,6 +761,8 @@ pub enum Command {
 pub enum Query {
     /// The shared settings; answered with `Reply::Settings`.
     Settings,
+    /// The commands approved "always in this project"; answered with `Reply::AllowedCommands`.
+    AllowedCommands,
     ConversationRead {
         id: crate::conversation::ConversationId,
         cursor: Option<crate::conversation::history::Cursor>,
@@ -937,6 +1011,7 @@ pub enum Reply {
     ConversationFile(String),
     TerminalReplay(#[serde(with = "serde_bytes")] Vec<u8>),
     Ok,
+    AllowedCommands(Vec<AllowedCommand>),
     List(Snapshot),
     Text(String),
     Worktrees(Vec<WorktreeEntry>),
@@ -1309,6 +1384,9 @@ pub struct TermInfo {
     /// Provider conversation ID that owns these child records.
     #[serde(default)]
     pub session: Option<String>,
+    /// The effort level the agent runs at (`low`, `medium`, `high`, ...), as its own files say; none when they do not.
+    #[serde(default)]
+    pub effort: Option<String>,
     /// The pane whose agent started this one, if one did.
     #[serde(default)]
     pub started_by: Option<TermId>,
@@ -1691,6 +1769,11 @@ impl ClientMsg {
         match self {
             ClientMsg::Command(Command::Prewarm { .. } | Command::DropPrewarm) => PREWARM_SINCE,
             ClientMsg::Command(Command::DropQueued { .. }) => DROP_QUEUED_SINCE,
+            ClientMsg::Command(Command::BranchWorktree { .. }) => BRANCH_WORKTREE_SINCE,
+            ClientMsg::Command(Command::WriteFile { .. }) => WRITE_FILE_SINCE,
+            ClientMsg::Command(Command::ConversationClose { .. } | Command::ConversationUndoClose { .. }) => CHAT_CLOSE_SINCE,
+            ClientMsg::Command(Command::ConversationAllowAlways { .. }) => ALLOW_ALWAYS_SINCE,
+            ClientMsg::Query(Query::AllowedCommands) | ClientMsg::Command(Command::ForgetAllowedCommand { .. }) => ALLOWED_COMMANDS_SINCE,
             _ => COMPATIBLE_SINCE,
         }
     }
@@ -2095,7 +2178,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 80);
+        assert_eq!(PROTOCOL_VERSION, 84);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2229,6 +2312,41 @@ mod tests {
         assert_eq!(choice, Some(picked));
     }
 
+    /// A worktree from a folder is a new command: a daemon built before it cannot read it, so a
+    /// client asks only a daemon that says it is new enough, and the window stays where it was.
+    #[test]
+    fn a_branch_worktree_is_asked_only_of_a_daemon_that_knows_it() {
+        let ask = ClientMsg::Command(Command::BranchWorktree {
+            project: PathBuf::from("/code"),
+            branch: "feat/x".into(),
+        });
+        assert_eq!(ask.introduced_in(), BRANCH_WORKTREE_SINCE);
+        const { assert!(BRANCH_WORKTREE_SINCE > COMPATIBLE_SINCE && BRANCH_WORKTREE_SINCE <= PROTOCOL_VERSION) };
+        let Command::BranchWorktree { project, branch } = decode(&encode(&Command::BranchWorktree {
+            project: PathBuf::from("/code"),
+            branch: "feat/x".into(),
+        })
+        .unwrap())
+        .unwrap() else {
+            panic!("expected a branch worktree request")
+        };
+        assert_eq!((project, branch.as_str()), (PathBuf::from("/code"), "feat/x"));
+    }
+
+    /// Writing a file is a new command: a daemon built before it cannot read it, so a client asks only a
+    /// daemon that says it is new enough.
+    #[test]
+    fn a_file_write_is_asked_only_of_a_daemon_that_knows_it() {
+        let ask = ClientMsg::Command(Command::WriteFile {
+            term: 3,
+            tag: 1,
+            path: "src/a.rs".into(),
+            contents: "fn a() {}\n".into(),
+        });
+        assert_eq!(ask.introduced_in(), WRITE_FILE_SINCE);
+        const { assert!(WRITE_FILE_SINCE > COMPATIBLE_SINCE && WRITE_FILE_SINCE <= PROTOCOL_VERSION) };
+    }
+
     /// `agent` and `prompt` were added to `NewWorktree` as defaulted fields: a peer that does not
     /// send them still decodes, as "no agent", so the version stays as it was.
     #[test]
@@ -2332,7 +2450,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 80);
+        assert_eq!(PROTOCOL_VERSION, 84);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -2464,6 +2582,14 @@ mod tests {
         assert_eq!((old.diff_added, old.diff_removed), (0, 0));
         let new = pane_from(serde_json::json!({"diff_added": 7, "diff_removed": 2}));
         assert_eq!((new.diff_added, new.diff_removed), (7, 2));
+    }
+
+    /// A peer from before the effort field sends none: the pane reads as not saying, and one that does is read.
+    #[test]
+    fn a_pane_from_before_the_effort_field_reads_as_not_saying() {
+        assert_eq!(pane_from(serde_json::json!({})).effort, None);
+        let new = pane_from(serde_json::json!({"effort": "medium"}));
+        assert_eq!(new.effort.as_deref(), Some("medium"));
     }
 
     /// Pin and archive are new commands: a peer built before them can't read them.
@@ -3140,5 +3266,26 @@ mod tests {
         let ask: PermissionAsk =
             serde_json::from_value(serde_json::json!({"tool": "Bash", "detail": "ls", "answerable": true})).unwrap();
         assert!(ask.choices.is_empty(), "an older peer sends no choices");
+    }
+
+    /// Closing a chat with an undo window and remembering an approval are new commands: a daemon built
+    /// before them cannot read them, so a client asks only a daemon that says it is new enough.
+    #[test]
+    fn chat_close_and_allow_always_are_asked_only_of_a_daemon_that_knows_them() {
+        let id = crate::conversation::ConversationId(4);
+        let close = ClientMsg::Command(Command::ConversationClose { id, generation: 1 });
+        let undo = ClientMsg::Command(Command::ConversationUndoClose { id });
+        let always = ClientMsg::Command(Command::ConversationAllowAlways { id, generation: 1, request_id: crate::conversation::ProviderRequestId::Integer(9) });
+        assert_eq!((close.introduced_in(), undo.introduced_in()), (CHAT_CLOSE_SINCE, CHAT_CLOSE_SINCE));
+        assert_eq!(always.introduced_in(), ALLOW_ALWAYS_SINCE);
+        const { assert!(CHAT_CLOSE_SINCE > COMPATIBLE_SINCE && ALLOW_ALWAYS_SINCE <= PROTOCOL_VERSION) };
+    }
+
+    #[test]
+    fn listing_and_forgetting_approved_commands_are_asked_only_of_a_daemon_that_knows_them() {
+        let list = ClientMsg::Query(Query::AllowedCommands);
+        let forget = ClientMsg::Command(Command::ForgetAllowedCommand { project: PathBuf::from("/code"), command_sha256: "ab".into() });
+        assert_eq!((list.introduced_in(), forget.introduced_in()), (ALLOWED_COMMANDS_SINCE, ALLOWED_COMMANDS_SINCE));
+        const { assert!(ALLOWED_COMMANDS_SINCE > COMPATIBLE_SINCE && ALLOWED_COMMANDS_SINCE <= PROTOCOL_VERSION) };
     }
 }

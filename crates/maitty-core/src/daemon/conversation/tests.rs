@@ -373,6 +373,7 @@ fn only_the_most_recent_answered_approvals_are_kept() {
         questions: Vec::new(),
         permissions: None,
         choices: vec![ApprovalDecision::Accept, ApprovalDecision::Decline],
+        can_remember: false,
     };
     let mut state = super::State::default();
     for n in 0..70 {
@@ -738,8 +739,10 @@ impl Fixture {
         tokio::task::spawn_blocking(move || {
             // Windows refuses to delete a folder while a just-killed process or a scanner still
             // holds a handle in it, and the guard's own removal tries once and ignores failure.
-            // Retry here until a deadline, then let the assertions judge the result.
-            let until = std::time::Instant::now() + Duration::from_secs(10);
+            // Retry here until a deadline, then let the assertions judge the result. A CI runner
+            // once held the freshly compiled provider past ten seconds, so the deadline is long;
+            // a passing test leaves the loop as soon as the removal succeeds.
+            let until = std::time::Instant::now() + Duration::from_secs(60);
             while directory.exists() && std::fs::remove_dir_all(&directory).is_err() {
                 if std::time::Instant::now() >= until {
                     break;
@@ -1769,6 +1772,234 @@ async fn command_approval_is_human_only_generation_bound_and_uses_exact_provider
         assert_eq!(answered.request, approval);
         assert_eq!(answered.decision, crate::conversation::ApprovalDecision::Accept);
         assert!(answered.answered_at_ms.is_some());
+    })
+    .catch_unwind()
+    .await;
+    session.cleanup().await;
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[tokio::test]
+async fn an_approved_command_is_remembered_for_the_project_and_nothing_else_is() {
+    use crate::conversation::ProviderRequestId;
+    let mut session = conversation_fixture("conversation-approval").await;
+    let outcome = AssertUnwindSafe(async {
+        // Never the real data folder.
+        let file = session.fixture.directory.path().join("chat-allowed-commands.json");
+        session.daemon.chat_allowed_file = file.clone();
+        let (id, generation) = create(&mut session).await;
+        let send = |operation: u64| crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationSend {
+            id,
+            generation,
+            operation,
+            text: "Synthetic approval prompt".into(),
+            choice: None,
+        });
+        assert!(matches!(exchange(&mut session, 400, send(1), None).await, ServerMsg::Reply(crate::protocol::Reply::ConversationSent(_))));
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while session.daemon.conversation_states[&id].approvals.is_empty() {
+                session.daemon.handle(session.events.recv().await.unwrap());
+            }
+        })
+        .await
+        .expect("the request reached the daemon");
+        let request_id = ProviderRequestId::Text("approval-private".into());
+        assert!(session.daemon.conversation_states[&id].approvals[&request_id].can_remember);
+        let always = |request_id: &ProviderRequestId| crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationAllowAlways {
+            id,
+            generation,
+            request_id: request_id.clone(),
+        });
+
+        // An agent cannot approve for itself, and nothing is remembered by the try.
+        let from = authenticated_pane(&mut session);
+        let refused = exchange(&mut session, 401, always(&request_id), Some(from)).await;
+        assert!(matches!(refused, ServerMsg::Error(ref message) if message.contains("Only a human")), "{refused:?}");
+        assert!(session.daemon.chat_allowed.rules.is_empty());
+        assert!(!session.daemon.conversation_states[&id].approvals.is_empty());
+
+        // A request that is not there is not remembered either.
+        let stale = exchange(&mut session, 402, always(&ProviderRequestId::Text("another".into())), None).await;
+        assert!(matches!(stale, ServerMsg::Error(ref message) if message.contains("already answered")), "{stale:?}");
+
+        let done = exchange(&mut session, 403, always(&request_id), None).await;
+        assert!(matches!(done, ServerMsg::Reply(crate::protocol::Reply::Ok)), "{done:?}");
+        let [rule] = session.daemon.chat_allowed.rules.as_slice() else {
+            panic!("one rule is kept");
+        };
+        assert!(rule.command.starts_with("echo synthetic"));
+        assert_eq!(rule.command_sha256, crate::protocol::command_hash("echo synthetic\u{200b}"));
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while session.daemon.conversation_states[&id].status != crate::protocol::Status::Done {
+                session.daemon.handle(session.events.recv().await.unwrap());
+            }
+        })
+        .await
+        .expect("the first turn finished");
+        let response = tokio::fs::read_to_string(session.fixture.directory.path().join("responses")).await.unwrap();
+        let response: Value = serde_json::from_str(response.lines().next().unwrap()).unwrap();
+        assert_eq!(response["result"]["decision"], "accept", "remembered, but this one is a plain accept");
+
+        // The same command in the same project is answered without asking.
+        assert!(matches!(exchange(&mut session, 404, send(2), None).await, ServerMsg::Reply(crate::protocol::Reply::ConversationSent(_))));
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while session.daemon.conversation_states[&id].answered_approvals.len() < 2 {
+                session.daemon.handle(session.events.recv().await.unwrap());
+            }
+        })
+        .await
+        .expect("the second request was answered by the daemon");
+        assert!(session.daemon.conversation_states[&id].approvals.is_empty());
+        assert!(session.daemon.conversation_states[&id].command_hashes.is_empty());
+
+        // A rule for another project does not apply here.
+        session.daemon.chat_allowed.rules[0].project = std::path::PathBuf::from("/somewhere/else");
+        assert!(!session.daemon.chat_allowed.allows_hash(
+            &session.daemon.conversation_project(id).unwrap(),
+            &session.daemon.chat_allowed.rules[0].command_sha256.clone(),
+        ));
+    })
+    .catch_unwind()
+    .await;
+    session.cleanup().await;
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[tokio::test]
+async fn approved_commands_are_listed_and_taken_back_by_a_person_only() {
+    let mut session = conversation_fixture("conversation-approval").await;
+    let outcome = AssertUnwindSafe(async {
+        let file = session.fixture.directory.path().join("chat-allowed-commands.json");
+        session.daemon.chat_allowed_file = file.clone();
+        let rule = super::allowed::Rule {
+            project: std::path::PathBuf::from("/code/app"),
+            command_sha256: crate::protocol::command_hash("cargo test"),
+            command: "cargo test".into(),
+            at: 5,
+        };
+        // Another daemon wrote it: the list reads the file as it is now.
+        super::allowed::remember(&file, rule.clone()).unwrap();
+        let list = crate::protocol::ClientMsg::Query(crate::protocol::Query::AllowedCommands);
+        let from = authenticated_pane(&mut session);
+        let refused = exchange(&mut session, 430, list.clone(), Some(from)).await;
+        assert!(matches!(refused, ServerMsg::Error(ref message) if message.contains("Only a human")), "{refused:?}");
+        let ServerMsg::Reply(crate::protocol::Reply::AllowedCommands(listed)) = exchange(&mut session, 431, list.clone(), None).await else {
+            panic!("expected the approved commands");
+        };
+        assert_eq!(listed.len(), 1);
+        assert_eq!((listed[0].command.as_str(), listed[0].at), ("cargo test", 5));
+
+        let forget = crate::protocol::ClientMsg::Command(crate::protocol::Command::ForgetAllowedCommand {
+            project: rule.project.clone(),
+            command_sha256: rule.command_sha256.clone(),
+        });
+        let from = authenticated_pane(&mut session);
+        let refused = exchange(&mut session, 432, forget.clone(), Some(from)).await;
+        assert!(matches!(refused, ServerMsg::Error(_)), "{refused:?}");
+        assert_eq!(session.daemon.chat_allowed.rules.len(), 1, "a pane cannot take it back either");
+        let done = exchange(&mut session, 433, forget, None).await;
+        assert!(matches!(done, ServerMsg::Reply(crate::protocol::Reply::Ok)), "{done:?}");
+        assert!(session.daemon.chat_allowed.rules.is_empty(), "asks again from now on");
+        // The file follows, off the loop.
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !super::allowed::Allowed::load(&file).unwrap().rules.is_empty() {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("the file forgot it too");
+    })
+    .catch_unwind()
+    .await;
+    session.cleanup().await;
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[tokio::test]
+async fn a_file_change_request_cannot_be_remembered() {
+    let mut session = conversation_fixture("conversation-file-approval").await;
+    let outcome = AssertUnwindSafe(async {
+        session.daemon.chat_allowed_file = session.fixture.directory.path().join("chat-allowed-commands.json");
+        let (id, generation) = create(&mut session).await;
+        let sent = exchange(
+            &mut session,
+            410,
+            crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationSend { id, generation, operation: 1, text: "Synthetic file change request".into(), choice: None }),
+            None,
+        )
+        .await;
+        assert!(matches!(sent, ServerMsg::Reply(crate::protocol::Reply::ConversationSent(_))));
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while session.daemon.conversation_states[&id].approvals.is_empty() {
+                session.daemon.handle(session.events.recv().await.unwrap());
+            }
+        })
+        .await
+        .expect("the request reached the daemon");
+        let request_id = crate::conversation::ProviderRequestId::Text("file-approval-private".into());
+        assert!(!session.daemon.conversation_states[&id].approvals[&request_id].can_remember);
+        let refused = exchange(
+            &mut session,
+            411,
+            crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationAllowAlways { id, generation, request_id }),
+            None,
+        )
+        .await;
+        assert!(matches!(refused, ServerMsg::Error(ref message) if message.contains("Only a command request")), "{refused:?}");
+        assert!(session.daemon.chat_allowed.rules.is_empty());
+        assert!(!session.daemon.conversation_states[&id].approvals.is_empty(), "left for the person to answer");
+    })
+    .catch_unwind()
+    .await;
+    session.cleanup().await;
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[tokio::test]
+async fn a_closed_chat_is_hidden_at_once_comes_back_with_undo_and_ends_when_the_window_passes() {
+    let mut session = conversation_fixture("conversation-approval").await;
+    let outcome = AssertUnwindSafe(async {
+        let (id, generation) = create(&mut session).await;
+        let archived = |s: &TestSession| s.daemon.conversations.iter().find(|c| c.id == id).unwrap().archived;
+        let close = crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationClose { id, generation });
+        let undo = crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationUndoClose { id });
+
+        // An agent cannot close a person's chat.
+        let from = authenticated_pane(&mut session);
+        let refused = exchange(&mut session, 420, close.clone(), Some(from)).await;
+        assert!(matches!(refused, ServerMsg::Error(ref message) if message.contains("Only a human")), "{refused:?}");
+        assert!(!archived(&session));
+
+        let closed = exchange(&mut session, 421, close.clone(), None).await;
+        assert!(matches!(closed, ServerMsg::Reply(crate::protocol::Reply::Ok)), "{closed:?}");
+        assert!(archived(&session), "hidden at once");
+        assert!(session.daemon.conversation_runtimes.owns(id), "still running inside the window");
+
+        let back = exchange(&mut session, 422, undo.clone(), None).await;
+        assert!(matches!(back, ServerMsg::Reply(crate::protocol::Reply::Ok)), "{back:?}");
+        assert!(!archived(&session), "brought back");
+        assert!(session.daemon.conversation_closing.is_empty());
+        let late = exchange(&mut session, 423, undo.clone(), None).await;
+        assert!(matches!(late, ServerMsg::Error(ref message) if message.contains("window has passed")), "{late:?}");
+
+        // Closed again and left alone: the window passing ends it, and it stays hidden.
+        assert!(matches!(exchange(&mut session, 424, close, None).await, ServerMsg::Reply(crate::protocol::Reply::Ok)));
+        session.daemon.finish_chat_closes();
+        assert!(session.daemon.conversation_runtimes.owns(id), "not before the window passes");
+        *session.daemon.conversation_closing.get_mut(&id).unwrap() = std::time::Instant::now() - crate::daemon::UNDO_WINDOW;
+        session.daemon.finish_chat_closes();
+        assert!(session.daemon.conversation_closing.is_empty());
+        assert!(archived(&session));
+        let late = exchange(&mut session, 425, undo, None).await;
+        assert!(matches!(late, ServerMsg::Error(ref message) if message.contains("window has passed")), "{late:?}");
     })
     .catch_unwind()
     .await;

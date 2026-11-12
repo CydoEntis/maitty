@@ -11,6 +11,8 @@ export type ApprovalActions = {
   answer: (requestId: number | string, decision: ApprovalDecision) => void
   /** Answers a user-input request's questions, one list of answers per question id. */
   answerInput: (requestId: number | string, answers: Record<string, string[]>) => void
+  /** Approves a command request and has the daemon remember it for the project; absent where it cannot. */
+  remember?: (requestId: number | string) => void
   /** An answer is on its way. */
   busy: boolean
 }
@@ -124,6 +126,11 @@ export function ApprovalCard({ event, actions, step, onGoToStep }: Props) {
               {CHOICE_LABEL[choice]}
             </Button>
           ))}
+          {event.canRemember && actions.remember !== undefined && (
+            <Button type="button" size="sm" variant="ghost" disabled={actions.busy || !pending} title="Allows this exact command in this project from now on, without asking" onClick={() => { actions.remember?.(event.requestId) }}>
+              Always in this project
+            </Button>
+          )}
         </div>
       )}
     </div>

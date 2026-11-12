@@ -52,16 +52,26 @@ export function toSubagentView(activity: SubagentActivity): SubagentView {
   }
 }
 
+/** How long a helper that stopped without finishing stays listed beside a working agent, after its last report. */
+export const STOPPED_LISTED_SECONDS = 120
+
 /**
  * The subagents a session's row lists. One that finished has reported back to the agent, so it goes. One that
- * stopped without finishing stays while the agent still works, since it may be why the turn goes wrong, and goes
- * when the turn is over: nothing is left to do about it, and the daemon marks every helper still running at a
- * turn's end as stopped, so they piled up under the session. One that works or waits for you always stays.
+ * stopped without finishing stays while the agent still works, since it may be why the turn goes wrong, but only
+ * for `STOPPED_LISTED_SECONDS` after it last reported: a long turn would otherwise keep a dead helper in view for
+ * as long as it runs. It goes when the turn is over too: nothing is left to do about it, and the daemon marks every
+ * helper still running at a turn's end as stopped, so they piled up under the session. One that works or waits
+ * for you always stays.
  */
-export function listedSubagents(subagents: readonly SubagentView[], sessionWorking: boolean): SubagentView[] {
-  return subagents.filter((subagent) => subagent.status !== 'done' && (subagent.status !== 'stopped' || sessionWorking))
+export function listedSubagents(subagents: readonly SubagentView[], sessionWorking: boolean, nowSeconds: number = Date.now() / MS_PER_SECOND): SubagentView[] {
+  return subagents.filter((subagent) => {
+    if (subagent.status === 'done') return false
+    if (subagent.status !== 'stopped') return true
+    return sessionWorking && nowSeconds - subagent.updatedAt <= STOPPED_LISTED_SECONDS
+  })
 }
 
+const MS_PER_SECOND = 1000
 const SECONDS_PER_MINUTE = 60
 const SECONDS_PER_HOUR = 3600
 /** Minutes after the hours are always two digits: `1h 05m`. */

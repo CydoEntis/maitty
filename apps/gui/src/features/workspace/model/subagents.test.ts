@@ -27,8 +27,14 @@ describe('a subagent as the window shows it', () => {
       toSubagentView(activity({ id: 'lost', state: 'ConnectionLost' })),
       toSubagentView(activity({ id: 'failed', state: 'Failed' })),
     ]
-    expect(listedSubagents(all, true).map((subagent) => subagent.id)).toEqual(['working', 'asking', 'lost', 'failed'])
-    expect(listedSubagents(all, false).map((subagent) => subagent.id)).toEqual(['working', 'asking'])
+    expect(listedSubagents(all, true, 1150).map((subagent) => subagent.id)).toEqual(['working', 'asking', 'lost', 'failed'])
+    expect(listedSubagents(all, false, 1150).map((subagent) => subagent.id)).toEqual(['working', 'asking'])
+  })
+
+  it('drops a stopped helper two minutes after its last report even while the agent works', () => {
+    const all = [toSubagentView(activity({ id: 'lost', state: 'ConnectionLost', updatedAt: 1100 })), toSubagentView(activity({ id: 'working', state: 'Working', updatedAt: 1100 }))]
+    expect(listedSubagents(all, true, 1220).map((subagent) => subagent.id)).toEqual(['lost', 'working'])
+    expect(listedSubagents(all, true, 1221).map((subagent) => subagent.id)).toEqual(['working'])
   })
 
   it('says how long it has run, how long it took, or its state when no time was reported', () => {

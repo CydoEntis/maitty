@@ -76,9 +76,9 @@ describe('the usage strip', () => {
     const strip = screen.getByRole('group', { name: 'Usage' })
     expect(within(strip).getByRole('meter', { name: 'Context' })).toHaveAttribute('aria-valuenow', '9')
     expect(within(strip).getByRole('meter', { name: '5-hour limit' })).toHaveAttribute('aria-valuenow', '12')
-    expect(strip).toHaveTextContent('9%12% 5h')
+    expect(strip).toHaveTextContent('Context9%5h12%')
     // When a limit starts over is in its tooltip, not on the line.
-    expect(within(strip).getByRole('meter', { name: '5-hour limit' }).parentElement).toHaveAttribute('title', '5-hour limit: 12% used, starts over in 3h')
+    expect(within(strip).getByRole('meter', { name: '5-hour limit' }).parentElement).toHaveAttribute('title', '5-hour limit: 12% used · resets in 3h')
   })
 
   it('is not drawn when the agent reported nothing', async () => {

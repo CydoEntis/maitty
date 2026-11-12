@@ -77,6 +77,8 @@ Press the prefix for key mode, then the key. Only `?`, `S` and `_` need Shift, a
 | `h` | History: what happened |
 | `e` | References (in the side panel) |
 | `o` | Find a file |
+| `l` | Worktrees: new, clean up, merge, delete (a second step) |
+| `y` | Copy mode: select text in the pane |
 
 ### Maitty
 
@@ -93,7 +95,7 @@ Press the prefix for key mode, then the key. Only `?`, `S` and `_` need Shift, a
 | `q` | Step away (agents keep running) |
 | `Ctrl+R` | Reload the config |
 
-**Search only** (`Ctrl+K`, then type): worktrees, new tab, Updates, find in the pane, previous / next
+**Search only** (`Ctrl+K`, then type): new tab, Updates, find in the pane, previous / next
 command in history, send the prefix itself to the program.
 
 ## How key mode works
@@ -330,6 +332,7 @@ over the workspace from the sidebar's side; it has a fixed width.
 | PgUp, PgDn, Space | Read diff; Space pages down |
 | x, e, r | Mark reviewed, open editor, return to agent |
 | c, p | Ask to commit every changed file; ask to push and open a pull request (y or Enter says yes) |
+| M | Ask to squash-merge the branch's pull request with `gh` (queued to merge when its checks pass; now if the repository doesn't allow that) |
 | m, d | Linked worktree: ask to merge, ask to discard |
 | Enter / y in confirmation | Confirm the requested action; other keys cancel |
 | Up, Down, PgUp, PgDn in shared-file diffs | Scroll both checkout diffs together |
@@ -374,20 +377,24 @@ over the workspace from the sidebar's side; it has a fixed width.
 
 ## Branch view
 
-Leader + `b` opens it for the session you're on; `b` there used to open the branch switcher,
-which is now its first row. In `[keys.prefix]` its action is `branch` (`switch-branch` still
-loads). It has the keys while open; closing it returns to shortcut mode.
+Leader + `g` opens it for the session you're on; the branch switcher is its first row. In
+`[keys.prefix]` its action is `branch` (`switch-branch` still loads). It has the keys while open; closing it returns to shortcut mode.
 
 | Keys | Action |
 | --- | --- |
 | Up / k, Down / j | Choose a row: Switch branch…, or a snapshot |
 | Enter on Switch branch… | Open the branch switcher |
 | Enter on a snapshot | Restore it (asks first; refused while the agent works) |
-| b, Esc | Close it |
+| f | Fetch from the remote (`git fetch --prune`) |
+| p | Pull, only when it is a fast-forward (`git pull --ff-only`); otherwise git's refusal is shown |
+| P | Push the branch; the first push sets its upstream on `origin` |
+| g, Esc | Close it |
+
+Fetch, pull and push run for a checkout on this computer only, and never ask for a password on the terminal: a remote that needs one reports the error.
 
 ## References view
 
-Leader + `a` opens the project's references (`.maitty/references/` at the repo's main checkout).
+Leader + `e` opens the project's references (`.maitty/references/` at the repo's main checkout).
 In `[keys.prefix]` its action is `references`. It has the keys while open.
 
 | Keys | Action |
@@ -399,13 +406,16 @@ In `[keys.prefix]` its action is `references`. It has the keys while open.
 | n | Add a file: type or paste its path, then Enter |
 | d, Delete | Remove it (asks first) |
 | y | Copy its absolute path |
-| a, Esc | Close it |
+| e, Esc | Close it |
 
 ## Branches and worktree cleanup
 
 | Keys | Action |
 | --- | --- |
 | Type, Backspace, Up, Down, PgUp, PgDn, Enter | Branches: filter, choose branch/create option, continue |
+| Ctrl+D | Delete the local branch under the cursor (only if git calls it merged) |
+| Ctrl+R | Rename the branch under the cursor to what is typed in the filter |
+| `#123` in the filter | Check out pull request 123's branch with `gh pr checkout` (needs the GitHub CLI) |
 | Up, Down, 1–4, Enter | Choose how branch switching handles uncommitted changes |
 | y in discard confirmation | Confirm discarding changes; other keys go back |
 | Enter in commit text | Commit changes and switch branch |
@@ -435,7 +445,7 @@ In `[keys.prefix]` its action is `references`. It has the keys while open.
 
 ## Copy mode
 
-No default key: search commands (leader, then `Space`) opens it as **Select text**.
+Leader + `y` (or search commands, leader then `Space`, as **Select text**) opens it.
 
 | Keys | Action |
 | --- | --- |
@@ -460,10 +470,11 @@ in Maitty's own history); a click goes back to the newest output. An agent that 
 far as the wheel paged it up; typing to the agent clears it, since the agent scrolls to its
 prompt itself.
 
-Leader `z` collapses the sessions into a 10-column column of status glyphs and initials (click a row
-to focus it, `»` or the `…` row to expand; under 110 columns it is collapsed by itself, and `z` then
-opens the full sidebar over the workspace); with the column focused, `↑` `↓`, `←` `→` and `1`-`9` switch
-sessions. "Hide sidebar" (search commands) hides the sessions completely; `z` brings them back.
+Under 110 columns the sessions collapse by themselves into a 10-column column of status glyphs
+and initials (click a row to focus it, `»` or the `…` row to expand); with the column focused,
+`↑` `↓`, `←` `→` and `1`-`9` switch sessions. Leader `b` hides the sessions completely and brings
+them back ("Collapse sidebar" in the Menu; "Hide sidebar" in search commands does the same).
+Leader `z` is Zoom, not a sidebar key.
 
 | Keys | Action |
 | --- | --- |
