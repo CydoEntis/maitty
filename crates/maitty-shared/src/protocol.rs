@@ -11,7 +11,14 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 82;
+pub const PROTOCOL_VERSION: u32 = 83;
+
+/// The first version whose daemon closes a chat with an undo window (`Command::ConversationClose`,
+/// `Command::ConversationUndoClose`).
+pub const CHAT_CLOSE_SINCE: u32 = 83;
+
+/// The first version whose daemon remembers a command approval for a project (`Command::ConversationAllowAlways`).
+pub const ALLOW_ALWAYS_SINCE: u32 = 83;
 
 /// The first version whose daemon writes a file of a pane's checkout for the person (`Command::WriteFile`).
 pub const WRITE_FILE_SINCE: u32 = 82;
@@ -326,6 +333,23 @@ pub enum Command {
         generation: u64,
     },
     /// Stop a chat conversation's agent. Its record stays, stopped, so history is kept.
+    /// Close a chat with an undo window: it is hidden at once and ended for real when the window passes.
+    ConversationClose {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+    },
+    /// Bring back a chat closed with `ConversationClose` while its window is open.
+    ConversationUndoClose {
+        id: crate::conversation::ConversationId,
+    },
+    /// Approve a command request and remember the approval for the conversation's project: the same
+    /// command, written the same, is then approved without asking (ADR 0005). Only a command request
+    /// can be remembered.
+    ConversationAllowAlways {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+        request_id: crate::conversation::ProviderRequestId,
+    },
     ConversationEnd {
         id: crate::conversation::ConversationId,
         generation: u64,
@@ -1719,6 +1743,8 @@ impl ClientMsg {
             ClientMsg::Command(Command::DropQueued { .. }) => DROP_QUEUED_SINCE,
             ClientMsg::Command(Command::BranchWorktree { .. }) => BRANCH_WORKTREE_SINCE,
             ClientMsg::Command(Command::WriteFile { .. }) => WRITE_FILE_SINCE,
+            ClientMsg::Command(Command::ConversationClose { .. } | Command::ConversationUndoClose { .. }) => CHAT_CLOSE_SINCE,
+            ClientMsg::Command(Command::ConversationAllowAlways { .. }) => ALLOW_ALWAYS_SINCE,
             _ => COMPATIBLE_SINCE,
         }
     }
@@ -2123,7 +2149,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 82);
+        assert_eq!(PROTOCOL_VERSION, 83);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2395,7 +2421,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 82);
+        assert_eq!(PROTOCOL_VERSION, 83);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -3203,5 +3229,18 @@ mod tests {
         let ask: PermissionAsk =
             serde_json::from_value(serde_json::json!({"tool": "Bash", "detail": "ls", "answerable": true})).unwrap();
         assert!(ask.choices.is_empty(), "an older peer sends no choices");
+    }
+
+    /// Closing a chat with an undo window and remembering an approval are new commands: a daemon built
+    /// before them cannot read them, so a client asks only a daemon that says it is new enough.
+    #[test]
+    fn chat_close_and_allow_always_are_asked_only_of_a_daemon_that_knows_them() {
+        let id = crate::conversation::ConversationId(4);
+        let close = ClientMsg::Command(Command::ConversationClose { id, generation: 1 });
+        let undo = ClientMsg::Command(Command::ConversationUndoClose { id });
+        let always = ClientMsg::Command(Command::ConversationAllowAlways { id, generation: 1, request_id: crate::conversation::ProviderRequestId::Integer(9) });
+        assert_eq!((close.introduced_in(), undo.introduced_in()), (CHAT_CLOSE_SINCE, CHAT_CLOSE_SINCE));
+        assert_eq!(always.introduced_in(), ALLOW_ALWAYS_SINCE);
+        const { assert!(CHAT_CLOSE_SINCE > COMPATIBLE_SINCE && ALLOW_ALWAYS_SINCE <= PROTOCOL_VERSION) };
     }
 }

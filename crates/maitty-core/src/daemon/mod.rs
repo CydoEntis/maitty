@@ -415,6 +415,11 @@ struct Daemon {
     conversation_states: BTreeMap<crate::conversation::ConversationId, conversation::State>,
     /// Conversations whose agent was stopped on purpose, so its exit is not a failure.
     conversation_ending: std::collections::BTreeSet<crate::conversation::ConversationId>,
+    /// Chats closed with an undo window, and when each was: ended for real when the window passes.
+    conversation_closing: std::collections::BTreeMap<crate::conversation::ConversationId, Instant>,
+    /// Commands you approved "always in this project" for chats, read once at start.
+    chat_allowed: conversation::allowed::Allowed,
+    chat_allowed_file: PathBuf,
     conversation_requests: BTreeMap<u64, conversation::commands::Pending>,
     conversation_request_id: u64,
     conversation_barriers: BTreeMap<u64, u64>,
@@ -558,6 +563,10 @@ pub fn run(on_start: impl FnOnce()) -> Result<()> {
         match helpers::Projects::load(&d.helper_projects_file) {
             Ok(p) => d.helper_projects = p,
             Err(e) => tracing::warn!("helper projects: {e:#}; every project asks again"),
+        }
+        match conversation::allowed::Allowed::load(&d.chat_allowed_file) {
+            Ok(a) => d.chat_allowed = a,
+            Err(e) => tracing::warn!("chat allowed commands: {e:#}; every command asks again"),
         }
         d.drop_saved_outputs();
         if d.cfg.restore.enabled
@@ -870,6 +879,28 @@ impl Daemon {
                 anyhow::bail!("Only a human client can end a conversation")
             }
             Command::ConversationEnd { .. } => self.may(client, Grant::Write, None),
+            Command::ConversationClose { .. } | Command::ConversationUndoClose { .. }
+                if structured
+                    || self
+                        .clients
+                        .get(&client)
+                        .is_some_and(|client| client.from.is_some()) =>
+            {
+                anyhow::bail!("Only a human client can close a conversation")
+            }
+            Command::ConversationClose { .. } | Command::ConversationUndoClose { .. } => {
+                self.may(client, Grant::Write, None)
+            }
+            Command::ConversationAllowAlways { .. }
+                if structured
+                    || self
+                        .clients
+                        .get(&client)
+                        .is_some_and(|client| client.from.is_some()) =>
+            {
+                anyhow::bail!("Only a human client can answer provider requests")
+            }
+            Command::ConversationAllowAlways { .. } => self.may(client, Grant::Respond, None),
             Command::ConversationDequeue { .. }
                 if structured
                     || self
@@ -1165,6 +1196,9 @@ impl Daemon {
             resumable_conversations: Vec::new(),
             conversation_states: BTreeMap::new(),
             conversation_ending: std::collections::BTreeSet::new(),
+            conversation_closing: std::collections::BTreeMap::new(),
+            chat_allowed: conversation::allowed::Allowed::default(),
+            chat_allowed_file: conversation::allowed::path(),
             conversation_requests: BTreeMap::new(),
             conversation_request_id: 0,
             conversation_barriers: BTreeMap::new(),
@@ -1226,6 +1260,7 @@ impl Daemon {
                 _ = tick.tick() => {
                     self.sync_scan_interval();
                     self.finish_closes();
+                    self.finish_chat_closes();
                     self.close_ended_agents();
                     self.expire_warm();
                     self.update_statuses();

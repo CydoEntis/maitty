@@ -1459,6 +1459,59 @@ pub async fn resume_codex_conversation(
     }
 }
 
+/// Approve a command request of a chat and have the daemon remember it for the chat's project.
+pub async fn allow_conversation_always(
+    id: u64,
+    generation: u64,
+    request_id: maitty_shared::conversation::ProviderRequestId,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Command(Command::ConversationAllowAlways {
+            id: maitty_shared::conversation::ConversationId(id),
+            generation,
+            request_id,
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected remembered approval reply"),
+    }
+}
+
+/// Close a chat with an undo window: the daemon hides it at once and ends it when the window passes.
+pub async fn close_conversation_with_undo(id: u64, generation: u64, daemon_executable: PathBuf) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Command(Command::ConversationClose {
+            id: maitty_shared::conversation::ConversationId(id),
+            generation,
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected close reply"),
+    }
+}
+
+/// Bring back a chat closed with `close_conversation_with_undo` while its window is open.
+pub async fn undo_close_conversation(id: u64, daemon_executable: PathBuf) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Command(Command::ConversationUndoClose {
+            id: maitty_shared::conversation::ConversationId(id),
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected undo reply"),
+    }
+}
+
 /// Stop a chat conversation's agent. Its record and history stay.
 pub async fn end_conversation(
     id: u64,

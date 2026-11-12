@@ -833,9 +833,13 @@ The same dialog has a **Session** choice: **Terminal** (the default, as above) o
 session is Claude or Codex run by Maitty's background service instead of in a terminal, so the chat
 has a message box that works: Enter sends, Stop interrupts, a message sent while the agent is busy
 waits in a queue (with Remove), and each permission the agent asks for appears in the chat with
-**Yes, once (y)**, **This session (a)** and **No (n)**. It always asks first; there is no option to
-skip the questions. A chat session has no terminal (to use the agent's own screen, start a terminal
-session), it keeps running when you close the window, and closing its tab or pane stops the agent. A
+**Yes, once (y)**, **This session (a)** and **No (n)**; a command also has **Always in this project**,
+which approves that exact command (written the same) in that project from then on. Those are kept
+in `chat-allowed-commands.json` in Maitty's data folder, never in the repo; delete an entry or the
+file to take them back. Nothing else is ever remembered: a file change, an extra permission or a
+question always asks. A chat session has no terminal (to use the agent's own screen, start a terminal
+session), it keeps running when you close the window, and closing its tab or pane stops the agent a
+few seconds later, so Undo can bring it back. A
 shell's empty chat card also offers **Start a Claude chat** and **Start a Codex chat** for the shell's
 folder. If you typed `claude` or `codex` in a shell yourself, its chat is read-only: it shows what
 the agent did and you answer in the terminal.

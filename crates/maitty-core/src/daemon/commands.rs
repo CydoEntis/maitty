@@ -61,6 +61,22 @@ impl Daemon {
                 self.conversation_dequeue(client, id, generation, operation)?;
                 return Ok(false);
             }
+            Command::ConversationClose { id, generation } => {
+                self.conversation_close(client, id, generation)?;
+                return Ok(false);
+            }
+            Command::ConversationUndoClose { id } => {
+                self.conversation_undo_close(client, id)?;
+                return Ok(false);
+            }
+            Command::ConversationAllowAlways {
+                id,
+                generation,
+                request_id,
+            } => {
+                self.conversation_allow_always(client, id, generation, request_id)?;
+                return Ok(false);
+            }
             Command::ConversationEnd { id, generation } => {
                 self.conversation_end(client, id, generation)?;
                 return Ok(false);

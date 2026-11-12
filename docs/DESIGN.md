@@ -480,8 +480,9 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   its process runs on for 6 seconds. A toast "Closed name" with **Undo** stays for the same 6 seconds;
   the button or ⌘Z (Ctrl+Shift+Z elsewhere; passed to the terminal when nothing was just closed, and left to a
   text field inside one) sends `UndoClose` and puts the pane back in its place. An agent's own terminals (its
-  "New terminal" tabs) end with it and come back with it on Undo; the notice names the agent, not the count. A chat session has no terminal to
-  hide, so it ends at once with no Undo. Only closing the window leaves sessions running.
+  "New terminal" tabs) end with it and come back with it on Undo; the notice names the agent, not the count. A chat session closes the same way
+  (`ConversationClose`): the daemon archives it at once and stops its agent when the 6 seconds pass; Undo
+  (`ConversationUndoClose`) brings it back running. Only closing the window leaves sessions running.
 - **An agent that ends by itself takes its pane with it.** A pane the desktop app started as an agent runs the agent
   inside a shell, which is left when the agent goes (`/exit`). The daemon ends that pane three seconds after the agent's
   own hook said its session was over (`close_ended_agents`, `AGENT_ENDED_GRACE`), never on a process scan that missed
@@ -564,7 +565,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
 - **Message box** (`features/chat/components/Composer.tsx`), in three layers. **1. The question tray**, only while the
   agent asks: a slightly narrower tray rising from behind the box (`mxRise`, 0.28s). A request is tinted amber: "Needs
   you" and "Wants to run a command", the command in a sunken mono box, and **Yes, once** `y` (filled with the accent),
-  **This session** `a`, **No** `n`. A question the agent asks is tinted with the accent instead, its choices as rows
+  **This session** `a`, **No** `n`, and for a command request **Always in this project** (the daemon then approves that exact command in that project without asking; see ADR 0005). A question the agent asks is tinted with the accent instead, its choices as rows
   that light up when picked. y, a and n answer from anywhere in the chat but a field. Answering removes it, the box
   unlocks and the agent is working again (its row and the badge follow the daemon). **2. The box**: glass
   (`--main` under `rgba(--hl,.075)` to `.035`, a `rgba(--hl,.12)` border, radius 16), a two-line text box on top, **+**
