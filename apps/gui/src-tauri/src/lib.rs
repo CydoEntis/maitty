@@ -1193,6 +1193,22 @@ async fn approve_conversation(
     .map_err(|error| format!("{error:#}"))
 }
 
+/// The commands approved "always in this project", for Settings. This computer's service only.
+#[tauri::command]
+async fn allowed_commands(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::allowed_commands(daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// Takes back one approved command: the service forgets it at once and updates its file.
+#[tauri::command]
+async fn forget_allowed_command(app: tauri::AppHandle, project: String, command_sha256: String) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::forget_allowed_command(PathBuf::from(project), command_sha256, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
 #[tauri::command]
 async fn allow_conversation_always(
     app: tauri::AppHandle,
@@ -1551,6 +1567,8 @@ pub fn run() {
             send_conversation,
             approve_conversation,
             allow_conversation_always,
+            allowed_commands,
+            forget_allowed_command,
             close_conversation_with_undo,
             undo_close_conversation,
             answer_conversation_input,

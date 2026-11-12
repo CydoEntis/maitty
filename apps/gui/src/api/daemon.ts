@@ -848,6 +848,19 @@ export async function approveRequest(conversation: Pick<Conversation, 'id' | 'ge
   })
 }
 
+const AllowedCommandsSchema = z.array(z.object({ project: z.string(), command: z.string(), command_sha256: z.string(), at: z.number().int().nonnegative() }))
+export type AllowedCommand = z.infer<typeof AllowedCommandsSchema>[number]
+
+/** The commands approved "always in this project" for chats, as the background service holds them now. */
+export async function loadAllowedCommands(): Promise<AllowedCommand[]> {
+  return invokeParsed('allowed_commands', AllowedCommandsSchema)
+}
+
+/** Takes one approved command back; the service stops approving it at once. */
+export async function forgetAllowedCommand(item: Pick<AllowedCommand, 'project' | 'command_sha256'>): Promise<void> {
+  await invokeParsed('forget_allowed_command', NullSchema, { project: item.project, commandSha256: item.command_sha256 })
+}
+
 /** Approves a command request and has the daemon remember it for the conversation's project: the same command is then allowed without asking. */
 export async function allowAlways(conversation: Pick<Conversation, 'id' | 'generation'>, requestId: number | string): Promise<void> {
   await invokeParsed('allow_conversation_always', NullSchema, {
