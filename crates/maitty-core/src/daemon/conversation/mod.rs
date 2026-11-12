@@ -1,3 +1,4 @@
+pub(super) mod allowed;
 mod branch_start;
 pub(super) mod checks;
 mod claude;
@@ -42,6 +43,10 @@ pub(super) struct State {
         crate::conversation::ProviderRequestId,
         crate::conversation::ApprovalRequest,
     >,
+    /// The hash of each command request's text exactly as the provider sent it, by request: what a
+    /// remembered approval holds to (the text shown has secrets hidden). Never sent to a client.
+    pub(super) command_hashes:
+        std::collections::BTreeMap<crate::conversation::ProviderRequestId, String>,
     pub(super) file_change_previews:
         std::collections::BTreeMap<(String, String), Vec<crate::conversation::FileChangePreview>>,
     pub(super) unsupported_requests:

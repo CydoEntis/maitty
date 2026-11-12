@@ -70,6 +70,7 @@ impl App {
                     }
                     'c' => self.spawn_bg(move || Bg::Done(tasks::commit(&task), true)),
                     'p' => self.spawn_bg(move || Bg::Done(tasks::pull_request(&task), true)),
+                    'M' => self.spawn_bg(move || Bg::Done(tasks::merge_pull_request(&task), true)),
                     'd' => {
                         let d = v.dir.clone();
                         self.throw_away(&d);
@@ -170,6 +171,15 @@ impl App {
                 v.confirm = Some((
                     format!("Push {} and open a pull request?", r.task.branch),
                     'p',
+                ))
+            }
+            KeyCode::Char('M') => {
+                v.confirm = Some((
+                    format!(
+                        "Squash-merge the pull request for {} (when its checks pass)?",
+                        r.task.branch
+                    ),
+                    'M',
                 ))
             }
             KeyCode::Char('d') if v.linked => {

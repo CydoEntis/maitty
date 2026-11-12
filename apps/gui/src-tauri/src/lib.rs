@@ -27,6 +27,7 @@ pub mod streams;
 use std::path::PathBuf;
 mod terminal_stream;
 mod tray;
+mod worktrees;
 
 use maitty_desktop_client::{FleetCommand, PaneCommand};
 use tauri::Manager;
@@ -597,6 +598,33 @@ async fn repo_query(
         .map_err(|error| format!("{error:#}"))
 }
 
+/// A worktree of the project at `folder` on `branch`, made by the daemon (trusted like its repo, the repo's
+/// setup run, tracked for tidy-up). Answers its folder. This computer's daemon only: the new chat page is
+/// this computer's, and the web view names no executable or machine.
+#[tauri::command]
+async fn add_branch_worktree(folder: PathBuf, branch: String) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::branch_worktree(folder, branch)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// Removes worktrees of the project with the daemon, which closes what runs in them first: each folder with
+/// whether to go on when it holds uncommitted changes (they are lost). A branch is kept unless it is already
+/// merged. The daemon answers at once and does the removing in the background; a worktree something still runs
+/// in is left, so the caller looks again.
+#[tauri::command]
+async fn remove_worktrees(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    items: Vec<(PathBuf, bool)>,
+) -> Result<serde_json::Value, String> {
+    wire.require_local(machine, "Worktrees")?;
+    maitty_desktop_client::tidy_worktrees(items, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
 #[tauri::command]
 async fn new_worktree_session(
     app: tauri::AppHandle,
@@ -868,6 +896,121 @@ async fn answer_helpers(
         .map_err(|error| format!("{error:#}"))
 }
 
+/// Does something to a pane's checks: `rerun`, `override` (with a reason), `undo` an override, or `approve` a
+/// repo's check command (`choice`: `once`, `always` or `never`; `command` is the one the person was shown). Works for
+/// a pane on another machine as well: the checks are that machine's daemon's.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+async fn check_action(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    term: u32,
+    action: String,
+    name: Option<String>,
+    reason: Option<String>,
+    choice: Option<String>,
+    command: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let pane = match action.as_str() {
+        "rerun" => PaneCommand::RerunCheck { name },
+        "override" => PaneCommand::OverrideCheck { name, reason: reason.unwrap_or_default() },
+        "undo" => PaneCommand::UndoOverride { name },
+        "approve" => PaneCommand::ApproveCheck {
+            name: name.ok_or("a check approval names the check")?,
+            choice: maitty_desktop_client::approval_choice(&choice.ok_or("a check approval needs a choice")?).map_err(|error| format!("{error:#}"))?,
+            command: command.ok_or("a check approval needs the command that was shown")?,
+        },
+        other => return Err(format!("unknown check action: {other}")),
+    };
+    if routing::is_remote(machine) {
+        return wire.command(machine, term, pane).map(|()| serde_json::Value::Null);
+    }
+    maitty_desktop_client::check_command(term, pane, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// Saves the text of one existing file of the checkout `term` is in. The daemon checks the path (inside the
+/// checkout, no links, not under `.git`) and makes no new file. This computer's panes only.
+#[tauri::command]
+async fn write_project_file(
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    term: u32,
+    path: String,
+    contents: String,
+) -> Result<serde_json::Value, String> {
+    wire.require_local(machine, "Editing a file")?;
+    maitty_desktop_client::write_project_file(term, path, contents)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// The person's answer to an agent's request for a secret: the value, or none to decline (ADR 0006). This
+/// computer's daemon only; the value is passed on and not kept or logged.
+#[tauri::command]
+async fn answer_secret(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    id: u64,
+    value: Option<String>,
+) -> Result<serde_json::Value, String> {
+    wire.require_local(machine, "Giving a secret")?;
+    maitty_desktop_client::answer_secret(id, value, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// The files more than one of a project's checkouts changed (name, folder per checkout). This computer's only.
+#[tauri::command]
+async fn worktree_overlaps(
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    checkouts: Vec<(String, String)>,
+) -> Result<Vec<maitty_shared::overlap::Overlap>, String> {
+    wire.require_local(machine, "Worktrees")?;
+    maitty_desktop_client::checkout_overlaps(checkouts.into_iter().map(|(name, folder)| (name, PathBuf::from(folder))).collect())
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// The brief a new agent starts with when the work of the agent in `term` is handed to it. This computer's panes only.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+async fn handoff_brief(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    term: u32,
+    agent: String,
+    task: String,
+    last_prompt: String,
+    branch: Option<String>,
+    checkout: String,
+) -> Result<String, String> {
+    wire.require_local(machine, "Handing off")?;
+    maitty_desktop_client::handoff_brief(term, agent, task, last_prompt, branch, PathBuf::from(checkout), daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// The tail of a pane's last output for check `name` (None: the headline one). This computer's panes only.
+#[tauri::command]
+async fn check_output(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    term: u32,
+    name: Option<String>,
+) -> Result<serde_json::Value, String> {
+    wire.require_local(machine, "A check's output")?;
+    maitty_desktop_client::check_output(term, name, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
 #[tauri::command]
 async fn close_terminal_session(
     app: tauri::AppHandle,
@@ -1049,6 +1192,48 @@ async fn approve_conversation(
     )
     .await
     .map_err(|error| format!("{error:#}"))
+}
+
+/// The commands approved "always in this project", for Settings. This computer's service only.
+#[tauri::command]
+async fn allowed_commands(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::allowed_commands(daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// Takes back one approved command: the service forgets it at once and updates its file.
+#[tauri::command]
+async fn forget_allowed_command(app: tauri::AppHandle, project: String, command_sha256: String) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::forget_allowed_command(PathBuf::from(project), command_sha256, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn allow_conversation_always(
+    app: tauri::AppHandle,
+    id: u64,
+    generation: u64,
+    request_id: maitty_shared::conversation::ProviderRequestId,
+) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::allow_conversation_always(id, generation, request_id, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn close_conversation_with_undo(app: tauri::AppHandle, id: u64, generation: u64) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::close_conversation_with_undo(id, generation, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn undo_close_conversation(app: tauri::AppHandle, id: u64) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::undo_close_conversation(id, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
 }
 
 #[tauri::command]
@@ -1291,10 +1476,15 @@ pub fn run() {
             new_chat::agents_installed,
             new_chat::git_branches,
             new_chat::git_switch_branch,
-            new_chat::git_add_worktree,
+            add_branch_worktree,
             new_chat::open_agent_docs,
             changes::git_commit_all,
             changes::git_create_pull_request,
+            changes::git_sync,
+            worktrees::worktree_standing,
+            worktrees::worktree_recreate,
+            worktrees::worktree_merge,
+            remove_worktrees,
             machines::list_machines,
             terminal_stream::list_machines_overview,
             terminal_stream::retry_machine,
@@ -1358,6 +1548,12 @@ pub fn run() {
             send_when_agent_ready,
             mark_terminal_seen,
             answer_helpers,
+            check_action,
+            answer_secret,
+            handoff_brief,
+            worktree_overlaps,
+            write_project_file,
+            check_output,
             pin_terminal_session,
             archive_terminal_session,
             reload_terminal_session,
@@ -1371,6 +1567,11 @@ pub fn run() {
             start_shell_in_fleet,
             send_conversation,
             approve_conversation,
+            allow_conversation_always,
+            allowed_commands,
+            forget_allowed_command,
+            close_conversation_with_undo,
+            undo_close_conversation,
             answer_conversation_input,
             cancel_conversation,
             dequeue_conversation,

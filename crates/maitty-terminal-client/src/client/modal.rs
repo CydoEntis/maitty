@@ -387,6 +387,13 @@ pub const SETTINGS: &[Setting] = &[
         help: "An agent started in a repo's main folder gets its own branch and folder.",
     },
     Setting {
+        path: "worktree.base_on_default",
+        label: "Branch from default branch",
+        kind: Kind::Bool,
+        cat: Cat::Sessions,
+        help: "A new worktree branches from origin's default branch, not the branch the main folder is on.",
+    },
+    Setting {
         path: "worktree.command",
         label: "Start in new worktrees",
         kind: Kind::Text,

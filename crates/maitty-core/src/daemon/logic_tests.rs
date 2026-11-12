@@ -2271,7 +2271,7 @@ fn an_agent_typed_into_a_shell_gets_its_own_worktree() {
         "web",
     ]);
     let made =
-        worktrees::agent_worktree(&repo.join("web"), "{repo_parent}/{repo}-worktrees/{branch}")
+        worktrees::agent_worktree(&repo.join("web"), "{repo_parent}/{repo}-worktrees/{branch}", false)
             .unwrap();
     assert!(
         made.ends_with("web") && made.is_dir(),
@@ -2284,7 +2284,7 @@ fn an_agent_typed_into_a_shell_gets_its_own_worktree() {
         "a linked worktree on a made-up branch: {head:?}"
     );
     let again =
-        worktrees::agent_worktree(&repo, "{repo_parent}/{repo}-worktrees/{branch}").unwrap();
+        worktrees::agent_worktree(&repo, "{repo_parent}/{repo}-worktrees/{branch}", false).unwrap();
     let other = crate::gitfs::head(&again).unwrap().branch;
     assert_ne!(other, head.branch, "the next one gets its own branch");
     // Closing them: a merged branch goes with its worktree, one with work of its own stays.
@@ -2325,6 +2325,62 @@ fn an_agent_typed_into_a_shell_gets_its_own_worktree() {
         !git::delete_if_merged(&repo, &other),
         "a commit main doesn't have: kept"
     );
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[test]
+fn a_new_worktree_starts_from_the_default_branch_only_when_asked() {
+    let tmp = std::env::temp_dir().join(format!(
+        concat!(env!("APP_COMMAND"), "-base-wt-{}"),
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let repo = tmp.join("shop");
+    std::fs::create_dir_all(&repo).unwrap();
+    let git = |args: &[&str]| {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "git {args:?}");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    git(&["init", "-q", "-b", "main"]);
+    git(&["commit", "-q", "--allow-empty", "-m", "main work"]);
+    let main_tip = git(&["rev-parse", "main"]);
+    // The main checkout is on a feature branch with a commit main does not have.
+    git(&["checkout", "-q", "-b", "feature"]);
+    git(&["commit", "-q", "--allow-empty", "-m", "feature work"]);
+    let template = "{repo_parent}/{repo}-worktrees/{branch}";
+    assert_eq!(git::default_base(&repo).as_deref(), Some("main"));
+
+    let (from_head, _) =
+        worktrees::create_trusted_worktree(&repo, "from-head", None, template, false).unwrap();
+    let (from_main, _) =
+        worktrees::create_trusted_worktree(&repo, "from-main", None, template, true).unwrap();
+    let tip = |dir: &std::path::Path| {
+        String::from_utf8_lossy(
+            &std::process::Command::new("git")
+                .arg("-C")
+                .arg(dir)
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .trim()
+        .to_string()
+    };
+    assert_eq!(tip(&from_head), git(&["rev-parse", "feature"]));
+    assert_eq!(tip(&from_main), main_tip);
+    // A base the caller names is never overruled.
+    let (named, _) =
+        worktrees::create_trusted_worktree(&repo, "named", Some("feature"), template, true)
+            .unwrap();
+    assert_eq!(tip(&named), git(&["rev-parse", "feature"]));
     let _ = std::fs::remove_dir_all(&tmp);
 }
 

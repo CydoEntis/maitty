@@ -37,7 +37,7 @@ export const KNOWN_MODELS: Readonly<Record<ChatAgent, readonly ModelOption[]>> =
     { id: 'haiku', label: 'Haiku', blurb: 'The quickest, for small tasks' },
   ],
   codex: [
-    { id: DEFAULT_PICK, label: 'Default', blurb: "Your account's model. Picking another is not offered for Codex yet" },
+    { id: DEFAULT_PICK, label: 'Default', blurb: "Your account's model. Others are listed here once Codex has fetched them" },
   ],
   gemini: [
     { id: DEFAULT_PICK, label: 'Default', blurb: "Gemini CLI's own model. Its chat is read from the terminal, so nothing is picked here" },

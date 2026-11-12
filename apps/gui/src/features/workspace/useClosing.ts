@@ -2,11 +2,10 @@ import { movePanes } from './components/paneTransition'
 import { type Dispatch, type SetStateAction, useCallback, useState } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import { toast } from '@/lib/toast'
-import { closeChatSession, closeSessionWithUndo, undoCloseSession } from '@/api/daemon'
+import { closeSessionWithUndo, undoCloseSession } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
 import { useLatest } from '@/lib/useLatest'
 import { runsProgram } from './components/runsProgram'
-import { isChatSession } from './model/chatSession'
 import { type Layout, removePane, removeSessions, showSession } from './model/layout'
 import { displayName, type SessionView } from './model/session'
 import { keepsRunningUnseen } from './model/sidebar'
@@ -54,7 +53,7 @@ export function useClosing({ setLayout, queryClient, layout, sessions, flash, pa
   // Ending a session takes a moment, and the layout may change meanwhile (a split, a resize, another close):
   // the pane is taken out of the layout as it is when the daemon answers, not as it was when the close began.
   const layoutNow = useLatest(() => layout)
-  const endSessions = useCallback((ids: string[], what: string) => {
+  const endSessions = useCallback((ids: string[]) => {
     // An agent's own terminals go with it. Left running they were listed as sessions of their own under Terminals,
     // so stopping an agent looked as if it had turned into a terminal. Undo brings them back with it.
     const gone = new Set(ids.flatMap((id) => [id, ...(agentTerminals.get(id) ?? [])]))
@@ -65,31 +64,23 @@ export function useClosing({ setLayout, queryClient, layout, sessions, flash, pa
       movePanes(() => { setLayout((current) => removeSessions(current, gone)) })
       return
     }
-    // A chat session has no terminal to hide: it is ended for good, as before. Terminals get the undo window.
-    const chats = running.filter((session) => isChatSession(session.conversation))
-    const terminals = running.filter((session) => !isChatSession(session.conversation))
-    void Promise.all([
-      ...chats.map((session) => closeChatSession(session.conversation)),
-      ...terminals.map((session) => closeSessionWithUndo(session.conversation)),
-    ])
+    // A chat and a terminal both get the undo window: the daemon hides the session now and ends it when the window passes.
+    const terminals = running
+    void Promise.all(terminals.map((session) => closeSessionWithUndo(session.conversation)))
       .then(async () => {
         const before = layoutNow()
         const after = removeSessions(before, gone)
         movePanes(() => { setLayout(after) })
-        if (terminals.length > 0) {
-          // Named for what was asked to close: an agent's terminals went with it, they are not further sessions.
-          const named = terminals.filter((session) => asked.has(session.id))
-          const label = named.length === 1 && named[0] ? displayName(named[0]) : `${String(named.length)} sessions`
-          const toastId = toast(`Closed ${label}`, { duration: UNDO_CLOSE_MS, action: { label: 'Undo', onClick: undoNow } })
-          setLastClose({ toastId, sessions: terminals, before, after })
-          window.setTimeout(() => { setLastClose((current) => (current?.toastId === toastId ? null : current)) }, UNDO_CLOSE_MS)
-        } else {
-          flash(`${what} closed · session ended`)
-        }
+        // Named for what was asked to close: an agent's terminals went with it, they are not further sessions.
+        const named = terminals.filter((session) => asked.has(session.id))
+        const label = named.length === 1 && named[0] ? displayName(named[0]) : `${String(named.length)} sessions`
+        const toastId = toast(`Closed ${label}`, { duration: UNDO_CLOSE_MS, action: { label: 'Undo', onClick: undoNow } })
+        setLastClose({ toastId, sessions: terminals, before, after })
+        window.setTimeout(() => { setLastClose((current) => (current?.toastId === toastId ? null : current)) }, UNDO_CLOSE_MS)
         await queryClient.invalidateQueries({ queryKey: ['conversations'] })
       })
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not end the session')) })
-  }, [sessions, setLayout, layoutNow, queryClient, undoNow, flash, agentTerminals])
+  }, [sessions, setLayout, layoutNow, queryClient, undoNow, agentTerminals])
 
   /**
    * Runs `close` now when no session in `ids` has anything to lose: it has ended, or it is a shell with nothing
@@ -122,12 +113,12 @@ export function useClosing({ setLayout, queryClient, layout, sessions, flash, pa
     const pane = tab?.panes.find((candidate) => candidate.id === paneId)
     if (!tab || !pane) return
     if (tab.panes.length <= 1) {
-      endSessions([pane.sessionId], 'Pane')
+      endSessions([pane.sessionId])
       return
     }
     setClosingPanes((current) => new Set(current).add(paneId))
     window.setTimeout(() => {
-      endSessions([pane.sessionId], 'Pane')
+      endSessions([pane.sessionId])
       window.setTimeout(() => {
         setClosingPanes((current) => {
           const next = new Set(current)

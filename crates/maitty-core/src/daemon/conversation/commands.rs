@@ -666,6 +666,20 @@ impl Daemon {
             bail!("Only a human client can answer provider approval requests");
         }
         self.may(client, Grant::Respond, None)?;
+        self.answer_approval(id, generation, request_id, decision)?;
+        self.send(client, ServerMsg::Reply(Reply::Ok));
+        Ok(())
+    }
+
+    /// Answers a provider approval request with `decision`, after whoever asks has been checked. The
+    /// request must belong to the acknowledged active turn of a running conversation.
+    pub(in crate::daemon) fn answer_approval(
+        &mut self,
+        id: ConversationId,
+        generation: u64,
+        request_id: ProviderRequestId,
+        decision: ApprovalDecision,
+    ) -> Result<()> {
         let conversation = self
             .conversations
             .iter()
@@ -734,6 +748,7 @@ impl Daemon {
             },
         )?;
         if let Some(state) = self.conversation_states.get_mut(&id) {
+            state.command_hashes.remove(&request_id);
             if let Some(answered) = state.approvals.remove(&request_id) {
                 state.record_answer(answered, decision);
             }
@@ -745,9 +760,114 @@ impl Daemon {
             };
             state.error = state.unsupported_requests.values().next().cloned();
         }
-        self.send(client, ServerMsg::Reply(Reply::Ok));
         self.dirty = true;
         Ok(())
+    }
+
+    /// A person approves a command request and has it remembered for the conversation's project
+    /// (ADR 0005): the same command is then approved without asking. Only a command request can be
+    /// remembered, and only by a human.
+    pub(in crate::daemon) fn conversation_allow_always(
+        &mut self,
+        client: ClientId,
+        id: ConversationId,
+        generation: u64,
+        request_id: ProviderRequestId,
+    ) -> Result<()> {
+        self.refuse_if_followed(id)?;
+        if self
+            .clients
+            .get(&client)
+            .is_some_and(|owner| owner.from.is_some() || owner.structured.is_some())
+        {
+            bail!("Only a human client can answer provider approval requests");
+        }
+        self.may(client, Grant::Respond, None)?;
+        let state = self.conversation_states.get(&id);
+        let approval = state
+            .and_then(|state| state.approvals.get(&request_id))
+            .ok_or_else(|| anyhow::anyhow!("Approval request is stale or already answered"))?;
+        let (Some(hash), true) = (
+            state.and_then(|state| state.command_hashes.get(&request_id)).cloned(),
+            approval.kind == crate::conversation::ApprovalRequestKind::Command
+                && approval.can_remember,
+        ) else {
+            bail!("Only a command request can be approved for the project");
+        };
+        let shown = approval.command.clone().unwrap_or_default();
+        let project = self.conversation_project(id)?;
+        // Answer first: a request that cannot be answered now is never remembered.
+        self.answer_approval(id, generation, request_id, ApprovalDecision::Accept)?;
+        let rule = super::allowed::Rule {
+            project,
+            command_sha256: hash,
+            command: shown,
+            at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |elapsed| elapsed.as_secs()),
+        };
+        self.chat_allowed.add(rule.clone());
+        let file = self.chat_allowed_file.clone();
+        tokio::task::spawn_blocking(move || {
+            if let Err(e) = super::allowed::remember(&file, rule) {
+                tracing::warn!("saving the commands approved for a project: {e:#}");
+            }
+        });
+        self.send(client, ServerMsg::Reply(Reply::Ok));
+        Ok(())
+    }
+
+    /// The project a conversation belongs to: its repository's main checkout, else its folder.
+    pub(in crate::daemon) fn conversation_project(&self, id: ConversationId) -> Result<std::path::PathBuf> {
+        let conversation = self
+            .conversations
+            .iter()
+            .find(|conversation| conversation.id == id)
+            .ok_or_else(|| anyhow::anyhow!("No such conversation"))?;
+        let folder = conversation
+            .binding
+            .worktree
+            .as_deref()
+            .unwrap_or(&conversation.binding.cwd);
+        Ok(crate::gitfs::head(folder).map_or_else(|| folder.to_path_buf(), |head| head.main_root))
+    }
+
+    /// Answers a command request at once when its project approved exactly that command before.
+    /// Called as a request arrives; a request that is not remembered is left for the person.
+    pub(in crate::daemon) fn auto_approve_remembered(
+        &mut self,
+        id: ConversationId,
+        request_id: &ProviderRequestId,
+    ) {
+        let Some(state) = self.conversation_states.get(&id) else {
+            return;
+        };
+        let Some(approval) = state.approvals.get(request_id) else {
+            return;
+        };
+        let (Some(hash), true) = (
+            state.command_hashes.get(request_id).cloned(),
+            approval.kind == crate::conversation::ApprovalRequestKind::Command
+                && approval.choices.contains(&ApprovalDecision::Accept),
+        ) else {
+            return;
+        };
+        let (Ok(project), Some(generation)) = (
+            self.conversation_project(id),
+            self.conversations
+                .iter()
+                .find(|conversation| conversation.id == id)
+                .map(|conversation| conversation.generation),
+        ) else {
+            return;
+        };
+        if !self.chat_allowed.allows_hash(&project, &hash) {
+            return;
+        }
+        if let Err(error) = self.answer_approval(id, generation, request_id.clone(), ApprovalDecision::Accept) {
+            // Left for the person to answer by hand.
+            tracing::warn!("a remembered command approval could not be answered: {error:#}");
+        }
     }
 
     pub(in crate::daemon) fn conversation_answer_input(
@@ -974,6 +1094,13 @@ impl Daemon {
         {
             bail!("Conversation has a pending operation; try again in a moment");
         }
+        self.stop_structured(id)?;
+        self.send(client, ServerMsg::Reply(Reply::Ok));
+        Ok(())
+    }
+
+    /// Stops a chat's agent for good and drops what was waiting for it. Its record stays, stopped.
+    fn stop_structured(&mut self, id: ConversationId) -> Result<()> {
         if self.conversation_runtimes.owns(id) {
             self.conversation_ending.insert(id);
             if let Err(error) = self.conversation_runtimes.dispose(id) {
@@ -983,9 +1110,95 @@ impl Daemon {
         }
         // Ending the agent is the person's answer to what was waiting for it.
         self.conversation_queues.remove(&id);
+        self.dirty = true;
+        Ok(())
+    }
+
+    /// Closes a chat with an undo window: it is archived (hidden) at once and its agent keeps running
+    /// until `UNDO_WINDOW` passes, when `finish_chat_closes` ends it. A second close keeps the first clock.
+    pub(in crate::daemon) fn conversation_close(
+        &mut self,
+        client: ClientId,
+        id: ConversationId,
+        generation: u64,
+    ) -> Result<()> {
+        self.refuse_if_followed(id)?;
+        if self
+            .clients
+            .get(&client)
+            .is_some_and(|owner| owner.from.is_some() || owner.structured.is_some())
+        {
+            bail!("Only a human client can close a conversation");
+        }
+        self.may(client, Grant::Write, None)?;
+        let conversation = self
+            .conversations
+            .iter_mut()
+            .find(|conversation| conversation.id == id)
+            .ok_or_else(|| anyhow::anyhow!("No such conversation"))?;
+        if conversation.generation != generation {
+            bail!("Conversation generation is stale");
+        }
+        if conversation.execution != ExecutionKind::Structured {
+            bail!("A native terminal conversation closes with its terminal");
+        }
+        conversation.archived = true;
+        self.conversation_closing
+            .entry(id)
+            .or_insert_with(std::time::Instant::now);
         self.send(client, ServerMsg::Reply(Reply::Ok));
         self.dirty = true;
         Ok(())
+    }
+
+    /// Brings back a chat closed with `conversation_close` while its window is open.
+    pub(in crate::daemon) fn conversation_undo_close(
+        &mut self,
+        client: ClientId,
+        id: ConversationId,
+    ) -> Result<()> {
+        self.refuse_if_followed(id)?;
+        if self
+            .clients
+            .get(&client)
+            .is_some_and(|owner| owner.from.is_some() || owner.structured.is_some())
+        {
+            bail!("Only a human client can bring back a conversation");
+        }
+        self.may(client, Grant::Write, None)?;
+        if self.conversation_closing.remove(&id).is_none() {
+            bail!("The undo window has passed");
+        }
+        if let Some(conversation) = self.conversations.iter_mut().find(|c| c.id == id) {
+            conversation.archived = false;
+        }
+        self.send(client, ServerMsg::Reply(Reply::Ok));
+        self.dirty = true;
+        Ok(())
+    }
+
+    /// Ends the chats whose undo window has passed. One with an operation still pending is tried
+    /// again on the next tick.
+    pub(in crate::daemon) fn finish_chat_closes(&mut self) {
+        let due: Vec<ConversationId> = self
+            .conversation_closing
+            .iter()
+            .filter(|(_, at)| at.elapsed() >= crate::daemon::UNDO_WINDOW)
+            .map(|(id, _)| *id)
+            .collect();
+        for id in due {
+            if self
+                .conversation_requests
+                .values()
+                .any(|pending| pending.conversation() == id)
+            {
+                continue;
+            }
+            self.conversation_closing.remove(&id);
+            if let Err(error) = self.stop_structured(id) {
+                tracing::warn!("ending a closed chat: {error:#}");
+            }
+        }
     }
 
     pub(in crate::daemon) fn conversation_send(

@@ -108,7 +108,7 @@ mod tests {
 
     #[test]
     fn machines_do_not_change_what_goes_over_the_wire() {
-        assert_eq!(PROTOCOL_VERSION, 80);
+        assert_eq!(PROTOCOL_VERSION, 84);
         let hello = ClientMsg::Hello {
             version: PROTOCOL_VERSION,
             attach: true,
@@ -129,7 +129,7 @@ mod tests {
         let command = ClientMsg::Command(crate::protocol::Command::FocusPane { term: 3 });
         assert_eq!(
             hex(&hello),
-            "81a548656c6c6f86a776657273696f6e50a6617474616368c3a466726f6d9203a430306666aa73747275637475726564c0a773757266616365a87465726d696e616ca77265706c617973c3"
+            "81a548656c6c6f86a776657273696f6e54a6617474616368c3a466726f6d9203a430306666aa73747275637475726564c0a773757266616365a87465726d696e616ca77265706c617973c3"
         );
         assert_eq!(
             hex(&input),

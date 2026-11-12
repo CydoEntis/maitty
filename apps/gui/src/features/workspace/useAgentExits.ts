@@ -23,7 +23,7 @@ export function useAgentExits({ sessions, listed, setLayout, agentTerminals, end
   setLayout: Dispatch<SetStateAction<Layout>>
   /** The terminals each agent opened for itself, as the window keeps them (the gone agent's among them). */
   agentTerminals: AgentTerminals
-  endSessions: (ids: string[], what: string) => void
+  endSessions: (ids: string[]) => void
 }): void {
   const wasAgent = useRef(new Set<string>())
   const lastSeen = useRef<ReadonlyMap<string, SessionView>>(new Map())
@@ -43,7 +43,7 @@ export function useAgentExits({ sessions, listed, setLayout, agentTerminals, end
     const theirs = ended.flatMap((session) => agentTerminals.get(session.id) ?? []).filter((id) => now.has(id))
     // With terminals to end, the close takes the agents' panes out as well, in the one layout change it makes when
     // the daemon has answered: a change made here first would be undone by it.
-    if (theirs.length > 0) endSessions([...gone, ...theirs], 'Terminal')
+    if (theirs.length > 0) endSessions([...gone, ...theirs])
     else movePanes(() => { setLayout((current) => removeSessions(current, new Set(gone))) })
   }, [sessions, listed, setLayout, agentTerminals, endSessions])
 }

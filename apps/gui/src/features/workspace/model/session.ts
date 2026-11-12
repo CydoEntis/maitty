@@ -1,5 +1,7 @@
 import { terminalOf } from '@/api/daemon'
 import type { Conversation, PermissionAsk, TerminalDetails } from '@/data/preview'
+import type { Check } from '@/features/inspect/checks'
+import type { PullRequest } from './pullRequest'
 import { listedSubagents, toSubagentView, type SubagentView } from './subagents'
 
 /** The status vocabulary of the desktop app. Each one has its own shape, never colour alone. */
@@ -52,6 +54,12 @@ export type SessionView = {
   usage: TerminalDetails['usage']
   /** The plan limits of its agent, as last reported; empty when it reported none. */
   limits: NonNullable<TerminalDetails['limits']>
+  /** The pull request of its branch, as the daemon polls it; null when the branch has none. */
+  pr: PullRequest | null
+  /** What its agent asked the person to give it with `maitty_request_secret`; empty when it asked for nothing. */
+  secretAsk: readonly SecretAsk[]
+  /** The checks that ran for its last turns; empty when none did. */
+  checks: readonly Check[]
   /** The messages its daemon holds for the working agent, oldest first: each is typed in when a turn ends. */
   queued: readonly string[]
   /** The tasks of the helpers the session asked to start and waits on the person for; empty when it asked for none. */
@@ -63,6 +71,9 @@ export type SessionView = {
   lastKnownStatus: SessionStatus | null
   conversation: Conversation
 }
+
+/** A secret an agent is waiting for. The value is never here: it only goes from the person to the daemon. */
+export type SecretAsk = { id: number; label: string; reason: string }
 
 export const SHELL_PROCESS = 'shell'
 const MS_PER_SECOND = 1000
@@ -212,6 +223,9 @@ export function toSessionView(conversation: Conversation, home: string): Session
     timeline: conversation.details?.timeline ?? [],
     usage: conversation.details?.usage ?? { context: null, cost: null, tokens: null },
     limits: conversation.details?.limits ?? [],
+    pr: conversation.details?.pr ?? null,
+    checks: conversation.details?.checks ?? [],
+    secretAsk: conversation.details?.secretAsk ?? [],
     queued: conversation.details?.queued ?? [],
     helperAsk: conversation.details?.helperAsk ?? [],
     // Which helpers a row lists (`listedSubagents`): not one that finished, nor one that stopped once the turn is over.

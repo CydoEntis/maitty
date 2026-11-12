@@ -1,8 +1,8 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { HighlightedLine } from '@/components/HighlightedLine'
 import { Icon } from '@/features/workspace/components/glyphs'
-import { type HighlightedLines, highlightFile, repoDiff, repoFile, repoTree } from './api'
+import { type HighlightedLines, highlightFile, repoDiff, repoFile, repoTree, writeProjectFile } from './api'
 import { changeKind, type ChangeKind } from './changeKind'
 import { CHANGES_REFRESH_MS } from './ChangesTab'
 import { fileTag, foldersHolding } from './fileTag'
@@ -63,7 +63,13 @@ function ancestorsOf(path: string): string[] {
  * The repository's files, read-only: the changed ones listed first, then the tree (folders open in place, each read when
  * first opened), and the chosen file beside them. A changed file opens as its diff, with the whole file a click away.
  */
-export function FilesTab({ term, lookAt }: { term: number; lookAt: LookAt | null }) {
+export function FilesTab({ term, machine = 0, lookAt }: { term: number; /** The machine the session is on; a file is edited on this computer (0) only. */ machine?: number; lookAt: LookAt | null }) {
+  const client = useQueryClient()
+  // The text being edited, and what the file said when the edit began (so a change made meanwhile is noticed).
+  const [edit, setEdit] = useState<{ file: string; original: string; draft: string } | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [clash, setClash] = useState(false)
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set())
   const [picked, setFile] = useState<string | null>(null)
   const [seen, setSeen] = useState<number | null>(null)
@@ -107,6 +113,30 @@ export function FilesTab({ term, lookAt }: { term: number; lookAt: LookAt | null
     document.querySelector(`[data-line="${String(lookAt.line)}"]`)?.scrollIntoView({ block: 'center' })
   }, [lookAt, preview.data])
 
+  const stopEditing = () => { setEdit(null); setSaveError(null); setClash(false) }
+  /** Saves the draft. A file that changed on disk since the edit began (the agent working, say) asks first. */
+  const save = async (overwrite: boolean) => {
+    if (edit === null) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      if (!overwrite) {
+        const now = await repoFile(term, edit.file)
+        if (now !== edit.original) { setClash(true); return }
+      }
+      await writeProjectFile(term, machine, edit.file, edit.draft)
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['repo', term, 'file', edit.file] }),
+        client.invalidateQueries({ queryKey: ['repo', term, 'diff'] }),
+        client.invalidateQueries({ queryKey: ['repo', term, 'status'] }),
+      ])
+      stopEditing()
+    } catch (error) {
+      setSaveError(messageOf(error))
+    } finally {
+      setSaving(false)
+    }
+  }
   const toggle = (folder: string) => {
     setOpen((current) => {
       const next = new Set(current)
@@ -144,15 +174,41 @@ export function FilesTab({ term, lookAt }: { term: number; lookAt: LookAt | null
             <header className="mx-files-bar">
               <h3 className="mx-inspect-file" title={file}>{file}</h3>
               {change !== undefined && <span className={`mx-changes-chip is-${change.kind.tone}`}>{change.kind.word}</span>}
-              {change !== undefined && !change.binary && change.kind.letter !== 'D' && (
+              {change !== undefined && !change.binary && change.kind.letter !== 'D' && edit === null && (
                 <button type="button" className="mx-text-button" onClick={() => { setWhole((current) => !current) }}>{whole ? 'Show the changes' : 'Show the whole file'}</button>
+              )}
+              {machine === 0 && !asDiff && preview.data !== undefined && edit === null && (
+                <button type="button" className="mx-text-button" onClick={() => { setEdit({ file, original: preview.data, draft: preview.data }) }}>Edit</button>
+              )}
+              {edit?.file === file && (
+                <>
+                  <button type="button" className="mx-text-button is-primary" disabled={saving || edit.draft === edit.original} onClick={() => { void save(false) }}>{saving ? 'Saving…' : 'Save'}</button>
+                  <button type="button" className="mx-text-button" disabled={saving} onClick={stopEditing}>Cancel</button>
+                </>
               )}
             </header>
             {asDiff && <PatchView key={file} patch={change.patch} />}
             {!asDiff && change?.kind.letter === 'D' && <p className="mx-inspect-note">This file was deleted.</p>}
             {!asDiff && change?.kind.letter !== 'D' && preview.isPending && <Bars label="Reading the file" count={PREVIEW_BARS} className="mx-files-wait is-preview" />}
             {preview.isError && <p className="mx-inspect-note is-error" role="alert">{messageOf(preview.error)}</p>}
-            {!asDiff && preview.data !== undefined && (
+            {clash && edit?.file === file && (
+              <p className="mx-inspect-note is-error" role="alert">
+                This file changed since you opened it.{' '}
+                <button type="button" className="mx-text-button" onClick={() => { setClash(false); void save(true) }}>Overwrite it anyway</button>
+              </p>
+            )}
+            {saveError !== null && edit?.file === file && <p className="mx-inspect-note is-error" role="alert">{saveError}</p>}
+            {edit?.file === file && (
+              <textarea
+                className="mx-preview mx-files-editor"
+                aria-label={`Edit ${file}`}
+                spellCheck={false}
+                value={edit.draft}
+                onChange={(event) => { setEdit({ ...edit, draft: event.target.value }); setClash(false) }}
+                onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === 's') { event.preventDefault(); if (!saving && edit.draft !== edit.original) void save(false) } }}
+              />
+            )}
+            {!asDiff && preview.data !== undefined && edit?.file !== file && (
               <pre className="mx-preview">
                 {preview.data.split('\n').map((line, index) => (
                   <span key={index} data-line={index + 1} className={lookAt?.path === file && lookAt.line === index + 1 ? 'is-target' : undefined}>

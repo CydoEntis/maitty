@@ -1,6 +1,6 @@
 # Plan: the Terminal / Chat view switch
 
-Status: in progress (CV-0 to CV-7, CV-9, CV-10 and CV-13 done; CV-8 shell, checklist and Agents done; CV-11 and CV-12 done) · Date: 2026-11-04 · Design: [v17 handoff §C.1, §C.2](design-handoff/v17/README.md) (refines v16 §B.3) · Spec: [spec.md](spec.md)
+Status: in progress (CV-0 to CV-7, CV-9, CV-10 and CV-13 done; CV-8 shell, checklist and Agents done; CV-11 and CV-12 done; the "out of scope" items have since been built) · Date: 2026-11-04 · Design: [v17 handoff §C.1, §C.2](design-handoff/v17/README.md) (refines v16 §B.3) · Spec: [spec.md](spec.md)
 
 ## What it is
 
@@ -106,7 +106,7 @@ check for the view). Acceptance criteria are the bullets.
     with the spinner under the last item; sidebar rows in *working* get a slow
     shimmer (CSS only, off under reduce motion). Token counts come from the
     provider's usage events when present, else hidden.
-11. **CV-11 Line comments (§C.2 Changes).** **Dropped** (owner decision, 2026-11-06): the session panel is gone (v18 D.6) and diff line comments are not coming back. Nothing in the app sends or draws them.
+11. **CV-11 Line comments (§C.2 Changes).** **Done in the Inspect panel's Changes tab** (it was dropped with the session panel, v18 D.6, then came back there): a click on a diff line opens a comment box with **Send to <agent>**, and the comment goes to the agent as a message naming the file, line and text (`model/agentMessage.ts`, `features/chat/outsideSends.ts`, `features/inspect/PatchView.tsx`). See DESIGN.md › Side panel.
 12. **CV-12 Files and Artifacts segments (§C.2).** **Done** (touched files with kind; artifacts are created documents, reports, data and pictures by extension, previewed as text through `conversation_file`; pictures are not previewable).
 13. **CV-13 Claude parity check.** Confirm the Claude adapter delivers approvals
     with ids and turn boundaries the way Codex's does (the roadmap did Codex
@@ -162,12 +162,15 @@ check for the view). Acceptance criteria are the bullets.
   cursor that returns only the entries changed since (G24 part 2). A push of events is not built.
 - Left: token counts (no usage events in the history), a helper agent's phase line and step count (not in the
   history), the sidebar working shimmer, an external-link route (agent links copy their address, see UI.md), a
-  Claude exit code (the provider reports none), and the session panel (CV-8, CV-11, CV-12).
+  Claude exit code (the provider reports none), and the session panel (CV-8, removed by v18 D.6).
 
 ## Out of scope
 
-The Inspect panel (§5b), attachments in the composer, model switching from the
-composer (needs a provider API), history search. The session-switch rule (§C.0a)
+Nothing from this plan is still out of scope. Attachments in the composer, the model and
+reasoning picker (Claude; Codex has no model pick yet), the Inspect panel (§5b) and find in the
+conversation (plus find across sessions' terminal output) were first listed here and are now built;
+DESIGN.md describes them. Still not built: search across old conversations' text
+(spec.md leaves arbitrary history browsing out of scope). The session-switch rule (§C.0a)
 and usage/cost (§C.7) are in the Overview spec.
 
 ## Verification

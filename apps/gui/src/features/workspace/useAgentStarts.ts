@@ -16,7 +16,7 @@ import { makeId } from './makeId'
 /** Starts for what is in front: another terminal for an agent, or an agent in the focused folder. */
 export function useAgentStarts({ sessionMap, endSessions, setAgentTerminals, onTerminalAdded, runStart, setLayout, focusedSession, setSettingsSection, preferences, home }: {
   sessionMap: Map<string, SessionView>
-  endSessions: (ids: string[], what: string) => void
+  endSessions: (ids: string[]) => void
   setAgentTerminals: Dispatch<SetStateAction<AgentTerminals>>
   /** A terminal was started for an agent: the window shows it where terminals open. */
   onTerminalAdded: (agentId: string, terminalId: string) => void
@@ -43,7 +43,7 @@ export function useAgentStarts({ sessionMap, endSessions, setAgentTerminals, onT
   }, [sessionMap, runStart, setAgentTerminals, onTerminalAdded])
 
   // Closing a tab ends its shell. It stays in the agent's list, so Undo brings the tab back and not a stray session.
-  const closeAgentTerminal = useCallback((terminalId: string) => { endSessions([terminalId], 'Terminal') }, [endSessions])
+  const closeAgentTerminal = useCallback((terminalId: string) => { endSessions([terminalId]) }, [endSessions])
 
   const startAgent = useCallback((program: string) => {
     const refusal = remoteStartRefusal(focusedSession !== undefined && focusedSession.machine !== LOCAL_MACHINE, focusedSession?.machineName ?? null, `Starting ${program} here`)

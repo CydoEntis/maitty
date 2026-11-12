@@ -86,6 +86,7 @@ src/
     check.rs     a pane's check result, and the runner: the project's check command run in the session's worktree when a turn ends
     check_source.rs which checks a project has (yours, else the repo's .maitty/checks.toml), where each comes from, whether it may run
     check_stale.rs  a pass gone stale: the worktree's tree when a run starts, compared on the git poll
+    conversation/allowed.rs  commands you approved "always in this project" for a chat (chat-allowed-commands.json)
     helpers.rs   sessions starting helpers: the ask / always / never rule, the request a session's row shows, and the projects you said Always for (helper-projects.json)
     identity.rs  the daemon's random id, made on first start and kept in the data folder (daemon-id); sent in every snapshot
     secrets.rs   secrets agents ask you for: the pending requests, and what you typed, held in memory as single-use references (ADR 0006)

@@ -78,6 +78,11 @@ export function ApprovalTray({ event, actions }: { event: ApprovalEvent; actions
       ) : (
         <div className="mx-question-answers">
           {answerable.map((choice) => <AnswerButton key={choice} decision={choice} busy={actions.busy} onAnswer={() => { actions.answer(event.requestId, choice) }} />)}
+          {event.canRemember && actions.remember !== undefined && (
+            <button type="button" className="mx-answer" disabled={actions.busy} title="Allows this exact command in this project from now on, without asking" onClick={() => { actions.remember?.(event.requestId) }}>
+              Always in this project
+            </button>
+          )}
         </div>
       )}
     </Tray>

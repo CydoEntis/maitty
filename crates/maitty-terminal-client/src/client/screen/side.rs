@@ -7,7 +7,7 @@ use super::chips::{Chip, chip};
 use super::status_mark::State;
 use super::*;
 use crate::client::ids::ClientSession;
-use crate::protocol::{SubagentActivity, SubagentState, TurnKind};
+use crate::protocol::{PrTone, SubagentActivity, SubagentState, TurnKind};
 
 /// Rows a session takes before its subagents: its name, and under it the project when sessions
 /// are not grouped by folder. The branch is not shown here; the open pane's title already has it.
@@ -54,6 +54,8 @@ pub(super) struct SideRow {
     pub name: String,
     pub project: String,
     pub branch: String,
+    /// Its pull request as `#45 merged`, with how it is going, when the branch has one.
+    pub pr: Option<(String, PrTone)>,
     pub state: State,
     /// An agent (its name is bold while it has something going on), not a shell.
     pub agent: bool,
@@ -189,6 +191,7 @@ fn side_rows(app: &App, model: &[Proj]) -> Vec<SideRow> {
                 name,
                 project: p.name.clone(),
                 branch: info.and_then(|i| i.branch.clone()).unwrap_or_default(),
+                pr: info.and_then(|i| i.pr.as_ref()).map(|p| (p.headline(), p.tone())),
                 state: State::of(s.status, failed, s.down),
                 agent: s.is_agent,
                 process: info.map_or(String::new(), |i| i.process.clone()),
@@ -755,6 +758,16 @@ fn draw_machine(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, m: &MachineSec
     put(buf, dx, y, &[seg(dot, Style::default().fg(colour).bg(t.bg))], dx + 1);
 }
 
+/// The colour a pull request's headline takes. Not `blocked`: that one means the agent needs you.
+fn pr_colour(tone: PrTone, t: &Theme) -> Color {
+    match tone {
+        PrTone::Bad => t.err,
+        PrTone::Good => t.done,
+        PrTone::Waiting => t.working,
+        PrTone::Plain => t.muted,
+    }
+}
+
 /// One session's two lines and its subagents.
 fn draw_session(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, row: &SideRow, open: bool, t: &Theme) {
     let height = session_h(app.screen.saved.group_folders);
@@ -820,8 +833,22 @@ fn draw_session(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, row: &SideRow,
     put(buf, r.x + NAME_X, y, &[seg(truncate(&row.name, room.max(1)), name_style)], end);
 
     // Under its folder's heading a session is one line; otherwise the project goes under the name.
+    // The pull request follows the project there, or sits at the right of a one-line row when the
+    // name leaves room for it.
+    let pr = row.pr.as_ref().map(|(text, tone)| seg(text.clone(), base.fg(pr_colour(*tone, t))));
     if height > 1 {
-        put_cut(buf, r.x + NAME_X, y + 1, vec![seg(row.project.clone(), base.fg(t.muted))], end);
+        let mut line = vec![seg(row.project.clone(), base.fg(t.muted))];
+        if let Some(pr) = pr {
+            line.push(seg("  ", base));
+            line.push(pr);
+        }
+        put_cut(buf, r.x + NAME_X, y + 1, line, end);
+    } else if let Some(pr) = pr {
+        let w = pr.0.width() as u16;
+        let name_end = r.x + NAME_X + row.name.width() as u16;
+        if end.saturating_sub(w) > name_end + 1 {
+            put(buf, end - w, y, &[pr], end);
+        }
     }
     if let Some(term) = row.term {
         app.screen.row_y.insert(term, y);
@@ -911,6 +938,7 @@ mod tests {
             name: "Growth Tests".into(),
             project: "AeVoxGrowth".into(),
             branch: "agent/grow-025".into(),
+            pr: None,
             state: State::Idle,
             agent: true,
             process: "claude".into(),
