@@ -16,6 +16,7 @@ import { MAX_SHOWN, SlashPicker } from './SlashPicker'
 import { asSkills, commandText, matchCommands, skillQuery, slashQuery, useSlashCommands, withTerminalCommands, type SlashCommand } from '../slashCommands'
 import { CLAUDE_TERMINAL_COMMANDS } from '../terminalCommands'
 import { CODEX_COMMANDS } from '../codexCommands'
+import { isBangLine } from '../slashCommands'
 import { BranchMenu, type BranchMenuSpec } from './BranchMenu'
 import { usageItems, type SessionUsage } from '../usageStrip'
 import { nowSeconds } from '@/features/workspace/model/newChatHost'
@@ -269,6 +270,7 @@ export function Composer({ agent, composer, conversation, commandsFrom, question
           </div>
         </div>
         <SettingsTray facts={facts} />
+        {readOnly && (agent === 'claude' || agent === 'gemini') && isBangLine(draft) && <p className="mx-composer-note">Runs in the terminal, not as a message. Open the terminal to answer anything it asks.</p>}
         {error !== null && <p role="alert" className="mx-composer-error">{error}. Your message is kept; send it again to retry.</p>}
       </div>
     </div>

@@ -13,7 +13,7 @@ import { peekComposer, updateComposer, useComposerSlice, type ComposerState, typ
 import { newId, revokePreviews, useAttachmentIntake, type AttachmentIntake } from './useAttachmentIntake'
 import { wireChoice } from './agentChoice'
 import { reserveOperation, STALE_OPERATION } from './sendOperation'
-import { isSlashLine } from './slashCommands'
+import { isBangLine, isSlashLine } from './slashCommands'
 
 export const PENDING_APPROVAL_NOTE = 'Answer the request above first'
 export const READ_ONLY_NOTE = 'Read-only: talk to the agent in the terminal'
@@ -36,11 +36,24 @@ export function asTyped(text: string): string {
 export const CODEX_SUBMIT_GAP_MS = 400
 
 /** Types a message into an agent's terminal with `type`, the way that agent takes it (`asTyped`; Codex's commands with a pause before Enter). */
+/** How long the agent is given to switch to its shell mode after the `!` before the command is typed. */
+export const BANG_MODE_GAP_MS = 150
+/** The agents whose prompt takes `!` as "run this in a shell". */
+const BANG_AGENTS: ReadonlySet<string> = new Set(['claude', 'gemini'])
+
 export async function typeMessage(type: (text: string) => Promise<void>, agent: string | undefined, text: string): Promise<void> {
   if (agent === 'codex' && isSlashLine(text)) {
     await type(text)
     await new Promise<void>((resolve) => { window.setTimeout(resolve, CODEX_SUBMIT_GAP_MS) })
     await type('\r')
+    return
+  }
+  // `!command` is typed, never pasted: the agent switches to its shell mode on the typed `!`, runs the command in the
+  // terminal it owns and keeps the output in its context. A paste starting with `!` is only text.
+  if (agent !== undefined && BANG_AGENTS.has(agent) && isBangLine(text)) {
+    await type('!')
+    await new Promise<void>((resolve) => { window.setTimeout(resolve, BANG_MODE_GAP_MS) })
+    await type(`${text.slice(1).trim()}\r`)
     return
   }
   await type(asTyped(text))
