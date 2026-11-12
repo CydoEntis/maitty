@@ -13,6 +13,8 @@ export type BranchMenuSpec = {
   folder: string
   /** Opens the dialog that makes a worktree for this session's repository; absent where it cannot. */
   onNewWorktree?: (() => void) | undefined
+  /** Why the move cannot happen now; the row stays but is off, and says why. */
+  newWorktreeBlocked?: string | undefined
 }
 
 /**
@@ -53,7 +55,7 @@ export function BranchMenu({ spec, branch, worktree }: { spec: BranchMenuSpec; b
       sections={[{ heading: 'This chat works on', items: rows }]}
       footer={(
         <>
-          {spec.onNewWorktree !== undefined && <button type="button" className="mx-chip-action" onClick={spec.onNewWorktree}><Icon name="worktree" size={12} />Move to a new worktree…</button>}
+          {spec.onNewWorktree !== undefined && <button type="button" className="mx-chip-action" onClick={spec.onNewWorktree} disabled={spec.newWorktreeBlocked !== undefined} title={spec.newWorktreeBlocked}><Icon name="worktree" size={12} />Move to a new worktree…</button>}
           <p className="mx-chip-note">Switching changes where the agent's next edits go. Work already done stays on its branch.</p>
         </>
       )}

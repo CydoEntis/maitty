@@ -46,6 +46,8 @@ export type SessionView = {
   /** The permission prompt the agent's own hook says it is stopped on. */
   ask: PermissionAsk | null
   interrupted: TerminalDetails['interrupted']
+  /** The agent's own conversation id; null when unknown. */
+  agentSession?: string | null
   /** When the status last changed, in milliseconds, as the daemon says; null when it did not say. */
   statusSince: number | null
   timeline: TerminalDetails['timeline']
@@ -208,6 +210,7 @@ export function toSessionView(conversation: Conversation, home: string): Session
     asking: conversation.details?.asking ?? '',
     ask: conversation.details?.ask ?? null,
     interrupted: conversation.details?.interrupted ?? null,
+    agentSession: conversation.details?.agentSession ?? null,
     statusSince: (conversation.details?.since ?? 0) > 0 ? (conversation.details?.since ?? 0) * MS_PER_SECOND : null,
     timeline: conversation.details?.timeline ?? [],
     usage: conversation.details?.usage ?? { context: null, cost: null, tokens: null },

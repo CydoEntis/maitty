@@ -19,6 +19,7 @@ import { NoTerminalNote } from '@/features/chat/components/NoTerminalNote'
 import { type Arrangement, focusPane, type PaneSlot, toggleMaximize } from '../model/layout'
 import { folderNameOf } from '../model/session'
 import { isShell } from '../model/sidebar'
+import { moveRefusal } from '../model/moveToWorktree'
 
 /** Whether a session can show a chat at all: an agent the app reads. A shell or another program has none, so it gets no switch. */
 function hasChat(availability: ReturnType<typeof chatAvailability>): boolean {
@@ -37,7 +38,7 @@ export function WorkspacePane({ shown, pane, kept }: {
   pane: PaneSlot
   kept: boolean
 }) {
-  const { paneSessions, chatOf, openSubagent, ownsTerminals, repoPaneOf, outsidePanes, dropId, dragId, paneViews, showChanges, online, setOpenSubagent, togglePanel, preferences, setPreferences, startChatHere, inspectOpen, addAgentTerminal, root, look, modalOpen, mirrorInput, openPath, pasteImage, terminalHandles, setLayout, split, closePaneById, sendTo, copyPathOf, restartPane, setRenameId , heads, retryNamed, newChatWithSummary , setWorktreeFrom } = useWorkspace()
+  const { paneSessions, chatOf, openSubagent, ownsTerminals, repoPaneOf, outsidePanes, dropId, dragId, paneViews, showChanges, online, setOpenSubagent, togglePanel, preferences, setPreferences, startChatHere, inspectOpen, addAgentTerminal, root, look, modalOpen, mirrorInput, openPath, pasteImage, terminalHandles, setLayout, split, closePaneById, sendTo, copyPathOf, restartPane, setRenameId , heads, retryNamed, newChatWithSummary , moveToWorktree } = useWorkspace()
   const [drawerFolded, setDrawerFolded] = useState(startsFolded)
   const session = paneSessions.get(pane.sessionId)
   if (!session) return null
@@ -101,7 +102,7 @@ export function WorkspacePane({ shown, pane, kept }: {
           asking={session.asking}
           sessionId={session.id}
           problem={problem}
-          {...(chatOnly || session.machine !== LOCAL_MACHINE || session.branch === null ? {} : { branchMenu: { folder: session.cwd, onNewWorktree: () => { setWorktreeFrom(session) } } })}
+          {...(chatOnly || session.machine !== LOCAL_MACHINE || session.branch === null ? {} : { branchMenu: { folder: session.cwd, onNewWorktree: () => { void moveToWorktree(session) }, ...(moveRefusal(session) === null ? {} : { newWorktreeBlocked: moveRefusal(session) ?? '' }) } })}
           paneStatus={session.status}
           usage={{ context: session.usage.context, limits: session.limits }}
           process={session.process}

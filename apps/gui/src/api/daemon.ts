@@ -45,6 +45,8 @@ const TerminalSessionSchema = z.object({
   hooked: z.boolean().default(false),
   archived: z.boolean().default(false),
   conversation_id: z.number().nullable().default(null),
+  // The agent's own conversation id (the daemon's `TermInfo.session`), which its resume command takes.
+  session: z.string().nullable().default(null),
   // Lines added and removed in the session's checkout against HEAD; zero outside git.
   diff_added: z.number().int().nonnegative().default(0),
   diff_removed: z.number().int().nonnegative().default(0),
@@ -1145,6 +1147,7 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
       asking: term.asking,
       ask: term.ask,
       interrupted: term.interrupted,
+      agentSession: term.session,
       exit: term.exit,
       since: term.since,
       timeline: term.timeline,
