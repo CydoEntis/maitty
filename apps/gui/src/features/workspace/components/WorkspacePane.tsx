@@ -12,6 +12,8 @@ import { PaneCard } from './PaneCard'
 import { LOCAL_MACHINE } from '@/api/machines'
 import { AgentTerminals } from './AgentTerminals'
 import { startsFolded } from '../model/terminalDrawer'
+import { CODEX_SUBMIT_GAP_MS } from '@/features/chat/useChatComposer'
+import { contextFull, type ChatProblem } from '@/features/chat/problem'
 import { ChatPane } from '@/features/chat/components/ChatPane'
 import { NoTerminalNote } from '@/features/chat/components/NoTerminalNote'
 import { type Arrangement, focusPane, type PaneSlot, toggleMaximize } from '../model/layout'
@@ -35,7 +37,7 @@ export function WorkspacePane({ shown, pane, kept }: {
   pane: PaneSlot
   kept: boolean
 }) {
-  const { paneSessions, chatOf, openSubagent, ownsTerminals, repoPaneOf, outsidePanes, dropId, dragId, paneViews, showChanges, online, setOpenSubagent, togglePanel, preferences, setPreferences, startChatHere, inspectOpen, addAgentTerminal, root, look, modalOpen, mirrorInput, openPath, pasteImage, terminalHandles, setLayout, split, closePaneById, sendTo, copyPathOf, restartPane, setRenameId } = useWorkspace()
+  const { paneSessions, chatOf, openSubagent, ownsTerminals, repoPaneOf, outsidePanes, dropId, dragId, paneViews, showChanges, online, setOpenSubagent, togglePanel, preferences, setPreferences, startChatHere, inspectOpen, addAgentTerminal, root, look, modalOpen, mirrorInput, openPath, pasteImage, terminalHandles, setLayout, split, closePaneById, sendTo, copyPathOf, restartPane, setRenameId , heads, retryNamed } = useWorkspace()
   const [drawerFolded, setDrawerFolded] = useState(startsFolded)
   const session = paneSessions.get(pane.sessionId)
   if (!session) return null
@@ -54,6 +56,16 @@ export function WorkspacePane({ shown, pane, kept }: {
     paneViews.choose(session.id, 'terminal')
     void carryDraftToTerminal(session).catch((error: unknown) => { toast.error(errorMessage(error, 'Could not move your message to the terminal')) })
   }
+  const head = session.machine === LOCAL_MACHINE ? undefined : heads.find((candidate) => candidate.machine === session.machine)
+  const fullPercent = contextFull({ context: session.usage.context, limits: [] })
+  // One problem at a time, the one that matters most: a lost machine, then a stopped agent, then a full context.
+  const problem: ChatProblem | null = head?.down === true && head.name !== null
+    ? { kind: 'offline', machine: head.label, since: head.downSince, onRetry: () => { retryNamed(head.name ?? '') } }
+    : session.status === 'error' && !session.ended && !isShell(session)
+      ? { kind: 'crashed', agent: session.process, code: session.conversation.details?.exit?.code ?? null, onViewLog: () => { showTerminal() }, onRestart: chatOnly ? null : () => { restartPane(pane.id) } }
+      : fullPercent !== null && typeInto !== undefined
+        ? { kind: 'context', agent: session.process, percent: fullPercent, onCompact: () => { void typeInto('/compact').then(() => new Promise((resolve) => { window.setTimeout(resolve, CODEX_SUBMIT_GAP_MS) })).then(() => typeInto('\r')).catch((error: unknown) => { toast.error(errorMessage(error, 'Could not compact')) }) } }
+        : null
   const terminals = ownsTerminals(session)
   const dock = preferences.terminalDock
   // A shell is a terminal already: its further terminals stay in the side panel, never under it.
@@ -88,6 +100,7 @@ export function WorkspacePane({ shown, pane, kept }: {
           ask={session.ask}
           asking={session.asking}
           sessionId={session.id}
+          problem={problem}
           paneStatus={session.status}
           usage={{ context: session.usage.context, limits: session.limits }}
           process={session.process}

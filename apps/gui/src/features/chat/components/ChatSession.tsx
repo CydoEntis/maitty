@@ -34,6 +34,8 @@ import { ChatItem } from './ChatItems'
 import { KnownRowsContext } from '../knownRows'
 import { ChatSkeleton } from './ChatSkeleton'
 import { ApprovalTray, PromptTray } from './QuestionTray'
+import { ProblemBanner } from './ProblemBanner'
+import type { ChatProblem } from '../problem'
 import { SubagentBar, SubagentChat } from './SubagentChat'
 import { VirtualList } from './VirtualList'
 import { copyText } from '@/lib/clipboard'
@@ -127,10 +129,12 @@ type Props = {
   usage?: SessionUsage
   /** Shows the session's terminal in place of this chat, for a command whose menu only the terminal draws. */
   onShowTerminal?: () => void
+  /** What is wrong with the chat, if anything: shown as a banner over the message box when nothing else is asked of the person. */
+  problem?: ChatProblem | null
 }
 
 /** The chat of one session: its history as a virtualised list, the daemon's status, and the composer under it. */
-export function ChatSession({ link, agent, online, hasTerminal = true, worktree: paneWorktree, root = null, onOpenDiff = null, onOpenFile = null, typeInto, paneQueue, ask = null, sessionId, paneStatus, folder = '', branch = null, onOpenFolder = null, subagent = null, onBackToMain, onShowTerminal, usage }: Props) {
+export function ChatSession({ link, agent, online, hasTerminal = true, worktree: paneWorktree, root = null, onOpenDiff = null, onOpenFile = null, typeInto, paneQueue, ask = null, sessionId, paneStatus, folder = '', branch = null, onOpenFolder = null, subagent = null, onBackToMain, onShowTerminal, usage, problem = null }: Props) {
   const { feed, events, offline, readError, refresh, recordAnswer, unwatchedReads } = useChatFeed({ conversation: link.conversation, generation: link.generation, provider: agent })
   const paneWorking = paneStatus === 'working'
   const [branches] = useFolderBranches(root ?? '')
@@ -435,7 +439,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
 
   const question = pending !== null
     ? <ApprovalTray event={pending} actions={approval} />
-    : stoppedOnPrompt ? <PromptTray agent={agent} ask={ask} online={online} answer={answerPrompt} pick={pickChoice} pickAll={pickChoices} sendKeys={sendKeys} readScreen={readScreen} /> : null
+    : stoppedOnPrompt ? <PromptTray agent={agent} ask={ask} online={online} answer={answerPrompt} pick={pickChoice} pickAll={pickChoices} sendKeys={sendKeys} readScreen={readScreen} /> : problem !== null ? <ProblemBanner problem={problem} /> : null
   const notices = [
     offline ? `Reconnecting to the daemon. What is shown may be out of date.${readError !== null ? ` (${truncateError(readError)})` : ''}` : null,
     !offline && incomplete !== null ? `History is incomplete: ${incomplete}.` : null,

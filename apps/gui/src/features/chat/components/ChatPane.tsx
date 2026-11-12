@@ -11,6 +11,7 @@ import { FULL_ACCESS_LABEL, FULL_ACCESS_WARNING } from '../fullAccess'
 import { AGENT_LABEL } from '../modelName'
 import { ChatSession } from './ChatSession'
 import type { SessionUsage } from '../usageStrip'
+import type { ChatProblem } from '../problem'
 import { StartingChat } from './StartingChat'
 
 export type ChatPaneProps = {
@@ -58,6 +59,8 @@ export type ChatPaneProps = {
   onBackToMain?: () => void
   /** Shows the session's files beside the pane. */
   onOpenFiles?: () => void
+  /** What is wrong with the chat, for the banner over its message box. */
+  problem?: ChatProblem | null
 }
 
 /**
@@ -90,6 +93,7 @@ export function ChatPane(props: ChatPaneProps) {
             {...(props.usage === undefined ? {} : { usage: props.usage })}
             {...(props.hasTerminal === false ? {} : { onShowTerminal: props.onBackToTerminal })}
             {...(props.onBackToMain === undefined ? {} : { onBackToMain: props.onBackToMain })}
+            problem={props.problem ?? null}
             {...(props.sessionId === undefined ? {} : { sessionId: props.sessionId })}
             {...(props.paneStatus === undefined ? {} : { paneStatus: props.paneStatus })}
           />

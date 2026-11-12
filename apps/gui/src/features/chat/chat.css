@@ -491,3 +491,16 @@ button.mx-queued-text::after { content: ""; position: absolute; inset: 0; border
 .mx-sub-back:hover { text-decoration: underline; }
 .mx-sub-note { margin: 0; font-size: 12.5px; color: var(--dim); }
 .mx-model-button.is-static:hover { background: none; }
+
+/* A problem banner over the message box (layout 2g): a coloured tile, a title with one line, and its buttons. Red for a stopped agent, amber for the rest. */
+.mx-problem {
+  --tone: var(--warn);
+  width: calc(100% - 36px); margin-bottom: -18px; padding: 12px 14px 28px; border-radius: 14px 14px 0 0;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--tone) 10%, transparent), color-mix(in srgb, var(--tone) 4%, transparent)), var(--main);
+  border: 1px solid color-mix(in srgb, var(--tone) 32%, transparent); border-bottom: 0;
+  display: flex; align-items: center; gap: 10px; animation: mxRise .28s cubic-bezier(.2, .8, .2, 1) both;
+}
+.mx-problem.is-danger { --tone: var(--danger); }
+.mx-problem-tile { flex: none; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 7px; background: var(--tone); color: var(--on-accent); font-weight: 800; }
+.mx-problem-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: 13px; color: var(--fg); }
+.mx-problem-text small { font-size: 12px; color: var(--fg2); }
