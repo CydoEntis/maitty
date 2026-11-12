@@ -124,19 +124,7 @@ export function NewSessionModal({ machine, machineName, projects, defaultAgent, 
             </div>
             {kind === 'agent' && (
               <>
-                <div className="mx-ns-field">
-                  <span className="mx-ns-label">WHERE IT WORKS</span>
-                  <Segments
-                    label="Where it works"
-                    value="worktree"
-                    options={[
-                      { value: 'worktree', label: 'New worktree' },
-                      { value: 'current', label: 'Current branch', disabled: 'Maitty starts every agent typed in a project in a worktree of its own (worktree.per_agent in config.toml).' },
-                    ]}
-                    onPick={() => undefined}
-                  />
-                  <span className="mx-ns-note">A new branch and folder, so it can’t touch your other work.</span>
-                </div>
+                <p className="mx-ns-note">{`Opens a terminal on ${machineName ?? 'this computer'} and starts ${AGENT_TITLE[agent]} in it. Whether it gets a worktree of its own is that machine's worktree.per_agent setting.`}</p>
                 <label className="mx-ns-field">
                   <span className="mx-ns-label">FIRST MESSAGE</span>
                   <textarea aria-label="First message" rows={3} value={message} placeholder="What should it do? You can also start empty." className="mx-ns-message" onChange={(event) => { setMessage(event.target.value) }} />

@@ -4,8 +4,15 @@ import { LOCAL_MACHINE } from '@/api/machines'
 import type { ChatAgent } from '../model/chatView'
 import type { MachineHead } from '../model/machines'
 import type { SessionView } from '../model/session'
+import { machineTitle } from '../model/machines'
 import { machineProjects } from '../model/newSession'
 import { NewSessionModal, type NewSessionRequest } from './NewSessionModal'
+
+/** What the machine is called in the dialog: its nickname, else its name; null for this computer. */
+function machineNameOf(heads: readonly MachineHead[], machine: number): string | null {
+  const head = heads.find((candidate) => candidate.machine === machine)
+  return head === undefined ? null : machineTitle(head)
+}
 
 /** The New session dialog wired to the window's data. The starting itself is `onStart`'s. */
 export function NewSessionHost({ machine, heads, sessions, focused, startFolder, defaultAgent, portalContainer, onStart, onCancel }: {
@@ -26,7 +33,7 @@ export function NewSessionHost({ machine, heads, sessions, focused, startFolder,
   return (
     <NewSessionModal
       machine={machine}
-      machineName={heads.find((head) => head.machine === machine)?.name ?? null}
+      machineName={machineNameOf(heads, machine)}
       projects={projects}
       defaultAgent={defaultAgent}
       browse={local ? () => chooseProjectFolder() : null}

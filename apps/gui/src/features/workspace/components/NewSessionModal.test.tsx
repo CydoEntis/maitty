@@ -40,10 +40,13 @@ describe('the New session dialog', () => {
     expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ startAs: 'terminal', message: '' }))
   })
 
-  it('works in a new worktree, and says why the current branch cannot be picked', () => {
-    const { dialog } = open()
-    expect(within(dialog).getByRole('radio', { name: 'New worktree' })).toHaveAttribute('aria-checked', 'true')
-    expect(within(dialog).getByRole('radio', { name: 'Current branch' })).toBeDisabled()
+  it('says it opens a terminal and starts the agent in it, with no worktree choice to make', async () => {
+    const { user, dialog } = open({ machine: 2, machineName: 'devbox' })
+    expect(within(dialog).getByText(/Opens a terminal on devbox and starts Claude Code in it/)).toBeInTheDocument()
+    expect(within(dialog).queryByRole('radio', { name: 'New worktree' })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('radio', { name: 'Current branch' })).not.toBeInTheDocument()
+    await user.click(within(dialog).getByRole('radio', { name: /Codex/ }))
+    expect(within(dialog).getByText(/starts Codex in it/)).toBeInTheDocument()
   })
 
   it('offers another folder through the folder picker, on this computer only', async () => {

@@ -595,11 +595,11 @@ and timings; the feature stylesheets beside their components carry them (`sideba
 - **New session dialog** (⌘T, Ctrl+Shift+T, the sidebar's New agent chat, a machine's New agent chat here). A 560px
   dialog: **Agent chat | Shell**; AGENT (Claude Code, Codex as cards); PROJECT (a chip per project the machine has
   sessions in, the focused one first, with its colour; **Other folder…** opens the folder picker on this computer);
-  WHERE IT WORKS (**New worktree**: the daemon starts an agent typed in a project's main checkout in a worktree of its
-  own; **Current branch** shows disabled, since that is the daemon's `worktree.per_agent` setting); FIRST MESSAGE (held
+  a one-line note that it opens a terminal on the machine and starts the agent in it (a worktree is that machine's
+  `worktree.per_agent` setting, not a choice made here); FIRST MESSAGE (held
   under the new session and sent when the agent takes input; its first three words name the session). **Cancel** and
-  **Start agent** or **Open shell** with `Ctrl ↵`. On another machine the title says so and the agent is typed into a
-  shell there.
+  **Start agent** or **Open shell** with `Ctrl ↵`. On another machine the title names it (its nickname, else its name)
+  and the agent is typed into a shell there.
 - **Focus mode (⌘.).** Hides the sidebar; a pill at the bottom says where you are and
   how many sessions need you elsewhere. Esc or the pill's Exit leaves it.
 - **Broadcast (⌘⇧B).** Per layout. While on, every pane of the layout has a violet outline and a
