@@ -99,6 +99,17 @@ fn merge_into_base(folder: &Path) -> Result<String, String> {
     Ok(format!("Merged {branch} into {base}"))
 }
 
+/// Whether two paths name one place, though the folder itself may be gone: the folder that holds it is
+/// compared as the filesystem names it (a Windows temp folder can be spelled with a short user name),
+/// then its own name.
+fn same_place(a: &Path, b: &Path) -> bool {
+    let place = |path: &Path| {
+        let parent = path.parent()?.canonicalize().ok()?;
+        Some(parent.join(path.file_name()?))
+    };
+    a == b || place(a).is_some_and(|a| place(b).is_some_and(|b| a == b))
+}
+
 /// Makes a worktree whose folder was deleted by hand again, at the same place on the same branch. Only
 /// a folder git itself lists for this repository is made, so this cannot put a checkout anywhere new.
 fn recreate(main: &Path, folder: &Path, branch: &str) -> Result<String, String> {
@@ -111,7 +122,7 @@ fn recreate(main: &Path, folder: &Path, branch: &str) -> Result<String, String> 
     let listed = git(main, &["worktree", "list", "--porcelain"])?
         .lines()
         .filter_map(|line| line.strip_prefix("worktree "))
-        .any(|path| Path::new(path) == folder);
+        .any(|path| same_place(Path::new(path), folder));
     if !listed {
         return Err("git does not list a worktree there".into());
     }
