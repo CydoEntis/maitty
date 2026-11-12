@@ -166,11 +166,11 @@ describe('desktop terminal multiplexer', () => {
 
     await user.keyboard('{Control>}{Shift>}t{/Shift}{/Control}')
     const page = await screen.findByRole('region', { name: 'New agent chat' })
-    // The model button sits in the tray under the box, as in a chat; the folder is asked for first.
+    // The model button sits in the tray under the box, as in a chat; it opens on the start folder, ready to type.
     expect(within(page).getByRole('button', { name: /^Agent, model and reasoning/ })).toBeInTheDocument()
     expect(daemon.startShellSession).not.toHaveBeenCalled()
 
-    await waitFor(() => { expect(within(page).getByRole('textbox', { name: 'Search projects or paste a path' })).toHaveFocus() })
+    await waitFor(() => { expect(within(page).getByRole('textbox', { name: 'First message' })).toHaveFocus() })
     await user.keyboard('{Escape}')
     await waitFor(() => { expect(screen.queryByRole('region', { name: 'New agent chat' })).not.toBeInTheDocument() })
   })

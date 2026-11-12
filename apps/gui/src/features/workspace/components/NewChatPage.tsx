@@ -16,14 +16,15 @@ import { PermissionMenu } from '@/features/chat/components/PermissionMenu'
 import { openAgentDocs } from '@/api/daemon'
 import { LOCAL_MACHINE } from '@/api/machines'
 import { chatAgentOf, type ChatAgent } from '../model/chatView'
-import { ageOf, nowSeconds, splitRecent, useFolderBranches, useInstalledAgents } from '../model/newChatHost'
+import { ageOf, nowSeconds, splitRecent, useFolderBranches, useGlances, useInstalledAgents, useSyncState } from '../model/newChatHost'
+import { Switch } from '@/components/ui/switch'
 import type { NewSessionProject } from '../model/newSession'
 import { suggestBranchName } from '../model/worktreeName'
 import { Icon } from './glyphs'
 import { ChipMenu, type ChipItem } from './NewChatMenus'
 
 /** The branch a chat starts on when it is not the folder's current one: switch to it, or work in a new worktree of it. */
-export type BranchChoice = { name: string; create: boolean; worktree: boolean }
+export type BranchChoice = { name: string; create: boolean; worktree: boolean; /** The upstream a new worktree branch starts from (fetched just before), when the folder follows one. */ base?: string | null }
 
 /** What the page asks the window to start: a chat with this agent, model and effort, in this folder, and its first message. */
 export type NewChatRequest = { folder: string; agent: ChatAgent; model: string; reasoning: AgentChoice['reasoning']; mode: string; message: string; branch: BranchChoice | null; machine: number; machineName: string }
@@ -56,6 +57,9 @@ type Props = {
   onCancel: () => void
 }
 
+/** How many other recent projects the page offers to switch to. */
+const SWITCH_CHIPS = 4
+
 /** What the page offers to start with once a folder is picked; a click starts the chat with it. */
 const SUGGESTED_TASKS = ['Explain how this project is laid out', 'Review my uncommitted changes', 'Find and fix a failing test'] as const
 
@@ -81,7 +85,8 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
   const [extra, setExtra] = useState<NewSessionProject | null>(null)
   const [message, setMessage] = useState('')
   const [branchPick, setBranchPick] = useState<{ folder: string; pick: BranchChoice } | null>(null)
-  const [treeMode, setTreeMode] = useState(false)
+  // Own copy: the agent works in a worktree of its own, so the checkout is untouched. On unless it is turned off.
+  const [treeMode, setTreeMode] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const text = useRef<HTMLTextAreaElement>(null)
@@ -108,14 +113,22 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
     else toast.error(unsupportedMessage(pick.type))
   }
   const [query, setQuery] = useState('')
-  const folder = picked ?? ''
+  // It opens ready to type, on the most recent project; the list of projects comes first only when there is none.
+  const folder = picked ?? projects[0]?.folder ?? ''
   const shown = extra === null || projects.some((project) => project.folder === extra.folder) ? projects : [...projects, extra]
   const current = shown.find((project) => project.folder === folder)
   const folderName = current?.name ?? (folder === '' ? 'Choose a folder' : folder.split(/[\\/]/).filter(Boolean).at(-1) ?? folder)
   const installed = useInstalledAgents()
   const [branches, reloadBranches] = useFolderBranches(remote ? '' : folder)
   // A branch chosen for one folder means nothing in another.
-  const branch = branchPick?.folder === folder ? branchPick.pick : null
+  const explicit = branchPick?.folder === folder ? branchPick.pick : null
+  const { state: sync, busy: pulling, pull } = useSyncState(remote ? '' : folder, true)
+  // With Own copy on and no branch chosen, the chat gets a new branch under a suggested name, in a worktree.
+  const suggested = useMemo(() => (treeMode && branches !== null ? suggestBranchName(new Set(branches.branches.map((entry) => entry.name))) : null), [treeMode, branches])
+  const chosen = useMemo(() => explicit ?? (treeMode && suggested !== null ? { name: suggested, create: true, worktree: true } : null), [explicit, treeMode, suggested])
+  // A new worktree branch starts from the latest of the branch it was made from, when the remote answered just now.
+  const upstream = sync?.fetched === true ? sync.upstream : null
+  const branch = useMemo<BranchChoice | null>(() => (chosen !== null && chosen.worktree && chosen.create && upstream !== null ? { ...chosen, base: upstream } : chosen), [chosen, upstream])
   const isInstalled = (id: string) => (installed === null ? chatAgentOf(id) !== null : installed.includes(id))
   const agentMissing = !remote && !isInstalled(agent)
 
@@ -189,19 +202,19 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
   }
   const elsewhere = machines.filter((candidate) => candidate.machine !== machine)
   const [now] = useState(nowSeconds)
+  const [pulledNow, setPulledNow] = useState(false)
+  // The other recent projects, a click away; each shows its branch and how far behind it is.
+  const switchTo = shown.filter((project) => project.folder !== folder).slice(0, SWITCH_CHIPS)
+  const glances = useGlances(remote ? [] : switchTo.map((project) => project.folder))
   const here = branch !== null && !branch.worktree ? branch.name : branches?.current ?? ''
   const inWorktree = new Set((branches?.worktrees ?? []).flatMap((tree) => (tree.branch === null ? [] : [tree.branch])))
   const branchLabel = branch?.name ?? branches?.current ?? 'detached'
   const pickBranch = (pick: BranchChoice) => { setBranchPick({ folder, pick }) }
-  // "New worktree" is a choice by itself: it takes a new branch under a suggested name at once, so the chat
-  // never starts in this checkout after all. Going back to "This folder" drops a worktree pick.
-  const chooseWhere = (where: 'checkout' | 'worktree') => {
-    setTreeMode(where === 'worktree')
-    if (where === 'worktree' && branch?.worktree !== true) {
-      pickBranch({ name: suggestBranchName(new Set((branches?.branches ?? []).map((entry) => entry.name))), create: true, worktree: true })
-    } else if (where === 'checkout' && branch?.worktree === true) {
-      setBranchPick(null)
-    }
+  // Own copy off drops a worktree pick: the agent edits the checkout, on the branch the folder is on.
+  const setOwnCopy = (on: boolean) => {
+    setTreeMode(on)
+    if (!on && branch?.worktree === true) setBranchPick(null)
+    if (on) setBranchPick(null)
   }
   const newBranchRows: ChipItem[] = treeMode && branch?.worktree === true && branch.create
     ? [{ key: 'tree-new-branch', label: branch.name, sub: `A new branch from ${branches?.current ?? 'here'}, in its own worktree`, icon: <Icon name="plus" size={12} />, checked: true, onPick: () => undefined }]
@@ -235,10 +248,6 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
     if (!/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(typed) || (branches?.branches ?? []).some((entry) => entry.name === typed)) return null
     return { key: 'new-branch', label: `Create branch ${typed}`, icon: <Icon name="plus" size={12} />, checked: false, onPick: () => { pickBranch({ name: typed, create: true, worktree: treeMode }) } }
   }
-  const whereItems: ChipItem[] = [
-    { key: 'worktree', label: 'New worktree', sub: `Own branch and copy${branch?.worktree === true ? ` (${branch.name})` : ''}. Your checkout is untouched.`, icon: <Icon name="splitRight" size={13} />, checked: treeMode, onPick: () => { chooseWhere('worktree') } },
-    { key: 'checkout', label: 'This folder', sub: `Edits your checkout of ${branches?.current ?? 'this folder'} directly.`, icon: <Icon name="folder" size={13} />, checked: !treeMode, onPick: () => { chooseWhere('checkout') } },
-  ]
 
   // Step 1: what the search field shows under it.
   const needle = query.trim().toLowerCase()
@@ -298,10 +307,50 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
                 <>
                   <ChipMenu title="Branch" side="bottom" summary={branchLabel} label={<span className="mx-nc-branch">{branchLabel}</span>} icon={<span className="mx-nc-branch"><Icon name="branch" size={12} /></span>}
                     search="Search or create a branch" width={320} sections={branchSections} fromQuery={fromBranchName} />
-                  <ChipMenu title="Work in" side="bottom" label={treeMode ? 'New worktree' : 'This folder'} icon={<Icon name={treeMode ? 'splitRight' : 'folder'} size={13} />} width={340} sections={[{ heading: 'Work in', items: whereItems }]} />
                 </>
               )}
+              {branches !== null && (
+                <label className="mx-own-copy" title="The agent works in a worktree of its own, so your checkout stays as it is.">
+                  <Icon name="worktree" size={13} />
+                  <span>Own copy</span>
+                  <Switch checked={treeMode} onCheckedChange={setOwnCopy} aria-label="Own copy" />
+                </label>
+              )}
             </div>
+            {sync !== null && !remote && (
+              <p className="mx-nc-sync" aria-live="polite">
+                {treeMode ? (
+                  <>
+                    <span className="mx-nc-dot" aria-hidden="true" />
+                    {sync.upstream === null ? `Starts from ${sync.branch ?? 'here'}` : `Starts from latest ${sync.upstream}${sync.fetched ? ' · fetched just now' : ' · could not reach the remote'}`}
+                  </>
+                ) : sync.upstream !== null && sync.behind > 0 ? (
+                  <>
+                    <span className="mx-nc-behind">↓{sync.behind} behind {sync.upstream}</span>
+                    <button type="button" className="mx-nc-pull" disabled={sync.dirty || pulling} title={sync.dirty ? 'You have uncommitted changes. Commit or stash first.' : `Run git pull --ff-only`} onClick={() => { void pull().then(() => { setPulledNow(true) }).catch((failure: unknown) => { toast.error(errorMessage(failure, 'Could not pull')) }) }}>↓ Pull</button>
+                  </>
+                ) : sync.upstream !== null ? (
+                  <><span className="mx-nc-dot" aria-hidden="true" />{pulledNow ? 'Pulled · up to date with' : 'Up to date with'} {sync.upstream}</>
+                ) : null}
+              </p>
+            )}
+            {switchTo.length > 0 && (
+              <div className="mx-nc-switch" role="group" aria-label="Switch to">
+                <span className="mx-nc-switch-label">Switch to</span>
+                {switchTo.map((project) => {
+                  const glance = glances.get(project.folder)
+                  return (
+                    <button key={project.folder} type="button" className="mx-nc-switch-chip" title={`${project.folder}${remote ? ` · ${targetLabel}` : ''}`} onClick={() => { setFolder(project.folder) }}>
+                      <span className="mx-ns-square" style={{ background: project.color }} aria-hidden="true" />
+                      <span>{project.name}</span>
+                      {remote && <span className="mx-nc-switch-machine">· {targetLabel}</span>}
+                      {glance?.branch != null && <span className="mx-nc-branch">{glance.branch}</span>}
+                      {glance !== undefined && glance.behind > 0 && <span className="mx-nc-behind">↓{glance.behind}</span>}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
             <ul className="mx-nc-tasks" aria-label="Suggested tasks">
               {SUGGESTED_TASKS.map((task) => (
                 <li key={task}><button type="button" disabled={busy || agentMissing} onClick={() => { start(task) }}><span aria-hidden="true">→</span>{task}</button></li>

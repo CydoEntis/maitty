@@ -1034,8 +1034,28 @@ export async function switchBranch(folder: string, branch: string, create: boole
 }
 
 /** Adds a worktree of the folder's repository for a branch (made first when `create`); resolves to its folder. */
-export async function addWorktree(folder: string, branch: string, create: boolean): Promise<string> {
-  return invokeParsed('git_add_worktree', z.string(), { folder, branch, create })
+export async function addWorktree(folder: string, branch: string, create: boolean, base: string | null = null): Promise<string> {
+  return invokeParsed('git_add_worktree', z.string(), { folder, branch, create, base })
+}
+
+const SyncStateSchema = z.object({
+  branch: z.string().nullable(),
+  upstream: z.string().nullable(),
+  behind: z.number().int().nonnegative(),
+  ahead: z.number().int().nonnegative(),
+  dirty: z.boolean(),
+  fetched: z.boolean(),
+}).nullable()
+export type SyncState = NonNullable<z.infer<typeof SyncStateSchema>>
+
+/** How a folder's checkout stands against its upstream, asking the remote first when `fetch`; null outside a git repository. */
+export async function folderSyncState(folder: string, fetch: boolean): Promise<SyncState | null> {
+  return invokeParsed('git_sync_state', SyncStateSchema, { folder, fetch })
+}
+
+/** Fast-forwards the folder's checkout to its upstream; refused with the reason when it has uncommitted changes. */
+export async function pullFolder(folder: string): Promise<void> {
+  await invokeParsed('git_pull', NullSchema, { folder })
 }
 
 /** Opens an agent's official setup page in the browser. */
