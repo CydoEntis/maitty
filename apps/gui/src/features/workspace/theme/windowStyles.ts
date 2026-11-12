@@ -1,7 +1,7 @@
 import type { StyleLook, ThemeEntry } from './themes'
 
 /**
- * The four window styles of the desktop: Glass, Mono Type, Console and Retro Pixel. A style is shape, not colour: its corners, borders,
+ * The four window styles of the desktop: Glass, Squared, Flat and Retro Pixel (ids `glass`, `mono`, `console`, `pixel`: the ids are what is saved, so a rename of a name never moves a saved choice). A style is shape, not colour: its corners, borders,
  * shadows and type (the shape rules keyed by `[data-style]` live in `material.css`), plus the fonts and the two glass dials
  * kept here. The colours are always the theme in use, so every style can wear every theme.
  */
@@ -46,7 +46,7 @@ export const WINDOW_STYLES: readonly WindowStyleEntry[] = [
     },
   },
   {
-    id: 'mono', name: 'Mono Type', blurb: 'Every glyph the same width, square corners.',
+    id: 'mono', name: 'Squared', blurb: 'Every glyph the same width, square corners.',
     font: SPACE_MONO,
     dark: {
       look: { ui: SPACE_MONO, mono: SPACE_MONO, hk: '.4', sk: '.5', glowAccent: '0%', glowMag: '0%', sh: NO_SHEEN },
@@ -56,7 +56,7 @@ export const WINDOW_STYLES: readonly WindowStyleEntry[] = [
     },
   },
   {
-    id: 'console', name: 'Console', blurb: 'IDE panels with hairline borders. Plex Sans with JetBrains Mono.',
+    id: 'console', name: 'Flat', blurb: 'IDE panels with hairline borders. Plex Sans with JetBrains Mono.',
     font: PLEX_SANS,
     dark: {
       look: { ui: PLEX_SANS, mono: JETBRAINS_MONO, hk: '.45', sk: '.7', glowAccent: '6%', glowMag: '0%', sh: NO_SHEEN },
@@ -79,7 +79,7 @@ export const WINDOW_STYLES: readonly WindowStyleEntry[] = [
 
 /**
  * Which of the two material finishes a style is built on (`material.css`): Glass is
- * translucent fills over a blur; Mono, Console and Pixel are solid fills with their own shape rules.
+ * translucent fills over a blur; Squared, Flat and Pixel are solid fills with their own shape rules.
  */
 export const finishOf = (style: WindowStyle): 'glass' | 'flat' => (style === 'glass' ? 'glass' : 'flat')
 

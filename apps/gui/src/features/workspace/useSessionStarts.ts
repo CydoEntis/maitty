@@ -3,6 +3,7 @@ import { type Dispatch, type RefObject, type SetStateAction, useCallback, useMem
 import type { QueryClient } from '@tanstack/react-query'
 import { type RemoteMachine, remoteStartRefusal, remoteTargetOf } from './model/machines'
 import { toast } from '@/lib/toast'
+import { DEFAULT_PICK } from '@/features/chat/agentChoice'
 import { addWorktree, defaultSessionFolder, handoffBrief, dropPrewarmedAgent, prewarmAgentSession, startAgentSession as launchAgentSession, loadConversations, renameConversationOnDaemon, sendTerminalInput, sendWhenAgentReady, startChatSession, startShellSession, submitMessage, switchBranch } from '@/api/daemon'
 import { LOCAL_MACHINE, startSessionOnMachine } from '@/api/machines'
 import type { DesktopSettingsSection } from '@/features/settings/components/DesktopSettings'
@@ -18,7 +19,6 @@ import { nameFromMessage } from './model/newSession'
 import { usePaneViews } from './usePaneViews'
 import type { ChatAgent, PaneView, StructuredAgent } from './model/chatView'
 import { rememberShellStart } from './model/shellStarts'
-import type { NewSessionRequest } from './components/NewSessionModal'
 import type { NewChatRequest } from './components/NewChatPage'
 import type { WireChoice } from '@/features/chat/agentChoice'
 import { rememberYoloSession } from '@/features/chat/yoloSessions'
@@ -32,6 +32,8 @@ import { makeId } from './makeId'
 /** How long a new session on another machine is waited for, and how often its list is looked at. */
 const REMOTE_START_WAIT_MS = 8000
 const REMOTE_START_POLL_MS = 250
+/** Where a shell starts on another machine when no folder is asked for: that machine's own home. */
+const REMOTE_HOME = '~'
 
 /** How long a session started as an agent is taken to be it while the daemon has not said so; a command that never starts one stops claiming it. */
 const EXPECTED_AGENT_MS = 30_000
@@ -43,7 +45,7 @@ function omitKey<T>(record: Record<string, T>, key: string): Record<string, T> {
 }
 
 /** Every way the window starts a session: a shell, an agent in a terminal, a chat, a worktree, on this computer or another machine. */
-export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLayout, flash, focusedSession, setNewChatOpen, online, starting, setStarting, setStartedFrom, sessionMap, preferences, setExpectedAgents, paneViews, setSettingsSection, setNewSessionMachine, home, machinesRef }: {
+export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLayout, flash, focusedSession, setNewChatOpen, online, starting, setStarting, setStartedFrom, sessionMap, preferences, setExpectedAgents, paneViews, setSettingsSection, setNewChatMachine, setNewChatSeed, home, machinesRef }: {
   queryClient: QueryClient
   sessions: SessionView[]
   setWorktreeFrom: Dispatch<SetStateAction<SessionView | null>>
@@ -60,7 +62,8 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
   setExpectedAgents: Dispatch<SetStateAction<Record<string, ChatAgent>>>
   paneViews: ReturnType<typeof usePaneViews>
   setSettingsSection: Dispatch<SetStateAction<DesktopSettingsSection | null>>
-  setNewSessionMachine: Dispatch<SetStateAction<number | null>>
+  setNewChatMachine: Dispatch<SetStateAction<number>>
+  setNewChatSeed: Dispatch<SetStateAction<{ folder: string; message: string } | null>>
   home: string
   machinesRef: RefObject<ReadonlyMap<number, RemoteMachine>>
 }) {
@@ -229,54 +232,6 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
     }
   }, [online, starting, startAgentSession, preferences.newSessionView])
 
-  // The new chat is the agent in a terminal the daemon owns, shown as its chat: one session whose view
-  // switches to the terminal at any time (ADR 0003), the same for every agent.
-  const startNewChat = useCallback(async (request: NewChatRequest): Promise<void> => {
-    if (!online) throw new Error('The daemon is not reachable')
-    // The branch is settled before the agent starts, and a failure stays on the page with its words.
-    let folder = request.folder
-    if (request.branch?.worktree) folder = await addWorktree(folder, request.branch.name)
-    else if (request.branch) await switchBranch(folder, request.branch.name, request.branch.create)
-    // The page stays, with the message in it, until the chat that replaces it is there: closing it first showed the
-    // empty window (or the last chat) for a moment between the two.
-    await startAgentSession(() => Promise.resolve(folder), request.agent, 'chat', request.message, launchFlags(request.agent, request.model, request.reasoning, request.mode), (id) => {
-      // Codex has no file that says its mode, so what it was started in is what its chat shows: Full access under its Yolo setting.
-      const codexMode = yolo.codex ? CODEX_FULL_MODE : request.mode === 'default' ? null : request.mode
-      holdStartChoice(id, { model: request.model, reasoning: request.reasoning, mode: request.agent === 'claude' ? request.mode : request.agent === 'codex' ? codexMode : null })
-      setNewChatOpen(false)
-    })
-  }, [online, setNewChatOpen, startAgentSession, yolo.codex])
-
-  // New session (the shortcut, the palette, the sidebar's chat button): on this computer it is the new chat page.
-  // Chats are this computer's, so another machine's session is asked for in the dialog, on that machine.
-  const newSession = useCallback((machine?: number) => {
-    setSettingsSection(null)
-    const target = machine ?? remoteTargetOf(focusedSession)?.machine ?? LOCAL_MACHINE
-    if (target === LOCAL_MACHINE) {
-      setNewChatOpen(true)
-      return
-    }
-    setNewSessionMachine(target)
-  }, [focusedSession, setNewChatOpen, setNewSessionMachine, setSettingsSection])
-
-  // A plain shell in the start folder: terminal view only, whatever the default agent is.
-  // Another machine asks for a folder there first, so it opens the modal.
-  const newTerminal = useCallback((machine?: number) => {
-    setSettingsSection(null)
-    const target = machine ?? remoteTargetOf(focusedSession)?.machine ?? LOCAL_MACHINE
-    if (target !== LOCAL_MACHINE) {
-      setNewSessionMachine(target)
-      return
-    }
-    void runStart(async () => resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => { rememberShellStart(id); movePanes(() => { setLayout((current) => openArrangement(current, id, makeId)) }) })
-  }, [setSettingsSection, focusedSession, runStart, setNewSessionMachine, preferences.startFolder, home, setLayout])
-
-  // The sidebar's header for a machine and the palette both choose where the session goes.
-  const newSessionOn = useCallback((machine: number) => {
-    setSettingsSection(null)
-    setNewSessionMachine(machine)
-  }, [setNewSessionMachine, setSettingsSection])
-
   // Starts a shell on another machine and opens it once the machine lists it; resolves to its id.
   const startOnMachine = useCallback(async (target: { machine: number; name: string }, folder: string): Promise<string | null> => {
     const known = new Set((machinesRef.current.get(target.machine)?.conversations ?? []).map((item) => item.id))
@@ -295,23 +250,72 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
     return null
   }, [machinesRef, setLayout])
 
-  // What the New session modal asks for: a shell or an agent, here or on another machine. The modal closes once it is started.
-  const startFromModal = useCallback(async (request: NewSessionRequest) => {
-    if (request.machine !== LOCAL_MACHINE) {
-      const id = await startOnMachine({ machine: request.machine, name: request.machineName }, request.folder)
-      if (id !== null && request.startAs !== 'terminal') {
-        if (request.message !== '') {
-          holdFirstMessage(id, request.message)
-          entrustFirstMessage(id, request.message, sendWhenAgentReady)
-        }
-        await sendTerminalInput({ id, generation: 0 }, `${request.startAs}\r`)
-      }
-    } else if (request.startAs === 'terminal') {
-      void runStart(() => Promise.resolve(request.folder), (id) => { rememberShellStart(id); movePanes(() => { setLayout((current) => openArrangement(current, id, makeId)) }) })
-    } else {
-      void startAgentSession(() => Promise.resolve(request.folder), request.startAs, preferences.newSessionView, request.message)
+  // A chat on another machine is its daemon's terminal session with the agent typed into the shell, shown as its chat once the
+  // agent reports a conversation. The line is built from the closed set `launchFlags` allows (the agent, a permission mode from
+  // the fixed list), so no free text reaches the remote shell; the first message waits until the agent takes input.
+  // The model and effort are the agent's own there, and a worktree is that daemon's own setting.
+  const startRemoteChat = useCallback(async (request: NewChatRequest): Promise<void> => {
+    const id = await startOnMachine({ machine: request.machine, name: request.machineName }, request.folder)
+    if (id === null) throw new Error(`${request.machineName} did not report the new session`)
+    if (request.message !== '') {
+      holdFirstMessage(id, request.message)
+      entrustFirstMessage(id, request.message, sendWhenAgentReady)
     }
-    setNewSessionMachine(null)
-  }, [setNewSessionMachine, startOnMachine, runStart, setLayout, startAgentSession, preferences.newSessionView])
-  return { signInAgent, runStart, newSession, newTerminal, startAgentSession, newSessionOn, startChatHere, handoffSession, startNewChat, warmNewChat, createWorktree, startFromModal }
+    setExpectedAgents((current) => ({ ...current, [id]: request.agent }))
+    window.setTimeout(() => { setExpectedAgents((current) => omitKey(current, id)) }, EXPECTED_AGENT_MS)
+    paneViews.choose(id, 'chat')
+    await sendTerminalInput({ id, generation: 0 }, `${request.agent}${launchFlags(request.agent, DEFAULT_PICK, DEFAULT_PICK, request.mode)}\r`)
+    setNewChatOpen(false)
+  }, [startOnMachine, setExpectedAgents, paneViews, setNewChatOpen])
+
+  // The new chat is the agent in a terminal the daemon owns, shown as its chat: one session whose view
+  // switches to the terminal at any time (ADR 0003), the same for every agent.
+  const startNewChat = useCallback(async (request: NewChatRequest): Promise<void> => {
+    if (!online) throw new Error('The daemon is not reachable')
+    if (request.machine !== LOCAL_MACHINE) return startRemoteChat(request)
+    // The branch is settled before the agent starts, and a failure stays on the page with its words.
+    let folder = request.folder
+    if (request.branch?.worktree) folder = await addWorktree(folder, request.branch.name)
+    else if (request.branch) await switchBranch(folder, request.branch.name, request.branch.create)
+    // The page stays, with the message in it, until the chat that replaces it is there: closing it first showed the
+    // empty window (or the last chat) for a moment between the two.
+    await startAgentSession(() => Promise.resolve(folder), request.agent, 'chat', request.message, launchFlags(request.agent, request.model, request.reasoning, request.mode), (id) => {
+      // Codex has no file that says its mode, so what it was started in is what its chat shows: Full access under its Yolo setting.
+      const codexMode = yolo.codex ? CODEX_FULL_MODE : request.mode === 'default' ? null : request.mode
+      holdStartChoice(id, { model: request.model, reasoning: request.reasoning, mode: request.agent === 'claude' ? request.mode : request.agent === 'codex' ? codexMode : null })
+      setNewChatOpen(false)
+    })
+  }, [online, setNewChatOpen, startAgentSession, startRemoteChat, yolo.codex])
+
+  // New session (the shortcut, the palette, the sidebar's chat button): the new chat page, on the machine asked for or the
+  // focused session's.
+  const newSession = useCallback((machine?: number) => {
+    setSettingsSection(null)
+    setNewChatMachine(machine ?? remoteTargetOf(focusedSession)?.machine ?? LOCAL_MACHINE)
+    setNewChatSeed(null)
+    setNewChatOpen(true)
+  }, [focusedSession, setNewChatOpen, setNewChatMachine, setNewChatSeed, setSettingsSection])
+
+  // "New chat with summary" on a chat whose context is nearly full: the new chat page, on the same machine and folder, with
+  // the summary as its first message to read and edit before it is sent.
+  const newChatWithSummary = useCallback((from: SessionView, summary: string) => {
+    setSettingsSection(null)
+    setNewChatMachine(from.machine)
+    setNewChatSeed({ folder: from.cwd, message: summary })
+    setNewChatOpen(true)
+  }, [setNewChatOpen, setNewChatMachine, setNewChatSeed, setSettingsSection])
+
+  // A plain shell in the start folder: terminal view only, whatever the default agent is.
+  // On another machine it starts in that machine's home folder.
+  const newTerminal = useCallback((machine?: number) => {
+    setSettingsSection(null)
+    const target = machine ?? remoteTargetOf(focusedSession)?.machine ?? LOCAL_MACHINE
+    if (target !== LOCAL_MACHINE) {
+      void startOnMachine({ machine: target, name: 'The machine' }, REMOTE_HOME).then((id) => { if (id !== null) rememberShellStart(id) })
+      return
+    }
+    void runStart(async () => resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => { rememberShellStart(id); movePanes(() => { setLayout((current) => openArrangement(current, id, makeId)) }) })
+  }, [setSettingsSection, focusedSession, runStart, startOnMachine, preferences.startFolder, home, setLayout])
+
+  return { signInAgent, runStart, newSession, newTerminal, startAgentSession, startChatHere, handoffSession, newChatWithSummary, startNewChat, warmNewChat, createWorktree }
 }

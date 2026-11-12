@@ -41,7 +41,7 @@ const LOCAL_REDIAL: Duration = Duration::from_secs(1);
 /// What a connection says about the host in its Hello: it attaches to the panes this app owns
 /// (ADR 0004) and asks for a pane's replay when a view opens on it. A desktop has no pane of
 /// its own, so there is no claim to make.
-fn dial() -> anyhow::Result<Dial> {
+pub(crate) fn dial() -> anyhow::Result<Dial> {
     Ok(Dial {
         attach: true,
         surface: Surface::Desktop,
@@ -106,6 +106,8 @@ struct Shared {
     unsent: Mutex<BTreeMap<MachineId, u32>>,
     /// What each machine may do to this computer (`notices`, `sounds`, `clipboard`), as configured.
     opts: Mutex<BTreeMap<MachineId, MachineOpts>>,
+    /// How to reach each machine, so a request line can be made beside its long one.
+    routes: Mutex<BTreeMap<MachineId, Machine>>,
     /// When each machine that is not connected stopped being, in milliseconds since the epoch.
     down_since: Mutex<BTreeMap<MachineId, u64>>,
 }
@@ -167,6 +169,11 @@ impl HubHandle {
     }
 
     /// Whether a different daemon answered at the machine's name, so its line was turned away.
+    /// How to reach `machine`, when it is one of the list's.
+    pub fn route(&self, machine: MachineId) -> Option<Machine> {
+        lock(&self.shared.routes).get(&machine).cloned()
+    }
+
     pub fn is_refused(&self, machine: MachineId) -> bool {
         lock(&self.shared.refused).contains(&machine)
     }
@@ -303,6 +310,7 @@ impl Hub {
             .collect();
         names.insert(MachineId::LOCAL, maitty_machines::LOCAL_MACHINE.to_owned());
         opts.insert(MachineId::LOCAL, MachineOpts::LOCAL);
+        let routes: BTreeMap<MachineId, Machine> = machines.iter().cloned().collect();
         let links = Links::start(machines, timing, dial);
         let names_for_hub = names.clone();
         let (outbox_tx, outbox) = mpsc::unbounded_channel();
@@ -332,6 +340,7 @@ impl Hub {
                 shared: Arc::new(Shared {
                     names: Mutex::new(names),
                     opts: Mutex::new(opts),
+                    routes: Mutex::new(routes),
                     ..Shared::default()
                 }),
             },
@@ -393,10 +402,12 @@ impl Hub {
                     return;
                 }
                 let machine = Machine::from_def(&def, &self.ssh);
+                let route = machine.clone();
                 // Named before the supervisor starts, so nothing it says is dropped as unnamed.
                 let Some(id) = self.control.start(machine) else {
                     return;
                 };
+                lock(&self.handle.shared.routes).insert(id, route);
                 self.names.insert(id, def.name.clone());
                 lock(&self.handle.shared.names).insert(id, def.name.clone());
                 lock(&self.handle.shared.opts).insert(id, MachineOpts::named(std::slice::from_ref(&def), &def.name));
@@ -424,6 +435,7 @@ impl Hub {
                 let shared = &self.handle.shared;
                 lock(&shared.names).remove(&machine);
                 lock(&shared.opts).remove(&machine);
+                lock(&shared.routes).remove(&machine);
                 lock(&shared.up).remove(&machine);
                 lock(&shared.refused).remove(&machine);
                 lock(&shared.unsent).remove(&machine);

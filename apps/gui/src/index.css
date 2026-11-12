@@ -69,6 +69,7 @@
   --done: var(--ok);
   --working: var(--primary);
   --idle: #56616c;
+  --branch: #A78BFA;
 }
 
 :root[data-theme="abyss"] {

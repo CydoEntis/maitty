@@ -11,7 +11,7 @@ People run agents on more than one computer and want one window over all of them
 
 - **One supervised connection per machine, held by the client.** There is no daemon-to-daemon hub;
   each machine's daemon stays the only owner of its sessions (0001). The local daemon is mandatory.
-- A new session goes to the machine chosen in the New session dialog; the dialog starts on the
+- A new session goes to the machine chosen on the new chat page; the page starts on the
   focused session's machine, and on this computer when nothing is focused.
 - A dropped machine's agents stay in the sidebar, greyed, with the reason. Reconnecting only
   attaches; it never starts a daemon the user stopped.
@@ -40,12 +40,24 @@ People run agents on more than one computer and want one window over all of them
   progress is lost. A daemon whose sessions are not saved is left running and the update says so.
 - The machine list is local-only and never synced. A daemon id in the snapshot lets the client
   refuse an alias that now answers as a different machine.
+- **Remote chat.** A pane on another machine has a chat view and the new chat page, like one on
+  this computer. The window asks that machine's daemon for its conversation with the messages it
+  already speaks, on request connections of its own beside the machine's long one (same ssh line,
+  attach only). Nothing changes on the remote side and `PROTOCOL_VERSION` does not move. What the
+  remote supplies is data: cleaned before display, links confirmed, nothing fetched on its own, and
+  the remote daemon alone decides its status (0003). Anything that reads a disk (Changes, Files,
+  Find, opening a path) stays local-only. See [the spec](../features/remote-chat/spec.md).
 - A Windows client may reach Linux and macOS remotes. A Windows remote is out.
 
 ## Alternatives considered
 
 - **A hub daemon**: rejected, a second owner of sessions breaks 0001.
+- **Remote chat on the long connection**: rejected, conversation replies carry no tag, so it would
+  need a message change and a daemon update on every machine.
+- **Reading a remote transcript over ssh**: rejected, the daemon is the only verified reader (0003).
 
 ## Consequences
 
-- Features that read the local disk are off for a remote pane and say which machine.
+- Features that read the local disk are off for a remote pane and say which machine. Chat is not
+  one of them.
+- Each machine can hold a few idle request connections besides its long one.

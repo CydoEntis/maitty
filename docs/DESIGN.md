@@ -218,13 +218,13 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   has a faint top highlight (`rgba(--hl, .035)` fading to `.012` over 120px on the sidebar, a flat `.018` on the
   workspace card), a `rgba(--hl, .09)` hairline, an inner top edge and a `0 10px 30px -12px` shadow; a float has a
   stronger highlight (`.07` to `.03`), a `.12` hairline and a `0 18px 44px -12px` shadow, with a 14px blur behind it; a
-  field sits between (`.075` to `.035`). **Flat** (Mono Type, Console, Retro Pixel): solid fills, a hairline, no blur, no
+  field sits between (`.075` to `.035`). The **flat finish** (the Squared, Flat and Retro Pixel styles; not to be mixed up with the Flat style): solid fills, a hairline, no blur, no
   highlight (`--gk` is 0, which turns off every gradient and lift that multiplies by it; hover tints stay), one plain
   shadow on floats. A new surface is added to a role's list in `material.css`; it does not set a background of its
   own. A popover opens through `PopupContent` (`components/ui/popup.tsx`) or carries `mx-pop`, so it is portalled into
   the window root and takes the float role. **Inside a surface**, nothing reads the theme's solid colours directly: a
   sunken control is `--m-well`, a raised or current row `--m-raise`, a picked row `--m-sel`, a hovered one
-  `--m-hover`, a dialog's own ground `--m-pane`. Flat maps them to the theme's `--well`/`--raise`/`--sel`/`--hover`/
+  `--m-hover`, a dialog's own ground `--m-pane`. The flat finish maps them to the theme's `--well`/`--raise`/`--sel`/`--hover`/
   `--pane`; Glass maps them to tints of the light (`--hl`) and shade (`--sd`). Tints are written
   `rgba(var(--hl), calc(.06 * var(--hk)))`, never a fixed white. The hairline uses `--hl` (ink on a light theme).
   `src/material.test.ts` fails when a stylesheet reads a solid surface colour or a fixed white. Left on purpose:
@@ -233,9 +233,9 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   only tint behind the cards, and Glass always has it, painted on the whole window so no seam shows under the title bar.
 - **Window style: four shapes, any theme** (Settings › Appearance › Look › Window style, `style`; the root carries
   `data-style` and `data-finish`). A style is shape and type, never colour: whatever theme is in use is what every style
-  wears. **Glass** (the default: frosted panels with 22px corners — mostly opaque, a milky sheen, a strong blur (28px, saturate 140%) and a bright edge, so what is behind them is only a soft wash of colour — over an atmosphere of three blobs (teal, brass, blue) drawn from the theme; the terminal is see-through by default so its text sits on the frost,
-  Inter and JetBrains Mono; a saved `frosted` reads as Glass), **Mono Type** (Space Mono everywhere, square corners),
-  **Console** (IBM Plex Sans and JetBrains Mono, hairline borders, a marker on the selected row) and **Retro Pixel**
+  wears. **Glass** (the default: frosted panels with 22px corners — mostly opaque, a milky sheen, a strong blur (28px, saturate 140%) and a bright edge, so what is behind them is only a soft wash of colour — over an atmosphere of three blobs (the theme's accent, blue and magenta) drawn from the theme; the terminal is see-through by default so its text sits on the frost,
+  Inter and JetBrains Mono; a saved `frosted` reads as Glass), **Squared** (id `mono`: Space Mono everywhere, square corners),
+  **Flat** (id `console`: IBM Plex Sans and JetBrains Mono, hairline borders, a marker on the selected row) and **Retro Pixel**
   (Pixelify Sans, square corners, 3px borders, hard offset shadows, scanlines). Layout and features never change. A style is data
   in `theme/windowStyles.ts` (fonts and the glass dials `--hk`/`--sk`, per dark and light side); `withWindowStyle` lays it over the
   theme in use and touches no colour. **Components are built once and read tokens, never the style.** Besides the
@@ -243,11 +243,11 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   state: a sidebar row, a settings nav item, a chosen segment, a palette row), `--c-field-*` (dropdown buttons, pickers,
   the new-session segments, inputs), `--c-track-*` (the tray behind a segmented control), `--c-sw-*` and `--c-knob-*`
   (the switch), `--c-tile-ring` (agent and shell tiles) and `--c-head-bg` (sticky headers). Glass uses the
-  defaults; Mono, Console and Pixel override them. What tokens cannot say (square corners, Pixel's borders and
+  defaults; Squared, Flat and Pixel override them. What tokens cannot say (square corners, Pixel's borders and
   scanlines, Glass's panels, no blur outside Glass) is the one `[data-style]` block at the end of
   `material.css`. `data-finish` is derived (`finishOf`): Glass is `glass`, the others `flat`. The style is
   the desktop app's own: it is not in the shared `window_style` setting, which stays Flat or Glass for the config file. A
-  saved Flat or Tiled reads as Console. A new control gets tokens first and is checked in all four styles and both
+  saved Flat or Tiled reads as the Flat style. A new control gets tokens first and is checked in all four styles and both
   themes (Settings › Appearance shows each style live). **Icons** (Settings › Appearance › Icons, `iconColor`,
   `data-icons`): `color` keeps app icons in their own colours; `grayscale` makes them neutral `--raise` tiles.
 - **Title bar.** 32px with no background of its own, so it sits on the window ground (`--tbar` is `transparent`): the
@@ -334,7 +334,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   the history already held shows at once (`knownRows.ts`), and Reduce motion shows everything at once. A helper agent reporting back (the harness's `<task-notification>` block, which the history keeps as a
   user message) is one quiet line, "Agent "name" finished · 11s · 50.5k tokens", never the markup; once it has reported,
   its row leaves the sidebar. One that still needs something stays; one that stopped without finishing stays while the
-  agent works and goes when its turn is over (`listedSubagents`). Under a session that is not selected they are a row of
+  agent works, for up to two minutes after its last report, and goes when its turn is over (`listedSubagents`). Under a session that is not selected they are a row of
   small icons; under the selected one, a row each. Both are kept mounted and folded with `Collapse`, so selecting
   another session eases one shut and the other open (0.2s) instead of the sidebar jumping by their height. The daemon
   takes a helper's own report that it finished as final, whatever second its other reports were stamped with, and only
@@ -415,7 +415,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   terminal does, so the agent reads it at its next step; it is off while the agent asks something, since typed text
   would answer the question. A chat the daemon runs has no such button: it takes a message only when the turn ends.
 - **Pane** (`components/PaneCard.tsx`, `pane.css`). Agents and shells share one 42px header: the 26px app icon with its
-  status badge, the name (15px, 600) over the folder (11px `--dim`) and the branch (mono 10.5px `--ansi-mag`), then at
+  status badge, the name (15px, 600) over the folder (11px `--dim`) and the branch (mono 10.5px `--branch`), then at
   the right, icons only (layout 2e): the terminal | chat switch (agents with a chat), split right, the terminals
   drawer (only while terminals are pinned under the chat), the **side panel** button (a green dot while the
   repository has changes, the counts in its tip), ⋯ and close. Split down and Maximize are in ⋯ and on their keys.
@@ -593,14 +593,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   run of the typed text ranks above letters that merely appear in order; ↑ ↓ move, ↵ runs, Esc closes.
 - **No Inbox.** What needs you, what stopped and what finished are the first sections of the sidebar's status list, and
   the notification card and the tray menu say the same; the desktop app has no separate Inbox panel.
-- **New session dialog** (⌘T, Ctrl+Shift+T, the sidebar's New agent chat, a machine's New agent chat here). A 560px
-  dialog: **Agent chat | Shell**; AGENT (Claude Code, Codex as cards); PROJECT (a chip per project the machine has
-  sessions in, the focused one first, with its colour; **Other folder…** opens the folder picker on this computer);
-  WHERE IT WORKS (**New worktree**: the daemon starts an agent typed in a project's main checkout in a worktree of its
-  own; **Current branch** shows disabled, since that is the daemon's `worktree.per_agent` setting); FIRST MESSAGE (held
-  under the new session and sent when the agent takes input; its first three words name the session). **Cancel** and
-  **Start agent** or **Open shell** with `Ctrl ↵`. On another machine the title says so and the agent is typed into a
-  shell there.
+- **New chat page on another machine.** The same page as on this computer (layout 2f), titled by the machine's tray fact `On <nickname or name>`: its projects, a pasted path, no Browse…, no branch, worktree or attach controls, and a model button that holds only the agent switch. There is no New session dialog.
 - **Focus mode (⌘.).** Hides the sidebar; a pill at the bottom says where you are and
   how many sessions need you elsewhere. Esc or the pill's Exit leaves it.
 - **Broadcast (⌘⇧B).** Per layout. While on, every pane of the layout has a violet outline and a
@@ -681,8 +674,8 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   it asks again first when that would lose changes or unmerged commits). This computer's worktrees only
   (`WorktreeManager.tsx`, `src-tauri/src/worktrees.rs`). Worktrees group under their parent repo. A folder's row shows
   only its name: a branch belongs to a session, and a worktree's branch is not the folder's.
-- **Branch or worktree.** A session in the project's own folder shows its branch in `--ansi-mag` with the branch mark;
-  one in a linked worktree (the daemon's `TermInfo.linked`, never worked out from the folder) shows it in `--ansi-blue`
+- **Branch or worktree.** A session in the project's own folder shows its branch in `--branch` (violet: #A78BFA on a dark ground, #6B46C1 on a light one, set by `themeStyle`; every branch name and icon uses it) with the branch mark;
+  one in a linked worktree (the daemon's `TermInfo.linked`, never worked out from the folder) shows it in `--branch`
   with a tree, on its sidebar row, its pane header and under the message box, where the word reads **Worktree** or
   **Branch**. The tooltip says which.
 - **A session whose agent asks for a secret** (`maitty_request_secret`) shows a bar across the top of its pane with the
@@ -838,3 +831,5 @@ and timings; the feature stylesheets beside their components carry them (`sideba
 ### Notification cards
 
 Every toast is drawn by one component, `NotificationCard` (`apps/gui/src/features/notifications/`): the agent's icon with its status badge on the left, a bold title with a close button, a muted line saying what it wants (a command in mono), the buttons, and "just now" at the bottom right. It is a float, so it takes the material roles from `material.css` and sets only its tone colour (`needs`, `done`, `error`, `info`). `SessionNotice` (terminal sessions) and `NoticeToast` (conversation views) only map their data onto it; plain Sonner toasts (messages, errors) wear the same float material without the icon and buttons. Allow appears only when the session is stopped on a choice the GUI can answer.
+
+- **Working badge.** A `--working` rounded square (3px radius) with the spinner in `--on-accent`; it is the same square at every size (sidebar row, pane header). The chat's scroll area fades to transparent over its top 36px.

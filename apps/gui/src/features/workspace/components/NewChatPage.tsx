@@ -14,8 +14,10 @@ import { CODEX_FULL_MODE, CODEX_START_MODES, DANGER_MODES, modeLabel, PICKABLE_M
 import { AgentPicker } from '@/features/chat/components/AgentPicker'
 import { PermissionMenu } from '@/features/chat/components/PermissionMenu'
 import { openAgentDocs } from '@/api/daemon'
+import { LOCAL_MACHINE } from '@/api/machines'
 import { chatAgentOf, type ChatAgent } from '../model/chatView'
-import { ageOf, nowSeconds, splitRecent, useFolderBranches, useInstalledAgents } from '../model/newChatHost'
+import { ageOf, nowSeconds, splitRecent, useFolderBranches, useGlances, useInstalledAgents, useSyncState } from '../model/newChatHost'
+import { Switch } from '@/components/ui/switch'
 import type { NewSessionProject } from '../model/newSession'
 import { suggestBranchName } from '../model/worktreeName'
 import { Icon } from './glyphs'
@@ -25,25 +27,27 @@ import { ChipMenu, type ChipItem } from './NewChatMenus'
 export type BranchChoice = { name: string; create: boolean; worktree: boolean }
 
 /** What the page asks the window to start: a chat with this agent, model and effort, in this folder, and its first message. */
-export type NewChatRequest = { folder: string; agent: ChatAgent; model: string; reasoning: AgentChoice['reasoning']; mode: string; message: string; branch: BranchChoice | null }
+export type NewChatRequest = { folder: string; agent: ChatAgent; model: string; reasoning: AgentChoice['reasoning']; mode: string; message: string; branch: BranchChoice | null; machine: number; machineName: string }
 
 /** The key the first message's files are kept under: no conversation exists yet, and a real one is never negative. */
 const NEW_CHAT_DRAFT = -1
 
-/** A computer a chat could start on. Chats run on this computer; another one hands over to the dialog that starts a session there. */
+/** A computer a chat could start on. */
 export type NewChatMachine = { machine: number; label: string; local: boolean }
 
 type Props = {
   machines: readonly NewChatMachine[]
-  /** The projects this computer has sessions in, the focused one first. */
+  /** The computer the chat starts on. */
+  machine: number
+  /** The projects that computer has sessions in, the focused one first. */
   projects: readonly NewSessionProject[]
   defaultAgent: ChatAgent
   /** Yolo mode is on for Claude, so a Claude chat may start in Bypass permissions. */
   bypassAllowed?: boolean
   /** Yolo mode is on for Codex, so every Codex chat starts with full access whatever is picked here. */
   codexYolo?: boolean
-  /** The system's folder picker; null when it is cancelled. */
-  browse: () => Promise<string | null>
+  /** The system's folder picker, whose answer is null when it is cancelled; null itself for another machine, whose disk this window cannot browse. */
+  browse: (() => Promise<string | null>) | null
   onStart: (request: NewChatRequest) => Promise<void>
   /** Starts the chat's agent while the first message is written (`useWarmAgent`); without it the agent starts on send. */
   onWarm?: WarmAgent
@@ -51,7 +55,12 @@ type Props = {
   /** Opens the dialog that adds a machine; without it the list has no such row. */
   onAddMachine?: () => void
   onCancel: () => void
+  /** A folder and first message to open with (a chat continued from a full one). */
+  seed?: { folder: string; message: string } | null
 }
+
+/** How many other recent projects the page offers to switch to. */
+const SWITCH_CHIPS = 4
 
 /** What the page offers to start with once a folder is picked; a click starts the chat with it. */
 const SUGGESTED_TASKS = ['Explain how this project is laid out', 'Review my uncommitted changes', 'Find and fix a failing test'] as const
@@ -66,27 +75,32 @@ const isPath = (text: string): boolean => /^(~|\/|[A-Za-z]:[\\/])/.test(text)
  * agent, model and effort on its model button and the permission mode beside it. The chat it starts
  * is the agent in a terminal the daemon owns, shown as its chat (ADR 0003). Enter sends, Esc goes back.
  */
-export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = false, codexYolo = false, browse, onStart, onWarm, onOtherMachine, onAddMachine, onCancel }: Props) {
+export function NewChatPage({ machines, machine, projects, defaultAgent, bypassAllowed = false, codexYolo = false, browse, onStart, onWarm, onOtherMachine, onAddMachine, onCancel, seed = null }: Props) {
+  // On another machine the chat is the agent started in a shell there: this computer's models, branches, files and installed agents say nothing of it.
+  const remote = machine !== LOCAL_MACHINE
+  const target = machines.find((candidate) => candidate.machine === machine)
+  const targetLabel = target?.label ?? 'This computer'
   const [agent, setAgent] = useState<ChatAgent>(defaultAgent)
   const [mode, setMode] = useState(START_MODE[defaultAgent])
   const [choice, setChoice] = useState<AgentChoice>({ model: DEFAULT_PICK, reasoning: DEFAULT_PICK })
-  const [picked, setFolder] = useState<string | null>(null)
-  const [extra, setExtra] = useState<NewSessionProject | null>(null)
-  const [message, setMessage] = useState('')
+  const [picked, setFolder] = useState<string | null>(seed?.folder ?? null)
+  const [extra, setExtra] = useState<NewSessionProject | null>(seed === null ? null : { folder: seed.folder, name: lastPart(seed.folder), color: 'var(--dim)' })
+  const [message, setMessage] = useState(seed?.message ?? '')
   const [branchPick, setBranchPick] = useState<{ folder: string; pick: BranchChoice } | null>(null)
-  const [treeMode, setTreeMode] = useState(false)
+  // Own copy: the agent works in a worktree of its own, so the checkout is untouched. On unless it is turned off.
+  const [treeMode, setTreeMode] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const text = useRef<HTMLTextAreaElement>(null)
   const box = useRef<HTMLDivElement>(null)
   const { attachments } = useComposerState(NEW_CHAT_DRAFT)
   // A new chat runs on this computer, so its files are copied here and named by path in the first message.
-  const attach = useAttachmentIntake({ conversation: NEW_CHAT_DRAFT, blocked: busy ? 'The chat is starting' : null })
+  const attach = useAttachmentIntake({ conversation: NEW_CHAT_DRAFT, blocked: remote ? `Files stay on this computer, not on ${targetLabel}` : busy ? 'The chat is starting' : null })
   const { addPaths } = attach
   useEffect(() => {
     const element = box.current
-    return element === null ? undefined : registerComposerDrop(element, addPaths)
-  }, [addPaths])
+    return element === null || remote ? undefined : registerComposerDrop(element, addPaths)
+  }, [addPaths, remote])
   // Files meant for a chat that was never started are not kept for the next one.
   useEffect(() => () => {
     updateComposer(NEW_CHAT_DRAFT, (state) => { revokePreviews(state.attachments); return { ...state, attachments: [] } })
@@ -101,17 +115,22 @@ export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = 
     else toast.error(unsupportedMessage(pick.type))
   }
   const [query, setQuery] = useState('')
-  const folder = picked ?? ''
+  // It opens ready to type, on the most recent project; the list of projects comes first only when there is none.
+  const folder = picked ?? projects[0]?.folder ?? ''
   const shown = extra === null || projects.some((project) => project.folder === extra.folder) ? projects : [...projects, extra]
   const current = shown.find((project) => project.folder === folder)
   const folderName = current?.name ?? (folder === '' ? 'Choose a folder' : folder.split(/[\\/]/).filter(Boolean).at(-1) ?? folder)
-  const local = machines.find((machine) => machine.local)
   const installed = useInstalledAgents()
-  const [branches, reloadBranches] = useFolderBranches(folder)
+  const [branches, reloadBranches] = useFolderBranches(remote ? '' : folder)
   // A branch chosen for one folder means nothing in another.
-  const branch = branchPick?.folder === folder ? branchPick.pick : null
+  const explicit = branchPick?.folder === folder ? branchPick.pick : null
+  const { state: sync, busy: pulling, pull } = useSyncState(remote ? '' : folder, true)
+  // With Own copy on and no branch chosen, the chat gets a new branch under a suggested name, in a worktree.
+  const suggested = useMemo(() => (treeMode && branches !== null ? suggestBranchName(new Set(branches.branches.map((entry) => entry.name))) : null), [treeMode, branches])
+  const chosen = useMemo(() => explicit ?? (treeMode && suggested !== null ? { name: suggested, create: true, worktree: true } : null), [explicit, treeMode, suggested])
+  const branch = chosen
   const isInstalled = (id: string) => (installed === null ? chatAgentOf(id) !== null : installed.includes(id))
-  const agentMissing = !isInstalled(agent)
+  const agentMissing = !remote && !isInstalled(agent)
 
   // The message box takes the keys once there is a folder; before that the search field has them.
   useEffect(() => { if (folder !== '') text.current?.focus() }, [folder])
@@ -129,15 +148,15 @@ export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = 
   const startMode = !forcedFull && modes.includes(mode) ? mode : 'default'
   // A branch or a worktree is made when the chat starts, so only a chat on the folder as it is can have its agent started ahead.
   const warmSpec = useMemo<WarmSpec | null>(
-    () => (folder === '' || agentMissing || branch !== null ? null : { folder, agent, model: choice.model, reasoning: choice.reasoning, mode: startMode }),
-    [folder, agentMissing, branch, agent, choice.model, choice.reasoning, startMode],
+    () => (remote || folder === '' || agentMissing || branch !== null ? null : { folder, agent, model: choice.model, reasoning: choice.reasoning, mode: startMode }),
+    [remote, folder, agentMissing, branch, agent, choice.model, choice.reasoning, startMode],
   )
   useWarmAgent(onWarm, warmSpec, busy)
   const start = (task: string = message) => {
     if (busy || folder === '' || agentMissing) return
     setBusy(true)
     setError(null)
-    onStart({ folder, agent, model: choice.model, reasoning: choice.reasoning, mode: startMode, message: buildAttachmentMessage(task.trim(), attachments), branch })
+    onStart({ folder, agent, model: choice.model, reasoning: choice.reasoning, mode: startMode, message: buildAttachmentMessage(task.trim(), attachments), branch: remote ? null : branch, machine, machineName: targetLabel })
       .catch((failure: unknown) => { setError(errorMessage(failure, 'Could not start the chat')) })
       .finally(() => { setBusy(false); reloadBranches() })
   }
@@ -147,6 +166,7 @@ export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = 
     setQuery('')
   }
   const pickOther = () => {
+    if (browse === null) return
     void browse().then((chosen) => {
       if (chosen === null) return
       openFolder(chosen)
@@ -175,26 +195,26 @@ export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = 
     onPick: () => { setFolder(project.folder) },
   })
   const { recent, rest } = splitRecent(shown)
-  const folderSections = [{ heading: 'Recent projects', items: recent.map(folderItem) }, ...(rest.length > 0 ? [{ heading: 'All on this computer', items: rest.map(folderItem) }] : [])]
+  const folderSections = [{ heading: 'Recent projects', items: recent.map(folderItem) }, ...(rest.length > 0 ? [{ heading: `All on ${remote ? targetLabel : 'this computer'}`, items: rest.map(folderItem) }] : [])]
   const fromPath = (typed: string): ChipItem | null => {
     if (!isPath(typed)) return null
     return { key: 'path', label: `Use ${typed}`, icon: <Icon name="folder" size={12} />, checked: false, onPick: () => { openFolder(typed) } }
   }
-  const elsewhere = machines.filter((machine) => !machine.local)
+  const elsewhere = machines.filter((candidate) => candidate.machine !== machine)
   const [now] = useState(nowSeconds)
+  const [pulledNow, setPulledNow] = useState(false)
+  // The other recent projects, a click away; each shows its branch and how far behind it is.
+  const switchTo = shown.filter((project) => project.folder !== folder).slice(0, SWITCH_CHIPS)
+  const glances = useGlances(remote ? [] : switchTo.map((project) => project.folder))
   const here = branch !== null && !branch.worktree ? branch.name : branches?.current ?? ''
   const inWorktree = new Set((branches?.worktrees ?? []).flatMap((tree) => (tree.branch === null ? [] : [tree.branch])))
   const branchLabel = branch?.name ?? branches?.current ?? 'detached'
   const pickBranch = (pick: BranchChoice) => { setBranchPick({ folder, pick }) }
-  // "New worktree" is a choice by itself: it takes a new branch under a suggested name at once, so the chat
-  // never starts in this checkout after all. Going back to "This folder" drops a worktree pick.
-  const chooseWhere = (where: 'checkout' | 'worktree') => {
-    setTreeMode(where === 'worktree')
-    if (where === 'worktree' && branch?.worktree !== true) {
-      pickBranch({ name: suggestBranchName(new Set((branches?.branches ?? []).map((entry) => entry.name))), create: true, worktree: true })
-    } else if (where === 'checkout' && branch?.worktree === true) {
-      setBranchPick(null)
-    }
+  // Own copy off drops a worktree pick: the agent edits the checkout, on the branch the folder is on.
+  const setOwnCopy = (on: boolean) => {
+    setTreeMode(on)
+    if (!on && branch?.worktree === true) setBranchPick(null)
+    if (on) setBranchPick(null)
   }
   const newBranchRows: ChipItem[] = treeMode && branch?.worktree === true && branch.create
     ? [{ key: 'tree-new-branch', label: branch.name, sub: `A new branch from ${branches?.current ?? 'here'}, in its own worktree`, icon: <Icon name="plus" size={12} />, checked: true, onPick: () => undefined }]
@@ -228,10 +248,6 @@ export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = 
     if (!/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(typed) || (branches?.branches ?? []).some((entry) => entry.name === typed)) return null
     return { key: 'new-branch', label: `Create branch ${typed}`, icon: <Icon name="plus" size={12} />, checked: false, onPick: () => { pickBranch({ name: typed, create: true, worktree: treeMode }) } }
   }
-  const whereItems: ChipItem[] = [
-    { key: 'worktree', label: 'New worktree', sub: `Own branch and copy${branch?.worktree === true ? ` (${branch.name})` : ''}. Your checkout is untouched.`, icon: <Icon name="splitRight" size={13} />, checked: treeMode, onPick: () => { chooseWhere('worktree') } },
-    { key: 'checkout', label: 'This folder', sub: `Edits your checkout of ${branches?.current ?? 'this folder'} directly.`, icon: <Icon name="folder" size={13} />, checked: !treeMode, onPick: () => { chooseWhere('checkout') } },
-  ]
 
   // Step 1: what the search field shows under it.
   const needle = query.trim().toLowerCase()
@@ -243,8 +259,8 @@ export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = 
     if (first !== undefined) setFolder(first.folder)
     else if (typedPath !== null) openFolder(typedPath)
   }
-  const otherMachines = elsewhere.map((machine) => (
-    <button key={machine.machine} type="button" className="mx-chip-action" onClick={() => { onOtherMachine(machine.machine) }}><span className="mx-chip-dot" aria-hidden="true" />Start on {machine.label}…</button>
+  const otherMachines = elsewhere.map((candidate) => (
+    <button key={candidate.machine} type="button" className="mx-chip-action" onClick={() => { onOtherMachine(candidate.machine) }}><span className="mx-chip-dot" aria-hidden="true" />Start on {candidate.label}…</button>
   ))
   const addMachine = onAddMachine && <button type="button" className="mx-chip-action" onClick={onAddMachine}><Icon name="plus" size={12} />Add a machine…</button>
 
@@ -259,7 +275,7 @@ export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = 
               <Icon name="search" size={15} />
               <input autoFocus aria-label="Search projects or paste a path" placeholder="Search projects or paste a path…" value={query} onChange={(event) => { setQuery(event.target.value) }}
                 onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); pickFirst() } }} />
-              <button type="button" className="mx-nc-browse" onClick={pickOther}>Browse…</button>
+              {browse !== null && <button type="button" className="mx-nc-browse" onClick={pickOther}>Browse…</button>}
             </label>
             <h3 className="mx-nc-heading">{listTitle}</h3>
             <ul className="mx-nc-list" aria-label={listTitle}>
@@ -269,7 +285,7 @@ export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = 
                     <span className="mx-nc-folder" style={{ '--tone': project.color } as CSSProperties} aria-hidden="true"><Icon name="folder" size={15} /></span>
                     <span className="mx-nc-project-text">
                       <span className="mx-nc-project-name"><strong>{project.name}</strong><span>{project.folder}</span></span>
-                      <span className="mx-nc-project-sub">{local?.label ?? 'This computer'}{project.sessions === undefined ? '' : ` · ${String(project.sessions)} ${project.sessions === 1 ? 'session' : 'sessions'}`}</span>
+                      <span className="mx-nc-project-sub">{targetLabel}{project.sessions === undefined ? '' : ` · ${String(project.sessions)} ${project.sessions === 1 ? 'session' : 'sessions'}`}</span>
                     </span>
                   </button>
                 </li>
@@ -278,7 +294,7 @@ export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = 
                 <li><button type="button" className="mx-nc-project" onClick={() => { openFolder(typedPath) }}><span className="mx-nc-folder" aria-hidden="true"><Icon name="folder" size={15} /></span><span className="mx-nc-project-text"><span className="mx-nc-project-name"><strong>Open {lastPart(typedPath)}</strong><span>{typedPath}</span></span></span></button></li>
               )}
             </ul>
-            {matching.length === 0 && typedPath === null && <p className="mx-nc-none">No projects match. Paste a full path, or use Browse…</p>}
+            {matching.length === 0 && typedPath === null && <p className="mx-nc-none">No projects match. {browse === null ? 'Paste a full path.' : 'Paste a full path, or use Browse…'}</p>}
             {(elsewhere.length > 0 || onAddMachine) && <div className="mx-nc-elsewhere">{otherMachines}{addMachine}</div>}
           </div>
         ) : (
@@ -286,15 +302,55 @@ export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = 
             <div className="mx-nc-picks">
               <ChipMenu title="Project" side="bottom" label={<strong>{folderName}</strong>} summary={folderName} icon={<span className="mx-ns-square" style={{ background: current?.color ?? 'var(--dim)' }} aria-hidden="true" />} search="Search projects" width={300}
                 sections={folderSections} fromQuery={fromPath}
-                footer={<><button type="button" className="mx-chip-action" onClick={pickOther}><Icon name="folder" size={12} />Browse for a folder…</button>{otherMachines}{addMachine}</>} />
+                footer={<>{browse !== null && <button type="button" className="mx-chip-action" onClick={pickOther}><Icon name="folder" size={12} />Browse for a folder…</button>}{otherMachines}{addMachine}</>} />
               {branches !== null && (
                 <>
                   <ChipMenu title="Branch" side="bottom" summary={branchLabel} label={<span className="mx-nc-branch">{branchLabel}</span>} icon={<span className="mx-nc-branch"><Icon name="branch" size={12} /></span>}
                     search="Search or create a branch" width={320} sections={branchSections} fromQuery={fromBranchName} />
-                  <ChipMenu title="Work in" side="bottom" label={treeMode ? 'New worktree' : 'This folder'} icon={<Icon name={treeMode ? 'splitRight' : 'folder'} size={13} />} width={340} sections={[{ heading: 'Work in', items: whereItems }]} />
                 </>
               )}
+              {branches !== null && (
+                <label className="mx-own-copy" title="The agent works in a worktree of its own, so your checkout stays as it is.">
+                  <Icon name="worktree" size={13} />
+                  <span>Own copy</span>
+                  <Switch checked={treeMode} onCheckedChange={setOwnCopy} aria-label="Own copy" />
+                </label>
+              )}
             </div>
+            {sync !== null && !remote && (
+              <p className="mx-nc-sync" aria-live="polite">
+                {treeMode ? (
+                  <>
+                    <span className="mx-nc-dot" aria-hidden="true" />
+                    {`Starts from ${sync.branch ?? 'here'}`}{sync.upstream !== null && sync.behind > 0 ? ` · ↓${String(sync.behind)} behind ${sync.upstream}` : ''}
+                  </>
+                ) : sync.upstream !== null && sync.behind > 0 ? (
+                  <>
+                    <span className="mx-nc-behind">↓{sync.behind} behind {sync.upstream}</span>
+                    <button type="button" className="mx-nc-pull" disabled={sync.dirty || pulling} title={sync.dirty ? 'You have uncommitted changes. Commit or stash first.' : `Run git pull --ff-only`} onClick={() => { void pull().then(() => { setPulledNow(true) }).catch((failure: unknown) => { toast.error(errorMessage(failure, 'Could not pull')) }) }}>↓ Pull</button>
+                  </>
+                ) : sync.upstream !== null ? (
+                  <><span className="mx-nc-dot" aria-hidden="true" />{pulledNow ? 'Pulled · up to date with' : 'Up to date with'} {sync.upstream}</>
+                ) : null}
+              </p>
+            )}
+            {switchTo.length > 0 && (
+              <div className="mx-nc-switch" role="group" aria-label="Switch to">
+                <span className="mx-nc-switch-label">Switch to</span>
+                {switchTo.map((project) => {
+                  const glance = glances.get(project.folder)
+                  return (
+                    <button key={project.folder} type="button" className="mx-nc-switch-chip" title={`${project.folder}${remote ? ` · ${targetLabel}` : ''}`} onClick={() => { setFolder(project.folder) }}>
+                      <span className="mx-ns-square" style={{ background: project.color }} aria-hidden="true" />
+                      <span>{project.name}</span>
+                      {remote && <span className="mx-nc-switch-machine">· {targetLabel}</span>}
+                      {glance?.branch != null && <span className="mx-nc-branch">{glance.branch}</span>}
+                      {glance !== undefined && glance.behind > 0 && <span className="mx-nc-behind">↓{glance.behind}</span>}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
             <ul className="mx-nc-tasks" aria-label="Suggested tasks">
               {SUGGESTED_TASKS.map((task) => (
                 <li key={task}><button type="button" disabled={busy || agentMissing} onClick={() => { start(task) }}><span aria-hidden="true">→</span>{task}</button></li>
@@ -310,7 +366,7 @@ export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = 
               <DraftAttachments attachments={attachments} onRemove={attach.remove} />
               <textarea ref={text} onPaste={onPaste} aria-label="First message" rows={2} value={message} placeholder={folder === '' ? 'Pick a folder above, then describe a task…' : 'Describe a task, or pick one above…'} className="mx-box-text" onChange={(event) => { setMessage(event.target.value) }} />
               <div className="mx-box-row">
-                <button type="button" className="mx-box-attach" aria-label="Attach files" title="Attach files" onClick={attach.pick}><Icon name="plus" size={16} /></button>
+                {!remote && <button type="button" className="mx-box-attach" aria-label="Attach files" title="Attach files" onClick={attach.pick}><Icon name="plus" size={16} /></button>}
                 <span className="mx-spacer" />
                 <button type="button" className={`mx-send${busy || folder === '' || agentMissing ? ' is-off' : ''}`} aria-label={empty ? 'Start chat' : 'Send message'} title={folder === '' ? 'Pick a folder first' : empty ? 'Start an empty chat' : 'Send (Enter)'} disabled={busy || folder === '' || agentMissing} onClick={() => { start() }}>
                   <Icon name="arrowUp" size={15} strokeWidth={2.2} />
@@ -318,7 +374,7 @@ export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = 
               </div>
             </div>
             <div className="mx-ctxtray">
-              <AgentPicker agent={agent} choice={choice} onChange={(change) => { setChoice((was) => ({ ...was, ...change })) }} onAgent={pickAgent} />
+              <AgentPicker agentOnly={remote} agent={agent} choice={choice} onChange={(change) => { setChoice((was) => ({ ...was, ...change })) }} onAgent={pickAgent} />
               {forcedFull ? (
                 <span className="mx-tray-fact is-danger" title="Yolo mode is on for Codex (Settings, General), so it starts with full access. Turn the setting off to pick another mode.">{modeLabel(CODEX_FULL_MODE)}</span>
               ) : modes.length > 0 ? (
@@ -333,6 +389,7 @@ export function NewChatPage({ machines, projects, defaultAgent, bypassAllowed = 
                 <span className="mx-tray-fact" title="This chat asks before it runs a tool">Asks before running</span>
               )}
               <span className="mx-spacer" />
+              {remote && <span className="mx-tray-fact" title={`Model and effort are the agent's own on ${targetLabel}`}>On {targetLabel}</span>}
               {folder !== '' && <span className="mx-tray-fact" title={folder}>{folder}</span>}
             </div>
           </div>

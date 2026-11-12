@@ -294,7 +294,7 @@ function Expanded(props: SidebarProps) {
           <section aria-label="Agents" className="mx-sections">
             {draft !== null && <DraftRow />}
             {props.grouping === 'status' && statusSections(sessions).map((section) => (
-              <ListSection key={section.key} id={`status:${section.key}`} tone={section.key} name={section.name} hint={section.hint} count={section.sessions.length} label={section.name} open={views.isOpen(`status:${section.key}`)} onToggle={() => { views.toggle(`status:${section.key}`) }}>
+              <ListSection key={section.key} id={`status:${section.key}`} tone={section.key} name={section.name} hint={section.hint} keyHint={section.key === 'needs' ? shortcutText('jump-needs') : undefined} count={section.sessions.length} label={section.name} open={views.isOpen(`status:${section.key}`)} onToggle={() => { views.toggle(`status:${section.key}`) }}>
                 {section.sessions.map((session) => renderRow(session, true, true))}
               </ListSection>
             ))}
@@ -363,6 +363,8 @@ type ListSectionProps = {
   /** A status section: its colour, and the few words that say what the status means. */
   tone?: string
   hint?: string
+  /** The key that jumps to the section's first session, shown at the heading's right. */
+  keyHint?: string | undefined
   /** A project section: its colour square, the other machine it is on, and how many of its sessions need you. */
   color?: string
   machine?: MachineHead | null
@@ -370,7 +372,7 @@ type ListSectionProps = {
 }
 
 /** One heading of the status or project list, with the rows under it; the heading folds them away. */
-function ListSection({ id, name, label, count, open, onToggle, children, tone, hint, color, machine = null, needs = 0 }: ListSectionProps) {
+function ListSection({ id, name, label, count, open, onToggle, children, tone, hint, keyHint, color, machine = null, needs = 0 }: ListSectionProps) {
   return (
     <div className="mx-section" data-section={id}>
       <button type="button" className={`mx-section-head${tone === undefined ? '' : ` is-${tone}`}`} data-flip={`head:${id}`} aria-expanded={open} onClick={onToggle}>
@@ -382,6 +384,7 @@ function ListSection({ id, name, label, count, open, onToggle, children, tone, h
         {needs > 0 && <span className="mx-project-needs" aria-label={`${String(needs)} need you`}>{needs}</span>}
         {hint !== undefined && <span className="mx-section-hint">{hint}</span>}
         <span className="mx-spacer" />
+        {keyHint !== undefined && <kbd className="mx-section-key">{keyHint}</kbd>}
         <span className={`mx-caret-wrap${open ? ' is-open' : ''}`}><Icon name="caret" /></span>
       </button>
       <Collapse open={open}>

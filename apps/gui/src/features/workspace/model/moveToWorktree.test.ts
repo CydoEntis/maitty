@@ -1,0 +1,42 @@
+import { describe, expect, it } from 'vitest'
+import { moveRefusal, resumeLine, worktreeBranch } from './moveToWorktree'
+import type { SessionView } from './session'
+
+const ID = '0d0f5c1e-1111-4222-8333-444455556666'
+const session = (patch: Partial<SessionView>) => ({ process: 'claude', agentSession: ID, status: 'idle', ...patch }) as SessionView
+
+describe('moveRefusal', () => {
+  it('allows an idle Claude or Codex chat with a saved conversation', () => {
+    expect(moveRefusal(session({}))).toBeNull()
+    expect(moveRefusal(session({ process: 'codex', status: 'done' }))).toBeNull()
+  })
+  it('refuses a working agent, a missing id, a bad id and another program', () => {
+    expect(moveRefusal(session({ status: 'working' }))).toMatch(/idle/)
+    expect(moveRefusal(session({ status: 'needs' }))).toMatch(/idle/)
+    expect(moveRefusal(session({ agentSession: null }))).toMatch(/saved conversation/)
+    expect(moveRefusal(session({ agentSession: 'x; rm -rf ~' }))).toMatch(/saved conversation/)
+    expect(moveRefusal(session({ process: 'gemini' }))).toMatch(/Claude and Codex/)
+  })
+})
+
+describe('resumeLine', () => {
+  it('goes to the folder then resumes', () => {
+    expect(resumeLine('claude', ID, '/w/task', false)).toBe(`cd "/w/task" && claude --resume ${ID}`)
+    expect(resumeLine('codex', ID, '/w/task', false)).toBe(`cd "/w/task" && codex resume ${ID} -C "/w/task"`)
+  })
+  it('uses ; for PowerShell', () => {
+    expect(resumeLine('claude', ID, 'C:\\w\\task', true)).toBe(`cd "C:\\w\\task" ; claude --resume ${ID}`)
+  })
+  it('refuses folders and ids that are not safe to type', () => {
+    expect(resumeLine('claude', ID, '/w/a"b', false)).toBeNull()
+    expect(resumeLine('claude', ID, '/w/$(x)', false)).toBeNull()
+    expect(resumeLine('claude', ID, '/w/a\nb', false)).toBeNull()
+    expect(resumeLine('claude', 'a b', '/w', false)).toBeNull()
+  })
+})
+
+describe('worktreeBranch', () => {
+  it('avoids taken names', () => {
+    expect(worktreeBranch(['main'])).not.toBe('main')
+  })
+})

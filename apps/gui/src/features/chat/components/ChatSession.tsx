@@ -34,6 +34,10 @@ import { ChatItem } from './ChatItems'
 import { KnownRowsContext } from '../knownRows'
 import { ChatSkeleton } from './ChatSkeleton'
 import { ApprovalTray, PromptTray } from './QuestionTray'
+import type { BranchMenuSpec } from './BranchMenu'
+import { ProblemBanner } from './ProblemBanner'
+import { summaryOf } from '../summary'
+import type { ChatProblem } from '../problem'
 import { SubagentBar, SubagentChat } from './SubagentChat'
 import { VirtualList } from './VirtualList'
 import { copyText } from '@/lib/clipboard'
@@ -127,10 +131,14 @@ type Props = {
   usage?: SessionUsage
   /** Shows the session's terminal in place of this chat, for a command whose menu only the terminal draws. */
   onShowTerminal?: () => void
+  /** What is wrong with the chat, if anything: shown as a banner over the message box when nothing else is asked of the person. */
+  problem?: ChatProblem | null
+  /** Where the tray's branch button can move this chat; without it the branch is only said. */
+  branchMenu?: BranchMenuSpec | undefined
 }
 
 /** The chat of one session: its history as a virtualised list, the daemon's status, and the composer under it. */
-export function ChatSession({ link, agent, online, hasTerminal = true, worktree: paneWorktree, root = null, onOpenDiff = null, onOpenFile = null, typeInto, paneQueue, ask = null, sessionId, paneStatus, folder = '', branch = null, onOpenFolder = null, subagent = null, onBackToMain, onShowTerminal, usage }: Props) {
+export function ChatSession({ link, agent, online, hasTerminal = true, worktree: paneWorktree, root = null, onOpenDiff = null, onOpenFile = null, typeInto, paneQueue, ask = null, sessionId, paneStatus, folder = '', branch = null, onOpenFolder = null, subagent = null, onBackToMain, onShowTerminal, usage, problem = null, branchMenu }: Props) {
   const { feed, events, offline, readError, refresh, recordAnswer, unwatchedReads } = useChatFeed({ conversation: link.conversation, generation: link.generation, provider: agent })
   const paneWorking = paneStatus === 'working'
   const [branches] = useFolderBranches(root ?? '')
@@ -165,6 +173,9 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
   const stoppedOnPrompt = link.readOnly === true && feed.status === 'Blocked'
   const answersPrompt = stoppedOnPrompt && typeInto !== undefined && (ask?.answerable === true || (ask?.choices?.length ?? 0) > 0 || (ask?.questions?.length ?? 0) > 1)
   const answerPrompt = typeInto === undefined ? undefined : (choice: AskChoice) => typeInto(ANSWER_KEYS[choice]).then(refresh)
+  // A menu the chat has no buttons for is answered with the keys a person would press, in the agent's own terminal.
+  const sendKeys = typeInto === undefined ? undefined : (keys: string) => typeInto(keys).then(refresh)
+  const readScreen = useMemo(() => (sessionId === undefined ? undefined : () => loadTerminalScreen({ id: sessionId, generation: 0 })), [sessionId])
   const pickChoice = typeInto === undefined ? undefined : (index: number) => typeInto(choiceKey(index)).then(refresh)
   // Several questions are answered a key at a time, as a person would: the prompt moves on after each.
   const pickChoices = typeInto === undefined ? undefined : async (picked: readonly number[]) => {
@@ -440,7 +451,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
 
   const question = pending !== null
     ? <ApprovalTray event={pending} actions={approval} />
-    : stoppedOnPrompt ? <PromptTray agent={agent} ask={ask} online={online} answer={answerPrompt} pick={pickChoice} pickAll={pickChoices} /> : null
+    : stoppedOnPrompt ? <PromptTray agent={agent} ask={ask} online={online} answer={answerPrompt} pick={pickChoice} pickAll={pickChoices} sendKeys={sendKeys} readScreen={readScreen} /> : problem !== null ? <ProblemBanner problem={problem} summarize={() => summaryOf(rows)} /> : null
   const notices = [
     offline ? `Reconnecting to the daemon. What is shown may be out of date.${readError !== null ? ` (${truncateError(readError)})` : ''}` : null,
     !offline && incomplete !== null ? `History is incomplete: ${incomplete}.` : null,
@@ -483,7 +494,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
         {...((agent === 'claude' || agent === 'codex') && root !== null ? { commandsFrom: { agent, folder: root, inTerminal: runInTerminal } } : {})}
         question={question}
         waiting={held !== null}
-        facts={{ ...(usage === undefined ? {} : { usage }), mode: modeLabel(shownMode), modeDanger: shownMode !== null && DANGER_MODES.includes(shownMode), folder, branch, worktree, model: shownModel, onOpenFolder, modeKey: shownMode, bypassAllowed: startedWithYolo(sessionId), ...agentControls }}
+        facts={{ ...(usage === undefined ? {} : { usage }), ...(branchMenu === undefined ? {} : { branchMenu }), mode: modeLabel(shownMode), modeDanger: shownMode !== null && DANGER_MODES.includes(shownMode), folder, branch, worktree, model: shownModel, onOpenFolder, modeKey: shownMode, bypassAllowed: startedWithYolo(sessionId), ...agentControls }}
       />
     </div>
   )

@@ -429,8 +429,8 @@ describe('desktop settings', () => {
     const list = await screen.findByRole('menu', { name: /^Window style/ })
     expect(within(list).getAllByRole('menuitemradio').map((item) => item.textContent)).toEqual([
       expect.stringContaining('Glass'),
-      expect.stringContaining('Mono Type'),
-      expect.stringContaining('Console'),
+      expect.stringContaining('Squared'),
+      expect.stringContaining('Flat'),
       expect.stringContaining('Retro Pixel'),
     ])
     expect(within(list).getByRole('menuitemradio', { name: /Glass/ })).toHaveAttribute('aria-checked', 'true')

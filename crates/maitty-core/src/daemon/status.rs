@@ -947,6 +947,10 @@ impl Daemon {
         let mut changes = Vec::new();
         let mut still_working = Vec::new();
         let mut screen_blocks = Vec::new();
+        // However a helper came to be recorded as stopped, it is no longer counted as running below.
+        for t in self.terms.values_mut() {
+            self.dirty |= t.drop_settled_subagents();
+        }
         for t in self.terms.values() {
             let Some(name) = &t.agent else { continue };
             let def = self.agents.iter().find(|a| &a.name == name);

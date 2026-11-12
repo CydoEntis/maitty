@@ -8,7 +8,11 @@ pub use ipc::data_dir;
 pub use shared_daemon::{ensure_shared_daemon, shared_daemon_path};
 use maitty_shared::protocol::{ClientMsg, Command, Query, Reply, ServerMsg};
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
+use std::future::Future;
 use std::path::PathBuf;
+use std::pin::Pin;
+use std::sync::Arc;
 use std::time::Duration;
 
 /// The most one keystroke message may carry.
@@ -388,7 +392,7 @@ pub async fn read_conversation(
     id: u64,
     cursor: Option<Value>,
     limit: usize,
-    daemon_executable: PathBuf,
+    daemon: impl Into<Daemon>,
 ) -> Result<Value> {
     let cursor = cursor
         .map(serde_json::from_value)
@@ -400,7 +404,7 @@ pub async fn read_conversation(
             cursor,
             limit,
         }),
-        daemon_executable,
+        daemon,
     )
     .await?;
     match reply {
@@ -1290,7 +1294,7 @@ pub async fn send_conversation(
     operation: u64,
     text: String,
     choice: Option<maitty_shared::conversation::TurnChoice>,
-    daemon_executable: PathBuf,
+    daemon: impl Into<Daemon>,
 ) -> Result<Value> {
     let reply = request(
         ClientMsg::Command(Command::ConversationSend {
@@ -1300,7 +1304,7 @@ pub async fn send_conversation(
             text,
             choice: choice.filter(|picked| !picked.is_empty()),
         }),
-        daemon_executable,
+        daemon,
     )
     .await?;
     match reply {
@@ -1315,7 +1319,7 @@ pub async fn dequeue_conversation(
     id: u64,
     generation: u64,
     operation: u64,
-    daemon_executable: PathBuf,
+    daemon: impl Into<Daemon>,
 ) -> Result<Value> {
     let reply = request(
         ClientMsg::Command(Command::ConversationDequeue {
@@ -1323,7 +1327,7 @@ pub async fn dequeue_conversation(
             generation,
             operation,
         }),
-        daemon_executable,
+        daemon,
     )
     .await?;
     match reply {
@@ -1337,7 +1341,7 @@ pub async fn approve_conversation(
     generation: u64,
     request_id: maitty_shared::conversation::ProviderRequestId,
     decision: maitty_shared::conversation::ApprovalDecision,
-    daemon_executable: PathBuf,
+    daemon: impl Into<Daemon>,
 ) -> Result<Value> {
     let reply = request(
         ClientMsg::Command(Command::ConversationApprove {
@@ -1346,7 +1350,7 @@ pub async fn approve_conversation(
             request_id,
             decision,
         }),
-        daemon_executable,
+        daemon,
     )
     .await?;
     match reply {
@@ -1360,7 +1364,7 @@ pub async fn answer_user_input(
     generation: u64,
     request_id: maitty_shared::conversation::ProviderRequestId,
     answers: std::collections::BTreeMap<String, Vec<String>>,
-    daemon_executable: PathBuf,
+    daemon: impl Into<Daemon>,
 ) -> Result<Value> {
     let reply = request(
         ClientMsg::Command(Command::ConversationAnswerInput {
@@ -1369,7 +1373,7 @@ pub async fn answer_user_input(
             request_id,
             answers,
         }),
-        daemon_executable,
+        daemon,
     )
     .await?;
     match reply {
@@ -1381,14 +1385,14 @@ pub async fn answer_user_input(
 pub async fn cancel_conversation(
     id: u64,
     generation: u64,
-    daemon_executable: PathBuf,
+    daemon: impl Into<Daemon>,
 ) -> Result<Value> {
     let reply = request(
         ClientMsg::Command(Command::ConversationCancel {
             id: maitty_shared::conversation::ConversationId(id),
             generation,
         }),
-        daemon_executable,
+        daemon,
     )
     .await?;
     match reply {
@@ -1912,18 +1916,100 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 /// asked again on a new one; a command asked twice could act twice.
 static IDLE_CONNECTIONS: IdleConnections = std::sync::Mutex::new(Vec::new());
 const MAX_IDLE_CONNECTIONS: usize = 4;
+/// Another machine's lines are ssh processes, so fewer are kept for each.
+const MAX_IDLE_REMOTE_CONNECTIONS: usize = 2;
 
-type Connection = (ipc::Reader, ipc::Writer);
+/// One line to a daemon: what it reads, what it writes.
+pub type Connection = (ipc::Reader, ipc::Writer);
 type IdleConnections = std::sync::Mutex<Vec<Connection>>;
+
+/// Where a request goes: this computer's daemon, started when none answers, or another machine's.
+#[derive(Clone)]
+pub enum Daemon {
+    Local(PathBuf),
+    Remote(RemoteDaemon),
+}
+
+impl From<PathBuf> for Daemon {
+    fn from(daemon_executable: PathBuf) -> Daemon {
+        Daemon::Local(daemon_executable)
+    }
+}
+
+type Opening = Pin<Box<dyn Future<Output = Result<Connection>> + Send>>;
+
+/// Another machine's daemon, reached over lines the caller knows how to open. The host makes the
+/// lines (the ssh line, attach only, ADR 0007) and says how to vet a reply, so this crate holds no
+/// ssh and trusts nothing a remote says: every reply goes through `vet` before anything reads it.
+#[derive(Clone)]
+pub struct RemoteDaemon {
+    /// The machine's number for this run, which never names another machine.
+    key: u16,
+    name: String,
+    open: Arc<dyn Fn() -> Opening + Send + Sync>,
+    vet: Arc<dyn Fn(Reply) -> Result<Reply, String> + Send + Sync>,
+}
+
+impl RemoteDaemon {
+    pub fn new(
+        key: u16,
+        name: String,
+        open: impl Fn() -> Opening + Send + Sync + 'static,
+        vet: impl Fn(Reply) -> Result<Reply, String> + Send + Sync + 'static,
+    ) -> RemoteDaemon {
+        RemoteDaemon {
+            key,
+            name,
+            open: Arc::new(open),
+            vet: Arc::new(vet),
+        }
+    }
+
+    async fn request(&self, message: ClientMsg) -> Result<Reply> {
+        let idle = remote_idle(self.key);
+        let asked = ask_reusing(&idle, MAX_IDLE_REMOTE_CONNECTIONS, &message, || {
+            (self.open)()
+        });
+        let reply = match tokio::time::timeout(REQUEST_TIMEOUT, asked).await {
+            Ok(answer) => answer.with_context(|| format!("asking {}", self.name))?,
+            Err(_) => bail!(
+                "{} did not answer within {} seconds",
+                self.name,
+                REQUEST_TIMEOUT.as_secs()
+            ),
+        };
+        (self.vet)(reply).map_err(|why| anyhow::anyhow!("{} sent an answer that was refused: {why}", self.name))
+    }
+}
+
+/// The lines kept for each machine, by its number for this run. A machine's number is never
+/// reused (ADR 0007), so one machine's lines cannot serve another.
+static REMOTE_IDLE: std::sync::Mutex<BTreeMap<u16, Arc<IdleConnections>>> =
+    std::sync::Mutex::new(BTreeMap::new());
+
+fn remote_idle(key: u16) -> Arc<IdleConnections> {
+    let mut all = REMOTE_IDLE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    all.entry(key).or_default().clone()
+}
+
+/// Close the lines kept for a machine that was taken out of the list.
+pub fn forget_remote(key: u16) {
+    REMOTE_IDLE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(&key);
+}
 
 async fn ask(connection: &mut Connection, message: &ClientMsg) -> Result<Reply> {
     ipc::send_message(&mut connection.1, message).await?;
     receive_reply(&mut connection.0).await
 }
 
-/// Ask `message`: on a kept connection when it is a question, else on one from `open`.
+/// Ask `message`: on a kept connection when it is a question, else on one from `open`. At most
+/// `keep_at_most` are kept.
 async fn ask_reusing<Open, Opening>(
     idle: &IdleConnections,
+    keep_at_most: usize,
     message: &ClientMsg,
     open: Open,
 ) -> Result<Reply>
@@ -1934,7 +2020,7 @@ where
     let reusable = matches!(message, ClientMsg::Query(_));
     let keep = |connection: Connection| {
         if let Ok(mut idle) = idle.lock()
-            && idle.len() < MAX_IDLE_CONNECTIONS
+            && idle.len() < keep_at_most
         {
             idle.push(connection);
         }
@@ -1958,21 +2044,26 @@ where
     Ok(reply)
 }
 
-async fn request(message: ClientMsg, daemon_executable: PathBuf) -> Result<Reply> {
-    answered_within(
-        REQUEST_TIMEOUT,
-        ask_reusing(&IDLE_CONNECTIONS, &message, || async {
-            ipc::open_or_spawn_for_user(&daemon_executable)
-                .await
-                .context("connecting to the local daemon")
-        }),
-    )
-    .await
+async fn request(message: ClientMsg, daemon: impl Into<Daemon>) -> Result<Reply> {
+    match daemon.into() {
+        Daemon::Local(daemon_executable) => {
+            answered_within(
+                REQUEST_TIMEOUT,
+                ask_reusing(&IDLE_CONNECTIONS, MAX_IDLE_CONNECTIONS, &message, || async {
+                    ipc::open_or_spawn_for_user(&daemon_executable)
+                        .await
+                        .context("connecting to the local daemon")
+                }),
+            )
+            .await
+        }
+        Daemon::Remote(remote) => remote.request(message).await,
+    }
 }
 
 #[cfg(test)]
 mod kept_connection_tests {
-    use super::{Connection, IdleConnections, ask_reusing};
+    use super::{Connection, Daemon, IdleConnections, MAX_IDLE_CONNECTIONS, RemoteDaemon, ask_reusing, forget_remote, request};
     use maitty_shared::protocol::{ClientMsg, Command, Query, Reply, ServerMsg};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -2010,7 +2101,7 @@ mod kept_connection_tests {
         let opened = Arc::new(AtomicUsize::new(0));
         for _ in 0..3 {
             let opened = opened.clone();
-            let reply = ask_reusing(&idle, &question(), || async move {
+            let reply = ask_reusing(&idle, MAX_IDLE_CONNECTIONS, &question(), || async move {
                 opened.fetch_add(1, Ordering::SeqCst);
                 Ok(daemon_answering(usize::MAX))
             })
@@ -2026,7 +2117,7 @@ mod kept_connection_tests {
         let opened = Arc::new(AtomicUsize::new(0));
         for _ in 0..2 {
             let opened = opened.clone();
-            let reply = ask_reusing(&idle, &question(), || async move {
+            let reply = ask_reusing(&idle, MAX_IDLE_CONNECTIONS, &question(), || async move {
                 opened.fetch_add(1, Ordering::SeqCst);
                 // Each daemon answers once and is gone.
                 Ok(daemon_answering(1))
@@ -2037,13 +2128,54 @@ mod kept_connection_tests {
         assert_eq!(opened.load(Ordering::SeqCst), 2);
     }
 
+    /// A remote machine whose lines each answer everything with `Ok`; `opened` counts the lines made.
+    fn remote(key: u16, opened: &Arc<AtomicUsize>, vet_ok: bool) -> RemoteDaemon {
+        let opened = opened.clone();
+        RemoteDaemon::new(
+            key,
+            "box".into(),
+            move || {
+                opened.fetch_add(1, Ordering::SeqCst);
+                Box::pin(async { Ok(daemon_answering(usize::MAX)) })
+            },
+            move |reply| if vet_ok { Ok(reply) } else { Err("not a reply it may give".into()) },
+        )
+    }
+
+    #[tokio::test]
+    async fn a_remote_machines_questions_reuse_its_own_lines_and_no_other_machines() {
+        let (first, second) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+        for _ in 0..3 {
+            request(question(), Daemon::Remote(remote(60_001, &first, true))).await.unwrap();
+        }
+        request(question(), Daemon::Remote(remote(60_002, &second, true))).await.unwrap();
+        assert_eq!(first.load(Ordering::SeqCst), 1);
+        assert_eq!(second.load(Ordering::SeqCst), 1, "a line kept for one machine never serves another");
+
+        forget_remote(60_001);
+        request(question(), Daemon::Remote(remote(60_001, &first, true))).await.unwrap();
+        assert_eq!(first.load(Ordering::SeqCst), 2, "a machine taken out of the list keeps no lines");
+        forget_remote(60_001);
+        forget_remote(60_002);
+    }
+
+    #[tokio::test]
+    async fn an_answer_the_host_will_not_vet_is_an_error_not_a_reply() {
+        let opened = Arc::new(AtomicUsize::new(0));
+        let failure = request(question(), Daemon::Remote(remote(60_003, &opened, false)))
+            .await
+            .unwrap_err();
+        assert!(format!("{failure:#}").contains("refused"), "{failure:#}");
+        forget_remote(60_003);
+    }
+
     #[tokio::test]
     async fn a_command_never_goes_out_on_a_kept_connection_and_leaves_none_behind() {
         let idle = IdleConnections::default();
         idle.lock().unwrap().push(daemon_answering(0));
         let command = ClientMsg::Command(Command::SelectWorkspace { ws: 1 });
 
-        let reply = ask_reusing(&idle, &command, || async { Ok(daemon_answering(1)) }).await;
+        let reply = ask_reusing(&idle, MAX_IDLE_CONNECTIONS, &command, || async { Ok(daemon_answering(1)) }).await;
 
         assert!(matches!(reply, Ok(Reply::Ok)));
         assert_eq!(idle.lock().unwrap().len(), 1, "only the one that was there");
