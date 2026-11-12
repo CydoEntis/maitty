@@ -187,6 +187,8 @@ pub enum Ev {
         facts: Vec<usage::CodexPaneFacts>,
         limits: Option<Vec<Limit>>,
     },
+    /// The effort each agent's own files say it runs at (`usage::poll_effort`).
+    AgentEffort(Vec<(TermId, Option<String>)>),
     /// A worktree made for an agent started from a shell (`Command::AgentWorktree`).
     AgentWorktreeMade {
         client: ClientId,
@@ -455,6 +457,8 @@ struct Daemon {
     usage_store: usage_store::UsageStore,
     codex_busy: bool,
     last_codex: Instant,
+    effort_busy: bool,
+    last_effort: Instant,
     /// The next pane runs its command once and ends with it (a popup).
     next_once: bool,
     /// The pane the next session is started for, when its connection can't say (the
@@ -1237,6 +1241,8 @@ impl Daemon {
             },
             codex_busy: false,
             last_codex: Instant::now() - Duration::from_secs(3600),
+            effort_busy: false,
+            last_effort: Instant::now() - Duration::from_secs(3600),
             next_once: false,
             next_starter: None,
             spare: None,
@@ -1272,6 +1278,7 @@ impl Daemon {
                     self.phone_alerts();
                     self.auto_continue();
                     self.poll_codex();
+                    self.poll_effort();
                     self.follow_tick();
                     self.deliver_queued();
                     self.usage_store.save_if_due(term::unix_now());
@@ -2304,6 +2311,7 @@ impl Daemon {
                 self.dirty = true;
             }
             Ev::CodexUsage { facts, limits } => self.codex_usage(facts, limits),
+            Ev::AgentEffort(found) => self.agent_effort(found),
             Ev::WorktreeRemoved {
                 client,
                 path,
@@ -2964,6 +2972,7 @@ impl Daemon {
                             t.name.clone()
                         },
                         model: t.model.clone(),
+                        effort: t.effort.clone(),
                         label: t.label.clone(),
                         pinned: t.pinned,
                         archived: t.archived,

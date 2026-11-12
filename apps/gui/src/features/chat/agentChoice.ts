@@ -140,6 +140,22 @@ export function useDiscoveredModels(agent: ChatAgent) {
 /** The reasoning levels' words for the picker. */
 export const REASONING_LABEL: Readonly<Record<ReasoningPick, string>> = { default: 'Default', low: 'Low', medium: 'Medium', high: 'High', max: 'Max' }
 
+/** What an agent says it runs at is a plain word; Codex also has levels above these (`xhigh`, `ultra`). Anything else is not shown. */
+const PLAIN_LEVEL = /^[a-z]{2,12}$/
+
+/** A level as the button says it: the menu's word for the ones it has, else the agent's word capitalised. Null for what is not a level. */
+export function effortWord(level: string | null | undefined): string | null {
+  if (level === null || level === undefined || !PLAIN_LEVEL.test(level)) return null
+  return Object.hasOwn(REASONING_LABEL, level) ? REASONING_LABEL[level as ReasoningPick] : `${level.charAt(0).toUpperCase()}${level.slice(1)}`
+}
+
+/** How many of the four bars a level fills: its place among the menu's, and all four for a level above them. */
+export function effortBars(level: string | null | undefined): number {
+  if (level === null || level === undefined || !PLAIN_LEVEL.test(level)) return 0
+  const place = REASONING_LEVELS.indexOf(level as Reasoning)
+  return place >= 0 ? place + 1 : REASONING_LEVELS.length
+}
+
 /** What a chat will use from its next message on. */
 export type AgentChoice = { readonly model: string; readonly reasoning: ReasoningPick }
 

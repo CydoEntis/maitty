@@ -102,6 +102,7 @@ export function WorkspacePane({ shown, pane, kept }: {
           asking={session.asking}
           sessionId={session.id}
           problem={problem}
+          effort={session.agentEffort ?? null}
           {...(chatOnly || session.machine !== LOCAL_MACHINE || session.branch === null ? {} : { branchMenu: { folder: session.cwd, onNewWorktree: () => { void moveToWorktree(session) }, ...(moveRefusal(session) === null ? {} : { newWorktreeBlocked: moveRefusal(session) ?? '' }) } })}
           paneStatus={session.status}
           usage={{ context: session.usage.context, limits: session.limits }}

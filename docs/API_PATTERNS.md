@@ -159,6 +159,11 @@ command is `add_branch_worktree` (`maitty_desktop_client::branch_worktree`); it 
 setup hook may take ten, and says the service is from an older release instead of asking a daemon that would never
 answer. It is this computer's daemon only. Structured runtimes may not ask for it.
 
+A pane's effort (`TermInfo.effort`, an optional field: no `PROTOCOL_VERSION` bump, a test decodes the old shape) is read by the
+daemon from the agent's own files every five seconds off the loop (`usage::poll_effort`): for Claude the level in the newest request
+line of its transcript, present only when a level was set; for Codex the level its thread settings name, else its model's default
+from Codex's `models_cache.json`. Nothing is guessed: a pane whose files say none has none, and the window then says "agent's own".
+
 A pane's follow-up queue (`TermInfo.queued`) is the daemon's: it types the oldest into the agent when a turn ends, never
 into a question, and keeps the rest across a restart. `Command::QueueFollowUp { term, text, first }` adds one (`first`,
 a defaulted field, puts it ahead of the ones waiting, for an agent's own command picked while it works),

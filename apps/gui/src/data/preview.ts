@@ -17,6 +17,8 @@ export type TerminalDetails = {
   interrupted: { agent: string; resume: string } | null
   /** The agent's own conversation id, for resuming it elsewhere; null when the daemon did not say. */
   agentSession?: string | null
+  /** The effort the agent's own files say it runs at; null when they do not say. */
+  agentEffort?: string | null
   /** When the status last changed, in unix seconds (the daemon's `TermInfo.since`); absent or 0 when it did not say. */
   since?: number
   /** The latest turn events, oldest first; `at` is unix seconds. */
