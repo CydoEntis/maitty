@@ -25,6 +25,8 @@ pub struct Standing {
     pub merged: bool,
     /// When it last committed, as git says it ("3 days ago").
     pub last_commit: String,
+    /// Git still lists it but its folder is gone (deleted by hand): it can be made again from its branch.
+    pub missing: bool,
 }
 
 fn git(folder: &Path, args: &[&str]) -> Result<String, String> {
@@ -41,6 +43,9 @@ fn dirty_files(folder: &Path) -> Result<usize, String> {
 }
 
 fn standing(folder: &Path) -> Result<Standing, String> {
+    if !folder.is_dir() {
+        return Ok(Standing { dirty: 0, branch: None, merged: false, last_commit: String::new(), missing: true });
+    }
     let dirty = dirty_files(folder)?;
     let branch = branch_of(folder);
     let own = branch.as_deref().unwrap_or("");
@@ -50,7 +55,7 @@ fn standing(folder: &Path) -> Result<Standing, String> {
         own.is_empty() || (name != format!("refs/heads/{own}") && !(name.starts_with("refs/remotes/") && name.ends_with(&format!("/{own}"))))
     });
     let last_commit = git(folder, &["log", "-1", "--format=%cr"]).unwrap_or_default().trim().to_string();
-    Ok(Standing { dirty, branch, merged, last_commit })
+    Ok(Standing { dirty, branch, merged, last_commit, missing: false })
 }
 
 /// A linked worktree has its own git directory, apart from the one it shares; the main checkout's are the same.
@@ -94,6 +99,29 @@ fn merge_into_base(folder: &Path) -> Result<String, String> {
     Ok(format!("Merged {branch} into {base}"))
 }
 
+/// Makes a worktree whose folder was deleted by hand again, at the same place on the same branch. Only
+/// a folder git itself lists for this repository is made, so this cannot put a checkout anywhere new.
+fn recreate(main: &Path, folder: &Path, branch: &str) -> Result<String, String> {
+    if folder.exists() {
+        return Err("that folder is already there".into());
+    }
+    if branch.is_empty() || branch.starts_with('-') {
+        return Err(format!("`{branch}` is not a branch name"));
+    }
+    let listed = git(main, &["worktree", "list", "--porcelain"])?
+        .lines()
+        .filter_map(|line| line.strip_prefix("worktree "))
+        .any(|path| Path::new(path) == folder);
+    if !listed {
+        return Err("git does not list a worktree there".into());
+    }
+    // The stale record would make git refuse a second worktree at the same path.
+    git(main, &["worktree", "prune"])?;
+    let place = folder.to_str().ok_or_else(|| "the folder's name is not text".to_string())?;
+    run_program("git", main, &["worktree", "add", "--", place, branch], MERGE_TIMEOUT)?;
+    Ok(format!("Made {branch} again at {place}"))
+}
+
 /// Where the worktree at `folder` stands.
 #[tauri::command]
 pub async fn worktree_standing(wire: tauri::State<'_, crate::terminal_stream::Wire>, machine: Option<u16>, folder: String) -> Result<Standing, String> {
@@ -108,6 +136,15 @@ pub async fn worktree_standing(wire: tauri::State<'_, crate::terminal_stream::Wi
 pub async fn worktree_merge(wire: tauri::State<'_, crate::terminal_stream::Wire>, machine: Option<u16>, folder: String) -> Result<String, String> {
     wire.require_local(machine, "Worktrees")?;
     tauri::async_runtime::spawn_blocking(move || merge_into_base(Path::new(&folder)))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+/// Makes the missing worktree at `folder` again on `branch`, from the repository at `main`.
+#[tauri::command]
+pub async fn worktree_recreate(wire: tauri::State<'_, crate::terminal_stream::Wire>, machine: Option<u16>, main: String, folder: String, branch: String) -> Result<String, String> {
+    wire.require_local(machine, "Worktrees")?;
+    tauri::async_runtime::spawn_blocking(move || recreate(Path::new(&main), Path::new(&folder), &branch))
         .await
         .map_err(|error| error.to_string())?
 }
@@ -150,6 +187,21 @@ mod tests {
         run(&task, &["commit", "-q", "-m", "work"]);
         let own = standing(&task).expect("standing");
         assert!(own.dirty == 0 && !own.merged, "committed only on its own branch");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_worktree_deleted_by_hand_reads_as_missing_and_comes_back_on_its_branch() {
+        let (root, task) = repository("recreate");
+        let main = root.join("main");
+        assert!(recreate(&main, &task, "task").is_err_and(|error| error.contains("already there")));
+        std::fs::remove_dir_all(&task).expect("deleted by hand");
+        assert!(standing(&task).expect("standing").missing);
+        assert!(recreate(&main, &root.join("elsewhere"), "task").is_err_and(|error| error.contains("does not list")), "only a listed place");
+        assert!(recreate(&main, &task, "-x").is_err());
+        recreate(&main, &task, "task").expect("made again");
+        assert!(task.join("a.txt").is_file());
+        assert_eq!(branch_of(&task).as_deref(), Some("task"));
         let _ = std::fs::remove_dir_all(&root);
     }
 

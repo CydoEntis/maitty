@@ -15,6 +15,7 @@ const StandingSchema = z.object({
   branch: z.string().nullable(),
   merged: z.boolean(),
   last_commit: z.string(),
+  missing: z.boolean(),
 })
 
 /** Where a worktree stands: what removing it would lose. */
@@ -24,6 +25,20 @@ export type WorktreeStanding = z.infer<typeof StandingSchema>
 export async function worktreeStanding(folder: string, machine: number): Promise<WorktreeStanding> {
   if (!isTauri()) throw new Error('Worktrees are only available in the desktop app')
   return StandingSchema.parse(await invoke<unknown>('worktree_standing', { machine, folder }))
+}
+
+const OverlapSchema = z.array(z.object({ file: z.string(), checkouts: z.array(z.string()) }))
+
+/** The files more than one of these checkouts (name, folder) changed since their branches parted, committed or not. */
+export async function worktreeOverlaps(checkouts: readonly { name: string; path: string }[], machine: number): Promise<z.infer<typeof OverlapSchema>> {
+  if (!isTauri()) throw new Error('Worktrees are only available in the desktop app')
+  return OverlapSchema.parse(await invoke<unknown>('worktree_overlaps', { machine, checkouts: checkouts.map((checkout) => [checkout.name, checkout.path]) }))
+}
+
+/** Makes a worktree whose folder was deleted by hand again, on its branch; resolves to a line to show. */
+export async function recreateWorktree(main: string, folder: string, branch: string, machine: number): Promise<string> {
+  if (!isTauri()) throw new Error('Worktrees are only available in the desktop app')
+  return z.string().parse(await invoke<unknown>('worktree_recreate', { machine, main, folder, branch }))
 }
 
 /** Merges the worktree's committed work into the main checkout's branch; resolves to a line to show. */

@@ -3,7 +3,7 @@ import { type Dispatch, type RefObject, type SetStateAction, useCallback, useMem
 import type { QueryClient } from '@tanstack/react-query'
 import { type RemoteMachine, remoteStartRefusal, remoteTargetOf } from './model/machines'
 import { toast } from '@/lib/toast'
-import { addWorktree, defaultSessionFolder, dropPrewarmedAgent, prewarmAgentSession, startAgentSession as launchAgentSession, loadConversations, renameConversationOnDaemon, sendTerminalInput, sendWhenAgentReady, startChatSession, startShellSession, submitMessage, switchBranch } from '@/api/daemon'
+import { addWorktree, defaultSessionFolder, handoffBrief, dropPrewarmedAgent, prewarmAgentSession, startAgentSession as launchAgentSession, loadConversations, renameConversationOnDaemon, sendTerminalInput, sendWhenAgentReady, startChatSession, startShellSession, submitMessage, switchBranch } from '@/api/daemon'
 import { LOCAL_MACHINE, startSessionOnMachine } from '@/api/machines'
 import type { DesktopSettingsSection } from '@/features/settings/components/DesktopSettings'
 import type { SettingsPreferences } from '@/features/settings/preferences'
@@ -214,6 +214,21 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
       .finally(() => { setStarting(false) })
   }, [online, starting, setStarting, startChat, startAgentSession])
 
+  // "Hand off to …": a new session of another agent in the same folder, starting with a text brief of this one's work.
+  const handoffSession = useCallback(async (from: SessionView, to: ChatAgent) => {
+    const refusal = remoteStartRefusal(from.machine !== LOCAL_MACHINE, from.machineName, 'A handoff')
+    if (refusal) {
+      toast.message(refusal)
+      return
+    }
+    if (!online || starting) return
+    try {
+      await startAgentSession(() => Promise.resolve(from.cwd), to, preferences.newSessionView, await handoffBrief(from))
+    } catch (error: unknown) {
+      toast.error(errorMessage(error, `Could not hand off to ${to}`))
+    }
+  }, [online, starting, startAgentSession, preferences.newSessionView])
+
   // The new chat is the agent in a terminal the daemon owns, shown as its chat: one session whose view
   // switches to the terminal at any time (ADR 0003), the same for every agent.
   const startNewChat = useCallback(async (request: NewChatRequest): Promise<void> => {
@@ -298,5 +313,5 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
     }
     setNewSessionMachine(null)
   }, [setNewSessionMachine, startOnMachine, runStart, setLayout, startAgentSession, preferences.newSessionView])
-  return { signInAgent, runStart, newSession, newTerminal, startAgentSession, newSessionOn, startChatHere, startNewChat, warmNewChat, createWorktree, startFromModal }
+  return { signInAgent, runStart, newSession, newTerminal, startAgentSession, newSessionOn, startChatHere, handoffSession, startNewChat, warmNewChat, createWorktree, startFromModal }
 }

@@ -1043,6 +1043,19 @@ export async function answerSecret(id: number, machine: number, value: string | 
   await invoke('answer_secret', { machine, id, value })
 }
 
+/** The text a new agent starts with when the work of the agent in pane `term` is handed to it (this computer's panes only). */
+export async function handoffBrief(session: { pane: number; machine: number; process: string; name: string | null; title: string; lastPrompt: string; branch: string | null; cwd: string }): Promise<string> {
+  return invokeParsed('handoff_brief', z.string(), {
+    machine: session.machine,
+    term: session.pane,
+    agent: session.process,
+    task: session.name ?? session.title,
+    lastPrompt: session.lastPrompt,
+    branch: session.branch,
+    checkout: session.cwd,
+  })
+}
+
 /** Switches the folder's checkout to a branch, made first when `create`. */
 export async function switchBranch(folder: string, branch: string, create: boolean): Promise<void> {
   await invokeParsed('git_switch_branch', NullSchema, { folder, branch, create })

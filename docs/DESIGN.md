@@ -644,12 +644,16 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   under it with **Send to Claude** (the agent's name; Ctrl/⌘+Enter sends, Esc closes the box); the comment goes to the
   agent as a message naming the file, the line and its text (`model/agentMessage.ts`), and stays pinned under the line as an accent-tinted "You → Claude" box, also while other files are read; the file's header then counts the comments. The chat draws the comment at once, like a message typed in its box (`outsideSends.ts`). An
   agent that is asking something is not sent one. Under the file list, for a checkout on this computer, is the commit
-  message (first the session's name, else the first line of its last prompt), **Commit N files** (stages everything
-  and commits) and **Create PR** (pushes the branch and runs `gh pr create --fill`; the address stays under the
+  message (first the session's name, else the first line of its last prompt), **Commit N files** (every changed file has a tick,
+  all ticked at first; only the ticked ones are committed, `commitText.ts`'s **Suggest** drafts a message from them) and **Create PR** (pushes the branch and runs `gh pr create --fill`; the address stays under the
   buttons). Between them is one **remote button** that follows where the branch stands against its upstream:
   **Pull ↓N** when it is behind (fast-forward only), **Push ↑N** when it is ahead, **Fetch** when it is level; when it
   is both ahead and behind the button is disabled and its tooltip says why (`remoteAction.ts`). What git or `gh` said
-  is shown when any of them fails (`CommitBar.tsx`, `src-tauri/src/changes.rs`). The one other thing the panel
+  is shown when any of them fails (`CommitBar.tsx`, `src-tauri/src/changes.rs`).
+  A worktree whose folder was deleted by hand reads "its folder is gone" in the worktree manager with **Recreate**, which
+  makes it again on its branch at the same place. The same list opens with a line when two checkouts changed one file ("orders and rate-limit both changed checkout.ts"; the comparison is `maitty_shared::overlap`, shared with the terminal client). A pane's menu has **Hand off to <agent>** for an agent's pane: a new
+  session of the other agent in the same folder starts with the text brief `maitty handoff` writes (`maitty_shared::handoff`; the
+  desktop lists only uncommitted files and says so). The one other thing the panel
   changes is a file: **Edit** in the Files tab (this computer only, never in a diff) replaces an existing file whole;
   **Save** (Ctrl+S) first re-reads it and asks before overwriting a file that changed since the edit began. The daemon
   refuses links, `.git`, new files and anything over 256 KiB (`WriteFile`). In the History tab, **Restore** on a

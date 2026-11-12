@@ -772,4 +772,4 @@ button.mx-sb-item:hover { background: rgba(var(--hl), calc(.07 * var(--hk))); co
 .mx-style-tile[data-shape="mono"], .mx-style-tile[data-shape="pixel"] { border-radius: 0; }
 .mx-style-tile[data-shape="pixel"] { border-width: 2px; }
 .mx-style-tile[data-shape="pixel"] i, .mx-style-tile[data-shape="mono"] i { border-radius: 0; }
-.mx-style-tile[data-shape="console"] { border-radius: 3px; }
+.mx-style-tile[data-shape="console"] { border-radius: 3px; }.mx-worktree-overlap { margin: 0 0 6px; font-size: 12px; color: var(--warn, var(--fg2)); }

@@ -8,7 +8,8 @@ import { beginPointerDrag } from './dragSession'
 import { PaneViewSwitch } from './PaneViewSwitch'
 import { MenuPopup, type MenuEntry } from './MenuPopup'
 import { menuPoint } from './menuPoint'
-import type { PaneView } from '../model/chatView'
+import { CHAT_AGENTS, type ChatAgent, type PaneView } from '../model/chatView'
+import { agentName } from '../model/agentMessage'
 import { SecretAskBar } from './SecretAskBar'
 import { pullRequestHeadline, pullRequestTone } from '../model/pullRequest'
 import type { TerminalDock } from '@/features/settings/preferences'
@@ -60,6 +61,8 @@ export type PaneCardProps = {
   onClear: () => void
   onCopyPath: () => void
   onRename: () => void
+  /** Starts another agent beside this one's work, with a brief of it. */
+  onHandoff: (agent: ChatAgent) => void
   /** Starts a new shell in an ended pane's folder, in its place. */
   onRestart: (paneId: string) => void
   /** Answers the session's request to start helpers; absent where it cannot be answered. */
@@ -103,6 +106,11 @@ export function PaneCard(props: PaneCardProps) {
   const panelTip = hasChanges ? `Side panel · +${String(props.changed.added)} −${String(props.changed.removed)}` : 'Side panel'
   const drawerTip = props.drawerFolded === true ? 'Show the terminals' : 'Hide the terminals'
 
+  // An agent's work can move to another agent; a shell or an ended session has none to move.
+  const handoffItems: MenuEntry[] = CHAT_AGENTS.includes(session.process as ChatAgent) && !ended
+    ? CHAT_AGENTS.filter((agent) => agent !== session.process).map((agent) => ({ label: `Hand off to ${agentName(agent)}`, disabled: !props.online, run: () => { props.onHandoff(agent) } }))
+    : []
+
   const menuItems: MenuEntry[] = [
     { label: 'Split right', hint: shortcutText('split-right'), disabled: full, run: () => { props.onSplit(pane.id, 'right') } },
     { label: 'Split down', hint: shortcutText('split-down'), disabled: full, run: () => { props.onSplit(pane.id, 'down') } },
@@ -112,6 +120,7 @@ export function PaneCard(props: PaneCardProps) {
         ? { label: 'Pin terminals under chat', run: () => { props.onDock('under') } }
         : { label: 'Move terminals to side panel', run: () => { props.onDock('panel') } },
     ]),
+    ...handoffItems,
     'separator',
     { label: 'Rename…', hint: 'F2', run: props.onRename },
     { label: maximized ? 'Restore layout' : 'Maximize pane', disabled: !multi && !maximized, run: () => { props.onToggleMaximize(pane.id) } },

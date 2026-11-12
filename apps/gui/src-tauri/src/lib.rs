@@ -962,6 +962,39 @@ async fn answer_secret(
         .map_err(|error| format!("{error:#}"))
 }
 
+/// The files more than one of a project's checkouts changed (name, folder per checkout). This computer's only.
+#[tauri::command]
+async fn worktree_overlaps(
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    checkouts: Vec<(String, String)>,
+) -> Result<Vec<maitty_shared::overlap::Overlap>, String> {
+    wire.require_local(machine, "Worktrees")?;
+    maitty_desktop_client::checkout_overlaps(checkouts.into_iter().map(|(name, folder)| (name, PathBuf::from(folder))).collect())
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// The brief a new agent starts with when the work of the agent in `term` is handed to it. This computer's panes only.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+async fn handoff_brief(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    term: u32,
+    agent: String,
+    task: String,
+    last_prompt: String,
+    branch: Option<String>,
+    checkout: String,
+) -> Result<String, String> {
+    wire.require_local(machine, "Handing off")?;
+    maitty_desktop_client::handoff_brief(term, agent, task, last_prompt, branch, PathBuf::from(checkout), daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
 /// The tail of a pane's last output for check `name` (None: the headline one). This computer's panes only.
 #[tauri::command]
 async fn check_output(
@@ -1406,6 +1439,7 @@ pub fn run() {
             changes::git_create_pull_request,
             changes::git_sync,
             worktrees::worktree_standing,
+            worktrees::worktree_recreate,
             worktrees::worktree_merge,
             remove_worktrees,
             machines::list_machines,
@@ -1473,6 +1507,8 @@ pub fn run() {
             answer_helpers,
             check_action,
             answer_secret,
+            handoff_brief,
+            worktree_overlaps,
             write_project_file,
             check_output,
             pin_terminal_session,

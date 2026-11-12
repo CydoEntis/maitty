@@ -14,14 +14,39 @@ const QUICK: Duration = Duration::from_secs(5);
 /// What git calls the checkout's branch when it is on no branch.
 const DETACHED: &str = "HEAD";
 
-/// Stages every change in the checkout and commits it; answers the new commit's short hash.
-fn commit_all(folder: &Path, message: &str) -> Result<String, String> {
+/// A path the commit may name: inside the checkout, never an option or an escape from it.
+fn commit_path(path: &str) -> Result<&str, String> {
+    let escapes = Path::new(path).components().any(|part| matches!(part, std::path::Component::ParentDir | std::path::Component::RootDir | std::path::Component::Prefix(_)));
+    if path.is_empty() || path.starts_with('-') || path.contains('\0') || escapes {
+        return Err(format!("`{path}` is not a file of this checkout"));
+    }
+    Ok(path)
+}
+
+/// Stages the changes and commits them; answers the new commit's short hash. With `paths` only those
+/// files go in, whatever else is staged stays out; without, everything that changed does.
+fn commit_all(folder: &Path, message: &str, paths: Option<&[String]>) -> Result<String, String> {
     let message = message.trim();
     if message.is_empty() {
         return Err("write a commit message first".into());
     }
-    run_program("git", folder, &["add", "-A"], QUICK)?;
-    run_program("git", folder, &["commit", "-m", message], COMMIT_TIMEOUT)?;
+    match paths {
+        None => {
+            run_program("git", folder, &["add", "-A"], QUICK)?;
+            run_program("git", folder, &["commit", "-m", message], COMMIT_TIMEOUT)?;
+        }
+        Some([]) => return Err("pick at least one file to commit".into()),
+        Some(paths) => {
+            let named = paths.iter().map(|path| commit_path(path)).collect::<Result<Vec<_>, _>>()?;
+            let mut add = vec!["add", "-A", "--"];
+            add.extend(&named);
+            run_program("git", folder, &add, QUICK)?;
+            // `--only` is what a path on `git commit` means; saying it keeps other staged files out.
+            let mut commit = vec!["commit", "--only", "-m", message, "--"];
+            commit.extend(&named);
+            run_program("git", folder, &commit, COMMIT_TIMEOUT)?;
+        }
+    }
     Ok(run_program("git", folder, &["rev-parse", "--short", "HEAD"], QUICK)?.trim().to_string())
 }
 
@@ -102,9 +127,9 @@ pub async fn git_sync(wire: tauri::State<'_, crate::terminal_stream::Wire>, mach
 
 /// Commits every change in `folder`'s checkout with `message`.
 #[tauri::command]
-pub async fn git_commit_all(wire: tauri::State<'_, crate::terminal_stream::Wire>, machine: Option<u16>, folder: String, message: String) -> Result<String, String> {
+pub async fn git_commit_all(wire: tauri::State<'_, crate::terminal_stream::Wire>, machine: Option<u16>, folder: String, message: String, paths: Option<Vec<String>>) -> Result<String, String> {
     wire.require_local(machine, "Changes")?;
-    tauri::async_runtime::spawn_blocking(move || commit_all(Path::new(&folder), &message))
+    tauri::async_runtime::spawn_blocking(move || commit_all(Path::new(&folder), &message, paths.as_deref()))
         .await
         .map_err(|error| error.to_string())?
 }
@@ -146,7 +171,7 @@ mod tests {
         let folder = repository("commit");
         std::fs::write(folder.join("a.txt"), "two\n").expect("a change");
         std::fs::write(folder.join("new.txt"), "new\n").expect("a new file");
-        let hash = commit_all(&folder, "  change a and add new  ").expect("the commit");
+        let hash = commit_all(&folder, "  change a and add new  ", None).expect("the commit");
         assert_eq!(git(&folder, &["rev-parse", "--short", "HEAD"]).trim(), hash);
         assert_eq!(git(&folder, &["log", "-1", "--format=%s"]).trim(), "change a and add new");
         assert_eq!(git(&folder, &["status", "--porcelain"]).trim(), "", "nothing is left uncommitted");
@@ -154,10 +179,34 @@ mod tests {
     }
 
     #[test]
+    fn a_commit_of_chosen_files_leaves_the_rest_out() {
+        let folder = repository("only");
+        std::fs::write(folder.join("a.txt"), "two\n").expect("a change");
+        std::fs::write(folder.join("new.txt"), "new\n").expect("a new file");
+        std::fs::write(folder.join("other.txt"), "other\n").expect("another new file");
+        git(&folder, &["add", "other.txt"]);
+        commit_all(&folder, "only the new one", Some(&["new.txt".to_string()])).expect("the commit");
+        assert_eq!(git(&folder, &["show", "--name-only", "--format=", "HEAD"]).trim(), "new.txt");
+        let left = git(&folder, &["status", "--porcelain"]);
+        assert!(left.contains("a.txt") && left.contains("other.txt"), "the rest is still waiting: {left}");
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_commit_names_only_files_inside_the_checkout() {
+        let folder = repository("paths");
+        for bad in ["../x", "/etc/passwd", "-A", ""] {
+            assert!(commit_all(&folder, "m", Some(&[bad.to_string()])).is_err(), "{bad}");
+        }
+        assert_eq!(commit_all(&folder, "m", Some(&[])), Err("pick at least one file to commit".into()));
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
     fn a_commit_needs_a_message_and_something_to_commit() {
         let folder = repository("refuse");
-        assert_eq!(commit_all(&folder, "   "), Err("write a commit message first".into()));
-        assert!(commit_all(&folder, "nothing changed").is_err(), "git refuses an empty commit");
+        assert_eq!(commit_all(&folder, "   ", None), Err("write a commit message first".into()));
+        assert!(commit_all(&folder, "nothing changed", None).is_err(), "git refuses an empty commit");
         let _ = std::fs::remove_dir_all(&folder);
     }
 
