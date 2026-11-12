@@ -277,7 +277,8 @@ describe('the chat that follows an agent in a pane', () => {
     await user.type(composer, 'run the tests{Enter}')
 
     // One paste then Enter, into the terminal; nothing goes to the daemon's conversation.
-    await waitFor(() => { expect(daemon.sendTerminalInput).toHaveBeenCalledWith({ id: 't2', generation: 0 }, '\x1b[200~run the tests\x1b[201~\r') })
+    await waitFor(() => { expect(daemon.sendTerminalInput).toHaveBeenCalledWith({ id: 't2', generation: 0 }, '\x1b[200~run the tests\x1b[201~') })
+    await waitFor(() => { expect(daemon.sendTerminalInput).toHaveBeenLastCalledWith({ id: 't2', generation: 0 }, '\r') })
     expect(daemon.submitMessage).not.toHaveBeenCalled()
   })
 })

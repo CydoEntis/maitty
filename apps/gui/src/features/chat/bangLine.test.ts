@@ -25,9 +25,9 @@ describe('a shell line starting with !', () => {
 
   it('stays an ordinary message for an agent with no shell mode', async () => {
     const typed: string[] = []
-    await typeMessage((text) => { typed.push(text); return Promise.resolve() }, 'codex', '!ls')
-    expect(typed).toHaveLength(1)
-    expect(typed[0]).toContain('!ls')
-    expect(typed[0]).toContain('\x1b[200~')
+    const done = typeMessage((text) => { typed.push(text); return Promise.resolve() }, 'codex', '!ls')
+    await vi.runAllTimersAsync()
+    await done
+    expect(typed).toEqual(['\x1b[200~!ls\x1b[201~', '\r'])
   })
 })

@@ -5,6 +5,7 @@ import { FAKE_CONVERSATION, FakeDaemonHistory } from '../fakeDaemonHistory'
 import { forgetComposers } from '../composerStore'
 import { forgetFirstMessages } from '../firstMessage'
 import { ACTIVE_POLL_MS, forgetChatFeeds, IDLE_POLL_MS } from '../useChatFeed'
+import { PASTE_SUBMIT_GAP_MS } from '../useChatComposer'
 import type { SessionStatus } from '@/features/workspace/model/session'
 import { ChatSession } from './ChatSession'
 
@@ -67,7 +68,8 @@ describe('how the chat feels while it waits', () => {
     await user.type(screen.getByRole('textbox', { name: 'Message claude' }), 'hello there{Enter}')
     await settle()
 
-    expect(typeInto).toHaveBeenCalledTimes(1)
+    await settle(PASTE_SUBMIT_GAP_MS + 1)
+    expect(typeInto).toHaveBeenCalledTimes(2)
     expect(screen.getByLabelText('Sending')).toHaveTextContent('hello there')
     expect(screen.getByText(/claude is thinking/)).toBeInTheDocument()
 
@@ -83,7 +85,7 @@ describe('how the chat feels while it waits', () => {
     const { user } = open()
     await settle()
     await user.type(screen.getByRole('textbox', { name: 'Message claude' }), 'hello there{Enter}')
-    await settle()
+    await settle(PASTE_SUBMIT_GAP_MS + 1)
     expect(screen.getByText(/claude is thinking/)).toBeInTheDocument()
 
     await settle(4_100)
@@ -211,7 +213,7 @@ describe('how the chat feels while it waits', () => {
     const { user } = open()
     await settle()
     await user.type(screen.getByRole('textbox', { name: 'Message claude' }), 'lost words{Enter}')
-    await settle()
+    await settle(PASTE_SUBMIT_GAP_MS + 1)
     expect(screen.getByLabelText('Sending')).toBeInTheDocument()
 
     await settle(21_000)

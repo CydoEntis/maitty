@@ -32,6 +32,9 @@ export function asTyped(text: string): string {
   return isSlashLine(text) ? `${text}\r` : `${PASTE_START}${text}${PASTE_END}\r`
 }
 
+/** How long a pasted message is given before its Enter is typed. */
+export const PASTE_SUBMIT_GAP_MS = 150
+
 /** Codex takes a typed command only when Enter comes a moment after it: sent together, the Enter is lost. */
 export const CODEX_SUBMIT_GAP_MS = 400
 
@@ -54,6 +57,14 @@ export async function typeMessage(type: (text: string) => Promise<void>, agent: 
     await type('!')
     await new Promise<void>((resolve) => { window.setTimeout(resolve, BANG_MODE_GAP_MS) })
     await type(`${text.slice(1).trim()}\r`)
+    return
+  }
+  // The Enter goes in on its own, after the paste has been taken: sent in the same write, an agent that is busy
+  // reads it as part of the paste and the message sits typed in its box, unsent.
+  if (!isSlashLine(text)) {
+    await type(`${PASTE_START}${text}${PASTE_END}`)
+    await new Promise<void>((resolve) => { window.setTimeout(resolve, PASTE_SUBMIT_GAP_MS) })
+    await type('\r')
     return
   }
   await type(asTyped(text))
@@ -319,13 +330,18 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
     if (taking === null) return
     // Typed in only once the daemon has let go of it, or it would go in twice.
     taking.gone.then(
-      () => send(taking.text),
+      () => send(taking.text).then((delivered) => {
+        // The daemon has let go of it, so a message that did not reach the agent goes back in the box, not nowhere.
+        if (delivered) return
+        const words = taking.text
+        updateComposer(conversation, (state) => ({ ...state, draft: state.draft.trim() === '' ? words : `${words}\n\n${state.draft}` }))
+      }),
       (failure: unknown) => {
         taken.current.delete(taking.text)
         setError(errorMessage(failure, 'Could not send the queued message now'))
       },
     )
-  }, [disabledReason, sending, send, takeBack])
+  }, [disabledReason, sending, send, takeBack, conversation])
 
   const removeQueued = useCallback((operation: number) => {
     if (operation < 0) {

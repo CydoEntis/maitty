@@ -5,7 +5,7 @@ import { useFakePaneQueue } from '../fakePaneQueue'
 import { FAKE_CONVERSATION, FakeDaemonHistory } from '../fakeDaemonHistory'
 import { forgetComposers } from '../composerStore'
 import { carryDraft, entrustFirstMessage, forgetFirstMessages, heldFirstMessage, holdFirstMessage } from '../firstMessage'
-import { PASTE_END, PASTE_START } from '../useChatComposer'
+import { PASTE_END, PASTE_START, PASTE_SUBMIT_GAP_MS } from '../useChatComposer'
 import { ACTIVE_POLL_MS, IDLE_POLL_MS, forgetChatFeeds } from '../useChatFeed'
 import { chatFindOf } from '../chatSearch'
 import { ChatSession } from './ChatSession'
@@ -67,7 +67,10 @@ describe('a message typed while the agent was starting', () => {
     await settle()
     await settle(ACTIVE_POLL_MS)
 
-    expect(typeInto).toHaveBeenCalledExactlyOnceWith(`${PASTE_START}hello there${PASTE_END}\r`)
+    await settle(PASTE_SUBMIT_GAP_MS + 1)
+    expect(typeInto).toHaveBeenCalledTimes(2)
+    expect(typeInto).toHaveBeenNthCalledWith(1, `${PASTE_START}hello there${PASTE_END}`)
+    expect(typeInto).toHaveBeenNthCalledWith(2, '\r')
     expect(heldFirstMessage('s1')).toBeNull()
   })
 
@@ -83,7 +86,10 @@ describe('a message typed while the agent was starting', () => {
 
     daemon.status = 'Idle'
     await settle(ACTIVE_POLL_MS + 1)
-    expect(typeInto).toHaveBeenCalledExactlyOnceWith(`${PASTE_START}hello there${PASTE_END}\r`)
+    await settle(PASTE_SUBMIT_GAP_MS + 1)
+    expect(typeInto).toHaveBeenCalledTimes(2)
+    expect(typeInto).toHaveBeenNthCalledWith(1, `${PASTE_START}hello there${PASTE_END}`)
+    expect(typeInto).toHaveBeenNthCalledWith(2, '\r')
   })
 
   it('keeps the held message on screen while the history is first read, with no skeleton in between', () => {
@@ -129,7 +135,10 @@ describe('a first message the daemon holds', () => {
     await settle()
     await settle(ACTIVE_POLL_MS)
 
-    expect(typeInto).toHaveBeenCalledExactlyOnceWith(`${PASTE_START}hello there${PASTE_END}\r`)
+    await settle(PASTE_SUBMIT_GAP_MS + 1)
+    expect(typeInto).toHaveBeenCalledTimes(2)
+    expect(typeInto).toHaveBeenNthCalledWith(1, `${PASTE_START}hello there${PASTE_END}`)
+    expect(typeInto).toHaveBeenNthCalledWith(2, '\r')
     expect(heldFirstMessage('s1')).toBeNull()
   })
 
@@ -140,7 +149,8 @@ describe('a first message the daemon holds', () => {
     await settle()
     await settle(ACTIVE_POLL_MS)
 
-    expect(typeInto).toHaveBeenCalledOnce()
+    await settle(PASTE_SUBMIT_GAP_MS + 1)
+    expect(typeInto).toHaveBeenCalledTimes(2)
   })
 })
 
@@ -216,13 +226,29 @@ describe('a message written while a terminal agent works', () => {
     await user.click(screen.getByRole('button', { name: 'Send now' }))
     await settle(10)
 
-    expect(typeInto).toHaveBeenCalledExactlyOnceWith(`${PASTE_START}stop, use the other branch${PASTE_END}\r`)
+    await settle(PASTE_SUBMIT_GAP_MS + 1)
+    expect(typeInto).toHaveBeenCalledTimes(2)
+    expect(typeInto).toHaveBeenNthCalledWith(1, `${PASTE_START}stop, use the other branch${PASTE_END}`)
+    expect(typeInto).toHaveBeenNthCalledWith(2, '\r')
     expect(screen.queryByRole('list', { name: 'Queued messages' })).not.toBeInTheDocument()
 
     // The daemon no longer holds it, so the turn ending sends nothing more.
     expect(screen.getByRole('status', { name: 'The daemon holds' })).toHaveTextContent('')
   })
 
+  it('goes back into the box when it could not be typed in, instead of vanishing', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const { typeInto } = open('Working')
+    await settle()
+    await user.type(screen.getByRole('textbox', { name: 'Message claude' }), 'stop, use the other branch{Enter}')
+    await settle(1)
+    typeInto.mockRejectedValueOnce(new Error('terminal closed'))
+
+    await user.click(screen.getByRole('button', { name: 'Send now' }))
+    await settle(PASTE_SUBMIT_GAP_MS + 10)
+
+    expect(screen.getByRole('textbox', { name: 'Message claude' })).toHaveValue('stop, use the other branch')
+  })
 
   it('is left with the daemon and shown in the queue, and drawn as sent when the daemon types it in', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
