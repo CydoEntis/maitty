@@ -24,14 +24,21 @@ export function moveRefusal(session: SessionView): string | null {
   return null
 }
 
+/** The words after the agent's name that resume a saved conversation. Null when the id is not safe to type. */
+export function resumeWords(agent: 'claude' | 'codex', sessionId: string): string[] | null {
+  if (!SESSION_ID.test(sessionId)) return null
+  return agent === 'claude' ? ['--resume', sessionId] : ['resume', sessionId]
+}
+
 /**
  * The line typed into the pane's shell after the agent exits: go to the new folder and resume the
  * same conversation there. Null when the folder or id is not safe to type.
  */
 export function resumeLine(agent: 'claude' | 'codex', sessionId: string, folder: string, windows: boolean): string | null {
-  if (!SESSION_ID.test(sessionId) || folder === '' || unsafeFolder(folder)) return null
+  const words = resumeWords(agent, sessionId)
+  if (words === null || folder === '' || unsafeFolder(folder)) return null
   const then = windows ? ';' : '&&'
-  const resume = agent === 'claude' ? `claude --resume ${sessionId}` : `codex resume ${sessionId} -C "${folder}"`
+  const resume = [agent, ...words, ...(agent === 'codex' ? ['-C', `"${folder}"`] : [])].join(' ')
   return `cd "${folder}" ${then} ${resume}`
 }
 

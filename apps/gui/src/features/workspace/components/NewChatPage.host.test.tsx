@@ -14,6 +14,7 @@ vi.mock('@/api/daemon', () => ({
   folderBranches: () => Promise.resolve(host.branches),
   folderSyncState: () => Promise.resolve(null),
   pullFolder: () => Promise.resolve(),
+  savedConversations: () => Promise.resolve([]),
   openAgentDocs: host.openAgentDocs,
 }))
 

@@ -673,7 +673,10 @@ Codex's instructions and environment), with the same rules the transcript follow
 clients only; the files are read on a blocking task, at most 500 looked at, 1 MiB from the start of each, and an
 unreadable one is skipped and logged by path only. Both came with their own `introduced_in` arms
 (`SAVED_CONVERSATIONS_SINCE`); `COMPATIBLE_SINCE` stays 78, since an older daemon is never asked and an older client
-never sent the reply. This computer only: another machine's answer is ignored (`remote_policy`).
+never sent the reply. This computer only: another machine's answer is ignored (`remote_policy`). The desktop command
+is `saved_conversations { agent, folder }` (`maitty_desktop_client::saved_conversations`), asked on a connection of its
+own with `tag` 0; it answers `found` as serde writes it (`{"Listed": [...]}` or `"NotSupported"`), or null without
+asking when the daemon running is older than 85, since that daemon would never answer.
 
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store

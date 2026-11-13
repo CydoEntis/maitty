@@ -16,18 +16,19 @@ import { PermissionMenu } from '@/features/chat/components/PermissionMenu'
 import { openAgentDocs } from '@/api/daemon'
 import { LOCAL_MACHINE } from '@/api/machines'
 import { chatAgentOf, type ChatAgent } from '../model/chatView'
-import { ageOf, nowSeconds, splitRecent, useFolderBranches, useGlances, useInstalledAgents, useSyncState } from '../model/newChatHost'
+import { ageOf, nowSeconds, splitRecent, useFolderBranches, useGlances, useInstalledAgents, useSavedConversations, useSyncState } from '../model/newChatHost'
 import { Switch } from '@/components/ui/switch'
 import type { NewSessionProject } from '../model/newSession'
 import { suggestBranchName } from '../model/worktreeName'
 import { Icon } from './glyphs'
 import { ChipMenu, type ChipItem } from './NewChatMenus'
+import { ResumeList } from './ResumeList'
 
 /** The branch a chat starts on when it is not the folder's current one: switch to it, or work in a new worktree of it. */
 export type BranchChoice = { name: string; create: boolean; worktree: boolean }
 
-/** What the page asks the window to start: a chat with this agent, model and effort, in this folder, and its first message. */
-export type NewChatRequest = { folder: string; agent: ChatAgent; model: string; reasoning: AgentChoice['reasoning']; mode: string; message: string; branch: BranchChoice | null; machine: number; machineName: string }
+/** What the page asks the window to start: a chat with this agent, model and effort, in this folder, and its first message; `resume` names a saved conversation to continue. */
+export type NewChatRequest = { folder: string; agent: ChatAgent; model: string; reasoning: AgentChoice['reasoning']; mode: string; message: string; branch: BranchChoice | null; machine: number; machineName: string; resume: string | null }
 
 /** The key the first message's files are kept under: no conversation exists yet, and a real one is never negative. */
 const NEW_CHAT_DRAFT = -1
@@ -131,6 +132,8 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
   const branch = chosen
   const isInstalled = (id: string) => (installed === null ? chatAgentOf(id) !== null : installed.includes(id))
   const agentMissing = !remote && !isInstalled(agent)
+  // Only this computer's daemon reads saved conversations, and only Claude's and Codex's.
+  const saved = useSavedConversations(folder, remote || agentMissing || agent === 'gemini' ? null : agent)
 
   // The message box takes the keys once there is a folder; before that the search field has them.
   useEffect(() => { if (folder !== '') text.current?.focus() }, [folder])
@@ -152,11 +155,13 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
     [remote, folder, agentMissing, branch, agent, choice.model, choice.reasoning, startMode],
   )
   useWarmAgent(onWarm, warmSpec, busy)
-  const start = (task: string = message) => {
+  const start = (task: string = message, resume: string | null = null) => {
     if (busy || folder === '' || agentMissing) return
     setBusy(true)
     setError(null)
-    onStart({ folder, agent, model: choice.model, reasoning: choice.reasoning, mode: startMode, message: buildAttachmentMessage(task.trim(), attachments), branch: remote ? null : branch, machine, machineName: targetLabel })
+    // A saved conversation continues in the folder it was saved in, so a worktree is left out for this start.
+    const startBranch = remote || (resume !== null && branch?.worktree === true) ? null : branch
+    onStart({ folder, agent, model: choice.model, reasoning: choice.reasoning, mode: startMode, message: buildAttachmentMessage(task.trim(), attachments), branch: startBranch, machine, machineName: targetLabel, resume })
       .catch((failure: unknown) => { setError(errorMessage(failure, 'Could not start the chat')) })
       .finally(() => { setBusy(false); reloadBranches() })
   }
@@ -356,6 +361,7 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
                 <li key={task}><button type="button" disabled={busy || agentMissing} onClick={() => { start(task) }}><span aria-hidden="true">→</span>{task}</button></li>
               ))}
             </ul>
+            <ResumeList read={saved} folderName={folderName} leavesCopy={branch?.worktree === true} disabled={busy || agentMissing} now={now} onPick={(id) => { start(message, id) }} />
           </>
         )}
       </div>

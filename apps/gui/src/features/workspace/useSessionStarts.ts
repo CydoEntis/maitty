@@ -27,6 +27,7 @@ import { CODEX_FULL_MODE } from '@/features/chat/chatMeta'
 import { type Layout, openArrangement } from './model/layout'
 import type { SessionView } from './model/session'
 import { resolveStartFolder } from './model/startFolder'
+import { resumeWords } from './model/moveToWorktree'
 import { makeId } from './makeId'
 
 /** How long a new session on another machine is waited for, and how often its list is looked at. */
@@ -273,13 +274,16 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
   const startNewChat = useCallback(async (request: NewChatRequest): Promise<void> => {
     if (!online) throw new Error('The daemon is not reachable')
     if (request.machine !== LOCAL_MACHINE) return startRemoteChat(request)
+    const resume = request.resume === null ? [] : request.agent === 'gemini' ? null : resumeWords(request.agent, request.resume)
+    if (resume === null) throw new Error('This saved conversation cannot be resumed from here')
     // The branch is settled before the agent starts, and a failure stays on the page with its words.
     let folder = request.folder
     if (request.branch?.worktree) folder = await addWorktree(folder, request.branch.name)
     else if (request.branch) await switchBranch(folder, request.branch.name, request.branch.create)
+    const flags = `${resume.map((word) => ` ${word}`).join('')}${launchFlags(request.agent, request.model, request.reasoning, request.mode)}`
     // The page stays, with the message in it, until the chat that replaces it is there: closing it first showed the
     // empty window (or the last chat) for a moment between the two.
-    await startAgentSession(() => Promise.resolve(folder), request.agent, 'chat', request.message, launchFlags(request.agent, request.model, request.reasoning, request.mode), (id) => {
+    await startAgentSession(() => Promise.resolve(folder), request.agent, 'chat', request.message, flags, (id) => {
       // Codex has no file that says its mode, so what it was started in is what its chat shows: Full access under its Yolo setting.
       const codexMode = yolo.codex ? CODEX_FULL_MODE : request.mode === 'default' ? null : request.mode
       holdStartChoice(id, { model: request.model, reasoning: request.reasoning, mode: request.agent === 'claude' ? request.mode : request.agent === 'codex' ? codexMode : null })

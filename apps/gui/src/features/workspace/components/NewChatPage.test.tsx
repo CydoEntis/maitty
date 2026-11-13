@@ -1,21 +1,23 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const sync = vi.hoisted(() => ({ dirty: false, behind: 2, pulled: [] as string[] }))
 function syncOf(folder: string) {
   return { branch: folder === '/dev/api' ? 'main' : 'dev', upstream: 'origin/dev', behind: sync.behind, ahead: 0, dirty: sync.dirty, fetched: true }
 }
-vi.mock('@/api/daemon', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/api/daemon')>()), loadAgentModels: () => Promise.resolve([]), folderSyncState: (folder: string) => Promise.resolve(syncOf(folder)), pullFolder: (folder: string) => { sync.pulled.push(folder); return Promise.resolve() }, folderBranches: () => Promise.resolve({ current: 'dev', branches: [{ name: 'dev', when: 10 }], worktrees: [{ path: '/dev/growth', branch: 'dev', main: true, when: 10 }] }) }))
+type Saved = { id: string; first_message: string; last_active: number }
+const saved = vi.hoisted(() => ({ read: vi.fn<(agent: string, folder: string) => Promise<Saved[] | null>>(() => Promise.resolve([])) }))
+vi.mock('@/api/daemon', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/api/daemon')>()), savedConversations: (agent: string, folder: string) => saved.read(agent, folder), loadAgentModels: () => Promise.resolve([]), folderSyncState: (folder: string) => Promise.resolve(syncOf(folder)), pullFolder: (folder: string) => { sync.pulled.push(folder); return Promise.resolve() }, folderBranches: () => Promise.resolve({ current: 'dev', branches: [{ name: 'dev', when: 10 }], worktrees: [{ path: '/dev/growth', branch: 'dev', main: true, when: 10 }] }) }))
 
 const attach = vi.hoisted(() => ({ attachLocalFile: vi.fn(), chooseFilesToAttach: vi.fn() }))
 vi.mock('@/api/attachments', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/api/attachments')>()), ...attach }))
 
-import { NewChatPage } from './NewChatPage'
+import { NewChatPage, type NewChatRequest } from './NewChatPage'
 
 const PROJECTS = [{ folder: '/dev/growth', name: 'growth', color: 'teal', sessions: 6 }, { folder: '/dev/api', name: 'api', color: 'blue', sessions: 2 }]
 
-function page(onStart: (request: { message: string }) => Promise<void> = () => Promise.resolve()) {
+function page(onStart: (request: NewChatRequest) => Promise<void> = () => Promise.resolve()) {
   return render(
     <div className="mx-app">
       <NewChatPage machine={0} machines={[{ machine: 0, label: 'This computer', local: true }]} projects={PROJECTS} defaultAgent="claude" browse={() => Promise.resolve(null)} onStart={onStart} onOtherMachine={() => undefined} onCancel={() => undefined} />
@@ -208,6 +210,84 @@ describe('the new chat page', () => {
     await pickProject('growth')
     await userEvent.click(screen.getByRole('button', { name: 'Start chat' }))
     await waitFor(() => { expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ agent: 'codex', mode: 'default' })) })
+  })
+})
+
+describe('resuming a saved conversation from the new chat page', () => {
+  const ID = '0d0f5c1e-1111-4222-8333-444455556666'
+  const HOURS_AGO_2 = Math.floor(Date.now() / 1000) - 7200
+  beforeEach(() => { saved.read.mockReset(); saved.read.mockResolvedValue([]) })
+
+  it('lists each conversation saved for the folder with its first message and how long ago it was active', async () => {
+    saved.read.mockResolvedValue([{ id: ID, first_message: 'Fix the login redirect', last_active: HOURS_AGO_2 }])
+    page()
+    const list = await screen.findByRole('list', { name: 'Resume' })
+    const row = within(list).getByRole('button', { name: /Fix the login redirect/ })
+    expect(row).toHaveTextContent('2h')
+    expect(saved.read).toHaveBeenLastCalledWith('claude', '/dev/growth')
+  })
+
+  it('starts the agent with the picked conversation in the folder it was saved in, without Own copy', async () => {
+    saved.read.mockResolvedValue([{ id: ID, first_message: 'Fix the login redirect', last_active: HOURS_AGO_2 }])
+    const onStart = vi.fn<(request: { resume: string | null; branch: unknown; folder: string }) => Promise<void>>().mockResolvedValue(undefined)
+    page(onStart)
+    await screen.findByRole('list', { name: 'Resume' })
+    expect(screen.getByRole('switch', { name: 'Own copy' })).toBeChecked()
+    expect(screen.getByText('A resumed conversation continues in growth, the folder it was saved in, not in a copy of its own.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Fix the login redirect/ }))
+    await waitFor(() => { expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ folder: '/dev/growth', resume: ID, branch: null })) })
+  })
+
+  it('asks for the agent picked: Codex\'s own conversations for a Codex chat', async () => {
+    codexPage(() => Promise.resolve())
+    await waitFor(() => { expect(saved.read).toHaveBeenLastCalledWith('codex', '/dev/growth') })
+  })
+
+  it('shows no list when the folder has no saved conversations, and a new chat starts as ever', async () => {
+    const onStart = vi.fn<(request: { resume: string | null }) => Promise<void>>().mockResolvedValue(undefined)
+    page(onStart)
+    await waitFor(() => { expect(saved.read).toHaveBeenCalled() })
+    expect(screen.queryByRole('list', { name: 'Resume' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Start chat' }))
+    await waitFor(() => { expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ resume: null })) })
+  })
+
+  it('says in one quiet line that they could not be read, and a new chat still starts', async () => {
+    saved.read.mockRejectedValue(new Error('the local daemon did not answer'))
+    const onStart = vi.fn(() => Promise.resolve())
+    page(onStart)
+    expect(await screen.findByText('Could not read the saved conversations.')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Start chat' }))
+    await waitFor(() => { expect(onStart).toHaveBeenCalled() })
+  })
+
+  it('says in one quiet line when the service running is too old to list them', async () => {
+    saved.read.mockResolvedValue(null)
+    page()
+    expect(await screen.findByText('Restart the Maitty service to see saved conversations.')).toBeInTheDocument()
+  })
+
+  it('never lets a late answer for the folder left behind replace the one picked', async () => {
+    let answerGrowth: (found: Saved[]) => void = () => undefined
+    saved.read.mockImplementation((_agent, folder) => (folder === '/dev/growth' ? new Promise((resolve) => { answerGrowth = resolve }) : Promise.resolve([])))
+    page()
+    await waitFor(() => { expect(saved.read).toHaveBeenCalledWith('claude', '/dev/growth') })
+    await userEvent.click(within(await screen.findByRole('group', { name: 'Switch to' })).getByRole('button', { name: /api/ }))
+    await waitFor(() => { expect(saved.read).toHaveBeenLastCalledWith('claude', '/dev/api') })
+    answerGrowth([{ id: ID, first_message: 'Work in growth', last_active: HOURS_AGO_2 }])
+    await new Promise((resolve) => { setTimeout(resolve, 20) })
+    expect(screen.queryByRole('list', { name: 'Resume' })).not.toBeInTheDocument()
+  })
+
+  it('is not offered on another machine, whose saved conversations this computer cannot read', async () => {
+    render(
+      <div className="mx-app">
+        <NewChatPage machine={2} machines={[{ machine: 0, label: 'This computer', local: true }, { machine: 2, label: 'Shipyard', local: false }]} projects={[{ folder: '/srv/app', name: 'app', color: 'teal', sessions: 3 }]} defaultAgent="claude" browse={null} onStart={() => Promise.resolve()} onOtherMachine={() => undefined} onCancel={() => undefined} />
+      </div>,
+    )
+    await pickProject('app')
+    expect(saved.read).not.toHaveBeenCalled()
   })
 })
 
