@@ -182,7 +182,12 @@ counts them per surface from 1, one more for every message it sends that surface
 clients, so a gap means a missed update. The snapshot a client gets on attach and in `Reply::List`
 carries the surface's current revision and uses none. The field is `#[serde(default)]`, so it
 needed no new `PROTOCOL_VERSION`; 0 means a daemon built before it, or a surface sent nothing yet. A
-client merges a delta into the snapshot it holds and treats the result as a state update. For a pane delta from another machine the snapshot is that machine's own,
+client merges a delta into the snapshot it holds and treats the result as a state update. The desktop
+host (`streams.rs`) merges a delta only when its revision is 0 or one more than the revision it holds;
+after a gap, or with no snapshot held, it drops the delta, sends `Query::List` on its stream and takes
+the `Reply::List` as its snapshot. A list alone is no base for a delta (it can hold a change the surface
+was not sent yet), so after `Query::List` from an attached client the daemon sends that surface its next
+change in full, as it does after an attach. For a pane delta from another machine the snapshot is that machine's own,
 and the delta is cleaned first (SECURITY, "remote daemon"). Replays follow `Hello.replays`: a terminal client takes every pane's replay on attach, the desktop window
 attaches without and sends `ClientMsg::WantReplay { term }` on its stream when it shows a pane; a
 desktop replay carries the last mebibyte of the ring and then the screen as it is, which is all the

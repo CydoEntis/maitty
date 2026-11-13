@@ -35,7 +35,17 @@ pub const SEQ_BYTES: usize = std::mem::size_of::<u64>();
 pub const FRAME_HEADER_BYTES: usize =
     std::mem::size_of::<u16>() + std::mem::size_of::<u32>() + SEQ_BYTES + 1;
 
+/// The revision of a daemon built before revisions, or of a surface sent nothing yet.
+const UNNUMBERED: u64 = 0;
+
 type PaneKey = (MachineId, TermId);
+
+/// Whether a delta numbered `revision` is the next after the list numbered `held`. An unnumbered
+/// delta cannot be checked and is taken as it comes. Another machine's numbers are whatever it
+/// sends, so the sum is checked.
+fn follows(held: u64, revision: u64) -> bool {
+    revision == UNNUMBERED || held.checked_add(1) == Some(revision)
+}
 
 #[derive(Default)]
 struct Pane {
@@ -76,6 +86,8 @@ pub enum Out {
     Clipboard { machine: MachineId, text: String },
     /// Ask the machine's daemon for the pane's replay.
     WantReplay { machine: MachineId, term: TermId },
+    /// Ask the machine's daemon for its whole list.
+    WantList { machine: MachineId },
     /// The shared settings of this computer's daemon, as asked for or as they just changed.
     Settings(SharedSettings),
     /// A conversation of this computer's daemon changed: its open chat reads it again.
@@ -182,8 +194,23 @@ impl Streams {
                 out.push(Out::Folders { machine, tag, listing });
             }
             ServerMsg::State(snapshot) => self.publish(machine, snapshot, &mut out),
-            ServerMsg::TermsChanged { changed, removed, .. } => {
+            // What the host asked for after a missed update; nothing else asks on this line.
+            ServerMsg::Reply(Reply::List(snapshot)) => self.publish(machine, snapshot, &mut out),
+            ServerMsg::TermsChanged { changed, removed, revision } => {
+                // A delta fits only the list it was worked out from: with none held, or after a
+                // missed update, merging it would leave the list wrong until the next whole one.
+                let fits = self
+                    .last
+                    .get(&machine)
+                    .is_some_and(|held| follows(held.revision, revision));
+                if !fits {
+                    out.push(Out::WantList { machine });
+                    return out;
+                }
                 let merged = self.last.get(&machine).cloned().map(|mut merged| {
+                    if revision != UNNUMBERED {
+                        merged.revision = revision;
+                    }
                     for term in removed {
                         merged.terms.remove(&term);
                     }
@@ -192,8 +219,6 @@ impl Streams {
                     }
                     merged
                 });
-                // A delta before any whole snapshot has nothing to apply to; the next whole
-                // one comes with the next reconnect.
                 if let Some(merged) = merged {
                     // Each delta was capped on its own, but merged into the list they would grow
                     // it without end, so the merged list meets the caps of a whole one.

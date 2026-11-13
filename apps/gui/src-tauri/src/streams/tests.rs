@@ -208,8 +208,8 @@ fn a_whole_snapshot_is_given_and_a_delta_is_merged_into_that_machines_own() {
         now,
     );
     assert!(
-        none.is_empty(),
-        "a delta before a snapshot has nothing to apply to"
+        matches!(&none[..], [Out::WantList { machine }] if *machine == BOX),
+        "a delta before a snapshot has nothing to apply to, so the whole list is asked for"
     );
 
     streams.on_message(LOCAL, ServerMsg::State(snapshot_of(&[1])), now);
@@ -587,4 +587,81 @@ fn a_replay_of_another_machine_past_the_history_limit_is_not_passed_on_and_is_as
         again.is_empty(),
         "asked again for a replay already asked for"
     );
+}
+
+fn delta(revision: u64, changed: &[TermId], removed: &[TermId]) -> ServerMsg {
+    ServerMsg::TermsChanged {
+        changed: changed.iter().map(|id| pane(*id)).collect(),
+        removed: removed.to_vec(),
+        revision,
+    }
+}
+
+fn numbered(revision: u64, ids: &[TermId]) -> Snapshot {
+    Snapshot {
+        revision,
+        ..snapshot_of(ids)
+    }
+}
+
+fn listed(streams: &Streams, machine: MachineId) -> Vec<TermId> {
+    streams
+        .last_snapshot(machine)
+        .map(|list| list.terms.keys().copied().collect())
+        .unwrap_or_default()
+}
+
+#[test]
+fn a_missed_update_is_made_up_by_asking_for_the_whole_list_once() {
+    let mut streams = Streams::default();
+    let now = Instant::now();
+    let mut outs = streams.on_message(LOCAL, ServerMsg::State(numbered(1, &[1])), now);
+    outs.extend(streams.on_message(LOCAL, delta(2, &[2], &[]), now));
+    // Revision 3, which added pane 3, never came.
+    let after_the_gap = streams.on_message(LOCAL, delta(4, &[4], &[]), now);
+    assert!(
+        matches!(&after_the_gap[..], [Out::WantList { machine }] if *machine == LOCAL),
+        "{after_the_gap:?}"
+    );
+    assert_eq!(listed(&streams, LOCAL), [1, 2], "a delta past a gap is not merged");
+    outs.extend(after_the_gap);
+
+    let whole = ServerMsg::Reply(Reply::List(numbered(4, &[1, 2, 3, 4])));
+    let given = streams.on_message(LOCAL, whole, now);
+    assert!(
+        matches!(&given[..], [Out::Sessions { machine, snapshot: Some(s) }] if *machine == LOCAL && s.terms.len() == 4),
+        "{given:?}"
+    );
+    outs.extend(given);
+    outs.extend(streams.on_message(LOCAL, delta(5, &[], &[1]), now));
+
+    let asked = outs.iter().filter(|out| matches!(out, Out::WantList { .. })).count();
+    assert_eq!(asked, 1);
+    assert_eq!(listed(&streams, LOCAL), [2, 3, 4]);
+}
+
+#[test]
+fn a_delta_before_any_snapshot_asks_for_the_whole_list() {
+    let mut streams = Streams::default();
+    let now = Instant::now();
+    let early = streams.on_message(BOX, delta(7, &[9], &[]), now);
+    assert!(
+        matches!(&early[..], [Out::WantList { machine }] if *machine == BOX),
+        "{early:?}"
+    );
+    streams.on_message(BOX, ServerMsg::Reply(Reply::List(numbered(7, &[8, 9]))), now);
+    streams.on_message(BOX, delta(8, &[], &[8]), now);
+    assert_eq!(listed(&streams, BOX), [9]);
+}
+
+#[test]
+fn a_daemon_that_numbers_nothing_has_its_deltas_merged_as_they_come() {
+    let mut streams = Streams::default();
+    let now = Instant::now();
+    streams.on_message(BOX, ServerMsg::State(snapshot_of(&[1])), now);
+    let first = streams.on_message(BOX, delta(0, &[2], &[]), now);
+    let second = streams.on_message(BOX, delta(0, &[3], &[]), now);
+    assert!(matches!(&first[..], [Out::Sessions { .. }]), "{first:?}");
+    assert!(matches!(&second[..], [Out::Sessions { .. }]), "{second:?}");
+    assert_eq!(listed(&streams, BOX), [1, 2, 3]);
 }
