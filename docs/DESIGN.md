@@ -91,7 +91,8 @@ or on another version the ` + ` gives way to an accent ` install ` or ` update `
 click from where it shows; the Machines dialog marks that row ` u install ` / ` u update ` beside its
 state. A session is two lines:
 the status mark and the name (bold and bright for an agent with something going on), then `■` in
-the project's colour, the project and the branch in violet. No status words anywhere. Agents come
+the project's colour, the project and the branch in violet. No status words anywhere, except
+`limited 16:30` (`limited Sun 16:30` on another day) in amber on a session that hit its plan limit. Agents come
 first, then shells, each in the order they started, so a row never moves when its status changes.
 The open session has the row ground and an accent `▎`. An agent's subagents in its current turn
 follow it: `└` and a mark each, or under the open session one row each with `├`/`└` and the name.
