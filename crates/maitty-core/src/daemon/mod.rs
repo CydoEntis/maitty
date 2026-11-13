@@ -3733,4 +3733,49 @@ mod tests {
         assert_eq!(v["other"], 1, "the rest of the file is kept");
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn two_worktrees_trusted_at_once_are_both_trusted() {
+        let dir = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-trust-both-{}"),
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("claude.json");
+        for round in 0..30 {
+            std::fs::write(
+                &f,
+                r#"{"projects":{"c:/code/app":{"hasTrustDialogAccepted":true}}}"#,
+            )
+            .unwrap();
+            let start = std::sync::Arc::new(std::sync::Barrier::new(2));
+            let trusts: Vec<_> = ["a", "b"]
+                .into_iter()
+                .map(|name| {
+                    let (f, start) = (f.clone(), start.clone());
+                    std::thread::spawn(move || {
+                        start.wait();
+                        super::trust_in(
+                            &f,
+                            std::path::Path::new("C:/code/app"),
+                            &std::path::Path::new("C:/code/app-worktrees").join(name),
+                        );
+                    })
+                })
+                .collect();
+            for trust in trusts {
+                trust.join().unwrap();
+            }
+            let v: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+            for name in ["a", "b"] {
+                assert_eq!(
+                    v["projects"][format!("C:/code/app-worktrees/{name}")]["hasTrustDialogAccepted"],
+                    true,
+                    "round {round}: worktree {name} lost its trust"
+                );
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
