@@ -1876,6 +1876,42 @@ async fn an_approved_command_is_remembered_for_the_project_and_nothing_else_is()
 }
 
 #[tokio::test]
+async fn saved_conversations_are_listed_for_a_person_only_and_off_the_loop() {
+    let mut session = conversation_fixture("conversation-saved-list").await;
+    let outcome = AssertUnwindSafe(async {
+        let ask = |agent: &str, folder: &str| {
+            crate::protocol::ClientMsg::Query(crate::protocol::Query::SavedConversations {
+                agent: agent.into(),
+                folder: folder.into(),
+                tag: 6,
+            })
+        };
+        let from = authenticated_pane(&mut session);
+        let refused = exchange(&mut session, 440, ask("gemini", "~"), Some(from)).await;
+        assert!(matches!(refused, ServerMsg::Error(ref message) if message.contains("Only a human")), "{refused:?}");
+        let relative = exchange(&mut session, 441, ask("claude", "code/app"), None).await;
+        assert!(matches!(relative, ServerMsg::Error(_)), "{relative:?}");
+        let answered = exchange(&mut session, 442, ask("gemini", "~"), None).await;
+        assert!(
+            matches!(
+                answered,
+                ServerMsg::Reply(crate::protocol::Reply::SavedConversations {
+                    tag: 6,
+                    found: crate::protocol::SavedConversations::NotSupported,
+                })
+            ),
+            "{answered:?}"
+        );
+    })
+    .catch_unwind()
+    .await;
+    session.cleanup().await;
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[tokio::test]
 async fn approved_commands_are_listed_and_taken_back_by_a_person_only() {
     let mut session = conversation_fixture("conversation-approval").await;
     let outcome = AssertUnwindSafe(async {
@@ -4001,8 +4037,10 @@ async fn a_provider_stopped_cleanly_leaves_no_entry_in_the_record() {
 }
 
 mod queue;
+mod continue_turn;
 mod branch_chat;
 mod claude_chat;
+mod turn_snapshot;
 
 #[tokio::test]
 async fn the_daemon_resumes_a_stopped_conversation_on_the_same_id_and_the_next_generation() {

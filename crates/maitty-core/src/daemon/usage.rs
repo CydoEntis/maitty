@@ -240,7 +240,10 @@ impl Daemon {
             for incoming in pane.subagent_activity {
                 if let Some(current) = t.subagent_activity.iter_mut().find(|a| a.id == incoming.id)
                 {
-                    if incoming.updated_at > current.updated_at && *current != incoming {
+                    // A finish stamped in the same whole second as the start still counts.
+                    let newer = incoming.updated_at > current.updated_at
+                        || (incoming.updated_at == current.updated_at && !incoming.state.active());
+                    if newer && *current != incoming {
                         *current = incoming;
                         self.dirty = true;
                     }
@@ -383,7 +386,7 @@ fn codex_home() -> Option<PathBuf> {
 }
 
 /// Codex's sessions folder (`$CODEX_HOME/sessions`, else `~/.codex/sessions`).
-fn codex_sessions() -> Option<PathBuf> {
+pub(super) fn codex_sessions() -> Option<PathBuf> {
     Some(codex_home()?.join("sessions"))
 }
 

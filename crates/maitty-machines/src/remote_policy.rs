@@ -82,6 +82,9 @@ pub fn allow(opts: &MachineOpts, msg: &ServerMsg) -> Verdict {
         ServerMsg::Clipboard { .. } => gate(opts.clipboard, "clipboard is off for this machine"),
         ServerMsg::Notice(_) => gate(opts.notices, "notices are off for this machine"),
         ServerMsg::Raise => gate(opts.notices, "notices are off for this machine"),
+        ServerMsg::Reply(Reply::SavedConversations { .. }) => {
+            Verdict::Ignore("saved conversations are listed for this computer's folders only")
+        }
         ServerMsg::Error(_) | ServerMsg::Reply(_) => Verdict::Answer,
         ServerMsg::AskRemoveWorktree { .. } => {
             Verdict::Ignore("a worktree prompt names a folder on this computer")
@@ -436,6 +439,10 @@ mod tests {
             ServerMsg::Reply(Reply::Text("t".into())),
             ServerMsg::Reply(Reply::Worktrees(Vec::new())),
             ServerMsg::Error("e".into()),
+            ServerMsg::Reply(Reply::SavedConversations {
+                tag: 1,
+                found: maitty_shared::protocol::SavedConversations::NotSupported,
+            }),
             ServerMsg::Notice("n".into()),
             ServerMsg::AskRemoveWorktree {
                 path: PathBuf::from("/home/me/repo-wt"),
@@ -476,6 +483,7 @@ mod tests {
             ServerMsg::Replay { .. } => "Replay",
             ServerMsg::Output { .. } => "Output",
             ServerMsg::Attention { .. } => "Attention",
+            ServerMsg::Reply(Reply::SavedConversations { .. }) => "SavedConversations",
             ServerMsg::Reply(_) => "Reply",
             ServerMsg::Error(_) => "Error",
             ServerMsg::Notice(_) => "Notice",
@@ -524,6 +532,7 @@ mod tests {
         assert_eq!(
             ignored,
             [
+                "SavedConversations",
                 "Notice",
                 "AskRemoveWorktree",
                 "Clipboard",

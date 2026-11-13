@@ -668,6 +668,21 @@ clients only; the reads run off the event loop. A listing from another machine i
 snapshot is (`remote_policy::vet`): control characters out, names that are paths dropped, the count
 cut, and it is passed on only while a request to that machine is waiting.
 
+Protocol 85 adds `Query::SavedConversations { agent, folder, tag }` and `Reply::SavedConversations { tag, found }`
+(`daemon/conversation/saved.rs`): the conversations Claude or Codex saved for a folder on the daemon's computer, for a
+client offering to resume one. `found` is `Listed` (at most 20, newest first: the agent's own id, the first thing the
+person typed as one clean line of at most 200 characters, and when the file was last written, in unix seconds; empty
+when the folder has none) or `NotSupported` for any other agent. Claude's come from its transcripts for that folder
+(`$CLAUDE_CONFIG_DIR/projects`, else `~/.claude/projects`; the transcript's own `cwd` must be the folder), Codex's
+from its session files (`$CODEX_HOME/sessions`) whose first line names the folder, subagents' sessions left out. The
+first message skips what the agent wrote itself (Claude's meta lines, slash commands, reminders and tool results;
+Codex's instructions and environment), with the same rules the transcript follower uses. `folder` is checked as
+`ListFolders`' `path` is (absolute or `~`, at most 4,096 bytes; anything else answers `ServerMsg::Error`). Human
+clients only; the files are read on a blocking task, at most 500 looked at, 1 MiB from the start of each, and an
+unreadable one is skipped and logged by path only. Both came with their own `introduced_in` arms
+(`SAVED_CONVERSATIONS_SINCE`); `COMPATIBLE_SINCE` stays 78, since an older daemon is never asked and an older client
+never sent the reply. This computer only: another machine's answer is ignored (`remote_policy`).
+
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store
 ([ADR 0009](adr/0009-usage-is-provider-reported-never-estimated.md)): totals, one entry per

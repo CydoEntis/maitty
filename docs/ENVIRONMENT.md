@@ -317,6 +317,19 @@ The daemon also keeps `closed-sessions-<socket>.json` there: the last 50 agent s
 or crashed ([DATABASE](DATABASE.md#project-specific-closed-sessions)). It adds no setting or variable;
 deleting the file empties the list.
 
+## Project-specific: continuing a chat turn after a restart
+
+`restore.continue_turn` (default `false`; Settings › Sessions › *Continue chat turns*) lets the
+daemon send `Continue where you left off.` to a chat conversation it has just
+resumed. It needs `restore.enabled` and `restore.conversations`, and applies only to a structured
+conversation that was in a turn when the daemon stopped and that the daemon itself resumed; an
+idle chat (its last turn had ended), a conversation a person resumes, one that was mid-transfer,
+and every terminal agent get nothing.
+The message is sent once per daemon start, after the resume has succeeded, and at most 3 times in
+5 minutes per conversation. That count is kept in the session file
+([DATABASE](DATABASE.md#project-specific-entities)), so it holds across restarts. It adds no
+environment variable.
+
 ## Project-specific: structured history retention foundation
 
 The structured cache derives `session-<socket>.history/` beside the

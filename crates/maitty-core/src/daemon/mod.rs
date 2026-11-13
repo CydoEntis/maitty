@@ -233,6 +233,11 @@ pub enum Ev {
         tag: u64,
         listing: crate::protocol::FolderListing,
     },
+    SavedConversationsReady {
+        client: ClientId,
+        tag: u64,
+        found: crate::protocol::SavedConversations,
+    },
     RepoReady {
         client: ClientId,
         tag: u64,
@@ -430,6 +435,13 @@ struct Daemon {
     /// Chat conversations that were running when the previous daemon went away, with the
     /// generation they were fenced to: what an automatic resume may start, once.
     resumable_conversations: Vec<(crate::conversation::ConversationId, u64)>,
+    /// Those of `resumable_conversations` that were Running, not mid-transfer, with a turn in
+    /// flight.
+    cut_conversations: std::collections::BTreeSet<crate::conversation::ConversationId>,
+    /// Conversations the daemon is resuming that get the continue message once the resume
+    /// succeeds, with the generation that resume runs at.
+    turns_to_continue: BTreeMap<crate::conversation::ConversationId, u64>,
+    turn_continues: conversation::continue_turn::Continues,
     conversation_states: BTreeMap<crate::conversation::ConversationId, conversation::State>,
     /// Conversations whose agent was stopped on purpose, so its exit is not a failure.
     conversation_ending: std::collections::BTreeSet<crate::conversation::ConversationId>,
@@ -1226,6 +1238,9 @@ impl Daemon {
             pending_starts: Vec::new(),
             conversation_operations: Vec::new(),
             resumable_conversations: Vec::new(),
+            cut_conversations: std::collections::BTreeSet::new(),
+            turns_to_continue: BTreeMap::new(),
+            turn_continues: conversation::continue_turn::Continues::default(),
             conversation_states: BTreeMap::new(),
             conversation_ending: std::collections::BTreeSet::new(),
             conversation_closing: std::collections::BTreeMap::new(),
@@ -2289,6 +2304,9 @@ impl Daemon {
                 tag,
                 listing,
             } => self.send(client, ServerMsg::Reply(Reply::Folders { tag, listing })),
+            Ev::SavedConversationsReady { client, tag, found } => {
+                self.send(client, ServerMsg::Reply(Reply::SavedConversations { tag, found }));
+            }
             Ev::RepoReady {
                 client,
                 tag,
@@ -2867,6 +2885,29 @@ impl Daemon {
                         tokio::task::spawn_blocking(move || {
                             let listing = folders::list(&path, home.as_deref());
                             let _ = tx.blocking_send(Ev::FoldersReady { client, tag, listing });
+                        });
+                        return;
+                    }
+                    Query::SavedConversations { .. } if self.client_is_agent(client) => {
+                        ServerMsg::Error("Only a human client can list saved conversations".into())
+                    }
+                    Query::SavedConversations { agent, folder, tag } => {
+                        let home = directories::BaseDirs::new().map(|dirs| dirs.home_dir().to_path_buf());
+                        let Some(folder) = (folder.len() <= folders::PATH_MAX_BYTES)
+                            .then(|| folders::resolve(&folder, home.as_deref()))
+                            .flatten()
+                        else {
+                            self.send(
+                                client,
+                                ServerMsg::Error("A folder is an absolute path or starts with ~".into()),
+                            );
+                            return;
+                        };
+                        let stores = conversation::saved::Stores::of_this_user(home.as_deref());
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let found = conversation::saved::list(&agent, &folder, &stores);
+                            let _ = tx.blocking_send(Ev::SavedConversationsReady { client, tag, found });
                         });
                         return;
                     }

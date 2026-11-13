@@ -437,6 +437,13 @@ pub const SETTINGS: &[Setting] = &[
         help: "After a restart, chat conversations that were running pick up on the same provider session.",
     },
     Setting {
+        path: "restore.continue_turn",
+        label: "Continue chat turns",
+        kind: Kind::Bool,
+        cat: Cat::Sessions,
+        help: "A resumed chat conversation is sent \"Continue where you left off.\" once, at most 3 times in 5 minutes.",
+    },
+    Setting {
         path: "restore.commands",
         label: "Re-run commands",
         kind: Kind::Bool,
