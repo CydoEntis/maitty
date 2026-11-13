@@ -1163,8 +1163,8 @@ pub struct Snapshot {
     pub removed: BTreeMap<TermId, RemovalReason>,
 }
 
-/// Why a pane left the list a surface is shown. A new reason is a new value inside a message
-/// older peers are still sent, so adding one moves `COMPATIBLE_SINCE`.
+/// Why a pane left the list a surface is shown. A reason added later reads as `Unknown` to a
+/// build from before it, so adding one needs no new `PROTOCOL_VERSION`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RemovalReason {
     /// A person closed it. It may still be inside its undo window, and then comes back as changed.
@@ -1175,8 +1175,12 @@ pub enum RemovalReason {
     PutAway,
     /// It belongs to another surface now.
     Moved,
-    /// It ended because the daemon is stopping.
+    /// It ended after the daemon was told to stop. Best-effort: a stopping daemon sends `Bye`
+    /// and no further update, so only a pane that ended before `Bye` is ever named this way.
     DaemonStopping,
+    /// The daemon recorded no reason, or gave one this build does not know.
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -2559,6 +2563,40 @@ mod tests {
         assert_eq!(reasons, why);
         let state = Snapshot { removed: why.clone(), ..Snapshot::default() };
         assert_eq!(decode::<Snapshot>(&encode(&state).unwrap()).unwrap().removed, why);
+    }
+
+    #[test]
+    fn a_removal_reason_from_a_newer_daemon_reads_as_unknown_and_the_message_survives() {
+        #[derive(Serialize)]
+        enum NewerReason {
+            Exited,
+            Teleported,
+        }
+        #[derive(Serialize)]
+        enum NewerServerMsg {
+            TermsChanged {
+                changed: Vec<TermInfo>,
+                removed: Vec<TermId>,
+                reasons: BTreeMap<TermId, NewerReason>,
+                revision: u64,
+            },
+        }
+        let newer = NewerServerMsg::TermsChanged {
+            changed: Vec::new(),
+            removed: vec![3, 4],
+            reasons: BTreeMap::from([(3, NewerReason::Exited), (4, NewerReason::Teleported)]),
+            revision: 5,
+        };
+        let Ok(ServerMsg::TermsChanged { removed, reasons, revision, .. }) =
+            decode(&encode(&newer).unwrap())
+        else {
+            panic!("a reason this build does not know must not cost the message");
+        };
+        assert_eq!((removed, revision), (vec![3, 4], 5));
+        assert_eq!(
+            reasons,
+            BTreeMap::from([(3, RemovalReason::Exited), (4, RemovalReason::Unknown)])
+        );
     }
 
     #[test]

@@ -282,6 +282,22 @@ mod tests {
     }
 
     #[test]
+    fn a_merged_pane_delta_says_why_its_own_panes_left_not_why_an_earlier_states_did() {
+        use crate::protocol::RemovalReason;
+        let mut app = two_machines();
+        let gone = *app.snap.terms.keys().next().unwrap();
+        app.snap.removed = [(9000, RemovalReason::Closed)].into();
+        app.on_server(crate::protocol::ServerMsg::TermsChanged {
+            changed: Vec::new(),
+            removed: vec![gone],
+            reasons: [(gone, RemovalReason::Exited)].into(),
+            revision: 0,
+        });
+        assert!(!app.snap.terms.contains_key(&gone));
+        assert_eq!(app.snap.removed, [(gone, RemovalReason::Exited)].into());
+    }
+
+    #[test]
     fn a_pane_delta_before_any_state_cannot_slip_past_a_recorded_daemon_id() {
         let mut app = two_machines();
         app.on_machine_server(MachineId(1), state_with_id(Some(BOX_A)));

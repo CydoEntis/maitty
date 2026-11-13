@@ -1467,19 +1467,35 @@ impl Daemon {
             .into_iter()
             .flatten()
             .filter(|id| !snap.terms.contains_key(id))
-            .filter_map(|id| Some((*id, self.removal_reason(*id, surface)?)))
+            .map(|id| (*id, self.removal_reason(*id, surface)))
             .collect()
     }
 
-    /// Why a pane is not in `surface`'s list. None only for a pane that ended unrecorded.
-    fn removal_reason(&self, term: TermId, surface: Surface) -> Option<RemovalReason> {
+    /// Why a pane is not in `surface`'s list. `Unknown` for one that ended with no reason
+    /// recorded, or that is hidden by nothing named here: said, never guessed.
+    fn removal_reason(&self, term: TermId, surface: Surface) -> RemovalReason {
         match self.terms.get(&term) {
-            None => self.ended.get(&term).copied(),
-            Some(t) if t.owner != surface => Some(RemovalReason::Moved),
-            Some(t) if t.closing.is_some() => Some(RemovalReason::Closed),
-            // Still running and this surface's own, so what hides it is being a spare.
-            Some(_) => Some(RemovalReason::PutAway),
+            None => self.ended.get(&term).copied().unwrap_or(RemovalReason::Unknown),
+            Some(t) if t.owner != surface => RemovalReason::Moved,
+            Some(t) if t.closing.is_some() => RemovalReason::Closed,
+            Some(t) if t.spare => RemovalReason::PutAway,
+            Some(_) => RemovalReason::Unknown,
         }
+    }
+
+    /// A client attached and was sent `snap`: its panes are now ones the surface was told of.
+    /// With another client of the surface still attached they are added, so a removal that
+    /// client is owed still reaches it; with none, they replace a list nobody holds any more.
+    fn note_attached(&mut self, client: ClientId, surface: Surface, snap: &Snapshot) {
+        let mut listed: BTreeSet<TermId> = snap.terms.keys().copied().collect();
+        let others = self
+            .clients
+            .iter()
+            .any(|(id, c)| *id != client && c.attach && c.surface == surface);
+        if others {
+            listed.extend(self.listed.get(&surface).into_iter().flatten());
+        }
+        self.note_listed(surface, listed);
     }
 
     fn note_listed(&mut self, surface: Surface, listed: BTreeSet<TermId>) {
@@ -1653,7 +1669,9 @@ impl Daemon {
                     behind: std::cell::Cell::new(false),
                 };
                 if attach {
-                    c.push(ServerMsg::State(self.snapshot_for(surface)));
+                    let snap = self.snapshot_for(surface);
+                    self.note_attached(id, surface, &snap);
+                    c.push(ServerMsg::State(snap));
                     // The next change goes out in full: a delta against what the others saw
                     // could skip something this client's snapshot has not got.
                     self.sent_state.remove(&surface);
@@ -1720,7 +1738,9 @@ impl Daemon {
                         }
                         return;
                     }
-                    self.send(id, ServerMsg::State(self.snapshot_for(Surface::Terminal)));
+                    let snap = self.snapshot_for(Surface::Terminal);
+                    self.note_attached(id, Surface::Terminal, &snap);
+                    self.send(id, ServerMsg::State(snap));
                     self.sent_state.remove(&Surface::Terminal);
                     for term in self
                         .terms

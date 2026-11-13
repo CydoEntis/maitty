@@ -263,6 +263,36 @@ fn a_whole_snapshot_is_given_and_a_delta_is_merged_into_that_machines_own() {
 }
 
 #[test]
+fn a_merged_delta_says_why_its_own_panes_left_not_why_an_earlier_states_did() {
+    use maitty_shared::protocol::RemovalReason;
+    let mut streams = Streams::default();
+    let now = Instant::now();
+    let mut held = snapshot_of(&[1, 2]);
+    held.removed = BTreeMap::from([(9, RemovalReason::Closed)]);
+    streams.on_message(LOCAL, ServerMsg::State(held), now);
+    let merged = streams.on_message(
+        LOCAL,
+        ServerMsg::TermsChanged {
+            changed: Vec::new(),
+            removed: vec![1],
+            reasons: BTreeMap::from([(1, RemovalReason::Exited)]),
+            revision: 0,
+        },
+        now,
+    );
+    let [
+        Out::Sessions {
+            snapshot: Some(snapshot),
+            ..
+        },
+    ] = &merged[..]
+    else {
+        panic!("{merged:?}");
+    };
+    assert_eq!(snapshot.removed, BTreeMap::from([(1, RemovalReason::Exited)]));
+}
+
+#[test]
 fn a_snapshot_forgets_only_that_machines_panes_that_went() {
     let mut streams = Streams::default();
     let now = Instant::now();

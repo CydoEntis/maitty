@@ -121,11 +121,15 @@ pub fn vet(opts: &MachineOpts, asked: bool, machine: &str, msg: ServerMsg) -> Op
                 return None;
             }
         },
-        ServerMsg::TermsChanged { changed, removed, reasons, revision } => {
+        ServerMsg::TermsChanged { changed, removed, mut reasons, revision } => {
             if removed.len() > ITEMS_MAX || reasons.len() > ITEMS_MAX {
-                tracing::debug!("refused a pane delta from another machine: too many removals");
+                tracing::debug!(
+                    "refused a pane delta from another machine: too many removals or reasons"
+                );
                 return None;
             }
+            let dropped: std::collections::BTreeSet<_> = removed.iter().copied().collect();
+            reasons.retain(|term, _| dropped.contains(term));
             match sanitize_terms(changed) {
                 Ok(changed) => ServerMsg::TermsChanged { changed, removed, reasons, revision },
                 Err(why) => {
@@ -279,6 +283,33 @@ mod tests {
         assert_eq!(ask.tool, "Bash");
         assert!(!ask.detail.contains(['\u{1b}', '\u{7}', '\n', '\u{202e}']), "{:?}", ask.detail);
         assert!(ask.answerable, "the key is still that machine's daemon's to check");
+    }
+
+    fn removal_delta(removed: Vec<u32>, reasons: Vec<u32>) -> ServerMsg {
+        use maitty_shared::protocol::RemovalReason;
+        ServerMsg::TermsChanged {
+            changed: Vec::new(),
+            removed,
+            reasons: reasons.into_iter().map(|id| (id, RemovalReason::Exited)).collect(),
+            revision: 0,
+        }
+    }
+
+    #[test]
+    fn a_remote_reason_for_a_pane_the_delta_does_not_remove_is_dropped() {
+        let Some(ServerMsg::TermsChanged { removed, reasons, .. }) =
+            vet(&nothing_on(), false, "box", removal_delta(vec![3], vec![3, 4]))
+        else {
+            panic!("a pane delta is applied");
+        };
+        assert_eq!(removed, [3]);
+        assert_eq!(reasons.keys().copied().collect::<Vec<_>>(), [3]);
+    }
+
+    #[test]
+    fn a_remote_pane_delta_with_too_many_reasons_is_refused() {
+        let too_many = (0..=ITEMS_MAX as u32).collect();
+        assert!(vet(&nothing_on(), false, "box", removal_delta(vec![3], too_many)).is_none());
     }
 
     #[test]

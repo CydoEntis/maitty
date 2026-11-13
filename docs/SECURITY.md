@@ -462,7 +462,8 @@ that is not this one (`remote_policy.rs`, `remote_snapshot.rs` in `maitty-machin
   that is not finite, is refused whole and the last good one stays; pane sizes are held to
   1-1000 columns and rows, `cpu` to 0-100. The walk is over the serialized snapshot, so a string
   field added to the protocol is cleaned without being listed. A `TermsChanged` is cleaned with the
-  same walk, refused whole when it names more than 10,000 panes to change or drop, and then
+  same walk, refused whole when it names more than 10,000 panes to change or drop or gives more
+  than 10,000 removal reasons, keeps a reason only for a pane it drops, and is then
   merged into that machine's held snapshot, which goes through the same checks as a `State`
   (daemon id, caps) before it is kept. A path in a remote snapshot is a
   label: it is never used to touch this computer's disk (`App::local_cwd` is `None` for a pane on
