@@ -650,7 +650,9 @@ computer, as its GitHub command line says (`gh auth status --json hosts`,
 read: too old to answer in JSON, or no answer in 15 seconds). Nobody signed in is an empty list, not a
 problem. Human clients only; `gh` runs off the event loop and cannot ask a question. A report from
 another machine keeps only logins GitHub could have given out and one clean `problem` line
-(`remote_policy::vet`). A program run with a time limit goes through `proc::run_within`.
+(`remote_policy::vet`). A program run with a time limit goes through `proc::run_within`. The desktop
+host sends it through `github_accounts(machine, tag)` and raises a `github-accounts` event with the tag
+and the report (`apps/gui/src/api/githubAccounts.ts` waits on it for 20 seconds).
 
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store

@@ -14,7 +14,7 @@
 
 use maitty_machines::MachineId;
 use maitty_machines::remote_snapshot::sanitize_snapshot;
-use maitty_shared::protocol::{FolderListing, Reply, ServerMsg, Snapshot, Status, TermId};
+use maitty_shared::protocol::{FolderListing, GitHubReport, Reply, ServerMsg, Snapshot, Status, TermId};
 use maitty_shared::settings_view::SharedSettings;
 use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, Instant};
@@ -91,6 +91,12 @@ pub enum Out {
         machine: MachineId,
         tag: u64,
         outcome: Result<String, String>,
+    },
+    /// Who a machine says is signed in to GitHub there, already cleaned.
+    GitHubAccounts {
+        machine: MachineId,
+        tag: u64,
+        report: GitHubReport,
     },
 }
 
@@ -189,6 +195,9 @@ impl Streams {
             }
             ServerMsg::Reply(Reply::Cloned { tag, outcome }) => {
                 out.push(Out::Cloned { machine, tag, outcome });
+            }
+            ServerMsg::Reply(Reply::GitHubAccounts { tag, report }) => {
+                out.push(Out::GitHubAccounts { machine, tag, report });
             }
             ServerMsg::State(snapshot) => self.publish(machine, snapshot, &mut out),
             ServerMsg::TermsChanged { changed, removed } => {

@@ -23,7 +23,7 @@ use maitty_machines::link::Timing;
 use maitty_machines::machine_config::Grant;
 use maitty_machines::machine_ids::MachineIds;
 use maitty_machines::{MachineDef, MachineId, Outgoing};
-use maitty_shared::protocol::{ClientMsg, Command, FolderListing, Query, Snapshot, Status, TermId};
+use maitty_shared::protocol::{ClientMsg, Command, FolderListing, GitHubReport, Query, Snapshot, Status, TermId};
 use maitty_shared::settings_view::{Appearance, NewSessionView, SettingKey, SettingValue, SharedSettings, SidebarSide, WindowStyle};
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -52,6 +52,8 @@ const MACHINE_ERROR_EVENT: &str = "machine-error";
 const FOLDER_LISTING_EVENT: &str = "folder-listing";
 /// How a clone a window asked for ended.
 const REPOSITORY_CLONED_EVENT: &str = "repository-cloned";
+/// Who a machine says is signed in to GitHub there: `{machine, tag, report}`.
+const GITHUB_ACCOUNTS_EVENT: &str = "github-accounts";
 /// Longest repository address the daemon accepts.
 const MOST_ADDRESS_BYTES: usize = 2048;
 /// The shared settings, whenever the daemon says them: the answer to a question, or a change.
@@ -338,6 +340,12 @@ impl Wire {
         )
     }
 
+    /// Ask a machine's daemon (this computer's when none is named) who is signed in to GitHub there.
+    /// The answer comes back as a `github-accounts` event carrying `tag`.
+    pub fn github_accounts(&self, machine: Option<u16>, tag: u64) -> Result<(), String> {
+        self.send(machine_of(machine), ClientMsg::Query(Query::GitHubAccounts { tag }))
+    }
+
     /// Ask this computer's daemon for the shared settings. The answer comes back as a
     /// `shared-settings` event, the same one a change anywhere raises.
     pub fn shared_settings(&self) -> Result<(), String> {
@@ -417,6 +425,13 @@ pub fn clone_repository(
     tag: u64,
 ) -> Result<(), String> {
     wire.clone_repository(machine, &address, &parent, tag)
+}
+
+/// Asks a machine (this computer when `machine` is left out) who is signed in to GitHub there. The
+/// answer arrives as a `github-accounts` event with the same `tag`.
+#[tauri::command]
+pub fn github_accounts(wire: tauri::State<'_, Wire>, machine: Option<u16>, tag: u64) -> Result<(), String> {
+    wire.github_accounts(machine, tag)
 }
 
 /// Asks the daemon for the shared settings; the answer arrives as a `shared-settings` event.
@@ -627,6 +642,12 @@ pub enum Reaction {
         tag: u64,
         outcome: Result<String, String>,
     },
+    /// Who a machine says is signed in to GitHub there, for the window that asked.
+    GitHubAccounts {
+        machine: MachineId,
+        tag: u64,
+        report: GitHubReport,
+    },
     /// A machine's whole snapshot, or none when this computer's line ended.
     Sessions {
         machine: MachineId,
@@ -713,6 +734,7 @@ fn reactions(handle: &HubHandle, outs: Vec<Out>) -> Vec<Reaction> {
             }
             Out::Folders { machine, tag, listing } => Some(Reaction::Folders { machine, tag, listing }),
             Out::Cloned { machine, tag, outcome } => Some(Reaction::Cloned { machine, tag, outcome }),
+            Out::GitHubAccounts { machine, tag, report } => Some(Reaction::GitHubAccounts { machine, tag, report }),
             Out::Sessions { machine, snapshot } => Some(Reaction::Sessions { machine, snapshot }),
             Out::WantReplay { machine, term } => {
                 let _ = handle.send(Outgoing {
@@ -764,6 +786,13 @@ struct CloneAnswer {
     tag: u64,
     folder: Option<String>,
     refused: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+struct GitHubAnswer {
+    machine: u16,
+    tag: u64,
+    report: GitHubReport,
 }
 
 #[derive(Clone, Serialize)]
@@ -848,6 +877,16 @@ fn perform(app: &AppHandle, reactions: Vec<Reaction>) {
                         tag,
                         folder,
                         refused,
+                    },
+                );
+            }
+            Reaction::GitHubAccounts { machine, tag, report } => {
+                let _ = app.emit(
+                    GITHUB_ACCOUNTS_EVENT,
+                    GitHubAnswer {
+                        machine: machine.0,
+                        tag,
+                        report,
                     },
                 );
             }
