@@ -1011,3 +1011,26 @@ fn followed_reasoning_is_masked_cleaned_and_cut_and_its_signature_is_dropped() {
     assert!(texts[1].len() < 64 * 1024 + 64 && texts[1].ends_with("cut off"));
     assert!(!format!("{history:?}").contains("SIGNATURE-BYTES"));
 }
+
+#[test]
+fn a_secret_with_an_escape_inside_it_is_not_in_the_stored_reasoning() {
+    let token = fake_token();
+    let (head, tail) = token.split_at(10);
+    let lines = vec![
+        claude_user("u1", "go"),
+        claude_assistant(
+            "a1",
+            json!({ "type": "thinking", "thinking": format!("key {head}\u{1b}[0m{tail} end"), "signature": "x" }),
+        ),
+    ];
+
+    let mut history = history_of(Format::Claude, &lines);
+    for entry in &mut history.entries {
+        crate::daemon::conversation::redact::redact_entry(entry);
+    }
+
+    let texts = reasoning_texts(&history);
+    assert_eq!(texts.len(), 1);
+    assert!(!texts[0].contains(&token) && !texts[0].contains(head), "{}", texts[0]);
+    assert!(texts[0].contains("[redacted]"));
+}

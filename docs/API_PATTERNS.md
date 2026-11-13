@@ -652,6 +652,10 @@ A Claude `thinking` block with text and a Codex `response_item` of type `reasoni
 become `Reasoning` entries, cleaned, masked and cut like the structured runtimes' (the block's
 `signature` and Codex's `content` and `encrypted_content` are never read); `redacted_thinking` and a
 reasoning with no text are skipped. They reach a client through the same `daemon::for_client`.
+Reasoning does not count toward a followed history's 20,000-entry cap (so thinking never pushes out a
+message or tool step); it has its own budget of 4 MiB of text in all (`follow::MAX_REASONING_BYTES`),
+and once that is spent later reasoning is not kept while the oldest stays. A Gemini transcript's
+thinking is not kept.
 
 `ConversationSend` carries an optional `choice` (`TurnChoice { model, effort }`, `#[serde(default)]`, no
 protocol bump; a send from before it decodes as no choice). The daemon validates it (a plain model name that

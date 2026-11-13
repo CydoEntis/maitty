@@ -703,3 +703,58 @@ async fn a_file_that_cannot_be_read_is_said_not_shown_empty_as_if_complete() {
         Completeness::Incomplete(_)
     ));
 }
+
+fn claude_thought(n: usize, text: &str) -> String {
+    format!(
+        "{}\n",
+        json!({
+            "type": "assistant", "uuid": format!("t-{n}"), "isSidechain": false,
+            "timestamp": "2026-11-04T09:30:05.000Z",
+            "message": { "role": "assistant", "content": [
+                { "type": "thinking", "thinking": text, "signature": "x" }
+            ] },
+        })
+    )
+}
+
+#[test]
+fn a_long_session_of_thinking_keeps_its_newest_messages_and_a_bounded_reasoning() {
+    let mut follower = Followed::new(ConversationId(9), 1, 1, None, SESSION, Provider::Claude);
+    let mut transcript = fresh();
+    let thought = "t".repeat(1024);
+    // Past MAX_ENTRIES in all, but well under it in messages; the thinking alone is past its budget.
+    let pairs = MAX_ENTRIES * 6 / 10;
+    let mut notes = Vec::new();
+    let mut offset = 0u64;
+    for n in 0..pairs {
+        for line in [claude_thought(n, &thought), claude_reply(&format!("m{n}"))] {
+            notes.extend(transcript.feed(offset, line.trim_end()));
+            offset += line.len() as u64;
+        }
+    }
+
+    apply_notes(&mut follower, notes, false);
+
+    let entries = &follower.history.entries;
+    let last = format!("m{}", pairs - 1);
+    assert!(
+        entries
+            .iter()
+            .any(|e| matches!(&e.content, Content::Message { text, .. } if *text == last)),
+        "the newest message is kept"
+    );
+    assert!(matches!(follower.history.completeness, Completeness::Complete));
+    let (count, bytes) = entries
+        .iter()
+        .filter_map(|e| match &e.content {
+            Content::Reasoning { text } => Some(text.len() + REASONING_ENTRY_OVERHEAD),
+            _ => None,
+        })
+        .fold((0, 0), |(c, b), n| (c + 1, b + n));
+    assert!(bytes <= MAX_REASONING_BYTES, "{bytes} bytes of reasoning");
+    assert!(count > 0 && count < pairs, "the oldest are kept, the rest dropped: {count}");
+    let first = entries
+        .iter()
+        .find_map(|e| matches!(e.content, Content::Reasoning { .. }).then_some(&e.source.item));
+    assert_eq!(first.map(String::as_str), Some("t-0:0"));
+}

@@ -9,7 +9,7 @@
 //! can change it. Nothing is persisted; the provider's file is the record.
 
 use super::follow_transcript::{Format, Note, Transcript};
-use super::history::{Completeness, Cursor, History, IncompleteReason, MAX_READ_BYTES};
+use super::history::{Completeness, Content, Cursor, History, IncompleteReason, MAX_READ_BYTES};
 use crate::conversation::{ConversationId, Provider};
 use crate::daemon::{Daemon, Ev};
 use crate::protocol::{Status, Surface, TermId};
@@ -28,6 +28,14 @@ const MAX_FIRST_READ_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_LINE_BYTES: usize = 1024 * 1024;
 /// A followed history stops growing here and says it is cut off.
 const MAX_ENTRIES: usize = 20_000;
+/// What a followed history keeps of the agent's thinking, in all. Reasoning does not count toward
+/// `MAX_ENTRIES`, so a long session of thinking cannot push out the messages and tool steps; once this
+/// is spent, further reasoning is not kept (the oldest stays).
+const MAX_REASONING_BYTES: usize = 4 * 1024 * 1024;
+/// Counted for each reasoning entry besides its text, so a run of tiny ones is bounded too.
+const REASONING_ENTRY_OVERHEAD: usize = 256;
+/// The longest text one reasoning entry keeps (as the projection cuts it).
+const REASONING_ENTRY_MAX: usize = 64 * 1024;
 
 /// One followed pane.
 pub(in crate::daemon) struct Followed {
@@ -418,14 +426,46 @@ impl Daemon {
     }
 }
 
+/// What a reasoning note will take of the reasoning budget, `None` for any other note. The text is
+/// measured before masking and the cut, so the cost is never below what is kept.
+fn reasoning_cost(note: &Note) -> Option<usize> {
+    let item = note.params.get("item")?;
+    if note.method != "item/completed" || item.get("type")?.as_str()? != "reasoning" {
+        return None;
+    }
+    let text: usize = item
+        .get("summary")?
+        .as_array()?
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .map(str::len)
+        .sum();
+    Some(text.min(REASONING_ENTRY_MAX) + REASONING_ENTRY_OVERHEAD)
+}
+
 /// Puts notes into a followed history. History is capped, and a cap or a problem with a note is
 /// said in its completeness, never hidden.
 fn apply_notes(follower: &mut Followed, notes: Vec<Note>, start_missing: bool) {
     let id = follower.id;
     let session = follower.session.clone();
     let history = &mut follower.history;
+    let mut reasoning_entries = 0usize;
+    let mut reasoning_bytes = 0usize;
+    for entry in &history.entries {
+        if let Content::Reasoning { text } = &entry.content {
+            reasoning_entries += 1;
+            reasoning_bytes += text.len() + REASONING_ENTRY_OVERHEAD;
+        }
+    }
     for note in notes {
-        if history.entries.len() >= MAX_ENTRIES {
+        if let Some(cost) = reasoning_cost(&note) {
+            // Past its own budget a thought is dropped; it never takes a message's place.
+            if reasoning_bytes + cost > MAX_REASONING_BYTES {
+                continue;
+            }
+            reasoning_entries += 1;
+            reasoning_bytes += cost;
+        } else if history.entries.len() - reasoning_entries >= MAX_ENTRIES {
             let _ =
                 history.set_completeness(Completeness::Incomplete(IncompleteReason::MissingPages));
             return;
