@@ -236,6 +236,19 @@ describe('a message written while a terminal agent works', () => {
     expect(screen.getByRole('status', { name: 'The daemon holds' })).toHaveTextContent('')
   })
 
+  it('is typed straight in when it is /btw, which Claude Code runs mid-turn, and is never queued', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const { typeInto } = open('Working')
+    await settle()
+    await user.type(screen.getByRole('textbox', { name: 'Message claude' }), '/btw which file is that?{Enter}')
+    await settle(10)
+
+    expect(typeInto).toHaveBeenCalledTimes(1)
+    expect(typeInto).toHaveBeenCalledWith('/btw which file is that?\r')
+    expect(screen.getByRole('status', { name: 'The daemon holds' })).toHaveTextContent('')
+    expect(screen.queryByRole('list', { name: 'Queued messages' })).not.toBeInTheDocument()
+  })
+
   it('goes back into the box when it could not be typed in, instead of vanishing', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const { typeInto } = open('Working')

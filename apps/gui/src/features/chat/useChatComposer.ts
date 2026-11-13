@@ -16,6 +16,7 @@ import { wireChoice } from './agentChoice'
 import { reserveOperation, STALE_OPERATION } from './sendOperation'
 import { isBangLine, isSlashLine } from './slashCommands'
 import { withRestoreNote } from './editFromHere'
+import { runsMidTurn } from './terminalCommands'
 
 export const PENDING_APPROVAL_NOTE = 'Answer the request above first'
 export const READ_ONLY_NOTE = 'Read-only: talk to the agent in the terminal'
@@ -305,7 +306,7 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
       }
       updateComposer(conversation, (state) => ({ ...state, draft: text, attachments: files, note: note ?? state.note }))
     }
-    if (holding) {
+    if (holding && !runsMidTurn(agent, text)) {
       // Left with the pane's daemon until the agent is ready for a message; shown in the queue meanwhile.
       setError(null)
       paneQueue.add(withRestoreNote(note, buildAttachmentMessage(text, files)), false).then(
@@ -318,7 +319,7 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
       return
     }
     void send(withRestoreNote(note, buildAttachmentMessage(text, files))).then(settle)
-  }, [disabledReason, sending, conversation, send, holding, paneQueue])
+  }, [disabledReason, sending, conversation, send, holding, paneQueue, agent])
 
   // The ones this box took back, so their leaving the queue is not read as the daemon having sent them.
   const taken = useRef(new Set<string>())
