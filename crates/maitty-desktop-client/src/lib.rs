@@ -6,7 +6,7 @@ use anyhow::{Context, Result, bail};
 pub use host_env::host_command;
 pub use ipc::data_dir;
 pub use shared_daemon::{ensure_shared_daemon, shared_daemon_path};
-use maitty_shared::protocol::{ClientMsg, Command, Query, Reply, ServerMsg};
+use maitty_shared::protocol::{COMPATIBLE_SINCE, ClientMsg, Command, Query, Reply, ServerMsg};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -892,6 +892,35 @@ async fn ask_if_known(message: ClientMsg) -> Result<bool> {
     .await
 }
 
+/// Ask the running daemon a question newer than the oldest daemon this app talks to. An older one would
+/// never answer it, so it is refused in words instead of left to time out.
+async fn ask_running_daemon_if_it_reads(message: &ClientMsg) -> Result<Reply> {
+    answered_within(REQUEST_TIMEOUT, async {
+        let (mut connection, version) = ipc::open_for_user_knowing_version()
+            .await
+            .context("connecting to the local daemon")?;
+        refuse_unless_daemon_reads(message, version)?;
+        ask(&mut connection, message).await
+    })
+    .await
+}
+
+/// Whether a repository question is newer than the oldest daemon this app talks to, so the running daemon's
+/// version is checked before it is asked.
+fn repo_question_needs_version(message: &ClientMsg) -> bool {
+    message.introduced_in() > COMPATIBLE_SINCE
+}
+
+/// Refuses `message` in words when a daemon at `daemon_version` would never answer it.
+fn refuse_unless_daemon_reads(message: &ClientMsg, daemon_version: u32) -> Result<()> {
+    if !daemon_reads(message, daemon_version) {
+        bail!(
+            "the Maitty service running is older than this app and cannot answer this yet: restart it (Settings › Daemon)"
+        );
+    }
+    Ok(())
+}
+
 /// What may be held for a starting agent: some words, and not more than the daemon is asked to keep.
 pub fn held_message(text: String) -> Result<PaneCommand> {
     if text.trim().is_empty() {
@@ -962,15 +991,16 @@ pub async fn rename_terminal_session(
 pub async fn repo_query(term: u32, question: Value, daemon_executable: PathBuf) -> Result<Value> {
     let question: maitty_shared::repo::RepoRequest =
         serde_json::from_value(question).context("invalid repository request")?;
-    let reply = request(
-        ClientMsg::Query(Query::Repo {
-            term,
-            tag: 0,
-            request: question,
-        }),
-        daemon_executable,
-    )
-    .await?;
+    let message = ClientMsg::Query(Query::Repo {
+        term,
+        tag: 0,
+        request: question,
+    });
+    let reply = if repo_question_needs_version(&message) {
+        ask_running_daemon_if_it_reads(&message).await?
+    } else {
+        request(message, daemon_executable).await?
+    };
     match reply {
         Reply::Repo { reply, .. } => Ok(serde_json::to_value(reply)?),
         _ => bail!("daemon returned an unexpected repository reply"),
@@ -2569,6 +2599,21 @@ mod agent_command_tests {
         ));
         assert!(daemon_reads(&drop, PROTOCOL_VERSION));
         assert!(!daemon_reads(&drop, DROP_QUEUED_SINCE - 1));
+    }
+
+    #[test]
+    fn a_repository_question_newer_than_every_daemon_is_refused_in_words_by_an_older_one() {
+        use super::{ClientMsg, Query, refuse_unless_daemon_reads, repo_question_needs_version};
+        use maitty_shared::protocol::{FIND_FILES_SINCE, PROTOCOL_VERSION};
+        use maitty_shared::repo::RepoRequest;
+        let repo = |request| ClientMsg::Query(Query::Repo { term: 3, tag: 0, request });
+        let find = repo(RepoRequest::FindFiles { query: "main".into(), limit: 50 });
+
+        assert!(repo_question_needs_version(&find));
+        let refused = refuse_unless_daemon_reads(&find, FIND_FILES_SINCE - 1).unwrap_err();
+        assert!(refused.to_string().contains("older than this app"), "{refused}");
+        assert!(refuse_unless_daemon_reads(&find, PROTOCOL_VERSION).is_ok());
+        assert!(!repo_question_needs_version(&repo(RepoRequest::Status)));
     }
 
     #[test]
