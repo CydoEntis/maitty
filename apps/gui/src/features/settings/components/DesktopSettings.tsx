@@ -13,7 +13,7 @@ import { Segmented, SegmentedItem } from '@/components/ui/radio-group'
 import { Switch } from '@/components/ui/switch'
 import { SpinnerPicker } from './SpinnerPicker'
 import { PerformanceSection } from './PerformanceSection'
-import { GitHubSection } from './GitHubSection'
+import { GitHubSection, type GitHubSignIn } from './GitHubSection'
 import { hotkeyRows, type Platform } from '@/features/workspace/model/shortcuts'
 import { CHAT_AGENTS } from '@/features/workspace/model/chatView'
 import { Keycaps } from '@/features/shortcuts/Keycaps'
@@ -104,6 +104,8 @@ type DesktopSettingsProps = {
   usage: UsageInfo
   /** Opens the agent's own sign-in in a terminal of its own; without it the Agents page offers no sign-in. */
   onSignInAgent?: (agent: 'claude' | 'codex') => void
+  /** Starts GitHub's own sign-in in a terminal on a machine, and how many of those have ended; without it the GitHub page offers no sign-in. */
+  github?: GitHubSignIn
   onClose: () => void
 }
 
@@ -234,7 +236,7 @@ export function DesktopSettings(props: DesktopSettingsProps) {
               {section === 'usage' && <UsageSection usage={props.usage} />}
               {section === 'notifications' && <NotificationsSection preferences={preferences} update={update} onTestNotice={props.onTestNotice} />}
               {section === 'machines' && <MachinesSection machines={props.machines} />}
-              {section === 'github' && <GitHubSection machines={props.machines.list} />}
+              {section === 'github' && <GitHubSection machines={props.machines.list} signIn={props.github} />}
               {section === 'keys' && <HotkeysSection platform={props.platform} />}
               {section === 'daemon' && <DaemonSection daemon={props.daemon} />}
               {section === 'performance' && <PerformanceSection preferences={preferences} update={update} appVersion={props.appVersion} />}

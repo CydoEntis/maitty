@@ -9,6 +9,7 @@ const api = vi.hoisted(() => ({ loadGitHubAccounts: vi.fn<(machine: number) => P
 vi.mock('@/api/githubAccounts', () => api)
 
 const KINGDOM: MachineHead = { ...LOCAL_HEAD, key: 'machine-3', machine: 3, name: 'kingdom', label: 'kingdom', chip: { glyph: '●', word: 'connected', tone: 'ok' } }
+const BARE: MachineHead = { ...KINGDOM, key: 'machine-5', machine: 5, name: 'bare', label: 'bare' }
 const AWAY: MachineHead = { ...LOCAL_HEAD, key: 'machine-4', machine: 4, name: 'away', label: 'away', chip: { glyph: '✕', word: 'unreachable', tone: 'bad' }, down: true }
 
 const signedIn = (...logins: string[]): GitHubReport => ({ installed: true, accounts: logins.map((login, at) => ({ login, active: at === 0 })), problem: null })
@@ -76,6 +77,34 @@ describe('the GitHub page of Settings', () => {
     const { container } = render(<GitHubSection machines={[LOCAL_HEAD, KINGDOM]} />)
     expect(await screen.findByText('Signed in as <img src=x onerror=alert(1)>')).toBeInTheDocument()
     expect(container.querySelector('img')).toBeNull()
+  })
+
+  it('offers Sign in only where gh is installed and nobody is signed in, and starts it on that machine', async () => {
+    const user = userEvent.setup()
+    const onSignIn = vi.fn()
+    answers({ 0: signedIn('me'), 3: NOBODY, 5: NO_GH })
+    render(<GitHubSection machines={[LOCAL_HEAD, KINGDOM, BARE]} signIn={{ onSignIn, signInsEnded: 0 }} />)
+    await user.click(await screen.findByRole('button', { name: 'Sign in to GitHub on kingdom' }))
+    expect(onSignIn).toHaveBeenCalledExactlyOnceWith(3, 'kingdom')
+    expect(screen.getAllByRole('button', { name: /^Sign in to GitHub/ })).toHaveLength(1)
+  })
+
+  it('offers no Sign in where the window cannot start one', async () => {
+    answers({ 0: NOBODY })
+    render(<GitHubSection machines={[LOCAL_HEAD]} />)
+    await screen.findByText('Not signed in')
+    expect(screen.queryByRole('button', { name: /^Sign in to GitHub/ })).toBeNull()
+  })
+
+  it('asks again when a sign-in terminal has ended, so the row changes by itself', async () => {
+    const onSignIn = vi.fn()
+    answers({ 0: NOBODY })
+    const view = render(<GitHubSection machines={[LOCAL_HEAD]} signIn={{ onSignIn, signInsEnded: 0 }} />)
+    await screen.findByText('Not signed in')
+    answers({ 0: signedIn('me') })
+    view.rerender(<GitHubSection machines={[LOCAL_HEAD]} signIn={{ onSignIn, signInsEnded: 1 }} />)
+    expect(await screen.findByText('Signed in as me')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Sign in to GitHub/ })).toBeNull()
   })
 
   it('asks every machine again on Check again', async () => {

@@ -733,7 +733,10 @@ repository…** on the new chat page (beside Browse…, or in the project menu):
 pick the folder it goes inside, and the chat opens on the new folder. It works for this computer and for
 another machine, and uses whatever git sign-in that machine already has; a private repository the machine
 cannot sign in to fails with git's own message. **Settings › GitHub** shows who each connected machine is
-signed in to GitHub as, read from that machine's GitHub CLI (`gh`); Maitty never sees the token. Files, Changes, worktrees and the other features that read a pane's files
+signed in to GitHub as, read from that machine's GitHub CLI (`gh`); Maitty never sees the token. A machine
+that is not signed in has **Sign in** there: it opens a terminal on that machine running `gh auth login`,
+which shows a one-time code and opens GitHub in your browser. Finish it, close the terminal, and the row
+updates. Files, Changes, worktrees and the other features that read a pane's files
 are for this computer's sessions only.
 
 **Dropping files or folders on a session of another machine** sends them there: drag up to 10 files or folders from

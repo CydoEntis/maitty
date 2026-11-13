@@ -116,7 +116,10 @@ saved layout survives a restart; this computer's stay `t12`). **Settings › Git
 says (`github_accounts`): "Signed in as <login>" (with "(also …)" for its other accounts), "Not signed in",
 "The GitHub command line (gh) is not installed. Get it from cli.github.com", "Checking…" until it answers,
 or "Could not check: <why>" for a machine that did not answer, which leaves the other rows as they are.
-**Check again** asks every row again. A machine that is not connected has no row. **Settings › Machines** retries, removes and
+**Check again** asks every row again. A machine that is not connected has no row. A row that says "Not
+signed in" has **Sign in**: it closes Settings and opens a terminal session on that machine running GitHub's
+own sign-in (`start_github_sign_in`); when that session ends the page asks every row again
+(`useSessionsEnded`). A machine without `gh`, or one that could not be read, has no Sign in. **Settings › Machines** retries, removes and
 adds machines (the behaviour is the terminal app's [Machines dialog](#project-specific-machines-dialog),
 with the host list read off the UI thread, the look at the machine ended by a 12 s limit or Cancel, and a
 login that needs a person run in a session named `ssh <name>`); **New session** (⌘T, Ctrl+Shift+T, ⌘K, the sidebar's New agent chat, a machine's New agent chat here) opens, on this computer, the

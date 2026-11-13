@@ -38,6 +38,15 @@ function listenForAnswers(): Promise<void> {
 }
 
 /**
+ * Starts GitHub's own sign-in (`gh auth login`) in a new terminal session on a machine (this
+ * computer is machine 0). The person finishes it there and in their browser; nothing they type or
+ * see there passes through here.
+ */
+export async function startGitHubSignIn(machine: number): Promise<void> {
+  await invoke('start_github_sign_in', machine === LOCAL_MACHINE ? {} : { machine })
+}
+
+/**
  * Who is signed in to GitHub on a machine (this computer is machine 0). Nobody signed in, and no
  * `gh` there, are answers; an error is a machine that could not be asked or did not answer.
  */
