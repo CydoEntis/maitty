@@ -8829,6 +8829,36 @@ fn a_finished_session_whose_pr_merged_is_put_away_once_and_brought_back_stays_ba
 }
 
 #[test]
+fn a_session_put_away_by_hand_and_brought_back_is_not_put_away_for_a_merge_already_read() {
+    let (mut d, _rx) = daemon();
+    d.cfg.sessions.put_away_merged = true;
+    let t = pane(&mut d);
+    d.set_status(t, Status::Working, "hook");
+    pr_merged_for(&mut d, t);
+    let by_hand = |archived| Command::ArchivePane { term: t, archived };
+    d.command(0, by_hand(true)).unwrap();
+    d.command(0, by_hand(false)).unwrap();
+    d.set_status(t, Status::Idle, "hook");
+    pr_merged_for(&mut d, t);
+    assert!(!d.terms[&t].archived, "brought back stays back");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_session_that_finishes_after_its_pr_merged_is_put_away_at_the_next_read() {
+    let (mut d, _rx) = daemon();
+    d.cfg.sessions.put_away_merged = true;
+    let t = pane(&mut d);
+    d.set_status(t, Status::Working, "hook");
+    pr_merged_for(&mut d, t);
+    assert!(!d.terms[&t].archived);
+    d.set_status(t, Status::Done, "hook");
+    pr_merged_for(&mut d, t);
+    assert!(d.terms[&t].archived);
+    close(&mut d, &[t]);
+}
+
+#[test]
 fn a_change_to_one_pane_reaches_clients_as_a_delta_and_no_change_as_nothing() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);

@@ -451,8 +451,19 @@ impl Daemon {
                 }
             }
             Command::ArchivePane { term, archived } => {
+                // Bringing a session back also settles any merged PR it has now, however it was
+                // put away, so put_away_merged does not put it away again for that merge.
+                let merged_url = (!archived)
+                    .then(|| self.terms.get(&term))
+                    .flatten()
+                    .and_then(|t| self.pr_of(t))
+                    .filter(|pr| pr.state == PrState::Merged)
+                    .map(|pr| pr.url);
                 if let Some(t) = self.terms.get_mut(&term) {
                     t.archived = archived;
+                    if merged_url.is_some() {
+                        t.put_away_for = merged_url;
+                    }
                 }
             }
             Command::MarkSeen { term } => {

@@ -247,6 +247,8 @@ request as merged. It is checked after each watcher pass (every 2 minutes), so a
 finishes after the merge goes at the next pass. The session keeps running; it is never closed.
 Each session remembers the merged pull request it was put away for, in the session file beside
 its put-away flag, so one brought back is not put away again for that merge, across restarts too.
+The pull request is found by branch, so a new session on a branch whose earlier pull request
+merged is put away once it goes idle; leave the option off if you reuse branch names.
 Only the config file sets it; it adds no environment variable and is not in the desktop app's
 shared settings.
 

@@ -611,7 +611,7 @@ impl Daemon {
         let merged: Vec<(TermId, String)> = self
             .terms
             .values()
-            .filter(|t| matches!(t.status, Status::Done | Status::Idle))
+            .filter(|t| !t.archived && matches!(t.status, Status::Done | Status::Idle))
             .filter_map(|t| {
                 let pr = self.pr_of(t).filter(|pr| pr.state == PrState::Merged)?;
                 (t.put_away_for.as_deref() != Some(pr.url.as_str())).then_some((t.id, pr.url))
