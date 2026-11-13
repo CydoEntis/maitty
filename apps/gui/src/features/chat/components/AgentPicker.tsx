@@ -7,7 +7,7 @@ import { CHAT_AGENTS, type ChatAgent } from '@/features/workspace/model/chatView
 import { AppIcon, Icon } from '@/features/workspace/components/glyphs'
 import { AGENT_LABEL, modelName } from '../modelName'
 import {
-  choiceFor, DEFAULT_PICK, effortAllowed, effortBars, effortWord, leadingModels, menuModels, pickedModel, REASONING_LABEL, REASONING_LEVELS, useAgentModels, useDiscoveredModels,
+  choiceFor, DEFAULT_PICK, effortAllowed, effortBars, effortWord, leadingModels, menuModels, modelInUse, pickedModel, REASONING_LABEL, REASONING_LEVELS, useAgentModels, useDiscoveredModels,
   type AgentChoice, type ModelOption, type Reasoning, type ReasoningPick,
 } from '../agentChoice'
 
@@ -55,7 +55,9 @@ export function AgentPicker({ agent, choice, onChange, currentModel = null, curr
   useDiscoveredModels(agent)
   const models = useAgentModels(agent)
   const rows = menuModels(models)
-  const model = pickedModel(models, choice.model)
+  // Nothing picked means the agent's own: the menu ticks the model it says it runs, as the button names it,
+  // and only falls back to the default's row when it has not said.
+  const model = (choice.model === DEFAULT_PICK ? modelInUse(models, currentModel) : undefined) ?? pickedModel(models, choice.model)
   const modelId = model?.id ?? DEFAULT_PICK
   const leading = leadingModels(rows, modelId)
   const shown = allModels ? rows : leading

@@ -94,6 +94,17 @@ export function pickedModel(models: readonly ModelOption[], choice: string): Mod
   return rows.find((model) => model.id === choice) ?? rows.find((model) => model.isDefault === true) ?? rows[0]
 }
 
+/**
+ * The row for the model the agent's own files say it runs: by its id, else by its name, since Claude
+ * names "claude-opus-5-5" where the menu has "Opus 5.5".
+ */
+export function modelInUse(models: readonly ModelOption[], current: string | null): ModelOption | undefined {
+  if (current === null) return undefined
+  const rows = menuModels(models)
+  const name = modelLabel(current)?.toLowerCase()
+  return rows.find((row) => row.id === current) ?? rows.find((row) => row.label.toLowerCase() === name)
+}
+
 /** What picking a row stores: the default's row stores "nothing picked", so no model is sent for it. */
 export function choiceFor(model: ModelOption): string {
   return model.isDefault === true ? DEFAULT_PICK : model.id
