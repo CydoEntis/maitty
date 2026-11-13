@@ -6,8 +6,14 @@ export const SHARED_CHECKOUT_REFUSAL = 'Another session is using this folder'
 /** Where a restore would write: the checkout's top folder on a machine. Null when the daemon did not say. */
 export type RestorePlace = { readonly machine: number; readonly checkout: string | null }
 
-/** One spelling per folder: git and the shell write separators differently, and Windows and macOS ignore case. */
-const pathKey = (path: string): string => path.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+/**
+ * One spelling per folder: git and the shell write separators differently, and a canonical Windows path carries a
+ * `\\?\` prefix. Windows paths compare without case; a POSIX path that differs only by case is a different folder.
+ */
+function pathKey(path: string): string {
+  const slashed = path.replace(/^\\\\\?\\/, '').replace(/\\/g, '/').replace(/\/+$/, '')
+  return /^[a-z]:\//i.test(slashed) ? slashed.toLowerCase() : slashed
+}
 
 /**
  * Whether the session's files are the checkout's. Its own checkout decides when the daemon gave one, so a linked

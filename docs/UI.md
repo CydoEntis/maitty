@@ -930,7 +930,8 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   It is also greyed, "Another session is using this folder", while another open session on the same machine runs
   anything but a plain shell in the same checkout, idle or not, since a restore would undo its files too
   (`sharedCheckoutRefusal` in `workspace/model/sharedCheckout.ts`). Same checkout means the same top folder (the
-  daemon's `top`, the pane's main checkout or linked worktree), compared without case and with either separator; a
+  daemon's `top`, the pane's main checkout or linked worktree), compared with either separator and without a `\\?\` prefix, and without case only for a
+  Windows drive path; a
   session in a subfolder shares it, another linked worktree of the same repository does not. A chat the daemon gives no
   checkout for counts when its folder is inside this one. The session's own terminals and closed sessions do not
   count. The check is the window's; the daemon holds no lock. A refusal that arrives while the confirm is open makes

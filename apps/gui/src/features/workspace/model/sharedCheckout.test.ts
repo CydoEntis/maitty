@@ -17,6 +17,17 @@ describe('sharedCheckoutRefusal', () => {
     expect(sharedCheckoutRefusal([session({ cwd: 'c:/dev/app', checkout: 'c:/dev/app/' })], restoring, own)).toBe(SHARED_CHECKOUT_REFUSAL)
   })
 
+  it('refuses when the other checkout is written as a raw canonical Windows path', () => {
+    expect(sharedCheckoutRefusal([session({ cwd: '\\\\?\\C:\\dev\\app', checkout: '\\\\?\\C:\\dev\\app' })], restoring, own)).toBe(SHARED_CHECKOUT_REFUSAL)
+  })
+
+  it('tells apart POSIX folders that differ only by case', () => {
+    const posix = { machine: 0, checkout: '/home/casey/app' }
+    expect(sharedCheckoutRefusal([session({ cwd: '/home/casey/App', checkout: '/home/casey/App' })], posix, own)).toBeNull()
+    expect(sharedCheckoutRefusal([session({ cwd: '/home/casey/App/src', checkout: null })], posix, own)).toBeNull()
+    expect(sharedCheckoutRefusal([session({ cwd: '/home/casey/app/', checkout: '/home/casey/app/' })], posix, own)).toBe(SHARED_CHECKOUT_REFUSAL)
+  })
+
   it('refuses when another agent works in a subfolder of the checkout', () => {
     expect(sharedCheckoutRefusal([session({ cwd: `${MAIN}\\crates\\core` })], restoring, own)).toBe(SHARED_CHECKOUT_REFUSAL)
   })
