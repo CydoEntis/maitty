@@ -616,3 +616,20 @@ shows them as added files (`daemon/git.rs`, `UNTRACKED_BATCH_FROM`). The Files t
 slow: a folder listing is one `git rev-parse` plus a directory read, about 35 ms. Still open: each
 query also runs its own `git rev-parse --show-toplevel`, and `conversation_diff` runs it a second
 time.
+
+## What the daemon sends: size budgets (2026-11-13)
+
+The two largest messages the daemon sends routinely have a size budget, held by tests in
+`crates/maitty-core/src/daemon/wire_size_tests.rs`. Each test builds a realistic message with fixed
+values, encodes it the way the wire does (`protocol::encode`, named MessagePack) and fails above its
+budget: the size measured on 2026-11-13 plus 20%.
+
+| Message | Measured | Budget |
+| --- | --- | --- |
+| A full chat history page: 128 entries (`MAX_READ_ENTRIES`), 16 finished turns of a prompt, replies, a file read, a test run, an edit with its diff and a plan | 106,020 bytes | 127,224 bytes |
+| The session list (`Snapshot`): 50 agent sessions across five projects, each also a desktop chat, with checks, a full 60-event timeline, usage and a helper | 352,295 bytes | 422,754 bytes |
+
+The page caps (`MAX_READ_ENTRIES`, and `MAX_READ_BYTES` = 256 KiB of JSON) are unchanged by the
+budgets. When a budget fails, find what grew; if the growth is meant, re-measure with
+`cargo test -p maitty-core wire_size -- --nocapture`, set the budget to the new size plus 20% and
+update this table.
