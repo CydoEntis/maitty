@@ -191,8 +191,12 @@ was looked at, so git only fills a new empty folder; a failed `git worktree add`
 empty folder and the parent folders that reopen made for it. A branch that is gone, or checked out
 in another worktree that is still there, fails with a message naming it and makes nothing. A git
 registration in the way, one at that path or holding that branch whose folder is gone, is removed
-first, that one only (`git worktree remove --force <its path>`); other registrations whose folder is
-missing, such as a worktree on an unplugged drive, are left as they are. An entry with no
+first, that one only (`git worktree remove <its path>`, without `--force`, so a folder that came
+back with changes or untracked files is refused); other registrations whose folder is missing, such
+as a worktree on an unplugged drive, are left as they are. When the branch itself is held by a
+registration whose folder is missing (say a worktree on an unplugged drive), reopening on that branch
+removes that registration, and that worktree is no longer linked to the repository when the drive
+returns. An entry with no
 `worktree` and `repo` (outside a worktree, or written before them) cannot be made again. Both are
 kept only when both are absolute and the entry's folder is inside `worktree`; otherwise both are
 dropped.

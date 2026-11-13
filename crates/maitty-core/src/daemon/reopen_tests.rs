@@ -151,11 +151,13 @@ fn a_branch_checked_out_in_another_worktree_is_refused() {
     git(&repo, &["worktree", "remove", &top.to_string_lossy()]);
     let other = root.join("other");
     git(&repo, &["worktree", "add", "-q", &other.to_string_lossy(), "feat"]);
+    std::fs::write(other.join("untracked.txt"), "work").unwrap();
 
     let error = ready_folder(&record(&repo, &top, &top)).expect_err("refused");
     assert!(error.contains("checked out"), "{error}");
     assert!(!top.exists(), "nothing was made");
     assert_eq!(branch_at(&other).as_deref(), Some("feat"));
+    assert_eq!(std::fs::read_to_string(other.join("untracked.txt")).unwrap(), "work", "a registration whose folder is there is never removed");
     let _ = std::fs::remove_dir_all(&root);
 }
 

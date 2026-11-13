@@ -100,7 +100,10 @@ fn clear_stale_registrations(repo: &Path, top: &Path, branch: &str) -> Result<()
             continue;
         }
         let path = entry.path.to_string_lossy().into_owned();
-        git::git(repo, &["worktree", "remove", "--force", &path]).map_err(|e| format!("{e:#}"))?;
+        // No --force: should the folder come back meanwhile (a drive plugged in), git refuses a tree
+        // with changes or untracked files. A clean one coming back in that moment can still go, with
+        // its ignored files.
+        git::git(repo, &["worktree", "remove", &path]).map_err(|e| format!("{e:#}"))?;
     }
     Ok(())
 }
