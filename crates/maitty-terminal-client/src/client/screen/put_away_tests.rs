@@ -159,3 +159,104 @@ fn with_nothing_put_away_the_list_says_so() {
     assert!(!error && said == "Nothing is put away", "{said}");
     assert!(matches!(app.mode, Mode::Normal), "{:?}", app.mode);
 }
+
+fn fox_needs_you_because(app: &mut App, change: impl FnOnce(&mut TermInfo)) {
+    daemon_sets(app, FOX, true);
+    change(app.snap.terms.get_mut(&FOX.term).expect("quick-fox"));
+    app.screen_fresh();
+}
+
+#[test]
+fn a_put_away_agent_whose_command_failed_is_listed_while_it_has() {
+    let (mut app, _rx) = app_with_outbox();
+    fox_needs_you_because(&mut app, |t| t.exit = Some(crate::protocol::ExitInfo { code: Some(1), at: 0 }));
+    let text = frame(&mut app, "put away, its command failed");
+    assert!(sidebar(&text).contains("quick-fox"), "{text}");
+    assert!(app.put_away_rows().is_empty(), "not in the Put away list as well");
+}
+
+#[test]
+fn a_put_away_agent_held_by_its_plan_limit_is_listed_while_it_is() {
+    let (mut app, _rx) = app_with_outbox();
+    let later = now_secs() + 3600;
+    fox_needs_you_because(&mut app, |t| t.resume_at = Some(later));
+    let text = frame(&mut app, "put away, held by its plan limit");
+    assert!(sidebar(&text).contains("quick-fox"), "{text}");
+    app.snap.terms.get_mut(&FOX.term).unwrap().resume_at = Some(now_secs() - 1);
+    app.screen_fresh();
+    assert!(!listed(&app, FOX), "once the limit has passed it goes back");
+}
+
+#[test]
+fn a_put_away_shell_whose_command_failed_stays_put_away() {
+    let (mut app, _rx) = app_with_outbox();
+    fox_needs_you_because(&mut app, |t| {
+        t.agent = None;
+        t.exit = Some(crate::protocol::ExitInfo { code: Some(1), at: 0 });
+    });
+    assert!(!listed(&app, FOX));
+}
+
+#[test]
+fn a_surfaced_put_away_row_offers_bring_back() {
+    let (mut app, mut rx) = app_with_outbox();
+    fox_needs_you_because(&mut app, |t| t.status = Status::Blocked);
+    app.menu_for_session(FOX, (2, 20));
+    frame(&mut app, "a put-away row that needs you");
+    let labels = menu_labels(&app);
+    assert!(!labels.iter().any(|l| l == "Put away"), "{labels:?}");
+    archived_sent(&mut rx);
+    pick(&mut app, "Bring back");
+    assert_eq!(archived_sent(&mut rx), [(FOX.term, false)]);
+}
+
+#[test]
+fn putting_away_keeps_the_undo_of_a_session_just_closed() {
+    let (mut app, mut rx) = app_with_outbox();
+    let moth = ClientTerm::local(5);
+    app.close_session(moth);
+    app.put_away(FOX);
+    std::iter::from_fn(|| rx.try_recv().ok()).count();
+    app.act(Action::UndoClose);
+    let sent: Vec<ClientMsg> = std::iter::from_fn(|| rx.try_recv().ok()).map(|o| o.msg).collect();
+    assert!(
+        matches!(sent.as_slice(), [ClientMsg::Command(Command::UndoClose { term })] if *term == moth.term),
+        "{sent:?}"
+    );
+}
+
+#[test]
+fn closing_a_project_counts_its_put_away_sessions_which_keep_running() {
+    let (mut app, _rx) = app_with_outbox();
+    daemon_sets(&mut app, FOX, true);
+    let orbit = app
+        .screen_model()
+        .iter()
+        .position(|p| p.name == "orbit")
+        .expect("orbit");
+    app.menu_act(Act::CloseProject(orbit));
+    let text = frame(&mut app, "close orbit with one put away");
+    let Mode::Confirm(c) = &app.mode else {
+        panic!("{:?}", app.mode)
+    };
+    assert_eq!(c.detail, "1 pane, 1 put away");
+    assert!(c.note.contains("put away keeps running"), "{}", c.note);
+    assert!(text.contains("1 put away"), "{text}");
+}
+
+#[test]
+fn a_machine_that_is_down_is_offered_neither_and_nothing_is_claimed() {
+    let (mut app, mut rx) = app_with_outbox();
+    app.service = super::service::Service::Down { next_at: Instant::now() };
+    assert!(!app.can_put_away(FOX));
+    daemon_sets(&mut app, FOX, true);
+    assert!(app.put_away_rows().is_empty(), "no row to bring back");
+    archived_sent(&mut rx);
+    app.bring_back(FOX);
+    assert!(archived_sent(&mut rx).is_empty());
+    let (_, _, error) = app.notice.clone().expect("a toast");
+    assert!(error);
+    fox_needs_you_because(&mut app, |t| t.status = Status::Blocked);
+    let items = app.session_items(FOX).expect("its row").1;
+    assert!(!items.iter().any(|(_, a)| matches!(a, Act::BringBack(_))), "{items:?}");
+}

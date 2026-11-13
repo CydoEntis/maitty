@@ -601,12 +601,17 @@ The sidebar shows or collapses (`App::sidebar`) to a narrow column (`side.rs` `d
 - **Put away** (`screen/put_away.rs`): the row menu of a finished or idle session in a daemon terminal (shells too; not a
   chat, whose daemon archive closes it, and not one held by its plan limit or whose last command failed) has **Put away**.
   It sends `Command::ArchivePane { archived: true }` and closes, stops and moves nothing; the closing banner offers Undo
-  for 6 seconds (`Put away <name> · <leader> then Ctrl+Z undo 6s`), which sends `archived: false`. A session with the
+  for 6 seconds (`Put away <name> · <leader> then Ctrl+Z undo 6s`), which sends `archived: false`. A close still in its
+  undo window keeps that banner: the put-away says in a toast that the Put away list brings it back. A session with the
   flag (put away here or in the desktop app) is left out of the sidebar, the rail, the Inbox and the session search
-  (`screen_model`), except while it needs you (`check::needs`); then it is listed as usual, still put away on the daemon.
-  The sidebar menu's **Put away…** and Search commands' **Sessions put away** (`Action::PutAway`, `put-away`, no default
-  key) open a menu upward from the sidebar's foot, `Bring back <name> · <project>` per session in creation order; a pick
-  sends `archived: false`. With none, a toast says `Nothing is put away`.
+  (`screen_model`, `put_away::hidden`), except while it needs you: it asks (`check::needs`), an agent's command failed,
+  or its plan limit holds it (a plain shell stays put away whatever its last command did). Then it is listed as usual,
+  still put away on the daemon, and its row menu has **Bring back** in place of Put away. The sidebar menu's
+  **Put away…** and Search commands' **Sessions put away** (`Action::PutAway`, `put-away`, no default key) open a menu
+  upward from the sidebar's foot, `Bring back <name> · <project>` per session in creation order; a pick sends
+  `archived: false`. With none, a toast says `Nothing is put away`. A machine that is down is offered neither, and
+  either action there is refused with an error toast. **Close project** counts its put-away sessions
+  (`2 panes, 1 put away`) and leaves them running.
 - **Keys.** ↑ ↓ walk the sessions; → or Enter opens one; `1`–`9` open that row.
 
 **Status glyphs** (`screen/status_mark.rs`): working is the chosen spinner in the accent (Dots, the design's Braille, held 80 ms a frame, Snake 90 ms, Bars 85 ms, other spinners 90 ms; Reduce motion shows the first frame); needs you is a `●` in `blocked` amber, done in `done` green, problem (a failed command, a failed check) in `err` red, idle in `idle` with the name dimmed; `┆` for a machine that cannot be reached. By default the states differ by colour only, as the product owner chose. Settings › Appearance › **Status glyphs** `Unicode` (`ui.glyphs = "unicode"`) gives each its own shape for colour-blind users: `●` needs you, `✓` done, `✕` problem, `○` idle.

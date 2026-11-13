@@ -542,6 +542,8 @@ impl App {
         }
         if self.can_put_away(term) {
             items.push(("Put away".to_string(), Act::PutAway(term)));
+        } else if self.can_bring_back(term) {
+            items.push(("Bring back".to_string(), Act::BringBack(term)));
         }
         let close = if s.is_agent { "Stop session" } else { "Close shell" };
         items.push((close.to_string(), Act::End(vec![term])));
@@ -846,12 +848,19 @@ impl App {
             },
             Act::CloseProject(pi) => model.get(*pi).map(|p| {
                 let n = p.sessions().count();
+                let away = self.put_away_in(&p.key);
+                let mut detail = format!("{n} pane{}", if n == 1 { "" } else { "s" });
+                let mut note = "Everything running in it stops; the folder stays where it is.".to_string();
+                if away > 0 {
+                    detail.push_str(&format!(", {away} put away"));
+                    note = "Listed sessions stop; what is put away keeps running; the folder stays.".into();
+                }
                 Confirm {
                     title: "Close project".into(),
                     sub: String::new(),
                     what: p.name.clone(),
-                    detail: format!("{n} pane{}", if n == 1 { "" } else { "s" }),
-                    note: "Everything running in it stops; the folder stays where it is.".into(),
+                    detail,
+                    note,
                     list: Vec::new(),
                     yes: "Close".into(),
                     key: '\n',

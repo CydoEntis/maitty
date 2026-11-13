@@ -47,6 +47,13 @@ impl Closing {
         self.undo = Some(Undo { term, name, at: Instant::now(), what });
     }
 
+    /// A close is in its undo window.
+    pub fn holds_close(&self) -> bool {
+        self.undo
+            .as_ref()
+            .is_some_and(|u| u.what == Undone::Closed && u.at.elapsed() < UNDO_FOR)
+    }
+
     /// The banner under the pane header: the undo offer.
     pub fn banner(&self, undo_key: &str) -> Option<Banner> {
         let undo = self.undo.as_ref().filter(|u| u.at.elapsed() < UNDO_FOR)?;

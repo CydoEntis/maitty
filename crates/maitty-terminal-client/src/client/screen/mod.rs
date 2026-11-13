@@ -843,7 +843,7 @@ impl App {
                 if self.screen.pending_split.is_some() && !self.screen.split_known.contains(&term) {
                     continue;
                 }
-                if (t.archived && !check::needs(t.status, t.check())) != put_away {
+                if put_away::hidden(t) != put_away {
                     continue;
                 }
                 let key = t
