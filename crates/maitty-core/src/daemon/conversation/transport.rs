@@ -139,7 +139,8 @@ impl Launch {
             if let LaunchIdentity::Existing(c) = &self.identity
                 && let Some(origin) = &c.worktree_origin
                 && !c.binding.cwd.is_dir()
-                && c.binding.cwd.starts_with(&origin.folder)
+                && crate::daemon::clean_path(c.binding.cwd.clone())
+                    .starts_with(crate::daemon::clean_path(origin.folder.clone()))
             {
                 crate::daemon::worktrees::recreate_worktree(&origin.main, &origin.folder, &origin.branch)?;
                 if !c.binding.cwd.is_dir() {

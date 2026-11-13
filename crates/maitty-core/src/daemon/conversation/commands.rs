@@ -2664,8 +2664,10 @@ mod worktree_origin_tests {
         let origin = worktree_origin_of(&task)
             .expect("a linked worktree on a branch");
         assert_eq!(origin.branch, "task");
-        assert_eq!(origin.folder, task);
-        assert_eq!(origin.main, main);
+        // The temp dir may be spelled with 8.3 short names; compare what each names on disk.
+        let named = |p: &Path| crate::daemon::clean_path(std::fs::canonicalize(p).unwrap());
+        assert_eq!(named(&origin.folder), named(&task));
+        assert_eq!(named(&origin.main), named(&main));
         let _ = std::fs::remove_dir_all(&root);
     }
 }

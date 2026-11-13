@@ -106,6 +106,10 @@ pub(super) fn recreate_worktree(
     branch: &str,
 ) -> anyhow::Result<()> {
     use anyhow::Context;
+    // git on Windows cannot make a folder from a `\\?\` verbatim path, which a canonicalised
+    // path carries; hand it the plain spelling.
+    let (main, folder) = (super::clean_path(main.to_path_buf()), super::clean_path(folder.to_path_buf()));
+    let (main, folder) = (main.as_path(), folder.as_path());
     let _one_at_a_time = RECREATE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     // Another send may have made it while this one waited for the lock.
     if folder.is_dir() {

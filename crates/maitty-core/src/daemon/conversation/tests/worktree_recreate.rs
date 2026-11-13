@@ -30,8 +30,9 @@ fn chat_in_deleted_worktree(name: &str) -> (Launch, PathBuf, PathBuf) {
     git(&main, &["worktree", "add", "-q", "-b", "task", folder.to_str().unwrap()]);
     let (mut launch, _) = claude_launch(&root.join("agent"), None);
     let LaunchIdentity::Existing(chat) = &mut launch.identity else { unreachable!() };
-    let main = std::fs::canonicalize(&main).unwrap();
-    let folder = std::fs::canonicalize(&folder).unwrap();
+    // The plain spelling, as the daemon stores it: a canonicalised Windows path is `\\?\`-prefixed.
+    let main = crate::daemon::clean_path(std::fs::canonicalize(&main).unwrap());
+    let folder = crate::daemon::clean_path(std::fs::canonicalize(&folder).unwrap());
     chat.binding.cwd = folder.clone();
     chat.settings.as_mut().unwrap().cwd = folder.clone();
     chat.worktree_origin = Some(WorktreeOrigin { main: main.clone(), folder: folder.clone(), branch: "task".into() });
