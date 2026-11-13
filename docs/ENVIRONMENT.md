@@ -246,7 +246,8 @@ standing (`tidy::Standing::inactive_days`) when its last commit and its newest f
 both at least that many days old. Only a clean, merged worktree is ever removed automatically;
 an inactive one is only listed, for the person to remove. Both worktree lists lead its reason with
 "inactive N days"; the TUI clean-up list also comes with it ticked unless it has uncommitted
-changes, and Remove still asks first, naming one whose commits are not merged.
+changes or is on no branch (its commits would go with its folder), and Remove still asks first,
+naming one whose commits are not merged and saying when commits on no branch will be lost.
 
 The newest file change is the latest modified time among the files `git ls-files --cached
 --others --exclude-standard` lists, so `.gitignore`d folders such as `node_modules` and `target`

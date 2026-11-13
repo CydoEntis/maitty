@@ -467,22 +467,32 @@ impl Daemon {
     }
 }
 
-/// Where the linked worktree at `folder` stands, for a client's worktree list; None when git
-/// still lists it but its folder is gone. Anything but a linked worktree is refused, so a client
-/// cannot have git and `gh` run in any folder it names. Blocks: call it off the loop.
+/// Where the linked worktree at `folder` stands, for a client's worktree list; None when the
+/// repository at `repo` lists it but its folder is gone. Git and `gh` run only in a worktree's top
+/// folder that its repository lists, never in any folder a client names. Blocks: call it off the
+/// loop.
 pub(super) fn worktree_standing(
+    repo: &std::path::Path,
     folder: &std::path::Path,
     inactive_after: u32,
 ) -> Result<Option<crate::tidy::Standing>, String> {
-    if !folder.is_absolute() {
-        return Err("a worktree's folder is an absolute path".into());
+    let refused = || format!("{} isn't a worktree of {}", folder.display(), repo.display());
+    if !folder.is_absolute() || !repo.is_absolute() {
+        return Err("a worktree and its repository are absolute paths".into());
+    }
+    let listed = git::list_worktrees(repo)
+        .map_err(|e| format!("{e:#}"))?
+        .iter()
+        .any(|w| !w.main && same_path(&w.path, folder));
+    if !listed {
+        return Err(refused());
     }
     if !folder.exists() {
         return Ok(None);
     }
-    match crate::gitfs::head(folder).filter(|h| h.linked) {
+    match crate::gitfs::head(folder).filter(|h| h.linked && same_path(&h.top, folder)) {
         Some(h) => Ok(Some(crate::tidy::standing(&h.top, inactive_after))),
-        None => Err(format!("{} isn't a worktree", folder.display())),
+        None => Err(refused()),
     }
 }
 

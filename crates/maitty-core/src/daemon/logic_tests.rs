@@ -1197,27 +1197,38 @@ fn a_person_reads_where_a_linked_worktree_stands_and_nothing_else() {
     let (rt, (mut d, mut rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();
     let (root, merged, _mine) = repo_with_two_made_worktrees(&mut d, "standing-query");
-    let read = |folder: &std::path::Path| worktree_standing(folder, 14);
+    let repo = root.join("repo");
+    let read = |folder: &std::path::Path| worktree_standing(&repo, folder, 14);
     assert!(
         matches!(read(&merged), Ok(Some(s)) if s.merged && s.branch.is_some()),
         "a linked worktree is read"
     );
-    assert!(read(&root.join("repo")).is_err(), "the main checkout is not one");
+    assert!(read(&repo).is_err(), "the main checkout is not one");
     assert!(read(&root).is_err(), "nor a folder outside git");
     assert!(read(std::path::Path::new("repo")).is_err(), "a relative path is refused");
-    assert_eq!(read(&root.join("gone")), Ok(None), "a folder that is gone reads as missing");
+    std::fs::create_dir_all(merged.join("sub")).unwrap();
+    assert!(read(&merged.join("sub")).is_err(), "only a worktree's top folder");
+    let forged = root.join("forged");
+    std::fs::create_dir_all(&forged).unwrap();
+    std::fs::write(forged.join(".git"), format!("gitdir: {}", repo.join(".git").display())).unwrap();
+    assert!(read(&forged).is_err(), "a hand-made .git file is not a listed worktree");
+    assert!(read(&root.join("gone")).is_err(), "a folder git never listed is refused");
+    let deleted = root.join("deleted");
+    crate::proc::git(&repo, &["worktree", "add", "-q", "-b", "deleted", deleted.to_str().unwrap()]).unwrap();
+    std::fs::remove_dir_all(&deleted).unwrap();
+    assert_eq!(read(&deleted), Ok(None), "a listed worktree whose folder is gone reads as missing");
 
     let (tx, mut agent) = mpsc::channel(16);
     d.handle(Ev::Connected(8, tx, false, crate::protocol::Surface::Terminal, true));
     let asking = d.terms.keys().next().copied().expect("a pane");
     let token = d.terms[&asking].token.clone();
     d.handle(Ev::From(8, asking, token));
-    d.message(8, ClientMsg::Query(Query::WorktreeStanding { folder: merged.clone() }));
+    d.message(8, ClientMsg::Query(Query::WorktreeStanding { repo: repo.clone(), folder: merged.clone() }));
     assert!(matches!(agent.try_recv(), Ok(ServerMsg::Error(_))), "a pane cannot ask");
 
     let (tx, mut person) = mpsc::channel(16);
     d.handle(Ev::Connected(7, tx, false, crate::protocol::Surface::Terminal, true));
-    d.message(7, ClientMsg::Query(Query::WorktreeStanding { folder: merged }));
+    d.message(7, ClientMsg::Query(Query::WorktreeStanding { repo, folder: merged }));
     let until = Instant::now() + Duration::from_secs(60);
     let answer = loop {
         match rx.try_recv() {

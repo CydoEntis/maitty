@@ -921,9 +921,11 @@ pub enum Query {
     Worktrees {
         ws: WsId,
     },
-    /// Where the linked worktree at `folder` (absolute) stands on the daemon's computer (human
-    /// clients only); answered with `Reply::WorktreeStanding`.
+    /// Where the linked worktree at `folder` stands on the daemon's computer (human clients
+    /// only); answered with `Reply::WorktreeStanding`. `repo` is a folder of its repository (the
+    /// main checkout), which must list `folder` as a worktree. Both are absolute.
     WorktreeStanding {
+        repo: PathBuf,
         folder: PathBuf,
     },
     /// The tail of a pane's last output for checkpoint `name` (None: the headline one); the
@@ -3738,7 +3740,7 @@ mod tests {
         enum OldReply {
             Ok,
         }
-        let ask = Query::WorktreeStanding { folder: PathBuf::from("/code/app-worktrees/task") };
+        let ask = Query::WorktreeStanding { repo: PathBuf::from("/code/app"), folder: PathBuf::from("/code/app-worktrees/task") };
         assert!(decode::<OldQuery>(&encode(&ask).unwrap()).is_err());
         assert!(matches!(decode::<Query>(&encode(&ask).unwrap()), Ok(Query::WorktreeStanding { .. })));
         assert_eq!(ClientMsg::Query(ask).introduced_in(), WORKTREE_STANDING_SINCE);

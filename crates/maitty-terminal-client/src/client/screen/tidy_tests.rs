@@ -107,3 +107,52 @@ fn the_list_shows_an_inactive_worktree_ticked_with_its_reason() {
     let live = rows.iter().find(|r| r.contains("live-work")).expect("listed");
     assert!(live.contains("○ live-work") && !live.contains("inactive"), "{live}");
 }
+
+fn detached(standing: Standing) -> Standing {
+    Standing {
+        branch: None,
+        ..standing
+    }
+}
+
+#[test]
+fn an_inactive_detached_worktree_with_unmerged_commits_is_not_ticked() {
+    assert!(!row("old-detached", detached(standing(0, false, Some(30)))).ticked);
+}
+
+#[test]
+fn removing_a_detached_worktree_ticked_by_hand_says_its_commits_are_lost() {
+    let mut app = reference_fixture::world(Stage::None);
+    let mut picked = row("old-detached", detached(standing(0, false, Some(30))));
+    picked.ticked = true;
+    app.mode = Mode::Tidy(Box::new(list(vec![picked])));
+    app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let Mode::Confirm(asked) = &app.mode else {
+        panic!("Remove asks first");
+    };
+    assert!(asked.note.contains("commits on no branch, which will be lost"), "{}", asked.note);
+    assert!(!asked.note.contains("branch is kept"), "{}", asked.note);
+    assert_eq!(asked.list, ["old-detached (commits on no branch)"]);
+}
+
+#[test]
+fn ticking_all_picks_what_the_list_opens_with() {
+    let mut app = reference_fixture::world(Stage::None);
+    let rows = vec![
+        row("merged", standing(0, true, None)),
+        row("old-spike", standing(0, false, Some(30))),
+        row("old-detached", detached(standing(0, false, Some(30)))),
+        row("live-work", standing(1, false, None)),
+    ];
+    let opened: Vec<bool> = rows.iter().map(|r| r.ticked).collect();
+    let mut view = list(rows);
+    view.rows.iter_mut().flatten().for_each(|r| r.ticked = false);
+    app.mode = Mode::Tidy(Box::new(view));
+    app.on_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
+    let Mode::Tidy(v) = &app.mode else {
+        panic!("the list stays open");
+    };
+    let ticked: Vec<bool> = v.rows.iter().flatten().map(|r| r.ticked).collect();
+    assert_eq!(ticked, opened);
+    assert_eq!(opened, [true, true, false, false]);
+}

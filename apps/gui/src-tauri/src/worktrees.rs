@@ -102,11 +102,11 @@ fn recreate(main: &Path, folder: &Path, branch: &str) -> Result<String, String> 
     Ok(format!("Made {branch} again at {place}"))
 }
 
-/// Where the worktree at `folder` stands, as this computer's daemon reads it.
+/// Where the worktree at `folder` of the repository at `repo` stands, as this computer's daemon reads it.
 #[tauri::command]
-pub async fn worktree_standing(wire: tauri::State<'_, crate::terminal_stream::Wire>, machine: Option<u16>, folder: String) -> Result<serde_json::Value, String> {
+pub async fn worktree_standing(wire: tauri::State<'_, crate::terminal_stream::Wire>, machine: Option<u16>, repo: String, folder: String) -> Result<serde_json::Value, String> {
     wire.require_local(machine, "Worktrees")?;
-    maitty_desktop_client::worktree_standing(folder.into())
+    maitty_desktop_client::worktree_standing(repo.into(), folder.into())
         .await
         .map_err(|error| format!("{error:#}"))
 }

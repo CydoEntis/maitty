@@ -1031,11 +1031,11 @@ pub async fn tidy_worktrees(items: Vec<(PathBuf, bool)>, daemon_executable: Path
     }
 }
 
-/// Where the worktree at `folder` stands, as this computer's daemon reads it (`gh` and
-/// `worktree.inactive_days` included), with `missing` set when git still lists it but its folder
-/// is gone. A daemon built before the question is told so in words, since it would never answer.
-pub async fn worktree_standing(folder: PathBuf) -> Result<Value> {
-    let message = ClientMsg::Query(Query::WorktreeStanding { folder });
+/// Where the worktree at `folder` of the repository at `repo` stands, as this computer's daemon
+/// reads it (`gh` and `worktree.inactive_days` included), with `missing` set when git still lists
+/// it but its folder is gone. A daemon built before the question is told so in words, since it would never answer.
+pub async fn worktree_standing(repo: PathBuf, folder: PathBuf) -> Result<Value> {
+    let message = ClientMsg::Query(Query::WorktreeStanding { repo, folder });
     answered_within(REQUEST_TIMEOUT, async {
         let (mut connection, version) = ipc::open_for_user_knowing_version()
             .await
@@ -2617,7 +2617,7 @@ mod agent_command_tests {
     fn a_worktree_standing_reaches_the_app_with_missing_said_and_an_old_daemon_is_not_asked() {
         use super::{ClientMsg, Query, daemon_reads, standing_shown};
         use maitty_shared::protocol::{PROTOCOL_VERSION, WORKTREE_STANDING_SINCE, WorktreeStanding};
-        let ask = ClientMsg::Query(Query::WorktreeStanding { folder: "/code/task".into() });
+        let ask = ClientMsg::Query(Query::WorktreeStanding { repo: "/code/app".into(), folder: "/code/task".into() });
         assert!(daemon_reads(&ask, PROTOCOL_VERSION));
         assert!(!daemon_reads(&ask, WORKTREE_STANDING_SINCE - 1));
         let stale = WorktreeStanding {

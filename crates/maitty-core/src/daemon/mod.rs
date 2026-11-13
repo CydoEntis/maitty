@@ -2857,11 +2857,11 @@ impl Daemon {
                     Query::WorktreeStanding { .. } if self.client_is_agent(client) => {
                         ServerMsg::Error("Only a human client can read where a worktree stands".into())
                     }
-                    Query::WorktreeStanding { folder } => {
+                    Query::WorktreeStanding { repo, folder } => {
                         let inactive_after = self.cfg.worktree.inactive_days;
                         let tx = self.tx.clone();
                         tokio::task::spawn_blocking(move || {
-                            let result = worktree_standing(&folder, inactive_after);
+                            let result = worktree_standing(&repo, &folder, inactive_after);
                             let _ = tx.blocking_send(Ev::WorktreeStandingReady { client, result });
                         });
                         return;
