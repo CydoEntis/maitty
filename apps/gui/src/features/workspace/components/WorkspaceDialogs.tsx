@@ -20,6 +20,7 @@ import { SpecialistsDialog } from './SpecialistsDialog'
 import { MachineUpdateDialog } from './MachineUpdateDialog'
 import { ConfirmCloseDialog } from './ConfirmCloseDialog'
 import { RenameDialog, RenameMachineDialog } from './RenameDialog'
+import { RecentSessionsDialog } from './RecentSessionsDialog'
 import { withNickname, writeMachineNicknames } from '@/data/machineNicknames'
 import { Toast } from './states'
 import type { SessionView } from '../model/session'
@@ -33,7 +34,7 @@ const loadTopFolder = (term: number) => repoTree(term, null)
 
 /** What opens over or beside the panes: Inspect, the palette, Settings and each dialog. */
 export function WorkspaceDialogs() {
-  const { signInAgent, sessionsQuery, mismatch, inspectOpen, focusMode, inspectTerm, ownsTerminals, focusedSession, projectOf, diffStat, inspectView, lookAt, turnDiff, setTurnDiff, setInspectView, setInspectOpen, flash, shortcutsOpen, platform, root, setShortcutsOpen, welcomeOpen, preferences, setPreferences, setWelcomeOpen, newSession, focusedMachineNumber, paletteOpen, paletteItems, setPaletteOpen, focusedId, sessionMap, needsElsewhere, setFocusMode, focusModeChord, worktreeFrom, createWorktree, setWorktreeFrom, heads, sessions, getFileId, setGetFileId, specialistsId, setSpecialistsId, getFile, updateAsk, setUpdateAsk, updateNamed, closeAsk, setCloseAsk, renamingMachine, machineNicknames, setMachineNicknames, setRenamingMachine, renameId, renameInline, saveName, setRenameId, settingsSection, setSettingsSection, systemReducedMotion, systemDark, previewThemeSoon, showTestNotice, updater, restartNow, setPreviewTheme, online, runningVersion, machinesKnown, retryNamed, removeNamed, grantNamed, copyCommand, addNamed, cancelAdding, usageInfo, chooseStartFolder, toastMessage, updatedTo, setUpdatedTo, restarting } = useWorkspace()
+  const { signInAgent, sessionsQuery, mismatch, inspectOpen, focusMode, inspectTerm, ownsTerminals, focusedSession, projectOf, diffStat, inspectView, lookAt, turnDiff, setTurnDiff, setInspectView, setInspectOpen, flash, shortcutsOpen, platform, root, setShortcutsOpen, welcomeOpen, preferences, setPreferences, setWelcomeOpen, newSession, focusedMachineNumber, paletteOpen, paletteItems, paletteOutputItem, setPaletteOpen, focusedId, sessionMap, needsElsewhere, setFocusMode, focusModeChord, worktreeFrom, createWorktree, setWorktreeFrom, heads, sessions, getFileId, setGetFileId, getFile, updateAsk, setUpdateAsk, updateNamed, closeAsk, setCloseAsk, renamingMachine, machineNicknames, setMachineNicknames, setRenamingMachine, renameId, renameInline, saveName, setRenameId, settingsSection, setSettingsSection, systemReducedMotion, systemDark, previewThemeSoon, showTestNotice, updater, restartNow, setPreviewTheme, online, runningVersion, machinesKnown, retryNamed, removeNamed, grantNamed, copyCommand, addNamed, cancelAdding, usageInfo, chooseStartFolder, toastMessage, updatedTo, setUpdatedTo, restarting, home, recentOpen, setRecentOpen, reopenSession, specialistsId, setSpecialistsId } = useWorkspace()
   // An agent always has a Terminal tab. Pinned under the chat, its terminals are in the pane, and the tab offers to bring them back.
   const hasTerminals = focusedSession !== undefined && ownsTerminals(focusedSession)
   usePreloadFiles(inspectTerm, loadTopFolder)
@@ -83,7 +84,7 @@ export function WorkspaceDialogs() {
                 onStartSession={() => { newSession(focusedMachineNumber) }}
               />
             )}
-            {paletteOpen && <CommandPalette items={paletteItems} onClose={() => { setPaletteOpen(false) }} />}
+            {paletteOpen && <CommandPalette items={paletteItems} outputItem={paletteOutputItem} onClose={() => { setPaletteOpen(false) }} />}
             {focusMode && (
               <div className="mx-focus-pill" role="status">
                 <span className="mx-focus-tag">Focus</span>
@@ -148,6 +149,7 @@ export function WorkspaceDialogs() {
                 onCancel={() => { setRenamingMachine(null) }}
               />
             )}
+            {recentOpen && <RecentSessionsDialog home={home} onPick={reopenSession} onReopened={() => { setRecentOpen(false) }} onCancel={() => { setRecentOpen(false) }} />}
             {renameId !== null && !renameInline && sessionMap.get(renameId) && (
               <RenameDialog session={sessionMap.get(renameId) as SessionView} onSave={(name) => { saveName(renameId, name) }} onCancel={() => { setRenameId(null) }} />
             )}

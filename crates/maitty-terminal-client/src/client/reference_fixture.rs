@@ -108,6 +108,7 @@ pub(super) fn term(
         label: label.into(),
         pinned: false,
         archived: false,
+        snoozed_until: None,
         model: String::new(),
         mem: 0,
         cpu: 0.0,

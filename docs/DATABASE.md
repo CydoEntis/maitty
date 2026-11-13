@@ -100,6 +100,8 @@ The top-level `conversations` list defaults empty for legacy snapshots. Optional
 pane `conversation_id` links never establish identity from legacy hook metadata.
 The registry validates nonzero IDs/generations, complete absolute bindings and
 unique conversation/native-session identities before saving or restoring.
+A saved conversation with `worktree_origin` is unreadable to a daemon built before it (`Conversation` denies unknown
+fields), which then sets the whole session file aside and starts empty; do not run an older daemon on a newer file.
 
 
 ## Project-specific: migrations workflow

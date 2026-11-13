@@ -769,12 +769,14 @@ impl App {
         if let Some(m) = self.screen.model_cache.borrow().as_ref() {
             return m.clone();
         }
-        let m = self.screen_model_build();
+        let m = self.screen_model_build(false);
         *self.screen.model_cache.borrow_mut() = Some(m.clone());
         m
     }
 
-    fn screen_model_build(&self) -> Vec<Proj> {
+    /// The listed sessions, or (`put_away`) only those put away and not needing you, which
+    /// the lists leave out. A put-away session that needs you is listed while it does.
+    fn screen_model_build(&self, put_away: bool) -> Vec<Proj> {
         let machines = self.machines();
         let mut projs: Vec<Proj> = Vec::new();
         let order = &self.screen.saved.order;
@@ -847,6 +849,9 @@ impl App {
                 };
                 let term = ClientTerm::on(m.id, *id);
                 if self.screen.pending_split.is_some() && !self.screen.split_known.contains(&term) {
+                    continue;
+                }
+                if put_away::hidden(t) != put_away {
                     continue;
                 }
                 let key = t
@@ -964,7 +969,8 @@ impl App {
                 }
             }
         }
-        for (m, c) in machines.iter().flat_map(|m| {
+        // A chat is never put away: archiving one closes it.
+        for (m, c) in machines.iter().filter(|_| !put_away).flat_map(|m| {
             m.snap
                 .conversations
                 .iter()
@@ -1638,6 +1644,9 @@ mod updates;
 pub(in crate::client) use updates::draw_updates;
 mod closing;
 pub(in crate::client) use closing::{Closing, draw_banner};
+mod put_away;
+#[cfg(test)]
+mod put_away_tests;
 #[cfg(test)]
 mod keys_tests;
 mod fuzzy;

@@ -12,7 +12,29 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 88;
+pub const PROTOCOL_VERSION: u32 = 94;
+
+/// The first version whose client reads a reasoning item in a chat's history
+/// (`conversation::history::Content::Reasoning`). The daemon leaves them out of the pages it
+/// sends an older client, which could not decode a page that held one.
+pub const REASONING_ITEM_SINCE: u32 = 93;
+
+/// The first version whose daemon snoozes a pane (`Command::SnoozePane`).
+pub const SNOOZE_SINCE: u32 = 92;
+
+/// The first version whose daemon honours `operation` on `QueueFollowUp` and `SendWhenReady`; an
+/// older one reads the field and ignores it, so a retry there could be typed twice.
+pub const TERMINAL_SEND_OPERATIONS_SINCE: u32 = 91;
+
+/// The first version whose daemon says where a worktree stands (`Query::WorktreeStanding`).
+pub const WORKTREE_STANDING_SINCE: u32 = 90;
+
+/// The first version whose daemon searches a checkout's file paths (`RepoRequest::FindFiles`).
+pub const FIND_FILES_SINCE: u32 = 89;
+
+/// The first version whose daemon counts the files a snapshot restore would change
+/// (`RepoRequest::RestoreCount`).
+pub const RESTORE_COUNT_SINCE: u32 = 88;
 
 /// The first version whose daemon lists an agent's saved conversations for a folder
 /// (`Query::SavedConversations`).
@@ -56,13 +78,13 @@ pub const CLOSED_SESSIONS_MAX: usize = 50;
 pub const REOPEN_CLOSED_SINCE: u32 = 87;
 
 /// The first version whose daemon takes a workflow's progress (`ClientMsg::WorkflowReport`).
-pub const WORKFLOW_REPORT_SINCE: u32 = 88;
+pub const WORKFLOW_REPORT_SINCE: u32 = 94;
 
 /// The first version whose daemon reads a helper's own record (`Query::HelperRead`).
-pub const HELPER_READ_SINCE: u32 = 88;
+pub const HELPER_READ_SINCE: u32 = 94;
 
 /// The first version whose daemon lists a pane's specialist agent files (`Query::Specialists`).
-pub const SPECIALISTS_SINCE: u32 = 88;
+pub const SPECIALISTS_SINCE: u32 = 94;
 
 /// What a helper did, read from the provider's own file for it (ADR 0010). Display only.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -595,6 +617,11 @@ pub enum Command {
         term: TermId,
         archived: bool,
     },
+    /// Snooze a pane until `until` (unix seconds, at most a week ahead), or wake it (`None`).
+    SnoozePane {
+        term: TermId,
+        until: Option<u64>,
+    },
     /// The agent in `term` moves into a new worktree of its repo: made now, and when its turn
     /// ends it restarts there, resumed (the agent runs `<app> worktree --move`).
     MoveToWorktree {
@@ -768,6 +795,10 @@ pub enum Command {
         /// it works runs before the messages queued behind it.
         #[serde(default)]
         first: bool,
+        /// Names this send, so a retry of it is acknowledged instead of queued twice; the same
+        /// rule as `SendWhenReady::operation`.
+        #[serde(default)]
+        operation: Option<u64>,
     },
     /// Drop the follow-ups queued for a pane.
     ClearQueue {
@@ -785,6 +816,13 @@ pub enum Command {
     SendWhenReady {
         term: TermId,
         text: String,
+        /// Names this send: a random nonzero 64-bit nonce per send, never a counter, since two
+        /// senders counting from the same start would collide on a pane. The same pane, operation
+        /// and text again within ten minutes (as either command) is acknowledged and not typed,
+        /// held or queued again; the same operation with other text, or zero, is refused. None is
+        /// a send with no retry protection, as before.
+        #[serde(default)]
+        operation: Option<u64>,
     },
     /// Run the pane's checkpoint `name` again (None: all of them). While its agent is working
     /// the run waits for the turn to end.
@@ -954,6 +992,13 @@ pub enum Query {
     /// Every worktree of the repository a workspace is in.
     Worktrees {
         ws: WsId,
+    },
+    /// Where the linked worktree at `folder` stands on the daemon's computer (human clients
+    /// only); answered with `Reply::WorktreeStanding`. `repo` is a folder of its repository (the
+    /// main checkout), which must list `folder` as a worktree. Both are absolute.
+    WorktreeStanding {
+        repo: PathBuf,
+        folder: PathBuf,
     },
     /// The tail of a pane's last output for checkpoint `name` (None: the headline one); the
     /// snapshot carries only a summary.
@@ -1149,6 +1194,8 @@ pub enum Reply {
     List(Snapshot),
     Text(String),
     Worktrees(Vec<WorktreeEntry>),
+    /// None: git still lists the worktree but its folder is gone.
+    WorktreeStanding(Option<WorktreeStanding>),
     Repo {
         tag: u64,
         reply: crate::repo::RepoReply,
@@ -1221,6 +1268,51 @@ pub struct WorktreeEntry {
     /// The repository's main checkout.
     pub main: bool,
     pub repo: String,
+}
+
+/// Where a worktree stands: what removing it would lose. Read with git: off the UI thread and
+/// off the daemon's loop.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorktreeStanding {
+    /// Changed and new files that aren't committed.
+    pub dirty: usize,
+    /// Its branch (none: a detached HEAD).
+    pub branch: Option<String>,
+    /// Every commit it has is also on another branch or on a remote, or its pull request was
+    /// merged at exactly this commit (a squash merge leaves the commits on no other branch):
+    /// its own branch could go and nothing would be lost.
+    pub merged: bool,
+    /// When it last committed, as git says it ("3 days ago").
+    pub last_commit: String,
+    /// Whole days since its last commit and its newest file change, set when both are at least
+    /// `worktree.inactive_days` old. It is only listed: nothing is removed for it.
+    pub inactive_days: Option<u32>,
+}
+
+impl WorktreeStanding {
+    /// Nothing here exists only here: it can be removed without asking.
+    pub fn safe(&self) -> bool {
+        self.dirty == 0 && self.merged
+    }
+
+    /// Why it's still around, in a few words.
+    pub fn says(&self) -> String {
+        let idle = self
+            .inactive_days
+            .map(|n| format!("inactive {n} day{} · ", if n == 1 { "" } else { "s" }))
+            .unwrap_or_default();
+        let ago = if self.last_commit.is_empty() {
+            String::new()
+        } else {
+            format!(" · last commit {}", self.last_commit)
+        };
+        let state = match (self.dirty, self.merged) {
+            (0, true) => "merged, nothing uncommitted".to_string(),
+            (0, false) => "not merged anywhere".to_string(),
+            (n, _) => format!("{n} uncommitted change{}", if n == 1 { "" } else { "s" }),
+        };
+        format!("{idle}{state}{ago}")
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -1522,6 +1614,10 @@ pub struct TermInfo {
     /// Put away from the project lists; the process keeps running.
     #[serde(default)]
     pub archived: bool,
+    /// Snoozed until this time (unix seconds). The daemon clears it then, or as soon as the pane
+    /// needs you; it never changes the status.
+    #[serde(default)]
+    pub snoozed_until: Option<u64>,
     /// The model it's using, short ("opus 4.5"), if known.
     pub model: String,
     /// Memory used by what runs in it (bytes).
@@ -1939,6 +2035,7 @@ impl ServerMsg {
             ServerMsg::Reply(Reply::ClosedSessions(_)) => CLOSED_SESSIONS_SINCE,
             ServerMsg::Reply(Reply::HelperRead(_)) => HELPER_READ_SINCE,
             ServerMsg::Reply(Reply::Specialists(_)) => SPECIALISTS_SINCE,
+            ServerMsg::Reply(Reply::WorktreeStanding(_)) => WORKTREE_STANDING_SINCE,
             _ => COMPATIBLE_SINCE,
         }
     }
@@ -1958,10 +2055,24 @@ impl ClientMsg {
             ClientMsg::Query(Query::AllowedCommands) | ClientMsg::Command(Command::ForgetAllowedCommand { .. }) => ALLOWED_COMMANDS_SINCE,
             ClientMsg::Query(Query::SavedConversations { .. }) => SAVED_CONVERSATIONS_SINCE,
             ClientMsg::Query(Query::ClosedSessions) => CLOSED_SESSIONS_SINCE,
+            ClientMsg::Query(Query::WorktreeStanding { .. }) => WORKTREE_STANDING_SINCE,
             ClientMsg::Command(Command::ReopenClosedSession { .. }) => REOPEN_CLOSED_SINCE,
             ClientMsg::WorkflowReport { .. } => WORKFLOW_REPORT_SINCE,
             ClientMsg::Query(Query::HelperRead { .. }) => HELPER_READ_SINCE,
             ClientMsg::Query(Query::Specialists { .. }) => SPECIALISTS_SINCE,
+            ClientMsg::Command(Command::SnoozePane { .. }) => SNOOZE_SINCE,
+            ClientMsg::Command(
+                Command::QueueFollowUp { operation: Some(_), .. }
+                | Command::SendWhenReady { operation: Some(_), .. },
+            ) => TERMINAL_SEND_OPERATIONS_SINCE,
+            ClientMsg::Query(Query::Repo {
+                request: crate::repo::RepoRequest::RestoreCount { .. },
+                ..
+            }) => RESTORE_COUNT_SINCE,
+            ClientMsg::Query(Query::Repo {
+                request: crate::repo::RepoRequest::FindFiles { .. },
+                ..
+            }) => FIND_FILES_SINCE,
             _ => COMPATIBLE_SINCE,
         }
     }
@@ -2166,11 +2277,13 @@ mod tests {
                 term: 3,
                 text: "then run the tests".into(),
                 first: false,
+                operation: None,
             }),
             ClientMsg::Command(Command::ClearQueue { term: 3 }),
             ClientMsg::Command(Command::SendWhenReady {
                 term: 3,
                 text: "fix the parser".into(),
+                operation: Some(7),
             }),
             ClientMsg::Command(Command::RerunCheck {
                 term: 3,
@@ -2366,12 +2479,13 @@ mod tests {
         let held = encode(&Command::SendWhenReady {
             term: 3,
             text: "fix the parser".into(),
+            operation: None,
         })
         .unwrap();
         assert!(decode::<OldCommand>(&held).is_err());
         assert!(matches!(
             decode::<Command>(&held),
-            Ok(Command::SendWhenReady { term: 3, text }) if text == "fix the parser"
+            Ok(Command::SendWhenReady { term: 3, text, operation: None }) if text == "fix the parser"
         ));
 
         let id = crate::conversation::ConversationId(3);
@@ -2381,7 +2495,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 88);
+        assert_eq!(PROTOCOL_VERSION, 94);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2487,6 +2601,52 @@ mod tests {
         const { assert!(DROP_QUEUED_SINCE > COMPATIBLE_SINCE && DROP_QUEUED_SINCE <= PROTOCOL_VERSION) };
     }
 
+    /// `operation` was added to `QueueFollowUp` and `SendWhenReady` as a defaulted field: a send
+    /// from before it decodes as one with no operation, and an older daemon reads one that carries
+    /// it but ignores the operation, so `COMPATIBLE_SINCE` stays and a send with one says it needs
+    /// a daemon that honours it.
+    #[test]
+    fn a_terminal_send_from_before_operation_ids_still_decodes_both_ways() {
+        #[derive(Debug, Serialize, Deserialize)]
+        enum OldCommand {
+            QueueFollowUp { term: TermId, text: String, first: bool },
+            SendWhenReady { term: TermId, text: String },
+        }
+        let queued = encode(&OldCommand::QueueFollowUp { term: 3, text: "next".into(), first: true }).unwrap();
+        assert!(matches!(
+            decode::<Command>(&queued).unwrap(),
+            Command::QueueFollowUp { term: 3, first: true, operation: None, .. }
+        ));
+        let held = encode(&OldCommand::SendWhenReady { term: 3, text: "fix it".into() }).unwrap();
+        assert!(matches!(
+            decode::<Command>(&held).unwrap(),
+            Command::SendWhenReady { term: 3, operation: None, .. }
+        ));
+
+        let new = encode(&Command::SendWhenReady { term: 3, text: "fix it".into(), operation: Some(9) }).unwrap();
+        assert!(matches!(
+            decode::<Command>(&new).unwrap(),
+            Command::SendWhenReady { operation: Some(9), .. }
+        ));
+        assert!(matches!(
+            decode::<OldCommand>(&new).unwrap(),
+            OldCommand::SendWhenReady { term: 3, text } if text == "fix it"
+        ));
+        let new = encode(&Command::QueueFollowUp { term: 3, text: "next".into(), first: false, operation: Some(9) }).unwrap();
+        assert!(matches!(decode::<OldCommand>(&new).unwrap(), OldCommand::QueueFollowUp { term: 3, first: false, .. }));
+    }
+
+    #[test]
+    fn only_a_terminal_send_with_an_operation_needs_a_daemon_that_honours_it() {
+        let queue = |operation| ClientMsg::Command(Command::QueueFollowUp { term: 3, text: "next".into(), first: false, operation });
+        let hold = |operation| ClientMsg::Command(Command::SendWhenReady { term: 3, text: "fix it".into(), operation });
+        assert_eq!(queue(Some(9)).introduced_in(), TERMINAL_SEND_OPERATIONS_SINCE);
+        assert_eq!(hold(Some(9)).introduced_in(), TERMINAL_SEND_OPERATIONS_SINCE);
+        assert_eq!(queue(None).introduced_in(), COMPATIBLE_SINCE);
+        assert_eq!(hold(None).introduced_in(), COMPATIBLE_SINCE);
+        const { assert!(TERMINAL_SEND_OPERATIONS_SINCE > COMPATIBLE_SINCE && TERMINAL_SEND_OPERATIONS_SINCE <= PROTOCOL_VERSION) };
+    }
+
     /// `choice` was added to `ConversationSend` as a defaulted field: a send from before it still
     /// decodes, as "nothing picked", and one that carries a choice round-trips.
     #[test]
@@ -2548,6 +2708,45 @@ mod tests {
         });
         assert_eq!(ask.introduced_in(), WRITE_FILE_SINCE);
         const { assert!(WRITE_FILE_SINCE > COMPATIBLE_SINCE && WRITE_FILE_SINCE <= PROTOCOL_VERSION) };
+    }
+
+    /// Counting a restore is a new repository question: a daemon from before it cannot read it, so it is not
+    /// asked, while every older question keeps the window's version.
+    #[test]
+    fn a_restore_count_is_asked_only_of_a_daemon_that_knows_it() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldRepoRequest {
+            Snapshots,
+        }
+        let count = crate::repo::RepoRequest::RestoreCount {
+            commit: "abc123".into(),
+        };
+        assert!(decode::<OldRepoRequest>(&encode(&count).unwrap()).is_err());
+        let ask = |request| ClientMsg::Query(Query::Repo { term: 3, tag: 1, request });
+        assert_eq!(ask(count).introduced_in(), RESTORE_COUNT_SINCE);
+        assert_eq!(ask(crate::repo::RepoRequest::Snapshots).introduced_in(), COMPATIBLE_SINCE);
+        const { assert!(RESTORE_COUNT_SINCE > COMPATIBLE_SINCE && RESTORE_COUNT_SINCE <= PROTOCOL_VERSION) };
+    }
+
+    /// Finding files is a new repository question: a daemon from before it cannot read it, so it is
+    /// not asked.
+    #[test]
+    fn a_file_search_is_asked_only_of_a_daemon_that_knows_it() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldRepoRequest {
+            Snapshots,
+            RestoreCount { commit: String },
+        }
+        let find = crate::repo::RepoRequest::FindFiles {
+            query: "main".into(),
+            limit: 20,
+        };
+        assert!(decode::<OldRepoRequest>(&encode(&find).unwrap()).is_err());
+        let ask = |request| ClientMsg::Query(Query::Repo { term: 3, tag: 1, request });
+        assert_eq!(ask(find).introduced_in(), FIND_FILES_SINCE);
+        const { assert!(FIND_FILES_SINCE > COMPATIBLE_SINCE && FIND_FILES_SINCE <= PROTOCOL_VERSION) };
     }
 
     /// `agent` and `prompt` were added to `NewWorktree` as defaulted fields: a peer that does not
@@ -2764,7 +2963,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 88);
+        assert_eq!(PROTOCOL_VERSION, 94);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -3068,6 +3267,33 @@ mod tests {
         let bytes = encode(&ServerMsg::SettingsChanged(sample_settings())).unwrap();
         assert!(decode::<OldServerMsg>(&bytes).is_err());
         assert!(decode::<ServerMsg>(&bytes).is_ok());
+    }
+
+    /// Snoozing is a new command: a daemon built before it cannot read it, so a client asks only a
+    /// daemon that says it is new enough, and the window stays where it was.
+    #[test]
+    fn a_snooze_is_asked_only_of_a_daemon_that_knows_it() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldCommand {
+            ArchivePane { term: TermId, archived: bool },
+        }
+        let snooze = Command::SnoozePane { term: 3, until: Some(1_000) };
+        let bytes = encode(&snooze).unwrap();
+        assert!(decode::<OldCommand>(&bytes).is_err());
+        assert!(matches!(
+            decode::<Command>(&bytes),
+            Ok(Command::SnoozePane { term: 3, until: Some(1_000) })
+        ));
+        assert_eq!(ClientMsg::Command(snooze).introduced_in(), SNOOZE_SINCE);
+        const { assert!(SNOOZE_SINCE > COMPATIBLE_SINCE && SNOOZE_SINCE <= PROTOCOL_VERSION) };
+    }
+
+    #[test]
+    fn a_pane_from_before_snooze_decodes_as_awake() {
+        assert_eq!(pane_from(serde_json::json!({})).snoozed_until, None);
+        let snoozed = pane_from(serde_json::json!({ "snoozed_until": 1_000 }));
+        assert_eq!(snoozed.snoozed_until, Some(1_000));
     }
 
     #[test]
@@ -3737,6 +3963,40 @@ mod tests {
         let reply = encode(&Reply::ClosedSessions(vec![closed.clone()])).unwrap();
         assert!(decode::<OldReply>(&reply).is_err());
         assert!(matches!(decode::<Reply>(&reply), Ok(Reply::ClosedSessions(list)) if list == [closed]));
+    }
+
+    /// Asking where a worktree stands is a new query and a new reply: a peer built before them
+    /// cannot read either, so a client asks only a daemon that says it is new enough, and the
+    /// window stays open.
+    #[test]
+    fn a_worktree_standing_is_asked_only_of_a_daemon_that_knows_it() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldQuery {
+            List,
+        }
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldReply {
+            Ok,
+        }
+        let ask = Query::WorktreeStanding { repo: PathBuf::from("/code/app"), folder: PathBuf::from("/code/app-worktrees/task") };
+        assert!(decode::<OldQuery>(&encode(&ask).unwrap()).is_err());
+        assert!(matches!(decode::<Query>(&encode(&ask).unwrap()), Ok(Query::WorktreeStanding { .. })));
+        assert_eq!(ClientMsg::Query(ask).introduced_in(), WORKTREE_STANDING_SINCE);
+        const { assert!(WORKTREE_STANDING_SINCE > COMPATIBLE_SINCE && WORKTREE_STANDING_SINCE <= PROTOCOL_VERSION) };
+
+        let standing = WorktreeStanding {
+            dirty: 0,
+            branch: Some("task".into()),
+            merged: false,
+            last_commit: "5 weeks ago".into(),
+            inactive_days: Some(30),
+        };
+        let reply = Reply::WorktreeStanding(Some(standing.clone()));
+        assert!(decode::<OldReply>(&encode(&reply).unwrap()).is_err());
+        assert!(matches!(decode::<Reply>(&encode(&reply).unwrap()), Ok(Reply::WorktreeStanding(Some(read))) if read == standing));
+        assert_eq!(ServerMsg::Reply(reply).introduced_in(), WORKTREE_STANDING_SINCE);
     }
 
     /// Reopening a closed session is a new command: a daemon built before it cannot read it, so a

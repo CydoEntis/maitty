@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { Conversation, SubagentActivity, WorkflowRun } from '@/data/preview'
+import { writeMachineNicknames } from '@/data/machineNicknames'
 import { LOCAL_HEAD, type MachineHead } from '../model/machines'
 import { toSessionView, type SessionView } from '../model/session'
 import { Sidebar, type SidebarProps } from './Sidebar'
@@ -27,8 +28,8 @@ function show(sessions: SessionView[], more: Partial<SidebarProps> = {}) {
     sessions, machines: [LOCAL_HEAD], order: 'creation', focusedId: null, openSubagent: null, mode: 'docked', online: true, canStart: true, renamingId: null, portalContainer: null,
     onToggleRail: none, side: 'left', width: 264, onResize: none, onResizeEnd: none, grouping: 'machine', onGrouping: none, onSearch: none,
     onNewAgentChat: none, onNewShell: none, onAddMachine: none, onMachineSettings: none, onRenameMachine: none, onUpdateMachine: none, onShowSession: none, onShowSubagent: none, onShowRun: none, onRenameSession: none,
-    onSetName: none, onSplitSession: none, onSplitSubagent: none, onCopyPath: none, onCopyText: none, onShowChanges: none, onMarkDone: none, onGetFile: none,
-    onEndSession: none, onOpenSettings: none, updateSlot: null, railUpdateSlot: null,
+    onSetName: none, onSplitSession: none, onSplitSubagent: none, onCopyPath: none, onCopyText: none, onShowChanges: none, onMarkDone: none, onPutAway: none, onBringBack: none, onSnooze: none, onUnsnooze: none, onGetFile: none,
+    onEndSession: none, onOpenSettings: none, onRecentSessions: none, updateSlot: null, railUpdateSlot: null,
     ...more,
   }
   const view = render(<Sidebar {...props} />)
@@ -47,6 +48,11 @@ describe('the sidebar', () => {
     expect(within(here).getByRole('button', { name: /^Here,/ })).toBeTruthy()
     expect(within(there).getByRole('button', { name: /^There,/ })).toBeTruthy()
     expect(screen.getByRole('button', { name: /^This computer/, expanded: true })).toHaveTextContent('1')
+  })
+
+  it('leaves the machine off a row under its own machine heading', () => {
+    show([session(2, { machine: 4, machineName: 'devbox', agent: 'claude', named: true, title: 'There', repo: 'app2', branch: 'feat/remote-branch' })], { machines: [LOCAL_HEAD, DEVBOX] })
+    expect(screen.getByRole('button', { name: /^There,/ }).querySelector('.mx-row-text')?.textContent).toBe('app2feat/remote-branchThere')
   })
 
   const MIXED = () => [
@@ -266,6 +272,96 @@ describe('a session row', () => {
     expect(onMarkDone).toHaveBeenCalledWith('t1')
   })
 
+  it('offers Put away on a finished or idle session, not on a busy one, and asks for that session', async () => {
+    const onPutAway = vi.fn()
+    show([session(1, { agent: 'claude', named: true, title: 'Finished', status: 'done' }), session(2, { named: true, title: 'Shell' }), session(3, { agent: 'claude', named: true, title: 'Busy', status: 'working' })], { onPutAway })
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Busy,/ }))
+    expect(screen.queryByRole('menuitem', { name: 'Put away' })).toBeNull()
+    await userEvent.keyboard('{Escape}')
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Shell,/ }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Put away' }))
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Finished,/ }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Put away' }))
+    expect(onPutAway.mock.calls).toEqual([['t2'], ['t1']])
+  })
+
+  it('lists put-away sessions, terminals included, only under a folded Put away section at the bottom', async () => {
+    const onBringBack = vi.fn()
+    show([
+      session(1, { agent: 'claude', named: true, title: 'Away agent', status: 'done', archived: true }),
+      session(2, { named: true, title: 'Away shell', archived: true }),
+      session(3, { agent: 'claude', named: true, title: 'Here' }),
+    ], { grouping: 'status', onBringBack })
+    expect(names()).toEqual(['Here'])
+    const head = screen.getByRole('button', { name: /^Put away/, expanded: false })
+    expect(head).toHaveTextContent('2')
+    await userEvent.click(head)
+    const list = screen.getByRole('list', { name: 'Put away' })
+    expect(within(list).getAllByRole('button', { name: /, (idle|done)$/ }).map((row) => row.getAttribute('aria-label')?.split(',')[0])).toEqual(['Away agent', 'Away shell'])
+    expect(screen.queryByRole('list', { name: 'Terminals' })).toBeNull()
+    await userEvent.click(within(list).getByRole('button', { name: 'Bring back Away shell' }))
+    expect(onBringBack).toHaveBeenCalledWith('t2')
+  })
+
+  it('offers Bring back in the menu of a put-away session', async () => {
+    const onBringBack = vi.fn()
+    show([session(1, { agent: 'claude', named: true, title: 'Away', archived: true })], { onBringBack })
+    await userEvent.click(screen.getByRole('button', { name: /^Put away/ }))
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Away,/ }))
+    expect(screen.queryByRole('menuitem', { name: 'Put away' })).toBeNull()
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Bring back' }))
+    expect(onBringBack).toHaveBeenCalledWith('t1')
+  })
+
+  describe('snoozing', () => {
+    const UNTIL = new Date(2026, 0, 5, 14, 5).getTime()
+    const resets = Math.ceil(Date.now() / 1000) + 4 * 3600
+    const withDetails = (extra: object) => ({ asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, ...extra })
+
+    it('offers an hour and tomorrow at 9:00, and the limit reset only for a session held by its plan limit', async () => {
+      const onSnooze = vi.fn()
+      show([session(1, { agent: 'claude', named: true, title: 'Finished', status: 'done' }), session(2, { agent: 'claude', named: true, title: 'Held', details: withDetails({ resumeAt: resets }) })], { onSnooze })
+      fireEvent.contextMenu(screen.getByRole('button', { name: /^Finished,/ }))
+      expect(screen.getAllByRole('menuitem').map((item) => item.textContent).filter((text) => text.startsWith('Snooze'))).toEqual(['Snooze 1 hour', 'Snooze until tomorrow 9:00'])
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Snooze 1 hour' }))
+      expect(onSnooze).toHaveBeenCalledTimes(1)
+      expect(onSnooze.mock.calls[0]?.[0]).toBe('t1')
+      fireEvent.contextMenu(screen.getByRole('button', { name: /^Held,/ }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Snooze until the limit resets' }))
+      expect(onSnooze).toHaveBeenLastCalledWith('t2', resets)
+    })
+
+    it('offers no snooze on a busy session or one put away', () => {
+      show([session(1, { agent: 'claude', named: true, title: 'Busy', status: 'working' })])
+      fireEvent.contextMenu(screen.getByRole('button', { name: /^Busy,/ }))
+      expect(screen.queryByRole('menuitem', { name: /^Snooze/ })).toBeNull()
+    })
+
+    it('lists a snoozed session under Put away with when it returns, and Unsnooze wakes it', async () => {
+      const onUnsnooze = vi.fn()
+      const snoozed = toSessionView({ ...session(1, { agent: 'claude', named: true, title: 'Napping', status: 'done', details: withDetails({ snoozedUntil: UNTIL / 1000 }) }).conversation }, '/home/me', UNTIL - 3_600_000)
+      // Which day it names depends on when the test runs; the clock is the point.
+      show([snoozed, session(2, { agent: 'claude', named: true, title: 'Here' })], { grouping: 'status', onUnsnooze })
+      expect(names()).toEqual(['Here'])
+      await userEvent.click(screen.getByRole('button', { name: /^Put away/ }))
+      const list = screen.getByRole('list', { name: 'Put away' })
+      expect(within(list).getByRole('button', { name: /^Napping,/ })).toHaveTextContent(/until (\w{3} )?14:05/)
+      fireEvent.contextMenu(within(list).getByRole('button', { name: /^Napping,/ }))
+      expect(screen.queryByRole('menuitem', { name: 'Bring back' })).toBeNull()
+      expect(screen.queryByRole('menuitem', { name: 'Put away' })).toBeNull()
+      expect(screen.queryByRole('menuitem', { name: /^Snooze/ })).toBeNull()
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Unsnooze' }))
+      await userEvent.click(within(list).getByRole('button', { name: 'Unsnooze Napping' }))
+      expect(onUnsnooze.mock.calls).toEqual([['t1'], ['t1']])
+    })
+  })
+
+  it('lists a put-away session that needs you under Needs you, not under Put away', () => {
+    show([session(1, { agent: 'claude', named: true, title: 'Asking', status: 'needs-you', archived: true })], { grouping: 'status' })
+    expect(within(screen.getByRole('list', { name: 'Needs you' })).getByRole('button', { name: /^Asking,/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^Put away/ })).toBeNull()
+  })
+
   it('starts renaming on a double-click', async () => {
     const user = userEvent.setup()
     const onRenameSession = vi.fn()
@@ -330,7 +426,7 @@ describe('a session row', () => {
     show([session(1, { agent: 'claude', named: true, title: 'Growth' }), session(2)], { focusedId: 't2', onEndSession })
     fireEvent.contextMenu(screen.getByRole('button', { name: /^Growth,/ }))
     const menu = screen.getByRole('menu', { name: 'Growth' })
-    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Open', 'Open in split right', 'Open in split down', 'Show changes', 'Rename…F2', 'Copy folder path', 'Stop session'])
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Open', 'Open in split right', 'Open in split down', 'Show changes', 'Rename…F2', 'Copy folder path', 'Put away', 'Snooze 1 hour', 'Snooze until tomorrow 9:00', 'Stop session'])
     await user.click(within(menu).getByRole('menuitem', { name: 'Stop session' }))
     expect(onEndSession).toHaveBeenCalledWith('t1')
   })
@@ -451,6 +547,23 @@ describe('grouped by status', () => {
     expect(within(screen.getByRole('button', { name: /^There,/ })).getByText('· devbox')).toBeTruthy()
   })
 
+  it('names another machine by its given name, with its own name as the tooltip, and this computer not at all', () => {
+    writeMachineNicknames({ devbox: 'Kingdom' })
+    try {
+      show([
+        session(1, { agent: 'claude', named: true, title: 'Here', repo: 'app1', branch: 'feat/local-branch' }),
+        session(2, { machine: 4, machineName: 'devbox', agent: 'claude', named: true, title: 'There', repo: 'app2', branch: 'feat/remote-branch' }),
+      ], { machines: [LOCAL_HEAD, DEVBOX], grouping: 'status' })
+      const there = screen.getByRole('button', { name: /^There,/ })
+      expect(within(there).getByText('· Kingdom')).toHaveAttribute('title', 'devbox')
+      expect(there).toHaveTextContent('feat/remote-branch')
+      const here = screen.getByRole('button', { name: /^Here,/ })
+      expect(here.querySelector('.mx-row-text')?.textContent).toBe('app1feat/local-branchHere')
+    } finally {
+      writeMachineNicknames({})
+    }
+  })
+
   it('folds a section away from its heading', async () => {
     const user = userEvent.setup()
     show(mixed(), { grouping: 'status' })
@@ -497,6 +610,16 @@ describe('the top of the sidebar', () => {
     expect(onNewAgentChat).toHaveBeenCalledWith(0)
     await user.click(screen.getByRole('button', { name: /^Search/ }))
     expect(onSearch).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens Recent sessions from its button, docked and on the rail', async () => {
+    const user = userEvent.setup()
+    const onRecentSessions = vi.fn()
+    const { again } = show([], { onRecentSessions })
+    await user.click(screen.getByRole('button', { name: 'Recent sessions' }))
+    again({ mode: 'rail' })
+    await user.click(screen.getByRole('button', { name: 'Recent sessions' }))
+    expect(onRecentSessions).toHaveBeenCalledTimes(2)
   })
 
   it('offers a shell and a remote machine from the arrow beside New chat', async () => {

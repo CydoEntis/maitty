@@ -158,6 +158,11 @@ export async function retryMachine(name: string): Promise<void> {
   if (isTauri()) await invoke('retry_machine', { name })
 }
 
+/** Ask a machine for its whole list; it arrives as that machine's next `machine-sessions-changed`. */
+export async function askMachineList(machine: number): Promise<void> {
+  if (isTauri()) await invoke('ask_machine_list', { machine })
+}
+
 const MachineActivitySchema = z.object({ sessions: z.number().int().nonnegative(), busy: z.number().int().nonnegative(), current: z.boolean().default(false) }).nullable()
 /** `current`: the app there is already this version, so an update is only a restart of its daemon. */
 export type MachineActivity = { sessions: number; busy: number; current: boolean }

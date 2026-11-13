@@ -282,25 +282,67 @@ fn provider_tool_lifecycle_replaces_one_row_and_preserves_failed_status() {
 }
 
 #[test]
-fn private_reasoning_items_do_not_make_user_visible_history_incomplete() {
+fn a_token_that_straddles_the_reasoning_cut_is_masked_before_it() {
+    let token = format!("ghp_{}", "aB3d".repeat(9));
+    // The token starts a few bytes before the 64 KiB cut, so cutting first would leave a prefix
+    // no pattern matches.
+    let text = format!("{} {token}", "x".repeat(64 * 1024 - 10));
     let mut attachments = Attachments::default();
     attachments.attach(1, ConversationId(1));
-
     attachments
         .notification(
             ConversationId(1),
             "native",
             "item/completed",
-            &json!({
-                "threadId": "native",
-                "turnId": "turn",
-                "item": {"id": "private", "type": "reasoning", "text": "not retained"}
-            }),
+            &json!({"threadId": "native", "turnId": "turn", "item": {
+                "id": "thought", "type": "reasoning", "summary": [text], "content": []
+            }}),
         )
         .unwrap();
+    let Content::Reasoning { text } = &attachments.get(1).unwrap().entries[0].content else {
+        panic!("not a reasoning item");
+    };
+    assert!(!text.contains("ghp_"), "{}", &text[text.len().saturating_sub(60)..]);
+}
+
+#[test]
+fn a_codex_reasoning_summary_is_kept_as_its_own_item_and_hidden_reasoning_is_not() {
+    let mut attachments = Attachments::default();
+    attachments.attach(1, ConversationId(1));
+    let mut completed = |item: serde_json::Value| {
+        attachments
+            .notification(
+                ConversationId(1),
+                "native",
+                "item/completed",
+                &json!({"threadId": "native", "turnId": "turn", "item": item}),
+            )
+            .unwrap();
+    };
+
+    completed(json!({
+        "id": "private",
+        "type": "reasoning",
+        "summary": [],
+        "content": ["raw reasoning that is never read"],
+    }));
+    completed(json!({
+        "id": "thought",
+        "type": "reasoning",
+        "summary": ["**Weighing two fixes**", "The parser one is smaller.\u{1b}[31m"],
+        "content": [],
+    }));
 
     let history = attachments.get(1).unwrap();
-    assert!(history.entries.is_empty());
+    assert_eq!(history.entries.len(), 1);
+    assert_eq!(history.entries[0].source.item, "thought");
+    assert_eq!(history.entries[0].state, ItemState::Completed);
+    assert_eq!(
+        history.entries[0].content,
+        Content::Reasoning {
+            text: "**Weighing two fixes**\n\nThe parser one is smaller.".into()
+        }
+    );
     assert_eq!(history.completeness, Completeness::Unknown);
 }
 

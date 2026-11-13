@@ -26,7 +26,7 @@ function state(machine: number, name: string, kind: MachineKind = 'connected'): 
 
 function machineOf(id: number, name: string, terms: ReturnType<typeof term>[], kind: MachineKind = 'connected', heard = true): RemoteMachine {
   registerMachine(name, id)
-  return { state: state(id, name, kind), conversations: conversationsFromSnapshot(snapshot(terms), { id, name }), heard }
+  return { state: state(id, name, kind), conversations: conversationsFromSnapshot(snapshot(terms), { id, name }), heard, listedAt: 0 }
 }
 
 describe('merging the snapshots of several machines', () => {
@@ -267,9 +267,9 @@ describe('starting a shell from another machine\'s pane', () => {
 describe('machine nicknames', () => {
   it('shows the nickname while the real name stays what sessions go by', () => {
     const state = { name: 'Build-Box', state: 'connected' } as unknown as MachineState
-    const heads = machineHeads(new Map([[1, { state, conversations: [], heard: true }]]), { 'build-box': 'Builder' })
+    const heads = machineHeads(new Map([[1, { state, conversations: [], heard: true, listedAt: 0 }]]), { 'build-box': 'Builder' })
     expect(machineTitle(heads[1] as MachineHead)).toBe('Builder')
     expect(heads[1]).toMatchObject({ name: 'Build-Box' })
-    expect(machineTitle(machineHeads(new Map([[1, { state, conversations: [], heard: true }]]))[1] as MachineHead)).toBe('Build-Box')
+    expect(machineTitle(machineHeads(new Map([[1, { state, conversations: [], heard: true, listedAt: 0 }]]))[1] as MachineHead)).toBe('Build-Box')
   })
 })

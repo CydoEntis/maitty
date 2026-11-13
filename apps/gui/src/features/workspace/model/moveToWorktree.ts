@@ -1,3 +1,4 @@
+import { abilitiesOf } from './agentAbilities'
 import type { SessionView } from './session'
 import { suggestBranchName } from './worktreeName'
 
@@ -18,7 +19,7 @@ export const EXIT_POLL_MS = 250
 
 /** Why a session cannot be moved to a worktree now, or null when it can. */
 export function moveRefusal(session: SessionView): string | null {
-  if (session.process !== 'claude' && session.process !== 'codex') return 'Only Claude and Codex chats can move'
+  if (!abilitiesOf(session.process).moveToWorktree) return 'Only Claude and Codex chats can move'
   if (session.agentSession == null || !SESSION_ID.test(session.agentSession)) return 'This chat has no saved conversation to carry over yet'
   if (session.status === 'working' || session.status === 'needs') return 'Wait until the agent is idle; moving restarts it'
   return null

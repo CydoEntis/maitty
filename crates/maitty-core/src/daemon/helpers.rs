@@ -174,6 +174,7 @@ impl Daemon {
         }
         let n = t.helpers.asked.len();
         self.dirty = true;
+        self.needs_you(by);
         if first {
             self.announce(by, crate::protocol::Status::Blocked);
         }

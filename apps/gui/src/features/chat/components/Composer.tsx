@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProp
 import { toast } from '@/lib/toast'
 import { pasteFromHost, pickFromClipboard, unsupportedMessage } from '@/features/terminal/clipboardImage'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
+import { abilitiesOf } from '@/features/workspace/model/agentAbilities'
 import { AppIcon, Icon } from '@/features/workspace/components/glyphs'
 import { registerComposerDrop } from '../composerDrop'
-import { useComposerDraft } from '../composerStore'
+import { updateComposer, useComposerDraft, useComposerSlice } from '../composerStore'
 import type { ChatComposer } from '../useChatComposer'
 import { defaultChoice, useAgentChoice, type AgentChoice } from '../agentChoice'
 import { DraftAttachments } from './Attachments'
@@ -13,6 +14,9 @@ import { modelName } from '../modelName'
 import { PermissionMenu } from './PermissionMenu'
 import { QueuedMessages } from './QueuedMessages'
 import { MAX_SHOWN, SlashPicker } from './SlashPicker'
+import { FilePicker } from './FilePicker'
+import { useFileMention } from '../useFileMention'
+import type { FileSearchPlace } from '../fileMention'
 import { asSkills, commandText, matchCommands, skillQuery, slashQuery, useSlashCommands, withTerminalCommands, type SlashCommand } from '../slashCommands'
 import { CLAUDE_TERMINAL_COMMANDS } from '../terminalCommands'
 import { CODEX_COMMANDS } from '../codexCommands'
@@ -86,6 +90,8 @@ type Props = {
   facts: ComposerFacts
   /** A message went in and the agent has not taken it up yet: the send button shows it is working and sends nothing more. */
   waiting?: boolean
+  /** Where an `@` looks for files; absent where the daemon cannot be asked (another machine, no pane). */
+  files?: FileSearchPlace | undefined
 }
 
 const NO_CHANGE = () => undefined
@@ -97,9 +103,10 @@ const PERCENT = 100
  * adds a line, Esc interrupts the running turn. While the agent works, sending queues the message;
  * while a request waits for an answer, or the daemon is offline, the box is off and says why.
  */
-export function Composer({ agent, composer, conversation, commandsFrom, question = null, facts, waiting = false }: Props) {
+export function Composer({ agent, composer, conversation, commandsFrom, question = null, facts, waiting = false, files }: Props) {
   const { setDraft, attachments, attach, readOnly, queue, removeQueued, editQueued, sendQueuedNow, submit, stop, running, sending, disabledReason, error } = composer
   const storedDraft = useComposerDraft(composer.conversationKey ?? NO_CONVERSATION)
+  const restoreNote = useComposerSlice(composer.conversationKey ?? NO_CONVERSATION, (state) => state.note)
   const draft = composer.draft ?? storedDraft
   const off = disabledReason !== null
   const box = useRef<HTMLDivElement>(null)
@@ -138,7 +145,8 @@ export function Composer({ agent, composer, conversation, commandsFrom, question
 
   // The agent's commands, offered while a slash and a name are typed. Esc puts the list away until the text changes.
   // Codex's own box names a skill after a `$`, so that opens the list too, with only its skills.
-  const naming = off || commandsFrom?.agent !== 'codex' ? null : skillQuery(draft)
+  const commands = abilitiesOf(commandsFrom?.agent).slashCommands
+  const naming = off || commands?.skillsAfterDollar !== true ? null : skillQuery(draft)
   const query = off || commandsFrom === undefined ? null : slashQuery(draft) ?? naming
   const [closedFor, setClosedFor] = useState<string | null>(null)
   const picking = query !== null && closedFor !== draft
@@ -147,15 +155,16 @@ export function Composer({ agent, composer, conversation, commandsFrom, question
   // Claude's are its own list plus the ones only its terminal runs; Codex's are the window's list and the skills
   // Codex itself lists. The terminal's commands are offered only to an agent that has a terminal to run them in.
   const skillsOnly = naming !== null
+  const windowList = commands?.list === 'window'
   const offered = useMemo(() => {
-    if (commandsFrom?.agent === 'codex') {
+    if (windowList) {
       const skills = asSkills(slash.commands)
       if (skillsOnly) return skills
       return [...(inTerminal === undefined ? CODEX_COMMANDS.filter((command) => command.terminal !== true) : CODEX_COMMANDS), ...skills]
     }
     const own = withTerminalCommands(slash.commands, CLAUDE_TERMINAL_COMMANDS)
     return inTerminal === undefined ? own.filter((command) => command.terminal !== true) : own
-  }, [slash.commands, inTerminal, commandsFrom?.agent, skillsOnly])
+  }, [slash.commands, inTerminal, windowList, skillsOnly])
   const matches = useMemo(() => (query === null ? [] : matchCommands(offered, query)), [offered, query])
   // The keys start at the closest match each time the typed name changes.
   const [cursor, setCursor] = useState({ query: '', index: 0 })
@@ -185,7 +194,12 @@ export function Composer({ agent, composer, conversation, commandsFrom, question
     submit()
     text.current?.focus()
   }
+  // The @ picker follows the caret: it is open only while the caret sits, with nothing selected, at the end of the text.
+  const [caretAtEnd, setCaretAtEnd] = useState(true)
+  const followCaret = (area: HTMLTextAreaElement) => { setCaretAtEnd(area.selectionStart === area.selectionEnd && area.selectionEnd === area.value.length) }
+  const mention = useFileMention(off ? null : files ?? null, draft, caretAtEnd, setDraft, () => { text.current?.focus() })
   const pickerKey = (event: KeyboardEvent<HTMLTextAreaElement>): boolean => {
+    if (mention.onKey(event)) return true
     if (!picking) return false
     if (event.key === 'Escape') {
       setClosedFor(draft)
@@ -227,17 +241,22 @@ export function Composer({ agent, composer, conversation, commandsFrom, question
           {picking && (
             <SlashPicker agent={agent} matches={matches} active={active} loading={slash.loading} error={slash.error} onPick={run} onHover={(index) => { setCursor({ query, index }) }} />
           )}
+          {mention.open && (
+            <FilePicker found={mention.found} active={mention.active} onPick={mention.pick} onHover={mention.hover} />
+          )}
           <DraftAttachments attachments={attachments} onRemove={attach.remove} />
           <textarea
             ref={text}
             aria-label={`Message ${agent}`}
             {...(picking && matches.length > 0 ? { role: 'combobox', 'aria-expanded': true, 'aria-controls': 'mx-slash-list', 'aria-activedescendant': `mx-slash-${String(active)}` } : {})}
+            {...(mention.open && (mention.found?.paths.length ?? 0) > 0 ? { role: 'combobox', 'aria-expanded': true, 'aria-controls': 'mx-file-list', 'aria-activedescendant': `mx-file-${String(mention.active)}` } : {})}
             rows={2}
             value={draft}
             disabled={off}
             placeholder={placeholder}
             className="mx-box-text"
-            onChange={(event) => { setDraft(event.target.value) }}
+            onChange={(event) => { setDraft(event.target.value); followCaret(event.target) }}
+            onSelect={(event) => { followCaret(event.currentTarget) }}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
           />
@@ -272,7 +291,13 @@ export function Composer({ agent, composer, conversation, commandsFrom, question
           </div>
         </div>
         <SettingsTray facts={facts} />
-        {readOnly && (agent === 'claude' || agent === 'gemini') && isBangLine(draft) && <p className="mx-composer-note">Runs in the terminal, not as a message. Open the terminal to answer anything it asks.</p>}
+        {readOnly && abilitiesOf(agent).bangToTerminal && isBangLine(draft) && <p className="mx-composer-note">Runs in the terminal, not as a message. Open the terminal to answer anything it asks.</p>}
+        {restoreNote !== null && composer.conversationKey !== undefined && (
+          <p className="mx-composer-note">
+            Your next message starts with a line telling {agent} the files were restored.{' '}
+            <button type="button" className="mx-composer-note-action" onClick={() => { updateComposer(composer.conversationKey ?? NO_CONVERSATION, (state) => ({ ...state, note: null })) }}>Leave it out</button>
+          </p>
+        )}
         {error !== null && <p role="alert" className="mx-composer-error">{error}. Your message is kept; send it again to retry.</p>}
       </div>
     </div>

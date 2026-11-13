@@ -239,6 +239,39 @@ through `.profile` or `.zprofile` would otherwise be missing. The client never r
   inherited part after them. `[env]` in `config.toml` still overrides a pane's `PATH`.
 - Windows keeps today's behaviour; the Windows remote is out of v1 (ADR 0007).
 
+## Project-specific: putting away merged sessions
+
+`sessions.put_away_merged` (default `false`) lets the daemon put away a session (the same flag as
+`Command::ArchivePane`) whose status is done or idle once the pull request watcher reads its pull
+request as merged. It is checked after each watcher pass (every 2 minutes), so a session that
+finishes after the merge goes at the next pass. The session keeps running; it is never closed.
+Each session remembers the merged pull request it was put away for, in the session file beside
+its put-away flag, so one brought back is not put away again for that merge, across restarts too. This holds
+once the watcher has read the pull request; a session brought back before that first read (just
+after a daemon start, or while `gh` is unavailable) is put away again when the merge is read.
+The pull request is found by branch, so a new session on a branch whose earlier pull request
+merged is put away once it goes idle; leave the option off if you reuse branch names.
+Only the config file sets it; it adds no environment variable and is not in the desktop app's
+shared settings.
+
+## Project-specific: inactive worktrees
+
+`worktree.inactive_days` (default `14`; `0` turns it off) flags a worktree inactive in its
+standing (`tidy::Standing::inactive_days`) when its last commit and its newest file change are
+both at least that many days old. Only a clean, merged worktree is ever removed automatically;
+an inactive one is only listed, for the person to remove. Both worktree lists lead its reason with
+"inactive N days"; the TUI clean-up list also comes with it ticked unless it has uncommitted
+changes or is on no branch (its commits would go with its folder), and Remove still asks first,
+naming one whose commits are not merged and saying when commits on no branch will be lost.
+
+The newest file change is the latest modified time among the files `git ls-files --cached
+--others --exclude-standard` lists, so `.gitignore`d folders such as `node_modules` and `target`
+are never walked. The files are looked at only when the last commit is already old enough, and
+at most 20,000 of them: a worktree with more, or one git can't list, is not flagged. A
+checkout, pull or rebase resets file times, so such a worktree reads as active: the check errs
+toward not flagging. The standing is read off the UI thread and off the daemon's loop; the
+daemon's automatic clean-up does not read inactivity at all.
+
 ## Project-specific: variables
 
 No `.env` file: Maitty is configured through `config.toml`. Environment variables

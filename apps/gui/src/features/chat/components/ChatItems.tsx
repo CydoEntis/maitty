@@ -19,6 +19,8 @@ import { InlineMarkdown, Markdown } from './Markdown'
 import { PlanCard } from './PlanCard'
 import { StepView } from './StepCards'
 import { WorkCard } from './WorkCard'
+import { MessageMenu } from './MessageMenu'
+import { stripRestoreNote, type EditFromHere } from '../editFromHere'
 
 /**
  * The rows of the chat (v18 C.1). Every fact the daemon's history carries is shown, and one it does
@@ -48,6 +50,8 @@ export type ChatItemContext = {
   goToStep: ((key: string) => void) | null
   /** The id of the tool step a pending request is about, so that step says it is waiting. */
   waitingStep: string | null
+  /** Edit from here on a message the person sent; absent where the chat offers none. */
+  editFromHere?: EditFromHere | null
 }
 
 type RowProps = { row: ChatRow } & ChatItemContext
@@ -87,7 +91,7 @@ function sameRow(a: ChatRow, b: ChatRow): boolean {
 }
 
 function sameProps(a: RowProps, b: RowProps): boolean {
-  return a.agent === b.agent && a.workingSince === b.workingSince && a.approval === b.approval && a.root === b.root && a.openDiff === b.openDiff && a.goToStep === b.goToStep && a.waitingStep === b.waitingStep && sameRow(a.row, b.row)
+  return a.agent === b.agent && a.workingSince === b.workingSince && a.approval === b.approval && a.root === b.root && a.openDiff === b.openDiff && a.goToStep === b.goToStep && a.waitingStep === b.waitingStep && a.editFromHere === b.editFromHere && sameRow(a.row, b.row)
 }
 
 /**
@@ -116,7 +120,9 @@ function AgentMessage({ rowKey, paragraphs, status }: { rowKey: string; paragrap
  * What the person said: its text, and its attached files as chips. A message on its way is drawn the
  * same as one the history holds, so the files never show as the paths that carry them.
  */
-function SaidText({ text }: { text: string }) {
+function SaidText({ text: sent }: { text: string }) {
+  // The note a restore put in front is for the agent; the person sees what they wrote.
+  const text = stripRestoreNote(sent)
   const attached = parseAttachmentMessage(text)
   if (attached === null) return <p>{text}</p>
   return (
@@ -128,7 +134,7 @@ function SaidText({ text }: { text: string }) {
 }
 
 /** One row of the list. Memoised: a streamed update re-renders only the rows whose events changed. */
-export const ChatItem = memo(function ChatItem({ row, agent, workingSince, approval, root, openDiff, goToStep, waitingStep }: RowProps) {
+export const ChatItem = memo(function ChatItem({ row, agent, workingSince, approval, root, openDiff, goToStep, waitingStep, editFromHere = null }: RowProps) {
   switch (row.kind) {
     case 'user': {
       // Only the daemon's own time: when the window first saw a message is not when it was sent.
@@ -136,6 +142,7 @@ export const ChatItem = memo(function ChatItem({ row, agent, workingSince, appro
       return (
         <Frame>
           <div className="mx-msg-user">
+            {editFromHere !== null && <MessageMenu message={row.event} editFromHere={editFromHere} />}
             <SaidText text={row.event.text} />
             {sentAt !== null && <time className="mx-msg-time" dateTime={new Date(sentAt).toISOString()}>{clock(sentAt)}</time>}
           </div>

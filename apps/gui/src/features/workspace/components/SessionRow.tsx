@@ -1,4 +1,5 @@
 import type { MouseEvent } from 'react'
+import { machineLabel } from '@/data/machineNicknames'
 import { MAX_SESSION_NAME_LENGTH, STATUS_WORD, type SessionView } from '../model/session'
 import { isShell, projectColor, projectOf, rowTitle, rowWord } from '../model/sidebar'
 import { AppIcon, Icon, StatusBadge } from './glyphs'
@@ -11,7 +12,7 @@ type Props = {
   selected: boolean
   /** Inside a project group the project is in the heading, so the row leaves it out. */
   showProject: boolean
-  /** The other machine the session runs on, when no heading above the row says so. */
+  /** The real name of the other machine the session runs on, when no heading above the row says so. */
   machine?: string | null
   renaming: boolean
   onShow: () => void
@@ -37,7 +38,7 @@ function PlaceLine({ session, showProject, machine }: { session: SessionView; sh
           <span className="mx-row-project-name">{project}</span>
         </span>
       )}
-      {machine !== null && <span className="mx-row-machine">· {machine}</span>}
+      {machine !== null && <span className="mx-row-machine" title={machine}>· {machineLabel(machine)}</span>}
       {session.branch && (
         <span className={`mx-row-branch${session.worktree ? ' is-worktree' : ''}`} title={session.worktree ? `Worktree on branch ${session.branch}` : `Branch ${session.branch}`}>
           <Icon name={session.worktree ? 'worktree' : 'branch'} size={10} />

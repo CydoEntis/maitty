@@ -57,7 +57,10 @@ impl App {
         }
         match state {
             ConnectionState::Connecting => {}
-            ConnectionState::Connected => self.tell_connected(machine, &name),
+            ConnectionState::Connected => {
+                self.list_asked.remove(&machine);
+                self.tell_connected(machine, &name);
+            }
             ConnectionState::Reconnecting { .. } => self.notify(
                 format!("Lost the connection to {name}; reconnecting"),
                 false,

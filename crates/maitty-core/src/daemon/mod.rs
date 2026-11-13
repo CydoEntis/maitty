@@ -32,9 +32,11 @@ mod restore;
 mod scan;
 mod search;
 mod secrets;
+mod snooze;
 mod specialists;
 mod status;
 mod term;
+mod terminal_sends;
 mod usage;
 mod usage_store;
 mod warm;
@@ -226,6 +228,10 @@ pub enum Ev {
     WorktreeList {
         client: ClientId,
         result: Result<Vec<WorktreeEntry>, String>,
+    },
+    WorktreeStandingReady {
+        client: ClientId,
+        result: Result<Option<crate::tidy::Standing>, String>,
     },
     SearchReady {
         client: ClientId,
@@ -475,6 +481,8 @@ struct Daemon {
         BTreeMap<crate::conversation::ConversationId, conversation::history::History>,
     /// Agents running in desktop panes, followed read-only through their own transcripts.
     followed: Vec<conversation::follow::Followed>,
+    /// Follow-ups and held messages sent with an operation, so a retry is not typed twice.
+    terminal_sends: terminal_sends::TerminalSends,
     /// Messages sent while a turn ran, per conversation, delivered in order as turns end.
     conversation_queues:
         BTreeMap<crate::conversation::ConversationId, Vec<conversation::commands::QueuedSend>>,
@@ -712,6 +720,7 @@ async fn serve(
             if !client_reads(&msg, theirs) {
                 continue;
             }
+            let msg = for_client(msg, theirs);
             let bye = matches!(msg, ServerMsg::Bye);
             if ipc::send(&mut w, &msg).await.is_err() || bye {
                 break;
@@ -747,6 +756,21 @@ async fn serve(
 /// never sent a message added after it: it could not decode it, and would drop the connection.
 fn client_reads(msg: &ServerMsg, theirs: u32) -> bool {
     theirs >= msg.introduced_in()
+}
+
+/// `msg` as a client at `theirs` can read it. A reasoning item is a kind of history entry added
+/// inside the compatibility window: an older client could not decode a page that held one, so
+/// its pages go without them.
+fn for_client(mut msg: ServerMsg, theirs: u32) -> ServerMsg {
+    use crate::conversation::history::Content;
+    if theirs < REASONING_ITEM_SINCE
+        && let ServerMsg::Reply(Reply::ConversationRead(read)) = &mut msg
+    {
+        read.history
+            .entries
+            .retain(|entry| !matches!(entry.content, Content::Reasoning { .. }));
+    }
+    msg
 }
 
 /// Whether a frame that would not decode is passed over instead of ending the connection: only
@@ -1163,6 +1187,9 @@ impl Daemon {
             Command::SpendSecret { .. } if !self.client_is_agent(client) => {
                 anyhow::bail!("only an agent pane can spend a secret reference")
             }
+            Command::SnoozePane { .. } if self.client_is_agent(client) => {
+                anyhow::bail!("snoozing a session is yours to do, not a pane's")
+            }
             // A session may not let itself (or another) start helpers.
             Command::AnswerHelpers { .. } if self.client_is_agent(client) => {
                 anyhow::bail!("starting helpers is yours to allow, not a pane's")
@@ -1276,6 +1303,7 @@ impl Daemon {
             conversation_barriers: BTreeMap::new(),
             conversation_histories: BTreeMap::new(),
             followed: Vec::new(),
+            terminal_sends: terminal_sends::TerminalSends::default(),
             conversation_queues: BTreeMap::new(),
             followed_high_water: 0,
             #[cfg(test)]
@@ -1347,6 +1375,7 @@ impl Daemon {
                     self.finish_chat_closes();
                     self.close_ended_agents();
                     self.expire_warm();
+                    self.wake_snoozed(term::unix_now());
                     self.update_statuses();
                     self.settled_alerts();
                     self.phone_alerts();
@@ -2326,6 +2355,12 @@ impl Daemon {
                 Ok(list) => self.send(client, ServerMsg::Reply(Reply::Worktrees(list))),
                 Err(e) => self.send(client, ServerMsg::Error(e)),
             },
+            Ev::WorktreeStandingReady { client, result } => match result {
+                Ok(standing) => {
+                    self.send(client, ServerMsg::Reply(Reply::WorktreeStanding(standing)))
+                }
+                Err(e) => self.send(client, ServerMsg::Error(e)),
+            },
             Ev::SearchReady { client, hits } => {
                 self.send(client, ServerMsg::Reply(Reply::Search(hits)));
             }
@@ -2879,6 +2914,18 @@ impl Daemon {
                     {
                         ServerMsg::Error("Only a human client can read usage".into())
                     }
+                    Query::WorktreeStanding { .. } if self.client_is_agent(client) => {
+                        ServerMsg::Error("Only a human client can read where a worktree stands".into())
+                    }
+                    Query::WorktreeStanding { repo, folder } => {
+                        let inactive_after = self.cfg.worktree.inactive_days;
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let result = worktree_standing(&repo, &folder, inactive_after);
+                            let _ = tx.blocking_send(Ev::WorktreeStandingReady { client, result });
+                        });
+                        return;
+                    }
                     Query::ClosedSessions if self.client_is_agent(client) => {
                         ServerMsg::Error("Only a human client can read the closed sessions".into())
                     }
@@ -3290,6 +3337,7 @@ impl Daemon {
                         label: t.label.clone(),
                         pinned: t.pinned,
                         archived: t.archived,
+                        snoozed_until: t.snoozed_until,
                         mem: t.mem,
                         cpu: t.cpu,
                         bell: t.bell,
@@ -3801,6 +3849,8 @@ fn home() -> PathBuf {
 mod branch_agent_tests;
 #[cfg(test)]
 mod logic_tests;
+#[cfg(test)]
+mod wire_size_tests;
 
 #[cfg(test)]
 mod tests {
@@ -3822,6 +3872,43 @@ mod tests {
             PROTOCOL_VERSION + 1,
             &anyhow::anyhow!("the pipe closed")
         ));
+    }
+
+    #[test]
+    fn a_client_from_before_reasoning_items_is_sent_its_history_without_them() {
+        use super::{REASONING_ITEM_SINCE, Reply, ServerMsg, for_client};
+        use crate::conversation::history::Content;
+        let page: crate::conversation::ReadResult = serde_json::from_value(serde_json::json!({
+            "conversation": 1, "generation": 1, "status": "Done", "receipt": null, "error": null,
+            "checks": [], "approvals": [],
+            "history": { "next": null, "completeness": "Complete", "entries": [
+                { "source": { "conversation": 1, "turn": "t", "item": "thought" }, "state": "Completed",
+                  "content": { "Reasoning": { "text": "Weighing two fixes" } } },
+                { "source": { "conversation": 1, "turn": "t", "item": "said" }, "state": "Completed",
+                  "content": { "Message": { "role": "Assistant", "text": "Done." } } },
+            ] },
+        }))
+        .unwrap();
+        let kinds = |theirs: u32| {
+            let sent = for_client(ServerMsg::Reply(Reply::ConversationRead(page.clone())), theirs);
+            let ServerMsg::Reply(Reply::ConversationRead(read)) = sent else {
+                panic!("a read stays a read");
+            };
+            read.history
+                .entries
+                .iter()
+                .map(|entry| matches!(entry.content, Content::Reasoning { .. }))
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(kinds(REASONING_ITEM_SINCE), [true, false]);
+        assert_eq!(kinds(REASONING_ITEM_SINCE - 1), [false]);
+        const {
+            assert!(
+                REASONING_ITEM_SINCE > crate::protocol::COMPATIBLE_SINCE
+                    && REASONING_ITEM_SINCE <= crate::protocol::PROTOCOL_VERSION
+            )
+        };
     }
 
     #[test]
@@ -3858,6 +3945,51 @@ mod tests {
             "never trusts what you didn't"
         );
         assert_eq!(v["other"], 1, "the rest of the file is kept");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn two_worktrees_trusted_at_once_are_both_trusted() {
+        let dir = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-trust-both-{}"),
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("claude.json");
+        for round in 0..30 {
+            std::fs::write(
+                &f,
+                r#"{"projects":{"c:/code/app":{"hasTrustDialogAccepted":true}}}"#,
+            )
+            .unwrap();
+            let start = std::sync::Arc::new(std::sync::Barrier::new(2));
+            let trusts: Vec<_> = ["a", "b"]
+                .into_iter()
+                .map(|name| {
+                    let (f, start) = (f.clone(), start.clone());
+                    std::thread::spawn(move || {
+                        start.wait();
+                        super::trust_in(
+                            &f,
+                            std::path::Path::new("C:/code/app"),
+                            &std::path::Path::new("C:/code/app-worktrees").join(name),
+                        );
+                    })
+                })
+                .collect();
+            for trust in trusts {
+                trust.join().unwrap();
+            }
+            let v: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+            for name in ["a", "b"] {
+                assert_eq!(
+                    v["projects"][format!("C:/code/app-worktrees/{name}")]["hasTrustDialogAccepted"],
+                    true,
+                    "round {round}: worktree {name} lost its trust"
+                );
+            }
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

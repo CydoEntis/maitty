@@ -22,10 +22,14 @@ export type DraftAttachment = {
   readonly preview: string | null
 }
 
-export type ComposerState = { readonly draft: string; readonly attachments: readonly DraftAttachment[] }
+/**
+ * `note` is a line the next message sent starts with (after Edit from here restored the files). It goes when the box is
+ * emptied of everything typed and attached, as a discarded draft takes it along.
+ */
+export type ComposerState = { readonly draft: string; readonly attachments: readonly DraftAttachment[]; readonly note: string | null }
 
 const NO_ATTACHMENTS: readonly DraftAttachment[] = []
-const EMPTY: ComposerState = { draft: '', attachments: NO_ATTACHMENTS }
+const EMPTY: ComposerState = { draft: '', attachments: NO_ATTACHMENTS, note: null }
 const stored = new Map<number, ComposerState>()
 const listeners = new Set<() => void>()
 
@@ -40,11 +44,18 @@ function read(conversation: number): ComposerState {
 
 export function updateComposer(conversation: number, change: (state: ComposerState) => ComposerState): void {
   const before = read(conversation)
-  const after = change(before)
-  if (after === before) return
-  if (after.draft === '' && after.attachments.length === 0) stored.delete(conversation)
+  const changed = change(before)
+  if (changed === before) return
+  const after = isEmptied(before, changed) ? { ...changed, note: null } : changed
+  if (after.draft === '' && after.attachments.length === 0 && after.note === null) stored.delete(conversation)
   else stored.set(conversation, after)
   for (const listener of listeners) listener()
+}
+
+const holdsNothing = (state: ComposerState) => state.draft.trim() === '' && state.attachments.length === 0
+
+function isEmptied(before: ComposerState, after: ComposerState): boolean {
+  return !holdsNothing(before) && holdsNothing(after)
 }
 
 function subscribe(listener: () => void): () => void {

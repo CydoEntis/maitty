@@ -2,6 +2,19 @@
 
 use super::*;
 
+/// A whole list asked for is asked for again when it has not come in this long, so one lost
+/// answer cannot leave a machine's deltas dropped for as long as its line stays up.
+pub(super) const LIST_ASKED_AGAIN_AFTER: Duration = Duration::from_secs(5);
+/// The revision of a daemon built before revisions, or of a surface sent nothing yet.
+const UNNUMBERED: u64 = 0;
+
+/// Whether a delta numbered `revision` is the next after the snapshot numbered `held`. An
+/// unnumbered delta cannot be checked and is taken as it comes. Another machine's numbers are
+/// whatever it sends, so the sum is checked.
+fn follows(held: u64, revision: u64) -> bool {
+    revision == UNNUMBERED || held.checked_add(1) == Some(revision)
+}
+
 /// Whether what a window was told about a pane still holds in its latest state. A pane's own
 /// status says so, except for a check: it fails or waits for approval after the turn ended, so
 /// the pane reads done or idle while it needs you all the same.
@@ -25,18 +38,29 @@ impl App {
         if !self.admits(machine, &msg) {
             return;
         }
+        // Another machine's whole list is taken only as the answer to this window's own asking
+        // for it, once: a delta that machine sends can make the window ask, so that asking opens
+        // nothing for an error or any other reply.
+        let listed = matches!(msg, ServerMsg::Reply(Reply::List(_)));
+        if listed && machine != MachineId::LOCAL && self.list_asked.remove(&machine).is_none() {
+            tracing::debug!("ignored a list this window did not ask for");
+            return;
+        }
         // What a refused copy would have said, to tell the person it was refused.
         let copy_size = match &msg {
             ServerMsg::Clipboard { text, .. } => Some(text.chars().count()),
             _ => None,
         };
-        let Some(msg) = self.vetted(machine, msg) else {
+        let Some(msg) = self.vetted(machine, msg, listed) else {
             if let Some(n) = copy_size {
                 self.say_copy_refused(machine, n);
             }
             return;
         };
-        if machine != MachineId::LOCAL && matches!(msg, ServerMsg::Reply(_) | ServerMsg::Error(_)) {
+        if machine != MachineId::LOCAL
+            && !listed
+            && matches!(msg, ServerMsg::Reply(_) | ServerMsg::Error(_))
+        {
             self.route.answered(machine);
         }
         self.apply_server(machine, msg);
@@ -99,18 +123,25 @@ impl App {
     }
 
     /// The snapshot `machine` holds with a delta applied; removing a pane it does not have is
-    /// harmless.
+    /// harmless. A pane dropped with no reason (a daemon from before reasons) is kept: only a
+    /// whole list may take it away.
     fn merged_terms(
         &self,
         machine: MachineId,
         changed: Vec<TermInfo>,
         removed: Vec<TermId>,
         reasons: std::collections::BTreeMap<TermId, RemovalReason>,
+        revision: u64,
     ) -> Snapshot {
         let mut merged = self.snap_of(machine).cloned().unwrap_or_default();
         merged.removed = reasons;
+        if revision != UNNUMBERED {
+            merged.revision = revision;
+        }
         for id in removed {
-            merged.terms.remove(&id);
+            if merged.removed.contains_key(&id) {
+                merged.terms.remove(&id);
+            }
         }
         for term in changed {
             merged.terms.insert(term.id, term);
@@ -118,14 +149,51 @@ impl App {
         merged
     }
 
+    /// Ask `machine` for its whole list, unless one asked for lately is still to come: a run of
+    /// deltas after one missed update asks once.
+    fn want_list(&mut self, machine: MachineId) {
+        let now = Instant::now();
+        let waiting = self
+            .list_asked
+            .get(&machine)
+            .is_some_and(|at| now.saturating_duration_since(*at) < LIST_ASKED_AGAIN_AFTER);
+        if !waiting {
+            self.list_asked.insert(machine, now);
+            // Not through `send`: its routing bookkeeping would let any reply or error in.
+            let _ = self.out.send(Outgoing {
+                machine,
+                msg: ClientMsg::Query(Query::List),
+            });
+        }
+    }
+
+    /// A list asked for that never came (refused, or lost) is asked for again, so a pane kept
+    /// for want of a reason cannot stay while the machine sends nothing more.
+    pub(super) fn ask_lists_again(&mut self) {
+        let now = Instant::now();
+        let due: Vec<MachineId> = self
+            .list_asked
+            .iter()
+            .filter(|(_, at)| now.saturating_duration_since(**at) >= LIST_ASKED_AGAIN_AFTER)
+            .map(|(machine, _)| *machine)
+            .collect();
+        for machine in due {
+            if self.refused.contains_key(&machine) || self.machine_is_forgotten(machine) {
+                self.list_asked.remove(&machine);
+            } else {
+                self.want_list(machine);
+            }
+        }
+    }
+
     /// What another machine's daemon says, cleaned and held to what its entry allows. This
-    /// computer's own daemon is trusted as it was.
-    fn vetted(&self, machine: MachineId, msg: ServerMsg) -> Option<ServerMsg> {
+    /// computer's own daemon is trusted as it was. `listed`: a whole list this window asked for.
+    fn vetted(&self, machine: MachineId, msg: ServerMsg, listed: bool) -> Option<ServerMsg> {
         if machine == MachineId::LOCAL {
             return Some(msg);
         }
         let name = self.machine_name(machine);
-        let asked = self.route.awaiting(machine);
+        let asked = listed || self.route.awaiting(machine);
         remote_policy::vet(&self.machine_opts(machine), asked, name, msg)
     }
 
@@ -157,6 +225,9 @@ impl App {
                 self.screen_fresh();
                 self.dirty = true;
             }
+        }
+        if matches!(msg, ServerMsg::State(_)) {
+            self.list_asked.remove(&machine);
         }
         match msg {
             ServerMsg::State(s) if machine != MachineId::LOCAL => {
@@ -209,13 +280,28 @@ impl App {
                 self.check_view_sync();
                 self.maybe_restart_daemon(last_session_closed);
             }
-            ServerMsg::TermsChanged { changed, removed, reasons, .. } => {
+            ServerMsg::TermsChanged { changed, removed, reasons, revision } => {
+                // A delta fits only the snapshot it was worked out from: after a missed update,
+                // merging it would leave the list wrong until the next whole one.
+                let held = self.snap_of(machine).map_or(UNNUMBERED, |s| s.revision);
+                if !follows(held, revision) {
+                    self.want_list(machine);
+                    return;
+                }
+                let unexplained = removed.iter().any(|id| !reasons.contains_key(id));
                 // Re-entering as a whole snapshot runs every rule a state update runs for this
                 // machine: the daemon-id check, the cleaning and caps, and the side effects. A
                 // delta arriving before any state merges into an empty snapshot, which has no
                 // daemon id; that is accepted only while no id is recorded for the name.
-                let merged = self.merged_terms(machine, changed, removed, reasons);
+                let merged = self.merged_terms(machine, changed, removed, reasons, revision);
                 self.on_machine_server(machine, ServerMsg::State(merged));
+                if unexplained {
+                    self.want_list(machine);
+                }
+            }
+            // Only the list asked for after a missed update; nothing else asks on this line.
+            ServerMsg::Reply(Reply::List(snap)) => {
+                self.on_machine_server(machine, ServerMsg::State(snap));
             }
             ServerMsg::Replay {
                 term,

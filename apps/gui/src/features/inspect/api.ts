@@ -23,6 +23,7 @@ const CommitSchema = z.object({ hash: z.string(), subject: z.string(), author: z
 const WorktreeSchema = z.object({ path: z.string(), branch: z.string(), main: z.boolean(), repo: z.string() })
 const SnapshotSchema = z.object({ commit: z.string(), at: Count, why: z.string() })
 const ReferenceSchema = z.object({ name: z.string(), kind: z.string(), bytes: Count, modified: Count })
+const FoundFilesSchema = z.object({ paths: z.array(z.string()), truncated: z.boolean() })
 
 export type RepoStatus = z.infer<typeof StatusSchema>
 export type RepoChangeKind = z.infer<typeof ChangeKindSchema>
@@ -64,11 +65,20 @@ export const repoWorktrees = (term: number) => ask(term, 'Worktrees', 'Worktrees
 export const repoLog = (term: number) => ask(term, { Log: { limit: LOG_LIMIT } }, 'Log', z.array(CommitSchema))
 export const repoSnapshots = (term: number) => ask(term, 'Snapshots', 'Snapshots', z.array(SnapshotSchema))
 export const repoReferences = (term: number) => ask(term, 'References', 'References', z.array(ReferenceSchema))
+/** Files whose path holds `query`, best first, relative to the checkout's top; `truncated` when the daemon stopped looking early. */
+export const repoFindFiles = (term: number, query: string, limit: number) =>
+  ask(term, { FindFiles: { query, limit } }, 'Files', FoundFilesSchema)
 
 /** Put the pane's checkout back as it was in one of the daemon's snapshots; resolves to how many files changed. */
 export async function restoreSnapshot(term: number, commit: string): Promise<number> {
   if (!isTauri()) throw new Error('Restoring is only available in the desktop app')
   return Count.parse(await invoke<unknown>('restore_snapshot', { term, commit }))
+}
+
+/** How many files restoring one of the daemon's snapshots would change now; nothing is changed. */
+export async function restoreCount(term: number, commit: string): Promise<number> {
+  if (!isTauri()) throw new Error('Restoring is only available in the desktop app')
+  return Count.parse(await invoke<unknown>('snapshot_restore_count', { term, commit }))
 }
 
 /** Stages and commits every change in the checkout at `folder` on this computer; resolves to the commit's short hash. */

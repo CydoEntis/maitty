@@ -36,6 +36,11 @@
 /* When it was sent, under the bubble while the pointer is on it. It sits in the gap between rows, so showing it moves nothing. */
 .mx-msg-time { position: absolute; top: 100%; right: 2px; font-size: 11px; line-height: 14px; color: var(--dim); opacity: 0; transition: opacity .15s; pointer-events: none; }
 .mx-msg-user:hover .mx-msg-time { opacity: 1; }
+/* A sent message's actions: beside the bubble while the pointer is on it or the button has the keys, never moving the bubble. */
+.mx-msg-menu { align-self: center; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; margin-right: 6px; border: 0; border-radius: 7px; background: none; color: var(--dim); opacity: 0; transition: opacity .15s; cursor: pointer; }
+.mx-msg-user:hover .mx-msg-menu, .mx-msg-menu:focus-visible, .mx-msg-menu[data-state="open"] { opacity: 1; }
+.mx-msg-menu:hover { background: rgba(var(--hl), calc(.08 * var(--hk))); color: var(--fg); }
+.mx-msg-menu-why { margin: 2px 6px 4px; max-width: 240px; font-size: 11.5px; line-height: 1.4; color: var(--dim); white-space: normal; }
 .mx-msg-user > p, .mx-msg-user .mx-bubble { margin: 0; max-width: 82%; border-radius: 16px 16px 5px 16px; background: linear-gradient(180deg, rgba(var(--hl), calc(.1 * var(--hk))), rgba(var(--hl), calc(.06 * var(--hk)))); box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.1 * var(--hk))), inset 0 1px 0 rgba(var(--hl), calc(.08 * var(--hk) * var(--gk))); padding: 10px 14px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--fg); }
 /* The echo of a message just sent looks exactly like the message the history then returns: a dimmer echo brightened when the swap happened, and that read as a blink. */
 .mx-msg-agent { display: flex; flex-direction: column; gap: 12px; font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
@@ -371,6 +376,7 @@ button.mx-queued-text::after { content: ""; position: absolute; inset: 0; border
 .mx-slash-list { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
 .mx-slash-row { display: grid; grid-template-columns: minmax(120px, 34%) minmax(0, 1fr); align-items: baseline; gap: 14px; padding: 5px 9px; border-radius: 7px; cursor: pointer; }
 .mx-slash-row.is-active { background: var(--accent-soft); }
+.mx-slash-row.is-file { grid-template-columns: minmax(0, 1fr); }
 .mx-slash-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12.5px; color: var(--fg); }
 .mx-slash-row.is-active .mx-slash-name { color: var(--accent-text, var(--accent)); }
 .mx-slash-hint { color: var(--dim); }
@@ -512,6 +518,8 @@ button.mx-queued-text::after { content: ""; position: absolute; inset: 0; border
 .mx-problem-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: 13px; color: var(--fg); }
 .mx-problem-text small { font-size: 12px; color: var(--fg2); }
 .mx-composer-note { margin: 6px 4px 0; font-size: 12px; color: var(--dim); }
+.mx-composer-note-action { border: 0; padding: 0; background: none; font: inherit; color: var(--fg2); text-decoration: underline; cursor: pointer; }
+.mx-composer-note-action:hover { color: var(--fg); }
 
 /* A workflow run's steps, in place of the chat (ADR 0010). */
 .mx-run-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }

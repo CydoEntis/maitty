@@ -270,6 +270,8 @@ pub struct Sessions {
     /// helpers_at_once` fills it in when this is not set (`fold_legacy_helpers`).
     pub helpers_at_once: String,
     pub pr_wake: bool,
+    /// Put away a finished or idle session once the PR watcher reads its pull request merged.
+    pub put_away_merged: bool,
 }
 
 impl Default for Sessions {
@@ -280,6 +282,7 @@ impl Default for Sessions {
             helpers: "ask".into(),
             helpers_at_once: "3".into(),
             pr_wake: true,
+            put_away_merged: false,
         }
     }
 }
@@ -339,6 +342,9 @@ pub struct Worktree {
     /// A new branch's worktree starts from the repository's default branch (what `origin/HEAD`
     /// names, else `main` or `master`) rather than from whatever the main checkout has out.
     pub base_on_default: bool,
+    /// A worktree with no commit and no file change for this many days is flagged inactive in
+    /// its standing. Nothing is removed for it. 0: never flagged.
+    pub inactive_days: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -407,6 +413,7 @@ impl Default for Worktree {
             delete_with_last: true,
             prewarm: String::new(),
             base_on_default: false,
+            inactive_days: 14,
         }
     }
 }
@@ -1109,6 +1116,7 @@ mod tests {
         assert_eq!(worktree.dir, "{repo_parent}/{repo}-worktrees/{branch}");
         assert!(worktree.per_agent && worktree.delete_with_last);
         assert!(worktree.command.is_empty() && worktree.prewarm.is_empty());
+        assert_eq!(worktree.inactive_days, 14);
 
         let mcp = Mcp::default();
         assert_eq!(mcp.approve, "never");

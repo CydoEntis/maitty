@@ -137,6 +137,34 @@ the pane works or asks something. It is typed as a queued follow-up is (one past
 several lines), and is saved with the pane, so a daemon restart keeps it. The desktop command is
 `send_when_agent_ready` (at most 256 KiB, not blank).
 
+`SendWhenReady` and `QueueFollowUp` take an optional `operation: Option<u64>` (`#[serde(default)]`; a
+test decodes the old shape both ways). An older daemon reads the field and ignores it, so a retry there
+could be typed twice: the version was raised to 91 and a send that carries one reports
+`TERMINAL_SEND_OPERATIONS_SINCE` (91) from `ClientMsg::introduced_in`, while one without still reports
+`COMPATIBLE_SINCE`, which stays 78. The operation is a random nonzero 64-bit nonce per send, never a
+counter: it is keyed by pane, not by sender, so two senders counting from the same start would collide,
+and the second message would be acknowledged and never typed. Zero is refused. The same pane, operation
+and text (compared by SHA-256 digest of the trimmed text) within ten minutes is acknowledged with `Ok`
+and not typed, held or queued again, even after it was typed; a `SendWhenReady` and a `QueueFollowUp`
+with the same pane, operation and text count as one send. `Ok` on such a retry means the send was
+accepted earlier, not that it was delivered. The same pane and operation with other text is refused.
+Only an accepted send is remembered, so a retry of a refused one is tried afresh. The record is in
+memory (`daemon/terminal_sends.rs`, at most 1024 sends, oldest forgotten first): after a daemon restart
+a retry of an earlier send is a new send. A send without an operation behaves as before.
+
+The desktop app draws that nonce in `terminalSendOperation` (`features/chat/sendOperation.ts`): random, nonzero and
+below 2^53, so it passes through a JavaScript number into the `u64` exactly. `send_when_agent_ready` and
+`queue_follow_up` take it as `operation`. The desktop client asks the running daemon its version first and sends the
+operation only to one at `TERMINAL_SEND_OPERATIONS_SINCE` or later (`named_send`); an older daemon, or one the send has
+to start, gets the message without it. A send to another machine's pane carries none, since its line does not say which
+daemon version it reaches. The composer keeps the operation of a queued message whose send has finished and failed (a
+timeout included) and reuses it only when the same text is sent again within `FAILED_SEND_REUSE_MS` (30 s) with the
+box not edited in between; a send still pending, a different text, an edited or cleared draft and a later resend all
+draw a new one (`paneSendOperation`). A first message held for the starting agent carries an operation too, but it is
+handed over once and the id protects nothing further: if that call times out after the daemon took the message, the
+window's own fallback sends it again through the terminal, not through this command, so the daemon cannot recognise
+it and the message can be typed twice.
+
 `Command::Prewarm { cwd, cmd }` starts an agent ahead of its first message (`daemon/warm.rs`). It runs hidden, as a spare
 (no client is shown it, it alerts nobody and it is not saved), and the next `NewWorkspace` with the same command in the
 same folder is that agent, already running, instead of a new one. One is kept at a time: asking for another stops the
@@ -231,7 +259,11 @@ host (`streams.rs`) merges a delta only when its revision is 0 or one more than 
 after a gap, or with no snapshot held, it drops the delta, sends `Query::List` on its stream and takes
 the `Reply::List` as its snapshot. It asks once for a run of such deltas, and again only when the list has
 not come after `LIST_ASKED_AGAIN_AFTER` (5 s) or the machine's line came up anew; a whole `State` settles
-it too. A list alone is no base for a delta (it can hold a change the surface
+it too. The TUI (`crates/maitty-terminal-client/src/client/background.rs`) applies the same rule to
+this computer's line and each other machine's, and with no snapshot held starts from revision 0. It
+also keeps a pane a delta drops without a reason (a daemon from before reasons) until a whole list
+confirms it, and asks for that list the same way; its tick asks again while an asked-for list has
+not come after 5 s, so a kept pane cannot stall when the machine sends nothing more. A list alone is no base for a delta (it can hold a change the surface
 was not sent yet), so after `Query::List` from an attached client the daemon sends that surface its next
 change in full, as it does after an attach. That reset is what makes the delta after a resync right: a
 daemon that numbers its updates but was built before the reset works its next delta out from what it
@@ -281,9 +313,14 @@ empty once the host has asked the daemon for the pane's replay over the stream (
 pane's next frame) and an error when there is no stream, so the view fetches a replay itself; the
 daemon's `Snapshot` goes out as a `sessions-changed` event
 whenever it changes, with `null` when the stream dropped, and the webview sets its session query
-from it instead of polling (a 15 s poll remains as a safety net); another machine's goes out as
-`machine-sessions-changed` (`{machine, snapshot}`), after the host has cleaned it, and its connection
-state as `machine-state` (`connecting`, `connected`, `reconnecting`, `needs-login`, `needs-update`, `unreachable`, or `refused` when a different daemon answers at its name), with `since` (epoch ms) once it is not connected and the machine's `clipboard`, `notices` and `sounds` opt-ins from its entry (all off unless it says); a notice from a machine that opted in goes to the window as `machine-notice` (`{machine, text}`, cleaned, cut and led by `[name]`) and the window shows it as a toast or, away from it, a system notification; `retry_machine(name)` dials a machine now and clears a refusal; `remove_machine(name)` deletes its entry from `config.local.toml` first and only then stops it, forgets its daemon id and tells the window with `machine-removed` (its sessions and saved layout are left alone); the commands that read a pane's files or repository (`repo_query`, `restore_snapshot`, `new_worktree_session`, `pane_terminal_screen`) take the pane's `machine` and refuse another machine's with the terminal app's words (`<Feature> is local-only in v1: the files are on <machine>, not on this computer.`), as the window does before it asks (`apps/gui/src/lib/localOnly.ts`); `set_machine_grant(name, grant, on)` allows or stops a machine's `clipboard` or `notices` (written to its entry in `config.local.toml` first, then applied at once; the new state follows as `machine-state`); text an allowed machine asks to copy arrives as `machine-clipboard` (`{machine, text}`); `start_session_on_machine(machine, folder)` starts a terminal session in a typed folder of another machine (one that is not there opens in its home folder); `list_ssh_hosts` lists the `~/.ssh/config` hosts that are not machines yet; `add_machine(target, name?)` checks the target, looks at the machine over ssh without asking anyone anything (12 s at most; `cancel_add_machine` ends it), writes the entry only when that held up, and starts dialling it (a login that needs a person opens ssh in a session on this computer, and the window dials again when it closes); `list_machines_overview` gives a window that starts late each machine's last state and
+from it instead of polling (a 15 s poll remains as a safety net), reading its `revision` and `removed`
+(`DaemonSnapshotSchema`): a sidebar row goes at once only for a session named in `removed` or closed in
+the window, and any other miss waits for a `list_sessions` read to confirm it (UI, sidebar); another machine's goes out as
+`machine-sessions-changed` (`{machine, snapshot}`), after the host has cleaned it, its `removed` read the same way for
+that machine's sessions, and a miss of one waits for a later list of that machine, which `ask_machine_list(machine)`
+asks for (`Query::List` on its line, refused for this computer and for a machine with no line, and dropped
+within `WINDOW_LIST_ASK_EVERY`, 5 s, of the last ask of that machine it sent); its connection
+state as `machine-state` (`connecting`, `connected`, `reconnecting`, `needs-login`, `needs-update`, `unreachable`, or `refused` when a different daemon answers at its name), with `since` (epoch ms) once it is not connected and the machine's `clipboard`, `notices` and `sounds` opt-ins from its entry (all off unless it says); a notice from a machine that opted in goes to the window as `machine-notice` (`{machine, text}`, cleaned, cut and led by `[name]`) and the window shows it as a toast or, away from it, a system notification; `retry_machine(name)` dials a machine now and clears a refusal; `remove_machine(name)` deletes its entry from `config.local.toml` first and only then stops it, forgets its daemon id and tells the window with `machine-removed` (its sessions and saved layout are left alone); the commands that read a pane's files or repository (`repo_query`, `restore_snapshot`, `snapshot_restore_count`, `new_worktree_session`, `pane_terminal_screen`) take the pane's `machine` and refuse another machine's with the terminal app's words (`<Feature> is local-only in v1: the files are on <machine>, not on this computer.`), as the window does before it asks (`apps/gui/src/lib/localOnly.ts`); `set_machine_grant(name, grant, on)` allows or stops a machine's `clipboard` or `notices` (written to its entry in `config.local.toml` first, then applied at once; the new state follows as `machine-state`); text an allowed machine asks to copy arrives as `machine-clipboard` (`{machine, text}`); `start_session_on_machine(machine, folder)` starts a terminal session in a typed folder of another machine (one that is not there opens in its home folder); `list_ssh_hosts` lists the `~/.ssh/config` hosts that are not machines yet; `add_machine(target, name?)` checks the target, looks at the machine over ssh without asking anyone anything (12 s at most; `cancel_add_machine` ends it), writes the entry only when that held up, and starts dialling it (a login that needs a person opens ssh in a session on this computer, and the window dials again when it closes); `list_machines_overview` gives a window that starts late each machine's last state and
 snapshot. The window names a machine's terminal sessions `build/t12` (the machine's name, so a saved
 layout survives a restart; this computer's stay `t12`) and passes the number the host gave the
 machine (`machine`) with each command, only for a pane of another machine. Files, Changes, Find,
@@ -559,6 +596,32 @@ paging cursor still goes stale on any change (`StaleCursor`) and the client star
 `epoch`, `delta`, `snapshot`, `resume` and `reset` are all defaulted, so an older client or daemon
 reads the rest as before (a test decodes the old shapes); no `PROTOCOL_VERSION` bump.
 
+A history entry's content is `TurnStatus`, `Message`, `Tool`, `Unsupported { kind }` or
+`Reasoning { text }`. A Codex `reasoning` item becomes `Reasoning` when its `summary` holds plain
+text (the parts joined as paragraphs, escapes stripped, cut at 64 KiB, secrets masked like a
+message); one with no summary text, whose reasoning is only encrypted, is skipped, and
+`item/reasoning/*` deltas are not read. The variant came in protocol 93 (`REASONING_ITEM_SINCE`);
+`COMPATIBLE_SINCE` stays 78 because the daemon leaves these entries out of the pages it sends an
+older client (`daemon::for_client`), which could not decode a page that held one. The desktop app
+reads the item and shows nothing for it yet.
+A history cache the daemon can tell is unusable (an entry kind it does not know, a corrupt or
+missing page, a changed binding, an exhausted revision) never stops it starting:
+`Cache::load_or_rebuild` moves the conversation's cache aside to `<id>.bad-<n>` (a number per
+set-aside; the newest three kept, the oldest dropped only after a newer move succeeded), logs the
+conversation id and a category (`decode`, `corrupt`, `binding`, `exhausted`; never the error
+text, which can quote an entry), and treats the history as absent, so it is read again from the
+agent. The check and the move happen under one lock, so a commit or a policy removal cannot slip
+between them. That read can come back short if the agent no longer holds the conversation (its
+transcript cleaned or compacted); the `.bad-<n>` files are the only copy then and are kept for a
+person to recover. They hold the history as it was cached, unredacted by anything newer, and go
+away with the cache root when the history policy deletes it. Nothing is deleted before a move
+succeeds: if the move fails (a sharing violation on Windows, say) the error is returned and the
+cache stays as it was, so the daemon refuses to start loudly rather than overwrite. Any other
+failure (a sharing violation on a read, too many open files, an I/O error) is returned as before,
+with the files untouched. **Rolling back to a daemon from before protocol 93 after a reasoning
+item was cached still refuses to start:** that daemon cannot decode the page and cannot be
+changed; the fix only protects the next unknown entry kind.
+
 Daemon notifications reach
 attached projections only after current generation/connection acceptance, and
 client disconnect drops that attachment's memory. Production admission pages
@@ -709,7 +772,13 @@ structured runtime is refused, since the list names the folders of other work. A
 another machine's daemon for its list over that machine's line; the answer is cleaned
 (SECURITY, "remote daemon"). The query and the reply each have their own `introduced_in` arm
 (`CLOSED_SESSIONS_SINCE`, in `ClientMsg::introduced_in` and `ServerMsg::introduced_in`);
-`COMPATIBLE_SINCE` stays 78, since an older daemon is simply not asked.
+`COMPATIBLE_SINCE` stays 78, since an older daemon is simply not asked. The desktop command is
+`closed_sessions` (`maitty_desktop_client::closed_sessions`), asked of this computer's daemon only on a
+connection of its own: it answers the list with each record's `folder_present` added (whether `cwd` is a
+folder on this disk, looked at on blocking threads side by side, never on the UI thread), or null without asking
+when the daemon running is older than 86. The folders get two seconds together: one that has not answered by then
+(a network share that is gone) reads as not present, and the whole call, daemon included, is cut off at the
+request timeout, which the list shows as a failed read.
 
 Protocol 87 adds `Command::ReopenClosedSession { agent, session }` (`daemon/reopen.rs`): start again the closed
 session the daemon keeps for that agent and conversation id, in a new session running the agent's resume command in
@@ -721,7 +790,69 @@ started, else `ServerMsg::Error` (an entry not in the list, an id that is not pl
 folder that cannot be made again, a branch that is gone or checked out elsewhere, with the branch named). Human
 clients only. `ClosedSession` gains the defaulted `worktree` and `repo`, which an older peer ignores and an older entry
 lacks. The command has its own `introduced_in` arm (`REOPEN_CLOSED_SINCE`); `COMPATIBLE_SINCE` stays 78, since an
-older daemon is simply not asked.
+older daemon is simply not asked. The desktop command is `reopen_closed_session { agent, session }`
+(`maitty_desktop_client::reopen_closed_session`), sent to this computer's daemon only on a connection of its own: true
+once the session is started, the daemon's error message as the command's error, or false without asking when the
+daemon running is older than 87. `closed_sessions` passes each record's `worktree` and `repo` through, so the list
+knows which removed folders can be made again.
+
+Protocol 88 adds `RepoRequest::RestoreCount { commit }` and `RepoReply::RestoreCount(n)`: how many files
+`Command::RestoreSnapshot` of that snapshot would change now, counted the way the restore counts them (the
+snapshot against a tree of the checkout as it is, untracked files included), with nothing kept and no file touched.
+The commit must be one of the checkout's snapshots. The desktop app asks it before it offers a restore
+(`snapshot_restore_count`, this computer's panes only). The request has its own `introduced_in` arm
+(`RESTORE_COUNT_SINCE`), so an older daemon is not asked and the app says to restart it; `COMPATIBLE_SINCE` stays 78.
+
+Protocol 89 adds `RepoRequest::FindFiles { query, limit }` and `RepoReply::Files { paths, truncated }`: the files
+under the pane's checkout (the repository top, or the pane's folder when it is not a repository, as for `Tree` and
+`File`) whose path holds `query`, case-insensitive. The walk honours `.gitignore` inside a git repository (a folder
+outside one gets no `.gitignore` filtering), skips hidden files and unreadable entries, neither follows nor lists
+links, and stops after 50,000 files or 1.5 seconds; `truncated` says it stopped, so a file past that point was not
+searched. One walk of a folder is reused for 5 seconds (16 folders kept), so the keystrokes of one search re-rank it
+rather than walk again. The query is only matched against walked paths, never joined to a folder; one over 200
+characters (`FIND_FILES_MAX_QUERY_CHARS`) is refused. An empty query matches every file. Ranking: a file name that
+starts with the query, then a file name that holds it, then a folder that holds it; within each, shorter paths
+first, then by path in byte order. At most `limit` paths come back, never more than 80 (`FIND_FILES_MAX_RESULTS`),
+relative with `/`. It runs on a blocking thread like every `Query::Repo`, for human clients only (a pane's agent and
+a structured client are refused), so a client connected to another machine's daemon can ask it of that machine's
+panes. The request has its own `introduced_in` arm (`FIND_FILES_SINCE`); `COMPATIBLE_SINCE` stays 78. The desktop
+message box's `@` file picker asks it through `repo_query`, which asks any repository question newer than
+`COMPATIBLE_SINCE` only of a running daemon that reads it, and otherwise refuses in words ("older than this app …
+restart it") rather than waiting out the request timeout.
+
+Protocol 90 adds `Query::WorktreeStanding { repo, folder }` and `Reply::WorktreeStanding(Option<WorktreeStanding>)`:
+where a linked worktree on the daemon's computer stands (uncommitted files, branch, whether its work is merged, its
+last commit, and `inactive_days` from `worktree.inactive_days`), read by `tidy::standing` on a blocking thread, `gh`
+check included. `repo` is a folder of its repository (the main checkout). Both are absolute, and `folder` must be a
+linked worktree that `git worktree list` in `repo` names, and that worktree's top folder (not a subfolder, not a
+folder with a hand-made `.git` file); anything else answers `ServerMsg::Error`. Only `git worktree list` (and `rev-parse`) run
+in `repo`; the standing's git and `gh` run only in a worktree its repository lists. `None` means the repository lists it but its folder is gone. Human clients only. `WorktreeStanding` (with `safe` and
+`says`) lives in `maitty_shared::protocol`; `maitty_core::tidy::Standing` is that type. The query and the reply each
+have their own `introduced_in` arm (`WORKTREE_STANDING_SINCE`); `COMPATIBLE_SINCE` stays 78, since an older daemon
+is simply not asked. The desktop command `worktree_standing { machine, repo, folder }` (this computer only) asks it through
+`maitty_desktop_client::worktree_standing`, which adds `missing` to the JSON, or fails with a line saying to restart
+the service when the daemon running is older than 90.
+
+`Conversation.worktree_origin` (main checkout, worktree folder, branch) is a defaulted field of the saved conversation, not
+of any message, so `PROTOCOL_VERSION` is unchanged; a test decodes the old shape. The daemon fills it when a chat opens
+inside a linked worktree on a branch (never a detached HEAD), refreshing it from the folder on each reopen. When a send
+resumes a chat whose folder was deleted, `Launch::validate` (a background task, one recreation at a time) runs
+`git worktree prune` and `git worktree add -- <folder> <branch>`; a branch that is gone too fails the send with a message
+naming it.
+
+Protocol 92 adds `Command::SnoozePane { term, until }` and the defaulted `TermInfo.snoozed_until` (unix seconds;
+an older peer decodes it as `None`, and a test decodes the old shape). `until: None`, or a time already past, wakes the
+pane; a time more than a week ahead is refused, and so is a snooze of a chat session's pane (`conversation_id`) or of a
+pane that needs you (`Blocked`, asking to start helpers, asking for a secret, or a checkpoint that failed or waits for
+approval). The daemon owns the snooze and keeps it across a restart (`SavedPane.snoozed_until`). It ends it on the
+tick after its time (`TICK`, 250 ms, so within a second of `until`) or when it lies more than a week ahead (the clock
+went back); and at once, through `Daemon::needs_you`, when the status becomes `Blocked`, the pane asks to start helpers
+or for a secret, a checkpoint fails or waits for approval, or a command in the pane exits with an error (`exit`). A
+plan limit does not end it: the daemon continues that agent itself. Snoozing never changes the status (ADR 0003);
+clients display it. Only a person snoozes: an agent pane's connection is refused. The command has its own `introduced_in` arm
+(`SNOOZE_SINCE`); `COMPATIBLE_SINCE` stays 78, since an older daemon is simply not asked and an older client reads
+the pane without the field.
+The desktop app sends it through the `snooze_terminal_session { machine, term, until }` command (`PaneCommand::Snooze`).
 
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store
@@ -745,7 +876,7 @@ Protocol 67 adds, for the desktop app's Inspect panel, find, quick-look links an
   repository. The answer echoes `tag`, so a client can have several in flight.
 - `Command::RestoreSnapshot { term, tag, commit }`: put the pane's checkout back as it was in one
   of the daemon's own snapshots (the commit must be one `RepoRequest::Snapshots` lists), after
-  saving what is there now. Only a human can, and not while the pane's agent works. It answers
+  saving what is there now. Only a human can, and not while the pane's agent works or a structured conversation whose folder is in the same checkout is Working. It answers
   `Reply::Repo { Restored(n) }`. This is the one request that changes the repository; every other
   change stays in the pane's PTY.
 - `Snapshot.daemon_id` (`Option<String>`, `#[serde(default)]`) is the daemon's random id, kept

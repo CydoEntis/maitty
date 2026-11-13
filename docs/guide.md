@@ -241,7 +241,22 @@ show a separate sleep screen or wake animation.
 
 ## Session visibility
 
-Sessions stay visible in the sidebar until you close them. Idle, completed, and merged-worktree sessions are never hidden automatically.
+Sessions stay visible in the sidebar until you close them. By default, idle, completed, and merged-worktree sessions are
+never hidden automatically. To change that, set `put_away_merged = true` under `[sessions]` in `config.toml`: a finished or
+idle session whose pull request has merged is then put away on its own, within a couple of minutes. It keeps running. If you
+bring it back, that merge never puts it away again.
+
+In the desktop app you can tidy the list yourself: right-click a finished or idle session (an agent in a terminal, or a
+shell) and choose **Put away**. A toast offers **Undo** for 6 seconds. The session keeps running; it leaves the status,
+project and machine lists and waits in the folded **Put away** section at the end of the session list, above Terminals. Click its arrow, or
+choose **Bring back** in its menu, to list it as before. If a put-away session needs you, it shows under **Needs you**
+until you have answered it, then goes back under Put away. A chat started in the desktop app has no Put away; close it
+instead.
+
+The TUI does the same from a session's row menu (`.` or right-click): **Put away**, with Undo for 6 seconds (the leader,
+then Ctrl+Z). The row leaves the sidebar while the session keeps running. The sidebar's **Menu** chip → **Put away…** (or
+**Sessions put away** in Search commands) lists them; pick one to bring it back. Putting away in either app puts the
+session away in both.
 
 ## Follow-ups and snapshots
 

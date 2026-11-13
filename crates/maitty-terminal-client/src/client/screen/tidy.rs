@@ -1,5 +1,6 @@
 //! Clean up worktrees: every worktree of a repo, why each is still there, and which to
-//! remove. The ones that hold nothing of their own come ticked; the rest are yours to tick.
+//! remove. The ones that hold nothing of their own come ticked, and so do inactive ones without
+//! uncommitted changes; the rest are yours to tick. Nothing goes before you confirm.
 
 use super::*;
 use crate::client::Bg;
@@ -91,6 +92,7 @@ impl App {
             })
             .collect();
         let repo = p.path.clone();
+        let inactive_after = self.cfg.worktree.inactive_days;
         self.mode = Mode::Tidy(Box::new(TidyView {
             repo: repo.clone(),
             name: p.name.clone(),
@@ -101,8 +103,8 @@ impl App {
             let mut rows: Vec<TidyRow> = found
                 .into_iter()
                 .map(|(path, name, branch, sessions)| {
-                    let standing = crate::tidy::standing(&path);
-                    let ticked = sessions == 0 && standing.safe();
+                    let standing = crate::tidy::standing(&path, inactive_after);
+                    let ticked = comes_ticked(sessions, &standing);
                     TidyRow {
                         path,
                         name,
@@ -168,7 +170,7 @@ impl App {
                 .rows
                 .iter_mut()
                 .flatten()
-                .for_each(|r| r.ticked = r.free() && r.standing.safe()),
+                .for_each(|r| r.ticked = comes_ticked(r.sessions, &r.standing)),
             KeyCode::Char('n') => v.rows.iter_mut().flatten().for_each(|r| r.ticked = false),
             KeyCode::Enter => return self.tidy_ask(v),
             _ => {}
@@ -192,22 +194,7 @@ impl App {
             self.mode = Mode::Tidy(Box::new(v));
             return;
         }
-        let losing = picked.iter().filter(|r| r.standing.dirty > 0).count();
-        let unmerged = picked
-            .iter()
-            .filter(|r| r.standing.dirty == 0 && !r.standing.merged)
-            .count();
-        let note = match (losing, unmerged) {
-            (0, 0) => "Their folders go. Nothing in them exists only there.".to_string(),
-            (0, n) => format!(
-                "Their folders go. {n} {} work that isn't merged: its branch is kept.",
-                if n == 1 { "has" } else { "have" }
-            ),
-            (n, _) => format!(
-                "{n} {} uncommitted changes, which will be lost. Branches are kept unless already merged.",
-                if n == 1 { "has" } else { "have" }
-            ),
-        };
+        let note = tidy_note(&picked);
         let items: Vec<(PathBuf, bool)> = picked
             .iter()
             .map(|r| (r.path.clone(), r.standing.dirty > 0))
@@ -224,12 +211,13 @@ impl App {
             note,
             list: picked
                 .iter()
-                .map(|r| {
-                    if r.standing.dirty > 0 {
-                        format!("{} ({} uncommitted)", r.name, r.standing.dirty)
-                    } else {
-                        r.name.clone()
+                .map(|r| match (r.standing.dirty, r.standing.merged) {
+                    (0, true) => r.name.clone(),
+                    (0, false) if r.standing.branch.is_none() => {
+                        format!("{} (commits on no branch)", r.name)
                     }
+                    (0, false) => format!("{} (not merged)", r.name),
+                    (n, _) => format!("{} ({n} uncommitted)", r.name),
                 })
                 .collect(),
             yes: "Remove".into(),
@@ -237,6 +225,44 @@ impl App {
             danger: true,
             act: Act::Tidy(items),
         }));
+    }
+}
+
+/// An inactive worktree is offered for removal only when nothing would be lost: no uncommitted
+/// changes, and a branch to keep its unmerged commits (a detached one's go with its folder).
+fn comes_ticked(sessions: usize, standing: &Standing) -> bool {
+    sessions == 0
+        && (standing.safe()
+            || (standing.inactive_days.is_some()
+                && standing.dirty == 0
+                && standing.branch.is_some()))
+}
+
+/// What removing the picked worktrees loses, in a sentence each.
+fn tidy_note(picked: &[&TidyRow]) -> String {
+    let count = |kind: fn(&Standing) -> bool| picked.iter().filter(|r| kind(&r.standing)).count();
+    let lines: Vec<String> = [
+        (
+            count(|s| s.dirty > 0),
+            "uncommitted changes, which will be lost",
+        ),
+        (
+            count(|s| s.dirty == 0 && !s.merged && s.branch.is_none()),
+            "commits on no branch, which will be lost",
+        ),
+        (
+            count(|s| s.dirty == 0 && !s.merged && s.branch.is_some()),
+            "work that isn't merged: its branch is kept",
+        ),
+    ]
+    .into_iter()
+    .filter(|(n, _)| *n > 0)
+    .map(|(n, what)| format!("{n} {} {what}.", if n == 1 { "has" } else { "have" }))
+    .collect();
+    if lines.is_empty() {
+        "Their folders go. Nothing in them exists only there.".into()
+    } else {
+        format!("Their folders go. {}", lines.join(" "))
     }
 }
 
@@ -362,7 +388,9 @@ pub(in crate::client) fn draw_tidy(
         }
     }
     let picked = v.picked();
-    let losing = picked.iter().any(|r| r.standing.dirty > 0);
+    let losing = picked.iter().any(|r| {
+        r.standing.dirty > 0 || (!r.standing.merged && r.standing.branch.is_none())
+    });
     let by = r.bottom().saturating_sub(3);
     let label = format!("Remove {}", picked.len());
     btn(
@@ -392,3 +420,7 @@ pub(in crate::client) fn draw_tidy(
         ],
     );
 }
+
+#[cfg(test)]
+#[path = "tidy_tests.rs"]
+mod tests;

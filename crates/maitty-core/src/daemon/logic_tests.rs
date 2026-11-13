@@ -446,6 +446,7 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
             term: t,
             text: "  then run the tests ".into(),
             first: false,
+            operation: None,
         },
     )
     .unwrap();
@@ -455,6 +456,7 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
             term: t,
             text: "and open a PR".into(),
             first: false,
+            operation: None,
         },
     )
     .unwrap();
@@ -470,6 +472,7 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
                 term: t,
                 text: "  ".into(),
                 first: false,
+                operation: None,
             }
         )
         .is_err(),
@@ -506,6 +509,7 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
             term: t,
             text: "never mind".into(),
             first: false,
+            operation: None,
         },
     )
     .unwrap();
@@ -519,6 +523,7 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
                 term: t,
                 text: text.into(),
                 first,
+                operation: None,
             },
         )
         .unwrap();
@@ -548,10 +553,94 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
                 term: t,
                 text: "ls".into(),
                 first: false,
+                operation: None,
             }
         )
         .is_err()
     );
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_retried_follow_up_is_acknowledged_and_not_queued_twice() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let queue = |d: &mut Daemon, text: &str, operation| {
+        d.command(
+            0,
+            Command::QueueFollowUp {
+                term: t,
+                text: text.into(),
+                first: false,
+                operation,
+            },
+        )
+    };
+    let queued = |d: &Daemon| d.snapshot().terms[&t].queued.clone();
+    assert!(queue(&mut d, "run the tests", Some(1)).is_err(), "a shell takes none");
+    {
+        let p = d.terms.get_mut(&t).unwrap();
+        (p.agent, p.hooked, p.status) = (Some("claude".into()), true, Status::Working);
+    }
+    queue(&mut d, "run the tests", Some(1)).unwrap();
+    queue(&mut d, " run the tests ", Some(1)).unwrap();
+    assert_eq!(queued(&d), ["run the tests"], "a refused send is not remembered; a retry is");
+    assert!(
+        queue(&mut d, "open a PR", Some(1)).is_err(),
+        "the same operation with other text"
+    );
+    assert!(queue(&mut d, "open a PR", Some(0)).is_err(), "zero is no operation");
+    queue(&mut d, "open a PR", Some(2)).unwrap();
+    queue(&mut d, "open a PR", None).unwrap();
+    queue(&mut d, "open a PR", None).unwrap();
+    assert_eq!(
+        queued(&d),
+        ["run the tests", "open a PR", "open a PR", "open a PR"],
+        "a new operation, and sends without one, queue as before"
+    );
+    d.command(0, Command::ClearQueue { term: t }).unwrap();
+    queue(&mut d, "run the tests", Some(1)).unwrap();
+    assert!(queued(&d).is_empty(), "one already sent stays sent");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_retried_message_for_a_starting_agent_is_not_held_or_typed_again() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let held = |d: &Daemon| d.terms[&t].held_message.is_some();
+    let send = |d: &mut Daemon, text: &str, operation| {
+        d.command(
+            0,
+            Command::SendWhenReady {
+                term: t,
+                text: text.into(),
+                operation,
+            },
+        )
+    };
+    assert!(send(&mut d, "fix the parser", Some(0)).is_err(), "zero is no operation");
+    send(&mut d, "fix the parser", Some(5)).unwrap();
+    send(&mut d, "fix the parser", Some(5)).unwrap();
+    assert!(
+        send(&mut d, "fix the lexer", Some(5)).is_err(),
+        "the same operation with other text"
+    );
+    assert!(
+        send(&mut d, "fix the lexer", None).is_err(),
+        "without one, one message still waits at a time"
+    );
+    {
+        let p = d.terms.get_mut(&t).unwrap();
+        (p.agent, p.hooked) = (Some("claude".into()), true);
+    }
+    d.set_status(t, Status::Idle, "test");
+    d.update_statuses();
+    assert!(!held(&d), "typed in");
+    send(&mut d, "fix the parser", Some(5)).unwrap();
+    assert!(!held(&d), "a retry after it was typed is not held again");
+    send(&mut d, "fix the parser", Some(6)).unwrap();
+    assert!(held(&d), "a new operation is");
     close(&mut d, &[t]);
 }
 
@@ -566,6 +655,7 @@ fn a_message_sent_to_a_starting_agent_is_held_until_it_takes_input() {
             Command::SendWhenReady {
                 term: t,
                 text: text.into(),
+                operation: None,
             },
         )
     };
@@ -1188,6 +1278,111 @@ fn closing_a_worktrees_last_pane_removes_it_only_when_nothing_lives_only_there()
     assert!(
         matches!(gone, Removal::Removed { .. }) && !merged.is_dir(),
         "a merged, clean one goes, got: {gone:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_person_reads_where_a_linked_worktree_stands_and_nothing_else() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (root, merged, _mine) = repo_with_two_made_worktrees(&mut d, "standing-query");
+    let repo = root.join("repo");
+    let read = |folder: &std::path::Path| worktree_standing(&repo, folder, 14);
+    assert!(
+        matches!(read(&merged), Ok(Some(s)) if s.merged && s.branch.is_some()),
+        "a linked worktree is read"
+    );
+    assert!(read(&repo).is_err(), "the main checkout is not one");
+    assert!(read(&root).is_err(), "nor a folder outside git");
+    assert!(read(std::path::Path::new("repo")).is_err(), "a relative path is refused");
+    std::fs::create_dir_all(merged.join("sub")).unwrap();
+    assert!(read(&merged.join("sub")).is_err(), "only a worktree's top folder");
+    let forged = root.join("forged");
+    std::fs::create_dir_all(&forged).unwrap();
+    std::fs::write(forged.join(".git"), format!("gitdir: {}", repo.join(".git").display())).unwrap();
+    assert!(read(&forged).is_err(), "a hand-made .git file is not a listed worktree");
+    assert!(read(&root.join("gone")).is_err(), "a folder git never listed is refused");
+    let deleted = root.join("deleted");
+    crate::proc::git(&repo, &["worktree", "add", "-q", "-b", "deleted", deleted.to_str().unwrap()]).unwrap();
+    std::fs::remove_dir_all(&deleted).unwrap();
+    assert_eq!(read(&deleted), Ok(None), "a listed worktree whose folder is gone reads as missing");
+
+    let (tx, mut agent) = mpsc::channel(16);
+    d.handle(Ev::Connected(8, tx, false, crate::protocol::Surface::Terminal, true));
+    let asking = d.terms.keys().next().copied().expect("a pane");
+    let token = d.terms[&asking].token.clone();
+    d.handle(Ev::From(8, asking, token));
+    d.message(8, ClientMsg::Query(Query::WorktreeStanding { repo: repo.clone(), folder: merged.clone() }));
+    assert!(matches!(agent.try_recv(), Ok(ServerMsg::Error(_))), "a pane cannot ask");
+
+    let (tx, mut person) = mpsc::channel(16);
+    d.handle(Ev::Connected(7, tx, false, crate::protocol::Surface::Terminal, true));
+    d.message(7, ClientMsg::Query(Query::WorktreeStanding { repo, folder: merged }));
+    let until = Instant::now() + Duration::from_secs(60);
+    let answer = loop {
+        match rx.try_recv() {
+            Ok(ev) => d.handle(ev),
+            Err(_) if Instant::now() < until => std::thread::sleep(Duration::from_millis(20)),
+            Err(_) => panic!("no answer"),
+        }
+        if let Ok(msg @ (ServerMsg::Reply(Reply::WorktreeStanding(_)) | ServerMsg::Error(_))) =
+            person.try_recv()
+        {
+            break msg;
+        }
+    };
+    assert!(matches!(answer, ServerMsg::Reply(Reply::WorktreeStanding(Some(_)))), "{answer:?}");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn closing_an_inactive_unmerged_worktrees_last_pane_keeps_it() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (root, _merged, mine) = repo_with_two_made_worktrees(&mut d, "close-inactive");
+    let long_ago = std::time::SystemTime::now() - Duration::from_secs(60 * 24 * 60 * 60);
+    let stamp = format!(
+        "@{} +0000",
+        long_ago
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    );
+    let amended = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&mine)
+        .args(["commit", "-q", "--amend", "--no-edit"])
+        .env("GIT_AUTHOR_DATE", &stamp)
+        .env("GIT_COMMITTER_DATE", &stamp)
+        .status()
+        .unwrap();
+    assert!(amended.success());
+    for file in ["a.ts", "b.ts"] {
+        std::fs::File::options()
+            .write(true)
+            .open(mine.join(file))
+            .unwrap()
+            .set_modified(long_ago)
+            .unwrap();
+    }
+    let standing = crate::tidy::standing(&mine, d.cfg.worktree.inactive_days);
+    assert!(
+        standing.inactive_days.is_some() && !standing.merged,
+        "the fixture is inactive and unmerged: {standing:?}"
+    );
+
+    let t = d
+        .terms
+        .values()
+        .find(|t| same_path(&t.cwd, &mine))
+        .map(|t| t.id)
+        .expect("a pane in the worktree");
+    d.command(0, Command::ClosePane { term: t }).unwrap();
+    let kept = auto_removal(&mut d, &mut rx);
+    assert!(
+        matches!(&kept, Removal::Unmerged(_)) && mine.is_dir(),
+        "inactivity removes nothing, got: {kept:?}"
     );
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -6190,6 +6385,7 @@ fn desktop_and_phone_alerts_name_the_branch_of_a_worktree() {
         branch: "fix/early-alerts".into(),
         linked: true,
         main_root: std::path::PathBuf::from("/code/shop-api"),
+        detached: false,
     });
     assert_eq!(p.alert_place(), "shop-api · fix/early-alerts");
     p.head = None;
@@ -8556,6 +8752,325 @@ fn pin_and_archive_stick_survive_a_restart_and_never_stop_the_pane() {
     close(&mut d2, &[back]);
 }
 
+fn snoozed_until(d: &Daemon, term: TermId) -> Option<u64> {
+    d.snapshot().terms[&term].snoozed_until
+}
+
+#[test]
+fn a_snooze_survives_a_restart_and_ends_when_its_time_passes() {
+    let (mut d, _rx) = daemon();
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
+    let t = d.workspaces[0].tabs[0].focus;
+    let until = term::unix_now() + 3600;
+    d.command(0, Command::SnoozePane { term: t, until: Some(until) })
+        .unwrap();
+    assert_eq!(snoozed_until(&d, t), Some(until));
+    assert_eq!(d.terms[&t].status, Status::None, "snoozing leaves the status alone");
+
+    let (mut d2, _rx2) = daemon();
+    d2.restore(d.saved());
+    let back = d2.workspaces[0].tabs[0].focus;
+    assert_eq!(snoozed_until(&d2, back), Some(until), "it comes back after a restart");
+
+    d2.wake_snoozed(until - 1);
+    assert_eq!(snoozed_until(&d2, back), Some(until), "not yet");
+    d2.wake_snoozed(until);
+    assert_eq!(snoozed_until(&d2, back), None, "its time came");
+    close(&mut d, &[t]);
+    close(&mut d2, &[back]);
+}
+
+#[test]
+fn a_snooze_ends_when_the_pane_needs_you() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let until = term::unix_now() + 3600;
+    let snooze = |d: &mut Daemon| {
+        d.command(0, Command::SnoozePane { term: t, until: Some(until) })
+            .unwrap();
+        assert_eq!(snoozed_until(d, t), Some(until));
+    };
+
+    snooze(&mut d);
+    d.set_status(t, Status::Blocked, "hook: Notification");
+    assert_eq!(snoozed_until(&d, t), None, "a question wakes it");
+    assert_eq!(d.terms[&t].status, Status::Blocked, "and the status is the hook's");
+
+    d.set_status(t, Status::Idle, "hook: Stop");
+    snooze(&mut d);
+    let pane = d.terms.get_mut(&t).unwrap();
+    pane.output(b"]133;C]133;D;1");
+    pane.take_marks();
+    assert_eq!(snoozed_until(&d, t), None, "a failed exit wakes it");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_snooze_is_ended_by_you_and_refused_when_it_would_hide_a_question_or_last_past_a_week() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let now = term::unix_now();
+    let snooze = |d: &mut Daemon, until| d.command(0, Command::SnoozePane { term: t, until });
+
+    snooze(&mut d, Some(now + 3600)).unwrap();
+    snooze(&mut d, None).unwrap();
+    assert_eq!(snoozed_until(&d, t), None, "None wakes it");
+
+    snooze(&mut d, Some(now + 3600)).unwrap();
+    snooze(&mut d, Some(1)).unwrap();
+    assert_eq!(snoozed_until(&d, t), None, "a time already past wakes it");
+
+    assert!(snooze(&mut d, Some(u64::MAX)).is_err(), "longer than a week");
+    assert_eq!(snoozed_until(&d, t), None);
+
+    d.set_status(t, Status::Blocked, "hook: Notification");
+    assert!(snooze(&mut d, Some(now + 3600)).is_err(), "it needs you now");
+    assert_eq!(snoozed_until(&d, t), None);
+    close(&mut d, &[t]);
+}
+
+fn snooze_an_hour(d: &mut Daemon, term: TermId) {
+    let until = term::unix_now() + 3600;
+    d.command(0, Command::SnoozePane { term, until: Some(until) })
+        .unwrap();
+    assert_eq!(snoozed_until(d, term), Some(until));
+}
+
+#[test]
+fn a_failed_check_ends_a_snooze() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = agent_with_checkpoints(&mut d, &std::env::temp_dir(), &[("build", "exit 2")]);
+    snooze_an_hour(&mut d, t);
+    end_turn(&mut d, t);
+    finish_run(&mut d, &mut rx, t);
+    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Failed)]));
+    assert_eq!(snoozed_until(&d, t), None);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_check_waiting_for_approval_ends_a_snooze() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    d.resolver = gated;
+    let t = agent_with_checkpoints(&mut d, &std::env::temp_dir(), &[("test", "npm test")]);
+    snooze_an_hour(&mut d, t);
+    end_turn(&mut d, t);
+    finish_run(&mut d, &mut rx, t);
+    assert_eq!(states(&d, t), named_states(&[("test", CheckState::NeedsApproval)]));
+    assert_eq!(snoozed_until(&d, t), None);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn asking_for_a_secret_ends_a_snooze() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    snooze_an_hour(&mut d, t);
+    d.request_secret(0, t, "token", "to deploy").unwrap();
+    assert_eq!(snoozed_until(&d, t), None);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn asking_to_start_helpers_ends_a_snooze() {
+    let (mut d, _rx) = daemon();
+    let (a, mut c) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
+    snooze_an_hour(&mut d, a);
+    helper_start(&mut d, 1, &mut c, Some("claude 'port the footer'")).expect("asked");
+    assert_eq!(snoozed_until(&d, a), None);
+    close(&mut d, &[a]);
+}
+
+#[test]
+fn a_pane_asking_for_a_secret_or_a_check_decision_cannot_be_snoozed() {
+    let (mut d, _rx) = daemon();
+    let now = term::unix_now();
+    let snooze = |d: &mut Daemon, term| d.command(0, Command::SnoozePane { term, until: Some(now + 3600) });
+
+    let asking = pane(&mut d);
+    d.request_secret(0, asking, "token", "to deploy").unwrap();
+    assert!(snooze(&mut d, asking).is_err(), "a secret ask needs you");
+
+    let approval = waiting_for_approval(&mut d, "npm test");
+    assert!(snooze(&mut d, approval).is_err(), "a check waiting for approval needs you");
+    let failed = pane(&mut d);
+    let info = CheckInfo { name: "test".into(), state: CheckState::Failed, ..Default::default() };
+    d.terms.get_mut(&failed).unwrap().checks.points = vec![check::CheckRecord::new(info, "").into()];
+    assert!(snooze(&mut d, failed).is_err(), "a failed check needs you");
+
+    let (helped, _c) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
+    d.terms.get_mut(&helped).unwrap().helpers.asked.push("port the footer".into());
+    assert!(snooze(&mut d, helped).is_err(), "a helper ask needs you");
+
+    for t in [asking, approval, failed, helped] {
+        assert_eq!(snoozed_until(&d, t), None);
+    }
+    close(&mut d, &[asking, approval, failed, helped]);
+}
+
+#[test]
+fn a_chat_session_cannot_be_snoozed_as_a_pane() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.terms.get_mut(&t).unwrap().conversation_id = Some(crate::conversation::ConversationId(7));
+    let until = term::unix_now() + 3600;
+    assert!(d.command(0, Command::SnoozePane { term: t, until: Some(until) }).is_err());
+    assert_eq!(snoozed_until(&d, t), None);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_snooze_lasts_a_week_at_most() {
+    const NOW: u64 = 1_800_000_000;
+    const WEEK: u64 = 7 * 24 * 60 * 60;
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.snooze_pane(t, Some(NOW + WEEK), NOW).unwrap();
+    assert_eq!(snoozed_until(&d, t), Some(NOW + WEEK), "exactly a week is allowed");
+    assert!(d.snooze_pane(t, Some(NOW + WEEK + 1), NOW).is_err(), "a second more is not");
+    assert_eq!(snoozed_until(&d, t), Some(NOW + WEEK), "a refusal leaves the snooze");
+
+    d.terms.get_mut(&t).unwrap().snoozed_until = Some(NOW + 8 * 24 * 60 * 60);
+    d.wake_snoozed(NOW);
+    assert_eq!(snoozed_until(&d, t), None, "further off than a week (the clock went back) wakes it");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn an_agent_pane_cannot_snooze() {
+    let (mut d, _rx) = daemon();
+    let (a, mut c) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
+    let until = term::unix_now() + 3600;
+    d.handle(Ev::Msg(
+        1,
+        ClientMsg::Command(Command::SnoozePane { term: a, until: Some(until) }),
+    ));
+    let refused = std::iter::from_fn(|| c.try_recv().ok()).find_map(|m| match m {
+        ServerMsg::Error(e) => Some(e),
+        _ => None,
+    });
+    assert!(refused.is_some_and(|e| e.contains("yours to do")));
+    assert_eq!(snoozed_until(&d, a), None);
+    close(&mut d, &[a]);
+}
+
+const MERGED_PR_URL: &str = "https://github.com/o/r/pull/7";
+const MERGED_PR: &str =
+    r#"{"number":7,"url":"https://github.com/o/r/pull/7","state":"MERGED","headRefOid":"abc"}"#;
+
+/// The PR watcher reads pull request #7 as merged for pane `t`, as its background task would.
+fn pr_merged_for(d: &mut Daemon, t: TermId) {
+    d.link_pr(t, Some(MERGED_PR_URL)).unwrap();
+    d.prs_read(vec![(
+        pr::Place::Link(MERGED_PR_URL.into()),
+        pr::Read::Found(MERGED_PR.into()),
+    )]);
+}
+
+#[test]
+fn a_finished_session_whose_pr_merged_stays_listed_by_default() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.set_status(t, Status::Idle, "hook");
+    pr_merged_for(&mut d, t);
+    assert!(!d.terms[&t].archived);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_working_session_whose_pr_merged_stays_listed() {
+    let (mut d, _rx) = daemon();
+    d.cfg.sessions.put_away_merged = true;
+    let t = pane(&mut d);
+    d.set_status(t, Status::Working, "hook");
+    pr_merged_for(&mut d, t);
+    assert!(!d.terms[&t].archived);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_finished_session_whose_pr_merged_is_put_away_once_and_brought_back_stays_back() {
+    let (mut d, _rx) = daemon();
+    d.cfg.sessions.put_away_merged = true;
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
+    let t = d.workspaces[0].tabs[0].focus;
+    d.set_status(t, Status::Done, "hook");
+    pr_merged_for(&mut d, t);
+    assert!(d.terms[&t].archived, "put away");
+
+    d.command(
+        0,
+        Command::ArchivePane {
+            term: t,
+            archived: false,
+        },
+    )
+    .unwrap();
+    pr_merged_for(&mut d, t);
+    assert!(!d.terms[&t].archived, "brought back stays back");
+
+    let (mut d2, _rx2) = daemon();
+    d2.cfg.sessions.put_away_merged = true;
+    d2.restore(d.saved());
+    let back = d2.workspaces[0].tabs[0].focus;
+    d2.set_status(back, Status::Idle, "hook");
+    pr_merged_for(&mut d2, back);
+    assert!(
+        !d2.terms[&back].archived,
+        "the same merge never puts it away again, even after a restart"
+    );
+    close(&mut d, &[t]);
+    close(&mut d2, &[back]);
+}
+
+#[test]
+fn a_session_put_away_by_hand_and_brought_back_is_not_put_away_for_a_merge_already_read() {
+    let (mut d, _rx) = daemon();
+    d.cfg.sessions.put_away_merged = true;
+    let t = pane(&mut d);
+    d.set_status(t, Status::Working, "hook");
+    pr_merged_for(&mut d, t);
+    let by_hand = |archived| Command::ArchivePane { term: t, archived };
+    d.command(0, by_hand(true)).unwrap();
+    d.command(0, by_hand(false)).unwrap();
+    d.set_status(t, Status::Idle, "hook");
+    pr_merged_for(&mut d, t);
+    assert!(!d.terms[&t].archived, "brought back stays back");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_session_that_finishes_after_its_pr_merged_is_put_away_at_the_next_read() {
+    let (mut d, _rx) = daemon();
+    d.cfg.sessions.put_away_merged = true;
+    let t = pane(&mut d);
+    d.set_status(t, Status::Working, "hook");
+    pr_merged_for(&mut d, t);
+    assert!(!d.terms[&t].archived);
+    d.set_status(t, Status::Done, "hook");
+    pr_merged_for(&mut d, t);
+    assert!(d.terms[&t].archived);
+    close(&mut d, &[t]);
+}
+
 #[test]
 fn a_change_to_one_pane_reaches_clients_as_a_delta_and_no_change_as_nothing() {
     let (mut d, _rx) = daemon();
@@ -9514,6 +10029,7 @@ fn agent_session(d: &mut Daemon, term: TermId, session: &str) {
         branch: "main".into(),
         linked: false,
         main_root: t.cwd.clone(),
+        detached: false,
     });
 }
 
@@ -9696,6 +10212,7 @@ fn a_conversation_terminal_its_hooks_never_named_is_remembered_by_its_conversati
         awaiting_first_user_message: false,
         title: Some("parser fix".into()),
         archived: false,
+        worktree_origin: None,
     });
     d.command(0, Command::CloseSession { term: b }).unwrap();
     let [kept] = d.closed_sessions.list() else {
