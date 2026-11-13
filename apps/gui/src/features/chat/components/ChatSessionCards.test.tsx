@@ -189,3 +189,21 @@ describe('approvals in the chat', () => {
     }
   })
 })
+
+describe('the summary for a new chat', () => {
+  it('ends with the last reply as it was said, though successful tool calls are hidden', async () => {
+    const daemon = new FakeDaemonHistory()
+    daemon.upsert(daemon.message('t1', 'u', 'User', 'look around'))
+    daemon.upsert(daemon.message('t1', 'a1', 'Assistant', `Looking. ${'x'.repeat(1000)}`))
+    daemon.upsert(toolEntry('t1', 'r1', 'Read ', 'text', { file_path: '/repo/README.md' }))
+    daemon.upsert(daemon.message('t1', 'a2', 'Assistant', 'Final words.'))
+    fake.current = daemon
+    const onNewWithSummary = vi.fn()
+    render(<ChatSession link={link()} agent="claude" online root="/repo" hideSuccessfulTools problem={{ kind: 'context', agent: 'Claude', percent: 96, onCompact: vi.fn(), onNewWithSummary }} />)
+    await settle()
+
+    fireEvent.click(screen.getByRole('button', { name: 'New chat with summary' }))
+
+    expect(onNewWithSummary).toHaveBeenCalledWith(expect.stringContaining('Final words.'))
+  })
+})

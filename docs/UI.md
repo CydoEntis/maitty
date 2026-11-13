@@ -911,6 +911,14 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   the run, which opens to the steps. Under the line is a stack of the run's latest commands and edits, three at most
   (`workStack.ts`), with "+N more" on the line when it leaves steps out; reads and searches get no card. The stack is a
   second place to click, not a second Tab stop. A run with a failed step starts open.
+  Settings › Chat › Chat view › **Hide successful tool calls** (`hideSuccessfulTools`, off by default; a setting saved
+  before it reads as off) leaves out a run, or a lone step, made only of reads and searches that completed
+  (`isQuietRun`: Claude's Read, Grep, Glob, LS, NotebookRead, WebSearch, WebFetch and ToolSearch, matched on the whole
+  name; Codex reads and searches through commands). A command, any other tool (every MCP tool), an edit, a
+  written document, a step running, failed or stopped, and the to-do list always show; so do the turn's divider and
+  changes row. A run shows while it runs and goes when it finishes. A message the hidden run stood between reads as
+  one, and an approval about a hidden step links to no row. The summary a new chat starts from is built as if
+  nothing were hidden.
   Under the divider of a turn that edited files is a **changes row**: "3 changed files +111 −0" (each file once; the
   lines only when every diff was kept), which opens the side panel on Changes with what that turn changed: the diff
   from the last snapshot taken by the turn's start to the last one taken by its end, a snapshot counting up to 3 s

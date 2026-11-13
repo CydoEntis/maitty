@@ -369,27 +369,38 @@ impl Daemon {
         });
     }
 
-    /// Whether any session is in this checkout.
+    /// Whether any session, a pane or a chat not yet closed for good, is in this checkout.
     pub(super) fn runs_in(&self, top: &std::path::Path) -> bool {
-        let top = top
-            .to_string_lossy()
-            .replace('/', "\\")
-            .trim_end_matches('\\')
-            .to_lowercase();
         self.terms.values().any(|t| {
-            t.head
-                .as_ref()
-                .is_some_and(|h| same_path(&h.top, std::path::Path::new(&top)))
-                || {
-                    let cwd = t
-                        .cwd
-                        .to_string_lossy()
-                        .replace('/', "\\")
-                        .trim_end_matches('\\')
-                        .to_lowercase();
-                    cwd == top || cwd.starts_with(&format!("{top}\\"))
-                }
-        })
+            t.head.as_ref().is_some_and(|h| same_path(&h.top, top)) || is_inside(&t.cwd, top)
+        }) || self
+            .conversations
+            .iter()
+            .filter(|c| self.chat_is_open(c.id, c.archived))
+            .any(|c| chat_folders(c).any(|folder| is_inside(folder, top)))
+    }
+
+    /// A chat holds its folder while it is listed, still running, or inside its close's undo
+    /// window; a closed chat's record stays, archived, so the flag alone does not say it ended.
+    fn chat_is_open(&self, id: crate::conversation::ConversationId, archived: bool) -> bool {
+        !archived
+            || self.conversation_closing.contains_key(&id)
+            || (self.conversation_runtimes.owns(id) && !self.conversation_ending.contains(&id))
+    }
+
+    /// The worktrees the app made that this chat works in.
+    pub(super) fn worktrees_of_chat(
+        &self,
+        id: crate::conversation::ConversationId,
+    ) -> Vec<PathBuf> {
+        let Some(chat) = self.conversations.iter().find(|c| c.id == id) else {
+            return Vec::new();
+        };
+        self.made_worktrees
+            .iter()
+            .filter(|made| chat_folders(chat).any(|folder| is_inside(folder, made)))
+            .cloned()
+            .collect()
     }
 
     /// A clean-up's worktrees, sorted into the ones to remove (folder, even with uncommitted
@@ -465,6 +476,24 @@ impl Daemon {
             });
         }
     }
+}
+
+fn chat_folders(
+    chat: &crate::conversation::Conversation,
+) -> impl Iterator<Item = &std::path::Path> {
+    std::iter::once(chat.binding.cwd.as_path()).chain(chat.binding.worktree.as_deref())
+}
+
+/// Whether `path` is `top` or a folder in it, spelled either way and in any case.
+fn is_inside(path: &std::path::Path, top: &std::path::Path) -> bool {
+    let normal = |p: &std::path::Path| {
+        p.to_string_lossy()
+            .replace('/', "\\")
+            .trim_end_matches('\\')
+            .to_lowercase()
+    };
+    let (path, top) = (normal(path), normal(top));
+    path == top || path.starts_with(&format!("{top}\\"))
 }
 
 /// What became of a worktree after you closed its last pane.

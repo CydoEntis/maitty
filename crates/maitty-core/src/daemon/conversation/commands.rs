@@ -1196,8 +1196,12 @@ impl Daemon {
             }
             self.conversation_closing.remove(&id);
             self.remember_closed_chat(id);
-            if let Err(error) = self.stop_structured(id) {
-                tracing::warn!("ending a closed chat: {error:#}");
+            let tops = self.worktrees_of_chat(id);
+            match self.stop_structured(id) {
+                // No client is waiting on a close whose window passed, so an unmerged
+                // worktree stays and only the daemon log says why.
+                Ok(()) => self.cleanup_worktrees(NO_CLIENT, tops),
+                Err(error) => tracing::warn!("ending a closed chat: {error:#}"),
             }
         }
     }

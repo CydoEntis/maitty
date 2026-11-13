@@ -73,6 +73,8 @@ export type ChatPaneProps = {
   rewind?: RewindPlace | undefined
   /** Where an `@` in the message box looks for files. */
   fileSearch?: FileSearchPlace | undefined
+  /** Leaves out runs of reads and searches that succeeded (the desktop setting). */
+  hideSuccessfulTools?: boolean
 }
 
 /**
@@ -108,6 +110,7 @@ export function ChatPane(props: ChatPaneProps) {
             problem={props.problem ?? null}
             {...(props.branchMenu === undefined ? {} : { branchMenu: props.branchMenu })}
             effort={props.effort ?? null}
+            hideSuccessfulTools={props.hideSuccessfulTools ?? false}
             {...(props.rewind === undefined ? {} : { rewind: props.rewind })}
             {...(props.fileSearch === undefined ? {} : { fileSearch: props.fileSearch })}
             {...(props.sessionId === undefined ? {} : { sessionId: props.sessionId })}
