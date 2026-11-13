@@ -147,14 +147,6 @@ or a structured runtime. Both commands came in protocol 79 (`PREWARM_SINCE`, eac
 commands are `prewarm_agent_session` (the agent names and flag rules of `start_agent_session`; it answers false when the
 daemon running is older) and `drop_prewarmed_agent`.
 
-`Query::ClosedSessions` answers `Reply::ClosedSessions`: the agent sessions that closed for good
-or whose agent exited with an error, newest first, at most 50 (what is kept and when is in
-[DATABASE](DATABASE.md#project-specific-closed-sessions)). Only a person's client may ask; a pane or a
-structured runtime is refused, since the list names the folders of other work. A window may ask
-another machine's daemon for its list over that machine's line; the answer is cleaned
-(SECURITY, "remote daemon"). It came in protocol 85 (`CLOSED_SESSIONS_SINCE`, with its arm in
-`ClientMsg::introduced_in`); `COMPATIBLE_SINCE` stays 78, since an older daemon is simply not asked.
-
 `Command::BranchWorktree { project, branch }` makes a worktree for a window with no pane to ask from (the desktop
 app's new chat page, where "New worktree" used to run a plain `git worktree add` beside the project, skipping the
 trust copy, the repo's setup hook and the tidy-up list). The daemon checks `branch` as `NewWorktree`'s branch agent
@@ -682,6 +674,14 @@ clients only; the files are read on a blocking task, at most 500 looked at, 1 Mi
 unreadable one is skipped and logged by path only. Both came with their own `introduced_in` arms
 (`SAVED_CONVERSATIONS_SINCE`); `COMPATIBLE_SINCE` stays 78, since an older daemon is never asked and an older client
 never sent the reply. This computer only: another machine's answer is ignored (`remote_policy`).
+
+Protocol 86 adds `Query::ClosedSessions` and `Reply::ClosedSessions`: the agent sessions that closed
+for good or whose agent exited with an error, newest first, at most 50 (what is kept and when is in
+[DATABASE](DATABASE.md#project-specific-closed-sessions)). Only a person's client may ask; a pane or a
+structured runtime is refused, since the list names the folders of other work. A window may ask
+another machine's daemon for its list over that machine's line; the answer is cleaned
+(SECURITY, "remote daemon"). The query has its own `introduced_in` arm (`CLOSED_SESSIONS_SINCE`);
+`COMPATIBLE_SINCE` stays 78, since an older daemon is simply not asked.
 
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store

@@ -11,7 +11,7 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 85;
+pub const PROTOCOL_VERSION: u32 = 86;
 
 /// The first version whose daemon lists an agent's saved conversations for a folder
 /// (`Query::SavedConversations`).
@@ -46,7 +46,7 @@ pub enum SavedConversations {
 
 /// The first version whose daemon lists the agent sessions that closed or crashed
 /// (`Query::ClosedSessions`).
-pub const CLOSED_SESSIONS_SINCE: u32 = 85;
+pub const CLOSED_SESSIONS_SINCE: u32 = 86;
 
 /// The most closed sessions the daemon keeps and a list carries; the oldest go first.
 pub const CLOSED_SESSIONS_MAX: usize = 50;
@@ -2307,7 +2307,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 85);
+        assert_eq!(PROTOCOL_VERSION, 86);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2690,7 +2690,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 85);
+        assert_eq!(PROTOCOL_VERSION, 86);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
