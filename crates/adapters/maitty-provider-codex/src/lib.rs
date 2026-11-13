@@ -505,8 +505,26 @@ mod tests {
     fn steering_is_reported_per_connected_codex() {
         assert!(supports_turn_steer(STABLE_SCHEMA));
         assert!(!supports_turn_steer(SUPPORTED_SCHEMA));
+        assert!(!supports_turn_steer(CURRENT_SCHEMA));
         assert!(!supports_turn_steer("{"));
+        assert!(!supports_turn_steer("{}"));
         assert_eq!(check_compatibility("0.166.0", STABLE_SCHEMA), Ok(()));
+    }
+
+    #[test]
+    fn steering_needs_the_params_contract_not_just_the_method_name() {
+        let mut schema: Value = serde_json::from_str(STABLE_SCHEMA).unwrap();
+        let steer = schema["clientRequests"]["oneOf"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|request| {
+                request["properties"]["method"]["enum"] == serde_json::json!(["turn/steer"])
+            })
+            .unwrap();
+        steer["properties"]["params"]["$ref"] =
+            serde_json::json!("#/definitions/DifferentSteerParams");
+        assert!(!supports_turn_steer(&schema.to_string()));
     }
 
     #[test]
@@ -524,15 +542,27 @@ mod tests {
                 }
             })
         );
-        let ack: Value = serde_json::from_str(include_str!("fixtures/turn-steer-ack.json")).unwrap();
+        let ack: Value =
+            serde_json::from_str(include_str!("fixtures/turn-steer-ack.json")).unwrap();
         assert_eq!(ack["id"], request["id"]);
         assert_eq!(parse_turn_steer_ack(&ack), Ok("turn-active".to_owned()));
     }
 
     #[test]
+    fn a_steer_codex_refuses_says_why() {
+        let error =
+            serde_json::json!({"id": 7, "error": {"code": -32600, "message": "no active turn"}});
+        assert_eq!(
+            parse_turn_steer_ack(&error),
+            Err("Codex refused the steer: no active turn".to_owned())
+        );
+    }
+
+    #[test]
     fn a_steer_acknowledgement_without_a_turn_id_is_refused() {
-        let error = serde_json::json!({"id": 7, "error": {"code": -32600, "message": "no active turn"}});
-        assert!(parse_turn_steer_ack(&error).is_err());
-        assert!(parse_turn_steer_ack(&serde_json::json!({"id": 7, "result": {}})).is_err());
+        assert_eq!(
+            parse_turn_steer_ack(&serde_json::json!({"id": 7, "result": {}})),
+            Err("Codex's steer response has no turnId".to_owned())
+        );
     }
 }
