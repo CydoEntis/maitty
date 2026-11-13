@@ -1,4 +1,3 @@
-import { machineLabel } from '@/data/machineNicknames'
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { machineTitle, UPDATE_WORDS, type MachineHead, type UpdateAction } from '../model/machines'
 import { STATUS_WORD, type SessionView } from '../model/session'
@@ -241,7 +240,7 @@ function Expanded(props: SidebarProps) {
           session={session}
           selected={selected}
           showProject={showProject}
-          machine={showMachine ? machineLabel(session.machineName) : null}
+          machine={showMachine ? session.machineName : null}
           renaming={props.renamingId === session.id}
           onShow={() => { props.onShowSession(session.id) }}
           onRename={() => { props.onRenameSession(session.id) }}

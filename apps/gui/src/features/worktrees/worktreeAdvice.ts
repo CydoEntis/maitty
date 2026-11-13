@@ -16,9 +16,10 @@ export function overlapWords(overlaps: readonly { file: string; checkouts: reado
 /** What a worktree's standing says in a few words. */
 export function standingWords(standing: WorktreeStanding): string {
   if (standing.missing) return 'its folder is gone'
+  const idle = standing.inactive_days === null ? '' : `inactive ${String(standing.inactive_days)} ${standing.inactive_days === 1 ? 'day' : 'days'} · `
   const ago = standing.last_commit === '' ? '' : ` · last commit ${standing.last_commit}`
-  if (standing.dirty > 0) return `${String(standing.dirty)} uncommitted ${standing.dirty === 1 ? 'change' : 'changes'}${ago}`
-  return `${standing.merged ? 'merged, nothing uncommitted' : 'not merged anywhere'}${ago}`
+  if (standing.dirty > 0) return `${idle}${String(standing.dirty)} uncommitted ${standing.dirty === 1 ? 'change' : 'changes'}${ago}`
+  return `${idle}${standing.merged ? 'merged, nothing uncommitted' : 'not merged anywhere'}${ago}`
 }
 
 /** What pressing Remove would lose, or null when nothing: the button then asks twice only when it must. */

@@ -376,6 +376,7 @@ button.mx-queued-text::after { content: ""; position: absolute; inset: 0; border
 .mx-slash-list { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
 .mx-slash-row { display: grid; grid-template-columns: minmax(120px, 34%) minmax(0, 1fr); align-items: baseline; gap: 14px; padding: 5px 9px; border-radius: 7px; cursor: pointer; }
 .mx-slash-row.is-active { background: var(--accent-soft); }
+.mx-slash-row.is-file { grid-template-columns: minmax(0, 1fr); }
 .mx-slash-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12.5px; color: var(--fg); }
 .mx-slash-row.is-active .mx-slash-name { color: var(--accent-text, var(--accent)); }
 .mx-slash-hint { color: var(--dim); }

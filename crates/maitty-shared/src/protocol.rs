@@ -11,7 +11,10 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 89;
+pub const PROTOCOL_VERSION: u32 = 90;
+
+/// The first version whose daemon says where a worktree stands (`Query::WorktreeStanding`).
+pub const WORKTREE_STANDING_SINCE: u32 = 90;
 
 /// The first version whose daemon searches a checkout's file paths (`RepoRequest::FindFiles`).
 pub const FIND_FILES_SINCE: u32 = 89;
@@ -927,6 +930,13 @@ pub enum Query {
     Worktrees {
         ws: WsId,
     },
+    /// Where the linked worktree at `folder` stands on the daemon's computer (human clients
+    /// only); answered with `Reply::WorktreeStanding`. `repo` is a folder of its repository (the
+    /// main checkout), which must list `folder` as a worktree. Both are absolute.
+    WorktreeStanding {
+        repo: PathBuf,
+        folder: PathBuf,
+    },
     /// The tail of a pane's last output for checkpoint `name` (None: the headline one); the
     /// snapshot carries only a summary.
     CheckOutput {
@@ -1121,6 +1131,8 @@ pub enum Reply {
     List(Snapshot),
     Text(String),
     Worktrees(Vec<WorktreeEntry>),
+    /// None: git still lists the worktree but its folder is gone.
+    WorktreeStanding(Option<WorktreeStanding>),
     Repo {
         tag: u64,
         reply: crate::repo::RepoReply,
@@ -1191,6 +1203,51 @@ pub struct WorktreeEntry {
     /// The repository's main checkout.
     pub main: bool,
     pub repo: String,
+}
+
+/// Where a worktree stands: what removing it would lose. Read with git: off the UI thread and
+/// off the daemon's loop.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorktreeStanding {
+    /// Changed and new files that aren't committed.
+    pub dirty: usize,
+    /// Its branch (none: a detached HEAD).
+    pub branch: Option<String>,
+    /// Every commit it has is also on another branch or on a remote, or its pull request was
+    /// merged at exactly this commit (a squash merge leaves the commits on no other branch):
+    /// its own branch could go and nothing would be lost.
+    pub merged: bool,
+    /// When it last committed, as git says it ("3 days ago").
+    pub last_commit: String,
+    /// Whole days since its last commit and its newest file change, set when both are at least
+    /// `worktree.inactive_days` old. It is only listed: nothing is removed for it.
+    pub inactive_days: Option<u32>,
+}
+
+impl WorktreeStanding {
+    /// Nothing here exists only here: it can be removed without asking.
+    pub fn safe(&self) -> bool {
+        self.dirty == 0 && self.merged
+    }
+
+    /// Why it's still around, in a few words.
+    pub fn says(&self) -> String {
+        let idle = self
+            .inactive_days
+            .map(|n| format!("inactive {n} day{} · ", if n == 1 { "" } else { "s" }))
+            .unwrap_or_default();
+        let ago = if self.last_commit.is_empty() {
+            String::new()
+        } else {
+            format!(" · last commit {}", self.last_commit)
+        };
+        let state = match (self.dirty, self.merged) {
+            (0, true) => "merged, nothing uncommitted".to_string(),
+            (0, false) => "not merged anywhere".to_string(),
+            (n, _) => format!("{n} uncommitted change{}", if n == 1 { "" } else { "s" }),
+        };
+        format!("{idle}{state}{ago}")
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -1904,6 +1961,7 @@ impl ServerMsg {
         match self {
             ServerMsg::Reply(Reply::SavedConversations { .. }) => SAVED_CONVERSATIONS_SINCE,
             ServerMsg::Reply(Reply::ClosedSessions(_)) => CLOSED_SESSIONS_SINCE,
+            ServerMsg::Reply(Reply::WorktreeStanding(_)) => WORKTREE_STANDING_SINCE,
             _ => COMPATIBLE_SINCE,
         }
     }
@@ -1923,6 +1981,7 @@ impl ClientMsg {
             ClientMsg::Query(Query::AllowedCommands) | ClientMsg::Command(Command::ForgetAllowedCommand { .. }) => ALLOWED_COMMANDS_SINCE,
             ClientMsg::Query(Query::SavedConversations { .. }) => SAVED_CONVERSATIONS_SINCE,
             ClientMsg::Query(Query::ClosedSessions) => CLOSED_SESSIONS_SINCE,
+            ClientMsg::Query(Query::WorktreeStanding { .. }) => WORKTREE_STANDING_SINCE,
             ClientMsg::Command(Command::ReopenClosedSession { .. }) => REOPEN_CLOSED_SINCE,
             ClientMsg::Query(Query::Repo {
                 request: crate::repo::RepoRequest::RestoreCount { .. },
@@ -2353,7 +2412,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 89);
+        assert_eq!(PROTOCOL_VERSION, 90);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2809,7 +2868,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 89);
+        assert_eq!(PROTOCOL_VERSION, 90);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -3710,6 +3769,40 @@ mod tests {
         let reply = encode(&Reply::ClosedSessions(vec![closed.clone()])).unwrap();
         assert!(decode::<OldReply>(&reply).is_err());
         assert!(matches!(decode::<Reply>(&reply), Ok(Reply::ClosedSessions(list)) if list == [closed]));
+    }
+
+    /// Asking where a worktree stands is a new query and a new reply: a peer built before them
+    /// cannot read either, so a client asks only a daemon that says it is new enough, and the
+    /// window stays open.
+    #[test]
+    fn a_worktree_standing_is_asked_only_of_a_daemon_that_knows_it() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldQuery {
+            List,
+        }
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldReply {
+            Ok,
+        }
+        let ask = Query::WorktreeStanding { repo: PathBuf::from("/code/app"), folder: PathBuf::from("/code/app-worktrees/task") };
+        assert!(decode::<OldQuery>(&encode(&ask).unwrap()).is_err());
+        assert!(matches!(decode::<Query>(&encode(&ask).unwrap()), Ok(Query::WorktreeStanding { .. })));
+        assert_eq!(ClientMsg::Query(ask).introduced_in(), WORKTREE_STANDING_SINCE);
+        const { assert!(WORKTREE_STANDING_SINCE > COMPATIBLE_SINCE && WORKTREE_STANDING_SINCE <= PROTOCOL_VERSION) };
+
+        let standing = WorktreeStanding {
+            dirty: 0,
+            branch: Some("task".into()),
+            merged: false,
+            last_commit: "5 weeks ago".into(),
+            inactive_days: Some(30),
+        };
+        let reply = Reply::WorktreeStanding(Some(standing.clone()));
+        assert!(decode::<OldReply>(&encode(&reply).unwrap()).is_err());
+        assert!(matches!(decode::<Reply>(&encode(&reply).unwrap()), Ok(Reply::WorktreeStanding(Some(read))) if read == standing));
+        assert_eq!(ServerMsg::Reply(reply).introduced_in(), WORKTREE_STANDING_SINCE);
     }
 
     /// Reopening a closed session is a new command: a daemon built before it cannot read it, so a

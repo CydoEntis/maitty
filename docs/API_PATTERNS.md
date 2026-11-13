@@ -746,8 +746,23 @@ starts with the query, then a file name that holds it, then a folder that holds 
 first, then by path in byte order. At most `limit` paths come back, never more than 80 (`FIND_FILES_MAX_RESULTS`),
 relative with `/`. It runs on a blocking thread like every `Query::Repo`, for human clients only (a pane's agent and
 a structured client are refused), so a client connected to another machine's daemon can ask it of that machine's
-panes. The request has its own `introduced_in` arm (`FIND_FILES_SINCE`); `COMPATIBLE_SINCE` stays 78. No client
-asks it yet.
+panes. The request has its own `introduced_in` arm (`FIND_FILES_SINCE`); `COMPATIBLE_SINCE` stays 78. The desktop
+message box's `@` file picker asks it through `repo_query`, which asks any repository question newer than
+`COMPATIBLE_SINCE` only of a running daemon that reads it, and otherwise refuses in words ("older than this app …
+restart it") rather than waiting out the request timeout.
+
+Protocol 90 adds `Query::WorktreeStanding { repo, folder }` and `Reply::WorktreeStanding(Option<WorktreeStanding>)`:
+where a linked worktree on the daemon's computer stands (uncommitted files, branch, whether its work is merged, its
+last commit, and `inactive_days` from `worktree.inactive_days`), read by `tidy::standing` on a blocking thread, `gh`
+check included. `repo` is a folder of its repository (the main checkout). Both are absolute, and `folder` must be a
+linked worktree that `git worktree list` in `repo` names, and that worktree's top folder (not a subfolder, not a
+folder with a hand-made `.git` file); anything else answers `ServerMsg::Error`. Only `git worktree list` (and `rev-parse`) run
+in `repo`; the standing's git and `gh` run only in a worktree its repository lists. `None` means the repository lists it but its folder is gone. Human clients only. `WorktreeStanding` (with `safe` and
+`says`) lives in `maitty_shared::protocol`; `maitty_core::tidy::Standing` is that type. The query and the reply each
+have their own `introduced_in` arm (`WORKTREE_STANDING_SINCE`); `COMPATIBLE_SINCE` stays 78, since an older daemon
+is simply not asked. The desktop command `worktree_standing { machine, repo, folder }` (this computer only) asks it through
+`maitty_desktop_client::worktree_standing`, which adds `missing` to the JSON, or fails with a line saying to restart
+the service when the daemon running is older than 90.
 
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store
