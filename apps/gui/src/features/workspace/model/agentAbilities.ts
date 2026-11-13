@@ -50,7 +50,7 @@ const NONE: AgentAbilities = {
   changeAgent: false,
 }
 
-export const AGENT_ABILITIES: Readonly<Record<ChatAgent, AgentAbilities>> = {
+const AGENT_ABILITIES: Readonly<Record<ChatAgent, AgentAbilities>> = {
   claude: {
     slashCommands: { list: 'agent', skillsAfterDollar: false, enterAfterPause: false },
     permissionModes: { modes: PICKABLE_MODES, switchBy: 'shift-tab' },
@@ -74,7 +74,9 @@ export const AGENT_ABILITIES: Readonly<Record<ChatAgent, AgentAbilities>> = {
 
 /**
  * What an agent can do, by the name the daemon reports. The name must match exactly, as the checks this
- * replaces compare it; any other agent, and a plain shell, can do none of it.
+ * replaces compare it; any other agent, and a plain shell, can do none of it. Pass the raw
+ * `session.process` or a `ChatAgent` (already trimmed and lower-cased by `chatAgentOf`), never a
+ * display label.
  */
 export function abilitiesOf(agent: string | null | undefined): AgentAbilities {
   return agent != null && Object.hasOwn(AGENT_ABILITIES, agent) ? AGENT_ABILITIES[agent as ChatAgent] : NONE
