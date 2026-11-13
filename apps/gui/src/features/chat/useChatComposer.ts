@@ -14,6 +14,7 @@ import { newId, revokePreviews, useAttachmentIntake, type AttachmentIntake } fro
 import { wireChoice } from './agentChoice'
 import { reserveOperation, STALE_OPERATION } from './sendOperation'
 import { isBangLine, isSlashLine } from './slashCommands'
+import { withRestoreNote } from './editFromHere'
 
 export const PENDING_APPROVAL_NOTE = 'Answer the request above first'
 export const READ_ONLY_NOTE = 'Read-only: talk to the agent in the terminal'
@@ -166,6 +167,21 @@ export type ChatComposer = {
 }
 
 /**
+ * A message put back in the box, ahead of anything written there: its files come back as attachments, as they were
+ * when it was written, not as the lines that name them.
+ */
+export function messageIntoDraft(text: string): (state: ComposerState) => ComposerState {
+  const parsed = parseAttachmentMessage(text)
+  const words = parsed?.text ?? text
+  const files = (parsed?.files ?? []).map((file) => ({ id: newId(), path: file.path, name: file.name, size: null, kind: file.kind, preview: null }))
+  return (state) => ({
+    ...state,
+    draft: state.draft.trim() === '' ? words : words === '' ? state.draft : `${words}\n\n${state.draft}`,
+    attachments: [...files, ...state.attachments],
+  })
+}
+
+/**
  * The composer's behaviour. A message goes to the daemon through the conversation's own send, with
  * an operation number the daemon uses to tell a retry from a new message. While a turn runs the
  * daemon holds the message and delivers it when the turn ends, in order and once each, whether or
@@ -268,12 +284,15 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
   }, [conversation, link.generation, agent, feed, refresh, typeText, running])
 
   const submit = useCallback(() => {
-    const { draft, attachments } = peekComposer(conversation)
+    const { draft, attachments, note: boxNote } = peekComposer(conversation)
     const text = draft.trim()
     // A message may be only attachments; the block naming them is then the whole text.
     if ((text === '' && attachments.length === 0) || disabledReason !== null || sending) return
     const files = attachments
+    // The agent's own command is not a message to it, so the note waits for the next one that is.
+    const note = isSlashLine(text) || isBangLine(text) ? null : boxNote
     updateComposer(conversation, (state) => ({ ...state, draft: '', attachments: [] }))
+    if (note === null && boxNote !== null) updateComposer(conversation, (state) => ({ ...state, note: boxNote }))
     const settle = (delivered: boolean) => {
       if (delivered) {
         revokePreviews(files)
@@ -285,12 +304,12 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
         revokePreviews(files)
         return
       }
-      updateComposer(conversation, (state) => ({ ...state, draft: text, attachments: files }))
+      updateComposer(conversation, (state) => ({ ...state, draft: text, attachments: files, note: note ?? state.note }))
     }
     if (holding) {
       // Left with the pane's daemon until the agent is ready for a message; shown in the queue meanwhile.
       setError(null)
-      paneQueue.add(buildAttachmentMessage(text, files), false).then(
+      paneQueue.add(withRestoreNote(note, buildAttachmentMessage(text, files)), false).then(
         () => { settle(true) },
         (failure: unknown) => {
           setError(errorMessage(failure, 'Could not queue the message'))
@@ -299,7 +318,7 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
       )
       return
     }
-    void send(buildAttachmentMessage(text, files)).then(settle)
+    void send(withRestoreNote(note, buildAttachmentMessage(text, files))).then(settle)
   }, [disabledReason, sending, conversation, send, holding, paneQueue])
 
   // The ones this box took back, so their leaving the queue is not read as the daemon having sent them.
@@ -366,15 +385,7 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
   const editQueued = useCallback((operation: number) => {
     const message = queue.find((item) => item.id === operation)
     if (message === undefined) return
-    // Its files come back as attachments, as they were when it was written, not as the lines that name them.
-    const parsed = parseAttachmentMessage(message.text)
-    const words = parsed?.text ?? message.text
-    const files = (parsed?.files ?? []).map((file) => ({ id: newId(), path: file.path, name: file.name, size: null, kind: file.kind, preview: null }))
-    const intoDraft = (state: ComposerState): ComposerState => ({
-      ...state,
-      draft: state.draft.trim() === '' ? words : words === '' ? state.draft : `${words}\n\n${state.draft}`,
-      attachments: [...files, ...state.attachments],
-    })
+    const intoDraft = messageIntoDraft(message.text)
     if (operation < 0) {
       const taking = takeBack(operation)
       if (taking === null) return

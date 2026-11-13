@@ -35,3 +35,19 @@ describe('what a message box holds when its session\'s chat gets a new number', 
     expect(peekComposer(9).draft).toBe('new')
   })
 })
+
+describe('the note a restore leaves for the next message', () => {
+  it('stays with the box while it holds the message, and goes when the box is emptied', () => {
+    updateComposer(7, (state) => ({ ...state, draft: 'Fix it', note: 'restored' }))
+    updateComposer(7, (state) => ({ ...state, draft: 'Fix it again' }))
+    expect(peekComposer(7).note).toBe('restored')
+
+    updateComposer(7, (state) => ({ ...state, draft: '' }))
+    expect(peekComposer(7).note).toBeNull()
+  })
+
+  it('is kept on its own when it is set in an empty box', () => {
+    updateComposer(7, (state) => ({ ...state, note: 'restored' }))
+    expect(peekComposer(7).note).toBe('restored')
+  })
+})

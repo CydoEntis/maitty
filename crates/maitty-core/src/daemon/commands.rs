@@ -814,9 +814,21 @@ impl Daemon {
                     "Its agent is working; wait for it to finish before restoring"
                 );
                 let dir = pane.cwd.clone();
+                // A chat's agent works through its conversation, which its terminal's status does not show.
+                let working: Vec<_> = self
+                    .conversations
+                    .iter()
+                    .filter(|c| {
+                        self.conversation_states
+                            .get(&c.id)
+                            .is_some_and(|state| state.status == Status::Working)
+                    })
+                    .map(|c| c.binding.worktree.clone().unwrap_or_else(|| c.binding.cwd.clone()))
+                    .collect();
                 let tx = self.tx.clone();
                 tokio::task::spawn_blocking(move || {
-                    let result = repo::restore(&dir, &commit).map_err(|e| format!("{e:#}"));
+                    let result =
+                        repo::restore(&dir, &commit, &working).map_err(|e| format!("{e:#}"));
                     let _ = tx.blocking_send(Ev::RepoReady {
                         client,
                         tag,

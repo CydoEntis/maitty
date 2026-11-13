@@ -40,6 +40,8 @@ const TerminalSessionSchema = z.object({
   branch: z.string().nullable().default(null),
   // The pane runs in a linked worktree rather than the main checkout (the daemon's `TermInfo.linked`).
   linked: z.boolean().default(false),
+  // The top folder of the checkout (main or a linked worktree) the pane is in (`TermInfo.top`).
+  top: z.string().nullable().default(null),
   label: z.string().default(''),
   pinned: z.boolean().default(false),
   // Whether the agent's hooks have reported in; an agent started before they were installed never does.
@@ -1154,6 +1156,9 @@ const ClosedSessionSchema = z.object({
   title: z.string().nullable(),
   at: z.number().int().nonnegative(),
   folder_present: z.boolean(),
+  /** The linked worktree it worked in and that worktree's repository, when it was in one; what a removed folder is made again from. */
+  worktree: z.string().nullable(),
+  repo: z.string().nullable(),
 })
 export type ClosedSession = z.infer<typeof ClosedSessionSchema>
 
@@ -1163,6 +1168,14 @@ export type ClosedSession = z.infer<typeof ClosedSessionSchema>
  */
 export async function closedSessions(): Promise<ClosedSession[] | null> {
   return invokeParsed('closed_sessions', z.array(ClosedSessionSchema).nullable())
+}
+
+/**
+ * Has this computer's service reopen a closed session it keeps: its worktree made again when the folder is gone, then
+ * its agent started there with its conversation. False when the service running is older than this and was not asked.
+ */
+export async function reopenClosedSession(agent: string, session: string): Promise<boolean> {
+  return invokeParsed('reopen_closed_session', z.boolean(), { agent, session })
 }
 
 /**
@@ -1294,6 +1307,7 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
     nativePane: term.id,
     ...(machine ? { machine: machine.id, machineName: machine.name } : {}),
     linked: term.linked,
+    checkout: term.top,
     hasDiff: term.diff_added + term.diff_removed > 0,
     diffAdded: term.diff_added,
     diffRemoved: term.diff_removed,
@@ -1367,6 +1381,7 @@ function toConversation(summary: ConversationSummary, workspaces: WorkspaceSumma
     ...(chatSession
       ? {
           cwd,
+          checkout: summary.worktree,
           repo: root === null ? null : (root.split(/[\\/]/).filter(Boolean).at(-1) ?? null),
           agent: summary.provider.toLowerCase(),
           process: summary.provider.toLowerCase(),

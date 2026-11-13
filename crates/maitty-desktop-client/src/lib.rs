@@ -1112,6 +1112,34 @@ pub async fn restore_snapshot(
     }
 }
 
+/// How many files restoring one of the checkout's snapshots would change now. A daemon from before the question
+/// would never answer it, so it is not asked.
+pub async fn restore_count(term: u32, commit: String) -> Result<u64> {
+    let message = ClientMsg::Query(Query::Repo {
+        term,
+        tag: 0,
+        request: maitty_shared::repo::RepoRequest::RestoreCount { commit },
+    });
+    answered_within(REQUEST_TIMEOUT, async {
+        let (mut connection, version) = ipc::open_for_user_knowing_version()
+            .await
+            .context("connecting to the local daemon")?;
+        if !daemon_reads(&message, version) {
+            bail!(
+                "the Maitty service running is older than this app and cannot count a restore yet: restart it (Settings › Daemon), then try again"
+            );
+        }
+        match ask(&mut connection, &message).await? {
+            Reply::Repo {
+                reply: maitty_shared::repo::RepoReply::RestoreCount(changed),
+                ..
+            } => Ok(changed as u64),
+            _ => bail!("daemon returned an unexpected restore count reply"),
+        }
+    })
+    .await
+}
+
 /// Replace the text of one existing file of the checkout `term` is in (the daemon checks the path and refuses
 /// anything but a plain file of the checkout).
 pub async fn write_project_file(
@@ -1557,6 +1585,17 @@ pub async fn closed_sessions() -> Result<Value> {
         }
     })
     .await
+}
+
+/// Have this computer's daemon reopen a closed session it keeps, making its worktree again when the folder is gone.
+/// The daemon starts the agent itself. False when the daemon running is from before this and was not asked.
+pub async fn reopen_closed_session(agent: String, session: String) -> Result<Value> {
+    let asked = ask_if_known(reopen_closed_message(agent, session)).await?;
+    Ok(Value::Bool(asked))
+}
+
+fn reopen_closed_message(agent: String, session: String) -> ClientMsg {
+    ClientMsg::Command(Command::ReopenClosedSession { agent, session })
 }
 
 /// How long the closed sessions' folders are looked for, all of them together.
@@ -2552,6 +2591,15 @@ mod agent_command_tests {
         let ask = ClientMsg::Query(Query::ClosedSessions);
         assert!(daemon_reads(&ask, PROTOCOL_VERSION));
         assert!(!daemon_reads(&ask, CLOSED_SESSIONS_SINCE - 1));
+    }
+
+    #[test]
+    fn a_daemon_from_before_reopening_closed_sessions_is_not_asked_to() {
+        use super::{daemon_reads, reopen_closed_message};
+        use maitty_shared::protocol::{PROTOCOL_VERSION, REOPEN_CLOSED_SINCE};
+        let reopen = reopen_closed_message("claude".into(), "abc-123".into());
+        assert!(daemon_reads(&reopen, PROTOCOL_VERSION));
+        assert!(!daemon_reads(&reopen, REOPEN_CLOSED_SINCE - 1));
     }
 
     fn closed_in(cwd: std::path::PathBuf) -> maitty_shared::protocol::ClosedSession {

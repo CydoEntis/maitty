@@ -15,6 +15,7 @@ import type { SessionUsage } from '../usageStrip'
 import type { BranchMenuSpec } from './BranchMenu'
 import type { ChatProblem } from '../problem'
 import { StartingChat } from './StartingChat'
+import type { RewindPlace } from '../editFromHere'
 
 export type ChatPaneProps = {
   availability: ChatAvailability
@@ -67,6 +68,8 @@ export type ChatPaneProps = {
   branchMenu?: BranchMenuSpec | undefined
   /** The effort the agent's own files say it runs at. */
   effort?: string | null | undefined
+  /** Where a sent message's Edit from here restores the files from. */
+  rewind?: RewindPlace | undefined
 }
 
 /**
@@ -102,6 +105,7 @@ export function ChatPane(props: ChatPaneProps) {
             problem={props.problem ?? null}
             {...(props.branchMenu === undefined ? {} : { branchMenu: props.branchMenu })}
             effort={props.effort ?? null}
+            {...(props.rewind === undefined ? {} : { rewind: props.rewind })}
             {...(props.sessionId === undefined ? {} : { sessionId: props.sessionId })}
             {...(props.paneStatus === undefined ? {} : { paneStatus: props.paneStatus })}
           />

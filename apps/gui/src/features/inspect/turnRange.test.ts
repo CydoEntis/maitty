@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { RepoSnapshot } from './api'
-import { SNAPSHOT_SKEW_MS, turnRange } from './turnRange'
+import { SNAPSHOT_SKEW_MS, snapshotBefore, turnRange } from './turnRange'
 
 const SECOND = 1000
 const snap = (commit: string, atSeconds: number, why = 'before claude\'s turn'): RepoSnapshot => ({ commit, at: atSeconds, why })
@@ -42,5 +42,17 @@ describe('picking the snapshots around a turn', () => {
   it('says the start snapshot is missing when none was taken by the start of the turn', () => {
     expect(turnRange([snap('later', 200)], turn(100, 130))).toEqual({ missing: 'before' })
     expect(turnRange([], turn(100, 130))).toEqual({ missing: 'before' })
+  })
+})
+
+describe('the snapshot from before a turn', () => {
+  it('is found for a turn that changed nothing, whose end has no snapshot of its own', () => {
+    const unchanged = [snap('before2', 150), snap('after1', 131, 'after claude\'s turn')]
+    expect(turnRange(unchanged, turn(150, 160))).toEqual({ missing: 'after' })
+    expect(snapshotBefore(unchanged, turn(150, 160))?.commit).toBe('before2')
+  })
+
+  it('is missing when every kept snapshot is newer than the turn', () => {
+    expect(snapshotBefore(twoTurns, turn(50, 60))).toBeUndefined()
   })
 })

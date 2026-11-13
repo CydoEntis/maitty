@@ -19,6 +19,7 @@ export const LOCAL_FEATURES = {
   'path-links': 'Opening a file from the output',
   'screen-text': 'The screen text',
   replay: 'A fresh replay',
+  rewind: 'Edit from here',
 } as const
 
 export type LocalFeature = keyof typeof LOCAL_FEATURES

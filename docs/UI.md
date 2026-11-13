@@ -155,9 +155,17 @@ computer, newest first (`closed_sessions`, API_PATTERNS; read when the list open
 (else "Claude session"), the agent's mark and name, the folder, the branch and "closed 3h ago". Picking one closes the
 list and starts that agent in that folder with its conversation, through the new chat's resume start (`startNewChat`
 with `resume`; the id held to `resumeWords`' rule, model, effort and mode left to the agent); while another start is
-under way the list stays open and a toast says "A session is already starting". A row cannot be picked
-(`aria-disabled`, not `disabled`, so it can still be reached and read), and says why in place of the time, when its folder is gone ("folder removed"; recreating it is not offered), when its
-agent is not Claude or Codex ("cannot be reopened here"), or when its id fails the rule ("no conversation to resume").
+under way the list stays open and a toast says "A session is already starting". A row whose folder is gone but was a
+worktree with a known repository and branch reads "folder removed · closed 1d ago" and can be picked: the service makes
+the worktree again and starts the agent itself (`reopen_closed_session`, API_PATTERNS; never `startNewChat`), while a
+line over the list says "Making the folder again and starting the session…" and every row is `aria-disabled` until
+it answers, so no second session starts meanwhile; an answer that comes after the list was closed changes nothing. Once it has, the
+list closes; a refusal (a branch that is gone is named) shows as an alert line over the list, which stays usable, and a
+service older than protocol 87 says "Restart the Maitty service to reopen it." A row cannot be picked
+(`aria-disabled`, not `disabled`, so it can still be reached and read), and says why in place of the time, when its
+folder is gone and was not such a worktree, which includes every record from before protocol 87 ("folder removed;
+cannot be made again"), when its agent is not Claude or Codex ("cannot be reopened here"), or when its id fails the
+rule ("no conversation to resume").
 It says "Looking for closed sessions…" while it reads, "No closed sessions yet. A chat you close shows here once its
 Undo has passed." when there are none, "Could not read the closed sessions." with **Try again** when the read fails,
 and "Restart the Maitty service to see closed sessions." for a daemon older than protocol 86. Esc, Close or a click
@@ -914,6 +922,28 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   before under "Whole working tree · <why>". The row focuses its own pane and shows that pane's session (a helper agent's chat open there stays open); moving
   to another session, closing the panel, and the other ways in show the working tree. A session on another machine
   gets the local-only refusal, as before.
+  A message the person sent has a **⋯ menu** beside its bubble (shown on hover or focus) with **Edit from here**
+  (`MessageMenu`, `useEditFromHere.ts`). It finds the snapshot taken before that message's turn
+  (`snapshotBefore` in `inspect/turnRange.ts`, by the daemon's turn times), asks the daemon how many files a restore
+  would change against the files as they are now (`RepoRequest::RestoreCount`), and asks first: "N files change back
+  … What is there now is kept as a "before a restore" snapshot", Cancel (which has the focus, so an Enter typed as it opens does nothing) or **Restore N files** (danger). Nothing is
+  restored without that yes. A turn without the daemon's times, no snapshot from before it, or a count that cannot be
+  read gives a toast saying why and offers no restore. After the restore the message goes in the box, ahead of
+  anything already typed there (a draft is kept, under it, and the confirm says so); nothing is sent. The next
+  message sent from that chat starts with one line telling the agent the files were restored to before that message
+  (`restoreNote`; the quoted words cut by character, with no control or format characters); the agent's own conversation is not rewound. A line under the box says the note will go, with **Leave it out**. A bubble, a later Edit from here and the quote leave that note out (`stripRestoreNote`).
+  The note goes when the box is emptied or the chat is left; a slash command or `!` line goes out without it and
+  leaves it for the next message. The item is greyed, with the reason in the menu, while the agent works (the daemon
+  refuses then too, for a terminal agent and for a chat working in the same checkout) or the daemon is offline; a session on another machine gets the local-only refusal.
+  It is also greyed, "Another session is using this folder", while another open session on the same machine runs
+  anything but a plain shell in the same checkout, idle or not, since a restore would undo its files too
+  (`sharedCheckoutRefusal` in `workspace/model/sharedCheckout.ts`). Same checkout means the same top folder (the
+  daemon's `top`, the pane's main checkout or linked worktree), compared with either separator and without a `\\?\` prefix, and without case only for a
+  Windows drive path; a
+  session in a subfolder shares it, another linked worktree of the same repository does not. A chat the daemon gives no
+  checkout for counts when its folder is inside this one. The session's own terminals and closed sessions do not
+  count. The check is the window's; the daemon holds no lock. A refusal that arrives while the confirm is open makes
+  the confirm restore nothing and say why.
 - **Cards** (`features/chat/components/`). Every fact the history carries is shown, and a missing one is said to be
   unavailable (a diff the history did not keep, a checklist without items, a command time or exit code the provider
   does not report, a turn without the daemon's times shows "Turn finished", not an invented duration). Only a step
