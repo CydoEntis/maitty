@@ -240,7 +240,14 @@ Rules for `apps/gui/` (the look is in [DESIGN](DESIGN.md#desktop-app)).
    clicking one shows its own chat in the session's pane until you pick a session or **Back to main session**. Rename is
    in place (double-click, F2 or the menu). Right-click menus share `MenuPopup` (focus, arrow keys, Esc, kept inside the
    window). Split layouts are this window's own state, up to four panes, mixed right and down with draggable dividers; a
-   session closes with a 6 second Undo. Crewmates (`features/crew/`) is not mounted: the redesign leaves it undesigned.
+   session closes with a 6 second Undo. **Put away** (the row menu of a finished or idle session in a daemon terminal,
+   shells too) sets the pane's `archived` flag (`Command::ArchivePane`) with a 6 second Undo; it closes, stops and moves
+   nothing, so the session keeps running, stays in the daemon's list and keeps its worktree in use. Put-away sessions are
+   listed only under the folded **Put away** section at the foot of the list (`model/sidebar.ts`, `splitPutAway`), each
+   with **Bring back** (its hover button and its menu). The rail shows no trace of put-away sessions (one that needs you
+   still shows), and the tray menu still lists a put-away finished session. While Needs you would list one it is
+   listed there instead, still put away on the daemon; once it no longer needs you it goes back under Put away. A chat
+   cannot be put away: its daemon archive is how a chat is closed. Crewmates (`features/crew/`) is not mounted: the redesign leaves it undesigned.
 3. A terminal sits on the workspace card's own ground (`--main`, xterm's background and ANSI black), so a pane reads as
    part of the card and not as a box inside it.
 4. The window's state is put together once, in `features/workspace/useWorkspaceState.ts`, and `DesktopApp` hands it to
@@ -1047,8 +1054,16 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   `../other/y.rs`), and one with whitespace or a `"` is written in double quotes, its own quotes escaped as `\"`. Folders are matched
   without case on a Windows drive path. The message stays plain text. A list of 50 says
   only the best 50 are listed; a daemon that stopped its walk early says some files may be missing. A failed search,
-  a daemon older than protocol 89 among them, is one quiet line in the list. It is not offered for a session on another
-  machine or one with no pane to ask.
+  a daemon older than protocol 89 among them, is one quiet line in the list. For a session on another machine the
+  picker reads that machine's folder index instead (`index_remote_files`, the host's ssh index the Get a file dialog
+  uses; no daemon question, so no protocol floor): the session's folder is indexed as the list opens, down to six
+  folders deep (`INDEX_DEPTH`), and the box ranks the index itself (`fuzzyFind`, the dialog's ranking); the paths are
+  already relative to the folder. An index of the same machine and folder is reused while it runs and for 30 s after
+  it finishes (`INDEX_KEPT_MS`); a failed one is not kept. Until the index comes the list says "Looking for files…"
+  and ↑ ↓ and Tab do nothing, but Enter sends the message as typed, since a machine that has gone quiet can take its
+  ssh line's timeout to answer. A failed index is the same quiet line; a machine shown as down says "Machine offline"
+  and asks nothing. Which place a session gets is `fileSearchOf` (`fileMention.ts`). It is not offered in the browser
+  build or for a session of this computer with no pane to ask.
 - **Attachments** (ticket 20). A paperclip left of the text box (tooltip and `aria-label` "Attach files",
   or "Attach files: <reason>" while the composer is off; `aria-disabled`, not `disabled`, so the reason can be read),
   a drop on the composer, or a bare image pasted into the box adds files to the draft; a paste that holds any text

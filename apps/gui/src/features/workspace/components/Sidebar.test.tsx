@@ -28,7 +28,7 @@ function show(sessions: SessionView[], more: Partial<SidebarProps> = {}) {
     sessions, machines: [LOCAL_HEAD], order: 'creation', focusedId: null, openSubagent: null, mode: 'docked', online: true, canStart: true, renamingId: null, portalContainer: null,
     onToggleRail: none, side: 'left', width: 264, onResize: none, onResizeEnd: none, grouping: 'machine', onGrouping: none, onSearch: none,
     onNewAgentChat: none, onNewShell: none, onAddMachine: none, onMachineSettings: none, onRenameMachine: none, onUpdateMachine: none, onShowSession: none, onShowSubagent: none, onRenameSession: none,
-    onSetName: none, onSplitSession: none, onSplitSubagent: none, onCopyPath: none, onCopyText: none, onShowChanges: none, onMarkDone: none, onGetFile: none,
+    onSetName: none, onSplitSession: none, onSplitSubagent: none, onCopyPath: none, onCopyText: none, onShowChanges: none, onMarkDone: none, onPutAway: none, onBringBack: none, onGetFile: none,
     onEndSession: none, onOpenSettings: none, onRecentSessions: none, updateSlot: null, railUpdateSlot: null,
     ...more,
   }
@@ -272,6 +272,53 @@ describe('a session row', () => {
     expect(onMarkDone).toHaveBeenCalledWith('t1')
   })
 
+  it('offers Put away on a finished or idle session, not on a busy one, and asks for that session', async () => {
+    const onPutAway = vi.fn()
+    show([session(1, { agent: 'claude', named: true, title: 'Finished', status: 'done' }), session(2, { named: true, title: 'Shell' }), session(3, { agent: 'claude', named: true, title: 'Busy', status: 'working' })], { onPutAway })
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Busy,/ }))
+    expect(screen.queryByRole('menuitem', { name: 'Put away' })).toBeNull()
+    await userEvent.keyboard('{Escape}')
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Shell,/ }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Put away' }))
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Finished,/ }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Put away' }))
+    expect(onPutAway.mock.calls).toEqual([['t2'], ['t1']])
+  })
+
+  it('lists put-away sessions, terminals included, only under a folded Put away section at the bottom', async () => {
+    const onBringBack = vi.fn()
+    show([
+      session(1, { agent: 'claude', named: true, title: 'Away agent', status: 'done', archived: true }),
+      session(2, { named: true, title: 'Away shell', archived: true }),
+      session(3, { agent: 'claude', named: true, title: 'Here' }),
+    ], { grouping: 'status', onBringBack })
+    expect(names()).toEqual(['Here'])
+    const head = screen.getByRole('button', { name: /^Put away/, expanded: false })
+    expect(head).toHaveTextContent('2')
+    await userEvent.click(head)
+    const list = screen.getByRole('list', { name: 'Put away' })
+    expect(within(list).getAllByRole('button', { name: /, (idle|done)$/ }).map((row) => row.getAttribute('aria-label')?.split(',')[0])).toEqual(['Away agent', 'Away shell'])
+    expect(screen.queryByRole('list', { name: 'Terminals' })).toBeNull()
+    await userEvent.click(within(list).getByRole('button', { name: 'Bring back Away shell' }))
+    expect(onBringBack).toHaveBeenCalledWith('t2')
+  })
+
+  it('offers Bring back in the menu of a put-away session', async () => {
+    const onBringBack = vi.fn()
+    show([session(1, { agent: 'claude', named: true, title: 'Away', archived: true })], { onBringBack })
+    await userEvent.click(screen.getByRole('button', { name: /^Put away/ }))
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Away,/ }))
+    expect(screen.queryByRole('menuitem', { name: 'Put away' })).toBeNull()
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Bring back' }))
+    expect(onBringBack).toHaveBeenCalledWith('t1')
+  })
+
+  it('lists a put-away session that needs you under Needs you, not under Put away', () => {
+    show([session(1, { agent: 'claude', named: true, title: 'Asking', status: 'needs-you', archived: true })], { grouping: 'status' })
+    expect(within(screen.getByRole('list', { name: 'Needs you' })).getByRole('button', { name: /^Asking,/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^Put away/ })).toBeNull()
+  })
+
   it('starts renaming on a double-click', async () => {
     const user = userEvent.setup()
     const onRenameSession = vi.fn()
@@ -336,7 +383,7 @@ describe('a session row', () => {
     show([session(1, { agent: 'claude', named: true, title: 'Growth' }), session(2)], { focusedId: 't2', onEndSession })
     fireEvent.contextMenu(screen.getByRole('button', { name: /^Growth,/ }))
     const menu = screen.getByRole('menu', { name: 'Growth' })
-    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Open', 'Open in split right', 'Open in split down', 'Show changes', 'Rename…F2', 'Copy folder path', 'Stop session'])
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Open', 'Open in split right', 'Open in split down', 'Show changes', 'Rename…F2', 'Copy folder path', 'Put away', 'Stop session'])
     await user.click(within(menu).getByRole('menuitem', { name: 'Stop session' }))
     expect(onEndSession).toHaveBeenCalledWith('t1')
   })

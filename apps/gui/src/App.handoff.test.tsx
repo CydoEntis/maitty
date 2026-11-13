@@ -374,16 +374,16 @@ describe('desktop terminal multiplexer', () => {
     await waitFor(() => { expect(daemon.renameConversationOnDaemon).toHaveBeenCalledWith({ id: 't2' }, '') })
   })
 
-  it('has no Archive: the menu offers none, and a session archived earlier shows as a normal row', async () => {
+  it('has no Archive: a session put away earlier is listed under Put away, with Bring back', async () => {
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`), term(3, `${HOME}/b`, { archived: true })])
     renderDesktopApp()
     const sidebar = await screen.findByRole('navigation', { name: 'Sessions' })
-    const row = await within(sidebar).findByRole('button', { name: 'b, shell, idle' })
-    expect(within(sidebar).queryByRole('region', { name: 'Archived sessions' })).not.toBeInTheDocument()
+    fireEvent.click(await within(sidebar).findByRole('button', { name: /^Put away/, expanded: false }))
+    const row = within(within(sidebar).getByRole('list', { name: 'Put away' })).getByRole('button', { name: 'b, shell, idle' })
 
     fireEvent.contextMenu(row)
 
-    expect(await screen.findByRole('menuitem', { name: /^Rename…/ })).toBeInTheDocument()
+    expect(await screen.findByRole('menuitem', { name: 'Bring back' })).toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: 'Archive' })).not.toBeInTheDocument()
   })
 

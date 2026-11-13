@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Conversation } from '@/data/preview'
 import { LOCAL_HEAD, type MachineHead } from './machines'
 import { toSessionView, type SessionView } from './session'
-import { byUrgency, inProject, machineGroups, projectChoices, projectColor, projectGroups, projectSections, rowTitle, rowWord, statusSections, terminalSessions } from './sidebar'
+import { byUrgency, canPutAway, inProject, machineGroups, projectChoices, projectColor, projectGroups, projectSections, rowTitle, rowWord, splitPutAway, statusSections, terminalSessions } from './sidebar'
 
 vi.mock('@/api/daemon', () => ({ terminalOf: (id: string) => Number(id.slice(1)) }))
 
@@ -120,5 +120,40 @@ describe('projects', () => {
 
   it('gives a project on two machines a heading for each, this computer first', () => {
     expect(projectSections(sessions(), [LOCAL_HEAD, devbox]).map((section) => [section.name, section.head.name, section.sessions.length])).toEqual([['a', null, 1], ['a', 'devbox', 1], ['b', null, 1]])
+  })
+})
+
+describe('putting a session away', () => {
+  const away = (pane: number, extra: Partial<Conversation> = {}) => session(pane, { archived: true, ...extra })
+
+  it('lists put-away agents and terminals only under Put away, as created', () => {
+    const { listed, putAway } = splitPutAway([away(3, { agent: 'claude' }), session(1, { agent: 'claude' }), away(2), session(4)])
+    expect(putAway.map((item) => item.id)).toEqual(['t2', 't3'])
+    expect(listed.map((item) => item.id)).toEqual(['t1', 't4'])
+    expect(statusSections(listed).flatMap((section) => section.sessions.map((item) => item.id))).toEqual(['t1'])
+    expect(terminalSessions(listed).map((item) => item.id)).toEqual(['t4'])
+  })
+
+  it('lists a put-away session that needs you under Needs you, still put away on the daemon', () => {
+    const asking = away(1, { agent: 'claude', status: 'needs-you' })
+    const { listed, putAway } = splitPutAway([asking])
+    expect(putAway).toEqual([])
+    expect(statusSections(listed).map((section) => [section.key, section.sessions.map((item) => item.id)])).toEqual([['needs', ['t1']]])
+    expect(listed[0]?.archived).toBe(true)
+  })
+
+  it('lists a put-away agent that stopped under Needs you, and keeps an exited shell put away', () => {
+    const { listed, putAway } = splitPutAway([away(1, { agent: 'claude', details: exited }), away(2, { details: exited })])
+    expect(listed.map((item) => item.id)).toEqual(['t1'])
+    expect(putAway.map((item) => item.id)).toEqual(['t2'])
+  })
+
+  it('offers Put away for a finished or idle session that is not put away already', () => {
+    expect([session(1, { status: 'done' }), session(2), session(3, { status: 'working' }), session(4, { status: 'needs-you' }), away(5)].map(canPutAway)).toEqual([true, true, false, false, false])
+  })
+
+  it('does not offer Put away for a chat session, whose daemon archive closes it', () => {
+    const chat: Conversation = { id: '1', title: '', project: '', folder: '/home/me/app', cwd: '/home/me/app', branch: '', provider: 'Claude', status: 'done', updated: null, model: '', permission: '', context: null, nativePane: null, hasDiff: false, execution: 'Structured', chat: { conversation: 1, generation: 1 } }
+    expect(canPutAway(toSessionView(chat, '/home/me'))).toBe(false)
   })
 })
