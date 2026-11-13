@@ -299,7 +299,8 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   is here too, and so is one held by its plan limit), **Working** ("running now"), **Finished** (green, "ready to review") and **Idle** ("nothing to do"; a
   session the daemon cannot read is here), each a 28px heading with its count, its few words
   and a caret that folds it; a section with nothing in it is not listed, and rows keep creation order within one. **Terminals** (`terminalSessions`) is pinned over the sidebar's foot in the status and the project list, outside the agents' scrolling list (a third of the sidebar's height at most, then it scrolls on its own): every session with no agent in it (a shell, or a program running in one), as created, each row saying its project, so agents are never sorted among dev servers. A terminal that needs you is listed under Needs you until it no longer does; the machine list keeps terminals under their machine. A row
-  of another machine says `· machine` after its project. **By project** (`projectSections`): one heading per project
+  of another machine says `· machine` after its project (the nickname given to it, else its name; the tooltip has its
+  name); a row of this computer names no machine. **By project** (`projectSections`): one heading per project
   by name, with its colour square, count and needs-you count; a project on another machine gets its own heading,
   `name · machine` with the line's dot. In both, a machine that needs the app is listed under the rows with its
   **↑ Update** (or Install) button or its percentage, since no machine heading carries it, and a draft chat is the
@@ -721,6 +722,9 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   in the theme's magenta with the branch mark, or the tree and the branch in blue when it runs in a worktree. Under
   it the title, with the time or the stop word at its right. Inside a project group the folder is in the heading, so
   the first line is the branch alone, and a session with neither has only its title (`SessionRow.tsx`, `PlaceLine`).
+  Only a session on another machine, outside that machine's heading, has `· machine` after the folder, and only then is
+  the branch held to 58% of the line; otherwise it takes all the folder leaves, cut with `…` and its full name in the
+  tooltip.
   The close button shows on hover over the time.
 - **Rows slide, folds fold, never both.** A row that changes place slides there (`useFlip`). A section or a
   session's subagents folding moves what is under it by itself, so while a fold runs nothing slides, and where things

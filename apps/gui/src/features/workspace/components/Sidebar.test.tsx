@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { Conversation, SubagentActivity } from '@/data/preview'
+import { writeMachineNicknames } from '@/data/machineNicknames'
 import { LOCAL_HEAD, type MachineHead } from '../model/machines'
 import { toSessionView, type SessionView } from '../model/session'
 import { Sidebar, type SidebarProps } from './Sidebar'
@@ -47,6 +48,11 @@ describe('the sidebar', () => {
     expect(within(here).getByRole('button', { name: /^Here,/ })).toBeTruthy()
     expect(within(there).getByRole('button', { name: /^There,/ })).toBeTruthy()
     expect(screen.getByRole('button', { name: /^This computer/, expanded: true })).toHaveTextContent('1')
+  })
+
+  it('leaves the machine off a row under its own machine heading', () => {
+    show([session(2, { machine: 4, machineName: 'devbox', agent: 'claude', named: true, title: 'There', repo: 'app2', branch: 'feat/remote-branch' })], { machines: [LOCAL_HEAD, DEVBOX] })
+    expect(screen.getByRole('button', { name: /^There,/ }).querySelector('.mx-row-text')?.textContent).toBe('app2feat/remote-branchThere')
   })
 
   const MIXED = () => [
@@ -441,6 +447,23 @@ describe('grouped by status', () => {
   it('says which other machine a row runs on, since no heading does', () => {
     show([session(2, { machine: 4, machineName: 'devbox', agent: 'claude', named: true, title: 'There' })], { machines: [LOCAL_HEAD, DEVBOX], grouping: 'status' })
     expect(within(screen.getByRole('button', { name: /^There,/ })).getByText('· devbox')).toBeTruthy()
+  })
+
+  it('names another machine by its given name, with its own name as the tooltip, and this computer not at all', () => {
+    writeMachineNicknames({ devbox: 'Kingdom' })
+    try {
+      show([
+        session(1, { agent: 'claude', named: true, title: 'Here', repo: 'app1', branch: 'feat/local-branch' }),
+        session(2, { machine: 4, machineName: 'devbox', agent: 'claude', named: true, title: 'There', repo: 'app2', branch: 'feat/remote-branch' }),
+      ], { machines: [LOCAL_HEAD, DEVBOX], grouping: 'status' })
+      const there = screen.getByRole('button', { name: /^There,/ })
+      expect(within(there).getByText('· Kingdom')).toHaveAttribute('title', 'devbox')
+      expect(there).toHaveTextContent('feat/remote-branch')
+      const here = screen.getByRole('button', { name: /^Here,/ })
+      expect(here.querySelector('.mx-row-text')?.textContent).toBe('app1feat/local-branchHere')
+    } finally {
+      writeMachineNicknames({})
+    }
   })
 
   it('folds a section away from its heading', async () => {
