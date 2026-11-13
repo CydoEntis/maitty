@@ -70,6 +70,8 @@ export type ChatPaneProps = {
   effort?: string | null | undefined
   /** Where a sent message's Edit from here restores the files from. */
   rewind?: RewindPlace | undefined
+  /** Leaves out runs of tool calls that succeeded and edited nothing (the desktop setting). */
+  hideSuccessfulTools?: boolean
 }
 
 /**
@@ -105,6 +107,7 @@ export function ChatPane(props: ChatPaneProps) {
             problem={props.problem ?? null}
             {...(props.branchMenu === undefined ? {} : { branchMenu: props.branchMenu })}
             effort={props.effort ?? null}
+            hideSuccessfulTools={props.hideSuccessfulTools ?? false}
             {...(props.rewind === undefined ? {} : { rewind: props.rewind })}
             {...(props.sessionId === undefined ? {} : { sessionId: props.sessionId })}
             {...(props.paneStatus === undefined ? {} : { paneStatus: props.paneStatus })}

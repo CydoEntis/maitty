@@ -635,6 +635,9 @@ function ChatSection({ preferences, update }: { preferences: SettingsPreferences
         <Row label="Full access in new chats" detail="Start new chats with the agent's skip-permissions mode: no sandbox and no approval prompts, so the agent can change files and run commands without asking. Each chat can still turn it off or on when it starts.">
           <Switch aria-label="Full access in new chats" checked={preferences.chatFullAccessDefault} onCheckedChange={(value) => { update('chatFullAccessDefault', value) }} />
         </Row>
+        <Row label="Hide successful tool calls" detail="Leaves out the reads, searches and commands that worked. A run that failed or edited a file still shows, and so does each turn's changes.">
+          <Switch aria-label="Hide successful tool calls" checked={preferences.hideSuccessfulTools} onCheckedChange={(value) => { update('hideSuccessfulTools', value) }} />
+        </Row>
         {CHAT_AGENTS.map((agent) => (
           <Row key={agent} label={`${agent === 'claude' ? 'Claude' : 'Codex'} sessions open in`} detail="Only a session with a chat opens in it; the switch on each pane changes one session.">
             <SegmentedChoice label={`${agent === 'claude' ? 'Claude' : 'Codex'} sessions open in`} value={preferences.chatViewDefault[agent]} options={CHAT_VIEW_OPTIONS} onChange={(value) => { update('chatViewDefault', { ...preferences.chatViewDefault, [agent]: value }) }} />

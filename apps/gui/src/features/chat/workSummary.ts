@@ -47,6 +47,15 @@ export function workStatus(steps: readonly WorkStep[]): ItemStatus {
   return steps.at(-1)?.status ?? 'completed'
 }
 
+/**
+ * A run that can be hidden by Settings › Chat › Hide successful tool calls: every step a command or tool that finished
+ * well. An edit always shows, and a step still running, failed, stopped, or a command with a nonzero exit code is
+ * not counted a success.
+ */
+export function isQuietRun(steps: readonly WorkStep[]): boolean {
+  return steps.every((step) => step.kind !== 'edit' && step.status === 'completed' && (step.kind !== 'command' || step.exitCode === null || step.exitCode === 0))
+}
+
 /** How long the run took by the daemon's own times, first start to last finish; null when it gave none. */
 export function workDurationMs(steps: readonly WorkStep[]): number | null {
   const started = steps[0]?.timing.startedAtMs ?? null

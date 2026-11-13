@@ -142,10 +142,12 @@ type Props = {
   effort?: string | null | undefined
   /** Where a sent message's Edit from here restores the files from; absent where it is not offered. */
   rewind?: RewindPlace | undefined
+  /** Leaves out runs of tool calls that succeeded and edited nothing (Settings › Chat). */
+  hideSuccessfulTools?: boolean
 }
 
 /** The chat of one session: its history as a virtualised list, the daemon's status, and the composer under it. */
-export function ChatSession({ link, agent, online, hasTerminal = true, worktree: paneWorktree, root = null, onOpenDiff = null, onOpenFile = null, typeInto, paneQueue, ask = null, sessionId, paneStatus, folder = '', branch = null, onOpenFolder = null, subagent = null, onBackToMain, onShowTerminal, usage, problem = null, branchMenu, effort = null, rewind }: Props) {
+export function ChatSession({ link, agent, online, hasTerminal = true, worktree: paneWorktree, root = null, onOpenDiff = null, onOpenFile = null, typeInto, paneQueue, ask = null, sessionId, paneStatus, folder = '', branch = null, onOpenFolder = null, subagent = null, onBackToMain, onShowTerminal, usage, problem = null, branchMenu, effort = null, rewind, hideSuccessfulTools = false }: Props) {
   const { feed, events, offline, readError, refresh, recordAnswer, unwatchedReads } = useChatFeed({ conversation: link.conversation, generation: link.generation, provider: agent })
   const paneWorking = paneStatus === 'working'
   const [branches] = useFolderBranches(root ?? '')
@@ -296,7 +298,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
   const replied = lastKind !== undefined && lastKind !== 'user' && lastKind !== 'echo'
   useEffect(() => { repliedRef.current = replied })
   const holdWorking = settling && !replied
-  const allRows = useMemo(() => buildRows(events, working || holdWorking, root, echoText, echoThinking), [events, working, holdWorking, root, echoText, echoThinking])
+  const allRows = useMemo(() => buildRows(events, working || holdWorking, root, echoText, echoThinking, hideSuccessfulTools), [events, working, holdWorking, root, echoText, echoThinking, hideSuccessfulTools])
   const rows = useMemo(() => allRows.filter((row) => !isPendingApproval(row)), [allRows])
   // Rows are known, and so shown whole, once a read has brought them without the person watching: the first read after
   // the chat opened (until then it shows what this window remembered, which may be behind) and one after the window was
