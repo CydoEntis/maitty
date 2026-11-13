@@ -323,7 +323,7 @@ mod tests {
     }
 
     fn delta(changed: Vec<crate::protocol::TermInfo>, removed: Vec<u32>) -> ServerMsg {
-        ServerMsg::TermsChanged { changed, removed, revision: 0 }
+        ServerMsg::TermsChanged { changed, removed, reasons: Default::default(), revision: 0 }
     }
 
     #[test]

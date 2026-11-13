@@ -1131,6 +1131,7 @@ impl Daemon {
             }
             Command::KillServer { forget } => {
                 tracing::info!("kill-server requested (forget: {forget})");
+                self.stopping = true;
                 let session_save = if forget {
                     None
                 } else {

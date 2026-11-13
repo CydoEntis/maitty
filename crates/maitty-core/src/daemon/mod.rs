@@ -47,7 +47,7 @@ use crate::layout::Node;
 use crate::protocol::*;
 use anyhow::Result;
 use interprocess::local_socket::traits::tokio::Listener as _;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -321,6 +321,8 @@ impl SentState {
         rest.terms.clear();
         // The revision numbers the message, so it is no part of what the message says changed.
         rest.revision = 0;
+        // What left is told once, with the message; it is no part of the state compared.
+        rest.removed.clear();
         let rest = crate::protocol::encode(&rest).ok()?;
         let terms = snap
             .terms
@@ -395,6 +397,13 @@ struct Daemon {
     /// How many states and pane deltas each surface's attached clients have been sent
     /// (`Snapshot::revision`).
     sent_revision: HashMap<Surface, u64>,
+    /// The panes each surface's attached clients were last told of. Unlike `sent_state` it
+    /// outlives an attach, so the whole state that follows one still says which panes left.
+    listed: HashMap<Surface, BTreeSet<TermId>>,
+    /// Why each pane that ended did, kept while a surface still lists it.
+    ended: HashMap<TermId, RemovalReason>,
+    /// The daemon was told to stop: a pane that ends from here on ended for that.
+    stopping: bool,
     conversation_news: conversation::news::News,
     /// What was last noted for whoever replaces this server (see `restart`).
     last_activity: Option<crate::restart::Activity>,
@@ -1190,6 +1199,9 @@ impl Daemon {
             last_saved: String::new(),
             sent_state: HashMap::new(),
             sent_revision: HashMap::new(),
+            listed: HashMap::new(),
+            ended: HashMap::new(),
+            stopping: false,
             conversation_news: conversation::news::News::default(),
             last_activity: None,
             check_dir: persist::check_output_dir(),
@@ -1398,14 +1410,17 @@ impl Daemon {
     /// Send the surface's clients what changed since the last state they got: only the panes
     /// that differ when the rest of the snapshot is the same, the whole snapshot otherwise, and
     /// nothing when nothing visible changed. Compared as encoded bytes, so no field is left out.
-    /// Each message sent carries the surface's next revision.
+    /// Each message sent carries the surface's next revision, and why each pane it drops left.
     fn publish_state(&mut self, surface: Surface, mut snap: Snapshot) {
         let attached = |client: &Client| client.attach && client.surface == surface;
         let revision = self.revision_of(surface) + 1;
         snap.revision = revision;
+        snap.removed = self.left_since_last_message(surface, &snap);
+        let listed: BTreeSet<TermId> = snap.terms.keys().copied().collect();
         let Some(encoded) = SentState::encode(&snap) else {
             self.sent_state.remove(&surface);
             self.sent_revision.insert(surface, revision);
+            self.note_listed(surface, listed);
             self.broadcast(attached, ServerMsg::State(snap));
             return;
         };
@@ -1424,14 +1439,61 @@ impl Daemon {
                     .copied()
                     .collect();
                 (!changed.is_empty() || !removed.is_empty())
-                    .then_some(ServerMsg::TermsChanged { changed, removed, revision })
+                    .then_some(ServerMsg::TermsChanged {
+                        changed,
+                        removed,
+                        reasons: snap.removed.clone(),
+                        revision,
+                    })
             }
             _ => Some(ServerMsg::State(snap)),
         };
         self.sent_state.insert(surface, encoded);
         if let Some(message) = message {
             self.sent_revision.insert(surface, revision);
+            self.note_listed(surface, listed);
             self.broadcast(attached, message);
+        }
+    }
+
+    /// The panes `surface` was last told of that `snap` no longer lists, and why each left.
+    fn left_since_last_message(
+        &self,
+        surface: Surface,
+        snap: &Snapshot,
+    ) -> BTreeMap<TermId, RemovalReason> {
+        self.listed
+            .get(&surface)
+            .into_iter()
+            .flatten()
+            .filter(|id| !snap.terms.contains_key(id))
+            .filter_map(|id| Some((*id, self.removal_reason(*id, surface)?)))
+            .collect()
+    }
+
+    /// Why a pane is not in `surface`'s list. None only for a pane that ended unrecorded.
+    fn removal_reason(&self, term: TermId, surface: Surface) -> Option<RemovalReason> {
+        match self.terms.get(&term) {
+            None => self.ended.get(&term).copied(),
+            Some(t) if t.owner != surface => Some(RemovalReason::Moved),
+            Some(t) if t.closing.is_some() => Some(RemovalReason::Closed),
+            // Still running and this surface's own, so what hides it is being a spare.
+            Some(_) => Some(RemovalReason::PutAway),
+        }
+    }
+
+    fn note_listed(&mut self, surface: Surface, listed: BTreeSet<TermId>) {
+        self.listed.insert(surface, listed);
+        let listed = &self.listed;
+        self.ended
+            .retain(|term, _| listed.values().any(|ids| ids.contains(term)));
+    }
+
+    /// Remember why a pane ended, for the surfaces that still list it.
+    fn note_ended(&mut self, term: TermId, reason: RemovalReason) {
+        if self.listed.values().any(|ids| ids.contains(&term)) {
+            let reason = if self.stopping { RemovalReason::DaemonStopping } else { reason };
+            self.ended.insert(term, reason);
         }
     }
 
@@ -1820,13 +1882,13 @@ impl Daemon {
                 }
                 if self.terms.contains_key(&tid) {
                     self.last_loss = Some(Instant::now());
-                    self.remove_term(tid);
+                    self.remove_term(tid, RemovalReason::Exited);
                 }
             }
             Ev::ProcessExited(tid) => {
                 if self.terms.contains_key(&tid) {
                     self.last_loss = Some(Instant::now());
-                    self.remove_term(tid);
+                    self.remove_term(tid, RemovalReason::Exited);
                 }
             }
             Ev::Scan(found) => {
@@ -3069,6 +3131,7 @@ impl Daemon {
             spent_today: self.spent_today(),
             today: usage::today(&self.turns, &self.spent, term::unix_now()),
             revision: 0,
+            removed: BTreeMap::new(),
         }
     }
 
@@ -3384,7 +3447,7 @@ impl Daemon {
             }
             tracing::info!("pane {term}: closed, the agent it was started as has ended");
             let tops = self.worktrees_of(&[term]);
-            self.close_term(term);
+            self.end_term(term, RemovalReason::Exited);
             // No client asked for this close, so there is none to tell what became of a worktree.
             self.cleanup_worktrees(ClientId::MAX, tops);
         }
@@ -3408,15 +3471,21 @@ impl Daemon {
         }
     }
 
+    /// End a pane on purpose. To a list that showed it, a person closed it.
     fn close_term(&mut self, term: TermId) {
+        self.end_term(term, RemovalReason::Closed);
+    }
+
+    fn end_term(&mut self, term: TermId, reason: RemovalReason) {
         if let Some(t) = self.terms.get_mut(&term) {
             t.kill_tree();
         }
-        self.remove_term(term);
+        self.remove_term(term, reason);
     }
 
     /// Drop a terminal and prune the tree: empty tabs and workspaces disappear.
-    fn remove_term(&mut self, term: TermId) {
+    fn remove_term(&mut self, term: TermId, reason: RemovalReason) {
+        self.note_ended(term, reason);
         // Closing a terminal can block on Windows until its programs let go; never here.
         if let Some(t) = self.terms.remove(&term) {
             std::thread::spawn(move || drop(t));

@@ -203,6 +203,7 @@ fn a_whole_snapshot_is_given_and_a_delta_is_merged_into_that_machines_own() {
         ServerMsg::TermsChanged {
             changed: vec![pane(9)],
             removed: Vec::new(),
+            reasons: Default::default(),
             revision: 0,
         },
         now,
@@ -223,6 +224,7 @@ fn a_whole_snapshot_is_given_and_a_delta_is_merged_into_that_machines_own() {
         ServerMsg::TermsChanged {
             changed: vec![pane(3)],
             removed: vec![1, 4040],
+            reasons: Default::default(),
             revision: 0,
         },
         now,
@@ -243,6 +245,7 @@ fn a_whole_snapshot_is_given_and_a_delta_is_merged_into_that_machines_own() {
         ServerMsg::TermsChanged {
             changed: Vec::new(),
             removed: vec![1],
+            reasons: Default::default(),
             revision: 0,
         },
         now,
@@ -507,6 +510,7 @@ fn another_machines_pane_deltas_cannot_grow_its_list_past_the_cap() {
             ServerMsg::TermsChanged {
                 changed,
                 removed: Vec::new(),
+                reasons: Default::default(),
                 revision: 0,
             },
             now,
@@ -534,6 +538,7 @@ fn this_computers_pane_deltas_are_not_held_to_another_machines_cap() {
         ServerMsg::TermsChanged {
             changed,
             removed: Vec::new(),
+            reasons: Default::default(),
             revision: 0,
         },
         now,

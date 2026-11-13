@@ -121,13 +121,13 @@ pub fn vet(opts: &MachineOpts, asked: bool, machine: &str, msg: ServerMsg) -> Op
                 return None;
             }
         },
-        ServerMsg::TermsChanged { changed, removed, revision } => {
-            if removed.len() > ITEMS_MAX {
+        ServerMsg::TermsChanged { changed, removed, reasons, revision } => {
+            if removed.len() > ITEMS_MAX || reasons.len() > ITEMS_MAX {
                 tracing::debug!("refused a pane delta from another machine: too many removals");
                 return None;
             }
             match sanitize_terms(changed) {
-                Ok(changed) => ServerMsg::TermsChanged { changed, removed, revision },
+                Ok(changed) => ServerMsg::TermsChanged { changed, removed, reasons, revision },
                 Err(why) => {
                     tracing::debug!(why, "refused a pane delta from another machine");
                     return None;
@@ -271,7 +271,7 @@ mod tests {
             &nothing_on(),
             false,
             "box",
-            ServerMsg::TermsChanged { changed: vec![pane], removed: Vec::new(), revision: 0 },
+            ServerMsg::TermsChanged { changed: vec![pane], removed: Vec::new(), reasons: Default::default(), revision: 0 },
         ) else {
             panic!("a pane delta is applied");
         };
@@ -305,6 +305,7 @@ mod tests {
             ServerMsg::TermsChanged {
                 changed: Vec::new(),
                 removed: Vec::new(),
+                reasons: Default::default(),
                 revision: 0,
             },
             ServerMsg::Replay {

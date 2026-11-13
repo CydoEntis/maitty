@@ -944,6 +944,9 @@ pub enum ServerMsg {
     TermsChanged {
         changed: Vec<TermInfo>,
         removed: Vec<TermId>,
+        /// Why each of `removed` left. Empty from a daemon built before it.
+        #[serde(default)]
+        reasons: BTreeMap<TermId, RemovalReason>,
         /// See `Snapshot::revision`.
         #[serde(default)]
         revision: u64,
@@ -1153,6 +1156,27 @@ pub struct Snapshot {
     /// sent the surface nothing yet.
     #[serde(default)]
     pub revision: u64,
+    /// The panes that left this surface's list since the message before this one, and why. Set
+    /// only on a `State` sent to the surface's attached clients: it says what that one message
+    /// dropped, so it is empty on attach, in `Reply::List`, and from a daemon built before it.
+    #[serde(default)]
+    pub removed: BTreeMap<TermId, RemovalReason>,
+}
+
+/// Why a pane left the list a surface is shown. A new reason is a new value inside a message
+/// older peers are still sent, so adding one moves `COMPATIBLE_SINCE`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RemovalReason {
+    /// A person closed it. It may still be inside its undo window, and then comes back as changed.
+    Closed,
+    /// Its program ended without anyone closing it.
+    Exited,
+    /// Hidden from every list, still running in the daemon.
+    PutAway,
+    /// It belongs to another surface now.
+    Moved,
+    /// It ended because the daemon is stopping.
+    DaemonStopping,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -2076,6 +2100,7 @@ mod tests {
             ServerMsg::TermsChanged {
                 changed: Vec::new(),
                 removed: vec![3],
+                reasons: BTreeMap::from([(3, RemovalReason::Exited)]),
                 revision: 4,
             },
             ServerMsg::Replay {
@@ -2482,13 +2507,58 @@ mod tests {
         };
         assert_eq!((removed, revision), (vec![3], 0));
 
-        let new = ServerMsg::TermsChanged { changed: Vec::new(), removed: Vec::new(), revision: 9 };
+        let new = ServerMsg::TermsChanged {
+            changed: Vec::new(),
+            removed: Vec::new(),
+            reasons: BTreeMap::new(),
+            revision: 9,
+        };
         assert!(matches!(
             decode(&encode(&new).unwrap()),
             Ok(ServerMsg::TermsChanged { revision: 9, .. })
         ));
         let numbered = Snapshot { revision: 9, ..Snapshot::default() };
         assert_eq!(decode::<Snapshot>(&encode(&numbered).unwrap()).unwrap().revision, 9);
+    }
+
+    #[test]
+    fn a_pane_delta_and_a_state_from_before_removal_reasons_read_as_no_reason_given() {
+        #[derive(Serialize)]
+        struct OldSnapshot {
+            workspaces: Vec<WorkspaceInfo>,
+            active_ws: Option<WsId>,
+            terms: BTreeMap<TermId, TermInfo>,
+            revision: u64,
+        }
+        #[derive(Serialize)]
+        enum OldServerMsg {
+            TermsChanged { changed: Vec<TermInfo>, removed: Vec<TermId>, revision: u64 },
+        }
+        let old = OldServerMsg::TermsChanged { changed: Vec::new(), removed: vec![3], revision: 2 };
+        let Ok(ServerMsg::TermsChanged { removed, reasons, .. }) = decode(&encode(&old).unwrap())
+        else {
+            panic!("an old pane delta still decodes");
+        };
+        assert_eq!(removed, vec![3]);
+        assert!(reasons.is_empty(), "an older daemon gives no reason");
+
+        let old =
+            OldSnapshot { workspaces: Vec::new(), active_ws: None, terms: BTreeMap::new(), revision: 2 };
+        assert!(decode::<Snapshot>(&encode(&old).unwrap()).unwrap().removed.is_empty());
+
+        let why = BTreeMap::from([(3, RemovalReason::Closed), (4, RemovalReason::Exited)]);
+        let new = ServerMsg::TermsChanged {
+            changed: Vec::new(),
+            removed: vec![3, 4],
+            reasons: why.clone(),
+            revision: 3,
+        };
+        let Ok(ServerMsg::TermsChanged { reasons, .. }) = decode(&encode(&new).unwrap()) else {
+            panic!("a pane delta with reasons decodes");
+        };
+        assert_eq!(reasons, why);
+        let state = Snapshot { removed: why.clone(), ..Snapshot::default() };
+        assert_eq!(decode::<Snapshot>(&encode(&state).unwrap()).unwrap().removed, why);
     }
 
     #[test]

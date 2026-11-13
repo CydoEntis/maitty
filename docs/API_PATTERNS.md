@@ -181,7 +181,20 @@ Each of the two carries a `revision` (`Snapshot::revision`, `TermsChanged.revisi
 counts them per surface from 1, one more for every message it sends that surface's attached
 clients, so a gap means a missed update. The snapshot a client gets on attach and in `Reply::List`
 carries the surface's current revision and uses none. The field is `#[serde(default)]`, so it
-needed no new `PROTOCOL_VERSION`; 0 means a daemon built before it, or a surface sent nothing yet. A
+needed no new `PROTOCOL_VERSION`; 0 means a daemon built before it, or a surface sent nothing yet.
+Each of the two also says why every pane it drops left, as a `RemovalReason` by pane id
+(`TermsChanged.reasons` for the ids in `removed`; `Snapshot::removed` on a whole `State`, for the
+panes that surface's clients were told of in the message before and are not in this one): `Closed`
+(a person closed it; a session inside its undo window is `Closed` too and comes back as changed if
+undone), `Exited` (its program ended, or the daemon closed the pane of an agent that had ended),
+`PutAway` (hidden, still running: a spare), `Moved` (another surface owns it now) or
+`DaemonStopping` (it ended after the daemon was told to stop). A pane replaced by a new one for the
+same session (woken, or moved into a worktree) leaves as `Closed`, with the new pane among the
+changed. The daemon keeps what each surface was last told across an attach, so the whole `State`
+that follows one still names what left. Both fields are `#[serde(default)]` (no new
+`PROTOCOL_VERSION`): empty from an older daemon, on the attach snapshot and in `Reply::List`, so
+no reason means not said, never a reason. A new `RemovalReason` is a new value in a message older
+peers are sent, so it moves `COMPATIBLE_SINCE`. A
 client merges a delta into the snapshot it holds and treats the result as a state update. For a pane delta from another machine the snapshot is that machine's own,
 and the delta is cleaned first (SECURITY, "remote daemon"). Replays follow `Hello.replays`: a terminal client takes every pane's replay on attach, the desktop window
 attaches without and sends `ClientMsg::WantReplay { term }` on its stream when it shows a pane; a

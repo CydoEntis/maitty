@@ -256,6 +256,7 @@ mod tests {
         let delta = crate::protocol::ServerMsg::TermsChanged {
             changed: vec![crate::protocol::TermInfo { id: 70, ..pane }],
             removed: Vec::new(),
+            reasons: Default::default(),
             revision: 0,
         };
         app.on_machine_server(MachineId(1), delta);
@@ -273,6 +274,7 @@ mod tests {
         app.on_server(crate::protocol::ServerMsg::TermsChanged {
             changed: vec![crate::protocol::TermInfo { id: 70, ..pane }],
             removed: Vec::new(),
+            reasons: Default::default(),
             revision: 0,
         });
         assert_eq!(app.snap.daemon_id.as_deref(), Some(BOX_A));
@@ -290,6 +292,7 @@ mod tests {
             crate::protocol::ServerMsg::TermsChanged {
                 changed: vec![pane],
                 removed: Vec::new(),
+                reasons: Default::default(),
                 revision: 0,
             },
         );
@@ -306,6 +309,7 @@ mod tests {
             crate::protocol::ServerMsg::TermsChanged {
                 changed: vec![pane],
                 removed: Vec::new(),
+                reasons: Default::default(),
                 revision: 0,
             },
         );
