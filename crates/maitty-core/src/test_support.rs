@@ -22,5 +22,6 @@ pub(crate) fn conversation() -> Conversation {
         awaiting_first_user_message: false,
         title: None,
         archived: false,
+        worktree_origin: None,
     }
 }

@@ -135,6 +135,14 @@ impl Launch {
                     bail!("Unsupported provider binding: profile-v2 and native profile configuration have no verified structured-chat mapping");
                 }
             }
+            // A chat in a worktree whose folder was deleted gets it back from its branch.
+            if let LaunchIdentity::Existing(c) = &self.identity
+                && let Some(origin) = &c.worktree_origin
+                && !c.binding.cwd.is_dir()
+                && c.binding.cwd.starts_with(&origin.folder)
+            {
+                crate::daemon::worktrees::recreate_worktree(&origin.main, &origin.folder, &origin.branch)?;
+            }
             let (config_root, executable, cwd) = self.paths();
             for path in [config_root, cwd] {
                 if !path.is_absolute() { bail!("Provider binding requires absolute paths"); }

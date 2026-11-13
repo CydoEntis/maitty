@@ -340,6 +340,21 @@ pub struct Conversation {
     /// Put away: hidden from the lists, still running and still in the daemon.
     #[serde(default)]
     pub archived: bool,
+    /// Where its worktree came from, when it runs in one: lets a send make the folder again.
+    #[serde(default)]
+    pub worktree_origin: Option<WorktreeOrigin>,
+}
+
+/// A chat's linked worktree: enough to make its folder again from the branch when the folder
+/// has been deleted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorktreeOrigin {
+    /// The repository's main checkout.
+    pub main: PathBuf,
+    /// The worktree's folder (its top, which may be above the chat's working directory).
+    pub folder: PathBuf,
+    pub branch: String,
 }
 
 /// Longest name a conversation may carry.
@@ -479,6 +494,10 @@ pub fn validate_registry(records: &[Conversation]) -> Result<(), IdentityError> 
                 .into_iter()
                 .all(|p| exact_path(p))
             || binding.worktree.as_deref().is_some_and(|p| !exact_path(p))
+            || record
+                .worktree_origin
+                .as_ref()
+                .is_some_and(|o| !exact_path(&o.main) || !exact_path(&o.folder) || o.branch.is_empty())
         {
             return Err(IdentityError::IncompleteBinding);
         }
@@ -546,6 +565,7 @@ pub mod tests {
             awaiting_first_user_message: false,
             title: None,
             archived: false,
+            worktree_origin: None,
         }
     }
 
@@ -563,6 +583,24 @@ pub mod tests {
             .remove("awaiting_first_user_message");
         let legacy: Conversation = serde_json::from_value(legacy).unwrap();
         assert!(!legacy.awaiting_first_user_message);
+    }
+
+    #[test]
+    fn a_conversation_from_before_worktree_origins_decodes_without_one() {
+        let mut old = serde_json::to_value(conversation()).unwrap();
+        old.as_object_mut().unwrap().remove("worktree_origin");
+        let old: Conversation = serde_json::from_value(old).unwrap();
+        assert_eq!(old.worktree_origin, None);
+
+        let mut c = conversation();
+        c.worktree_origin = Some(WorktreeOrigin {
+            main: std::env::temp_dir().join("main"),
+            folder: std::env::temp_dir().join("tree"),
+            branch: "task".into(),
+        });
+        let back: Conversation = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
+        assert_eq!(back, c);
+        assert!(validate_registry(&[back]).is_ok());
     }
 
     #[test]

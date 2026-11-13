@@ -68,6 +68,7 @@ fn claude_launch(root: &Path, scenario: Option<&str>) -> (Launch, super::runtime
         awaiting_first_user_message: false,
         title: None,
         archived: false,
+        worktree_origin: None,
     };
     let environment = scenario
         .map(|scenario| {
@@ -4042,6 +4043,7 @@ mod continue_turn;
 mod branch_chat;
 mod claude_chat;
 mod turn_snapshot;
+mod worktree_recreate;
 
 #[tokio::test]
 async fn the_daemon_resumes_a_stopped_conversation_on_the_same_id_and_the_next_generation() {

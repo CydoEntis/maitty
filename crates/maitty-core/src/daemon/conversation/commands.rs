@@ -2007,6 +2007,7 @@ impl Daemon {
                         return Ok(());
                     }
                 };
+                let origin = worktree_origin_of(&settings.cwd);
                 let c = Conversation {
                     id,
                     generation,
@@ -2041,6 +2042,12 @@ impl Daemon {
                         .iter()
                         .find(|conversation| conversation.id == id)
                         .is_some_and(|conversation| conversation.archived),
+                    worktree_origin: self
+                        .conversations
+                        .iter()
+                        .find(|conversation| conversation.id == id)
+                        .and_then(|conversation| conversation.worktree_origin.clone())
+                        .or(origin),
                 };
                 let mut proposed = self.conversations.clone();
                 proposed.retain(|c| c.id != id);
@@ -2605,6 +2612,17 @@ impl Daemon {
         }
         self.dirty = true;
     }
+}
+
+/// Where the linked worktree holding `cwd` came from, if it is in one. Reads the checkout's
+/// `.git` files only; no git process runs.
+fn worktree_origin_of(cwd: &std::path::Path) -> Option<crate::conversation::WorktreeOrigin> {
+    let head = crate::gitfs::head(cwd).filter(|h| h.linked)?;
+    Some(crate::conversation::WorktreeOrigin {
+        main: head.main_root,
+        folder: head.top,
+        branch: head.branch,
+    })
 }
 
 #[cfg(test)]

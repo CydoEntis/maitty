@@ -88,6 +88,29 @@ pub(super) fn create_trusted_worktree(
     Ok(made)
 }
 
+/// Make the deleted folder of a chat's worktree again from its branch, on the calling
+/// (background) thread. Git still lists the missing folder, so it is pruned first; a branch that
+/// is gone too is named, not guessed at.
+pub(super) fn recreate_worktree(
+    main: &std::path::Path,
+    folder: &std::path::Path,
+    branch: &str,
+) -> anyhow::Result<()> {
+    use anyhow::Context;
+    if !main.is_dir() {
+        anyhow::bail!("The repository at {} is gone, so the worktree for branch `{branch}` cannot be made again", main.display());
+    }
+    git::git(main, &["worktree", "prune"]).context("Pruning the missing worktree")?;
+    if git::git(main, &["show-ref", "--verify", "--quiet", &format!("refs/heads/{branch}")]).is_err() {
+        anyhow::bail!("The branch `{branch}` of this chat's worktree no longer exists, so its folder cannot be made again");
+    }
+    let place = folder.to_str().context("The worktree folder's name is not text")?;
+    git::git(main, &["worktree", "add", "--", place, branch])
+        .with_context(|| format!("Making the worktree for branch `{branch}` again"))?;
+    trust_like_repo(main, folder);
+    Ok(())
+}
+
 /// The first of `WT_NAMES`, counting on from `seed`, that is not in `taken`; with all of them
 /// taken, one with a number added.
 pub(super) fn made_up_branch(taken: &[String], seed: usize) -> String {

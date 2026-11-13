@@ -10103,6 +10103,7 @@ fn a_conversation_terminal_its_hooks_never_named_is_remembered_by_its_conversati
         awaiting_first_user_message: false,
         title: Some("parser fix".into()),
         archived: false,
+        worktree_origin: None,
     });
     d.command(0, Command::CloseSession { term: b }).unwrap();
     let [kept] = d.closed_sessions.list() else {
