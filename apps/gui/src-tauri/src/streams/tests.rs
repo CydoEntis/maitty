@@ -665,3 +665,45 @@ fn a_daemon_that_numbers_nothing_has_its_deltas_merged_as_they_come() {
     assert!(matches!(&second[..], [Out::Sessions { .. }]), "{second:?}");
     assert_eq!(listed(&streams, BOX), [1, 2, 3]);
 }
+
+fn asked(outs: &[Out]) -> usize {
+    outs.iter().filter(|out| matches!(out, Out::WantList { .. })).count()
+}
+
+#[test]
+fn a_burst_of_deltas_after_a_gap_asks_for_the_list_once() {
+    let mut streams = Streams::default();
+    let now = Instant::now();
+    let mut outs = streams.on_message(BOX, ServerMsg::State(numbered(1, &[1])), now);
+    for (revision, pane) in [(2, 2), (4, 4), (5, 5), (6, 6)] {
+        outs.extend(streams.on_message(BOX, delta(revision, &[pane], &[]), now));
+    }
+    assert_eq!(asked(&outs), 1);
+    assert_eq!(listed(&streams, BOX), [1, 2], "nothing past the gap is merged");
+
+    streams.on_message(BOX, ServerMsg::Reply(Reply::List(numbered(6, &[1, 2, 3, 4, 5, 6]))), now);
+    let next_gap = streams.on_message(BOX, delta(9, &[9], &[]), now);
+    assert_eq!(asked(&next_gap), 1, "the list that came settles the asking, so a new gap asks again");
+}
+
+#[test]
+fn a_list_that_never_comes_is_asked_for_again_after_a_while_and_on_a_new_line() {
+    let mut streams = Streams::default();
+    let now = Instant::now();
+    streams.on_message(BOX, ServerMsg::State(numbered(1, &[1])), now);
+    assert_eq!(asked(&streams.on_message(BOX, delta(3, &[3], &[]), now)), 1);
+
+    let soon = now + LIST_ASKED_AGAIN_AFTER - Duration::from_millis(1);
+    assert_eq!(asked(&streams.on_message(BOX, delta(4, &[4], &[]), soon)), 0);
+    let later = now + LIST_ASKED_AGAIN_AFTER;
+    assert_eq!(asked(&streams.on_message(BOX, delta(5, &[5], &[]), later)), 1);
+
+    streams.line_up(BOX);
+    assert_eq!(
+        asked(&streams.on_message(BOX, delta(6, &[6], &[]), later)),
+        1,
+        "what was asked of the old line is not waited for on the new one"
+    );
+    streams.forget(BOX);
+    assert_eq!(asked(&streams.on_message(BOX, delta(7, &[7], &[]), later)), 1);
+}

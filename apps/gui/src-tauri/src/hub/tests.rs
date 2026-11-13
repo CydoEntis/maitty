@@ -566,7 +566,7 @@ mod end_to_end;
 
 mod vetting {
     use super::*;
-    use maitty_shared::protocol::{Snapshot, TermInfo};
+    use maitty_shared::protocol::{Reply, Snapshot, TermInfo};
 
     /// A pane as a daemon encodes it, with the fields that have no default.
     fn pane(id: u32, title: &str, cols: u16) -> TermInfo {
@@ -638,6 +638,73 @@ mod vetting {
             hub.admit(BOX, ServerMsg::Reply(maitty_shared::protocol::Reply::Ok))
                 .is_none()
         );
+    }
+
+    /// The host's own reaction to a pane delta from `box` that does not follow what it holds:
+    /// it asks `box` for its whole list. The line is only marked up, so nothing is dialled.
+    fn a_delta_that_makes_the_host_ask_for_the_list(hub: &Hub) {
+        let handle = hub.handle();
+        lock(&handle.shared.up).insert(BOX);
+        let delta = ServerMsg::TermsChanged {
+            changed: Vec::new(),
+            removed: Vec::new(),
+            revision: 999,
+        };
+        let update = Update::Messages {
+            machine: BOX,
+            msgs: vec![delta],
+        };
+        let mut streams = crate::streams::Streams::default();
+        crate::terminal_stream::react(&mut streams, &handle, update, Instant::now());
+    }
+
+    fn list_from(daemon_id: Option<&str>) -> ServerMsg {
+        ServerMsg::Reply(Reply::List(Snapshot {
+            daemon_id: daemon_id.map(str::to_owned),
+            ..Snapshot::default()
+        }))
+    }
+
+    #[tokio::test]
+    async fn a_delta_that_makes_the_host_ask_for_the_list_opens_no_door_for_an_error_or_a_reply() {
+        let sandbox = Sandbox::new();
+        let mut hub = hub_with_box(&sandbox, false).await;
+        a_delta_that_makes_the_host_ask_for_the_list(&hub);
+        assert!(hub.admit(BOX, ServerMsg::Error("boom".into())).is_none());
+        let forged = ServerMsg::Reply(Reply::Folders {
+            tag: 1,
+            listing: maitty_shared::protocol::FolderListing::missing("/x"),
+        });
+        assert!(hub.admit(BOX, forged).is_none());
+        assert!(hub.admit(BOX, list_from(None)).is_some(), "the list it asked for is taken");
+        assert!(hub.admit(BOX, list_from(None)).is_none(), "one list for one asking");
+    }
+
+    #[tokio::test]
+    async fn a_list_is_taken_only_when_the_host_asked_for_the_list() {
+        let sandbox = Sandbox::new();
+        let mut hub = hub_with_box(&sandbox, false).await;
+        let handle = hub.handle();
+        lock(&handle.shared.up).insert(BOX);
+        let other = ClientMsg::Query(maitty_shared::protocol::Query::ListFolders {
+            path: "/x".into(),
+            tag: 1,
+        });
+        handle.send(Outgoing { machine: BOX, msg: other }).expect("the line is marked up");
+        assert!(hub.admit(BOX, list_from(None)).is_none());
+    }
+
+    #[tokio::test]
+    async fn a_list_from_a_different_daemon_at_a_known_name_turns_the_machine_away() {
+        let sandbox = Sandbox::new();
+        let mut known = MachineIds::default();
+        check_daemon_id(&mut known, "box", Some("aaaaaaaa11111111aaaaaaaa11111111")).unwrap();
+        known.save(&ids_file(&sandbox));
+        let mut hub = hub_with_box(&sandbox, false).await;
+        a_delta_that_makes_the_host_ask_for_the_list(&hub);
+        let theirs = list_from(Some("bbbbbbbb22222222bbbbbbbb22222222"));
+        assert!(hub.admit(BOX, theirs).is_none());
+        assert!(hub.handle().is_refused(BOX));
     }
 
     #[tokio::test]

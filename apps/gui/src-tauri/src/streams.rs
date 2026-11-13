@@ -35,6 +35,9 @@ pub const SEQ_BYTES: usize = std::mem::size_of::<u64>();
 pub const FRAME_HEADER_BYTES: usize =
     std::mem::size_of::<u16>() + std::mem::size_of::<u32>() + SEQ_BYTES + 1;
 
+/// A whole list asked for is asked for again when it has not come in this long, so one lost
+/// answer cannot leave a machine's deltas dropped for as long as its line stays up.
+pub const LIST_ASKED_AGAIN_AFTER: Duration = Duration::from_secs(5);
 /// The revision of a daemon built before revisions, or of a surface sent nothing yet.
 const UNNUMBERED: u64 = 0;
 
@@ -108,6 +111,8 @@ pub struct Streams {
     pending: BTreeMap<PaneKey, Vec<u8>>,
     /// When the oldest waiting output arrived; None while nothing waits.
     since: Option<Instant>,
+    /// When each machine was last asked for its whole list, while that list has not come.
+    list_asked: HashMap<MachineId, Instant>,
 }
 
 impl Streams {
@@ -131,6 +136,20 @@ impl Streams {
             self.since = None;
         }
         self.last.remove(&machine);
+        self.list_asked.remove(&machine);
+    }
+
+    /// Whether to ask `machine` for its whole list now: not while one asked for lately is still
+    /// to come, so a run of deltas after one missed update asks once.
+    fn list_wanted(&mut self, machine: MachineId, now: Instant) -> bool {
+        let waiting = self
+            .list_asked
+            .get(&machine)
+            .is_some_and(|at| now.saturating_duration_since(*at) < LIST_ASKED_AGAIN_AFTER);
+        if !waiting {
+            self.list_asked.insert(machine, now);
+        }
+        !waiting
     }
 
     /// What `machine` said, already vetted.
@@ -204,7 +223,9 @@ impl Streams {
                     .get(&machine)
                     .is_some_and(|held| follows(held.revision, revision));
                 if !fits {
-                    out.push(Out::WantList { machine });
+                    if self.list_wanted(machine, now) {
+                        out.push(Out::WantList { machine });
+                    }
                     return out;
                 }
                 let merged = self.last.get(&machine).cloned().map(|mut merged| {
@@ -262,6 +283,7 @@ impl Streams {
             self.since = None;
         }
         self.last.remove(&machine);
+        self.list_asked.remove(&machine);
         self.panes
             .iter_mut()
             .filter(|((m, _), _)| *m == machine)
@@ -425,6 +447,7 @@ impl Streams {
             snapshot: Some(Box::new(snapshot.clone())),
         });
         self.last.insert(machine, snapshot);
+        self.list_asked.remove(&machine);
     }
 
     /// Adds the output to the pane's history and gives its frame for the window.
