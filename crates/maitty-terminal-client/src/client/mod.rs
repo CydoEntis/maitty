@@ -621,6 +621,9 @@ pub struct App {
     paged_up: std::collections::HashMap<ClientTerm, u32>,
     /// When a remote machine's refused copy was last told, so it is told once a minute.
     copy_refusal_told: Option<Instant>,
+    /// When each machine was last asked for its whole list and has not answered yet, so a run
+    /// of deltas after one missed update asks once.
+    list_asked: std::collections::HashMap<MachineId, Instant>,
     /// The panes drawn at the last `sync_sizes`, to see which have just come into view.
     shown_panes: std::collections::HashSet<ClientTerm>,
     out: mpsc::UnboundedSender<Outgoing>,
@@ -887,6 +890,7 @@ impl App {
             wheel_page: None,
             paged_up: std::collections::HashMap::new(),
             copy_refusal_told: None,
+            list_asked: std::collections::HashMap::new(),
             shown_panes: std::collections::HashSet::new(),
             out,
             quit: None,

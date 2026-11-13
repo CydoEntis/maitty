@@ -554,4 +554,118 @@ mod tests {
         assert_eq!(app.snap_of(MachineId(1)).unwrap().active_ws, Some(77));
         assert_eq!(app.focused().map(|t| t.machine), Some(MachineId::LOCAL));
     }
+
+    fn listening(app: &mut App) -> tokio::sync::mpsc::UnboundedReceiver<Outgoing> {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        app.out = tx;
+        rx
+    }
+
+    fn lists_asked(rx: &mut tokio::sync::mpsc::UnboundedReceiver<Outgoing>) -> Vec<MachineId> {
+        std::iter::from_fn(|| rx.try_recv().ok())
+            .filter(|o| matches!(o.msg, ClientMsg::Query(crate::protocol::Query::List)))
+            .map(|o| o.machine)
+            .collect()
+    }
+
+    fn pane_added(app: &App, id: TermId, revision: u64) -> crate::protocol::ServerMsg {
+        let pane = app.snap.terms.values().next().unwrap().clone();
+        crate::protocol::ServerMsg::TermsChanged {
+            changed: vec![crate::protocol::TermInfo { id, ..pane }],
+            removed: Vec::new(),
+            reasons: Default::default(),
+            revision,
+        }
+    }
+
+    fn whole_list(snap: Snapshot) -> crate::protocol::ServerMsg {
+        crate::protocol::ServerMsg::Reply(crate::protocol::Reply::List(snap))
+    }
+
+    #[test]
+    fn a_missed_pane_delta_asks_for_the_whole_list_and_takes_it() {
+        let mut app = two_machines();
+        let mut rx = listening(&mut app);
+        for revision in [1, 2, 4] {
+            let delta = pane_added(&app, 70 + revision as TermId, revision);
+            app.on_server(delta);
+        }
+        assert_eq!(lists_asked(&mut rx), [MachineId::LOCAL]);
+        assert!(app.snap.terms.contains_key(&72));
+        assert!(
+            !app.snap.terms.contains_key(&74),
+            "a delta after a gap is not merged"
+        );
+        let mut list = app.snap.clone();
+        list.terms.remove(&71);
+        let pane = list.terms[&72].clone();
+        list.terms.insert(74, crate::protocol::TermInfo { id: 74, ..pane });
+        list.revision = 4;
+        app.on_server(whole_list(list.clone()));
+        assert_eq!(
+            app.snap.terms.keys().collect::<Vec<_>>(),
+            list.terms.keys().collect::<Vec<_>>()
+        );
+        assert!(lists_asked(&mut rx).is_empty());
+    }
+
+    #[test]
+    fn a_run_of_deltas_after_one_missed_update_asks_once() {
+        let mut app = two_machines();
+        let mut rx = listening(&mut app);
+        for revision in [1, 2, 4, 5, 6] {
+            let delta = pane_added(&app, 70 + revision as TermId, revision);
+            app.on_server(delta);
+        }
+        assert_eq!(lists_asked(&mut rx), [MachineId::LOCAL]);
+    }
+
+    #[test]
+    fn a_list_that_never_comes_is_asked_for_again_after_a_while() {
+        let mut app = two_machines();
+        let mut rx = listening(&mut app);
+        let delta = pane_added(&app, 72, 2);
+        app.on_server(delta);
+        let long_ago = std::time::Instant::now().checked_sub(crate::client::background::LIST_ASKED_AGAIN_AFTER);
+        app.list_asked.insert(MachineId::LOCAL, long_ago.unwrap());
+        let delta = pane_added(&app, 73, 3);
+        app.on_server(delta);
+        assert_eq!(lists_asked(&mut rx), [MachineId::LOCAL, MachineId::LOCAL]);
+    }
+
+    #[test]
+    fn a_pane_dropped_without_a_reason_stays_until_the_whole_list_drops_it() {
+        let mut app = two_machines();
+        let mut rx = listening(&mut app);
+        let gone = *app.snap.terms.keys().next().unwrap();
+        app.on_server(crate::protocol::ServerMsg::TermsChanged {
+            changed: Vec::new(),
+            removed: vec![gone],
+            reasons: Default::default(),
+            revision: 1,
+        });
+        assert!(app.snap.terms.contains_key(&gone));
+        assert_eq!(lists_asked(&mut rx), [MachineId::LOCAL]);
+        let mut list = app.snap.clone();
+        list.terms.remove(&gone);
+        app.on_server(whole_list(list));
+        assert!(!app.snap.terms.contains_key(&gone));
+    }
+
+    #[test]
+    fn another_machines_missed_delta_asks_that_machine_for_its_list() {
+        let mut app = two_machines();
+        let mut rx = listening(&mut app);
+        let delta = pane_added(&app, 72, 2);
+        app.on_machine_server(MachineId(1), delta);
+        assert_eq!(lists_asked(&mut rx), [MachineId(1)]);
+        let there = &app.remotes[&MachineId(1)].snap;
+        assert!(!there.terms.contains_key(&72));
+        let mut list = there.clone();
+        let pane = list.terms.values().next().unwrap().clone();
+        list.terms.insert(72, crate::protocol::TermInfo { id: 72, ..pane });
+        app.on_machine_server(MachineId(1), whole_list(list));
+        assert!(app.remotes[&MachineId(1)].snap.terms.contains_key(&72));
+        assert!(!app.snap.terms.contains_key(&72));
+    }
 }
