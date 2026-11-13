@@ -69,6 +69,24 @@ describe('the new chat page, against this computer', () => {
     expect(screen.queryByRole('switch', { name: 'Own copy' })).not.toBeInTheDocument()
   })
 
+  it('offers to also start only the other agents installed on this computer', async () => {
+    host.branches = GIT
+    host.installed = ['claude', 'codex', 'opencode']
+    page()
+    await pickProject('a')
+    const also = await screen.findByRole('group', { name: 'Also start with' })
+    expect(within(also).getAllByRole('checkbox')).toHaveLength(1)
+    expect(within(also).getByRole('checkbox', { name: 'Codex' })).not.toBeChecked()
+  })
+
+  it('has no Also start with row when no other agent is installed', async () => {
+    host.branches = GIT
+    page()
+    await pickProject('a')
+    await screen.findByRole('switch', { name: 'Own copy' })
+    expect(screen.queryByRole('group', { name: 'Also start with' })).not.toBeInTheDocument()
+  })
+
   it('lists the real branches and worktrees with their ages, the current branch ticked', async () => {
     host.branches = GIT
     page()

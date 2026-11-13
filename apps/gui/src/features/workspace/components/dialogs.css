@@ -156,3 +156,7 @@
 .mx-nc-switch-chip { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; color: var(--fg2); background: rgba(var(--hl), calc(.04 * var(--hk))); }
 .mx-nc-switch-chip:hover { background: rgba(var(--hl), calc(.08 * var(--hk))); color: var(--fg); }
 .mx-nc-switch-machine { color: var(--dim); }
+.mx-nc-also { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 8px; font-size: 12.5px; color: var(--fg2); }
+.mx-nc-also-agent { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.mx-nc-also-agent:has(input:disabled) { opacity: .5; cursor: not-allowed; }
+.mx-nc-also-why { color: var(--dim); }

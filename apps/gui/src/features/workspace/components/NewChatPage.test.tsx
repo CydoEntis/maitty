@@ -8,7 +8,7 @@ function syncOf(folder: string) {
 }
 type Saved = { id: string; first_message: string; last_active: number }
 const saved = vi.hoisted(() => ({ read: vi.fn<(agent: string, folder: string) => Promise<Saved[] | null>>(() => Promise.resolve([])) }))
-vi.mock('@/api/daemon', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/api/daemon')>()), savedConversations: (agent: string, folder: string) => saved.read(agent, folder), loadAgentModels: () => Promise.resolve([]), folderSyncState: (folder: string) => Promise.resolve(syncOf(folder)), pullFolder: (folder: string) => { sync.pulled.push(folder); return Promise.resolve() }, folderBranches: () => Promise.resolve({ current: 'dev', branches: [{ name: 'dev', when: 10 }], worktrees: [{ path: '/dev/growth', branch: 'dev', main: true, when: 10 }] }) }))
+vi.mock('@/api/daemon', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/api/daemon')>()), savedConversations: (agent: string, folder: string) => saved.read(agent, folder), agentsInstalled: () => Promise.resolve(['claude', 'codex', 'gemini']), loadAgentModels: () => Promise.resolve([]), folderSyncState: (folder: string) => Promise.resolve(syncOf(folder)), pullFolder: (folder: string) => { sync.pulled.push(folder); return Promise.resolve() }, folderBranches: () => Promise.resolve({ current: 'dev', branches: [{ name: 'dev', when: 10 }], worktrees: [{ path: '/dev/growth', branch: 'dev', main: true, when: 10 }] }) }))
 
 const attach = vi.hoisted(() => ({ attachLocalFile: vi.fn(), chooseFilesToAttach: vi.fn() }))
 vi.mock('@/api/attachments', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/api/attachments')>()), ...attach }))
@@ -371,6 +371,57 @@ describe('starting a chat and going on writing', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Put back “fix the login”' }))
     expect(box()).toHaveValue('a new draft\n\nfix the login')
     expect(screen.queryByText(/Could not start/)).not.toBeInTheDocument()
+  })
+
+  it('starts the same message with each agent ticked, each on a new branch in its own worktree and on its own defaults', async () => {
+    const onStart = vi.fn<Start>(() => new Promise(() => undefined))
+    page(onStart)
+    await ready()
+    await userEvent.click(screen.getByRole('button', { name: /^Starting permission mode/ }))
+    await userEvent.click(screen.getByRole('menuitemradio', { name: /^Plan mode/ }))
+    await userEvent.click(within(screen.getByRole('group', { name: 'Also start with' })).getByRole('checkbox', { name: 'Codex' }))
+    await userEvent.type(box(), 'fix the login{Enter}')
+
+    expect(onStart).toHaveBeenCalledTimes(2)
+    const [main, extra] = onStart.mock.calls
+    expect(main).toEqual([expect.objectContaining({ agent: 'claude', mode: 'plan', message: 'fix the login' })])
+    expect(extra).toEqual([expect.objectContaining({ agent: 'codex', model: 'default', reasoning: 'medium', mode: 'codexAuto', message: 'fix the login', resume: null }), { background: true }])
+    expect(extra?.[0].branch).toMatchObject({ create: true, worktree: true })
+    expect(extra?.[0].branch?.name).not.toBe(main?.[0].branch?.name)
+  })
+
+  it('will not tick another agent with Own copy off, and says why', async () => {
+    const onStart = vi.fn<Start>(() => new Promise(() => undefined))
+    page(onStart)
+    await ready()
+    const codex = within(screen.getByRole('group', { name: 'Also start with' })).getByRole('checkbox', { name: 'Codex' })
+    await userEvent.click(codex)
+    await userEvent.click(screen.getByRole('switch', { name: 'Own copy' }))
+
+    expect(codex).toBeDisabled()
+    expect(codex).not.toBeChecked()
+    expect(screen.getByText('Each agent needs a copy of its own. Turn on Own copy to start several.')).toBeInTheDocument()
+    await userEvent.type(box(), 'fix the login{Enter}')
+    expect(onStart).toHaveBeenCalledTimes(1)
+  })
+
+  it('names each failed start by its agent, lets the others go on, and puts the message back once', async () => {
+    const onStart = vi.fn<Start>((request) => (request.agent === 'claude' ? new Promise(() => undefined) : Promise.reject(new Error('no worktree'))))
+    page(onStart)
+    await ready()
+    const also = within(screen.getByRole('group', { name: 'Also start with' }))
+    await userEvent.click(also.getByRole('checkbox', { name: 'Codex' }))
+    await userEvent.click(also.getByRole('checkbox', { name: 'Gemini' }))
+    await userEvent.type(box(), 'fix the login')
+    await userEvent.keyboard('{Control>}{Enter}{/Control}')
+
+    expect(onStart.mock.calls.map(([request]) => request.agent)).toEqual(['claude', 'codex', 'gemini'])
+    expect(await screen.findByText(/Could not start “fix the login” with Codex: no worktree/)).toBeInTheDocument()
+    expect(await screen.findByText(/Could not start “fix the login” with Gemini: no worktree/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Put back “fix the login” with Codex' }))
+    expect(box()).toHaveValue('fix the login')
+    expect(screen.queryByRole('button', { name: /^Put back/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Dismiss “fix the login” with Gemini' })).toBeInTheDocument()
   })
 
   it('starts and opens the chat on plain Enter, as before', async () => {
