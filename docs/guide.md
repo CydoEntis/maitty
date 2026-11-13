@@ -245,7 +245,7 @@ Sessions stay visible in the sidebar until you close them. Idle, completed, and 
 
 In the desktop app you can tidy the list yourself: right-click a finished or idle session (an agent in a terminal, or a
 shell) and choose **Put away**. A toast offers **Undo** for 6 seconds. The session keeps running; it leaves the status,
-project and machine lists and waits in the folded **Put away** section at the bottom of the sidebar. Click its arrow, or
+project and machine lists and waits in the folded **Put away** section at the end of the session list, above Terminals. Click its arrow, or
 choose **Bring back** in its menu, to list it as before. If a put-away session needs you, it shows under **Needs you**
 until you have answered it, then goes back under Put away. A chat started in the desktop app has no Put away; close it
 instead.

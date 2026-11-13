@@ -244,7 +244,8 @@ Rules for `apps/gui/` (the look is in [DESIGN](DESIGN.md#desktop-app)).
    shells too) sets the pane's `archived` flag (`Command::ArchivePane`) with a 6 second Undo; it closes, stops and moves
    nothing, so the session keeps running, stays in the daemon's list and keeps its worktree in use. Put-away sessions are
    listed only under the folded **Put away** section at the foot of the list (`model/sidebar.ts`, `splitPutAway`), each
-   with **Bring back** (its hover button and its menu), and are left off the rail. While Needs you would list one it is
+   with **Bring back** (its hover button and its menu). The rail shows no trace of put-away sessions (one that needs you
+   still shows), and the tray menu still lists a put-away finished session. While Needs you would list one it is
    listed there instead, still put away on the daemon; once it no longer needs you it goes back under Put away. A chat
    cannot be put away: its daemon archive is how a chat is closed. Crewmates (`features/crew/`) is not mounted: the redesign leaves it undesigned.
 3. A terminal sits on the workspace card's own ground (`--main`, xterm's background and ANSI black), so a pane reads as
