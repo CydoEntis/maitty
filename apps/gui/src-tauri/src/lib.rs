@@ -600,6 +600,24 @@ async fn git_identities(
         .map_err(|error| format!("{error:#}"))
 }
 
+/// Previews, writes or removes a folder's GitHub account and commit identity rule on a machine (this
+/// computer when `machine` is left out). `change` is a `GitRuleChange` as JSON; that machine's
+/// daemon checks it and does it. Answers the lines, by file.
+#[tauri::command]
+async fn git_identity_rule(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    change: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let change: maitty_shared::protocol::GitRuleChange =
+        serde_json::from_value(change).map_err(|error| format!("invalid rule change: {error}"))?;
+    let daemon = wire.rule_daemon(machine, || daemon_executable(&app))?;
+    maitty_desktop_client::git_identity_rule(change, daemon)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
 #[tauri::command]
 async fn repo_query(
     app: tauri::AppHandle,
@@ -1585,6 +1603,7 @@ pub fn run() {
             pane_terminal_resize,
             repo_query,
             git_identities,
+            git_identity_rule,
             search_panes,
             usage_report,
             new_worktree_session,

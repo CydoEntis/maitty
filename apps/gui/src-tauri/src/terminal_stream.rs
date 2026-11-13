@@ -284,6 +284,16 @@ impl Wire {
         self.daemon_vetting(machine, local, maitty_machines::remote_policy::vet_identities_reply)
     }
 
+    /// Where a folder's rule is previewed, written or removed: this computer's daemon, or another
+    /// machine's, whose answer is the lines of that rule and nothing else, cleaned.
+    pub fn rule_daemon(
+        &self,
+        machine: Option<u16>,
+        local: impl FnOnce() -> Result<std::path::PathBuf, String>,
+    ) -> Result<maitty_desktop_client::Daemon, String> {
+        self.daemon_vetting(machine, local, maitty_machines::remote_policy::vet_rule_reply)
+    }
+
     /// `daemon`, with `vet` deciding what another machine's daemon may answer.
     fn daemon_vetting(
         &self,

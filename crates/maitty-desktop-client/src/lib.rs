@@ -1030,6 +1030,16 @@ pub async fn git_identities(daemon: impl Into<Daemon>) -> Result<Value> {
     }
 }
 
+/// Preview, write or remove a folder's rule on a daemon's machine. The lines it would write, wrote
+/// or took away, by file, as JSON; or an error whose text is the daemon's one line saying why not.
+pub async fn git_identity_rule(change: maitty_shared::protocol::GitRuleChange, daemon: impl Into<Daemon>) -> Result<Value> {
+    match request(ClientMsg::Query(Query::GitIdentityRule { change, tag: 0 }), daemon).await? {
+        Reply::GitIdentityRuleDone { outcome: Ok(files), .. } => Ok(serde_json::to_value(files)?),
+        Reply::GitIdentityRuleDone { outcome: Err(why), .. } => bail!("{why}"),
+        _ => bail!("daemon returned an unexpected answer about a folder's rule"),
+    }
+}
+
 /// How long an answer to `request` is waited for: a little longer than the daemon gives it, so
 /// the daemon's own "stopped after" line is what arrives.
 fn git_request_timeout(request: &maitty_shared::protocol::GitRequest) -> Duration {
