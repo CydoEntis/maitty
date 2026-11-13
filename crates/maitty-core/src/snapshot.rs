@@ -1,17 +1,20 @@
-//! Snapshots: a checkout's files as they were when an agent's turn began, so a turn that
-//! went wrong can be taken back. Each is a commit under the checkout's own refs
+//! Snapshots: a checkout's files as they were when an agent's turn began and when it ended,
+//! so a turn that went wrong can be taken back. Each is a commit under the checkout's own refs
 //! (`refs/worktree/…`), so none shows up in branches or history, and they go when the
 //! worktree goes. The real index is never touched.
 
 use crate::brand::APP_COMMAND;
 use crate::proc;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 
 /// Where a checkout's snapshots are kept: refs of that worktree alone.
 const REFS: &str = concat!("refs/worktree/", env!("APP_COMMAND"), "/snapshots");
-/// How many a checkout keeps; older ones are dropped as new ones come.
-pub const KEEP: usize = 30;
+/// How many a checkout keeps; older ones are dropped as new ones come. Two a turn (before
+/// and after), so thirty turns.
+pub const KEEP: usize = 60;
 /// Said of the snapshot a restore takes first, so the restore can itself be taken back.
 pub const BEFORE_RESTORE: &str = "before a restore";
 
@@ -20,7 +23,7 @@ pub struct Snapshot {
     pub commit: String,
     /// When it was taken (unix seconds).
     pub at: u64,
-    /// What it was taken before ("before claude's turn").
+    /// When it was taken ("before claude's turn", "after claude's turn").
     pub why: String,
 }
 
@@ -134,6 +137,8 @@ pub fn take(dir: &Path, why: &str) -> Result<Option<Snapshot>, String> {
     let Some(top) = top_of(dir) else {
         return Ok(None);
     };
+    let lock = checkout_lock(&top);
+    let _taking = lock.lock().unwrap_or_else(PoisonError::into_inner);
     let tree = tree_of_now(&top)?;
     let kept = list(&top);
     if let Some(last) = kept.first()
@@ -179,6 +184,19 @@ pub fn take(dir: &Path, why: &str) -> Result<Option<Snapshot>, String> {
         at: now / 1000,
         why: why.to_string(),
     }))
+}
+
+/// One take at a time per checkout: two at once would both miss the other's snapshot, keep
+/// the same files twice, and both drop the same oldest ref, the second failing.
+fn checkout_lock(top: &Path) -> Arc<Mutex<()>> {
+    static LOCKS: LazyLock<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> =
+        LazyLock::new(Default::default);
+    LOCKS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .entry(top.to_path_buf())
+        .or_default()
+        .clone()
 }
 
 /// The time in a snapshot's ref name (its `at` has lost the milliseconds).
@@ -401,6 +419,26 @@ mod tests {
         let plain = Scratch::new("plain");
         assert_eq!(take(plain.path(), "x"), Ok(None));
         assert!(list(plain.path()).is_empty() && restore(plain.path(), "abc").is_err());
+    }
+
+    /// A turn's end and the next turn's start can be kept at the same moment, as can two panes
+    /// in one checkout. Nothing changed between them, so one snapshot answers them all.
+    #[test]
+    fn snapshots_taken_at_once_keep_one_and_none_fails() {
+        let dir = repo("at-once");
+        std::fs::write(dir.path().join("kept.txt"), "changed\n").unwrap();
+        let path = dir.path();
+        let taken: Vec<_> = std::thread::scope(|s| {
+            let runs: Vec<_> = (0..8)
+                .map(|i| s.spawn(move || take(path, &format!("turn {i}"))))
+                .collect();
+            runs.into_iter().map(|r| r.join().unwrap()).collect()
+        });
+        let kept = list(dir.path());
+        assert_eq!(kept.len(), 1, "{kept:?}");
+        for t in taken {
+            assert_eq!(t.unwrap().unwrap().commit, kept[0].commit);
+        }
     }
 
     /// git trusts a file that looks unchanged only when the index was written after the

@@ -35,7 +35,9 @@ async fn snapshots_once_listed(cwd: PathBuf) -> Vec<crate::snapshot::Snapshot> {
 
 #[tokio::test]
 async fn a_turn_starting_in_a_repo_with_a_changed_file_keeps_a_snapshot() {
-    let mut session = conversation_fixture("conversation").await;
+    // A turn that stays running: one that ends at once with nothing changed would keep its
+    // single snapshot under either name.
+    let mut session = conversation_fixture("conversation-cancel").await;
     let outcome = AssertUnwindSafe(async {
         let cwd = session.fixture.record.binding.cwd.clone();
         let repo = cwd.clone();

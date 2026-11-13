@@ -6096,6 +6096,55 @@ fn a_paused_turn_is_checked_only_when_the_work_really_ends() {
     close(&mut d, &[t]);
 }
 
+fn kept_after(d: &Daemon) -> usize {
+    d.pane_snapshots
+        .iter()
+        .filter(|why| *why == "after claude's turn")
+        .count()
+}
+
+#[test]
+fn a_turn_is_kept_once_when_it_ends_not_while_it_waits_for_you() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let mut say = claude_reports(&mut d, t);
+    say(&mut d, HookStatus::Working, "UserPromptSubmit", &[]);
+    assert_eq!(d.pane_snapshots, ["before claude's turn"]);
+    d.set_status(t, Status::Blocked, "hook: PermissionRequest");
+    say(&mut d, HookStatus::Working, "PreToolUse", &[]);
+    assert_eq!(kept_after(&d), 0, "an approval mid-turn is not its end");
+    say(&mut d, HookStatus::Done, "Stop", &[]);
+    say(&mut d, HookStatus::Done, "Stop", &[]);
+    assert_eq!(kept_after(&d), 1);
+    assert_eq!(d.pane_snapshots.last().unwrap(), "after claude's turn");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_paused_turn_is_kept_only_when_the_work_really_ends() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let mut say = claude_reports(&mut d, t);
+    say(&mut d, HookStatus::Working, "UserPromptSubmit", &[]);
+    say(&mut d, HookStatus::Done, "Stop", &["ci-watch"]);
+    assert_eq!(kept_after(&d), 0, "it is still waiting on its own work");
+    say(&mut d, HookStatus::Working, "PreToolUse", &[]);
+    say(&mut d, HookStatus::Done, "Stop", &[]);
+    assert_eq!(kept_after(&d), 1);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_cancelled_turn_is_kept_as_it_was_left() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let mut say = claude_reports(&mut d, t);
+    say(&mut d, HookStatus::Working, "UserPromptSubmit", &[]);
+    d.set_status(t, Status::Idle, super::status::CANCELLED_WHY);
+    assert_eq!(kept_after(&d), 1);
+    close(&mut d, &[t]);
+}
+
 #[test]
 fn working_again_by_any_route_ends_the_pause() {
     let (mut d, _rx) = daemon();

@@ -65,7 +65,7 @@ const TRANSCRIPT_EXTENSION: &str = "jsonl";
 const CODEX_QUESTION_WHY: &str = "screen: Codex has an unanswered question";
 /// Why a turn that ended without a turn-end report is read as cancelled; nothing was finished,
 /// so nothing is checked.
-const CANCELLED_WHY: &str = "progress bar gone, no turn end: cancelled";
+pub(super) const CANCELLED_WHY: &str = "progress bar gone, no turn end: cancelled";
 const SCREEN_IDLE_RECOVERY_WHY: &str = "screen: explicit idle prompt recovered a missed turn end";
 /// A "done" held while subagents run is let through once none has been heard from for this
 /// long (one died without saying so). Background agents can run, and wait on CI, for a while.
@@ -561,21 +561,40 @@ impl Daemon {
         self.dirty = true;
     }
 
-    /// Keep a pane's folder as it is before its turn. Not in tests: they'd write refs into
-    /// whatever repo they run from.
-    fn snapshot_before_turn(&self, agent: String, dir: std::path::PathBuf) {
-        if cfg!(test) {
+    /// Keep a pane's folder as its turn left it. Called once a turn: where its checks start,
+    /// and when it was cancelled, which starts none.
+    pub(super) fn snapshot_after_turn(&mut self, term: TermId) {
+        let Some((agent, dir)) = self
+            .terms
+            .get(&term)
+            .and_then(|t| Some((t.agent.clone()?, t.cwd.clone())))
+        else {
+            return;
+        };
+        self.snapshot_pane(format!("after {agent}'s turn"), dir);
+    }
+
+    /// Keep a pane's folder as it is now. Tests only note it: they'd write refs into whatever
+    /// repo they run from.
+    fn snapshot_pane(&mut self, why: String, dir: std::path::PathBuf) {
+        if !self.cfg.snapshots.enabled {
             return;
         }
-        self.snapshot_off_loop(agent, dir);
+        #[cfg(test)]
+        {
+            let _ = dir;
+            self.pane_snapshots.push(why);
+        }
+        #[cfg(not(test))]
+        self.snapshot_off_loop(why, dir);
     }
 
     /// Keep `dir`'s files as they are, off the loop. Outside git nothing is kept, and a
     /// snapshot that fails is a notice: neither holds the turn up.
-    pub(super) fn snapshot_off_loop(&self, agent: String, dir: std::path::PathBuf) {
+    pub(super) fn snapshot_off_loop(&self, why: String, dir: std::path::PathBuf) {
         let tx = self.tx.clone();
         tokio::task::spawn_blocking(move || {
-            if let Err(e) = crate::snapshot::take(&dir, &format!("before {agent}'s turn")) {
+            if let Err(e) = crate::snapshot::take(&dir, &why) {
                 let _ = tx.blocking_send(Ev::HookRan(format!(
                     "couldn't snapshot {}: {e}",
                     dir.display()
@@ -624,7 +643,7 @@ impl Daemon {
             )
         });
         // A turn is starting: the files as they are now are what it can be taken back to.
-        let before_turn = (new == Status::Working && self.cfg.snapshots.enabled)
+        let before_turn = (new == Status::Working)
             .then(|| t.agent.clone().map(|a| (a, t.cwd.clone())))
             .flatten();
         t.blocked_at = (new == Status::Blocked).then(Instant::now);
@@ -646,18 +665,20 @@ impl Daemon {
             t.turn_end_handled = false;
         }
         self.dirty = true;
-        let turn_over = turn.is_some()
-            && matches!(new, Status::Done | Status::Idle)
-            && why != CANCELLED_WHY
-            && !t.awaiting_background;
+        let left_working = turn.is_some() && matches!(new, Status::Done | Status::Idle);
+        let cancelled = left_working && why == CANCELLED_WHY;
+        let turn_over = left_working && !cancelled && !t.awaiting_background;
         if let Some((agent, place, secs, session)) = turn {
             self.note_turn(agent, place, secs, session);
         }
         if turn_over {
             self.turn_ended(term);
         }
+        if cancelled {
+            self.snapshot_after_turn(term);
+        }
         if let Some((agent, dir)) = before_turn {
-            self.snapshot_before_turn(agent, dir);
+            self.snapshot_pane(format!("before {agent}'s turn"), dir);
         }
         // Whatever it was about to say is out of date now.
         if let Some(t) = self.terms.get_mut(&term) {

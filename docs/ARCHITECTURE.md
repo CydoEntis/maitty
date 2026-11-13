@@ -59,7 +59,7 @@ src/
   cli/machines_ls.rs  `ls --all`: this computer and every configured machine asked at the same time, one that does not answer reported on its own line
   cli/mcp/machines.rs  the MCP tools' `machine` argument and `machine/id` ids: routing, the `mcp` opt-in, the calling pane's grants checked here before a machine is dialled, typed errors (`McpError`) and the cleaned, cut, `[machine: name]`-led replies (SECURITY "MCP across machines")
   tidy.rs        what removing a worktree would lose (shared by the close-time removal and the clean-up list)
-  snapshot.rs    a checkout's files kept before each agent turn, and put back (the server takes them, the client lists and restores)
+  snapshot.rs    a checkout's files kept before and after each agent turn, and put back (the server takes them, the client lists and restores)
   references.rs  a project's reference files (`.maitty/references/`): listed, added and removed (the terminal app edits them, the server lists them for the desktop app)
   prompt.rs      the question and numbered choices an agent is stopped on, read off its screen (the MCP answer tool and the inbox card share it)
   output_line.rs  one line of a check's output: made safe to show, and read as pass or failure (the server picks the first failing line, the client colours with the same rule)
