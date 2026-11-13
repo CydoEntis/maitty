@@ -20,7 +20,7 @@ export type Block =
   | { readonly kind: 'paragraph'; readonly inlines: readonly Inline[] }
   | { readonly kind: 'heading'; readonly level: number; readonly inlines: readonly Inline[] }
   | { readonly kind: 'code'; readonly language: string; readonly text: string }
-  | { readonly kind: 'list'; readonly ordered: boolean; readonly items: readonly (readonly Inline[])[] }
+  | { readonly kind: 'list'; readonly ordered: boolean; readonly start?: number; readonly items: readonly (readonly Inline[])[] }
   | { readonly kind: 'quote'; readonly inlines: readonly Inline[] }
   | { readonly kind: 'rule' }
   /** Every row has one cell per header cell; `align` is each column's, `null` when the column has none. */
@@ -166,6 +166,7 @@ const FENCE = /^\s{0,3}(```+|~~~+)\s*([^\s`]*)/
 const HEADING = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/
 const BULLET = /^\s{0,3}[-*+]\s+(.*)$/
 const NUMBERED = /^\s{0,3}\d{1,9}[.)]\s+(.*)$/
+const FIRST_NUMBER = /\d+/
 const QUOTE = /^\s{0,3}>\s?(.*)$/
 const RULE = /^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/
 const DELIMITER_CELL = /^:?-+:?$/
@@ -278,12 +279,17 @@ export function parseMarkdown(source: string): readonly Block[] {
           text += `\n${(lines[i] ?? '').trim()}`
         }
         items.push([...parseInline(text)])
-        const next = lines[i + 1] ?? ''
+        // Blank lines between entries leave it one list: split, each numbered entry would count from 1 again.
+        let after = i + 1
+        while (after < lines.length && (lines[after] ?? '').trim() === '') after += 1
+        const next = lines[after] ?? ''
         const following: RegExpExecArray | null = bullet ? BULLET.exec(next) : NUMBERED.exec(next)
-        if (following) i += 1
+        if (following) i = after
         match = following
       }
-      blocks.push({ kind: 'list', ordered: numbered !== null, items })
+      if (numbered === null) blocks.push({ kind: 'list', ordered: false, items })
+      // It counts from the number it was written with, so a list a code block cut in two carries on.
+      else blocks.push({ kind: 'list', ordered: true, start: Number(FIRST_NUMBER.exec(line)?.[0] ?? 1), items })
       continue
     }
     const quote = QUOTE.exec(line)
