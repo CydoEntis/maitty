@@ -37,6 +37,27 @@ pub fn clone_address(repo: &str) -> Option<String> {
     is_repo(repo).then(|| format!("https://github.com/{repo}.git"))
 }
 
+/// The longest number a pull request has, in digits.
+const PULL_NUMBER_MAX_DIGITS: usize = 10;
+
+/// Whether `text` is exactly a GitHub pull request's address,
+/// `https://github.com/<owner>/<repo>/pull/<number>`, and nothing more.
+pub fn is_pull_request_address(text: &str) -> bool {
+    let Some(rest) = text.strip_prefix("https://github.com/") else {
+        return false;
+    };
+    let parts: Vec<&str> = rest.split('/').collect();
+    match parts.as_slice() {
+        [owner, name, "pull", number] => {
+            is_repo(&format!("{owner}/{name}"))
+                && !number.is_empty()
+                && number.len() <= PULL_NUMBER_MAX_DIGITS
+                && number.chars().all(|c| c.is_ascii_digit())
+        }
+        _ => false,
+    }
+}
+
 /// Whether `text` could be a time as GitHub prints one.
 pub fn is_time(text: &str) -> bool {
     !text.is_empty() && text.len() <= TIME_MAX_CHARS && text.chars().all(|c| c.is_ascii_digit() || matches!(c, '-' | ':' | 'T' | 'Z' | '.' | '+'))
@@ -45,6 +66,31 @@ pub fn is_time(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pull_request_address_is_githubs_and_nothing_more() {
+        assert!(is_pull_request_address("https://github.com/o/r/pull/12"));
+        assert!(is_pull_request_address("https://github.com/my-org/my.repo_1/pull/1"));
+        for not in [
+            "",
+            "http://github.com/o/r/pull/12",
+            "https://github.com.evil.example/o/r/pull/12",
+            "https://evil.example/o/r/pull/12",
+            "https://github.com/o/r/pull/12/files",
+            "https://github.com/o/r/pull/12?x=1",
+            "https://github.com/o/r/pull/12#x",
+            "https://github.com/o/r/issues/12",
+            "https://github.com/o/r/pull/",
+            "https://github.com/o/r/pull/1x",
+            "https://github.com/o/r/pull/12345678901",
+            "https://github.com/-o/r/pull/1",
+            "https://github.com/o/../pull/1",
+            " https://github.com/o/r/pull/12",
+            "javascript:alert(1)",
+        ] {
+            assert!(!is_pull_request_address(not), "{not:?}");
+        }
+    }
 
     #[test]
     fn a_login_is_letters_digits_and_dashes_up_to_githubs_length() {

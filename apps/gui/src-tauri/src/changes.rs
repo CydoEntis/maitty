@@ -1,6 +1,7 @@
-//! What the side panel's Changes tab does to a session's checkout: on this computer, commit
-//! everything that changed, and open a pull request for the branch. Both run git (and GitHub's
-//! `gh`) as programs with their arguments, off the UI thread, only when the user presses the button.
+//! What the side panel's Changes tab does to a session's checkout: commit what changed, sync
+//! with the remote, and open a pull request for the branch. On this computer each runs git (and
+//! GitHub's `gh`) as programs with their arguments, off the UI thread; for a session on another
+//! machine that machine's daemon is asked to (`on_machine`). Only when the user presses the button.
 
 use crate::new_chat::run_program;
 use std::path::Path;
@@ -116,6 +117,21 @@ fn sync(folder: &Path, action: SyncAction) -> Result<String, String> {
     }
 }
 
+/// Has the daemon of another machine do `request` to the checkout its pane `term` is in. The
+/// line it answers, already cleaned and checked against what was asked, or its line saying why not.
+async fn on_machine(
+    wire: &crate::terminal_stream::Wire,
+    machine: Option<u16>,
+    term: Option<u32>,
+    request: maitty_shared::protocol::GitRequest,
+) -> Result<String, String> {
+    let term = term.ok_or("This session has no terminal on its machine to say which checkout is meant")?;
+    let daemon = wire.git_daemon(machine, &request)?;
+    maitty_desktop_client::git_request(term, request, daemon)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
 impl From<SyncAction> for maitty_shared::protocol::GitRequest {
     fn from(action: SyncAction) -> Self {
         match action {
@@ -137,29 +153,47 @@ pub async fn git_sync(
     term: Option<u32>,
 ) -> Result<String, String> {
     if crate::routing::is_remote(machine) {
-        let term = term.ok_or("This session has no terminal on its machine to say which checkout is meant")?;
-        return maitty_desktop_client::git_request(term, action.into(), wire.git_daemon(machine)?)
-            .await
-            .map_err(|error| format!("{error:#}"));
+        return on_machine(&wire, machine, term, action.into()).await;
     }
     tauri::async_runtime::spawn_blocking(move || sync(Path::new(&folder), action))
         .await
         .map_err(|error| error.to_string())?
 }
 
-/// Commits every change in `folder`'s checkout with `message`.
+/// Commits changes with `message`, all of them or only `paths`: in `folder`'s checkout on this
+/// computer, or in the one pane `term` is in on another machine. Answers the commit's short id.
 #[tauri::command]
-pub async fn git_commit_all(wire: tauri::State<'_, crate::terminal_stream::Wire>, machine: Option<u16>, folder: String, message: String, paths: Option<Vec<String>>) -> Result<String, String> {
-    wire.require_local(machine, "Changes")?;
+pub async fn git_commit_all(
+    wire: tauri::State<'_, crate::terminal_stream::Wire>,
+    machine: Option<u16>,
+    folder: String,
+    message: String,
+    paths: Option<Vec<String>>,
+    term: Option<u32>,
+) -> Result<String, String> {
+    if crate::routing::is_remote(machine) {
+        let request = maitty_shared::protocol::GitRequest::Commit { message, paths };
+        // The daemon answers the short id, a space and the subject; the window shows the id.
+        let line = on_machine(&wire, machine, term, request).await?;
+        return Ok(line.split(' ').next().unwrap_or_default().to_string());
+    }
     tauri::async_runtime::spawn_blocking(move || commit_all(Path::new(&folder), &message, paths.as_deref()))
         .await
         .map_err(|error| error.to_string())?
 }
 
-/// Pushes `folder`'s branch and opens a pull request for it.
+/// Pushes a branch and opens a pull request for it: `folder`'s on this computer, or that of the
+/// checkout pane `term` is in on another machine, with that machine's `gh`. Answers its address.
 #[tauri::command]
-pub async fn git_create_pull_request(wire: tauri::State<'_, crate::terminal_stream::Wire>, machine: Option<u16>, folder: String) -> Result<String, String> {
-    wire.require_local(machine, "Changes")?;
+pub async fn git_create_pull_request(
+    wire: tauri::State<'_, crate::terminal_stream::Wire>,
+    machine: Option<u16>,
+    folder: String,
+    term: Option<u32>,
+) -> Result<String, String> {
+    if crate::routing::is_remote(machine) {
+        return on_machine(&wire, machine, term, maitty_shared::protocol::GitRequest::PullRequest).await;
+    }
     tauri::async_runtime::spawn_blocking(move || create_pull_request(Path::new(&folder)))
         .await
         .map_err(|error| error.to_string())?

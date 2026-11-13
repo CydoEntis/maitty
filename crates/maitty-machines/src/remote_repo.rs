@@ -1,18 +1,22 @@
 //! What this window may ask another machine's daemon about a pane's repository, and what that
 //! daemon may answer. The machine is someone else's computer (ADR 0007): only what changed and the
 //! diff of it are asked for, only those two answers are accepted, and every string in them is made
-//! safe to draw before anything reads it. A fetch, pull or push there answers one line, cleaned the
-//! same way.
+//! safe to draw before anything reads it. A fetch, pull, push, commit or pull request there answers
+//! one line, cleaned the same way and checked against what was asked.
 
 use crate::remote_chat::cleaned;
+use maitty_shared::github::is_pull_request_address;
 use maitty_shared::hidden::sanitize;
-use maitty_shared::protocol::Reply;
+use maitty_shared::protocol::{GitRequest, Reply};
 use maitty_shared::repo::{RepoReply, RepoRequest};
 
 /// Longest path or branch name kept, in characters.
 const NAME_MAX_CHARS: usize = 4096;
-/// Longest line kept of how a fetch, pull or push ended, in characters.
+/// Longest line kept of how a request about a checkout ended, in characters.
 const LINE_MAX_CHARS: usize = 512;
+/// How short and how long a commit's id is as git abbreviates it.
+const COMMIT_ID_MIN_CHARS: usize = 4;
+const COMMIT_ID_MAX_CHARS: usize = 64;
 
 /// Whether `request` may be asked of another machine: the changed files and their diff. Reading a
 /// file whole, listing folders, branches and the rest stay this computer's.
@@ -45,14 +49,29 @@ pub fn vet_repo_reply(reply: Reply) -> Result<Reply, String> {
     Ok(Reply::Repo { tag, reply })
 }
 
-/// `reply` made safe, or why it is refused. Only how a fetch, pull or push ended passes, as one
-/// clean line either way.
-pub fn vet_git_reply(reply: Reply) -> Result<Reply, String> {
+/// The answer to `request` made safe, or why it is refused. Only how the request ended passes, as
+/// one clean line either way, and what it must be when it went well depends on what was asked: a
+/// commit's short id and subject, a pull request's address on GitHub, or else a line to show.
+pub fn vet_git_reply(request: &GitRequest, reply: Reply) -> Result<Reply, String> {
     let Reply::GitDone { tag, outcome } = reply else {
-        return Err("it is not an answer about a fetch, pull or push".into());
+        return Err("it is not an answer about a checkout".into());
     };
     let line = |text: String| one_line(text).chars().take(LINE_MAX_CHARS).collect::<String>();
-    Ok(Reply::GitDone { tag, outcome: outcome.map(line).map_err(line) })
+    let outcome = match outcome.map(line).map_err(line) {
+        Ok(done) => match request {
+            GitRequest::Commit { .. } if !starts_with_commit_id(&done) => return Err("it does not name the new commit".into()),
+            GitRequest::PullRequest if !is_pull_request_address(&done) => return Err("it is not a pull request's address on GitHub".into()),
+            _ => Ok(done),
+        },
+        Err(why) => Err(why),
+    };
+    Ok(Reply::GitDone { tag, outcome })
+}
+
+/// Whether `line` opens with a commit's short id: hexadecimal digits, then a space or the end.
+fn starts_with_commit_id(line: &str) -> bool {
+    let id = line.split(' ').next().unwrap_or("");
+    (COMMIT_ID_MIN_CHARS..=COMMIT_ID_MAX_CHARS).contains(&id.len()) && id.chars().all(|c| c.is_ascii_hexdigit())
 }
 
 fn one_line(text: String) -> String {
@@ -123,14 +142,30 @@ mod tests {
     fn how_a_fetch_pull_or_push_ended_is_one_clean_line_and_nothing_else_passes() {
         let long = format!("fatal: \u{1b}[31mno\nway {}", "x".repeat(2000));
         for outcome in [Ok("Pushed ma\u{7}in".to_string()), Err(long)] {
-            let Ok(Reply::GitDone { tag: 3, outcome }) = vet_git_reply(Reply::GitDone { tag: 3, outcome }) else {
+            let Ok(Reply::GitDone { tag: 3, outcome }) = vet_git_reply(&GitRequest::Push, Reply::GitDone { tag: 3, outcome }) else {
                 panic!("how it ended is an answer that was asked for");
             };
             let line = outcome.unwrap_or_else(|why| why);
             assert!(!line.contains(['\u{1b}', '\u{7}', '\n']) && line.chars().count() <= LINE_MAX_CHARS, "{line:?}");
         }
-        assert!(vet_git_reply(Reply::Ok).is_err());
-        assert!(vet_git_reply(Reply::Repo { tag: 1, reply: RepoReply::Written }).is_err());
+        assert!(vet_git_reply(&GitRequest::Push, Reply::Ok).is_err());
+        assert!(vet_git_reply(&GitRequest::Push, Reply::Repo { tag: 1, reply: RepoReply::Written }).is_err());
+    }
+
+    #[test]
+    fn a_commit_must_name_its_id_and_a_pull_request_must_be_an_address_on_github() {
+        let done = |request: &GitRequest, line: &str| vet_git_reply(request, Reply::GitDone { tag: 1, outcome: Ok(line.into()) });
+        let commit = GitRequest::Commit { message: "m".into(), paths: None };
+        assert!(matches!(done(&commit, "1a2b3c4 Add \u{1b}[31mrefunds"), Ok(Reply::GitDone { outcome: Ok(line), .. }) if line == "1a2b3c4 Add [31mrefunds"));
+        for not in ["", "Committed", "zzzzzzz subject", "1a2 subject"] {
+            assert!(done(&commit, not).is_err(), "{not:?}");
+        }
+        assert!(matches!(done(&GitRequest::PullRequest, "https://github.com/o/r/pull/12"), Ok(Reply::GitDone { outcome: Ok(line), .. }) if line == "https://github.com/o/r/pull/12"));
+        for not in ["https://evil.example/o/r/pull/12", "https://github.com/o/r/pull/12/files", "Opened", "javascript:alert(1)"] {
+            assert!(done(&GitRequest::PullRequest, not).is_err(), "{not:?}");
+        }
+        let failed = Reply::GitDone { tag: 1, outcome: Err("gh: no\nway".into()) };
+        assert!(matches!(vet_git_reply(&GitRequest::PullRequest, failed), Ok(Reply::GitDone { outcome: Err(why), .. }) if why == "gh: no way"));
     }
 
     #[test]

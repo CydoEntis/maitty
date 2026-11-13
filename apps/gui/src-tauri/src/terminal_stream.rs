@@ -261,11 +261,17 @@ impl Wire {
         self.daemon_vetting(machine, local, maitty_machines::remote_repo::vet_repo_reply)
     }
 
-    /// Where a fetch, pull or push of a pane's checkout on another machine is asked for: that
-    /// machine's daemon, whose answer is one cleaned line. This computer runs its own git instead.
-    pub fn git_daemon(&self, machine: Option<u16>) -> Result<maitty_desktop_client::Daemon, String> {
+    /// Where `request` for a pane's checkout on another machine is asked: that machine's daemon,
+    /// whose answer is one cleaned line of the kind `request` has. This computer runs its own git
+    /// instead.
+    pub fn git_daemon(
+        &self,
+        machine: Option<u16>,
+        request: &maitty_shared::protocol::GitRequest,
+    ) -> Result<maitty_desktop_client::Daemon, String> {
         let not_here = || Err("This computer's checkouts are not asked of its daemon".to_string());
-        self.daemon_vetting(machine, not_here, maitty_machines::remote_repo::vet_git_reply)
+        let asked = request.clone();
+        self.daemon_vetting(machine, not_here, move |reply| maitty_machines::remote_repo::vet_git_reply(&asked, reply))
     }
 
     /// `daemon`, with `vet` deciding what another machine's daemon may answer.
@@ -273,7 +279,7 @@ impl Wire {
         &self,
         machine: Option<u16>,
         local: impl FnOnce() -> Result<std::path::PathBuf, String>,
-        vet: fn(maitty_shared::protocol::Reply) -> Result<maitty_shared::protocol::Reply, String>,
+        vet: impl Fn(maitty_shared::protocol::Reply) -> Result<maitty_shared::protocol::Reply, String> + Send + Sync + 'static,
     ) -> Result<maitty_desktop_client::Daemon, String> {
         use maitty_desktop_client::{Daemon, RemoteDaemon};
         if !routing::is_remote(machine) {

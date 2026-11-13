@@ -327,7 +327,7 @@ async fn the_changes_of_a_pane_on_a_machine_are_read_from_that_machines_daemon_a
 }
 
 #[tokio::test]
-async fn a_checkout_on_a_machine_is_pushed_and_pulled_by_that_machines_daemon() {
+async fn a_checkout_on_a_machine_is_pushed_pulled_and_committed_by_that_machines_daemon() {
     use maitty_shared::protocol::GitRequest;
     let mut sandbox = Sandbox::new();
     sandbox.start_daemon();
@@ -360,15 +360,30 @@ async fn a_checkout_on_a_machine_is_pushed_and_pulled_by_that_machines_daemon() 
     let term = watch.any_pane(BOX).unwrap();
 
     let ask = |request: GitRequest| {
-        let daemon = wire.git_daemon(Some(BOX.0)).expect("a connected machine is asked");
+        let daemon = wire.git_daemon(Some(BOX.0), &request).expect("a connected machine is asked");
         async move { maitty_desktop_client::git_request(term, request, daemon).await.map_err(|error| format!("{error:#}")) }
     };
     assert_eq!(ask(GitRequest::Push).await, Ok("Pushed main".into()));
     assert_eq!(ask(GitRequest::Fetch).await, Ok("Fetched".into()));
     assert_eq!(ask(GitRequest::Pull).await, Ok("Already up to date".into()));
+
+    // A commit of one named file leaves the other change alone and answers the commit's id and subject.
+    git(&repository, &["config", "user.name", "Test"]);
+    git(&repository, &["config", "user.email", "test@example.invalid"]);
+    git(&repository, &["config", "commit.gpgsign", "false"]);
+    std::fs::write(repository.join("b.txt"), "two\n").unwrap();
+    std::fs::write(repository.join("c.txt"), "three\n").unwrap();
+    let committed = ask(GitRequest::Commit { message: "add b".into(), paths: Some(vec!["b.txt".into()]) }).await.expect("the commit");
+    let (id, subject) = committed.split_once(' ').expect("an id and a subject");
+    assert!(id.len() >= 4 && id.chars().all(|c| c.is_ascii_hexdigit()), "{committed}");
+    assert_eq!(subject, "add b");
+    assert!(repository.join("c.txt").is_file());
+    let outside = GitRequest::Commit { message: "m".into(), paths: Some(vec!["../x".into()]) };
+    assert_eq!(ask(outside).await, Err("`../x` is not a file of this checkout".into()));
+
     git(&repository, &["checkout", "--quiet", "--detach"]);
     assert_eq!(ask(GitRequest::Push).await, Err("this checkout is on no branch, so there is nothing to push".into()));
-    assert!(wire.git_daemon(None).is_err(), "this computer's checkouts are not synced through its daemon");
+    assert!(wire.git_daemon(None, &GitRequest::Fetch).is_err(), "this computer's checkouts are not synced through its daemon");
 }
 
 #[tokio::test]

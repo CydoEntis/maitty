@@ -1021,14 +1021,23 @@ pub async fn repo_query(term: u32, question: maitty_shared::repo::RepoRequest, d
     }
 }
 
-/// A little longer than the daemon gives git, so its own "stopped after" line is what arrives.
-const GIT_REQUEST_TIMEOUT: Duration = Duration::from_secs(maitty_shared::protocol::GIT_SYNC_LIMIT_SECS + 15);
+/// How long an answer to `request` is waited for: a little longer than the daemon gives it, so
+/// the daemon's own "stopped after" line is what arrives.
+fn git_request_timeout(request: &maitty_shared::protocol::GitRequest) -> Duration {
+    use maitty_shared::protocol::{GIT_COMMIT_LIMIT_SECS, GIT_SYNC_LIMIT_SECS, GitRequest};
+    const SLACK_SECS: u64 = 15;
+    Duration::from_secs(SLACK_SECS + match request {
+        GitRequest::Commit { .. } => GIT_COMMIT_LIMIT_SECS,
+        GitRequest::Fetch | GitRequest::Pull | GitRequest::Push | GitRequest::PullRequest => GIT_SYNC_LIMIT_SECS,
+    })
+}
 
-/// Have the daemon that owns pane `term` fetch, pull or push the checkout the pane is in. The
-/// line saying what happened, or an error whose text is the daemon's one line saying why not.
+/// Have the daemon that owns pane `term` do `request` to the checkout the pane is in. The line
+/// saying what happened, or an error whose text is the daemon's one line saying why not.
 pub async fn git_request(term: u32, request: maitty_shared::protocol::GitRequest, daemon: impl Into<Daemon>) -> Result<String> {
+    let limit = git_request_timeout(&request);
     let asked = ClientMsg::Query(Query::Git { term, request, tag: 0 });
-    match request_within(asked, daemon, GIT_REQUEST_TIMEOUT).await? {
+    match request_within(asked, daemon, limit).await? {
         Reply::GitDone { outcome: Ok(line), .. } => Ok(line),
         Reply::GitDone { outcome: Err(why), .. } => bail!("{why}"),
         _ => bail!("daemon returned an unexpected git reply"),
