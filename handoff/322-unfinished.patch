@@ -1,0 +1,429 @@
+diff --git a/apps/gui/src-tauri/src/lib.rs b/apps/gui/src-tauri/src/lib.rs
+index 175e6cfe9..a65c14177 100644
+--- a/apps/gui/src-tauri/src/lib.rs
++++ b/apps/gui/src-tauri/src/lib.rs
+@@ -778,7 +778,9 @@ async fn send_when_agent_ready(
+     machine: Option<u16>,
+     term: u32,
+     text: String,
++    operation: Option<u64>,
+ ) -> Result<serde_json::Value, String> {
++    // Another machine's line does not say which daemon version it reaches, so its sends stay unnamed.
+     if routing::is_remote(machine) {
+         let command =
+             maitty_desktop_client::held_message(text).map_err(|error| format!("{error:#}"))?;
+@@ -786,7 +788,7 @@ async fn send_when_agent_ready(
+             .command(machine, term, command)
+             .map(|()| serde_json::Value::Null);
+     }
+-    maitty_desktop_client::send_when_ready(term, text, daemon_executable(&app)?)
++    maitty_desktop_client::send_when_ready(term, text, operation, daemon_executable(&app)?)
+         .await
+         .map_err(|error| format!("{error:#}"))
+ }
+@@ -801,7 +803,9 @@ async fn queue_follow_up(
+     term: u32,
+     text: String,
+     first: bool,
++    operation: Option<u64>,
+ ) -> Result<serde_json::Value, String> {
++    // Another machine's line does not say which daemon version it reaches, so its sends stay unnamed.
+     if routing::is_remote(machine) {
+         let command = maitty_desktop_client::queued_message(text, first)
+             .map_err(|error| format!("{error:#}"))?;
+@@ -809,7 +813,7 @@ async fn queue_follow_up(
+             .command(machine, term, command)
+             .map(|()| serde_json::Value::Null);
+     }
+-    maitty_desktop_client::queue_follow_up(term, text, first, daemon_executable(&app)?)
++    maitty_desktop_client::queue_follow_up(term, text, first, operation, daemon_executable(&app)?)
+         .await
+         .map_err(|error| format!("{error:#}"))
+ }
+diff --git a/apps/gui/src/api/daemon.ts b/apps/gui/src/api/daemon.ts
+index 6c41b92c5..cd9ffb578 100644
+--- a/apps/gui/src/api/daemon.ts
++++ b/apps/gui/src/api/daemon.ts
+@@ -812,12 +812,13 @@ export async function loadTerminalReplay(conversation: Pick<Conversation, 'id'>
+ 
+ /**
+  * Leaves a message with the pane's daemon for its working agent: typed in when the turn is over, whether or not
+- * this window is open. `first` puts it ahead of the ones already waiting.
++ * this window is open. `first` puts it ahead of the ones already waiting. A retry carries the same `operation`
++ * (`terminalSendOperation`), so a daemon that took the first try does not queue it twice.
+  */
+-export async function queueFollowUp(conversation: Pick<Conversation, 'id'>, text: string, first: boolean): Promise<void> {
++export async function queueFollowUp(conversation: Pick<Conversation, 'id'>, text: string, first: boolean, operation: number): Promise<void> {
+   const pane = addressOf(conversation.id)
+   if (!isDesktop() || pane === null) throw new Error('Only an agent in a terminal takes a queued message')
+-  await invokeParsed('queue_follow_up', NullSchema, { term: pane.term, text, first, ...machineArgs(pane) })
++  await invokeParsed('queue_follow_up', NullSchema, { term: pane.term, text, first, operation, ...machineArgs(pane) })
+ }
+ 
+ /** Takes back the queued message at `index`, while it still reads `text`: the queue moves when a turn ends. */
+@@ -1008,10 +1009,10 @@ export async function markSeenOnDaemon(conversation: Pick<Conversation, 'id'>):
+ }
+ 
+ /** Hands a message to a terminal session's daemon, which types it in once the agent starting there takes input. */
+-export async function sendWhenAgentReady(sessionId: string, text: string): Promise<void> {
++export async function sendWhenAgentReady(sessionId: string, text: string, operation: number): Promise<void> {
+   const pane = addressOf(sessionId)
+   if (pane === null) throw new Error('Only a terminal session holds a message for its agent')
+-  await invokeParsed('send_when_agent_ready', NullSchema, { term: pane.term, text, ...machineArgs(pane) })
++  await invokeParsed('send_when_agent_ready', NullSchema, { term: pane.term, text, operation, ...machineArgs(pane) })
+ }
+ 
+ export async function renameConversationOnDaemon(conversation: Pick<Conversation, 'id'>, title: string): Promise<void> {
+diff --git a/apps/gui/src/features/chat/components/FirstMessage.test.tsx b/apps/gui/src/features/chat/components/FirstMessage.test.tsx
+index 98d185118..b71caec96 100644
+--- a/apps/gui/src/features/chat/components/FirstMessage.test.tsx
++++ b/apps/gui/src/features/chat/components/FirstMessage.test.tsx
+@@ -270,6 +270,34 @@ describe('a message written while a terminal agent works', () => {
+     expect(screen.getByLabelText('Sending')).toHaveTextContent('and then add tests')
+   })
+ 
++  it('is queued again under the same operation after a timeout, and a new message gets a new one', async () => {
++    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
++    const daemon = new FakeDaemonHistory()
++    daemon.status = 'Working'
++    fake.current = daemon
++    const add = vi.fn<(text: string, first: boolean, operation: number) => Promise<void>>()
++      .mockRejectedValueOnce(new Error('the local daemon did not answer within 5 seconds'))
++      .mockResolvedValue(undefined)
++    const paneQueue = { queued: [], add, drop: () => Promise.resolve() }
++    render(<ChatSession link={LINK} agent="claude" online typeInto={vi.fn()} paneQueue={paneQueue} sessionId="s1" />)
++    await settle()
++    const box = screen.getByRole('textbox', { name: 'Message claude' })
++
++    await user.type(box, 'and then add tests{Enter}')
++    await settle(1)
++    expect(box).toHaveValue('and then add tests')
++    await user.type(box, '{Enter}')
++    await settle(1)
++    await user.type(box, 'and the docs{Enter}')
++    await settle(1)
++
++    const operations = add.mock.calls.map(([, , operation]) => operation)
++    expect(add.mock.calls.map(([text]) => text)).toEqual(['and then add tests', 'and then add tests', 'and the docs'])
++    expect(operations.every((operation) => Number.isSafeInteger(operation) && operation > 0)).toBe(true)
++    expect(operations[1]).toBe(operations[0])
++    expect(operations[2]).not.toBe(operations[0])
++  })
++
+   it('takes one back from the daemon to edit it, without drawing it as sent', async () => {
+     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+     open('Working')
+diff --git a/apps/gui/src/features/chat/firstMessage.ts b/apps/gui/src/features/chat/firstMessage.ts
+index 39225ac95..51930c7d3 100644
+--- a/apps/gui/src/features/chat/firstMessage.ts
++++ b/apps/gui/src/features/chat/firstMessage.ts
+@@ -5,6 +5,7 @@
+  */
+ import { useSyncExternalStore } from 'react'
+ import type { ReasoningPick } from './agentChoice'
++import { terminalSendOperation } from './sendOperation'
+ 
+ const heldMessages = new Map<string, string>()
+ const heldByDaemon = new Set<string>()
+@@ -38,11 +39,11 @@ export function releaseFirstMessage(sessionId: string): void {
+  * delivered even if this window closes first. The window keeps showing it. If the daemon does not take it, the
+  * window sends it itself, as it does for a session that has no terminal for the daemon to type into.
+  */
+-export function entrustFirstMessage(sessionId: string, text: string, hand: (sessionId: string, text: string) => Promise<void>): void {
++export function entrustFirstMessage(sessionId: string, text: string, hand: (sessionId: string, text: string, operation: number) => Promise<void>): void {
+   heldByDaemon.add(sessionId)
+   notify()
+   // `hand` may refuse before it asks (a session that is not a terminal), which must not stop the window sending it.
+-  void Promise.resolve().then(() => hand(sessionId, text)).catch((error: unknown) => {
++  void Promise.resolve().then(() => hand(sessionId, text, terminalSendOperation())).catch((error: unknown) => {
+     console.warn('The daemon did not take the first message, so the window sends it', error instanceof Error ? error.message : String(error))
+     heldByDaemon.delete(sessionId)
+     notify()
+diff --git a/apps/gui/src/features/chat/sendOperation.test.ts b/apps/gui/src/features/chat/sendOperation.test.ts
+index 6e6d63ece..a1855a25a 100644
+--- a/apps/gui/src/features/chat/sendOperation.test.ts
++++ b/apps/gui/src/features/chat/sendOperation.test.ts
+@@ -1,5 +1,5 @@
+ import { beforeEach, describe, expect, it } from 'vitest'
+-import { forgetOperations, nextOperation, reserveOperation, STALE_OPERATION } from './sendOperation'
++import { forgetOperations, nextOperation, reserveOperation, STALE_OPERATION, terminalSendOperation } from './sendOperation'
+ 
+ beforeEach(forgetOperations)
+ 
+@@ -32,3 +32,26 @@ describe('STALE_OPERATION', () => {
+     expect(STALE_OPERATION.test('connection lost')).toBe(false)
+   })
+ })
++
++describe('terminalSendOperation', () => {
++  it('is nonzero and survives JSON as an exact integer, even from the largest random words', () => {
++    const words = [[0xffffffff, 0xffffffff], [0, 0], [0, 1]]
++    const values = words.map((pair) => terminalSendOperation(() => pair))
++    for (const value of values) {
++      expect(Number.isSafeInteger(value)).toBe(true)
++      expect(value).toBeGreaterThan(0)
++      expect(JSON.parse(JSON.stringify(value))).toBe(value)
++    }
++    expect(values[0]).toBe(Number.MAX_SAFE_INTEGER)
++    expect(values[2]).toBe(1)
++  })
++
++  it('draws again rather than send zero', () => {
++    const draws = [[0, 0], [0, 7]]
++    expect(terminalSendOperation(() => draws.shift() ?? [0, 0])).toBe(7)
++  })
++
++  it('differs from send to send', () => {
++    expect(terminalSendOperation()).not.toBe(terminalSendOperation())
++  })
++})
+diff --git a/apps/gui/src/features/chat/sendOperation.ts b/apps/gui/src/features/chat/sendOperation.ts
+index ef98e858a..43a0573f0 100644
+--- a/apps/gui/src/features/chat/sendOperation.ts
++++ b/apps/gui/src/features/chat/sendOperation.ts
+@@ -40,6 +40,28 @@ export function reserveOperation(conversation: number, seen: Seen): number {
+   return operation
+ }
+ 
++/** 2^21: the high word's share of a JavaScript number's 53 exact integer bits. */
++const HIGH_WORD_RANGE = 0x200000
++const LOW_WORD_RANGE = 0x100000000
++
++const WORDS = 2
++
++const randomWords = (): readonly number[] => Array.from(crypto.getRandomValues(new Uint32Array(WORDS)))
++
++/**
++ * The operation a message sent into a terminal agent carries: a random nonce, never a count. The daemon keys
++ * these by pane, so counters from two windows, or from one window after a reload, would collide and a second
++ * message would be acknowledged and never typed. It stays within 53 bits so it reaches the daemon's u64 exactly,
++ * and is never zero, which the daemon refuses.
++ */
++export function terminalSendOperation(random: () => readonly number[] = randomWords): number {
++  for (;;) {
++    const [high = 0, low = 0] = random()
++    const operation = (high % HIGH_WORD_RANGE) * LOW_WORD_RANGE + low
++    if (operation !== 0) return operation
++  }
++}
++
+ /** For tests: the numbers belong to the window's lifetime. */
+ export function forgetOperations(): void {
+   lastUsed.clear()
+diff --git a/apps/gui/src/features/chat/useChatComposer.ts b/apps/gui/src/features/chat/useChatComposer.ts
+index ee5727956..16b32c8ac 100644
+--- a/apps/gui/src/features/chat/useChatComposer.ts
++++ b/apps/gui/src/features/chat/useChatComposer.ts
+@@ -13,7 +13,7 @@ import { peekComposer, updateComposer, useComposerSlice, type ComposerState, typ
+ 
+ import { newId, revokePreviews, useAttachmentIntake, type AttachmentIntake } from './useAttachmentIntake'
+ import { wireChoice } from './agentChoice'
+-import { reserveOperation, STALE_OPERATION } from './sendOperation'
++import { reserveOperation, STALE_OPERATION, terminalSendOperation } from './sendOperation'
+ import { isBangLine, isSlashLine } from './slashCommands'
+ import { withRestoreNote } from './editFromHere'
+ 
+@@ -82,8 +82,11 @@ const FOLLOW_UP_REFRESH_MS = 700
+ /** The follow-ups a pane's daemon holds for its working agent, and the ways to add one and to take one back. */
+ export type PaneQueue = {
+   readonly queued: readonly string[]
+-  /** Leaves a message with the daemon; `first` puts it ahead of the ones already waiting. */
+-  add: (text: string, first: boolean) => Promise<void>
++  /**
++   * Leaves a message with the daemon; `first` puts it ahead of the ones already waiting. `operation` names the
++   * send, so the daemon takes a retry of it as the same message.
++   */
++  add: (text: string, first: boolean, operation: number) => Promise<void>
+   /** Takes back the one at `index`, while it still reads `text`. */
+   drop: (index: number, text: string) => Promise<void>
+ }
+@@ -195,6 +198,8 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto,
+   const [echo, setEcho] = useState<SentEcho | null>(null)
+   // A send that failed is tried again with the same operation number, so the daemon can tell it is the same message.
+   const retry = useRef<{ text: string; operation: number } | null>(null)
++  // The same for a message left with the pane's daemon: one that timed out may have been queued all the same.
++  const paneRetry = useRef<{ text: string; operation: number } | null>(null)
+ 
+   const readOnly = link.readOnly === true
+   // A chat that follows a terminal agent talks to it by typing, when it has a terminal to type in.
+@@ -308,8 +313,14 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto,
+     if (holding) {
+       // Left with the pane's daemon until the agent is ready for a message; shown in the queue meanwhile.
+       setError(null)
+-      paneQueue.add(withRestoreNote(note, buildAttachmentMessage(text, files)), false).then(
+-        () => { settle(true) },
++      const message = withRestoreNote(note, buildAttachmentMessage(text, files))
++      const operation = paneRetry.current?.text === message ? paneRetry.current.operation : terminalSendOperation()
++      paneRetry.current = { text: message, operation }
++      paneQueue.add(message, false, operation).then(
++        () => {
++          paneRetry.current = null
++          settle(true)
++        },
+         (failure: unknown) => {
+           setError(errorMessage(failure, 'Could not queue the message'))
+           settle(false)
+diff --git a/apps/gui/src/features/workspace/components/WorkspacePane.tsx b/apps/gui/src/features/workspace/components/WorkspacePane.tsx
+index 86a11ee91..bdffbd4fd 100644
+--- a/apps/gui/src/features/workspace/components/WorkspacePane.tsx
++++ b/apps/gui/src/features/workspace/components/WorkspacePane.tsx
+@@ -55,7 +55,7 @@ export function WorkspacePane({ shown, pane, kept }: {
+   // A pane's daemon holds what is sent while its agent works; a chat session's own daemon queue is its conversation's.
+   const paneQueue = chatOnly ? undefined : {
+     queued: session.queued,
+-    add: (text: string, first: boolean) => queueFollowUp(session, text, first),
++    add: (text: string, first: boolean, operation: number) => queueFollowUp(session, text, first, operation),
+     drop: (index: number, text: string) => dropQueuedFollowUp(session, index, text),
+   }
+   const showTerminal = () => {
+diff --git a/crates/maitty-desktop-client/src/lib.rs b/crates/maitty-desktop-client/src/lib.rs
+index e814ccc88..203a72606 100644
+--- a/crates/maitty-desktop-client/src/lib.rs
++++ b/crates/maitty-desktop-client/src/lib.rs
+@@ -932,8 +932,13 @@ pub fn held_message(text: String) -> Result<PaneCommand> {
+     Ok(PaneCommand::SendWhenReady(text))
+ }
+ 
+-pub async fn send_when_ready(term: u32, text: String, daemon_executable: PathBuf) -> Result<Value> {
+-    let reply = request(held_message(text)?.message(term), daemon_executable).await?;
++pub async fn send_when_ready(
++    term: u32,
++    text: String,
++    operation: Option<u64>,
++    daemon_executable: PathBuf,
++) -> Result<Value> {
++    let reply = send_named(held_message(text)?.message(term), operation, daemon_executable).await?;
+     match reply {
+         Reply::Ok => Ok(Value::Null),
+         _ => bail!("daemon returned an unexpected reply to a held message"),
+@@ -955,15 +960,60 @@ pub async fn queue_follow_up(
+     term: u32,
+     text: String,
+     first: bool,
++    operation: Option<u64>,
+     daemon_executable: PathBuf,
+ ) -> Result<Value> {
+-    let reply = request(queued_message(text, first)?.message(term), daemon_executable).await?;
++    let reply =
++        send_named(queued_message(text, first)?.message(term), operation, daemon_executable).await?;
+     match reply {
+         Reply::Ok => Ok(Value::Null),
+         _ => bail!("daemon returned an unexpected reply to a queued message"),
+     }
+ }
+ 
++/// Sends a held or queued message to this computer's daemon, named by `operation` when that daemon
++/// honours it, so a retry is acknowledged instead of typed twice.
++async fn send_named(
++    message: ClientMsg,
++    operation: Option<u64>,
++    daemon_executable: PathBuf,
++) -> Result<Reply> {
++    let Some(operation) = operation else {
++        return request(message, daemon_executable).await;
++    };
++    answered_within(REQUEST_TIMEOUT, async {
++        match ipc::open_for_user_knowing_version().await {
++            Ok((mut connection, version)) => {
++                ask(&mut connection, &named_send(message, operation, version)).await
++            }
++            // No daemon is running: the one `request` starts has no earlier send to match a retry against.
++            Err(error) if ipc::other_version(&error).is_none() => {
++                request(message, daemon_executable).await
++            }
++            Err(error) => Err(error),
++        }
++    })
++    .await
++}
++
++/// `message` carrying `operation` when a daemon at `daemon_version` honours it. An older daemon reads
++/// the field and ignores it, so a retry there would be typed twice: it is sent the message unnamed.
++fn named_send(message: ClientMsg, operation: u64, daemon_version: u32) -> ClientMsg {
++    let mut named = message.clone();
++    if let ClientMsg::Command(
++        Command::SendWhenReady { operation: slot, .. }
++        | Command::QueueFollowUp { operation: slot, .. },
++    ) = &mut named
++    {
++        *slot = Some(operation);
++    }
++    if daemon_reads(&named, daemon_version) {
++        named
++    } else {
++        message
++    }
++}
++
+ /// Takes one queued message back. A daemon from before this could only drop them all, and would
+ /// never answer, so it is not asked.
+ pub async fn drop_queued(term: u32, index: u32, text: String) -> Result<Value> {
+@@ -2630,6 +2680,33 @@ mod agent_command_tests {
+         assert!(!daemon_reads(&drop, DROP_QUEUED_SINCE - 1));
+     }
+ 
++    #[test]
++    fn a_terminal_send_carries_its_operation_only_to_a_daemon_that_honours_it() {
++        use super::{ClientMsg, Command, held_message, named_send, queued_message};
++        use maitty_shared::protocol::TERMINAL_SEND_OPERATIONS_SINCE;
++        // The window draws operations within a JavaScript number's exact integers; the largest arrives whole.
++        const LARGEST: u64 = (1 << 53) - 1;
++        assert_eq!(serde_json::from_str::<u64>("9007199254740991").unwrap(), LARGEST);
++        let held = held_message("fix it".into()).unwrap().message(3);
++        let queued = queued_message("next".into(), false).unwrap().message(3);
++        assert!(matches!(
++            named_send(held.clone(), LARGEST, TERMINAL_SEND_OPERATIONS_SINCE),
++            ClientMsg::Command(Command::SendWhenReady { term: 3, operation: Some(LARGEST), .. })
++        ));
++        assert!(matches!(
++            named_send(queued.clone(), 9, TERMINAL_SEND_OPERATIONS_SINCE),
++            ClientMsg::Command(Command::QueueFollowUp { term: 3, operation: Some(9), .. })
++        ));
++        assert!(matches!(
++            named_send(held, 9, TERMINAL_SEND_OPERATIONS_SINCE - 1),
++            ClientMsg::Command(Command::SendWhenReady { operation: None, .. })
++        ));
++        assert!(matches!(
++            named_send(queued, 9, TERMINAL_SEND_OPERATIONS_SINCE - 1),
++            ClientMsg::Command(Command::QueueFollowUp { operation: None, .. })
++        ));
++    }
++
+     #[test]
+     fn a_repository_question_newer_than_every_daemon_is_refused_in_words_by_an_older_one() {
+         use super::{ClientMsg, Query, refuse_unless_daemon_reads, repo_question_needs_version};
+diff --git a/docs/API_PATTERNS.md b/docs/API_PATTERNS.md
+index 1b1a409e2..f4ff1e4c6 100644
+--- a/docs/API_PATTERNS.md
++++ b/docs/API_PATTERNS.md
+@@ -152,6 +152,14 @@ Only an accepted send is remembered, so a retry of a refused one is tried afresh
+ memory (`daemon/terminal_sends.rs`, at most 1024 sends, oldest forgotten first): after a daemon restart
+ a retry of an earlier send is a new send. A send without an operation behaves as before.
+ 
++The desktop app draws that nonce in `terminalSendOperation` (`features/chat/sendOperation.ts`): random, nonzero and
++below 2^53, so it passes through a JavaScript number into the `u64` exactly. `send_when_agent_ready` and
++`queue_follow_up` take it as `operation`. The desktop client asks the running daemon its version first and sends the
++operation only to one at `TERMINAL_SEND_OPERATIONS_SINCE` or later (`named_send`); an older daemon, or one the send has
++to start, gets the message without it. A send to another machine's pane carries none, since its line does not say which
++daemon version it reaches. The composer retries a queued message that failed (a timeout included) under the same
++operation when it is sent again with the same text; a first message is handed over once and never retried.
++
+ `Command::Prewarm { cwd, cmd }` starts an agent ahead of its first message (`daemon/warm.rs`). It runs hidden, as a spare
+ (no client is shown it, it alerts nobody and it is not saved), and the next `NewWorkspace` with the same command in the
+ same folder is that agent, already running, instead of a new one. One is kept at a time: asking for another stops the
+diff --git a/docs/UI.md b/docs/UI.md
+index d6060b9bf..9bb415613 100644
+--- a/docs/UI.md
++++ b/docs/UI.md
+@@ -1032,7 +1032,10 @@ The desktop app's chat view is a second view of a Claude Code or Codex session,
+   and a message queued for a conversation that has since started over is dropped, not sent into the new one. The
+   boundary is the end of the turn, the one the daemon can observe for both providers; a message is never delivered
+   into a running turn. A send that the daemon refuses as `stale or reused` (another window sent in between) is read
+-  and sent again under a new number; a retry of any other failure keeps its number.
++  and sent again under a new number; a retry of any other failure keeps its number. A chat that follows a terminal
++  agent leaves a message sent while the agent works with the pane's daemon (`queue_follow_up`) under a random
++  operation (`terminalSendOperation`); one that failed, a timeout included, keeps it when sent again with the same text
++  ([API_PATTERNS](API_PATTERNS.md#project-specific-api-style)).
+ - **Naming a file with @** (`fileMention.ts`, `useFileMention.ts`, `FilePicker.tsx`). An `@` at the start of the box
+   or after a space, with the name typed after it at the end of the text and the caret there with nothing selected,
+   opens a list over the box (the command list's
