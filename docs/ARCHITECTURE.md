@@ -405,7 +405,8 @@ outside Maitty. No provider-specific status adapter is needed.
 Decisions are the nine in [`adr/`](adr/README.md): the daemon owns every session (0001), the
 terminal substrate and wire protocol (0002), status trust (0003), the client split (0004),
 provider adapters (0005), secrets (0006), multiple machines (0007), Windows and the product
-name (0008), and provider-reported usage (0009).
+name (0008), and provider-reported usage (0009). Workflows and specialist agents stay
+outside Maitty, which shows them (0010).
 
 ## Project-specific: planned structured conversations
 
