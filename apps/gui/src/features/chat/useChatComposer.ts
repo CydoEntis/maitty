@@ -14,6 +14,7 @@ import { newId, revokePreviews, useAttachmentIntake, type AttachmentIntake } fro
 import { wireChoice } from './agentChoice'
 import { reserveOperation, STALE_OPERATION } from './sendOperation'
 import { isBangLine, isSlashLine } from './slashCommands'
+import { withRestoreNote } from './editFromHere'
 
 export const PENDING_APPROVAL_NOTE = 'Answer the request above first'
 export const READ_ONLY_NOTE = 'Read-only: talk to the agent in the terminal'
@@ -180,11 +181,6 @@ export function messageIntoDraft(text: string): (state: ComposerState) => Compos
   })
 }
 
-/** The message as sent: the box's note, when there is one, as its first line. */
-function withNote(note: string | null, message: string): string {
-  return note === null ? message : `${note}\n${message}`
-}
-
 /**
  * The composer's behaviour. A message goes to the daemon through the conversation's own send, with
  * an operation number the daemon uses to tell a retry from a new message. While a turn runs the
@@ -313,7 +309,7 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
     if (holding) {
       // Left with the pane's daemon until the agent is ready for a message; shown in the queue meanwhile.
       setError(null)
-      paneQueue.add(withNote(note, buildAttachmentMessage(text, files)), false).then(
+      paneQueue.add(withRestoreNote(note, buildAttachmentMessage(text, files)), false).then(
         () => { settle(true) },
         (failure: unknown) => {
           setError(errorMessage(failure, 'Could not queue the message'))
@@ -322,7 +318,7 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
       )
       return
     }
-    void send(withNote(note, buildAttachmentMessage(text, files))).then(settle)
+    void send(withRestoreNote(note, buildAttachmentMessage(text, files))).then(settle)
   }, [disabledReason, sending, conversation, send, holding, paneQueue])
 
   // The ones this box took back, so their leaving the queue is not read as the daemon having sent them.

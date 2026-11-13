@@ -10,7 +10,7 @@ use crate::repo::{
     RepoSnapshot, RepoStatus,
 };
 use anyhow::{Context, Result, bail};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const MAX_LOG: usize = 200;
 const FIELD: char = '\x1f';
@@ -64,8 +64,16 @@ pub fn answer(dir: &Path, request: &RepoRequest) -> Result<RepoReply> {
 }
 
 /// Put the checkout back as it was in one of its own snapshots (never an arbitrary commit).
-pub fn restore(dir: &Path, commit: &str) -> Result<RepoReply> {
+/// `working` are the folders of structured agents in a turn: one in this checkout would keep
+/// writing into files being rolled back, so the restore is refused.
+pub fn restore(dir: &Path, commit: &str, working: &[PathBuf]) -> Result<RepoReply> {
     known_snapshot(dir, commit)?;
+    let top = |folder: &Path| git(folder, &["rev-parse", "--show-toplevel"]).ok();
+    if let Some(mine) = top(dir)
+        && working.iter().any(|folder| top(folder).as_ref() == Some(&mine))
+    {
+        bail!("An agent is working in this checkout; wait for it to finish before restoring");
+    }
     let changed = crate::snapshot::restore(dir, commit).map_err(anyhow::Error::msg)?;
     Ok(RepoReply::Restored(changed))
 }
@@ -540,9 +548,9 @@ mod tests {
         assert_eq!(kept.len(), 1);
         assert_eq!(kept[0].why, "before claude's turn");
 
-        assert!(restore(repo.path(), "0000000000000000000000000000000000000000").is_err());
+        assert!(restore(repo.path(), "0000000000000000000000000000000000000000", &[]).is_err());
         assert_eq!(
-            restore(repo.path(), &snapshot.commit).unwrap(),
+            restore(repo.path(), &snapshot.commit, &[]).unwrap(),
             RepoReply::Restored(1)
         );
         // git may have written the file with this platform's line ending.
@@ -576,8 +584,32 @@ mod tests {
         assert!(repo.path().join("new.txt").exists());
         assert_eq!(crate::snapshot::list(repo.path()).len(), 1);
         assert_eq!(
-            restore(repo.path(), &snapshot.commit).unwrap(),
+            restore(repo.path(), &snapshot.commit, &[]).unwrap(),
             RepoReply::Restored(2)
+        );
+    }
+
+    #[test]
+    fn a_restore_is_refused_while_an_agent_works_in_the_same_checkout() {
+        let repo = repository();
+        let snapshot = crate::snapshot::take(repo.path(), "before codex's turn")
+            .unwrap()
+            .expect("a repository takes snapshots");
+        std::fs::write(repo.path().join("a.txt"), "the agent's edit
+").expect("edit");
+        std::fs::create_dir(repo.path().join("sub")).expect("subfolder");
+        let elsewhere = repository();
+
+        let refused = restore(repo.path(), &snapshot.commit, &[repo.path().join("sub")]);
+        assert!(format!("{:#}", refused.unwrap_err()).contains("working in this checkout"));
+        assert_eq!(
+            std::fs::read_to_string(repo.path().join("a.txt")).unwrap(),
+            "the agent's edit
+"
+        );
+        assert_eq!(
+            restore(repo.path(), &snapshot.commit, &[elsewhere.path().to_path_buf()]).unwrap(),
+            RepoReply::Restored(1)
         );
     }
 

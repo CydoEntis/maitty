@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { buildAttachmentMessage } from './attachmentMessage'
+import { buildAttachmentMessage, parseAttachmentMessage } from './attachmentMessage'
 import type { ChatEvent } from './chatEvents'
-import { confirmBody, restoreNote, turnSpanOf } from './editFromHere'
+import { confirmBody, restoreNote, stripRestoreNote, turnSpanOf, withRestoreNote } from './editFromHere'
 import { messageEvent } from './eventFixtures'
 
 const turnEnd = (turnId: string, timed: boolean): ChatEvent => ({ kind: 'turn', id: `turn:${turnId}`, turnId, outcome: 'completed', startedAtMs: 1_000, endedAtMs: 9_000, timed })
@@ -18,6 +18,45 @@ describe('the note the next message starts with', () => {
     expect(restoreNote('x'.repeat(200))).toContain(`"${'x'.repeat(80)}…"`)
     const attached = buildAttachmentMessage('look at this', [{ path: 'C:/shot.png' }])
     expect(restoreNote(attached)).toContain('"look at this"')
+  })
+})
+
+describe('a message that already carried a note', () => {
+  it('is read without it, so editing from it again does not bring the old note back', () => {
+    const sent = `${restoreNote('first try')}\nsecond try`
+    expect(stripRestoreNote(sent)).toBe('second try')
+    expect(restoreNote(sent)).toContain('"second try"')
+    expect(restoreNote(sent)).not.toContain('first try')
+  })
+
+  it('keeps a message that only looks like one', () => {
+    expect(stripRestoreNote('[Note: mine]\nhello')).toBe('[Note: mine]\nhello')
+  })
+
+  it('keeps the chips of a message that was only attachments', () => {
+    const files = buildAttachmentMessage('', [{ path: 'C:/shot.png' }])
+    expect(stripRestoreNote(`${restoreNote(files)}\n\n${files}`)).toBe(files)
+  })
+})
+
+describe('a message sent with the note', () => {
+  it('has the note as its own first line', () => {
+    expect(withRestoreNote('[n]', 'go on')).toBe('[n]\ngo on')
+    expect(withRestoreNote(null, 'go on')).toBe('go on')
+  })
+
+  it('still reads as attachments when it had no words', () => {
+    const files = buildAttachmentMessage('', [{ path: 'C:/shot.png' }])
+    expect(parseAttachmentMessage(withRestoreNote(restoreNote(files), files))?.files).toHaveLength(1)
+  })
+})
+
+describe('the snippet the note quotes', () => {
+  it('cuts by characters, never inside one, and drops what is not text', () => {
+    const note = restoreNote(`${'a'.repeat(79)}\u{1F600}tail\u200b`)
+    expect(note).toContain(`"${'a'.repeat(79)}\u{1F600}…"`)
+    expect(/\p{Cs}/u.test(note)).toBe(false)
+    expect(restoreNote('zero\u200bwidth')).toContain('"zerowidth"')
   })
 })
 

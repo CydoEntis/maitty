@@ -6,7 +6,7 @@ import { repoSnapshots, restoreCount, restoreSnapshot } from '@/features/inspect
 import { snapshotBefore } from '@/features/inspect/turnRange'
 import type { ChatEvent } from './chatEvents'
 import { peekComposer, updateComposer } from './composerStore'
-import { confirmBody, restoreNote, turnSpanOf, type EditFromHere, type RewindPlace } from './editFromHere'
+import { confirmBody, restoreNote, stripRestoreNote, turnSpanOf, type EditFromHere, type RewindPlace } from './editFromHere'
 import { messageIntoDraft } from './useChatComposer'
 
 /** A restore waiting for the person's yes: the message to put back, the snapshot, and the confirm's words. */
@@ -65,7 +65,7 @@ export function useEditFromHere({ place, conversation, events, agent, busy }: In
     }
     restoreSnapshot(term, ask.commit).then(
       (changed) => {
-        updateComposer(conversation, (state) => ({ ...messageIntoDraft(ask.text)(state), note: restoreNote(ask.text) }))
+        updateComposer(conversation, (state) => ({ ...messageIntoDraft(stripRestoreNote(ask.text))(state), note: restoreNote(ask.text) }))
         toast.success(changed === 0 ? 'The files already matched; the message is back in the box' : `Restored ${changed === 1 ? '1 file' : `${String(changed)} files`}; the message is back in the box`)
       },
       (failure: unknown) => { toast.error(errorMessage(failure, 'Could not restore the files')) },

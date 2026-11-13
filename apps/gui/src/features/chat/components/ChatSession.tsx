@@ -471,7 +471,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
 
   return (
     <div ref={chat} className="mx-chat" onKeyDown={onKeyDown} onClick={keepComposerFocus} onMouseUp={(event) => { const next = pickedText(event); if (next !== undefined) setPicked(next) }}>
-      {editFromHere.ask !== null && <ConfirmCloseDialog title="Restore the files and edit this message?" body={editFromHere.ask.body} confirmLabel={editFromHere.ask.confirmLabel} onConfirm={editFromHere.confirm} onCancel={editFromHere.cancel} />}
+      {editFromHere.ask !== null && <ConfirmCloseDialog title="Restore the files and edit this message?" body={editFromHere.ask.body} confirmLabel={editFromHere.ask.confirmLabel} onConfirm={editFromHere.confirm} onCancel={editFromHere.cancel} firstFocus="cancel" />}
       {picked !== null && <SelectionBar picked={picked} onCopy={copyPicked} onQuote={() => { if (chat.current !== null) quotePicked(chat.current) }} />}
       {(notices.length > 0 || fullAccess) && (
         <div className="mx-chat-notices" role={offline ? 'status' : undefined}>

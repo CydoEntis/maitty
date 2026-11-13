@@ -728,7 +728,7 @@ Protocol 67 adds, for the desktop app's Inspect panel, find, quick-look links an
   repository. The answer echoes `tag`, so a client can have several in flight.
 - `Command::RestoreSnapshot { term, tag, commit }`: put the pane's checkout back as it was in one
   of the daemon's own snapshots (the commit must be one `RepoRequest::Snapshots` lists), after
-  saving what is there now. Only a human can, and not while the pane's agent works. It answers
+  saving what is there now. Only a human can, and not while the pane's agent works or a structured conversation whose folder is in the same checkout is Working. It answers
   `Reply::Repo { Restored(n) }`. This is the one request that changes the repository; every other
   change stays in the pane's PTY.
 - `Snapshot.daemon_id` (`Option<String>`, `#[serde(default)]`) is the daemon's random id, kept

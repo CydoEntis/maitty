@@ -4,6 +4,7 @@ import { FAKE_CONVERSATION, FakeDaemonHistory } from '../fakeDaemonHistory'
 import { forgetChatFeeds } from '../useChatFeed'
 import { forgetComposers, peekComposer } from '../composerStore'
 import { ChatSession } from './ChatSession'
+import { restoreNote } from '../editFromHere'
 
 const fake = vi.hoisted(() => ({
   current: null as null | { read: (cursor: never) => Promise<unknown> },
@@ -167,6 +168,30 @@ describe('Edit from here on a message the person sent', () => {
     expect(peekComposer(FAKE_CONVERSATION).note).toBeNull()
   })
 
+  it('gives the first keys to Cancel, so an Enter typed as it opens restores nothing', async () => {
+    twoTurns()
+    await open()
+    await editFromHere('Add a.txt')
+
+    const focused = document.activeElement
+    expect(focused).toBe(confirmButton('Cancel'))
+    // jsdom presses no button on Enter; the browser clicks the focused one.
+    if (focused instanceof HTMLElement) await click(focused)
+    expect(fake.restoreSnapshot).not.toHaveBeenCalled()
+  })
+
+  it('shows and edits a message sent with a note as the person wrote it', async () => {
+    const daemon = twoTurns()
+    daemon.upsert(daemon.message('t2', 'u2', 'User', `${restoreNote('Add a.txt')}\nAdd b.txt`))
+    await open()
+    expect(screen.queryByText(/\[Note:/)).toBeNull()
+
+    await editFromHere('Add b.txt')
+    await click(confirmButton('Restore 2 files'))
+    expect(box()).toHaveValue('Add b.txt')
+    expect(peekComposer(FAKE_CONVERSATION).note).toBe(restoreNote('Add b.txt'))
+  })
+
   it('restores nothing when the person cancels', async () => {
     twoTurns()
     await open()
@@ -206,7 +231,7 @@ describe('Edit from here on a message the person sent', () => {
 
     await settle()
     expect(screen.getByRole('menuitem', { name: 'Edit from here' })).toHaveAttribute('aria-disabled', 'true')
-    expect(screen.getByText('claude is working. Edit from here when it finishes.')).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Edit from here' })).toHaveAccessibleDescription('claude is working. Edit from here when it finishes.')
   })
 
   it('is greyed out with the local-only refusal for a session on another machine', async () => {

@@ -20,7 +20,7 @@ import { PlanCard } from './PlanCard'
 import { StepView } from './StepCards'
 import { WorkCard } from './WorkCard'
 import { MessageMenu } from './MessageMenu'
-import type { EditFromHere } from '../editFromHere'
+import { stripRestoreNote, type EditFromHere } from '../editFromHere'
 
 /**
  * The rows of the chat (v18 C.1). Every fact the daemon's history carries is shown, and one it does
@@ -120,7 +120,9 @@ function AgentMessage({ rowKey, paragraphs, status }: { rowKey: string; paragrap
  * What the person said: its text, and its attached files as chips. A message on its way is drawn the
  * same as one the history holds, so the files never show as the paths that carry them.
  */
-function SaidText({ text }: { text: string }) {
+function SaidText({ text: sent }: { text: string }) {
+  // The note a restore put in front is for the agent; the person sees what they wrote.
+  const text = stripRestoreNote(sent)
   const attached = parseAttachmentMessage(text)
   if (attached === null) return <p>{text}</p>
   return (
