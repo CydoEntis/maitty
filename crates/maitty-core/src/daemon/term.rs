@@ -188,6 +188,8 @@ pub struct Term {
     pub subagent_hooks_seen: bool,
     /// Runtime-reported child lifecycle, retained after completion for inspection.
     pub subagent_activity: Vec<SubagentActivity>,
+    /// Workflow runs reported from this pane, newest first (ADR 0010). Never read for status.
+    pub workflows: Vec<maitty_shared::workflow::WorkflowRun>,
     /// The shell reports its directory itself (OSC 7 / 9;9); trust that over process scans.
     pub cwd_reported: bool,
     /// Stopped by an older the app version; resumes when focused.
@@ -973,6 +975,7 @@ impl Term {
             subagents: Vec::new(),
             subagent_hooks_seen: false,
             subagent_activity: Vec::new(),
+            workflows: Vec::new(),
             cwd_reported: false,
             asleep: false,
             win32_input: false,

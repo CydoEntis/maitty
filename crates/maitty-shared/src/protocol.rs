@@ -4,6 +4,7 @@
 //! the workspace / tab / pane tree; clients render `Snapshot`s and send `Command`s.
 
 use crate::layout::{Dir, Node};
+use crate::workflow::WorkflowRun;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -11,7 +12,7 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 87;
+pub const PROTOCOL_VERSION: u32 = 88;
 
 /// The first version whose daemon lists an agent's saved conversations for a folder
 /// (`Query::SavedConversations`).
@@ -53,6 +54,9 @@ pub const CLOSED_SESSIONS_MAX: usize = 50;
 
 /// The first version whose daemon reopens a closed session (`Command::ReopenClosedSession`).
 pub const REOPEN_CLOSED_SINCE: u32 = 87;
+
+/// The first version whose daemon takes a workflow's progress (`ClientMsg::WorkflowReport`).
+pub const WORKFLOW_REPORT_SINCE: u32 = 88;
 
 /// An agent session that closed for good or whose agent exited with an error: where it worked, so
 /// it can be found again. It holds no message or terminal content.
@@ -308,6 +312,13 @@ pub enum ClientMsg {
         token: String,
         usage: Usage,
         limits: Vec<Limit>,
+    },
+    /// A workflow's progress, from a process in the pane, with the pane's secret (ADR 0010).
+    /// Display only: it never changes the pane's status.
+    WorkflowReport {
+        term: TermId,
+        token: String,
+        run: WorkflowRun,
     },
     Query(Query),
 }
@@ -1508,6 +1519,9 @@ pub struct TermInfo {
     /// Persistent lifecycle records reported by the runtime.
     #[serde(default)]
     pub subagent_activity: Vec<SubagentActivity>,
+    /// The workflow runs reported from this pane, newest first (ADR 0010). Display only.
+    #[serde(default)]
+    pub workflows: Vec<WorkflowRun>,
     /// Provider conversation ID that owns these child records.
     #[serde(default)]
     pub session: Option<String>,
@@ -1908,6 +1922,7 @@ impl ClientMsg {
             ClientMsg::Query(Query::SavedConversations { .. }) => SAVED_CONVERSATIONS_SINCE,
             ClientMsg::Query(Query::ClosedSessions) => CLOSED_SESSIONS_SINCE,
             ClientMsg::Command(Command::ReopenClosedSession { .. }) => REOPEN_CLOSED_SINCE,
+            ClientMsg::WorkflowReport { .. } => WORKFLOW_REPORT_SINCE,
             _ => COMPATIBLE_SINCE,
         }
     }
@@ -2326,7 +2341,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 87);
+        assert_eq!(PROTOCOL_VERSION, 88);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2709,7 +2724,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 87);
+        assert_eq!(PROTOCOL_VERSION, 88);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -3070,6 +3085,50 @@ mod tests {
             terms: [(3, term)].into(),
             ..Default::default()
         }));
+    }
+
+    #[test]
+    fn a_pane_from_before_workflow_reports_reads_with_none_and_one_with_a_run_round_trips() {
+        use crate::workflow::{StepState, WorkflowRun, WorkflowStep, WorkflowTicket};
+        let mut term = pane_from(serde_json::json!({}));
+        assert!(term.workflows.is_empty(), "an older peer sends none");
+        term.workflows.push(WorkflowRun {
+            workflow: "kitchen".into(),
+            run: "001".into(),
+            ticket: Some(WorkflowTicket {
+                key: "MAITTY-42".into(),
+                title: None,
+                link: None,
+            }),
+            steps: vec![WorkflowStep {
+                name: "review".into(),
+                state: StepState::SentBack,
+                note: Some("two findings".into()),
+                helper: None,
+            }],
+            reported_at: 5,
+        });
+        round_trips(&ServerMsg::State(Snapshot {
+            terms: [(3, term)].into(),
+            ..Default::default()
+        }));
+    }
+
+    #[test]
+    fn a_workflow_report_is_sent_only_to_a_daemon_that_reads_it() {
+        let report = ClientMsg::WorkflowReport {
+            term: 1,
+            token: String::new(),
+            run: crate::workflow::WorkflowRun {
+                workflow: "kitchen".into(),
+                run: "1".into(),
+                ticket: None,
+                steps: Vec::new(),
+                reported_at: 0,
+            },
+        };
+        assert_eq!(report.introduced_in(), WORKFLOW_REPORT_SINCE);
+        const { assert!(WORKFLOW_REPORT_SINCE <= PROTOCOL_VERSION) };
     }
 
     #[test]

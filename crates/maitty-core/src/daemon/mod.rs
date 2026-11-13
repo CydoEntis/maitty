@@ -37,6 +37,7 @@ mod term;
 mod usage;
 mod usage_store;
 mod warm;
+mod workflow;
 mod worktrees;
 
 use crate::brand::APP_COMMAND;
@@ -2519,8 +2520,10 @@ impl Daemon {
             let allowed = match &msg {
                 ClientMsg::Query(_) => self.may(client, Grant::Read, None),
                 ClientMsg::Resize { .. } => self.may(client, Grant::Write, None),
-                ClientMsg::Hook { .. } | ClientMsg::Usage { .. } => Err(anyhow::anyhow!(
-                    "Structured callers cannot report pane status or usage"
+                ClientMsg::Hook { .. }
+                | ClientMsg::Usage { .. }
+                | ClientMsg::WorkflowReport { .. } => Err(anyhow::anyhow!(
+                    "Structured callers cannot report pane status, usage or workflows"
                 )),
                 _ => Ok(()),
             };
@@ -2636,6 +2639,22 @@ impl Daemon {
                     .is_some_and(|t| term::same_secret(&t.token, &token))
                 {
                     self.report_usage(term, usage, limits);
+                }
+            }
+            ClientMsg::WorkflowReport { term, token, run } => {
+                let Some(t) = self.terms.get_mut(&term) else {
+                    return;
+                };
+                if !term::same_secret(&t.token, &token) {
+                    tracing::info!("ignoring a workflow report for pane {term} without its secret");
+                    return;
+                }
+                match maitty_shared::workflow::checked(run) {
+                    Ok(run) => {
+                        workflow::record(&mut t.workflows, run, term::unix_now());
+                        self.dirty = true;
+                    }
+                    Err(reason) => tracing::info!("pane {term}: workflow report refused: {reason}"),
                 }
             }
             ClientMsg::Command(cmd) => {
@@ -3214,6 +3233,7 @@ impl Daemon {
                         pr: self.pr_of(t),
                         queued: t.queue.iter().cloned().collect(),
                         subagent_activity: t.subagent_activity.clone(),
+                        workflows: t.workflows.clone(),
                         session: t.session.clone(),
                     },
                 )

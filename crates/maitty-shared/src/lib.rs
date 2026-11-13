@@ -10,3 +10,4 @@ pub mod protocol;
 pub mod repo;
 pub mod settings_view;
 pub mod usage_report;
+pub mod workflow;

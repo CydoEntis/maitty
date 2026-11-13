@@ -290,6 +290,7 @@ impl Daemon {
             held_message: term.held_message.as_ref().map(|held| held.text.clone()),
             account: term.account.clone(),
             subagent_activity: term.subagent_activity.clone(),
+            workflows: term.workflows.clone(),
             checks: term.checks.infos(),
             checks_overridden: term
                 .checks
@@ -597,6 +598,7 @@ impl Daemon {
                                     pane.held_message.as_deref().map(term::HeldMessage::new);
                                 t.restore_checks(&check_dir, old, &pane);
                                 let now = term::unix_now();
+                                t.workflows = pane.workflows;
                                 t.subagent_activity = pane.subagent_activity.into_iter().map(|mut activity| {
                                     if activity.state.active() {
                                         activity.state = SubagentState::ConnectionLost;

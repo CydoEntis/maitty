@@ -159,6 +159,16 @@ command is `add_branch_worktree` (`maitty_desktop_client::branch_worktree`); it 
 setup hook may take ten, and says the service is from an older release instead of asking a daemon that would never
 answer. It is this computer's daemon only. Structured runtimes may not ask for it.
 
+`ClientMsg::WorkflowReport { term, token, run }` is a workflow's progress from a process in the pane
+(`maitty workflow report`, which reads one run as JSON from stdin; ADR 0010). The daemon takes it
+only with the pane's token, checks it (`maitty_shared::workflow::checked`), stamps `reported_at`
+and keeps it in `TermInfo.workflows`, newest first: a report replaces the earlier one with the same
+workflow and run, and a pane keeps its latest 20 runs, saved with it. It is display only and never
+changes status. It came in protocol 88 (`WORKFLOW_REPORT_SINCE`, with its arm in
+`ClientMsg::introduced_in`); `COMPATIBLE_SINCE` stays 78, since the command checks the daemon's
+version and tells the person to restart an older one instead of sending. `TermInfo.workflows` is a
+defaulted field, empty from an older daemon.
+
 A pane's effort (`TermInfo.effort`, an optional field: no `PROTOCOL_VERSION` bump, a test decodes the old shape) is read by the
 daemon from the agent's own files every five seconds off the loop (`usage::poll_effort`): for Claude the level in the newest request
 line of its transcript, present only when a level was set; for Codex the level its thread settings name, else its model's default

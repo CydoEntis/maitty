@@ -165,6 +165,11 @@ enum Cmd {
         /// Extra payload (codex `notify` passes JSON as an argument).
         payload: Option<String>,
     },
+    /// Show a workflow's progress on this pane: `workflow report` reads one run as JSON from stdin.
+    Workflow {
+        #[command(subcommand)]
+        cmd: WorkflowCmd,
+    },
     /// Install status hooks into an agent's config (every installed agent, and MCP, when none is named).
     Integrate {
         /// claude, codex, gemini, qwen, pi, omp, opencode, mastracode, kilo, kimi or mcp
@@ -417,6 +422,14 @@ enum ConfigCmd {
 }
 
 #[derive(Subcommand)]
+enum WorkflowCmd {
+    /// Read one run as JSON from stdin ({workflow, run, ticket?, steps: [{name, state, note?,
+    /// helper?}]}; states: waiting, working, passed, failed, sent_back, needs_you, skipped) and
+    /// show it on this pane. Display only: it never changes the pane's status.
+    Report,
+}
+
+#[derive(Subcommand)]
 enum SecretCmd {
     /// Spend a one-use secret reference and set it in an environment variable for the command.
     Run {
@@ -655,6 +668,9 @@ pub(crate) fn run() {
             let _ = cli::hook(&agent, status.as_deref(), payload.as_deref());
             Ok(())
         }
+        Some(Cmd::Workflow {
+            cmd: WorkflowCmd::Report,
+        }) => cli::workflow::report(),
         Some(Cmd::Integrate { agent, uninstall }) => cli::integrate(agent.as_deref(), uninstall),
         Some(Cmd::Config { cmd }) => match cmd {
             ConfigCmd::Path => {

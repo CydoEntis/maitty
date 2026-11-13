@@ -9707,3 +9707,59 @@ fn a_conversation_terminal_its_hooks_never_named_is_remembered_by_its_conversati
     );
     close(&mut d, &[a]);
 }
+
+#[test]
+fn a_workflow_report_is_shown_on_its_pane_and_never_changes_its_status() {
+    use maitty_shared::workflow::{StepState, WorkflowRun, WorkflowStep};
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let token = d.terms[&t].token.clone();
+    {
+        let p = d.terms.get_mut(&t).unwrap();
+        (p.agent, p.hooked, p.status) = (Some("claude".into()), true, Status::Working);
+    }
+    let run = |state: StepState| WorkflowRun {
+        workflow: "kitchen".into(),
+        run: "001".into(),
+        ticket: None,
+        steps: vec![WorkflowStep {
+            name: "review".into(),
+            state,
+            note: None,
+            helper: None,
+        }],
+        reported_at: 0,
+    };
+    let send = |d: &mut Daemon, token: &str, run: WorkflowRun| {
+        d.handle(Ev::Msg(
+            1,
+            ClientMsg::WorkflowReport {
+                term: t,
+                token: token.into(),
+                run,
+            },
+        ));
+    };
+    send(&mut d, "wrong", run(StepState::Working));
+    assert!(d.snapshot().terms[&t].workflows.is_empty(), "only with the pane's secret");
+    let mut nameless = run(StepState::Working);
+    nameless.steps.clear();
+    send(&mut d, &token, nameless);
+    assert!(d.snapshot().terms[&t].workflows.is_empty(), "a run that fails its checks is refused");
+    send(&mut d, &token, run(StepState::NeedsYou));
+    let snap = d.snapshot();
+    let shown = &snap.terms[&t].workflows;
+    assert_eq!(shown.len(), 1);
+    assert_eq!(shown[0].steps[0].state, StepState::NeedsYou);
+    assert!(shown[0].reported_at > 0, "the daemon stamps the time");
+    assert_eq!(snap.terms[&t].status, Status::Working, "a workflow never sets status");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_pane_saved_before_workflow_reports_restores_with_none() {
+    let old: persist::SavedPane =
+        serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":"claude","session":"abc123","aside":0}"#)
+            .unwrap();
+    assert!(old.workflows.is_empty());
+}

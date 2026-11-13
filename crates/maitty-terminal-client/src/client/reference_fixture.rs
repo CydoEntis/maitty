@@ -120,6 +120,7 @@ pub(super) fn term(
         diff_removed: 0,
         subagents: Vec::new(),
         subagent_activity: Vec::new(),
+        workflows: Vec::new(),
         session: None,
         effort: None,
         started_by: None,
