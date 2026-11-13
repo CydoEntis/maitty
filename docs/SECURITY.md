@@ -656,6 +656,28 @@ The agent runs with the user's permissions, so the window's start path is narrow
 - Secret masking in history is the daemon's (ticket 18), at the point where history is stored and served; the
   window adds no copy of a message.
 
+## Project-specific: the message the daemon sends by itself
+
+With `restore.continue_turn` on, the daemon sends one fixed message, `Continue where you left off.`,
+to a chat conversation, with nobody asking at that moment. It is off by default and its reach is
+narrow (`daemon/conversation/continue_turn.rs`):
+
+- **Who gets it.** Only a structured conversation that was in a turn when the daemon stopped (the
+  session file's `turns_in_flight`), that the daemon itself resumed at this start, on the generation
+  that resume runs at. An idle chat, a start a client asked for, a superseded generation, a
+  conversation that was mid-transfer and a terminal agent never do.
+- **When.** After the resume has succeeded and the history is complete, never before; a resume that
+  fails sends nothing. It goes through the same send path as a person's message (hidden-character
+  check, receipt, queue while a turn runs) and carries no model, effort or permission choice.
+- **How often.** Once per daemon start, and at most 3 times in 5 minutes per conversation. The count is
+  in the session file and is written before the message leaves, so a daemon that restarts in a loop
+  cannot send a fourth. A clock set back keeps the earlier sends counted.
+- **What it cannot do.** It answers no approval or question (those stay human-only), starts or adopts
+  no conversation, and changes no posture. The text is a constant; nothing from a client, a file or a
+  provider is put into it.
+- **How it looks.** The provider records it as a user message, and the chat shows it as one: the
+  message model has no sender other than user and assistant.
+
 ## Project-specific: structured history cache boundary
 
 The structured-history cache reuses private-directory/file helpers:

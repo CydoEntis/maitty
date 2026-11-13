@@ -804,7 +804,10 @@ Closing every pane yourself also starts fresh. A pane or agent that ends on its 
 of the saved session for 15 seconds: a shutdown, reboot or logoff kills agents a moment before
 maitty, so the session from before it is the one that comes back. Chat conversations that were running
 resume by themselves on the same provider session (`conversations = false` leaves them in Recovery
-needed until you press Resume). Configure all of this under `[restore]`,
+needed until you press Resume). A resumed chat waits for you; with `continue_turn = true` maitty sends
+a chat that was mid-turn `Continue where you left off.` once after it resumes, and never more than 3 times in 5 minutes to
+one conversation, however often the service restarts. The message shows in the chat like one you
+sent. A chat whose turn had already ended, and every terminal agent, never get it. Configure all of this under `[restore]`,
 and per agent with `resume` / `resume_last`. Each pane's recent output is kept on disk so it is
 there after a restart; it can hold secrets that were on screen, so `output = false` (Settings ›
 Sessions › Keep each pane's recent output) stops saving it and deletes what was saved.

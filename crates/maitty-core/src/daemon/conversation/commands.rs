@@ -2260,6 +2260,7 @@ impl Daemon {
                                         generation,
                                     }),
                                 );
+                                self.continue_cut_turn(client, id, generation);
                             } else {
                                 let message = "Codex history is incomplete; chat takeover is disabled";
                                 self.send(client, ServerMsg::Error(message.into()));
@@ -2396,6 +2397,7 @@ impl Daemon {
                     client,
                     ServerMsg::Reply(Reply::ConversationStarted { id, generation }),
                 );
+                self.continue_cut_turn(client, id, generation);
             } else {
                 self.send(
                     client,

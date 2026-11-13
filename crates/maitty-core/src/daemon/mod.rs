@@ -428,6 +428,13 @@ struct Daemon {
     /// Chat conversations that were running when the previous daemon went away, with the
     /// generation they were fenced to: what an automatic resume may start, once.
     resumable_conversations: Vec<(crate::conversation::ConversationId, u64)>,
+    /// Those of `resumable_conversations` that were Running, not mid-transfer, with a turn in
+    /// flight.
+    cut_conversations: std::collections::BTreeSet<crate::conversation::ConversationId>,
+    /// Conversations the daemon is resuming that get the continue message once the resume
+    /// succeeds, with the generation that resume runs at.
+    turns_to_continue: BTreeMap<crate::conversation::ConversationId, u64>,
+    turn_continues: conversation::continue_turn::Continues,
     conversation_states: BTreeMap<crate::conversation::ConversationId, conversation::State>,
     /// Conversations whose agent was stopped on purpose, so its exit is not a failure.
     conversation_ending: std::collections::BTreeSet<crate::conversation::ConversationId>,
@@ -1220,6 +1227,9 @@ impl Daemon {
             pending_starts: Vec::new(),
             conversation_operations: Vec::new(),
             resumable_conversations: Vec::new(),
+            cut_conversations: std::collections::BTreeSet::new(),
+            turns_to_continue: BTreeMap::new(),
+            turn_continues: conversation::continue_turn::Continues::default(),
             conversation_states: BTreeMap::new(),
             conversation_ending: std::collections::BTreeSet::new(),
             conversation_closing: std::collections::BTreeMap::new(),
