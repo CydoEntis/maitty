@@ -589,6 +589,7 @@ fn a_retried_follow_up_is_acknowledged_and_not_queued_twice() {
         queue(&mut d, "open a PR", Some(1)).is_err(),
         "the same operation with other text"
     );
+    assert!(queue(&mut d, "open a PR", Some(0)).is_err(), "zero is no operation");
     queue(&mut d, "open a PR", Some(2)).unwrap();
     queue(&mut d, "open a PR", None).unwrap();
     queue(&mut d, "open a PR", None).unwrap();
@@ -618,6 +619,7 @@ fn a_retried_message_for_a_starting_agent_is_not_held_or_typed_again() {
             },
         )
     };
+    assert!(send(&mut d, "fix the parser", Some(0)).is_err(), "zero is no operation");
     send(&mut d, "fix the parser", Some(5)).unwrap();
     send(&mut d, "fix the parser", Some(5)).unwrap();
     assert!(

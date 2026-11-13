@@ -30,8 +30,8 @@ pub(super) struct TerminalSends {
 
 impl TerminalSends {
     /// Whether this send was already made: true for the same pane, operation and text within
-    /// ten minutes, an error for the same pane and operation with other text. A send without an
-    /// operation is never a repeat.
+    /// ten minutes, an error for the same pane and operation with other text, or for operation
+    /// zero. A send without an operation is never a repeat.
     pub(super) fn already_sent(
         &mut self,
         term: TermId,
@@ -43,6 +43,9 @@ impl TerminalSends {
         let Some(operation) = operation else {
             return Ok(false);
         };
+        if operation == 0 {
+            bail!("an operation ID must be nonzero");
+        }
         match self.sent.iter().find(|s| s.term == term && s.operation == operation) {
             Some(s) if s.digest == digest(text) => Ok(true),
             Some(_) => bail!("that operation ID was already used for other text"),
@@ -104,11 +107,11 @@ mod tests {
     fn past_the_limit_the_oldest_send_is_forgotten() {
         let mut sends = TerminalSends::default();
         let now = Instant::now();
-        for operation in 0..=REMEMBERED_MOST as u64 {
+        for operation in 1..=REMEMBERED_MOST as u64 + 1 {
             sends.remember(3, Some(operation), "x", now);
         }
         assert_eq!(sends.sent.len(), REMEMBERED_MOST);
-        assert!(!sends.already_sent(3, Some(0), "x", now).unwrap());
-        assert!(sends.already_sent(3, Some(1), "x", now).unwrap());
+        assert!(!sends.already_sent(3, Some(1), "x", now).unwrap());
+        assert!(sends.already_sent(3, Some(2), "x", now).unwrap());
     }
 }
