@@ -93,6 +93,8 @@ export type Conversation = {
   /** Lines added and removed in the session's checkout against HEAD, from the daemon; absent when unknown. */
   /** The terminal runs in a linked worktree. */
   linked?: boolean
+  /** The top folder of the checkout (main or a linked worktree) it works in; absent or null when the daemon did not say. */
+  checkout?: string | null
   diffAdded?: number
   diffRemoved?: number
   isGitRepository?: boolean
