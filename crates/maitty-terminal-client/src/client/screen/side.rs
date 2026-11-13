@@ -41,6 +41,7 @@ const MENU: &str = "Menu";
 /// A subagent as its parent's row lists it.
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct SubRow {
+    pub id: String,
     pub name: String,
     pub state: State,
 }
@@ -195,6 +196,7 @@ fn side_rows(app: &App, model: &[Proj]) -> Vec<SideRow> {
                         .0
                         .into_iter()
                         .map(|a| SubRow {
+                            id: a.id.clone(),
                             name: a.name.clone(),
                             state: sub_state(a.state),
                         })
@@ -507,6 +509,7 @@ pub(in crate::client) fn draw_side(
         .collect();
     app.screen.row_y.clear();
     app.screen.sub_rows.clear();
+    app.screen.sub_ids.clear();
     app.screen.fold_keys.clear();
     // Every session the panes of this view show, so a split's other panes are marked in the list as well as the focused one.
     app.screen.in_view = app.panes.iter().map(|(term, _)| app.session_key(*term)).collect();
@@ -977,6 +980,7 @@ fn draw_subs(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, row: &SideRow, op
         ];
         put_cut(buf, r.x + TREE_X, yy, segs, end);
         app.screen.sub_rows.push(term);
+        app.screen.sub_ids.push((s.id.clone(), s.name.clone()));
         hit(app, line, ScreenHit::Subagent(app.screen.sub_rows.len() - 1));
     }
     if row.subs_done > 0 {

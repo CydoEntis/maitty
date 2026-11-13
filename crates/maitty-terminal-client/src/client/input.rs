@@ -398,6 +398,7 @@ impl App {
             Mode::Branch(v) => self.on_branch_key(*v, &k),
             Mode::Usage => self.on_usage_key(&k),
             Mode::Run { .. } => self.on_run_key(&k),
+            Mode::Helper(v) => self.on_helper_key(*v, &k),
             Mode::History { sel } => self.on_history_key(sel, &k),
             Mode::Tidy(v) => self.on_tidy_key(*v, &k),
             Mode::Machines(v) => self.on_machines_key(*v, &k),

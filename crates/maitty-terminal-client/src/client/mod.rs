@@ -169,6 +169,8 @@ enum Mode {
     /// Notification history (the selected row, newest first).
     /// Usage and cost: what each agent reported using, and the plan limits.
     Usage,
+    /// A subagent's own steps, from its record (ADR 0010).
+    Helper(Box<screen::HelperView>),
     /// One workflow run's steps (ADR 0010).
     Run {
         term: ClientTerm,
@@ -1012,6 +1014,7 @@ impl App {
                     if last_fresh.elapsed() >= Duration::from_secs(1) {
                         last_fresh = Instant::now();
                         self.screen_fresh();
+                        self.refresh_helper();
                         self.show_send_progress();
                         self.dirty = true;
                     }

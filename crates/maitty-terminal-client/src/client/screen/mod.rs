@@ -204,6 +204,8 @@ pub(super) struct Screen {
     /// The parent pane of each subagent row drawn this frame, for their clicks
     /// (`ScreenHit::Subagent`).
     pub sub_rows: Vec<ClientTerm>,
+    /// The id and name of each subagent row drawn this frame, beside `sub_rows`.
+    pub sub_ids: Vec<(String, String)>,
     /// The sessions whose finished subagents are listed instead of folded into a count.
     pub subs_opened: HashSet<ClientSession>,
     /// The session of each "N done" line drawn this frame (`ScreenHit::SubagentsDone`).
@@ -1661,9 +1663,10 @@ mod splash_wide;
 mod usage;
 mod tidy;
 mod workflow_runs;
+mod helper_view;
 pub(in crate::client) use self::{
     branch_sheet::*, card::*, check_actions::*, check_approve::*, check_sheet::*, dialogs::*,
     draw::*, heads::*, helpers_ask::*, keyoverlay::*, leader::*, mode_bar::*, popover::*,
     popups::*, references_sheet::*, secret_ask::*, sheet::*, side::*, splash::*, tidy::*, usage::*,
-    workflow_runs::*, workspace::*,
+    helper_view::*, workflow_runs::*, workspace::*,
 };

@@ -489,7 +489,7 @@ fn a_session_shows_its_subagents_as_marks_or_when_open_one_row_each() {
 }
 
 #[test]
-fn clicking_a_subagent_opens_its_parents_pane() {
+fn enter_on_a_subagents_steps_opens_its_parents_pane() {
     let mut app = with_subagents();
     let (tx, mut rx) = mpsc::unbounded_channel();
     app.out = tx;
@@ -499,6 +499,8 @@ fn clicking_a_subagent_opens_its_parents_pane() {
     // Another pane is focused first, so the click has something to change.
     reference_fixture::focus(&mut app, 1);
     click(&mut app, 12, y);
+    // The click shows the subagent's own steps; Enter goes to the pane where its agent shows it.
+    key(&mut app, KeyCode::Enter);
     let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
     assert!(
         sent.iter().any(|o| matches!(&o.msg, ClientMsg::Command(Command::FocusPane { term: 2 }))),
@@ -1214,4 +1216,43 @@ fn a_sessions_workflow_runs_show_under_it_and_open_their_steps() {
     assert!(all.contains("run MAITTY-42"), "the modal names the run");
     assert!(all.contains("↺ build  2 tests failed  · MAITTY-42 builder"));
     assert!(all.contains("· review"));
+}
+
+#[test]
+fn clicking_a_subagent_shows_its_own_steps_from_its_record() {
+    use crate::conversation::history::{Content, Entry, ItemState, Role, SourceId};
+    use crate::protocol::{HelperRecord, PROTOCOL_VERSION, Query, Reply, ServerMsg};
+    let mut app = with_subagents();
+    app.local_protocol = PROTOCOL_VERSION;
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    app.out = tx;
+    reference_fixture::focus(&mut app, 2);
+    text(&mut app, 140, 36);
+    let y = app.screen.row_y[&ClientTerm::local(2)] + 3;
+    click(&mut app, 12, y);
+    let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+    assert!(
+        sent.iter().any(|o| matches!(&o.msg, ClientMsg::Query(Query::HelperRead { term: 2, helper }) if helper == "Write drafts tests")),
+        "{sent:?}"
+    );
+    assert!(matches!(app.mode, Mode::Helper(_)));
+    let said = |item: &str, role, text: &str| Entry {
+        source: SourceId { conversation: crate::conversation::ConversationId(0), turn: "t".into(), item: item.into() },
+        content: Content::Message { role, text: text.into() },
+        state: ItemState::Completed,
+        started_at_ms: None,
+        completed_at_ms: None,
+    };
+    app.on_server(ServerMsg::Reply(Reply::HelperRead(HelperRecord {
+        term: 2,
+        helper: "Write drafts tests".into(),
+        entries: vec![said("u", Role::User, "write the drafts tests"), said("a", Role::Assistant, "Added 4 tests for drafts.")],
+        start_missing: false,
+    })));
+    let rows = text(&mut app, 140, 36);
+    show(&rows, "a subagent's own steps");
+    let all = rows.join("\n");
+    assert!(all.contains("subagent Write drafts tests"));
+    assert!(all.contains("asked write the drafts tests"));
+    assert!(all.contains("Added 4 tests for drafts."));
 }
