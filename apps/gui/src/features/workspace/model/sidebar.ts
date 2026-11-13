@@ -68,8 +68,8 @@ export function rowTitle(session: SessionView): string {
 }
 
 /** The words at the right of a row: only a stopped agent, an exited shell or a session held by its plan limit says anything. */
-export function rowWord(session: SessionView): string {
-  if (session.status === 'limited') return limitedWord(session.resumeAt)
+export function rowWord(session: SessionView, now: number = Date.now()): string {
+  if (session.status === 'limited') return limitedWord(session.resumeAt, now)
   // Its machine or the daemon is out of reach, or the list just missed it: the last status is not known to be true.
   if (session.status === 'unknown') return 'offline'
   if (session.status !== 'error') return ''

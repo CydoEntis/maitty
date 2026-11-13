@@ -135,12 +135,14 @@ const STATUS_FROM_CONVERSATION: Record<Conversation['status'], SessionStatus> = 
 /**
  * When the daemon tells a session stopped by its plan limit to continue, in milliseconds; null when it
  * is not held. The time is the daemon's (`TermInfo.resume_at`) and the window only shows it: nothing
- * else makes a session limited. The daemon drops the time once the agent works again, so a working
- * session is not held whatever a list read a moment earlier says, and a status that is not known
- * says nothing newer than the list it came from.
+ * else makes a session limited. Only a session the daemon calls idle or done, with no failed command,
+ * reads as limited: one that works, asks or failed keeps the status the daemon decided, so a question
+ * can still be answered and a failure still shows, and a status that is not known says nothing newer
+ * than the list it came from.
  */
 function heldUntil(conversation: Conversation, now: number): number | null {
-  if (conversation.status === 'working' || conversation.status === 'unknown') return null
+  const resting = conversation.status === 'idle' || conversation.status === 'done'
+  if (!resting || conversation.details?.exit != null) return null
   const resumeAt = (conversation.details?.resumeAt ?? 0) * MS_PER_SECOND
   return resumeAt > now ? resumeAt : null
 }
@@ -152,10 +154,10 @@ function heldUntil(conversation: Conversation, now: number): number | null {
  * shows that instead.
  */
 function statusOf(conversation: Conversation, held: boolean): SessionStatus {
-  if (held) return 'limited'
   const status = STATUS_FROM_CONVERSATION[conversation.status]
   const failed = conversation.details?.exit != null
-  return failed && (status === 'idle' || status === 'done') ? 'error' : status
+  if (failed && (status === 'idle' || status === 'done')) return 'error'
+  return held ? 'limited' : status
 }
 
 /** The soonest time a limited session continues, in milliseconds; null when none is limited. */
@@ -175,13 +177,18 @@ export const STATUS_WORD: Record<SessionStatus, string> = {
 }
 
 const CLOCK_DIGITS = 2
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-/** What a limited session's row says: `limited until 14:05`, in this computer's time. */
-export function limitedWord(resumeAt: number | null): string {
+/**
+ * What a limited session's row says, in this computer's time: `limited until 14:05`, or
+ * `limited until Thu 14:05` when that is not today, as a weekly limit resets days away.
+ */
+export function limitedWord(resumeAt: number | null, now: number): string {
   if (resumeAt === null) return STATUS_WORD.limited
   const at = new Date(resumeAt)
   const clock = [at.getHours(), at.getMinutes()].map((part) => String(part).padStart(CLOCK_DIGITS, '0')).join(':')
-  return `${STATUS_WORD.limited} until ${clock}`
+  const today = at.toDateString() === new Date(now).toDateString()
+  return `${STATUS_WORD.limited} until ${today ? '' : `${WEEKDAYS[at.getDay()] ?? ''} `}${clock}`
 }
 
 function trimTrailingSeparator(path: string): string {
@@ -283,14 +290,14 @@ export function toSessionView(conversation: Conversation, home: string, now: num
 }
 
 /** The words after the process on a sidebar row's second line. */
-export function statusText(session: SessionView): string {
+export function statusText(session: SessionView, now: number = Date.now()): string {
   switch (session.status) {
     case 'working':
       return 'working'
     case 'needs':
       return 'needs you'
     case 'limited':
-      return limitedWord(session.resumeAt)
+      return limitedWord(session.resumeAt, now)
     case 'done':
       return 'finished'
     case 'error':

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Conversation } from '@/data/preview'
-import { displayName, folderNameOf, inCreationOrder, keepLabels, nextResumeAt, processName, rowName, statusText, tildePath, toSessionView, truncatePrompt } from './session'
+import { displayName, folderNameOf, inCreationOrder, keepLabels, limitedWord, nextResumeAt, processName, rowName, statusText, tildePath, toSessionView, truncatePrompt } from './session'
 import { formatAgo, formatElapsed, markSeen, trackSessions } from './tracking'
 import { folderExists, resolveStartFolder } from './startFolder'
 
@@ -114,6 +114,18 @@ describe('session tracking', () => {
     expect(shown.tracks.get('t1')?.unread).toBe(false)
   })
 
+  it('does not take a limit ending for a session finishing again', () => {
+    const limited = (status: Conversation['status'], now: number) => [toSessionView(conversation(1, HOME, { agent: 'claude', status, details: { asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, resumeAt: 100 } }), HOME, now)]
+    const done = trackSessions(trackSessions(new Map(), view('working'), new Set(), 0).tracks, view('done'), new Set(), 1)
+    const read = markSeen(done.tracks, new Set(['t1']))
+    const held = trackSessions(read, limited('done', 50_000), new Set(), 2)
+    expect(held.tracks.get('t1')).toMatchObject({ status: 'limited', unread: false })
+    const back = trackSessions(held.tracks, limited('done', 100_000), new Set(), 3)
+    expect(back.tracks.get('t1')).toMatchObject({ status: 'done', unread: false, changedAt: 2 })
+    const working = trackSessions(held.tracks, limited('working', 100_000), new Set(), 3)
+    expect(working.tracks.get('t1')).toMatchObject({ status: 'working', workingSince: 3 })
+  })
+
   it('notices a shell moving to another repo', () => {
     const first = trackSessions(new Map(), view('idle'), new Set(), 0)
     const moved = trackSessions(first.tracks, [toSessionView(repo(1, `${HOME}/maitty`, `${HOME}/maitty`), HOME)], new Set(), 5)
@@ -184,9 +196,26 @@ describe('a session stopped by its plan limit', () => {
     const view = toSessionView(held('idle', RESUME / 1000), HOME, NOW)
     expect(view.status).toBe('limited')
     expect(view.resumeAt).toBe(RESUME)
-    expect(statusText(view)).toBe('limited until 14:05')
+    expect(statusText(view, NOW)).toBe('limited until 14:05')
     expect(toSessionView(held('done', RESUME / 1000), HOME, NOW).status).toBe('limited')
-    expect(toSessionView(held('needs-you', RESUME / 1000), HOME, NOW).status).toBe('limited')
+  })
+
+  it('names the day when it continues on another day than today', () => {
+    const thursday = new Date(2026, 0, 8, 14, 5).getTime()
+    expect(limitedWord(thursday, NOW)).toBe('limited until Thu 14:05')
+    expect(limitedWord(new Date(2026, 0, 6, 0, 0).getTime(), new Date(2026, 0, 5, 23, 59).getTime())).toBe('limited until Tue 00:00')
+    expect(limitedWord(RESUME, new Date(2026, 0, 5, 0, 0).getTime())).toBe('limited until 14:05')
+  })
+
+  it('keeps needs you, which the daemon decided, so its question can still be answered', () => {
+    const view = toSessionView(held('needs-you', RESUME / 1000), HOME, NOW)
+    expect(view.status).toBe('needs')
+    expect(view.resumeAt).toBeNull()
+  })
+
+  it('keeps exited for a session whose last command failed', () => {
+    const failed = conversation(1, `${HOME}/a`, { agent: 'claude', status: 'idle', details: { asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, exit: { code: 2, at: 10 }, resumeAt: RESUME / 1000 } })
+    expect(toSessionView(failed, HOME, NOW).status).toBe('error')
   })
 
   it('returns to the status the daemon gave once that time has passed', () => {

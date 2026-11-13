@@ -45,7 +45,7 @@ describe('a row', () => {
   })
 
   it('says until when a session stopped by its plan limit is limited', () => {
-    expect(rowWord(limited(1))).toBe('limited until 14:05')
+    expect(rowWord(limited(1), NOW)).toBe('limited until 14:05')
   })
 
   it('gives a project the same one of five colours every time', () => {

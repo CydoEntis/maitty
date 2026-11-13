@@ -55,15 +55,17 @@ export function trackSessions(
       continue
     }
     const statusChanged = before.status !== session.status
+    // A limit that ends puts the session back where it was: nothing new happened to read or to time.
+    const fresh = statusChanged && before.status !== 'limited'
     const moved = before.repoRoot !== session.repoRoot
     if (moved) moves.push({ id: session.id, from: before.repoRoot, to: session.repoRoot })
     const visible = visibleIds.has(session.id)
     tracks.set(session.id, {
       status: session.status,
       repoRoot: session.repoRoot,
-      changedAt: statusChanged ? now : before.changedAt,
+      changedAt: fresh ? now : before.changedAt,
       workingSince: session.status !== 'working' ? null : statusChanged ? now : before.workingSince,
-      unread: visible ? false : statusChanged ? ATTENTION.has(session.status) || before.unread : before.unread,
+      unread: visible ? false : fresh ? ATTENTION.has(session.status) || before.unread : before.unread,
       movedAt: moved ? now : before.movedAt,
     })
   }

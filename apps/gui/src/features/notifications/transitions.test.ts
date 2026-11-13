@@ -47,6 +47,11 @@ describe('noticesFor', () => {
 
   it('does not notify for states that need nothing from you', () => {
     expect(noticesFor(seen([['t1', 'working']]), [session('t1', 'idle')], ALL, null)).toEqual([])
+    expect(noticesFor(seen([['t1', 'done']]), [session('t1', 'limited')], ALL, null)).toEqual([])
+  })
+
+  it('does not say a session finished when its plan limit ends and it is where it was', () => {
+    expect(noticesFor(seen([['t1', 'limited']]), [session('t1', 'done')], ALL, null)).toEqual([])
   })
 
   it('starts a session of another machine with the machine in brackets, as its own notices do', () => {

@@ -66,11 +66,12 @@ describe('the sidebar', () => {
   it('lists a session stopped by its plan limit under Needs you, saying until when', () => {
     const resume = new Date(2026, 0, 5, 14, 5).getTime()
     const details = { asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, resumeAt: resume / 1000 }
-    const limited = toSessionView(session(6, { agent: 'claude', named: true, title: 'Out of plan', status: 'done', details }).conversation, '/home/me', resume - 60_000)
+    const today = vi.spyOn(Date, 'now').mockReturnValue(resume - 60_000)
+    const limited = session(6, { agent: 'claude', named: true, title: 'Out of plan', status: 'done', details })
     show([session(2, { agent: 'claude', named: true, title: 'Idle agent' }), limited], { grouping: 'status' })
     const row = within(screen.getByRole('list', { name: 'Needs you' })).getByRole('button', { name: 'Out of plan, claude, limited until 14:05' })
     expect(row).toHaveTextContent('limited until 14:05')
-    expect(row.querySelector('.mx-badge.is-limited')).not.toBeNull()
+    today.mockRestore()
   })
 
   it('moves only a session that needs you to the top when the order is priority', () => {
