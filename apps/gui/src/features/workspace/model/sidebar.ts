@@ -1,14 +1,14 @@
 import { isChatSession } from './chatSession'
 import type { MachineHead } from './machines'
-import { folderNameOf, inCreationOrder, SHELL_PROCESS, type SessionStatus, type SessionView } from './session'
+import { folderNameOf, inCreationOrder, limitedWord, SHELL_PROCESS, type SessionStatus, type SessionView } from './session'
 
 /**
- * The most urgent first: what needs you, an agent that stopped, what is working, then what finished,
- * and a shell whose last command failed at the end. Within a rank the sessions keep their creation
+ * The most urgent first: what needs you, an agent that stopped, one held by its plan limit, what is
+ * working, then what finished, and a shell whose last command failed at the end. Within a rank the sessions keep their creation
  * order, so a row only moves when its state changes.
  */
-const URGENCY: Record<SessionStatus, number> = { needs: 0, error: 1, working: 2, done: 3, unknown: 4, idle: 5 }
-const EXITED_SHELL = 6
+const URGENCY: Record<SessionStatus, number> = { needs: 0, error: 1, limited: 2, working: 3, done: 4, unknown: 5, idle: 6 }
+const EXITED_SHELL = 7
 
 function urgencyOf(session: SessionView): number {
   return session.status === 'error' && isShell(session) ? EXITED_SHELL : URGENCY[session.status]
@@ -67,8 +67,9 @@ export function rowTitle(session: SessionView): string {
   return session.conversation.agent ? session.process : folderNameOf(session)
 }
 
-/** The words at the right of a row: only a stopped agent or an exited shell says anything. */
-export function rowWord(session: SessionView): string {
+/** The words at the right of a row: only a stopped agent, an exited shell or a session held by its plan limit says anything. */
+export function rowWord(session: SessionView, now: number = Date.now()): string {
+  if (session.status === 'limited') return limitedWord(session.resumeAt, now)
   // Its machine or the daemon is out of reach, or the list just missed it: the last status is not known to be true.
   if (session.status === 'unknown') return 'offline'
   if (session.status !== 'error') return ''
@@ -119,11 +120,12 @@ const STATUS_SECTIONS: ReadonlyArray<{ key: StatusSectionKey; name: string; hint
   { key: 'idle', name: 'Idle', hint: 'nothing to do' },
 ]
 
-/** The section a session is listed in. An agent that stopped is yours to look at, so it sits with what needs you. */
+/** The section a session is listed in. An agent that stopped, or one held by its plan limit, is yours to look at, so it sits with what needs you. */
 function sectionOf(session: SessionView): StatusSectionKey {
   switch (session.status) {
     case 'needs': return 'needs'
-    case 'error': return 'needs'
+    case 'error':
+    case 'limited': return 'needs'
     case 'working': return 'working'
     case 'done': return 'done'
     case 'idle':

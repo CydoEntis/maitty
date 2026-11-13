@@ -10,6 +10,7 @@ const SAID_CHARS = 140
 
 const HEADLINE: Record<SessionStatus, string> = {
   needs: 'Needs you',
+  limited: 'Limited',
   working: 'Working',
   done: 'Finished',
   error: 'Stopped',
@@ -19,6 +20,7 @@ const HEADLINE: Record<SessionStatus, string> = {
 
 const FALLBACK: Record<SessionStatus, string> = {
   needs: 'Waiting on your answer.',
+  limited: 'It hit its plan limit; it is told to continue when the limit resets.',
   working: 'Running now.',
   done: 'Ready to review.',
   error: 'It stopped; nothing is running.',
@@ -58,11 +60,12 @@ export function hoverCardText(session: SessionView, title: string): HoverCardTex
  * when it gave no reason. The daemon writes the reason when the status changes, so its age is the
  * status's. There is none where the reason is not about the status shown: a status that is not known
  * (the reason is from before), a stopped session (the reason explains idle or done, and the stop is the
- * failed command), and one waiting on you to start its helpers (the reason is for the status under it).
+ * failed command), a limited one (the reason is for the status under the limit), and one waiting on you
+ * to start its helpers (the reason is for the status under it).
  */
 export function statusWhyLine(session: Pick<SessionView, 'status' | 'statusWhy' | 'statusSince' | 'helperAsk'>, now: number): string | null {
   const why = clipped(session.statusWhy)
-  if (why === '' || session.status === 'unknown' || session.status === 'error' || session.helperAsk.length > 0) return null
+  if (why === '' || session.status === 'unknown' || session.status === 'error' || session.status === 'limited' || session.helperAsk.length > 0) return null
   return session.statusSince === null ? why : `${why}, ${formatAge(now - session.statusSince)} ago`
 }
 

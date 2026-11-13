@@ -535,6 +535,14 @@ describe('terminal sessions shown beside chats', () => {
     expect(listed.map((item) => item.details?.statusWhy)).toEqual(['hook: Stop', ''])
   })
 
+  it('reads when a session stopped by its plan limit continues, and nothing from a daemon that does not say', async () => {
+    vi.mocked(invoke).mockResolvedValue({ conversations: [], workspaces: [], terms: { '5': term({ id: 5, resume_at: 1_800_000_000 }), '6': term({ id: 6, resume_at: null }), '7': term({ id: 7 }) } })
+
+    const listed = await loadConversations()
+
+    expect(listed.map((item) => item.details?.resumeAt)).toEqual([1_800_000_000, null, null])
+  })
+
   it('still lists the sessions, without limits, when the limits cannot be read', async () => {
     vi.mocked(invoke).mockResolvedValue({ conversations: [], workspaces: [], limits: 'soon', terms: { '5': term({ id: 5, agent: 'claude' }) } })
 

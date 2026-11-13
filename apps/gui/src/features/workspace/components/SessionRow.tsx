@@ -48,12 +48,12 @@ function PlaceLine({ session, showProject, machine }: { session: SessionView; sh
   )
 }
 
-/** One session in the sidebar: its app tile and status badge, where it is over its name (the folder at the left, the branch or worktree at the right), and beside the name a word when it stopped, else how long it has been in its state. */
+/** One session in the sidebar: its app tile and status badge, where it is over its name (the folder at the left, the branch or worktree at the right), and beside the name a word when it stopped or is held by its plan limit, else how long it has been in its state. */
 export function SessionRow({ session, selected, showProject, machine = null, renaming, onShow, onRename, onSetName, onCancelRename, onContextMenu }: Props) {
   const title = rowTitle(session)
   const active = !isShell(session) && session.status !== 'idle'
   const word = rowWord(session)
-  const className = `mx-row${selected ? ' is-selected' : ''}${active ? ' is-active' : ''}${isShell(session) ? ' is-shell' : ''}${session.status === 'unknown' ? ' is-offline' : ''}`
+  const className = `mx-row${selected ? ' is-selected' : ''}${active ? ' is-active' : ''}${isShell(session) ? ' is-shell' : ''}${session.status === 'unknown' ? ' is-offline' : ''}${session.status === 'limited' ? ' is-limited' : ''}`
   const icon = (
     <span className="mx-row-icon">
       <AppIcon process={session.process} size={26} dimmed={session.status === 'unknown'} />
@@ -76,7 +76,7 @@ export function SessionRow({ session, selected, showProject, machine = null, ren
       type="button"
       className={className}
       onPointerDown={(event) => { beginPointerDrag(event, { kind: 'session', id: session.id, label: title }) }}
-      aria-label={`${title}, ${session.process}, ${STATUS_WORD[session.status]}`}
+      aria-label={`${title}, ${session.process}, ${session.status === 'limited' ? word : STATUS_WORD[session.status]}`}
       aria-current={selected ? 'page' : undefined}
       onClick={onShow}
       onDoubleClick={(event) => { event.preventDefault(); onRename() }}

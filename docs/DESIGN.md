@@ -295,7 +295,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   short list: **All projects ▾** narrows the list to one project (each with its count), and **Group by ▾** picks the
   headings, **Status** (the default), **Project** or **Machine** (`sidebarGroup`, also Settings › Sidebar ›
   Group sessions by). **By status** (`statusSections`): **Needs you** (amber, "waiting on you"; an agent that stopped
-  is here too), **Working** ("running now"), **Finished** (green, "ready to review") and **Idle** ("nothing to do"; a
+  is here too, and so is one held by its plan limit), **Working** ("running now"), **Finished** (green, "ready to review") and **Idle** ("nothing to do"; a
   session the daemon cannot read is here), each a 28px heading with its count, its few words
   and a caret that folds it; a section with nothing in it is not listed, and rows keep creation order within one. **Terminals** (`terminalSessions`) is pinned over the sidebar's foot in the status and the project list, outside the agents' scrolling list (a third of the sidebar's height at most, then it scrolls on its own): every session with no agent in it (a shell, or a program running in one), as created, each row saying its project, so agents are never sorted among dev servers. A terminal that needs you is listed under Needs you until it no longer does; the machine list keeps terminals under their machine. A row
   of another machine says `· machine` after its project. **By project** (`projectSections`): one heading per project
@@ -314,12 +314,14 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   A pointer resting on a row for 450ms shows a **hover card** beside it (`RowHoverCard`, 290px, level with the row and
   kept inside the window): the name, project and branch, what it is doing in the daemon's own words, its agent,
   changes, what set its status and how long ago (**Set by**: `hook: Stop, 3 s ago`, the daemon's `TermInfo.status_why`; no row
-  when it gave no reason, the status is not known, the session stopped or it waits on you to start helpers; a long reason is
+  when it gave no reason, the status is not known, the session stopped, it is limited or it waits on you to start helpers; a long reason is
   cut like the line above) and last activity. It takes no pointer input and goes on leave, click, scroll or a menu.
-  (spinner, amber `!` square, solid green check, solid red cross, grey square with a sleeping "zz" for idle, dashed square for unknown), the name (13px; 600 and `--fg` for an agent that is
+  (spinner, amber `!` square, solid green check, solid red cross, grey pause square for limited, grey square with a sleeping "zz" for idle, dashed square for unknown), the name (13px; 600 and `--fg` for an agent that is
   doing anything), and under it the project's 6px colour square, the project and `·` and the branch in mono
   `--ansi-mag`; a stopped agent says `stopped` and an exited shell `exited` at the right, in `--danger`, instead of a
-  badge. Any other agent row has, at the right in 11px `--muted`, how long it has been in its state (`now`, `4m`, `3h`,
+  badge. An agent the daemon holds until its plan limit resets is **limited**: its row says `limited until 14:05` there in
+  `--muted` (the daemon's `TermInfo.resume_at`, in this computer's time; `limited until Thu 14:05` when that is not today), and it goes back to the daemon's status when that
+  time comes or the daemon clears it. Only that time makes a session limited, and only one the daemon calls idle or done: one that works, asks or failed keeps its status. A limited session is listed under the sidebar's Needs you and nowhere else that says needs you: the jump, the tray, the counts and the notices leave it out, because it waits on the limit and not on you, and its limit ending is not a new finish. Any other agent row has, at the right in 11px `--muted`, how long it has been in its state (`now`, `4m`, `3h`,
   `2d`; the daemon's `TermInfo.since`); it gives way to the close button on hover. A finished agent's menu has **Mark as
   done**, which files it under Idle without opening it (`MarkSeen`). A shell's tile is a flat `--raise` square with a teal `>_`. The selected row is a raised glass pill. The row
   is named by the name you gave it, else a shell's folder, else its agent. **Rename**: double-click, F2 or the menu

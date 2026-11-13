@@ -59,6 +59,8 @@ const TerminalSessionSchema = z.object({
   since: z.number().nonnegative().default(0),
   // What set the status, in the daemon's own words (`TermInfo.status_why`); empty when it gave no reason.
   status_why: z.string().default(''),
+  // When the daemon tells an agent stopped by its plan limit to continue, in unix seconds (`TermInfo.resume_at`); null when it is not held.
+  resume_at: z.number().nonnegative().nullable().default(null),
   asking: z.string().default(''),
   // The pane's checks (`TermInfo.checks`); absent from an older daemon.
   checks: z.array(CheckSchema).default([]),
@@ -1236,6 +1238,7 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
       exit: term.exit,
       since: term.since,
       statusWhy: term.status_why,
+      resumeAt: term.resume_at,
       timeline: term.timeline,
       usage: term.usage,
       queued: term.queued,

@@ -34,6 +34,8 @@ export function tracksEqual(a: ReadonlyMap<string, SessionTrack>, b: ReadonlyMap
 export const MOVED_HIGHLIGHT_MS = 1600
 
 const ATTENTION: ReadonlySet<SessionStatus> = new Set(['done', 'needs', 'error'])
+/** What a session is when its plan limit ends and nothing else happened to it. */
+const RESTS_AFTER_LIMIT: ReadonlySet<SessionStatus> = new Set(['done', 'idle', 'working'])
 
 export function trackSessions(
   previous: ReadonlyMap<string, SessionTrack>,
@@ -55,15 +57,18 @@ export function trackSessions(
       continue
     }
     const statusChanged = before.status !== session.status
+    // A limit that ends puts the session back where it was: nothing new happened to read or to time.
+    // One that starts asking or fails while limited is new.
+    const fresh = statusChanged && !(before.status === 'limited' && RESTS_AFTER_LIMIT.has(session.status))
     const moved = before.repoRoot !== session.repoRoot
     if (moved) moves.push({ id: session.id, from: before.repoRoot, to: session.repoRoot })
     const visible = visibleIds.has(session.id)
     tracks.set(session.id, {
       status: session.status,
       repoRoot: session.repoRoot,
-      changedAt: statusChanged ? now : before.changedAt,
+      changedAt: fresh ? now : before.changedAt,
       workingSince: session.status !== 'working' ? null : statusChanged ? now : before.workingSince,
-      unread: visible ? false : statusChanged ? ATTENTION.has(session.status) || before.unread : before.unread,
+      unread: visible ? false : fresh ? ATTENTION.has(session.status) || before.unread : before.unread,
       movedAt: moved ? now : before.movedAt,
     })
   }

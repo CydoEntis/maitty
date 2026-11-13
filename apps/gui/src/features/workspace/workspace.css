@@ -179,11 +179,11 @@
 
 .mx-badge { position: absolute; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px var(--card-ring); }
 .mx-badge { animation: v9pop .26s var(--ease-out); }
-/* Needs you, blocked and finished are one outlined square each (Lucide's), told apart by the mark inside and by
-   colour: amber `!`, red `!`, green check. Lucide draws its square inside a margin, so the icon is scaled up until
-   the square fills the badge. Idle is a sleeping "Zz" with no square. All four sit on the window's background. */
-.mx-badge.is-needs, .mx-badge.is-done, .mx-badge.is-error, .mx-badge.is-idle { background: var(--bg); }
-.mx-badge.is-needs svg, .mx-badge.is-done svg, .mx-badge.is-error svg { flex: none; width: 134%; height: 134%; }
+/* Needs you, blocked, limited and finished are one outlined square each (Lucide's), told apart by the mark inside and by
+   colour: amber `!`, red `!`, grey pause, green check. Lucide draws its square inside a margin, so the icon is scaled up until
+   the square fills the badge. Idle is a sleeping "Zz" with no square. All five sit on the window's background. */
+.mx-badge.is-needs, .mx-badge.is-limited, .mx-badge.is-done, .mx-badge.is-error, .mx-badge.is-idle { background: var(--bg); }
+.mx-badge.is-needs svg, .mx-badge.is-limited svg, .mx-badge.is-done svg, .mx-badge.is-error svg { flex: none; width: 134%; height: 134%; }
 .mx-badge.is-needs { color: var(--warn); }
 /* A pulse is a ring on a pseudo-element that scales out and fades: only `transform` and `opacity` move, never a
    box-shadow, which repaints the card on every frame (docs/PERFORMANCE.md). The needs-you badge keeps pulsing for
@@ -197,6 +197,7 @@
 .mx-badge.is-idle svg { width: 100%; height: 100%; }
 .mx-badge.is-idle { color: var(--muted); animation: none; }
 .mx-badge.is-error { color: var(--danger); }
+.mx-badge.is-limited { color: var(--muted); }
 
 /* With a single pane the workspace's own border takes the focus; with several, the focused pane does. Never both. */
 .mx-app[data-side="right"] .mx-sidebar { margin: 12px 12px 12px 0; }
