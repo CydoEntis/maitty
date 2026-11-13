@@ -91,7 +91,7 @@ describe('Inspect panel', () => {
     expect(screen.getByLabelText('Diff').textContent).toContain('+z')
   })
 
-  it('reads the changes of a session on another machine from that machine, with no commit bar', async () => {
+  it('reads the changes of a session on another machine from that machine', async () => {
     daemonAnswers({
       Status: { branch: 'main', ahead: 0, behind: 0, files: [{ path: 'a.txt', kind: 'Modified' }] },
       Diff: { files: [{ path: 'a.txt', additions: 1, deletions: 1, binary: false, patch: '@@ -1 +1 @@\n-old\n+new\n' }], additions: 1, deletions: 1, total_files: 1, truncated: false },
@@ -103,12 +103,38 @@ describe('Inspect panel', () => {
     expect(screen.getByLabelText('Diff').textContent).toContain('+new')
     expect(vi.mocked(invoke)).toHaveBeenCalledWith('repo_query', { machine: 1, term: 5, question: { Diff: { path: null } } })
     expect(vi.mocked(invoke).mock.calls.every(([, args]) => (args as { machine?: number }).machine === 1), 'nothing is asked of this computer').toBe(true)
-    expect(screen.queryByRole('button', { name: /^Commit/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: /pull request/i })).toBeNull()
     cleanup()
   })
 
-  it('pulls a checkout on another machine with the same button, on that machine, and offers no commit there', async () => {
+  it('commits the ticked files of a checkout on another machine there, then opens a pull request and shows where it is', async () => {
+    const asked: Array<[string, unknown]> = []
+    const file = (path: string) => ({ path, additions: 1, deletions: 0, binary: false, patch: '@@ -0,0 +1 @@\n+new\n' })
+    vi.mocked(invoke).mockReset().mockImplementation((command, args) => {
+      asked.push([command, args])
+      if (command === 'git_commit_all') return Promise.resolve('1a2b3c4')
+      if (command === 'git_create_pull_request') return Promise.resolve('https://github.com/o/r/pull/12')
+      const question = (args as { question: Question }).question
+      if (question === 'Status') return Promise.resolve({ Status: { branch: 'main', ahead: 0, behind: 0, files: [] } })
+      return Promise.resolve({ Diff: { files: [file('a.txt'), file('b.txt')], additions: 2, deletions: 0, total_files: 2, truncated: false } })
+    })
+    const onNotice = vi.fn()
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <InspectPanel term={5} machine={1} machineName="build" terminals={null} changedFiles={2} view="changes" agentWorking={false} timeline={[]} lookAt={null} changeActions={{ folder: '', machine: 1, term: 5, suggested: 'Add refunds' }} onView={vi.fn()} onClose={vi.fn()} onNotice={onNotice} />
+      </QueryClientProvider>,
+    )
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Commit b.txt' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Commit 1 file' }))
+    await waitFor(() => { expect(onNotice).toHaveBeenCalledWith('Committed 1 file as 1a2b3c4') })
+    expect(asked).toContainEqual(['git_commit_all', { machine: 1, folder: '', message: 'Add refunds', paths: ['a.txt'], term: 5 }])
+    fireEvent.click(screen.getByRole('button', { name: 'Create PR' }))
+    expect(await screen.findByText('https://github.com/o/r/pull/12')).toBeTruthy()
+    expect(asked).toContainEqual(['git_create_pull_request', { machine: 1, folder: '', term: 5 }])
+    cleanup()
+  })
+
+  it('pulls a checkout on another machine with the same button, on that machine', async () => {
     const asked: Array<[string, unknown]> = []
     vi.mocked(invoke).mockReset().mockImplementation((command, args) => {
       asked.push([command, args])
@@ -127,10 +153,6 @@ describe('Inspect panel', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Pull ↓2' }))
     await waitFor(() => { expect(onNotice).toHaveBeenCalledWith('Pulled') })
     expect(asked).toContainEqual(['git_sync', { machine: 1, folder: '', action: 'pull', term: 5 }])
-    expect(screen.queryByRole('button', { name: /^Commit/ })).toBeNull()
-    expect(screen.queryByRole('textbox', { name: 'Commit message' })).toBeNull()
-    expect(screen.queryByRole('checkbox')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Create PR' })).toBeNull()
     cleanup()
   })
 

@@ -106,7 +106,6 @@ describe('a pane of another machine and the features that need its files', () =>
     const panel = within(await screen.findByRole('complementary', { name: 'Side panel' }))
     expect(panel.getByRole('tab', { name: /^Changes/ })).toHaveAttribute('aria-selected', 'true')
     expect(screen.queryByText(REFUSAL('Inspect'))).toBeNull()
-    expect(panel.queryByRole('button', { name: /^Commit/ })).toBeNull()
     for (const view of ['Files', 'Branches', 'History', 'References']) {
       await user.click(panel.getByRole('tab', { name: view }))
       expect(await panel.findByText(REFUSAL(view))).toBeInTheDocument()

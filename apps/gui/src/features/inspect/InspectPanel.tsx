@@ -92,7 +92,7 @@ type Props = {
   lookAt: LookAt | null
   /** The agent a comment on a diff line goes to; absent for a shell, which has nobody to tell. */
   comments?: Omit<PatchComments, 'path' | 'sent' | 'onSent'>
-  /** The Changes tab's commit bar; on another machine it holds the remote button alone. */
+  /** The Changes tab's commit bar: Commit, the remote button and Create PR, run where the checkout is. */
   changeActions?: ChangeActions
   onView: (view: InspectView) => void
   onClose: () => void

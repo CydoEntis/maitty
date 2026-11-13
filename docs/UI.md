@@ -722,10 +722,11 @@ pane's menu instead.
 **The side panel is the exception for Changes.** In the desktop app the side panel opens for a pane
 on another machine and its Changes tab shows the same file list and diffs as for a local pane, read
 from that machine's daemon (`repoStatus` and `repoDiff` with the machine, `features/inspect/api.ts`)
-and without committing: under the files is the remote button alone (**Pull ↓N**, **Push ↑N** or
-**Fetch**, by the same rule as locally, `remoteAction.ts`), which that machine's daemon runs
-(`git_sync` with the pane, `Query::Git`) and whose answer line or failure shows as it does locally.
-There are no ticks, no message box, no Commit and no Create PR. Files, Branches, History and References show the
+with the same commit bar under the files: the ticks, the message, **Commit N files**, the remote
+button (**Pull ↓N**, **Push ↑N** or **Fetch**, by the same rule as locally, `remoteAction.ts`) and
+**Create PR**. Each is run by that machine's daemon in the pane's checkout (`git_commit_all`,
+`git_sync` and `git_create_pull_request` with the pane, `Query::Git`), with that machine's git
+identity and GitHub sign-in, and its answer or failure shows as it does locally. Files, Branches, History and References show the
 local-only sentence in the tab instead of asking anything; Checks and Timeline are as for a local
 pane. A chat on another machine that has no terminal of its own has no pane to ask, so the panel
 does not open for it and the toast says Inspect is local-only.

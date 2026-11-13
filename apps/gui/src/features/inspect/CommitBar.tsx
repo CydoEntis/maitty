@@ -1,11 +1,10 @@
 import { useState } from 'react'
-import { LOCAL_MACHINE } from '@/api/machines'
 import { commitAll, createPullRequest, syncRemote } from './api'
 import { remoteAction } from './remoteAction'
 import { commitTextFor } from './commitText'
 import { messageOf } from './useRepoQuery'
 
-/** What the Changes tab needs to commit and open a pull request: the checkout's folder on this computer, and a first message. */
+/** What the Changes tab needs to commit, sync and open a pull request: the checkout (its folder on this computer, or its pane on another machine) and a first message. */
 export type ChangeActions = {
   folder: string
   suggested: string
@@ -32,15 +31,14 @@ type Props = ChangeActions & {
 
 /**
  * The commit message with **Commit N files**, the remote button and **Create PR**. Nothing runs
- * until a button is pressed. A checkout on another machine has the remote button only: committing
- * and pull requests are this computer's.
+ * until a button is pressed, and each runs where the checkout is: on this computer, or on the
+ * session's machine with that machine's git and GitHub sign-in.
  */
 export function CommitBar({ folder, machine, term, suggested, files, chosen, everything, ahead, behind, onChanged, onNotice }: Props) {
   const [message, setMessage] = useState(suggested)
   const [busy, setBusy] = useState<'commit' | 'pr' | 'remote' | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
   const [pullRequest, setPullRequest] = useState<string | null>(null)
-  const here = machine === LOCAL_MACHINE
 
   const run = (what: 'commit' | 'pr' | 'remote', work: () => Promise<void>) => {
     setBusy(what)
@@ -51,7 +49,7 @@ export function CommitBar({ folder, machine, term, suggested, files, chosen, eve
   }
   const commit = () => {
     run('commit', async () => {
-      const hash = await commitAll(folder, message, machine, everything ? undefined : chosen.map((file) => file.path))
+      const hash = await commitAll(folder, message, machine, everything ? undefined : chosen.map((file) => file.path), term)
       const count = everything ? files : chosen.length
       onNotice(`Committed ${String(count)} ${count === 1 ? 'file' : 'files'} as ${hash}`)
       setMessage('')
@@ -67,7 +65,7 @@ export function CommitBar({ folder, machine, term, suggested, files, chosen, eve
   }
   const openPullRequest = () => {
     run('pr', async () => {
-      const url = await createPullRequest(folder, machine)
+      const url = await createPullRequest(folder, machine, term)
       setPullRequest(url)
       onNotice('Pull request opened')
     })
@@ -76,7 +74,7 @@ export function CommitBar({ folder, machine, term, suggested, files, chosen, eve
   return (
     <div className="mx-commit">
       {/* With nothing changed there is nothing to commit; the branch can still go up as a pull request. */}
-      {here && files > 0 && <textarea
+      {files > 0 && <textarea
         className="mx-commit-message"
         aria-label="Commit message"
         placeholder="Commit message"
@@ -86,16 +84,16 @@ export function CommitBar({ folder, machine, term, suggested, files, chosen, eve
         onChange={(event) => { setMessage(event.target.value) }}
       />}
       <div className="mx-commit-actions">
-        {here && files > 0 && <button type="button" className="mx-text-button" disabled={busy !== null || chosen.length === 0} title="Writes a first message from the files that will be committed" onClick={() => { setMessage(commitTextFor(chosen)) }}>Suggest</button>}
-        {here && files > 0 && <button type="button" className="mx-text-button is-primary" disabled={busy !== null || message.trim() === '' || chosen.length === 0} onClick={commit}>
+        {files > 0 && <button type="button" className="mx-text-button" disabled={busy !== null || chosen.length === 0} title="Writes a first message from the files that will be committed" onClick={() => { setMessage(commitTextFor(chosen)) }}>Suggest</button>}
+        {files > 0 && <button type="button" className="mx-text-button is-primary" disabled={busy !== null || message.trim() === '' || chosen.length === 0} onClick={commit}>
           {busy === 'commit' ? 'Committing…' : `Commit ${String(everything ? files : chosen.length)} ${(everything ? files : chosen.length) === 1 ? 'file' : 'files'}`}
         </button>}
         <button type="button" className="mx-text-button" disabled={busy !== null || remote.blocked !== null} title={remote.blocked ?? remote.title} onClick={syncWithRemote}>
           {busy === 'remote' ? 'Working…' : remote.label}
         </button>
-        {here && <button type="button" className="mx-text-button" disabled={busy !== null} title="Pushes this branch and opens a pull request for it with GitHub's gh" onClick={openPullRequest}>
+        <button type="button" className="mx-text-button" disabled={busy !== null} title="Pushes this branch and opens a pull request for it with GitHub's gh" onClick={openPullRequest}>
           {busy === 'pr' ? 'Opening…' : 'Create PR'}
-        </button>}
+        </button>
       </div>
       {failure !== null && <p className="mx-commit-error" role="alert">{failure}</p>}
       {pullRequest !== null && <p className="mx-commit-link">Pull request: <span>{pullRequest}</span></p>}

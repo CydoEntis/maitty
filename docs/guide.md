@@ -732,8 +732,9 @@ opens in the machine's home folder. To start on a project that is not on the mac
 repository…** on the new chat page (beside Browse…, or in the project menu): paste the repository's address,
 pick the folder it goes inside, and the chat opens on the new folder. The side panel's **Changes** tab
 works for a session on another machine too: it lists the changed files and their diffs, read from that
-machine. Its **Pull**, **Push** or **Fetch** button works there too and runs on that machine (a pull only
-fast-forwards); committing and Create PR are not offered there. The panel's Files, Branches, History and References tabs say they are
+machine. You can commit there too: tick the files, write the message, and **Commit**, **Pull** / **Push** /
+**Fetch** and **Create PR** all run on that machine, with its git name and its GitHub sign-in (a pull only
+fast-forwards; Create PR needs `gh` signed in there, see Settings › GitHub). The panel's Files, Branches, History and References tabs say they are
 local-only. If that machine is signed in to
 GitHub, the dialog also lists your repositories there: search, pick an owner, and click one to fill in its
 address. It works for this computer and for

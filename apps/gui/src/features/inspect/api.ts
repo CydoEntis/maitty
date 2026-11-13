@@ -76,10 +76,16 @@ export async function restoreSnapshot(term: number, commit: string): Promise<num
   return Count.parse(await invoke<unknown>('restore_snapshot', { term, commit }))
 }
 
-/** Stages and commits every change in the checkout at `folder` on this computer; resolves to the commit's short hash. */
-export async function commitAll(folder: string, message: string, machine: number, paths?: readonly string[]): Promise<string> {
+/** What names a checkout on another machine: the pane there that is in it. Nothing on this computer, whose checkout is named by its folder. */
+const paneArg = (term: number | undefined): { term?: number } => (term === undefined ? {} : { term })
+
+/**
+ * Stages and commits changes, all of them or only `paths`; resolves to the commit's short hash.
+ * On this computer the checkout is the one at `folder`; on another machine, the one pane `term` there is in.
+ */
+export async function commitAll(folder: string, message: string, machine: number, paths?: readonly string[], term?: number): Promise<string> {
   if (!isTauri()) throw new Error('Committing is only available in the desktop app')
-  return z.string().parse(await invoke<unknown>('git_commit_all', { machine, folder, message, paths: paths ?? null }))
+  return z.string().parse(await invoke<unknown>('git_commit_all', { machine, folder, message, paths: paths ?? null, ...paneArg(term) }))
 }
 
 /** Saves the text of an existing file of the checkout `term` is in; the daemon refuses anything but a plain file inside it. */
@@ -97,11 +103,11 @@ export type SyncAction = 'fetch' | 'pull' | 'push'
  */
 export async function syncRemote(folder: string, action: SyncAction, machine: number, term?: number): Promise<string> {
   if (!isTauri()) throw new Error('Syncing is only available in the desktop app')
-  return z.string().parse(await invoke<unknown>('git_sync', { machine, folder, action, ...(term === undefined ? {} : { term }) }))
+  return z.string().parse(await invoke<unknown>('git_sync', { machine, folder, action, ...paneArg(term) }))
 }
 
-/** Pushes the checkout's branch and opens a pull request for it; resolves to the pull request's address. */
-export async function createPullRequest(folder: string, machine: number): Promise<string> {
+/** Pushes the checkout's branch and opens a pull request for it, with the GitHub sign-in of the machine the checkout is on; resolves to the pull request's address. */
+export async function createPullRequest(folder: string, machine: number, term?: number): Promise<string> {
   if (!isTauri()) throw new Error('Pull requests are only available in the desktop app')
-  return z.string().parse(await invoke<unknown>('git_create_pull_request', { machine, folder }))
+  return z.string().parse(await invoke<unknown>('git_create_pull_request', { machine, folder, ...paneArg(term) }))
 }
