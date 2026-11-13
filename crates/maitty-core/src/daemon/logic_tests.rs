@@ -1193,6 +1193,57 @@ fn closing_a_worktrees_last_pane_removes_it_only_when_nothing_lives_only_there()
 }
 
 #[test]
+fn closing_an_inactive_unmerged_worktrees_last_pane_keeps_it() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (root, _merged, mine) = repo_with_two_made_worktrees(&mut d, "close-inactive");
+    let long_ago = std::time::SystemTime::now() - Duration::from_secs(60 * 24 * 60 * 60);
+    let stamp = format!(
+        "@{} +0000",
+        long_ago
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    );
+    let amended = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&mine)
+        .args(["commit", "-q", "--amend", "--no-edit"])
+        .env("GIT_AUTHOR_DATE", &stamp)
+        .env("GIT_COMMITTER_DATE", &stamp)
+        .status()
+        .unwrap();
+    assert!(amended.success());
+    for file in ["a.ts", "b.ts"] {
+        std::fs::File::options()
+            .write(true)
+            .open(mine.join(file))
+            .unwrap()
+            .set_modified(long_ago)
+            .unwrap();
+    }
+    let standing = crate::tidy::standing(&mine, d.cfg.worktree.inactive_days);
+    assert!(
+        standing.inactive_days.is_some() && !standing.merged,
+        "the fixture is inactive and unmerged: {standing:?}"
+    );
+
+    let t = d
+        .terms
+        .values()
+        .find(|t| same_path(&t.cwd, &mine))
+        .map(|t| t.id)
+        .expect("a pane in the worktree");
+    d.command(0, Command::ClosePane { term: t }).unwrap();
+    let kept = auto_removal(&mut d, &mut rx);
+    assert!(
+        matches!(&kept, Removal::Unmerged(_)) && mine.is_dir(),
+        "inactivity removes nothing, got: {kept:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn nothing_removes_a_worktree_on_its_own_while_no_pane_is_closed() {
     let (rt, (mut d, mut rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();

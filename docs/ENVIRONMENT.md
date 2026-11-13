@@ -239,6 +239,19 @@ through `.profile` or `.zprofile` would otherwise be missing. The client never r
   inherited part after them. `[env]` in `config.toml` still overrides a pane's `PATH`.
 - Windows keeps today's behaviour; the Windows remote is out of v1 (ADR 0007).
 
+## Project-specific: inactive worktrees
+
+`worktree.inactive_days` (default `14`; `0` turns it off) flags a worktree inactive in its
+standing (`tidy::Standing::inactive_days`) when its last commit and its newest file change are
+both at least that many days old. Only a clean, merged worktree is ever removed automatically;
+an inactive one is only listed, for the person to remove.
+
+The newest file change is the latest modified time among the files `git ls-files --cached
+--others --exclude-standard` lists, so `.gitignore`d folders such as `node_modules` and `target`
+are never walked. The files are looked at only when the last commit is already old enough, and
+at most 20,000 of them: a worktree with more, or one git can't list, is not flagged. The
+standing is read off the UI thread and off the daemon's loop.
+
 ## Project-specific: variables
 
 No `.env` file: Maitty is configured through `config.toml`. Environment variables

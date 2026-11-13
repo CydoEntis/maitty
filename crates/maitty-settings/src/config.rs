@@ -339,6 +339,9 @@ pub struct Worktree {
     /// A new branch's worktree starts from the repository's default branch (what `origin/HEAD`
     /// names, else `main` or `master`) rather than from whatever the main checkout has out.
     pub base_on_default: bool,
+    /// A worktree with no commit and no file change for this many days is flagged inactive in
+    /// the clean-up list. Nothing is removed for it. 0: never flagged.
+    pub inactive_days: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -407,6 +410,7 @@ impl Default for Worktree {
             delete_with_last: true,
             prewarm: String::new(),
             base_on_default: false,
+            inactive_days: 14,
         }
     }
 }
@@ -1109,6 +1113,7 @@ mod tests {
         assert_eq!(worktree.dir, "{repo_parent}/{repo}-worktrees/{branch}");
         assert!(worktree.per_agent && worktree.delete_with_last);
         assert!(worktree.command.is_empty() && worktree.prewarm.is_empty());
+        assert_eq!(worktree.inactive_days, 14);
 
         let mcp = Mcp::default();
         assert_eq!(mcp.approve, "never");
