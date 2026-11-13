@@ -97,7 +97,11 @@ first, then shells, each in the order they started, so a row never moves when it
 The open session has the row ground and an accent `▎`. An agent's subagents follow it: one still
 running for as long as it runs (after its parent's turn too), one finished in the current turn for a
 few seconds; `└` and a mark each, or under the open session one row each with `├`/`└` and the name,
-and a quiet `└ 3 done · show` line that lists the finished ones (`· hide` folds them again).
+and a quiet `└ 3 done · show` line that lists the finished ones (`· hide` folds them again). Under the
+open session, after its subagents, the workflow runs it reported that are still going (ADR 0010), one line
+each: the step's mark (`·` waiting, the spinner working, `✓` passed, `✕` failed, `↺` sent back, `●` needs you
+in amber, `–` skipped), the ticket and the step (`├ ● MAITTY-43 spec`), then `└ 2 runs done`. A run's line
+opens its steps in a modal ("run MAITTY-42"): each step's mark, name, note and helper.
 On the bottom border the release chip (` ↑ v0.15.0 ` when a release is out, else the version) and
 ` menu `, each opening a menu upward. See UI › *the sidebar*; the Machines dialog and its states
 are in UI › *Machines dialog*.

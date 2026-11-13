@@ -1169,3 +1169,49 @@ fn finished_subagents_fold_into_a_count_that_lists_them_when_clicked() {
     assert!(rows.iter().any(|r| side_of(r).contains("Check migration order")));
     assert!(rows.iter().any(|r| side_of(r).contains("1 done · hide")));
 }
+
+#[test]
+fn a_sessions_workflow_runs_show_under_it_and_open_their_steps() {
+    use crate::workflow::{StepState::*, WorkflowRun, WorkflowStep, WorkflowTicket};
+    let mut app = reference_fixture::world(Stage::None);
+    let run = |id: &str, key: Option<&str>, states: [crate::workflow::StepState; 3]| WorkflowRun {
+        workflow: "kitchen".into(),
+        run: id.into(),
+        ticket: key.map(|key| WorkflowTicket { key: key.into(), title: Some("Add export".into()), link: None }),
+        steps: ["intake", "build", "review"]
+            .into_iter()
+            .zip(states)
+            .map(|(name, state)| WorkflowStep {
+                name: name.into(),
+                state,
+                note: (state == SentBack).then(|| "2 tests failed".into()),
+                helper: (name == "build").then(|| "MAITTY-42 builder".into()),
+            })
+            .collect(),
+        reported_at: 1,
+    };
+    app.snap.terms.get_mut(&2).unwrap().workflows = vec![
+        run("001", Some("MAITTY-42"), [Passed, SentBack, Waiting]),
+        run("002", Some("MAITTY-43"), [NeedsYou, Waiting, Waiting]),
+        run("003", None, [Passed, Passed, Passed]),
+    ];
+    app.screen_fresh();
+    reference_fixture::focus(&mut app, 2);
+    let rows = text(&mut app, 140, 36);
+    show(&rows, "workflow runs under the open session");
+    let y = row_of(&app, 2);
+    let under: Vec<String> = (y + 2..y + 6).map(|n| side(&rows, n)).collect();
+    assert!(under.iter().any(|l| l.contains("├ ↺ MAITTY-42 build")), "{under:?}");
+    assert!(under.iter().any(|l| l.contains("├ ● MAITTY-43 intake")), "{under:?}");
+    let done = (y + 2..y + 6).find(|&n| side(&rows, n).contains("└ 1 run done")).expect("finished runs fold");
+    let line = done - 2;
+    let x = side(&rows, line).chars().position(|c| c == 'M').unwrap() as u16;
+    click(&mut app, x, line as u16);
+    assert!(matches!(app.mode, Mode::Run { .. }));
+    let rows = text(&mut app, 140, 36);
+    show(&rows, "a run's steps");
+    let all = rows.join("\n");
+    assert!(all.contains("run MAITTY-42"), "the modal names the run");
+    assert!(all.contains("↺ build  2 tests failed  · MAITTY-42 builder"));
+    assert!(all.contains("· review"));
+}

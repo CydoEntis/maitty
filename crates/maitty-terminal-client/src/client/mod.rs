@@ -169,6 +169,11 @@ enum Mode {
     /// Notification history (the selected row, newest first).
     /// Usage and cost: what each agent reported using, and the plan limits.
     Usage,
+    /// One workflow run's steps (ADR 0010).
+    Run {
+        term: ClientTerm,
+        key: String,
+    },
     History {
         sel: usize,
     },

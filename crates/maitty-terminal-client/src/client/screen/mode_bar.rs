@@ -412,6 +412,7 @@ fn keys_holder(app: &App) -> Option<Holder> {
             ),
         },
         Mode::Usage => holder("USAGE", &[], ("Esc", "close")),
+        Mode::Run { .. } => holder("RUN", &[], ("Esc", "close")),
         Mode::History { .. } => holder(
             "HISTORY",
             &[("↑↓", "move"), ("Enter", "go to it"), ("c", "clear")],

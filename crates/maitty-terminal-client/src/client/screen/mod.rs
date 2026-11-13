@@ -208,6 +208,8 @@ pub(super) struct Screen {
     pub subs_opened: HashSet<ClientSession>,
     /// The session of each "N done" line drawn this frame (`ScreenHit::SubagentsDone`).
     pub done_rows: Vec<ClientSession>,
+    /// The pane and run of each workflow run line drawn this frame (`ScreenHit::Run`).
+    pub run_rows: Vec<(ClientTerm, String)>,
     /// The session you were last on in each fleet: what picking the fleet opens.
     pub fleet_active: HashMap<fleets::FleetId, ClientTerm>,
     /// What the sidebar cursor walks over, top to bottom.
@@ -1441,6 +1443,8 @@ pub(super) enum ScreenHit {
     /// A session's "N done" line under its subagents (its place in `Screen::done_rows`): lists or
     /// folds its finished subagents.
     SubagentsDone(usize),
+    /// A workflow run's line under the open session (its place in `Screen::run_rows`): its steps.
+    Run(usize),
     /// The release chip on the sidebar's foot: its menu, opening upward.
     ReleaseMenu,
     /// The `n new session` chip in a workspace with no pane open.
@@ -1656,9 +1660,10 @@ mod workspace;
 mod splash_wide;
 mod usage;
 mod tidy;
+mod workflow_runs;
 pub(in crate::client) use self::{
     branch_sheet::*, card::*, check_actions::*, check_approve::*, check_sheet::*, dialogs::*,
     draw::*, heads::*, helpers_ask::*, keyoverlay::*, leader::*, mode_bar::*, popover::*,
     popups::*, references_sheet::*, secret_ask::*, sheet::*, side::*, splash::*, tidy::*, usage::*,
-    workspace::*,
+    workflow_runs::*, workspace::*,
 };

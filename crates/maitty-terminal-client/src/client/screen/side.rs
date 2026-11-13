@@ -19,7 +19,7 @@ fn session_h(grouped: bool) -> u16 {
 const BAR_X: u16 = 1;
 const MARK_X: u16 = 2;
 const NAME_X: u16 = 4;
-const TREE_X: u16 = 6;
+pub(super) const TREE_X: u16 = 6;
 const ONLINE_DOT: &str = "●";
 const RECONNECTING_MARK: &str = "┆";
 /// What the machine heading calls the computer the window runs on.
@@ -68,6 +68,10 @@ pub(super) struct SideRow {
     pub subs_done: usize,
     /// Its finished subagents are listed in `subs` (the "N done" line was opened).
     pub subs_open: bool,
+    /// The workflow runs it reported that are still going, newest first (ADR 0010).
+    pub runs: Vec<RunRow>,
+    /// How many of its runs are over, shown as one quiet line under the open session.
+    pub runs_done: usize,
     /// Folded away: its machine or its folder is closed, so it is not drawn and the cursor skips it.
     pub hidden: bool,
     /// Creation order: ids only count up.
@@ -213,6 +217,8 @@ fn side_rows(app: &App, model: &[Proj]) -> Vec<SideRow> {
                 subs,
                 subs_done,
                 subs_open,
+                runs: info.map(|i| run_rows(&i.workflows)).unwrap_or_default(),
+                runs_done: info.map_or(0, |i| i.workflows.iter().filter(|r| !run_active(r)).count()),
                 hidden: false,
                 order: (
                     s.native_term.map_or(u64::MAX, |t| u64::from(t.term)),
@@ -383,16 +389,27 @@ fn block_h(sm: &SideModel, b: Block, open: Option<ClientSession>) -> u16 {
         Block::Session(mi, ri) => {
             let r = &sm.machines[mi].rows[ri];
             let open = Some(r.key) == open;
-            let done_line = u16::from(open && r.subs_done > 0);
-            let subs = match r.subs.len() {
-                0 => 0,
-                n if open => n as u16,
-                _ => 1,
-            };
-            let subs = subs + done_line;
-            session_h(sm.grouped) + subs
+            session_h(sm.grouped) + subs_h(r, open) + runs_h(r, open)
         }
     }
+}
+
+/// The lines a session's subagents take under it.
+fn subs_h(r: &SideRow, open: bool) -> u16 {
+    let rows = match r.subs.len() {
+        0 => 0,
+        n if open => n as u16,
+        _ => 1,
+    };
+    rows + u16::from(open && r.subs_done > 0)
+}
+
+/// The lines a session's workflow runs take under it: only the open session shows them.
+fn runs_h(r: &SideRow, open: bool) -> u16 {
+    if !open {
+        return 0;
+    }
+    r.runs.len() as u16 + u16::from(r.runs_done > 0)
 }
 
 /// `word` with its first letter in capitals, for a label.
@@ -888,10 +905,13 @@ fn draw_session(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, row: &SideRow,
     }
     hit(app, lines, ScreenHit::Session(row.key));
     draw_subs(app, buf, r, y + height, row, open, t);
+    if open {
+        draw_runs(app, buf, r, y + height + subs_h(row, open), row, t);
+    }
 }
 
 /// `segs` from `x`, the last one cut with `…` where they would pass `end`.
-fn put_cut(buf: &mut Buffer, x: u16, y: u16, segs: Vec<Seg>, end: u16) {
+pub(super) fn put_cut(buf: &mut Buffer, x: u16, y: u16, segs: Vec<Seg>, end: u16) {
     let room = end.saturating_sub(x) as usize;
     let mut used = 0;
     let mut out = Vec::new();
@@ -1001,6 +1021,8 @@ mod tests {
             subs: Vec::new(),
             subs_done: 0,
             subs_open: false,
+            runs: Vec::new(),
+            runs_done: 0,
             hidden: false,
             order: (1, MachineId::LOCAL),
         }

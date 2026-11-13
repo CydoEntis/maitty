@@ -1847,6 +1847,11 @@ impl App {
                     self.screen.subs_opened.insert(key);
                 }
             }
+            ScreenHit::Run(i) => {
+                if let Some((term, key)) = self.screen.run_rows.get(i).cloned() {
+                    self.mode = Mode::Run { term, key };
+                }
+            }
             ScreenHit::ReleaseMenu => self.release_menu(),
             ScreenHit::NoPaneNew => self.new_ship(None),
             // A shell on that machine at once.
