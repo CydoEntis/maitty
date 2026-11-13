@@ -329,7 +329,7 @@ button.mx-queued-text::after { content: ""; position: absolute; inset: 0; border
 /* The agent's own menu, as its terminal draws it, with the keys under it. */
 .mx-terminal-prompt { display: grid; gap: 6px; padding: 8px 10px; border-radius: 8px; color: var(--fg2); background: var(--m-well); }
 .mx-terminal-prompt > pre { margin: 0; font-family: var(--mono); font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
-.mx-terminal-question { color: var(--fg); }
+.mx-terminal-question { max-height: 220px; overflow: auto; color: var(--fg); }
 /* Positioned, so the selected line's offset is measured from the box that scrolls. */
 .mx-terminal-options { position: relative; max-height: 220px; overflow: auto; }
 .mx-terminal-selected { color: var(--fg); font-weight: 600; }

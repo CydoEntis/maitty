@@ -5,6 +5,11 @@ const ESC = String.fromCharCode(ESC_CODE)
 const BELL = String.fromCharCode(BELL_CODE)
 /** A control sequence after its ESC: `[`, its numbers, and the letter that says what it does. */
 const CONTROL_SEQUENCE = /\[([\d;:<=>?]*)[ -/]*([@-~])/y
+/** Any other escape after its ESC: marks such as `(`, then the one character that ends it. */
+const PLAIN_ESCAPE = /[ -/]*[0-~]/y
+/** ESC and the `[` or `]` that opens a longer sequence. */
+const OPENING_LENGTH = 2
+const STRING_END = `${ESC}\\`
 const NUMBERS_GROUP = 1
 const ACTION_GROUP = 2
 const FIRST_PRINTABLE = ' '
@@ -95,19 +100,22 @@ function afterEscape(screen: string, at: number, actions: EscapeActions): number
   if (next === '[') {
     CONTROL_SEQUENCE.lastIndex = at + 1
     const found = CONTROL_SEQUENCE.exec(screen)
-    if (found === null) return screen.length
+    if (found === null) return at + OPENING_LENGTH
     actions.control((found[NUMBERS_GROUP] ?? '').split(';').map(countOf), found[ACTION_GROUP] ?? '')
     return CONTROL_SEQUENCE.lastIndex
   }
   if (next === ']') {
-    const bell = screen.indexOf(BELL, at)
-    const terminator = screen.indexOf(`${ESC}\\`, at)
-    if (bell === -1 && terminator === -1) return screen.length
-    return bell !== -1 && (terminator === -1 || bell < terminator) ? bell + 1 : terminator + `${ESC}\\`.length
+    // A title runs to its closing mark; one never closed ends with its line, so it cannot take the screen with it.
+    const end = endOfText(screen, at + OPENING_LENGTH)
+    if (screen.charAt(end) === BELL) return end + 1
+    return screen.startsWith(STRING_END, end) ? end + STRING_END.length : end
   }
-  if (next === '7') actions.save()
-  if (next === '8') actions.restore()
-  return at + `${ESC}${next}`.length
+  PLAIN_ESCAPE.lastIndex = at + 1
+  const found = PLAIN_ESCAPE.exec(screen)
+  if (found === null) return at + 1
+  if (found[0] === '7') actions.save()
+  if (found[0] === '8') actions.restore()
+  return PLAIN_ESCAPE.lastIndex
 }
 
 /** A number in a control sequence; one left out, or not a count, means 1. */
