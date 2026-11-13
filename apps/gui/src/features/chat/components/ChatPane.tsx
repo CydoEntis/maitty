@@ -16,6 +16,7 @@ import type { BranchMenuSpec } from './BranchMenu'
 import type { ChatProblem } from '../problem'
 import { StartingChat } from './StartingChat'
 import type { RewindPlace } from '../editFromHere'
+import type { FileSearchPlace } from '../fileMention'
 
 export type ChatPaneProps = {
   availability: ChatAvailability
@@ -70,6 +71,8 @@ export type ChatPaneProps = {
   effort?: string | null | undefined
   /** Where a sent message's Edit from here restores the files from. */
   rewind?: RewindPlace | undefined
+  /** Where an `@` in the message box looks for files. */
+  fileSearch?: FileSearchPlace | undefined
 }
 
 /**
@@ -106,6 +109,7 @@ export function ChatPane(props: ChatPaneProps) {
             {...(props.branchMenu === undefined ? {} : { branchMenu: props.branchMenu })}
             effort={props.effort ?? null}
             {...(props.rewind === undefined ? {} : { rewind: props.rewind })}
+            {...(props.fileSearch === undefined ? {} : { fileSearch: props.fileSearch })}
             {...(props.sessionId === undefined ? {} : { sessionId: props.sessionId })}
             {...(props.paneStatus === undefined ? {} : { paneStatus: props.paneStatus })}
           />

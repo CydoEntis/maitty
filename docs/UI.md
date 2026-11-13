@@ -1020,6 +1020,18 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   boundary is the end of the turn, the one the daemon can observe for both providers; a message is never delivered
   into a running turn. A send that the daemon refuses as `stale or reused` (another window sent in between) is read
   and sent again under a new number; a retry of any other failure keeps its number.
+- **Naming a file with @** (`fileMention.ts`, `useFileMention.ts`, `FilePicker.tsx`). An `@` at the start of the box
+  or after a space, with the name typed after it at the end of the text, opens a list over the box (the command list's
+  look) of the session's files whose path holds the name. An `@` inside a word (an email address) opens nothing. The
+  daemon finds and ranks them (`RepoRequest::FindFiles`, through `repo_query` and the same pane Inspect asks,
+  `repoPaneOf`), asked 120 ms after the typing stops for at most 50; an answer for a name typed earlier is dropped,
+  and the client does not re-rank. ↑ ↓ move, Enter or Tab replaces the `@` and the name with the path and a space,
+  Esc puts the list away until the text changes, a click picks. The path is relative to the session's folder
+  (`pathFromFolder`: the daemon answers from the checkout's top, so a session in a subfolder gets `src/x.rs` or
+  `../other/y.rs`), and one with whitespace is written in double quotes. The message stays plain text. A list of 50 says
+  only the best 50 are listed; a daemon that stopped its walk early says some files may be missing. A failed search,
+  a daemon older than protocol 89 among them, is one quiet line in the list. It is not offered for a session on another
+  machine or one with no pane to ask.
 - **Attachments** (ticket 20). A paperclip left of the text box (tooltip and `aria-label` "Attach files",
   or "Attach files: <reason>" while the composer is off; `aria-disabled`, not `disabled`, so the reason can be read),
   a drop on the composer, or a bare image pasted into the box adds files to the draft; a paste that holds any text

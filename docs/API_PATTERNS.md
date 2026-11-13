@@ -737,8 +737,10 @@ starts with the query, then a file name that holds it, then a folder that holds 
 first, then by path in byte order. At most `limit` paths come back, never more than 80 (`FIND_FILES_MAX_RESULTS`),
 relative with `/`. It runs on a blocking thread like every `Query::Repo`, for human clients only (a pane's agent and
 a structured client are refused), so a client connected to another machine's daemon can ask it of that machine's
-panes. The request has its own `introduced_in` arm (`FIND_FILES_SINCE`); `COMPATIBLE_SINCE` stays 78. No client
-asks it yet.
+panes. The request has its own `introduced_in` arm (`FIND_FILES_SINCE`); `COMPATIBLE_SINCE` stays 78. The desktop
+message box's `@` file picker asks it through `repo_query`, which asks any repository question newer than
+`COMPATIBLE_SINCE` only of a running daemon that reads it, and otherwise refuses in words ("older than this app …
+restart it") rather than waiting out the request timeout.
 
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store

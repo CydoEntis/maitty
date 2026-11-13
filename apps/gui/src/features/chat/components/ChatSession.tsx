@@ -43,6 +43,7 @@ import { VirtualList } from './VirtualList'
 import { copyText } from '@/lib/clipboard'
 import { ConfirmCloseDialog } from '@/features/workspace/components/ConfirmCloseDialog'
 import type { RewindPlace } from '../editFromHere'
+import type { FileSearchPlace } from '../fileMention'
 import { useEditFromHere } from '../useEditFromHere'
 
 /** When a turn ends the status changes at once, but the agent's last words may not be read yet: read now and again soon, instead of waiting for the idle poll. */
@@ -142,10 +143,12 @@ type Props = {
   effort?: string | null | undefined
   /** Where a sent message's Edit from here restores the files from; absent where it is not offered. */
   rewind?: RewindPlace | undefined
+  /** Where an `@` in the message box looks for files; absent where it is not offered. */
+  fileSearch?: FileSearchPlace | undefined
 }
 
 /** The chat of one session: its history as a virtualised list, the daemon's status, and the composer under it. */
-export function ChatSession({ link, agent, online, hasTerminal = true, worktree: paneWorktree, root = null, onOpenDiff = null, onOpenFile = null, typeInto, paneQueue, ask = null, sessionId, paneStatus, folder = '', branch = null, onOpenFolder = null, subagent = null, onBackToMain, onShowTerminal, usage, problem = null, branchMenu, effort = null, rewind }: Props) {
+export function ChatSession({ link, agent, online, hasTerminal = true, worktree: paneWorktree, root = null, onOpenDiff = null, onOpenFile = null, typeInto, paneQueue, ask = null, sessionId, paneStatus, folder = '', branch = null, onOpenFolder = null, subagent = null, onBackToMain, onShowTerminal, usage, problem = null, branchMenu, effort = null, rewind, fileSearch }: Props) {
   const { feed, events, offline, readError, refresh, recordAnswer, unwatchedReads } = useChatFeed({ conversation: link.conversation, generation: link.generation, provider: agent })
   const paneWorking = paneStatus === 'working'
   const [branches] = useFolderBranches(root ?? '')
@@ -506,6 +509,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
         {...((agent === 'claude' || agent === 'codex') && root !== null ? { commandsFrom: { agent, folder: root, inTerminal: runInTerminal } } : {})}
         question={question}
         waiting={held !== null}
+        files={fileSearch}
         facts={{ ...(usage === undefined ? {} : { usage }), ...(branchMenu === undefined ? {} : { branchMenu }), mode: modeLabel(shownMode), modeDanger: shownMode !== null && DANGER_MODES.includes(shownMode), folder, branch, worktree, model: shownModel, effort, onOpenFolder, modeKey: shownMode, bypassAllowed: startedWithYolo(sessionId), ...agentControls }}
       />
     </div>

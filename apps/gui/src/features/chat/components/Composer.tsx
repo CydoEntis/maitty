@@ -13,6 +13,9 @@ import { modelName } from '../modelName'
 import { PermissionMenu } from './PermissionMenu'
 import { QueuedMessages } from './QueuedMessages'
 import { MAX_SHOWN, SlashPicker } from './SlashPicker'
+import { FilePicker } from './FilePicker'
+import { useFileMention } from '../useFileMention'
+import type { FileSearchPlace } from '../fileMention'
 import { asSkills, commandText, matchCommands, skillQuery, slashQuery, useSlashCommands, withTerminalCommands, type SlashCommand } from '../slashCommands'
 import { CLAUDE_TERMINAL_COMMANDS } from '../terminalCommands'
 import { CODEX_COMMANDS } from '../codexCommands'
@@ -86,6 +89,8 @@ type Props = {
   facts: ComposerFacts
   /** A message went in and the agent has not taken it up yet: the send button shows it is working and sends nothing more. */
   waiting?: boolean
+  /** Where an `@` looks for files; absent where the daemon cannot be asked (another machine, no pane). */
+  files?: FileSearchPlace | undefined
 }
 
 const NO_CHANGE = () => undefined
@@ -97,7 +102,7 @@ const PERCENT = 100
  * adds a line, Esc interrupts the running turn. While the agent works, sending queues the message;
  * while a request waits for an answer, or the daemon is offline, the box is off and says why.
  */
-export function Composer({ agent, composer, conversation, commandsFrom, question = null, facts, waiting = false }: Props) {
+export function Composer({ agent, composer, conversation, commandsFrom, question = null, facts, waiting = false, files }: Props) {
   const { setDraft, attachments, attach, readOnly, queue, removeQueued, editQueued, sendQueuedNow, submit, stop, running, sending, disabledReason, error } = composer
   const storedDraft = useComposerDraft(composer.conversationKey ?? NO_CONVERSATION)
   const restoreNote = useComposerSlice(composer.conversationKey ?? NO_CONVERSATION, (state) => state.note)
@@ -186,7 +191,9 @@ export function Composer({ agent, composer, conversation, commandsFrom, question
     submit()
     text.current?.focus()
   }
+  const mention = useFileMention(off ? null : files ?? null, draft, setDraft, () => { text.current?.focus() })
   const pickerKey = (event: KeyboardEvent<HTMLTextAreaElement>): boolean => {
+    if (mention.onKey(event)) return true
     if (!picking) return false
     if (event.key === 'Escape') {
       setClosedFor(draft)
@@ -228,11 +235,15 @@ export function Composer({ agent, composer, conversation, commandsFrom, question
           {picking && (
             <SlashPicker agent={agent} matches={matches} active={active} loading={slash.loading} error={slash.error} onPick={run} onHover={(index) => { setCursor({ query, index }) }} />
           )}
+          {mention.open && (
+            <FilePicker found={mention.found} settled={mention.settled} active={mention.active} onPick={mention.pick} onHover={mention.hover} />
+          )}
           <DraftAttachments attachments={attachments} onRemove={attach.remove} />
           <textarea
             ref={text}
             aria-label={`Message ${agent}`}
             {...(picking && matches.length > 0 ? { role: 'combobox', 'aria-expanded': true, 'aria-controls': 'mx-slash-list', 'aria-activedescendant': `mx-slash-${String(active)}` } : {})}
+            {...(mention.open && (mention.found?.paths.length ?? 0) > 0 ? { role: 'combobox', 'aria-expanded': true, 'aria-controls': 'mx-file-list', 'aria-activedescendant': `mx-file-${String(mention.active)}` } : {})}
             rows={2}
             value={draft}
             disabled={off}
