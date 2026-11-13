@@ -6,13 +6,15 @@ use super::git::{
     resolve_conversation_path,
 };
 use crate::repo::{
-    ChangeKind, RepoBranch, RepoChange, RepoCommit, RepoReference, RepoReply, RepoRequest,
-    RepoSnapshot, RepoStatus,
+    ChangeKind, FIND_FILES_MAX_QUERY_CHARS, FIND_FILES_MAX_RESULTS, RepoBranch, RepoChange,
+    RepoCommit, RepoReference, RepoReply, RepoRequest, RepoSnapshot, RepoStatus,
 };
 use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
 
 const MAX_LOG: usize = 200;
+/// A file search walks at most this many files; a larger checkout is searched only that far.
+const MAX_WALK_FILES: usize = 50_000;
 const FIELD: char = '\x1f';
 const RECORD: char = '\x1e';
 
@@ -24,7 +26,9 @@ pub fn answer(dir: &Path, request: &RepoRequest) -> Result<RepoReply> {
     let top = match git(dir, &["rev-parse", "--show-toplevel"]) {
         Ok(top) => top,
         Err(error) => match request {
-            RepoRequest::Tree { .. } | RepoRequest::File { .. } if dir.is_dir() => {
+            RepoRequest::Tree { .. } | RepoRequest::File { .. } | RepoRequest::FindFiles { .. }
+                if dir.is_dir() =>
+            {
                 dir.to_string_lossy().into_owned()
             }
             _ => return Err(error),
@@ -60,6 +64,9 @@ pub fn answer(dir: &Path, request: &RepoRequest) -> Result<RepoReply> {
             )
         }
         RepoRequest::References => RepoReply::References(references(root)?),
+        RepoRequest::FindFiles { query, limit } => {
+            RepoReply::Files(find_files(root, query, *limit)?)
+        }
     })
 }
 
@@ -110,6 +117,65 @@ fn references(root: &Path) -> Result<Vec<RepoReference>> {
             modified: r.modified,
         })
         .collect())
+}
+
+/// The query is only ever matched against walked paths, never joined to a folder, so it cannot
+/// reach outside `root`; links are not followed and not listed.
+fn find_files(root: &Path, query: &str, limit: usize) -> Result<Vec<String>> {
+    if query.chars().count() > FIND_FILES_MAX_QUERY_CHARS {
+        bail!("A file search is at most {FIND_FILES_MAX_QUERY_CHARS} characters");
+    }
+    Ok(rank(
+        walk(root, MAX_WALK_FILES),
+        query,
+        limit.min(FIND_FILES_MAX_RESULTS),
+    ))
+}
+
+/// Files under `root` that are not hidden or ignored, relative with `/`, the first `cap` found.
+fn walk(root: &Path, cap: usize) -> Vec<String> {
+    ignore::WalkBuilder::new(root)
+        .hidden(true)
+        .follow_links(false)
+        .build()
+        .flatten()
+        .filter(|entry| entry.file_type().is_some_and(|kind| kind.is_file()))
+        .take(cap)
+        .filter_map(|entry| {
+            entry
+                .path()
+                .strip_prefix(root)
+                .ok()
+                .map(|path| path.to_string_lossy().replace('\\', "/"))
+        })
+        .collect()
+}
+
+/// A file name that starts with the query beats one that holds it, which beats a folder that
+/// holds it; within each, shorter paths first, then by name.
+fn rank(paths: Vec<String>, query: &str, limit: usize) -> Vec<String> {
+    let query = query.to_lowercase();
+    let mut matched: Vec<(u8, String)> = paths
+        .into_iter()
+        .filter_map(|path| Some((match_tier(&path.to_lowercase(), &query)?, path)))
+        .collect();
+    matched.sort_by(|(a_tier, a), (b_tier, b)| {
+        (a_tier, a.chars().count(), a).cmp(&(b_tier, b.chars().count(), b))
+    });
+    matched.into_iter().take(limit).map(|(_, path)| path).collect()
+}
+
+fn match_tier(path: &str, query: &str) -> Option<u8> {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    if name.starts_with(query) {
+        Some(0)
+    } else if name.contains(query) {
+        Some(1)
+    } else if path.contains(query) {
+        Some(2)
+    } else {
+        None
+    }
 }
 
 /// `path` as seen in a pane in `dir`, made relative to the repository top `root`.
@@ -668,6 +734,68 @@ mod tests {
         assert!(locate_in(repo.path(), &outside.path().join("o.txt").to_string_lossy()).is_err());
         assert!(locate_in(repo.path(), "../../etc/passwd").is_err());
         assert!(locate_in(repo.path(), "sub").is_err());
+    }
+
+    #[test]
+    fn a_file_search_ranks_the_file_name_before_the_folder_and_shorter_paths_first() {
+        let paths = [
+            "src/client/main_view.rs",
+            "docs/domain.md",
+            "main.rs",
+            "src/main/lib.rs",
+            "src/main.rs",
+            "README.md",
+        ]
+        .map(String::from)
+        .to_vec();
+        assert_eq!(
+            rank(paths.clone(), "MAIN", 10),
+            [
+                "main.rs",
+                "src/main.rs",
+                "src/client/main_view.rs",
+                "docs/domain.md",
+                "src/main/lib.rs",
+            ]
+        );
+        assert_eq!(rank(paths, "main", 2), ["main.rs", "src/main.rs"]);
+    }
+
+    #[test]
+    fn a_file_search_leaves_out_ignored_files_and_refuses_a_long_query() {
+        let repo = repository();
+        std::fs::write(repo.path().join(".gitignore"), "build/\n").expect("ignore file");
+        std::fs::create_dir_all(repo.path().join("build")).expect("ignored folder");
+        std::fs::write(repo.path().join("build/a_out.txt"), "x").expect("ignored file");
+        std::fs::create_dir_all(repo.path().join("src")).expect("folder");
+        std::fs::write(repo.path().join("src/a_lib.rs"), "x").expect("file");
+        let find = |query: &str| {
+            answer(
+                repo.path(),
+                &RepoRequest::FindFiles {
+                    query: query.into(),
+                    limit: 500,
+                },
+            )
+        };
+
+        assert_eq!(
+            find("a").unwrap(),
+            RepoReply::Files(vec!["a.txt".into(), "src/a_lib.rs".into()])
+        );
+        assert!(find(&"a".repeat(FIND_FILES_MAX_QUERY_CHARS)).is_ok());
+        assert!(find(&"a".repeat(FIND_FILES_MAX_QUERY_CHARS + 1)).is_err());
+    }
+
+    #[test]
+    fn a_file_walk_stops_at_its_cap() {
+        let dir = crate::daemon::persist::scratch_dir();
+        std::fs::create_dir_all(dir.path()).expect("folder");
+        for name in ["a.txt", "b.txt", "c.txt"] {
+            std::fs::write(dir.path().join(name), "x").expect("file");
+        }
+        assert_eq!(walk(dir.path(), 2).len(), 2);
+        assert_eq!(walk(dir.path(), MAX_WALK_FILES).len(), 3);
     }
 
     #[test]
