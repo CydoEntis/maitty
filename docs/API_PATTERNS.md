@@ -662,7 +662,7 @@ cut, and it is passed on only while a request to that machine is waiting.
 
 Protocol 85 adds `Query::SavedConversations { agent, folder, tag }` and `Reply::SavedConversations { tag, found }`
 (`daemon/conversation/saved.rs`): the conversations Claude or Codex saved for a folder on the daemon's computer, for a
-client offering to resume one. `found` is `Listed` (at most 20, newest first: the agent's own id, the first thing the
+client offering to resume one. `found` is `Listed` (at most 20, newest first: the agent's own id (letters, digits, `-` and `_`, at most 128, a letter or digit first so it is never read as a flag; any other is left out), the first thing the
 person typed as one clean line of at most 200 characters, and when the file was last written, in unix seconds; empty
 when the folder has none) or `NotSupported` for any other agent. Claude's come from its transcripts for that folder
 (`$CLAUDE_CONFIG_DIR/projects`, else `~/.claude/projects`; the transcript's own `cwd` must be the folder), Codex's
