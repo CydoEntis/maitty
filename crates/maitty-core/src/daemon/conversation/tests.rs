@@ -2002,6 +2002,7 @@ async fn only_a_person_can_clone_or_ask_about_github_and_an_oversized_clone_is_a
 
         use crate::protocol::Query;
         let about_github = [
+            Query::GitIdentityRule { change: crate::protocol::GitRuleChange::Remove { folder: "/code".into() }, tag: 9 },
             Query::GitIdentities { tag: 9 },
             Query::GitHubAccounts { tag: 9 },
             Query::GitHubRepos { owner: None, search: None, tag: 9 },

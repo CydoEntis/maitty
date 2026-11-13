@@ -11,7 +11,34 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 91;
+pub const PROTOCOL_VERSION: u32 = 92;
+
+/// The first version whose daemon writes and removes a folder's GitHub account and commit identity
+/// rule on request (`Query::GitIdentityRule`).
+pub const GIT_RULES_SINCE: u32 = 92;
+/// The most files and lines one answer about a rule carries.
+pub const GIT_RULE_FILES_MAX: usize = 4;
+pub const GIT_RULE_LINES_MAX: usize = 16;
+
+/// What a `Query::GitIdentityRule` does to a folder's rule.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GitRuleChange {
+    /// The lines that `Apply` would write, written nowhere.
+    Preview { folder: String, identity: GitIdentity },
+    /// Write the rule: `folder` (which must be there) commits as `identity` and signs in to
+    /// github.com as its login, which must be signed in on the machine. A rule Maitty wrote for
+    /// the folder before is replaced; one set outside Maitty is refused.
+    Apply { folder: String, identity: GitIdentity },
+    /// Take away the rule Maitty wrote for `folder`, named as `GitIdentityRule::folder` names it.
+    Remove { folder: String },
+}
+
+/// Lines of one config file, each `key = value`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitConfigWrite {
+    pub file: String,
+    pub lines: Vec<String>,
+}
 
 /// The first version whose daemon says which commit identity its machine's git uses, and for
 /// which folders a different one applies (`Query::GitIdentities`).
@@ -957,6 +984,12 @@ pub enum Query {
     GitIdentities {
         tag: u64,
     },
+    /// Preview, write or remove a folder's rule (human clients only). The answer is
+    /// `Reply::GitIdentityRuleDone` with the same `tag`.
+    GitIdentityRule {
+        change: GitRuleChange,
+        tag: u64,
+    },
     /// Do `request` to the checkout pane `term` is in (human clients only). The answer is
     /// `Reply::GitDone` with the same `tag`.
     Git {
@@ -1195,6 +1228,12 @@ pub enum Reply {
     GitIdentities {
         tag: u64,
         report: GitIdentityReport,
+    },
+    /// How a `Query::GitIdentityRule` ended: the lines it would write, wrote or took away, by
+    /// file, or one line saying why nothing was done.
+    GitIdentityRuleDone {
+        tag: u64,
+        outcome: Result<Vec<GitConfigWrite>, String>,
     },
 }
 
@@ -2009,6 +2048,7 @@ impl ClientMsg {
             ClientMsg::Query(Query::GitHubAccounts { .. }) => GITHUB_ACCOUNTS_SINCE,
             ClientMsg::Query(Query::GitHubRepos { .. } | Query::GitHubOwners { .. }) => GITHUB_REPOS_SINCE,
             ClientMsg::Query(Query::GitIdentities { .. }) => GIT_IDENTITIES_SINCE,
+            ClientMsg::Query(Query::GitIdentityRule { .. }) => GIT_RULES_SINCE,
             ClientMsg::Query(Query::Git { request: GitRequest::Commit { .. }, .. }) => GIT_COMMIT_SINCE,
             ClientMsg::Query(Query::Git { request: GitRequest::PullRequest, .. }) => GIT_PULL_REQUEST_SINCE,
             ClientMsg::Query(Query::Git { .. }) => GIT_SYNC_SINCE,
@@ -2416,7 +2456,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 91);
+        assert_eq!(PROTOCOL_VERSION, 92);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2688,7 +2728,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 91);
+        assert_eq!(PROTOCOL_VERSION, 92);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -3547,5 +3587,8 @@ mod tests {
         const { assert!(GIT_PULL_REQUEST_SINCE > GIT_COMMIT_SINCE && GIT_PULL_REQUEST_SINCE <= PROTOCOL_VERSION) };
         assert_eq!(ClientMsg::Query(Query::GitIdentities { tag: 1 }).introduced_in(), GIT_IDENTITIES_SINCE);
         const { assert!(GIT_IDENTITIES_SINCE > COMPATIBLE_SINCE && GIT_IDENTITIES_SINCE <= PROTOCOL_VERSION) };
+        let remove = Query::GitIdentityRule { change: GitRuleChange::Remove { folder: "/code".into() }, tag: 1 };
+        assert_eq!(ClientMsg::Query(remove).introduced_in(), GIT_RULES_SINCE);
+        const { assert!(GIT_RULES_SINCE > GIT_IDENTITIES_SINCE && GIT_RULES_SINCE <= PROTOCOL_VERSION) };
     }
 }

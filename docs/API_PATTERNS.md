@@ -654,6 +654,24 @@ another machine keeps only logins GitHub could have given out and one clean `pro
 host sends it through `github_accounts(machine, tag)` and raises a `github-accounts` event with the tag
 and the report (`apps/gui/src/api/githubAccounts.ts` waits on it for 20 seconds).
 
+Protocol 92 adds `Query::GitIdentityRule { change, tag }` with `Reply::GitIdentityRuleDone { tag, outcome }`
+(`GIT_RULES_SINCE`; `COMPATIBLE_SINCE` stays). `change` is a `GitRuleChange`: `Preview { folder, identity }`
+answers the lines `Apply` would write and writes nothing; `Apply { folder, identity }` writes them;
+`Remove { folder }` takes away the rule Maitty wrote for a folder (named as the report names it). `outcome`
+is the lines by file (`GitConfigWrite { file, lines }`, each line `key = value`) or one line saying why not.
+A rule is a file `<data dir>/git-identities/<16 hex digits of the folder's SHA-256>.gitconfig` holding
+`user.name`, `user.email`, `credential.https://github.com.username`, an empty
+`credential.https://github.com.helper` (which drops earlier helpers), a helper that answers `get` with
+`gh auth token --hostname github.com --user <login>`, and `maitty.folder`; plus one
+`includeIf "gitdir:<folder>/"` entry in the global config (`gitdir/i:` on Windows and macOS) pointing at
+it. `gh auth git-credential` is not used because it only answers for the active account. The folder must
+exist, is made absolute with `/` separators, and may not hold `* ? [ \ "`; the name and email are one
+line each; the login must be signed in on the machine (`gh auth status`). A folder whose entry points
+anywhere else (a rule set outside Maitty) is refused, both to write and to remove. Applying twice leaves
+one entry. Everything is written with `git config --global` and `--file`, never as text; the desktop host
+sends it with `git_identity_rule(machine, change)`, and an answer from another machine is cleaned and cut
+to 4 files of 16 lines (`remote_policy::vet_rule_reply`). Human clients only.
+
 Protocol 91 adds `Query::GitIdentities { tag }` with `Reply::GitIdentities { tag, report }`
 (`GIT_IDENTITIES_SINCE`; `COMPATIBLE_SINCE` stays). The report is the machine's global `user.name`
 and `user.email` (each absent when not set) and its folder rules: every

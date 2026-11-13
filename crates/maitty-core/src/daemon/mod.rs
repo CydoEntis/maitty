@@ -18,6 +18,7 @@ mod conversation;
 mod folders;
 mod git;
 mod git_identity;
+mod git_rule;
 mod github;
 mod helpers;
 mod identity;
@@ -2796,12 +2797,22 @@ impl Daemon {
                     {
                         ServerMsg::Error("Only a human client can ask about this machine's GitHub account".into())
                     }
-                    Query::GitIdentities { .. }
+                    Query::GitIdentities { .. } | Query::GitIdentityRule { .. }
                         if self.clients.get(&client).is_some_and(|client| {
                             client.from.is_some() || client.structured.is_some()
                         }) =>
                     {
-                        ServerMsg::Error("Only a human client can ask who commits on this machine".into())
+                        ServerMsg::Error("Only a human client can ask or change who commits on this machine".into())
+                    }
+                    Query::GitIdentityRule { change, tag } => {
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let signed_in = |login: &str| github::accounts().accounts.iter().any(|account| account.login == login);
+                            let outcome = git_rule::change(&git_identity::Place::real(), &change, signed_in);
+                            let reply = Reply::GitIdentityRuleDone { tag, outcome };
+                            let _ = tx.blocking_send(Ev::Answered { client, reply });
+                        });
+                        return;
                     }
                     Query::GitIdentities { tag } => {
                         let tx = self.tx.clone();

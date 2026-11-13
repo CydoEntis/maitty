@@ -18,7 +18,7 @@ use std::time::Duration;
 /// How long git has to answer one question about its config.
 const ASK_LIMIT: Duration = Duration::from_secs(5);
 /// The folder, inside Maitty's data folder, that holds the files its rules point at.
-const RULES_FOLDER: &str = "git-identities";
+pub(super) const RULES_FOLDER: &str = "git-identities";
 /// The key, in a file Maitty wrote, that names the folder the file is for.
 pub(super) const FOLDER_KEY: &str = "maitty.folder";
 /// The key that names the GitHub login git signs in as, in a file Maitty wrote.
@@ -62,7 +62,7 @@ impl Place {
 
     /// What `git config <args>` printed. `None` when the key is not set or nothing matched, which
     /// git says with its exit status and no words.
-    fn config(&self, args: &[&str]) -> Result<Option<String>, Problem> {
+    pub(super) fn config(&self, args: &[&str]) -> Result<Option<String>, Problem> {
         let mut command = self.git();
         command.arg("config").args(args);
         let ran = run_within(&mut command, ASK_LIMIT).map_err(|error| match error {
@@ -90,6 +90,32 @@ impl Place {
         self.config(&["--file", file, "--get", key]).ok().flatten().map(|value| value.trim().to_owned())
     }
 
+    /// The folder Maitty keeps its rules' files in.
+    pub(super) fn rules_folder(&self) -> &Path {
+        &self.rules
+    }
+
+    /// The global config file, as a person would look for it.
+    pub(super) fn global_file(&self) -> String {
+        let file = match &self.stand_in {
+            Some((config, _)) => config.clone(),
+            None => match directories::BaseDirs::new() {
+                Some(dirs) => dirs.home_dir().join(".gitconfig"),
+                None => return "~/.gitconfig".into(),
+            },
+        };
+        file.to_string_lossy().replace('\\', "/")
+    }
+
+    /// Every `key=value` line of a file, in order; none when it cannot be read.
+    pub(super) fn listed(&self, file: &Path) -> Vec<String> {
+        let Some(file) = file.to_str() else {
+            return Vec::new();
+        };
+        let listed = self.config(&["--file", file, "--list"]).ok().flatten().unwrap_or_default();
+        listed.lines().map(|entry| line(&entry.replacen('=', " = ", 1))).collect()
+    }
+
     /// Whether `file` is directly inside the folder Maitty keeps its rules' files in.
     fn holds(&self, file: &Path) -> bool {
         let (Some(parent), Ok(ours)) = (file.parent(), self.rules.canonicalize()) else {
@@ -99,7 +125,7 @@ impl Place {
     }
 }
 
-enum Problem {
+pub(super) enum Problem {
     NoGit,
     Failed(String),
 }

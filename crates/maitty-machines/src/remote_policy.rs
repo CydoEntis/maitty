@@ -209,6 +209,28 @@ pub fn vet_identities_reply(reply: Reply) -> Result<Reply, String> {
     }
 }
 
+/// The answer about a folder's rule made safe, or why it is refused: only that answer passes, with
+/// no more files and lines than a rule has and each of them one clean line.
+pub fn vet_rule_reply(reply: Reply) -> Result<Reply, String> {
+    use maitty_shared::protocol::{GIT_IDENTITY_TEXT_MAX_CHARS, GIT_RULE_FILES_MAX, GIT_RULE_LINES_MAX};
+    let Reply::GitIdentityRuleDone { tag, outcome } = reply else {
+        return Err("it is not an answer about a folder's rule".into());
+    };
+    let line = |text: String| sanitize(&text, false).chars().take(GIT_IDENTITY_TEXT_MAX_CHARS * 2).collect::<String>();
+    let outcome = outcome
+        .map(|mut files| {
+            files.truncate(GIT_RULE_FILES_MAX);
+            for written in &mut files {
+                written.file = line(std::mem::take(&mut written.file));
+                written.lines.truncate(GIT_RULE_LINES_MAX);
+                written.lines = std::mem::take(&mut written.lines).into_iter().map(line).collect();
+            }
+            files
+        })
+        .map_err(line);
+    Ok(Reply::GitIdentityRuleDone { tag, outcome })
+}
+
 /// What another machine says about who commits there: no more rules than a report carries, every
 /// name, email and folder one clean line of a report's length, and a rule's identity kept only
 /// with a login GitHub could have given out.
@@ -419,6 +441,15 @@ mod tests {
             let asked = Reply::GitIdentities { tag: 2, report: GitIdentityReport { name: Some("A\u{1b}[0m".into()), ..GitIdentityReport::default() } };
             assert!(matches!(vet_identities_reply(asked), Ok(Reply::GitIdentities { report, .. }) if report.name.as_deref() == Some("A[0m")));
             assert!(vet_identities_reply(Reply::Ok).is_err());
+
+            use maitty_shared::protocol::GitConfigWrite;
+            let lines = vec![GitConfigWrite { file: "/x\n.gitconfig".into(), lines: vec!["user.name = A\u{1b}[31m".into(); 40] }; 9];
+            let Ok(Reply::GitIdentityRuleDone { outcome: Ok(files), .. }) = vet_rule_reply(Reply::GitIdentityRuleDone { tag: 1, outcome: Ok(lines) }) else {
+                panic!("an answer about a rule passes");
+            };
+            assert_eq!((files.len(), files[0].lines.len()), (4, 16));
+            assert_eq!((files[0].file.as_str(), files[0].lines[0].as_str()), ("/x .gitconfig", "user.name = A[31m"));
+            assert!(vet_rule_reply(Reply::Ok).is_err());
             assert!(vet_identities_reply(Reply::Text("the global config".into())).is_err());
         }
         let cloned = |outcome| ServerMsg::Reply(Reply::Cloned { tag: 4, outcome });

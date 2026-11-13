@@ -559,6 +559,16 @@ is a fixed set of host commands that take a machine's name or number, never a pr
   its own `git-identities` folder and name the folder they are for; what a rule set outside Maitty
   points at is never opened. No credential is read (a rule holds a GitHub login, never a token), nothing
   is written, and only a person's client may ask.
+- **Writing a folder's rule** (`Query::GitIdentityRule`, `daemon/git_rule.rs`): the daemon writes the
+  machine's global git config, and only this: one `includeIf "gitdir:<folder>/".path` entry and one file
+  of its own in `<data dir>/git-identities/`. The file sets the folder's commit name and email, the GitHub
+  login, and a credential helper that runs `gh auth token --user <login>` when git needs github.com's
+  password inside that folder. The login is checked to be a GitHub login (letters, digits, dashes, no
+  leading dash) before it is put in the helper's command, and must be signed in on the machine; the name
+  and email may hold no control character; the folder must exist and may hold no pattern character or
+  quote. No token is written: `gh` keeps it and hands it to git when asked. The person sees the exact
+  lines before they are written (`Preview`). A rule set outside Maitty is never replaced or removed, and a
+  removal takes out only Maitty's entry and file. Only a person's client may ask.
 - **Changing a checkout on request** (`Query::Git`, `daemon/sync.rs`, `commit.rs`, `pull_request.rs`):
   fetch, fast-forward pull, push, commit and open a pull request for the checkout a pane is in. Only a
   person's client may ask, with the pane checks of `Query::Repo`. The request is one of five words; the
