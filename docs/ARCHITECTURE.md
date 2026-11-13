@@ -59,7 +59,7 @@ src/
   cli/machines_ls.rs  `ls --all`: this computer and every configured machine asked at the same time, one that does not answer reported on its own line
   cli/mcp/machines.rs  the MCP tools' `machine` argument and `machine/id` ids: routing, the `mcp` opt-in, the calling pane's grants checked here before a machine is dialled, typed errors (`McpError`) and the cleaned, cut, `[machine: name]`-led replies (SECURITY "MCP across machines")
   tidy.rs        what removing a worktree would lose (shared by the close-time removal and the clean-up list)
-  snapshot.rs    a checkout's files kept before each agent turn, and put back (the server takes them, the client lists and restores)
+  snapshot.rs    a checkout's files kept before and after each agent turn, and put back (the server takes them, the client lists and restores)
   references.rs  a project's reference files (`.maitty/references/`): listed, added and removed (the terminal app edits them, the server lists them for the desktop app)
   prompt.rs      the question and numbered choices an agent is stopped on, read off its screen (the MCP answer tool and the inbox card share it)
   output_line.rs  one line of a check's output: made safe to show, and read as pass or failure (the server picks the first failing line, the client colours with the same rule)
@@ -86,6 +86,8 @@ src/
     check.rs     a pane's check result, and the runner: the project's check command run in the session's worktree when a turn ends
     check_source.rs which checks a project has (yours, else the repo's .maitty/checks.toml), where each comes from, whether it may run
     check_stale.rs  a pass gone stale: the worktree's tree when a run starts, compared on the git poll
+    closed_sessions.rs the agent sessions that closed for good or crashed, newest 50 (closed-sessions-<socket>.json): what a close or a failed exit records, read at start and written off the loop
+    reopen.rs    reopening a closed session: its worktree made again when the folder is gone (recorded path, branch and repository only), then its conversation resumed in a new session
     conversation/allowed.rs  commands you approved "always in this project" for a chat (chat-allowed-commands.json)
     helpers.rs   sessions starting helpers: the ask / always / never rule, the request a session's row shows, and the projects you said Always for (helper-projects.json)
     identity.rs  the daemon's random id, made on first start and kept in the data folder (daemon-id); sent in every snapshot

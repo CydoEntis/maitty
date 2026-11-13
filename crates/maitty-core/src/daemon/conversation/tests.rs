@@ -68,6 +68,7 @@ fn claude_launch(root: &Path, scenario: Option<&str>) -> (Launch, super::runtime
         awaiting_first_user_message: false,
         title: None,
         archived: false,
+        worktree_origin: None,
     };
     let environment = scenario
         .map(|scenario| {
@@ -868,7 +869,10 @@ async fn next(rx: &mut mpsc::Receiver<Ev>) -> Event {
 
 async fn stopped(pids: Vec<u32>) {
     tokio::task::spawn_blocking(move || {
-        let until = std::time::Instant::now() + Duration::from_secs(5);
+        // A kill is asked for on another thread and, on Windows, done by `taskkill`: on a busy
+        // machine it was measured landing twelve seconds later. A process that stopped ends the
+        // wait at once, so the long deadline costs a passing test nothing.
+        let until = std::time::Instant::now() + Duration::from_secs(60);
         loop {
             let mut system = sysinfo::System::new();
             system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
@@ -1416,7 +1420,10 @@ fn authenticated_pane(session: &mut TestSession) -> (u32, String) {
             .into_owned(),
     );
     cfg.shell_args = vec!["--descendant".into()];
-    let id = 900001;
+    // An id of its own for each pane: a second pane under the first one's id would replace it in
+    // `terms`, so cleanup would never stop the first, and its process, running the fixture's
+    // executable from inside the fixture folder, keeps Windows from deleting either.
+    let id = 900001 + u32::try_from(session.daemon.terms.len()).unwrap();
     let mut pane = crate::daemon::term::Term::spawn(
         &cfg,
         crate::daemon::term::SpawnSpec {
@@ -1870,6 +1877,42 @@ async fn an_approved_command_is_remembered_for_the_project_and_nothing_else_is()
 }
 
 #[tokio::test]
+async fn saved_conversations_are_listed_for_a_person_only_and_off_the_loop() {
+    let mut session = conversation_fixture("conversation-saved-list").await;
+    let outcome = AssertUnwindSafe(async {
+        let ask = |agent: &str, folder: &str| {
+            crate::protocol::ClientMsg::Query(crate::protocol::Query::SavedConversations {
+                agent: agent.into(),
+                folder: folder.into(),
+                tag: 6,
+            })
+        };
+        let from = authenticated_pane(&mut session);
+        let refused = exchange(&mut session, 440, ask("gemini", "~"), Some(from)).await;
+        assert!(matches!(refused, ServerMsg::Error(ref message) if message.contains("Only a human")), "{refused:?}");
+        let relative = exchange(&mut session, 441, ask("claude", "code/app"), None).await;
+        assert!(matches!(relative, ServerMsg::Error(_)), "{relative:?}");
+        let answered = exchange(&mut session, 442, ask("gemini", "~"), None).await;
+        assert!(
+            matches!(
+                answered,
+                ServerMsg::Reply(crate::protocol::Reply::SavedConversations {
+                    tag: 6,
+                    found: crate::protocol::SavedConversations::NotSupported,
+                })
+            ),
+            "{answered:?}"
+        );
+    })
+    .catch_unwind()
+    .await;
+    session.cleanup().await;
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[tokio::test]
 async fn approved_commands_are_listed_and_taken_back_by_a_person_only() {
     let mut session = conversation_fixture("conversation-approval").await;
     let outcome = AssertUnwindSafe(async {
@@ -1987,6 +2030,7 @@ async fn a_closed_chat_is_hidden_at_once_comes_back_with_undo_and_ends_when_the_
         assert!(matches!(back, ServerMsg::Reply(crate::protocol::Reply::Ok)), "{back:?}");
         assert!(!archived(&session), "brought back");
         assert!(session.daemon.conversation_closing.is_empty());
+        assert!(session.daemon.closed_sessions.list().is_empty(), "an undo leaves no record");
         let late = exchange(&mut session, 423, undo.clone(), None).await;
         assert!(matches!(late, ServerMsg::Error(ref message) if message.contains("window has passed")), "{late:?}");
 
@@ -1994,10 +2038,16 @@ async fn a_closed_chat_is_hidden_at_once_comes_back_with_undo_and_ends_when_the_
         assert!(matches!(exchange(&mut session, 424, close, None).await, ServerMsg::Reply(crate::protocol::Reply::Ok)));
         session.daemon.finish_chat_closes();
         assert!(session.daemon.conversation_runtimes.owns(id), "not before the window passes");
+        assert!(session.daemon.closed_sessions.list().is_empty(), "no record before the window passes");
         *session.daemon.conversation_closing.get_mut(&id).unwrap() = std::time::Instant::now() - crate::daemon::UNDO_WINDOW;
         session.daemon.finish_chat_closes();
         assert!(session.daemon.conversation_closing.is_empty());
         assert!(archived(&session));
+        let binding = session.daemon.conversations.iter().find(|c| c.id == id).unwrap().binding.clone();
+        let [kept] = session.daemon.closed_sessions.list() else {
+            panic!("one record once the window passed: {:?}", session.daemon.closed_sessions.list());
+        };
+        assert_eq!((kept.session.as_str(), &kept.cwd), (binding.session_id.as_str(), binding.worktree.as_ref().unwrap_or(&binding.cwd)));
         let late = exchange(&mut session, 425, undo, None).await;
         assert!(matches!(late, ServerMsg::Error(ref message) if message.contains("window has passed")), "{late:?}");
     })
@@ -2671,6 +2721,7 @@ async fn structured_runtime_claims_apply_grants_without_human_or_pane_exemptions
             term: pane,
             text: "Synthetic scoped write".into(),
             first: false,
+            operation: None,
         });
         let denied =
             exchange_claim(&mut s, 231, write.clone(), None, Some(claim.clone()), None).await;
@@ -3988,8 +4039,11 @@ async fn a_provider_stopped_cleanly_leaves_no_entry_in_the_record() {
 }
 
 mod queue;
+mod continue_turn;
 mod branch_chat;
 mod claude_chat;
+mod turn_snapshot;
+mod worktree_recreate;
 
 #[tokio::test]
 async fn the_daemon_resumes_a_stopped_conversation_on_the_same_id_and_the_next_generation() {

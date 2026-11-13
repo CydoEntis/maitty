@@ -27,10 +27,17 @@ impl Daemon {
             .worktree
             .clone()
             .unwrap_or_else(|| record.binding.cwd.clone());
-        let state = self.conversation_states.entry(id).or_default();
-        if !state.completed_turns.insert(turn) {
+        if !self
+            .conversation_states
+            .entry(id)
+            .or_default()
+            .completed_turns
+            .insert(turn)
+        {
             return;
         }
+        self.snapshot_conversation_turn(id, "after");
+        let state = self.conversation_states.entry(id).or_default();
         let Some(turn) = state.checks.turn.checked_add(1) else {
             state.status = Status::Blocked;
             state.error = Some("Conversation checkpoint turn counter exhausted".into());
@@ -301,6 +308,38 @@ mod tests {
             d.conversation_summaries()[0].checks[0].state,
             CheckState::Passed
         );
+    }
+
+    #[tokio::test]
+    async fn a_finished_turn_keeps_the_files_as_it_left_them() {
+        let (mut d, mut rx, dir, id) = fixture();
+        d.conversation_turn_ended(id, 7, "turn-a".into());
+        let repo = dir.path().to_path_buf();
+        let kept = tokio::task::spawn_blocking(move || {
+            let until = std::time::Instant::now() + Duration::from_secs(60);
+            loop {
+                let kept = crate::snapshot::list(&repo);
+                if !kept.is_empty() || std::time::Instant::now() >= until {
+                    return kept;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            kept.iter().map(|s| s.why.as_str()).collect::<Vec<_>>(),
+            ["after codex's turn"]
+        );
+        assert_eq!(
+            crate::proc::git(
+                dir.path(),
+                &["show", &format!("{}:source.txt", kept[0].commit)]
+            )
+            .as_deref(),
+            Ok("original")
+        );
+        settle(&mut d, &mut rx, id).await;
     }
 
     #[tokio::test]

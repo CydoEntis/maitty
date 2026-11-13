@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { BranchesTab } from './BranchesTab'
-import { ChangesTab } from './ChangesTab'
+import { ChangesTab, type TurnScope } from './ChangesTab'
 import { ChecksTab } from './ChecksTab'
 import { checksNeedingYou, type Check } from './checks'
 import type { ChangeActions } from './CommitBar'
@@ -90,6 +90,8 @@ type Props = {
   comments?: Omit<PatchComments, 'path' | 'sent' | 'onSent'>
   /** Commit and Create PR on the Changes tab, for a checkout on this computer. */
   changeActions?: ChangeActions
+  /** The turn a chat's changes row asked about, for the Changes tab. */
+  turnScope?: TurnScope
   onView: (view: InspectView) => void
   onClose: () => void
   onNotice: (text: string) => void
@@ -106,7 +108,7 @@ function shownView(view: InspectView, hasRepo: boolean, hasTerminals: boolean): 
  * never pushes them or covers the sidebar: the focused session's changes, its files and its own
  * terminals.
  */
-export function InspectPanel({ term, terminals, changedFiles, branch, view: asked, agentWorking, timeline, checks = [], machine = 0, lookAt, comments, changeActions, onView, onClose, onNotice }: Props) {
+export function InspectPanel({ term, terminals, changedFiles, branch, view: asked, agentWorking, timeline, checks = [], machine = 0, lookAt, comments, changeActions, turnScope, onView, onClose, onNotice }: Props) {
   const view = shownView(asked, term !== null, terminals !== null)
   const [dragged, setDragged] = useState(readWidth)
   const width = clampWidth(dragged ?? window.innerWidth * DEFAULT_SHARE)
@@ -174,7 +176,7 @@ export function InspectPanel({ term, terminals, changedFiles, branch, view: aske
         {view !== 'terminal' && term !== null && (
           <div className="mx-inspect-scroll" role="tabpanel">
             {view === 'files' && <FilesTab term={term} machine={machine} lookAt={lookAt} />}
-            {view === 'changes' && <ChangesTab term={term} {...(branch !== undefined ? { branch } : {})} {...(comments ? { comments } : {})} {...(changeActions ? { actions: changeActions } : {})} onNotice={onNotice} />}
+            {view === 'changes' && <ChangesTab term={term} {...(branch !== undefined ? { branch } : {})} {...(comments ? { comments } : {})} {...(changeActions ? { actions: changeActions } : {})} {...(turnScope ? { scope: turnScope } : {})} onNotice={onNotice} />}
             {view === 'checks' && <ChecksTab term={term} machine={machine} checks={checks} onNotice={onNotice} />}
             {view === 'branches' && <BranchesTab term={term} />}
             {view === 'history' && <HistoryTab term={term} agentWorking={agentWorking} onNotice={onNotice} />}

@@ -35,6 +35,7 @@ mod remote_image_tests;
 mod remote_snapshot_tests;
 mod render;
 pub mod restart_prompt;
+mod resume;
 mod routing;
 mod screen;
 mod send_file;
@@ -495,6 +496,10 @@ pub struct App {
     /// The same for Codex's lifecycle hooks: installed, and whether Codex has been told to trust them.
     codex_hooks: Option<maitty_provider_codex::HooksState>,
     codex_hooks_asked: bool,
+    /// The saved-conversation lists asked of the daemon and not all answered yet.
+    resume: resume::Resume,
+    /// The protocol this computer's daemon said it speaks when this window last connected.
+    local_protocol: u32,
     /// The theme browser's tab: the Light themes when true, else the Dark ones.
     theme_tab_light: bool,
     /// What changed in it (and any releases between), for the update dialog.
@@ -616,6 +621,9 @@ pub struct App {
     paged_up: std::collections::HashMap<ClientTerm, u32>,
     /// When a remote machine's refused copy was last told, so it is told once a minute.
     copy_refusal_told: Option<Instant>,
+    /// When each machine was last asked for its whole list and has not answered yet, so a run
+    /// of deltas after one missed update asks once.
+    list_asked: std::collections::HashMap<MachineId, Instant>,
     /// The panes drawn at the last `sync_sizes`, to see which have just come into view.
     shown_panes: std::collections::HashSet<ClientTerm>,
     out: mpsc::UnboundedSender<Outgoing>,
@@ -685,12 +693,14 @@ pub fn run(opts: Options) -> Result<()> {
 
 async fn run_async(opts: Options) -> Result<()> {
     let mut connections = Connections::default();
-    connections.add(MachineId::LOCAL, ipc::open_or_spawn(true).await?);
+    let (local, local_protocol) = ipc::open_or_spawn_knowing_version(true).await?;
+    connections.add(MachineId::LOCAL, local);
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Outgoing>();
 
     let (cfg, err) = Config::load_or_default();
     let (bg_tx, mut bg_rx) = mpsc::unbounded_channel::<Bg>();
     let mut app = App::new(cfg, out_tx, opts.open, bg_tx);
+    app.note_local_protocol(local_protocol);
     if crate::sync::enabled() {
         app.spawn_bg(|| Bg::Synced(crate::sync::pull().unwrap_or(false)));
     }
@@ -814,6 +824,8 @@ impl App {
             claude_hooks_asked: false,
             codex_hooks: None,
             codex_hooks_asked: false,
+            resume: Default::default(),
+            local_protocol: crate::protocol::PROTOCOL_VERSION,
             theme_tab_light: false,
             update_notes: Vec::new(),
             update_checked: None,
@@ -878,6 +890,7 @@ impl App {
             wheel_page: None,
             paged_up: std::collections::HashMap::new(),
             copy_refusal_told: None,
+            list_asked: std::collections::HashMap::new(),
             shown_panes: std::collections::HashSet::new(),
             out,
             quit: None,
@@ -1003,6 +1016,7 @@ impl App {
                     }
                     let frame = self.spinner_frame();
                     self.settle_alerts();
+                    self.ask_lists_again();
                     if frame != last_frame && ((self.motion_on() && (self.any_working() || self.any_checking() || self.any_calling())) || matches!(self.mode, Mode::Spinners(_))) {
                         last_frame = frame;
                         self.dirty = true;
@@ -1122,15 +1136,16 @@ impl App {
         let restarting = self.daemon_restart_reconnect;
         let connection = if restarting {
             tokio::time::sleep(SERVER_SHUTDOWN_GRACE).await;
-            ipc::open_or_spawn_installed(true).await
+            ipc::open_or_spawn_installed_knowing_version(true).await
         } else {
             // Connect only: an unexpectedly stopped server must not be started again by this.
-            ipc::open(true).await
+            ipc::open_knowing_version(true).await
         };
-        let Ok(connection) = connection else {
+        let Ok((connection, version)) = connection else {
             return false;
         };
         connections.add(MachineId::LOCAL, connection);
+        self.note_local_protocol(version);
         self.reattached = Some(Instant::now());
         if !restarting {
             self.notify(
@@ -1139,6 +1154,14 @@ impl App {
             );
         }
         true
+    }
+
+    /// Remember what this computer's daemon speaks, after a connection to it: a request newer
+    /// than that is never answered, so it is not sent.
+    pub(super) fn note_local_protocol(&mut self, version: Option<u32>) {
+        if let Some(version) = version {
+            self.local_protocol = version;
+        }
     }
 
     /// Installing must not interrupt agents, including across protocol changes.
@@ -2226,3 +2249,5 @@ mod mcp_machine_tests;
 mod remote_status_tests;
 #[cfg(test)]
 mod routing_tests;
+#[cfg(test)]
+mod resume_tests;

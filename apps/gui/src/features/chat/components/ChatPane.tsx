@@ -3,6 +3,7 @@ import { MessageSquare } from 'lucide-react'
 import { CHAT_AGENTS, noChatReason, type ChatAgent, type ChatAvailability } from '@/features/workspace/model/chatView'
 import { Button } from '@/components/ui/button'
 import type { OpenFile } from '../openFile'
+import type { ChatItemContext } from './ChatItems'
 import type { PermissionAsk } from '@/data/preview'
 import type { SessionStatus } from '@/features/workspace/model/session'
 import type { PaneQueue } from '../useChatComposer'
@@ -14,13 +15,15 @@ import type { SessionUsage } from '../usageStrip'
 import type { BranchMenuSpec } from './BranchMenu'
 import type { ChatProblem } from '../problem'
 import { StartingChat } from './StartingChat'
+import type { RewindPlace } from '../editFromHere'
+import type { FileSearchPlace } from '../fileMention'
 
 export type ChatPaneProps = {
   availability: ChatAvailability
   /** The session's folder, so file names read relative to it. */
   root?: string | null
-  /** Shows a file's diff in the Changes panel. */
-  onOpenDiff?: ((file: string) => void) | null
+  /** Shows a file's diff, or a turn's, in the Changes panel. */
+  onOpenDiff?: ChatItemContext['openDiff']
   /** Opens a file a reply names, at its line when it gave one. */
   onOpenFile?: OpenFile | null
   /** Types into the terminal the agent runs in, so a chat that follows it can talk to it (ADR 0003). */
@@ -66,6 +69,12 @@ export type ChatPaneProps = {
   branchMenu?: BranchMenuSpec | undefined
   /** The effort the agent's own files say it runs at. */
   effort?: string | null | undefined
+  /** Where a sent message's Edit from here restores the files from. */
+  rewind?: RewindPlace | undefined
+  /** Where an `@` in the message box looks for files. */
+  fileSearch?: FileSearchPlace | undefined
+  /** Leaves out runs of reads and searches that succeeded (the desktop setting). */
+  hideSuccessfulTools?: boolean
 }
 
 /**
@@ -101,6 +110,9 @@ export function ChatPane(props: ChatPaneProps) {
             problem={props.problem ?? null}
             {...(props.branchMenu === undefined ? {} : { branchMenu: props.branchMenu })}
             effort={props.effort ?? null}
+            hideSuccessfulTools={props.hideSuccessfulTools ?? false}
+            {...(props.rewind === undefined ? {} : { rewind: props.rewind })}
+            {...(props.fileSearch === undefined ? {} : { fileSearch: props.fileSearch })}
             {...(props.sessionId === undefined ? {} : { sessionId: props.sessionId })}
             {...(props.paneStatus === undefined ? {} : { paneStatus: props.paneStatus })}
           />

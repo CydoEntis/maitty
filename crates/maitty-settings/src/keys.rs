@@ -297,6 +297,11 @@ pub enum Action {
     Menu,
     /// The worktrees step of the key map: new, switch, merge, delete.
     Worktrees,
+    /// The conversations Claude and Codex saved for the focused pane's folder; one picked starts
+    /// its agent there, resumed.
+    ResumeConversation,
+    /// The sessions put away (still running, out of the lists), each to bring back.
+    PutAway,
     /// Explicitly unbind a default.
     None,
 }
@@ -390,6 +395,8 @@ impl Action {
             Action::TidyWorktrees => "Clean up worktrees".into(),
             Action::Menu => "Menu".into(),
             Action::Worktrees => "Worktrees…".into(),
+            Action::ResumeConversation => "Resume a conversation here".into(),
+            Action::PutAway => "Sessions put away".into(),
             Action::None => "Unbound".into(),
         }
     }
@@ -485,6 +492,8 @@ impl Action {
             Action::TidyWorktrees => "tidy-worktrees".into(),
             Action::Menu => "menu".into(),
             Action::Worktrees => "worktrees".into(),
+            Action::ResumeConversation => "resume-conversation".into(),
+            Action::PutAway => "put-away".into(),
             Action::None => return None,
         })
     }
@@ -603,6 +612,8 @@ impl FromStr for Action {
             "tidy-worktrees" => Action::TidyWorktrees,
             "menu" | "actions" => Action::Menu,
             "worktrees" => Action::Worktrees,
+            "resume-conversation" => Action::ResumeConversation,
+            "put-away" => Action::PutAway,
             // The fleet and the why popover are gone; a binding written for one stays
             // harmless, not a config error.
             "none" | "unbind" | "start-fleet" | "why" => Action::None,

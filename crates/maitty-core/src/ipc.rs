@@ -324,9 +324,23 @@ pub fn terminal_dial(attach: bool) -> Result<maitty_machines::Dial> {
     })
 }
 
+/// A connection and the protocol the daemon named in its handshake: None over ssh, where the
+/// far side's supervisor does the handshake.
+pub type KnownConnection = ((Reader, Writer), Option<u32>);
+
 /// Connect to `machine` and complete the handshake.
 pub async fn open_to(machine: &Machine, attach: bool) -> Result<(Reader, Writer)> {
+    open_to_knowing_version(machine, attach).await.map(|(c, _)| c)
+}
+
+async fn open_to_knowing_version(machine: &Machine, attach: bool) -> Result<KnownConnection> {
     open_accepting(machine, attach, |_| false).await
+}
+
+/// `open`, and the protocol the daemon speaks: what a caller checks before a request an older
+/// daemon would pass over without an answer.
+pub async fn open_knowing_version(attach: bool) -> Result<KnownConnection> {
+    open_to_knowing_version(&Machine::current(), attach).await
 }
 
 /// Connect to send a hook or usage report, and nothing else. Unlike `open`, a daemon older than
@@ -334,24 +348,26 @@ pub async fn open_to(machine: &Machine, attach: bool) -> Result<(Reader, Writer)
 /// update replaces the binary an agent's hooks run while the old daemon keeps its sessions, and
 /// their status must stay right until it restarts.
 pub async fn open_for_report() -> Result<(Reader, Writer)> {
-    open_accepting(&Machine::current(), false, protocol::daemon_reads_reports).await
+    open_accepting(&Machine::current(), false, protocol::daemon_reads_reports)
+        .await
+        .map(|(c, _)| c)
 }
 
 async fn open_accepting(
     machine: &Machine,
     attach: bool,
     also_accepts: fn(u32) -> bool,
-) -> Result<(Reader, Writer)> {
+) -> Result<KnownConnection> {
     let dial = terminal_dial(attach)?;
     if machine.is_remote() {
-        return maitty_machines::open_remote(machine, dial).await;
+        return Ok((maitty_machines::open_remote(machine, dial).await?, None));
     }
     let hello = maitty_machines::hello(machine, dial);
     let (mut r, mut w) = framed(connect().await?);
     send(&mut w, &hello).await?;
     let daemon = maitty_ipc_transport::welcome_version(&mut r).await?;
     if daemon.speaks_with_us() || also_accepts(daemon.version) {
-        Ok((r, w))
+        Ok(((r, w), Some(daemon.version)))
     } else {
         Err(OtherVersion {
             daemon: daemon.version,
@@ -362,11 +378,23 @@ async fn open_accepting(
 
 /// Connect, starting the daemon in the background if none is running.
 pub async fn open_or_spawn(attach: bool) -> Result<(Reader, Writer)> {
+    open_or_spawn_knowing_version(attach).await.map(|(c, _)| c)
+}
+
+/// `open_or_spawn`, and the protocol the daemon speaks.
+pub async fn open_or_spawn_knowing_version(attach: bool) -> Result<KnownConnection> {
     open_or_spawn_with(&Machine::current(), attach, None).await
 }
 
 /// Reconnect after replacing the executable, spawning the newly installed image if needed.
 pub async fn open_or_spawn_installed(attach: bool) -> Result<(Reader, Writer)> {
+    open_or_spawn_installed_knowing_version(attach)
+        .await
+        .map(|(c, _)| c)
+}
+
+/// `open_or_spawn_installed`, and the protocol the daemon speaks.
+pub async fn open_or_spawn_installed_knowing_version(attach: bool) -> Result<KnownConnection> {
     let exe = crate::installed_executable::installed_executable()?;
     open_or_spawn_with(&Machine::current(), attach, Some(exe)).await
 }
@@ -375,15 +403,15 @@ async fn open_or_spawn_with(
     machine: &Machine,
     attach: bool,
     exe: Option<std::path::PathBuf>,
-) -> Result<(Reader, Writer)> {
+) -> Result<KnownConnection> {
     if has_structured_identity() {
-        return open_to(machine, attach).await;
+        return open_to_knowing_version(machine, attach).await;
     }
     // Over ssh the far side starts its own server.
     if machine.is_remote() {
-        return open_to(machine, attach).await;
+        return open_to_knowing_version(machine, attach).await;
     }
-    match open_to(machine, attach).await {
+    match open_to_knowing_version(machine, attach).await {
         Ok(c) => return Ok(c),
         // A server is running: starting another would only fail to take its socket.
         Err(e) if other_version(&e).is_some() => return Err(e),
@@ -393,7 +421,7 @@ async fn open_or_spawn_with(
     let mut last = None;
     for _ in 0..60 {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        match open_to(machine, attach).await {
+        match open_to_knowing_version(machine, attach).await {
             Ok(c) => return Ok(c),
             Err(e) => last = Some(e),
         }

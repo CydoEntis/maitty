@@ -68,6 +68,186 @@ async fn close_panes(session: &mut TestSession) {
     }
 }
 
+/// Starts a chat on `branch` in a new worktree and returns it with its folder.
+async fn chat_on(
+    session: &mut TestSession,
+    client: u64,
+    branch: &str,
+) -> (crate::conversation::ConversationId, u64, PathBuf) {
+    let message = start_on(settings(session), branch);
+    let reply = exchange(session, client, message, None).await;
+    let ServerMsg::Reply(Reply::ConversationStarted { id, generation }) = reply else {
+        panic!("{reply:?}");
+    };
+    let record = session.daemon.conversations.iter().find(|c| c.id == id).unwrap();
+    (id, generation, record.binding.cwd.clone())
+}
+
+/// Closes a chat and lets its undo window pass.
+async fn close_for_good(
+    session: &mut TestSession,
+    client: u64,
+    id: crate::conversation::ConversationId,
+    generation: u64,
+) {
+    let close = ClientMsg::Command(Command::ConversationClose { id, generation });
+    let closed = exchange(session, client, close, None).await;
+    assert!(matches!(closed, ServerMsg::Reply(Reply::Ok)), "{closed:?}");
+    *session.daemon.conversation_closing.get_mut(&id).unwrap() =
+        std::time::Instant::now() - crate::daemon::UNDO_WINDOW;
+    session.daemon.finish_chat_closes();
+}
+
+fn still_made(session: &TestSession, folder: &std::path::Path) -> bool {
+    session
+        .daemon
+        .made_worktrees
+        .iter()
+        .any(|made| crate::daemon::same_path(made, folder))
+}
+
+/// Handles daemon events until a worktree's automatic removal reports, and returns how it went.
+async fn auto_removal(session: &mut TestSession) -> crate::daemon::Removal {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        loop {
+            let event = session.events.recv().await.unwrap();
+            if let Ev::WorktreeAutoRemoved { result, .. } = &event {
+                let result = result.clone();
+                session.daemon.handle(event);
+                return result;
+            }
+            session.daemon.handle(event);
+        }
+    })
+    .await
+    .expect("a worktree removal reported")
+}
+
+#[tokio::test]
+async fn closing_a_chat_for_good_removes_its_clean_merged_worktree_but_not_on_undo() {
+    let mut session = conversation_fixture("conversation").await;
+    let outcome = AssertUnwindSafe(async {
+        shown_repo(&mut session);
+        let (id, generation, merged) = chat_on(&mut session, 430, "chat/merged").await;
+
+        // A close that is undone leaves the worktree alone.
+        let close = ClientMsg::Command(Command::ConversationClose { id, generation });
+        assert!(matches!(exchange(&mut session, 431, close, None).await, ServerMsg::Reply(Reply::Ok)));
+        let undo = ClientMsg::Command(Command::ConversationUndoClose { id });
+        assert!(matches!(exchange(&mut session, 432, undo, None).await, ServerMsg::Reply(Reply::Ok)));
+        session.daemon.finish_chat_closes();
+        assert!(still_made(&session, &merged) && merged.is_dir(), "an undone close keeps it");
+
+        close_for_good(&mut session, 433, id, generation).await;
+        let gone = auto_removal(&mut session).await;
+        assert!(
+            matches!(gone, crate::daemon::Removal::Removed { .. }) && !merged.is_dir(),
+            "a clean, merged one goes, got: {gone:?}"
+        );
+    })
+    .catch_unwind()
+    .await;
+    close_panes(&mut session).await;
+    session.cleanup().await;
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[tokio::test]
+async fn closing_a_chat_for_good_keeps_a_worktree_with_unmerged_commits() {
+    let mut session = conversation_fixture("conversation").await;
+    let outcome = AssertUnwindSafe(async {
+        shown_repo(&mut session);
+        let (id, generation, mine) = chat_on(&mut session, 436, "chat/mine").await;
+        std::fs::write(mine.join("b.txt"), "b").unwrap();
+        crate::proc::git(&mine, &["add", "."]).unwrap();
+        crate::proc::git(&mine, &["commit", "-qm", "only here"]).unwrap();
+        close_for_good(&mut session, 437, id, generation).await;
+        let asked = auto_removal(&mut session).await;
+        assert!(
+            matches!(&asked, crate::daemon::Removal::Unmerged(why) if why.contains("not merged anywhere")),
+            "a commit only there is kept, got: {asked:?}"
+        );
+        assert!(mine.is_dir(), "its folder stands");
+        // As after a pane's close: looked at once, it is not tried again automatically.
+        assert!(!still_made(&session, &mine));
+    })
+    .catch_unwind()
+    .await;
+    close_panes(&mut session).await;
+    session.cleanup().await;
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+// One chat per fixture: the synthetic provider gives every chat it starts the same session.
+#[tokio::test]
+async fn closing_a_chat_for_good_keeps_a_worktree_with_uncommitted_work() {
+    let mut session = conversation_fixture("conversation").await;
+    let outcome = AssertUnwindSafe(async {
+        shown_repo(&mut session);
+        let (id, generation, dirty) = chat_on(&mut session, 434, "chat/dirty").await;
+        std::fs::write(dirty.join("wip.txt"), "w").unwrap();
+        close_for_good(&mut session, 435, id, generation).await;
+        let kept = auto_removal(&mut session).await;
+        assert!(
+            matches!(&kept, crate::daemon::Removal::Kept(why) if why.contains("uncommitted")) && dirty.is_dir(),
+            "uncommitted work stays, got: {kept:?}"
+        );
+    })
+    .catch_unwind()
+    .await;
+    close_panes(&mut session).await;
+    session.cleanup().await;
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[tokio::test]
+async fn a_chat_and_a_pane_in_one_worktree_keep_it_while_either_is_open() {
+    let mut session = conversation_fixture("conversation").await;
+    let outcome = AssertUnwindSafe(async {
+        shown_repo(&mut session);
+        let (id, generation, folder) = chat_on(&mut session, 440, "chat/shared").await;
+        let open_pane = |session: &mut TestSession| {
+            let cwd = Some(folder.clone());
+            session
+                .daemon
+                .command(0, Command::NewWorkspace { cwd, name: None, cmd: None })
+                .unwrap();
+        };
+
+        // The pane closes first: the chat still works in the folder.
+        open_pane(&mut session);
+        close_panes(&mut session).await;
+        session.daemon.cleanup_worktrees(0, vec![folder.clone()]);
+        assert!(still_made(&session, &folder) && folder.is_dir(), "the running chat keeps it");
+
+        // The chat closes first: the pane still works in the folder.
+        open_pane(&mut session);
+        close_for_good(&mut session, 441, id, generation).await;
+        assert!(still_made(&session, &folder) && folder.is_dir(), "the open pane keeps it");
+
+        close_panes(&mut session).await;
+        session.daemon.cleanup_worktrees(0, vec![folder.clone()]);
+        let gone = auto_removal(&mut session).await;
+        assert!(
+            matches!(gone, crate::daemon::Removal::Removed { .. }) && !folder.is_dir(),
+            "the last one out takes it, got: {gone:?}"
+        );
+    })
+    .catch_unwind()
+    .await;
+    close_panes(&mut session).await;
+    session.cleanup().await;
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+}
+
 #[tokio::test]
 async fn a_chat_on_a_branch_is_refused_before_anything_is_made_when_a_part_is_wrong() {
     let mut session = conversation_fixture("conversation").await;

@@ -1,4 +1,4 @@
-import { type Dispatch, type SetStateAction, useMemo } from 'react'
+import { type Dispatch, type SetStateAction, useCallback, useMemo } from 'react'
 import { type Platform, type ShortcutAction, shortcutText } from './model/shortcuts'
 import type { MachineHead } from './model/machines'
 import { toast } from '@/lib/toast'
@@ -7,11 +7,12 @@ import type { SettingsPreferences } from '@/features/settings/preferences'
 import { activeArrangement, type Layout, setColumnWidths, type SplitDirection } from './model/layout'
 import { type SessionView, tildePath } from './model/session'
 import { byUrgency, isShell, rowTitle } from './model/sidebar'
-import type { PaletteItem } from './model/palette'
+import { outputSnippet, type PaletteItem } from './model/palette'
+import type { SearchHit } from '@/features/find/api'
 import { THEMES } from './theme/themes'
 
 /** The command palette's list: sessions, their projects, actions and themes. */
-export function usePaletteItems({ paletteOpen, platform, layout, sessions, projectOf, showSessionById, home, newSession, focusedMachineNumber, newTerminal, focusedSession, addAgentTerminal, runShortcut, heads, online, preferences, setPreferences, split, setSettingsSection, inspectRefusal, setInspectOpen, setFindOpen, setFocusMode, setShortcutsOpen, setLayout, startAgent }: {
+export function usePaletteItems({ paletteOpen, platform, layout, sessions, projectOf, showSessionById, home, newSession, focusedMachineNumber, newTerminal, focusedSession, addAgentTerminal, runShortcut, heads, online, preferences, setPreferences, split, setSettingsSection, inspectRefusal, setInspectOpen, setFindOpen, setFocusMode, setShortcutsOpen, setLayout, startAgent, setRecentOpen }: {
   paletteOpen: boolean
   platform: Platform
   layout: Layout
@@ -38,6 +39,7 @@ export function usePaletteItems({ paletteOpen, platform, layout, sessions, proje
   setShortcutsOpen: Dispatch<SetStateAction<boolean>>
   setLayout: Dispatch<SetStateAction<Layout>>
   startAgent: (program: string) => void
+  setRecentOpen: Dispatch<SetStateAction<boolean>>
 }) {
   const paletteItems: PaletteItem[] = useMemo(() => {
     // Thirty-odd items with closures, built only while the palette can show them.
@@ -66,6 +68,7 @@ export function usePaletteItems({ paletteOpen, platform, layout, sessions, proje
       ...sessionItems,
       ...projectItems,
       action('new-session', 'New agent chat…', () => { newSession(focusedMachineNumber) }, keys('new-session')),
+      action('recent-sessions', 'Recent sessions…', () => { setRecentOpen(true) }),
       action('new-terminal', 'New shell', () => { newTerminal(focusedMachineNumber) }, keys('new-terminal')),
       ...(focusedSession && !isShell(focusedSession) ? [action('open-terminal', 'New terminal for this agent', () => { addAgentTerminal(focusedSession.id) })] : []),
       action('new-agent-chat', 'New agent chat', () => { runShortcut('new-agent-chat') }, keys('new-agent-chat')),
@@ -89,6 +92,12 @@ export function usePaletteItems({ paletteOpen, platform, layout, sessions, proje
     ]
     for (const candidate of THEMES) items.push({ id: `theme-${candidate.name}`, label: candidate.name, detail: candidate.family, kind: 'Theme', needsQuery: true, run: () => { setPreferences((current) => ({ ...current, themeMode: candidate.light ? 'light' : 'dark', ...(candidate.light ? { lightTheme: candidate.name } : { darkTheme: candidate.name }) })) } })
     return items
-  }, [paletteOpen, layout, sessions, focusedSession, heads, preferences.sidebarSide, platform, projectOf, showSessionById, home, newSession, focusedMachineNumber, newTerminal, addAgentTerminal, runShortcut, online, setPreferences, split, setSettingsSection, inspectRefusal, setInspectOpen, setFindOpen, setFocusMode, setShortcutsOpen, setLayout, startAgent])
-  return { paletteItems }
+  }, [paletteOpen, layout, sessions, focusedSession, heads, preferences.sidebarSide, platform, projectOf, showSessionById, home, newSession, focusedMachineNumber, newTerminal, addAgentTerminal, runShortcut, online, setPreferences, split, setSettingsSection, inspectRefusal, setInspectOpen, setFindOpen, setFocusMode, setShortcutsOpen, setLayout, startAgent, setRecentOpen])
+  /** A line some session printed, as a row that opens that session; null when the pane is not one of the window's sessions. */
+  const paletteOutputItem = useCallback((hit: SearchHit, query: string): PaletteItem | null => {
+    const owner = sessions.find((member) => member.machine === hit.machine && member.pane === hit.term)
+    if (!owner) return null
+    return { id: `output-${String(hit.machine)}/${String(hit.term)}:${String(hit.line)}`, label: rowTitle(owner), detail: outputSnippet(hit.text, query), kind: 'Output', run: () => { showSessionById(owner.id) } }
+  }, [sessions, showSessionById])
+  return { paletteItems, paletteOutputItem }
 }

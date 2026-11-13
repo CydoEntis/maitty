@@ -3,6 +3,7 @@ mod branch_start;
 pub(super) mod checks;
 mod claude;
 pub(super) mod commands;
+pub(super) mod continue_turn;
 mod daemon;
 pub(super) mod follow;
 mod follow_transcript;
@@ -13,6 +14,7 @@ mod tool_input;
 pub(super) mod history_storage;
 mod process;
 mod redact;
+pub(super) mod saved;
 mod runtime;
 pub(super) mod transport;
 

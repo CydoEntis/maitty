@@ -100,6 +100,8 @@ The top-level `conversations` list defaults empty for legacy snapshots. Optional
 pane `conversation_id` links never establish identity from legacy hook metadata.
 The registry validates nonzero IDs/generations, complete absolute bindings and
 unique conversation/native-session identities before saving or restoring.
+A saved conversation with `worktree_origin` is unreadable to a daemon built before it (`Conversation` denies unknown
+fields), which then sets the whole session file aside and starts empty; do not run an older daemon on a newer file.
 
 
 ## Project-specific: migrations workflow
@@ -152,6 +154,55 @@ does not parse, or whose `version` is newer than the build reads, is renamed to 
 the store starts empty with a logged warning; it never stops the daemon. Unknown fields are
 ignored and missing ones default, so a field can be added without a version bump.
 
+## Project-specific: closed sessions
+
+`daemon/closed_sessions.rs` keeps the agent sessions that closed for good or whose agent exited
+with an error, in `closed-sessions-<socket>.json` in the data folder: `{"version": 1, "sessions":
+[...]}`, newest first, at most 50 (`CLOSED_SESSIONS_MAX`); the oldest drop off. An entry is the
+agent, its own conversation id, the folder, the branch, the name and the time (unix seconds), and,
+for a session in a linked worktree, that worktree's top folder and its repository's main checkout
+(`worktree`, `repo`; absent from entries written before them). It
+holds no message, prompt or terminal output; the name is the one you or the agent gave it, cleaned
+and cut as a conversation's title is (`clean_title`), and the agent, id and branch are one clean
+line each, cut short. A session with no agent or conversation id leaves no entry, and the same
+conversation closing again replaces its older entry.
+
+A pane is recorded when a person closes it for good (`close_term`: a closed session once its undo
+window has passed, a closed pane, tab or workspace), never while Undo can bring it back, and when
+its own process exits with a failure status (`portable-pty`'s exit status, not screen text) while
+the daemon did not stop it on purpose (`kill_tree`, an asleep agent, or the daemon stopping). A
+hidden spare is never recorded. A conversation's terminal closes at once, with no undo window, and
+is recorded then like any pane; what its hooks never reported (agent, conversation id, name) comes
+from its conversation's binding and title. A chat is recorded when its undo
+window passes (`finish_chat_closes`). An agent running inside a pane's shell is not the pane's
+process, so its own exit code is not seen; that pane is recorded when it is closed while the agent
+still runs. A structured chat whose provider fails is not recorded yet.
+
+The file is written private, synced and renamed over the old one, off the loop each time the list
+changes, and once more when the daemon exits; a failed write is tried again with the next one. It
+is read at start: a file that does not parse, or whose `version` is newer than the build reads, is
+renamed to `<file>.bak` and the list starts empty with a logged warning. Every stored entry is
+checked as a new one is, unknown fields are ignored and missing ones default.
+
+Reopening an entry (`daemon/reopen.rs`, `Command::ReopenClosedSession`) whose folder is gone makes
+its worktree again: only at the recorded `worktree` path, only in the recorded `repo` (which must
+still be a main checkout), only from the recorded branch as it exists there now. It never
+overwrites or deletes: anything at that path (a folder that is not that worktree, a file, a link)
+is refused and left alone, and the folder is made with a create that fails if one appeared since it
+was looked at, so git only fills a new empty folder; a failed `git worktree add` removes only that
+empty folder and the parent folders that reopen made for it. A branch that is gone, or checked out
+in another worktree that is still there, fails with a message naming it and makes nothing. A git
+registration in the way, one at that path or holding that branch whose folder is gone, is removed
+first, that one only (`git worktree remove <its path>`, without `--force`, so a folder that came
+back with changes or untracked files is refused); other registrations whose folder is missing, such
+as a worktree on an unplugged drive, are left as they are. When the branch itself is held by a
+registration whose folder is missing (say a worktree on an unplugged drive), reopening on that branch
+removes that registration, and that worktree is no longer linked to the repository when the drive
+returns. An entry with no
+`worktree` and `repo` (outside a worktree, or written before them) cannot be made again. Both are
+kept only when both are absolute and the entry's folder is inside `worktree`; otherwise both are
+dropped.
+
 ## Project-specific: structured history cache foundation
 
 `daemon/conversation/history_storage.rs` is a private structured display cache,
@@ -185,3 +236,20 @@ including when output retention is disabled. It stores no prompt body or general
 request ledger. Metadata restoration must be enabled for structured mutations.
 All full snapshots use a capture-time ticket and one resolved-path writer lock;
 an older completion cannot overwrite a newer committed intent or receipt.
+
+`turns_in_flight` defaults empty. It lists the conversation IDs that were in a
+turn when the snapshot was taken: Running, history reconciled, and working. A
+restart sends the continue message only to those. A conversation still starting
+up is not listed, so a daemon that stops then sends nothing for it. After a crash
+the list can be one save interval old (longer while saves are held because panes
+are being lost), so a turn that ended just before may still get one message; the
+cap below bounds that.
+
+`turn_continues` defaults empty. It maps a conversation ID to the unix seconds at
+which the daemon told it to continue after a resume (`restore.continue_turn`), at
+most three per conversation, and holds no message text. It is in the session file
+because the limit of three in five minutes has to hold for a daemon that restarts
+in a loop: a count kept in memory would start at zero with each daemon. The time
+is recorded before the send, and the send commits the snapshot before the message
+reaches the provider. Times older than five minutes are dropped at the next send;
+a time ahead of the clock still counts.

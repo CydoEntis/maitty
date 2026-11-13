@@ -17,7 +17,7 @@ use maitty_machines::machine_ids::{IdCheck, MachineIds, check_daemon_id};
 use maitty_machines::machine_config::Grant;
 use maitty_machines::remote_policy::{MachineOpts, vet};
 use maitty_machines::{Dial, Machine, MachineDef, MachineId, Outgoing};
-use maitty_shared::protocol::{ClientMsg, ServerMsg, Surface};
+use maitty_shared::protocol::{ClientMsg, Query, Reply, ServerMsg, Surface};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::future::Future;
@@ -102,6 +102,8 @@ struct Shared {
     names: Mutex<BTreeMap<MachineId, String>>,
     /// Requests out to each other machine that are waiting for an answer.
     allowance: Mutex<BTreeMap<MachineId, ReplyAllowance>>,
+    /// Other machines asked for their whole list that have not given it yet.
+    list_wanted: Mutex<BTreeSet<MachineId>>,
     /// Keystrokes a machine without a line could not take, counted until it is back.
     unsent: Mutex<BTreeMap<MachineId, u32>>,
     /// What each machine may do to this computer (`notices`, `sounds`, `clipboard`), as configured.
@@ -135,6 +137,24 @@ impl HubHandle {
         }
         self.outbox
             .send(outgoing)
+            .map_err(|_| NotConnected(machine))
+    }
+
+    /// Ask a machine's daemon for its whole list, after an update from it was missed. A pane
+    /// delta the machine sends is what brings this about, so it is kept out of the allowance
+    /// `send` gives a request: all it lets in is one list, never an error or another reply.
+    pub fn ask_list(&self, machine: MachineId) -> Result<(), NotConnected> {
+        if !self.is_up(machine) {
+            return Err(NotConnected(machine));
+        }
+        if machine != MachineId::LOCAL {
+            lock(&self.shared.list_wanted).insert(machine);
+        }
+        self.outbox
+            .send(Outgoing {
+                machine,
+                msg: ClientMsg::Query(Query::List),
+            })
             .map_err(|_| NotConnected(machine))
     }
 
@@ -440,6 +460,7 @@ impl Hub {
                 lock(&shared.refused).remove(&machine);
                 lock(&shared.unsent).remove(&machine);
                 lock(&shared.allowance).remove(&machine);
+                lock(&shared.list_wanted).remove(&machine);
                 lock(&shared.down_since).remove(&machine);
                 if self.ids.forget(&configured) {
                     self.ids.save(&self.ids_file);
@@ -456,6 +477,8 @@ impl Hub {
                 // refused again on its first State, a fixed one is let in.
                 self.refused.remove(&machine);
                 lock(&self.handle.shared.refused).remove(&machine);
+                // What was asked of the old line is not owed by the new one.
+                lock(&self.handle.shared.list_wanted).remove(&machine);
                 self.connections.add(machine, halves);
                 lock(&self.handle.shared.up).insert(machine);
                 self.queue.push_back(Update::LineUp { machine });
@@ -518,7 +541,14 @@ impl Hub {
             return None;
         }
         let name = self.names.get(&machine)?.clone();
-        if let ServerMsg::State(snapshot) = &msg {
+        // A whole list is taken only as the answer to the host's own asking for it, once.
+        let listed = matches!(msg, ServerMsg::Reply(Reply::List(_)));
+        if listed && !lock(&self.handle.shared.list_wanted).remove(&machine) {
+            tracing::debug!("ignored a list this window did not ask for");
+            return None;
+        }
+        // A list becomes the machine's sessions as a state does, so it says who answers too.
+        if let ServerMsg::State(snapshot) | ServerMsg::Reply(Reply::List(snapshot)) = &msg {
             match check_daemon_id(&mut self.ids, &name, snapshot.daemon_id.as_deref()) {
                 Ok(IdCheck::Recorded) => self.ids.save(&self.ids_file),
                 Ok(_) => {}
@@ -534,12 +564,13 @@ impl Hub {
         }
         let opts = self.handle.opts_of(machine);
         // A reply or an error counts only while a request of the host's is out to the machine.
-        let asked = lock(&self.handle.shared.allowance)
-            .entry(machine)
-            .or_default()
-            .awaiting(Instant::now());
+        let asked = listed
+            || lock(&self.handle.shared.allowance)
+                .entry(machine)
+                .or_default()
+                .awaiting(Instant::now());
         let vetted = vet(&opts, asked, &name, msg)?;
-        if matches!(vetted, ServerMsg::Reply(_) | ServerMsg::Error(_)) {
+        if !listed && matches!(vetted, ServerMsg::Reply(_) | ServerMsg::Error(_)) {
             lock(&self.handle.shared.allowance)
                 .entry(machine)
                 .or_default()

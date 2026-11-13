@@ -8,12 +8,20 @@ use std::time::Duration;
 /// How long the daemon keeps a closed session before it ends it (`UNDO_WINDOW` there).
 pub(in crate::client) const UNDO_FOR: Duration = Duration::from_secs(6);
 
-/// A session closed a moment ago.
+/// What the undo takes back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::client) enum Undone {
+    Closed,
+    PutAway,
+}
+
+/// A session closed or put away a moment ago.
 #[derive(Debug, Clone)]
 struct Undo {
     term: ClientTerm,
     name: String,
     at: Instant,
+    what: Undone,
 }
 
 /// What closing has pending: the undo window.
@@ -34,11 +42,27 @@ impl Closing {
         self.undo.as_ref().map(|u| u.term)
     }
 
+    /// Offer to take back what was just done to `term`.
+    pub fn offer(&mut self, term: ClientTerm, name: String, what: Undone) {
+        self.undo = Some(Undo { term, name, at: Instant::now(), what });
+    }
+
+    /// A close is in its undo window.
+    pub fn holds_close(&self) -> bool {
+        self.undo
+            .as_ref()
+            .is_some_and(|u| u.what == Undone::Closed && u.at.elapsed() < UNDO_FOR)
+    }
+
     /// The banner under the pane header: the undo offer.
     pub fn banner(&self, undo_key: &str) -> Option<Banner> {
         let undo = self.undo.as_ref().filter(|u| u.at.elapsed() < UNDO_FOR)?;
         let left = seconds_left(UNDO_FOR, undo.at.elapsed());
-        Some(Banner { text: format!("Closed {} · {undo_key} undo {left}s", undo.name), warn: false })
+        let done = match undo.what {
+            Undone::Closed => "Closed",
+            Undone::PutAway => "Put away",
+        };
+        Some(Banner { text: format!("{done} {} · {undo_key} undo {left}s", undo.name), warn: false })
     }
 
     /// Drop what has run out; true when the banner changed and the screen needs drawing.
@@ -75,7 +99,7 @@ impl App {
             self.cmd_on(term.machine, Command::ConversationArchive { id, archived: true });
         }
         self.cmd_on(term.machine, Command::CloseSession { term: term.term });
-        self.closing.undo = Some(Undo { term, name, at: Instant::now() });
+        self.closing.offer(term, name, Undone::Closed);
         if from_side {
             match next {
                 Some(item) => self.screen_side_set(item),
@@ -90,9 +114,10 @@ impl App {
             .is_some_and(|t| t.agent.is_some() && matches!(t.status, Status::Working | Status::Blocked))
     }
 
-    /// Bring back the session closed in the last few seconds.
+    /// Bring back the session closed or put away in the last few seconds.
     pub(in crate::client) fn undo_close(&mut self) {
         match self.closing.undo.take().filter(|u| u.at.elapsed() < UNDO_FOR) {
+            Some(u) if u.what == Undone::PutAway => self.bring_back(u.term),
             Some(u) => {
                 self.cmd_on(u.term.machine, Command::UndoClose { term: u.term.term });
                 self.notify(format!("Restored {}", u.name), false);
@@ -153,7 +178,7 @@ mod tests {
         let term = ClientTerm::local(7);
         let mut c = Closing::default();
         assert_eq!(c.banner("Ctrl+A"), None);
-        c.undo = Some(Undo { term, name: "pacman".into(), at: Instant::now() });
+        c.offer(term, "pacman".into(), Undone::Closed);
         let b = c.banner("Ctrl+A").unwrap();
         assert_eq!(b.text, "Closed pacman · Ctrl+A undo 6s");
         assert!(!b.warn);

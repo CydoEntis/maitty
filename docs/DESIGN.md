@@ -91,7 +91,8 @@ or on another version the ` + ` gives way to an accent ` install ` or ` update `
 click from where it shows; the Machines dialog marks that row ` u install ` / ` u update ` beside its
 state. A session is two lines:
 the status mark and the name (bold and bright for an agent with something going on), then `■` in
-the project's colour, the project and the branch in violet. No status words anywhere. Agents come
+the project's colour, the project and the branch in violet. No status words anywhere, except
+`limited 16:30` (`limited Sun 16:30` on another day) in amber on a session that hit its plan limit. Agents come
 first, then shells, each in the order they started, so a row never moves when its status changes.
 The open session has the row ground and an accent `▎`. An agent's subagents in its current turn
 follow it: `└` and a mark each, or under the open session one row each with `├`/`└` and the name.
@@ -295,10 +296,11 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   short list: **All projects ▾** narrows the list to one project (each with its count), and **Group by ▾** picks the
   headings, **Status** (the default), **Project** or **Machine** (`sidebarGroup`, also Settings › Sidebar ›
   Group sessions by). **By status** (`statusSections`): **Needs you** (amber, "waiting on you"; an agent that stopped
-  is here too), **Working** ("running now"), **Finished** (green, "ready to review") and **Idle** ("nothing to do"; a
+  is here too, and so is one held by its plan limit), **Working** ("running now"), **Finished** (green, "ready to review") and **Idle** ("nothing to do"; a
   session the daemon cannot read is here), each a 28px heading with its count, its few words
   and a caret that folds it; a section with nothing in it is not listed, and rows keep creation order within one. **Terminals** (`terminalSessions`) is pinned over the sidebar's foot in the status and the project list, outside the agents' scrolling list (a third of the sidebar's height at most, then it scrolls on its own): every session with no agent in it (a shell, or a program running in one), as created, each row saying its project, so agents are never sorted among dev servers. A terminal that needs you is listed under Needs you until it no longer does; the machine list keeps terminals under their machine. A row
-  of another machine says `· machine` after its project. **By project** (`projectSections`): one heading per project
+  of another machine says `· machine` after its project (the nickname given to it, else its name; the tooltip has its
+  name); a row of this computer names no machine. **By project** (`projectSections`): one heading per project
   by name, with its colour square, count and needs-you count; a project on another machine gets its own heading,
   `name · machine` with the line's dot. In both, a machine that needs the app is listed under the rows with its
   **↑ Update** (or Install) button or its percentage, since no machine heading carries it, and a draft chat is the
@@ -310,14 +312,23 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   Grouped by project inside a machine, each project is a folding heading (its colour square, name, needs-you count,
   count). A row whose status changes glides to its new place over 420ms, and the headings and rows it passes glide with it, so
   nothing in the list snaps (`useFlip`); a new row slides in from the left. The moved row is tinted with the accent for a moment
-  (`useStatusFlash`); Reduce motion turns both off. A **row** (40px, radius 8) is the 20px app tile with its status badge
+  (`useStatusFlash`); Reduce motion turns both off.
+  **Put away** (`splitPutAway`) is the last heading of the scrolling list in every grouping, folded until opened, with
+  its count and "still running": the sessions put away from their menu, terminals included, as created. A row there has
+  an arrow (**Bring back**) in place of the hover ×; a put-away session that needs you is listed under Needs you instead.
+  The rail leaves put-away sessions out.
+  A **row** (40px, radius 8) is the 20px app tile with its status badge
   A pointer resting on a row for 450ms shows a **hover card** beside it (`RowHoverCard`, 290px, level with the row and
   kept inside the window): the name, project and branch, what it is doing in the daemon's own words, its agent,
-  changes and last activity. It takes no pointer input and goes on leave, click, scroll or a menu.
-  (spinner, amber `!` square, solid green check, solid red cross, grey square with a sleeping "zz" for idle, dashed square for unknown), the name (13px; 600 and `--fg` for an agent that is
+  changes, what set its status and how long ago (**Set by**: `hook: Stop, 3 s ago`, the daemon's `TermInfo.status_why`; no row
+  when it gave no reason, the status is not known, the session stopped, it is limited or it waits on you to start helpers; a long reason is
+  cut like the line above) and last activity. It takes no pointer input and goes on leave, click, scroll or a menu.
+  (spinner, amber `!` square, solid green check, solid red cross, grey pause square for limited, grey square with a sleeping "zz" for idle, dashed square for unknown), the name (13px; 600 and `--fg` for an agent that is
   doing anything), and under it the project's 6px colour square, the project and `·` and the branch in mono
   `--ansi-mag`; a stopped agent says `stopped` and an exited shell `exited` at the right, in `--danger`, instead of a
-  badge. Any other agent row has, at the right in 11px `--muted`, how long it has been in its state (`now`, `4m`, `3h`,
+  badge. An agent the daemon holds until its plan limit resets is **limited**: its row says `limited until 14:05` there in
+  `--muted` (the daemon's `TermInfo.resume_at`, in this computer's time; `limited until Thu 14:05` when that is not today), and it goes back to the daemon's status when that
+  time comes or the daemon clears it. Only that time makes a session limited, and only one the daemon calls idle or done: one that works, asks or failed keeps its status. A limited session is listed under the sidebar's Needs you and nowhere else that says needs you: the jump, the tray, the counts and the notices leave it out, because it waits on the limit and not on you, and its limit ending is not a new finish. Any other agent row has, at the right in 11px `--muted`, how long it has been in its state (`now`, `4m`, `3h`,
   `2d`; the daemon's `TermInfo.since`); it gives way to the close button on hover. A finished agent's menu has **Mark as
   done**, which files it under Idle without opening it (`MarkSeen`). A shell's tile is a flat `--raise` square with a teal `>_`. The selected row is a raised glass pill. The row
   is named by the name you gave it, else a shell's folder, else its agent. **Rename**: double-click, F2 or the menu
@@ -326,7 +337,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   **Subagents** (the daemon's `subagent_activity`, `model/subagents.ts`): under a session that is not selected, an
   elbow line and one 14px tile per subagent with a corner mark (teal spinner working, amber square needs you, green
   check done), no text; under the selected session, a 28px row each on a guide line. Clicking one opens its own chat.
-  The foot holds the update slot (or "Reconnecting to maittyd…") and the Settings gear. The edge drags (208 to 440px;
+  The foot holds the update slot (or "Reconnecting to maittyd…"), the Recent sessions clock and the Settings gear; the rail's foot has the same two buttons. The edge drags (208 to 440px;
   double-click resets). The **rail** of a narrow window is the starters, then one tile per session.
 - **Replies are typed in.** An agent's reply types toward the text that came in (`useTypedText`), so a chunk eases in instead
   of flashing: a few whole words every 40ms at about 300 characters a second, faster while a lot is waiting, so a
@@ -590,7 +601,14 @@ and timings; the feature stylesheets beside their components carry them (`sideba
 - **Command palette (⌘K).** A 600px card 12% from the top over a dimmed scrim: type a few letters to jump to a
   session, project, action or theme (themes only once something is typed). Sessions come first, most urgent first,
   each named as its row is with its agent and project ("Needs you" in amber), then their projects, then the actions. A
-  run of the typed text ranks above letters that merely appear in order; ↑ ↓ move, ↵ runs, Esc closes.
+  run of the typed text ranks above letters that merely appear in order; ↑ ↓ move, ↵ runs, Esc closes. Three or more
+  typed characters also search what this computer's sessions printed recently (`search_panes`, the same search as
+  Find's *All sessions*; a session on another machine is not searched), 300 ms after typing pauses, one search at a
+  time (a query typed while one runs waits, and only the newest is sent): up to 10 hits, one per session (its newest
+  matching line), follow everything else in an IN SESSIONS group, each the session's name and the line in mono, cleaned
+  of escape codes, control and bidirectional characters and cut to 60 cells with 16 before the match. Choosing one
+  opens that session (it does not scroll to the line). An answer for an older query is dropped, and a failed search
+  adds nothing.
 - **No Inbox.** What needs you, what stopped and what finished are the first sections of the sidebar's status list, and
   the notification card and the tray menu say the same; the desktop app has no separate Inbox panel.
 - **New chat page on another machine.** The same page as on this computer (layout 2f), titled by the machine's tray fact `On <nickname or name>`: its projects, a pasted path, no Browse…, no branch, worktree or attach controls, and a model button that holds only the agent switch. There is no New session dialog.
@@ -645,7 +663,8 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   is both ahead and behind the button is disabled and its tooltip says why (`remoteAction.ts`). What git or `gh` said
   is shown when any of them fails (`CommitBar.tsx`, `src-tauri/src/changes.rs`).
   A worktree whose folder was deleted by hand reads "its folder is gone" in the worktree manager with **Recreate**, which
-  makes it again on its branch at the same place. The same list opens with a line when two checkouts changed one file ("orders and rate-limit both changed checkout.ts"; the comparison is `maitty_shared::overlap`, shared with the terminal client). A pane's menu has **Hand off to <agent>** for an agent's pane: a new
+  makes it again on its branch at the same place. Each row's standing comes from the daemon (`worktree_standing`), and one
+  idle past `worktree.inactive_days` leads with "inactive N days". The same list opens with a line when two checkouts changed one file ("orders and rate-limit both changed checkout.ts"; the comparison is `maitty_shared::overlap`, shared with the terminal client). A pane's menu has **Hand off to <agent>** for an agent's pane: a new
   session of the other agent in the same folder starts with the text brief `maitty handoff` writes (`maitty_shared::handoff`; the
   desktop lists only uncommitted files and says so). The one other thing the panel
   changes is a file: **Edit** in the Files tab (this computer only, never in a diff) replaces an existing file whole;
@@ -689,7 +708,10 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   stays in its tab with its output, the tab keeps its name, and a card along the bottom says **Session
   ended** with **Restart shell** (a new shell in the same folder, in the same place) and **Close pane**
   (which stops nothing). Only the first list after launch drops panes of sessions that died while the app
-  was closed. The sidebar still lists only the sessions the daemon lists, and an ended session's row goes.
+  was closed. The sidebar lists the sessions the daemon lists. A row goes at once when the daemon says why it
+  left (closed, exited, put away, moved, the daemon stopping, or a reason it did not record) or this window
+  closed it; a row a list leaves out with no reason stays, shown as unknown, until a full list read from the
+  daemon confirms it is gone, so a daemon restarting under the app makes no row flicker out.
 - **Switching sessions.** A pane shows at once: the last screen it had (kept in memory per session,
   `features/terminal/screenCache.ts`, bounded in size and count) or the replay in one write per frame. A
   pane on this computer never shows a spinner, overlay or "Connecting" text. A pane on another machine
@@ -713,6 +735,9 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   in the theme's magenta with the branch mark, or the tree and the branch in blue when it runs in a worktree. Under
   it the title, with the time or the stop word at its right. Inside a project group the folder is in the heading, so
   the first line is the branch alone, and a session with neither has only its title (`SessionRow.tsx`, `PlaceLine`).
+  Only a session on another machine, outside that machine's heading, has `· machine` after the folder, and only then is
+  the branch held to 58% of the line; otherwise it takes all the folder leaves, cut with `…` and its full name in the
+  tooltip.
   The close button shows on hover over the time.
 - **Rows slide, folds fold, never both.** A row that changes place slides there (`useFlip`). A section or a
   session's subagents folding moves what is under it by itself, so while a fold runs nothing slides, and where things

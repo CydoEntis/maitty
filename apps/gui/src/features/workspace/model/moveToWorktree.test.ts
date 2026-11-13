@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { moveRefusal, resumeLine, worktreeBranch } from './moveToWorktree'
+import { moveRefusal, resumeLine, resumeWords, worktreeBranch } from './moveToWorktree'
 import type { SessionView } from './session'
 
 const ID = '0d0f5c1e-1111-4222-8333-444455556666'
@@ -32,6 +32,28 @@ describe('resumeLine', () => {
     expect(resumeLine('claude', ID, '/w/$(x)', false)).toBeNull()
     expect(resumeLine('claude', ID, '/w/a\nb', false)).toBeNull()
     expect(resumeLine('claude', 'a b', '/w', false)).toBeNull()
+  })
+})
+
+describe('resumeWords', () => {
+  it('names the conversation with each agent\'s own resume option', () => {
+    expect(resumeWords('claude', ID)).toEqual(['--resume', ID])
+    expect(resumeWords('codex', ID)).toEqual(['resume', ID])
+  })
+  it('refuses an id that is not safe to type', () => {
+    expect(resumeWords('claude', 'x; rm -rf ~')).toBeNull()
+    expect(resumeWords('codex', '')).toBeNull()
+  })
+  it('refuses an id that would be read as a flag', () => {
+    expect(resumeWords('claude', '--dangerously-skip-permissions')).toBeNull()
+    expect(resumeWords('codex', '-yolo-0000-1111')).toBeNull()
+    expect(resumeWords('codex', '_leading')).toBeNull()
+  })
+  it('takes every id the daemon lists: letters, digits, - and _, up to 128, a letter or digit first', () => {
+    expect(resumeWords('codex', 'b7')).toEqual(['resume', 'b7'])
+    expect(resumeWords('claude', 'agent_run-1')).toEqual(['--resume', 'agent_run-1'])
+    expect(resumeWords('claude', 'a'.repeat(128))).not.toBeNull()
+    expect(resumeWords('claude', 'a'.repeat(129))).toBeNull()
   })
 })
 

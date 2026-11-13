@@ -10,6 +10,7 @@ mod check;
 pub use check::first_failing_line;
 mod check_source;
 mod check_stale;
+mod closed_sessions;
 mod commands;
 mod contain;
 mod conversation;
@@ -24,14 +25,17 @@ mod persist;
 mod pr;
 #[cfg(unix)]
 mod provider_groups;
+mod reopen;
 mod repeats;
 mod repo;
 mod restore;
 mod scan;
 mod search;
 mod secrets;
+mod snooze;
 mod status;
 mod term;
+mod terminal_sends;
 mod usage;
 mod usage_store;
 mod warm;
@@ -47,7 +51,7 @@ use crate::layout::Node;
 use crate::protocol::*;
 use anyhow::Result;
 use interprocess::local_socket::traits::tokio::Listener as _;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -150,7 +154,8 @@ pub enum Ev {
     },
     Output(TermId, Vec<u8>),
     Exited(TermId),
-    ProcessExited(TermId),
+    /// A pane's own process exited; true when it reported a failure.
+    ProcessExited(TermId, bool),
     Scan(Vec<scan::Found>),
     Git(Vec<(WsId, Option<GitInfo>)>),
     /// Lines added and removed per checkout, read beside the git poll.
@@ -222,6 +227,10 @@ pub enum Ev {
         client: ClientId,
         result: Result<Vec<WorktreeEntry>, String>,
     },
+    WorktreeStandingReady {
+        client: ClientId,
+        result: Result<Option<crate::tidy::Standing>, String>,
+    },
     SearchReady {
         client: ClientId,
         hits: Vec<crate::protocol::SearchHit>,
@@ -230,6 +239,18 @@ pub enum Ev {
         client: ClientId,
         tag: u64,
         listing: crate::protocol::FolderListing,
+    },
+    /// A closed session's folder is ready to start it in, its worktree made again if it was gone
+    /// (`Command::ReopenClosedSession`).
+    ClosedSessionReady {
+        client: ClientId,
+        cmd: String,
+        result: Result<reopen::Ready, String>,
+    },
+    SavedConversationsReady {
+        client: ClientId,
+        tag: u64,
+        found: crate::protocol::SavedConversations,
     },
     RepoReady {
         client: ClientId,
@@ -319,6 +340,10 @@ impl SentState {
     fn encode(snap: &Snapshot) -> Option<Self> {
         let mut rest = snap.clone();
         rest.terms.clear();
+        // The revision numbers the message, so it is no part of what the message says changed.
+        rest.revision = 0;
+        // What left is told once, with the message; it is no part of the state compared.
+        rest.removed.clear();
         let rest = crate::protocol::encode(&rest).ok()?;
         let terms = snap
             .terms
@@ -390,6 +415,16 @@ struct Daemon {
     last_saved: String,
     /// What each surface's attached clients last received (see `publish_state`).
     sent_state: HashMap<Surface, SentState>,
+    /// How many states and pane deltas each surface's attached clients have been sent
+    /// (`Snapshot::revision`).
+    sent_revision: HashMap<Surface, u64>,
+    /// The panes each surface's attached clients were last told of. Unlike `sent_state` it
+    /// outlives an attach, so the whole state that follows one still says which panes left.
+    listed: HashMap<Surface, BTreeSet<TermId>>,
+    /// Why each pane that ended did, kept while a surface still lists it.
+    ended: HashMap<TermId, RemovalReason>,
+    /// The daemon was told to stop: a pane that ends from here on ended for that.
+    stopping: bool,
     conversation_news: conversation::news::News,
     /// What was last noted for whoever replaces this server (see `restart`).
     last_activity: Option<crate::restart::Activity>,
@@ -414,6 +449,13 @@ struct Daemon {
     /// Chat conversations that were running when the previous daemon went away, with the
     /// generation they were fenced to: what an automatic resume may start, once.
     resumable_conversations: Vec<(crate::conversation::ConversationId, u64)>,
+    /// Those of `resumable_conversations` that were Running, not mid-transfer, with a turn in
+    /// flight.
+    cut_conversations: std::collections::BTreeSet<crate::conversation::ConversationId>,
+    /// Conversations the daemon is resuming that get the continue message once the resume
+    /// succeeds, with the generation that resume runs at.
+    turns_to_continue: BTreeMap<crate::conversation::ConversationId, u64>,
+    turn_continues: conversation::continue_turn::Continues,
     conversation_states: BTreeMap<crate::conversation::ConversationId, conversation::State>,
     /// Conversations whose agent was stopped on purpose, so its exit is not a failure.
     conversation_ending: std::collections::BTreeSet<crate::conversation::ConversationId>,
@@ -429,6 +471,8 @@ struct Daemon {
         BTreeMap<crate::conversation::ConversationId, conversation::history::History>,
     /// Agents running in desktop panes, followed read-only through their own transcripts.
     followed: Vec<conversation::follow::Followed>,
+    /// Follow-ups and held messages sent with an operation, so a retry is not typed twice.
+    terminal_sends: terminal_sends::TerminalSends,
     /// Messages sent while a turn ran, per conversation, delivered in order as turns end.
     conversation_queues:
         BTreeMap<crate::conversation::ConversationId, Vec<conversation::commands::QueuedSend>>,
@@ -437,6 +481,9 @@ struct Daemon {
     /// Tests read transcripts from a scratch "home" instead of the real one.
     #[cfg(test)]
     followed_home: Option<PathBuf>,
+    /// Tests note why each pane snapshot was asked for instead of taking it.
+    #[cfg(test)]
+    pane_snapshots: Vec<String>,
     conversation_cache: Option<conversation::history_storage::Cache>,
     conversation_cache_dirty: std::collections::BTreeSet<crate::conversation::ConversationId>,
     conversation_cache_writes: BTreeMap<crate::conversation::ConversationId, u64>,
@@ -455,6 +502,10 @@ struct Daemon {
     turns: Vec<(u64, String, String, u64)>,
     /// Provider-reported usage per session per day, kept on disk (ADR 0009).
     usage_store: usage_store::UsageStore,
+    /// Agent sessions that closed for good or crashed, kept on disk.
+    closed_sessions: closed_sessions::ClosedSessions,
+    /// What a pane whose output ended would record if its process turns out to have failed.
+    unreaped: HashMap<TermId, ClosedSession>,
     codex_busy: bool,
     last_codex: Instant,
     effort_busy: bool,
@@ -991,6 +1042,10 @@ impl Daemon {
                 anyhow::bail!("Only an app window can keep an agent warm")
             }
             Command::Prewarm { .. } | Command::DropPrewarm => Ok(()),
+            Command::ReopenClosedSession { .. } if self.client_is_agent(client) => {
+                anyhow::bail!("reopening a closed session is yours to do, not a pane's")
+            }
+            Command::ReopenClosedSession { .. } => self.may(client, Grant::Start, None),
             Command::NewWorkspace { .. }
             | Command::NewTab { .. }
             | Command::NewFleet { .. }
@@ -1122,6 +1177,9 @@ impl Daemon {
             Command::SpendSecret { .. } if !self.client_is_agent(client) => {
                 anyhow::bail!("only an agent pane can spend a secret reference")
             }
+            Command::SnoozePane { .. } if self.client_is_agent(client) => {
+                anyhow::bail!("snoozing a session is yours to do, not a pane's")
+            }
             // A session may not let itself (or another) start helpers.
             Command::AnswerHelpers { .. } if self.client_is_agent(client) => {
                 anyhow::bail!("starting helpers is yours to allow, not a pane's")
@@ -1200,6 +1258,10 @@ impl Daemon {
             last_output_save: Instant::now(),
             last_saved: String::new(),
             sent_state: HashMap::new(),
+            sent_revision: HashMap::new(),
+            listed: HashMap::new(),
+            ended: HashMap::new(),
+            stopping: false,
             conversation_news: conversation::news::News::default(),
             last_activity: None,
             check_dir: persist::check_output_dir(),
@@ -1218,6 +1280,9 @@ impl Daemon {
             pending_starts: Vec::new(),
             conversation_operations: Vec::new(),
             resumable_conversations: Vec::new(),
+            cut_conversations: std::collections::BTreeSet::new(),
+            turns_to_continue: BTreeMap::new(),
+            turn_continues: conversation::continue_turn::Continues::default(),
             conversation_states: BTreeMap::new(),
             conversation_ending: std::collections::BTreeSet::new(),
             conversation_closing: std::collections::BTreeMap::new(),
@@ -1228,10 +1293,13 @@ impl Daemon {
             conversation_barriers: BTreeMap::new(),
             conversation_histories: BTreeMap::new(),
             followed: Vec::new(),
+            terminal_sends: terminal_sends::TerminalSends::default(),
             conversation_queues: BTreeMap::new(),
             followed_high_water: 0,
             #[cfg(test)]
             followed_home: None,
+            #[cfg(test)]
+            pane_snapshots: Vec::new(),
             conversation_cache: None,
             conversation_cache_dirty: Default::default(),
             conversation_cache_writes: Default::default(),
@@ -1255,6 +1323,14 @@ impl Daemon {
                     term::unix_now(),
                 )
             },
+            closed_sessions: if cfg!(test) {
+                closed_sessions::ClosedSessions::in_memory()
+            } else {
+                closed_sessions::ClosedSessions::open(
+                    closed_sessions::ClosedSessions::default_path(),
+                )
+            },
+            unreaped: HashMap::new(),
             codex_busy: false,
             last_codex: Instant::now() - Duration::from_secs(3600),
             effort_busy: false,
@@ -1289,6 +1365,7 @@ impl Daemon {
                     self.finish_chat_closes();
                     self.close_ended_agents();
                     self.expire_warm();
+                    self.wake_snoozed(term::unix_now());
                     self.update_statuses();
                     self.settled_alerts();
                     self.phone_alerts();
@@ -1336,6 +1413,7 @@ impl Daemon {
                 // The user closed everything, so start fresh next time.
                 persist::forget();
                 self.usage_store.save_now(term::unix_now());
+                self.closed_sessions.save_now();
                 self.broadcast(|_| true, ServerMsg::Bye);
                 tokio::time::sleep(Duration::from_millis(100)).await;
                 let _ = std::fs::remove_file(ipc::pid_file());
@@ -1408,10 +1486,17 @@ impl Daemon {
     /// Send the surface's clients what changed since the last state they got: only the panes
     /// that differ when the rest of the snapshot is the same, the whole snapshot otherwise, and
     /// nothing when nothing visible changed. Compared as encoded bytes, so no field is left out.
-    fn publish_state(&mut self, surface: Surface, snap: Snapshot) {
+    /// Each message sent carries the surface's next revision, and why each pane it drops left.
+    fn publish_state(&mut self, surface: Surface, mut snap: Snapshot) {
         let attached = |client: &Client| client.attach && client.surface == surface;
+        let revision = self.revision_of(surface) + 1;
+        snap.revision = revision;
+        snap.removed = self.left_since_last_message(surface, &snap);
+        let listed: BTreeSet<TermId> = snap.terms.keys().copied().collect();
         let Some(encoded) = SentState::encode(&snap) else {
             self.sent_state.remove(&surface);
+            self.sent_revision.insert(surface, revision);
+            self.note_listed(surface, listed);
             self.broadcast(attached, ServerMsg::State(snap));
             return;
         };
@@ -1430,14 +1515,82 @@ impl Daemon {
                     .copied()
                     .collect();
                 (!changed.is_empty() || !removed.is_empty())
-                    .then_some(ServerMsg::TermsChanged { changed, removed })
+                    .then_some(ServerMsg::TermsChanged {
+                        changed,
+                        removed,
+                        reasons: snap.removed.clone(),
+                        revision,
+                    })
             }
             _ => Some(ServerMsg::State(snap)),
         };
         self.sent_state.insert(surface, encoded);
         if let Some(message) = message {
+            self.sent_revision.insert(surface, revision);
+            self.note_listed(surface, listed);
             self.broadcast(attached, message);
         }
+    }
+
+    /// The panes `surface` was last told of that `snap` no longer lists, and why each left.
+    fn left_since_last_message(
+        &self,
+        surface: Surface,
+        snap: &Snapshot,
+    ) -> BTreeMap<TermId, RemovalReason> {
+        self.listed
+            .get(&surface)
+            .into_iter()
+            .flatten()
+            .filter(|id| !snap.terms.contains_key(id))
+            .map(|id| (*id, self.removal_reason(*id, surface)))
+            .collect()
+    }
+
+    /// Why a pane is not in `surface`'s list. `Unknown` for one that ended with no reason
+    /// recorded, or that is hidden by nothing named here: said, never guessed.
+    fn removal_reason(&self, term: TermId, surface: Surface) -> RemovalReason {
+        match self.terms.get(&term) {
+            None => self.ended.get(&term).copied().unwrap_or(RemovalReason::Unknown),
+            Some(t) if t.owner != surface => RemovalReason::Moved,
+            Some(t) if t.closing.is_some() => RemovalReason::Closed,
+            Some(t) if t.spare => RemovalReason::PutAway,
+            Some(_) => RemovalReason::Unknown,
+        }
+    }
+
+    /// A client attached and was sent `snap`: its panes are now ones the surface was told of.
+    /// With another client of the surface still attached they are added, so a removal that
+    /// client is owed still reaches it; with none, they replace a list nobody holds any more.
+    fn note_attached(&mut self, client: ClientId, surface: Surface, snap: &Snapshot) {
+        let mut listed: BTreeSet<TermId> = snap.terms.keys().copied().collect();
+        let others = self
+            .clients
+            .iter()
+            .any(|(id, c)| *id != client && c.attach && c.surface == surface);
+        if others {
+            listed.extend(self.listed.get(&surface).into_iter().flatten());
+        }
+        self.note_listed(surface, listed);
+    }
+
+    fn note_listed(&mut self, surface: Surface, listed: BTreeSet<TermId>) {
+        self.listed.insert(surface, listed);
+        let listed = &self.listed;
+        self.ended
+            .retain(|term, _| listed.values().any(|ids| ids.contains(term)));
+    }
+
+    /// Remember why a pane ended, for the surfaces that still list it.
+    fn note_ended(&mut self, term: TermId, reason: RemovalReason) {
+        if self.listed.values().any(|ids| ids.contains(&term)) {
+            let reason = if self.stopping { RemovalReason::DaemonStopping } else { reason };
+            self.ended.insert(term, reason);
+        }
+    }
+
+    fn revision_of(&self, surface: Surface) -> u64 {
+        self.sent_revision.get(&surface).copied().unwrap_or(0)
     }
 
     fn broadcast(&self, filter: impl Fn(&Client) -> bool, msg: ServerMsg) {
@@ -1592,7 +1745,9 @@ impl Daemon {
                     behind: std::cell::Cell::new(false),
                 };
                 if attach {
-                    c.push(ServerMsg::State(self.snapshot_for(surface)));
+                    let snap = self.snapshot_for(surface);
+                    self.note_attached(id, surface, &snap);
+                    c.push(ServerMsg::State(snap));
                     // The next change goes out in full: a delta against what the others saw
                     // could skip something this client's snapshot has not got.
                     self.sent_state.remove(&surface);
@@ -1659,7 +1814,9 @@ impl Daemon {
                         }
                         return;
                     }
-                    self.send(id, ServerMsg::State(self.snapshot_for(Surface::Terminal)));
+                    let snap = self.snapshot_for(Surface::Terminal);
+                    self.note_attached(id, Surface::Terminal, &snap);
+                    self.send(id, ServerMsg::State(snap));
                     self.sent_state.remove(&Surface::Terminal);
                     for term in self
                         .terms
@@ -1821,13 +1978,15 @@ impl Daemon {
                 }
                 if self.terms.contains_key(&tid) {
                     self.last_loss = Some(Instant::now());
-                    self.remove_term(tid);
+                    self.await_pane_exit(tid);
+                    self.remove_term(tid, RemovalReason::Exited);
                 }
             }
-            Ev::ProcessExited(tid) => {
+            Ev::ProcessExited(tid, failed) => {
+                self.pane_process_exited(tid, failed);
                 if self.terms.contains_key(&tid) {
                     self.last_loss = Some(Instant::now());
-                    self.remove_term(tid);
+                    self.remove_term(tid, RemovalReason::Exited);
                 }
             }
             Ev::Scan(found) => {
@@ -2103,6 +2262,9 @@ impl Daemon {
                 set_up,
                 result,
             } => self.branch_worktree_made(client, set_up, result),
+            Ev::ClosedSessionReady { client, cmd, result } => {
+                self.closed_session_ready(client, cmd, result)
+            }
             Ev::AgentWorktreeMade { client, result } => {
                 self.pending_ops -= 1;
                 match result {
@@ -2183,6 +2345,12 @@ impl Daemon {
                 Ok(list) => self.send(client, ServerMsg::Reply(Reply::Worktrees(list))),
                 Err(e) => self.send(client, ServerMsg::Error(e)),
             },
+            Ev::WorktreeStandingReady { client, result } => match result {
+                Ok(standing) => {
+                    self.send(client, ServerMsg::Reply(Reply::WorktreeStanding(standing)))
+                }
+                Err(e) => self.send(client, ServerMsg::Error(e)),
+            },
             Ev::SearchReady { client, hits } => {
                 self.send(client, ServerMsg::Reply(Reply::Search(hits)));
             }
@@ -2191,6 +2359,9 @@ impl Daemon {
                 tag,
                 listing,
             } => self.send(client, ServerMsg::Reply(Reply::Folders { tag, listing })),
+            Ev::SavedConversationsReady { client, tag, found } => {
+                self.send(client, ServerMsg::Reply(Reply::SavedConversations { tag, found }));
+            }
             Ev::RepoReady {
                 client,
                 tag,
@@ -2708,6 +2879,24 @@ impl Daemon {
                     {
                         ServerMsg::Error("Only a human client can read usage".into())
                     }
+                    Query::WorktreeStanding { .. } if self.client_is_agent(client) => {
+                        ServerMsg::Error("Only a human client can read where a worktree stands".into())
+                    }
+                    Query::WorktreeStanding { repo, folder } => {
+                        let inactive_after = self.cfg.worktree.inactive_days;
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let result = worktree_standing(&repo, &folder, inactive_after);
+                            let _ = tx.blocking_send(Ev::WorktreeStandingReady { client, result });
+                        });
+                        return;
+                    }
+                    Query::ClosedSessions if self.client_is_agent(client) => {
+                        ServerMsg::Error("Only a human client can read the closed sessions".into())
+                    }
+                    Query::ClosedSessions => {
+                        ServerMsg::Reply(Reply::ClosedSessions(self.closed_sessions.list().to_vec()))
+                    }
                     Query::AllowedCommands if self.client_is_agent(client) => {
                         ServerMsg::Error("Only a human client can read the approved commands".into())
                     }
@@ -2763,6 +2952,29 @@ impl Daemon {
                         tokio::task::spawn_blocking(move || {
                             let listing = folders::list(&path, home.as_deref());
                             let _ = tx.blocking_send(Ev::FoldersReady { client, tag, listing });
+                        });
+                        return;
+                    }
+                    Query::SavedConversations { .. } if self.client_is_agent(client) => {
+                        ServerMsg::Error("Only a human client can list saved conversations".into())
+                    }
+                    Query::SavedConversations { agent, folder, tag } => {
+                        let home = directories::BaseDirs::new().map(|dirs| dirs.home_dir().to_path_buf());
+                        let Some(folder) = (folder.len() <= folders::PATH_MAX_BYTES)
+                            .then(|| folders::resolve(&folder, home.as_deref()))
+                            .flatten()
+                        else {
+                            self.send(
+                                client,
+                                ServerMsg::Error("A folder is an absolute path or starts with ~".into()),
+                            );
+                            return;
+                        };
+                        let stores = conversation::saved::Stores::of_this_user(home.as_deref());
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let found = conversation::saved::list(&agent, &folder, &stores);
+                            let _ = tx.blocking_send(Ev::SavedConversationsReady { client, tag, found });
                         });
                         return;
                     }
@@ -2839,6 +3051,12 @@ impl Daemon {
                     }
                     Query::List => {
                         let surface = self.surface_of(client);
+                        // A client that follows the updates and asks for the list missed one. The
+                        // list can hold a change its surface was not sent yet, so the next change
+                        // goes out in full: a delta would be against what was sent, not the list.
+                        if self.clients.get(&client).is_some_and(|c| c.attach) {
+                            self.sent_state.remove(&surface);
+                        }
                         ServerMsg::Reply(Reply::List(self.snapshot_for(surface)))
                     }
                     Query::Read { term } if self.may(client, Grant::Read, Some(term)).is_err() => {
@@ -2926,6 +3144,7 @@ impl Daemon {
     /// its own native conversation terminals (ADR 0004).
     fn snapshot_for(&self, surface: Surface) -> Snapshot {
         let mut snap = self.snapshot();
+        snap.revision = self.revision_of(surface);
         snap.terms.retain(|id, _| self.shown_to(*id, surface));
         snap.workspaces.retain(|ws| {
             ws.tabs.iter().all(|tab| {
@@ -2992,6 +3211,7 @@ impl Daemon {
                         label: t.label.clone(),
                         pinned: t.pinned,
                         archived: t.archived,
+                        snoozed_until: t.snoozed_until,
                         mem: t.mem,
                         cpu: t.cpu,
                         bell: t.bell,
@@ -3068,6 +3288,8 @@ impl Daemon {
                 .collect(),
             spent_today: self.spent_today(),
             today: usage::today(&self.turns, &self.spent, term::unix_now()),
+            revision: 0,
+            removed: BTreeMap::new(),
         }
     }
 
@@ -3383,7 +3605,7 @@ impl Daemon {
             }
             tracing::info!("pane {term}: closed, the agent it was started as has ended");
             let tops = self.worktrees_of(&[term]);
-            self.close_term(term);
+            self.end_term(term, RemovalReason::Exited);
             // No client asked for this close, so there is none to tell what became of a worktree.
             self.cleanup_worktrees(ClientId::MAX, tops);
         }
@@ -3407,15 +3629,22 @@ impl Daemon {
         }
     }
 
+    /// End a pane on purpose. To a list that showed it, a person closed it.
     fn close_term(&mut self, term: TermId) {
+        self.remember_closed_pane(term);
+        self.end_term(term, RemovalReason::Closed);
+    }
+
+    fn end_term(&mut self, term: TermId, reason: RemovalReason) {
         if let Some(t) = self.terms.get_mut(&term) {
             t.kill_tree();
         }
-        self.remove_term(term);
+        self.remove_term(term, reason);
     }
 
     /// Drop a terminal and prune the tree: empty tabs and workspaces disappear.
-    fn remove_term(&mut self, term: TermId) {
+    fn remove_term(&mut self, term: TermId, reason: RemovalReason) {
+        self.note_ended(term, reason);
         // Closing a terminal can block on Windows until its programs let go; never here.
         if let Some(t) = self.terms.remove(&term) {
             std::thread::spawn(move || drop(t));
@@ -3493,6 +3722,8 @@ fn home() -> PathBuf {
 mod branch_agent_tests;
 #[cfg(test)]
 mod logic_tests;
+#[cfg(test)]
+mod wire_size_tests;
 
 #[cfg(test)]
 mod tests {
@@ -3587,6 +3818,51 @@ mod tests {
             "never trusts what you didn't"
         );
         assert_eq!(v["other"], 1, "the rest of the file is kept");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn two_worktrees_trusted_at_once_are_both_trusted() {
+        let dir = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-trust-both-{}"),
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("claude.json");
+        for round in 0..30 {
+            std::fs::write(
+                &f,
+                r#"{"projects":{"c:/code/app":{"hasTrustDialogAccepted":true}}}"#,
+            )
+            .unwrap();
+            let start = std::sync::Arc::new(std::sync::Barrier::new(2));
+            let trusts: Vec<_> = ["a", "b"]
+                .into_iter()
+                .map(|name| {
+                    let (f, start) = (f.clone(), start.clone());
+                    std::thread::spawn(move || {
+                        start.wait();
+                        super::trust_in(
+                            &f,
+                            std::path::Path::new("C:/code/app"),
+                            &std::path::Path::new("C:/code/app-worktrees").join(name),
+                        );
+                    })
+                })
+                .collect();
+            for trust in trusts {
+                trust.join().unwrap();
+            }
+            let v: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+            for name in ["a", "b"] {
+                assert_eq!(
+                    v["projects"][format!("C:/code/app-worktrees/{name}")]["hasTrustDialogAccepted"],
+                    true,
+                    "round {round}: worktree {name} lost its trust"
+                );
+            }
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

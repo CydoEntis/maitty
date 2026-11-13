@@ -13,6 +13,8 @@ struct Kept {
     label: String,
     pinned: bool,
     archived: bool,
+    put_away_for: Option<String>,
+    snoozed_until: Option<u64>,
     name: String,
     first_prompt: String,
     model: String,
@@ -32,6 +34,8 @@ impl Kept {
             label: t.label.clone(),
             pinned: t.pinned,
             archived: t.archived,
+            put_away_for: t.put_away_for.clone(),
+            snoozed_until: t.snoozed_until,
             name: t.name.clone(),
             first_prompt: t.first_prompt.clone(),
             model: t.model.clone(),
@@ -46,7 +50,8 @@ impl Kept {
     fn give(self, t: &mut Term) {
         (t.agent, t.session, t.cmd) = (self.agent, self.session, self.cmd);
         (t.label, t.name, t.first_prompt) = (self.label, self.name, self.first_prompt);
-        (t.pinned, t.archived) = (self.pinned, self.archived);
+        (t.pinned, t.archived, t.snoozed_until) = (self.pinned, self.archived, self.snoozed_until);
+        t.put_away_for = self.put_away_for;
         (t.model, t.grants, t.started_by, t.tab_of) =
             (self.model, self.grants, self.started_by, self.tab_of);
         t.queue = self.queue;
@@ -283,6 +288,8 @@ impl Daemon {
             label: term.label.clone(),
             pinned: term.pinned,
             archived: term.archived,
+            put_away_for: term.put_away_for.clone(),
+            snoozed_until: term.snoozed_until,
             started_by: term.started_by,
             owner: term.owner,
             tab_of: term.tab_of,
@@ -348,7 +355,24 @@ impl Daemon {
             conversations: self.conversations.clone(),
             pending_starts: self.pending_starts.clone(),
             conversation_operations: self.conversation_operations.clone(),
+            turn_continues: self.turn_continues.clone(),
+            turns_in_flight: self.turns_in_flight(),
         }
+    }
+
+    /// Chat conversations in a turn: running, reconciled with their history, and working. A
+    /// conversation still starting up is working too, but its history is not read yet.
+    fn turns_in_flight(&self) -> Vec<crate::conversation::ConversationId> {
+        self.conversations
+            .iter()
+            .filter(|c| c.state == crate::conversation::RecoveryState::Running)
+            .filter(|c| {
+                self.conversation_states
+                    .get(&c.id)
+                    .is_some_and(|state| state.history_ready && state.status == Status::Working)
+            })
+            .map(|c| c.id)
+            .collect()
     }
 
     /// The agent a command line starts (`codex "…"`, `"C:\…\claude.exe" …`), by its program,
@@ -451,13 +475,16 @@ impl Daemon {
     /// runtime that fails again stays failed until a person resumes it.
     pub(super) fn resume_conversations(&mut self) {
         let candidates = std::mem::take(&mut self.resumable_conversations);
+        let cut = std::mem::take(&mut self.cut_conversations);
         if !self.cfg.restore.conversations {
             return;
         }
         for (id, generation) in candidates {
             let target = crate::conversation::StartTarget::Conversation { id, generation };
-            if let Err(error) = self.conversation_start(conversation::commands::DAEMON_REQUESTER, target) {
-                tracing::warn!("conversation {} was not resumed: {error:#}", id.0);
+            match self.conversation_start(conversation::commands::DAEMON_REQUESTER, target) {
+                Ok(()) if cut.contains(&id) => self.continue_when_resumed(id),
+                Ok(()) => {}
+                Err(error) => tracing::warn!("conversation {} was not resumed: {error:#}", id.0),
             }
         }
     }
@@ -482,10 +509,16 @@ impl Daemon {
             return false;
         }
         let mut resumable = Vec::new();
+        let mut cut = std::collections::BTreeSet::new();
         for record in &mut saved.conversations {
+            let was_in_turn = record.state == crate::conversation::RecoveryState::Running
+                && saved.turns_in_flight.contains(&record.id);
             match record.recover() {
                 Ok(true) if record.execution == crate::conversation::ExecutionKind::Structured => {
                     resumable.push((record.id, record.generation));
+                    if was_in_turn {
+                        cut.insert(record.id);
+                    }
                 }
                 Ok(_) => {}
                 Err(e) => {
@@ -495,6 +528,8 @@ impl Daemon {
             }
         }
         self.resumable_conversations = resumable;
+        self.cut_conversations = cut;
+        self.turn_continues = std::mem::take(&mut saved.turn_continues);
         self.conversations = std::mem::take(&mut saved.conversations);
         self.pending_starts = std::mem::take(&mut saved.pending_starts);
         self.conversation_operations = std::mem::take(&mut saved.conversation_operations);
@@ -562,7 +597,9 @@ impl Daemon {
                                 t.first_prompt = pane.name.clone();
                                 t.model = pane.model.clone();
                                 t.label = pane.label.clone();
-                                (t.pinned, t.archived) = (pane.pinned, pane.archived);
+                                (t.pinned, t.archived, t.snoozed_until) =
+                                    (pane.pinned, pane.archived, pane.snoozed_until);
+                                t.put_away_for = pane.put_away_for.clone();
                                 t.owner = pane.owner;
                                 t.queue = pane.queue.iter().cloned().collect();
                                 t.held_message =
@@ -710,6 +747,7 @@ impl Daemon {
             }
         }
         self.takes_over_helpers(old, new);
+        self.note_ended(old, RemovalReason::Closed);
         // Closing a terminal can block on Windows until its programs let go; never here.
         if let Some(t) = self.terms.remove(&old) {
             std::thread::spawn(move || drop(t));
@@ -778,7 +816,7 @@ impl Daemon {
             }
         }
         self.takes_over_helpers(old, new);
-        self.remove_term(old);
+        self.remove_term(old, RemovalReason::Closed);
         self.poll_git_soon();
         self.dirty = true;
     }

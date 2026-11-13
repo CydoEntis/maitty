@@ -425,6 +425,11 @@ impl Checks {
         self.points.iter_mut().find(|p| p.latest.info.name == name)
     }
 
+    /// A checkpoint failed or waits for your approval.
+    pub fn need_you(&self) -> bool {
+        self.any(&[CheckState::Failed, CheckState::NeedsApproval])
+    }
+
     fn any(&self, states: &[CheckState]) -> bool {
         self.points
             .iter()
@@ -705,10 +710,10 @@ pub(super) fn spawn_run(request: RunRequest, tx: tokio::sync::mpsc::Sender<Ev>) 
 }
 
 impl Daemon {
-    /// An agent's turn ended: run the project's checkpoints in its worktree, off the loop.
-    /// Nothing happens for a shell, for a project with no check, or while a run is still
-    /// going (the new turn's code is checked by the next turn end). A re-run queued during
-    /// the turn is this run.
+    /// An agent's turn ended: keep its folder as the turn left it, and run the project's
+    /// checkpoints in its worktree, off the loop. Nothing happens for a shell; no check runs
+    /// for a project with none, or while a run is still going (the new turn's code is
+    /// checked by the next turn end). A re-run queued during the turn is this run.
     pub(super) fn turn_ended(&mut self, term: TermId) {
         let Some(t) = self.terms.get_mut(&term) else {
             return;
@@ -720,7 +725,9 @@ impl Daemon {
             return;
         }
         t.checks.turn += 1;
-        if t.checks.running() {
+        let check_running = t.checks.running();
+        self.snapshot_after_turn(term);
+        if check_running {
             return;
         }
         self.start_checks(term, None, term::unix_now());
@@ -1077,6 +1084,7 @@ impl Daemon {
                 tracing::info!(
                     "pane {term}: windows told Blocked by its check (they may play its sound)"
                 );
+                self.needs_you(term);
                 self.tell_attention(term, Status::Blocked);
                 self.broadcast(
                     |c| c.attach,
@@ -1089,6 +1097,7 @@ impl Daemon {
                 tracing::info!(
                     "pane {term}: windows told Blocked by its check (they may play its sound)"
                 );
+                self.needs_you(term);
                 self.tell_attention(term, Status::Blocked);
                 self.broadcast(
                     |c| c.attach,

@@ -610,6 +610,35 @@ async fn add_branch_worktree(folder: PathBuf, branch: String) -> Result<serde_js
         .map_err(|error| format!("{error:#}"))
 }
 
+/// The conversations `agent` saved for `folder`, for the new chat page's Resume list; null when the service
+/// running is older. This computer's daemon only, which checks the agent and the folder.
+#[tauri::command]
+async fn saved_conversations(agent: String, folder: String) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::saved_conversations(agent, folder)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// The agent sessions that closed on this computer, for the Recent sessions list, each saying whether its folder is
+/// still there; null when the service running is older. This computer's daemon only: a folder another machine names is
+/// not on this disk.
+#[tauri::command]
+async fn closed_sessions() -> Result<serde_json::Value, String> {
+    maitty_desktop_client::closed_sessions()
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// Reopens a closed session from the Recent sessions list whose folder is gone: the daemon makes its worktree again
+/// from the record it keeps and starts the agent there with its conversation. False when the service running is older.
+/// This computer's daemon only, like `closed_sessions`.
+#[tauri::command]
+async fn reopen_closed_session(agent: String, session: String) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::reopen_closed_session(agent, session)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
 /// Removes worktrees of the project with the daemon, which closes what runs in them first: each folder with
 /// whether to go on when it holds uncommitted changes (they are lost). A branch is kept unless it is already
 /// merged. The daemon answers at once and does the removing in the background; a worktree something still runs
@@ -674,6 +703,20 @@ async fn restore_snapshot(
 ) -> Result<u64, String> {
     wire.require_local(machine, "Restoring a snapshot")?;
     maitty_desktop_client::restore_snapshot(term, commit, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// How many files restoring the snapshot would change now, asked before the person confirms one.
+#[tauri::command]
+async fn snapshot_restore_count(
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    term: u32,
+    commit: String,
+) -> Result<u64, String> {
+    wire.require_local(machine, "Restoring a snapshot")?;
+    maitty_desktop_client::restore_count(term, commit)
         .await
         .map_err(|error| format!("{error:#}"))
 }
@@ -1488,6 +1531,9 @@ pub fn run() {
             new_chat::git_branches,
             new_chat::git_switch_branch,
             add_branch_worktree,
+            saved_conversations,
+            closed_sessions,
+            reopen_closed_session,
             new_chat::git_sync_state,
             new_chat::git_pull,
             new_chat::open_agent_docs,
@@ -1534,6 +1580,7 @@ pub fn run() {
             terminal_stream::terminal_history,
             terminal_stream::watch_terminal_output,
             terminal_stream::list_folders,
+            terminal_stream::ask_machine_list,
             terminal_stream::get_shared_settings,
             terminal_stream::set_shared_setting,
             output_socket::open_terminal_socket,
@@ -1550,6 +1597,7 @@ pub fn run() {
             usage_report,
             new_worktree_session,
             restore_snapshot,
+            snapshot_restore_count,
             start_agent_session,
             prewarm_agent_session,
             drop_prewarmed_agent,

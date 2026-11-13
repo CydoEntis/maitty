@@ -35,6 +35,17 @@ describe('the agent\'s menu in its terminal, answered from the chat', () => {
     expect(sendKeys.mock.calls.map(([keys]) => keys)).toEqual([KEY_DOWN, KEY_ENTER, KEY_ESCAPE])
   })
 
+  it('keeps what is asked outside the list that scrolls, and marks the option now selected', async () => {
+    render(<TerminalPrompt readScreen={() => Promise.resolve(SCREEN)} sendKeys={() => Promise.resolve()} />)
+    const asked = await screen.findByText(/Want to autocompact at 400k tokens instead\?/)
+    const chosen = screen.getByText(/❯ Autocompact at ‹ 400k › tokens/)
+    const list = chosen.closest('.mx-terminal-options')
+    expect(list).not.toBeNull()
+    expect(list).not.toContainElement(asked)
+    expect(list).toHaveTextContent('Keep auto (1m tokens)')
+    expect(chosen).toHaveClass('mx-terminal-selected')
+  })
+
   it('still offers the keys, and says where the question is, when the screen cannot be read', async () => {
     const sendKeys = vi.fn<(keys: string) => Promise<void>>(() => Promise.resolve())
     render(<TerminalPrompt readScreen={() => Promise.reject(new Error('local-only in v1'))} sendKeys={sendKeys} />)

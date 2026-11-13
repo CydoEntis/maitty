@@ -49,6 +49,10 @@ pub enum Act {
     ArchiveConversation(crate::conversation::ConversationId),
     /// Drop the follow-ups waiting for this agent's turn to end.
     ClearQueue(ClientTerm),
+    /// Put a finished or idle session away: it keeps running, out of the lists.
+    PutAway(ClientTerm),
+    /// List a put-away session again.
+    BringBack(ClientTerm),
     /// List a checkout's snapshots (its folder, and whose row asked).
     Snapshots(PathBuf, ClientTerm),
     /// Put a checkout's files back as a snapshot has them: (folder, commit, when, whose row).
@@ -93,6 +97,11 @@ pub enum Act {
     MachineReconnect(MachineId),
     /// The Machines dialog with this machine chosen.
     MachineOpen(MachineId),
+    /// Start an agent in a folder of this computer with a conversation it saved: (folder,
+    /// agent, the agent's id for the conversation).
+    Resume(PathBuf, String, String),
+    /// A row saying the list is on its way; picking it only closes the menu.
+    Waiting,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -351,6 +360,7 @@ impl App {
             ("Filter sessions".to_string(), Act::Tool(Action::FilterSessions)),
             ("Add machine…".to_string(), Act::Tool(Action::Machines)),
             ("Inbox".to_string(), Act::Tool(Action::Jump)),
+            ("Put away…".to_string(), Act::Tool(Action::PutAway)),
             ("Usage and cost".to_string(), Act::Tool(Action::Usage)),
             ("Settings".to_string(), Act::Tool(Action::Settings)),
             ("Keys".to_string(), Act::Tool(Action::Help)),
@@ -529,6 +539,11 @@ impl App {
         }
         if let Some(check) = info.and_then(|t| t.check()) {
             items.extend(super::screen::check_menu_items(term, check));
+        }
+        if self.can_put_away(term) {
+            items.push(("Put away".to_string(), Act::PutAway(term)));
+        } else if self.can_bring_back(term) {
+            items.push(("Bring back".to_string(), Act::BringBack(term)));
         }
         let close = if s.is_agent { "Stop session" } else { "Close shell" };
         items.push((close.to_string(), Act::End(vec![term])));
@@ -833,12 +848,19 @@ impl App {
             },
             Act::CloseProject(pi) => model.get(*pi).map(|p| {
                 let n = p.sessions().count();
+                let away = self.put_away_in(&p.key);
+                let mut detail = format!("{n} pane{}", if n == 1 { "" } else { "s" });
+                let mut note = "Everything running in it stops; the folder stays where it is.".to_string();
+                if away > 0 {
+                    detail.push_str(&format!(", {away} put away"));
+                    note = "Listed sessions stop; what is put away keeps running; the folder stays.".into();
+                }
                 Confirm {
                     title: "Close project".into(),
                     sub: String::new(),
                     what: p.name.clone(),
-                    detail: format!("{n} pane{}", if n == 1 { "" } else { "s" }),
-                    note: "Everything running in it stops; the folder stays where it is.".into(),
+                    detail,
+                    note,
                     list: Vec::new(),
                     yes: "Close".into(),
                     key: '\n',
@@ -888,6 +910,8 @@ impl App {
                 }
             }
             Act::MachineOpen(machine) => self.open_machines_on(machine),
+            Act::Resume(dir, agent, id) => self.resume_saved(dir, &agent, &id),
+            Act::Waiting => {}
             // A terminal that belongs to a chat is named through the chat, so every client
             // shows the same name.
             Act::RenamePane(t)
@@ -917,6 +941,8 @@ impl App {
                 };
             }
             Act::ArchiveConversation(id) => self.archive_conversation(id),
+            Act::PutAway(t) => self.put_away(t),
+            Act::BringBack(t) => self.bring_back(t),
             Act::Split(t, dir) => {
                 let cwd = self
                     .term_info(t)

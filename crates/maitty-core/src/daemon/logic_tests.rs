@@ -446,6 +446,7 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
             term: t,
             text: "  then run the tests ".into(),
             first: false,
+            operation: None,
         },
     )
     .unwrap();
@@ -455,6 +456,7 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
             term: t,
             text: "and open a PR".into(),
             first: false,
+            operation: None,
         },
     )
     .unwrap();
@@ -470,6 +472,7 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
                 term: t,
                 text: "  ".into(),
                 first: false,
+                operation: None,
             }
         )
         .is_err(),
@@ -506,6 +509,7 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
             term: t,
             text: "never mind".into(),
             first: false,
+            operation: None,
         },
     )
     .unwrap();
@@ -519,6 +523,7 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
                 term: t,
                 text: text.into(),
                 first,
+                operation: None,
             },
         )
         .unwrap();
@@ -548,10 +553,94 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
                 term: t,
                 text: "ls".into(),
                 first: false,
+                operation: None,
             }
         )
         .is_err()
     );
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_retried_follow_up_is_acknowledged_and_not_queued_twice() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let queue = |d: &mut Daemon, text: &str, operation| {
+        d.command(
+            0,
+            Command::QueueFollowUp {
+                term: t,
+                text: text.into(),
+                first: false,
+                operation,
+            },
+        )
+    };
+    let queued = |d: &Daemon| d.snapshot().terms[&t].queued.clone();
+    assert!(queue(&mut d, "run the tests", Some(1)).is_err(), "a shell takes none");
+    {
+        let p = d.terms.get_mut(&t).unwrap();
+        (p.agent, p.hooked, p.status) = (Some("claude".into()), true, Status::Working);
+    }
+    queue(&mut d, "run the tests", Some(1)).unwrap();
+    queue(&mut d, " run the tests ", Some(1)).unwrap();
+    assert_eq!(queued(&d), ["run the tests"], "a refused send is not remembered; a retry is");
+    assert!(
+        queue(&mut d, "open a PR", Some(1)).is_err(),
+        "the same operation with other text"
+    );
+    assert!(queue(&mut d, "open a PR", Some(0)).is_err(), "zero is no operation");
+    queue(&mut d, "open a PR", Some(2)).unwrap();
+    queue(&mut d, "open a PR", None).unwrap();
+    queue(&mut d, "open a PR", None).unwrap();
+    assert_eq!(
+        queued(&d),
+        ["run the tests", "open a PR", "open a PR", "open a PR"],
+        "a new operation, and sends without one, queue as before"
+    );
+    d.command(0, Command::ClearQueue { term: t }).unwrap();
+    queue(&mut d, "run the tests", Some(1)).unwrap();
+    assert!(queued(&d).is_empty(), "one already sent stays sent");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_retried_message_for_a_starting_agent_is_not_held_or_typed_again() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let held = |d: &Daemon| d.terms[&t].held_message.is_some();
+    let send = |d: &mut Daemon, text: &str, operation| {
+        d.command(
+            0,
+            Command::SendWhenReady {
+                term: t,
+                text: text.into(),
+                operation,
+            },
+        )
+    };
+    assert!(send(&mut d, "fix the parser", Some(0)).is_err(), "zero is no operation");
+    send(&mut d, "fix the parser", Some(5)).unwrap();
+    send(&mut d, "fix the parser", Some(5)).unwrap();
+    assert!(
+        send(&mut d, "fix the lexer", Some(5)).is_err(),
+        "the same operation with other text"
+    );
+    assert!(
+        send(&mut d, "fix the lexer", None).is_err(),
+        "without one, one message still waits at a time"
+    );
+    {
+        let p = d.terms.get_mut(&t).unwrap();
+        (p.agent, p.hooked) = (Some("claude".into()), true);
+    }
+    d.set_status(t, Status::Idle, "test");
+    d.update_statuses();
+    assert!(!held(&d), "typed in");
+    send(&mut d, "fix the parser", Some(5)).unwrap();
+    assert!(!held(&d), "a retry after it was typed is not held again");
+    send(&mut d, "fix the parser", Some(6)).unwrap();
+    assert!(held(&d), "a new operation is");
     close(&mut d, &[t]);
 }
 
@@ -566,6 +655,7 @@ fn a_message_sent_to_a_starting_agent_is_held_until_it_takes_input() {
             Command::SendWhenReady {
                 term: t,
                 text: text.into(),
+                operation: None,
             },
         )
     };
@@ -1193,6 +1283,111 @@ fn closing_a_worktrees_last_pane_removes_it_only_when_nothing_lives_only_there()
 }
 
 #[test]
+fn a_person_reads_where_a_linked_worktree_stands_and_nothing_else() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (root, merged, _mine) = repo_with_two_made_worktrees(&mut d, "standing-query");
+    let repo = root.join("repo");
+    let read = |folder: &std::path::Path| worktree_standing(&repo, folder, 14);
+    assert!(
+        matches!(read(&merged), Ok(Some(s)) if s.merged && s.branch.is_some()),
+        "a linked worktree is read"
+    );
+    assert!(read(&repo).is_err(), "the main checkout is not one");
+    assert!(read(&root).is_err(), "nor a folder outside git");
+    assert!(read(std::path::Path::new("repo")).is_err(), "a relative path is refused");
+    std::fs::create_dir_all(merged.join("sub")).unwrap();
+    assert!(read(&merged.join("sub")).is_err(), "only a worktree's top folder");
+    let forged = root.join("forged");
+    std::fs::create_dir_all(&forged).unwrap();
+    std::fs::write(forged.join(".git"), format!("gitdir: {}", repo.join(".git").display())).unwrap();
+    assert!(read(&forged).is_err(), "a hand-made .git file is not a listed worktree");
+    assert!(read(&root.join("gone")).is_err(), "a folder git never listed is refused");
+    let deleted = root.join("deleted");
+    crate::proc::git(&repo, &["worktree", "add", "-q", "-b", "deleted", deleted.to_str().unwrap()]).unwrap();
+    std::fs::remove_dir_all(&deleted).unwrap();
+    assert_eq!(read(&deleted), Ok(None), "a listed worktree whose folder is gone reads as missing");
+
+    let (tx, mut agent) = mpsc::channel(16);
+    d.handle(Ev::Connected(8, tx, false, crate::protocol::Surface::Terminal, true));
+    let asking = d.terms.keys().next().copied().expect("a pane");
+    let token = d.terms[&asking].token.clone();
+    d.handle(Ev::From(8, asking, token));
+    d.message(8, ClientMsg::Query(Query::WorktreeStanding { repo: repo.clone(), folder: merged.clone() }));
+    assert!(matches!(agent.try_recv(), Ok(ServerMsg::Error(_))), "a pane cannot ask");
+
+    let (tx, mut person) = mpsc::channel(16);
+    d.handle(Ev::Connected(7, tx, false, crate::protocol::Surface::Terminal, true));
+    d.message(7, ClientMsg::Query(Query::WorktreeStanding { repo, folder: merged }));
+    let until = Instant::now() + Duration::from_secs(60);
+    let answer = loop {
+        match rx.try_recv() {
+            Ok(ev) => d.handle(ev),
+            Err(_) if Instant::now() < until => std::thread::sleep(Duration::from_millis(20)),
+            Err(_) => panic!("no answer"),
+        }
+        if let Ok(msg @ (ServerMsg::Reply(Reply::WorktreeStanding(_)) | ServerMsg::Error(_))) =
+            person.try_recv()
+        {
+            break msg;
+        }
+    };
+    assert!(matches!(answer, ServerMsg::Reply(Reply::WorktreeStanding(Some(_)))), "{answer:?}");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn closing_an_inactive_unmerged_worktrees_last_pane_keeps_it() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (root, _merged, mine) = repo_with_two_made_worktrees(&mut d, "close-inactive");
+    let long_ago = std::time::SystemTime::now() - Duration::from_secs(60 * 24 * 60 * 60);
+    let stamp = format!(
+        "@{} +0000",
+        long_ago
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    );
+    let amended = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&mine)
+        .args(["commit", "-q", "--amend", "--no-edit"])
+        .env("GIT_AUTHOR_DATE", &stamp)
+        .env("GIT_COMMITTER_DATE", &stamp)
+        .status()
+        .unwrap();
+    assert!(amended.success());
+    for file in ["a.ts", "b.ts"] {
+        std::fs::File::options()
+            .write(true)
+            .open(mine.join(file))
+            .unwrap()
+            .set_modified(long_ago)
+            .unwrap();
+    }
+    let standing = crate::tidy::standing(&mine, d.cfg.worktree.inactive_days);
+    assert!(
+        standing.inactive_days.is_some() && !standing.merged,
+        "the fixture is inactive and unmerged: {standing:?}"
+    );
+
+    let t = d
+        .terms
+        .values()
+        .find(|t| same_path(&t.cwd, &mine))
+        .map(|t| t.id)
+        .expect("a pane in the worktree");
+    d.command(0, Command::ClosePane { term: t }).unwrap();
+    let kept = auto_removal(&mut d, &mut rx);
+    assert!(
+        matches!(&kept, Removal::Unmerged(_)) && mine.is_dir(),
+        "inactivity removes nothing, got: {kept:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn nothing_removes_a_worktree_on_its_own_while_no_pane_is_closed() {
     let (rt, (mut d, mut rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();
@@ -1779,7 +1974,7 @@ fn detaching_and_closing_prune_tabs_and_workspaces() {
         "focus moves to what's left"
     );
     // The last pane goes: the tab and the workspace go with it.
-    d.remove_term(second);
+    d.remove_term(second, RemovalReason::Exited);
     assert!(d.workspaces.is_empty(), "an emptied workspace disappears");
     assert!(!d.terms.contains_key(&second));
     close(&mut d, &[first]);
@@ -1994,6 +2189,8 @@ fn helpers_and_tabs_come_back_from_a_restart_under_their_session() {
         conversations: Vec::new(),
         pending_starts: Vec::new(),
         conversation_operations: Vec::new(),
+        turn_continues: Default::default(),
+        turns_in_flight: Vec::new(),
     });
     let [helper, orphan, starter] = [0, 1, 2].map(|i| d.workspaces[i].tabs[0].focus);
     assert!(starter != 70, "the starter has this run's id");
@@ -2124,6 +2321,8 @@ fn restore_gives_panes_new_ids_and_keeps_their_layout() {
         conversations: Vec::new(),
         pending_starts: Vec::new(),
         conversation_operations: Vec::new(),
+        turn_continues: Default::default(),
+        turns_in_flight: Vec::new(),
     };
     d.restore(saved);
     assert_eq!(d.workspaces.len(), 1);
@@ -2908,6 +3107,331 @@ fn a_helper_recorded_as_stopped_no_longer_holds_its_session_working() {
     assert!(d.terms[&t].subagents.is_empty(), "a stopped helper is not counted as running");
     let terms: Vec<TermId> = d.terms.keys().copied().collect();
     close(&mut d, &terms);
+}
+
+/// A report from `agent`'s hooks; with `helper_starts`, it is news of its helper `a1`.
+fn report_with_helper(
+    t: TermId,
+    agent: &str,
+    status: HookStatus,
+    event: &str,
+    helper_starts: Option<bool>,
+) -> ClientMsg {
+    let mut msg = report(t, "", 0, status, event);
+    if let ClientMsg::Hook { agent: a, subagent, .. } = &mut msg {
+        *a = agent.into();
+        *subagent = helper_starts.map(|start| Subagent {
+            id: "a1".into(),
+            kind: "general-purpose".into(),
+            start,
+            reported_at: 0,
+            task: None,
+            model: None,
+            effort: None,
+            activity: None,
+        });
+    }
+    msg
+}
+
+/// The turn-end report; Claude's lists the background agents still running, Codex's lists nothing.
+fn turn_end_report(t: TermId, agent: &str, running: Option<&[&str]>) -> ClientMsg {
+    let mut msg = report_with_helper(t, agent, HookStatus::Done, "Stop", None);
+    if let (
+        ClientMsg::Hook {
+            background,
+            background_agents,
+            background_reported,
+            ..
+        },
+        Some(running),
+    ) = (&mut msg, running)
+    {
+        *background = running.iter().map(|id| id.to_string()).collect();
+        *background_agents = background.clone();
+        *background_reported = true;
+    }
+    msg
+}
+
+/// The agent's screen has shown its idle prompt (`title`) and nothing else for ten seconds.
+fn rests_at_its_idle_prompt(d: &mut Daemon, t: TermId, title: &str) {
+    let p = d.terms.get_mut(&t).expect("pane");
+    p.parser.process(format!("\x1b]0;{title}\x07").as_bytes());
+    p.last_output = Instant::now() - Duration::from_secs(10);
+    d.update_statuses();
+}
+
+fn times_told_done(seen: &mut mpsc::Receiver<ServerMsg>) -> usize {
+    heard(seen)
+        .iter()
+        .filter(|m| matches!(m, ServerMsg::Attention { status: Status::Done, .. }))
+        .count()
+}
+
+/// A turn that starts a background helper and ends while it runs, as `agent`'s hooks report it.
+fn a_turn_that_ends_while_its_helper_runs_stays_working(agent: &str, idle_title: &str) {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let mut seen = viewer(&mut d);
+    let lists_background = agent == "claude";
+    let say = |d: &mut Daemon, msg| d.apply_hook(msg, Some(true), Vec::new());
+    say(&mut d, report_with_helper(t, agent, HookStatus::Working, "UserPromptSubmit", None));
+    say(&mut d, report_with_helper(t, agent, HookStatus::Working, "SubagentStart", Some(true)));
+    say(&mut d, turn_end_report(t, agent, lists_background.then_some(&["a1"])));
+    rests_at_its_idle_prompt(&mut d, t, idle_title);
+    assert_eq!(
+        d.terms[&t].status,
+        Status::Working,
+        "{agent}: its turn ended, its helper did not"
+    );
+    // The helper is minutes into one command, then uses another tool.
+    say(&mut d, report_with_helper(t, agent, HookStatus::Same, "PostToolUse", Some(true)));
+    rests_at_its_idle_prompt(&mut d, t, idle_title);
+    assert_eq!(d.terms[&t].status, Status::Working, "{agent}: still working");
+    assert_eq!(d.terms[&t].subagents.len(), 1, "{agent}: the helper is still listed");
+    assert_eq!(times_told_done(&mut seen), 0, "{agent}: nothing finished yet");
+
+    say(&mut d, report_with_helper(t, agent, HookStatus::Same, "SubagentStop", Some(false)));
+    assert_eq!(d.terms[&t].status, Status::Done, "{agent}: its last helper stopped");
+    // Claude wakes to read what its helper found and stops again, with nothing left running.
+    if lists_background {
+        say(&mut d, report_with_helper(t, agent, HookStatus::Working, "PreToolUse", None));
+        assert_eq!(d.terms[&t].status, Status::Working, "{agent}: reading the result");
+        say(&mut d, turn_end_report(t, agent, Some(&[])));
+    }
+    rests_at_its_idle_prompt(&mut d, t, idle_title);
+    assert_eq!(d.terms[&t].status, Status::Done, "{agent}: and it stays done");
+    assert_eq!(times_told_done(&mut seen), 1, "{agent}: one finish, said once");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_claude_turn_that_ends_while_its_background_agent_runs_stays_working() {
+    a_turn_that_ends_while_its_helper_runs_stays_working("claude", "✳ project");
+}
+
+#[test]
+fn a_codex_turn_that_ends_while_its_child_agent_runs_stays_working() {
+    a_turn_that_ends_while_its_helper_runs_stays_working("codex", "project");
+}
+
+#[test]
+fn a_helper_started_after_the_turn_ended_keeps_its_session_working() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let say = |d: &mut Daemon, msg| d.apply_hook(msg, Some(true), Vec::new());
+    say(&mut d, report_with_helper(t, "claude", HookStatus::Working, "UserPromptSubmit", None));
+    say(&mut d, turn_end_report(t, "claude", Some(&[])));
+    assert_eq!(d.terms[&t].status, Status::Done);
+    say(&mut d, report_with_helper(t, "claude", HookStatus::Working, "SubagentStart", Some(true)));
+    rests_at_its_idle_prompt(&mut d, t, "✳ project");
+    assert_eq!(
+        d.terms[&t].status,
+        Status::Working,
+        "an idle prompt is what Claude shows while a background agent runs"
+    );
+    // No turn end follows a helper that began outside a turn: its stop is the end.
+    say(&mut d, report_with_helper(t, "claude", HookStatus::Same, "SubagentStop", Some(false)));
+    rests_at_its_idle_prompt(&mut d, t, "✳ project");
+    assert_eq!(d.terms[&t].status, Status::Done);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_turn_cancelled_while_its_helper_ran_is_freed_by_the_idle_prompt() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let say = |d: &mut Daemon, msg| d.apply_hook(msg, Some(true), Vec::new());
+    say(&mut d, report_with_helper(t, "claude", HookStatus::Working, "UserPromptSubmit", None));
+    say(&mut d, report_with_helper(t, "claude", HookStatus::Working, "SubagentStart", Some(true)));
+    // Esc: neither the helper's stop nor the turn's end is ever reported.
+    rests_at_its_idle_prompt(&mut d, t, "✳ project");
+    assert_ne!(
+        d.terms[&t].status,
+        Status::Working,
+        "no turn end was held, so the idle prompt is a missed one"
+    );
+    assert!(d.terms[&t].subagents.is_empty(), "the helper is no longer listed");
+    assert_eq!(
+        d.terms[&t].subagent_activity[0].state,
+        SubagentState::ConnectionLost,
+        "kept as unconfirmed, not as completed"
+    );
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_second_helper_started_after_the_turn_ended_does_not_release_the_hold() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let say = |d: &mut Daemon, msg| d.apply_hook(msg, Some(true), Vec::new());
+    say(&mut d, report_with_helper(t, "claude", HookStatus::Working, "UserPromptSubmit", None));
+    say(&mut d, report_with_helper(t, "claude", HookStatus::Working, "SubagentStart", Some(true)));
+    say(&mut d, turn_end_report(t, "claude", Some(&["a1"])));
+    let mut second = report_with_helper(t, "claude", HookStatus::Working, "SubagentStart", Some(true));
+    if let ClientMsg::Hook { subagent: Some(helper), .. } = &mut second {
+        helper.id = "a2".into();
+    }
+    say(&mut d, second);
+    rests_at_its_idle_prompt(&mut d, t, "✳ project");
+    assert_eq!(d.terms[&t].status, Status::Working);
+    assert_eq!(d.terms[&t].subagents.len(), 2);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_codex_helper_its_files_show_finished_stops_holding_when_its_stop_was_lost() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let say = |d: &mut Daemon, msg| d.apply_hook(msg, Some(true), Vec::new());
+    say(&mut d, report_with_helper(t, "codex", HookStatus::Working, "UserPromptSubmit", None));
+    say(&mut d, report_with_helper(t, "codex", HookStatus::Working, "SubagentStart", Some(true)));
+    say(&mut d, turn_end_report(t, "codex", None));
+    d.terms.get_mut(&t).expect("pane").session = Some("root".into());
+    rests_at_its_idle_prompt(&mut d, t, "project");
+    assert_eq!(d.terms[&t].status, Status::Working, "control: held while the helper runs");
+
+    // Its SubagentStop never arrives; Codex's own file for the helper says it completed.
+    let finished = SubagentActivity {
+        state: SubagentState::Completed,
+        updated_at: term::unix_now() + 5,
+        ..d.terms[&t].subagent_activity[0].clone()
+    };
+    d.codex_usage(
+        vec![usage::CodexPaneFacts {
+            term: t,
+            session: Some("root".into()),
+            usage: None,
+            subagents: Vec::new(),
+            subagent_activity: vec![finished],
+        }],
+        None,
+    );
+    rests_at_its_idle_prompt(&mut d, t, "project");
+    assert_eq!(d.terms[&t].status, Status::Done);
+    assert!(d.terms[&t].subagents.is_empty());
+    assert_eq!(d.terms[&t].subagent_activity[0].state, SubagentState::Completed);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_helper_that_dies_without_reporting_frees_its_session_after_the_hour() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let mut seen = viewer(&mut d);
+    let say = |d: &mut Daemon, msg| d.apply_hook(msg, Some(true), Vec::new());
+    say(&mut d, report_with_helper(t, "claude", HookStatus::Working, "UserPromptSubmit", None));
+    say(&mut d, report_with_helper(t, "claude", HookStatus::Working, "SubagentStart", Some(true)));
+    say(&mut d, turn_end_report(t, "claude", Some(&["a1"])));
+    // It has been working for over an hour, so its finish is a real one.
+    d.terms.get_mut(&t).expect("pane").status_since = term::unix_now() - 2 * 60 * 60;
+    let within = Instant::now() - super::status::SUBAGENTS_QUIET_AT_MOST + Duration::from_secs(60);
+    let p = d.terms.get_mut(&t).expect("pane");
+    (p.done_held, p.subagent_seen) = (Some(within), Some(within));
+    rests_at_its_idle_prompt(&mut d, t, "✳ project");
+    assert_eq!(d.terms[&t].status, Status::Working, "held for the whole hour");
+
+    let past = Instant::now() - super::status::SUBAGENTS_QUIET_AT_MOST - Duration::from_secs(60);
+    let p = d.terms.get_mut(&t).expect("pane");
+    (p.done_held, p.subagent_seen) = (Some(past), Some(past));
+    rests_at_its_idle_prompt(&mut d, t, "✳ project");
+    assert_eq!(d.terms[&t].status, Status::Done, "not held forever");
+    assert_eq!(times_told_done(&mut seen), 1, "and its finish is said once");
+    assert!(d.terms[&t].subagents.is_empty());
+    assert_eq!(
+        d.terms[&t].subagent_activity[0].state,
+        SubagentState::ConnectionLost,
+        "kept as unconfirmed, not as completed"
+    );
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_helper_that_dies_off_screen_still_has_its_finish_said_after_the_hour() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let mut seen = viewer(&mut d);
+    let say = |d: &mut Daemon, msg| d.apply_hook(msg, Some(true), Vec::new());
+    say(&mut d, report_with_helper(t, "claude", HookStatus::Working, "UserPromptSubmit", None));
+    say(&mut d, report_with_helper(t, "claude", HookStatus::Working, "SubagentStart", Some(true)));
+    say(&mut d, turn_end_report(t, "claude", Some(&["a1"])));
+    let past = Instant::now() - super::status::SUBAGENTS_QUIET_AT_MOST - Duration::from_secs(60);
+    let p = d.terms.get_mut(&t).expect("pane");
+    p.status_since = term::unix_now() - 2 * 60 * 60;
+    (p.done_held, p.subagent_seen) = (Some(past), Some(past));
+    // No idle prompt on screen: the hour alone ends it.
+    d.update_statuses();
+    assert_eq!(d.terms[&t].status, Status::Done);
+    assert_eq!(times_told_done(&mut seen), 1, "its finish is said once");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn an_interrupted_codex_turn_held_on_a_helper_is_not_finished_an_hour_later() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let say = |d: &mut Daemon, msg| d.apply_hook(msg, Some(true), Vec::new());
+    say(&mut d, report_with_helper(t, "codex", HookStatus::Working, "UserPromptSubmit", None));
+    say(&mut d, report_with_helper(t, "codex", HookStatus::Working, "SubagentStart", Some(true)));
+    say(&mut d, turn_end_report(t, "codex", None));
+    say(&mut d, report_with_helper(t, "codex", HookStatus::Idle, "Interrupt", None));
+    assert_eq!(d.terms[&t].status, Status::Idle);
+    let past = Instant::now() - super::status::SUBAGENTS_QUIET_AT_MOST - Duration::from_secs(60);
+    let p = d.terms.get_mut(&t).expect("pane");
+    p.subagent_seen = Some(past);
+    if let Some(held) = p.done_held.as_mut() {
+        *held = past;
+    }
+    d.update_statuses();
+    assert_eq!(
+        d.terms[&t].status,
+        Status::Idle,
+        "the interrupt ended the turn; nothing is left held to finish it later"
+    );
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_codex_file_finished_in_the_same_second_as_the_helper_started_still_counts() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let say = |d: &mut Daemon, msg| d.apply_hook(msg, Some(true), Vec::new());
+    say(&mut d, report_with_helper(t, "codex", HookStatus::Working, "UserPromptSubmit", None));
+    say(&mut d, report_with_helper(t, "codex", HookStatus::Working, "SubagentStart", Some(true)));
+    say(&mut d, turn_end_report(t, "codex", None));
+    d.terms.get_mut(&t).expect("pane").session = Some("root".into());
+    let started = d.terms[&t].subagent_activity[0].clone();
+    let finished = SubagentActivity {
+        state: SubagentState::Completed,
+        ..started.clone()
+    };
+    d.codex_usage(
+        vec![usage::CodexPaneFacts {
+            term: t,
+            session: Some("root".into()),
+            usage: None,
+            subagents: Vec::new(),
+            subagent_activity: vec![finished],
+        }],
+        None,
+    );
+    assert_eq!(d.terms[&t].subagent_activity[0].state, SubagentState::Completed);
+    // A working record stamped in the same second does not undo a finish.
+    d.codex_usage(
+        vec![usage::CodexPaneFacts {
+            term: t,
+            session: Some("root".into()),
+            usage: None,
+            subagents: Vec::new(),
+            subagent_activity: vec![started],
+        }],
+        None,
+    );
+    assert_eq!(d.terms[&t].subagent_activity[0].state, SubagentState::Completed);
+    rests_at_its_idle_prompt(&mut d, t, "project");
+    assert_eq!(d.terms[&t].status, Status::Done);
+    close(&mut d, &[t]);
 }
 
 #[test]
@@ -3994,6 +4518,8 @@ fn check_results_survive_a_restart_with_their_output() {
         conversations: Vec::new(),
         pending_starts: Vec::new(),
         conversation_operations: Vec::new(),
+        turn_continues: Default::default(),
+        turns_in_flight: Vec::new(),
     });
     let t = d.workspaces[0].tabs[0].focus;
     let restored = &d.terms[&t];
@@ -5771,6 +6297,68 @@ fn a_paused_turn_is_checked_only_when_the_work_really_ends() {
     close(&mut d, &[t]);
 }
 
+fn kept_after(d: &Daemon) -> usize {
+    d.pane_snapshots
+        .iter()
+        .filter(|why| *why == "after claude's turn")
+        .count()
+}
+
+#[test]
+fn a_turn_is_kept_once_when_it_ends_not_while_it_waits_for_you() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let mut say = claude_reports(&mut d, t);
+    say(&mut d, HookStatus::Working, "UserPromptSubmit", &[]);
+    assert_eq!(d.pane_snapshots, ["before claude's turn"]);
+    d.set_status(t, Status::Blocked, "hook: PermissionRequest");
+    say(&mut d, HookStatus::Working, "PreToolUse", &[]);
+    assert_eq!(kept_after(&d), 0, "an approval mid-turn is not its end");
+    say(&mut d, HookStatus::Done, "Stop", &[]);
+    say(&mut d, HookStatus::Done, "Stop", &[]);
+    assert_eq!(kept_after(&d), 1);
+    assert_eq!(d.pane_snapshots.last().unwrap(), "after claude's turn");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_paused_turn_is_kept_only_when_the_work_really_ends() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let mut say = claude_reports(&mut d, t);
+    say(&mut d, HookStatus::Working, "UserPromptSubmit", &[]);
+    say(&mut d, HookStatus::Done, "Stop", &["ci-watch"]);
+    assert_eq!(kept_after(&d), 0, "it is still waiting on its own work");
+    say(&mut d, HookStatus::Working, "PreToolUse", &[]);
+    say(&mut d, HookStatus::Done, "Stop", &[]);
+    assert_eq!(kept_after(&d), 1);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_cancelled_turn_is_kept_as_it_was_left() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let mut say = claude_reports(&mut d, t);
+    say(&mut d, HookStatus::Working, "UserPromptSubmit", &[]);
+    d.set_status(t, Status::Idle, super::status::CANCELLED_WHY);
+    assert_eq!(kept_after(&d), 1);
+    say(&mut d, HookStatus::Done, "Stop", &[]);
+    assert_eq!(kept_after(&d), 1, "a late turn end is the same turn");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_finish_guessed_from_a_title_blink_is_not_kept() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.terms.get_mut(&t).unwrap().agent = Some("claude".into());
+    d.set_status(t, Status::Working, "screen: title says working");
+    d.set_status(t, Status::Done, "screen: idle prompt");
+    assert_eq!(kept_after(&d), 0);
+    close(&mut d, &[t]);
+}
+
 #[test]
 fn working_again_by_any_route_ends_the_pause() {
     let (mut d, _rx) = daemon();
@@ -5797,6 +6385,7 @@ fn desktop_and_phone_alerts_name_the_branch_of_a_worktree() {
         branch: "fix/early-alerts".into(),
         linked: true,
         main_root: std::path::PathBuf::from("/code/shop-api"),
+        detached: false,
     });
     assert_eq!(p.alert_place(), "shop-api · fix/early-alerts");
     p.head = None;
@@ -7486,6 +8075,8 @@ fn restored_claude_pane(d: &mut Daemon) -> TermId {
         conversations: Vec::new(),
         pending_starts: Vec::new(),
         conversation_operations: Vec::new(),
+        turn_continues: Default::default(),
+        turns_in_flight: Vec::new(),
     });
     d.workspaces[0].tabs[0].focus
 }
@@ -7528,6 +8119,8 @@ fn restore_gives_no_shell_to_a_layout_slot_whose_pane_was_not_saved() {
         conversations: Vec::new(),
         pending_starts: Vec::new(),
         conversation_operations: Vec::new(),
+        turn_continues: Default::default(),
+        turns_in_flight: Vec::new(),
     });
     let panes = d.terms.len();
     let leaves = d.workspaces[0].tabs[0].layout.leaves().len();
@@ -7989,6 +8582,8 @@ fn an_agent_that_died_mid_turn_comes_back_as_a_shell_that_offers_the_resume() {
         conversations: Vec::new(),
         pending_starts: Vec::new(),
         conversation_operations: Vec::new(),
+        turn_continues: Default::default(),
+        turns_in_flight: Vec::new(),
     });
     let [interrupted, finished, in_terminal] = [0, 1, 2].map(|i| d.workspaces[i].tabs[0].focus);
 
@@ -8157,6 +8752,325 @@ fn pin_and_archive_stick_survive_a_restart_and_never_stop_the_pane() {
     close(&mut d2, &[back]);
 }
 
+fn snoozed_until(d: &Daemon, term: TermId) -> Option<u64> {
+    d.snapshot().terms[&term].snoozed_until
+}
+
+#[test]
+fn a_snooze_survives_a_restart_and_ends_when_its_time_passes() {
+    let (mut d, _rx) = daemon();
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
+    let t = d.workspaces[0].tabs[0].focus;
+    let until = term::unix_now() + 3600;
+    d.command(0, Command::SnoozePane { term: t, until: Some(until) })
+        .unwrap();
+    assert_eq!(snoozed_until(&d, t), Some(until));
+    assert_eq!(d.terms[&t].status, Status::None, "snoozing leaves the status alone");
+
+    let (mut d2, _rx2) = daemon();
+    d2.restore(d.saved());
+    let back = d2.workspaces[0].tabs[0].focus;
+    assert_eq!(snoozed_until(&d2, back), Some(until), "it comes back after a restart");
+
+    d2.wake_snoozed(until - 1);
+    assert_eq!(snoozed_until(&d2, back), Some(until), "not yet");
+    d2.wake_snoozed(until);
+    assert_eq!(snoozed_until(&d2, back), None, "its time came");
+    close(&mut d, &[t]);
+    close(&mut d2, &[back]);
+}
+
+#[test]
+fn a_snooze_ends_when_the_pane_needs_you() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let until = term::unix_now() + 3600;
+    let snooze = |d: &mut Daemon| {
+        d.command(0, Command::SnoozePane { term: t, until: Some(until) })
+            .unwrap();
+        assert_eq!(snoozed_until(d, t), Some(until));
+    };
+
+    snooze(&mut d);
+    d.set_status(t, Status::Blocked, "hook: Notification");
+    assert_eq!(snoozed_until(&d, t), None, "a question wakes it");
+    assert_eq!(d.terms[&t].status, Status::Blocked, "and the status is the hook's");
+
+    d.set_status(t, Status::Idle, "hook: Stop");
+    snooze(&mut d);
+    let pane = d.terms.get_mut(&t).unwrap();
+    pane.output(b"]133;C]133;D;1");
+    pane.take_marks();
+    assert_eq!(snoozed_until(&d, t), None, "a failed exit wakes it");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_snooze_is_ended_by_you_and_refused_when_it_would_hide_a_question_or_last_past_a_week() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let now = term::unix_now();
+    let snooze = |d: &mut Daemon, until| d.command(0, Command::SnoozePane { term: t, until });
+
+    snooze(&mut d, Some(now + 3600)).unwrap();
+    snooze(&mut d, None).unwrap();
+    assert_eq!(snoozed_until(&d, t), None, "None wakes it");
+
+    snooze(&mut d, Some(now + 3600)).unwrap();
+    snooze(&mut d, Some(1)).unwrap();
+    assert_eq!(snoozed_until(&d, t), None, "a time already past wakes it");
+
+    assert!(snooze(&mut d, Some(u64::MAX)).is_err(), "longer than a week");
+    assert_eq!(snoozed_until(&d, t), None);
+
+    d.set_status(t, Status::Blocked, "hook: Notification");
+    assert!(snooze(&mut d, Some(now + 3600)).is_err(), "it needs you now");
+    assert_eq!(snoozed_until(&d, t), None);
+    close(&mut d, &[t]);
+}
+
+fn snooze_an_hour(d: &mut Daemon, term: TermId) {
+    let until = term::unix_now() + 3600;
+    d.command(0, Command::SnoozePane { term, until: Some(until) })
+        .unwrap();
+    assert_eq!(snoozed_until(d, term), Some(until));
+}
+
+#[test]
+fn a_failed_check_ends_a_snooze() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = agent_with_checkpoints(&mut d, &std::env::temp_dir(), &[("build", "exit 2")]);
+    snooze_an_hour(&mut d, t);
+    end_turn(&mut d, t);
+    finish_run(&mut d, &mut rx, t);
+    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Failed)]));
+    assert_eq!(snoozed_until(&d, t), None);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_check_waiting_for_approval_ends_a_snooze() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    d.resolver = gated;
+    let t = agent_with_checkpoints(&mut d, &std::env::temp_dir(), &[("test", "npm test")]);
+    snooze_an_hour(&mut d, t);
+    end_turn(&mut d, t);
+    finish_run(&mut d, &mut rx, t);
+    assert_eq!(states(&d, t), named_states(&[("test", CheckState::NeedsApproval)]));
+    assert_eq!(snoozed_until(&d, t), None);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn asking_for_a_secret_ends_a_snooze() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    snooze_an_hour(&mut d, t);
+    d.request_secret(0, t, "token", "to deploy").unwrap();
+    assert_eq!(snoozed_until(&d, t), None);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn asking_to_start_helpers_ends_a_snooze() {
+    let (mut d, _rx) = daemon();
+    let (a, mut c) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
+    snooze_an_hour(&mut d, a);
+    helper_start(&mut d, 1, &mut c, Some("claude 'port the footer'")).expect("asked");
+    assert_eq!(snoozed_until(&d, a), None);
+    close(&mut d, &[a]);
+}
+
+#[test]
+fn a_pane_asking_for_a_secret_or_a_check_decision_cannot_be_snoozed() {
+    let (mut d, _rx) = daemon();
+    let now = term::unix_now();
+    let snooze = |d: &mut Daemon, term| d.command(0, Command::SnoozePane { term, until: Some(now + 3600) });
+
+    let asking = pane(&mut d);
+    d.request_secret(0, asking, "token", "to deploy").unwrap();
+    assert!(snooze(&mut d, asking).is_err(), "a secret ask needs you");
+
+    let approval = waiting_for_approval(&mut d, "npm test");
+    assert!(snooze(&mut d, approval).is_err(), "a check waiting for approval needs you");
+    let failed = pane(&mut d);
+    let info = CheckInfo { name: "test".into(), state: CheckState::Failed, ..Default::default() };
+    d.terms.get_mut(&failed).unwrap().checks.points = vec![check::CheckRecord::new(info, "").into()];
+    assert!(snooze(&mut d, failed).is_err(), "a failed check needs you");
+
+    let (helped, _c) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
+    d.terms.get_mut(&helped).unwrap().helpers.asked.push("port the footer".into());
+    assert!(snooze(&mut d, helped).is_err(), "a helper ask needs you");
+
+    for t in [asking, approval, failed, helped] {
+        assert_eq!(snoozed_until(&d, t), None);
+    }
+    close(&mut d, &[asking, approval, failed, helped]);
+}
+
+#[test]
+fn a_chat_session_cannot_be_snoozed_as_a_pane() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.terms.get_mut(&t).unwrap().conversation_id = Some(crate::conversation::ConversationId(7));
+    let until = term::unix_now() + 3600;
+    assert!(d.command(0, Command::SnoozePane { term: t, until: Some(until) }).is_err());
+    assert_eq!(snoozed_until(&d, t), None);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_snooze_lasts_a_week_at_most() {
+    const NOW: u64 = 1_800_000_000;
+    const WEEK: u64 = 7 * 24 * 60 * 60;
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.snooze_pane(t, Some(NOW + WEEK), NOW).unwrap();
+    assert_eq!(snoozed_until(&d, t), Some(NOW + WEEK), "exactly a week is allowed");
+    assert!(d.snooze_pane(t, Some(NOW + WEEK + 1), NOW).is_err(), "a second more is not");
+    assert_eq!(snoozed_until(&d, t), Some(NOW + WEEK), "a refusal leaves the snooze");
+
+    d.terms.get_mut(&t).unwrap().snoozed_until = Some(NOW + 8 * 24 * 60 * 60);
+    d.wake_snoozed(NOW);
+    assert_eq!(snoozed_until(&d, t), None, "further off than a week (the clock went back) wakes it");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn an_agent_pane_cannot_snooze() {
+    let (mut d, _rx) = daemon();
+    let (a, mut c) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
+    let until = term::unix_now() + 3600;
+    d.handle(Ev::Msg(
+        1,
+        ClientMsg::Command(Command::SnoozePane { term: a, until: Some(until) }),
+    ));
+    let refused = std::iter::from_fn(|| c.try_recv().ok()).find_map(|m| match m {
+        ServerMsg::Error(e) => Some(e),
+        _ => None,
+    });
+    assert!(refused.is_some_and(|e| e.contains("yours to do")));
+    assert_eq!(snoozed_until(&d, a), None);
+    close(&mut d, &[a]);
+}
+
+const MERGED_PR_URL: &str = "https://github.com/o/r/pull/7";
+const MERGED_PR: &str =
+    r#"{"number":7,"url":"https://github.com/o/r/pull/7","state":"MERGED","headRefOid":"abc"}"#;
+
+/// The PR watcher reads pull request #7 as merged for pane `t`, as its background task would.
+fn pr_merged_for(d: &mut Daemon, t: TermId) {
+    d.link_pr(t, Some(MERGED_PR_URL)).unwrap();
+    d.prs_read(vec![(
+        pr::Place::Link(MERGED_PR_URL.into()),
+        pr::Read::Found(MERGED_PR.into()),
+    )]);
+}
+
+#[test]
+fn a_finished_session_whose_pr_merged_stays_listed_by_default() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.set_status(t, Status::Idle, "hook");
+    pr_merged_for(&mut d, t);
+    assert!(!d.terms[&t].archived);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_working_session_whose_pr_merged_stays_listed() {
+    let (mut d, _rx) = daemon();
+    d.cfg.sessions.put_away_merged = true;
+    let t = pane(&mut d);
+    d.set_status(t, Status::Working, "hook");
+    pr_merged_for(&mut d, t);
+    assert!(!d.terms[&t].archived);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_finished_session_whose_pr_merged_is_put_away_once_and_brought_back_stays_back() {
+    let (mut d, _rx) = daemon();
+    d.cfg.sessions.put_away_merged = true;
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
+    let t = d.workspaces[0].tabs[0].focus;
+    d.set_status(t, Status::Done, "hook");
+    pr_merged_for(&mut d, t);
+    assert!(d.terms[&t].archived, "put away");
+
+    d.command(
+        0,
+        Command::ArchivePane {
+            term: t,
+            archived: false,
+        },
+    )
+    .unwrap();
+    pr_merged_for(&mut d, t);
+    assert!(!d.terms[&t].archived, "brought back stays back");
+
+    let (mut d2, _rx2) = daemon();
+    d2.cfg.sessions.put_away_merged = true;
+    d2.restore(d.saved());
+    let back = d2.workspaces[0].tabs[0].focus;
+    d2.set_status(back, Status::Idle, "hook");
+    pr_merged_for(&mut d2, back);
+    assert!(
+        !d2.terms[&back].archived,
+        "the same merge never puts it away again, even after a restart"
+    );
+    close(&mut d, &[t]);
+    close(&mut d2, &[back]);
+}
+
+#[test]
+fn a_session_put_away_by_hand_and_brought_back_is_not_put_away_for_a_merge_already_read() {
+    let (mut d, _rx) = daemon();
+    d.cfg.sessions.put_away_merged = true;
+    let t = pane(&mut d);
+    d.set_status(t, Status::Working, "hook");
+    pr_merged_for(&mut d, t);
+    let by_hand = |archived| Command::ArchivePane { term: t, archived };
+    d.command(0, by_hand(true)).unwrap();
+    d.command(0, by_hand(false)).unwrap();
+    d.set_status(t, Status::Idle, "hook");
+    pr_merged_for(&mut d, t);
+    assert!(!d.terms[&t].archived, "brought back stays back");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_session_that_finishes_after_its_pr_merged_is_put_away_at_the_next_read() {
+    let (mut d, _rx) = daemon();
+    d.cfg.sessions.put_away_merged = true;
+    let t = pane(&mut d);
+    d.set_status(t, Status::Working, "hook");
+    pr_merged_for(&mut d, t);
+    assert!(!d.terms[&t].archived);
+    d.set_status(t, Status::Done, "hook");
+    pr_merged_for(&mut d, t);
+    assert!(d.terms[&t].archived);
+    close(&mut d, &[t]);
+}
+
 #[test]
 fn a_change_to_one_pane_reaches_clients_as_a_delta_and_no_change_as_nothing() {
     let (mut d, _rx) = daemon();
@@ -8177,7 +9091,7 @@ fn a_change_to_one_pane_reaches_clients_as_a_delta_and_no_change_as_nothing() {
     d.terms.get_mut(&t).unwrap().process = "vim".into();
     d.publish_state(surface, d.snapshot_for(surface));
     match crx.try_recv() {
-        Ok(ServerMsg::TermsChanged { changed, removed }) => {
+        Ok(ServerMsg::TermsChanged { changed, removed, .. }) => {
             assert_eq!(changed.iter().map(|term| term.id).collect::<Vec<_>>(), vec![t]);
             assert_eq!(changed[0].process, "vim");
             assert!(removed.is_empty());
@@ -8193,6 +9107,259 @@ fn a_change_to_one_pane_reaches_clients_as_a_delta_and_no_change_as_nothing() {
         _ => false,
     });
     assert!(gone, "a closed pane leaves the clients' state, whole or as a delta");
+}
+
+#[test]
+fn each_state_or_delta_a_surface_is_sent_carries_the_next_revision() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let surface = crate::protocol::Surface::Terminal;
+    let (tx, mut crx) = mpsc::channel(64);
+    d.handle(Ev::Connected(7, tx, true, surface, false));
+    while crx.try_recv().is_ok() {}
+    let revision_of = |msg| match msg {
+        Ok(ServerMsg::State(snap)) => snap.revision,
+        Ok(ServerMsg::TermsChanged { revision, .. }) => revision,
+        other => panic!("a state or a pane delta: {other:?}"),
+    };
+
+    d.publish_state(surface, d.snapshot_for(surface));
+    let first = revision_of(crx.try_recv());
+    assert_eq!(first, 1, "a surface's first update is revision 1");
+
+    d.publish_state(surface, d.snapshot_for(surface));
+    assert!(crx.try_recv().is_err(), "nothing changed, so nothing is sent or numbered");
+
+    d.terms.get_mut(&t).unwrap().process = "vim".into();
+    d.publish_state(surface, d.snapshot_for(surface));
+    let delta = crx.try_recv();
+    assert!(matches!(delta, Ok(ServerMsg::TermsChanged { .. })), "{delta:?}");
+    assert_eq!(revision_of(delta), first + 1);
+
+    d.terms.get_mut(&t).unwrap().process = "git".into();
+    d.publish_state(surface, d.snapshot_for(surface));
+    assert_eq!(revision_of(crx.try_recv()), first + 2);
+
+    d.message(7, ClientMsg::Query(Query::List));
+    let Ok(ServerMsg::Reply(Reply::List(listed))) = crx.try_recv() else {
+        panic!("a list");
+    };
+    assert_eq!(listed.revision, first + 2, "a list carries the current revision and uses none");
+    assert_eq!(
+        d.snapshot_for(crate::protocol::Surface::Desktop).revision,
+        0,
+        "the other surface counts its own"
+    );
+    close(&mut d, &[t]);
+}
+
+/// A terminal client attached as `id`, past its attach snapshot and the first full state.
+fn attached_and_caught_up(d: &mut Daemon, id: ClientId) -> mpsc::Receiver<ServerMsg> {
+    let surface = crate::protocol::Surface::Terminal;
+    let (tx, mut crx) = mpsc::channel(64);
+    d.handle(Ev::Connected(id, tx, true, surface, false));
+    d.publish_state(surface, d.snapshot_for(surface));
+    while crx.try_recv().is_ok() {}
+    crx
+}
+
+/// The panes the next message says left the list, and why.
+fn removals(crx: &mut mpsc::Receiver<ServerMsg>) -> BTreeMap<TermId, RemovalReason> {
+    match crx.try_recv() {
+        Ok(ServerMsg::TermsChanged { removed, reasons, .. }) => {
+            assert_eq!(removed, reasons.keys().copied().collect::<Vec<_>>(), "a reason for each");
+            reasons
+        }
+        Ok(ServerMsg::State(snap)) => snap.removed,
+        other => panic!("a state or a pane delta: {other:?}"),
+    }
+}
+
+#[test]
+fn a_pane_a_person_closed_leaves_the_list_as_closed() {
+    let (mut d, _rx) = daemon();
+    let (kept, t) = (pane(&mut d), pane(&mut d));
+    let surface = crate::protocol::Surface::Terminal;
+    let mut crx = attached_and_caught_up(&mut d, 7);
+
+    d.command(7, Command::ClosePane { term: t }).unwrap();
+    d.publish_state(surface, d.snapshot_for(surface));
+    assert_eq!(removals(&mut crx), BTreeMap::from([(t, RemovalReason::Closed)]));
+    close(&mut d, &[kept]);
+}
+
+#[test]
+fn a_pane_whose_shell_exited_leaves_the_list_as_exited() {
+    let (mut d, _rx) = daemon();
+    let (kept, t) = (pane(&mut d), pane(&mut d));
+    let surface = crate::protocol::Surface::Terminal;
+    let mut crx = attached_and_caught_up(&mut d, 7);
+
+    d.handle(Ev::Exited(t));
+    d.publish_state(surface, d.snapshot_for(surface));
+    assert_eq!(removals(&mut crx), BTreeMap::from([(t, RemovalReason::Exited)]));
+    close(&mut d, &[kept]);
+}
+
+#[test]
+fn a_whole_state_after_a_removal_says_what_left_since_the_last_message() {
+    let (mut d, _rx) = daemon();
+    let (kept, closed, exited) = (pane(&mut d), pane(&mut d), pane(&mut d));
+    let surface = crate::protocol::Surface::Terminal;
+    let mut crx = attached_and_caught_up(&mut d, 7);
+
+    d.command(7, Command::ClosePane { term: closed }).unwrap();
+    d.handle(Ev::Exited(exited));
+    // A second window attaching makes the next update a whole state for both.
+    let (tx, _other) = mpsc::channel(64);
+    d.handle(Ev::Connected(8, tx, true, surface, false));
+    d.publish_state(surface, d.snapshot_for(surface));
+    let Ok(ServerMsg::State(snap)) = crx.try_recv() else {
+        panic!("the first change after an attach is the whole state");
+    };
+    assert_eq!(
+        snap.removed,
+        BTreeMap::from([(closed, RemovalReason::Closed), (exited, RemovalReason::Exited)])
+    );
+
+    d.terms.get_mut(&kept).unwrap().process = "vim".into();
+    d.sent_state.remove(&surface);
+    d.publish_state(surface, d.snapshot_for(surface));
+    let Ok(ServerMsg::State(snap)) = crx.try_recv() else {
+        panic!("a whole state");
+    };
+    assert!(snap.removed.is_empty(), "a removal is told once");
+    assert!(d.snapshot_for(surface).removed.is_empty(), "a list names none");
+    close(&mut d, &[kept]);
+}
+
+#[test]
+fn a_pane_that_left_while_still_running_says_whether_it_was_closed_hidden_or_moved() {
+    let (mut d, _rx) = daemon();
+    let (kept, closing, spare, moved) = (pane(&mut d), pane(&mut d), pane(&mut d), pane(&mut d));
+    let surface = crate::protocol::Surface::Terminal;
+    let mut crx = attached_and_caught_up(&mut d, 7);
+
+    d.command(7, Command::CloseSession { term: closing }).unwrap();
+    d.terms.get_mut(&spare).unwrap().spare = true;
+    d.terms.get_mut(&moved).unwrap().owner = crate::protocol::Surface::Desktop;
+    d.publish_state(surface, d.snapshot_for(surface));
+    assert_eq!(
+        removals(&mut crx),
+        BTreeMap::from([
+            (closing, RemovalReason::Closed),
+            (spare, RemovalReason::PutAway),
+            (moved, RemovalReason::Moved),
+        ])
+    );
+    close(&mut d, &[kept, closing, spare, moved]);
+}
+
+#[test]
+fn a_pane_from_before_the_attach_that_is_closed_before_any_update_leaves_as_closed() {
+    let (mut d, _rx) = daemon();
+    let (kept, t) = (pane(&mut d), pane(&mut d));
+    let surface = crate::protocol::Surface::Terminal;
+    let (tx, mut crx) = mpsc::channel(64);
+    d.handle(Ev::Connected(7, tx, true, surface, false));
+    while crx.try_recv().is_ok() {}
+
+    d.command(7, Command::ClosePane { term: t }).unwrap();
+    d.publish_state(surface, d.snapshot_for(surface));
+    assert_eq!(removals(&mut crx), BTreeMap::from([(t, RemovalReason::Closed)]));
+    close(&mut d, &[kept]);
+}
+
+#[test]
+fn a_pane_that_ended_while_nobody_was_attached_is_not_named_to_the_next_client() {
+    let (mut d, _rx) = daemon();
+    let (kept, t) = (pane(&mut d), pane(&mut d));
+    let surface = crate::protocol::Surface::Terminal;
+    // The first window saw both panes in an update, then went away.
+    let _gone = attached_and_caught_up(&mut d, 7);
+    d.handle(Ev::Disconnected(7));
+    d.handle(Ev::Exited(t));
+
+    let (tx, mut crx) = mpsc::channel(64);
+    d.handle(Ev::Connected(8, tx, true, surface, false));
+    while crx.try_recv().is_ok() {}
+    d.terms.get_mut(&kept).unwrap().process = "vim".into();
+    d.publish_state(surface, d.snapshot_for(surface));
+    assert!(removals(&mut crx).is_empty(), "its attach snapshot never had that pane");
+    close(&mut d, &[kept]);
+}
+
+#[test]
+fn a_pane_gone_for_no_reason_the_daemon_recorded_leaves_as_unknown() {
+    let (mut d, _rx) = daemon();
+    let (kept, t) = (pane(&mut d), pane(&mut d));
+    let surface = crate::protocol::Surface::Terminal;
+    let mut crx = attached_and_caught_up(&mut d, 7);
+
+    // Nothing in the daemon drops a pane without a reason, so it is forced here.
+    let mut gone = d.terms.remove(&t).unwrap();
+    gone.kill_tree();
+    d.publish_state(surface, d.snapshot_for(surface));
+    assert_eq!(removals(&mut crx), BTreeMap::from([(t, RemovalReason::Unknown)]));
+    close(&mut d, &[kept]);
+}
+
+/// `KillServer` kills every pane, sends `Bye` and exits without another update, so this reason
+/// reaches a client only for a pane that ends between the stop request and `Bye`. The stop is
+/// set by hand here because the command ends the process.
+#[test]
+fn a_pane_that_ends_between_the_stop_request_and_bye_leaves_as_daemon_stopping() {
+    let (mut d, _rx) = daemon();
+    let (kept, t) = (pane(&mut d), pane(&mut d));
+    let surface = crate::protocol::Surface::Terminal;
+    let mut crx = attached_and_caught_up(&mut d, 7);
+
+    d.stopping = true;
+    d.handle(Ev::Exited(t));
+    d.publish_state(surface, d.snapshot_for(surface));
+    assert_eq!(removals(&mut crx), BTreeMap::from([(t, RemovalReason::DaemonStopping)]));
+    close(&mut d, &[kept]);
+}
+
+#[test]
+fn after_an_attached_client_lists_the_next_change_reaches_its_surface_in_full() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let surface = crate::protocol::Surface::Terminal;
+    let (tx, mut crx) = mpsc::channel(64);
+    d.handle(Ev::Connected(7, tx, true, surface, false));
+    let (asker, mut asked) = mpsc::channel(64);
+    d.handle(Ev::Connected(8, asker, false, surface, false));
+    d.publish_state(surface, d.snapshot_for(surface));
+    while crx.try_recv().is_ok() {}
+
+    d.message(8, ClientMsg::Query(Query::List));
+    assert!(matches!(asked.try_recv(), Ok(ServerMsg::Reply(Reply::List(_)))));
+    d.terms.get_mut(&t).unwrap().process = "vim".into();
+    d.publish_state(surface, d.snapshot_for(surface));
+    assert!(
+        matches!(crx.try_recv(), Ok(ServerMsg::TermsChanged { .. })),
+        "a list for a client that follows no updates leaves the deltas be"
+    );
+
+    // The list holds a change the surface was not sent yet, so a delta worked out from what
+    // was sent would not fit it.
+    d.terms.get_mut(&t).unwrap().process = "git".into();
+    d.message(7, ClientMsg::Query(Query::List));
+    let Ok(ServerMsg::Reply(Reply::List(listed))) = crx.try_recv() else {
+        panic!("a list");
+    };
+    assert_eq!(listed.terms[&t].process, "git");
+    d.terms.get_mut(&t).unwrap().process = "vim".into();
+    d.publish_state(surface, d.snapshot_for(surface));
+    match crx.try_recv() {
+        Ok(ServerMsg::State(state)) => {
+            assert_eq!(state.terms[&t].process, "vim");
+            assert_eq!(state.revision, listed.revision + 1);
+        }
+        other => panic!("the whole state after a list: {other:?}"),
+    }
+    close(&mut d, &[t]);
 }
 
 #[test]
@@ -8833,4 +10000,227 @@ fn a_spare_alerts_nobody_and_a_pane_cannot_ask_for_one() {
     assert_eq!(d.warm_term(), Some(spare));
     d.drop_warm();
     close(&mut d, &[starter]);
+}
+
+#[test]
+fn an_agent_that_ended_leaves_no_reason_for_a_status_it_no_longer_has() {
+    let (mut d, _rx) = daemon();
+    let id = pane(&mut d);
+    d.terms.get_mut(&id).unwrap().agent = Some("claude".into());
+    d.hook(id, "claude".into(), HookStatus::Working, "PreToolUse", &[]);
+    assert_eq!(d.terms[&id].status_why, "hook: PreToolUse");
+    d.hook(id, "claude".into(), HookStatus::Gone, "SessionEnd", &[]);
+    assert_eq!(d.terms[&id].status, Status::None);
+    assert_eq!(
+        d.terms[&id].status_why, "",
+        "the reason was for the status it had, not for none"
+    );
+    close(&mut d, &[id]);
+}
+
+/// Give `term` an agent conversation, as its hooks would, on branch `main`.
+fn agent_session(d: &mut Daemon, term: TermId, session: &str) {
+    let t = d.terms.get_mut(&term).unwrap();
+    t.agent = Some("claude".into());
+    t.session = Some(session.into());
+    t.label = "api work".into();
+    t.head = Some(crate::gitfs::Head {
+        top: t.cwd.clone(),
+        branch: "main".into(),
+        linked: false,
+        main_root: t.cwd.clone(),
+        detached: false,
+    });
+}
+
+fn closed_ids(d: &Daemon) -> Vec<String> {
+    d.closed_sessions.list().iter().map(|s| s.session.clone()).collect()
+}
+
+#[test]
+fn a_closed_agent_session_is_remembered_once_its_undo_window_passes() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (a, b) = two_panes(&mut d);
+    agent_session(&mut d, b, "abc");
+    let cwd = d.terms[&b].cwd.clone();
+
+    d.command(0, Command::CloseSession { term: b }).unwrap();
+    d.finish_closes();
+    assert!(closed_ids(&d).is_empty(), "not while it can still be undone");
+
+    closed_ago(&mut d, b, UNDO_WINDOW);
+    d.finish_closes();
+    let [kept] = d.closed_sessions.list() else {
+        panic!("one record: {:?}", d.closed_sessions.list());
+    };
+    assert_eq!(
+        (kept.agent.as_str(), kept.session.as_str(), &kept.cwd, kept.branch.as_deref(), kept.title.as_deref()),
+        ("claude", "abc", &cwd, Some("main"), Some("api work"))
+    );
+    assert!(kept.at > 0);
+    close(&mut d, &[a]);
+}
+
+#[test]
+fn an_undone_close_leaves_no_record() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (a, b) = two_panes(&mut d);
+    agent_session(&mut d, b, "abc");
+    d.command(0, Command::CloseSession { term: b }).unwrap();
+    closed_ago(&mut d, b, UNDO_WINDOW - Duration::from_secs(1));
+    d.command(0, Command::UndoClose { term: b }).unwrap();
+    d.finish_closes();
+    assert!(closed_ids(&d).is_empty());
+    d.terms.get_mut(&b).unwrap().session = None;
+    close(&mut d, &[a, b]);
+}
+
+#[test]
+fn a_closed_pane_with_no_conversation_id_leaves_no_record() {
+    let (mut d, _rx) = daemon();
+    let shell = pane(&mut d);
+    let agent = pane(&mut d);
+    d.terms.get_mut(&agent).unwrap().agent = Some("claude".into());
+    d.command(0, Command::ClosePane { term: shell }).unwrap();
+    d.command(0, Command::ClosePane { term: agent }).unwrap();
+    assert!(closed_ids(&d).is_empty());
+}
+
+#[test]
+fn an_agent_whose_process_failed_is_remembered_and_one_that_succeeded_is_not() {
+    let (mut d, _rx) = daemon();
+    let (failed, fine) = (pane(&mut d), pane(&mut d));
+    agent_session(&mut d, failed, "failed");
+    agent_session(&mut d, fine, "fine");
+    d.handle(Ev::ProcessExited(fine, false));
+    d.handle(Ev::ProcessExited(failed, true));
+    assert_eq!(closed_ids(&d), ["failed"]);
+}
+
+#[test]
+fn a_failure_reported_after_the_panes_output_ended_is_still_remembered() {
+    let (mut d, _rx) = daemon();
+    let (failed, fine) = (pane(&mut d), pane(&mut d));
+    agent_session(&mut d, failed, "failed");
+    agent_session(&mut d, fine, "fine");
+    d.handle(Ev::Exited(failed));
+    d.handle(Ev::Exited(fine));
+    assert!(closed_ids(&d).is_empty(), "how it exited is not known yet");
+    d.handle(Ev::ProcessExited(fine, false));
+    d.handle(Ev::ProcessExited(failed, true));
+    assert_eq!(closed_ids(&d), ["failed"]);
+    assert!(d.unreaped.is_empty());
+}
+
+#[test]
+fn a_person_reads_the_closed_sessions_newest_first_and_a_pane_cannot() {
+    let (mut d, _rx) = daemon();
+    let (older, newer, asking) = (pane(&mut d), pane(&mut d), pane(&mut d));
+    agent_session(&mut d, older, "older");
+    agent_session(&mut d, newer, "newer");
+    d.command(0, Command::ClosePane { term: older }).unwrap();
+    d.command(0, Command::ClosePane { term: newer }).unwrap();
+
+    let (tx, mut person) = mpsc::channel(16);
+    d.handle(Ev::Connected(7, tx, false, crate::protocol::Surface::Terminal, true));
+    d.message(7, ClientMsg::Query(Query::ClosedSessions));
+    let Ok(ServerMsg::Reply(Reply::ClosedSessions(list))) = person.try_recv() else {
+        panic!("a person is answered with the list");
+    };
+    assert_eq!(list.iter().map(|s| s.session.as_str()).collect::<Vec<_>>(), ["newer", "older"]);
+
+    let (tx, mut agent) = mpsc::channel(16);
+    d.handle(Ev::Connected(8, tx, false, crate::protocol::Surface::Terminal, true));
+    let token = d.terms[&asking].token.clone();
+    d.handle(Ev::From(8, asking, token));
+    d.message(8, ClientMsg::Query(Query::ClosedSessions));
+    assert!(matches!(agent.try_recv(), Ok(ServerMsg::Error(_))), "folders of other work are not a pane's to read");
+    close(&mut d, &[asking]);
+}
+
+#[test]
+fn a_closed_pane_whose_killed_process_then_fails_is_remembered_once() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    agent_session(&mut d, t, "abc");
+    d.command(0, Command::ClosePane { term: t }).unwrap();
+    d.handle(Ev::ProcessExited(t, true));
+    assert_eq!(closed_ids(&d), ["abc"]);
+}
+
+#[test]
+fn a_process_failing_while_the_daemon_stops_is_not_remembered() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    agent_session(&mut d, t, "abc");
+    d.stopping = true;
+    d.handle(Ev::ProcessExited(t, true));
+    assert!(closed_ids(&d).is_empty());
+}
+
+#[test]
+fn an_agent_the_daemon_stopped_to_reload_is_not_remembered_when_its_restart_fails() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    agent_session(&mut d, t, "abc");
+    d.cfg.shell = Some(concat!("/no/such/shell-for-", env!("APP_COMMAND")).into());
+    assert!(d.reload_agent(t).is_none(), "the new pane cannot start");
+    d.handle(Ev::ProcessExited(t, true));
+    assert!(closed_ids(&d).is_empty());
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_closed_conversation_terminal_is_remembered_once() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (a, b) = two_panes(&mut d);
+    agent_session(&mut d, b, "abc");
+    d.terms.get_mut(&b).unwrap().conversation_id = Some(crate::conversation::ConversationId(9));
+    d.command(0, Command::CloseSession { term: b }).unwrap();
+    assert!(!d.terms.contains_key(&b), "a conversation's terminal closes at once");
+    assert_eq!(closed_ids(&d), ["abc"]);
+    close(&mut d, &[a]);
+}
+
+#[test]
+fn a_conversation_terminal_its_hooks_never_named_is_remembered_by_its_conversation() {
+    use crate::conversation::{Conversation, ConversationId, ExecutionKind, NativeBinding, Provider, RecoveryState};
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (a, b) = two_panes(&mut d);
+    let cwd = d.terms[&b].cwd.clone();
+    d.terms.get_mut(&b).unwrap().conversation_id = Some(ConversationId(9));
+    d.conversations.push(Conversation {
+        id: ConversationId(9),
+        binding: NativeBinding {
+            provider: Provider::Codex,
+            session_id: "native-1".into(),
+            account: None,
+            profile: None,
+            config_root: cwd.clone(),
+            executable: PathBuf::from("codex"),
+            cwd: cwd.clone(),
+            worktree: None,
+        },
+        execution: ExecutionKind::Native,
+        generation: 1,
+        state: RecoveryState::Running,
+        settings: None,
+        awaiting_first_user_message: false,
+        title: Some("parser fix".into()),
+        archived: false,
+        worktree_origin: None,
+    });
+    d.command(0, Command::CloseSession { term: b }).unwrap();
+    let [kept] = d.closed_sessions.list() else {
+        panic!("one record: {:?}", d.closed_sessions.list());
+    };
+    assert_eq!(
+        (kept.agent.as_str(), kept.session.as_str(), kept.title.as_deref(), &kept.cwd),
+        ("codex", "native-1", Some("parser fix"), &cwd)
+    );
+    close(&mut d, &[a]);
 }

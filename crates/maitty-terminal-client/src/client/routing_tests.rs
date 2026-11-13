@@ -10,7 +10,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 const THERE: MachineId = MachineId(1);
 
-const ALL: [Feature; 7] = [
+const ALL: [Feature; 8] = [
     Feature::Files,
     Feature::Changes,
     Feature::Find,
@@ -18,6 +18,7 @@ const ALL: [Feature; 7] = [
     Feature::References,
     Feature::AgentStatus,
     Feature::Worktrees,
+    Feature::ResumeConversation,
 ];
 
 /// Two machines, "build" holding a copy of this one's sessions, and the channel the app sends on.
@@ -296,6 +297,7 @@ fn every_gated_action_is_refused_on_a_remote_pane_and_none_opens_anything() {
         Action::NewWorktree(None),
         Action::RemoveWorktree,
         Action::TidyWorktrees,
+        Action::ResumeConversation,
     ] {
         let (mut app, mut rx) = two_machines();
         focus(&app, THERE);

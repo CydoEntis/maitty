@@ -17,6 +17,12 @@ pub struct Saved {
     pub pending_starts: Vec<crate::conversation::PendingStart>,
     #[serde(default)]
     pub conversation_operations: Vec<crate::conversation::Operation>,
+    /// When the daemon told a resumed conversation to continue; see `continue_turn`.
+    #[serde(default)]
+    pub turn_continues: super::conversation::continue_turn::Continues,
+    /// Chat conversations that were in a turn when this was saved: what a restart cut.
+    #[serde(default)]
+    pub turns_in_flight: Vec<crate::conversation::ConversationId>,
     pub workspaces: Vec<SavedWs>,
     /// Index into `workspaces`.
     pub active: usize,
@@ -77,6 +83,11 @@ pub struct SavedPane {
     pub pinned: bool,
     #[serde(default)]
     pub archived: bool,
+    #[serde(default)]
+    pub put_away_for: Option<String>,
+    /// Snoozed until this time (unix seconds).
+    #[serde(default)]
+    pub snoozed_until: Option<u64>,
     /// The pane that started it, by its id when this was saved (a key of some tab's `panes`).
     #[serde(default)]
     pub started_by: Option<TermId>,

@@ -4,7 +4,8 @@ import { startsTable, streamingText } from './markdown'
 import { describeStep } from './stepInfo'
 import { describeWork } from './workPhase'
 import { documentOf } from './writtenDocument'
-import type { WorkStep } from './workSummary'
+import { isQuietRun, type WorkStep } from './workSummary'
+import type { TurnSpan } from '@/features/inspect/turnRange'
 
 function isDocument(event: ChatEvent): boolean {
   return event.kind === 'edit' && documentOf(event) !== null
@@ -22,8 +23,11 @@ export type ChatRow =
   | { readonly kind: 'agents'; readonly key: string; readonly events: readonly SubagentEvent[] }
   | { readonly kind: 'approval'; readonly key: string; readonly event: ApprovalEvent; readonly step: StepRef | null }
   | { readonly kind: 'divider'; readonly key: string; readonly event: TurnEvent }
-  /** Under a turn that edited files: how many, and the lines added and removed where every diff was kept. */
-  | { readonly kind: 'changes'; readonly key: string; readonly files: readonly string[]; readonly lines: { readonly added: number; readonly removed: number } | null }
+  /**
+   * Under a turn that edited files: how many, and the lines added and removed where every diff was kept. `turn` is when
+   * it ran, null when the times are not the daemon's, so its snapshots cannot be picked by them.
+   */
+  | { readonly kind: 'changes'; readonly key: string; readonly files: readonly string[]; readonly lines: { readonly added: number; readonly removed: number } | null; readonly turn: TurnSpan | null }
   /** What the person just sent, shown before the history has it; `echoText` of `buildRows`. */
   | { readonly kind: 'echo'; readonly key: string; readonly text: string }
   /** A helper agent reporting back (the harness's `<task-notification>`), as one quiet line. */
@@ -74,8 +78,9 @@ function mergedStatus(a: ItemStatus, b: ItemStatus): ItemStatus {
  * The rows for a list of events. The agent's messages that follow each other in one turn become a
  * single message (v18 C.1: one agent message per turn, paragraphs never split into messages). A tool
  * step between two messages ends the first, so the text and the steps keep the order they happened in.
+ * `hideSuccessfulTools` leaves out the runs `isQuietRun` allows to go (Settings › Chat).
  */
-export function buildRows(events: readonly ChatEvent[], working: boolean, root: string | null = null, echoText: string | null = null, echoThinking = true): ChatRow[] {
+export function buildRows(events: readonly ChatEvent[], working: boolean, root: string | null = null, echoText: string | null = null, echoThinking = true, hideSuccessfulTools = false): ChatRow[] {
   const rows: ChatRow[] = []
   const edits = new Map<string, EditEvent[]>()
   for (const event of events) {
@@ -102,7 +107,7 @@ export function buildRows(events: readonly ChatEvent[], working: boolean, root: 
       case 'turn': {
         rows.push({ kind: 'divider', key: event.id, event })
         const changed = changesOf(edits.get(event.turnId) ?? [])
-        if (changed !== null) rows.push({ kind: 'changes', key: `changes:${event.turnId}`, ...changed })
+        if (changed !== null) rows.push({ kind: 'changes', key: `changes:${event.turnId}`, ...changed, turn: event.timed ? { startedAtMs: event.startedAtMs, endedAtMs: event.endedAtMs } : null })
         break
       }
       case 'subagent': {
@@ -126,10 +131,32 @@ export function buildRows(events: readonly ChatEvent[], working: boolean, root: 
       }
     }
   }
+  const shown = hideSuccessfulTools ? withoutQuietRuns(rows) : rows
   // A message just sent is drawn at once, and the agent is taken to be at work on it, until the history says so itself.
-  if (echoText !== null) rows.push({ kind: 'echo', key: ECHO_ROW_KEY, text: echoText })
-  if (working || (echoText !== null && echoThinking)) rows.push({ kind: 'working', key: WORKING_ROW_KEY, phrase: describeWork(events, root) })
-  return linkApprovals(rows, events, root)
+  if (echoText !== null) shown.push({ kind: 'echo', key: ECHO_ROW_KEY, text: echoText })
+  if (working || (echoText !== null && echoThinking)) shown.push({ kind: 'working', key: WORKING_ROW_KEY, phrase: describeWork(events, root) })
+  return linkApprovals(shown, events, root)
+}
+
+function isQuietRow(row: ChatRow): boolean {
+  if (row.kind === 'work') return isQuietRun(row.events)
+  return row.kind === 'step' && row.event.kind !== 'todo' && isQuietRun([row.event])
+}
+
+/**
+ * The rows without the runs of reads and searches that succeeded. The two parts of a turn's message
+ * that such a run stood between read as the one message they would have been without it.
+ */
+function withoutQuietRuns(rows: readonly ChatRow[]): ChatRow[] {
+  const kept: ChatRow[] = []
+  for (const row of rows) {
+    if (isQuietRow(row)) continue
+    const previous = kept.at(-1)
+    if (row.kind === 'agent' && previous?.kind === 'agent' && previous.turnId === row.turnId) {
+      kept[kept.length - 1] = { ...previous, paragraphs: [...previous.paragraphs, ...row.paragraphs], status: mergedStatus(previous.status, row.status) }
+    } else kept.push(row)
+  }
+  return kept
 }
 
 /** The files a turn's edits touched, each once, and their line counts when no diff is missing. */

@@ -6,13 +6,23 @@ use super::git::{
     resolve_conversation_path,
 };
 use crate::repo::{
-    ChangeKind, RepoBranch, RepoChange, RepoCommit, RepoReference, RepoReply, RepoRequest,
-    RepoSnapshot, RepoStatus,
+    ChangeKind, FIND_FILES_MAX_QUERY_CHARS, FIND_FILES_MAX_RESULTS, RepoBranch, RepoChange,
+    RepoCommit, RepoReference, RepoReply, RepoRequest, RepoSnapshot, RepoStatus,
 };
 use anyhow::{Context, Result, bail};
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 const MAX_LOG: usize = 200;
+/// A file search walks at most this many files; a larger checkout is searched only that far.
+const MAX_WALK_FILES: usize = 50_000;
+/// A walk that runs longer than this stops where it is, so a huge or slow folder still answers.
+const WALK_TIME_LIMIT: Duration = Duration::from_millis(1500);
+/// One search asks again on every keystroke; the walk is shared for this long and only re-ranked.
+const WALK_REUSED_FOR: Duration = Duration::from_secs(5);
+const WALK_CACHE_FOLDERS: usize = 16;
 const FIELD: char = '\x1f';
 const RECORD: char = '\x1e';
 
@@ -24,7 +34,9 @@ pub fn answer(dir: &Path, request: &RepoRequest) -> Result<RepoReply> {
     let top = match git(dir, &["rev-parse", "--show-toplevel"]) {
         Ok(top) => top,
         Err(error) => match request {
-            RepoRequest::Tree { .. } | RepoRequest::File { .. } if dir.is_dir() => {
+            RepoRequest::Tree { .. } | RepoRequest::File { .. } | RepoRequest::FindFiles { .. }
+                if dir.is_dir() =>
+            {
                 dir.to_string_lossy().into_owned()
             }
             _ => return Err(error),
@@ -53,20 +65,40 @@ pub fn answer(dir: &Path, request: &RepoRequest) -> Result<RepoReply> {
                 })
                 .collect(),
         ),
+        RepoRequest::RestoreCount { commit } => {
+            known_snapshot(root, commit)?;
+            RepoReply::RestoreCount(
+                crate::snapshot::restore_count(root, commit).map_err(anyhow::Error::msg)?,
+            )
+        }
         RepoRequest::References => RepoReply::References(references(root)?),
+        RepoRequest::FindFiles { query, limit } => find_files(root, query, *limit)?,
     })
 }
 
 /// Put the checkout back as it was in one of its own snapshots (never an arbitrary commit).
-pub fn restore(dir: &Path, commit: &str) -> Result<RepoReply> {
+/// `working` are the folders of structured agents in a turn: one in this checkout would keep
+/// writing into files being rolled back, so the restore is refused.
+pub fn restore(dir: &Path, commit: &str, working: &[PathBuf]) -> Result<RepoReply> {
+    known_snapshot(dir, commit)?;
+    let top = |folder: &Path| git(folder, &["rev-parse", "--show-toplevel"]).ok();
+    if let Some(mine) = top(dir)
+        && working.iter().any(|folder| top(folder).as_ref() == Some(&mine))
+    {
+        bail!("An agent is working in this checkout; wait for it to finish before restoring");
+    }
+    let changed = crate::snapshot::restore(dir, commit).map_err(anyhow::Error::msg)?;
+    Ok(RepoReply::Restored(changed))
+}
+
+fn known_snapshot(dir: &Path, commit: &str) -> Result<()> {
     if !crate::snapshot::list(dir)
         .iter()
         .any(|s| s.commit == commit)
     {
         bail!("That is not one of this checkout's snapshots");
     }
-    let changed = crate::snapshot::restore(dir, commit).map_err(anyhow::Error::msg)?;
-    Ok(RepoReply::Restored(changed))
+    Ok(())
 }
 
 /// Replace the text of an existing file of the checkout `dir` is in. The path is checked as every
@@ -91,6 +123,134 @@ fn references(root: &Path) -> Result<Vec<RepoReference>> {
             modified: r.modified,
         })
         .collect())
+}
+
+/// The query is only ever matched against walked paths, never joined to a folder, so it cannot
+/// reach outside `root`; links are not followed and not listed.
+fn find_files(root: &Path, query: &str, limit: usize) -> Result<RepoReply> {
+    if query.chars().count() > FIND_FILES_MAX_QUERY_CHARS {
+        bail!("A file search is at most {FIND_FILES_MAX_QUERY_CHARS} characters");
+    }
+    let walked = WALKS.get_or_walk(root, Instant::now(), || {
+        walk(root, MAX_WALK_FILES, WALK_TIME_LIMIT)
+    });
+    Ok(RepoReply::Files {
+        paths: rank(&walked.paths, query, limit.min(FIND_FILES_MAX_RESULTS)),
+        truncated: walked.truncated,
+    })
+}
+
+static WALKS: LazyLock<WalkCache> = LazyLock::new(WalkCache::default);
+
+#[derive(Debug, Clone, Default)]
+struct Walked {
+    paths: Arc<Vec<String>>,
+    /// The walk stopped at its file or time limit.
+    truncated: bool,
+}
+
+#[derive(Default)]
+struct WalkCache(Mutex<HashMap<PathBuf, (Instant, Walked)>>);
+
+impl WalkCache {
+    /// The walk of `root` taken within `WALK_REUSED_FOR` of `now`, else a fresh one from `walk`.
+    fn get_or_walk(&self, root: &Path, now: Instant, walk: impl FnOnce() -> Walked) -> Walked {
+        let fresh = |taken: Instant| now.saturating_duration_since(taken) < WALK_REUSED_FOR;
+        if let Some((taken, walked)) = self.lock().get(root)
+            && fresh(*taken)
+        {
+            return walked.clone();
+        }
+        // Walked without the lock, so one slow folder does not hold up a search of another.
+        let walked = walk();
+        let mut cache = self.lock();
+        cache.retain(|_, (taken, _)| fresh(*taken));
+        if cache.len() >= WALK_CACHE_FOLDERS
+            && let Some(oldest) = cache
+                .iter()
+                .min_by_key(|(_, (taken, _))| *taken)
+                .map(|(path, _)| path.clone())
+        {
+            cache.remove(&oldest);
+        }
+        cache.insert(root.to_path_buf(), (now, walked.clone()));
+        walked
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<PathBuf, (Instant, Walked)>> {
+        // The map holds only finished walks, so one left by a panicking search is still whole.
+        self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.lock().len()
+    }
+}
+
+/// Files under `root` that are not hidden or ignored, relative with `/`: at most `cap`, and only
+/// what is found within `time_limit`. `.gitignore` is read only inside a git repository.
+fn walk(root: &Path, cap: usize, time_limit: Duration) -> Walked {
+    let started = Instant::now();
+    let mut paths = Vec::new();
+    let mut truncated = false;
+    let entries = ignore::WalkBuilder::new(root)
+        .hidden(true)
+        .follow_links(false)
+        .build()
+        // An unreadable entry is skipped: a search shows what it can reach.
+        .filter_map(Result::ok);
+    for entry in entries {
+        if started.elapsed() >= time_limit {
+            truncated = true;
+            break;
+        }
+        if !entry.file_type().is_some_and(|kind| kind.is_file()) {
+            continue;
+        }
+        if paths.len() == cap {
+            truncated = true;
+            break;
+        }
+        if let Ok(path) = entry.path().strip_prefix(root) {
+            paths.push(path.to_string_lossy().replace('\\', "/"));
+        }
+    }
+    Walked {
+        paths: Arc::new(paths),
+        truncated,
+    }
+}
+
+/// A file name that starts with the query beats one that holds it, which beats a folder that
+/// holds it; within each, shorter paths first, then by path in byte order.
+fn rank(paths: &[String], query: &str, limit: usize) -> Vec<String> {
+    let query = query.to_lowercase();
+    let mut matched: Vec<(u8, &String)> = paths
+        .iter()
+        .filter_map(|path| Some((match_tier(&path.to_lowercase(), &query)?, path)))
+        .collect();
+    matched.sort_by(|(a_tier, a), (b_tier, b)| {
+        (a_tier, a.chars().count(), a).cmp(&(b_tier, b.chars().count(), b))
+    });
+    matched
+        .into_iter()
+        .take(limit)
+        .map(|(_, path)| path.clone())
+        .collect()
+}
+
+fn match_tier(path: &str, query: &str) -> Option<u8> {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    if name.starts_with(query) {
+        Some(0)
+    } else if name.contains(query) {
+        Some(1)
+    } else if path.contains(query) {
+        Some(2)
+    } else {
+        None
+    }
 }
 
 /// `path` as seen in a pane in `dir`, made relative to the repository top `root`.
@@ -529,9 +689,9 @@ mod tests {
         assert_eq!(kept.len(), 1);
         assert_eq!(kept[0].why, "before claude's turn");
 
-        assert!(restore(repo.path(), "0000000000000000000000000000000000000000").is_err());
+        assert!(restore(repo.path(), "0000000000000000000000000000000000000000", &[]).is_err());
         assert_eq!(
-            restore(repo.path(), &snapshot.commit).unwrap(),
+            restore(repo.path(), &snapshot.commit, &[]).unwrap(),
             RepoReply::Restored(1)
         );
         // git may have written the file with this platform's line ending.
@@ -540,6 +700,57 @@ mod tests {
                 .unwrap()
                 .trim_end(),
             "one"
+        );
+    }
+
+    #[test]
+    fn a_restore_count_names_the_files_a_restore_would_change_and_changes_none() {
+        let repo = repository();
+        let snapshot = crate::snapshot::take(repo.path(), "before claude's turn")
+            .unwrap()
+            .expect("a repository takes snapshots");
+        std::fs::write(repo.path().join("a.txt"), "the agent's edit\n").expect("edit");
+        std::fs::write(repo.path().join("new.txt"), "made since\n").expect("untracked");
+        let count = |commit: &str| {
+            answer(
+                repo.path(),
+                &RepoRequest::RestoreCount {
+                    commit: commit.into(),
+                },
+            )
+        };
+
+        assert!(count("0000000000000000000000000000000000000000").is_err());
+        assert_eq!(count(&snapshot.commit).unwrap(), RepoReply::RestoreCount(2));
+        assert!(repo.path().join("new.txt").exists());
+        assert_eq!(crate::snapshot::list(repo.path()).len(), 1);
+        assert_eq!(
+            restore(repo.path(), &snapshot.commit, &[]).unwrap(),
+            RepoReply::Restored(2)
+        );
+    }
+
+    #[test]
+    fn a_restore_is_refused_while_an_agent_works_in_the_same_checkout() {
+        let repo = repository();
+        let snapshot = crate::snapshot::take(repo.path(), "before codex's turn")
+            .unwrap()
+            .expect("a repository takes snapshots");
+        std::fs::write(repo.path().join("a.txt"), "the agent's edit
+").expect("edit");
+        std::fs::create_dir(repo.path().join("sub")).expect("subfolder");
+        let elsewhere = repository();
+
+        let refused = restore(repo.path(), &snapshot.commit, &[repo.path().join("sub")]);
+        assert!(format!("{:#}", refused.unwrap_err()).contains("working in this checkout"));
+        assert_eq!(
+            std::fs::read_to_string(repo.path().join("a.txt")).unwrap(),
+            "the agent's edit
+"
+        );
+        assert_eq!(
+            restore(repo.path(), &snapshot.commit, &[elsewhere.path().to_path_buf()]).unwrap(),
+            RepoReply::Restored(1)
         );
     }
 
@@ -598,6 +809,110 @@ mod tests {
         assert!(locate_in(repo.path(), &outside.path().join("o.txt").to_string_lossy()).is_err());
         assert!(locate_in(repo.path(), "../../etc/passwd").is_err());
         assert!(locate_in(repo.path(), "sub").is_err());
+    }
+
+    #[test]
+    fn a_file_search_ranks_the_file_name_before_the_folder_and_shorter_paths_first() {
+        let paths = [
+            "src/client/main_view.rs",
+            "docs/domain.md",
+            "main.rs",
+            "src/main/lib.rs",
+            "src/main.rs",
+            "README.md",
+        ]
+        .map(String::from)
+        .to_vec();
+        assert_eq!(
+            rank(&paths, "MAIN", 10),
+            [
+                "main.rs",
+                "src/main.rs",
+                "src/client/main_view.rs",
+                "docs/domain.md",
+                "src/main/lib.rs",
+            ]
+        );
+        assert_eq!(rank(&paths, "main", 2), ["main.rs", "src/main.rs"]);
+    }
+
+    #[test]
+    fn a_file_search_leaves_out_ignored_files_and_refuses_a_long_query() {
+        let repo = repository();
+        std::fs::write(repo.path().join(".gitignore"), "build/\n").expect("ignore file");
+        std::fs::create_dir_all(repo.path().join("build")).expect("ignored folder");
+        std::fs::write(repo.path().join("build/a_out.txt"), "x").expect("ignored file");
+        std::fs::create_dir_all(repo.path().join("src")).expect("folder");
+        std::fs::write(repo.path().join("src/a_lib.rs"), "x").expect("file");
+        let find = |query: &str| {
+            answer(
+                repo.path(),
+                &RepoRequest::FindFiles {
+                    query: query.into(),
+                    limit: 500,
+                },
+            )
+        };
+
+        assert_eq!(
+            find("a").unwrap(),
+            RepoReply::Files {
+                paths: vec!["a.txt".into(), "src/a_lib.rs".into()],
+                truncated: false,
+            }
+        );
+        assert!(find(&"a".repeat(FIND_FILES_MAX_QUERY_CHARS)).is_ok());
+        assert!(find(&"a".repeat(FIND_FILES_MAX_QUERY_CHARS + 1)).is_err());
+    }
+
+    #[test]
+    fn a_file_walk_stops_at_its_cap() {
+        let dir = crate::daemon::persist::scratch_dir();
+        std::fs::create_dir_all(dir.path()).expect("folder");
+        for name in ["a.txt", "b.txt", "c.txt"] {
+            std::fs::write(dir.path().join(name), "x").expect("file");
+        }
+        let long = Duration::from_secs(60);
+
+        let capped = walk(dir.path(), 2, long);
+        assert_eq!((capped.paths.len(), capped.truncated), (2, true));
+        let exact = walk(dir.path(), 3, long);
+        assert_eq!((exact.paths.len(), exact.truncated), (3, false));
+        let out_of_time = walk(dir.path(), MAX_WALK_FILES, Duration::ZERO);
+        assert!(out_of_time.truncated);
+    }
+
+    #[test]
+    fn the_keystrokes_of_one_search_share_one_walk_until_it_goes_stale() {
+        let cache = WalkCache::default();
+        let walks = std::cell::Cell::new(0);
+        let walked = || {
+            walks.set(walks.get() + 1);
+            Walked {
+                paths: std::sync::Arc::new(vec!["a.txt".into()]),
+                truncated: false,
+            }
+        };
+        let start = Instant::now();
+        let here = Path::new("/code/here");
+
+        cache.get_or_walk(here, start, walked);
+        cache.get_or_walk(here, start + Duration::from_secs(1), walked);
+        assert_eq!(walks.get(), 1);
+        cache.get_or_walk(Path::new("/code/there"), start, walked);
+        assert_eq!(walks.get(), 2);
+        cache.get_or_walk(here, start + WALK_REUSED_FOR + Duration::from_secs(1), walked);
+        assert_eq!(walks.get(), 3);
+    }
+
+    #[test]
+    fn the_walk_cache_keeps_a_bounded_number_of_folders() {
+        let cache = WalkCache::default();
+        let now = Instant::now();
+        for n in 0..WALK_CACHE_FOLDERS * 2 {
+            cache.get_or_walk(&PathBuf::from(format!("/code/{n}")), now, Walked::default);
+        }
+        assert_eq!(cache.len(), WALK_CACHE_FOLDERS);
     }
 
     #[test]

@@ -34,15 +34,22 @@ pub struct Head {
     pub linked: bool,
     /// The main checkout of the repository.
     pub main_root: PathBuf,
+    /// HEAD is a commit, not a branch (`branch` is then a short commit).
+    pub detached: bool,
 }
 
-fn read_head(git_dir: &Path) -> Option<String> {
+/// The branch HEAD names, or a short commit, and whether HEAD is detached.
+fn read_head_state(git_dir: &Path) -> Option<(String, bool)> {
     let head = std::fs::read_to_string(git_dir.join("HEAD")).ok()?;
     let head = head.trim();
     Some(match head.strip_prefix("ref:") {
-        Some(r) => r.trim().trim_start_matches("refs/heads/").to_string(),
-        None => head.chars().take(7).collect(),
+        Some(r) => (r.trim().trim_start_matches("refs/heads/").to_string(), false),
+        None => (head.chars().take(7).collect(), true),
     })
+}
+
+fn read_head(git_dir: &Path) -> Option<String> {
+    read_head_state(git_dir).map(|(branch, _)| branch)
 }
 
 /// The checkout `dir` is inside, if any.
@@ -53,11 +60,13 @@ pub fn head(dir: &Path) -> Option<Head> {
         .to_path_buf();
     let dot = top.join(".git");
     if dot.is_dir() {
+        let (branch, detached) = read_head_state(&dot)?;
         return Some(Head {
-            branch: read_head(&dot)?,
+            branch,
             linked: false,
             main_root: top.clone(),
             top,
+            detached,
         });
     }
     // A linked worktree: ".git" is a file "gitdir: <main>/.git/worktrees/<name>".
@@ -75,11 +84,13 @@ pub fn head(dir: &Path) -> Option<Head> {
         .and_then(|p| p.file_name())
         .is_none_or(|n| n != "worktrees")
     {
+        let (branch, detached) = read_head_state(&gitdir)?;
         return Some(Head {
-            branch: read_head(&gitdir)?,
+            branch,
             linked: false,
             main_root: top.clone(),
             top,
+            detached,
         });
     }
     let main_git = gitdir
@@ -89,11 +100,13 @@ pub fn head(dir: &Path) -> Option<Head> {
     // components gives the native spelling, so the main checkout and its worktrees share one
     // root string (clients group sessions by it).
     let main_root = main_git.parent()?.components().collect::<PathBuf>();
+    let (branch, detached) = read_head_state(&gitdir)?;
     Some(Head {
-        branch: read_head(&gitdir)?,
+        branch,
         linked: true,
         main_root,
         top,
+        detached,
     })
 }
 

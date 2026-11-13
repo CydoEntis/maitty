@@ -113,8 +113,8 @@ impl Default for Detection {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Snapshots {
-    /// Keep a checkout's files as they were each time an agent's turn begins there, so a
-    /// turn can be taken back from the agent's menu.
+    /// Keep a checkout's files as they were each time an agent's turn begins and ends there,
+    /// so a turn can be taken back from the agent's menu.
     pub enabled: bool,
 }
 
@@ -270,6 +270,8 @@ pub struct Sessions {
     /// helpers_at_once` fills it in when this is not set (`fold_legacy_helpers`).
     pub helpers_at_once: String,
     pub pr_wake: bool,
+    /// Put away a finished or idle session once the PR watcher reads its pull request merged.
+    pub put_away_merged: bool,
 }
 
 impl Default for Sessions {
@@ -280,6 +282,7 @@ impl Default for Sessions {
             helpers: "ask".into(),
             helpers_at_once: "3".into(),
             pr_wake: true,
+            put_away_merged: false,
         }
     }
 }
@@ -310,6 +313,9 @@ pub struct Restore {
     /// Resume chat conversations that were running when the server stopped, on the same
     /// provider session.
     pub conversations: bool,
+    /// Tell a chat conversation resumed that way to continue where it left off. Off unless
+    /// asked for: it sends the agent a message nobody typed.
+    pub continue_turn: bool,
     /// Re-run commands panes were started with (`spawn-right:lazygit`, `<app> split -- x`).
     pub commands: bool,
     /// Keep each pane's recent output on disk so it is there after a restart. It can hold
@@ -336,6 +342,9 @@ pub struct Worktree {
     /// A new branch's worktree starts from the repository's default branch (what `origin/HEAD`
     /// names, else `main` or `master`) rather than from whatever the main checkout has out.
     pub base_on_default: bool,
+    /// A worktree with no commit and no file change for this many days is flagged inactive in
+    /// its standing. Nothing is removed for it. 0: never flagged.
+    pub inactive_days: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -388,6 +397,7 @@ impl Default for Restore {
             enabled: true,
             agents: true,
             conversations: true,
+            continue_turn: false,
             commands: true,
             output: true,
         }
@@ -403,6 +413,7 @@ impl Default for Worktree {
             delete_with_last: true,
             prewarm: String::new(),
             base_on_default: false,
+            inactive_days: 14,
         }
     }
 }
@@ -1083,6 +1094,14 @@ mod tests {
     }
 
     #[test]
+    fn continuing_a_cut_turn_is_off_until_a_config_turns_it_on() {
+        assert!(!Restore::default().continue_turn);
+        let restore: Restore = toml::from_str("continue_turn = true").unwrap();
+        assert!(restore.continue_turn);
+        assert!(restore.conversations, "the other restore settings keep their defaults");
+    }
+
+    #[test]
     fn persistence_worktree_and_mcp_settings_keep_their_defaults() {
         let restore = Restore::default();
         assert!(
@@ -1097,6 +1116,7 @@ mod tests {
         assert_eq!(worktree.dir, "{repo_parent}/{repo}-worktrees/{branch}");
         assert!(worktree.per_agent && worktree.delete_with_last);
         assert!(worktree.command.is_empty() && worktree.prewarm.is_empty());
+        assert_eq!(worktree.inactive_days, 14);
 
         let mcp = Mcp::default();
         assert_eq!(mcp.approve, "never");

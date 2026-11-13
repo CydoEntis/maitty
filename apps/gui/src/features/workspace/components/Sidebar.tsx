@@ -1,8 +1,7 @@
-import { machineLabel } from '@/data/machineNicknames'
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { machineTitle, UPDATE_WORDS, type MachineHead, type UpdateAction } from '../model/machines'
 import { STATUS_WORD, type SessionView } from '../model/session'
-import { inProject, isShell, machineGroups, projectChoices, projectGroups, projectSections, rowTitle, SIDEBAR_GROUPINGS, statusSections, terminalSessions, type MachineGroup, type SidebarGrouping, type SidebarOrder } from '../model/sidebar'
+import { canPutAway, inProject, isShell, machineGroups, projectChoices, projectGroups, projectSections, rowTitle, SIDEBAR_GROUPINGS, splitPutAway, statusSections, terminalSessions, type MachineGroup, type SidebarGrouping, type SidebarOrder } from '../model/sidebar'
 import type { SubagentView } from '../model/subagents'
 import { useTipWithKeys, useShortcutText } from '@/features/shortcuts/platform'
 import { SidebarResizer } from './SidebarResizer'
@@ -67,10 +66,15 @@ export type SidebarProps = {
   onCopyText: (text: string, what: string) => void
   onShowChanges: (id: string) => void
   onMarkDone: (id: string) => void
+  /** Takes a finished or idle session out of the sections, still running; Bring back puts it back. */
+  onPutAway: (id: string) => void
+  onBringBack: (id: string) => void
   /** Asks for a file to pull from the machine of session `id`. */
   onGetFile: (id: string) => void
   onEndSession: (id: string) => void
   onOpenSettings: () => void
+  /** Opens the list of agent sessions closed on this computer. */
+  onRecentSessions: () => void
   /** The footer's left slot (the update button). The caller owns the updater. */
   updateSlot: ReactNode
   /** The update button in the rail's foot. */
@@ -102,6 +106,7 @@ export function Sidebar(props: SidebarProps) {
 }
 
 const TERMINALS_SECTION = 'terminals'
+const PUT_AWAY_SECTION = 'put-away'
 
 /** Which headings are folded and which machines are grouped by project. */
 function useMachineViews() {
@@ -140,13 +145,15 @@ function Expanded(props: SidebarProps) {
   const hovered = hover === null || menu !== null ? undefined : props.sessions.find((session) => session.id === hover.id)
   const [pickedProject, setPickedProject] = useState<string | null>(null)
   const views = useMachineViews()
+  // Folded until opened, unlike the other headings: what is put away is out of the way.
+  const [putAwayOpen, setPutAwayOpen] = useState(false)
   const reduced = useReducedMotion()
   useFlip(list, reduced)
   useStatusFlash(list, props.sessions, reduced)
   const projects = projectChoices(props.sessions)
   // A project whose last session closed is no longer a choice, so the list goes back to all of them.
   const project = projects.some((choice) => choice.name === pickedProject) ? pickedProject : null
-  const sessions = inProject(props.sessions, project)
+  const { listed: sessions, putAway } = splitPutAway(inProject(props.sessions, project))
   const draft = props.draft ?? null
   const groups = machineGroups(sessions, props.machines, draft !== null, props.order)
   const terminals = terminalSessions(sessions)
@@ -198,6 +205,8 @@ function Expanded(props: SidebarProps) {
       ...(session.machineName === null ? [] : [{ label: 'Get a file…', disabled: !props.online, run: () => { props.onGetFile(session.id) } }]),
       // A finished agent waits under Finished until you look; this files it under Idle without opening it.
       ...(session.status === 'done' ? [{ label: 'Mark as done', disabled: !props.online, run: () => { props.onMarkDone(session.id) } }] : []),
+      ...(canPutAway(session) ? [{ label: 'Put away', disabled: !props.online, run: () => { props.onPutAway(session.id) } }] : []),
+      ...(session.archived ? [{ label: 'Bring back', disabled: !props.online, run: () => { props.onBringBack(session.id) } }] : []),
       'separator',
       // Stopping an agent asks a second click; a plain shell has nothing running to lose.
       { label: agent ? 'Stop session' : 'Close shell', danger: true, disabled: !props.online, run: () => { props.onEndSession(session.id) } },
@@ -239,7 +248,7 @@ function Expanded(props: SidebarProps) {
           session={session}
           selected={selected}
           showProject={showProject}
-          machine={showMachine ? machineLabel(session.machineName) : null}
+          machine={showMachine ? session.machineName : null}
           renaming={props.renamingId === session.id}
           onShow={() => { props.onShowSession(session.id) }}
           onRename={() => { props.onRenameSession(session.id) }}
@@ -248,7 +257,9 @@ function Expanded(props: SidebarProps) {
           onContextMenu={(event) => { openMenu(event, rowTitle(session), sessionMenu(session)) }}
         />
         {/* A sibling of the row, not inside it (a button cannot hold a button): it shows on hover and focus. */}
-        <button type="button" className="mx-row-close" aria-label={`${isShell(session) ? 'Close' : 'Stop'} ${rowTitle(session)}`} title={isShell(session) ? 'Close shell' : 'Stop session'} disabled={!props.online} onClick={() => { props.onEndSession(session.id) }}><Icon name="close" size={12} /></button>
+        {session.archived
+          ? <button type="button" className="mx-row-close is-bring-back" aria-label={`Bring back ${rowTitle(session)}`} title="Bring back" disabled={!props.online} onClick={() => { props.onBringBack(session.id) }}><Icon name="arrowUp" size={12} /></button>
+          : <button type="button" className="mx-row-close" aria-label={`${isShell(session) ? 'Close' : 'Stop'} ${rowTitle(session)}`} title={isShell(session) ? 'Close shell' : 'Stop session'} disabled={!props.online} onClick={() => { props.onEndSession(session.id) }}><Icon name="close" size={12} /></button>}
         {/* Both are kept, each folded while the other shows, so choosing another session eases the rows shut and
             the next session's open, instead of the list under it jumping by their height. */}
         {subagents.length > 0 && (
@@ -332,6 +343,13 @@ function Expanded(props: SidebarProps) {
           {props.sessions.length === 0 && draft === null && <div className="mx-empty-note">No agents running. New chat starts one.</div>}
         </section>
         )}
+        {putAway.length > 0 && (
+          <section aria-label="Put away sessions" className="mx-sections">
+            <ListSection id={PUT_AWAY_SECTION} name="Put away" hint="still running" count={putAway.length} label="Put away" open={putAwayOpen} onToggle={() => { setPutAwayOpen(!putAwayOpen) }}>
+              {putAway.map((session) => renderRow(session, true, true))}
+            </ListSection>
+          </section>
+        )}
       </div>
       {/* Terminals keep to the foot of the sidebar, under the agents however many there are, so they are always in the same place. */}
       {props.grouping !== 'machine' && terminals.length > 0 && (
@@ -345,6 +363,7 @@ function Expanded(props: SidebarProps) {
         {props.online
           ? <span className="mx-foot-slot">{props.updateSlot}</span>
           : <><span className="mx-daemon-dot is-offline" aria-hidden="true" /><span className="mx-daemon-text is-offline" role="status">{props.serviceText ?? 'Reconnecting to maittyd…'}</span></>}
+        <button type="button" className="mx-head-button mx-settings-button" aria-label="Recent sessions" title="Recent sessions: reopen one closed on this computer" onClick={props.onRecentSessions}><Icon name="history" size={13} /></button>
         <button type="button" className="mx-head-button mx-settings-button" aria-label="Settings" title={tip('Settings', 'settings')} onClick={props.onOpenSettings}><Icon name="gear" size={15} /></button>
       </div>
       {hovered && hover && <RowHoverCard session={hovered} row={hover.row} portalContainer={props.portalContainer} />}
@@ -541,7 +560,7 @@ function Rail(props: SidebarProps) {
       </div>
       <div className="mx-rail-divider" />
       <div className="mx-rail-list mx-no-scrollbar" role="list" aria-label="Sessions">
-        {machineGroups(props.sessions, props.machines, false, props.order).flatMap((group) => group.sessions).map((session) => (
+        {machineGroups(splitPutAway(props.sessions).listed, props.machines, false, props.order).flatMap((group) => group.sessions).map((session) => (
           <button
             key={session.id}
             type="button"
@@ -559,6 +578,7 @@ function Rail(props: SidebarProps) {
       <div className="mx-rail-bottom">
         {props.railUpdateSlot}
         <span className={`mx-daemon-dot${props.online ? '' : ' is-offline'}`} role="img" aria-label={label} title={label} />
+        <button type="button" className="mx-head-button is-rail" aria-label="Recent sessions" title="Recent sessions: reopen one closed on this computer" onClick={props.onRecentSessions}><Icon name="history" size={13} /></button>
         <button type="button" className="mx-head-button is-rail" aria-label="Settings" title={tip('Settings', 'settings')} onClick={props.onOpenSettings}><Icon name="gear" /></button>
       </div>
     </div>

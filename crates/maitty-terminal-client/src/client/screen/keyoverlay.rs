@@ -170,7 +170,10 @@ fn group_of(a: &Action) -> &'static str {
         return g;
     }
     match a {
-        A::NewWorkspace | A::CloseWorkspace | A::NewSession | A::AgentStatusSetup => "SESSIONS",
+        A::NewWorkspace | A::CloseWorkspace | A::NewSession | A::AgentStatusSetup | A::ResumeConversation
+        | A::PutAway => {
+            "SESSIONS"
+        }
         A::SplitLeft
         | A::SplitUp
         | A::FocusNext
@@ -203,7 +206,7 @@ fn category_of(act: Option<&Action>) -> &'static str {
         Some(A::Jump | A::Palette | A::Help | A::Find(_) | A::Search | A::Menu) => "Find",
         Some(
             A::ToggleSidebar | A::HideSidebar | A::BrowseTree | A::SidebarWider | A::SidebarNarrower
-            | A::SideMove(_),
+            | A::SideMove(_) | A::PutAway,
         ) => "Sidebar",
         Some(A::ToggleAppearance) => "Appearance",
         _ => "General",

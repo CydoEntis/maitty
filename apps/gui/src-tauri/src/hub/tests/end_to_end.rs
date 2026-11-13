@@ -568,3 +568,41 @@ async fn the_window_is_told_when_a_chat_of_this_computers_daemon_changes() {
     .await;
     assert!(host.errors.is_empty(), "{:?}", host.errors);
 }
+
+#[tokio::test]
+async fn a_delta_with_no_list_to_fit_has_each_machines_daemon_asked_for_its_whole_list() {
+    let (mut here, mut alpha, mut beta) = (Sandbox::new(), Sandbox::new(), Sandbox::new());
+    for sandbox in [&mut here, &mut alpha, &mut beta] {
+        sandbox.start_daemon();
+    }
+    let mut host = Host::new(&here, &alpha, &beta);
+    host.until("this computer and alpha connected, each with a snapshot", |h| {
+        [HERE, ALPHA].iter().all(|m| {
+            h.kinds(*m).last() == Some(&"connected")
+                && h.sessions.get(&m.0).is_some_and(Option::is_some)
+        })
+    })
+    .await;
+
+    let handle = host.hub.handle();
+    for machine in [HERE, ALPHA] {
+        // The list held is dropped, so only a whole one from the daemon can give it again.
+        host.streams.line_up(machine);
+        host.sessions.remove(&machine.0);
+        let delta = ServerMsg::TermsChanged {
+            changed: Vec::new(),
+            removed: Vec::new(),
+            reasons: Default::default(),
+            revision: 999,
+        };
+        let update = Update::Messages {
+            machine,
+            msgs: vec![delta],
+        };
+        react(&mut host.streams, &handle, update, Instant::now());
+    }
+    host.until("each daemon's whole list", |h| {
+        [HERE, ALPHA].iter().all(|m| h.sessions.get(&m.0).is_some_and(Option::is_some))
+    })
+    .await;
+}

@@ -1,21 +1,23 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const sync = vi.hoisted(() => ({ dirty: false, behind: 2, pulled: [] as string[] }))
 function syncOf(folder: string) {
   return { branch: folder === '/dev/api' ? 'main' : 'dev', upstream: 'origin/dev', behind: sync.behind, ahead: 0, dirty: sync.dirty, fetched: true }
 }
-vi.mock('@/api/daemon', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/api/daemon')>()), loadAgentModels: () => Promise.resolve([]), folderSyncState: (folder: string) => Promise.resolve(syncOf(folder)), pullFolder: (folder: string) => { sync.pulled.push(folder); return Promise.resolve() }, folderBranches: () => Promise.resolve({ current: 'dev', branches: [{ name: 'dev', when: 10 }], worktrees: [{ path: '/dev/growth', branch: 'dev', main: true, when: 10 }] }) }))
+type Saved = { id: string; first_message: string; last_active: number }
+const saved = vi.hoisted(() => ({ read: vi.fn<(agent: string, folder: string) => Promise<Saved[] | null>>(() => Promise.resolve([])) }))
+vi.mock('@/api/daemon', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/api/daemon')>()), savedConversations: (agent: string, folder: string) => saved.read(agent, folder), agentsInstalled: () => Promise.resolve(['claude', 'codex', 'gemini']), loadAgentModels: () => Promise.resolve([]), folderSyncState: (folder: string) => Promise.resolve(syncOf(folder)), pullFolder: (folder: string) => { sync.pulled.push(folder); return Promise.resolve() }, folderBranches: () => Promise.resolve({ current: 'dev', branches: [{ name: 'dev', when: 10 }], worktrees: [{ path: '/dev/growth', branch: 'dev', main: true, when: 10 }] }) }))
 
 const attach = vi.hoisted(() => ({ attachLocalFile: vi.fn(), chooseFilesToAttach: vi.fn() }))
 vi.mock('@/api/attachments', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/api/attachments')>()), ...attach }))
 
-import { NewChatPage } from './NewChatPage'
+import { NewChatPage, type NewChatRequest } from './NewChatPage'
 
 const PROJECTS = [{ folder: '/dev/growth', name: 'growth', color: 'teal', sessions: 6 }, { folder: '/dev/api', name: 'api', color: 'blue', sessions: 2 }]
 
-function page(onStart: (request: { message: string }) => Promise<void> = () => Promise.resolve()) {
+function page(onStart: (request: NewChatRequest) => Promise<void> = () => Promise.resolve()) {
   return render(
     <div className="mx-app">
       <NewChatPage machine={0} machines={[{ machine: 0, label: 'This computer', local: true }]} projects={PROJECTS} defaultAgent="claude" browse={() => Promise.resolve(null)} onStart={onStart} onOtherMachine={() => undefined} onCancel={() => undefined} />
@@ -98,7 +100,46 @@ describe('the new chat page', () => {
     await userEvent.type(screen.getByRole('textbox', { name: 'First message' }), 'hello')
     await userEvent.click(screen.getByRole('button', { name: 'Send message' }))
     await waitFor(() => { expect(onStart).toHaveBeenCalled() })
-    expect(onStart.mock.calls[0]?.[0].branch).toEqual({ name: expect.stringMatching(/^[a-z]+-[a-z]+$/) as unknown, create: true, worktree: true })
+    expect(onStart.mock.calls[0]?.[0].branch).toEqual({ name: 'hello', create: true, worktree: true })
+  })
+
+  it('names the new branch after the message as it is typed, and two words while it has none', async () => {
+    page()
+    expect(await screen.findByRole('button', { name: /^Branch: [a-z]+-[a-z]+$/ })).toBeInTheDocument()
+    await userEvent.type(screen.getByRole('textbox', { name: 'First message' }), 'Fix the login bug')
+    expect(screen.getByRole('button', { name: 'Branch: fix-the-login-bug' })).toBeInTheDocument()
+    await userEvent.clear(screen.getByRole('textbox', { name: 'First message' }))
+    expect(screen.getByRole('button', { name: /^Branch: [a-z]+-[a-z]+$/ })).toBeInTheDocument()
+  })
+
+  it('names the branch after a suggested task when that is what is sent', async () => {
+    const onStart = vi.fn<(request: NewChatRequest) => Promise<void>>().mockResolvedValue(undefined)
+    page(onStart)
+    await screen.findByRole('button', { name: /^Branch: [a-z]+-[a-z]+$/ })
+    await userEvent.click(screen.getByRole('button', { name: /Review my uncommitted changes/ }))
+    await waitFor(() => { expect(onStart.mock.calls[0]?.[0].branch?.name).toBe('review-my-uncommitted-changes') })
+  })
+
+  it('keeps the two-word name for a page opened with a message, such as a chat’s summary', async () => {
+    render(
+      <div className="mx-app">
+        <NewChatPage machine={0} machines={[{ machine: 0, label: 'This computer', local: true }]} projects={PROJECTS} defaultAgent="claude" browse={() => Promise.resolve(null)} onStart={() => Promise.resolve()} onOtherMachine={() => undefined} onCancel={() => undefined}
+          seed={{ folder: '/dev/growth', message: 'This continues an earlier chat whose context was full.' }} />
+      </div>,
+    )
+    expect(await screen.findByRole('button', { name: /^Branch: [a-z]+-[a-z]+$/ })).toBeInTheDocument()
+  })
+
+  it('stops following the message once a branch is named', async () => {
+    const onStart = vi.fn<(request: NewChatRequest) => Promise<void>>().mockResolvedValue(undefined)
+    page(onStart)
+    await userEvent.click(await screen.findByRole('button', { name: /^Branch: / }))
+    await userEvent.type(screen.getByRole('textbox', { name: 'Search or create a branch' }), 'my-own')
+    await userEvent.click(screen.getByRole('radio', { name: 'Create branch my-own' }))
+    await userEvent.type(screen.getByRole('textbox', { name: 'First message' }), 'Fix the login bug')
+    expect(screen.getByRole('button', { name: 'Branch: my-own' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Send message' }))
+    await waitFor(() => { expect(onStart.mock.calls[0]?.[0].branch?.name).toBe('my-own') })
   })
 
   it('edits the checkout on its own branch when Own copy is turned off', async () => {
@@ -211,6 +252,97 @@ describe('the new chat page', () => {
   })
 })
 
+describe('resuming a saved conversation from the new chat page', () => {
+  const ID = '0d0f5c1e-1111-4222-8333-444455556666'
+  const HOURS_AGO_2 = Math.floor(Date.now() / 1000) - 7200
+  beforeEach(() => { saved.read.mockReset(); saved.read.mockResolvedValue([]) })
+
+  it('lists each conversation saved for the folder with its first message and how long ago it was active', async () => {
+    saved.read.mockResolvedValue([{ id: ID, first_message: 'Fix the login redirect', last_active: HOURS_AGO_2 }])
+    page()
+    const list = await screen.findByRole('list', { name: 'Resume' })
+    const row = within(list).getByRole('button', { name: /Fix the login redirect/ })
+    expect(row).toHaveTextContent('2h')
+    expect(saved.read).toHaveBeenLastCalledWith('claude', '/dev/growth')
+  })
+
+  it('starts the agent with the picked conversation in the folder it was saved in, without Own copy', async () => {
+    saved.read.mockResolvedValue([{ id: ID, first_message: 'Fix the login redirect', last_active: HOURS_AGO_2 }])
+    const onStart = vi.fn<(request: { resume: string | null; branch: unknown; folder: string }) => Promise<void>>().mockResolvedValue(undefined)
+    page(onStart)
+    await screen.findByRole('list', { name: 'Resume' })
+    expect(screen.getByRole('switch', { name: 'Own copy' })).toBeChecked()
+    expect(screen.getByText('A resumed conversation continues in growth, the folder it was saved in, not in a copy of its own.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Fix the login redirect/ }))
+    await waitFor(() => { expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ folder: '/dev/growth', resume: ID, branch: null })) })
+  })
+
+  it('says a typed message goes to the conversation picked, and sends it there', async () => {
+    saved.read.mockResolvedValue([{ id: ID, first_message: 'Fix the login redirect', last_active: HOURS_AGO_2 }])
+    const onStart = vi.fn<(request: NewChatRequest) => Promise<void>>().mockResolvedValue(undefined)
+    page(onStart)
+    await screen.findByRole('list', { name: 'Resume' })
+    const note = 'Your message is sent to the conversation you pick.'
+    expect(screen.queryByText(note)).not.toBeInTheDocument()
+    await userEvent.type(screen.getByRole('textbox', { name: 'First message' }), 'now add a test')
+    expect(screen.getByText(note)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Fix the login redirect/ }))
+    await waitFor(() => { expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ resume: ID, message: 'now add a test' })) })
+  })
+
+  it('asks for the agent picked: Codex\'s own conversations for a Codex chat', async () => {
+    codexPage(() => Promise.resolve())
+    await waitFor(() => { expect(saved.read).toHaveBeenLastCalledWith('codex', '/dev/growth') })
+  })
+
+  it('shows no list when the folder has no saved conversations, and a new chat starts as ever', async () => {
+    const onStart = vi.fn<(request: { resume: string | null }) => Promise<void>>().mockResolvedValue(undefined)
+    page(onStart)
+    await waitFor(() => { expect(saved.read).toHaveBeenCalled() })
+    expect(screen.queryByRole('list', { name: 'Resume' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Start chat' }))
+    await waitFor(() => { expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ resume: null })) })
+  })
+
+  it('says in one quiet line that they could not be read, and a new chat still starts', async () => {
+    saved.read.mockRejectedValue(new Error('the local daemon did not answer'))
+    const onStart = vi.fn(() => Promise.resolve())
+    page(onStart)
+    expect(await screen.findByText('Could not read the saved conversations.')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Start chat' }))
+    await waitFor(() => { expect(onStart).toHaveBeenCalled() })
+  })
+
+  it('says in one quiet line when the service running is too old to list them', async () => {
+    saved.read.mockResolvedValue(null)
+    page()
+    expect(await screen.findByText('Restart the Maitty service to see saved conversations.')).toBeInTheDocument()
+  })
+
+  it('never lets a late answer for the folder left behind replace the one picked', async () => {
+    let answerGrowth: (found: Saved[]) => void = () => undefined
+    saved.read.mockImplementation((_agent, folder) => (folder === '/dev/growth' ? new Promise((resolve) => { answerGrowth = resolve }) : Promise.resolve([])))
+    page()
+    await waitFor(() => { expect(saved.read).toHaveBeenCalledWith('claude', '/dev/growth') })
+    await userEvent.click(within(await screen.findByRole('group', { name: 'Switch to' })).getByRole('button', { name: /api/ }))
+    await waitFor(() => { expect(saved.read).toHaveBeenLastCalledWith('claude', '/dev/api') })
+    answerGrowth([{ id: ID, first_message: 'Work in growth', last_active: HOURS_AGO_2 }])
+    await new Promise((resolve) => { setTimeout(resolve, 20) })
+    expect(screen.queryByRole('list', { name: 'Resume' })).not.toBeInTheDocument()
+  })
+
+  it('is not offered on another machine, whose saved conversations this computer cannot read', async () => {
+    render(
+      <div className="mx-app">
+        <NewChatPage machine={2} machines={[{ machine: 0, label: 'This computer', local: true }, { machine: 2, label: 'Shipyard', local: false }]} projects={[{ folder: '/srv/app', name: 'app', color: 'teal', sessions: 3 }]} defaultAgent="claude" browse={null} onStart={() => Promise.resolve()} onOtherMachine={() => undefined} onCancel={() => undefined} />
+      </div>,
+    )
+    await pickProject('app')
+    expect(saved.read).not.toHaveBeenCalled()
+  })
+})
+
 describe('the new chat page opened from a full chat', () => {
   it('opens on that chat\'s folder with the summary as the first message, ready to edit', async () => {
     render(
@@ -220,6 +352,184 @@ describe('the new chat page opened from a full chat', () => {
     )
     expect(await screen.findByRole('button', { name: 'Project: api' })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'First message' })).toHaveValue('This continues an earlier chat')
+  })
+})
+
+describe('starting a chat and going on writing', () => {
+  type Start = (request: NewChatRequest, options?: { background?: boolean }) => Promise<void>
+  const box = () => screen.getByRole('textbox', { name: 'First message' })
+  async function ready() {
+    await screen.findByRole('button', { name: /^Branch: [a-z]+-[a-z]+$/ })
+  }
+
+  it('starts the chat in the background on Ctrl+Enter, and empties the box with every other choice kept', async () => {
+    const onStart = vi.fn<Start>().mockResolvedValue(undefined)
+    page(onStart)
+    await ready()
+    await userEvent.click(screen.getByRole('button', { name: /^Starting permission mode/ }))
+    await userEvent.click(screen.getByRole('menuitemradio', { name: /^Plan mode/ }))
+    await userEvent.type(box(), 'first task')
+    await userEvent.keyboard('{Control>}{Enter}{/Control}')
+
+    expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ folder: '/dev/growth', message: 'first task', mode: 'plan' }), { background: true })
+    expect(box()).toHaveValue('')
+    expect(screen.getByRole('heading', { name: 'What should we work on?' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Project: growth' })).toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: 'Own copy' })).toBeChecked()
+    expect(screen.getByRole('button', { name: /^Starting permission mode: Plan mode/ })).toBeInTheDocument()
+  })
+
+  it('starts a second while the first is still starting, each in a worktree of its own', async () => {
+    const onStart = vi.fn<Start>(() => new Promise(() => undefined))
+    page(onStart)
+    await ready()
+    await userEvent.type(box(), 'first task')
+    await userEvent.keyboard('{Control>}{Enter}{/Control}')
+    await userEvent.type(box(), 'second task')
+    await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
+
+    expect(onStart.mock.calls.map(([request]) => request.message)).toEqual(['first task', 'second task'])
+    const [first, second] = onStart.mock.calls.map(([request]) => request.branch)
+    expect(first).toMatchObject({ create: true, worktree: true })
+    expect(second).toMatchObject({ create: true, worktree: true })
+    expect(second?.name).not.toBe(first?.name)
+  })
+
+  it('names a start that failed and puts its message back after what was typed since', async () => {
+    let fail: (reason: Error) => void = () => undefined
+    const onStart = vi.fn<Start>(() => new Promise((_, reject) => { fail = reject }))
+    page(onStart)
+    await ready()
+    await userEvent.type(box(), 'fix the login')
+    await userEvent.keyboard('{Control>}{Enter}{/Control}')
+    await userEvent.type(box(), 'a new draft')
+    fail(new Error('The worktree could not be made'))
+
+    expect(await screen.findByText(/Could not start “fix the login”: The worktree could not be made/)).toBeInTheDocument()
+    expect(box()).toHaveValue('a new draft')
+    await userEvent.click(screen.getByRole('button', { name: 'Put back “fix the login”' }))
+    expect(box()).toHaveValue('a new draft\n\nfix the login')
+    expect(screen.queryByText(/Could not start/)).not.toBeInTheDocument()
+  })
+
+  it('starts the same message with each agent ticked, each on a new branch in its own worktree and on its own defaults', async () => {
+    const onStart = vi.fn<Start>(() => new Promise(() => undefined))
+    page(onStart)
+    await ready()
+    await userEvent.click(screen.getByRole('button', { name: /^Starting permission mode/ }))
+    await userEvent.click(screen.getByRole('menuitemradio', { name: /^Plan mode/ }))
+    await userEvent.click(within(screen.getByRole('group', { name: 'Also start with' })).getByRole('checkbox', { name: 'Codex' }))
+    await userEvent.type(box(), 'fix the login{Enter}')
+
+    expect(onStart).toHaveBeenCalledTimes(2)
+    const [main, extra] = onStart.mock.calls
+    expect(main).toEqual([expect.objectContaining({ agent: 'claude', mode: 'plan', message: 'fix the login' })])
+    expect(extra).toEqual([expect.objectContaining({ agent: 'codex', model: 'default', reasoning: 'medium', mode: 'codexAuto', message: 'fix the login', resume: null }), { background: true }])
+    expect(extra?.[0].branch).toMatchObject({ create: true, worktree: true })
+    expect(extra?.[0].branch?.name).not.toBe(main?.[0].branch?.name)
+  })
+
+  it('names each ticked agent’s branch after the message too, each with its own number', async () => {
+    const onStart = vi.fn<Start>(() => new Promise(() => undefined))
+    page(onStart)
+    await ready()
+    const also = within(screen.getByRole('group', { name: 'Also start with' }))
+    await userEvent.click(also.getByRole('checkbox', { name: 'Codex' }))
+    await userEvent.click(also.getByRole('checkbox', { name: 'Gemini' }))
+    await userEvent.type(box(), 'fix the login{Enter}')
+
+    expect(onStart.mock.calls.map(([request]) => request.branch?.name)).toEqual(['fix-the-login', 'fix-the-login-2', 'fix-the-login-3'])
+  })
+
+  it('names each ticked agent’s branch after a suggested task when that is what is sent', async () => {
+    const onStart = vi.fn<Start>(() => new Promise(() => undefined))
+    page(onStart)
+    await ready()
+    await userEvent.click(within(screen.getByRole('group', { name: 'Also start with' })).getByRole('checkbox', { name: 'Codex' }))
+    await userEvent.click(screen.getByRole('button', { name: /Review my uncommitted changes/ }))
+
+    expect(onStart.mock.calls.map(([request]) => request.branch?.name)).toEqual(['review-my-uncommitted-changes', 'review-my-uncommitted-changes-2'])
+  })
+
+  it('names a failed main start by its agent when others went with it, and a retry starts only the main agent', async () => {
+    let fail: (reason: Error) => void = () => undefined
+    const onStart = vi.fn<Start>((request) => new Promise((_, reject) => { if (request.agent === 'claude') fail = reject }))
+    page(onStart)
+    await ready()
+    await userEvent.click(within(screen.getByRole('group', { name: 'Also start with' })).getByRole('checkbox', { name: 'Codex' }))
+    await userEvent.type(box(), 'fix the login{Enter}')
+    fail(new Error('boom'))
+
+    expect(await screen.findByText('Could not start the chat with Claude: boom')).toBeInTheDocument()
+    await userEvent.type(box(), '{Enter}')
+    await waitFor(() => { expect(onStart).toHaveBeenCalledTimes(3) })
+    expect(onStart.mock.calls.map(([request]) => request.agent)).toEqual(['claude', 'codex', 'claude'])
+  })
+
+  it('drops an agent from the others once it is the one the chat starts with', async () => {
+    page()
+    await ready()
+    await userEvent.click(within(screen.getByRole('group', { name: 'Also start with' })).getByRole('checkbox', { name: 'Codex' }))
+    await userEvent.click(screen.getByRole('button', { name: /^Agent, model and reasoning/ }))
+    await userEvent.click(within(screen.getByRole('radiogroup', { name: 'Agent' })).getByRole('radio', { name: 'Codex' }))
+    await userEvent.click(within(screen.getByRole('radiogroup', { name: 'Agent' })).getByRole('radio', { name: 'Claude' }))
+    await userEvent.keyboard('{Escape}')
+
+    expect(within(screen.getByRole('group', { name: 'Also start with' })).getByRole('checkbox', { name: 'Codex' })).not.toBeChecked()
+  })
+
+  it('will not tick another agent with Own copy off, and says why', async () => {
+    const onStart = vi.fn<Start>(() => new Promise(() => undefined))
+    page(onStart)
+    await ready()
+    const codex = within(screen.getByRole('group', { name: 'Also start with' })).getByRole('checkbox', { name: 'Codex' })
+    await userEvent.click(codex)
+    await userEvent.click(screen.getByRole('switch', { name: 'Own copy' }))
+
+    expect(codex).toHaveAttribute('aria-disabled', 'true')
+    expect(codex).not.toBeChecked()
+    expect(codex).toHaveAccessibleDescription('Each agent needs a copy of its own. Turn on Own copy to start several.')
+    await userEvent.click(codex)
+    expect(codex).not.toBeChecked()
+    await userEvent.type(box(), 'fix the login{Enter}')
+    expect(onStart).toHaveBeenCalledTimes(1)
+  })
+
+  it('names each failed start by its agent, lets the others go on, and puts the message back once', async () => {
+    const onStart = vi.fn<Start>((request) => (request.agent === 'claude' ? new Promise(() => undefined) : Promise.reject(new Error('no worktree'))))
+    page(onStart)
+    await ready()
+    const also = within(screen.getByRole('group', { name: 'Also start with' }))
+    await userEvent.click(also.getByRole('checkbox', { name: 'Codex' }))
+    await userEvent.click(also.getByRole('checkbox', { name: 'Gemini' }))
+    attach.chooseFilesToAttach.mockResolvedValue(['/home/me/errors.log'])
+    attach.attachLocalFile.mockResolvedValue({ path: '/data/attachments/attach-1-errors.log', name: 'errors.log', size: 120, kind: 'file' })
+    await userEvent.click(screen.getByRole('button', { name: 'Attach files' }))
+    expect(await screen.findByText('errors.log')).toBeInTheDocument()
+    await userEvent.type(box(), 'fix the login')
+    await userEvent.keyboard('{Control>}{Enter}{/Control}')
+
+    expect(onStart.mock.calls.map(([request]) => request.agent)).toEqual(['claude', 'codex', 'gemini'])
+    for (const [request] of onStart.mock.calls) expect(request.message).toContain('/data/attachments/attach-1-errors.log')
+    expect(new Set(onStart.mock.calls.map(([request]) => request.branch?.name)).size).toBe(3)
+    expect(await screen.findByText(/Could not start “fix the login” with Codex: no worktree/)).toBeInTheDocument()
+    expect(await screen.findByText(/Could not start “fix the login” with Gemini: no worktree/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Put back “fix the login” with Codex' }))
+    expect(box()).toHaveValue('fix the login')
+    expect(screen.queryByRole('button', { name: /^Put back/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Dismiss “fix the login” with Gemini' })).toBeInTheDocument()
+  })
+
+  it('starts and opens the chat on plain Enter, as before', async () => {
+    const onStart = vi.fn<Start>(() => new Promise(() => undefined))
+    page(onStart)
+    await ready()
+    await userEvent.type(box(), 'open it{Enter}')
+
+    expect(onStart).toHaveBeenCalledTimes(1)
+    expect(onStart.mock.calls[0]).toHaveLength(1)
+    expect(box()).toHaveValue('open it')
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled()
   })
 })
 

@@ -1,4 +1,5 @@
 import type { MouseEvent } from 'react'
+import { machineLabel } from '@/data/machineNicknames'
 import { MAX_SESSION_NAME_LENGTH, STATUS_WORD, type SessionView } from '../model/session'
 import { isShell, projectColor, projectOf, rowTitle, rowWord } from '../model/sidebar'
 import { AppIcon, Icon, StatusBadge } from './glyphs'
@@ -11,7 +12,7 @@ type Props = {
   selected: boolean
   /** Inside a project group the project is in the heading, so the row leaves it out. */
   showProject: boolean
-  /** The other machine the session runs on, when no heading above the row says so. */
+  /** The real name of the other machine the session runs on, when no heading above the row says so. */
   machine?: string | null
   renaming: boolean
   onShow: () => void
@@ -37,7 +38,7 @@ function PlaceLine({ session, showProject, machine }: { session: SessionView; sh
           <span className="mx-row-project-name">{project}</span>
         </span>
       )}
-      {machine !== null && <span className="mx-row-machine">· {machine}</span>}
+      {machine !== null && <span className="mx-row-machine" title={machine}>· {machineLabel(machine)}</span>}
       {session.branch && (
         <span className={`mx-row-branch${session.worktree ? ' is-worktree' : ''}`} title={session.worktree ? `Worktree on branch ${session.branch}` : `Branch ${session.branch}`}>
           <Icon name={session.worktree ? 'worktree' : 'branch'} size={10} />
@@ -48,12 +49,12 @@ function PlaceLine({ session, showProject, machine }: { session: SessionView; sh
   )
 }
 
-/** One session in the sidebar: its app tile and status badge, where it is over its name (the folder at the left, the branch or worktree at the right), and beside the name a word when it stopped, else how long it has been in its state. */
+/** One session in the sidebar: its app tile and status badge, where it is over its name (the folder at the left, the branch or worktree at the right), and beside the name a word when it stopped or is held by its plan limit, else how long it has been in its state. */
 export function SessionRow({ session, selected, showProject, machine = null, renaming, onShow, onRename, onSetName, onCancelRename, onContextMenu }: Props) {
   const title = rowTitle(session)
   const active = !isShell(session) && session.status !== 'idle'
   const word = rowWord(session)
-  const className = `mx-row${selected ? ' is-selected' : ''}${active ? ' is-active' : ''}${isShell(session) ? ' is-shell' : ''}${session.status === 'unknown' ? ' is-offline' : ''}`
+  const className = `mx-row${selected ? ' is-selected' : ''}${active ? ' is-active' : ''}${isShell(session) ? ' is-shell' : ''}${session.status === 'unknown' ? ' is-offline' : ''}${session.status === 'limited' ? ' is-limited' : ''}`
   const icon = (
     <span className="mx-row-icon">
       <AppIcon process={session.process} size={26} dimmed={session.status === 'unknown'} />
@@ -76,7 +77,7 @@ export function SessionRow({ session, selected, showProject, machine = null, ren
       type="button"
       className={className}
       onPointerDown={(event) => { beginPointerDrag(event, { kind: 'session', id: session.id, label: title }) }}
-      aria-label={`${title}, ${session.process}, ${STATUS_WORD[session.status]}`}
+      aria-label={`${title}, ${session.process}, ${session.status === 'limited' ? word : STATUS_WORD[session.status]}`}
       aria-current={selected ? 'page' : undefined}
       onClick={onShow}
       onDoubleClick={(event) => { event.preventDefault(); onRename() }}

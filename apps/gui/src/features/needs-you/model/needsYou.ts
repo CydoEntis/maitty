@@ -11,7 +11,8 @@ export function byCreation(a: Pick<SessionView, 'pane' | 'machine'>, b: Pick<Ses
 export type JumpTarget = { session: SessionView; /** 1-based place among the sessions that need you. */ position: number; total: number }
 
 /**
- * The next session that needs you (waiting on an answer, or stopped on an error, as the sidebar groups them) after `currentId`, wrapping. "After" is by creation order, so it
+ * The next session that needs you (waiting on an answer, or stopped on an error) after `currentId`, wrapping. One held by its plan limit is listed
+ * under the sidebar's Needs you but is not one of these: it waits on the limit, not on you. "After" is by creation order, so it
  * is right even when the current session does not need you itself. Null when nothing needs you: the
  * jump then only says so; it never falls back to a finished session.
  */

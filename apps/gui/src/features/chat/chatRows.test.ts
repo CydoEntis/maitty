@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TurnEvent } from './chatEvents'
-import { approvalEvent, commandEvent, editEvent, messageEvent } from './eventFixtures'
+import { approvalEvent, commandEvent, editEvent, messageEvent, todoEvent, toolEvent } from './eventFixtures'
 import { buildRows, dividerText, formatDuration, paragraphsOf, splitLead, streamingParagraphs } from './chatRows'
 
 const message = messageEvent
@@ -42,7 +42,12 @@ describe('buildRows', () => {
     const diff = (added: number, removed: number) => ({ status: 'available' as const, hunks: [], added, removed, truncated: false })
     const rows = buildRows([editEvent('e1', { file: 'a.ts', diff: diff(3, 1) }), editEvent('e2', { file: 'a.ts', diff: diff(2, 0) }), editEvent('e3', { file: 'b.ts', diff: diff(1, 1) }), turn('completed', true)], false)
 
-    expect(rows.at(-1)).toEqual({ kind: 'changes', key: 'changes:t1', files: ['a.ts', 'b.ts'], lines: { added: 6, removed: 2 } })
+    expect(rows.at(-1)).toEqual({ kind: 'changes', key: 'changes:t1', files: ['a.ts', 'b.ts'], lines: { added: 6, removed: 2 }, turn: { startedAtMs: 1_000, endedAtMs: 8_000 } })
+  })
+
+  it('gives a changes row no turn times when the daemon did not time it', () => {
+    const rows = buildRows([editEvent('e1', { file: 'a.ts' }), turn('completed', false)], false)
+    expect(rows.at(-1)).toMatchObject({ kind: 'changes', turn: null })
   })
 
   it('gives no line counts when a diff was not kept, and no card for a turn that changed nothing', () => {
@@ -121,3 +126,61 @@ describe('the paragraphs of a reply that is still arriving', () => {
   })
 })
 
+describe('buildRows with Hide successful tool calls', () => {
+  const read = (id: string, over: Parameters<typeof toolEvent>[1] = {}) => toolEvent(id, { target: `${id}.ts`, ...over })
+  const kinds = (events: Parameters<typeof buildRows>[0], hide: boolean) => buildRows(events, false, null, null, true, hide).map((row) => row.kind)
+  const failedRun = [message('u', 'user', 'go'), commandEvent('c', { status: 'failed', exitCode: 1 }), read('r1'), read('r2'), read('r3'), turn('completed', true)]
+
+  it('draws every run while the setting is off', () => {
+    expect(kinds([read('r1'), read('r2'), read('r3')], false)).toEqual(['work'])
+  })
+
+  it('leaves out a run of reads and searches that all succeeded, and a lone one', () => {
+    expect(kinds([message('u', 'user', 'go'), read('r1'), read('r2'), read('r3'), turn('completed', true)], true)).toEqual(['user', 'divider'])
+    expect(kinds([message('u', 'user', 'go'), read('g', { name: 'Grep' }), turn('completed', true)], true)).toEqual(['user', 'divider'])
+  })
+
+  it('keeps a command that succeeded, since it may have changed files', () => {
+    expect(kinds([commandEvent('c', { exitCode: 0 })], true)).toEqual(['step'])
+    expect(kinds([read('r1'), commandEvent('c', { exitCode: 0 }), read('r2')], true)).toEqual(['work'])
+  })
+
+  it('keeps a tool of unknown kind that succeeded, an MCP tool named like a search among them', () => {
+    expect(kinds([read('m', { name: 'mcp__files__write' })], true)).toEqual(['step'])
+    expect(kinds([read('m', { name: 'mcp__fs__search_and_replace' })], true)).toEqual(['step'])
+    expect(kinds([read('m', { name: 'mcp__x__update_list' })], true)).toEqual(['step'])
+  })
+
+  it('keeps a run with a failed command in it, whole', () => {
+    const rows = buildRows(failedRun, false, null, null, true, true)
+
+    expect(rows.map((row) => row.kind)).toEqual(['user', 'work', 'divider'])
+    expect(rows[1]?.kind === 'work' && rows[1].events.map((event) => event.id)).toEqual(['c', 'r1', 'r2', 'r3'])
+  })
+
+  it("keeps a run that edited a file, and the turn's changes row under it", () => {
+    expect(kinds([read('r1'), editEvent('e1'), turn('completed', true)], true)).toEqual(['work', 'divider', 'changes'])
+  })
+
+  it('keeps a run of reads still running, stopped, or with a failed read', () => {
+    expect(kinds([read('r1'), read('r2', { status: 'running' })], true)).toEqual(['work'])
+    expect(kinds([read('r1'), read('r2', { status: 'interrupted' })], true)).toEqual(['work'])
+    expect(kinds([read('r1'), read('r2', { status: 'failed' })], true)).toEqual(['work'])
+  })
+
+  it('keeps the to-do list, which is not a tool call', () => {
+    expect(kinds([todoEvent('todo', [{ text: 'Plan', state: 'current' }])], true)).toEqual(['step'])
+  })
+
+  it('reads the two parts of a message a hidden run stood between as one message', () => {
+    const rows = buildRows([message('a1', 'agent', 'Looking.'), read('r1'), read('r2'), message('a2', 'agent', 'Found it.')], false, null, null, true, true)
+
+    expect(rows).toEqual([{ kind: 'agent', key: 'a1', turnId: 't1', paragraphs: ['Looking.', 'Found it.'], status: 'completed' }])
+  })
+
+  it('points an approval at no row when the step it is about was hidden', () => {
+    const rows = buildRows([read('r1'), approvalEvent(4, { stepId: 'r1' })], false, null, null, true, true)
+
+    expect(rows).toMatchObject([{ kind: 'approval', step: null }])
+  })
+})

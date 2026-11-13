@@ -4,6 +4,7 @@ import { allowAlways, answerUserInput, approveRequest, loadTerminalScreen } from
 import { errorMessage } from '@/lib/error-message'
 import { readConversationPermissions } from '@/data/conversationPermissions'
 import type { ChatAgent, ChatLink } from '@/features/workspace/model/chatView'
+import { abilitiesOf } from '@/features/workspace/model/agentAbilities'
 import type { SessionStatus } from '@/features/workspace/model/session'
 import type { SubagentView } from '@/features/workspace/model/subagents'
 import { hasPendingApproval, runningTurnStartedAt, type ChatFeed } from '../chatFeed'
@@ -30,7 +31,7 @@ import { releaseFirstMessage, releaseStartChoice, startChoiceOf, takeCarriedDraf
 import { writeChoice } from '../agentChoice'
 import { isWorktree, useFolderBranches } from '@/features/workspace/model/newChatHost'
 import { Composer } from './Composer'
-import { ChatItem } from './ChatItems'
+import { ChatItem, type ChatItemContext } from './ChatItems'
 import { KnownRowsContext } from '../knownRows'
 import { ChatSkeleton } from './ChatSkeleton'
 import { ApprovalTray, PromptTray } from './QuestionTray'
@@ -41,6 +42,10 @@ import type { ChatProblem } from '../problem'
 import { SubagentBar, SubagentChat } from './SubagentChat'
 import { VirtualList } from './VirtualList'
 import { copyText } from '@/lib/clipboard'
+import { ConfirmCloseDialog } from '@/features/workspace/components/ConfirmCloseDialog'
+import type { RewindPlace } from '../editFromHere'
+import type { FileSearchPlace } from '../fileMention'
+import { useEditFromHere } from '../useEditFromHere'
 
 /** When a turn ends the status changes at once, but the agent's last words may not be read yet: read now and again soon, instead of waiting for the idle poll. */
 const END_OF_TURN_READ_MS = 600
@@ -105,8 +110,8 @@ type Props = {
   worktree?: boolean
   /** The session's folder, so file names read relative to it. */
   root?: string | null
-  /** Opens a file's diff in the Changes panel; absent where there is none. */
-  onOpenDiff?: ((file: string) => void) | null
+  /** Opens a file's diff, or a turn's, in the Changes panel; absent where there is none. */
+  onOpenDiff?: ChatItemContext['openDiff']
   /** Opens a file a reply names, at its line when it gave one. */
   onOpenFile?: OpenFile | null
   /** Types into the terminal the agent runs in, for a chat that follows it (ADR 0003). */
@@ -137,10 +142,16 @@ type Props = {
   branchMenu?: BranchMenuSpec | undefined
   /** The effort the agent's own files say it runs at; null when they do not say. */
   effort?: string | null | undefined
+  /** Where a sent message's Edit from here restores the files from; absent where it is not offered. */
+  rewind?: RewindPlace | undefined
+  /** Where an `@` in the message box looks for files; absent where it is not offered. */
+  fileSearch?: FileSearchPlace | undefined
+  /** Leaves out runs of reads and searches that succeeded (Settings › Chat). */
+  hideSuccessfulTools?: boolean
 }
 
 /** The chat of one session: its history as a virtualised list, the daemon's status, and the composer under it. */
-export function ChatSession({ link, agent, online, hasTerminal = true, worktree: paneWorktree, root = null, onOpenDiff = null, onOpenFile = null, typeInto, paneQueue, ask = null, sessionId, paneStatus, folder = '', branch = null, onOpenFolder = null, subagent = null, onBackToMain, onShowTerminal, usage, problem = null, branchMenu, effort = null }: Props) {
+export function ChatSession({ link, agent, online, hasTerminal = true, worktree: paneWorktree, root = null, onOpenDiff = null, onOpenFile = null, typeInto, paneQueue, ask = null, sessionId, paneStatus, folder = '', branch = null, onOpenFolder = null, subagent = null, onBackToMain, onShowTerminal, usage, problem = null, branchMenu, effort = null, rewind, hideSuccessfulTools = false, fileSearch }: Props) {
   const { feed, events, offline, readError, refresh, recordAnswer, unwatchedReads } = useChatFeed({ conversation: link.conversation, generation: link.generation, provider: agent })
   const paneWorking = paneStatus === 'working'
   const [branches] = useFolderBranches(root ?? '')
@@ -198,8 +209,9 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
   const [started] = useState(() => startChoiceOf(sessionId))
   const shownMode = (liveMode !== null && liveMode.base === metaMode ? liveMode.value : metaMode) ?? started?.mode ?? null
   const shownModel = liveModel !== null && liveModel.base === metaModel ? liveModel.value : metaModel
-  const canChangeAgent = typeInto !== undefined && agent === 'claude' && link.readOnly === true
-  const canPickCodexMode = typeInto !== undefined && agent === 'codex' && link.readOnly === true
+  const abilities = abilitiesOf(agent)
+  const canChangeAgent = typeInto !== undefined && abilities.changeAgent && link.readOnly === true
+  const canPickCodexMode = typeInto !== undefined && abilities.permissionModes?.switchBy === 'command' && link.readOnly === true
   // The chips stay drawn while their keys would land in a turn or nowhere; they are only greyed out, so the box does not rearrange.
   const pickerLocked = !online ? 'The daemon is offline' : stoppedOnPrompt ? `${agent} is asking something. Answer it first.` : null
   const chipsLocked = !online ? 'The daemon is offline' : working ? `${agent} is working. Change this when it finishes.` : null
@@ -285,13 +297,14 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
   const sentText = echo !== null && countUserMessages(events, echo.text) <= echo.baseline ? echo.text : null
   const echoText = sentText ?? held
   const echoThinking = sentText === null ? held !== null : echo !== null && !echo.quiet
-  // What the history says without the working line: whether the agent has answered what was last asked.
+  // What the history says without the working line or hidden runs: whether the agent has answered what was last asked,
+  // and the summary a new chat starts from, which reads the last reply as it was said.
   const bareRows = useMemo(() => buildRows(events, false, root, echoText, false), [events, root, echoText])
   const lastKind = bareRows.at(-1)?.kind
   const replied = lastKind !== undefined && lastKind !== 'user' && lastKind !== 'echo'
   useEffect(() => { repliedRef.current = replied })
   const holdWorking = settling && !replied
-  const allRows = useMemo(() => buildRows(events, working || holdWorking, root, echoText, echoThinking), [events, working, holdWorking, root, echoText, echoThinking])
+  const allRows = useMemo(() => buildRows(events, working || holdWorking, root, echoText, echoThinking, hideSuccessfulTools), [events, working, holdWorking, root, echoText, echoThinking, hideSuccessfulTools])
   const rows = useMemo(() => allRows.filter((row) => !isPendingApproval(row)), [allRows])
   // Rows are known, and so shown whole, once a read has brought them without the person watching: the first read after
   // the chat opened (until then it shows what this window remembered, which may be behind) and one after the window was
@@ -423,12 +436,16 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
   }, [sessionId, rowsNow, foundNow, goToStep])
 
   const waitingStep = pending?.stepId ?? null
+  // The daemon refuses a restore while the agent works too: its files would be rolled back under it.
+  const rewindBusy = !online ? 'The daemon is offline' : working ? `${agent} is working. Edit from here when it finishes.` : null
+  const editFromHere = useEditFromHere({ place: rewind ?? null, conversation: link.conversation, events, agent, busy: rewindBusy })
+  const editAction = editFromHere.action
   const renderRow = useCallback(
     (row: ChatRow) => {
-      const item = <ChatItem row={row} agent={agent} workingSince={workingSince} approval={approval} root={root} openDiff={onOpenDiff} goToStep={goToStep} waitingStep={waitingStep} />
+      const item = <ChatItem row={row} agent={agent} workingSince={workingSince} approval={approval} root={root} openDiff={onOpenDiff} goToStep={goToStep} waitingStep={waitingStep} editFromHere={editAction} />
       return row.key === found ? <div className="mx-chat-found" data-found="true">{item}</div> : item
     },
-    [agent, workingSince, approval, root, onOpenDiff, goToStep, found, waitingStep],
+    [agent, workingSince, approval, root, onOpenDiff, goToStep, found, waitingStep, editAction],
   )
 
   // y, a and n answer the tray from anywhere in the chat but a field, as the same letters do in the terminal.
@@ -453,7 +470,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
 
   const question = pending !== null
     ? <ApprovalTray event={pending} actions={approval} />
-    : stoppedOnPrompt ? <PromptTray agent={agent} ask={ask} online={online} answer={answerPrompt} pick={pickChoice} pickAll={pickChoices} sendKeys={sendKeys} readScreen={readScreen} /> : problem !== null ? <ProblemBanner problem={problem} summarize={() => summaryOf(rows)} /> : null
+    : stoppedOnPrompt ? <PromptTray agent={agent} ask={ask} online={online} answer={answerPrompt} pick={pickChoice} pickAll={pickChoices} sendKeys={sendKeys} readScreen={readScreen} /> : problem !== null ? <ProblemBanner problem={problem} summarize={() => summaryOf(bareRows)} /> : null
   const notices = [
     offline ? `Reconnecting to the daemon. What is shown may be out of date.${readError !== null ? ` (${truncateError(readError)})` : ''}` : null,
     !offline && incomplete !== null ? `History is incomplete: ${incomplete}.` : null,
@@ -462,6 +479,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
 
   return (
     <div ref={chat} className="mx-chat" onKeyDown={onKeyDown} onClick={keepComposerFocus} onMouseUp={(event) => { const next = pickedText(event); if (next !== undefined) setPicked(next) }}>
+      {editFromHere.ask !== null && <ConfirmCloseDialog title="Restore the files and edit this message?" body={editFromHere.ask.body} confirmLabel={editFromHere.ask.confirmLabel} onConfirm={editFromHere.confirm} onCancel={editFromHere.cancel} firstFocus="cancel" />}
       {picked !== null && <SelectionBar picked={picked} onCopy={copyPicked} onQuote={() => { if (chat.current !== null) quotePicked(chat.current) }} />}
       {(notices.length > 0 || fullAccess) && (
         <div className="mx-chat-notices" role={offline ? 'status' : undefined}>
@@ -493,9 +511,10 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
         composer={composer}
         conversation={link.conversation}
         // Claude says which commands it takes, in its folder; Codex's are a list the window keeps. Gemini has none yet.
-        {...((agent === 'claude' || agent === 'codex') && root !== null ? { commandsFrom: { agent, folder: root, inTerminal: runInTerminal } } : {})}
+        {...(abilities.slashCommands !== null && root !== null ? { commandsFrom: { agent, folder: root, inTerminal: runInTerminal } } : {})}
         question={question}
         waiting={held !== null}
+        files={fileSearch}
         facts={{ ...(usage === undefined ? {} : { usage }), ...(branchMenu === undefined ? {} : { branchMenu }), mode: modeLabel(shownMode), modeDanger: shownMode !== null && DANGER_MODES.includes(shownMode), folder, branch, worktree, model: shownModel, effort, onOpenFolder, modeKey: shownMode, bypassAllowed: startedWithYolo(sessionId), ...agentControls }}
       />
     </div>

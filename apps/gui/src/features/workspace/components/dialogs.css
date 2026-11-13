@@ -99,6 +99,11 @@
 .mx-nc-tasks button span { color: var(--dim); }
 .mx-nc-tasks button:hover:not(:disabled), .mx-nc-tasks button:focus-visible { background: rgba(var(--hl), calc(.05 * var(--hk))); color: var(--fg); outline: none; }
 .mx-nc-tasks button:disabled { opacity: .5; cursor: not-allowed; }
+/* Up to twenty saved conversations: the list scrolls rather than pushing the message box off the page. */
+.mx-nc-resume { display: flex; flex-direction: column; align-items: center; gap: 4px; width: min(560px, 100%); }
+.mx-nc-resume .mx-nc-tasks { margin: 0; width: 100%; max-height: 216px; overflow-y: auto; }
+.mx-nc-tasks button .mx-nc-resume-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; }
+.mx-nc-quiet { margin: 0; font-size: 12.5px; color: var(--dim); text-align: center; }
 .mx-ctxtray .mx-model-button { height: 26px; font-size: 12.5px; }
 
 /* The new chat's stack: the context row, the message box and the tray read as one card. The box inside
@@ -151,3 +156,7 @@
 .mx-nc-switch-chip { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; color: var(--fg2); background: rgba(var(--hl), calc(.04 * var(--hk))); }
 .mx-nc-switch-chip:hover { background: rgba(var(--hl), calc(.08 * var(--hk))); color: var(--fg); }
 .mx-nc-switch-machine { color: var(--dim); }
+.mx-nc-also { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 8px; font-size: 12.5px; color: var(--fg2); }
+.mx-nc-also-agent { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.mx-nc-also-agent:has(input[aria-disabled="true"]) { opacity: .5; cursor: not-allowed; }
+.mx-nc-also-why { color: var(--dim); }

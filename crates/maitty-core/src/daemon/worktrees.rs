@@ -88,6 +88,47 @@ pub(super) fn create_trusted_worktree(
     Ok(made)
 }
 
+/// One recreation at a time: two sends to the same deleted folder would otherwise both prune
+/// and add, and the second `add` would fail on the folder the first just made.
+static RECREATE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Make the deleted folder of a chat's worktree again from its branch, on the calling
+/// (background) thread. Git still lists the missing folder, so it is pruned first; a branch that
+/// is gone too is named, not guessed at.
+///
+/// `git worktree prune` is repository-wide: it also drops the records of other worktrees whose
+/// folders are missing. That is acceptable because it only forgets bookkeeping for folders that
+/// do not exist (no branch or commit is touched), and git would do the same on its own at the
+/// next `git gc`.
+pub(super) fn recreate_worktree(
+    main: &std::path::Path,
+    folder: &std::path::Path,
+    branch: &str,
+) -> anyhow::Result<()> {
+    use anyhow::Context;
+    // git on Windows cannot make a folder from a `\\?\` verbatim path, which a canonicalised
+    // path carries; hand it the plain spelling.
+    let (main, folder) = (super::clean_path(main.to_path_buf()), super::clean_path(folder.to_path_buf()));
+    let (main, folder) = (main.as_path(), folder.as_path());
+    let _one_at_a_time = RECREATE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    // Another send may have made it while this one waited for the lock.
+    if folder.is_dir() {
+        return Ok(());
+    }
+    if !main.is_dir() {
+        anyhow::bail!("The repository at {} is gone, so the worktree for branch `{branch}` cannot be made again", main.display());
+    }
+    git::git(main, &["worktree", "prune"]).context("Pruning the missing worktree")?;
+    if git::git(main, &["show-ref", "--verify", "--quiet", &format!("refs/heads/{branch}")]).is_err() {
+        anyhow::bail!("The branch `{branch}` of this chat's worktree no longer exists, so its folder cannot be made again");
+    }
+    let place = folder.to_str().context("The worktree folder's name is not text")?;
+    git::git(main, &["worktree", "add", "--", place, branch])
+        .with_context(|| format!("Making the worktree for branch `{branch}` again"))?;
+    trust_like_repo(main, folder);
+    Ok(())
+}
+
 /// The first of `WT_NAMES`, counting on from `seed`, that is not in `taken`; with all of them
 /// taken, one with a number added.
 pub(super) fn made_up_branch(taken: &[String], seed: usize) -> String {
@@ -122,7 +163,16 @@ pub(super) fn agent_worktree(
     Ok(sub.unwrap_or(path))
 }
 
+/// Worktrees can be made at once (two chats started together); each trust is a read, change
+/// and swap of the same file, so one at a time in this process, or the later swap drops the
+/// earlier trust.
+static TRUST_WRITE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 pub(super) fn trust_in(file: &std::path::Path, repo: &std::path::Path, worktree: &std::path::Path) {
+    // A panic while holding it left no half-written file (the swap is a rename), so go on.
+    let _one_at_a_time = TRUST_WRITE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     // Claude rewrites this file too: if it changed while we worked, start again from its
     // version rather than replace it.
     for _ in 0..3 {
@@ -194,7 +244,14 @@ pub(super) fn trust_once(
     }
     // Write beside and swap, so a reader never sees half a file; check it's still the
     // version we read right before swapping.
-    let tmp = file.with_extension(concat!("json.", env!("APP_COMMAND"), "-tmp"));
+    // A name of its own per write, so another process's daemon (a test, a second socket)
+    // never swaps in this one's half-written copy.
+    static WRITES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let tmp = file.with_extension(format!(
+        concat!("json.", env!("APP_COMMAND"), "-{}-{}-tmp"),
+        std::process::id(),
+        WRITES.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
     let Ok(s) = serde_json::to_string_pretty(&v) else {
         return Trust::Done;
     };
@@ -369,27 +426,38 @@ impl Daemon {
         });
     }
 
-    /// Whether any session is in this checkout.
+    /// Whether any session, a pane or a chat not yet closed for good, is in this checkout.
     pub(super) fn runs_in(&self, top: &std::path::Path) -> bool {
-        let top = top
-            .to_string_lossy()
-            .replace('/', "\\")
-            .trim_end_matches('\\')
-            .to_lowercase();
         self.terms.values().any(|t| {
-            t.head
-                .as_ref()
-                .is_some_and(|h| same_path(&h.top, std::path::Path::new(&top)))
-                || {
-                    let cwd = t
-                        .cwd
-                        .to_string_lossy()
-                        .replace('/', "\\")
-                        .trim_end_matches('\\')
-                        .to_lowercase();
-                    cwd == top || cwd.starts_with(&format!("{top}\\"))
-                }
-        })
+            t.head.as_ref().is_some_and(|h| same_path(&h.top, top)) || is_inside(&t.cwd, top)
+        }) || self
+            .conversations
+            .iter()
+            .filter(|c| self.chat_is_open(c.id, c.archived))
+            .any(|c| chat_folders(c).any(|folder| is_inside(folder, top)))
+    }
+
+    /// A chat holds its folder while it is listed, still running, or inside its close's undo
+    /// window; a closed chat's record stays, archived, so the flag alone does not say it ended.
+    fn chat_is_open(&self, id: crate::conversation::ConversationId, archived: bool) -> bool {
+        !archived
+            || self.conversation_closing.contains_key(&id)
+            || (self.conversation_runtimes.owns(id) && !self.conversation_ending.contains(&id))
+    }
+
+    /// The worktrees the app made that this chat works in.
+    pub(super) fn worktrees_of_chat(
+        &self,
+        id: crate::conversation::ConversationId,
+    ) -> Vec<PathBuf> {
+        let Some(chat) = self.conversations.iter().find(|c| c.id == id) else {
+            return Vec::new();
+        };
+        self.made_worktrees
+            .iter()
+            .filter(|made| chat_folders(chat).any(|folder| is_inside(folder, made)))
+            .cloned()
+            .collect()
     }
 
     /// A clean-up's worktrees, sorted into the ones to remove (folder, even with uncommitted
@@ -434,7 +502,8 @@ impl Daemon {
             self.pending_ops += 1;
             let repo = crate::gitfs::head(&top).map(|h| h.main_root);
             tokio::task::spawn_blocking(move || {
-                let standing = crate::tidy::standing(&top);
+                // Inactivity never decides a removal: 0 skips reading it on the close path.
+                let standing = crate::tidy::standing(&top, 0);
                 let result = if standing.safe() {
                     // Give the closed programs a moment to let go of the folder (Windows locks it).
                     std::thread::sleep(Duration::from_millis(800));
@@ -464,6 +533,53 @@ impl Daemon {
             });
         }
     }
+}
+
+/// Where the linked worktree at `folder` stands, for a client's worktree list; None when the
+/// repository at `repo` lists it but its folder is gone. Git and `gh` run only in a worktree's top
+/// folder that its repository lists, never in any folder a client names. Blocks: call it off the
+/// loop.
+pub(super) fn worktree_standing(
+    repo: &std::path::Path,
+    folder: &std::path::Path,
+    inactive_after: u32,
+) -> Result<Option<crate::tidy::Standing>, String> {
+    let refused = || format!("{} isn't a worktree of {}", folder.display(), repo.display());
+    if !folder.is_absolute() || !repo.is_absolute() {
+        return Err("a worktree and its repository are absolute paths".into());
+    }
+    let listed = git::list_worktrees(repo)
+        .map_err(|e| format!("{e:#}"))?
+        .iter()
+        .any(|w| !w.main && same_path(&w.path, folder));
+    if !listed {
+        return Err(refused());
+    }
+    if !folder.exists() {
+        return Ok(None);
+    }
+    match crate::gitfs::head(folder).filter(|h| h.linked && same_path(&h.top, folder)) {
+        Some(h) => Ok(Some(crate::tidy::standing(&h.top, inactive_after))),
+        None => Err(refused()),
+    }
+}
+
+fn chat_folders(
+    chat: &crate::conversation::Conversation,
+) -> impl Iterator<Item = &std::path::Path> {
+    std::iter::once(chat.binding.cwd.as_path()).chain(chat.binding.worktree.as_deref())
+}
+
+/// Whether `path` is `top` or a folder in it, spelled either way and in any case.
+fn is_inside(path: &std::path::Path, top: &std::path::Path) -> bool {
+    let normal = |p: &std::path::Path| {
+        p.to_string_lossy()
+            .replace('/', "\\")
+            .trim_end_matches('\\')
+            .to_lowercase()
+    };
+    let (path, top) = (normal(path), normal(top));
+    path == top || path.starts_with(&format!("{top}\\"))
 }
 
 /// What became of a worktree after you closed its last pane.

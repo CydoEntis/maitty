@@ -462,7 +462,8 @@ that is not this one (`remote_policy.rs`, `remote_snapshot.rs` in `maitty-machin
   that is not finite, is refused whole and the last good one stays; pane sizes are held to
   1-1000 columns and rows, `cpu` to 0-100. The walk is over the serialized snapshot, so a string
   field added to the protocol is cleaned without being listed. A `TermsChanged` is cleaned with the
-  same walk, refused whole when it names more than 10,000 panes to change or drop, and then
+  same walk, refused whole when it names more than 10,000 panes to change or drop or gives more
+  than 10,000 removal reasons, keeps a reason only for a pane it drops, and is then
   merged into that machine's held snapshot, which goes through the same checks as a `State`
   (daemon id, caps) before it is kept. A path in a remote snapshot is a
   label: it is never used to touch this computer's disk (`App::local_cwd` is `None` for a pane on
@@ -485,8 +486,10 @@ that is not this one (`remote_policy.rs`, `remote_snapshot.rs` in `maitty-machin
 | `Clipboard` | gated by `clipboard` (on by default; `clipboard = false` refuses) | writes this computer's clipboard; cut to 64 KiB; the toast says which machine, and a refused copy says so. This computer's own daemon is not gated: a program in a local pane copies as it would in any terminal |
 | `Notice` | gated by `notices` | a toast, cleaned and led by `[machine]`; it does not touch this computer's undo hint |
 | `Raise` | gated by `notices` | brings the window to the front, the same "may get my attention" grant as a toast (there is no separate `raise` setting) |
-| `Error`, `Reply` | answer, cleaned | applied only while this window has a command or query out to that machine that nothing has answered yet (client-side bookkeeping, see API_PATTERNS "client routing"; the wire is unchanged); otherwise ignored. An error's toast leads with `[machine]`; reply text is cleaned and cut to 256 KiB. A `Worktrees` reply never fills this computer's picker, and a check's output is taken only when the open sheet or the failure waiting for it is on that machine |
+| `Error`, `Reply` | answer, cleaned | applied only while this window has a command or query out to that machine that nothing has answered yet (client-side bookkeeping, see API_PATTERNS "client routing"; the wire is unchanged); otherwise ignored. An error's toast leads with `[machine]`; reply text is cleaned and cut to 256 KiB. A `List` reply is apart from that bookkeeping in the desktop host and the TUI: a pane delta the machine itself sends can make the window ask for its list, so that asking opens nothing for an error or any other reply, spends no other request's allowance, and one `List` is taken only while the window's asking for it is unanswered, then cleaned, capped and id-checked like a `State` (a different daemon's list turns the machine away). A `Worktrees` reply never fills this computer's picker, and a check's output is taken only when the open sheet or the failure waiting for it is on that machine |
+| `Reply::ClosedSessions` | answer, cleaned | the closed sessions a window asked that machine for: at most 50, every field one clean line, cut short; the folder is a label for that machine and never touches this computer's disk |
 | `AskRemoveWorktree` | ignore | names a folder on this computer's disk to delete; remote worktree management is out of scope (ADR 0007) |
+| `Reply::SavedConversations` | ignore | saved conversations are listed for this computer's folders only; another machine's are out of scope |
 | `AutoWorkspace` | ignore | announces a workspace and arms this computer's undo |
 
 The opt-ins are read from the machine's `[[machines]]` entry by name; a machine no entry names
@@ -611,6 +614,25 @@ fingerprint (the first 8 bytes of SHA-256 over the tool's name and input, as 16 
 which cannot be turned back into the input and is never logged. The name and input stay in the
 agent.
 
+## Project-specific: closed sessions
+
+The closed-sessions list (`closed-sessions-<socket>.json`, DATABASE "closed sessions") holds each
+agent session's agent name, conversation id, folder (with its worktree and repository when it
+was in one), branch, name and time. It holds no prompts,
+output or secrets, and the name is the one you or the agent gave it, never a prompt. The file is
+private to the user (0600 in a 0700 folder on Unix). `Query::ClosedSessions` is for human clients
+only: an agent pane or a structured runtime cannot read where other work was done.
+
+`Command::ReopenClosedSession { agent, session }` is for human clients only, the same way: a pane,
+a structured runtime or a rejected client is refused. It names an entry the daemon keeps, never a
+path, branch or command: the folder, branch and repository come from that entry, and the command
+typed is the agent's own resume template with the entry's conversation id, which must start with a
+letter or digit and hold only letters, digits, `_` and `-`, at most 128. Making a worktree again
+follows DATABASE "closed sessions": nothing at the path is ever overwritten. Another machine: the
+command is a worktree command, so a window sends it to this computer's daemon only, as it does
+`BranchWorktree` (API_PATTERNS "client routing"; remote worktree management is out of scope, ADR
+0007). Its answer is `Reply::Ok` or `Error`, which `remote_policy` already treats as an answer.
+
 ## Project-specific: followed transcripts
 
 The daemon reads an agent's own transcript for a pane it follows ([ADR 0003](adr/0003-status-and-conversation-trust.md)).
@@ -654,6 +676,28 @@ The agent runs with the user's permissions, so the window's start path is narrow
   running out of sight; if the stop fails nothing is hidden.
 - Secret masking in history is the daemon's (ticket 18), at the point where history is stored and served; the
   window adds no copy of a message.
+
+## Project-specific: the message the daemon sends by itself
+
+With `restore.continue_turn` on, the daemon sends one fixed message, `Continue where you left off.`,
+to a chat conversation, with nobody asking at that moment. It is off by default and its reach is
+narrow (`daemon/conversation/continue_turn.rs`):
+
+- **Who gets it.** Only a structured conversation that was in a turn when the daemon stopped (the
+  session file's `turns_in_flight`), that the daemon itself resumed at this start, on the generation
+  that resume runs at. An idle chat, a start a client asked for, a superseded generation, a
+  conversation that was mid-transfer and a terminal agent never do.
+- **When.** After the resume has succeeded and the history is complete, never before; a resume that
+  fails sends nothing. It goes through the same send path as a person's message (hidden-character
+  check, receipt, queue while a turn runs) and carries no model, effort or permission choice.
+- **How often.** Once per daemon start, and at most 3 times in 5 minutes per conversation. The count is
+  in the session file and is written before the message leaves, so a daemon that restarts in a loop
+  cannot send a fourth. A clock set back keeps the earlier sends counted.
+- **What it cannot do.** It answers no approval or question (those stay human-only), starts or adopts
+  no conversation, and changes no posture. The text is a constant; nothing from a client, a file or a
+  provider is put into it.
+- **How it looks.** The provider records it as a user message, and the chat shows it as one: the
+  message model has no sender other than user and assistant.
 
 ## Project-specific: structured history cache boundary
 

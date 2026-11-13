@@ -203,12 +203,14 @@ fn a_whole_snapshot_is_given_and_a_delta_is_merged_into_that_machines_own() {
         ServerMsg::TermsChanged {
             changed: vec![pane(9)],
             removed: Vec::new(),
+            reasons: Default::default(),
+            revision: 0,
         },
         now,
     );
     assert!(
-        none.is_empty(),
-        "a delta before a snapshot has nothing to apply to"
+        matches!(&none[..], [Out::WantList { machine }] if *machine == BOX),
+        "a delta before a snapshot has nothing to apply to, so the whole list is asked for"
     );
 
     streams.on_message(LOCAL, ServerMsg::State(snapshot_of(&[1])), now);
@@ -222,6 +224,8 @@ fn a_whole_snapshot_is_given_and_a_delta_is_merged_into_that_machines_own() {
         ServerMsg::TermsChanged {
             changed: vec![pane(3)],
             removed: vec![1, 4040],
+            reasons: Default::default(),
+            revision: 0,
         },
         now,
     );
@@ -241,6 +245,8 @@ fn a_whole_snapshot_is_given_and_a_delta_is_merged_into_that_machines_own() {
         ServerMsg::TermsChanged {
             changed: Vec::new(),
             removed: vec![1],
+            reasons: Default::default(),
+            revision: 0,
         },
         now,
     );
@@ -254,6 +260,36 @@ fn a_whole_snapshot_is_given_and_a_delta_is_merged_into_that_machines_own() {
         panic!("{local:?}");
     };
     assert!(snapshot.terms.is_empty(), "the local list is its own");
+}
+
+#[test]
+fn a_merged_delta_says_why_its_own_panes_left_not_why_an_earlier_states_did() {
+    use maitty_shared::protocol::RemovalReason;
+    let mut streams = Streams::default();
+    let now = Instant::now();
+    let mut held = snapshot_of(&[1, 2]);
+    held.removed = BTreeMap::from([(9, RemovalReason::Closed)]);
+    streams.on_message(LOCAL, ServerMsg::State(held), now);
+    let merged = streams.on_message(
+        LOCAL,
+        ServerMsg::TermsChanged {
+            changed: Vec::new(),
+            removed: vec![1],
+            reasons: BTreeMap::from([(1, RemovalReason::Exited)]),
+            revision: 0,
+        },
+        now,
+    );
+    let [
+        Out::Sessions {
+            snapshot: Some(snapshot),
+            ..
+        },
+    ] = &merged[..]
+    else {
+        panic!("{merged:?}");
+    };
+    assert_eq!(snapshot.removed, BTreeMap::from([(1, RemovalReason::Exited)]));
 }
 
 #[test]
@@ -504,6 +540,8 @@ fn another_machines_pane_deltas_cannot_grow_its_list_past_the_cap() {
             ServerMsg::TermsChanged {
                 changed,
                 removed: Vec::new(),
+                reasons: Default::default(),
+                revision: 0,
             },
             now,
         );
@@ -530,6 +568,8 @@ fn this_computers_pane_deltas_are_not_held_to_another_machines_cap() {
         ServerMsg::TermsChanged {
             changed,
             removed: Vec::new(),
+            reasons: Default::default(),
+            revision: 0,
         },
         now,
     );
@@ -582,4 +622,124 @@ fn a_replay_of_another_machine_past_the_history_limit_is_not_passed_on_and_is_as
         again.is_empty(),
         "asked again for a replay already asked for"
     );
+}
+
+fn delta(revision: u64, changed: &[TermId], removed: &[TermId]) -> ServerMsg {
+    ServerMsg::TermsChanged {
+        changed: changed.iter().map(|id| pane(*id)).collect(),
+        removed: removed.to_vec(),
+        reasons: Default::default(),
+        revision,
+    }
+}
+
+fn numbered(revision: u64, ids: &[TermId]) -> Snapshot {
+    Snapshot {
+        revision,
+        ..snapshot_of(ids)
+    }
+}
+
+fn listed(streams: &Streams, machine: MachineId) -> Vec<TermId> {
+    streams
+        .last_snapshot(machine)
+        .map(|list| list.terms.keys().copied().collect())
+        .unwrap_or_default()
+}
+
+#[test]
+fn a_missed_update_is_made_up_by_asking_for_the_whole_list_once() {
+    let mut streams = Streams::default();
+    let now = Instant::now();
+    let mut outs = streams.on_message(LOCAL, ServerMsg::State(numbered(1, &[1])), now);
+    outs.extend(streams.on_message(LOCAL, delta(2, &[2], &[]), now));
+    // Revision 3, which added pane 3, never came.
+    let after_the_gap = streams.on_message(LOCAL, delta(4, &[4], &[]), now);
+    assert!(
+        matches!(&after_the_gap[..], [Out::WantList { machine }] if *machine == LOCAL),
+        "{after_the_gap:?}"
+    );
+    assert_eq!(listed(&streams, LOCAL), [1, 2], "a delta past a gap is not merged");
+    outs.extend(after_the_gap);
+
+    let whole = ServerMsg::Reply(Reply::List(numbered(4, &[1, 2, 3, 4])));
+    let given = streams.on_message(LOCAL, whole, now);
+    assert!(
+        matches!(&given[..], [Out::Sessions { machine, snapshot: Some(s) }] if *machine == LOCAL && s.terms.len() == 4),
+        "{given:?}"
+    );
+    outs.extend(given);
+    outs.extend(streams.on_message(LOCAL, delta(5, &[], &[1]), now));
+
+    let asked = outs.iter().filter(|out| matches!(out, Out::WantList { .. })).count();
+    assert_eq!(asked, 1);
+    assert_eq!(listed(&streams, LOCAL), [2, 3, 4]);
+}
+
+#[test]
+fn a_delta_before_any_snapshot_asks_for_the_whole_list() {
+    let mut streams = Streams::default();
+    let now = Instant::now();
+    let early = streams.on_message(BOX, delta(7, &[9], &[]), now);
+    assert!(
+        matches!(&early[..], [Out::WantList { machine }] if *machine == BOX),
+        "{early:?}"
+    );
+    streams.on_message(BOX, ServerMsg::Reply(Reply::List(numbered(7, &[8, 9]))), now);
+    streams.on_message(BOX, delta(8, &[], &[8]), now);
+    assert_eq!(listed(&streams, BOX), [9]);
+}
+
+#[test]
+fn a_daemon_that_numbers_nothing_has_its_deltas_merged_as_they_come() {
+    let mut streams = Streams::default();
+    let now = Instant::now();
+    streams.on_message(BOX, ServerMsg::State(snapshot_of(&[1])), now);
+    let first = streams.on_message(BOX, delta(0, &[2], &[]), now);
+    let second = streams.on_message(BOX, delta(0, &[3], &[]), now);
+    assert!(matches!(&first[..], [Out::Sessions { .. }]), "{first:?}");
+    assert!(matches!(&second[..], [Out::Sessions { .. }]), "{second:?}");
+    assert_eq!(listed(&streams, BOX), [1, 2, 3]);
+}
+
+fn asked(outs: &[Out]) -> usize {
+    outs.iter().filter(|out| matches!(out, Out::WantList { .. })).count()
+}
+
+#[test]
+fn a_burst_of_deltas_after_a_gap_asks_for_the_list_once() {
+    let mut streams = Streams::default();
+    let now = Instant::now();
+    let mut outs = streams.on_message(BOX, ServerMsg::State(numbered(1, &[1])), now);
+    for (revision, pane) in [(2, 2), (4, 4), (5, 5), (6, 6)] {
+        outs.extend(streams.on_message(BOX, delta(revision, &[pane], &[]), now));
+    }
+    assert_eq!(asked(&outs), 1);
+    assert_eq!(listed(&streams, BOX), [1, 2], "nothing past the gap is merged");
+
+    streams.on_message(BOX, ServerMsg::Reply(Reply::List(numbered(6, &[1, 2, 3, 4, 5, 6]))), now);
+    let next_gap = streams.on_message(BOX, delta(9, &[9], &[]), now);
+    assert_eq!(asked(&next_gap), 1, "the list that came settles the asking, so a new gap asks again");
+}
+
+#[test]
+fn a_list_that_never_comes_is_asked_for_again_after_a_while_and_on_a_new_line() {
+    let mut streams = Streams::default();
+    let now = Instant::now();
+    streams.on_message(BOX, ServerMsg::State(numbered(1, &[1])), now);
+    assert_eq!(asked(&streams.on_message(BOX, delta(3, &[3], &[]), now)), 1);
+
+    let soon = now + LIST_ASKED_AGAIN_AFTER - Duration::from_millis(1);
+    assert_eq!(asked(&streams.on_message(BOX, delta(4, &[4], &[]), soon)), 0);
+    let later = now + LIST_ASKED_AGAIN_AFTER;
+    assert_eq!(asked(&streams.on_message(BOX, delta(5, &[5], &[]), later)), 1);
+
+    streams.line_up(BOX);
+    assert_eq!(
+        asked(&streams.on_message(BOX, delta(6, &[6], &[]), later)),
+        1,
+        "what was asked of the old line is not waited for on the new one"
+    );
+    streams.forget(BOX);
+    assert_eq!(asked(&streams.on_message(BOX, delta(7, &[7], &[]), later)), 1);
 }

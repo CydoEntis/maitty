@@ -23,6 +23,27 @@ pub fn local_hms(unix: u64) -> String {
     format!("{h:02}:{m:02}:{s:02}")
 }
 
+/// The local calendar day `unix` (seconds) falls on, counted from 1970-01-01.
+pub fn local_day(unix: u64) -> i64 {
+    day_of(unix, local_offset(unix))
+}
+
+/// The local weekday of `unix` (seconds) as `Thu`.
+pub fn local_weekday(unix: u64) -> &'static str {
+    weekday(local_day(unix))
+}
+
+/// The day `unix` falls on `offset` seconds east of UTC, counted from 1970-01-01.
+fn day_of(unix: u64, offset: i64) -> i64 {
+    (unix as i64 + offset).div_euclid(SECS_PER_DAY)
+}
+
+/// The weekday of a day counted from 1970-01-01, a Thursday.
+fn weekday(day: i64) -> &'static str {
+    const FROM_THURSDAY: [&str; 7] = ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
+    FROM_THURSDAY[day.rem_euclid(7) as usize]
+}
+
 /// Hours, minutes and seconds of the day at `unix`, `offset` seconds east of UTC.
 fn time_of_day(unix: u64, offset: i64) -> (i64, i64, i64) {
     let secs = (unix as i64 + offset).rem_euclid(SECS_PER_DAY);
@@ -90,6 +111,16 @@ mod tests {
             "before midnight west"
         );
         assert_eq!(time_of_day(0, -3600), (23, 0, 0), "before the epoch's day");
+    }
+
+    #[test]
+    fn the_weekday_follows_the_offset_across_midnight() {
+        assert_eq!(weekday(day_of(AT, 0)), "Thu");
+        assert_eq!(weekday(day_of(AT, 10 * 3600)), "Fri", "past midnight east");
+        assert_eq!(weekday(day_of(AT - 15 * 3600, -3600)), "Wed", "before midnight west");
+        assert_eq!(weekday(day_of(AT + 3 * 86_400, 0)), "Sun");
+        assert_eq!(weekday(day_of(0, -3600)), "Wed", "before the epoch's day");
+        assert_eq!(day_of(AT, 0) + 1, day_of(AT, 10 * 3600));
     }
 
     #[test]
