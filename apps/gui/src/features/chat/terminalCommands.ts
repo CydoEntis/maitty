@@ -1,4 +1,4 @@
-import { isSlashLine, type SlashCommand } from './slashCommands'
+import type { SlashCommand } from './slashCommands'
 
 const only = (name: string, description: string, hint = '', aliases: readonly string[] = []): SlashCommand => ({ name, description, hint, aliases, terminal: true })
 
@@ -57,11 +57,3 @@ export const CLAUDE_TERMINAL_COMMANDS: readonly SlashCommand[] = [
   only('voice', 'Toggle voice mode'),
   only('workflows', 'Browse running and completed workflows'),
 ]
-
-/** Claude Code's commands it runs at once, in the turn that is working, instead of after it. */
-const MID_TURN_COMMANDS: ReadonlySet<string> = new Set(['btw'])
-
-/** A one-line command of this agent that is typed in now, even while it works; held until the turn ends, it would answer too late. */
-export function runsMidTurn(agent: string | undefined, text: string): boolean {
-  return agent === 'claude' && isSlashLine(text) && MID_TURN_COMMANDS.has(text.slice(1).split(/\s/, 1)[0] ?? '')
-}
