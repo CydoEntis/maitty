@@ -525,6 +525,14 @@
 .mx-machine-chip.is-quiet { color: var(--dim); }
 .mx-machine-chip.is-bad { color: var(--danger); }
 .mx-scard-button.is-danger { color: var(--danger); }
+/* Under a machine's row on the GitHub page: its accounts, who commits, and its folder rules. */
+.mx-github-details { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 0 16px 14px; font-size: 12.5px; color: var(--fg2); }
+.mx-github-details .mx-menu-caps { padding: 6px 0 0; }
+.mx-github-details p { margin: 0; overflow-wrap: anywhere; }
+.mx-github-details ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; align-self: stretch; }
+.mx-github-details li { display: flex; align-items: baseline; gap: 10px; }
+.mx-github-details li > span { font-family: var(--mono); font-size: 12px; color: var(--fg); overflow-wrap: anywhere; }
+.mx-github-details li > small { font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
 .mx-scard-button:disabled { opacity: .4; pointer-events: none; }
 .mx-scard-button:hover { background: var(--accent-soft); color: var(--accent-text); box-shadow: inset 0 0 0 1px var(--accent-line); }
 .mx-scard-button.is-primary { background: var(--accent); color: var(--on-accent); box-shadow: none; font-weight: 600; }

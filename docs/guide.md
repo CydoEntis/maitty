@@ -743,8 +743,11 @@ cannot sign in to fails with git's own message. **Settings › GitHub** shows wh
 signed in to GitHub as, read from that machine's GitHub CLI (`gh`); Maitty never sees the token. A machine
 that is not signed in has **Sign in** there: it opens a terminal on that machine running `gh auth login`,
 which shows a one-time code and opens GitHub in your browser. Finish it, close the terminal, and the row
-updates. Files, Changes, worktrees and the other features that read a pane's files
-are for this computer's sessions only.
+updates. A machine with somebody signed in has **Details**: every account signed in there (the active one
+marked), the name and email its commits carry, and its folder rules, the folders where git uses another
+account and identity. A rule you made by hand in your git config shows as "set outside Maitty". **Add
+another account** starts the same sign-in. Files, worktrees and the other features that read a pane's files
+are for this computer's sessions only; Changes is the exception described above.
 
 **Dropping files or folders on a session of another machine** sends them there: drag up to 10 files or folders from
 your file manager onto the pane. Each goes over ssh (not a custom transport) into `~/.cache/maitty/pastes` on that

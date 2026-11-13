@@ -1,12 +1,15 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GitHubReport } from '@/api/githubAccounts'
+import type { GitIdentityReport } from '@/api/gitIdentities'
 import { LOCAL_HEAD, type MachineHead } from '@/features/workspace/model/machines'
 import { GitHubSection } from './GitHubSection'
 
 const api = vi.hoisted(() => ({ loadGitHubAccounts: vi.fn<(machine: number) => Promise<GitHubReport>>() }))
 vi.mock('@/api/githubAccounts', () => api)
+const git = vi.hoisted(() => ({ loadGitIdentities: vi.fn<(machine: number) => Promise<GitIdentityReport>>() }))
+vi.mock('@/api/gitIdentities', () => git)
 
 const KINGDOM: MachineHead = { ...LOCAL_HEAD, key: 'machine-3', machine: 3, name: 'kingdom', label: 'kingdom', chip: { glyph: '●', word: 'connected', tone: 'ok' } }
 const BARE: MachineHead = { ...KINGDOM, key: 'machine-5', machine: 5, name: 'bare', label: 'bare' }
@@ -26,7 +29,10 @@ function answers(by: Record<number, GitHubReport | Error>) {
 }
 
 afterEach(cleanup)
-beforeEach(() => { api.loadGitHubAccounts.mockReset() })
+beforeEach(() => {
+  api.loadGitHubAccounts.mockReset()
+  git.loadGitIdentities.mockReset()
+})
 
 describe('the GitHub page of Settings', () => {
   it('says who this computer and each connected machine is signed in as', async () => {
@@ -105,6 +111,77 @@ describe('the GitHub page of Settings', () => {
     view.rerender(<GitHubSection machines={[LOCAL_HEAD]} signIn={{ onSignIn, signInsEnded: 1 }} />)
     expect(await screen.findByText('Signed in as me')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Sign in to GitHub/ })).toBeNull()
+  })
+
+  const WHO: GitIdentityReport = { installed: true, name: 'Casey Example', email: 'casey@example.invalid', rules: [], problem: null }
+  const openRow = async (user: ReturnType<typeof userEvent.setup>, label: string) => {
+    await user.click(await screen.findByRole('button', { name: `Accounts and folder rules on ${label}` }))
+    return within(await screen.findByRole('group', { name: `GitHub details for ${label}` }))
+  }
+
+  it('opens a machine\'s row to its accounts, who commits there and its folder rules', async () => {
+    const user = userEvent.setup()
+    answers({ 0: signedIn('me'), 3: signedIn('kingdom-me', 'work-me') })
+    git.loadGitIdentities.mockResolvedValue({
+      ...WHO,
+      rules: [
+        { folder: '/home/dev/work', identity: { name: 'Casey At Work', email: 'casey@work.invalid', login: 'work-me' } },
+        { folder: '~/oss', identity: null },
+      ],
+    })
+    render(<GitHubSection machines={[LOCAL_HEAD, KINGDOM]} />)
+    const details = await openRow(user, 'kingdom')
+    expect(git.loadGitIdentities).toHaveBeenCalledExactlyOnceWith(3)
+    const accounts = within(details.getByRole('list', { name: 'Accounts' })).getAllByRole('listitem').map((item) => item.textContent)
+    expect(accounts).toEqual(['kingdom-meactive', 'work-me'])
+    expect(await details.findByText('Commits as Casey Example <casey@example.invalid>')).toBeInTheDocument()
+    const rules = within(details.getByRole('list', { name: 'Folder rules' })).getAllByRole('listitem').map((item) => item.textContent)
+    expect(rules).toEqual(['/home/dev/workwork-me · Casey At Work <casey@work.invalid>', '~/ossset outside Maitty'])
+    expect(screen.getByRole('button', { name: 'Accounts and folder rules on kingdom' })).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('says every folder uses the active account when there are no rules', async () => {
+    const user = userEvent.setup()
+    answers({ 0: signedIn('me', 'work-me') })
+    git.loadGitIdentities.mockResolvedValue({ ...WHO, name: null, email: null })
+    render(<GitHubSection machines={[LOCAL_HEAD]} />)
+    const details = await openRow(user, 'This computer')
+    expect(await details.findByText('Every folder uses me')).toBeInTheDocument()
+    expect(details.getByText('No name or email is set for commits')).toBeInTheDocument()
+    expect(details.queryByRole('list', { name: 'Folder rules' })).toBeNull()
+  })
+
+  it('starts the same sign-in from Add another account', async () => {
+    const user = userEvent.setup()
+    const onSignIn = vi.fn()
+    answers({ 0: signedIn('me'), 3: signedIn('kingdom-me') })
+    git.loadGitIdentities.mockResolvedValue(WHO)
+    render(<GitHubSection machines={[LOCAL_HEAD, KINGDOM]} signIn={{ onSignIn, signInsEnded: 0 }} />)
+    const details = await openRow(user, 'kingdom')
+    await user.click(details.getByRole('button', { name: 'Add another account' }))
+    expect(onSignIn).toHaveBeenCalledExactlyOnceWith(3, 'kingdom')
+  })
+
+  it('says why who commits could not be read, and still lists the accounts', async () => {
+    const user = userEvent.setup()
+    answers({ 0: signedIn('me') })
+    git.loadGitIdentities.mockRejectedValue(new Error('kingdom did not answer within 60 seconds'))
+    render(<GitHubSection machines={[LOCAL_HEAD]} />)
+    const details = await openRow(user, 'This computer')
+    expect((await details.findByRole('alert')).textContent).toBe('Could not read git’s settings: kingdom did not answer within 60 seconds')
+    expect(details.getByRole('list', { name: 'Accounts' })).toBeInTheDocument()
+    expect(details.queryByRole('button', { name: 'Add another account' })).toBeNull()
+  })
+
+  it('offers no details where nobody is signed in, and shows a rule\'s text as plain text', async () => {
+    const user = userEvent.setup()
+    answers({ 0: NOBODY, 3: signedIn('kingdom-me'), 5: NO_GH })
+    git.loadGitIdentities.mockResolvedValue({ ...WHO, rules: [{ folder: '<img src=x onerror=alert(1)>', identity: null }] })
+    const { container } = render(<GitHubSection machines={[LOCAL_HEAD, KINGDOM, BARE]} />)
+    const details = await openRow(user, 'kingdom')
+    expect(await details.findByText('<img src=x onerror=alert(1)>')).toBeInTheDocument()
+    expect(container.querySelector('img')).toBeNull()
+    expect(screen.getAllByRole('button', { name: /^Accounts and folder rules on/ })).toHaveLength(1)
   })
 
   it('asks every machine again on Check again', async () => {

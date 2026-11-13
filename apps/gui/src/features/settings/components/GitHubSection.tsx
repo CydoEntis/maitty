@@ -5,6 +5,7 @@ import { errorMessage } from '@/lib/error-message'
 import type { MachineHead } from '@/features/workspace/model/machines'
 import { BRANCH_PATH } from '@/features/workspace/components/paths'
 import { Card, Row } from './DesktopSettings'
+import { GitHubDetails } from './GitHubDetails'
 
 /** How the page starts a sign-in, and what tells it one has ended. */
 export type GitHubSignIn = {
@@ -39,6 +40,11 @@ function canSignIn(state: SignInState): boolean {
   return state.status === 'ready' && state.report.installed && state.report.problem === null && state.report.accounts.length === 0
 }
 
+/** Whether a machine's row can be opened: it has `gh`, could be read, and somebody is signed in. */
+function hasDetails(state: SignInState): state is { status: 'ready'; report: GitHubReport } {
+  return state.status === 'ready' && state.report.installed && state.report.problem === null && state.report.accounts.length > 0
+}
+
 /** The machines that can be asked now: this computer, then every other machine whose line is up. */
 function askable(machines: readonly MachineHead[]): Array<{ machine: number; label: string }> {
   const others = machines.filter((head) => head.machine !== LOCAL_MACHINE && head.chip?.tone === 'ok').map((head) => ({ machine: head.machine, label: head.label }))
@@ -47,13 +53,17 @@ function askable(machines: readonly MachineHead[]): Array<{ machine: number; lab
 
 /**
  * Who is signed in to GitHub on this computer and on each connected machine, as each machine's own
- * `gh` says. The window keeps no credentials and asks for none: it shows logins only.
+ * `gh` says. A row with somebody signed in opens to every account there, the name and email its
+ * commits carry and its folder rules. The window keeps no credentials and asks for none: it shows
+ * logins only.
  */
 export function GitHubSection({ machines, signIn }: { machines: readonly MachineHead[]; signIn?: GitHubSignIn | undefined }) {
   const rows = askable(machines)
   const asking = rows.map((row) => String(row.machine)).join(',')
   const [states, setStates] = useState<Readonly<Record<number, SignInState>>>({})
   const [asked, setAsked] = useState(0)
+  const [open, setOpen] = useState<ReadonlySet<number>>(() => new Set())
+  const toggle = (machine: number) => { setOpen((now) => { const next = new Set(now); if (!next.delete(machine)) next.add(machine); return next }) }
   const signInsEnded = signIn?.signInsEnded ?? 0
   useEffect(() => {
     let current = true
@@ -72,10 +82,15 @@ export function GitHubSection({ machines, signIn }: { machines: readonly Machine
     >
       {rows.map((row) => {
         const state = states[row.machine] ?? LOADING
+        const shown = hasDetails(state) && open.has(row.machine)
         return (
-          <Row key={row.machine} label={row.label} detail={signInWords(state)}>
-            {signIn !== undefined && canSignIn(state) && <button type="button" className="mx-scard-button" aria-label={`Sign in to GitHub on ${row.label}`} onClick={() => { signIn.onSignIn(row.machine, row.label) }}>Sign in</button>}
-          </Row>
+          <div key={row.machine}>
+            <Row label={row.label} detail={signInWords(state)}>
+              {signIn !== undefined && canSignIn(state) && <button type="button" className="mx-scard-button" aria-label={`Sign in to GitHub on ${row.label}`} onClick={() => { signIn.onSignIn(row.machine, row.label) }}>Sign in</button>}
+              {hasDetails(state) && <button type="button" className="mx-scard-button" aria-expanded={shown} aria-label={`Accounts and folder rules on ${row.label}`} onClick={() => { toggle(row.machine) }}>{shown ? 'Hide' : 'Details'}</button>}
+            </Row>
+            {shown && <GitHubDetails machine={row.machine} label={row.label} accounts={state.report.accounts} asked={asked + signInsEnded} onAddAccount={signIn === undefined ? undefined : () => { signIn.onSignIn(row.machine, row.label) }} />}
+          </div>
         )
       })}
     </Card>

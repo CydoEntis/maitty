@@ -116,7 +116,15 @@ saved layout survives a restart; this computer's stay `t12`). **Settings › Git
 says (`github_accounts`): "Signed in as <login>" (with "(also …)" for its other accounts), "Not signed in",
 "The GitHub command line (gh) is not installed. Get it from cli.github.com", "Checking…" until it answers,
 or "Could not check: <why>" for a machine that did not answer, which leaves the other rows as they are.
-**Check again** asks every row again. A machine that is not connected has no row. A row that says "Not
+**Check again** asks every row again. A machine that is not connected has no row. A row with somebody
+signed in has **Details** (`GitHubDetails`, `aria-expanded`; **Hide** when open), which opens under the
+row: the accounts with `active` beside the active one, **Add another account** (the same sign-in as
+**Sign in**), then what that machine's git says (`git_identities`, asked when the row opens and on
+**Check again**): "Commits as <name> <<email>>" (or which of the two is not set, or "No name or email is
+set for commits"), and the folder rules, each a folder with `<login> · <name> <<email>>` or "set outside
+Maitty". With no rules it says "Every folder uses <active login>". git missing says "git is not installed
+on this machine."; a failure says "Could not read git's settings: <why>" and leaves the accounts showing.
+Nothing here changes a rule. A row that says "Not
 signed in" has **Sign in**: it closes Settings and opens a terminal session on that machine running GitHub's
 own sign-in (`start_github_sign_in`); when that session ends the page asks every row again
 (`useSessionsEnded`). A machine without `gh`, or one that could not be read, has no Sign in. **Settings › Machines** retries, removes and
