@@ -1995,6 +1995,7 @@ fn helpers_and_tabs_come_back_from_a_restart_under_their_session() {
         pending_starts: Vec::new(),
         conversation_operations: Vec::new(),
         turn_continues: Default::default(),
+        turns_in_flight: Vec::new(),
     });
     let [helper, orphan, starter] = [0, 1, 2].map(|i| d.workspaces[i].tabs[0].focus);
     assert!(starter != 70, "the starter has this run's id");
@@ -2126,6 +2127,7 @@ fn restore_gives_panes_new_ids_and_keeps_their_layout() {
         pending_starts: Vec::new(),
         conversation_operations: Vec::new(),
         turn_continues: Default::default(),
+        turns_in_flight: Vec::new(),
     };
     d.restore(saved);
     assert_eq!(d.workspaces.len(), 1);
@@ -3997,6 +3999,7 @@ fn check_results_survive_a_restart_with_their_output() {
         pending_starts: Vec::new(),
         conversation_operations: Vec::new(),
         turn_continues: Default::default(),
+        turns_in_flight: Vec::new(),
     });
     let t = d.workspaces[0].tabs[0].focus;
     let restored = &d.terms[&t];
@@ -7490,6 +7493,7 @@ fn restored_claude_pane(d: &mut Daemon) -> TermId {
         pending_starts: Vec::new(),
         conversation_operations: Vec::new(),
         turn_continues: Default::default(),
+        turns_in_flight: Vec::new(),
     });
     d.workspaces[0].tabs[0].focus
 }
@@ -7533,6 +7537,7 @@ fn restore_gives_no_shell_to_a_layout_slot_whose_pane_was_not_saved() {
         pending_starts: Vec::new(),
         conversation_operations: Vec::new(),
         turn_continues: Default::default(),
+        turns_in_flight: Vec::new(),
     });
     let panes = d.terms.len();
     let leaves = d.workspaces[0].tabs[0].layout.leaves().len();
@@ -7995,6 +8000,7 @@ fn an_agent_that_died_mid_turn_comes_back_as_a_shell_that_offers_the_resume() {
         pending_starts: Vec::new(),
         conversation_operations: Vec::new(),
         turn_continues: Default::default(),
+        turns_in_flight: Vec::new(),
     });
     let [interrupted, finished, in_terminal] = [0, 1, 2].map(|i| d.workspaces[i].tabs[0].focus);
 

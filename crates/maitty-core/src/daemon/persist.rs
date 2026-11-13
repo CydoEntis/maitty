@@ -20,6 +20,9 @@ pub struct Saved {
     /// When the daemon told a resumed conversation to continue; see `continue_turn`.
     #[serde(default)]
     pub turn_continues: super::conversation::continue_turn::Continues,
+    /// Chat conversations that were in a turn when this was saved: what a restart cut.
+    #[serde(default)]
+    pub turns_in_flight: Vec<crate::conversation::ConversationId>,
     pub workspaces: Vec<SavedWs>,
     /// Index into `workspaces`.
     pub active: usize,

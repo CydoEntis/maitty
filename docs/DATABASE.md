@@ -186,6 +186,11 @@ request ledger. Metadata restoration must be enabled for structured mutations.
 All full snapshots use a capture-time ticket and one resolved-path writer lock;
 an older completion cannot overwrite a newer committed intent or receipt.
 
+`turns_in_flight` defaults empty. It lists the conversation IDs that were in a
+turn when the snapshot was taken: Running, history reconciled, and working. A
+restart sends the continue message only to those. A conversation still starting
+up is not listed, so a daemon that stops then sends nothing for it.
+
 `turn_continues` defaults empty. It maps a conversation ID to the unix seconds at
 which the daemon told it to continue after a resume (`restore.continue_turn`), at
 most three per conversation, and holds no message text. It is in the session file

@@ -661,9 +661,10 @@ With `restore.continue_turn` on, the daemon sends one fixed message, `Continue w
 to a chat conversation, with nobody asking at that moment. It is off by default and its reach is
 narrow (`daemon/conversation/continue_turn.rs`):
 
-- **Who gets it.** Only a structured conversation that was Running when the daemon stopped, that the
-  daemon itself resumed at this start, on the generation that resume runs at. A start a client asked
-  for, a superseded generation, a conversation that was mid-transfer and a terminal agent never do.
+- **Who gets it.** Only a structured conversation that was in a turn when the daemon stopped (the
+  session file's `turns_in_flight`), that the daemon itself resumed at this start, on the generation
+  that resume runs at. An idle chat, a start a client asked for, a superseded generation, a
+  conversation that was mid-transfer and a terminal agent never do.
 - **When.** After the resume has succeeded and the history is complete, never before; a resume that
   fails sends nothing. It goes through the same send path as a person's message (hidden-character
   check, receipt, queue while a turn runs) and carries no model, effort or permission choice.

@@ -36,7 +36,7 @@ impl Continues {
 }
 
 impl Daemon {
-    /// The daemon started `id` again and it was running when the last daemon stopped: it is
+    /// The daemon started `id` again and it was in a turn when the last daemon stopped: it is
     /// told to continue once that resume, at the generation it runs at, has succeeded.
     pub(in crate::daemon) fn continue_when_resumed(&mut self, id: ConversationId) {
         if !self.cfg.restore.continue_turn {

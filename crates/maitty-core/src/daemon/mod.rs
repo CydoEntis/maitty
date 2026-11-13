@@ -419,7 +419,8 @@ struct Daemon {
     /// Chat conversations that were running when the previous daemon went away, with the
     /// generation they were fenced to: what an automatic resume may start, once.
     resumable_conversations: Vec<(crate::conversation::ConversationId, u64)>,
-    /// Those of `resumable_conversations` that were Running, not mid-transfer.
+    /// Those of `resumable_conversations` that were Running, not mid-transfer, with a turn in
+    /// flight.
     cut_conversations: std::collections::BTreeSet<crate::conversation::ConversationId>,
     /// Conversations the daemon is resuming that get the continue message once the resume
     /// succeeds, with the generation that resume runs at.

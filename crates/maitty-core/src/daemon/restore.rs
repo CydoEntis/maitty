@@ -349,7 +349,23 @@ impl Daemon {
             pending_starts: self.pending_starts.clone(),
             conversation_operations: self.conversation_operations.clone(),
             turn_continues: self.turn_continues.clone(),
+            turns_in_flight: self.turns_in_flight(),
         }
+    }
+
+    /// Chat conversations in a turn: running, reconciled with their history, and working. A
+    /// conversation still starting up is working too, but its history is not read yet.
+    fn turns_in_flight(&self) -> Vec<crate::conversation::ConversationId> {
+        self.conversations
+            .iter()
+            .filter(|c| c.state == crate::conversation::RecoveryState::Running)
+            .filter(|c| {
+                self.conversation_states
+                    .get(&c.id)
+                    .is_some_and(|state| state.history_ready && state.status == Status::Working)
+            })
+            .map(|c| c.id)
+            .collect()
     }
 
     /// The agent a command line starts (`codex "…"`, `"C:\…\claude.exe" …`), by its program,
@@ -488,7 +504,8 @@ impl Daemon {
         let mut resumable = Vec::new();
         let mut cut = std::collections::BTreeSet::new();
         for record in &mut saved.conversations {
-            let was_running = record.state == crate::conversation::RecoveryState::Running;
+            let was_running = record.state == crate::conversation::RecoveryState::Running
+                && saved.turns_in_flight.contains(&record.id);
             match record.recover() {
                 Ok(true) if record.execution == crate::conversation::ExecutionKind::Structured => {
                     resumable.push((record.id, record.generation));
