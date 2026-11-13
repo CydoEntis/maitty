@@ -91,10 +91,13 @@ export async function writeProjectFile(term: number, machine: number, path: stri
 /** What the remote button can do for a checkout. */
 export type SyncAction = 'fetch' | 'pull' | 'push'
 
-/** Fetches, pulls (fast-forward only) or pushes the checkout at `folder` on this computer; resolves to a line to show. */
-export async function syncRemote(folder: string, action: SyncAction, machine: number): Promise<string> {
+/**
+ * Fetches, pulls (fast-forward only) or pushes a checkout; resolves to a line to show. On this
+ * computer it is the one at `folder`; on another machine, the one pane `term` there is in.
+ */
+export async function syncRemote(folder: string, action: SyncAction, machine: number, term?: number): Promise<string> {
   if (!isTauri()) throw new Error('Syncing is only available in the desktop app')
-  return z.string().parse(await invoke<unknown>('git_sync', { machine, folder, action }))
+  return z.string().parse(await invoke<unknown>('git_sync', { machine, folder, action, ...(term === undefined ? {} : { term }) }))
 }
 
 /** Pushes the checkout's branch and opens a pull request for it; resolves to the pull request's address. */

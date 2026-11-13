@@ -65,6 +65,7 @@ export function WorkspaceDialogs() {
                 lookAt={lookAt}
                 {...(isShell(focusedSession) ? {} : { comments: { agent: agentName(focusedSession.process), onSend: (message: string) => sendAgentMessage(focusedSession, message) } })}
                 {...(focusedSession.machineName === null && focusedSession.repoRoot !== null ? { changeActions: { folder: focusedSession.repoRoot, machine: focusedSession.machine, suggested: suggestedCommitMessage(focusedSession) } } : {})}
+                {...(focusedSession.machineName !== null && inspectTerm !== null ? { changeActions: { folder: focusedSession.repoRoot ?? '', machine: focusedSession.machine, term: inspectTerm, suggested: '' } } : {})}
                 onView={setInspectView}
                 onClose={() => { setInspectOpen(false) }}
                 onNotice={flash}

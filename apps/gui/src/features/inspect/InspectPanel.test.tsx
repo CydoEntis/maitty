@@ -108,6 +108,50 @@ describe('Inspect panel', () => {
     cleanup()
   })
 
+  it('pulls a checkout on another machine with the same button, on that machine, and offers no commit there', async () => {
+    const asked: Array<[string, unknown]> = []
+    vi.mocked(invoke).mockReset().mockImplementation((command, args) => {
+      asked.push([command, args])
+      if (command === 'git_sync') return Promise.resolve('Pulled')
+      const question = (args as { question: Question }).question
+      if (question === 'Status') return Promise.resolve({ Status: { branch: 'main', ahead: 0, behind: 2, files: [] } })
+      return Promise.resolve({ Diff: { files: [{ path: 'a.txt', additions: 1, deletions: 0, binary: false, patch: '@@ -0,0 +1 @@\n+new\n' }], additions: 1, deletions: 0, total_files: 1, truncated: false } })
+    })
+    const onNotice = vi.fn()
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <InspectPanel term={5} machine={1} machineName="build" terminals={null} changedFiles={1} view="changes" agentWorking={false} timeline={[]} lookAt={null} changeActions={{ folder: '', machine: 1, term: 5, suggested: '' }} onView={vi.fn()} onClose={vi.fn()} onNotice={onNotice} />
+      </QueryClientProvider>,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Pull ↓2' }))
+    await waitFor(() => { expect(onNotice).toHaveBeenCalledWith('Pulled') })
+    expect(asked).toContainEqual(['git_sync', { machine: 1, folder: '', action: 'pull', term: 5 }])
+    expect(screen.queryByRole('button', { name: /^Commit/ })).toBeNull()
+    expect(screen.queryByRole('textbox', { name: 'Commit message' })).toBeNull()
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Create PR' })).toBeNull()
+    cleanup()
+  })
+
+  it('says why a push on another machine failed, in the machine\'s words', async () => {
+    vi.mocked(invoke).mockReset().mockImplementation((command, args) => {
+      if (command === 'git_sync') return Promise.reject(new Error('main has no upstream, and there is no remote named origin to push it to'))
+      const question = (args as { question: Question }).question
+      if (question === 'Status') return Promise.resolve({ Status: { branch: 'main', ahead: 1, behind: 0, files: [] } })
+      return Promise.resolve({ Diff: { files: [], additions: 0, deletions: 0, total_files: 0, truncated: false } })
+    })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <InspectPanel term={5} machine={1} machineName="build" terminals={null} changedFiles={0} view="changes" agentWorking={false} timeline={[]} lookAt={null} changeActions={{ folder: '', machine: 1, term: 5, suggested: '' }} onView={vi.fn()} onClose={vi.fn()} onNotice={vi.fn()} />
+      </QueryClientProvider>,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Push ↑1' }))
+    expect((await screen.findByRole('alert')).textContent).toBe('main has no upstream, and there is no remote named origin to push it to')
+    cleanup()
+  })
+
   it.each([
     ['files', 'Files'],
     ['branches', 'Branches'],

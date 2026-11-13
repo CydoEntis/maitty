@@ -29,7 +29,7 @@ type Props = {
   /** The branch the checkout is on, shown above the files. */
   branch?: string
   comments?: Omit<PatchComments, 'path' | 'sent' | 'onSent'>
-  /** Commit and Create PR, for a checkout on this computer; absent elsewhere. */
+  /** The commit bar: Commit, the remote button and Create PR on this computer, the remote button alone on another machine. */
   actions?: ChangeActions
   onNotice: (text: string) => void
 }
@@ -82,7 +82,7 @@ export function ChangesTab({ term, machine = LOCAL_MACHINE, branch, comments, ac
         {branch !== undefined && branch !== '' && <p className="mx-changes-branch" title={`Branch ${branch}`}><Icon name="branch" size={11} /><span>{branch}</span></p>}
         <ul className="mx-changes-list" aria-label="Changed files">
           {files.map((file) => (
-            <li key={file.path}><FileRow file={file} current={file.path === selected?.path} ticked={actions ? !skipped.has(file.path) : null} onTick={() => { tick(file.path) }} onPick={() => { setPicked(file.path) }} /></li>
+            <li key={file.path}><FileRow file={file} current={file.path === selected?.path} ticked={actions && actions.machine === LOCAL_MACHINE ? !skipped.has(file.path) : null} onTick={() => { tick(file.path) }} onPick={() => { setPicked(file.path) }} /></li>
           ))}
           {query.data.truncated && <li className="mx-inspect-note">Showing {files.length} of {query.data.total_files} files.</li>}
         </ul>
