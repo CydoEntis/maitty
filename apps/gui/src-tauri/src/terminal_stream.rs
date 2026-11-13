@@ -28,7 +28,7 @@ use maitty_shared::settings_view::{Appearance, NewSessionView, SettingKey, Setti
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tauri::ipc::{Channel, Response};
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -206,10 +206,15 @@ pub fn list_machines_overview(
 #[derive(Default)]
 pub struct TerminalOutput(Mutex<Option<Channel<Response>>>);
 
+/// The least time between two asks of one machine for its list made through `ask_machine_list`,
+/// so a window that asks in a loop cannot flood the machine with `Query::List`.
+pub const WINDOW_LIST_ASK_EVERY: Duration = Duration::from_secs(5);
+
 /// Where typed keys and requests for a replay go: to the machine's line, through the hub.
-/// Empty until the hub has started.
+/// Empty until the hub has started. Also holds when the window last asked each machine for its
+/// list.
 #[derive(Default)]
-pub struct Wire(OnceLock<HubHandle>);
+pub struct Wire(OnceLock<HubHandle>, Mutex<BTreeMap<MachineId, Instant>>);
 
 impl Wire {
     #[cfg(test)]
@@ -299,13 +304,25 @@ impl Wire {
     /// Ask another machine's daemon for its whole list; it comes back as `machine-sessions-changed`.
     /// The window asks while it holds a row of that machine that a list left out with no reason,
     /// so the answer can confirm the row is gone. Refused, naming the machine, when it has no line.
+    /// An ask within `WINDOW_LIST_ASK_EVERY` of the last one that went out is dropped: the list
+    /// asked for is on its way.
     pub fn ask_machine_list(&self, machine: u16) -> Result<(), String> {
+        self.ask_machine_list_at(machine, Instant::now())
+    }
+
+    pub(crate) fn ask_machine_list_at(&self, machine: u16, now: Instant) -> Result<(), String> {
         if !routing::is_remote(Some(machine)) {
             return Err("This computer's list is read with list_sessions".to_string());
         }
         let handle = self.handle()?;
         let id = MachineId(machine);
-        handle.ask_list(id).map_err(|_| refusal(handle, id))
+        let mut asked = self.1.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if asked.get(&id).is_some_and(|at| now.saturating_duration_since(*at) < WINDOW_LIST_ASK_EVERY) {
+            return Ok(());
+        }
+        handle.ask_list(id).map_err(|_| refusal(handle, id))?;
+        asked.insert(id, now);
+        Ok(())
     }
 
     /// Ask a machine's daemon (this computer's when none is named) for the folders inside `path`.
