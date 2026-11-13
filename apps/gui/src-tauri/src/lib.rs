@@ -697,6 +697,20 @@ async fn restore_snapshot(
         .map_err(|error| format!("{error:#}"))
 }
 
+/// How many files restoring the snapshot would change now, asked before the person confirms one.
+#[tauri::command]
+async fn snapshot_restore_count(
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    term: u32,
+    commit: String,
+) -> Result<u64, String> {
+    wire.require_local(machine, "Restoring a snapshot")?;
+    maitty_desktop_client::restore_count(term, commit)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
 #[tauri::command]
 async fn start_shell_session(
     app: tauri::AppHandle,
@@ -1571,6 +1585,7 @@ pub fn run() {
             usage_report,
             new_worktree_session,
             restore_snapshot,
+            snapshot_restore_count,
             start_agent_session,
             prewarm_agent_session,
             drop_prewarmed_agent,

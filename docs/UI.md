@@ -914,6 +914,19 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   before under "Whole working tree · <why>". The row focuses its own pane and shows that pane's session (a helper agent's chat open there stays open); moving
   to another session, closing the panel, and the other ways in show the working tree. A session on another machine
   gets the local-only refusal, as before.
+  A message the person sent has a **⋯ menu** beside its bubble (shown on hover or focus) with **Edit from here**
+  (`MessageMenu`, `useEditFromHere.ts`). It finds the snapshot taken before that message's turn
+  (`snapshotBefore` in `inspect/turnRange.ts`, by the daemon's turn times), asks the daemon how many files a restore
+  would change against the files as they are now (`RepoRequest::RestoreCount`), and asks first: "N files change back
+  … What is there now is kept as a "before a restore" snapshot", Cancel (which has the focus, so an Enter typed as it opens does nothing) or **Restore N files** (danger). Nothing is
+  restored without that yes. A turn without the daemon's times, no snapshot from before it, or a count that cannot be
+  read gives a toast saying why and offers no restore. After the restore the message goes in the box, ahead of
+  anything already typed there (a draft is kept, under it, and the confirm says so); nothing is sent. The next
+  message sent from that chat starts with one line telling the agent the files were restored to before that message
+  (`restoreNote`; the quoted words cut by character, with no control or format characters); the agent's own conversation is not rewound. A line under the box says the note will go, with **Leave it out**. A bubble, a later Edit from here and the quote leave that note out (`stripRestoreNote`).
+  The note goes when the box is emptied or the chat is left; a slash command or `!` line goes out without it and
+  leaves it for the next message. The item is greyed, with the reason in the menu, while the agent works (the daemon
+  refuses then too, for a terminal agent and for a chat working in the same checkout) or the daemon is offline; a session on another machine gets the local-only refusal.
 - **Cards** (`features/chat/components/`). Every fact the history carries is shown, and a missing one is said to be
   unavailable (a diff the history did not keep, a checklist without items, a command time or exit code the provider
   does not report, a turn without the daemon's times shows "Turn finished", not an invented duration). Only a step

@@ -1112,6 +1112,34 @@ pub async fn restore_snapshot(
     }
 }
 
+/// How many files restoring one of the checkout's snapshots would change now. A daemon from before the question
+/// would never answer it, so it is not asked.
+pub async fn restore_count(term: u32, commit: String) -> Result<u64> {
+    let message = ClientMsg::Query(Query::Repo {
+        term,
+        tag: 0,
+        request: maitty_shared::repo::RepoRequest::RestoreCount { commit },
+    });
+    answered_within(REQUEST_TIMEOUT, async {
+        let (mut connection, version) = ipc::open_for_user_knowing_version()
+            .await
+            .context("connecting to the local daemon")?;
+        if !daemon_reads(&message, version) {
+            bail!(
+                "the Maitty service running is older than this app and cannot count a restore yet: restart it (Settings › Daemon), then try again"
+            );
+        }
+        match ask(&mut connection, &message).await? {
+            Reply::Repo {
+                reply: maitty_shared::repo::RepoReply::RestoreCount(changed),
+                ..
+            } => Ok(changed as u64),
+            _ => bail!("daemon returned an unexpected restore count reply"),
+        }
+    })
+    .await
+}
+
 /// Replace the text of one existing file of the checkout `term` is in (the daemon checks the path and refuses
 /// anything but a plain file of the checkout).
 pub async fn write_project_file(
