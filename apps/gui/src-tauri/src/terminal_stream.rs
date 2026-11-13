@@ -674,6 +674,12 @@ fn reactions(handle: &HubHandle, outs: Vec<Out>) -> Vec<Reaction> {
                 });
                 None
             }
+            Out::WantList { machine } => {
+                // A write that fails here shows up as the line ending, and the list comes whole
+                // with the next line.
+                let _ = handle.ask_list(machine);
+                None
+            }
         })
         .collect()
 }

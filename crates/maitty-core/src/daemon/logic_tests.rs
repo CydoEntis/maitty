@@ -8240,6 +8240,47 @@ fn each_state_or_delta_a_surface_is_sent_carries_the_next_revision() {
 }
 
 #[test]
+fn after_an_attached_client_lists_the_next_change_reaches_its_surface_in_full() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let surface = crate::protocol::Surface::Terminal;
+    let (tx, mut crx) = mpsc::channel(64);
+    d.handle(Ev::Connected(7, tx, true, surface, false));
+    let (asker, mut asked) = mpsc::channel(64);
+    d.handle(Ev::Connected(8, asker, false, surface, false));
+    d.publish_state(surface, d.snapshot_for(surface));
+    while crx.try_recv().is_ok() {}
+
+    d.message(8, ClientMsg::Query(Query::List));
+    assert!(matches!(asked.try_recv(), Ok(ServerMsg::Reply(Reply::List(_)))));
+    d.terms.get_mut(&t).unwrap().process = "vim".into();
+    d.publish_state(surface, d.snapshot_for(surface));
+    assert!(
+        matches!(crx.try_recv(), Ok(ServerMsg::TermsChanged { .. })),
+        "a list for a client that follows no updates leaves the deltas be"
+    );
+
+    // The list holds a change the surface was not sent yet, so a delta worked out from what
+    // was sent would not fit it.
+    d.terms.get_mut(&t).unwrap().process = "git".into();
+    d.message(7, ClientMsg::Query(Query::List));
+    let Ok(ServerMsg::Reply(Reply::List(listed))) = crx.try_recv() else {
+        panic!("a list");
+    };
+    assert_eq!(listed.terms[&t].process, "git");
+    d.terms.get_mut(&t).unwrap().process = "vim".into();
+    d.publish_state(surface, d.snapshot_for(surface));
+    match crx.try_recv() {
+        Ok(ServerMsg::State(state)) => {
+            assert_eq!(state.terms[&t].process, "vim");
+            assert_eq!(state.revision, listed.revision + 1);
+        }
+        other => panic!("the whole state after a list: {other:?}"),
+    }
+    close(&mut d, &[t]);
+}
+
+#[test]
 fn the_daemon_id_is_in_the_state_a_client_gets_and_a_delta_leaves_it_standing() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
