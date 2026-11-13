@@ -1,11 +1,25 @@
 import { type Dispatch, type SetStateAction, useCallback } from 'react'
 import { toast } from '@/lib/toast'
 import { guardLocal } from '@/lib/localOnly'
+import { isChatSession } from './model/chatSession'
 import type { InspectView } from '@/features/inspect/InspectPanel'
 import { focusPane, type Layout } from './model/layout'
 import type { SessionView } from './model/session'
 
-/** Opens and closes the repository view. It reads this computer's checkouts, so a pane of another machine is told so instead. */
+/**
+ * The pane another machine's daemon is asked about for `session`'s changes, or null when it has
+ * none: a chat there has no terminal of its own to stand for its folder.
+ */
+export function remoteRepoPane(session: SessionView): number | null {
+  return isChatSession(session.conversation) ? (session.conversation.nativePane ?? null) : session.pane
+}
+
+/** Why the side panel has nothing for `session`, or null when it has: a session of another machine needs a pane its daemon can be asked about. */
+function panelRefusal(session: SessionView | undefined): string | null {
+  return session !== undefined && remoteRepoPane(session) === null ? guardLocal(session, 'inspect') : null
+}
+
+/** Opens and closes the side panel. For a session of another machine it shows that machine's changes; one with no pane to ask is told so instead. */
 export function useInspectActions({ focusedSession, setInspectOpen, setInspectView, sessionMap, showSessionById, inspectOpen, inspectView, focusedId, setLayout }: {
   focusedSession: SessionView | undefined
   setInspectOpen: Dispatch<SetStateAction<boolean>>
@@ -17,8 +31,7 @@ export function useInspectActions({ focusedSession, setInspectOpen, setInspectVi
   focusedId: string | null
   setLayout: Dispatch<SetStateAction<Layout>>
 }) {
-  // The repository view reads this computer's checkouts: on a pane of another machine it says so.
-  const inspectRefusal = guardLocal(focusedSession, 'inspect')
+  const inspectRefusal = panelRefusal(focusedSession)
   const toggleInspect = useCallback(() => {
     if (inspectRefusal !== null) toast.message(inspectRefusal)
     else setInspectOpen((open) => !open)
@@ -34,7 +47,7 @@ export function useInspectActions({ focusedSession, setInspectOpen, setInspectVi
   }, [inspectRefusal, setInspectOpen, setInspectView])
   // A session menu's Show changes: that session in front, its repository's changes beside it.
   const showChangesOf = useCallback((sessionId: string) => {
-    const refusal = guardLocal(sessionMap.get(sessionId), 'inspect')
+    const refusal = panelRefusal(sessionMap.get(sessionId))
     if (refusal !== null) {
       toast.message(refusal)
       return
@@ -45,7 +58,7 @@ export function useInspectActions({ focusedSession, setInspectOpen, setInspectVi
   }, [sessionMap, setInspectOpen, setInspectView, showSessionById])
   // A pane's side-panel button: the pane takes the focus and the panel opens for it, on `view` when one is asked for; it closes when it already showed that.
   const togglePanel = useCallback((paneId: string, sessionId: string, view?: InspectView) => {
-    const refusal = guardLocal(sessionMap.get(sessionId), 'inspect')
+    const refusal = panelRefusal(sessionMap.get(sessionId))
     if (refusal !== null) {
       toast.message(refusal)
       return

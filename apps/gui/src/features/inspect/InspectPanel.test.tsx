@@ -32,6 +32,16 @@ function renderPanel(view: InspectView, extra: { agentWorking?: boolean } = {}) 
   return { onNotice }
 }
 
+/** The panel for pane 5 of the machine build. */
+function renderOnBuild(view: InspectView) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={client}>
+      <InspectPanel term={5} machine={1} machineName="build" terminals={null} changedFiles={1} view={view} agentWorking={false} timeline={[]} lookAt={null} onView={vi.fn()} onClose={vi.fn()} onNotice={vi.fn()} />
+    </QueryClientProvider>,
+  )
+}
+
 beforeEach(() => { vi.mocked(isTauri).mockReturnValue(true) })
 
 describe('Inspect panel', () => {
@@ -79,6 +89,36 @@ describe('Inspect panel', () => {
     expect(screen.getByLabelText('Diff').textContent).not.toContain('diff --git')
     fireEvent.click(within(files).getByRole('button', { name: /b\.txt/ }))
     expect(screen.getByLabelText('Diff').textContent).toContain('+z')
+  })
+
+  it('reads the changes of a session on another machine from that machine, with no commit bar', async () => {
+    daemonAnswers({
+      Status: { branch: 'main', ahead: 0, behind: 0, files: [{ path: 'a.txt', kind: 'Modified' }] },
+      Diff: { files: [{ path: 'a.txt', additions: 1, deletions: 1, binary: false, patch: '@@ -1 +1 @@\n-old\n+new\n' }], additions: 1, deletions: 1, total_files: 1, truncated: false },
+    })
+    renderOnBuild('changes')
+
+    const files = await screen.findByRole('list', { name: 'Changed files' })
+    expect(within(files).getByText('a.txt')).toBeTruthy()
+    expect(screen.getByLabelText('Diff').textContent).toContain('+new')
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith('repo_query', { machine: 1, term: 5, question: { Diff: { path: null } } })
+    expect(vi.mocked(invoke).mock.calls.every(([, args]) => (args as { machine?: number }).machine === 1), 'nothing is asked of this computer').toBe(true)
+    expect(screen.queryByRole('button', { name: /^Commit/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /pull request/i })).toBeNull()
+    cleanup()
+  })
+
+  it.each([
+    ['files', 'Files'],
+    ['branches', 'Branches'],
+    ['history', 'History'],
+    ['references', 'References'],
+  ] as const)('says %s is local-only for a session on another machine and asks nothing', (view, name) => {
+    daemonAnswers({})
+    renderOnBuild(view)
+    expect(screen.getByText(`${name} is local-only in v1: the files are on build, not on this computer.`)).toBeTruthy()
+    expect(vi.mocked(invoke)).not.toHaveBeenCalled()
+    cleanup()
   })
 
   it('opens a comment box on a clicked diff line, sends the comment to the agent and keeps it under the line', async () => {

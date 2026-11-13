@@ -719,6 +719,14 @@ selection between a local and a remote pane turns the feature off and on. Menu e
 run git in a remote pane's folder (Changes, Snapshots, Make it a git repo) are left out of that
 pane's menu instead.
 
+**The side panel is the exception for Changes.** In the desktop app the side panel opens for a pane
+on another machine and its Changes tab shows the same file list and diffs as for a local pane, read
+from that machine's daemon (`repoStatus` and `repoDiff` with the machine, `features/inspect/api.ts`)
+and read-only: no commit bar and no Create PR. Files, Branches, History and References show the
+local-only sentence in the tab instead of asking anything; Checks and Timeline are as for a local
+pane. A chat on another machine that has no terminal of its own has no pane to ask, so the panel
+does not open for it and the toast says Inspect is local-only.
+
 **Dropping files on a pane** (`features/terminal/dropRoute.ts`, `useFileSends.tsx`, host `file_send.rs`,
 ADR 0007). On a pane of this computer the dropped paths are typed into it, quoted for its shell. On a
 pane of another machine a path here names nothing there, so the files are sent to that machine over its ssh

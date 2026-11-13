@@ -59,7 +59,7 @@ import { useServiceReads } from './useServiceReads'
 import { useSessionList } from './useSessionList'
 import { usePaneFiles } from './usePaneFiles'
 import { useWindowTheme } from './useWindowTheme'
-import { useInspectActions } from './useInspectActions'
+import { remoteRepoPane, useInspectActions } from './useInspectActions'
 import { useAgentStarts } from './useAgentStarts'
 import { useMountedTabs } from './useMountedTabs'
 
@@ -350,20 +350,22 @@ export function useWorkspaceState() {
   const needsElsewhere = sessions.filter((item) => item.status === 'needs' && item.id !== focusedId).length
 
   // Inspect looks at the focused pane's own repository; the Inspector's changed-file count comes from the same daemon question.
-  // A pane of another machine has no checkout on this computer, so there is nothing to inspect.
+  // A pane of another machine is asked of that machine's daemon, and only for its changes.
   // A chat session has no pane of its own to ask, so its first terminal answers: it runs in the same folder.
   const repoPaneOf = useCallback((session: SessionView): number | null => {
-    if (!online || !isDesktop() || session.machine !== LOCAL_MACHINE) return null
+    if (!online || !isDesktop()) return null
+    if (session.machine !== LOCAL_MACHINE) return remoteRepoPane(session)
     if (!isChatSession(session.conversation)) return session.pane
     return sessionMap.get(agentTerminals.get(session.id)?.[0] ?? '')?.pane ?? null
   }, [online, sessionMap, agentTerminals])
   // An agent of this computer can have terminals of its own; a shell is one already.
   const ownsTerminals = useCallback((session: SessionView) => online && isDesktop() && session.machine === LOCAL_MACHINE, [online])
   const inspectTerm = focusedSession ? repoPaneOf(focusedSession) : null
+  const inspectMachine = focusedSession?.machine ?? LOCAL_MACHINE
   const diffStat = useQuery({
-    queryKey: ['repo', inspectTerm, 'diff-stat'],
+    queryKey: ['repo', inspectTerm, 'diff-stat', inspectMachine],
     queryFn: async () => {
-      const diff = await repoDiff(inspectTerm ?? 0)
+      const diff = await repoDiff(inspectTerm ?? 0, null, inspectMachine)
       return { additions: diff.additions, deletions: diff.deletions, files: diff.total_files }
     },
     // The count shows only in the Inspect panel, and it comes from a full diff: nothing is read while the panel is

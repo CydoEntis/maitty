@@ -9,7 +9,9 @@ import { FilesTab, type LookAt } from './FilesTab'
 import { HistoryTab } from './HistoryTab'
 import { ReferencesTab } from './ReferencesTab'
 import { TimelineTab } from './TimelineTab'
+import { LOCAL_MACHINE } from '@/api/machines'
 import type { TerminalDetails } from '@/data/preview'
+import { localOnlyMessage, type LocalFeature } from '@/lib/localOnly'
 import { Icon, type IconName } from '@/features/workspace/components/glyphs'
 import './inspect.css'
 
@@ -81,8 +83,10 @@ type Props = {
   agentWorking: boolean
   /** The session's checks, for the Checks view. */
   checks?: readonly Check[]
-  /** The machine the session is on (0: this computer), for what the Checks view asks of its daemon. */
+  /** The machine the session is on (0: this computer): its daemon answers Changes and Checks, and the views that read files say they cannot. */
   machine?: number
+  /** That machine's name, for those words; null on this computer. */
+  machineName?: string | null
   /** What the pane's agent and shell reported lately, for the Timeline view. */
   timeline: TerminalDetails['timeline']
   lookAt: LookAt | null
@@ -93,6 +97,13 @@ type Props = {
   onView: (view: InspectView) => void
   onClose: () => void
   onNotice: (text: string) => void
+}
+
+/** The views that read the checkout's files, which are not on this computer for a session of another machine. */
+const NEEDS_FILES = { files: 'files', branches: 'branches', history: 'history', references: 'references' } as const satisfies Partial<Record<InspectView, LocalFeature>>
+
+function needsFiles(view: InspectView): view is keyof typeof NEEDS_FILES {
+  return view in NEEDS_FILES
 }
 
 /** The asked view when the panel can show it, or else the first one it can. */
@@ -106,7 +117,8 @@ function shownView(view: InspectView, hasRepo: boolean, hasTerminals: boolean): 
  * never pushes them or covers the sidebar: the focused session's changes, its files and its own
  * terminals.
  */
-export function InspectPanel({ term, terminals, changedFiles, branch, view: asked, agentWorking, timeline, checks = [], machine = 0, lookAt, comments, changeActions, onView, onClose, onNotice }: Props) {
+export function InspectPanel({ term, terminals, changedFiles, branch, view: asked, agentWorking, timeline, checks = [], machine = 0, machineName = null, lookAt, comments, changeActions, onView, onClose, onNotice }: Props) {
+  const elsewhere = machine !== LOCAL_MACHINE
   const view = shownView(asked, term !== null, terminals !== null)
   const [dragged, setDragged] = useState(readWidth)
   const width = clampWidth(dragged ?? window.innerWidth * DEFAULT_SHARE)
@@ -173,13 +185,14 @@ export function InspectPanel({ term, terminals, changedFiles, branch, view: aske
         {view === 'terminal' && <div className="mx-inspect-terminals" role="tabpanel">{terminals}</div>}
         {view !== 'terminal' && term !== null && (
           <div className="mx-inspect-scroll" role="tabpanel">
-            {view === 'files' && <FilesTab term={term} machine={machine} lookAt={lookAt} />}
-            {view === 'changes' && <ChangesTab term={term} {...(branch !== undefined ? { branch } : {})} {...(comments ? { comments } : {})} {...(changeActions ? { actions: changeActions } : {})} onNotice={onNotice} />}
+            {elsewhere && needsFiles(view) && <p className="mx-inspect-note">{localOnlyMessage(NEEDS_FILES[view], machineName)}</p>}
+            {view === 'files' && !elsewhere && <FilesTab term={term} machine={machine} lookAt={lookAt} />}
+            {view === 'changes' && <ChangesTab term={term} machine={machine} {...(branch !== undefined ? { branch } : {})} {...(comments ? { comments } : {})} {...(changeActions ? { actions: changeActions } : {})} onNotice={onNotice} />}
             {view === 'checks' && <ChecksTab term={term} machine={machine} checks={checks} onNotice={onNotice} />}
-            {view === 'branches' && <BranchesTab term={term} />}
-            {view === 'history' && <HistoryTab term={term} agentWorking={agentWorking} onNotice={onNotice} />}
+            {view === 'branches' && !elsewhere && <BranchesTab term={term} />}
+            {view === 'history' && !elsewhere && <HistoryTab term={term} agentWorking={agentWorking} onNotice={onNotice} />}
             {view === 'timeline' && <TimelineTab events={timeline} />}
-            {view === 'references' && <ReferencesTab term={term} />}
+            {view === 'references' && !elsewhere && <ReferencesTab term={term} />}
           </div>
         )}
       </aside>

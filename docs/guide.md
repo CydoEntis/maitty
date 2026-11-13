@@ -730,7 +730,10 @@ A new session (**New session**, ⌘T) starts where the focused session is. On an
 folder there, starting at `~`, because the folder picker is this computer's; a folder that does not exist
 opens in the machine's home folder. To start on a project that is not on the machine yet, use **Clone a
 repository…** on the new chat page (beside Browse…, or in the project menu): paste the repository's address,
-pick the folder it goes inside, and the chat opens on the new folder. If that machine is signed in to
+pick the folder it goes inside, and the chat opens on the new folder. The side panel's **Changes** tab
+works for a session on another machine too: it lists the changed files and their diffs, read from that
+machine. It is read-only there, and the panel's Files, Branches, History and References tabs say they are
+local-only. If that machine is signed in to
 GitHub, the dialog also lists your repositories there: search, pick an owner, and click one to fill in its
 address. It works for this computer and for
 another machine, and uses whatever git sign-in that machine already has; a private repository the machine

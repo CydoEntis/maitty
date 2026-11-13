@@ -1,5 +1,6 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { z } from 'zod'
+import { LOCAL_MACHINE } from '@/api/machines'
 
 const Count = z.number().int().nonnegative()
 
@@ -44,19 +45,23 @@ export async function highlightFile(path: string, text: string): Promise<Highlig
 
 const LOG_LIMIT = 60
 
-/** Ask the daemon about the repository `term` is in. It answers `{ <Kind>: payload }`; a different kind is a bug. */
-async function ask<T>(term: number, question: unknown, kind: string, payload: z.ZodType<T>): Promise<T> {
+/**
+ * Ask the daemon that owns pane `term` about the repository it is in: this computer's, or machine
+ * `machine`'s. It answers `{ <Kind>: payload }`; a different kind is a bug.
+ */
+async function ask<T>(term: number, question: unknown, kind: string, payload: z.ZodType<T>, machine: number = LOCAL_MACHINE): Promise<T> {
   if (!isTauri()) throw new Error('Repository details are only available in the desktop app')
-  const reply = z.record(z.string(), z.unknown()).parse(await invoke<unknown>('repo_query', { term, question }))
+  const reply = z.record(z.string(), z.unknown()).parse(await invoke<unknown>('repo_query', { ...(machine === LOCAL_MACHINE ? {} : { machine }), term, question }))
   if (!(kind in reply)) throw new Error('The daemon answered a different question')
   return payload.parse(reply[kind])
 }
 
-export const repoStatus = (term: number) => ask(term, 'Status', 'Status', StatusSchema)
+// What changed and its diff are the two questions another machine's daemon is asked; the rest are this computer's.
+export const repoStatus = (term: number, machine: number = LOCAL_MACHINE) => ask(term, 'Status', 'Status', StatusSchema, machine)
 export const repoTree = (term: number, path: string | null) => ask(term, { Tree: { path } }, 'Tree', z.array(EntrySchema))
 export const repoLocate = (term: number, path: string) => ask(term, { Locate: { path } }, 'Located', z.string())
 export const repoFile = (term: number, path: string) => ask(term, { File: { path } }, 'File', z.string())
-export const repoDiff = (term: number, path: string | null = null) => ask(term, { Diff: { path } }, 'Diff', DiffSchema)
+export const repoDiff = (term: number, path: string | null = null, machine: number = LOCAL_MACHINE) => ask(term, { Diff: { path } }, 'Diff', DiffSchema, machine)
 export const repoDiffRange = (term: number, from: string, to: string, path: string | null = null) =>
   ask(term, { DiffRange: { from, to, path } }, 'Diff', DiffSchema)
 export const repoBranches = (term: number) => ask(term, 'Branches', 'Branches', z.array(BranchSchema))

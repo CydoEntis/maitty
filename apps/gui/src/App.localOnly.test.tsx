@@ -99,14 +99,18 @@ describe('a pane of another machine and the features that need its files', () =>
     daemon.suggestProjectFolders.mockResolvedValue([])
   })
 
-  it('says Inspect is local-only, from the shortcut and from the pane menu', async () => {
+  it('opens the side panel on the machine\'s changes, and its views that read files say they are local-only', async () => {
     const user = await openRemotePane()
-    await user.keyboard('{Control>}{Shift>}i{/Shift}{/Control}')
-    expect(await screen.findByText(REFUSAL('Inspect'))).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'More pane actions' }))
     await user.click(await screen.findByRole('menuitem', { name: /^Changes/ }))
-    expect(await screen.findAllByText(REFUSAL('Inspect'))).not.toHaveLength(0)
-    expect(screen.queryByRole('complementary', { name: /repository|inspect/i })).toBeNull()
+    const panel = within(await screen.findByRole('complementary', { name: 'Side panel' }))
+    expect(panel.getByRole('tab', { name: /^Changes/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByText(REFUSAL('Inspect'))).toBeNull()
+    expect(panel.queryByRole('button', { name: /^Commit/ })).toBeNull()
+    for (const view of ['Files', 'Branches', 'History', 'References']) {
+      await user.click(panel.getByRole('tab', { name: view }))
+      expect(await panel.findByText(REFUSAL(view))).toBeInTheDocument()
+    }
   })
 
   it('says Worktrees is local-only and opens no dialog', async () => {
