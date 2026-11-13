@@ -11,7 +11,47 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 90;
+pub const PROTOCOL_VERSION: u32 = 91;
+
+/// The first version whose daemon says which commit identity its machine's git uses, and for
+/// which folders a different one applies (`Query::GitIdentities`).
+pub const GIT_IDENTITIES_SINCE: u32 = 91;
+/// The most folder rules one report carries.
+pub const GIT_IDENTITY_RULES_MAX: usize = 100;
+/// The longest name, email or folder a report carries, in characters.
+pub const GIT_IDENTITY_TEXT_MAX_CHARS: usize = 1024;
+
+/// What `Query::GitIdentities` found in the machine's global git config. Never a credential.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitIdentityReport {
+    /// False when the machine has no git; the rest is then empty.
+    pub installed: bool,
+    /// The name and email commits carry where no rule applies; each is absent when not set.
+    pub name: Option<String>,
+    pub email: Option<String>,
+    /// The folders whose checkouts use something else, in the order git reads them.
+    pub rules: Vec<GitIdentityRule>,
+    /// One line saying why the config could not be read, when it could not.
+    pub problem: Option<String>,
+}
+
+/// One `includeIf "gitdir:<folder>/"` entry of the global git config.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitIdentityRule {
+    /// The folder as the entry writes it, without the closing slash.
+    pub folder: String,
+    /// What the rule sets, when Maitty wrote it. `None` for a rule set outside Maitty: it is
+    /// listed so it can be seen, and nothing of what it sets is read.
+    pub identity: Option<GitIdentity>,
+}
+
+/// Who commits, and as which GitHub account git signs in, inside a folder with a rule.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitIdentity {
+    pub name: String,
+    pub email: String,
+    pub login: String,
+}
 
 /// The first version whose daemon opens a pull request for a pane's checkout on request
 /// (`GitRequest::PullRequest`).
@@ -911,6 +951,12 @@ pub enum Query {
     GitHubOwners {
         tag: u64,
     },
+    /// Which commit name and email git uses on this daemon's computer, and the folders where a
+    /// rule gives another (human clients only). Nothing is written. The answer is
+    /// `Reply::GitIdentities` with the same `tag`.
+    GitIdentities {
+        tag: u64,
+    },
     /// Do `request` to the checkout pane `term` is in (human clients only). The answer is
     /// `Reply::GitDone` with the same `tag`.
     Git {
@@ -1145,6 +1191,10 @@ pub enum Reply {
     GitDone {
         tag: u64,
         outcome: Result<String, String>,
+    },
+    GitIdentities {
+        tag: u64,
+        report: GitIdentityReport,
     },
 }
 
@@ -1958,6 +2008,7 @@ impl ClientMsg {
             ClientMsg::Query(Query::CloneRepo { .. }) => CLONE_SINCE,
             ClientMsg::Query(Query::GitHubAccounts { .. }) => GITHUB_ACCOUNTS_SINCE,
             ClientMsg::Query(Query::GitHubRepos { .. } | Query::GitHubOwners { .. }) => GITHUB_REPOS_SINCE,
+            ClientMsg::Query(Query::GitIdentities { .. }) => GIT_IDENTITIES_SINCE,
             ClientMsg::Query(Query::Git { request: GitRequest::Commit { .. }, .. }) => GIT_COMMIT_SINCE,
             ClientMsg::Query(Query::Git { request: GitRequest::PullRequest, .. }) => GIT_PULL_REQUEST_SINCE,
             ClientMsg::Query(Query::Git { .. }) => GIT_SYNC_SINCE,
@@ -2365,7 +2416,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 90);
+        assert_eq!(PROTOCOL_VERSION, 91);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2637,7 +2688,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 90);
+        assert_eq!(PROTOCOL_VERSION, 91);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -3494,5 +3545,7 @@ mod tests {
         let open = Query::Git { term: 3, request: GitRequest::PullRequest, tag: 1 };
         assert_eq!(ClientMsg::Query(open).introduced_in(), GIT_PULL_REQUEST_SINCE);
         const { assert!(GIT_PULL_REQUEST_SINCE > GIT_COMMIT_SINCE && GIT_PULL_REQUEST_SINCE <= PROTOCOL_VERSION) };
+        assert_eq!(ClientMsg::Query(Query::GitIdentities { tag: 1 }).introduced_in(), GIT_IDENTITIES_SINCE);
+        const { assert!(GIT_IDENTITIES_SINCE > COMPATIBLE_SINCE && GIT_IDENTITIES_SINCE <= PROTOCOL_VERSION) };
     }
 }

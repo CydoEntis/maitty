@@ -654,6 +654,18 @@ another machine keeps only logins GitHub could have given out and one clean `pro
 host sends it through `github_accounts(machine, tag)` and raises a `github-accounts` event with the tag
 and the report (`apps/gui/src/api/githubAccounts.ts` waits on it for 20 seconds).
 
+Protocol 91 adds `Query::GitIdentities { tag }` with `Reply::GitIdentities { tag, report }`
+(`GIT_IDENTITIES_SINCE`; `COMPATIBLE_SINCE` stays). The report is the machine's global `user.name`
+and `user.email` (each absent when not set) and its folder rules: every
+`includeIf "gitdir:<folder>/"` (or `gitdir/i:`) entry of the global git config, in git's order, the
+last one for a folder standing for it, at most `GIT_IDENTITY_RULES_MAX` (100). A rule Maitty wrote
+has an `identity` (`name`, `email`, GitHub `login`): its entry points at a file directly inside
+`<data dir>/git-identities/` whose `maitty.folder` names that folder, and the login is that file's
+`credential.https://github.com.username`. Any other rule has `identity: None` and only its folder is
+read. A machine without git answers `installed: false`; a config git cannot read answers `problem`.
+The daemon asks git (`git config --global --get`, `--get-regexp`, `--file … --get`) and never reads
+or writes the file itself. Human clients only; git runs off the event loop, five seconds a question.
+
 Protocol 90 adds `GitRequest::PullRequest` to `Query::Git` (`GIT_PULL_REQUEST_SINCE`;
 `COMPATIBLE_SINCE` stays). The daemon pushes the branch as `Push` does, then runs
 `gh pr create --fill --head <branch>` in the checkout. The answer's line is the pull request's

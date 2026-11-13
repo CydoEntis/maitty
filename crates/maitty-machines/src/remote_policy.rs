@@ -176,6 +176,10 @@ pub fn vet(opts: &MachineOpts, asked: bool, machine: &str, msg: ServerMsg) -> Op
                 outcome: outcome.map(line).map_err(line),
             })
         }
+        ServerMsg::Reply(Reply::GitIdentities { tag, report }) => ServerMsg::Reply(Reply::GitIdentities {
+            tag,
+            report: sanitize_identities(report),
+        }),
         ServerMsg::Reply(Reply::GitHubAccounts { tag, report }) => ServerMsg::Reply(Reply::GitHubAccounts {
             tag,
             report: sanitize_github(report),
@@ -194,6 +198,27 @@ pub fn vet(opts: &MachineOpts, asked: bool, machine: &str, msg: ServerMsg) -> Op
         }),
         other => other,
     })
+}
+
+/// What another machine says about who commits there: no more rules than a report carries, every
+/// name, email and folder one clean line of a report's length, and a rule's identity kept only
+/// with a login GitHub could have given out.
+fn sanitize_identities(mut report: maitty_shared::protocol::GitIdentityReport) -> maitty_shared::protocol::GitIdentityReport {
+    use maitty_shared::protocol::{GIT_IDENTITY_RULES_MAX, GIT_IDENTITY_TEXT_MAX_CHARS};
+    let line = |text: String| sanitize(&text, false).chars().take(GIT_IDENTITY_TEXT_MAX_CHARS).collect::<String>();
+    report.name = report.name.map(line);
+    report.email = report.email.map(line);
+    report.problem = report.problem.map(line);
+    report.rules.truncate(GIT_IDENTITY_RULES_MAX);
+    for rule in &mut report.rules {
+        rule.folder = line(std::mem::take(&mut rule.folder));
+        rule.identity = rule.identity.take().filter(|identity| is_login(&identity.login)).map(|mut identity| {
+            identity.name = line(std::mem::take(&mut identity.name));
+            identity.email = line(std::mem::take(&mut identity.email));
+            identity
+        });
+    }
+    report
 }
 
 /// A GitHub report from another machine: no more accounts than a report carries, every login one
@@ -362,6 +387,26 @@ mod tests {
             };
             let line = outcome.unwrap_or_else(|why| why);
             assert!(!line.contains(['\u{1b}', '\u{7}', '\n']), "{line:?}");
+        }
+        {
+            use maitty_shared::protocol::{GIT_IDENTITY_RULES_MAX, GitIdentity, GitIdentityReport, GitIdentityRule};
+            let rule = |login: &str| GitIdentityRule {
+                folder: "/code/a\u{1b}[31m\nb".into(),
+                identity: Some(GitIdentity { name: "A\u{7}".into(), email: "a@example.invalid".into(), login: login.into() }),
+            };
+            let mut rules = vec![rule("login-a"), rule("<b>not a login</b>")];
+            rules.extend(std::iter::repeat_with(|| rule("login-a")).take(GIT_IDENTITY_RULES_MAX));
+            let report = GitIdentityReport { installed: true, name: Some("Casey\nExample".into()), email: None, rules, problem: None };
+            let Some(ServerMsg::Reply(Reply::GitIdentities { tag: 8, report })) =
+                vet(&nothing_on(), true, "box", ServerMsg::Reply(Reply::GitIdentities { tag: 8, report }))
+            else {
+                panic!("who commits on a machine is let through");
+            };
+            assert_eq!(report.name.as_deref(), Some("Casey Example"));
+            assert_eq!(report.rules.len(), GIT_IDENTITY_RULES_MAX);
+            assert_eq!(report.rules[0].folder, "/code/a[31m b");
+            assert_eq!(report.rules[0].identity.as_ref().map(|identity| identity.name.as_str()), Some("A"));
+            assert_eq!(report.rules[1].identity, None, "a login that is not one takes the identity with it");
         }
         let cloned = |outcome| ServerMsg::Reply(Reply::Cloned { tag: 4, outcome });
         let Some(ServerMsg::Reply(Reply::Cloned { tag: 4, outcome: Ok(path) })) =

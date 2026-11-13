@@ -17,6 +17,7 @@ mod contain;
 mod conversation;
 mod folders;
 mod git;
+mod git_identity;
 mod github;
 mod helpers;
 mod identity;
@@ -2794,6 +2795,22 @@ impl Daemon {
                         }) =>
                     {
                         ServerMsg::Error("Only a human client can ask about this machine's GitHub account".into())
+                    }
+                    Query::GitIdentities { .. }
+                        if self.clients.get(&client).is_some_and(|client| {
+                            client.from.is_some() || client.structured.is_some()
+                        }) =>
+                    {
+                        ServerMsg::Error("Only a human client can ask who commits on this machine".into())
+                    }
+                    Query::GitIdentities { tag } => {
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let report = git_identity::report(&git_identity::Place::real());
+                            let reply = Reply::GitIdentities { tag, report };
+                            let _ = tx.blocking_send(Ev::Answered { client, reply });
+                        });
+                        return;
                     }
                     Query::GitHubRepos { owner, search, tag } => {
                         let tx = self.tx.clone();

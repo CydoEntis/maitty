@@ -553,6 +553,12 @@ is a fixed set of host commands that take a machine's name or number, never a pr
   address and may hold no path separator or other character a folder name cannot. Only a person's
   client may ask; a pane's or an agent's connection is refused. The daemon reads no credential: git uses
   whatever the machine already has, and fails when it would have to ask.
+- **Reading who commits** (`Query::GitIdentities`, `daemon/git_identity.rs`): the daemon reads the
+  machine's global git config through git itself: the default `user.name` and `user.email`, and the
+  folder of every `includeIf "gitdir:…"` entry. It reads further only into files that sit directly in
+  its own `git-identities` folder and name the folder they are for; what a rule set outside Maitty
+  points at is never opened. No credential is read (a rule holds a GitHub login, never a token), nothing
+  is written, and only a person's client may ask.
 - **Changing a checkout on request** (`Query::Git`, `daemon/sync.rs`, `commit.rs`, `pull_request.rs`):
   fetch, fast-forward pull, push, commit and open a pull request for the checkout a pane is in. Only a
   person's client may ask, with the pane checks of `Query::Repo`. The request is one of five words; the
