@@ -728,7 +728,11 @@ no sounds, so there is no switch for them.
 
 A new session (**New session**, ⌘T) starts where the focused session is. On another machine it asks for a
 folder there, starting at `~`, because the folder picker is this computer's; a folder that does not exist
-opens in the machine's home folder. Files, Changes, worktrees and the other features that read a pane's files
+opens in the machine's home folder. To start on a project that is not on the machine yet, use **Clone a
+repository…** on the new chat page (beside Browse…, or in the project menu): paste the repository's address,
+pick the folder it goes inside, and the chat opens on the new folder. It works for this computer and for
+another machine, and uses whatever git sign-in that machine already has; a private repository the machine
+cannot sign in to fails with git's own message. Files, Changes, worktrees and the other features that read a pane's files
 are for this computer's sessions only.
 
 **Dropping files or folders on a session of another machine** sends them there: drag up to 10 files or folders from

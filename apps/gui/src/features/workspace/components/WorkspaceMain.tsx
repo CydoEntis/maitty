@@ -11,6 +11,7 @@ import { FindBar } from '@/features/find/FindBar'
 import { RestoreBanner } from './RestoreBanner'
 import { chatFindOf } from '@/features/chat/chatSearch'
 import { chooseProjectFolder } from '@/api/folderPicker'
+import { useCloneRepo } from './useCloneRepo'
 import { machineProjects } from '../model/newSession'
 import { NewChatPage } from './NewChatPage'
 import { useRemoteFolderPick } from './useRemoteFolderPick'
@@ -25,9 +26,14 @@ import { useWorkspace } from '../workspaceContext'
 /** The middle of the window: the new chat page, find, the service's state, the panes of each mounted tab and the status bar. */
 export function WorkspaceMain() {
   const { serviceFooterText, newChatOpen, newChatMachine, setNewChatMachine, newChatSeed, setNewChatSeed, sidebarMachineHeads, setNewChatOpen, sessions, focusedSession, preferences, home, startNewChat, warmNewChat, setSettingsSection, findOpen, online, heads, focusedId, terminalHandles, showSessionById, setFindOpen, dismissedRestores, resumeInterrupted, setDismissedRestores, failures, mismatch, retryAt, offlineDetail, sessionsQuery, restartOffer, appBehindOffer, refetchSessions, tab, mountedTabs, layout, narrow, setLayout, closingPanes, startFolderLabel, canStart, newSession, focusedMachineNumber, focusMode, focusMachine, theme, shortcutChord, root, setThemeMode, pickTheme, openAppearance, setStyle, setTextSize, resetTextSize, openShortcuts } = useWorkspace()
-  const remotePick = useRemoteFolderPick(newChatMachine, sidebarMachineHeads.find((head) => head.machine === newChatMachine)?.label ?? 'that machine')
+  const newChatMachineLabel = sidebarMachineHeads.find((head) => head.machine === newChatMachine)?.label ?? 'that machine'
+  const remotePick = useRemoteFolderPick(newChatMachine, newChatMachineLabel)
+  const newChatBrowse = newChatMachine === LOCAL_MACHINE ? chooseProjectFolder : remotePick.browse
+  const newChatStartFolder = newChatMachine === LOCAL_MACHINE ? resolveStartFolder(preferences.startFolder, home) : '~'
+  const cloneRepo = useCloneRepo({ machine: newChatMachine, where: newChatMachine === LOCAL_MACHINE ? 'this computer' : newChatMachineLabel, startIn: newChatStartFolder, chooseFolder: newChatBrowse })
   return (
     <div className="mx-main-wrap">
+              {cloneRepo.dialog}
               {remotePick.dialog}
               <main className="mx-main" aria-label="Terminals">
                 {newChatOpen && (
@@ -37,11 +43,12 @@ export function WorkspaceMain() {
                     machine={newChatMachine}
                     machines={sidebarMachineHeads.filter((head) => head.machine === LOCAL_MACHINE || head.chip?.tone === 'ok').map((head) => ({ machine: head.machine, label: head.label, local: head.machine === LOCAL_MACHINE }))}
                     onOtherMachine={setNewChatMachine}
-                    projects={machineProjects(sessions, newChatMachine, focusedSession, newChatMachine === LOCAL_MACHINE ? resolveStartFolder(preferences.startFolder, home) : '~')}
+                    projects={machineProjects(sessions, newChatMachine, focusedSession, newChatStartFolder)}
                     defaultAgent={preferences.defaultAgent}
                     bypassAllowed={preferences.yoloClaude}
                     codexYolo={preferences.yoloCodex}
-                    browse={newChatMachine === LOCAL_MACHINE ? () => chooseProjectFolder() : remotePick.browse}
+                    browse={newChatBrowse}
+                    clone={cloneRepo.open}
                     onStart={startNewChat}
                     onWarm={warmNewChat}
                     onAddMachine={() => { setNewChatOpen(false); setSettingsSection('machines') }}

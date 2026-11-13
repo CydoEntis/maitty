@@ -45,6 +45,30 @@ describe('the new chat page', () => {
     expect(screen.getByRole('textbox', { name: 'First message' })).toHaveFocus()
   })
 
+  it('offers to clone a repository beside Browse and from the project menu, and opens on the folder it was cloned into', async () => {
+    const clone = vi.fn<() => Promise<string | null>>().mockResolvedValueOnce(null).mockResolvedValueOnce('/dev/widgets')
+    const withProjects = (projects: typeof PROJECTS) => (
+      <div className="mx-app">
+        <NewChatPage machine={0} machines={[{ machine: 0, label: 'This computer', local: true }]} projects={projects} defaultAgent="claude" browse={() => Promise.resolve(null)} clone={clone} onStart={() => Promise.resolve()} onOtherMachine={() => undefined} onCancel={() => undefined} />
+      </div>
+    )
+    const first = render(withProjects([]))
+    // Cancelled: the page still asks for a folder.
+    await userEvent.click(screen.getByRole('button', { name: 'Clone a repository…' }))
+    expect(screen.getByRole('textbox', { name: 'Search projects or paste a path' })).toBeInTheDocument()
+    first.unmount()
+
+    render(withProjects(PROJECTS))
+    await userEvent.click(await screen.findByRole('button', { name: 'Project: growth' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Clone a repository…' }))
+    expect(await screen.findByRole('button', { name: 'Project: widgets' })).toBeInTheDocument()
+  })
+
+  it('has no clone button when the window gives it no way to clone', () => {
+    page()
+    expect(screen.queryByRole('button', { name: 'Clone a repository…' })).not.toBeInTheDocument()
+  })
+
   it('asks for a folder first only when there is no project: a search, and a pasted path that opens as a folder', async () => {
     render(
       <div className="mx-app">
