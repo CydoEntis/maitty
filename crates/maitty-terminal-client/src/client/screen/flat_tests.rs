@@ -572,6 +572,43 @@ fn a_failed_command_is_the_problem_state_and_its_row_says_so_in_red() {
     assert_eq!(buf[(2, y)].fg, t.err);
 }
 
+/// Where `word` starts in the sidebar's columns of row `y`.
+fn side_x(rows: &[String], y: usize, word: &str) -> Option<u16> {
+    let row: Vec<char> = side(rows, y).chars().collect();
+    let word: Vec<char> = word.chars().collect();
+    row.windows(word.len()).position(|w| w == word).map(|x| x as u16)
+}
+
+#[test]
+fn a_session_that_hit_its_plan_limit_says_limited_and_when_it_resets_in_the_needs_you_colour() {
+    let mut app = reference_fixture::world(Stage::None);
+    let resets = reference_fixture::at(16, 30, 0);
+    app.snap.terms.get_mut(&5).unwrap().resume_at = Some(resets);
+    let buf = cells(&mut app, 140, 50);
+    let rows = text(&mut app, 140, 50);
+    show(&rows, "limited, two lines");
+    let y = row_of(&app, 5);
+    let x = side_x(&rows, y + 1, "limited 16:30").unwrap_or_else(|| panic!("{}", side(&rows, y + 1)));
+    assert_eq!(buf[(x, y as u16 + 1)].fg, app.theme.blocked);
+    assert!(side(&rows, y).contains("old-moth"), "the name stays: {}", side(&rows, y));
+
+    app.screen.saved.group_folders = true;
+    let buf = cells(&mut app, 140, 50);
+    let rows = text(&mut app, 140, 50);
+    show(&rows, "limited, grouped by folder");
+    let y = row_of(&app, 5);
+    let x = side_x(&rows, y, "limited 16:30").unwrap_or_else(|| panic!("{}", side(&rows, y)));
+    assert_eq!(buf[(x, y as u16)].fg, app.theme.blocked);
+}
+
+#[test]
+fn a_reset_time_that_has_passed_shows_nothing() {
+    let mut app = reference_fixture::world(Stage::None);
+    app.snap.terms.get_mut(&5).unwrap().resume_at = Some(reference_fixture::now());
+    let rows = text(&mut app, 140, 50);
+    assert!(!rows.iter().any(|r| side_of(r).contains("limited")), "{rows:#?}");
+}
+
 #[test]
 fn the_working_spinner_is_still_with_reduce_motion_and_turns_with_it() {
     let braille: Vec<String> = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏".chars().map(String::from).collect();

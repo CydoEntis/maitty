@@ -57,6 +57,8 @@ pub(super) struct SideRow {
     /// Its pull request as `#45 merged`, with how it is going, when the branch has one.
     pub pr: Option<(String, PrTone)>,
     pub state: State,
+    /// It hit its plan limit: when the daemon continues it (unix seconds), while that is ahead.
+    pub limited_until: Option<u64>,
     /// An agent (its name is bold while it has something going on), not a shell.
     pub agent: bool,
     pub process: String,
@@ -193,6 +195,7 @@ fn side_rows(app: &App, model: &[Proj]) -> Vec<SideRow> {
                 branch: info.and_then(|i| i.branch.clone()).unwrap_or_default(),
                 pr: info.and_then(|i| i.pr.as_ref()).map(|p| (p.headline(), p.tone())),
                 state: State::of(s.status, failed, s.down),
+                limited_until: info.and_then(|i| i.resume_at).filter(|at| *at > super::now_secs()),
                 agent: s.is_agent,
                 process: info.map_or(String::new(), |i| i.process.clone()),
                 machine: app.machine_label_of(s.key.machine),
@@ -768,6 +771,11 @@ fn pr_colour(tone: PrTone, t: &Theme) -> Color {
     }
 }
 
+/// `limited 16:30`: the session hit its plan limit, and the local time it goes on.
+fn limited_note(resume_at: u64) -> String {
+    format!("limited {}", crate::clock::local_hm(resume_at))
+}
+
 /// One session's two lines and its subagents.
 fn draw_session(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, row: &SideRow, open: bool, t: &Theme) {
     let height = session_h(app.screen.saved.group_folders);
@@ -834,20 +842,22 @@ fn draw_session(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, row: &SideRow,
 
     // Under its folder's heading a session is one line; otherwise the project goes under the name.
     // The pull request follows the project there, or sits at the right of a one-line row when the
-    // name leaves room for it.
+    // name leaves room for it. A plan limit comes before the pull request, and takes its place
+    // on a one-line row.
+    let limited = row.limited_until.map(|at| seg(limited_note(at), base.fg(t.blocked)));
     let pr = row.pr.as_ref().map(|(text, tone)| seg(text.clone(), base.fg(pr_colour(*tone, t))));
     if height > 1 {
         let mut line = vec![seg(row.project.clone(), base.fg(t.muted))];
-        if let Some(pr) = pr {
+        for note in limited.into_iter().chain(pr) {
             line.push(seg("  ", base));
-            line.push(pr);
+            line.push(note);
         }
         put_cut(buf, r.x + NAME_X, y + 1, line, end);
-    } else if let Some(pr) = pr {
-        let w = pr.0.width() as u16;
+    } else if let Some(note) = limited.or(pr) {
+        let w = note.0.width() as u16;
         let name_end = r.x + NAME_X + row.name.width() as u16;
         if end.saturating_sub(w) > name_end + 1 {
-            put(buf, end - w, y, &[pr], end);
+            put(buf, end - w, y, &[note], end);
         }
     }
     if let Some(term) = row.term {
@@ -940,6 +950,7 @@ mod tests {
             branch: "agent/grow-025".into(),
             pr: None,
             state: State::Idle,
+            limited_until: None,
             agent: true,
             process: "claude".into(),
             machine: "devbox".into(),
