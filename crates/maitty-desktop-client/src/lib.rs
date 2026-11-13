@@ -1540,6 +1540,44 @@ pub async fn saved_conversations(agent: String, folder: String) -> Result<Value>
     .await
 }
 
+/// The agent sessions this computer's daemon recorded as closed, newest first, each with `folder_present`: whether its
+/// folder is still there, looked at off the async workers. Null when the daemon running is older than the question.
+pub async fn closed_sessions() -> Result<Value> {
+    let message = ClientMsg::Query(Query::ClosedSessions);
+    let list = answered_within(REQUEST_TIMEOUT, async {
+        let (mut connection, version) = ipc::open_for_user_knowing_version()
+            .await
+            .context("connecting to the local daemon")?;
+        if !daemon_reads(&message, version) {
+            return Ok(None);
+        }
+        match ask(&mut connection, &message).await? {
+            Reply::ClosedSessions(list) => Ok(Some(list)),
+            _ => bail!("daemon returned an unexpected closed sessions reply"),
+        }
+    })
+    .await?;
+    let Some(list) = list else {
+        return Ok(Value::Null);
+    };
+    tokio::task::spawn_blocking(move || closed_session_rows(list))
+        .await
+        .context("looking for the closed sessions' folders")?
+}
+
+fn closed_session_rows(list: Vec<maitty_shared::protocol::ClosedSession>) -> Result<Value> {
+    let rows = list
+        .into_iter()
+        .map(|closed| {
+            let folder_present = closed.cwd.is_dir();
+            let mut row = serde_json::to_value(closed)?;
+            row["folder_present"] = Value::Bool(folder_present);
+            Ok(row)
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(Value::Array(rows))
+}
+
 /// Take back a command approved "always in this project".
 pub async fn forget_allowed_command(
     project: PathBuf,
@@ -2493,6 +2531,35 @@ mod agent_command_tests {
         });
         assert!(daemon_reads(&ask, PROTOCOL_VERSION));
         assert!(!daemon_reads(&ask, SAVED_CONVERSATIONS_SINCE - 1));
+    }
+
+    #[test]
+    fn a_daemon_from_before_closed_sessions_is_not_asked_for_them() {
+        use super::{ClientMsg, Query, daemon_reads};
+        use maitty_shared::protocol::{CLOSED_SESSIONS_SINCE, PROTOCOL_VERSION};
+        let ask = ClientMsg::Query(Query::ClosedSessions);
+        assert!(daemon_reads(&ask, PROTOCOL_VERSION));
+        assert!(!daemon_reads(&ask, CLOSED_SESSIONS_SINCE - 1));
+    }
+
+    #[test]
+    fn a_closed_session_says_whether_its_folder_is_still_there() {
+        use maitty_shared::protocol::ClosedSession;
+        let closed = |cwd: std::path::PathBuf| ClosedSession {
+            agent: "claude".into(),
+            session: "abc-123".into(),
+            cwd,
+            branch: Some("dev".into()),
+            title: Some("Fix the parser".into()),
+            at: 1_700_000_000,
+        };
+        let here = std::env::temp_dir();
+        let gone = here.join("maitty-closed-session-folder-that-was-removed");
+        let rows = super::closed_session_rows(vec![closed(here), closed(gone)]).unwrap();
+        assert_eq!(rows[0]["folder_present"], true);
+        assert_eq!(rows[1]["folder_present"], false);
+        assert_eq!(rows[0]["session"], "abc-123");
+        assert_eq!(rows[0]["branch"], "dev");
     }
 
     #[test]

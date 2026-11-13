@@ -149,6 +149,19 @@ daemon does not take it. There is no New session dialog. **Layout 2g changes the
 Ctrl+Shift+A) opens the page above, and **New shell** (⌘⇧T, Ctrl+Alt+T, the sidebar's terminal button, a
 machine's New shell here) starts a plain shell in the start folder with no dialog; another machine asks for a folder there first, so it opens the dialog. A screen reader is told when a machine goes down (`build disconnected: unreachable`) and when it is back, once each and not for every retry, through a polite live region; every state is a word as well as a shape and a colour, nothing about machines animates, and the Machines page works with the keyboard alone (Tab, Enter, Esc ends a look in progress without closing Settings). Features that read a pane's files (Inspect, worktreesFeatures that read a pane's files (Inspect, worktrees, opening a file from the output, dropping files, the screen text) are for this computer's panes only: each says `<Feature> is local-only in v1: the files are on <machine>, not on this computer.` and the Repository button shows disabled with that text.
 
+**Recent sessions** (`RecentSessionsDialog`, `model/recentSessions.ts`, `useRecentSessions`; the clock button in the
+sidebar's foot and the rail's, and **Recent sessions…** in the palette) lists the agent sessions that closed on this
+computer, newest first (`closed_sessions`, API_PATTERNS; read when the list opens, off the UI thread): each its title
+(else "Claude session"), the agent's mark and name, the folder, the branch and "closed 3h ago". Picking one closes the
+list and starts that agent in that folder with its conversation, through the new chat's resume start (`startNewChat`
+with `resume`; the id held to `resumeWords`' rule, model, effort and mode left to the agent). A row cannot be picked,
+and says why in place of the time, when its folder is gone ("folder removed"; recreating it is not offered), when its
+agent is not Claude or Codex ("cannot be reopened here"), or when its id fails the rule ("no conversation to resume").
+It says "Looking for closed sessions…" while it reads, "No closed sessions yet. A chat you close shows here once its
+Undo has passed." when there are none, "Could not read the closed sessions." with **Try again** when the read fails,
+and "Restart the Maitty service to see closed sessions." for a daemon older than protocol 86. Esc, Close or a click
+outside closes it. Only this computer's daemon is asked: another machine's closed sessions are not listed.
+
 **Desktop service states** (`ServiceStatus`, `model/serviceState.ts`). While maittyd does not answer, every status reads
 Unknown, spinners stop and input waits. The first four failed tries show a thin bar under the pane header, "Reconnecting to
 maittyd · your sessions are still running", with "Try N of 5 · next in Ns" (it ticks each second) and **Retry now**. After the
