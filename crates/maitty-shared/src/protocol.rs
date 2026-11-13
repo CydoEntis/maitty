@@ -742,6 +742,10 @@ pub enum Command {
         /// it works runs before the messages queued behind it.
         #[serde(default)]
         first: bool,
+        /// Names this send, so a retry of it is acknowledged instead of queued twice (see
+        /// `SendWhenReady::operation`).
+        #[serde(default)]
+        operation: Option<u64>,
     },
     /// Drop the follow-ups queued for a pane.
     ClearQueue {
@@ -759,6 +763,11 @@ pub enum Command {
     SendWhenReady {
         term: TermId,
         text: String,
+        /// Names this send: the same pane, operation and text again within ten minutes is
+        /// acknowledged and not typed or held again; the same operation with other text is
+        /// refused. None is a send with no retry protection, as before.
+        #[serde(default)]
+        operation: Option<u64>,
     },
     /// Run the pane's checkpoint `name` again (None: all of them). While its agent is working
     /// the run waits for the turn to end.
@@ -2127,11 +2136,13 @@ mod tests {
                 term: 3,
                 text: "then run the tests".into(),
                 first: false,
+                operation: None,
             }),
             ClientMsg::Command(Command::ClearQueue { term: 3 }),
             ClientMsg::Command(Command::SendWhenReady {
                 term: 3,
                 text: "fix the parser".into(),
+                operation: Some(7),
             }),
             ClientMsg::Command(Command::RerunCheck {
                 term: 3,
@@ -2326,12 +2337,13 @@ mod tests {
         let held = encode(&Command::SendWhenReady {
             term: 3,
             text: "fix the parser".into(),
+            operation: None,
         })
         .unwrap();
         assert!(decode::<OldCommand>(&held).is_err());
         assert!(matches!(
             decode::<Command>(&held),
-            Ok(Command::SendWhenReady { term: 3, text }) if text == "fix the parser"
+            Ok(Command::SendWhenReady { term: 3, text, operation: None }) if text == "fix the parser"
         ));
 
         let id = crate::conversation::ConversationId(3);
@@ -2445,6 +2457,40 @@ mod tests {
         let drop = ClientMsg::Command(Command::DropQueued { term: 3, index: 0, text: "next".into() });
         assert_eq!(drop.introduced_in(), DROP_QUEUED_SINCE);
         const { assert!(DROP_QUEUED_SINCE > COMPATIBLE_SINCE && DROP_QUEUED_SINCE <= PROTOCOL_VERSION) };
+    }
+
+    /// `operation` was added to `QueueFollowUp` and `SendWhenReady` as a defaulted field: a send
+    /// from before it decodes as one with no operation, and an older daemon reads one that carries
+    /// it, ignoring the operation, so the version stays as it was.
+    #[test]
+    fn a_terminal_send_from_before_operation_ids_still_decodes_both_ways() {
+        #[derive(Debug, Serialize, Deserialize)]
+        enum OldCommand {
+            QueueFollowUp { term: TermId, text: String, first: bool },
+            SendWhenReady { term: TermId, text: String },
+        }
+        let queued = encode(&OldCommand::QueueFollowUp { term: 3, text: "next".into(), first: true }).unwrap();
+        assert!(matches!(
+            decode::<Command>(&queued).unwrap(),
+            Command::QueueFollowUp { term: 3, first: true, operation: None, .. }
+        ));
+        let held = encode(&OldCommand::SendWhenReady { term: 3, text: "fix it".into() }).unwrap();
+        assert!(matches!(
+            decode::<Command>(&held).unwrap(),
+            Command::SendWhenReady { term: 3, operation: None, .. }
+        ));
+
+        let new = encode(&Command::SendWhenReady { term: 3, text: "fix it".into(), operation: Some(9) }).unwrap();
+        assert!(matches!(
+            decode::<Command>(&new).unwrap(),
+            Command::SendWhenReady { operation: Some(9), .. }
+        ));
+        assert!(matches!(
+            decode::<OldCommand>(&new).unwrap(),
+            OldCommand::SendWhenReady { term: 3, text } if text == "fix it"
+        ));
+        let new = encode(&Command::QueueFollowUp { term: 3, text: "next".into(), first: false, operation: Some(9) }).unwrap();
+        assert!(matches!(decode::<OldCommand>(&new).unwrap(), OldCommand::QueueFollowUp { term: 3, first: false, .. }));
     }
 
     /// `choice` was added to `ConversationSend` as a defaulted field: a send from before it still

@@ -1024,12 +1024,16 @@ impl Daemon {
                 self.set_status(q.term, Status::Working, "you answered it");
                 self.dirty = true;
             }
-            Command::QueueFollowUp { term, text, first } => {
+            Command::QueueFollowUp { term, text, first, operation } => {
                 let t = self
                     .terms
                     .get_mut(&term)
                     .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
                 let text = text.trim();
+                let now = Instant::now();
+                if self.terminal_sends.already_sent(term, operation, text, now)? {
+                    return Ok(true);
+                }
                 if t.agent.is_none() {
                     anyhow::bail!("only an agent takes a follow-up");
                 }
@@ -1044,6 +1048,7 @@ impl Daemon {
                 } else {
                     t.queue.push_back(text.to_string());
                 }
+                self.terminal_sends.remember(term, operation, text, now);
                 self.dirty = true;
             }
             Command::ClearQueue { term } => {
@@ -1065,12 +1070,16 @@ impl Daemon {
                 t.queue.remove(index);
                 self.dirty = true;
             }
-            Command::SendWhenReady { term, text } => {
+            Command::SendWhenReady { term, text, operation } => {
                 let t = self
                     .terms
                     .get_mut(&term)
                     .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
                 let text = text.trim();
+                let now = Instant::now();
+                if self.terminal_sends.already_sent(term, operation, text, now)? {
+                    return Ok(true);
+                }
                 if text.is_empty() {
                     anyhow::bail!("there's nothing to send");
                 }
@@ -1078,6 +1087,7 @@ impl Daemon {
                     anyhow::bail!("a message is already waiting for its agent");
                 }
                 t.held_message = Some(term::HeldMessage::new(text));
+                self.terminal_sends.remember(term, operation, text, now);
             }
             Command::RerunCheck { term, name } => self.rerun_check(term, name.as_deref())?,
             Command::OverrideCheck { term, name, reason } => {

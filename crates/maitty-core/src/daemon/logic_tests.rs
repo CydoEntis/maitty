@@ -446,6 +446,7 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
             term: t,
             text: "  then run the tests ".into(),
             first: false,
+            operation: None,
         },
     )
     .unwrap();
@@ -455,6 +456,7 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
             term: t,
             text: "and open a PR".into(),
             first: false,
+            operation: None,
         },
     )
     .unwrap();
@@ -470,6 +472,7 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
                 term: t,
                 text: "  ".into(),
                 first: false,
+                operation: None,
             }
         )
         .is_err(),
@@ -506,6 +509,7 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
             term: t,
             text: "never mind".into(),
             first: false,
+            operation: None,
         },
     )
     .unwrap();
@@ -519,6 +523,7 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
                 term: t,
                 text: text.into(),
                 first,
+                operation: None,
             },
         )
         .unwrap();
@@ -548,10 +553,92 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
                 term: t,
                 text: "ls".into(),
                 first: false,
+                operation: None,
             }
         )
         .is_err()
     );
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_retried_follow_up_is_acknowledged_and_not_queued_twice() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let queue = |d: &mut Daemon, text: &str, operation| {
+        d.command(
+            0,
+            Command::QueueFollowUp {
+                term: t,
+                text: text.into(),
+                first: false,
+                operation,
+            },
+        )
+    };
+    let queued = |d: &Daemon| d.snapshot().terms[&t].queued.clone();
+    assert!(queue(&mut d, "run the tests", Some(1)).is_err(), "a shell takes none");
+    {
+        let p = d.terms.get_mut(&t).unwrap();
+        (p.agent, p.hooked, p.status) = (Some("claude".into()), true, Status::Working);
+    }
+    queue(&mut d, "run the tests", Some(1)).unwrap();
+    queue(&mut d, " run the tests ", Some(1)).unwrap();
+    assert_eq!(queued(&d), ["run the tests"], "a refused send is not remembered; a retry is");
+    assert!(
+        queue(&mut d, "open a PR", Some(1)).is_err(),
+        "the same operation with other text"
+    );
+    queue(&mut d, "open a PR", Some(2)).unwrap();
+    queue(&mut d, "open a PR", None).unwrap();
+    queue(&mut d, "open a PR", None).unwrap();
+    assert_eq!(
+        queued(&d),
+        ["run the tests", "open a PR", "open a PR", "open a PR"],
+        "a new operation, and sends without one, queue as before"
+    );
+    d.command(0, Command::ClearQueue { term: t }).unwrap();
+    queue(&mut d, "run the tests", Some(1)).unwrap();
+    assert!(queued(&d).is_empty(), "one already sent stays sent");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_retried_message_for_a_starting_agent_is_not_held_or_typed_again() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let held = |d: &Daemon| d.terms[&t].held_message.is_some();
+    let send = |d: &mut Daemon, text: &str, operation| {
+        d.command(
+            0,
+            Command::SendWhenReady {
+                term: t,
+                text: text.into(),
+                operation,
+            },
+        )
+    };
+    send(&mut d, "fix the parser", Some(5)).unwrap();
+    send(&mut d, "fix the parser", Some(5)).unwrap();
+    assert!(
+        send(&mut d, "fix the lexer", Some(5)).is_err(),
+        "the same operation with other text"
+    );
+    assert!(
+        send(&mut d, "fix the lexer", None).is_err(),
+        "without one, one message still waits at a time"
+    );
+    {
+        let p = d.terms.get_mut(&t).unwrap();
+        (p.agent, p.hooked) = (Some("claude".into()), true);
+    }
+    d.set_status(t, Status::Idle, "test");
+    d.update_statuses();
+    assert!(!held(&d), "typed in");
+    send(&mut d, "fix the parser", Some(5)).unwrap();
+    assert!(!held(&d), "a retry after it was typed is not held again");
+    send(&mut d, "fix the parser", Some(6)).unwrap();
+    assert!(held(&d), "a new operation is");
     close(&mut d, &[t]);
 }
 
@@ -566,6 +653,7 @@ fn a_message_sent_to_a_starting_agent_is_held_until_it_takes_input() {
             Command::SendWhenReady {
                 term: t,
                 text: text.into(),
+                operation: None,
             },
         )
     };

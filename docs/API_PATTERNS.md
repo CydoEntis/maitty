@@ -137,6 +137,15 @@ the pane works or asks something. It is typed as a queued follow-up is (one past
 several lines), and is saved with the pane, so a daemon restart keeps it. The desktop command is
 `send_when_agent_ready` (at most 256 KiB, not blank).
 
+`SendWhenReady` and `QueueFollowUp` take an optional `operation: Option<u64>` (`#[serde(default)]`, no
+`PROTOCOL_VERSION` bump; a test decodes the old shape both ways, and an older daemon ignores the field).
+The same pane, operation and text (compared by SHA-256 digest of the trimmed text) within ten minutes
+is acknowledged with `Ok` and not typed, held or queued again, even after it was typed; the same pane
+and operation with other text is refused. Only an accepted send is remembered, so a retry of a refused
+one is tried afresh. The record is in memory (`daemon/terminal_sends.rs`, at most 1024 sends, oldest
+forgotten first): after a daemon restart a retry of an earlier send is a new send. A send without an
+operation behaves as before.
+
 `Command::Prewarm { cwd, cmd }` starts an agent ahead of its first message (`daemon/warm.rs`). It runs hidden, as a spare
 (no client is shown it, it alerts nobody and it is not saved), and the next `NewWorkspace` with the same command in the
 same folder is that agent, already running, instead of a new one. One is kept at a time: asking for another stops the

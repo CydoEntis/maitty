@@ -75,10 +75,10 @@ impl PaneCommand {
             }
             PaneCommand::Rename(name) => ClientMsg::Command(Command::RenamePane { term, name }),
             PaneCommand::SendWhenReady(text) => {
-                ClientMsg::Command(Command::SendWhenReady { term, text })
+                ClientMsg::Command(Command::SendWhenReady { term, text, operation: None })
             }
             PaneCommand::Queue { text, first } => {
-                ClientMsg::Command(Command::QueueFollowUp { term, text, first })
+                ClientMsg::Command(Command::QueueFollowUp { term, text, first, operation: None })
             }
             PaneCommand::DropQueued { index, text } => {
                 ClientMsg::Command(Command::DropQueued { term, index, text })
@@ -2556,7 +2556,7 @@ mod agent_command_tests {
         assert!(queued_message("x".repeat(super::MAX_HELD_MESSAGE_BYTES + 1), false).is_err());
         assert!(matches!(
             queued_message("/model opus".into(), true).unwrap().message(4),
-            ClientMsg::Command(Command::QueueFollowUp { term: 4, text, first: true }) if text == "/model opus"
+            ClientMsg::Command(Command::QueueFollowUp { term: 4, text, first: true, operation: None }) if text == "/model opus"
         ));
         let drop = PaneCommand::DropQueued {
             index: 1,
@@ -2699,6 +2699,7 @@ mod pane_command_tests {
                 ClientMsg::Command(Command::SendWhenReady {
                     term: 4,
                     text: "fix the parser".into(),
+                    operation: None,
                 }),
             ),
             (
