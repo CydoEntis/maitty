@@ -42,28 +42,51 @@ impl App {
             return;
         };
         let first_tag = self.resume.next_tag;
-        self.resume.next_tag += AGENTS.len() as u64;
-        for (i, (agent, _)) in AGENTS.iter().enumerate() {
-            self.send(
-                term.machine,
+        let asks: Vec<ClientMsg> = AGENTS
+            .iter()
+            .enumerate()
+            .map(|(i, (agent, _))| {
                 ClientMsg::Query(Query::SavedConversations {
                     agent: (*agent).into(),
                     folder: dir.display().to_string(),
                     tag: first_tag + i as u64,
-                }),
+                })
+            })
+            .collect();
+        // An older daemon passes over a request it cannot read and never answers.
+        if asks.iter().any(|m| m.introduced_in() > self.local_protocol) {
+            return self.notify(
+                "restart the daemon to list saved conversations".into(),
+                true,
             );
+        }
+        self.resume.next_tag += AGENTS.len() as u64;
+        for ask in asks {
+            self.send(term.machine, ask);
         }
         let at = self
             .pane_frames
             .iter()
             .find(|(t, _)| *t == term)
             .map_or((0, 0), |(_, r)| (r.x + 2, r.y));
+        let title = format!("resume · {}", super::screen::folder_name(&dir));
+        let waiting = vec![(
+            "looking for saved conversations…".to_string(),
+            menu::Act::Waiting,
+        )];
+        self.menu(title, waiting, at);
         self.resume.asked = Some(Asked {
             dir,
             first_tag,
             lists: Default::default(),
             at,
         });
+    }
+
+    /// Whether the list opened by the last ask is still on screen, waiting for its answers.
+    fn resume_list_waiting(&self) -> bool {
+        matches!(&self.mode, Mode::ScreenMenu(m)
+            if matches!(m.items.as_slice(), [(_, menu::Act::Waiting)]))
     }
 
     /// One agent's answer; the last one opens the menu, or says there is nothing to resume.
@@ -87,7 +110,10 @@ impl App {
         let Some(asked) = self.resume.asked.take() else {
             return;
         };
-        self.resume_menu(asked);
+        // Left since it was asked: the answers must not take over what the person does now.
+        if self.resume_list_waiting() {
+            self.resume_menu(asked);
+        }
     }
 
     fn resume_menu(&mut self, asked: Asked) {
@@ -102,6 +128,7 @@ impl App {
             })
             .collect();
         if all.is_empty() {
+            self.mode = Mode::Normal;
             return self.notify("no saved Claude or Codex chats".into(), false);
         }
         all.sort_by_key(|(_, c)| std::cmp::Reverse(c.last_active));
@@ -153,7 +180,8 @@ fn agent_name(agent: &str) -> &str {
 /// definition in the config. The id came from files on disk, so only plain ids are put in a
 /// command line.
 fn resume_command(cfg: &Config, agent: &str, id: &str) -> Result<String, String> {
-    let plain = !id.is_empty()
+    // The first character is a letter or digit so the id is never read as an option.
+    let plain = id.starts_with(|c: char| c.is_ascii_alphanumeric())
         && id.len() <= ID_MAX
         && id
             .chars()

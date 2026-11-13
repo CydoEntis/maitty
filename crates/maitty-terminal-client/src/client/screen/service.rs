@@ -155,6 +155,7 @@ impl App {
         match attempt {
             Ok(connection) => {
                 connections.add(MachineId::LOCAL, connection);
+                self.note_local_protocol();
                 self.service = Service::Up;
                 self.reattached = Some(Instant::now());
                 self.notify(format!("Reconnected to {}", daemon_name()), false);

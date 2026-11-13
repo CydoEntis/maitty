@@ -498,6 +498,8 @@ pub struct App {
     codex_hooks_asked: bool,
     /// The saved-conversation lists asked of the daemon and not all answered yet.
     resume: resume::Resume,
+    /// The protocol this computer's daemon said it speaks when this window last connected.
+    local_protocol: u32,
     /// The theme browser's tab: the Light themes when true, else the Dark ones.
     theme_tab_light: bool,
     /// What changed in it (and any releases between), for the update dialog.
@@ -694,6 +696,7 @@ async fn run_async(opts: Options) -> Result<()> {
     let (cfg, err) = Config::load_or_default();
     let (bg_tx, mut bg_rx) = mpsc::unbounded_channel::<Bg>();
     let mut app = App::new(cfg, out_tx, opts.open, bg_tx);
+    app.note_local_protocol();
     if crate::sync::enabled() {
         app.spawn_bg(|| Bg::Synced(crate::sync::pull().unwrap_or(false)));
     }
@@ -818,6 +821,7 @@ impl App {
             codex_hooks: None,
             codex_hooks_asked: false,
             resume: Default::default(),
+            local_protocol: crate::protocol::PROTOCOL_VERSION,
             theme_tab_light: false,
             update_notes: Vec::new(),
             update_checked: None,
@@ -1135,6 +1139,7 @@ impl App {
             return false;
         };
         connections.add(MachineId::LOCAL, connection);
+        self.note_local_protocol();
         self.reattached = Some(Instant::now());
         if !restarting {
             self.notify(
@@ -1143,6 +1148,14 @@ impl App {
             );
         }
         true
+    }
+
+    /// Remember what this computer's daemon speaks, after a connection to it: a request newer
+    /// than that is never answered, so it is not sent.
+    pub(super) fn note_local_protocol(&mut self) {
+        if let Some(version) = ipc::local_daemon_protocol() {
+            self.local_protocol = version;
+        }
     }
 
     /// Installing must not interrupt agents, including across protocol changes.

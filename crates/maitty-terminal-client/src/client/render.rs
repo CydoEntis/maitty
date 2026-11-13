@@ -365,7 +365,8 @@ pub(super) fn truncate(s: &str, max: usize) -> String {
     }
     let mut out = String::new();
     for c in s.chars() {
-        if out.width() + 1 >= max {
+        // Room for this character and the ellipsis after it: a wide one can overrun by a column.
+        if out.width() + c.width().unwrap_or(0) + 1 > max {
             break;
         }
         out.push(c);

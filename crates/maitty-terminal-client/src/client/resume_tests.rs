@@ -98,8 +98,10 @@ fn the_answers_list_every_agents_conversations_newest_first() {
         ]),
     );
     assert!(
-        !matches!(app.mode, Mode::ScreenMenu(_)),
-        "waits for every agent"
+        matches!(&app.mode, Mode::ScreenMenu(m)
+            if matches!(m.items.as_slice(), [(_, menu::Act::Waiting)])),
+        "waits for every agent: {:?}",
+        app.mode
     );
     reply(
         &mut app,
@@ -181,11 +183,95 @@ fn an_id_that_is_not_plain_is_never_put_on_a_command_line() {
     let (mut app, mut rx) = app_with_outbox();
     let dir = focused_dir(&app);
     sent(&mut rx);
-    for id in ["", "abc; rm -rf ~", "../x", "a b", "$(boom)"] {
+    for id in ["", "abc; rm -rf ~", "../x", "a b", "$(boom)", "--x", "_x"] {
         app.notice = None;
         app.menu_do(menu::Act::Resume(dir.clone(), "claude".into(), id.into()));
         let (said, _, error) = app.notice.clone().expect("a toast");
         assert!(error, "{id}: {said}");
         assert!(sent(&mut rx).is_empty(), "{id} started something");
+    }
+}
+
+fn tags_asked(rx: &mut mpsc::UnboundedReceiver<Outgoing>) -> Vec<u64> {
+    asked(&sent(rx)).into_iter().map(|(_, _, t)| t).collect()
+}
+
+#[test]
+fn the_list_opens_at_once_saying_it_is_looking() {
+    let (mut app, mut rx) = app_with_outbox();
+    frame(&mut app, "before");
+    app.act(Action::ResumeConversation);
+    assert_eq!(tags_asked(&mut rx).len(), 2);
+    let text = frame(&mut app, "looking");
+    let Mode::ScreenMenu(m) = &app.mode else {
+        panic!("{:?}", app.mode)
+    };
+    assert_eq!(m.items.len(), 1);
+    assert!(text.contains(&m.items[0].0), "{text}");
+}
+
+#[test]
+fn answers_that_arrive_after_the_list_was_left_open_nothing() {
+    let (mut app, mut rx) = app_with_outbox();
+    app.act(Action::ResumeConversation);
+    let tags = tags_asked(&mut rx);
+    app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    assert!(matches!(app.mode, Mode::Normal));
+    app.notice = None;
+    reply(
+        &mut app,
+        tags[0],
+        SavedConversations::Listed(vec![saved("c-1", "hello", 60)]),
+    );
+    reply(&mut app, tags[1], SavedConversations::Listed(Vec::new()));
+    assert!(matches!(app.mode, Mode::Normal), "{:?}", app.mode);
+    assert!(app.notice.is_none(), "{:?}", app.notice);
+}
+
+#[test]
+fn a_daemon_too_old_to_list_them_is_not_asked_and_the_toast_says_why() {
+    let (mut app, mut rx) = app_with_outbox();
+    app.local_protocol = crate::protocol::SAVED_CONVERSATIONS_SINCE - 1;
+    sent(&mut rx);
+    app.act(Action::ResumeConversation);
+    assert!(sent(&mut rx).is_empty(), "nothing is asked of it");
+    let (said, _, error) = app.notice.clone().expect("a toast");
+    assert!(error && said.contains("restart"), "{said}");
+    assert!(matches!(app.mode, Mode::Normal));
+}
+
+#[test]
+fn a_first_message_with_wide_letters_and_control_characters_keeps_its_row_in_the_menu() {
+    use unicode_width::UnicodeWidthStr;
+    let (mut app, mut rx) = app_with_outbox();
+    app.act(Action::ResumeConversation);
+    let tags = tags_asked(&mut rx);
+    let said = "修复页脚的间距🙂\u{1b}[31m红色\nnext line 修复页脚的间距修复页脚的间距";
+    reply(
+        &mut app,
+        tags[0],
+        SavedConversations::Listed(vec![saved("c-1", said, 60)]),
+    );
+    reply(&mut app, tags[1], SavedConversations::Listed(Vec::new()));
+    let Mode::ScreenMenu(m) = &app.mode else {
+        panic!("{:?}", app.mode)
+    };
+    let label = &m.items[0].0;
+    assert!(label.width() <= 44, "{label}: {}", label.width());
+    assert!(!label.chars().any(char::is_control), "{label:?}");
+}
+
+#[test]
+fn every_cut_label_fits_whatever_the_widths() {
+    use unicode_width::UnicodeWidthStr;
+    for skip in 0..6 {
+        let s: String = "ab修复页脚的间距🙂修复页脚的间距🙂修复页脚的间距修复页脚的间距"
+            .chars()
+            .skip(skip)
+            .collect();
+        for max in 10..30 {
+            let cut = super::render::truncate(&format!("x{s}"), max);
+            assert!(cut.width() <= max, "{cut}: {} > {max}", cut.width());
+        }
     }
 }

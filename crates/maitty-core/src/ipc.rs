@@ -324,6 +324,18 @@ pub fn terminal_dial(attach: bool) -> Result<maitty_machines::Dial> {
     })
 }
 
+/// The protocol this computer's daemon named in the last handshake this process completed; 0
+/// before any. Kept here rather than returned so the many callers of `open*` stay as they are.
+static LOCAL_DAEMON_PROTOCOL: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// The protocol this computer's daemon spoke in this process's last handshake with it, if any.
+pub fn local_daemon_protocol() -> Option<u32> {
+    match LOCAL_DAEMON_PROTOCOL.load(std::sync::atomic::Ordering::Relaxed) {
+        0 => None,
+        version => Some(version),
+    }
+}
+
 /// Connect to `machine` and complete the handshake.
 pub async fn open_to(machine: &Machine, attach: bool) -> Result<(Reader, Writer)> {
     open_accepting(machine, attach, |_| false).await
@@ -351,6 +363,7 @@ async fn open_accepting(
     send(&mut w, &hello).await?;
     let daemon = maitty_ipc_transport::welcome_version(&mut r).await?;
     if daemon.speaks_with_us() || also_accepts(daemon.version) {
+        LOCAL_DAEMON_PROTOCOL.store(daemon.version, std::sync::atomic::Ordering::Relaxed);
         Ok((r, w))
     } else {
         Err(OtherVersion {
