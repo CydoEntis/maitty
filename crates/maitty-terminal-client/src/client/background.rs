@@ -292,6 +292,9 @@ impl App {
             ServerMsg::Error(e) => {
                 // The output a failure waited for may be what failed; a later reply is not its.
                 self.screen.failure_ask = None;
+                if machine == MachineId::LOCAL {
+                    self.resume_failed();
+                }
                 self.notify(e, true);
             }
             ServerMsg::Notice(n) if machine != MachineId::LOCAL => self.notify(n, false),

@@ -690,13 +690,14 @@ pub fn run(opts: Options) -> Result<()> {
 
 async fn run_async(opts: Options) -> Result<()> {
     let mut connections = Connections::default();
-    connections.add(MachineId::LOCAL, ipc::open_or_spawn(true).await?);
+    let (local, local_protocol) = ipc::open_or_spawn_knowing_version(true).await?;
+    connections.add(MachineId::LOCAL, local);
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Outgoing>();
 
     let (cfg, err) = Config::load_or_default();
     let (bg_tx, mut bg_rx) = mpsc::unbounded_channel::<Bg>();
     let mut app = App::new(cfg, out_tx, opts.open, bg_tx);
-    app.note_local_protocol();
+    app.note_local_protocol(local_protocol);
     if crate::sync::enabled() {
         app.spawn_bg(|| Bg::Synced(crate::sync::pull().unwrap_or(false)));
     }
@@ -1130,16 +1131,16 @@ impl App {
         let restarting = self.daemon_restart_reconnect;
         let connection = if restarting {
             tokio::time::sleep(SERVER_SHUTDOWN_GRACE).await;
-            ipc::open_or_spawn_installed(true).await
+            ipc::open_or_spawn_installed_knowing_version(true).await
         } else {
             // Connect only: an unexpectedly stopped server must not be started again by this.
-            ipc::open(true).await
+            ipc::open_knowing_version(true).await
         };
-        let Ok(connection) = connection else {
+        let Ok((connection, version)) = connection else {
             return false;
         };
         connections.add(MachineId::LOCAL, connection);
-        self.note_local_protocol();
+        self.note_local_protocol(version);
         self.reattached = Some(Instant::now());
         if !restarting {
             self.notify(
@@ -1152,8 +1153,8 @@ impl App {
 
     /// Remember what this computer's daemon speaks, after a connection to it: a request newer
     /// than that is never answered, so it is not sent.
-    pub(super) fn note_local_protocol(&mut self) {
-        if let Some(version) = ipc::local_daemon_protocol() {
+    pub(super) fn note_local_protocol(&mut self, version: Option<u32>) {
+        if let Some(version) = version {
             self.local_protocol = version;
         }
     }

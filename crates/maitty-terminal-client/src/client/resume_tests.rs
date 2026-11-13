@@ -229,6 +229,30 @@ fn answers_that_arrive_after_the_list_was_left_open_nothing() {
 }
 
 #[test]
+fn an_error_from_the_daemon_closes_the_waiting_list_and_says_why() {
+    let (mut app, mut rx) = app_with_outbox();
+    app.act(Action::ResumeConversation);
+    let tags = tags_asked(&mut rx);
+    app.on_machine_server(
+        MachineId::LOCAL,
+        ServerMsg::Error("that folder can't be listed".into()),
+    );
+    assert!(matches!(app.mode, Mode::Normal), "{:?}", app.mode);
+    let (said, _, error) = app.notice.clone().expect("a toast");
+    assert!(error && said == "that folder can't be listed", "{said}");
+    reply(
+        &mut app,
+        tags[0],
+        SavedConversations::Listed(vec![saved("c-1", "hello", 60)]),
+    );
+    reply(&mut app, tags[1], SavedConversations::Listed(Vec::new()));
+    assert!(
+        matches!(app.mode, Mode::Normal),
+        "a late answer opens nothing"
+    );
+}
+
+#[test]
 fn a_daemon_too_old_to_list_them_is_not_asked_and_the_toast_says_why() {
     let (mut app, mut rx) = app_with_outbox();
     app.local_protocol = crate::protocol::SAVED_CONVERSATIONS_SINCE - 1;

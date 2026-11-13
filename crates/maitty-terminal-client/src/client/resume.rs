@@ -89,6 +89,15 @@ impl App {
             if matches!(m.items.as_slice(), [(_, menu::Act::Waiting)]))
     }
 
+    /// The daemon refused a request (a folder it would not list, say): a list still waiting would
+    /// wait forever, so it closes and its answers are no longer expected.
+    pub(super) fn resume_failed(&mut self) {
+        if self.resume.asked.is_some() && self.resume_list_waiting() {
+            self.resume.asked = None;
+            self.mode = Mode::Normal;
+        }
+    }
+
     /// One agent's answer; the last one opens the menu, or says there is nothing to resume.
     pub(super) fn saved_conversations_arrived(&mut self, tag: u64, found: SavedConversations) {
         let Some(asked) = self.resume.asked.as_mut() else {
