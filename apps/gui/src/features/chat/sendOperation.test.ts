@@ -35,7 +35,7 @@ describe('STALE_OPERATION', () => {
 
 describe('terminalSendOperation', () => {
   it('is nonzero and survives JSON as an exact integer, even from the largest random words', () => {
-    const words = [[0xffffffff, 0xffffffff], [0, 0], [0, 1]]
+    const words = [[0xffffffff, 0xffffffff], [0, 1], [1, 0]]
     const values = words.map((pair) => terminalSendOperation(() => pair))
     for (const value of values) {
       expect(Number.isSafeInteger(value)).toBe(true)
@@ -43,7 +43,8 @@ describe('terminalSendOperation', () => {
       expect(JSON.parse(JSON.stringify(value))).toBe(value)
     }
     expect(values[0]).toBe(Number.MAX_SAFE_INTEGER)
-    expect(values[2]).toBe(1)
+    expect(values[1]).toBe(1)
+    expect(values[2]).toBe(0x100000000)
   })
 
   it('draws again rather than send zero', () => {
