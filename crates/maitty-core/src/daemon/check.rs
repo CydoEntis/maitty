@@ -425,6 +425,11 @@ impl Checks {
         self.points.iter_mut().find(|p| p.latest.info.name == name)
     }
 
+    /// A checkpoint failed or waits for your approval.
+    pub fn need_you(&self) -> bool {
+        self.any(&[CheckState::Failed, CheckState::NeedsApproval])
+    }
+
     fn any(&self, states: &[CheckState]) -> bool {
         self.points
             .iter()
@@ -1079,6 +1084,7 @@ impl Daemon {
                 tracing::info!(
                     "pane {term}: windows told Blocked by its check (they may play its sound)"
                 );
+                self.needs_you(term);
                 self.tell_attention(term, Status::Blocked);
                 self.broadcast(
                     |c| c.attach,
@@ -1091,6 +1097,7 @@ impl Daemon {
                 tracing::info!(
                     "pane {term}: windows told Blocked by its check (they may play its sound)"
                 );
+                self.needs_you(term);
                 self.tell_attention(term, Status::Blocked);
                 self.broadcast(
                     |c| c.attach,

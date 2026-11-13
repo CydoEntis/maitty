@@ -249,6 +249,7 @@ impl App {
             Action::ToggleAppearance => self.toggle_appearance(),
             Action::TidyWorktrees => self.tidy_open_here(),
             Action::ResumeConversation => self.ask_saved_conversations(),
+            Action::PutAway => self.put_away_list(),
             Action::None => {}
             // The rest are handled by screen_act above.
             _ => {}
@@ -331,6 +332,7 @@ impl App {
             Action::Worktrees,
             Action::NewSession,
             Action::ResumeConversation,
+            Action::PutAway,
             Action::CloseSplit,
             Action::StopAgent,
             Action::Message,

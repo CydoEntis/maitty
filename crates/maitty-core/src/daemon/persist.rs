@@ -85,6 +85,9 @@ pub struct SavedPane {
     pub archived: bool,
     #[serde(default)]
     pub put_away_for: Option<String>,
+    /// Snoozed until this time (unix seconds).
+    #[serde(default)]
+    pub snoozed_until: Option<u64>,
     /// The pane that started it, by its id when this was saved (a key of some tab's `panes`).
     #[serde(default)]
     pub started_by: Option<TermId>,

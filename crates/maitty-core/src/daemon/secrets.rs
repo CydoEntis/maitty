@@ -156,6 +156,7 @@ impl Daemon {
             },
             asker: client,
         });
+        self.needs_you(term);
         self.announce(term, crate::protocol::Status::Blocked);
         self.dirty = true;
         Ok(())

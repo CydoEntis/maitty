@@ -467,6 +467,7 @@ impl Daemon {
                     }
                 }
             }
+            Command::SnoozePane { term, until } => self.snooze_pane(term, until, term::unix_now())?,
             Command::MarkSeen { term } => {
                 if self
                     .terms
