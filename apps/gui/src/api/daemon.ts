@@ -9,6 +9,24 @@ import { conversationKey, machineArgOfKey, splitConversationKey } from './conver
 import { previewConversations, type Conversation, type Message, type SessionStatus } from '@/data/preview'
 
 const StatusSchema = z.enum(['None', 'Idle', 'Working', 'Blocked', 'Done'])
+// A subagent as the daemon reports it (`SubagentActivity`); times are unix seconds.
+const SubagentActivitySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  state: z.enum(['Starting', 'Working', 'WaitingForInput', 'AwaitingApproval', 'Completed', 'Failed', 'Cancelled', 'ConnectionLost']),
+  task: z.string().nullable().default(null),
+  started_at: z.number().int().nonnegative().nullable().default(null),
+  updated_at: z.number().int().nonnegative().default(0),
+  latest_activity: z.string().nullable().default(null),
+  result: z.string().nullable().default(null),
+})
+type SubagentActivity = z.infer<typeof SubagentActivitySchema>
+
+/** A subagent in the shape a session's details carry. */
+function toSubagentDetail(child: SubagentActivity) {
+  return { id: child.id, name: child.name, state: child.state, task: child.task, startedAt: child.started_at, updatedAt: child.updated_at, latest: child.latest_activity, result: child.result }
+}
+
 const ConversationSummarySchema = z.object({
   id: z.number().int().nonnegative(),
   generation: z.number().int().nonnegative(),
@@ -24,6 +42,8 @@ const ConversationSummarySchema = z.object({
   archived: z.boolean().default(false),
   root: z.string().nullable().default(null),
   branch: z.string().nullable().default(null),
+  // The helpers a chat session's provider reported starting (ADR 0010); empty from an older daemon.
+  helpers: z.array(SubagentActivitySchema).default([]),
 })
 const WorkspaceSummarySchema = z.object({
   cwd: z.string(),
@@ -95,16 +115,7 @@ const TerminalSessionSchema = z.object({
   // The helpers the session asked to start and waits on the person for, one task each (`TermInfo.helper_ask`).
   helper_ask: z.array(z.string()).default([]),
   // The agent's subagents as its runtime reports them (`TermInfo.subagent_activity`); times are unix seconds.
-  subagent_activity: z.array(z.object({
-    id: z.string(),
-    name: z.string(),
-    state: z.enum(['Starting', 'Working', 'WaitingForInput', 'AwaitingApproval', 'Completed', 'Failed', 'Cancelled', 'ConnectionLost']),
-    task: z.string().nullable().default(null),
-    started_at: z.number().int().nonnegative().nullable().default(null),
-    updated_at: z.number().int().nonnegative().default(0),
-    latest_activity: z.string().nullable().default(null),
-    result: z.string().nullable().default(null),
-  })).default([]),
+  subagent_activity: z.array(SubagentActivitySchema).default([]),
   // The workflow runs this pane reported (`TermInfo.workflows`, ADR 0010), newest first. Display only. A shape this
   // build cannot read is dropped rather than freezing the pane.
   workflows: z.array(z.object({
@@ -1327,7 +1338,7 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
       secretAsk: secrets.map((ask) => ({ id: ask.id, label: ask.label, reason: ask.reason })),
       limits: limits.map((limit) => ({ name: limit.name, used: limit.used, resetsAt: limit.resets_at })),
       helperAsk: term.helper_ask,
-      subagents: term.subagent_activity.map((child) => ({ id: child.id, name: child.name, state: child.state, task: child.task, startedAt: child.started_at, updatedAt: child.updated_at, latest: child.latest_activity, result: child.result })),
+      subagents: term.subagent_activity.map(toSubagentDetail),
       workflows: term.workflows.map((run) => ({ workflow: run.workflow, run: run.run, ticket: run.ticket, steps: run.steps, reportedAt: run.reported_at })),
     },
     ...(chat ? { chat } : {}),
@@ -1378,6 +1389,7 @@ function toConversation(summary: ConversationSummary, workspaces: WorkspaceSumma
           agent: summary.provider.toLowerCase(),
           process: summary.provider.toLowerCase(),
           chat: { conversation: summary.id, generation: summary.generation },
+          details: { asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, subagents: summary.helpers.map(toSubagentDetail) },
         }
       : {}),
   }

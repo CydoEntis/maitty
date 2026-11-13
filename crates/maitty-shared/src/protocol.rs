@@ -228,6 +228,10 @@ pub struct ConversationSummary {
     /// The branch checked out there.
     #[serde(default)]
     pub branch: Option<String>,
+    /// The helpers the provider reported this conversation starting, at its current generation
+    /// (ADR 0010). Display only. Empty from an older daemon.
+    #[serde(default)]
+    pub helpers: Vec<SubagentActivity>,
 }
 
 /// Which app a client is. A terminal session belongs to the app that started it, and only
@@ -2340,6 +2344,7 @@ mod tests {
         );
         // `root` and `branch` (a chat session's project, ADR 0003) are defaulted too.
         assert_eq!((summary.root, summary.branch), (None, None));
+        assert!(summary.helpers.is_empty(), "an older daemon reports no helpers");
     }
 
     /// A message held for a starting agent is a new command, and the news that a conversation

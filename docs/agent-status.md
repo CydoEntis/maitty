@@ -309,6 +309,16 @@ Measured 2026-11-13 on Linux with Claude Code 2.1.323 and Codex 0.166.
   tool calls, their output and its final message are plain text, but the task it was given is
   encrypted, as is the parent's `spawn_agent` message. `codex exec --json` shows only the parent's
   `wait` calls as collab items, with no receivers, so it is no source for helpers.
+- **Codex app-server (daemon-owned chats).** A helper is a `subAgentActivity` item on the parent's
+  thread: `kind: "started"` with `agentThreadId`, `agentPath` (`/root/<task name>`), `model` and
+  `reasoningEffort` when it starts, `kind: "completed"` when it ends. No `spawnAgent` collab item is
+  sent; `wait` is a `collabAgentToolCall` with no receivers. The helper's own `turn/started`, items
+  and `turn/completed` arrive on the same connection under the helper's `threadId`, and its
+  `turn/completed` lists its final message. The daemon keeps these helpers per conversation and
+  generation (`conversation/codex_helpers.rs`, `ConversationSummary.helpers`) and takes the
+  helper's own events off the conversation, so they never reach its history, error or status. Before
+  this, those events marked the chat's history incomplete with an error, and the next turn's end
+  turned the chat to Blocked.
 - **Codex hook trust.** In a new pane Codex asked to review Maitty's nine hooks ("new or changed")
   and, until they are trusted, sent none. Without `SessionStart` Maitty learns the thread only from
   `notify` at the turn's end, so the rollout fallback cannot list helpers while the turn runs.

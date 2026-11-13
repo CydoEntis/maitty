@@ -778,6 +778,11 @@ cannot read it as an option). The prompt goes in the agent's command line quoted
 usual one (`create_trusted_worktree`, the repo's setup hook, the `[worktree] dir` naming, clean-up when
 its last session closes). Local projects only: the window refuses another machine's project.
 
+`ConversationSummary.helpers` lists the helpers a chat session's provider reported starting, at its
+current generation (ADR 0010; Codex's `subAgentActivity` items). It is display only and never
+status. It is a defaulted field, empty from an older daemon, so it needs no `PROTOCOL_VERSION` bump;
+a test decodes the old shape.
+
 Protocol 65 removes the handoff between chat and terminal
 (`ConversationHandoffToNative`, `ConversationHandoffToChat`): a session is a chat
 or a terminal session from the moment it starts. It adds the human-only
