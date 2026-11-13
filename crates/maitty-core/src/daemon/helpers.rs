@@ -173,6 +173,7 @@ impl Daemon {
             t.helpers.asked.push(task.to_string());
         }
         let n = t.helpers.asked.len();
+        t.snoozed_until = None;
         self.dirty = true;
         if first {
             self.announce(by, crate::protocol::Status::Blocked);

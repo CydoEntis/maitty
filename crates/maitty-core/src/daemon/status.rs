@@ -649,6 +649,9 @@ impl Daemon {
             .then(|| t.agent.clone().map(|a| (a, t.cwd.clone())))
             .flatten();
         t.blocked_at = (new == Status::Blocked).then(Instant::now);
+        if new == Status::Blocked {
+            t.snoozed_until = None;
+        }
         t.status = new;
         if new == Status::Working {
             t.exit = None;

@@ -8751,6 +8751,91 @@ fn pin_and_archive_stick_survive_a_restart_and_never_stop_the_pane() {
     close(&mut d2, &[back]);
 }
 
+fn snoozed_until(d: &Daemon, term: TermId) -> Option<u64> {
+    d.snapshot().terms[&term].snoozed_until
+}
+
+#[test]
+fn a_snooze_survives_a_restart_and_ends_when_its_time_passes() {
+    let (mut d, _rx) = daemon();
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
+    let t = d.workspaces[0].tabs[0].focus;
+    let until = term::unix_now() + 3600;
+    d.command(0, Command::SnoozePane { term: t, until: Some(until) })
+        .unwrap();
+    assert_eq!(snoozed_until(&d, t), Some(until));
+    assert_eq!(d.terms[&t].status, Status::None, "snoozing leaves the status alone");
+
+    let (mut d2, _rx2) = daemon();
+    d2.restore(d.saved());
+    let back = d2.workspaces[0].tabs[0].focus;
+    assert_eq!(snoozed_until(&d2, back), Some(until), "it comes back after a restart");
+
+    d2.wake_snoozed(until - 1);
+    assert_eq!(snoozed_until(&d2, back), Some(until), "not yet");
+    d2.wake_snoozed(until);
+    assert_eq!(snoozed_until(&d2, back), None, "its time came");
+    close(&mut d, &[t]);
+    close(&mut d2, &[back]);
+}
+
+#[test]
+fn a_snooze_ends_when_the_pane_needs_you() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let until = term::unix_now() + 3600;
+    let snooze = |d: &mut Daemon| {
+        d.command(0, Command::SnoozePane { term: t, until: Some(until) })
+            .unwrap();
+        assert_eq!(snoozed_until(d, t), Some(until));
+    };
+
+    snooze(&mut d);
+    d.set_status(t, Status::Blocked, "hook: Notification");
+    assert_eq!(snoozed_until(&d, t), None, "a question wakes it");
+    assert_eq!(d.terms[&t].status, Status::Blocked, "and the status is the hook's");
+
+    d.set_status(t, Status::Idle, "hook: Stop");
+    snooze(&mut d);
+    let pane = d.terms.get_mut(&t).unwrap();
+    pane.output(b"]133;C]133;D;1");
+    pane.take_marks();
+    assert_eq!(snoozed_until(&d, t), None, "a failed exit wakes it");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_snooze_is_ended_by_you_and_refused_when_it_would_hide_a_question_or_last_past_a_week() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let now = term::unix_now();
+    let snooze = |d: &mut Daemon, until| d.command(0, Command::SnoozePane { term: t, until });
+
+    snooze(&mut d, Some(now + 3600)).unwrap();
+    snooze(&mut d, None).unwrap();
+    assert_eq!(snoozed_until(&d, t), None, "None wakes it");
+
+    snooze(&mut d, Some(now + 3600)).unwrap();
+    snooze(&mut d, Some(1)).unwrap();
+    assert_eq!(snoozed_until(&d, t), None, "a time already past wakes it");
+
+    assert!(snooze(&mut d, Some(u64::MAX)).is_err(), "longer than a week");
+    assert_eq!(snoozed_until(&d, t), None);
+
+    d.set_status(t, Status::Blocked, "hook: Notification");
+    assert!(snooze(&mut d, Some(now + 3600)).is_err(), "it needs you now");
+    assert_eq!(snoozed_until(&d, t), None);
+    close(&mut d, &[t]);
+}
+
 #[test]
 fn a_change_to_one_pane_reaches_clients_as_a_delta_and_no_change_as_nothing() {
     let (mut d, _rx) = daemon();
