@@ -54,15 +54,17 @@ export function useEditFromHere({ place, conversation, events, agent, busy }: In
     prepare().catch((failure: unknown) => { refused(errorMessage(failure, "couldn't count the files a restore would change")) })
   }, [term, eventsNow, conversation, agent])
 
-  const busyNow = useLatest(() => busy)
+  const disabled = place === null ? null : 'refusal' in place ? place.refusal : busy
+  const disabledNow = useLatest(() => disabled)
   const confirm = useCallback(() => {
-    if (ask === null || term === null) return
+    if (ask === null) return
     setAsk(null)
-    const why = busyNow()
+    const why = disabledNow()
     if (why !== null) {
       refused(why)
       return
     }
+    if (term === null) return
     restoreSnapshot(term, ask.commit).then(
       (changed) => {
         updateComposer(conversation, (state) => ({ ...messageIntoDraft(stripRestoreNote(ask.text))(state), note: restoreNote(ask.text) }))
@@ -70,14 +72,13 @@ export function useEditFromHere({ place, conversation, events, agent, busy }: In
       },
       (failure: unknown) => { toast.error(errorMessage(failure, 'Could not restore the files')) },
     )
-  }, [ask, term, busyNow, conversation])
+  }, [ask, term, disabledNow, conversation])
   const cancel = useCallback(() => { setAsk(null) }, [])
 
   // Leaving the chat drops the note: it belongs to the message the person was about to send here.
   useEffect(() => () => { updateComposer(conversation, (state) => (state.note === null ? state : { ...state, note: null })) }, [conversation])
 
   const offered = place !== null
-  const disabled = place === null ? null : 'refusal' in place ? place.refusal : busy
   const action = useMemo<EditFromHere | null>(() => (offered ? { disabled, pick } : null), [offered, disabled, pick])
   return { action, ask, confirm, cancel }
 }

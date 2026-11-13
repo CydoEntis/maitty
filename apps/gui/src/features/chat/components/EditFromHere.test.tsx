@@ -244,4 +244,27 @@ describe('Edit from here on a message the person sent', () => {
     expect(screen.getByText(/local-only in v1/)).toBeInTheDocument()
     expect(fake.repoSnapshots).not.toHaveBeenCalled()
   })
+
+  it('is greyed out while another session uses the same folder', async () => {
+    twoTurns()
+    await open({ refusal: 'Another session is using this folder' })
+    await openMenu('Add a.txt')
+
+    expect(screen.getByRole('menuitem', { name: 'Edit from here' })).toHaveAccessibleDescription('Another session is using this folder')
+  })
+
+  it('restores nothing when another session comes to the folder while the person is asked', async () => {
+    twoTurns()
+    const { rerender } = render(<ChatSession link={link} agent="claude" online rewind={{ term: TERM }} />)
+    await settle()
+    await settle()
+    await editFromHere('Add a.txt')
+
+    rerender(<ChatSession link={link} agent="claude" online rewind={{ refusal: 'Another session is using this folder' }} />)
+    await click(confirmButton('Restore 2 files'))
+
+    expect(fake.restoreSnapshot).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(fake.toastError).toHaveBeenCalledWith("Can't edit from here: Another session is using this folder")
+  })
 })

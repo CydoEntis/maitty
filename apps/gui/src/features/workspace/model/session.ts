@@ -29,6 +29,8 @@ export type SessionView = {
   name: string | null
   /** It runs in a linked worktree, as the daemon says for the pane. */
   worktree: boolean
+  /** The top folder of the checkout (main or a linked worktree) it works in; null when the daemon did not say. */
+  checkout: string | null
   /** Marked with a pin glyph. A pin never reorders the list. */
   pinned: boolean
   /** Lines added and removed in the session's checkout against HEAD; zero outside git. */
@@ -257,6 +259,7 @@ export function toSessionView(conversation: Conversation, home: string, now: num
     title,
     name: conversation.named ? conversation.title.trim() || null : null,
     worktree: conversation.linked ?? false,
+    checkout: conversation.checkout ?? null,
     pinned: conversation.pinned ?? false,
     diffAdded: conversation.diffAdded ?? 0,
     diffRemoved: conversation.diffRemoved ?? 0,
