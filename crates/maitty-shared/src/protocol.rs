@@ -11,7 +11,11 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 86;
+pub const PROTOCOL_VERSION: u32 = 87;
+
+/// The first version whose daemon counts the files a snapshot restore would change
+/// (`RepoRequest::RestoreCount`).
+pub const RESTORE_COUNT_SINCE: u32 = 87;
 
 /// The first version whose daemon lists an agent's saved conversations for a folder
 /// (`Query::SavedConversations`).
@@ -1890,6 +1894,10 @@ impl ClientMsg {
             ClientMsg::Query(Query::AllowedCommands) | ClientMsg::Command(Command::ForgetAllowedCommand { .. }) => ALLOWED_COMMANDS_SINCE,
             ClientMsg::Query(Query::SavedConversations { .. }) => SAVED_CONVERSATIONS_SINCE,
             ClientMsg::Query(Query::ClosedSessions) => CLOSED_SESSIONS_SINCE,
+            ClientMsg::Query(Query::Repo {
+                request: crate::repo::RepoRequest::RestoreCount { .. },
+                ..
+            }) => RESTORE_COUNT_SINCE,
             _ => COMPATIBLE_SINCE,
         }
     }
@@ -2308,7 +2316,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 86);
+        assert_eq!(PROTOCOL_VERSION, 87);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2475,6 +2483,25 @@ mod tests {
         });
         assert_eq!(ask.introduced_in(), WRITE_FILE_SINCE);
         const { assert!(WRITE_FILE_SINCE > COMPATIBLE_SINCE && WRITE_FILE_SINCE <= PROTOCOL_VERSION) };
+    }
+
+    /// Counting a restore is a new repository question: a daemon from before it cannot read it, so it is not
+    /// asked, while every older question keeps the window's version.
+    #[test]
+    fn a_restore_count_is_asked_only_of_a_daemon_that_knows_it() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldRepoRequest {
+            Snapshots,
+        }
+        let count = crate::repo::RepoRequest::RestoreCount {
+            commit: "abc123".into(),
+        };
+        assert!(decode::<OldRepoRequest>(&encode(&count).unwrap()).is_err());
+        let ask = |request| ClientMsg::Query(Query::Repo { term: 3, tag: 1, request });
+        assert_eq!(ask(count).introduced_in(), RESTORE_COUNT_SINCE);
+        assert_eq!(ask(crate::repo::RepoRequest::Snapshots).introduced_in(), COMPATIBLE_SINCE);
+        const { assert!(RESTORE_COUNT_SINCE > COMPATIBLE_SINCE && RESTORE_COUNT_SINCE <= PROTOCOL_VERSION) };
     }
 
     /// `agent` and `prompt` were added to `NewWorktree` as defaulted fields: a peer that does not
@@ -2691,7 +2718,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 86);
+        assert_eq!(PROTOCOL_VERSION, 87);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()

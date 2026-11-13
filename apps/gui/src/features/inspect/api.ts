@@ -71,6 +71,12 @@ export async function restoreSnapshot(term: number, commit: string): Promise<num
   return Count.parse(await invoke<unknown>('restore_snapshot', { term, commit }))
 }
 
+/** How many files restoring one of the daemon's snapshots would change now; nothing is changed. */
+export async function restoreCount(term: number, commit: string): Promise<number> {
+  if (!isTauri()) throw new Error('Restoring is only available in the desktop app')
+  return Count.parse(await invoke<unknown>('snapshot_restore_count', { term, commit }))
+}
+
 /** Stages and commits every change in the checkout at `folder` on this computer; resolves to the commit's short hash. */
 export async function commitAll(folder: string, message: string, machine: number, paths?: readonly string[]): Promise<string> {
   if (!isTauri()) throw new Error('Committing is only available in the desktop app')

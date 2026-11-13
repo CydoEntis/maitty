@@ -4,7 +4,7 @@ import { pasteFromHost, pickFromClipboard, unsupportedMessage } from '@/features
 import type { ChatAgent } from '@/features/workspace/model/chatView'
 import { AppIcon, Icon } from '@/features/workspace/components/glyphs'
 import { registerComposerDrop } from '../composerDrop'
-import { useComposerDraft } from '../composerStore'
+import { updateComposer, useComposerDraft, useComposerSlice } from '../composerStore'
 import type { ChatComposer } from '../useChatComposer'
 import { defaultChoice, useAgentChoice, type AgentChoice } from '../agentChoice'
 import { DraftAttachments } from './Attachments'
@@ -100,6 +100,7 @@ const PERCENT = 100
 export function Composer({ agent, composer, conversation, commandsFrom, question = null, facts, waiting = false }: Props) {
   const { setDraft, attachments, attach, readOnly, queue, removeQueued, editQueued, sendQueuedNow, submit, stop, running, sending, disabledReason, error } = composer
   const storedDraft = useComposerDraft(composer.conversationKey ?? NO_CONVERSATION)
+  const restoreNote = useComposerSlice(composer.conversationKey ?? NO_CONVERSATION, (state) => state.note)
   const draft = composer.draft ?? storedDraft
   const off = disabledReason !== null
   const box = useRef<HTMLDivElement>(null)
@@ -273,6 +274,12 @@ export function Composer({ agent, composer, conversation, commandsFrom, question
         </div>
         <SettingsTray facts={facts} />
         {readOnly && (agent === 'claude' || agent === 'gemini') && isBangLine(draft) && <p className="mx-composer-note">Runs in the terminal, not as a message. Open the terminal to answer anything it asks.</p>}
+        {restoreNote !== null && composer.conversationKey !== undefined && (
+          <p className="mx-composer-note">
+            Your next message starts with a line telling {agent} the files were restored.{' '}
+            <button type="button" className="mx-composer-note-action" onClick={() => { updateComposer(composer.conversationKey ?? NO_CONVERSATION, (state) => ({ ...state, note: null })) }}>Leave it out</button>
+          </p>
+        )}
         {error !== null && <p role="alert" className="mx-composer-error">{error}. Your message is kept; send it again to retry.</p>}
       </div>
     </div>

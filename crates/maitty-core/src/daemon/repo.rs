@@ -53,20 +53,31 @@ pub fn answer(dir: &Path, request: &RepoRequest) -> Result<RepoReply> {
                 })
                 .collect(),
         ),
+        RepoRequest::RestoreCount { commit } => {
+            known_snapshot(root, commit)?;
+            RepoReply::RestoreCount(
+                crate::snapshot::restore_count(root, commit).map_err(anyhow::Error::msg)?,
+            )
+        }
         RepoRequest::References => RepoReply::References(references(root)?),
     })
 }
 
 /// Put the checkout back as it was in one of its own snapshots (never an arbitrary commit).
 pub fn restore(dir: &Path, commit: &str) -> Result<RepoReply> {
+    known_snapshot(dir, commit)?;
+    let changed = crate::snapshot::restore(dir, commit).map_err(anyhow::Error::msg)?;
+    Ok(RepoReply::Restored(changed))
+}
+
+fn known_snapshot(dir: &Path, commit: &str) -> Result<()> {
     if !crate::snapshot::list(dir)
         .iter()
         .any(|s| s.commit == commit)
     {
         bail!("That is not one of this checkout's snapshots");
     }
-    let changed = crate::snapshot::restore(dir, commit).map_err(anyhow::Error::msg)?;
-    Ok(RepoReply::Restored(changed))
+    Ok(())
 }
 
 /// Replace the text of an existing file of the checkout `dir` is in. The path is checked as every
@@ -540,6 +551,33 @@ mod tests {
                 .unwrap()
                 .trim_end(),
             "one"
+        );
+    }
+
+    #[test]
+    fn a_restore_count_names_the_files_a_restore_would_change_and_changes_none() {
+        let repo = repository();
+        let snapshot = crate::snapshot::take(repo.path(), "before claude's turn")
+            .unwrap()
+            .expect("a repository takes snapshots");
+        std::fs::write(repo.path().join("a.txt"), "the agent's edit\n").expect("edit");
+        std::fs::write(repo.path().join("new.txt"), "made since\n").expect("untracked");
+        let count = |commit: &str| {
+            answer(
+                repo.path(),
+                &RepoRequest::RestoreCount {
+                    commit: commit.into(),
+                },
+            )
+        };
+
+        assert!(count("0000000000000000000000000000000000000000").is_err());
+        assert_eq!(count(&snapshot.commit).unwrap(), RepoReply::RestoreCount(2));
+        assert!(repo.path().join("new.txt").exists());
+        assert_eq!(crate::snapshot::list(repo.path()).len(), 1);
+        assert_eq!(
+            restore(repo.path(), &snapshot.commit).unwrap(),
+            RepoReply::Restored(2)
         );
     }
 
