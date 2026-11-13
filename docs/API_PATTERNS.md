@@ -703,7 +703,11 @@ started, else `ServerMsg::Error` (an entry not in the list, an id that is not pl
 folder that cannot be made again, a branch that is gone or checked out elsewhere, with the branch named). Human
 clients only. `ClosedSession` gains the defaulted `worktree` and `repo`, which an older peer ignores and an older entry
 lacks. The command has its own `introduced_in` arm (`REOPEN_CLOSED_SINCE`); `COMPATIBLE_SINCE` stays 78, since an
-older daemon is simply not asked.
+older daemon is simply not asked. The desktop command is `reopen_closed_session { agent, session }`
+(`maitty_desktop_client::reopen_closed_session`), sent to this computer's daemon only on a connection of its own: true
+once the session is started, the daemon's error message as the command's error, or false without asking when the
+daemon running is older than 87. `closed_sessions` passes each record's `worktree` and `repo` through, so the list
+knows which removed folders can be made again.
 
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store

@@ -629,6 +629,16 @@ async fn closed_sessions() -> Result<serde_json::Value, String> {
         .map_err(|error| format!("{error:#}"))
 }
 
+/// Reopens a closed session from the Recent sessions list whose folder is gone: the daemon makes its worktree again
+/// from the record it keeps and starts the agent there with its conversation. False when the service running is older.
+/// This computer's daemon only, like `closed_sessions`.
+#[tauri::command]
+async fn reopen_closed_session(agent: String, session: String) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::reopen_closed_session(agent, session)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
 /// Removes worktrees of the project with the daemon, which closes what runs in them first: each folder with
 /// whether to go on when it holds uncommitted changes (they are lost). A branch is kept unless it is already
 /// merged. The daemon answers at once and does the removing in the background; a worktree something still runs
@@ -1509,6 +1519,7 @@ pub fn run() {
             add_branch_worktree,
             saved_conversations,
             closed_sessions,
+            reopen_closed_session,
             new_chat::git_sync_state,
             new_chat::git_pull,
             new_chat::open_agent_docs,

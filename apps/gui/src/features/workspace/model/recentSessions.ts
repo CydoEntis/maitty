@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
-import { closedSessions, type ClosedSession } from '@/api/daemon'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { closedSessions, reopenClosedSession, type ClosedSession } from '@/api/daemon'
+import { errorMessage } from '@/lib/error-message'
 import { LOCAL_MACHINE } from '@/api/machines'
 import { DEFAULT_PICK } from '@/features/chat/agentChoice'
 import type { NewChatRequest } from '../components/NewChatPage'
@@ -15,9 +16,14 @@ function resumableAgent(agent: string): ResumableAgent | null {
   return RESUMABLE.find((known) => known === agent) ?? null
 }
 
+/** Whether the service can make a closed session's removed folder again: it was a worktree, and its repository and branch are known. */
+function remakeable(closed: ClosedSession): boolean {
+  return closed.worktree !== null && closed.repo !== null && closed.branch !== null
+}
+
 /** Why a closed session cannot be reopened from the list, or null when it can. */
 export function reopenRefusal(closed: ClosedSession): string | null {
-  if (!closed.folder_present) return 'folder removed'
+  if (!closed.folder_present && !remakeable(closed)) return 'folder removed; cannot be made again'
   const agent = resumableAgent(closed.agent)
   if (agent === null) return 'cannot be reopened here'
   // The id is typed on the agent's command line, so one the shared rule refuses is never started.
@@ -25,10 +31,13 @@ export function reopenRefusal(closed: ClosedSession): string | null {
   return null
 }
 
-/** The start that reopens a closed session: its agent in its folder with its conversation, or null when it cannot be. */
+/**
+ * The start that reopens a closed session: its agent in its folder with its conversation. Null when it cannot be, or
+ * when its folder is gone, since the service then makes the folder again and starts the agent itself.
+ */
 export function reopenRequest(closed: ClosedSession): NewChatRequest | null {
   const agent = resumableAgent(closed.agent)
-  if (agent === null || reopenRefusal(closed) !== null) return null
+  if (agent === null || !closed.folder_present || reopenRefusal(closed) !== null) return null
   return { folder: closed.cwd, agent, model: DEFAULT_PICK, reasoning: DEFAULT_PICK, mode: 'default', message: '', branch: null, machine: LOCAL_MACHINE, machineName: 'This computer', resume: closed.session }
 }
 
@@ -51,4 +60,32 @@ export function useClosedSessions(): { read: RecentRead; retry: () => void } {
   }, [again])
   const retry = useCallback(() => { setRead({ kind: 'loading' }); setAgain((count) => count + 1) }, [])
   return { read, retry }
+}
+
+/** Where reopening a session whose folder is gone stands. */
+export type RemakeState = { kind: 'idle' } | { kind: 'working' } | { kind: 'failed'; message: string }
+
+/** Reopening a session whose folder is gone, through the service, which makes it again and starts the agent; `onReopened` runs once it has. */
+export function useReopenRemoved(onReopened: () => void): { state: RemakeState; reopen: (closed: ClosedSession) => void } {
+  const [state, setState] = useState<RemakeState>({ kind: 'idle' })
+  // A second pick before the first answers would start the session twice.
+  const busy = useRef(false)
+  const reopen = useCallback((closed: ClosedSession) => {
+    if (busy.current) return
+    busy.current = true
+    setState({ kind: 'working' })
+    void (async () => {
+      let outcome: RemakeState
+      try {
+        const asked = await reopenClosedSession(closed.agent, closed.session)
+        outcome = asked ? { kind: 'idle' } : { kind: 'failed', message: 'Restart the Maitty service to reopen it.' }
+      } catch (error) {
+        outcome = { kind: 'failed', message: errorMessage(error, 'Could not reopen the session.') }
+      }
+      busy.current = false
+      setState(outcome)
+      if (outcome.kind === 'idle') onReopened()
+    })()
+  }, [onReopened])
+  return { state, reopen }
 }

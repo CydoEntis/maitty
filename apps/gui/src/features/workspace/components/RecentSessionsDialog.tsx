@@ -3,14 +3,17 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import type { ClosedSession } from '@/api/daemon'
 import { agentName } from '../model/agentMessage'
 import { ageOf, nowSeconds } from '../model/newChatHost'
-import { reopenRefusal, useClosedSessions, type RecentRead } from '../model/recentSessions'
+import { reopenRefusal, useClosedSessions, useReopenRemoved, type RecentRead, type RemakeState } from '../model/recentSessions'
 import { tildePath } from '../model/session'
 import { AppIcon } from './glyphs'
 
 type Props = {
   /** The home folder, so a folder under it reads as `~/…`. */
   home: string
+  /** Reopens a session whose folder is still there. */
   onPick: (closed: ClosedSession) => void
+  /** The service made a removed folder again and started its session. */
+  onReopened: () => void
   onCancel: () => void
 }
 
@@ -26,10 +29,16 @@ function Row({ closed, home, now, onPick }: { closed: ClosedSession; home: strin
           <span className="mx-recent-title">{closed.title ?? `${agent} session`}</span>
           <span className="mx-recent-where">{where}</span>
         </span>
-        <span className="mx-recent-when">{refusal ?? `closed ${ageOf(closed.at, now)} ago`}</span>
+        <span className="mx-recent-when">{refusal ?? `${closed.folder_present ? '' : 'folder removed · '}closed ${ageOf(closed.at, now)} ago`}</span>
       </button>
     </li>
   )
+}
+
+function RemakeLine({ state }: { state: RemakeState }) {
+  if (state.kind === 'working') return <p role="status">Making the folder again and starting the session…</p>
+  if (state.kind === 'failed') return <p role="alert">{state.message}</p>
+  return null
 }
 
 function Body({ read, home, onPick, onRetry }: { read: RecentRead; home: string; onPick: Props['onPick']; onRetry: () => void }) {
@@ -53,8 +62,13 @@ function Body({ read, home, onPick, onRetry }: { read: RecentRead; home: string;
 }
 
 /** The agent sessions closed on this computer, newest first; picking one starts its agent in its folder with its conversation. */
-export function RecentSessionsDialog({ home, onPick, onCancel }: Props) {
+export function RecentSessionsDialog({ home, onPick, onReopened, onCancel }: Props) {
   const { read, retry } = useClosedSessions()
+  const remake = useReopenRemoved(onReopened)
+  const pick = (closed: ClosedSession) => {
+    if (closed.folder_present) onPick(closed)
+    else remake.reopen(closed)
+  }
   const dialog = useRef<HTMLDivElement>(null)
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onCancel() }}>
@@ -70,8 +84,9 @@ export function RecentSessionsDialog({ home, onPick, onCancel }: Props) {
           }}
         >
           <DialogTitle asChild><h2>Recent sessions</h2></DialogTitle>
-          <p>Agent sessions closed on this computer, newest first. Picking one starts its agent in that folder with its conversation.</p>
-          <Body read={read} home={home} onPick={onPick} onRetry={retry} />
+          <p>Agent sessions closed on this computer, newest first. Picking one starts its agent in that folder with its conversation; a worktree whose folder was removed is made again first.</p>
+          <RemakeLine state={remake.state} />
+          <Body read={read} home={home} onPick={pick} onRetry={retry} />
           <div className="mx-rename-actions">
             <button type="button" className="mx-text-button" onClick={onCancel}>Close</button>
           </div>

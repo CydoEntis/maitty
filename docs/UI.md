@@ -155,9 +155,16 @@ computer, newest first (`closed_sessions`, API_PATTERNS; read when the list open
 (else "Claude session"), the agent's mark and name, the folder, the branch and "closed 3h ago". Picking one closes the
 list and starts that agent in that folder with its conversation, through the new chat's resume start (`startNewChat`
 with `resume`; the id held to `resumeWords`' rule, model, effort and mode left to the agent); while another start is
-under way the list stays open and a toast says "A session is already starting". A row cannot be picked
-(`aria-disabled`, not `disabled`, so it can still be reached and read), and says why in place of the time, when its folder is gone ("folder removed"; recreating it is not offered), when its
-agent is not Claude or Codex ("cannot be reopened here"), or when its id fails the rule ("no conversation to resume").
+under way the list stays open and a toast says "A session is already starting". A row whose folder is gone but was a
+worktree with a known repository and branch reads "folder removed · closed 1d ago" and can be picked: the service makes
+the worktree again and starts the agent itself (`reopen_closed_session`, API_PATTERNS; never `startNewChat`), while a
+line over the list says "Making the folder again and starting the session…" and further picks wait. Once it has, the
+list closes; a refusal (a branch that is gone is named) shows as an alert line over the list, which stays usable, and a
+service older than protocol 87 says "Restart the Maitty service to reopen it." A row cannot be picked
+(`aria-disabled`, not `disabled`, so it can still be reached and read), and says why in place of the time, when its
+folder is gone and was not such a worktree, which includes every record from before protocol 87 ("folder removed;
+cannot be made again"), when its agent is not Claude or Codex ("cannot be reopened here"), or when its id fails the
+rule ("no conversation to resume").
 It says "Looking for closed sessions…" while it reads, "No closed sessions yet. A chat you close shows here once its
 Undo has passed." when there are none, "Could not read the closed sessions." with **Try again** when the read fails,
 and "Restart the Maitty service to see closed sessions." for a daemon older than protocol 86. Esc, Close or a click
