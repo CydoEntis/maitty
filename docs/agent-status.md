@@ -284,9 +284,36 @@ ending or a child going quiet without an end event counts as unconfirmed, never
 completed.
 
 Codex rollout files currently report child identity, parent thread and lifecycle
-events, but not the assigned prompt, child model/effort or result. Native hook
+events, but not the assigned prompt or child model/effort. Native hook
 payloads may report task/model/effort fields; Maitty uses them only when supplied.
 It does not expose hidden reasoning or claim transcript access that a runtime does
 not provide.
+
+### Each helper's own record
+
+What a helper leaves behind, for showing its work ([ADR 0010](adr/0010-workflows-and-specialist-agents-stay-outside-maitty.md)).
+Measured 2026-11-13 on Linux with Claude Code 2.1.323 and Codex 0.166.
+
+- **Claude.** `SubagentStart` carries `agent_id`, `agent_type`, `session_id`, `prompt_id` and the
+  parent's `transcript_path`, but no task. Hooks fired inside the helper carry the same `agent_id` and
+  the parent's `transcript_path`. `SubagentStop` adds `agent_transcript_path` and
+  `last_assistant_message` (the helper's answer). The helper's record is
+  `<parent transcript without .jsonl>/subagents/agent-<agent_id>.jsonl`, in the parent's line format
+  (`isSidechain: true`, `agentId`), with `agent-<agent_id>.meta.json` beside it holding `description`
+  (the parent's Agent call), `agentType`, `toolUseId` and `requestShape` (`background` for one started
+  in the background). A background helper is also listed in the parent's `Stop` as
+  `background_tasks[]` (`id` = `agent_id`, `description`, `status`).
+- **Codex.** A helper is its own rollout file whose `session_meta` has `thread_source: "subagent"`,
+  `parent_thread_id`, `agent_path` (`/root/<task name>`, the name the parent gave `spawn_agent`) and
+  a generated `agent_nickname`. It starts with a copy of the parent's history, then its own turn: its
+  tool calls, their output and its final message are plain text, but the task it was given is
+  encrypted, as is the parent's `spawn_agent` message. `codex exec --json` shows only the parent's
+  `wait` calls as collab items, with no receivers, so it is no source for helpers.
+- **Codex hook trust.** In a new pane Codex asked to review Maitty's nine hooks ("new or changed")
+  and, until they are trusted, sent none. Without `SessionStart` Maitty learns the thread only from
+  `notify` at the turn's end, so the rollout fallback cannot list helpers while the turn runs.
+- **Linking a workflow's step to its helper.** Both providers carry a name the parent chose: Claude's
+  Agent `description` and Codex's task name. A workflow names its helper with that label and gives
+  the same label in its report; the daemon links a helper of the same pane whose label is equal.
 
 Installing a new executable does not replace an already-running window. **Settings › General › UPDATES** shows the version, and Settings warns at the top when the installed, window and daemon versions differ. Local open sessions keep running; once no panes remain, Maitty restarts the daemon and reconnects the window automatically. Closing a window alone leaves the daemon running. A remote daemon must be updated on its host.

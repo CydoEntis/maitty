@@ -42,7 +42,9 @@ one way of working, and makes every stalled stage Maitty's fault. Status must st
    pane's process tree or `MAITTY_PANE_TOKEN`, so every report belongs to a known session. A report
    names one run of the workflow: the workflow's name, a run id, an optional ticket (key, title, link),
    the ordered steps, and for each step its state (waiting, working, passed, failed, sent back,
-   needs you, skipped) and an optional short note. The daemon validates and bounds every field,
+   needs you, skipped), an optional short note, and an optional helper label: the name the workflow
+   gave the helper doing the step (Claude's Agent description, Codex's task name). The daemon links
+   the step to a helper of the same pane whose label is equal, and to nothing otherwise. The daemon validates and bounds every field,
    keeps the latest report per run with the pane, and sends it to clients. It is a new message, so
    it gets its own `introduced_in` arm and a `PROTOCOL_VERSION` bump.
 4. **Workflow progress is display only.** It never changes a pane's status and never raises an
@@ -78,9 +80,3 @@ one way of working, and makes every stalled stage Maitty's fault. Status must st
   pane, not that it is accurate.
 - Revisit point 6 when several independent workflows report to Maitty and users ask to install them
   from inside it.
-
-## To confirm
-
-1. How a step names the subagent doing it, so the view can open that subagent's work. The step
-   could carry the subagent's id where the workflow knows it, or the daemon could link a subagent
-   that starts after the step's report in the same pane. Settle this from a live run (tracked in Plane).
