@@ -13,7 +13,7 @@ import { peekComposer, updateComposer, useComposerSlice, type ComposerState, typ
 
 import { newId, revokePreviews, useAttachmentIntake, type AttachmentIntake } from './useAttachmentIntake'
 import { wireChoice } from './agentChoice'
-import { reserveOperation, STALE_OPERATION, terminalSendOperation } from './sendOperation'
+import { paneSendOperation, reserveOperation, STALE_OPERATION, type FailedSend } from './sendOperation'
 import { isBangLine, isSlashLine } from './slashCommands'
 import { withRestoreNote } from './editFromHere'
 
@@ -198,8 +198,9 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
   const [echo, setEcho] = useState<SentEcho | null>(null)
   // A send that failed is tried again with the same operation number, so the daemon can tell it is the same message.
   const retry = useRef<{ text: string; operation: number } | null>(null)
-  // The same for a message left with the pane's daemon: one that timed out may have been queued all the same.
-  const paneRetry = useRef<{ text: string; operation: number } | null>(null)
+  // The same for a message left with the pane's daemon: one that timed out may have been queued all the same. Set only
+  // once the attempt has failed, so a send still pending is never mistaken for its own retry.
+  const paneRetry = useRef<FailedSend | null>(null)
 
   const readOnly = link.readOnly === true
   // A chat that follows a terminal agent talks to it by typing, when it has a terminal to type in.
@@ -223,6 +224,8 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
   const queue = useMemo<readonly QueuedItem[]>(() => [...feed.queued.map((message) => ({ id: message.operation, text: message.text })), ...paneQueued.map((text, index) => ({ id: paneQueuedId(index), text }))], [feed.queued, paneQueued])
 
   const setDraft = useCallback((text: string) => {
+    // Editing the box means the next send is a new message, not the retry of a failed one.
+    if (peekComposer(conversation).draft !== text) paneRetry.current = null
     updateComposer(conversation, (state) => (state.draft === text ? state : { ...state, draft: text }))
   }, [conversation])
 
@@ -316,14 +319,12 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
       // Left with the pane's daemon until the agent is ready for a message; shown in the queue meanwhile.
       setError(null)
       const message = withRestoreNote(note, buildAttachmentMessage(text, files))
-      const operation = paneRetry.current?.text === message ? paneRetry.current.operation : terminalSendOperation()
-      paneRetry.current = { text: message, operation }
+      const operation = paneSendOperation(paneRetry.current, message, Date.now())
+      paneRetry.current = null
       paneQueue.add(message, false, operation).then(
-        () => {
-          paneRetry.current = null
-          settle(true)
-        },
+        () => { settle(true) },
         (failure: unknown) => {
+          paneRetry.current = { text: message, operation, at: Date.now() }
           setError(errorMessage(failure, 'Could not queue the message'))
           settle(false)
         },

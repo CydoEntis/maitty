@@ -62,6 +62,20 @@ export function terminalSendOperation(random: () => readonly number[] = randomWo
   }
 }
 
+/** How long after a failed send to the pane's daemon a send of the same text is taken for its retry. */
+export const FAILED_SEND_REUSE_MS = 30_000
+
+/** A send to the pane's daemon that ended in failure: it may have been taken all the same. */
+export type FailedSend = { readonly text: string; readonly operation: number; readonly at: number }
+
+/**
+ * The operation for sending `text` to the pane's daemon. A send that already ended in failure a moment ago, with the
+ * same text, is a retry and keeps its number; anything else, including a send still pending, is a new message.
+ */
+export function paneSendOperation(failed: FailedSend | null, text: string, now: number, draw: () => number = terminalSendOperation): number {
+  return failed !== null && failed.text === text && now - failed.at <= FAILED_SEND_REUSE_MS ? failed.operation : draw()
+}
+
 /** For tests: the numbers belong to the window's lifetime. */
 export function forgetOperations(): void {
   lastUsed.clear()

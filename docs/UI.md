@@ -1055,8 +1055,8 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   into a running turn. A send that the daemon refuses as `stale or reused` (another window sent in between) is read
   and sent again under a new number; a retry of any other failure keeps its number. A chat that follows a terminal
   agent leaves a message sent while the agent works with the pane's daemon (`queue_follow_up`) under a random
-  operation (`terminalSendOperation`); one that failed, a timeout included, keeps it when sent again with the same text
-  ([API_PATTERNS](API_PATTERNS.md#project-specific-api-style)).
+  operation (`terminalSendOperation`); one that failed, a timeout included, keeps it when sent again with the same text within 30 seconds and the box
+  untouched; a send still pending never does ([API_PATTERNS](API_PATTERNS.md#project-specific-api-style)).
 - **Naming a file with @** (`fileMention.ts`, `useFileMention.ts`, `FilePicker.tsx`). An `@` at the start of the box
   or after a space, with the name typed after it at the end of the text and the caret there with nothing selected,
   opens a list over the box (the command list's
