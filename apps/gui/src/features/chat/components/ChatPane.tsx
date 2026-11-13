@@ -70,7 +70,7 @@ export type ChatPaneProps = {
   effort?: string | null | undefined
   /** Where a sent message's Edit from here restores the files from. */
   rewind?: RewindPlace | undefined
-  /** Leaves out runs of tool calls that succeeded and edited nothing (the desktop setting). */
+  /** Leaves out runs of reads and searches that succeeded (the desktop setting). */
   hideSuccessfulTools?: boolean
 }
 

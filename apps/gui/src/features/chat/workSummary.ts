@@ -48,12 +48,11 @@ export function workStatus(steps: readonly WorkStep[]): ItemStatus {
 }
 
 /**
- * A run that can be hidden by Settings › Chat › Hide successful tool calls: every step a command or tool that finished
- * well. An edit always shows, and a step still running, failed, stopped, or a command with a nonzero exit code is
- * not counted a success.
+ * A run that can be hidden by Settings › Chat › Hide successful tool calls: every step a read or a search that
+ * completed. A command or a tool of unknown kind may have changed files, so it always shows, as does an edit.
  */
 export function isQuietRun(steps: readonly WorkStep[]): boolean {
-  return steps.every((step) => step.kind !== 'edit' && step.status === 'completed' && (step.kind !== 'command' || step.exitCode === null || step.exitCode === 0))
+  return steps.every((step) => step.kind === 'tool' && step.status === 'completed' && (READ_TOOL.test(step.name) || SEARCH_TOOL.test(step.name)))
 }
 
 /** How long the run took by the daemon's own times, first start to last finish; null when it gave none. */

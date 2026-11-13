@@ -110,7 +110,7 @@ export type SettingsPreferences = {
   newSessionView: PaneView
   /** A new chat starts with the agent's full-access mode (no sandbox, no permission prompts). Off until you turn it on. */
   chatFullAccessDefault: boolean
-  /** The chat leaves out runs of tool calls that succeeded and edited nothing (`isQuietRun`). Off until you turn it on. */
+  /** The chat leaves out runs of reads and searches that succeeded (`isQuietRun`). Off until you turn it on. */
   hideSuccessfulTools: boolean
   /** Yolo mode per agent, off by default: Claude may pick Bypass permissions; Codex and Gemini start with approvals and sandbox off. */
   yoloClaude: boolean

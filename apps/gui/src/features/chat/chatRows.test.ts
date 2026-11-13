@@ -135,9 +135,18 @@ describe('buildRows with Hide successful tool calls', () => {
     expect(kinds([read('r1'), read('r2'), read('r3')], false)).toEqual(['work'])
   })
 
-  it('leaves out a run of reads that all succeeded, and a lone one', () => {
+  it('leaves out a run of reads and searches that all succeeded, and a lone one', () => {
     expect(kinds([message('u', 'user', 'go'), read('r1'), read('r2'), read('r3'), turn('completed', true)], true)).toEqual(['user', 'divider'])
-    expect(kinds([message('u', 'user', 'go'), commandEvent('c', { exitCode: 0 }), turn('completed', true)], true)).toEqual(['user', 'divider'])
+    expect(kinds([message('u', 'user', 'go'), read('g', { name: 'Grep' }), turn('completed', true)], true)).toEqual(['user', 'divider'])
+  })
+
+  it('keeps a command that succeeded, since it may have changed files', () => {
+    expect(kinds([commandEvent('c', { exitCode: 0 })], true)).toEqual(['step'])
+    expect(kinds([read('r1'), commandEvent('c', { exitCode: 0 }), read('r2')], true)).toEqual(['work'])
+  })
+
+  it('keeps a tool of unknown kind that succeeded', () => {
+    expect(kinds([read('m', { name: 'mcp__files__write' })], true)).toEqual(['step'])
   })
 
   it('keeps a run with a failed command in it, whole', () => {
@@ -151,10 +160,10 @@ describe('buildRows with Hide successful tool calls', () => {
     expect(kinds([read('r1'), editEvent('e1'), turn('completed', true)], true)).toEqual(['work', 'divider', 'changes'])
   })
 
-  it('keeps a run still running, stopped, or ending in a nonzero exit code', () => {
+  it('keeps a run of reads still running, stopped, or with a failed read', () => {
     expect(kinds([read('r1'), read('r2', { status: 'running' })], true)).toEqual(['work'])
     expect(kinds([read('r1'), read('r2', { status: 'interrupted' })], true)).toEqual(['work'])
-    expect(kinds([commandEvent('c', { exitCode: 2 })], true)).toEqual(['step'])
+    expect(kinds([read('r1'), read('r2', { status: 'failed' })], true)).toEqual(['work'])
   })
 
   it('keeps the to-do list, which is not a tool call', () => {

@@ -142,7 +142,7 @@ type Props = {
   effort?: string | null | undefined
   /** Where a sent message's Edit from here restores the files from; absent where it is not offered. */
   rewind?: RewindPlace | undefined
-  /** Leaves out runs of tool calls that succeeded and edited nothing (Settings › Chat). */
+  /** Leaves out runs of reads and searches that succeeded (Settings › Chat). */
   hideSuccessfulTools?: boolean
 }
 
@@ -292,7 +292,8 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
   const sentText = echo !== null && countUserMessages(events, echo.text) <= echo.baseline ? echo.text : null
   const echoText = sentText ?? held
   const echoThinking = sentText === null ? held !== null : echo !== null && !echo.quiet
-  // What the history says without the working line: whether the agent has answered what was last asked.
+  // What the history says without the working line or hidden runs: whether the agent has answered what was last asked,
+  // and the summary a new chat starts from, which reads the last reply as it was said.
   const bareRows = useMemo(() => buildRows(events, false, root, echoText, false), [events, root, echoText])
   const lastKind = bareRows.at(-1)?.kind
   const replied = lastKind !== undefined && lastKind !== 'user' && lastKind !== 'echo'
@@ -464,7 +465,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
 
   const question = pending !== null
     ? <ApprovalTray event={pending} actions={approval} />
-    : stoppedOnPrompt ? <PromptTray agent={agent} ask={ask} online={online} answer={answerPrompt} pick={pickChoice} pickAll={pickChoices} sendKeys={sendKeys} readScreen={readScreen} /> : problem !== null ? <ProblemBanner problem={problem} summarize={() => summaryOf(rows)} /> : null
+    : stoppedOnPrompt ? <PromptTray agent={agent} ask={ask} online={online} answer={answerPrompt} pick={pickChoice} pickAll={pickChoices} sendKeys={sendKeys} readScreen={readScreen} /> : problem !== null ? <ProblemBanner problem={problem} summarize={() => summaryOf(bareRows)} /> : null
   const notices = [
     offline ? `Reconnecting to the daemon. What is shown may be out of date.${readError !== null ? ` (${truncateError(readError)})` : ''}` : null,
     !offline && incomplete !== null ? `History is incomplete: ${incomplete}.` : null,

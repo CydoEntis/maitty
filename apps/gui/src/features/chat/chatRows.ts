@@ -144,7 +144,7 @@ function isQuietRow(row: ChatRow): boolean {
 }
 
 /**
- * The rows without the runs of tool calls that succeeded and changed no file. The two parts of a turn's message
+ * The rows without the runs of reads and searches that succeeded. The two parts of a turn's message
  * that such a run stood between read as the one message they would have been without it.
  */
 function withoutQuietRuns(rows: readonly ChatRow[]): ChatRow[] {
