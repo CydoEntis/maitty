@@ -55,6 +55,8 @@ export type SessionView = {
   agentEffort?: string | null
   /** When the status last changed, in milliseconds, as the daemon says; null when it did not say. */
   statusSince: number | null
+  /** What set the status, in the daemon's own words (`hook: Stop`); empty when it gave no reason. */
+  statusWhy: string
   timeline: TerminalDetails['timeline']
   usage: TerminalDetails['usage']
   /** The plan limits of its agent, as last reported; empty when it reported none. */
@@ -227,6 +229,7 @@ export function toSessionView(conversation: Conversation, home: string): Session
     agentSession: conversation.details?.agentSession ?? null,
     agentEffort: conversation.details?.agentEffort ?? null,
     statusSince: (conversation.details?.since ?? 0) > 0 ? (conversation.details?.since ?? 0) * MS_PER_SECOND : null,
+    statusWhy: conversation.details?.statusWhy ?? '',
     timeline: conversation.details?.timeline ?? [],
     usage: conversation.details?.usage ?? { context: null, cost: null, tokens: null },
     limits: conversation.details?.limits ?? [],

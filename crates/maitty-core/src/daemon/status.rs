@@ -478,6 +478,7 @@ impl Daemon {
                 t.summary.clear();
                 t.status = Status::None;
                 t.status_since = term::unix_now();
+                t.status_why.clear();
                 self.dirty = true;
                 self.last_loss = Some(now);
                 return;

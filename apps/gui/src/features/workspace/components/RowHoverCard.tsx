@@ -1,7 +1,8 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { WindowPortal } from '@/components/ui/portal'
 import type { SessionView } from '../model/session'
-import { hoverCardText, placeHoverCard, type Box } from '../model/hoverCard'
+import { useNow } from '@/lib/clock'
+import { hoverCardText, placeHoverCard, statusWhyLine, type Box } from '../model/hoverCard'
 import { rowTitle } from '../model/sidebar'
 import { Ago } from './times'
 
@@ -19,6 +20,7 @@ export function RowHoverCard({ session, row, portalContainer }: Props) {
     setAt(placeHoverCard(row, height, window.innerWidth, window.innerHeight))
   }, [row, session])
   const text = hoverCardText(session, rowTitle(session))
+  const why = statusWhyLine(session, useNow())
   return (
     <WindowPortal container={portalContainer}>
     <div ref={card} role="tooltip" className="mx-hover-card" style={at === null ? { visibility: 'hidden' } : at}>
@@ -30,6 +32,7 @@ export function RowHoverCard({ session, row, portalContainer }: Props) {
       <span className="mx-hover-facts">
         <span>Agent</span><span>{text.agent}</span>
         <span>Changes</span><span>{text.changes}</span>
+        {why !== null && <><span>Set by</span><span>{why}</span></>}
         <span>Last activity</span><span>{session.statusSince === null ? 'Not known' : <><Ago at={session.statusSince} /> ago</>}</span>
       </span>
     </div>
