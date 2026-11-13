@@ -383,7 +383,7 @@ fn codex_home() -> Option<PathBuf> {
 }
 
 /// Codex's sessions folder (`$CODEX_HOME/sessions`, else `~/.codex/sessions`).
-fn codex_sessions() -> Option<PathBuf> {
+pub(super) fn codex_sessions() -> Option<PathBuf> {
     Some(codex_home()?.join("sessions"))
 }
 

@@ -231,6 +231,11 @@ pub enum Ev {
         tag: u64,
         listing: crate::protocol::FolderListing,
     },
+    SavedConversationsReady {
+        client: ClientId,
+        tag: u64,
+        found: crate::protocol::SavedConversations,
+    },
     RepoReady {
         client: ClientId,
         tag: u64,
@@ -2190,6 +2195,9 @@ impl Daemon {
                 tag,
                 listing,
             } => self.send(client, ServerMsg::Reply(Reply::Folders { tag, listing })),
+            Ev::SavedConversationsReady { client, tag, found } => {
+                self.send(client, ServerMsg::Reply(Reply::SavedConversations { tag, found }));
+            }
             Ev::RepoReady {
                 client,
                 tag,
@@ -2762,6 +2770,29 @@ impl Daemon {
                         tokio::task::spawn_blocking(move || {
                             let listing = folders::list(&path, home.as_deref());
                             let _ = tx.blocking_send(Ev::FoldersReady { client, tag, listing });
+                        });
+                        return;
+                    }
+                    Query::SavedConversations { .. } if self.client_is_agent(client) => {
+                        ServerMsg::Error("Only a human client can list saved conversations".into())
+                    }
+                    Query::SavedConversations { agent, folder, tag } => {
+                        let home = directories::BaseDirs::new().map(|dirs| dirs.home_dir().to_path_buf());
+                        let Some(folder) = (folder.len() <= folders::PATH_MAX_BYTES)
+                            .then(|| folders::resolve(&folder, home.as_deref()))
+                            .flatten()
+                        else {
+                            self.send(
+                                client,
+                                ServerMsg::Error("A folder is an absolute path or starts with ~".into()),
+                            );
+                            return;
+                        };
+                        let stores = conversation::saved::Stores::of_this_user(home.as_deref());
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let found = conversation::saved::list(&agent, &folder, &stores);
+                            let _ = tx.blocking_send(Ev::SavedConversationsReady { client, tag, found });
                         });
                         return;
                     }

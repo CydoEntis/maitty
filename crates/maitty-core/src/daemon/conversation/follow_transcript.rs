@@ -693,7 +693,7 @@ fn item_params(turn: &str, mut item: Value, at_ms: Option<u64>) -> Value {
 }
 
 /// What the text of a Claude "user" line is. Claude writes more there than what was typed.
-enum ClaudeLine {
+pub(super) enum ClaudeLine {
     Said,
     /// A slash command, as it was typed: `/plugin marketplace add x`.
     Command(String),
@@ -705,7 +705,7 @@ enum ClaudeLine {
 
 const COMMAND_OUTPUT_TAGS: [&str; 2] = ["local-command-stdout", "local-command-stderr"];
 
-fn claude_line(text: &str) -> ClaudeLine {
+pub(super) fn claude_line(text: &str) -> ClaudeLine {
     let start = text.trim_start();
     if start.starts_with("<command-name>") || start.starts_with("<command-message>") {
         return slash_command(start).map_or(ClaudeLine::Hidden, ClaudeLine::Command);
@@ -753,7 +753,7 @@ fn tagged<'a>(text: &'a str, tag: &str) -> Option<&'a str> {
 /// A message with the `<pasted_content id="…">` / `</pasted_content id="…">` markers Claude Code puts
 /// around pasted text removed: they say where the paste was, not what the person said, and the
 /// pasted text itself stays as written.
-fn without_paste_tags(text: &str) -> String {
+pub(super) fn without_paste_tags(text: &str) -> String {
     const MARKERS: [&str; 2] = ["<pasted_content", "</pasted_content"];
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
@@ -777,7 +777,7 @@ fn without_paste_tags(text: &str) -> String {
 const CODEX_CONTEXT_PREFIXES: [&str; 3] = ["# AGENTS.md instructions", "<environment_context>", "<user_instructions>"];
 
 /// Whether a user-role response item is context Codex injected, which no chat should show as said.
-fn is_codex_context(payload: &Value) -> bool {
+pub(super) fn is_codex_context(payload: &Value) -> bool {
     payload.get("content").and_then(Value::as_array).is_some_and(|parts| {
         parts.iter().filter_map(|part| part.get("text").and_then(Value::as_str)).any(|text| {
             let text = text.trim_start();
@@ -786,7 +786,7 @@ fn is_codex_context(payload: &Value) -> bool {
     })
 }
 
-fn codex_text(payload: &Value) -> String {
+pub(super) fn codex_text(payload: &Value) -> String {
     payload
         .get("content")
         .and_then(Value::as_array)
