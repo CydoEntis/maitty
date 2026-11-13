@@ -694,7 +694,10 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   stays in its tab with its output, the tab keeps its name, and a card along the bottom says **Session
   ended** with **Restart shell** (a new shell in the same folder, in the same place) and **Close pane**
   (which stops nothing). Only the first list after launch drops panes of sessions that died while the app
-  was closed. The sidebar still lists only the sessions the daemon lists, and an ended session's row goes.
+  was closed. The sidebar lists the sessions the daemon lists. A row goes at once when the daemon says why it
+  left (closed, exited, put away, moved, the daemon stopping, or a reason it did not record) or this window
+  closed it; a row a list leaves out with no reason stays, shown as unknown, until a full list read from the
+  daemon confirms it is gone, so a daemon restarting under the app makes no row flicker out.
 - **Switching sessions.** A pane shows at once: the last screen it had (kept in memory per session,
   `features/terminal/screenCache.ts`, bounded in size and count) or the replay in one write per frame. A
   pane on this computer never shows a spinner, overlay or "Connecting" text. A pane on another machine

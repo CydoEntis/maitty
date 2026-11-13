@@ -12,6 +12,8 @@ export type RemoteMachine = {
   conversations: readonly Conversation[]
   /** Its first snapshot has come: before that, a layout's panes for it are not known to be gone. */
   heard: boolean
+  /** When its last snapshot came, in ms since the epoch; 0 before the first. Each is its whole list as the host holds it. */
+  listedAt: number
 }
 
 /**
