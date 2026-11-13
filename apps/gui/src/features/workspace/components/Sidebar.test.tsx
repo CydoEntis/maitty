@@ -28,7 +28,7 @@ function show(sessions: SessionView[], more: Partial<SidebarProps> = {}) {
     onToggleRail: none, side: 'left', width: 264, onResize: none, onResizeEnd: none, grouping: 'machine', onGrouping: none, onSearch: none,
     onNewAgentChat: none, onNewShell: none, onAddMachine: none, onMachineSettings: none, onRenameMachine: none, onUpdateMachine: none, onShowSession: none, onShowSubagent: none, onRenameSession: none,
     onSetName: none, onSplitSession: none, onSplitSubagent: none, onCopyPath: none, onCopyText: none, onShowChanges: none, onMarkDone: none, onGetFile: none,
-    onEndSession: none, onOpenSettings: none, updateSlot: null, railUpdateSlot: null,
+    onEndSession: none, onOpenSettings: none, onRecentSessions: none, updateSlot: null, railUpdateSlot: null,
     ...more,
   }
   const view = render(<Sidebar {...props} />)
@@ -489,6 +489,16 @@ describe('the top of the sidebar', () => {
     expect(onNewAgentChat).toHaveBeenCalledWith(0)
     await user.click(screen.getByRole('button', { name: /^Search/ }))
     expect(onSearch).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens Recent sessions from its button, docked and on the rail', async () => {
+    const user = userEvent.setup()
+    const onRecentSessions = vi.fn()
+    const { again } = show([], { onRecentSessions })
+    await user.click(screen.getByRole('button', { name: 'Recent sessions' }))
+    again({ mode: 'rail' })
+    await user.click(screen.getByRole('button', { name: 'Recent sessions' }))
+    expect(onRecentSessions).toHaveBeenCalledTimes(2)
   })
 
   it('offers a shell and a remote machine from the arrow beside New chat', async () => {

@@ -331,7 +331,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   **Subagents** (the daemon's `subagent_activity`, `model/subagents.ts`): under a session that is not selected, an
   elbow line and one 14px tile per subagent with a corner mark (teal spinner working, amber square needs you, green
   check done), no text; under the selected session, a 28px row each on a guide line. Clicking one opens its own chat.
-  The foot holds the update slot (or "Reconnecting to maittyd…") and the Settings gear. The edge drags (208 to 440px;
+  The foot holds the update slot (or "Reconnecting to maittyd…"), the Recent sessions clock and the Settings gear; the rail's foot has the same two buttons. The edge drags (208 to 440px;
   double-click resets). The **rail** of a narrow window is the starters, then one tile per session.
 - **Replies are typed in.** An agent's reply types toward the text that came in (`useTypedText`), so a chunk eases in instead
   of flashing: a few whole words every 40ms at about 300 characters a second, faster while a lot is waiting, so a

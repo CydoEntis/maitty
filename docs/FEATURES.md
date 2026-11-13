@@ -50,6 +50,7 @@ conversation continuity are planned in phases 34–37:
 - Per-turn diff: a turn's changes row opens Changes on what that turn changed, between the snapshots around it — built 2026-11-13, not yet tried in the packaged app — `apps/gui/src/features/inspect/turnRange.ts`, `ChangesTab.tsx`
 - Rewind in chat, on top of the existing snapshots — planned (brought back 2026-11-12) — [intent](features/daily-loop/intent.md), MAITTY-287 to MAITTY-291
 - Resume a conversation Claude or Codex saved for the folder from the new chat page — built 2026-11-13, not yet seen in the desktop app — `apps/gui/src/features/workspace/components/ResumeList.tsx`, `crates/maitty-core/src/daemon/conversation/saved.rs`
+- Recent sessions: reopen an agent session closed on this computer, from the sidebar's foot or the palette; a row whose folder is gone says "folder removed" and cannot be picked — built 2026-11-13, not yet seen in the desktop app — `apps/gui/src/features/workspace/components/RecentSessionsDialog.tsx`, `crates/maitty-core/src/daemon/closed_sessions.rs`
 - Close with a six-second Undo, in the desktop app and the TUI — shipped — `UNDO_WINDOW` in `crates/maitty-core/src/daemon/mod.rs`, `apps/gui/src/features/workspace/useClosing.ts`, `crates/maitty-terminal-client/src/client/screen/closing.rs`
 - Fleets, ships, the tab bar and the Crewmates switch are gone from the desktop app (the redesign supersedes them); `features/crew/` stays in the tree, unmounted, until Crewmates is designed
 

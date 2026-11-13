@@ -685,7 +685,13 @@ structured runtime is refused, since the list names the folders of other work. A
 another machine's daemon for its list over that machine's line; the answer is cleaned
 (SECURITY, "remote daemon"). The query and the reply each have their own `introduced_in` arm
 (`CLOSED_SESSIONS_SINCE`, in `ClientMsg::introduced_in` and `ServerMsg::introduced_in`);
-`COMPATIBLE_SINCE` stays 78, since an older daemon is simply not asked.
+`COMPATIBLE_SINCE` stays 78, since an older daemon is simply not asked. The desktop command is
+`closed_sessions` (`maitty_desktop_client::closed_sessions`), asked of this computer's daemon only on a
+connection of its own: it answers the list with each record's `folder_present` added (whether `cwd` is a
+folder on this disk, looked at on blocking threads side by side, never on the UI thread), or null without asking
+when the daemon running is older than 86. The folders get two seconds together: one that has not answered by then
+(a network share that is gone) reads as not present, and the whole call, daemon included, is cut off at the
+request timeout, which the list shows as a failed read.
 
 Protocol 87 adds `Command::ReopenClosedSession { agent, session }` (`daemon/reopen.rs`): start again the closed
 session the daemon keeps for that agent and conversation id, in a new session running the agent's resume command in

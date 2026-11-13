@@ -1540,6 +1540,56 @@ pub async fn saved_conversations(agent: String, folder: String) -> Result<Value>
     .await
 }
 
+/// The agent sessions this computer's daemon recorded as closed, newest first, each with `folder_present`: whether its
+/// folder is still there, looked at off the async workers. Null when the daemon running is older than the question.
+pub async fn closed_sessions() -> Result<Value> {
+    let message = ClientMsg::Query(Query::ClosedSessions);
+    answered_within(REQUEST_TIMEOUT, async {
+        let (mut connection, version) = ipc::open_for_user_knowing_version()
+            .await
+            .context("connecting to the local daemon")?;
+        if !daemon_reads(&message, version) {
+            return Ok(Value::Null);
+        }
+        match ask(&mut connection, &message).await? {
+            Reply::ClosedSessions(list) => with_folder_presence(list, FOLDER_LOOK_LIMIT, |path| path.is_dir()).await,
+            _ => bail!("daemon returned an unexpected closed sessions reply"),
+        }
+    })
+    .await
+}
+
+/// How long the closed sessions' folders are looked for, all of them together.
+const FOLDER_LOOK_LIMIT: Duration = Duration::from_secs(2);
+
+/// Each closed session as JSON with `folder_present`. The folders are looked at side by side on blocking threads, and
+/// one that has not answered by `limit` (a network share that is gone can hang for a long time) reads as missing.
+async fn with_folder_presence(
+    list: Vec<maitty_shared::protocol::ClosedSession>,
+    limit: Duration,
+    look: impl Fn(&std::path::Path) -> bool + Send + Sync + Clone + 'static,
+) -> Result<Value> {
+    let deadline = tokio::time::Instant::now() + limit;
+    let looks: Vec<_> = list
+        .iter()
+        .map(|closed| {
+            let (cwd, look) = (closed.cwd.clone(), look.clone());
+            tokio::task::spawn_blocking(move || look(&cwd))
+        })
+        .collect();
+    let mut rows = Vec::with_capacity(list.len());
+    for (closed, folder_look) in list.into_iter().zip(looks) {
+        let folder_present = match tokio::time::timeout_at(deadline, folder_look).await {
+            Ok(answer) => answer.context("looking for a closed session's folder")?,
+            Err(_) => false,
+        };
+        let mut row = serde_json::to_value(closed)?;
+        row["folder_present"] = Value::Bool(folder_present);
+        rows.push(row);
+    }
+    Ok(Value::Array(rows))
+}
+
 /// Take back a command approved "always in this project".
 pub async fn forget_allowed_command(
     project: PathBuf,
@@ -2493,6 +2543,63 @@ mod agent_command_tests {
         });
         assert!(daemon_reads(&ask, PROTOCOL_VERSION));
         assert!(!daemon_reads(&ask, SAVED_CONVERSATIONS_SINCE - 1));
+    }
+
+    #[test]
+    fn a_daemon_from_before_closed_sessions_is_not_asked_for_them() {
+        use super::{ClientMsg, Query, daemon_reads};
+        use maitty_shared::protocol::{CLOSED_SESSIONS_SINCE, PROTOCOL_VERSION};
+        let ask = ClientMsg::Query(Query::ClosedSessions);
+        assert!(daemon_reads(&ask, PROTOCOL_VERSION));
+        assert!(!daemon_reads(&ask, CLOSED_SESSIONS_SINCE - 1));
+    }
+
+    fn closed_in(cwd: std::path::PathBuf) -> maitty_shared::protocol::ClosedSession {
+        maitty_shared::protocol::ClosedSession {
+            agent: "claude".into(),
+            session: "abc-123".into(),
+            cwd,
+            branch: Some("dev".into()),
+            title: Some("Fix the parser".into()),
+            at: 1_700_000_000,
+            worktree: None,
+            repo: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_closed_session_says_whether_its_folder_is_still_there() {
+        let here = std::env::temp_dir();
+        let gone = here.join("maitty-closed-session-folder-that-was-removed");
+        let list = vec![closed_in(here), closed_in(gone)];
+        let rows = super::with_folder_presence(list, super::FOLDER_LOOK_LIMIT, |path| path.is_dir())
+            .await
+            .unwrap();
+        assert_eq!(rows[0]["folder_present"], true);
+        assert_eq!(rows[1]["folder_present"], false);
+        assert_eq!(rows[0]["session"], "abc-123");
+        assert_eq!(rows[0]["branch"], "dev");
+    }
+
+    #[tokio::test]
+    async fn a_folder_that_does_not_answer_in_time_reads_as_missing_and_holds_up_nothing() {
+        use std::time::Duration;
+        let hung = std::path::PathBuf::from("//dead-share/app");
+        let list = vec![closed_in(hung.clone()), closed_in(hung.clone()), closed_in(std::env::temp_dir())];
+        let limit = Duration::from_millis(100);
+        let started = std::time::Instant::now();
+        let rows = super::with_folder_presence(list, limit, move |path| {
+            if path == hung {
+                std::thread::sleep(Duration::from_secs(2));
+            }
+            true
+        })
+        .await
+        .unwrap();
+        assert!(started.elapsed() < Duration::from_secs(1), "the looks run side by side under one deadline");
+        assert_eq!(rows[0]["folder_present"], false);
+        assert_eq!(rows[1]["folder_present"], false);
+        assert_eq!(rows[2]["folder_present"], true);
     }
 
     #[test]

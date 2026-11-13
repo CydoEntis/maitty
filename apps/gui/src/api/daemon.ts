@@ -1105,6 +1105,25 @@ export async function savedConversations(agent: 'claude' | 'codex', folder: stri
   return found === 'NotSupported' ? [] : found.Listed
 }
 
+const ClosedSessionSchema = z.object({
+  agent: z.string(),
+  session: z.string(),
+  cwd: z.string(),
+  branch: z.string().nullable(),
+  title: z.string().nullable(),
+  at: z.number().int().nonnegative(),
+  folder_present: z.boolean(),
+})
+export type ClosedSession = z.infer<typeof ClosedSessionSchema>
+
+/**
+ * The agent sessions that closed on this computer, newest first, each saying whether its folder is still there. Null
+ * when the service running is older than the question.
+ */
+export async function closedSessions(): Promise<ClosedSession[] | null> {
+  return invokeParsed('closed_sessions', z.array(ClosedSessionSchema).nullable())
+}
+
 /**
  * The person's answer to an agent's request for a secret: the value, or null to decline. Only this computer's
  * daemon is asked. The value is not logged or kept anywhere on the way.
