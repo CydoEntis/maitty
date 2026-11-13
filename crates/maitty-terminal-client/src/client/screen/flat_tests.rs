@@ -1146,3 +1146,26 @@ fn every_way_to_close_a_session_opens_the_same_question() {
     assert!(asks(&app, shell), "the row menu's Close shell asks");
     assert_eq!(closes_sent(&mut rx), 0);
 }
+
+#[test]
+fn finished_subagents_fold_into_a_count_that_lists_them_when_clicked() {
+    let mut app = with_subagents();
+    for activity in &mut app.snap.terms.get_mut(&2).unwrap().subagent_activity {
+        if activity.state == crate::protocol::SubagentState::Completed {
+            // Finished long ago: past the time a finished subagent stays listed.
+            activity.updated_at = 1;
+        }
+    }
+    reference_fixture::focus(&mut app, 2);
+    let rows = text(&mut app, 140, 36);
+    show(&rows, "a finished subagent folded");
+    let y = row_of(&app, 2);
+    assert!(!rows.iter().any(|r| side_of(r).contains("Check migration order")));
+    let done = (y..y + 6).find(|&n| side(&rows, n).contains("1 done · show")).expect("an \"N done\" line");
+    let x = side(&rows, done).chars().position(|c| c == '1').unwrap() as u16;
+    click(&mut app, x, done as u16);
+    let rows = text(&mut app, 140, 36);
+    show(&rows, "the finished subagent listed");
+    assert!(rows.iter().any(|r| side_of(r).contains("Check migration order")));
+    assert!(rows.iter().any(|r| side_of(r).contains("1 done · hide")));
+}

@@ -94,8 +94,10 @@ the status mark and the name (bold and bright for an agent with something going 
 the project's colour, the project and the branch in violet. No status words anywhere, except
 `limited 16:30` (`limited Sun 16:30` on another day) in amber on a session that hit its plan limit. Agents come
 first, then shells, each in the order they started, so a row never moves when its status changes.
-The open session has the row ground and an accent `▎`. An agent's subagents in its current turn
-follow it: `└` and a mark each, or under the open session one row each with `├`/`└` and the name.
+The open session has the row ground and an accent `▎`. An agent's subagents follow it: one still
+running for as long as it runs (after its parent's turn too), one finished in the current turn for a
+few seconds; `└` and a mark each, or under the open session one row each with `├`/`└` and the name,
+and a quiet `└ 3 done · show` line that lists the finished ones (`· hide` folds them again).
 On the bottom border the release chip (` ↑ v0.15.0 ` when a release is out, else the version) and
 ` menu `, each opening a menu upward. See UI › *the sidebar*; the Machines dialog and its states
 are in UI › *Machines dialog*.

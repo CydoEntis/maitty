@@ -64,6 +64,10 @@ pub(super) struct SideRow {
     pub process: String,
     pub machine: String,
     pub subs: Vec<SubRow>,
+    /// Its finished subagents not in `subs`, shown as one "N done" line under the open session.
+    pub subs_done: usize,
+    /// Its finished subagents are listed in `subs` (the "N done" line was opened).
+    pub subs_open: bool,
     /// Folded away: its machine or its folder is closed, so it is not drawn and the cursor skips it.
     pub hidden: bool,
     /// Creation order: ids only count up.
@@ -140,21 +144,23 @@ fn turn_start(info: &TermInfo) -> u64 {
 /// rows that look stuck.
 const FINISHED_LINGER_SECS: u64 = 15;
 
-/// The subagents of the turn the agent is in: none once the turn is over, since the daemon keeps
-/// every record the session ever reported. A finished one clears after [`FINISHED_LINGER_SECS`].
-pub(super) fn turn_subagents(info: &TermInfo, now: u64) -> Vec<&SubagentActivity> {
-    if !matches!(info.status, Status::Working | Status::Blocked) {
-        return Vec::new();
-    }
+/// A session's subagents as the sidebar lists them, and how many finished ones are folded away.
+/// One still running is listed for as long as it runs, after its parent's turn too (a background
+/// helper). One that finished in the turn the agent is in stays for [`FINISHED_LINGER_SECS`]; every
+/// other finished one is folded into the count, or listed too when `show_done`.
+pub(super) fn session_subagents(info: &TermInfo, now: u64, show_done: bool) -> (Vec<&SubagentActivity>, usize) {
+    let in_turn = matches!(info.status, Status::Working | Status::Blocked);
     let from = turn_start(info);
-    info.subagent_activity
+    let lingers = |a: &SubagentActivity| {
+        in_turn
+            && a.started_at.unwrap_or(a.updated_at) >= from
+            && now.saturating_sub(a.updated_at) <= FINISHED_LINGER_SECS
+    };
+    let (listed, folded): (Vec<_>, Vec<_>) = info
+        .subagent_activity
         .iter()
-        .filter(|a| {
-            a.state.active()
-                || (a.started_at.unwrap_or(a.updated_at) >= from
-                    && now.saturating_sub(a.updated_at) <= FINISHED_LINGER_SECS)
-        })
-        .collect()
+        .partition(|a| show_done || a.state.active() || lingers(a));
+    (listed, folded.len())
 }
 
 /// Every session in creation order.
@@ -175,16 +181,21 @@ fn side_rows(app: &App, model: &[Proj]) -> Vec<SideRow> {
                 s.status,
                 s.check.as_ref(),
             );
-            let subs = info
+            let subs_open = app.screen.subs_opened.contains(&s.key);
+            let (subs, subs_done) = info
                 .filter(|_| app.cfg.ui.subagent_count)
                 .map(|i| {
-                    turn_subagents(i, super::now_secs())
+                    let now = super::now_secs();
+                    let done = session_subagents(i, now, false).1;
+                    let rows = session_subagents(i, now, subs_open)
+                        .0
                         .into_iter()
                         .map(|a| SubRow {
                             name: a.name.clone(),
                             state: sub_state(a.state),
                         })
-                        .collect()
+                        .collect();
+                    (rows, done)
                 })
                 .unwrap_or_default();
             SideRow {
@@ -200,6 +211,8 @@ fn side_rows(app: &App, model: &[Proj]) -> Vec<SideRow> {
                 process: info.map_or(String::new(), |i| i.process.clone()),
                 machine: app.machine_label_of(s.key.machine),
                 subs,
+                subs_done,
+                subs_open,
                 hidden: false,
                 order: (
                     s.native_term.map_or(u64::MAX, |t| u64::from(t.term)),
@@ -369,11 +382,14 @@ fn block_h(sm: &SideModel, b: Block, open: Option<ClientSession>) -> u16 {
         Block::Machine(_) | Block::Folder(..) | Block::Divider | Block::Gap => 1,
         Block::Session(mi, ri) => {
             let r = &sm.machines[mi].rows[ri];
+            let open = Some(r.key) == open;
+            let done_line = u16::from(open && r.subs_done > 0);
             let subs = match r.subs.len() {
                 0 => 0,
-                n if Some(r.key) == open => n as u16,
+                n if open => n as u16,
                 _ => 1,
             };
+            let subs = subs + done_line;
             session_h(sm.grouped) + subs
         }
     }
@@ -896,9 +912,10 @@ fn put_cut(buf: &mut Buffer, x: u16, y: u16, segs: Vec<Seg>, end: u16) {
 }
 
 /// Under a session: `└` and a mark per subagent, or for the open session a row each with its
-/// name. A row opens the parent's pane: the agent shows its subagents in its own terminal.
+/// name, then an "N done" line for the finished ones folded away. A row opens the parent's pane:
+/// the agent shows its subagents in its own terminal. The "N done" line lists or folds them.
 fn draw_subs(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, row: &SideRow, open: bool, t: &Theme) {
-    if row.subs.is_empty() {
+    if row.subs.is_empty() && !(open && row.subs_done > 0) {
         return;
     }
     let base = Style::default().bg(t.bg);
@@ -929,7 +946,8 @@ fn draw_subs(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, row: &SideRow, op
         fill(buf, line, ground);
         let st = Style::default().bg(ground);
         let m = app.state_mark(s.state, t);
-        let branch = if i + 1 == row.subs.len() { "└" } else { "├" };
+        let last = i + 1 == row.subs.len() && row.subs_done == 0;
+        let branch = if last { "└" } else { "├" };
         let segs = vec![
             seg(branch, st.fg(t.faint())),
             seg(" ", st),
@@ -940,6 +958,25 @@ fn draw_subs(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, row: &SideRow, op
         put_cut(buf, r.x + TREE_X, yy, segs, end);
         app.screen.sub_rows.push(term);
         hit(app, line, ScreenHit::Subagent(app.screen.sub_rows.len() - 1));
+    }
+    if row.subs_done > 0 {
+        let yy = y + row.subs.len() as u16;
+        let line = Rect {
+            x: r.x + 1,
+            y: yy,
+            width: r.width.saturating_sub(2),
+            height: 1,
+        };
+        fill(buf, line, t.bg);
+        let word = if row.subs_open { "hide" } else { "show" };
+        let segs = vec![
+            seg("└", tree),
+            seg(" ", base),
+            seg(format!("{} done · {word}", row.subs_done), base.fg(t.muted)),
+        ];
+        put_cut(buf, r.x + TREE_X, yy, segs, end);
+        app.screen.done_rows.push(row.key);
+        hit(app, line, ScreenHit::SubagentsDone(app.screen.done_rows.len() - 1));
     }
 }
 
@@ -962,6 +999,8 @@ mod tests {
             process: "claude".into(),
             machine: "devbox".into(),
             subs: Vec::new(),
+            subs_done: 0,
+            subs_open: false,
             hidden: false,
             order: (1, MachineId::LOCAL),
         }
@@ -1003,7 +1042,7 @@ mod tests {
     }
 
     #[test]
-    fn only_the_current_turns_subagents_are_listed() {
+    fn running_subagents_stay_listed_and_finished_ones_fold_into_a_count() {
         let mut info: TermInfo = serde_json::from_value(serde_json::json!({
             "id": 3, "cols": 80, "rows": 24, "title": "", "process": "claude", "agent": "claude",
             "status": "Working", "cwd": "/code", "summary": "", "name": "", "model": "", "said": "",
@@ -1021,11 +1060,23 @@ mod tests {
             activity("this turn", SubagentState::Completed, 60),
             activity("running", SubagentState::Working, 70),
         ];
-        let names = |info: &TermInfo, now| turn_subagents(info, now).iter().map(|a| a.name.clone()).collect::<Vec<_>>();
-        assert_eq!(names(&info, 60), ["this turn", "running"]);
-        assert_eq!(names(&info, 60 + FINISHED_LINGER_SECS + 1), ["running"], "a finished one clears after a while");
+        let names = |info: &TermInfo, now, show_done| {
+            let (listed, done) = session_subagents(info, now, show_done);
+            (listed.iter().map(|a| a.name.clone()).collect::<Vec<_>>(), done)
+        };
+        assert_eq!(names(&info, 60, false), (vec!["this turn".into(), "running".into()], 1));
+        assert_eq!(
+            names(&info, 60 + FINISHED_LINGER_SECS + 1, false),
+            (vec!["running".into()], 2),
+            "a finished one folds into the count after a while"
+        );
         info.status = Status::Done;
-        assert!(names(&info, 60).is_empty(), "a finished turn lists none");
+        assert_eq!(
+            names(&info, 60, false),
+            (vec!["running".into()], 2),
+            "one still running stays listed after the turn: a background helper"
+        );
+        assert_eq!(names(&info, 60, true).0, ["old", "this turn", "running"], "opened, the finished ones are listed too");
     }
 
     #[test]

@@ -1840,6 +1840,13 @@ impl App {
                     self.screen_focus(term);
                 }
             }
+            ScreenHit::SubagentsDone(i) => {
+                if let Some(key) = self.screen.done_rows.get(i).copied()
+                    && !self.screen.subs_opened.remove(&key)
+                {
+                    self.screen.subs_opened.insert(key);
+                }
+            }
             ScreenHit::ReleaseMenu => self.release_menu(),
             ScreenHit::NoPaneNew => self.new_ship(None),
             // A shell on that machine at once.

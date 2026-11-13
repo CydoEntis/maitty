@@ -204,6 +204,10 @@ pub(super) struct Screen {
     /// The parent pane of each subagent row drawn this frame, for their clicks
     /// (`ScreenHit::Subagent`).
     pub sub_rows: Vec<ClientTerm>,
+    /// The sessions whose finished subagents are listed instead of folded into a count.
+    pub subs_opened: HashSet<ClientSession>,
+    /// The session of each "N done" line drawn this frame (`ScreenHit::SubagentsDone`).
+    pub done_rows: Vec<ClientSession>,
     /// The session you were last on in each fleet: what picking the fleet opens.
     pub fleet_active: HashMap<fleets::FleetId, ClientTerm>,
     /// What the sidebar cursor walks over, top to bottom.
@@ -1434,6 +1438,9 @@ pub(super) enum ScreenHit {
     /// A subagent row of the sidebar (its place in `Screen::sub_rows`): it opens its parent's
     /// pane, where the agent shows its subagents itself.
     Subagent(usize),
+    /// A session's "N done" line under its subagents (its place in `Screen::done_rows`): lists or
+    /// folds its finished subagents.
+    SubagentsDone(usize),
     /// The release chip on the sidebar's foot: its menu, opening upward.
     ReleaseMenu,
     /// The `n new session` chip in a workspace with no pane open.
