@@ -1021,6 +1021,20 @@ pub async fn repo_query(term: u32, question: maitty_shared::repo::RepoRequest, d
     }
 }
 
+/// A little longer than the daemon gives git, so its own "stopped after" line is what arrives.
+const GIT_REQUEST_TIMEOUT: Duration = Duration::from_secs(maitty_shared::protocol::GIT_SYNC_LIMIT_SECS + 15);
+
+/// Have the daemon that owns pane `term` fetch, pull or push the checkout the pane is in. The
+/// line saying what happened, or an error whose text is the daemon's one line saying why not.
+pub async fn git_request(term: u32, request: maitty_shared::protocol::GitRequest, daemon: impl Into<Daemon>) -> Result<String> {
+    let asked = ClientMsg::Query(Query::Git { term, request, tag: 0 });
+    match request_within(asked, daemon, GIT_REQUEST_TIMEOUT).await? {
+        Reply::GitDone { outcome: Ok(line), .. } => Ok(line),
+        Reply::GitDone { outcome: Err(why), .. } => bail!("{why}"),
+        _ => bail!("daemon returned an unexpected git reply"),
+    }
+}
+
 /// `git worktree add` for `branch` next to the repository `term` is in (new from `base`, or the
 /// repo's HEAD); the daemon opens it as a new session. `branch` names an existing branch to
 /// check it out instead.
@@ -2005,17 +2019,17 @@ impl RemoteDaemon {
         }
     }
 
-    async fn request(&self, message: ClientMsg) -> Result<Reply> {
+    async fn request(&self, message: ClientMsg, limit: Duration) -> Result<Reply> {
         let idle = remote_idle(self.key);
         let asked = ask_reusing(&idle, MAX_IDLE_REMOTE_CONNECTIONS, &message, || {
             (self.open)()
         });
-        let reply = match tokio::time::timeout(REQUEST_TIMEOUT, asked).await {
+        let reply = match tokio::time::timeout(limit, asked).await {
             Ok(answer) => answer.with_context(|| format!("asking {}", self.name))?,
             Err(_) => bail!(
                 "{} did not answer within {} seconds",
                 self.name,
-                REQUEST_TIMEOUT.as_secs()
+                limit.as_secs()
             ),
         };
         (self.vet)(reply).map_err(|why| anyhow::anyhow!("{} sent an answer that was refused: {why}", self.name))
@@ -2085,10 +2099,15 @@ where
 }
 
 async fn request(message: ClientMsg, daemon: impl Into<Daemon>) -> Result<Reply> {
+    request_within(message, daemon, REQUEST_TIMEOUT).await
+}
+
+/// `request`, for a question the daemon may take up to `limit` to answer.
+async fn request_within(message: ClientMsg, daemon: impl Into<Daemon>, limit: Duration) -> Result<Reply> {
     match daemon.into() {
         Daemon::Local(daemon_executable) => {
             answered_within(
-                REQUEST_TIMEOUT,
+                limit,
                 ask_reusing(&IDLE_CONNECTIONS, MAX_IDLE_CONNECTIONS, &message, || async {
                     ipc::open_or_spawn_for_user(&daemon_executable)
                         .await
@@ -2097,7 +2116,7 @@ async fn request(message: ClientMsg, daemon: impl Into<Daemon>) -> Result<Reply>
             )
             .await
         }
-        Daemon::Remote(remote) => remote.request(message).await,
+        Daemon::Remote(remote) => remote.request(message, limit).await,
     }
 }
 

@@ -1,4 +1,4 @@
-//! What the side panel's Changes tab does to a session's checkout on this computer: commit
+//! What the side panel's Changes tab does to a session's checkout: on this computer, commit
 //! everything that changed, and open a pull request for the branch. Both run git (and GitHub's
 //! `gh`) as programs with their arguments, off the UI thread, only when the user presses the button.
 
@@ -116,10 +116,32 @@ fn sync(folder: &Path, action: SyncAction) -> Result<String, String> {
     }
 }
 
-/// Fetches, pulls or pushes `folder`'s checkout.
+impl From<SyncAction> for maitty_shared::protocol::GitRequest {
+    fn from(action: SyncAction) -> Self {
+        match action {
+            SyncAction::Fetch => Self::Fetch,
+            SyncAction::Pull => Self::Pull,
+            SyncAction::Push => Self::Push,
+        }
+    }
+}
+
+/// Fetches, pulls or pushes a checkout: `folder`'s on this computer, or the one pane `term` is in
+/// on another machine, where that machine's daemon runs git and answers the same lines.
 #[tauri::command]
-pub async fn git_sync(wire: tauri::State<'_, crate::terminal_stream::Wire>, machine: Option<u16>, folder: String, action: SyncAction) -> Result<String, String> {
-    wire.require_local(machine, "Changes")?;
+pub async fn git_sync(
+    wire: tauri::State<'_, crate::terminal_stream::Wire>,
+    machine: Option<u16>,
+    folder: String,
+    action: SyncAction,
+    term: Option<u32>,
+) -> Result<String, String> {
+    if crate::routing::is_remote(machine) {
+        let term = term.ok_or("This session has no terminal on its machine to say which checkout is meant")?;
+        return maitty_desktop_client::git_request(term, action.into(), wire.git_daemon(machine)?)
+            .await
+            .map_err(|error| format!("{error:#}"));
+    }
     tauri::async_runtime::spawn_blocking(move || sync(Path::new(&folder), action))
         .await
         .map_err(|error| error.to_string())?

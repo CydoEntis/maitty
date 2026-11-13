@@ -327,6 +327,51 @@ async fn the_changes_of_a_pane_on_a_machine_are_read_from_that_machines_daemon_a
 }
 
 #[tokio::test]
+async fn a_checkout_on_a_machine_is_pushed_and_pulled_by_that_machines_daemon() {
+    use maitty_shared::protocol::GitRequest;
+    let mut sandbox = Sandbox::new();
+    sandbox.start_daemon();
+    let (repository, remote) = (sandbox.dir.join("checkout"), sandbox.dir.join("remote.git"));
+    let git = |folder: &std::path::Path, args: &[&str]| {
+        std::fs::create_dir_all(folder).unwrap();
+        let identity = ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false"];
+        let ran = std::process::Command::new("git").arg("-C").arg(folder).args(identity).args(args).output().unwrap();
+        assert!(ran.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&ran.stderr));
+    };
+    git(&remote, &["init", "--quiet", "--bare", "-b", "main"]);
+    git(&repository, &["init", "--quiet", "-b", "main"]);
+    std::fs::write(repository.join("a.txt"), "one\n").unwrap();
+    git(&repository, &["add", "--", "a.txt"]);
+    git(&repository, &["commit", "--quiet", "-m", "start"]);
+    git(&repository, &["remote", "add", "origin", remote.to_str().unwrap()]);
+
+    let mut watch = Watch::new(&[machine("box", &sandbox, "proxy")], &sandbox, quick(WAIT));
+    let wire = Wire::reaching(watch.hub.handle());
+    watch
+        .until("connected and a snapshot", |w| w.is(BOX, "connected") && w.snapshots(BOX) > 0)
+        .await;
+    let start = ClientMsg::Command(Command::NewWorkspace {
+        cwd: Some(repository.clone()),
+        name: None,
+        cmd: None,
+    });
+    watch.hub.handle().send(Outgoing { machine: BOX, msg: start }).expect("the line is up");
+    watch.until("a pane on the machine", |w| w.any_pane(BOX).is_some()).await;
+    let term = watch.any_pane(BOX).unwrap();
+
+    let ask = |request: GitRequest| {
+        let daemon = wire.git_daemon(Some(BOX.0)).expect("a connected machine is asked");
+        async move { maitty_desktop_client::git_request(term, request, daemon).await.map_err(|error| format!("{error:#}")) }
+    };
+    assert_eq!(ask(GitRequest::Push).await, Ok("Pushed main".into()));
+    assert_eq!(ask(GitRequest::Fetch).await, Ok("Fetched".into()));
+    assert_eq!(ask(GitRequest::Pull).await, Ok("Already up to date".into()));
+    git(&repository, &["checkout", "--quiet", "--detach"]);
+    assert_eq!(ask(GitRequest::Push).await, Err("this checkout is on no branch, so there is nothing to push".into()));
+    assert!(wire.git_daemon(None).is_err(), "this computer's checkouts are not synced through its daemon");
+}
+
+#[tokio::test]
 async fn a_session_is_not_started_on_this_computer_or_a_machine_that_is_down_or_in_a_bad_folder() {
     let sandbox = Sandbox::new();
     let watch = Watch::new(&[machine("box", &sandbox, "auth-fail")], &sandbox, quick(WAIT));

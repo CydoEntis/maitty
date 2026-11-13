@@ -261,6 +261,13 @@ impl Wire {
         self.daemon_vetting(machine, local, maitty_machines::remote_repo::vet_repo_reply)
     }
 
+    /// Where a fetch, pull or push of a pane's checkout on another machine is asked for: that
+    /// machine's daemon, whose answer is one cleaned line. This computer runs its own git instead.
+    pub fn git_daemon(&self, machine: Option<u16>) -> Result<maitty_desktop_client::Daemon, String> {
+        let not_here = || Err("This computer's checkouts are not asked of its daemon".to_string());
+        self.daemon_vetting(machine, not_here, maitty_machines::remote_repo::vet_git_reply)
+    }
+
     /// `daemon`, with `vet` deciding what another machine's daemon may answer.
     fn daemon_vetting(
         &self,

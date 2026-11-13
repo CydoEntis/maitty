@@ -529,6 +529,10 @@ is a fixed set of host commands that take a machine's name or number, never a pr
   escapes and control characters, a path or branch is one line of at most 4,096 characters, and the lists
   are cut to the sizes a daemon's own answer may have. The diff is shown as text and never run or written
   to this computer's disk.
+- **Fetch, pull and push on a machine** take one of those three words and a pane number from the window,
+  never a command, an address or a path; that machine's daemon runs its own git in the pane's folder
+  (`Query::Git`). The one-line answer passes `remote_repo::vet_git_reply`: cleaned, one line, at most 512
+  characters, and any other answer is dropped.
 - **No install or restart.** A machine that needs the app shows the command to run; the desktop app never
   installs, updates or restarts anything on it.
 - **A different daemon at a known name** is refused (the shared daemon-id store) and says so; Remove then
