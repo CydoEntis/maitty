@@ -649,9 +649,6 @@ impl Daemon {
             .then(|| t.agent.clone().map(|a| (a, t.cwd.clone())))
             .flatten();
         t.blocked_at = (new == Status::Blocked).then(Instant::now);
-        if new == Status::Blocked {
-            t.snoozed_until = None;
-        }
         t.status = new;
         if new == Status::Working {
             t.exit = None;
@@ -678,6 +675,9 @@ impl Daemon {
         let left_working = turn.is_some() && matches!(new, Status::Done | Status::Idle);
         let cancelled = left_working && why == CANCELLED_WHY;
         let turn_over = left_working && !cancelled && !t.awaiting_background;
+        if new == Status::Blocked {
+            self.needs_you(term);
+        }
         if let Some((agent, place, secs, session)) = turn {
             self.note_turn(agent, place, secs, session);
         }

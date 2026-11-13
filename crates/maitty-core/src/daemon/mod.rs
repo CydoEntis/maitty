@@ -1161,6 +1161,9 @@ impl Daemon {
             Command::SpendSecret { .. } if !self.client_is_agent(client) => {
                 anyhow::bail!("only an agent pane can spend a secret reference")
             }
+            Command::SnoozePane { .. } if self.client_is_agent(client) => {
+                anyhow::bail!("snoozing a session is yours to do, not a pane's")
+            }
             // A session may not let itself (or another) start helpers.
             Command::AnswerHelpers { .. } if self.client_is_agent(client) => {
                 anyhow::bail!("starting helpers is yours to allow, not a pane's")
