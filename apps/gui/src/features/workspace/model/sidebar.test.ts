@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Conversation } from '@/data/preview'
 import { LOCAL_HEAD, type MachineHead } from './machines'
 import { toSessionView, type SessionView } from './session'
-import { byUrgency, canPutAway, inProject, machineGroups, projectChoices, projectColor, projectGroups, projectSections, rowTitle, rowWord, splitPutAway, statusSections, terminalSessions } from './sidebar'
+import { byUrgency, canPutAway, canSnooze, inProject, machineGroups, projectChoices, projectColor, projectGroups, projectSections, rowTitle, rowWord, splitPutAway, statusSections, terminalSessions } from './sidebar'
 
 vi.mock('@/api/daemon', () => ({ terminalOf: (id: string) => Number(id.slice(1)) }))
 
@@ -51,6 +51,48 @@ describe('a row', () => {
   it('gives a project the same one of five colours every time', () => {
     expect(projectColor('maitty')).toBe(projectColor('maitty'))
     expect(projectColor('maitty')).toMatch(/^var\(--proj-[1-5]\)$/)
+  })
+})
+
+describe('a snoozed session', () => {
+  const UNTIL = new Date(2026, 0, 5, 14, 5).getTime()
+  const details = { asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, snoozedUntil: UNTIL / 1000 }
+  const snoozed = (pane: number, extra: Partial<Conversation> = {}) => toSessionView({ ...session(pane, { agent: 'claude', status: 'done', details, ...extra }).conversation }, '/home/me', NOW)
+
+  it('is listed under Put away, with when it comes back, and not in a section', () => {
+    const away = snoozed(1)
+    expect(away.snoozedUntil).toBe(UNTIL)
+    expect(splitPutAway([away, session(2)]).putAway.map((item) => item.id)).toEqual(['t1'])
+    expect(rowWord(away, NOW)).toBe('until 14:05')
+  })
+
+  it('names the day when it comes back on another one', () => {
+    const tomorrow = toSessionView({ ...session(1, { agent: 'claude', status: 'done', details: { ...details, snoozedUntil: new Date(2026, 0, 6, 9, 0).getTime() / 1000 } }).conversation }, '/home/me', NOW)
+    expect(rowWord(tomorrow, NOW)).toBe('until Tue 09:00')
+  })
+
+  it('is listed again once its time has passed', () => {
+    const over = toSessionView({ ...snoozed(1).conversation }, '/home/me', UNTIL + 1000)
+    expect(over.snoozedUntil).toBeNull()
+    expect(splitPutAway([over]).putAway).toEqual([])
+  })
+
+  it('is listed under Needs you, not Put away, while it asks', () => {
+    expect(splitPutAway([snoozed(1, { status: 'needs-you' })]).putAway).toEqual([])
+  })
+
+  it('can be snoozed only when finished, idle or held by its plan limit, and not already away', () => {
+    expect(canSnooze(session(1, { agent: 'claude', status: 'done' }))).toBe(true)
+    expect(canSnooze(session(2, { agent: 'claude' }))).toBe(true)
+    expect(canSnooze(limited(3))).toBe(true)
+    expect(canSnooze(session(4, { agent: 'claude', status: 'working' }))).toBe(false)
+    expect(canSnooze(session(5, { agent: 'claude', status: 'needs-you' }))).toBe(false)
+    expect(canSnooze(session(6, { agent: 'claude', details: exited }))).toBe(false)
+    expect(canSnooze(session(7, { agent: 'claude', archived: true }))).toBe(false)
+    expect(canSnooze(snoozed(8))).toBe(false)
+    const terminal = session(9, { agent: 'claude', status: 'done' })
+    const chat = Object.fromEntries(Object.entries(terminal.conversation).filter(([key]) => key !== 'kind')) as Conversation
+    expect(canSnooze({ ...terminal, conversation: { ...chat, execution: 'Structured', chat: { conversation: 1, generation: 1 } } })).toBe(false)
   })
 })
 

@@ -28,7 +28,7 @@ function show(sessions: SessionView[], more: Partial<SidebarProps> = {}) {
     sessions, machines: [LOCAL_HEAD], order: 'creation', focusedId: null, openSubagent: null, mode: 'docked', online: true, canStart: true, renamingId: null, portalContainer: null,
     onToggleRail: none, side: 'left', width: 264, onResize: none, onResizeEnd: none, grouping: 'machine', onGrouping: none, onSearch: none,
     onNewAgentChat: none, onNewShell: none, onAddMachine: none, onMachineSettings: none, onRenameMachine: none, onUpdateMachine: none, onShowSession: none, onShowSubagent: none, onRenameSession: none,
-    onSetName: none, onSplitSession: none, onSplitSubagent: none, onCopyPath: none, onCopyText: none, onShowChanges: none, onMarkDone: none, onPutAway: none, onBringBack: none, onGetFile: none,
+    onSetName: none, onSplitSession: none, onSplitSubagent: none, onCopyPath: none, onCopyText: none, onShowChanges: none, onMarkDone: none, onPutAway: none, onBringBack: none, onSnooze: none, onUnsnooze: none, onGetFile: none,
     onEndSession: none, onOpenSettings: none, onRecentSessions: none, updateSlot: null, railUpdateSlot: null,
     ...more,
   }
@@ -313,6 +313,47 @@ describe('a session row', () => {
     expect(onBringBack).toHaveBeenCalledWith('t1')
   })
 
+  describe('snoozing', () => {
+    const UNTIL = new Date(2026, 0, 5, 14, 5).getTime()
+    const resets = Math.ceil(Date.now() / 1000) + 4 * 3600
+    const withDetails = (extra: object) => ({ asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, ...extra })
+
+    it('offers an hour and tomorrow at 9:00, and the limit reset only for a session held by its plan limit', async () => {
+      const onSnooze = vi.fn()
+      show([session(1, { agent: 'claude', named: true, title: 'Finished', status: 'done' }), session(2, { agent: 'claude', named: true, title: 'Held', details: withDetails({ resumeAt: resets }) })], { onSnooze })
+      fireEvent.contextMenu(screen.getByRole('button', { name: /^Finished,/ }))
+      expect(screen.getAllByRole('menuitem').map((item) => item.textContent).filter((text) => text.startsWith('Snooze'))).toEqual(['Snooze 1 hour', 'Snooze until tomorrow 9:00'])
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Snooze 1 hour' }))
+      expect(onSnooze).toHaveBeenCalledTimes(1)
+      expect(onSnooze.mock.calls[0]?.[0]).toBe('t1')
+      fireEvent.contextMenu(screen.getByRole('button', { name: /^Held,/ }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Snooze until the limit resets' }))
+      expect(onSnooze).toHaveBeenLastCalledWith('t2', resets)
+    })
+
+    it('offers no snooze on a busy session or one put away', () => {
+      show([session(1, { agent: 'claude', named: true, title: 'Busy', status: 'working' })])
+      fireEvent.contextMenu(screen.getByRole('button', { name: /^Busy,/ }))
+      expect(screen.queryByRole('menuitem', { name: /^Snooze/ })).toBeNull()
+    })
+
+    it('lists a snoozed session under Put away with when it returns, and Unsnooze wakes it', async () => {
+      const onUnsnooze = vi.fn()
+      const snoozed = toSessionView({ ...session(1, { agent: 'claude', named: true, title: 'Napping', status: 'done', details: withDetails({ snoozedUntil: UNTIL / 1000 }) }).conversation }, '/home/me', UNTIL - 3_600_000)
+      // Which day it names depends on when the test runs; the clock is the point.
+      show([snoozed, session(2, { agent: 'claude', named: true, title: 'Here' })], { grouping: 'status', onUnsnooze })
+      expect(names()).toEqual(['Here'])
+      await userEvent.click(screen.getByRole('button', { name: /^Put away/ }))
+      const list = screen.getByRole('list', { name: 'Put away' })
+      expect(within(list).getByRole('button', { name: /^Napping,/ })).toHaveTextContent(/until (\w{3} )?14:05/)
+      fireEvent.contextMenu(within(list).getByRole('button', { name: /^Napping,/ }))
+      expect(screen.queryByRole('menuitem', { name: 'Bring back' })).toBeNull()
+      expect(screen.queryByRole('menuitem', { name: /^Snooze/ })).toBeNull()
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Unsnooze' }))
+      expect(onUnsnooze).toHaveBeenCalledWith('t1')
+    })
+  })
+
   it('lists a put-away session that needs you under Needs you, not under Put away', () => {
     show([session(1, { agent: 'claude', named: true, title: 'Asking', status: 'needs-you', archived: true })], { grouping: 'status' })
     expect(within(screen.getByRole('list', { name: 'Needs you' })).getByRole('button', { name: /^Asking,/ })).toBeTruthy()
@@ -383,7 +424,7 @@ describe('a session row', () => {
     show([session(1, { agent: 'claude', named: true, title: 'Growth' }), session(2)], { focusedId: 't2', onEndSession })
     fireEvent.contextMenu(screen.getByRole('button', { name: /^Growth,/ }))
     const menu = screen.getByRole('menu', { name: 'Growth' })
-    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Open', 'Open in split right', 'Open in split down', 'Show changes', 'Rename…F2', 'Copy folder path', 'Put away', 'Stop session'])
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Open', 'Open in split right', 'Open in split down', 'Show changes', 'Rename…F2', 'Copy folder path', 'Put away', 'Snooze 1 hour', 'Snooze until tomorrow 9:00', 'Stop session'])
     await user.click(within(menu).getByRole('menuitem', { name: 'Stop session' }))
     expect(onEndSession).toHaveBeenCalledWith('t1')
   })

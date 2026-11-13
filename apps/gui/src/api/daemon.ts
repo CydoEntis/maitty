@@ -63,6 +63,8 @@ const TerminalSessionSchema = z.object({
   status_why: z.string().default(''),
   // When the daemon tells an agent stopped by its plan limit to continue, in unix seconds (`TermInfo.resume_at`); null when it is not held.
   resume_at: z.number().nonnegative().nullable().default(null),
+  // Out of the way until this time, in unix seconds (`TermInfo.snoozed_until`); null when it is awake.
+  snoozed_until: z.number().nonnegative().nullable().default(null),
   asking: z.string().default(''),
   // The pane's checks (`TermInfo.checks`); absent from an older daemon.
   checks: z.array(CheckSchema).default([]),
@@ -960,6 +962,13 @@ export async function archiveSessionOnDaemon(conversation: Pick<Conversation, 'i
   if (pane !== null) await invokeParsed('archive_terminal_session', NullSchema, { term: pane.term, archived, ...machineArgs(pane) })
 }
 
+/** Snooze a session until `until` (unix seconds), or wake it (`null`). It keeps running: the daemon owns the snooze and ends it when its time comes or the session needs you. */
+export async function snoozeSessionOnDaemon(conversation: Pick<Conversation, 'id'>, until: number | null): Promise<void> {
+  if (!isDesktop()) return
+  const pane = addressOf(conversation.id)
+  if (pane !== null) await invokeParsed('snooze_terminal_session', NullSchema, { term: pane.term, until, ...machineArgs(pane) })
+}
+
 /** Restart an agent in place, keeping its name, so it loads hooks it missed. */
 export async function reloadAgentOnDaemon(conversation: Pick<Conversation, 'id'>): Promise<void> {
   if (!isDesktop()) return
@@ -1327,6 +1336,7 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
       since: term.since,
       statusWhy: term.status_why,
       resumeAt: term.resume_at,
+      snoozedUntil: term.snoozed_until,
       timeline: term.timeline,
       usage: term.usage,
       queued: term.queued,

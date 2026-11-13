@@ -9,7 +9,7 @@ const noop = () => undefined
 
 /** The sidebar: the docked column or the rail, and the full one in a drawer over a narrow window. */
 export function WorkspaceSidebars() {
-  const { sidebarSessions, sidebarMachineHeads, focusedId, openSubagent, online, canStart, renameInline, renameId, root, preferences, sidebarWidth, setLiveSidebarWidth, setPreferences, setPaletteOpen, newSession, newTerminal, setSettingsSection, setRenamingMachine, setUpdateAsk, showSessionById, showSubagent, setRenameId, saveName, openInSplit, splitSubagent, copyPathOf, copyText, showChangesOf, markDone, putAway, bringBack, setGetFileId, endSession, newChatOpen, serviceFooterText, updateProgress, updater, runningVersion, skippedVersion, restartNow, setSkippedVersion, focusMode, sidebarMode, toggleSidebar, drawerShown, setDrawerOpen, setRecentOpen } = useWorkspace()
+  const { sidebarSessions, sidebarMachineHeads, focusedId, openSubagent, online, canStart, renameInline, renameId, root, preferences, sidebarWidth, setLiveSidebarWidth, setPreferences, setPaletteOpen, newSession, newTerminal, setSettingsSection, setRenamingMachine, setUpdateAsk, showSessionById, showSubagent, setRenameId, saveName, openInSplit, splitSubagent, copyPathOf, copyText, showChangesOf, markDone, putAway, bringBack, snooze, unsnooze, setGetFileId, endSession, newChatOpen, serviceFooterText, updateProgress, updater, runningVersion, skippedVersion, restartNow, setSkippedVersion, focusMode, sidebarMode, toggleSidebar, drawerShown, setDrawerOpen, setRecentOpen } = useWorkspace()
   const updateSlot = (variant: 'footer' | 'rail') => (
     <UpdateSlot
       variant={variant}
@@ -66,6 +66,8 @@ export function WorkspaceSidebars() {
       onMarkDone={markDone}
       onPutAway={putAway}
       onBringBack={bringBack}
+      onSnooze={snooze}
+      onUnsnooze={unsnooze}
       onGetFile={setGetFileId}
       onEndSession={endSession}
       onOpenSettings={() => { afterPick(); setSettingsSection('appearance') }}

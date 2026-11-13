@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { machineTitle, UPDATE_WORDS, type MachineHead, type UpdateAction } from '../model/machines'
 import { STATUS_WORD, type SessionView } from '../model/session'
-import { canPutAway, inProject, isShell, machineGroups, projectChoices, projectGroups, projectSections, rowTitle, SIDEBAR_GROUPINGS, splitPutAway, statusSections, terminalSessions, type MachineGroup, type SidebarGrouping, type SidebarOrder } from '../model/sidebar'
+import { canPutAway, canSnooze, inProject, isShell, machineGroups, projectChoices, projectGroups, projectSections, rowTitle, SIDEBAR_GROUPINGS, splitPutAway, statusSections, terminalSessions, type MachineGroup, type SidebarGrouping, type SidebarOrder } from '../model/sidebar'
 import type { SubagentView } from '../model/subagents'
 import { useTipWithKeys, useShortcutText } from '@/features/shortcuts/platform'
 import { SidebarResizer } from './SidebarResizer'
@@ -10,6 +10,7 @@ import { Collapse } from './Collapse'
 import { useReducedMotion } from './motion'
 import { useFlip } from './useFlip'
 import { useStatusFlash } from './useStatusFlash'
+import { snoozeChoices } from '../model/snooze'
 import { MenuPopup, type MenuEntry } from './MenuPopup'
 import { SessionRow } from './SessionRow'
 import { RowHoverCard } from './RowHoverCard'
@@ -69,6 +70,9 @@ export type SidebarProps = {
   /** Takes a finished or idle session out of the sections, still running; Bring back puts it back. */
   onPutAway: (id: string) => void
   onBringBack: (id: string) => void
+  /** Snooze a session until `until`, in unix seconds. */
+  onSnooze: (id: string, until: number) => void
+  onUnsnooze: (id: string) => void
   /** Asks for a file to pull from the machine of session `id`. */
   onGetFile: (id: string) => void
   onEndSession: (id: string) => void
@@ -93,6 +97,12 @@ export type DraftChat = { machine: number }
 const MENU_GAP_PX = 4
 
 type OpenMenu = { title: string; at: { x: number; y: number }; items: MenuEntry[] }
+
+/** The menu's Snooze entries, worked out when the menu opens: they name times from now. */
+function snoozeEntries(session: SessionView, online: boolean, onSnooze: (id: string, until: number) => void): MenuEntry[] {
+  if (!canSnooze(session)) return []
+  return snoozeChoices(Date.now(), session.resumeAt).map((choice) => ({ label: choice.label, disabled: !online, run: () => { onSnooze(session.id, choice.until) } }))
+}
 
 export function Sidebar(props: SidebarProps) {
   const [resizing, setResizing] = useState(false)
@@ -206,6 +216,8 @@ function Expanded(props: SidebarProps) {
       // A finished agent waits under Finished until you look; this files it under Idle without opening it.
       ...(session.status === 'done' ? [{ label: 'Mark as done', disabled: !props.online, run: () => { props.onMarkDone(session.id) } }] : []),
       ...(canPutAway(session) ? [{ label: 'Put away', disabled: !props.online, run: () => { props.onPutAway(session.id) } }] : []),
+      ...snoozeEntries(session, props.online, props.onSnooze),
+      ...(session.snoozedUntil !== null ? [{ label: 'Unsnooze', disabled: !props.online, run: () => { props.onUnsnooze(session.id) } }] : []),
       ...(session.archived ? [{ label: 'Bring back', disabled: !props.online, run: () => { props.onBringBack(session.id) } }] : []),
       'separator',
       // Stopping an agent asks a second click; a plain shell has nothing running to lose.
@@ -257,8 +269,8 @@ function Expanded(props: SidebarProps) {
           onContextMenu={(event) => { openMenu(event, rowTitle(session), sessionMenu(session)) }}
         />
         {/* A sibling of the row, not inside it (a button cannot hold a button): it shows on hover and focus. */}
-        {session.archived
-          ? <button type="button" className="mx-row-close is-bring-back" aria-label={`Bring back ${rowTitle(session)}`} title="Bring back" disabled={!props.online} onClick={() => { props.onBringBack(session.id) }}><Icon name="arrowUp" size={12} /></button>
+        {session.archived || session.snoozedUntil !== null
+          ? <button type="button" className="mx-row-close is-bring-back" aria-label={`${session.archived ? 'Bring back' : 'Unsnooze'} ${rowTitle(session)}`} title={session.archived ? 'Bring back' : 'Unsnooze'} disabled={!props.online} onClick={() => { (session.archived ? props.onBringBack : props.onUnsnooze)(session.id) }}><Icon name="arrowUp" size={12} /></button>
           : <button type="button" className="mx-row-close" aria-label={`${isShell(session) ? 'Close' : 'Stop'} ${rowTitle(session)}`} title={isShell(session) ? 'Close shell' : 'Stop session'} disabled={!props.online} onClick={() => { props.onEndSession(session.id) }}><Icon name="close" size={12} /></button>}
         {/* Both are kept, each folded while the other shows, so choosing another session eases the rows shut and
             the next session's open, instead of the list under it jumping by their height. */}
