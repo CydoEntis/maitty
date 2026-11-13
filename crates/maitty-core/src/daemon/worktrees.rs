@@ -434,7 +434,8 @@ impl Daemon {
             self.pending_ops += 1;
             let repo = crate::gitfs::head(&top).map(|h| h.main_root);
             tokio::task::spawn_blocking(move || {
-                let standing = crate::tidy::standing(&top);
+                // Inactivity never decides a removal: 0 skips reading it on the close path.
+                let standing = crate::tidy::standing(&top, 0);
                 let result = if standing.safe() {
                     // Give the closed programs a moment to let go of the folder (Windows locks it).
                     std::thread::sleep(Duration::from_millis(800));
