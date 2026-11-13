@@ -800,6 +800,7 @@ saved to the data directory a couple of seconds after it changes. On the next st
   opens as a shell.
 
 `maitty kill-server` keeps the session for next time, and `maitty kill-server --forget` discards it.
+Either way the list of closed agent sessions is kept, as the usage history is.
 Closing every pane yourself also starts fresh. A pane or agent that ends on its own is left out
 of the saved session for 15 seconds: a shutdown, reboot or logoff kills agents a moment before
 maitty, so the session from before it is the one that comes back. Chat conversations that were running

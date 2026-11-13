@@ -9561,3 +9561,48 @@ fn a_person_reads_the_closed_sessions_newest_first_and_a_pane_cannot() {
     assert!(matches!(agent.try_recv(), Ok(ServerMsg::Error(_))), "folders of other work are not a pane's to read");
     close(&mut d, &[asking]);
 }
+
+#[test]
+fn a_closed_pane_whose_killed_process_then_fails_is_remembered_once() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    agent_session(&mut d, t, "abc");
+    d.command(0, Command::ClosePane { term: t }).unwrap();
+    d.handle(Ev::ProcessExited(t, true));
+    assert_eq!(closed_ids(&d), ["abc"]);
+}
+
+#[test]
+fn a_process_failing_while_the_daemon_stops_is_not_remembered() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    agent_session(&mut d, t, "abc");
+    d.stopping = true;
+    d.handle(Ev::ProcessExited(t, true));
+    assert!(closed_ids(&d).is_empty());
+}
+
+#[test]
+fn an_agent_the_daemon_stopped_to_reload_is_not_remembered_when_its_restart_fails() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    agent_session(&mut d, t, "abc");
+    d.cfg.shell = Some(concat!("/no/such/shell-for-", env!("APP_COMMAND")).into());
+    assert!(d.reload_agent(t).is_none(), "the new pane cannot start");
+    d.handle(Ev::ProcessExited(t, true));
+    assert!(closed_ids(&d).is_empty());
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_conversation_terminal_closed_at_once_is_not_remembered_as_a_pane() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (a, b) = two_panes(&mut d);
+    agent_session(&mut d, b, "abc");
+    d.terms.get_mut(&b).unwrap().conversation_id = Some(crate::conversation::ConversationId(9));
+    d.command(0, Command::CloseSession { term: b }).unwrap();
+    assert!(!d.terms.contains_key(&b), "a conversation's terminal closes at once");
+    assert!(closed_ids(&d).is_empty());
+    close(&mut d, &[a]);
+}

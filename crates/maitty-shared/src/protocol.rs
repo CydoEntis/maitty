@@ -1870,6 +1870,7 @@ impl ServerMsg {
     pub fn introduced_in(&self) -> u32 {
         match self {
             ServerMsg::Reply(Reply::SavedConversations { .. }) => SAVED_CONVERSATIONS_SINCE,
+            ServerMsg::Reply(Reply::ClosedSessions(_)) => CLOSED_SESSIONS_SINCE,
             _ => COMPATIBLE_SINCE,
         }
     }
@@ -3574,6 +3575,7 @@ mod tests {
         }
         let ask = ClientMsg::Query(Query::ClosedSessions);
         assert_eq!(ask.introduced_in(), CLOSED_SESSIONS_SINCE);
+        assert_eq!(ServerMsg::Reply(Reply::ClosedSessions(Vec::new())).introduced_in(), CLOSED_SESSIONS_SINCE);
         const { assert!(CLOSED_SESSIONS_SINCE > COMPATIBLE_SINCE && CLOSED_SESSIONS_SINCE <= PROTOCOL_VERSION) };
         assert!(decode::<OldQuery>(&encode(&Query::ClosedSessions).unwrap()).is_err());
 

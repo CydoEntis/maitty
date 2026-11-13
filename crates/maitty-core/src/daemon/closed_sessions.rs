@@ -8,7 +8,7 @@
 
 use super::usage_store::{set_aside, write_file};
 use super::*;
-use crate::conversation::{ConversationId, Provider, clean_title};
+use crate::conversation::{ConversationId, clean_title};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -219,18 +219,12 @@ fn closed_pane(t: &Term) -> Option<ClosedSession> {
     })
 }
 
-fn provider_agent(provider: Provider) -> &'static str {
-    match provider {
-        Provider::Codex => "codex",
-        Provider::Claude => "claude",
-        Provider::Gemini => "gemini",
-    }
-}
-
 impl Daemon {
-    /// Keep the agent session of a pane a person is closing for good.
+    /// Keep the agent session of a pane a person is closing for good. A conversation's terminal
+    /// closes at once, with no undo window, so it is left to its conversation.
     pub(super) fn remember_closed_pane(&mut self, term: TermId) {
-        if let Some(closed) = self.terms.get(&term).and_then(closed_pane) {
+        let pane = self.terms.get(&term).filter(|t| t.conversation_id.is_none());
+        if let Some(closed) = pane.and_then(closed_pane) {
             self.closed_sessions.remember(closed);
         }
     }
@@ -238,20 +232,21 @@ impl Daemon {
     /// The pane's output ended before the daemon learned how its process exited: keep what it
     /// would record until `pane_process_exited` says.
     pub(super) fn await_pane_exit(&mut self, term: TermId) {
-        if let Some(closed) = self.terms.get(&term).and_then(closed_pane) {
+        if let Some(closed) = self.terms.get(&term).filter(|t| !t.killed).and_then(closed_pane) {
             self.unreaped.insert(term, closed);
         }
     }
 
     /// The pane's own process exited; keep its agent session when that was a failure. A process
-    /// the daemon ended on purpose (asleep, or the daemon stopping) is no failure of the agent's.
+    /// the daemon ended on purpose (asleep, killed, or the daemon stopping) is no failure of the
+    /// agent's.
     pub(super) fn pane_process_exited(&mut self, term: TermId, failed: bool) {
         let ended = self.unreaped.remove(&term);
         if !failed || self.stopping {
             return;
         }
         let closed = match self.terms.get(&term) {
-            Some(t) if t.asleep => None,
+            Some(t) if t.asleep || t.killed => None,
             Some(t) => closed_pane(t),
             None => ended,
         };
@@ -267,7 +262,7 @@ impl Daemon {
         };
         let cwd = chat.binding.worktree.clone().unwrap_or_else(|| chat.binding.cwd.clone());
         let closed = ClosedSession {
-            agent: provider_agent(chat.binding.provider).into(),
+            agent: chat.binding.provider.agent_name().into(),
             session: chat.binding.session_id.clone(),
             branch: crate::gitfs::head(&cwd).map(|head| head.branch),
             cwd,
