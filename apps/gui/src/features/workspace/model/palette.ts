@@ -1,4 +1,4 @@
-export type PaletteKind = 'Action' | 'Session' | 'Project' | 'Theme'
+export type PaletteKind = 'Action' | 'Session' | 'Project' | 'Theme' | 'Output'
 
 export type PaletteItem = {
   id: string
@@ -48,4 +48,62 @@ export function searchPalette(items: readonly PaletteItem[], query: string): Pal
     .sort((a, b) => b.score - a.score || a.order - b.order)
     .slice(0, PALETTE_LIMIT)
     .map((entry) => entry.item)
+}
+
+/** The most "In sessions" hits the palette lists, after everything else. */
+export const OUTPUT_HIT_LIMIT = 10
+/** Shorter queries match too much output to be worth asking the service. */
+export const OUTPUT_MIN_CHARS = 3
+
+/** The palette's results with the session-output hits after every other kind. */
+export function withOutputHits(results: readonly PaletteItem[], hits: readonly PaletteItem[]): PaletteItem[] {
+  return [...results, ...hits.slice(0, OUTPUT_HIT_LIMIT)]
+}
+
+const SNIPPET_CELLS = 60
+const CELLS_BEFORE_MATCH = 16
+const ELLIPSIS = '…'
+// eslint-disable-next-line no-control-regex -- terminal output is made of control characters; these strip them
+const ESCAPE_SEQUENCE = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\x5c)?|.)?/gu
+const CONTROL = /\p{Cc}+/gu
+const WIDE = /[\u{1100}-\u{115f}\u{2e80}-\u{a4cf}\u{ac00}-\u{d7a3}\u{f900}-\u{faff}\u{fe30}-\u{fe4f}\u{ff00}-\u{ff60}\u{ffe0}-\u{ffe6}\u{1f300}-\u{1faff}\u{20000}-\u{3fffd}]/u
+const PICTOGRAPH = /^\p{Extended_Pictographic}/u
+const WIDE_CELLS = 2
+const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+
+function graphemes(text: string): string[] {
+  return Array.from(graphemeSegmenter.segment(text), (part) => part.segment)
+}
+
+function graphemeCells(grapheme: string): number {
+  return WIDE.test(grapheme) || PICTOGRAPH.test(grapheme) ? WIDE_CELLS : 1
+}
+
+/** How many terminal cells `text` takes: a CJK character or an emoji takes two. */
+export function cellsOf(text: string): number {
+  return graphemes(text).reduce((sum, grapheme) => sum + graphemeCells(grapheme), 0)
+}
+
+/** The first graphemes of `parts` that fit in `cells` terminal cells. */
+function fitCells(parts: readonly string[], cells: number): string[] {
+  const kept: string[] = []
+  let used = 0
+  for (const part of parts) {
+    used += graphemeCells(part)
+    if (used > cells) break
+    kept.push(part)
+  }
+  return kept
+}
+
+/** A line of terminal output as one short line of plain text, cut by display width with the match in view. */
+export function outputSnippet(line: string, query: string): string {
+  const text = line.replace(ESCAPE_SEQUENCE, '').replace(CONTROL, ' ').replace(/\s+/gu, ' ').trim()
+  const at = Math.max(0, text.toLowerCase().indexOf(query.trim().toLowerCase()))
+  const start = Math.max(0, graphemes(text.slice(0, at)).length - CELLS_BEFORE_MATCH)
+  const lead = start > 0 ? ELLIPSIS : ''
+  const rest = graphemes(text).slice(start)
+  const whole = fitCells(rest, SNIPPET_CELLS - lead.length)
+  if (whole.length === rest.length) return lead + whole.join('')
+  return lead + fitCells(rest, SNIPPET_CELLS - lead.length - ELLIPSIS.length).join('') + ELLIPSIS
 }

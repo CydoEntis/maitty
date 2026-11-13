@@ -1,13 +1,24 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { ResultsList, ResultsOption } from '@/components/ui/results-list'
-import { searchPalette, type PaletteItem } from '../model/palette'
+import { searchPalette, withOutputHits, type PaletteItem } from '../model/palette'
+import type { SearchHit } from '@/features/find/api'
+import { usePaletteOutput } from '../usePaletteOutput'
 
-/** ⌘K: jump to a session, project, action or theme by typing a few letters of its name. */
-export function CommandPalette({ items, onClose }: { items: readonly PaletteItem[]; onClose: () => void }) {
+type Props = {
+  items: readonly PaletteItem[]
+  /** A line a session printed as a row; null when it belongs to no session the window shows. */
+  outputItem: (hit: SearchHit, query: string) => PaletteItem | null
+  onClose: () => void
+}
+
+/** ⌘K: jump to a session, project, action or theme by typing a few letters of its name, or to a session by what it printed. */
+export function CommandPalette({ items, outputItem, onClose }: Props) {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
-  const results = useMemo(() => searchPalette(items, query), [items, query])
+  const hits = usePaletteOutput(query)
+  const results = useMemo(() => withOutputHits(searchPalette(items, query), hits.flatMap((hit) => outputItem(hit, query) ?? [])), [items, query, hits, outputItem])
+  const firstOutput = results.findIndex((item) => item.kind === 'Output')
   const active = Math.min(selected, Math.max(0, results.length - 1))
   const list = useRef<HTMLDivElement>(null)
 
@@ -52,13 +63,16 @@ export function CommandPalette({ items, onClose }: { items: readonly PaletteItem
         </div>
         <ResultsList ref={list} id="mx-palette-list" aria-label="Results" className="mx-palette-list">
           {results.map((item, index) => (
-            <ResultsOption key={item.id} selected={index === active} className={`mx-palette-row${index === active ? ' is-selected' : ''}`} onMouseMove={() => { setSelected(index) }} onClick={() => { run(item) }}>
-              <span className="mx-palette-label">{item.label}</span>
-              {item.detail && <span className="mx-palette-detail">{item.detail}</span>}
-              <span className="mx-spacer" />
-              {item.shortcut && <span className="mx-palette-shortcut">{item.shortcut}</span>}
-              <span className={`mx-palette-kind${item.badge ? ' is-badge' : ''}`}>{item.badge ?? item.kind}</span>
-            </ResultsOption>
+            <Fragment key={item.id}>
+              {index === firstOutput && <div role="presentation" className="mx-palette-section">In sessions</div>}
+              <ResultsOption selected={index === active} className={`mx-palette-row${index === active ? ' is-selected' : ''}`} onMouseMove={() => { setSelected(index) }} onClick={() => { run(item) }}>
+                <span className="mx-palette-label">{item.label}</span>
+                {item.detail && <span className={`mx-palette-detail${item.kind === 'Output' ? ' is-output' : ''}`}>{item.detail}</span>}
+                <span className="mx-spacer" />
+                {item.shortcut && <span className="mx-palette-shortcut">{item.shortcut}</span>}
+                {item.kind !== 'Output' && <span className={`mx-palette-kind${item.badge ? ' is-badge' : ''}`}>{item.badge ?? item.kind}</span>}
+              </ResultsOption>
+            </Fragment>
           ))}
           {results.length === 0 && <div className="mx-palette-empty">Nothing matches “{query}”.</div>}
         </ResultsList>
