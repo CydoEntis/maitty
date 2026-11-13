@@ -1,4 +1,5 @@
 import { useCallback } from 'react'
+import { useLatest } from '@/lib/useLatest'
 import type { QueryClient } from '@tanstack/react-query'
 import { archiveSessionOnDaemon, snoozeSessionOnDaemon } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
@@ -11,11 +12,14 @@ const MS_PER_SECOND = 1000
 
 /** Put away and Bring back, Snooze and Unsnooze: view settings the daemon keeps for every window. Nothing is closed, stopped or killed. */
 export function usePutAway({ queryClient, sessionMap }: { queryClient: QueryClient; sessionMap: ReadonlyMap<string, SessionView> }) {
+  // Bring back also wakes a snooze, or the row would stay under Put away and the click would look like it did nothing.
   const bringBack = useCallback((sessionId: string) => {
+    const snoozed = sessionMap.get(sessionId)?.snoozedUntil != null
     archiveSessionOnDaemon({ id: sessionId }, false)
+      .then(() => (snoozed ? snoozeSessionOnDaemon({ id: sessionId }, null) : undefined))
       .then(() => queryClient.invalidateQueries({ queryKey: ['conversations'] }))
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not bring the session back')) })
-  }, [queryClient])
+  }, [queryClient, sessionMap])
   const putAway = useCallback((sessionId: string) => {
     const session = sessionMap.get(sessionId)
     archiveSessionOnDaemon({ id: sessionId }, true)
@@ -30,15 +34,23 @@ export function usePutAway({ queryClient, sessionMap }: { queryClient: QueryClie
       .then(() => queryClient.invalidateQueries({ queryKey: ['conversations'] }))
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not unsnooze the session')) })
   }, [queryClient])
-  // The daemon refuses a session that needs you, and says so; that line is the toast.
+  // Undo wakes the session only while it is still snoozed until the time this snooze set: another window may have changed it since.
+  const undoSnooze = useLatest((sessionId: string, until: number) => {
+    if (sessionMap.get(sessionId)?.snoozedUntil === until * MS_PER_SECOND) unsnooze(sessionId)
+  })
+  // The daemon refuses a session that needs you, and says so; that line is the toast. A pane on another machine is asked without
+  // waiting for its answer (as Put away is), so for it the toast says it asked rather than that it is done.
   const snooze = useCallback((sessionId: string, until: number) => {
     const session = sessionMap.get(sessionId)
+    const name = session ? displayName(session) : 'the session'
+    const when = untilWord(until * MS_PER_SECOND, Date.now())
+    const said = session?.machineName ? `Asked to snooze ${name} ${when}` : `Snoozed ${name} ${when}`
     snoozeSessionOnDaemon({ id: sessionId }, until)
       .then(async () => {
-        toast(`Snoozed ${session ? displayName(session) : 'the session'} ${untilWord(until * MS_PER_SECOND, Date.now())}`, { duration: UNDO_PUT_AWAY_MS, action: { label: 'Undo', onClick: () => { unsnooze(sessionId) } } })
+        toast(said, { duration: UNDO_PUT_AWAY_MS, action: { label: 'Undo', onClick: () => { undoSnooze(sessionId, until) } } })
         await queryClient.invalidateQueries({ queryKey: ['conversations'] })
       })
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not snooze the session')) })
-  }, [queryClient, sessionMap, unsnooze])
+  }, [queryClient, sessionMap, undoSnooze])
   return { putAway, bringBack, snooze, unsnooze }
 }

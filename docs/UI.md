@@ -255,7 +255,7 @@ Rules for `apps/gui/` (the look is in [DESIGN](DESIGN.md#desktop-app)).
    **Put away** with `until 14:05` (`until Thu 09:00` on another day) and **Unsnooze** (its hover button and its menu); a
    toast offers Undo for 6 seconds. The daemon owns the snooze: it ends it at its time, or at once when the session needs you,
    and the session then returns to its section on the next list. While Needs you would list it, it is listed there instead.
-   There is no date picker. Crewmates (`features/crew/`) is not mounted: the redesign leaves it undesigned.
+   A snooze of a pane on another machine is sent without waiting for the answer (as Put away is), so its toast says `Asked to snooze …` and a refusal there is not shown. Bring back also wakes a snooze. There is no date picker. Crewmates (`features/crew/`) is not mounted: the redesign leaves it undesigned.
 3. A terminal sits on the workspace card's own ground (`--main`, xterm's background and ANSI black), so a pane reads as
    part of the card and not as a box inside it.
 4. The window's state is put together once, in `features/workspace/useWorkspaceState.ts`, and `DesktopApp` hands it to

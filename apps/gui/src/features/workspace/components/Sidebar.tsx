@@ -98,6 +98,15 @@ const MENU_GAP_PX = 4
 
 type OpenMenu = { title: string; at: { x: number; y: number }; items: MenuEntry[] }
 
+/** The button at a row's right, shown on hover and focus: Bring back a put-away session, Unsnooze a snoozed one, else stop or close it. A sibling of the row, not inside it (a button cannot hold a button). */
+function RowButton({ session, online, onBringBack, onUnsnooze, onEnd }: { session: SessionView; online: boolean; onBringBack: (id: string) => void; onUnsnooze: (id: string) => void; onEnd: (id: string) => void }) {
+  const title = rowTitle(session)
+  if (session.archived) return <button type="button" className="mx-row-close is-bring-back" aria-label={`Bring back ${title}`} title="Bring back" disabled={!online} onClick={() => { onBringBack(session.id) }}><Icon name="arrowUp" size={12} /></button>
+  if (session.snoozedUntil !== null) return <button type="button" className="mx-row-close is-bring-back" aria-label={`Unsnooze ${title}`} title="Unsnooze" disabled={!online} onClick={() => { onUnsnooze(session.id) }}><Icon name="arrowUp" size={12} /></button>
+  const shell = isShell(session)
+  return <button type="button" className="mx-row-close" aria-label={`${shell ? 'Close' : 'Stop'} ${title}`} title={shell ? 'Close shell' : 'Stop session'} disabled={!online} onClick={() => { onEnd(session.id) }}><Icon name="close" size={12} /></button>
+}
+
 /** The menu's Snooze entries, worked out when the menu opens: they name times from now. */
 function snoozeEntries(session: SessionView, online: boolean, onSnooze: (id: string, until: number) => void): MenuEntry[] {
   if (!canSnooze(session)) return []
@@ -269,9 +278,7 @@ function Expanded(props: SidebarProps) {
           onContextMenu={(event) => { openMenu(event, rowTitle(session), sessionMenu(session)) }}
         />
         {/* A sibling of the row, not inside it (a button cannot hold a button): it shows on hover and focus. */}
-        {session.archived || session.snoozedUntil !== null
-          ? <button type="button" className="mx-row-close is-bring-back" aria-label={`${session.archived ? 'Bring back' : 'Unsnooze'} ${rowTitle(session)}`} title={session.archived ? 'Bring back' : 'Unsnooze'} disabled={!props.online} onClick={() => { (session.archived ? props.onBringBack : props.onUnsnooze)(session.id) }}><Icon name="arrowUp" size={12} /></button>
-          : <button type="button" className="mx-row-close" aria-label={`${isShell(session) ? 'Close' : 'Stop'} ${rowTitle(session)}`} title={isShell(session) ? 'Close shell' : 'Stop session'} disabled={!props.online} onClick={() => { props.onEndSession(session.id) }}><Icon name="close" size={12} /></button>}
+        <RowButton session={session} online={props.online} onBringBack={props.onBringBack} onUnsnooze={props.onUnsnooze} onEnd={props.onEndSession} />
         {/* Both are kept, each folded while the other shows, so choosing another session eases the rows shut and
             the next session's open, instead of the list under it jumping by their height. */}
         {subagents.length > 0 && (

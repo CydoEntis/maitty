@@ -90,6 +90,7 @@ describe('a snoozed session', () => {
     expect(canSnooze(session(6, { agent: 'claude', details: exited }))).toBe(false)
     expect(canSnooze(session(7, { agent: 'claude', archived: true }))).toBe(false)
     expect(canSnooze(snoozed(8))).toBe(false)
+    expect(canPutAway(snoozed(8))).toBe(false)
     const terminal = session(9, { agent: 'claude', status: 'done' })
     const chat = Object.fromEntries(Object.entries(terminal.conversation).filter(([key]) => key !== 'kind')) as Conversation
     expect(canSnooze({ ...terminal, conversation: { ...chat, execution: 'Structured', chat: { conversation: 1, generation: 1 } } })).toBe(false)

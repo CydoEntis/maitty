@@ -348,9 +348,11 @@ describe('a session row', () => {
       expect(within(list).getByRole('button', { name: /^Napping,/ })).toHaveTextContent(/until (\w{3} )?14:05/)
       fireEvent.contextMenu(within(list).getByRole('button', { name: /^Napping,/ }))
       expect(screen.queryByRole('menuitem', { name: 'Bring back' })).toBeNull()
+      expect(screen.queryByRole('menuitem', { name: 'Put away' })).toBeNull()
       expect(screen.queryByRole('menuitem', { name: /^Snooze/ })).toBeNull()
       await userEvent.click(screen.getByRole('menuitem', { name: 'Unsnooze' }))
-      expect(onUnsnooze).toHaveBeenCalledWith('t1')
+      await userEvent.click(within(list).getByRole('button', { name: 'Unsnooze Napping' }))
+      expect(onUnsnooze.mock.calls).toEqual([['t1'], ['t1']])
     })
   })
 

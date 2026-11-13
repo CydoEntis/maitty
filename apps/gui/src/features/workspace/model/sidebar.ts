@@ -167,7 +167,7 @@ export function splitPutAway(sessions: readonly SessionView[]): { listed: Sessio
  * a chat is closed, which stops its agent.
  */
 export function canPutAway(session: SessionView): boolean {
-  return !session.archived && !session.ended && (session.status === 'done' || session.status === 'idle') && !isChatSession(session.conversation)
+  return !session.archived && session.snoozedUntil === null && !session.ended && (session.status === 'done' || session.status === 'idle') && !isChatSession(session.conversation)
 }
 
 /**
