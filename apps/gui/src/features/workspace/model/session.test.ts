@@ -126,6 +126,17 @@ describe('session tracking', () => {
     expect(working.tracks.get('t1')).toMatchObject({ status: 'working', workingSince: 3 })
   })
 
+  it('marks a limited session unread when it starts asking or its command fails', () => {
+    const details = { asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, resumeAt: 100 }
+    const limited = [toSessionView(conversation(1, HOME, { agent: 'claude', status: 'done', details }), HOME, 50_000)]
+    const held = trackSessions(trackSessions(new Map(), view('working'), new Set(), 0).tracks, limited, new Set(), 2)
+    expect(held.tracks.get('t1')).toMatchObject({ status: 'limited', unread: false })
+    const asking = trackSessions(held.tracks, view('needs-you', { agent: 'claude', details }), new Set(), 3)
+    expect(asking.tracks.get('t1')).toMatchObject({ status: 'needs', unread: true, changedAt: 3 })
+    const failed = trackSessions(held.tracks, view('done', { agent: 'claude', details: { ...details, exit: { code: 2, at: 10 } } }), new Set(), 3)
+    expect(failed.tracks.get('t1')).toMatchObject({ status: 'error', unread: true, changedAt: 3 })
+  })
+
   it('notices a shell moving to another repo', () => {
     const first = trackSessions(new Map(), view('idle'), new Set(), 0)
     const moved = trackSessions(first.tracks, [toSessionView(repo(1, `${HOME}/maitty`, `${HOME}/maitty`), HOME)], new Set(), 5)

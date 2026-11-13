@@ -28,9 +28,10 @@ const WANTED: Record<'needs' | 'done' | 'error', keyof NotifySwitches> = { needs
 /**
  * Which sessions just changed to a state worth a notification. `before` is what the last look saw
  * (null before the first one, so opening the app never notifies for what already was). A session
- * you are looking at is left out, and so is one coming back from "unknown" after a disconnect or
- * from "limited" when its plan limit ends, which puts it back where it already was. Becoming
- * limited raises nothing: the daemon continues it by itself, so there is nothing to do.
+ * you are looking at is left out, and so is one coming back from "unknown" after a disconnect, or
+ * back to finished from "limited" when its plan limit ends, which is where it already was. A
+ * limited session that starts asking or fails is new, and says so. Becoming limited raises
+ * nothing: the daemon continues it by itself, so there is nothing to do.
  * The text names the session and where it is, never what it was asked or is asking: a
  * notification can show on a locked screen.
  */
@@ -39,7 +40,8 @@ export function noticesFor(before: ReadonlyMap<string, SessionStatus> | null, se
   const notices: Notice[] = []
   for (const session of sessions) {
     const previous = before.get(session.id)
-    if (previous === undefined || previous === 'unknown' || previous === 'limited' || previous === session.status) continue
+    if (previous === undefined || previous === 'unknown' || previous === session.status) continue
+    if (previous === 'limited' && session.status === 'done') continue
     if (session.status !== 'needs' && session.status !== 'done' && session.status !== 'error') continue
     if (!switches[WANTED[session.status]] || session.id === attending) continue
     if (finishedForNow(session, queued)) continue
