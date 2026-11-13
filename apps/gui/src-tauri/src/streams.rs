@@ -182,7 +182,7 @@ impl Streams {
                 out.push(Out::Folders { machine, tag, listing });
             }
             ServerMsg::State(snapshot) => self.publish(machine, snapshot, &mut out),
-            ServerMsg::TermsChanged { changed, removed } => {
+            ServerMsg::TermsChanged { changed, removed, .. } => {
                 let merged = self.last.get(&machine).cloned().map(|mut merged| {
                     for term in removed {
                         merged.terms.remove(&term);

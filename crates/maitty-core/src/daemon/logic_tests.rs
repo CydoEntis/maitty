@@ -8177,7 +8177,7 @@ fn a_change_to_one_pane_reaches_clients_as_a_delta_and_no_change_as_nothing() {
     d.terms.get_mut(&t).unwrap().process = "vim".into();
     d.publish_state(surface, d.snapshot_for(surface));
     match crx.try_recv() {
-        Ok(ServerMsg::TermsChanged { changed, removed }) => {
+        Ok(ServerMsg::TermsChanged { changed, removed, .. }) => {
             assert_eq!(changed.iter().map(|term| term.id).collect::<Vec<_>>(), vec![t]);
             assert_eq!(changed[0].process, "vim");
             assert!(removed.is_empty());
@@ -8193,6 +8193,50 @@ fn a_change_to_one_pane_reaches_clients_as_a_delta_and_no_change_as_nothing() {
         _ => false,
     });
     assert!(gone, "a closed pane leaves the clients' state, whole or as a delta");
+}
+
+#[test]
+fn each_state_or_delta_a_surface_is_sent_carries_the_next_revision() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let surface = crate::protocol::Surface::Terminal;
+    let (tx, mut crx) = mpsc::channel(64);
+    d.handle(Ev::Connected(7, tx, true, surface, false));
+    while crx.try_recv().is_ok() {}
+    let revision_of = |msg| match msg {
+        Ok(ServerMsg::State(snap)) => snap.revision,
+        Ok(ServerMsg::TermsChanged { revision, .. }) => revision,
+        other => panic!("a state or a pane delta: {other:?}"),
+    };
+
+    d.publish_state(surface, d.snapshot_for(surface));
+    let first = revision_of(crx.try_recv());
+    assert_eq!(first, 1, "a surface's first update is revision 1");
+
+    d.publish_state(surface, d.snapshot_for(surface));
+    assert!(crx.try_recv().is_err(), "nothing changed, so nothing is sent or numbered");
+
+    d.terms.get_mut(&t).unwrap().process = "vim".into();
+    d.publish_state(surface, d.snapshot_for(surface));
+    let delta = crx.try_recv();
+    assert!(matches!(delta, Ok(ServerMsg::TermsChanged { .. })), "{delta:?}");
+    assert_eq!(revision_of(delta), first + 1);
+
+    d.terms.get_mut(&t).unwrap().process = "git".into();
+    d.publish_state(surface, d.snapshot_for(surface));
+    assert_eq!(revision_of(crx.try_recv()), first + 2);
+
+    d.message(7, ClientMsg::Query(Query::List));
+    let Ok(ServerMsg::Reply(Reply::List(listed))) = crx.try_recv() else {
+        panic!("a list");
+    };
+    assert_eq!(listed.revision, first + 2, "a list carries the current revision and uses none");
+    assert_eq!(
+        d.snapshot_for(crate::protocol::Surface::Desktop).revision,
+        0,
+        "the other surface counts its own"
+    );
+    close(&mut d, &[t]);
 }
 
 #[test]

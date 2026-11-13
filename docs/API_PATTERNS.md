@@ -176,7 +176,12 @@ daemon that would never answer. A daemon on another machine that is older is ask
 A state change reaches attached clients as `ServerMsg::State` (the whole `Snapshot`) or, when only
 some panes differ from what that surface's clients last received, as `ServerMsg::TermsChanged`
 (the panes to replace and the ids to drop); the daemon compares encoded bytes and sends nothing
-when nothing visible changed, and a client that has just attached gets the next change in full. A
+when nothing visible changed, and a client that has just attached gets the next change in full.
+Each of the two carries a `revision` (`Snapshot::revision`, `TermsChanged.revision`): the daemon
+counts them per surface from 1, one more for every message it sends that surface's attached
+clients, so a gap means a missed update. The snapshot a client gets on attach and in `Reply::List`
+carries the surface's current revision and uses none. The field is `#[serde(default)]`, so it
+needed no new `PROTOCOL_VERSION`; 0 means a daemon built before it, or a surface sent nothing yet. A
 client merges a delta into the snapshot it holds and treats the result as a state update. For a pane delta from another machine the snapshot is that machine's own,
 and the delta is cleaned first (SECURITY, "remote daemon"). Replays follow `Hello.replays`: a terminal client takes every pane's replay on attach, the desktop window
 attaches without and sends `ClientMsg::WantReplay { term }` on its stream when it shows a pane; a

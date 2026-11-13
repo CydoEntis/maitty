@@ -944,6 +944,9 @@ pub enum ServerMsg {
     TermsChanged {
         changed: Vec<TermInfo>,
         removed: Vec<TermId>,
+        /// See `Snapshot::revision`.
+        #[serde(default)]
+        revision: u64,
     },
     /// Sent per terminal on attach (or on `WantReplay`): the recent output ring, to rebuild
     /// scrollback.
@@ -1143,6 +1146,13 @@ pub struct Snapshot {
     /// What each agent got done over the last day, by agent and folder.
     #[serde(default)]
     pub today: Vec<AgentDay>,
+    /// How many `State` and `TermsChanged` messages the daemon has sent this surface's attached
+    /// clients, counting the one that carries it: each is one more than the last, so a client that
+    /// sees a gap missed an update. A snapshot sent to one client (on attach, `Reply::List`)
+    /// carries the surface's current count. 0 from a daemon built before it, or one that has
+    /// sent the surface nothing yet.
+    #[serde(default)]
+    pub revision: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -2066,6 +2076,7 @@ mod tests {
             ServerMsg::TermsChanged {
                 changed: Vec::new(),
                 removed: vec![3],
+                revision: 4,
             },
             ServerMsg::Replay {
                 term: 3,
@@ -2446,6 +2457,38 @@ mod tests {
         let snapshot: Snapshot = decode(&encode(&old).unwrap()).unwrap();
         assert_eq!(snapshot.daemon_id, None);
         assert_eq!(snapshot.daemon_version, "0.50.0");
+    }
+
+    #[test]
+    fn a_state_and_a_pane_delta_from_before_revisions_read_as_revision_zero() {
+        #[derive(Serialize)]
+        struct OldSnapshot {
+            workspaces: Vec<WorkspaceInfo>,
+            active_ws: Option<WsId>,
+            terms: BTreeMap<TermId, TermInfo>,
+        }
+        #[derive(Serialize)]
+        enum OldServerMsg {
+            TermsChanged { changed: Vec<TermInfo>, removed: Vec<TermId> },
+        }
+        let old = OldSnapshot { workspaces: Vec::new(), active_ws: None, terms: BTreeMap::new() };
+        let snapshot: Snapshot = decode(&encode(&old).unwrap()).unwrap();
+        assert_eq!(snapshot.revision, 0);
+
+        let old = OldServerMsg::TermsChanged { changed: Vec::new(), removed: vec![3] };
+        let Ok(ServerMsg::TermsChanged { removed, revision, .. }) = decode(&encode(&old).unwrap())
+        else {
+            panic!("an old pane delta still decodes");
+        };
+        assert_eq!((removed, revision), (vec![3], 0));
+
+        let new = ServerMsg::TermsChanged { changed: Vec::new(), removed: Vec::new(), revision: 9 };
+        assert!(matches!(
+            decode(&encode(&new).unwrap()),
+            Ok(ServerMsg::TermsChanged { revision: 9, .. })
+        ));
+        let numbered = Snapshot { revision: 9, ..Snapshot::default() };
+        assert_eq!(decode::<Snapshot>(&encode(&numbered).unwrap()).unwrap().revision, 9);
     }
 
     #[test]

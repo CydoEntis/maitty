@@ -784,6 +784,7 @@ fn what_a_removed_machine_s_daemon_says_afterwards_does_not_bring_it_back() {
     let changed = ServerMsg::TermsChanged {
         changed: vec![work_pane()],
         removed: Vec::new(),
+        revision: 0,
     };
     h.app.on_machine_server(id, changed);
 
