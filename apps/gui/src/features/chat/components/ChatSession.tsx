@@ -4,6 +4,7 @@ import { allowAlways, answerUserInput, approveRequest, loadTerminalScreen } from
 import { errorMessage } from '@/lib/error-message'
 import { readConversationPermissions } from '@/data/conversationPermissions'
 import type { ChatAgent, ChatLink } from '@/features/workspace/model/chatView'
+import { abilitiesOf } from '@/features/workspace/model/agentAbilities'
 import type { SessionStatus } from '@/features/workspace/model/session'
 import type { SubagentView } from '@/features/workspace/model/subagents'
 import { hasPendingApproval, runningTurnStartedAt, type ChatFeed } from '../chatFeed'
@@ -208,8 +209,9 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
   const [started] = useState(() => startChoiceOf(sessionId))
   const shownMode = (liveMode !== null && liveMode.base === metaMode ? liveMode.value : metaMode) ?? started?.mode ?? null
   const shownModel = liveModel !== null && liveModel.base === metaModel ? liveModel.value : metaModel
-  const canChangeAgent = typeInto !== undefined && agent === 'claude' && link.readOnly === true
-  const canPickCodexMode = typeInto !== undefined && agent === 'codex' && link.readOnly === true
+  const abilities = abilitiesOf(agent)
+  const canChangeAgent = typeInto !== undefined && abilities.changeAgent && link.readOnly === true
+  const canPickCodexMode = typeInto !== undefined && abilities.permissionModes?.switchBy === 'command' && link.readOnly === true
   // The chips stay drawn while their keys would land in a turn or nowhere; they are only greyed out, so the box does not rearrange.
   const pickerLocked = !online ? 'The daemon is offline' : stoppedOnPrompt ? `${agent} is asking something. Answer it first.` : null
   const chipsLocked = !online ? 'The daemon is offline' : working ? `${agent} is working. Change this when it finishes.` : null
@@ -509,7 +511,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
         composer={composer}
         conversation={link.conversation}
         // Claude says which commands it takes, in its folder; Codex's are a list the window keeps. Gemini has none yet.
-        {...((agent === 'claude' || agent === 'codex') && root !== null ? { commandsFrom: { agent, folder: root, inTerminal: runInTerminal } } : {})}
+        {...(abilities.slashCommands !== null && root !== null ? { commandsFrom: { agent, folder: root, inTerminal: runInTerminal } } : {})}
         question={question}
         waiting={held !== null}
         files={fileSearch}

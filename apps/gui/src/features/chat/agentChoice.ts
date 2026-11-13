@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import { loadAgentModels } from '@/api/daemon'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
+import { hasAbility } from '@/features/workspace/model/agentAbilities'
 import { modelLabel } from './chatMeta'
 
 /** How much the model thinks before it answers. */
@@ -131,7 +132,7 @@ const asked = new Set<ChatAgent>()
 export function useDiscoveredModels(agent: ChatAgent) {
   useEffect(() => {
     // Gemini has no model list to read; its chat follows the terminal.
-    if (agent === 'gemini' || asked.has(agent)) return
+    if (!hasAbility(agent, 'discoversModels') || asked.has(agent)) return
     asked.add(agent)
     loadAgentModels(agent).then((models) => { setDiscoveredModels(agent, models) }).catch((error: unknown) => { asked.delete(agent); console.warn(`Could not list ${agent}'s models`, error) })
   }, [agent])
