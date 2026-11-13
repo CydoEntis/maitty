@@ -11,7 +11,10 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 91;
+pub const PROTOCOL_VERSION: u32 = 92;
+
+/// The first version whose daemon snoozes a pane (`Command::SnoozePane`).
+pub const SNOOZE_SINCE: u32 = 92;
 
 /// The first version whose daemon honours `operation` on `QueueFollowUp` and `SendWhenReady`; an
 /// older one reads the field and ignores it, so a retry there could be typed twice.
@@ -575,6 +578,11 @@ pub enum Command {
     ArchivePane {
         term: TermId,
         archived: bool,
+    },
+    /// Snooze a pane until `until` (unix seconds, at most a week ahead), or wake it (`None`).
+    SnoozePane {
+        term: TermId,
+        until: Option<u64>,
     },
     /// The agent in `term` moves into a new worktree of its repo: made now, and when its turn
     /// ends it restarts there, resumed (the agent runs `<app> worktree --move`).
@@ -1555,6 +1563,10 @@ pub struct TermInfo {
     /// Put away from the project lists; the process keeps running.
     #[serde(default)]
     pub archived: bool,
+    /// Snoozed until this time (unix seconds). The daemon clears it then, or as soon as the pane
+    /// needs you; it never changes the status.
+    #[serde(default)]
+    pub snoozed_until: Option<u64>,
     /// The model it's using, short ("opus 4.5"), if known.
     pub model: String,
     /// Memory used by what runs in it (bytes).
@@ -1989,6 +2001,7 @@ impl ClientMsg {
             ClientMsg::Query(Query::ClosedSessions) => CLOSED_SESSIONS_SINCE,
             ClientMsg::Query(Query::WorktreeStanding { .. }) => WORKTREE_STANDING_SINCE,
             ClientMsg::Command(Command::ReopenClosedSession { .. }) => REOPEN_CLOSED_SINCE,
+            ClientMsg::Command(Command::SnoozePane { .. }) => SNOOZE_SINCE,
             ClientMsg::Command(
                 Command::QueueFollowUp { operation: Some(_), .. }
                 | Command::SendWhenReady { operation: Some(_), .. },
@@ -2422,7 +2435,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 91);
+        assert_eq!(PROTOCOL_VERSION, 92);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2890,7 +2903,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 91);
+        assert_eq!(PROTOCOL_VERSION, 92);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -3194,6 +3207,33 @@ mod tests {
         let bytes = encode(&ServerMsg::SettingsChanged(sample_settings())).unwrap();
         assert!(decode::<OldServerMsg>(&bytes).is_err());
         assert!(decode::<ServerMsg>(&bytes).is_ok());
+    }
+
+    /// Snoozing is a new command: a daemon built before it cannot read it, so a client asks only a
+    /// daemon that says it is new enough, and the window stays where it was.
+    #[test]
+    fn a_snooze_is_asked_only_of_a_daemon_that_knows_it() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldCommand {
+            ArchivePane { term: TermId, archived: bool },
+        }
+        let snooze = Command::SnoozePane { term: 3, until: Some(1_000) };
+        let bytes = encode(&snooze).unwrap();
+        assert!(decode::<OldCommand>(&bytes).is_err());
+        assert!(matches!(
+            decode::<Command>(&bytes),
+            Ok(Command::SnoozePane { term: 3, until: Some(1_000) })
+        ));
+        assert_eq!(ClientMsg::Command(snooze).introduced_in(), SNOOZE_SINCE);
+        const { assert!(SNOOZE_SINCE > COMPATIBLE_SINCE && SNOOZE_SINCE <= PROTOCOL_VERSION) };
+    }
+
+    #[test]
+    fn a_pane_from_before_snooze_decodes_as_awake() {
+        assert_eq!(pane_from(serde_json::json!({})).snoozed_until, None);
+        let snoozed = pane_from(serde_json::json!({ "snoozed_until": 1_000 }));
+        assert_eq!(snoozed.snoozed_until, Some(1_000));
     }
 
     #[test]

@@ -770,6 +770,19 @@ is simply not asked. The desktop command `worktree_standing { machine, repo, fol
 `maitty_desktop_client::worktree_standing`, which adds `missing` to the JSON, or fails with a line saying to restart
 the service when the daemon running is older than 90.
 
+Protocol 92 adds `Command::SnoozePane { term, until }` and the defaulted `TermInfo.snoozed_until` (unix seconds;
+an older peer decodes it as `None`, and a test decodes the old shape). `until: None`, or a time already past, wakes the
+pane; a time more than a week ahead is refused, and so is a snooze of a chat session's pane (`conversation_id`) or of a
+pane that needs you (`Blocked`, asking to start helpers, asking for a secret, or a checkpoint that failed or waits for
+approval). The daemon owns the snooze and keeps it across a restart (`SavedPane.snoozed_until`). It ends it on the
+tick after its time (`TICK`, 250 ms, so within a second of `until`) or when it lies more than a week ahead (the clock
+went back); and at once, through `Daemon::needs_you`, when the status becomes `Blocked`, the pane asks to start helpers
+or for a secret, a checkpoint fails or waits for approval, or a command in the pane exits with an error (`exit`). A
+plan limit does not end it: the daemon continues that agent itself. Snoozing never changes the status (ADR 0003);
+clients display it. Only a person snoozes: an agent pane's connection is refused. The command has its own `introduced_in` arm
+(`SNOOZE_SINCE`); `COMPATIBLE_SINCE` stays 78, since an older daemon is simply not asked and an older client reads
+the pane without the field.
+
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store
 ([ADR 0009](adr/0009-usage-is-provider-reported-never-estimated.md)): totals, one entry per

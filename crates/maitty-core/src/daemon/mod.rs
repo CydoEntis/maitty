@@ -32,6 +32,7 @@ mod restore;
 mod scan;
 mod search;
 mod secrets;
+mod snooze;
 mod status;
 mod term;
 mod terminal_sends;
@@ -1160,6 +1161,9 @@ impl Daemon {
             Command::SpendSecret { .. } if !self.client_is_agent(client) => {
                 anyhow::bail!("only an agent pane can spend a secret reference")
             }
+            Command::SnoozePane { .. } if self.client_is_agent(client) => {
+                anyhow::bail!("snoozing a session is yours to do, not a pane's")
+            }
             // A session may not let itself (or another) start helpers.
             Command::AnswerHelpers { .. } if self.client_is_agent(client) => {
                 anyhow::bail!("starting helpers is yours to allow, not a pane's")
@@ -1345,6 +1349,7 @@ impl Daemon {
                     self.finish_chat_closes();
                     self.close_ended_agents();
                     self.expire_warm();
+                    self.wake_snoozed(term::unix_now());
                     self.update_statuses();
                     self.settled_alerts();
                     self.phone_alerts();
@@ -3190,6 +3195,7 @@ impl Daemon {
                         label: t.label.clone(),
                         pinned: t.pinned,
                         archived: t.archived,
+                        snoozed_until: t.snoozed_until,
                         mem: t.mem,
                         cpu: t.cpu,
                         bell: t.bell,

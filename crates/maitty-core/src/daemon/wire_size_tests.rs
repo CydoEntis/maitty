@@ -347,6 +347,7 @@ fn pane(i: u32) -> TermInfo {
         label: String::new(),
         pinned: i.is_multiple_of(10),
         archived: false,
+        snoozed_until: None,
         model: "opus 4.5".into(),
         mem: 412_000_000,
         cpu: 3.5,
