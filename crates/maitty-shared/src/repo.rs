@@ -32,6 +32,8 @@ pub enum RepoRequest {
     Worktrees,
     /// What the daemon saved of the checkout before and after each agent turn, newest first.
     Snapshots,
+    /// How many files restoring one of those snapshots would change now; nothing is changed.
+    RestoreCount { commit: String },
     /// The project's reference files (`.maitty/references/`), newest first.
     References,
 }
@@ -51,6 +53,8 @@ pub enum RepoReply {
     References(Vec<RepoReference>),
     /// A restore finished: how many files changed.
     Restored(usize),
+    /// How many files a restore would change now.
+    RestoreCount(usize),
     /// A file was written.
     Written,
 }

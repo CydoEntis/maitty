@@ -229,6 +229,18 @@ fn ref_millis(top: &Path, s: &Snapshot) -> Result<Option<u64>, String> {
         .ok_or_else(|| format!("snapshot ref {name} has no time in its name"))
 }
 
+/// How many files `restore` of `commit` would change now, counted as it counts them, with
+/// nothing kept and no file touched.
+pub fn restore_count(dir: &Path, commit: &str) -> Result<usize, String> {
+    let top = top_of(dir).ok_or("not in a git repo")?;
+    let now = tree_of_now(&top)?;
+    files_between(&top, commit, &now)
+}
+
+fn files_between(top: &Path, from: &str, to: &str) -> Result<usize, String> {
+    Ok(git(top, &["diff", "--name-only", from, to])?.lines().count())
+}
+
 /// Put the checkout's files back as they were in `commit`. What's there now is kept as a
 /// snapshot first, so this can be undone by restoring that one. Returns how many files
 /// changed. Ignored files, the index and the branch are left alone.
@@ -238,9 +250,7 @@ pub fn restore(dir: &Path, commit: &str) -> Result<usize, String> {
     let lock = checkout_lock(&top);
     let _restoring = lock.lock().unwrap_or_else(PoisonError::into_inner);
     let now = take_locked(&top, BEFORE_RESTORE)?;
-    let differ = git(&top, &["diff", "--name-only", commit, &now.commit])?
-        .lines()
-        .count();
+    let differ = files_between(&top, commit, &now.commit)?;
     // Files made since then aren't part of how it was (they're in the snapshot just taken).
     let added = proc::git(
         &top,
