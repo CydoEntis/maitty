@@ -29,7 +29,9 @@ pub fn vet_chat_reply(reply: Reply) -> Result<Reply, String> {
     }
 }
 
-fn cleaned<T: Serialize + DeserializeOwned>(answer: T) -> Result<T, String> {
+/// `answer` with every string in it made safe to draw and its lists cut to what an answer may
+/// hold, or why it cannot be.
+pub(crate) fn cleaned<T: Serialize + DeserializeOwned>(answer: T) -> Result<T, String> {
     let mut value = serde_json::to_value(&answer).map_err(|_| "it could not be inspected")?;
     drop(answer);
     let mut nodes = 0;

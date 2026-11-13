@@ -522,6 +522,13 @@ is a fixed set of host commands that take a machine's name or number, never a pr
 - **Files stay on their machine.** Features that read a pane's files or repository are refused for another
   machine's pane by the window and again by the host's commands, in the terminal app's words, so a pane
   number from another machine can never reach a pane of this computer.
+- **A machine's changes are the one repository answer taken.** `repo_query` asks another machine's daemon
+  only what changed and its diff (`remote_repo::may_ask`); a file's text, a folder listing, branches,
+  history and writes are refused by the host before anything is sent. The answer passes
+  `remote_repo::vet_repo_reply`: anything but a status or a diff is dropped, every string loses its
+  escapes and control characters, a path or branch is one line of at most 4,096 characters, and the lists
+  are cut to the sizes a daemon's own answer may have. The diff is shown as text and never run or written
+  to this computer's disk.
 - **No install or restart.** A machine that needs the app shows the command to run; the desktop app never
   installs, updates or restarts anything on it.
 - **A different daemon at a known name** is refused (the shared daemon-id store) and says so; Remove then

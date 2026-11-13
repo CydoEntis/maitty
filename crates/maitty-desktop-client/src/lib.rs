@@ -1003,18 +1003,16 @@ pub async fn rename_terminal_session(
     }
 }
 
-/// A read-only question about the repository a pane is in. `question` is a `RepoRequest` as
-/// JSON; the daemon scopes it to the pane's own checkout.
-pub async fn repo_query(term: u32, question: Value, daemon_executable: PathBuf) -> Result<Value> {
-    let question: maitty_shared::repo::RepoRequest =
-        serde_json::from_value(question).context("invalid repository request")?;
+/// A read-only question about the repository a pane is in, asked of the daemon that owns the
+/// pane; that daemon scopes it to the pane's own checkout.
+pub async fn repo_query(term: u32, question: maitty_shared::repo::RepoRequest, daemon: impl Into<Daemon>) -> Result<Value> {
     let reply = request(
         ClientMsg::Query(Query::Repo {
             term,
             tag: 0,
             request: question,
         }),
-        daemon_executable,
+        daemon,
     )
     .await?;
     match reply {

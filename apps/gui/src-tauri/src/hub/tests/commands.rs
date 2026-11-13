@@ -286,6 +286,47 @@ async fn a_session_started_on_a_machine_is_a_pane_of_that_machine() {
 }
 
 #[tokio::test]
+async fn the_changes_of_a_pane_on_a_machine_are_read_from_that_machines_daemon_and_nothing_else_is() {
+    use maitty_shared::repo::RepoRequest;
+    let mut sandbox = Sandbox::new();
+    sandbox.start_daemon();
+    let repository = sandbox.dir.join("checkout");
+    std::fs::create_dir_all(&repository).unwrap();
+    let init = std::process::Command::new("git").arg("-C").arg(&repository).args(["init", "--quiet"]).status().unwrap();
+    assert!(init.success(), "git init");
+    std::fs::write(repository.join("new.txt"), "one\n").unwrap();
+
+    let mut watch = Watch::new(&[machine("box", &sandbox, "proxy")], &sandbox, quick(WAIT));
+    let wire = Wire::reaching(watch.hub.handle());
+    watch
+        .until("connected and a snapshot", |w| w.is(BOX, "connected") && w.snapshots(BOX) > 0)
+        .await;
+    let start = ClientMsg::Command(Command::NewWorkspace {
+        cwd: Some(repository.clone()),
+        name: None,
+        cmd: None,
+    });
+    watch.hub.handle().send(Outgoing { machine: BOX, msg: start }).expect("the line is up");
+    watch.until("a pane on the machine", |w| w.any_pane(BOX).is_some()).await;
+    let term = watch.any_pane(BOX).unwrap();
+
+    let not_here = || Err("this computer's daemon is not asked".to_string());
+    let daemon = wire.repo_daemon(Some(BOX.0), &RepoRequest::Status, not_here).expect("a connected machine is asked");
+    let status = maitty_desktop_client::repo_query(term, RepoRequest::Status, daemon).await.expect("the machine's daemon answers");
+    let paths: Vec<&str> = status["Status"]["files"].as_array().unwrap().iter().filter_map(|file| file["path"].as_str()).collect();
+    assert_eq!(paths, ["new.txt"]);
+
+    for question in [RepoRequest::Tree { path: None }, RepoRequest::File { path: "new.txt".into() }, RepoRequest::Branches] {
+        let refused = wire.repo_daemon(Some(BOX.0), &question, not_here).err().expect("only the changes are asked of a machine");
+        assert_eq!(refused, "Inspect is local-only in v1: the files are on box, not on this computer.", "{question:?}");
+    }
+    assert!(matches!(
+        wire.repo_daemon(None, &RepoRequest::Branches, || Ok(std::path::PathBuf::from("maitty"))),
+        Ok(maitty_desktop_client::Daemon::Local(_))
+    ));
+}
+
+#[tokio::test]
 async fn a_session_is_not_started_on_this_computer_or_a_machine_that_is_down_or_in_a_bad_folder() {
     let sandbox = Sandbox::new();
     let watch = Watch::new(&[machine("box", &sandbox, "auth-fail")], &sandbox, quick(WAIT));

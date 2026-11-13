@@ -594,8 +594,10 @@ async fn repo_query(
     term: u32,
     question: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    wire.require_local(machine, "Inspect")?;
-    maitty_desktop_client::repo_query(term, question, daemon_executable(&app)?)
+    let question: maitty_shared::repo::RepoRequest =
+        serde_json::from_value(question).map_err(|error| format!("invalid repository request: {error}"))?;
+    let daemon = wire.repo_daemon(machine, &question, || daemon_executable(&app))?;
+    maitty_desktop_client::repo_query(term, question, daemon)
         .await
         .map_err(|error| format!("{error:#}"))
 }
