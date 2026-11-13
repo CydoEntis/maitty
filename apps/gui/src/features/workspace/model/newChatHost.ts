@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { agentsInstalled, folderBranches, folderSyncState, pullFolder, type FolderBranches, type SyncState } from '@/api/daemon'
+import { agentsInstalled, folderBranches, folderSyncState, pullFolder, savedConversations, type FolderBranches, type SavedConversation, type SyncState } from '@/api/daemon'
 import { DEFAULT_PICK, type ReasoningPick } from '@/features/chat/agentChoice'
 import { CODEX_FULL_MODE, PICKABLE_MODES } from '@/features/chat/chatMeta'
 import type { ChatAgent } from './chatView'
@@ -123,6 +123,33 @@ export function useFolderBranches(folder: string): [FolderBranches | null, () =>
   }, [folder, again])
   const reload = useCallback(() => { setAgain((count) => count + 1) }, [])
   return [read.folder === folder ? read.data : null, reload]
+}
+
+/** What the page knows of a folder's saved conversations: nothing yet, the list, or why there is none. */
+export type SavedRead = { kind: 'none' } | { kind: 'listed'; list: readonly SavedConversation[] } | { kind: 'older' } | { kind: 'failed' }
+
+const NOT_READ: SavedRead = { kind: 'none' }
+
+/** The conversations `agent` saved for `folder`, read off the UI thread; a null agent asks nothing. An answer for another folder or agent is dropped. */
+export function useSavedConversations(folder: string, agent: 'claude' | 'codex' | null): SavedRead {
+  const key = agent === null || folder === '' ? '' : `${agent}\n${folder}`
+  const [read, setRead] = useState<{ key: string; found: SavedRead }>({ key: '', found: NOT_READ })
+  useEffect(() => {
+    if (agent === null || folder === '') return undefined
+    const asked = `${agent}\n${folder}`
+    const stop = new AbortController()
+    void (async () => {
+      try {
+        const list = await savedConversations(agent, folder)
+        if (!stop.signal.aborted) setRead({ key: asked, found: list === null ? { kind: 'older' } : { kind: 'listed', list } })
+      } catch (error) {
+        if (!stop.signal.aborted) setRead({ key: asked, found: { kind: 'failed' } })
+        console.warn('Could not read the saved conversations', error)
+      }
+    })()
+    return () => { stop.abort() }
+  }, [agent, folder])
+  return key !== '' && read.key === key ? read.found : NOT_READ
 }
 
 /**

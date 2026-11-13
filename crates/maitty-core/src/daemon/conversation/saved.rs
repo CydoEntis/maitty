@@ -243,9 +243,10 @@ fn one_line(text: &str) -> Option<String> {
     (!cut.is_empty()).then_some(cut)
 }
 
-/// A listed conversation, when its id is one a resume can be given as is.
+/// A listed conversation, when its id is one a resume can be given as is. A letter or digit comes
+/// first: the id lands on the agent's command line, where a leading `-` would be read as a flag.
 fn saved(id: String, first_message: String, modified: SystemTime) -> Option<SavedConversation> {
-    let plain = !id.is_empty()
+    let plain = id.starts_with(|c: char| c.is_ascii_alphanumeric())
         && id.chars().count() <= ID_MAX_CHARS
         && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
     plain.then(|| SavedConversation {

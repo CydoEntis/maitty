@@ -161,3 +161,20 @@ fn claude_names_a_working_folder_as_it_does_on_disk() {
     assert_eq!(claude_folder_name(Path::new(r"C:\dev\my_app.v2\")), "C--dev-my-app-v2");
     assert_eq!(claude_folder_name(Path::new("/home/me/code")), "-home-me-code");
 }
+
+#[test]
+fn an_id_that_starts_like_a_flag_is_never_listed() {
+    let root = scratch("flag-ids");
+    let app = project();
+    let claude_dir = root.join("claude").join(claude_folder_name(&app));
+    write(&claude_dir.join("-dangerously-skip-permissions.jsonl"), &[claude_user(&app, serde_json::json!("Looks like a flag"))], 1);
+    write(&claude_dir.join("_leading-underscore.jsonl"), &[claude_user(&app, serde_json::json!("Not a letter first"))], 2);
+    write(&claude_dir.join("plain-session.jsonl"), &[claude_user(&app, serde_json::json!("A plain one"))], 3);
+    let codex_day = root.join("codex").join("2026/11/12");
+    write(&codex_day.join("rollout-2026-11-12T09-00-00-a.jsonl"), &[codex_meta("--yolo", &app, "user"), codex_user("Flag id")], 1);
+    write(&codex_day.join("rollout-2026-11-12T09-00-00-b.jsonl"), &[codex_meta("b7", &app, "user"), codex_user("Plain id")], 2);
+    let both = stores(&root.join("claude"), &root.join("codex"));
+
+    assert_eq!(listed(list("claude", &app, &both)), [("plain-session".to_string(), "A plain one".to_string())]);
+    assert_eq!(listed(list("codex", &app, &both)), [("b7".to_string(), "Plain id".to_string())]);
+}

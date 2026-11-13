@@ -1,8 +1,8 @@
 import type { SessionView } from './session'
 import { suggestBranchName } from './worktreeName'
 
-/** The ids Claude and Codex use are UUID-like; anything else is not typed into a shell. */
-const SESSION_ID = /^[A-Za-z0-9-]{8,80}$/
+/** The ids the daemon lists as saved; anything else is not typed into a shell. A letter or digit comes first, so an id is never read as a flag. */
+const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/
 /** A folder that could end a quoted word or start a substitution in either shell is refused, not escaped. */
 const UNSAFE_FOLDER_CHARS = new Set(['"', "'", '`', '$', '%'])
 const FIRST_PRINTABLE = 0x20
@@ -24,14 +24,21 @@ export function moveRefusal(session: SessionView): string | null {
   return null
 }
 
+/** The words after the agent's name that resume a saved conversation. Null when the id is not safe to type. */
+export function resumeWords(agent: 'claude' | 'codex', sessionId: string): string[] | null {
+  if (!SESSION_ID.test(sessionId)) return null
+  return agent === 'claude' ? ['--resume', sessionId] : ['resume', sessionId]
+}
+
 /**
  * The line typed into the pane's shell after the agent exits: go to the new folder and resume the
  * same conversation there. Null when the folder or id is not safe to type.
  */
 export function resumeLine(agent: 'claude' | 'codex', sessionId: string, folder: string, windows: boolean): string | null {
-  if (!SESSION_ID.test(sessionId) || folder === '' || unsafeFolder(folder)) return null
+  const words = resumeWords(agent, sessionId)
+  if (words === null || folder === '' || unsafeFolder(folder)) return null
   const then = windows ? ';' : '&&'
-  const resume = agent === 'claude' ? `claude --resume ${sessionId}` : `codex resume ${sessionId} -C "${folder}"`
+  const resume = [agent, ...words, ...(agent === 'codex' ? ['-C', `"${folder}"`] : [])].join(' ')
   return `cd "${folder}" ${then} ${resume}`
 }
 
