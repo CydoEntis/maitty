@@ -14,6 +14,7 @@ const EDIT_TOOL = 'Edit'
 const MULTI_EDIT_TOOL = 'MultiEdit'
 const WRITE_TOOL = 'Write'
 const TODO_TOOL = 'TodoWrite'
+const SKILL_TOOL = 'Skill'
 // Claude Code calls its helper-agent tool `Task`; newer releases may report `Agent`.
 const SUBAGENT_TOOLS: readonly string[] = ['Task', 'Agent']
 
@@ -31,6 +32,8 @@ const WriteInputSchema = z.object({ file_path: z.string(), content: z.string() }
 const TodoInputSchema = z.object({
   todos: z.array(z.object({ content: z.string(), status: z.enum(['pending', 'in_progress', 'completed']) })),
 })
+// Only the name is required: arguments of another shape still leave the skill named.
+const SkillInputSchema = z.object({ skill: z.string(), args: z.string().optional().catch(undefined) })
 const SubagentInputSchema = z.object({ description: z.string(), prompt: z.string().optional(), subagent_type: z.string().optional() })
 
 const TODO_STATES: Record<'pending' | 'in_progress' | 'completed', TodoItemState> = {
@@ -103,7 +106,7 @@ export function mapClaudeTool(name: string, input: unknown): ClaudeToolMapping {
       prompt: parsed.success ? (parsed.data.prompt ?? null) : null,
     }
   }
-  return { kind: 'tool', name, target: toolTarget(input), input: inputText(input) }
+  return { kind: 'tool', name, target: name === SKILL_TOOL ? skillTarget(input) : toolTarget(input), input: inputText(input) }
 }
 
 // The input fields that name what a tool acted on, most specific first.
@@ -118,9 +121,18 @@ export function toolTarget(input: unknown): string | null {
   const fields = input as Record<string, unknown>
   for (const key of TARGET_KEYS) {
     const value = fields[key]
-    if (typeof value === 'string' && value.trim() !== '') return value.trim().split('\n')[0]?.slice(0, TARGET_LIMIT) ?? null
+    if (typeof value === 'string' && value.trim() !== '') return targetText(value)
   }
   return null
+}
+
+const targetText = (value: string): string | null => value.trim().split('\n')[0]?.slice(0, TARGET_LIMIT) ?? null
+
+/** The skill a Skill call runs, then its arguments; `null` when the input names no skill. */
+function skillTarget(input: unknown): string | null {
+  const parsed = SkillInputSchema.safeParse(input)
+  if (!parsed.success || parsed.data.skill.trim() === '') return null
+  return targetText(`${parsed.data.skill.trim()} ${parsed.data.args ?? ''}`)
 }
 
 /** The tool's input as indented JSON for the expanded chip, cut so one huge input never fills the list. */

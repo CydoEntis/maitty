@@ -875,8 +875,9 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   - *Step row* (`cardParts.tsx` `StepRow`): the mark, a verb, what the step acted on, and how it ended. Every step
     is one; a step with detail is a button that opens it.
   - *Tool step:* the verb and target are read from the tool's own input (`toolFacts.ts`): "Read `src/a.ts` lines
-    40–88", "Search `pattern` in src", "Fetch example.com/docs", an extension's server and tool. Nothing the input does
-    not hold (hit counts, a status code) is shown. Click opens the input and the result, bounded.
+    40–88", "Search `pattern` in src", "Fetch example.com/docs", "Skill kitchen:kitchen" and its arguments, an extension's server
+    and tool. Nothing the input does not hold (hit counts, a status code) is shown. Click opens the input and the
+    result, bounded.
   - *Edit step:* the file as a badge, Added / Modified / Deleted where the history says, `+N` `−N`; it opens to the
     diff, folded past 12 lines with "Show all N lines" / "Show less", and "Open in side panel" (the Inspect panel's
     Changes view). A diff too large, one the history did not keep and a secret file each say so. A finished Write of a
