@@ -18,7 +18,7 @@ use tokio::sync::mpsc;
 const MAX_PENDING_MARKS: usize = 64;
 /// How much of the ring a desktop pane is replayed: it keeps about ten thousand lines of scrollback.
 const DESKTOP_REPLAY_BYTES: usize = 1 << 20;
-const TIMELINE_KEPT: usize = 60;
+pub(super) const TIMELINE_KEPT: usize = 60;
 
 #[derive(Default)]
 pub struct Callbacks {

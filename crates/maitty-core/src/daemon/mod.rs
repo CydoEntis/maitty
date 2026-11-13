@@ -3700,6 +3700,8 @@ fn home() -> PathBuf {
 mod branch_agent_tests;
 #[cfg(test)]
 mod logic_tests;
+#[cfg(test)]
+mod wire_size_tests;
 
 #[cfg(test)]
 mod tests {
