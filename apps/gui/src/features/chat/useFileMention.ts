@@ -54,12 +54,40 @@ function usePaneFiles(place: PaneFileSearch | null, query: string | null): Found
   return query === null || found?.query !== query ? null : found
 }
 
-type IndexAnswer = { readonly index: RemoteIndex } | { readonly error: string }
+/** How long a machine's finished index is reused: each index is an ssh round trip, but new files should soon show. */
+export const INDEX_KEPT_MS = 30_000
+
+type KeptIndex = { readonly index: Promise<RemoteIndex>; settledAt: number | null }
+
+const keptIndexes = new Map<string, KeptIndex>()
+
+/** Lets go of every kept index, so one test does not see another's. */
+export function forgetMachineIndexes(): void {
+  keptIndexes.clear()
+}
 
 /**
- * The machine's index of the session's folder, asked once as the picker opens and let go as it closes, so each `@`
- * sees the files as they are then while the keys typed after it ask nothing more. An answer for a picker since closed,
- * or for another folder, is dropped.
+ * The index of `folder` on `machine`: the one running or finished in the last `INDEX_KEPT_MS` if there is one, else a
+ * new one. A failed index is not kept, so the next `@` asks again.
+ */
+function machineIndex(machine: string, folder: string): Promise<RemoteIndex> {
+  const key = `${machine}\n${folder}`
+  const kept = keptIndexes.get(key)
+  if (kept !== undefined && (kept.settledAt === null || Date.now() - kept.settledAt < INDEX_KEPT_MS)) return kept.index
+  const entry: KeptIndex = { index: indexRemoteFiles(machine, folder), settledAt: null }
+  keptIndexes.set(key, entry)
+  entry.index.then(
+    () => { entry.settledAt = Date.now() },
+    () => { if (keptIndexes.get(key) === entry) keptIndexes.delete(key) },
+  )
+  return entry.index
+}
+
+type IndexAnswer = { readonly machine: string; readonly folder: string } & ({ readonly index: RemoteIndex } | { readonly error: string })
+
+/**
+ * The machine's index of the session's folder, asked as the picker opens and let go as it closes, so the keys typed
+ * after an `@` ask nothing more. An answer for a picker since closed, or for another place, is never returned.
  */
 function useMachineIndex(place: MachineFileSearch | null, open: boolean): IndexAnswer | null {
   const [answer, setAnswer] = useState<IndexAnswer | null>(null)
@@ -68,16 +96,16 @@ function useMachineIndex(place: MachineFileSearch | null, open: boolean): IndexA
   useEffect(() => {
     if (machine === null || !open) return undefined
     let current = true
-    indexRemoteFiles(machine, folder).then(
-      (index) => { if (current) setAnswer({ index }) },
-      (error: unknown) => { if (current) setAnswer({ error: errorMessage(error, 'The search failed') }) },
+    machineIndex(machine, folder).then(
+      (index) => { if (current) setAnswer({ machine, folder, index }) },
+      (error: unknown) => { if (current) setAnswer({ machine, folder, error: errorMessage(error, 'The search failed') }) },
     )
     return () => {
       current = false
       setAnswer(null)
     }
   }, [machine, folder, open])
-  return answer
+  return answer?.machine === machine && answer.folder === folder ? answer : null
 }
 
 /** The files of another machine's folder for `query`: its index, ranked here as the Get a file dialog ranks it. */
@@ -141,7 +169,8 @@ export function useFileMention(place: FileSearchPlace | null, draft: string, car
     }
     const choosing = event.key === 'ArrowDown' || event.key === 'ArrowUp' || ((event.key === 'Enter' || event.key === 'Tab') && !event.shiftKey)
     // Until the answer for what is typed now comes there is nothing to choose, and Enter must not send the half-typed name.
-    if (found === null) return choosing
+    // A machine's index can take as long as its ssh line's timeout, though, and holding Enter that long reads as a hang.
+    if (found === null) return event.key === 'Enter' && isMachine(place) ? false : choosing
     const chosen = paths[active]
     if (chosen === undefined) return false
     if (event.key === 'ArrowDown') setCursor({ query, index: (active + 1) % paths.length })

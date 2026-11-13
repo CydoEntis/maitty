@@ -1,3 +1,5 @@
+import { LOCAL_MACHINE } from '@/api/machines'
+
 /** Where the message box searches for files: a pane of this computer's daemon, or the folder of a session on another machine. */
 export type FileSearchPlace = PaneFileSearch | MachineFileSearch
 
@@ -18,6 +20,22 @@ export type MachineFileSearch = {
   readonly folder: string
   /** The machine is not reachable now, so nothing is asked. */
   readonly offline: boolean
+}
+
+/** What of a session decides where its @ looks. */
+type SearchedSession = { readonly machine: number; readonly machineName: string | null; readonly cwd: string; readonly checkout: string | null }
+
+/** What the window knows around the session: the pane Inspect asks, whether its machine is down, and the build. */
+type SearchContext = { readonly term: number | null; readonly machineDown: boolean; readonly desktop: boolean }
+
+/**
+ * Where the message box's @ looks for files: this computer's daemon through the pane Inspect asks, or, for a session
+ * on another machine, the host's index of its folder there. Null where neither can be asked.
+ */
+export function fileSearchOf(session: SearchedSession, { term, machineDown, desktop }: SearchContext): FileSearchPlace | null {
+  if (session.machine === LOCAL_MACHINE) return term === null ? null : { term, folder: session.cwd, checkout: session.checkout }
+  if (session.machineName === null || !desktop) return null
+  return { machine: session.machineName, folder: session.cwd, offline: machineDown }
 }
 
 /** The file being named at the end of the message box: an `@` at the start or after a space, and what follows it. */

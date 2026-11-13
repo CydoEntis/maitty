@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FAKE_CONVERSATION, FakeDaemonHistory } from '../fakeDaemonHistory'
 import { forgetComposers } from '../composerStore'
 import { forgetChatFeeds } from '../useChatFeed'
+import { forgetMachineIndexes, INDEX_KEPT_MS } from '../useFileMention'
 import { ChatSession } from './ChatSession'
 
 const fake = vi.hoisted(() => ({
@@ -41,6 +42,7 @@ beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
   forgetChatFeeds()
   forgetComposers()
+  forgetMachineIndexes()
   fake.submitMessage.mockReset().mockResolvedValue({})
   fake.indexRemoteFiles.mockReset().mockResolvedValue({ folder: '/home/me/app', files: ['README.md', 'src/lib.rs', 'src/main.rs'], truncated: false, hidden: 0 })
   fake.repoFindFiles.mockReset().mockImplementation((_term, query) => Promise.resolve({
@@ -237,15 +239,46 @@ describe('picking a file with @ in a chat on another machine', () => {
     expect(listed()).toEqual(['src/lib.rs'])
   })
 
-  it('takes no Enter while the index is on its way', async () => {
+  it('sends on Enter while the index is still on its way, so a slow machine never holds the message', async () => {
     fake.indexRemoteFiles.mockImplementation(() => new Promise(() => undefined))
     const { user, box } = await open(REMOTE)
 
     await user.type(box, 'fix @main{Enter}')
+    await settle()
 
-    expect(box).toHaveValue('fix @main')
-    expect(screen.getByText('Looking for files…')).toBeInTheDocument()
-    expect(fake.submitMessage).not.toHaveBeenCalled()
+    expect(fake.submitMessage).toHaveBeenCalledOnce()
+    expect(fake.submitMessage.mock.calls[0]?.[2]).toContain('fix @main')
+  })
+
+  it('reuses a recent index of the same folder for the next @, and asks again once it is old', async () => {
+    const { user, box } = await open(REMOTE)
+
+    await user.type(box, '@m')
+    await settle(SEARCH_WAIT_MS)
+    await user.keyboard('{Escape}')
+    await user.type(box, 'a')
+    await settle(SEARCH_WAIT_MS)
+    expect(fake.indexRemoteFiles).toHaveBeenCalledOnce()
+    expect(listed()).toEqual(['src/main.rs'])
+
+    await user.keyboard('{Escape}')
+    await settle(INDEX_KEPT_MS)
+    await user.type(box, 'i')
+    await settle(SEARCH_WAIT_MS)
+    expect(fake.indexRemoteFiles).toHaveBeenCalledTimes(2)
+  })
+
+  it('starts no second index of a folder while the first is still running', async () => {
+    fake.indexRemoteFiles.mockImplementation(() => new Promise(() => undefined))
+    const { user, box } = await open(REMOTE)
+
+    await user.type(box, '@m')
+    await settle(SEARCH_WAIT_MS)
+    await user.keyboard('{Escape}')
+    await user.type(box, 'a')
+    await settle(SEARCH_WAIT_MS)
+
+    expect(fake.indexRemoteFiles).toHaveBeenCalledOnce()
   })
 
   it('says Machine offline, not an error, when the machine is offline', async () => {

@@ -23,22 +23,11 @@ import { isShell } from '../model/sidebar'
 import { moveRefusal } from '../model/moveToWorktree'
 import { guardLocal } from '@/lib/localOnly'
 import type { RewindPlace } from '@/features/chat/editFromHere'
-import type { FileSearchPlace } from '@/features/chat/fileMention'
-import type { SessionView } from '../model/session'
+import { fileSearchOf } from '@/features/chat/fileMention'
 
 /** Whether a session can show a chat at all: an agent the app reads. A shell or another program has none, so it gets no switch. */
 function hasChat(availability: ReturnType<typeof chatAvailability>): boolean {
   return availability.kind === 'ready' || availability.kind === 'no-events'
-}
-
-/**
- * Where the message box's @ looks for files: this computer's daemon through the pane Inspect asks (`term`), or, for a
- * session on another machine, the host's index of its folder there.
- */
-function fileSearchOf(session: SessionView, term: number | null, machineDown: boolean): FileSearchPlace | null {
-  if (session.machine === LOCAL_MACHINE) return term === null ? null : { term, folder: session.cwd, checkout: session.checkout }
-  if (session.machineName === null || !isDesktop()) return null
-  return { machine: session.machineName, folder: session.cwd, offline: machineDown }
 }
 
 /** Ctrl+L: a shell clears its screen and keeps what was typed. */
@@ -89,7 +78,7 @@ export function WorkspacePane({ shown, pane, kept }: {
   const rewindTerm = repoPaneOf(session)
   // A restore would also undo the files of another session in the same checkout.
   const rewindRefusal = guardLocal(session, 'rewind') ?? (rewindTerm === null ? null : sharedFolderRefusalOf(session))
-  const fileSearch = fileSearchOf(session, rewindTerm, head?.down === true)
+  const fileSearch = fileSearchOf(session, { term: rewindTerm, machineDown: head?.down === true, desktop: isDesktop() })
   const rewind: RewindPlace | undefined = rewindRefusal !== null ? { refusal: rewindRefusal } : rewindTerm !== null ? { term: rewindTerm } : undefined
   const dock = preferences.terminalDock
   // A shell is a terminal already: its further terminals stay in the side panel, never under it.
