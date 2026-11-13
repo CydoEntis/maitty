@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { CODEX_START_MODES, PICKABLE_MODES } from '@/features/chat/chatMeta'
 import { ANSWER_KEYS } from '@/features/chat/permissionAsk'
-import { abilitiesOf, hasAbility, type StructuredAbility } from './agentAbilities'
+import { abilitiesOf, hasAbility, runsMidTurn, type StructuredAbility } from './agentAbilities'
 import { moveRefusal } from './moveToWorktree'
 import { CHAT_AGENTS } from './chatView'
 import type { SessionView } from './session'
@@ -22,6 +22,7 @@ describe('abilitiesOf', () => {
       resumeSaved: true,
       discoversModels: true,
       hookedAsks: true,
+      midTurnCommands: ['btw'],
     })
   })
 
@@ -40,6 +41,7 @@ describe('abilitiesOf', () => {
       resumeSaved: true,
       discoversModels: true,
       hookedAsks: false,
+      midTurnCommands: [],
     })
   })
 
@@ -56,6 +58,7 @@ describe('abilitiesOf', () => {
       resumeSaved: false,
       discoversModels: false,
       hookedAsks: false,
+      midTurnCommands: [],
     })
   })
 
@@ -81,5 +84,31 @@ describe('abilitiesOf', () => {
     for (const ability of structured) {
       expect(CHAT_AGENTS.filter((agent) => hasAbility(agent, ability))).toEqual(['claude', 'codex'])
     }
+  })
+})
+
+describe('runsMidTurn', () => {
+  it('is true for Claude\'s /btw, with or without a question', () => {
+    expect(runsMidTurn('claude', '/btw')).toBe(true)
+    expect(runsMidTurn('claude', '/btw which file is that?')).toBe(true)
+  })
+
+  it('is false for another command, a longer name, a plugin name or another case', () => {
+    expect(runsMidTurn('claude', '/compact')).toBe(false)
+    expect(runsMidTurn('claude', '/btwx')).toBe(false)
+    expect(runsMidTurn('claude', '/btw:foo')).toBe(false)
+    expect(runsMidTurn('claude', '/BTW')).toBe(false)
+    expect(runsMidTurn('claude', 'tell me /btw')).toBe(false)
+  })
+
+  it('is false for a message over several lines, which is pasted and not run as a command', () => {
+    expect(runsMidTurn('claude', '/btw one\ntwo')).toBe(false)
+  })
+
+  it('is false for an agent that does not run it mid-turn', () => {
+    expect(runsMidTurn('codex', '/btw hi')).toBe(false)
+    expect(runsMidTurn('codex', '/side hi')).toBe(false)
+    expect(runsMidTurn('gemini', '/btw hi')).toBe(false)
+    expect(runsMidTurn(undefined, '/btw hi')).toBe(false)
   })
 })

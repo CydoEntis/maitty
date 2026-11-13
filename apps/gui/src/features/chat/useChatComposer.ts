@@ -3,7 +3,7 @@ import { cancelTurn, dequeueMessage, submitMessage } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
 import { useLatest } from '@/lib/useLatest'
 import type { ChatAgent, ChatLink } from '@/features/workspace/model/chatView'
-import { abilitiesOf } from '@/features/workspace/model/agentAbilities'
+import { abilitiesOf, runsMidTurn } from '@/features/workspace/model/agentAbilities'
 import { hasPendingApproval, type ChatFeed } from './chatFeed'
 import { buildAttachmentMessage, parseAttachmentMessage } from './attachmentMessage'
 import { announceOutsideSend, onOutsideSend } from './outsideSends'
@@ -310,7 +310,9 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
       }
       updateComposer(conversation, (state) => ({ ...state, draft: text, attachments: files, note: note ?? state.note }))
     }
-    if (holding) {
+    // An agent's own command that runs beside a working turn is typed in now; with files attached the message is a paste, not a command.
+    const typedNow = busy && files.length === 0 && runsMidTurn(agent, text)
+    if (holding && !typedNow) {
       // Left with the pane's daemon until the agent is ready for a message; shown in the queue meanwhile.
       setError(null)
       const message = withRestoreNote(note, buildAttachmentMessage(text, files))
@@ -329,7 +331,7 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
       return
     }
     void send(withRestoreNote(note, buildAttachmentMessage(text, files))).then(settle)
-  }, [disabledReason, sending, conversation, send, holding, paneQueue])
+  }, [disabledReason, sending, conversation, send, holding, paneQueue, agent, busy])
 
   // The ones this box took back, so their leaving the queue is not read as the daemon having sent them.
   const taken = useRef(new Set<string>())

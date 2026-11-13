@@ -2007,6 +2007,7 @@ impl Daemon {
                         return Ok(());
                     }
                 };
+                let origin = worktree_origin_of(&settings.cwd);
                 let c = Conversation {
                     id,
                     generation,
@@ -2041,6 +2042,14 @@ impl Daemon {
                         .iter()
                         .find(|conversation| conversation.id == id)
                         .is_some_and(|conversation| conversation.archived),
+                    // What the folder says now wins (the branch may have been switched in it);
+                    // the saved one stays when the folder says nothing (detached, or gone).
+                    worktree_origin: origin.or_else(|| {
+                        self.conversations
+                            .iter()
+                            .find(|conversation| conversation.id == id)
+                            .and_then(|conversation| conversation.worktree_origin.clone())
+                    }),
                 };
                 let mut proposed = self.conversations.clone();
                 proposed.retain(|c| c.id != id);
@@ -2604,6 +2613,62 @@ impl Daemon {
             self.send(client, ServerMsg::Error(error));
         }
         self.dirty = true;
+    }
+}
+
+/// Where the linked worktree holding `cwd` came from, if it is in one and on a branch (a
+/// detached HEAD has no branch to make the folder again from). Reads the checkout's `.git`
+/// files only; no git process runs.
+fn worktree_origin_of(cwd: &std::path::Path) -> Option<crate::conversation::WorktreeOrigin> {
+    let head = crate::gitfs::head(cwd).filter(|h| h.linked && !h.detached)?;
+    Some(crate::conversation::WorktreeOrigin {
+        main: head.main_root,
+        folder: head.top,
+        branch: head.branch,
+    })
+}
+
+#[cfg(test)]
+mod worktree_origin_tests {
+    use super::worktree_origin_of;
+    use std::path::Path;
+    use std::process::Command;
+
+    fn git(dir: &Path, args: &[&str]) {
+        let mut command = Command::new("git");
+        command.arg("-C").arg(dir).args(args);
+        let output = crate::proc::quiet(&mut command).output().unwrap();
+        assert!(output.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&output.stderr));
+    }
+
+    #[test]
+    fn only_a_linked_worktree_on_a_branch_has_an_origin() {
+        let root = std::env::temp_dir().join(format!("maitty-origin-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let main = root.join("main");
+        std::fs::create_dir_all(&main).unwrap();
+        git(&main, &["init", "-q", "-b", "main"]);
+        git(&main, &["config", "user.email", "test@example.invalid"]);
+        git(&main, &["config", "user.name", "Test"]);
+        git(&main, &["config", "commit.gpgsign", "false"]);
+        std::fs::write(main.join("a.txt"), "one\n").unwrap();
+        git(&main, &["add", "a.txt"]);
+        git(&main, &["commit", "-q", "-m", "first"]);
+        let task = root.join("task");
+        git(&main, &["worktree", "add", "-q", "-b", "task", task.to_str().unwrap()]);
+        let loose = root.join("loose");
+        git(&main, &["worktree", "add", "-q", "--detach", loose.to_str().unwrap()]);
+
+        assert_eq!(worktree_origin_of(&main), None, "the main checkout is not a worktree");
+        assert_eq!(worktree_origin_of(&loose), None, "a detached HEAD has no branch");
+        let origin = worktree_origin_of(&task)
+            .expect("a linked worktree on a branch");
+        assert_eq!(origin.branch, "task");
+        // The temp dir may be spelled with 8.3 short names; compare what each names on disk.
+        let named = |p: &Path| crate::daemon::clean_path(std::fs::canonicalize(p).unwrap());
+        assert_eq!(named(&origin.folder), named(&task));
+        assert_eq!(named(&origin.main), named(&main));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
 

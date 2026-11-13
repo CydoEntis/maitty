@@ -1,4 +1,5 @@
 import { CODEX_START_MODES, PICKABLE_MODES } from '@/features/chat/chatMeta'
+import { isSlashLine } from '@/features/chat/slashCommands'
 import { ANSWER_KEYS, type AskChoice } from '@/features/chat/permissionAsk'
 import type { ChatAgent, StructuredAgent } from './chatView'
 
@@ -44,6 +45,8 @@ export type AgentAbilities = {
   readonly discoversModels: boolean
   /** The agent reports what it asks through its own hooks, so its screen is never read for the question. */
   readonly hookedAsks: boolean
+  /** Slash commands (names, no slash) the agent runs at once beside a working turn, so the chat types them in instead of queueing them. */
+  readonly midTurnCommands: readonly string[]
 }
 
 const LETTERS: Readonly<Record<SidebarAnswer, string>> = { y: 'y', a: 'a', n: 'n' }
@@ -60,6 +63,7 @@ const NONE: AgentAbilities = {
   resumeSaved: false,
   discoversModels: false,
   hookedAsks: false,
+  midTurnCommands: [],
 }
 
 const AGENT_ABILITIES: Readonly<Record<ChatAgent, AgentAbilities>> = {
@@ -75,6 +79,7 @@ const AGENT_ABILITIES: Readonly<Record<ChatAgent, AgentAbilities>> = {
     resumeSaved: true,
     discoversModels: true,
     hookedAsks: true,
+    midTurnCommands: ['btw'],
   },
   codex: {
     slashCommands: { list: 'window', skillsAfterDollar: true, enterAfterPause: true },
@@ -88,6 +93,7 @@ const AGENT_ABILITIES: Readonly<Record<ChatAgent, AgentAbilities>> = {
     resumeSaved: true,
     discoversModels: true,
     hookedAsks: false,
+    midTurnCommands: [],
   },
   gemini: { ...NONE, bangToTerminal: true },
 }
@@ -108,4 +114,12 @@ export type StructuredAbility = 'structuredChat' | 'resumeSaved' | 'discoversMod
 /** Whether the agent has the ability, narrowing it to a `StructuredAgent` for the daemon call behind it. */
 export function hasAbility(agent: ChatAgent, ability: StructuredAbility): agent is StructuredAgent {
   return abilitiesOf(agent)[ability]
+}
+
+/**
+ * A one-line slash command that runs beside the agent's working turn: typed in now, because held until the turn ends it
+ * would answer too late. The name must match exactly (`/btwx`, `/BTW` and `/btw:x` are other commands).
+ */
+export function runsMidTurn(agent: string | null | undefined, text: string): boolean {
+  return isSlashLine(text) && abilitiesOf(agent).midTurnCommands.includes(text.slice(1).split(/\s/, 1)[0] ?? '')
 }

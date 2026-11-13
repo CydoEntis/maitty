@@ -302,6 +302,9 @@ pub struct Term {
     pub pinned: bool,
     /// Put away from the project lists; it keeps running (Archive pane).
     pub archived: bool,
+    /// The merged pull request it was put away for (`sessions.put_away_merged`): once brought
+    /// back, the same merge never puts it away again.
+    pub put_away_for: Option<String>,
     /// Snoozed until this time (unix seconds); cleared then, or when it needs you.
     pub snoozed_until: Option<u64>,
     pub model: String,
@@ -1027,6 +1030,7 @@ impl Term {
             label: String::new(),
             pinned: false,
             archived: false,
+            put_away_for: None,
             snoozed_until: None,
             model: String::new(),
             colors: crate::theme::Theme::named(&cfg.theme).terminal_foreground_background_rgb(),

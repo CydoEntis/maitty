@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useFakePaneQueue } from '../fakePaneQueue'
 import { FAKE_CONVERSATION, FakeDaemonHistory } from '../fakeDaemonHistory'
-import { forgetComposers } from '../composerStore'
+import { forgetComposers, updateComposer } from '../composerStore'
 import { carryDraft, entrustFirstMessage, forgetFirstMessages, heldFirstMessage, holdFirstMessage } from '../firstMessage'
 import { PASTE_END, PASTE_START, PASTE_SUBMIT_GAP_MS } from '../useChatComposer'
 import { ACTIVE_POLL_MS, IDLE_POLL_MS, forgetChatFeeds } from '../useChatFeed'
@@ -234,6 +234,52 @@ describe('a message written while a terminal agent works', () => {
 
     // The daemon no longer holds it, so the turn ending sends nothing more.
     expect(screen.getByRole('status', { name: 'The daemon holds' })).toHaveTextContent('')
+  })
+
+  it('is typed straight in when it is /btw, which Claude Code runs mid-turn, and is never queued', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const { typeInto } = open('Working')
+    await settle()
+    await user.type(screen.getByRole('textbox', { name: 'Message claude' }), '/btw which file is that?{Enter}')
+    await settle(10)
+
+    expect(typeInto).toHaveBeenCalledTimes(1)
+    expect(typeInto).toHaveBeenCalledWith('/btw which file is that?\r')
+    expect(screen.getByRole('status', { name: 'The daemon holds' })).toHaveTextContent('')
+    expect(screen.queryByRole('list', { name: 'Queued messages' })).not.toBeInTheDocument()
+  })
+
+  it('queues /btw while the agent has not said what it is doing yet, and any other command while it works', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const { typeInto } = open('None')
+    await settle()
+    await user.type(screen.getByRole('textbox', { name: 'Message claude' }), '/btw hi{Enter}')
+    await settle(10)
+    expect(typeInto).not.toHaveBeenCalled()
+    expect(screen.getByRole('status', { name: 'The daemon holds' })).toHaveTextContent('/btw hi')
+  })
+
+  it('queues /compact while the agent works', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const { typeInto } = open('Working')
+    await settle()
+    await user.type(screen.getByRole('textbox', { name: 'Message claude' }), '/compact{Enter}')
+    await settle(10)
+    expect(typeInto).not.toHaveBeenCalled()
+    expect(screen.getByRole('status', { name: 'The daemon holds' })).toHaveTextContent('/compact')
+  })
+
+  it('queues /btw when files are attached, as the message is then a paste and not a command', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const { typeInto } = open('Working')
+    await settle()
+    act(() => {
+      updateComposer(FAKE_CONVERSATION, (state) => ({ ...state, attachments: [{ id: 'f1', path: '/tmp/notes.txt', name: 'notes.txt', size: 3, kind: 'file', preview: null }] }))
+    })
+    await user.type(screen.getByRole('textbox', { name: 'Message claude' }), '/btw look{Enter}')
+    await settle(10)
+    expect(typeInto).not.toHaveBeenCalled()
+    expect(screen.getByRole('status', { name: 'The daemon holds' })).toHaveTextContent('/btw look')
   })
 
   it('goes back into the box when it could not be typed in, instead of vanishing', async () => {
