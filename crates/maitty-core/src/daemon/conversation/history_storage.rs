@@ -297,6 +297,10 @@ impl Cache {
             loaded => loaded,
         }
     }
+
+    /// A plain load that fails on anything unreadable. The daemon starts through
+    /// `load_or_rebuild`; this is the strict form the tests compare it with.
+    #[cfg(test)]
     pub(super) fn load(
         &self,
         conversation: ConversationId,
