@@ -9595,7 +9595,7 @@ fn an_agent_the_daemon_stopped_to_reload_is_not_remembered_when_its_restart_fail
 }
 
 #[test]
-fn a_conversation_terminal_closed_at_once_is_not_remembered_as_a_pane() {
+fn a_closed_conversation_terminal_is_remembered_once() {
     let (rt, (mut d, _rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();
     let (a, b) = two_panes(&mut d);
@@ -9603,6 +9603,45 @@ fn a_conversation_terminal_closed_at_once_is_not_remembered_as_a_pane() {
     d.terms.get_mut(&b).unwrap().conversation_id = Some(crate::conversation::ConversationId(9));
     d.command(0, Command::CloseSession { term: b }).unwrap();
     assert!(!d.terms.contains_key(&b), "a conversation's terminal closes at once");
-    assert!(closed_ids(&d).is_empty());
+    assert_eq!(closed_ids(&d), ["abc"]);
+    close(&mut d, &[a]);
+}
+
+#[test]
+fn a_conversation_terminal_its_hooks_never_named_is_remembered_by_its_conversation() {
+    use crate::conversation::{Conversation, ConversationId, ExecutionKind, NativeBinding, Provider, RecoveryState};
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (a, b) = two_panes(&mut d);
+    let cwd = d.terms[&b].cwd.clone();
+    d.terms.get_mut(&b).unwrap().conversation_id = Some(ConversationId(9));
+    d.conversations.push(Conversation {
+        id: ConversationId(9),
+        binding: NativeBinding {
+            provider: Provider::Codex,
+            session_id: "native-1".into(),
+            account: None,
+            profile: None,
+            config_root: cwd.clone(),
+            executable: PathBuf::from("codex"),
+            cwd: cwd.clone(),
+            worktree: None,
+        },
+        execution: ExecutionKind::Native,
+        generation: 1,
+        state: RecoveryState::Running,
+        settings: None,
+        awaiting_first_user_message: false,
+        title: Some("parser fix".into()),
+        archived: false,
+    });
+    d.command(0, Command::CloseSession { term: b }).unwrap();
+    let [kept] = d.closed_sessions.list() else {
+        panic!("one record: {:?}", d.closed_sessions.list());
+    };
+    assert_eq!(
+        (kept.agent.as_str(), kept.session.as_str(), kept.title.as_deref(), &kept.cwd),
+        ("codex", "native-1", Some("parser fix"), &cwd)
+    );
     close(&mut d, &[a]);
 }

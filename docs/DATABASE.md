@@ -167,8 +167,9 @@ A pane is recorded when a person closes it for good (`close_term`: a closed sess
 window has passed, a closed pane, tab or workspace), never while Undo can bring it back, and when
 its own process exits with a failure status (`portable-pty`'s exit status, not screen text) while
 the daemon did not stop it on purpose (`kill_tree`, an asleep agent, or the daemon stopping). A
-hidden spare is never recorded, nor is a conversation's terminal, which closes at once with no undo
-window. A chat is recorded when its undo
+hidden spare is never recorded. A conversation's terminal closes at once, with no undo window, and
+is recorded then like any pane; what its hooks never reported (agent, conversation id, name) comes
+from its conversation's binding and title. A chat is recorded when its undo
 window passes (`finish_chat_closes`). An agent running inside a pane's shell is not the pane's
 process, so its own exit code is not seen; that pane is recorded when it is closed while the agent
 still runs. A structured chat whose provider fails is not recorded yet.

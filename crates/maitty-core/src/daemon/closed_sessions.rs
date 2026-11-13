@@ -202,29 +202,40 @@ fn cleaned(session: ClosedSession) -> Option<ClosedSession> {
     })
 }
 
-/// A pane's agent session as it ends, or None for a pane with no agent conversation (a shell)
-/// or a hidden spare nobody used. Its name is the one you or the agent gave it, never a prompt.
-fn closed_pane(t: &Term) -> Option<ClosedSession> {
-    if t.spare {
-        return None;
-    }
-    let title = if t.label.trim().is_empty() { &t.name } else { &t.label };
-    Some(ClosedSession {
-        agent: t.agent.clone()?,
-        session: t.session.clone()?,
-        cwd: t.cwd.clone(),
-        branch: t.head.as_ref().map(|head| head.branch.clone()),
-        title: Some(title.clone()),
-        at: term::unix_now(),
-    })
-}
-
 impl Daemon {
-    /// Keep the agent session of a pane a person is closing for good. A conversation's terminal
-    /// closes at once, with no undo window, so it is left to its conversation.
+    /// A pane's agent session as it ends, or None for a pane with no agent conversation (a shell)
+    /// or a hidden spare nobody used. Its name is the one you or the agent gave it, never a prompt.
+    /// A conversation's terminal falls back on its conversation for what its hooks never said.
+    fn closed_pane(&self, t: &Term) -> Option<ClosedSession> {
+        if t.spare {
+            return None;
+        }
+        let chat = t
+            .conversation_id
+            .and_then(|id| self.conversations.iter().find(|c| c.id == id));
+        let named = if t.label.trim().is_empty() { &t.name } else { &t.label };
+        let title = Some(named.clone())
+            .filter(|name| !name.trim().is_empty())
+            .or_else(|| chat.and_then(|c| c.title.clone()));
+        Some(ClosedSession {
+            agent: t
+                .agent
+                .clone()
+                .or_else(|| chat.map(|c| c.binding.provider.agent_name().into()))?,
+            session: t
+                .session
+                .clone()
+                .or_else(|| chat.map(|c| c.binding.session_id.clone()))?,
+            cwd: t.cwd.clone(),
+            branch: t.head.as_ref().map(|head| head.branch.clone()),
+            title,
+            at: term::unix_now(),
+        })
+    }
+
+    /// Keep the agent session of a pane a person is closing for good.
     pub(super) fn remember_closed_pane(&mut self, term: TermId) {
-        let pane = self.terms.get(&term).filter(|t| t.conversation_id.is_none());
-        if let Some(closed) = pane.and_then(closed_pane) {
+        if let Some(closed) = self.terms.get(&term).and_then(|t| self.closed_pane(t)) {
             self.closed_sessions.remember(closed);
         }
     }
@@ -232,7 +243,7 @@ impl Daemon {
     /// The pane's output ended before the daemon learned how its process exited: keep what it
     /// would record until `pane_process_exited` says.
     pub(super) fn await_pane_exit(&mut self, term: TermId) {
-        if let Some(closed) = self.terms.get(&term).filter(|t| !t.killed).and_then(closed_pane) {
+        if let Some(closed) = self.terms.get(&term).filter(|t| !t.killed).and_then(|t| self.closed_pane(t)) {
             self.unreaped.insert(term, closed);
         }
     }
@@ -247,7 +258,7 @@ impl Daemon {
         }
         let closed = match self.terms.get(&term) {
             Some(t) if t.asleep || t.killed => None,
-            Some(t) => closed_pane(t),
+            Some(t) => self.closed_pane(t),
             None => ended,
         };
         if let Some(closed) = closed {

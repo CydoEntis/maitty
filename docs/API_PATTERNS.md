@@ -680,7 +680,8 @@ for good or whose agent exited with an error, newest first, at most 50 (what is 
 [DATABASE](DATABASE.md#project-specific-closed-sessions)). Only a person's client may ask; a pane or a
 structured runtime is refused, since the list names the folders of other work. A window may ask
 another machine's daemon for its list over that machine's line; the answer is cleaned
-(SECURITY, "remote daemon"). The query has its own `introduced_in` arm (`CLOSED_SESSIONS_SINCE`);
+(SECURITY, "remote daemon"). The query and the reply each have their own `introduced_in` arm
+(`CLOSED_SESSIONS_SINCE`, in `ClientMsg::introduced_in` and `ServerMsg::introduced_in`);
 `COMPATIBLE_SINCE` stays 78, since an older daemon is simply not asked.
 
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
