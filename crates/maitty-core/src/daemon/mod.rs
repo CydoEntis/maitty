@@ -319,6 +319,8 @@ impl SentState {
     fn encode(snap: &Snapshot) -> Option<Self> {
         let mut rest = snap.clone();
         rest.terms.clear();
+        // The revision numbers the message, so it is no part of what the message says changed.
+        rest.revision = 0;
         let rest = crate::protocol::encode(&rest).ok()?;
         let terms = snap
             .terms
@@ -390,6 +392,9 @@ struct Daemon {
     last_saved: String,
     /// What each surface's attached clients last received (see `publish_state`).
     sent_state: HashMap<Surface, SentState>,
+    /// How many states and pane deltas each surface's attached clients have been sent
+    /// (`Snapshot::revision`).
+    sent_revision: HashMap<Surface, u64>,
     conversation_news: conversation::news::News,
     /// What was last noted for whoever replaces this server (see `restart`).
     last_activity: Option<crate::restart::Activity>,
@@ -1184,6 +1189,7 @@ impl Daemon {
             last_output_save: Instant::now(),
             last_saved: String::new(),
             sent_state: HashMap::new(),
+            sent_revision: HashMap::new(),
             conversation_news: conversation::news::News::default(),
             last_activity: None,
             check_dir: persist::check_output_dir(),
@@ -1392,10 +1398,14 @@ impl Daemon {
     /// Send the surface's clients what changed since the last state they got: only the panes
     /// that differ when the rest of the snapshot is the same, the whole snapshot otherwise, and
     /// nothing when nothing visible changed. Compared as encoded bytes, so no field is left out.
-    fn publish_state(&mut self, surface: Surface, snap: Snapshot) {
+    /// Each message sent carries the surface's next revision.
+    fn publish_state(&mut self, surface: Surface, mut snap: Snapshot) {
         let attached = |client: &Client| client.attach && client.surface == surface;
+        let revision = self.revision_of(surface) + 1;
+        snap.revision = revision;
         let Some(encoded) = SentState::encode(&snap) else {
             self.sent_state.remove(&surface);
+            self.sent_revision.insert(surface, revision);
             self.broadcast(attached, ServerMsg::State(snap));
             return;
         };
@@ -1414,14 +1424,19 @@ impl Daemon {
                     .copied()
                     .collect();
                 (!changed.is_empty() || !removed.is_empty())
-                    .then_some(ServerMsg::TermsChanged { changed, removed })
+                    .then_some(ServerMsg::TermsChanged { changed, removed, revision })
             }
             _ => Some(ServerMsg::State(snap)),
         };
         self.sent_state.insert(surface, encoded);
         if let Some(message) = message {
+            self.sent_revision.insert(surface, revision);
             self.broadcast(attached, message);
         }
+    }
+
+    fn revision_of(&self, surface: Surface) -> u64 {
+        self.sent_revision.get(&surface).copied().unwrap_or(0)
     }
 
     fn broadcast(&self, filter: impl Fn(&Client) -> bool, msg: ServerMsg) {
@@ -2910,6 +2925,7 @@ impl Daemon {
     /// its own native conversation terminals (ADR 0004).
     fn snapshot_for(&self, surface: Surface) -> Snapshot {
         let mut snap = self.snapshot();
+        snap.revision = self.revision_of(surface);
         snap.terms.retain(|id, _| self.shown_to(*id, surface));
         snap.workspaces.retain(|ws| {
             ws.tabs.iter().all(|tab| {
@@ -3052,6 +3068,7 @@ impl Daemon {
                 .collect(),
             spent_today: self.spent_today(),
             today: usage::today(&self.turns, &self.spent, term::unix_now()),
+            revision: 0,
         }
     }
 

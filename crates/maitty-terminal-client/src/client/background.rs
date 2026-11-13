@@ -207,7 +207,7 @@ impl App {
                 self.check_view_sync();
                 self.maybe_restart_daemon(last_session_closed);
             }
-            ServerMsg::TermsChanged { changed, removed } => {
+            ServerMsg::TermsChanged { changed, removed, .. } => {
                 // Re-entering as a whole snapshot runs every rule a state update runs for this
                 // machine: the daemon-id check, the cleaning and caps, and the side effects. A
                 // delta arriving before any state merges into an empty snapshot, which has no

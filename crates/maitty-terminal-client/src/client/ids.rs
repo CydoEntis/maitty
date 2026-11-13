@@ -256,6 +256,7 @@ mod tests {
         let delta = crate::protocol::ServerMsg::TermsChanged {
             changed: vec![crate::protocol::TermInfo { id: 70, ..pane }],
             removed: Vec::new(),
+            revision: 0,
         };
         app.on_machine_server(MachineId(1), delta);
         let held = &app.remotes[&MachineId(1)].snap;
@@ -272,6 +273,7 @@ mod tests {
         app.on_server(crate::protocol::ServerMsg::TermsChanged {
             changed: vec![crate::protocol::TermInfo { id: 70, ..pane }],
             removed: Vec::new(),
+            revision: 0,
         });
         assert_eq!(app.snap.daemon_id.as_deref(), Some(BOX_A));
         assert!(app.snap.terms.contains_key(&70));
@@ -288,6 +290,7 @@ mod tests {
             crate::protocol::ServerMsg::TermsChanged {
                 changed: vec![pane],
                 removed: Vec::new(),
+                revision: 0,
             },
         );
         assert!(app.refused.contains_key(&MachineId(1)));
@@ -303,6 +306,7 @@ mod tests {
             crate::protocol::ServerMsg::TermsChanged {
                 changed: vec![pane],
                 removed: Vec::new(),
+                revision: 0,
             },
         );
         assert!(app.refused.is_empty());
