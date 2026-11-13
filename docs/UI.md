@@ -598,6 +598,20 @@ The sidebar shows or collapses (`App::sidebar`) to a narrow column (`side.rs` `d
 - **Subagents** (`side::turn_subagents`, from `TermInfo::subagent_activity`, the daemon's record of what the agent's own hooks reported): only those of the turn the agent is in, so none once it is done or idle; a finished one clears 15 seconds after it reports (`FINISHED_LINGER_SECS`), so a long turn does not pile up rows that look stuck. One whose stop never reached the daemon clears when the agent's turn ends and its own list of background work (Claude's `background_tasks`, `Hook::background_reported`) names no helper still running: the agent's list outranks the daemon's count, so a lost stop neither leaves a row nor holds the session as working. Under any other session they are one row, `└` and a mark each; under the open session one row each, `├` / `└`, the mark and the name. A click on one opens its parent's pane: the agent shows its subagents in its own terminal, and the TUI draws no chat of its own.
 - **Foot** (the bottom border): at the left the release chip, ` ↑ v0.15.0 ` in the accent when a release is out, ` ↻ restart ` once one is installed and not running, else the version this is, muted; it opens a menu upward (`menu.rs` `release_menu`: Update to …, or Restart onto the new version; Running …; Release notes). At the right ` menu `, the Menu.
 - **Row menu** (right-click on a session, or `.` with the cursor on one): see *Menus*. Anywhere else `.` is the Menu.
+- **Put away** (`screen/put_away.rs`): the row menu of a finished or idle session in a daemon terminal (shells too; not a
+  chat, whose daemon archive closes it, and not one held by its plan limit or whose last command failed) has **Put away**.
+  It sends `Command::ArchivePane { archived: true }` and closes, stops and moves nothing; the closing banner offers Undo
+  for 6 seconds (`Put away <name> · <leader> then Ctrl+Z undo 6s`), which sends `archived: false`. A close still in its
+  undo window keeps that banner: the put-away says in a toast that the Put away list brings it back. A session with the
+  flag (put away here or in the desktop app) is left out of the sidebar, the rail, the Inbox and the session search
+  (`screen_model`, `put_away::hidden`), except while it needs you: it asks (`check::needs`), an agent's command failed,
+  or its plan limit holds it (a plain shell stays put away whatever its last command did). Then it is listed as usual,
+  still put away on the daemon, and its row menu has **Bring back** in place of Put away. The sidebar menu's
+  **Put away…** and Search commands' **Sessions put away** (`Action::PutAway`, `put-away`, no default key) open a menu
+  upward from the sidebar's foot, `Bring back <name> · <project>` per session in creation order; a pick sends
+  `archived: false`. With none, a toast says `Nothing is put away`. On a machine that is down the row menu offers
+  neither, the list keeps the row with `· offline` after it, and either action is refused with an error toast. **Close project** counts its put-away sessions
+  (`2 panes, 1 put away`) and leaves them running.
 - **Keys.** ↑ ↓ walk the sessions; → or Enter opens one; `1`–`9` open that row.
 
 **Status glyphs** (`screen/status_mark.rs`): working is the chosen spinner in the accent (Dots, the design's Braille, held 80 ms a frame, Snake 90 ms, Bars 85 ms, other spinners 90 ms; Reduce motion shows the first frame); needs you is a `●` in `blocked` amber, done in `done` green, problem (a failed command, a failed check) in `err` red, idle in `idle` with the name dimmed; `┆` for a machine that cannot be reached. By default the states differ by colour only, as the product owner chose. Settings › Appearance › **Status glyphs** `Unicode` (`ui.glyphs = "unicode"`) gives each its own shape for colour-blind users: `●` needs you, `✓` done, `✕` problem, `○` idle.
@@ -628,11 +642,11 @@ system's, so it takes no theme. Closing the window still closes the app; the ite
   them while it is open but are not shown), the chosen row on `hov`, and the item that ends something last,
   in red, after a line. It opens under its point, or above it with no room below (the sidebar foot's chips).
   **Session menu** (`.` or right-click on a session row): Open and Open in split (not for the session on
-  screen), Rename `r`, Copy path and, when they apply, Changes, Snapshots, the check items and queued
-  follow-ups; **Stop session** (an agent) or **Close shell** last. **Pane menu**: Rename `r`, Split right `s`,
+  screen), Rename `r`, Copy path and, when they apply, Changes, Snapshots, the check items, queued
+  follow-ups and Put away; **Stop session** (an agent) or **Close shell** last. **Pane menu**: Rename `r`, Split right `s`,
   Split down `S`, Find, the right-click toggle, Project… (worktrees, snapshots, the check), **Close pane** `x`
-  last. **Sidebar menu** (the ` menu ` chip): Filter sessions `/`, Inbox `i`, Usage and cost `u`, Settings `,`,
-  Keys `?`; the full Menu is the leader's `.`.
+  last. **Sidebar menu** (the ` menu ` chip): Filter sessions `/`, Add machine…, Inbox `i`, Put away…, Usage and cost `u`,
+  Settings `,`, Keys `?`; the full Menu is the leader's `.`.
 - **Reconnecting** (`client/screen/service.rs`): when the window loses its own daemon without being told to
   quit, it stays. An amber bar on the first row of the pane says
   `┆ Reconnecting to maittyd · sessions still running · try N of 5 · next in Ns · r retry`; tries wait 1, 2, 4, 8 and 15 s

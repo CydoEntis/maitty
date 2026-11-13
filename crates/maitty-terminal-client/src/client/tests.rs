@@ -3025,7 +3025,7 @@ mod screen_tests {
                 panic!("the menu chip opens its menu: {:?}", std::mem::discriminant(&app.mode))
             };
             let labels: Vec<&str> = menu.items.iter().map(|(l, _)| l.as_str()).collect();
-            assert_eq!(labels, ["Filter sessions", "Add machine…", "Inbox", "Usage and cost", "Settings", "Keys"]);
+            assert_eq!(labels, ["Filter sessions", "Add machine…", "Inbox", "Put away…", "Usage and cost", "Settings", "Keys"]);
             // The full Menu is the leader's `.`; its rows are clickable.
             app.act(Action::Menu);
             assert!(matches!(app.mode, Mode::Actions { .. }));
