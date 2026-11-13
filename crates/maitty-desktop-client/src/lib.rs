@@ -258,10 +258,16 @@ fn saved_agent_count() -> usize {
         .count()
 }
 
-fn stop_mismatched_daemon() -> Result<()> {
-    let pid = std::fs::read_to_string(ipc::pid_file())
+/// The process the pid file names as this socket's daemon.
+fn daemon_pid() -> Option<u32> {
+    std::fs::read_to_string(ipc::pid_file())
         .ok()
         .and_then(|value| value.trim().parse::<u32>().ok())
+}
+
+/// Stops the daemon the pid file names, and says which process that was.
+fn stop_mismatched_daemon() -> Result<u32> {
+    let pid = daemon_pid()
         .filter(|pid| is_app_daemon(*pid))
         .ok_or_else(|| {
             anyhow::anyhow!("couldn't identify the local {APP_NAME} ({APP_COMMAND}) daemon process")
@@ -287,7 +293,7 @@ fn stop_mismatched_daemon() -> Result<()> {
         status.success(),
         "couldn't stop the old daemon process {pid}"
     );
-    Ok(())
+    Ok(pid)
 }
 
 fn is_app_daemon(pid: u32) -> bool {
@@ -363,17 +369,31 @@ pub async fn restart_stale_daemon(app_version: &str, expected_version: &str) -> 
 /// wait until it lets go of the socket.
 async fn stop_local_daemon() -> Result<()> {
     validate_restart_activity(read_activity().as_ref(), session_file().is_file())?;
-    tokio::task::spawn_blocking(stop_mismatched_daemon)
+    let stopped = tokio::task::spawn_blocking(stop_mismatched_daemon)
         .await
         .context(format!("waiting for the local {APP_NAME} service to stop"))??;
     for _ in 0..50 {
-        if !ipc::is_running().await {
-            ipc::remove_pid_file();
+        let listening = ipc::is_running().await;
+        let named = daemon_pid();
+        if stopped_daemon_is_gone(stopped, listening, named) {
+            // A daemon that already took over wrote its own pid file: only the stopped one's goes.
+            if named == Some(stopped) {
+                ipc::remove_pid_file();
+            }
             return Ok(());
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    bail!("the old daemon still holds the local service socket")
+    bail!(
+        "the old {APP_NAME} service (process {stopped}) did not stop within 5 seconds, so it still holds the local service socket"
+    )
+}
+
+/// Whether the stopped daemon let go of the socket. Something listening is not proof that it
+/// has not: this app's own connections start the next daemon the moment the old one drops, and
+/// only one daemon holds a socket, so a pid file naming another process means the old one is gone.
+fn stopped_daemon_is_gone(stopped: u32, listening: bool, named: Option<u32>) -> bool {
+    !listening || named.is_some_and(|pid| pid != stopped)
 }
 
 fn validate_restart_confirmation(daemon_protocol: u32, expected_protocol: u32) -> Result<()> {
@@ -2234,9 +2254,18 @@ async fn receive_reply(reader: &mut ipc::Reader) -> Result<Reply> {
 #[cfg(test)]
 mod restart_confirmation_tests {
     use super::{
-        Activity, can_restart_mismatched_daemon, is_daemon_command_line, update_status,
-        validate_restart_activity, validate_restart_confirmation,
+        Activity, can_restart_mismatched_daemon, is_daemon_command_line, stopped_daemon_is_gone,
+        update_status, validate_restart_activity, validate_restart_confirmation,
     };
+
+    #[test]
+    fn a_daemon_that_took_over_the_socket_means_the_stopped_one_is_gone() {
+        assert!(stopped_daemon_is_gone(7, false, Some(7)));
+        assert!(stopped_daemon_is_gone(7, false, None));
+        assert!(stopped_daemon_is_gone(7, true, Some(8)));
+        assert!(!stopped_daemon_is_gone(7, true, Some(7)));
+        assert!(!stopped_daemon_is_gone(7, true, None));
+    }
 
     #[test]
     fn the_daemon_to_restart_may_be_the_terminal_apps_or_the_one_the_desktop_app_bundles() {
