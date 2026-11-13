@@ -78,7 +78,7 @@ conversation continuity are planned in phases 34–37:
 - `maitty doctor` — shipped — `crates/maitty-terminal-client/src/cli.rs`
 - Dark and light themes are two remembered slots and an appearance switch; the browser has a Dark and a Light tab; Vim, PaperColor Light, Flexoki Light, Selenized Light and Modus Operandi are added — phase 40 — `crates/maitty-settings/src/theme.rs`, `crates/maitty-terminal-client/src/client/themes.rs`
 - A Codex pane's working, needs-you and finished come from Codex's own hooks, with the screen guess only as a per-pane fallback; needs-you and finished never ring for the pane you are looking at, and needs-you stays quiet for 2 minutes after it rings — phase 39 — `crates/adapters/maitty-provider-codex/src/status_hooks.rs`, `crates/maitty-core/src/daemon/status.rs`
-- GitHub repositories in the desktop app: clone from an address or from a list of your repositories, on this computer or another machine; who is signed in to GitHub on each machine, and signing in, in Settings; changes, pull, push, commit and Create PR for a session on another machine. Still planned: a GitHub account and commit identity per folder (MAITTY-337 to 340) — Plane module "GitHub repos" — [intent](features/github-repos/intent.md)
+- GitHub repositories in the desktop app: clone from an address or from a list of your repositories, on this computer or another machine; who is signed in to GitHub on each machine, and signing in, in Settings; changes, pull, push, commit and Create PR for a session on another machine; a GitHub account and commit identity per folder, added, changed and removed in Settings › GitHub with the lines shown before they are written — Plane module "GitHub repos" — [intent](features/github-repos/intent.md)
 
 ## Out
 

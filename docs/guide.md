@@ -746,7 +746,12 @@ which shows a one-time code and opens GitHub in your browser. Finish it, close t
 updates. A machine with somebody signed in has **Details**: every account signed in there (the active one
 marked), the name and email its commits carry, and its folder rules, the folders where git uses another
 account and identity. A rule you made by hand in your git config shows as "set outside Maitty". **Add
-another account** starts the same sign-in. Files, worktrees and the other features that read a pane's files
+another account** starts the same sign-in. **Add a folder rule** gives a folder its own account, name and
+email: choose the folder, pick one of the accounts signed in there, type the name and email, and click
+**Show the lines** to see exactly what Maitty will write to git's config. Nothing changes until you click
+**Write these lines**. From then on, commits in any repository inside that folder carry that name and
+email, and git signs in to GitHub there as that account. A rule Maitty made has **Change** and **Remove**;
+Remove asks once. Cloning into a folder a rule covers says "Will use <account>" under the destination. Files, worktrees and the other features that read a pane's files
 are for this computer's sessions only; Changes is the exception described above.
 
 **Dropping files or folders on a session of another machine** sends them there: drag up to 10 files or folders from

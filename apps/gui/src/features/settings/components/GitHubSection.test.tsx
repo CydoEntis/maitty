@@ -1,14 +1,17 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GitHubReport } from '@/api/githubAccounts'
-import type { GitIdentityReport } from '@/api/gitIdentities'
+import type { GitConfigWrite, GitIdentityReport, GitRuleChange } from '@/api/gitIdentities'
 import { LOCAL_HEAD, type MachineHead } from '@/features/workspace/model/machines'
 import { GitHubSection } from './GitHubSection'
 
 const api = vi.hoisted(() => ({ loadGitHubAccounts: vi.fn<(machine: number) => Promise<GitHubReport>>() }))
 vi.mock('@/api/githubAccounts', () => api)
-const git = vi.hoisted(() => ({ loadGitIdentities: vi.fn<(machine: number) => Promise<GitIdentityReport>>() }))
+const git = vi.hoisted(() => ({
+  loadGitIdentities: vi.fn<(machine: number) => Promise<GitIdentityReport>>(),
+  changeGitRule: vi.fn<(machine: number, change: GitRuleChange) => Promise<GitConfigWrite[]>>(),
+}))
 vi.mock('@/api/gitIdentities', () => git)
 
 const KINGDOM: MachineHead = { ...LOCAL_HEAD, key: 'machine-3', machine: 3, name: 'kingdom', label: 'kingdom', chip: { glyph: '●', word: 'connected', tone: 'ok' } }
@@ -32,6 +35,7 @@ afterEach(cleanup)
 beforeEach(() => {
   api.loadGitHubAccounts.mockReset()
   git.loadGitIdentities.mockReset()
+  git.changeGitRule.mockReset()
 })
 
 describe('the GitHub page of Settings', () => {
@@ -136,7 +140,7 @@ describe('the GitHub page of Settings', () => {
     expect(accounts).toEqual(['kingdom-meactive', 'work-me'])
     expect(await details.findByText('Commits as Casey Example <casey@example.invalid>')).toBeInTheDocument()
     const rules = within(details.getByRole('list', { name: 'Folder rules' })).getAllByRole('listitem').map((item) => item.textContent)
-    expect(rules).toEqual(['/home/dev/workwork-me · Casey At Work <casey@work.invalid>', '~/ossset outside Maitty'])
+    expect(rules).toEqual(['/home/dev/workwork-me · Casey At Work <casey@work.invalid>ChangeRemove', '~/ossset outside Maitty'])
     expect(screen.getByRole('button', { name: 'Accounts and folder rules on kingdom' })).toHaveAttribute('aria-expanded', 'true')
   })
 
@@ -192,5 +196,76 @@ describe('the GitHub page of Settings', () => {
     answers({ 0: signedIn('me') })
     await user.click(screen.getByRole('button', { name: 'Check again' }))
     expect(await screen.findByText('Signed in as me')).toBeInTheDocument()
+  })
+
+  const WORK = { name: 'Casey At Work', email: 'casey@work.invalid', login: 'work-me' }
+  const WITH_RULE: GitIdentityReport = { ...WHO, rules: [{ folder: '/home/dev/work', identity: WORK }, { folder: '~/oss', identity: null }] }
+  const LINES: GitConfigWrite[] = [
+    { file: '/home/dev/.gitconfig', lines: ['includeIf.gitdir:/home/dev/work/.path = /data/git-identities/ab.gitconfig'] },
+    { file: '/data/git-identities/ab.gitconfig', lines: ['user.name = Casey At Work', 'user.email = casey@work.invalid'] },
+  ]
+
+  it('removes a rule only after asking once, and reads the rules again', async () => {
+    const user = userEvent.setup()
+    answers({ 0: signedIn('me', 'work-me') })
+    git.loadGitIdentities.mockResolvedValue(WITH_RULE)
+    git.changeGitRule.mockResolvedValue([])
+    render(<GitHubSection machines={[LOCAL_HEAD]} />)
+    const details = await openRow(user, 'This computer')
+    await user.click(await details.findByRole('button', { name: 'Remove the rule for /home/dev/work' }))
+    expect(git.changeGitRule).not.toHaveBeenCalled()
+    git.loadGitIdentities.mockResolvedValue({ ...WHO, rules: [{ folder: '~/oss', identity: null }] })
+    await user.click(details.getByRole('button', { name: 'Remove this rule' }))
+    expect(git.changeGitRule).toHaveBeenCalledExactlyOnceWith(0, { kind: 'remove', folder: '/home/dev/work' })
+    await waitFor(() => { expect(details.queryByText('/home/dev/work')).toBeNull() })
+  })
+
+  it('keeps the rule on screen and says why when the machine will not remove it', async () => {
+    const user = userEvent.setup()
+    answers({ 0: signedIn('me', 'work-me') })
+    git.loadGitIdentities.mockResolvedValue(WITH_RULE)
+    git.changeGitRule.mockRejectedValue(new Error('the global git config is locked'))
+    render(<GitHubSection machines={[LOCAL_HEAD]} />)
+    const details = await openRow(user, 'This computer')
+    await user.click(await details.findByRole('button', { name: 'Remove the rule for /home/dev/work' }))
+    await user.click(details.getByRole('button', { name: 'Remove this rule' }))
+    expect((await details.findByRole('alert')).textContent).toBe('the global git config is locked')
+    expect(details.getByText('/home/dev/work')).toBeInTheDocument()
+    expect(git.loadGitIdentities).toHaveBeenCalledOnce()
+  })
+
+  it('offers no change or removal for a rule set outside Maitty', async () => {
+    const user = userEvent.setup()
+    answers({ 0: signedIn('me') })
+    git.loadGitIdentities.mockResolvedValue(WITH_RULE)
+    render(<GitHubSection machines={[LOCAL_HEAD]} />)
+    const details = await openRow(user, 'This computer')
+    await details.findByText('~/oss')
+    expect(details.queryByRole('button', { name: 'Remove the rule for ~/oss' })).toBeNull()
+    expect(details.queryByRole('button', { name: 'Change the rule for ~/oss' })).toBeNull()
+  })
+
+  it('changes a rule on another machine: shows the lines first and writes only on Write these lines', async () => {
+    const user = userEvent.setup()
+    answers({ 0: signedIn('me'), 3: signedIn('kingdom-me', 'work-me') })
+    git.loadGitIdentities.mockResolvedValue(WITH_RULE)
+    git.changeGitRule.mockResolvedValue(LINES)
+    render(<GitHubSection machines={[LOCAL_HEAD, KINGDOM]} />)
+    const details = await openRow(user, 'kingdom')
+    await user.click(await details.findByRole('button', { name: 'Change the rule for /home/dev/work' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Change the folder rule on kingdom' })
+    const form = within(dialog)
+    expect(form.getByRole('textbox', { name: 'Folder on kingdom' })).toHaveValue('/home/dev/work')
+    expect(form.getByRole('combobox', { name: 'GitHub account' })).toHaveValue('work-me')
+    await user.clear(form.getByRole('textbox', { name: 'Commit name' }))
+    await user.type(form.getByRole('textbox', { name: 'Commit name' }), 'Casey W')
+    await user.click(form.getByRole('button', { name: 'Show the lines' }))
+    const changed = { ...WORK, name: 'Casey W' }
+    expect(git.changeGitRule).toHaveBeenCalledExactlyOnceWith(3, { kind: 'preview', folder: '/home/dev/work', identity: changed })
+    expect(await form.findByText('/data/git-identities/ab.gitconfig')).toBeInTheDocument()
+    expect(git.changeGitRule.mock.calls.some(([, change]) => change.kind === 'apply')).toBe(false)
+    await user.click(form.getByRole('button', { name: 'Write these lines' }))
+    expect(git.changeGitRule).toHaveBeenLastCalledWith(3, { kind: 'apply', folder: '/home/dev/work', identity: changed })
+    await waitFor(() => { expect(screen.queryByRole('dialog')).toBeNull() })
   })
 })

@@ -1,9 +1,18 @@
 import { useEffect, useState } from 'react'
+import { chooseProjectFolder } from '@/api/folderPicker'
 import type { GitHubAccount } from '@/api/githubAccounts'
-import { loadGitIdentities, type GitIdentityReport, type GitIdentityRule } from '@/api/gitIdentities'
+import { changeGitRule, loadGitIdentities, type GitIdentity, type GitIdentityReport, type GitIdentityRule } from '@/api/gitIdentities'
+import { LOCAL_MACHINE } from '@/api/machines'
 import { errorMessage } from '@/lib/error-message'
+import { useRemoteFolderPick } from '@/features/workspace/components/useRemoteFolderPick'
+import { GitRuleDialog } from './GitRuleDialog'
 
 type Loaded = { status: 'loading' } | { status: 'ready'; report: GitIdentityReport } | { status: 'failed'; message: string }
+type MaittyRule = { folder: string; identity: GitIdentity }
+/** The rule dialog: adding one (no rule), or changing the one given. */
+type Editing = { rule?: MaittyRule | undefined } | null
+/** Removing a rule: asked once, then sent. */
+type Removing = { folder: string; sending: boolean } | null
 
 /** What the row says about the name and email commits carry where no rule applies. */
 function defaultWords(report: GitIdentityReport): string {
@@ -20,7 +29,39 @@ function ruleWords(rule: GitIdentityRule): string {
   return `${login} · ${name} <${email}>`
 }
 
-function Identities({ state, active }: { state: Loaded; active: string | undefined }) {
+type RuleActions = {
+  removing: Removing
+  onChange: (rule: MaittyRule) => void
+  onRemove: (folder: string) => void
+  onConfirmRemove: () => void
+  onKeep: () => void
+}
+
+function RuleRow({ rule, actions }: { rule: GitIdentityRule; actions: RuleActions | undefined }) {
+  const { identity, folder } = rule
+  const asking = actions?.removing?.folder === folder
+  const sending = actions?.removing?.sending === true
+  return (
+    <li>
+      <span>{folder}</span>
+      <small>{ruleWords(rule)}</small>
+      {actions !== undefined && identity !== null && !asking && (
+        <>
+          <button type="button" className="mx-text-button" aria-label={`Change the rule for ${folder}`} onClick={() => { actions.onChange({ folder, identity }) }}>Change</button>
+          <button type="button" className="mx-text-button" aria-label={`Remove the rule for ${folder}`} onClick={() => { actions.onRemove(folder) }}>Remove</button>
+        </>
+      )}
+      {actions !== undefined && asking && (
+        <>
+          <button type="button" className="mx-text-button" disabled={sending} onClick={actions.onConfirmRemove}>{sending ? 'Removing…' : 'Remove this rule'}</button>
+          <button type="button" className="mx-text-button" disabled={sending} onClick={actions.onKeep}>Keep</button>
+        </>
+      )}
+    </li>
+  )
+}
+
+function Identities({ state, active, actions }: { state: Loaded; active: string | undefined; actions: RuleActions | undefined }) {
   if (state.status === 'loading') return <p>Reading git’s settings…</p>
   if (state.status === 'failed') return <p role="alert">Could not read git’s settings: {state.message}</p>
   const { report } = state
@@ -34,7 +75,7 @@ function Identities({ state, active }: { state: Loaded; active: string | undefin
         ? <p>{active === undefined ? 'No folder has a rule of its own' : `Every folder uses ${active}`}</p>
         : (
           <ul aria-label="Folder rules">
-            {report.rules.map((rule) => <li key={rule.folder}><span>{rule.folder}</span><small>{ruleWords(rule)}</small></li>)}
+            {report.rules.map((rule) => <RuleRow key={rule.folder} rule={rule} actions={actions} />)}
           </ul>
         )}
     </>
@@ -43,8 +84,8 @@ function Identities({ state, active }: { state: Loaded; active: string | undefin
 
 /**
  * Under a machine's row on the GitHub page: every account signed in there, the name and email its
- * commits carry, and the folders where a rule gives another account and identity. Read from that
- * machine's `gh` and git; nothing is changed from here but starting another sign-in.
+ * commits carry, and the folders where a rule gives another account and identity. A rule Maitty
+ * wrote can be changed or removed here, and another added; that machine's daemon writes git's config.
  */
 export function GitHubDetails({ machine, label, accounts, asked, onAddAccount }: {
   machine: number
@@ -56,6 +97,11 @@ export function GitHubDetails({ machine, label, accounts, asked, onAddAccount }:
   onAddAccount?: (() => void) | undefined
 }) {
   const [state, setState] = useState<Loaded>({ status: 'loading' })
+  const [changed, setChanged] = useState(0)
+  const [editing, setEditing] = useState<Editing>(null)
+  const [removing, setRemoving] = useState<Removing>(null)
+  const [failure, setFailure] = useState<string | null>(null)
+  const remotePick = useRemoteFolderPick(machine, label)
   useEffect(() => {
     let current = true
     loadGitIdentities(machine).then(
@@ -63,8 +109,32 @@ export function GitHubDetails({ machine, label, accounts, asked, onAddAccount }:
       (error: unknown) => { if (current) setState({ status: 'failed', message: errorMessage(error, 'the machine did not answer') }) },
     )
     return () => { current = false }
-  }, [machine, asked])
+  }, [machine, asked, changed])
   const active = accounts.find((account) => account.active)?.login ?? accounts[0]?.login
+  const ready = state.status === 'ready' && state.report.installed && state.report.problem === null
+  const reread = () => { setChanged((count) => count + 1) }
+  const confirmRemove = () => {
+    if (removing === null) return
+    const { folder } = removing
+    setRemoving({ folder, sending: true })
+    setFailure(null)
+    changeGitRule(machine, { kind: 'remove', folder }).then(
+      () => { setRemoving(null); reread() },
+      (error: unknown) => {
+        setFailure(errorMessage(error, 'The machine did not remove the rule'))
+        setRemoving(null)
+      },
+    )
+  }
+  const actions: RuleActions | undefined = ready
+    ? {
+        removing,
+        onChange: (rule) => { setFailure(null); setEditing({ rule }) },
+        onRemove: (folder) => { setFailure(null); setRemoving({ folder, sending: false }) },
+        onConfirmRemove: confirmRemove,
+        onKeep: () => { setRemoving(null) },
+      }
+    : undefined
   return (
     <div className="mx-github-details" role="group" aria-label={`GitHub details for ${label}`}>
       <span className="mx-menu-caps">Accounts</span>
@@ -73,7 +143,21 @@ export function GitHubDetails({ machine, label, accounts, asked, onAddAccount }:
       </ul>
       {onAddAccount !== undefined && <button type="button" className="mx-scard-button" onClick={onAddAccount}>Add another account</button>}
       <span className="mx-menu-caps">Commits</span>
-      <Identities state={state} active={active} />
+      <Identities state={state} active={active} actions={actions} />
+      {failure !== null && <p role="alert">{failure}</p>}
+      {ready && <button type="button" className="mx-scard-button" onClick={() => { setFailure(null); setEditing({}) }}>Add a folder rule</button>}
+      {editing !== null && (
+        <GitRuleDialog
+          machine={machine}
+          where={label}
+          logins={accounts.map((account) => account.login)}
+          rule={editing.rule}
+          chooseFolder={machine === LOCAL_MACHINE ? chooseProjectFolder : remotePick.browse}
+          onWritten={() => { setEditing(null); reread() }}
+          onCancel={() => { setEditing(null) }}
+        />
+      )}
+      {remotePick.dialog}
     </div>
   )
 }

@@ -1,7 +1,8 @@
-import { cleanup, render, renderHook, screen, act } from '@testing-library/react'
+import { cleanup, render, renderHook, screen, act, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GitHubList, GitHubRepoList } from '@/api/githubRepos'
+import type { GitIdentityReport } from '@/api/gitIdentities'
 import { lastCloneDestination, rememberCloneDestination } from '../model/cloneDestination'
 import { CloneRepoDialog } from './CloneRepoDialog'
 import { useCloneRepo } from './useCloneRepo'
@@ -13,6 +14,8 @@ const github = vi.hoisted(() => ({
   loadGitHubRepos: vi.fn<(machine: number, owner: string | null, search: string) => Promise<GitHubList<GitHubRepoList>>>(),
 }))
 vi.mock('@/api/githubRepos', () => github)
+const identities = vi.hoisted(() => ({ loadGitIdentities: vi.fn<(machine: number) => Promise<GitIdentityReport>>() }))
+vi.mock('@/api/gitIdentities', async (real) => ({ ...await real<typeof import('@/api/gitIdentities')>(), ...identities }))
 
 const ADDRESS = 'https://example.com/o/widgets.git'
 
@@ -22,6 +25,7 @@ beforeEach(() => {
   api.cloneRepository.mockReset()
   github.loadGitHubOwners.mockReset().mockResolvedValue({ state: 'not-signed-in' })
   github.loadGitHubRepos.mockReset().mockResolvedValue({ state: 'not-signed-in' })
+  identities.loadGitIdentities.mockReset().mockResolvedValue({ installed: true, name: null, email: null, rules: [], problem: null })
 })
 
 type Clone = (address: string, parent: string) => Promise<string>
@@ -135,5 +139,37 @@ describe('the folder last cloned into', () => {
     expect(api.cloneRepository).toHaveBeenCalledWith(3, ADDRESS, '/srv/other')
     expect(lastCloneDestination('kingdom')).toBe('/srv/other')
     view.unmount()
+  })
+})
+
+describe('the account a clone will use', () => {
+  const WORK = { name: 'Casey', email: 'casey@work.invalid', login: 'work-me' }
+
+  function Opened() {
+    const clone = useCloneRepo({ machine: 3, where: 'kingdom', startIn: '/srv/work', chooseFolder: null, onOpenGitHubSettings: vi.fn() })
+    return <><button type="button" onClick={() => { void clone.open() }}>Open</button>{clone.dialog}</>
+  }
+
+  it('is named under the destination when a folder rule on that machine covers it, and goes when none does', async () => {
+    const user = userEvent.setup()
+    identities.loadGitIdentities.mockResolvedValue({ installed: true, name: null, email: null, rules: [{ folder: '/srv/work', identity: WORK }], problem: null })
+    render(<Opened />)
+    await user.click(screen.getByRole('button', { name: 'Open' }))
+    expect(await screen.findByText('Will use work-me')).toBeInTheDocument()
+    expect(identities.loadGitIdentities).toHaveBeenCalledWith(3)
+    const folder = screen.getByRole('textbox', { name: 'Folder on kingdom to clone into' })
+    await user.clear(folder)
+    await user.type(folder, '/srv/other')
+    expect(screen.queryByText(/^Will use/)).toBeNull()
+  })
+
+  it('is not named when the machine cannot say which rules it has', async () => {
+    const user = userEvent.setup()
+    identities.loadGitIdentities.mockRejectedValue(new Error('kingdom did not answer'))
+    render(<Opened />)
+    await user.click(screen.getByRole('button', { name: 'Open' }))
+    await screen.findByRole('textbox', { name: 'Repository address' })
+    await waitFor(() => { expect(identities.loadGitIdentities).toHaveBeenCalled() })
+    expect(screen.queryByText(/^Will use/)).toBeNull()
   })
 })

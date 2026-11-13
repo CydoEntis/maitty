@@ -18,6 +18,8 @@ type Props = {
   clone: (address: string, parent: string) => Promise<string>
   /** That machine's GitHub repositories to pick from; without it the dialog takes a pasted address only. */
   github?: GitHubRepoSource | undefined
+  /** The GitHub account a folder rule on that machine gives a clone inside `parent`, or null when none does. */
+  accountFor?: ((parent: string) => string | null) | undefined
   onCloned: (folder: string, parent: string) => void
   onCancel: () => void
 }
@@ -28,12 +30,13 @@ type Props = {
  * found there; what it says when it will not clone is shown as it said it. Picking one of the
  * machine's GitHub repositories fills in its address.
  */
-export function CloneRepoDialog({ where, startIn, chooseFolder, clone, github, onCloned, onCancel }: Props) {
+export function CloneRepoDialog({ where, startIn, chooseFolder, clone, github, accountFor, onCloned, onCancel }: Props) {
   const [address, setAddress] = useState('')
   const [parent, setParent] = useState(startIn)
   const [cloning, setCloning] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
   const ready = address.trim() !== '' && parent.trim() !== '' && !cloning
+  const account = parent.trim() === '' ? null : accountFor?.(parent.trim()) ?? null
 
   const run = () => {
     if (!ready) return
@@ -83,6 +86,7 @@ export function CloneRepoDialog({ where, startIn, chooseFolder, clone, github, o
             <input aria-label={`Folder on ${where} to clone into`} value={parent} maxLength={MOST_PATH_CHARS} spellCheck={false} disabled={cloning} onChange={(event) => { setParent(event.target.value) }} />
             {chooseFolder !== null && <button type="button" className="mx-text-button" disabled={cloning} onClick={choose}>Choose…</button>}
           </div>
+          {account !== null && <p>Will use {account}</p>}
           {cloning && <p role="status">Cloning… A large repository can take a few minutes.</p>}
           {failure !== null && <p role="alert">{failure}</p>}
           <div className="mx-rename-actions">
