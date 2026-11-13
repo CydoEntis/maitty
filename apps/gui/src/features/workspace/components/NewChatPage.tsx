@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type KeyboardEvent } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type KeyboardEvent } from 'react'
 import { useWarmAgent, type WarmAgent, type WarmSpec } from '../useWarmAgent'
 import { toast } from '@/lib/toast'
 import { pasteFromHost, pickFromClipboard, unsupportedMessage } from '@/features/terminal/clipboardImage'
@@ -161,6 +161,8 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
 
   const pickAgent = (next: ChatAgent) => {
     setAgent(next)
+    // The chat's own agent is not one of the others.
+    setAlsoPicked((now) => new Set([...now].filter((other) => other !== next)))
     // A mode is the agent's own too.
     setMode(START_MODE[next])
     // A model is the agent's own; the other agent's name means nothing to it.
@@ -173,7 +175,9 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
   // Only agents this computer is known to have: while the list is unread, none is offered.
   const alsoOffered = remote || branches === null || installed === null ? [] : CHAT_AGENTS.filter((other) => other !== agent && installed.includes(other))
   const alsoWith = treeMode ? alsoOffered.filter((other) => alsoPicked.has(other)) : []
+  const alsoWhy = useId()
   const toggleAlso = (other: ChatAgent, on: boolean) => {
+    if (!treeMode) return
     setAlsoPicked((now) => new Set(on ? [...now, other] : [...now].filter((name) => name !== other)))
   }
   // A branch or a worktree is made when the chat starts, so only a chat on the folder as it is can have its agent started ahead.
@@ -204,7 +208,7 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
     if (names.length > 0) setTakenNames((now) => new Set([...now, ...names]))
   }
   // The others start in the background beside the main start; the box keeps the message until the main one opens, so a
-  // failed other has nothing to put back.
+  // failed other has nothing to put back. They are unticked once they go, so trying the main start again starts it alone.
   const start = (task: string = message, resume: string | null = null) => {
     if (busy || folder === '' || agentMissing) return
     setBusy(true)
@@ -212,11 +216,15 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
     const request = requestFor(task, resume)
     const others = alsoRequests(request)
     onStart(request)
-      .catch((failure: unknown) => { setError(errorMessage(failure, 'Could not start the chat')) })
+      .catch((failure: unknown) => {
+        const reason = errorMessage(failure, 'Could not start the chat')
+        setError(others.length > 0 ? `Could not start the chat with ${AGENT_LABEL[request.agent]}: ${reason}` : reason)
+      })
       .finally(() => { setBusy(false); reloadBranches() })
     if (others.length > 0) {
       takeNames(others)
       background.launch(others, null)
+      setAlsoPicked(new Set())
     }
   }
   // The box is emptied for the next chat and every other choice stays. A new branch's name is taken, so the next start
@@ -483,11 +491,11 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
               <span className="mx-nc-switch-label">Also start with</span>
               {alsoOffered.map((other) => (
                 <label key={other} className="mx-nc-also-agent">
-                  <input type="checkbox" disabled={!treeMode} checked={alsoWith.includes(other)} onChange={(event) => { toggleAlso(other, event.target.checked) }} />
+                  <input type="checkbox" aria-disabled={!treeMode} aria-describedby={treeMode ? undefined : alsoWhy} checked={alsoWith.includes(other)} onChange={(event) => { toggleAlso(other, event.target.checked) }} />
                   {AGENT_LABEL[other]}
                 </label>
               ))}
-              {!treeMode && <span className="mx-nc-also-why">Each agent needs a copy of its own. Turn on Own copy to start several.</span>}
+              {!treeMode && <span id={alsoWhy} className="mx-nc-also-why">Each agent needs a copy of its own. Turn on Own copy to start several.</span>}
             </div>
           )}
           {error !== null && <p role="alert" className="mx-composer-error">{error}</p>}

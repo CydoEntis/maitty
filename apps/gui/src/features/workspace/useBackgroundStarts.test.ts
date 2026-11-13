@@ -56,4 +56,23 @@ describe('starts in the background', () => {
     await waitFor(() => { expect(result.current.pending).toBe(0) })
     expect(revoke).not.toHaveBeenCalled()
   })
+
+  it('gives a start that fails after its prompt was put back nothing to put back, and keeps the box\'s picture', async () => {
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined)
+    const settle: Record<string, (reason: Error) => void> = {}
+    const start = (asked: NewChatRequest) => new Promise<void>((_, fail) => { settle[asked.agent] = fail })
+    const { result, unmount } = renderHook(() => useBackgroundStarts(start))
+    const two = ['claude', 'codex'].map((agent) => ({ ...request, agent }) as NewChatRequest)
+    act(() => { result.current.launch(two, { text: 'fix the login', attachments: [picture] }) })
+
+    settle.claude?.(new Error('boom'))
+    await waitFor(() => { expect(result.current.failed).toHaveLength(1) })
+    act(() => { result.current.takeBack(result.current.failed[0]?.key ?? -1) })
+    settle.codex?.(new Error('boom'))
+    await waitFor(() => { expect(result.current.failed).toHaveLength(1) })
+
+    expect(result.current.failed[0]?.draft).toBeNull()
+    unmount()
+    expect(revoke).not.toHaveBeenCalled()
+  })
 })

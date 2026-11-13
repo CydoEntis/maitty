@@ -390,6 +390,33 @@ describe('starting a chat and going on writing', () => {
     expect(extra?.[0].branch?.name).not.toBe(main?.[0].branch?.name)
   })
 
+  it('names a failed main start by its agent when others went with it, and a retry starts only the main agent', async () => {
+    let fail: (reason: Error) => void = () => undefined
+    const onStart = vi.fn<Start>((request) => new Promise((_, reject) => { if (request.agent === 'claude') fail = reject }))
+    page(onStart)
+    await ready()
+    await userEvent.click(within(screen.getByRole('group', { name: 'Also start with' })).getByRole('checkbox', { name: 'Codex' }))
+    await userEvent.type(box(), 'fix the login{Enter}')
+    fail(new Error('boom'))
+
+    expect(await screen.findByText('Could not start the chat with Claude: boom')).toBeInTheDocument()
+    await userEvent.type(box(), '{Enter}')
+    await waitFor(() => { expect(onStart).toHaveBeenCalledTimes(3) })
+    expect(onStart.mock.calls.map(([request]) => request.agent)).toEqual(['claude', 'codex', 'claude'])
+  })
+
+  it('drops an agent from the others once it is the one the chat starts with', async () => {
+    page()
+    await ready()
+    await userEvent.click(within(screen.getByRole('group', { name: 'Also start with' })).getByRole('checkbox', { name: 'Codex' }))
+    await userEvent.click(screen.getByRole('button', { name: /^Agent, model and reasoning/ }))
+    await userEvent.click(within(screen.getByRole('radiogroup', { name: 'Agent' })).getByRole('radio', { name: 'Codex' }))
+    await userEvent.click(within(screen.getByRole('radiogroup', { name: 'Agent' })).getByRole('radio', { name: 'Claude' }))
+    await userEvent.keyboard('{Escape}')
+
+    expect(within(screen.getByRole('group', { name: 'Also start with' })).getByRole('checkbox', { name: 'Codex' })).not.toBeChecked()
+  })
+
   it('will not tick another agent with Own copy off, and says why', async () => {
     const onStart = vi.fn<Start>(() => new Promise(() => undefined))
     page(onStart)
@@ -398,9 +425,11 @@ describe('starting a chat and going on writing', () => {
     await userEvent.click(codex)
     await userEvent.click(screen.getByRole('switch', { name: 'Own copy' }))
 
-    expect(codex).toBeDisabled()
+    expect(codex).toHaveAttribute('aria-disabled', 'true')
     expect(codex).not.toBeChecked()
-    expect(screen.getByText('Each agent needs a copy of its own. Turn on Own copy to start several.')).toBeInTheDocument()
+    expect(codex).toHaveAccessibleDescription('Each agent needs a copy of its own. Turn on Own copy to start several.')
+    await userEvent.click(codex)
+    expect(codex).not.toBeChecked()
     await userEvent.type(box(), 'fix the login{Enter}')
     expect(onStart).toHaveBeenCalledTimes(1)
   })
@@ -412,10 +441,16 @@ describe('starting a chat and going on writing', () => {
     const also = within(screen.getByRole('group', { name: 'Also start with' }))
     await userEvent.click(also.getByRole('checkbox', { name: 'Codex' }))
     await userEvent.click(also.getByRole('checkbox', { name: 'Gemini' }))
+    attach.chooseFilesToAttach.mockResolvedValue(['/home/me/errors.log'])
+    attach.attachLocalFile.mockResolvedValue({ path: '/data/attachments/attach-1-errors.log', name: 'errors.log', size: 120, kind: 'file' })
+    await userEvent.click(screen.getByRole('button', { name: 'Attach files' }))
+    expect(await screen.findByText('errors.log')).toBeInTheDocument()
     await userEvent.type(box(), 'fix the login')
     await userEvent.keyboard('{Control>}{Enter}{/Control}')
 
     expect(onStart.mock.calls.map(([request]) => request.agent)).toEqual(['claude', 'codex', 'gemini'])
+    for (const [request] of onStart.mock.calls) expect(request.message).toContain('/data/attachments/attach-1-errors.log')
+    expect(new Set(onStart.mock.calls.map(([request]) => request.branch?.name)).size).toBe(3)
     expect(await screen.findByText(/Could not start “fix the login” with Codex: no worktree/)).toBeInTheDocument()
     expect(await screen.findByText(/Could not start “fix the login” with Gemini: no worktree/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Put back “fix the login” with Codex' }))

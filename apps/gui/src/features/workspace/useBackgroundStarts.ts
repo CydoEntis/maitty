@@ -75,7 +75,8 @@ export function useBackgroundStarts(onStart: (request: NewChatRequest, options?:
           }
           lastKey.current += 1
           const key = lastKey.current
-          setFailed((now) => [...now, { ...start, key, group, reason, draft }])
+          // Once another start of the prompt put it back, the box holds the draft: this one has nothing to give back.
+          setFailed((now) => [...now, { ...start, key, group, reason, draft: holders.current.has(group) ? draft : null }])
         })
         .finally(() => { setPending((count) => count - 1) })
     }
