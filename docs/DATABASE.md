@@ -185,3 +185,12 @@ including when output retention is disabled. It stores no prompt body or general
 request ledger. Metadata restoration must be enabled for structured mutations.
 All full snapshots use a capture-time ticket and one resolved-path writer lock;
 an older completion cannot overwrite a newer committed intent or receipt.
+
+`turn_continues` defaults empty. It maps a conversation ID to the unix seconds at
+which the daemon told it to continue after a resume (`restore.continue_turn`), at
+most three per conversation, and holds no message text. It is in the session file
+because the limit of three in five minutes has to hold for a daemon that restarts
+in a loop: a count kept in memory would start at zero with each daemon. The time
+is recorded before the send, and the send commits the snapshot before the message
+reaches the provider. Times older than five minutes are dropped at the next send;
+a time ahead of the clock still counts.

@@ -348,6 +348,7 @@ impl Daemon {
             conversations: self.conversations.clone(),
             pending_starts: self.pending_starts.clone(),
             conversation_operations: self.conversation_operations.clone(),
+            turn_continues: self.turn_continues.clone(),
         }
     }
 
@@ -451,13 +452,16 @@ impl Daemon {
     /// runtime that fails again stays failed until a person resumes it.
     pub(super) fn resume_conversations(&mut self) {
         let candidates = std::mem::take(&mut self.resumable_conversations);
+        let cut = std::mem::take(&mut self.cut_conversations);
         if !self.cfg.restore.conversations {
             return;
         }
         for (id, generation) in candidates {
             let target = crate::conversation::StartTarget::Conversation { id, generation };
-            if let Err(error) = self.conversation_start(conversation::commands::DAEMON_REQUESTER, target) {
-                tracing::warn!("conversation {} was not resumed: {error:#}", id.0);
+            match self.conversation_start(conversation::commands::DAEMON_REQUESTER, target) {
+                Ok(()) if cut.contains(&id) => self.continue_when_resumed(id),
+                Ok(()) => {}
+                Err(error) => tracing::warn!("conversation {} was not resumed: {error:#}", id.0),
             }
         }
     }
@@ -482,10 +486,15 @@ impl Daemon {
             return false;
         }
         let mut resumable = Vec::new();
+        let mut cut = std::collections::BTreeSet::new();
         for record in &mut saved.conversations {
+            let was_running = record.state == crate::conversation::RecoveryState::Running;
             match record.recover() {
                 Ok(true) if record.execution == crate::conversation::ExecutionKind::Structured => {
                     resumable.push((record.id, record.generation));
+                    if was_running {
+                        cut.insert(record.id);
+                    }
                 }
                 Ok(_) => {}
                 Err(e) => {
@@ -495,6 +504,8 @@ impl Daemon {
             }
         }
         self.resumable_conversations = resumable;
+        self.cut_conversations = cut;
+        self.turn_continues = std::mem::take(&mut saved.turn_continues);
         self.conversations = std::mem::take(&mut saved.conversations);
         self.pending_starts = std::mem::take(&mut saved.pending_starts);
         self.conversation_operations = std::mem::take(&mut saved.conversation_operations);
