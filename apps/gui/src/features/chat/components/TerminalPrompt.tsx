@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from '@/lib/toast'
 import { errorMessage } from '@/lib/error-message'
-import { KEY_DOWN, KEY_ENTER, KEY_ESCAPE, KEY_LEFT, KEY_RIGHT, KEY_UP, promptOfScreen } from '../terminalKeys'
+import { KEY_DOWN, KEY_ENTER, KEY_ESCAPE, KEY_LEFT, KEY_RIGHT, KEY_UP, isSelected, partsOfPrompt, promptOfScreen } from '../terminalKeys'
 
 /** How often the question is read again while the tray shows, so a menu that moves or changes is followed. */
 const READ_EVERY_MS = 1000
@@ -22,6 +22,39 @@ type Props = {
   readScreen: (() => Promise<string>) | undefined
   /** Types a key into the agent's terminal. */
   sendKeys: (keys: string) => Promise<void>
+}
+
+/**
+ * The question as the terminal shows it: what is asked stays in view, and the options scroll under it with
+ * the selected one kept in sight, so a menu taller than the card loses neither.
+ */
+function ShownPrompt({ prompt }: { prompt: string }) {
+  const { question, options } = partsOfPrompt(prompt)
+  const box = useRef<HTMLPreElement>(null)
+  const selected = useRef<HTMLSpanElement>(null)
+
+  // Only when the menu itself changes, so a person who scrolled to read an option is not pulled back every second.
+  useEffect(() => {
+    const view = box.current
+    const line = selected.current
+    if (view === null || line === null) return
+    const bottom = line.offsetTop + line.offsetHeight
+    if (line.offsetTop < view.scrollTop) view.scrollTop = line.offsetTop
+    else if (bottom > view.scrollTop + view.clientHeight) view.scrollTop = bottom - view.clientHeight
+  }, [options])
+
+  return (
+    <div className="mx-terminal-prompt" role="group" aria-label="What the agent shows in its terminal">
+      {question !== '' && <pre className="mx-terminal-question">{question}</pre>}
+      <pre ref={box} className="mx-terminal-options">
+        {options.split('\n').map((line, at) => (
+          isSelected(line)
+            ? <span key={at} ref={selected} className="mx-terminal-selected">{`${line}\n`}</span>
+            : `${line}\n`
+        ))}
+      </pre>
+    </div>
+  )
 }
 
 /**
@@ -59,7 +92,7 @@ export function TerminalPrompt({ readScreen, sendKeys }: Props) {
   return (
     <>
       {prompt !== null && prompt.trim() !== ''
-        ? <pre className="mx-terminal-prompt" aria-label="What the agent shows in its terminal">{prompt}</pre>
+        ? <ShownPrompt prompt={prompt} />
         : <p className="mx-question-note">The question is in the terminal.</p>}
       <div className="mx-question-answers is-keys" role="group" aria-label="Keys for the agent's terminal">
         {KEYS.map((key) => (
