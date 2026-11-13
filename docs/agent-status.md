@@ -193,8 +193,10 @@ not infer completion from silence alone. For a hooked agent the screen must also
 been still for 5 seconds: Claude's input box is on screen all turn, and its title reads
 idle while its own Stop hooks still run, so an animating screen waits for the hook. Hosts without an explicit idle screen
 signal rely on their lifecycle completion events. The idle prompt reconciles nothing while a
-helper the agent reported is listed and was heard from within the hour: an agent whose turn
-ended with a background helper running shows that same prompt.
+turn end is held on a helper the agent reported that was heard from within the hour: an agent
+whose turn ended with a background helper running shows that same prompt. A turn end counts as
+held when it was reported with a helper listed, or when a helper starts after it. With no turn
+end reported (a turn cancelled while its helper ran), the idle prompt still ends the turn.
 
 Every status change goes to `daemon.log` in the data folder at info level, with the pane,
 agent, old and new status and the reason (`hook: Stop`, `screen: claude rule …`), so the
@@ -259,7 +261,10 @@ not cancelled); the agent's idle prompt, which it shows once its own turn has en
 background helper carries on; a session start in the middle of a turn (compaction); and a
 stop for a helper maitty never saw start, which removes nobody else. A stop with no id
 removes only the last helper started. A helper that says nothing for an hour is taken to
-have died: it stops holding its parent and is kept as unconfirmed.
+have died: it stops holding its parent and is kept as unconfirmed. A Codex helper whose stop
+was lost stops holding as soon as its own session file shows it completed or aborted. When a
+Claude stop listed the helpers as running, the last one stopping shows done unannounced, and
+the stop of the wake-up turn that follows is the finish that is announced.
 
 When a trusted integration reports active helpers, Maitty keeps the parent
 session working until they finish or go quiet. Codex uses native lifecycle hooks

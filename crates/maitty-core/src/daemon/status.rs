@@ -449,6 +449,9 @@ impl Daemon {
             // Done while subagents still run: hold it until they finish (or 3 minutes pass).
             HookStatus::Done if !t.subagents.is_empty() => {
                 t.done_held = Some(now);
+                // Claude wakes to read what its helpers found and stops again: that stop is
+                // the finish to say, not the last helper's.
+                t.awaiting_background = paused;
                 self.dirty = true;
                 return;
             }
@@ -509,7 +512,13 @@ impl Daemon {
         }
         if new == Status::Working {
             t.last_working_hook = Some(now);
-            t.done_held = None;
+            // A helper's start is not the parent back at work: one that starts once the
+            // turn is over is held like a turn end, and one more leaves a held end held.
+            if event != "SubagentStart" {
+                t.done_held = None;
+            } else if matches!(t.status, Status::Idle | Status::Done) {
+                t.done_held = Some(now);
+            }
             t.progress_off = None;
         }
         if new != Status::Working {
@@ -1024,13 +1033,14 @@ impl Daemon {
             // Claude's input box shows all turn long, and its title says idle while its
             // turn-end hooks still run and between a turn's steps: the screen must also have
             // gone still, or this would finish (and ring) ahead of the hook, or over and over
-            // through the turn of an agent with no hooks. An agent whose turn ended while a
-            // helper it reported still runs shows the same idle prompt, so the prompt proves
-            // nothing until that helper stops or goes quiet for good.
+            // through the turn of an agent with no hooks. An agent whose turn end is held
+            // while a helper it reported still runs shows the same idle prompt, so the prompt
+            // proves nothing until that helper stops or goes quiet for good.
+            let held_on_helpers = t.done_held.is_some() && helpers_running(t);
             if signal.status == Some(Status::Idle)
                 && signal.visible_idle
                 && (t.status == Status::Working || has_active_children)
-                && !helpers_running(t)
+                && !held_on_helpers
                 && t.last_output.elapsed() >= SCREEN_DONE_QUIET
             {
                 let status = if t.status == Status::Working {

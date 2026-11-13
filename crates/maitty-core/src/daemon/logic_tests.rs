@@ -2997,6 +2997,8 @@ fn a_turn_that_ends_while_its_helper_runs_stays_working(agent: &str, idle_title:
     assert_eq!(d.terms[&t].status, Status::Done, "{agent}: its last helper stopped");
     // Claude wakes to read what its helper found and stops again, with nothing left running.
     if lists_background {
+        say(&mut d, report_with_helper(t, agent, HookStatus::Working, "PreToolUse", None));
+        assert_eq!(d.terms[&t].status, Status::Working, "{agent}: reading the result");
         say(&mut d, turn_end_report(t, agent, Some(&[])));
     }
     rests_at_its_idle_prompt(&mut d, t, idle_title);
@@ -3030,10 +3032,87 @@ fn a_helper_started_after_the_turn_ended_keeps_its_session_working() {
         Status::Working,
         "an idle prompt is what Claude shows while a background agent runs"
     );
-    // No turn end follows a helper that began outside a turn: the idle prompt is the end.
+    // No turn end follows a helper that began outside a turn: its stop is the end.
     say(&mut d, report_with_helper(t, "claude", HookStatus::Same, "SubagentStop", Some(false)));
     rests_at_its_idle_prompt(&mut d, t, "✳ project");
     assert_eq!(d.terms[&t].status, Status::Done);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_turn_cancelled_while_its_helper_ran_is_freed_by_the_idle_prompt() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let say = |d: &mut Daemon, msg| d.apply_hook(msg, Some(true), Vec::new());
+    say(&mut d, report_with_helper(t, "claude", HookStatus::Working, "UserPromptSubmit", None));
+    say(&mut d, report_with_helper(t, "claude", HookStatus::Working, "SubagentStart", Some(true)));
+    // Esc: neither the helper's stop nor the turn's end is ever reported.
+    rests_at_its_idle_prompt(&mut d, t, "✳ project");
+    assert_ne!(
+        d.terms[&t].status,
+        Status::Working,
+        "no turn end was held, so the idle prompt is a missed one"
+    );
+    assert!(d.terms[&t].subagents.is_empty(), "the helper is no longer listed");
+    assert_eq!(
+        d.terms[&t].subagent_activity[0].state,
+        SubagentState::ConnectionLost,
+        "kept as unconfirmed, not as completed"
+    );
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_second_helper_started_after_the_turn_ended_does_not_release_the_hold() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let say = |d: &mut Daemon, msg| d.apply_hook(msg, Some(true), Vec::new());
+    say(&mut d, report_with_helper(t, "claude", HookStatus::Working, "UserPromptSubmit", None));
+    say(&mut d, report_with_helper(t, "claude", HookStatus::Working, "SubagentStart", Some(true)));
+    say(&mut d, turn_end_report(t, "claude", Some(&["a1"])));
+    let mut second = report_with_helper(t, "claude", HookStatus::Working, "SubagentStart", Some(true));
+    if let ClientMsg::Hook { subagent: Some(helper), .. } = &mut second {
+        helper.id = "a2".into();
+    }
+    say(&mut d, second);
+    rests_at_its_idle_prompt(&mut d, t, "✳ project");
+    assert_eq!(d.terms[&t].status, Status::Working);
+    assert_eq!(d.terms[&t].subagents.len(), 2);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_codex_helper_its_files_show_finished_stops_holding_when_its_stop_was_lost() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let say = |d: &mut Daemon, msg| d.apply_hook(msg, Some(true), Vec::new());
+    say(&mut d, report_with_helper(t, "codex", HookStatus::Working, "UserPromptSubmit", None));
+    say(&mut d, report_with_helper(t, "codex", HookStatus::Working, "SubagentStart", Some(true)));
+    say(&mut d, turn_end_report(t, "codex", None));
+    d.terms.get_mut(&t).expect("pane").session = Some("root".into());
+    rests_at_its_idle_prompt(&mut d, t, "project");
+    assert_eq!(d.terms[&t].status, Status::Working, "control: held while the helper runs");
+
+    // Its SubagentStop never arrives; Codex's own file for the helper says it completed.
+    let finished = SubagentActivity {
+        state: SubagentState::Completed,
+        updated_at: term::unix_now() + 5,
+        ..d.terms[&t].subagent_activity[0].clone()
+    };
+    d.codex_usage(
+        vec![usage::CodexPaneFacts {
+            term: t,
+            session: Some("root".into()),
+            usage: None,
+            subagents: Vec::new(),
+            subagent_activity: vec![finished],
+        }],
+        None,
+    );
+    rests_at_its_idle_prompt(&mut d, t, "project");
+    assert_eq!(d.terms[&t].status, Status::Done);
+    assert!(d.terms[&t].subagents.is_empty());
+    assert_eq!(d.terms[&t].subagent_activity[0].state, SubagentState::Completed);
     close(&mut d, &[t]);
 }
 
