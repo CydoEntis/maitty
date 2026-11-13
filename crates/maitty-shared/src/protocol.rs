@@ -11,7 +11,10 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 88;
+pub const PROTOCOL_VERSION: u32 = 89;
+
+/// The first version whose daemon searches a checkout's file paths (`RepoRequest::FindFiles`).
+pub const FIND_FILES_SINCE: u32 = 89;
 
 /// The first version whose daemon counts the files a snapshot restore would change
 /// (`RepoRequest::RestoreCount`).
@@ -1916,6 +1919,10 @@ impl ClientMsg {
                 request: crate::repo::RepoRequest::RestoreCount { .. },
                 ..
             }) => RESTORE_COUNT_SINCE,
+            ClientMsg::Query(Query::Repo {
+                request: crate::repo::RepoRequest::FindFiles { .. },
+                ..
+            }) => FIND_FILES_SINCE,
             _ => COMPATIBLE_SINCE,
         }
     }
@@ -2334,7 +2341,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 88);
+        assert_eq!(PROTOCOL_VERSION, 89);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2520,6 +2527,26 @@ mod tests {
         assert_eq!(ask(count).introduced_in(), RESTORE_COUNT_SINCE);
         assert_eq!(ask(crate::repo::RepoRequest::Snapshots).introduced_in(), COMPATIBLE_SINCE);
         const { assert!(RESTORE_COUNT_SINCE > COMPATIBLE_SINCE && RESTORE_COUNT_SINCE <= PROTOCOL_VERSION) };
+    }
+
+    /// Finding files is a new repository question: a daemon from before it cannot read it, so it is
+    /// not asked.
+    #[test]
+    fn a_file_search_is_asked_only_of_a_daemon_that_knows_it() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldRepoRequest {
+            Snapshots,
+            RestoreCount { commit: String },
+        }
+        let find = crate::repo::RepoRequest::FindFiles {
+            query: "main".into(),
+            limit: 20,
+        };
+        assert!(decode::<OldRepoRequest>(&encode(&find).unwrap()).is_err());
+        let ask = |request| ClientMsg::Query(Query::Repo { term: 3, tag: 1, request });
+        assert_eq!(ask(find).introduced_in(), FIND_FILES_SINCE);
+        const { assert!(FIND_FILES_SINCE > COMPATIBLE_SINCE && FIND_FILES_SINCE <= PROTOCOL_VERSION) };
     }
 
     /// `agent` and `prompt` were added to `NewWorktree` as defaulted fields: a peer that does not
@@ -2736,7 +2763,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 88);
+        assert_eq!(PROTOCOL_VERSION, 89);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()

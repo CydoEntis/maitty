@@ -207,7 +207,11 @@ host (`streams.rs`) merges a delta only when its revision is 0 or one more than 
 after a gap, or with no snapshot held, it drops the delta, sends `Query::List` on its stream and takes
 the `Reply::List` as its snapshot. It asks once for a run of such deltas, and again only when the list has
 not come after `LIST_ASKED_AGAIN_AFTER` (5 s) or the machine's line came up anew; a whole `State` settles
-it too. A list alone is no base for a delta (it can hold a change the surface
+it too. The TUI (`crates/maitty-terminal-client/src/client/background.rs`) applies the same rule to
+this computer's line and each other machine's, and with no snapshot held starts from revision 0. It
+also keeps a pane a delta drops without a reason (a daemon from before reasons) until a whole list
+confirms it, and asks for that list the same way; its tick asks again while an asked-for list has
+not come after 5 s, so a kept pane cannot stall when the machine sends nothing more. A list alone is no base for a delta (it can hold a change the surface
 was not sent yet), so after `Query::List` from an attached client the daemon sends that surface its next
 change in full, as it does after an attach. That reset is what makes the delta after a resync right: a
 daemon that numbers its updates but was built before the reset works its next delta out from what it
@@ -257,8 +261,13 @@ empty once the host has asked the daemon for the pane's replay over the stream (
 pane's next frame) and an error when there is no stream, so the view fetches a replay itself; the
 daemon's `Snapshot` goes out as a `sessions-changed` event
 whenever it changes, with `null` when the stream dropped, and the webview sets its session query
-from it instead of polling (a 15 s poll remains as a safety net); another machine's goes out as
-`machine-sessions-changed` (`{machine, snapshot}`), after the host has cleaned it, and its connection
+from it instead of polling (a 15 s poll remains as a safety net), reading its `revision` and `removed`
+(`DaemonSnapshotSchema`): a sidebar row goes at once only for a session named in `removed` or closed in
+the window, and any other miss waits for a `list_sessions` read to confirm it (UI, sidebar); another machine's goes out as
+`machine-sessions-changed` (`{machine, snapshot}`), after the host has cleaned it, its `removed` read the same way for
+that machine's sessions, and a miss of one waits for a later list of that machine, which `ask_machine_list(machine)`
+asks for (`Query::List` on its line, refused for this computer and for a machine with no line, and dropped
+within `WINDOW_LIST_ASK_EVERY`, 5 s, of the last ask of that machine it sent); its connection
 state as `machine-state` (`connecting`, `connected`, `reconnecting`, `needs-login`, `needs-update`, `unreachable`, or `refused` when a different daemon answers at its name), with `since` (epoch ms) once it is not connected and the machine's `clipboard`, `notices` and `sounds` opt-ins from its entry (all off unless it says); a notice from a machine that opted in goes to the window as `machine-notice` (`{machine, text}`, cleaned, cut and led by `[name]`) and the window shows it as a toast or, away from it, a system notification; `retry_machine(name)` dials a machine now and clears a refusal; `remove_machine(name)` deletes its entry from `config.local.toml` first and only then stops it, forgets its daemon id and tells the window with `machine-removed` (its sessions and saved layout are left alone); the commands that read a pane's files or repository (`repo_query`, `restore_snapshot`, `snapshot_restore_count`, `new_worktree_session`, `pane_terminal_screen`) take the pane's `machine` and refuse another machine's with the terminal app's words (`<Feature> is local-only in v1: the files are on <machine>, not on this computer.`), as the window does before it asks (`apps/gui/src/lib/localOnly.ts`); `set_machine_grant(name, grant, on)` allows or stops a machine's `clipboard` or `notices` (written to its entry in `config.local.toml` first, then applied at once; the new state follows as `machine-state`); text an allowed machine asks to copy arrives as `machine-clipboard` (`{machine, text}`); `start_session_on_machine(machine, folder)` starts a terminal session in a typed folder of another machine (one that is not there opens in its home folder); `list_ssh_hosts` lists the `~/.ssh/config` hosts that are not machines yet; `add_machine(target, name?)` checks the target, looks at the machine over ssh without asking anyone anything (12 s at most; `cancel_add_machine` ends it), writes the entry only when that held up, and starts dialling it (a login that needs a person opens ssh in a session on this computer, and the window dials again when it closes); `list_machines_overview` gives a window that starts late each machine's last state and
 snapshot. The window names a machine's terminal sessions `build/t12` (the machine's name, so a saved
 layout survives a restart; this computer's stay `t12`) and passes the number the host gave the
@@ -715,6 +724,21 @@ snapshot against a tree of the checkout as it is, untracked files included), wit
 The commit must be one of the checkout's snapshots. The desktop app asks it before it offers a restore
 (`snapshot_restore_count`, this computer's panes only). The request has its own `introduced_in` arm
 (`RESTORE_COUNT_SINCE`), so an older daemon is not asked and the app says to restart it; `COMPATIBLE_SINCE` stays 78.
+
+Protocol 89 adds `RepoRequest::FindFiles { query, limit }` and `RepoReply::Files { paths, truncated }`: the files
+under the pane's checkout (the repository top, or the pane's folder when it is not a repository, as for `Tree` and
+`File`) whose path holds `query`, case-insensitive. The walk honours `.gitignore` inside a git repository (a folder
+outside one gets no `.gitignore` filtering), skips hidden files and unreadable entries, neither follows nor lists
+links, and stops after 50,000 files or 1.5 seconds; `truncated` says it stopped, so a file past that point was not
+searched. One walk of a folder is reused for 5 seconds (16 folders kept), so the keystrokes of one search re-rank it
+rather than walk again. The query is only matched against walked paths, never joined to a folder; one over 200
+characters (`FIND_FILES_MAX_QUERY_CHARS`) is refused. An empty query matches every file. Ranking: a file name that
+starts with the query, then a file name that holds it, then a folder that holds it; within each, shorter paths
+first, then by path in byte order. At most `limit` paths come back, never more than 80 (`FIND_FILES_MAX_RESULTS`),
+relative with `/`. It runs on a blocking thread like every `Query::Repo`, for human clients only (a pane's agent and
+a structured client are refused), so a client connected to another machine's daemon can ask it of that machine's
+panes. The request has its own `introduced_in` arm (`FIND_FILES_SINCE`); `COMPATIBLE_SINCE` stays 78. No client
+asks it yet.
 
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store

@@ -91,6 +91,7 @@ impl App {
             })
             .collect();
         let repo = p.path.clone();
+        let inactive_after = self.cfg.worktree.inactive_days;
         self.mode = Mode::Tidy(Box::new(TidyView {
             repo: repo.clone(),
             name: p.name.clone(),
@@ -101,7 +102,7 @@ impl App {
             let mut rows: Vec<TidyRow> = found
                 .into_iter()
                 .map(|(path, name, branch, sessions)| {
-                    let standing = crate::tidy::standing(&path);
+                    let standing = crate::tidy::standing(&path, inactive_after);
                     let ticked = sessions == 0 && standing.safe();
                     TidyRow {
                         path,

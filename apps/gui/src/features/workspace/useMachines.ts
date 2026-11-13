@@ -50,7 +50,7 @@ export function useRemoteMachines(): RemoteMachines {
       names.set(state.machine, state.name)
       const said = announcementFor(machinesRef.current.get(state.machine)?.state, state)
       if (said !== null) setMachineSaid(said)
-      change(state.machine, (before) => ({ conversations: before?.conversations ?? [], heard: before?.heard ?? false, state }))
+      change(state.machine, (before) => ({ conversations: before?.conversations ?? [], heard: before?.heard ?? false, listedAt: before?.listedAt ?? 0, state }))
       // Typing the machine could not take while it was down: say so once it is back.
       if (state.state === 'connected' && state.unsent) {
         toast.message(`${String(state.unsent)} ${state.unsent === 1 ? 'keystroke' : 'keystrokes'} to ${state.name} ${state.unsent === 1 ? 'was' : 'were'} not sent while it was disconnected`)
@@ -65,7 +65,7 @@ export function useRemoteMachines(): RemoteMachines {
         console.warn(`${name} sent a session list this window cannot read`, error)
         return
       }
-      change(id, (before) => (before ? { ...before, conversations, heard: true } : undefined))
+      change(id, (before) => (before ? { ...before, conversations, heard: true, listedAt: Date.now() } : undefined))
     }
     void loadMachinesOverview().then((overview) => {
       if (gone) return

@@ -323,7 +323,11 @@ mod tests {
     }
 
     fn delta(changed: Vec<crate::protocol::TermInfo>, removed: Vec<u32>) -> ServerMsg {
-        ServerMsg::TermsChanged { changed, removed, reasons: Default::default(), revision: 0 }
+        let reasons = removed
+            .iter()
+            .map(|id| (*id, crate::protocol::RemovalReason::Closed))
+            .collect();
+        ServerMsg::TermsChanged { changed, removed, reasons, revision: 0 }
     }
 
     #[test]

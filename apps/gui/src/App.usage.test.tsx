@@ -8,6 +8,9 @@ import App from './App'
 
 const daemon = vi.hoisted(() => ({
   loadConversations: vi.fn<() => Promise<Conversation[]>>(),
+  // The daemon numbers no list here and says no session left: a row a list misses is held.
+  localListRevision: () => 0,
+  daemonSaidRemoved: () => false,
   loadPerformanceSample: vi.fn<() => Promise<never>>(() => new Promise(() => {})),
   listenSessionsChanged: vi.fn(() => Promise.resolve(() => {})),
   defaultSessionFolder: vi.fn<() => Promise<string>>(),
