@@ -895,7 +895,7 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   heads the files with **All changes** to go back to the working tree, and no commit is offered beside it. With no
   snapshot from before the turn, none newer than that by its end (a row only shows for a turn that edited files, so
   that one is missing, not "nothing changed"), or a turn without the daemon's times, it shows the working tree as
-  before under "Whole working tree · <why>". The row opens its own pane's session, bringing it to the front; moving
+  before under "Whole working tree · <why>". The row focuses its own pane and shows that pane's session (a helper agent's chat open there stays open); moving
   to another session, closing the panel, and the other ways in show the working tree. A session on another machine
   gets the local-only refusal, as before.
 - **Cards** (`features/chat/components/`). Every fact the history carries is shown, and a missing one is said to be

@@ -41,8 +41,8 @@ export function WorkspacePane({ shown, pane, kept }: {
 }) {
   const { paneSessions, chatOf, openSubagent, ownsTerminals, repoPaneOf, outsidePanes, dropId, dragId, paneViews, showChanges, online, setOpenSubagent, togglePanel, preferences, setPreferences, startChatHere, handoffSession, inspectOpen, addAgentTerminal, root, look, modalOpen, mirrorInput, openPath, pasteImage, terminalHandles, setLayout, split, closePaneById, sendTo, copyPathOf, restartPane, setRenameId , heads, retryNamed, newChatWithSummary , moveToWorktree } = useWorkspace()
   const [drawerFolded, setDrawerFolded] = useState(startsFolded)
-  // Bound to this pane's session, so a row opened from a pane without the focus shows its own session's changes.
-  const openDiff = useCallback((file: string, turn?: TurnSpan | null) => { showChanges(pane.sessionId, file, turn) }, [showChanges, pane.sessionId])
+  // Bound to this pane, so a row opened from a pane without the focus focuses it and shows its own session's changes.
+  const openDiff = useCallback((file: string, turn?: TurnSpan | null) => { showChanges(pane.id, pane.sessionId, file, turn) }, [showChanges, pane.id, pane.sessionId])
   const session = paneSessions.get(pane.sessionId)
   if (!session) return null
   const focused = pane.id === shown.focus && !kept

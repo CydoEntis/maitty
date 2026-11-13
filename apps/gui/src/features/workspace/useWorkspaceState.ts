@@ -59,7 +59,7 @@ import { useServiceReads } from './useServiceReads'
 import { useSessionList } from './useSessionList'
 import { usePaneFiles } from './usePaneFiles'
 import { useWindowTheme } from './useWindowTheme'
-import { useInspectActions, type TurnDiff } from './useInspectActions'
+import { useInspectActions, useTurnDiff } from './useInspectActions'
 import { useAgentStarts } from './useAgentStarts'
 import { useMountedTabs } from './useMountedTabs'
 
@@ -118,7 +118,6 @@ export function useWorkspaceState() {
   const [worktreeFrom, setWorktreeFrom] = useState<SessionView | null>(null)
   const [inspectView, setInspectView] = useState<InspectView>('changes')
   const [lookAt, setLookAt] = useState<LookAt | null>(null)
-  const [turnDiff, setTurnDiff] = useState<TurnDiff | null>(null)
   const [windowFocused, setWindowFocused] = useState(() => document.hasFocus())
   const [toastMessage, setToastMessage] = useState<{ text: string; key: number } | null>(null)
   // After a restart into an update, the first thing said is which version this is and what changed.
@@ -146,12 +145,7 @@ export function useWorkspaceState() {
   const { machines, machinesRef, machinesKnown, machineSaid } = useRemoteMachines()
   const { sessions, sessionMap, setExpectedAgents, paneSessions } = useSessionList({ sessionsQuery, online, machines, home, layout })
   const focusedId = focusedSessionId(layout)
-  // A turn's diff belongs to the session it was opened for; moving to another session drops it.
-  const [turnDiffFocus, setTurnDiffFocus] = useState(focusedId)
-  if (turnDiffFocus !== focusedId) {
-    setTurnDiffFocus(focusedId)
-    if (turnDiff !== null && turnDiff.sessionId !== focusedId) setTurnDiff(null)
-  }
+  const [turnDiff, setTurnDiff] = useTurnDiff(focusedId)
   // A click anywhere outside the panes takes the border off the focused pane; a click in a pane, or focus moving to another pane, puts it back.
   const focusedPaneId = activeArrangement(layout)?.focus ?? null
   const [outsidePanes, setOutsidePanes] = useState(false)
