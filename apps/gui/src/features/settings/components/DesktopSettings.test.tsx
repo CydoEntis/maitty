@@ -78,7 +78,7 @@ describe('desktop settings', () => {
   it('groups the sections the way the design does', () => {
     renderSettings('general')
     const nav = screen.getByRole('navigation', { name: 'Settings sections' })
-    expect(nav).toHaveTextContent('ESSENTIALSGeneralGChatCAgentsETERMINALTerminalTAppearanceASidebarSWORKSPACEUsage & costUNotificationsNMachinesMHotkeys?ADVANCEDDaemonDPerformanceP')
+    expect(nav).toHaveTextContent('ESSENTIALSGeneralGChatCAgentsETERMINALTerminalTAppearanceASidebarSWORKSPACEUsage & costUNotificationsNMachinesMGitHubHHotkeys?ADVANCEDDaemonDPerformanceP')
     expect(within(nav).getByRole('button', { name: /General/ })).toHaveAttribute('aria-current', 'page')
   })
 

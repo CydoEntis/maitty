@@ -13,6 +13,7 @@ import { Segmented, SegmentedItem } from '@/components/ui/radio-group'
 import { Switch } from '@/components/ui/switch'
 import { SpinnerPicker } from './SpinnerPicker'
 import { PerformanceSection } from './PerformanceSection'
+import { GitHubSection } from './GitHubSection'
 import { hotkeyRows, type Platform } from '@/features/workspace/model/shortcuts'
 import { CHAT_AGENTS } from '@/features/workspace/model/chatView'
 import { Keycaps } from '@/features/shortcuts/Keycaps'
@@ -25,10 +26,10 @@ import { DisconnectedSince } from '@/features/workspace/components/times'
 import { installNote, UPDATE_WORDS, updateVerb, updateWarning, type MachineHead, type UpdateAction } from '@/features/workspace/model/machines'
 import { UsagePage } from '@/features/usage/UsagePage'
 import type { OpenSession } from '@/features/usage/UsageTable'
-import { FOLDER_PATH } from '@/features/workspace/components/paths'
+import { BRANCH_PATH, FOLDER_PATH } from '@/features/workspace/components/paths'
 import { CHAT_TEXT_SIZES, SCROLL_SPEED_CHOICES, SCROLLBACK_CHOICES, SIDEBAR_WIDTH_DEFAULT, TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN, UI_TEXT_SIZE_DEFAULT, UI_TEXT_SIZE_LARGE, UI_TEXT_SIZE_SMALL, type CursorStyle, type ScrollbackLines, type SidebarOrder, type ScrollSpeed, type SettingsPreferences } from '../preferences'
 
-export type DesktopSettingsSection = 'general' | 'chat' | 'agents' | 'terminal' | 'appearance' | 'sidebar' | 'usage' | 'notifications' | 'machines' | 'keys' | 'daemon' | 'performance'
+export type DesktopSettingsSection = 'general' | 'chat' | 'agents' | 'terminal' | 'appearance' | 'sidebar' | 'usage' | 'notifications' | 'machines' | 'github' | 'keys' | 'daemon' | 'performance'
 
 /** The other machines, for the Machines page: what the window knows of each, and what it can ask of the host. */
 export type MachinesInfo = {
@@ -131,6 +132,7 @@ const NAV: Array<{ label: string; items: NavItem[] }> = [
       { id: 'usage', label: 'Usage & cost', key: 'U', tint: 'var(--ansi-mag)', path: 'M4 20V10M10 20V4M16 20v-7M22 20H2' },
       { id: 'notifications', label: 'Notifications', key: 'N', tint: 'var(--warn)', path: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0' },
       { id: 'machines', label: 'Machines', key: 'M', tint: 'var(--ansi-green)', path: 'M3 4h18v6H3zM3 14h18v6H3zM7 7h.01M7 17h.01M17 7h.01M17 17h.01' },
+      { id: 'github', label: 'GitHub', key: 'H', tint: 'var(--ansi-blue)', path: BRANCH_PATH },
       { id: 'keys', label: 'Hotkeys', key: '?', tint: 'var(--ansi-blue)', path: 'M2 6h20v12H2zM6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8' },
     ],
   },
@@ -153,12 +155,13 @@ const PAGE: Record<DesktopSettingsSection, [string, string]> = {
   usage: ['Usage & cost', 'What the agents reported using, by session. Never estimated.'],
   notifications: ['Notifications', 'When the system should tell you a session needs you.'],
   machines: ['Machines', 'Other computers whose sessions show up beside this one.'],
+  github: ['GitHub', 'Who each machine is signed in to GitHub as.'],
   keys: ['Hotkeys', 'Everything the window handles before the shell does.'],
   daemon: ['Daemon', 'The local maittyd that owns every session.'],
   performance: ['Performance', 'What the window is spending its time on, measured live.'],
 }
 
-const KEY_TO_SECTION: Record<string, DesktopSettingsSection> = { g: 'general', c: 'chat', e: 'agents', t: 'terminal', a: 'appearance', s: 'sidebar', u: 'usage', n: 'notifications', m: 'machines', '?': 'keys', d: 'daemon', p: 'performance' }
+const KEY_TO_SECTION: Record<string, DesktopSettingsSection> = { g: 'general', c: 'chat', e: 'agents', t: 'terminal', a: 'appearance', s: 'sidebar', u: 'usage', n: 'notifications', m: 'machines', h: 'github', '?': 'keys', d: 'daemon', p: 'performance' }
 
 /** Esc ends an open theme list, or a running add-machine, first; Settings stays. A part that handles Esc itself is marked `data-owns-escape`. */
 const keepForOpenList = (event: globalThis.KeyboardEvent) => {
@@ -231,6 +234,7 @@ export function DesktopSettings(props: DesktopSettingsProps) {
               {section === 'usage' && <UsageSection usage={props.usage} />}
               {section === 'notifications' && <NotificationsSection preferences={preferences} update={update} onTestNotice={props.onTestNotice} />}
               {section === 'machines' && <MachinesSection machines={props.machines} />}
+              {section === 'github' && <GitHubSection machines={props.machines.list} />}
               {section === 'keys' && <HotkeysSection platform={props.platform} />}
               {section === 'daemon' && <DaemonSection daemon={props.daemon} />}
               {section === 'performance' && <PerformanceSection preferences={preferences} update={update} appVersion={props.appVersion} />}

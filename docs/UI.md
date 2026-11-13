@@ -111,7 +111,12 @@ session is its own action (its look is in [DESIGN](DESIGN.md#desktop-app)).
 The desktop app also shows other machines' terminal sessions (ADR 0007).
 Its host holds one supervised connection per machine and the web view only renders: it knows a machine by
 name, never by where it points. A session of another machine has the id `build/t12` (the machine's name, so a
-saved layout survives a restart; this computer's stay `t12`). **Settings › Machines** retries, removes and
+saved layout survives a restart; this computer's stay `t12`). **Settings › GitHub** (`GitHubSection`, key
+`H`) has one row for this computer and one for each connected machine, saying what that machine's own `gh`
+says (`github_accounts`): "Signed in as <login>" (with "(also …)" for its other accounts), "Not signed in",
+"The GitHub command line (gh) is not installed. Get it from cli.github.com", "Checking…" until it answers,
+or "Could not check: <why>" for a machine that did not answer, which leaves the other rows as they are.
+**Check again** asks every row again. A machine that is not connected has no row. **Settings › Machines** retries, removes and
 adds machines (the behaviour is the terminal app's [Machines dialog](#project-specific-machines-dialog),
 with the host list read off the UI thread, the look at the machine ended by a 12 s limit or Cancel, and a
 login that needs a person run in a session named `ssh <name>`); **New session** (⌘T, Ctrl+Shift+T, ⌘K, the sidebar's New agent chat, a machine's New agent chat here) opens, on this computer, the

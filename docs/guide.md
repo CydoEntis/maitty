@@ -732,7 +732,8 @@ opens in the machine's home folder. To start on a project that is not on the mac
 repository…** on the new chat page (beside Browse…, or in the project menu): paste the repository's address,
 pick the folder it goes inside, and the chat opens on the new folder. It works for this computer and for
 another machine, and uses whatever git sign-in that machine already has; a private repository the machine
-cannot sign in to fails with git's own message. Files, Changes, worktrees and the other features that read a pane's files
+cannot sign in to fails with git's own message. **Settings › GitHub** shows who each connected machine is
+signed in to GitHub as, read from that machine's GitHub CLI (`gh`); Maitty never sees the token. Files, Changes, worktrees and the other features that read a pane's files
 are for this computer's sessions only.
 
 **Dropping files or folders on a session of another machine** sends them there: drag up to 10 files or folders from
