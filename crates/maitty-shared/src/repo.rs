@@ -66,8 +66,9 @@ pub enum RepoReply {
     RestoreCount(usize),
     /// A file was written.
     Written,
-    /// What `FindFiles` matched: paths relative to the checkout root, with `/`.
-    Files(Vec<String>),
+    /// What `FindFiles` matched: paths relative to the checkout root, with `/`. `truncated`: the
+    /// walk stopped at its file or time limit, so a file past that point was not searched.
+    Files { paths: Vec<String>, truncated: bool },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

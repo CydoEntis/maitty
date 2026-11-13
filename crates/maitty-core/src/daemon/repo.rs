@@ -10,11 +10,19 @@ use crate::repo::{
     RepoCommit, RepoReference, RepoReply, RepoRequest, RepoSnapshot, RepoStatus,
 };
 use anyhow::{Context, Result, bail};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 const MAX_LOG: usize = 200;
 /// A file search walks at most this many files; a larger checkout is searched only that far.
 const MAX_WALK_FILES: usize = 50_000;
+/// A walk that runs longer than this stops where it is, so a huge or slow folder still answers.
+const WALK_TIME_LIMIT: Duration = Duration::from_millis(1500);
+/// One search asks again on every keystroke; the walk is shared for this long and only re-ranked.
+const WALK_REUSED_FOR: Duration = Duration::from_secs(5);
+const WALK_CACHE_FOLDERS: usize = 16;
 const FIELD: char = '\x1f';
 const RECORD: char = '\x1e';
 
@@ -64,9 +72,7 @@ pub fn answer(dir: &Path, request: &RepoRequest) -> Result<RepoReply> {
             )
         }
         RepoRequest::References => RepoReply::References(references(root)?),
-        RepoRequest::FindFiles { query, limit } => {
-            RepoReply::Files(find_files(root, query, *limit)?)
-        }
+        RepoRequest::FindFiles { query, limit } => find_files(root, query, *limit)?,
     })
 }
 
@@ -121,48 +127,117 @@ fn references(root: &Path) -> Result<Vec<RepoReference>> {
 
 /// The query is only ever matched against walked paths, never joined to a folder, so it cannot
 /// reach outside `root`; links are not followed and not listed.
-fn find_files(root: &Path, query: &str, limit: usize) -> Result<Vec<String>> {
+fn find_files(root: &Path, query: &str, limit: usize) -> Result<RepoReply> {
     if query.chars().count() > FIND_FILES_MAX_QUERY_CHARS {
         bail!("A file search is at most {FIND_FILES_MAX_QUERY_CHARS} characters");
     }
-    Ok(rank(
-        walk(root, MAX_WALK_FILES),
-        query,
-        limit.min(FIND_FILES_MAX_RESULTS),
-    ))
+    let walked = WALKS.get_or_walk(root, Instant::now(), || {
+        walk(root, MAX_WALK_FILES, WALK_TIME_LIMIT)
+    });
+    Ok(RepoReply::Files {
+        paths: rank(&walked.paths, query, limit.min(FIND_FILES_MAX_RESULTS)),
+        truncated: walked.truncated,
+    })
 }
 
-/// Files under `root` that are not hidden or ignored, relative with `/`, the first `cap` found.
-fn walk(root: &Path, cap: usize) -> Vec<String> {
-    ignore::WalkBuilder::new(root)
+static WALKS: LazyLock<WalkCache> = LazyLock::new(WalkCache::default);
+
+#[derive(Debug, Clone, Default)]
+struct Walked {
+    paths: Arc<Vec<String>>,
+    /// The walk stopped at its file or time limit.
+    truncated: bool,
+}
+
+#[derive(Default)]
+struct WalkCache(Mutex<HashMap<PathBuf, (Instant, Walked)>>);
+
+impl WalkCache {
+    /// The walk of `root` taken within `WALK_REUSED_FOR` of `now`, else a fresh one from `walk`.
+    fn get_or_walk(&self, root: &Path, now: Instant, walk: impl FnOnce() -> Walked) -> Walked {
+        let fresh = |taken: Instant| now.saturating_duration_since(taken) < WALK_REUSED_FOR;
+        if let Some((taken, walked)) = self.lock().get(root)
+            && fresh(*taken)
+        {
+            return walked.clone();
+        }
+        // Walked without the lock, so one slow folder does not hold up a search of another.
+        let walked = walk();
+        let mut cache = self.lock();
+        cache.retain(|_, (taken, _)| fresh(*taken));
+        if cache.len() >= WALK_CACHE_FOLDERS
+            && let Some(oldest) = cache
+                .iter()
+                .min_by_key(|(_, (taken, _))| *taken)
+                .map(|(path, _)| path.clone())
+        {
+            cache.remove(&oldest);
+        }
+        cache.insert(root.to_path_buf(), (now, walked.clone()));
+        walked
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<PathBuf, (Instant, Walked)>> {
+        // The map holds only finished walks, so one left by a panicking search is still whole.
+        self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.lock().len()
+    }
+}
+
+/// Files under `root` that are not hidden or ignored, relative with `/`: at most `cap`, and only
+/// what is found within `time_limit`. `.gitignore` is read only inside a git repository.
+fn walk(root: &Path, cap: usize, time_limit: Duration) -> Walked {
+    let started = Instant::now();
+    let mut paths = Vec::new();
+    let mut truncated = false;
+    let entries = ignore::WalkBuilder::new(root)
         .hidden(true)
         .follow_links(false)
         .build()
-        .flatten()
-        .filter(|entry| entry.file_type().is_some_and(|kind| kind.is_file()))
-        .take(cap)
-        .filter_map(|entry| {
-            entry
-                .path()
-                .strip_prefix(root)
-                .ok()
-                .map(|path| path.to_string_lossy().replace('\\', "/"))
-        })
-        .collect()
+        // An unreadable entry is skipped: a search shows what it can reach.
+        .filter_map(Result::ok);
+    for entry in entries {
+        if started.elapsed() >= time_limit {
+            truncated = true;
+            break;
+        }
+        if !entry.file_type().is_some_and(|kind| kind.is_file()) {
+            continue;
+        }
+        if paths.len() == cap {
+            truncated = true;
+            break;
+        }
+        if let Ok(path) = entry.path().strip_prefix(root) {
+            paths.push(path.to_string_lossy().replace('\\', "/"));
+        }
+    }
+    Walked {
+        paths: Arc::new(paths),
+        truncated,
+    }
 }
 
 /// A file name that starts with the query beats one that holds it, which beats a folder that
-/// holds it; within each, shorter paths first, then by name.
-fn rank(paths: Vec<String>, query: &str, limit: usize) -> Vec<String> {
+/// holds it; within each, shorter paths first, then by path in byte order.
+fn rank(paths: &[String], query: &str, limit: usize) -> Vec<String> {
     let query = query.to_lowercase();
-    let mut matched: Vec<(u8, String)> = paths
-        .into_iter()
+    let mut matched: Vec<(u8, &String)> = paths
+        .iter()
         .filter_map(|path| Some((match_tier(&path.to_lowercase(), &query)?, path)))
         .collect();
     matched.sort_by(|(a_tier, a), (b_tier, b)| {
         (a_tier, a.chars().count(), a).cmp(&(b_tier, b.chars().count(), b))
     });
-    matched.into_iter().take(limit).map(|(_, path)| path).collect()
+    matched
+        .into_iter()
+        .take(limit)
+        .map(|(_, path)| path.clone())
+        .collect()
 }
 
 fn match_tier(path: &str, query: &str) -> Option<u8> {
@@ -749,7 +824,7 @@ mod tests {
         .map(String::from)
         .to_vec();
         assert_eq!(
-            rank(paths.clone(), "MAIN", 10),
+            rank(&paths, "MAIN", 10),
             [
                 "main.rs",
                 "src/main.rs",
@@ -758,7 +833,7 @@ mod tests {
                 "src/main/lib.rs",
             ]
         );
-        assert_eq!(rank(paths, "main", 2), ["main.rs", "src/main.rs"]);
+        assert_eq!(rank(&paths, "main", 2), ["main.rs", "src/main.rs"]);
     }
 
     #[test]
@@ -781,7 +856,10 @@ mod tests {
 
         assert_eq!(
             find("a").unwrap(),
-            RepoReply::Files(vec!["a.txt".into(), "src/a_lib.rs".into()])
+            RepoReply::Files {
+                paths: vec!["a.txt".into(), "src/a_lib.rs".into()],
+                truncated: false,
+            }
         );
         assert!(find(&"a".repeat(FIND_FILES_MAX_QUERY_CHARS)).is_ok());
         assert!(find(&"a".repeat(FIND_FILES_MAX_QUERY_CHARS + 1)).is_err());
@@ -794,8 +872,47 @@ mod tests {
         for name in ["a.txt", "b.txt", "c.txt"] {
             std::fs::write(dir.path().join(name), "x").expect("file");
         }
-        assert_eq!(walk(dir.path(), 2).len(), 2);
-        assert_eq!(walk(dir.path(), MAX_WALK_FILES).len(), 3);
+        let long = Duration::from_secs(60);
+
+        let capped = walk(dir.path(), 2, long);
+        assert_eq!((capped.paths.len(), capped.truncated), (2, true));
+        let exact = walk(dir.path(), 3, long);
+        assert_eq!((exact.paths.len(), exact.truncated), (3, false));
+        let out_of_time = walk(dir.path(), MAX_WALK_FILES, Duration::ZERO);
+        assert!(out_of_time.truncated);
+    }
+
+    #[test]
+    fn the_keystrokes_of_one_search_share_one_walk_until_it_goes_stale() {
+        let cache = WalkCache::default();
+        let walks = std::cell::Cell::new(0);
+        let walked = || {
+            walks.set(walks.get() + 1);
+            Walked {
+                paths: std::sync::Arc::new(vec!["a.txt".into()]),
+                truncated: false,
+            }
+        };
+        let start = Instant::now();
+        let here = Path::new("/code/here");
+
+        cache.get_or_walk(here, start, walked);
+        cache.get_or_walk(here, start + Duration::from_secs(1), walked);
+        assert_eq!(walks.get(), 1);
+        cache.get_or_walk(Path::new("/code/there"), start, walked);
+        assert_eq!(walks.get(), 2);
+        cache.get_or_walk(here, start + WALK_REUSED_FOR + Duration::from_secs(1), walked);
+        assert_eq!(walks.get(), 3);
+    }
+
+    #[test]
+    fn the_walk_cache_keeps_a_bounded_number_of_folders() {
+        let cache = WalkCache::default();
+        let now = Instant::now();
+        for n in 0..WALK_CACHE_FOLDERS * 2 {
+            cache.get_or_walk(&PathBuf::from(format!("/code/{n}")), now, Walked::default);
+        }
+        assert_eq!(cache.len(), WALK_CACHE_FOLDERS);
     }
 
     #[test]
