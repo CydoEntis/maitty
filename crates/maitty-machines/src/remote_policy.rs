@@ -209,6 +209,9 @@ fn sanitize_closed(
         session.agent = line(std::mem::take(&mut session.agent), NAME_MAX);
         session.session = line(std::mem::take(&mut session.session), NAME_MAX);
         session.cwd = line(session.cwd.to_string_lossy().into_owned(), PATH_MAX).into();
+        for path in [&mut session.worktree, &mut session.repo] {
+            *path = path.take().map(|p| line(p.to_string_lossy().into_owned(), PATH_MAX).into());
+        }
         session.branch = session.branch.take().map(|branch| line(branch, NAME_MAX));
         session.title = session.title.take().map(|title| line(title, NAME_MAX));
     }
@@ -352,6 +355,8 @@ mod tests {
             branch: Some("main\x07".into()),
             title: Some(format!("fix\x1b]0;title\x07{}", "y".repeat(1000))),
             at: 1,
+            worktree: Some(PathBuf::from("/code\u{202e}/api-wt")),
+            repo: Some(PathBuf::from("/code\x1b[2J")),
         };
         let sessions = vec![hostile; CLOSED_SESSIONS_MAX + 10];
         let Some(ServerMsg::Reply(Reply::ClosedSessions(cleaned))) =
@@ -365,7 +370,9 @@ mod tests {
             let title = s.title.as_deref().unwrap();
             assert!(title.len() <= NAME_MAX, "{title:?}");
             let cwd = s.cwd.to_string_lossy();
-            for field in [s.agent.as_str(), &s.session, title, s.branch.as_deref().unwrap(), &cwd] {
+            let worktree = s.worktree.as_deref().unwrap().to_string_lossy();
+            let repo = s.repo.as_deref().unwrap().to_string_lossy();
+            for field in [s.agent.as_str(), &s.session, title, s.branch.as_deref().unwrap(), &cwd, &worktree, &repo] {
                 assert!(!unclean(field), "{field:?}");
             }
         }

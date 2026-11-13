@@ -18,7 +18,7 @@ fn own_data_folder() {
     });
 }
 
-fn daemon_with(cfg: Config) -> (Daemon, mpsc::Receiver<Ev>) {
+pub(super) fn daemon_with(cfg: Config) -> (Daemon, mpsc::Receiver<Ev>) {
     own_data_folder();
     let (tx, rx) = mpsc::channel(4096);
     let mut d = Daemon::new(cfg, tx, || {});
@@ -26,7 +26,7 @@ fn daemon_with(cfg: Config) -> (Daemon, mpsc::Receiver<Ev>) {
     (d, rx)
 }
 
-fn scratch(name: &str) -> PathBuf {
+pub(super) fn scratch(name: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!(
         concat!(env!("APP_COMMAND"), "-{}-{}"),
         name,
@@ -37,7 +37,7 @@ fn scratch(name: &str) -> PathBuf {
     root
 }
 
-fn repo_in(root: &Path) -> PathBuf {
+pub(super) fn repo_in(root: &Path) -> PathBuf {
     let repo = root.join("repo");
     std::fs::create_dir_all(&repo).unwrap();
     let git = |args: &[&str]| crate::proc::git(&repo, args).unwrap();
@@ -82,7 +82,7 @@ fn request(
     }
 }
 
-fn close_all(d: &mut Daemon) {
+pub(super) fn close_all(d: &mut Daemon) {
     for t in d.terms.keys().copied().collect::<Vec<_>>() {
         d.close_term(t);
     }

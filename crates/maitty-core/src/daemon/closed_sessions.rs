@@ -184,6 +184,7 @@ fn cleaned(session: ClosedSession) -> Option<ClosedSession> {
             .take(max)
             .collect()
     };
+    let (worktree, repo) = worktree_pair(&session);
     let agent = line(&session.agent, AGENT_MAX_CHARS);
     let id = line(&session.session, SESSION_MAX_CHARS);
     if agent.is_empty() || id.is_empty() {
@@ -199,7 +200,30 @@ fn cleaned(session: ClosedSession) -> Option<ClosedSession> {
             .filter(|branch| !branch.is_empty()),
         title: session.title.as_deref().and_then(clean_title),
         at: session.at,
+        worktree,
+        repo,
     })
+}
+
+/// The worktree and repository of an entry, both or neither: both absolute, the folder inside the
+/// worktree. A reopen makes a worktree only from a pair that holds together.
+fn worktree_pair(session: &ClosedSession) -> (Option<PathBuf>, Option<PathBuf>) {
+    match (&session.worktree, &session.repo) {
+        (Some(worktree), Some(repo))
+            if worktree.is_absolute() && repo.is_absolute() && session.cwd.starts_with(worktree) =>
+        {
+            (Some(worktree.clone()), Some(repo.clone()))
+        }
+        _ => (None, None),
+    }
+}
+
+/// The linked worktree `head` is in and its repository's main checkout, or neither.
+fn worktree_of(head: Option<&crate::gitfs::Head>) -> (Option<PathBuf>, Option<PathBuf>) {
+    match head.filter(|head| head.linked) {
+        Some(head) => (Some(head.top.clone()), Some(head.main_root.clone())),
+        None => (None, None),
+    }
 }
 
 impl Daemon {
@@ -214,6 +238,7 @@ impl Daemon {
             .conversation_id
             .and_then(|id| self.conversations.iter().find(|c| c.id == id));
         let named = if t.label.trim().is_empty() { &t.name } else { &t.label };
+        let (worktree, repo) = worktree_of(t.head.as_ref());
         let title = Some(named.clone())
             .filter(|name| !name.trim().is_empty())
             .or_else(|| chat.and_then(|c| c.title.clone()));
@@ -230,6 +255,8 @@ impl Daemon {
             branch: t.head.as_ref().map(|head| head.branch.clone()),
             title,
             at: term::unix_now(),
+            worktree,
+            repo,
         })
     }
 
@@ -272,13 +299,17 @@ impl Daemon {
             return;
         };
         let cwd = chat.binding.worktree.clone().unwrap_or_else(|| chat.binding.cwd.clone());
+        let head = crate::gitfs::head(&cwd);
+        let (worktree, repo) = worktree_of(head.as_ref());
         let closed = ClosedSession {
             agent: chat.binding.provider.agent_name().into(),
             session: chat.binding.session_id.clone(),
-            branch: crate::gitfs::head(&cwd).map(|head| head.branch),
+            branch: head.map(|head| head.branch),
             cwd,
             title: chat.title.clone(),
             at: term::unix_now(),
+            worktree,
+            repo,
         };
         self.closed_sessions.remember(closed);
     }

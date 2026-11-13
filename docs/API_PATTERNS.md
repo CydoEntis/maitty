@@ -687,6 +687,18 @@ another machine's daemon for its list over that machine's line; the answer is cl
 (`CLOSED_SESSIONS_SINCE`, in `ClientMsg::introduced_in` and `ServerMsg::introduced_in`);
 `COMPATIBLE_SINCE` stays 78, since an older daemon is simply not asked.
 
+Protocol 87 adds `Command::ReopenClosedSession { agent, session }` (`daemon/reopen.rs`): start again the closed
+session the daemon keeps for that agent and conversation id, in a new session running the agent's resume command in
+its folder. Its folder, branch and repository come from the kept entry, never the client. A worktree whose folder is
+gone is made again first (DATABASE "closed sessions" has the rules: never over anything at the path, only from the
+recorded branch, in the recorded repository), trusted like its repo, its setup hook run, and listed with the
+checkouts the app made. The git and file work runs on a blocking task; the answer is `Reply::Ok` once the session is
+started, else `ServerMsg::Error` (an entry not in the list, an id that is not plain, an agent with no resume template, a
+folder that cannot be made again, a branch that is gone or checked out elsewhere, with the branch named). Human
+clients only. `ClosedSession` gains the defaulted `worktree` and `repo`, which an older peer ignores and an older entry
+lacks. The command has its own `introduced_in` arm (`REOPEN_CLOSED_SINCE`); `COMPATIBLE_SINCE` stays 78, since an
+older daemon is simply not asked.
+
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store
 ([ADR 0009](adr/0009-usage-is-provider-reported-never-estimated.md)): totals, one entry per
@@ -995,7 +1007,7 @@ focus never takes the keys.
 | `NewTab` (`SpawnTab`) | this computer | `target_machine()` with that machine's active workspace |
 | `RenameTab`, `CloseWorkspace` (prompts carrying `WsId` / `TabId`) | this computer | `focus_machine()` (the ids came from its active workspace) |
 | `ConversationRename`, `ConversationArchive` | this computer | `conversation_machine(id)`: the selected session's machine if it lists the chat, else the first machine that does |
-| `NewWorktree` (also with `agent` and `prompt`), `BranchWorktree`, `RemoveWorktree`, `TidyWorktrees`, `CloseWorktree`, `AgentWorktree` | this computer | this computer; refused for another machine's project or pane |
+| `NewWorktree` (also with `agent` and `prompt`), `BranchWorktree`, `RemoveWorktree`, `TidyWorktrees`, `CloseWorktree`, `AgentWorktree`, `ReopenClosedSession` | this computer | this computer; refused for another machine's project or pane |
 | `ForgetCheckApproval`, `ReloadConfig`, `KillServer`, first-state `SelectWorkspace` / `NewWorkspace` | this computer | this computer (no owning machine) |
 
 **Local-only features.** `Feature` (Files, Changes, Find, Branches, References, image paste, agent
