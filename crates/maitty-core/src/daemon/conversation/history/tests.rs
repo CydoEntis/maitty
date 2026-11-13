@@ -300,13 +300,13 @@ fn a_codex_reasoning_summary_is_kept_as_its_own_item_and_hidden_reasoning_is_not
         "id": "private",
         "type": "reasoning",
         "summary": [],
-        "encrypted_content": "gAAAAABhidden",
+        "content": ["raw reasoning that is never read"],
     }));
     completed(json!({
         "id": "thought",
         "type": "reasoning",
-        "summary": ["**Weighing two fixes**", {"type": "summary_text", "text": "The parser one is smaller.\u{1b}[31m"}],
-        "encrypted_content": "gAAAAABhidden",
+        "summary": ["**Weighing two fixes**", "The parser one is smaller.\u{1b}[31m"],
+        "content": [],
     }));
 
     let history = attachments.get(1).unwrap();

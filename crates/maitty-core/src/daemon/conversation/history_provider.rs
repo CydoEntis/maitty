@@ -222,14 +222,13 @@ fn bounded(text: &str, max_bytes: usize, what: &str) -> String {
 }
 
 /// The summary a Codex reasoning item publishes as plain text, its parts one paragraph each.
-/// `None` when it has none: the reasoning itself stays encrypted and is never read or kept.
+/// `None` when it has none: the reasoning itself (its `content`) is never read or kept.
 fn reasoning_summary(item: &Value) -> Option<String> {
     let parts: Vec<&str> = item
         .get("summary")?
         .as_array()?
         .iter()
-        // A plain string from the app server; `{ "text": … }` in the provider's own item shape.
-        .filter_map(|part| part.as_str().or_else(|| part.get("text")?.as_str()))
+        .filter_map(Value::as_str)
         .map(str::trim)
         .filter(|part| !part.is_empty())
         .collect();
