@@ -123,6 +123,7 @@ export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', 
     echo: null,
   }), [draft, held, sessionId, attachments, attach, draftKey])
 
+  const abilities = abilitiesOf(agent)
   return (
     <div className="mx-chat is-starting" onClick={keepComposerFocus}>
       {/* It floats over the conversation (chat.css), so it comes and goes without moving anything. A question that can be
@@ -159,8 +160,8 @@ export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', 
           model: null,
           onOpenFolder: null,
           // The chips the real chat will have are drawn now, with what was picked, so nothing is added or removed when it takes over.
-          ...(abilitiesOf(agent).permissionModes?.switchBy === 'command' && typeInto !== undefined ? { modeLocked: `${AGENT_LABEL[agent]} is starting. Change this once it is ready.` } : {}),
-          ...(abilitiesOf(agent).changeAgent ? { agentChips: { locked: `${AGENT_LABEL[agent]} is starting. Change this once it is ready.`, ...(started === null ? {} : { start: { model: started.model, reasoning: started.reasoning } }) } } : {}),
+          ...(abilities.permissionModes?.switchBy === 'command' && typeInto !== undefined ? { modeLocked: `${AGENT_LABEL[agent]} is starting. Change this once it is ready.` } : {}),
+          ...(abilities.changeAgent ? { agentChips: { locked: `${AGENT_LABEL[agent]} is starting. Change this once it is ready.`, ...(started === null ? {} : { start: { model: started.model, reasoning: started.reasoning } }) } } : {}),
         }}
       />
     </div>

@@ -16,7 +16,7 @@ import { PermissionMenu } from '@/features/chat/components/PermissionMenu'
 import { openAgentDocs } from '@/api/daemon'
 import { LOCAL_MACHINE } from '@/api/machines'
 import { chatAgentOf, type ChatAgent } from '../model/chatView'
-import { abilitiesOf } from '../model/agentAbilities'
+import { abilitiesOf, hasAbility } from '../model/agentAbilities'
 import { ageOf, nowSeconds, splitRecent, useFolderBranches, useGlances, useInstalledAgents, useSavedConversations, useSyncState } from '../model/newChatHost'
 import { Switch } from '@/components/ui/switch'
 import type { NewSessionProject } from '../model/newSession'
@@ -134,7 +134,7 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
   const isInstalled = (id: string) => (installed === null ? chatAgentOf(id) !== null : installed.includes(id))
   const agentMissing = !remote && !isInstalled(agent)
   // Only this computer's daemon reads saved conversations, and only Claude's and Codex's.
-  const saved = useSavedConversations(folder, remote || agentMissing || agent === 'gemini' ? null : agent)
+  const saved = useSavedConversations(folder, remote || agentMissing || !hasAbility(agent, 'resumeSaved') ? null : agent)
 
   // The message box takes the keys once there is a folder; before that the search field has them.
   useEffect(() => { if (folder !== '') text.current?.focus() }, [folder])

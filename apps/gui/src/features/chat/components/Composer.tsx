@@ -291,7 +291,7 @@ export function Composer({ agent, composer, conversation, commandsFrom, question
           </div>
         </div>
         <SettingsTray facts={facts} />
-        {readOnly && (agent === 'claude' || agent === 'gemini') && isBangLine(draft) && <p className="mx-composer-note">Runs in the terminal, not as a message. Open the terminal to answer anything it asks.</p>}
+        {readOnly && abilitiesOf(agent).bangToTerminal && isBangLine(draft) && <p className="mx-composer-note">Runs in the terminal, not as a message. Open the terminal to answer anything it asks.</p>}
         {restoreNote !== null && composer.conversationKey !== undefined && (
           <p className="mx-composer-note">
             Your next message starts with a line telling {agent} the files were restored.{' '}
