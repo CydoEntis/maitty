@@ -284,6 +284,7 @@ impl Daemon {
                 || (matches!(status, HookStatus::Idle) && event != "SessionStart")
             {
                 t.subagents.clear();
+                t.done_held = None;
                 let now = term::unix_now();
                 for activity in &mut t.subagent_activity {
                     if activity.state.active() {
@@ -449,6 +450,9 @@ impl Daemon {
             // Done while subagents still run: hold it until they finish (or 3 minutes pass).
             HookStatus::Done if !t.subagents.is_empty() => {
                 t.done_held = Some(now);
+                // Claude wakes to read what its helpers found and stops again: that stop is
+                // the finish to say, not the last helper's.
+                t.awaiting_background = paused;
                 self.dirty = true;
                 return;
             }
@@ -509,7 +513,13 @@ impl Daemon {
         }
         if new == Status::Working {
             t.last_working_hook = Some(now);
-            t.done_held = None;
+            // A helper's start is not the parent back at work: one that starts once the
+            // turn is over is held like a turn end, and one more leaves a held end held.
+            if event != "SubagentStart" {
+                t.done_held = None;
+            } else if matches!(t.status, Status::Idle | Status::Done) {
+                t.done_held = Some(now);
+            }
             t.progress_off = None;
         }
         if new != Status::Working {
@@ -1024,10 +1034,14 @@ impl Daemon {
             // Claude's input box shows all turn long, and its title says idle while its
             // turn-end hooks still run and between a turn's steps: the screen must also have
             // gone still, or this would finish (and ring) ahead of the hook, or over and over
-            // through the turn of an agent with no hooks.
+            // through the turn of an agent with no hooks. An agent whose turn end is held
+            // while a helper it reported still runs shows the same idle prompt, so the prompt
+            // proves nothing until that helper stops or goes quiet for good.
+            let held_on_helpers = t.done_held.is_some() && helpers_running(t);
             if signal.status == Some(Status::Idle)
                 && signal.visible_idle
                 && (t.status == Status::Working || has_active_children)
+                && !held_on_helpers
                 && t.last_output.elapsed() >= SCREEN_DONE_QUIET
             {
                 let status = if t.status == Status::Working {
@@ -1041,11 +1055,7 @@ impl Daemon {
             // Any trusted adapter may report child agents without using lifecycle
             // hooks (Codex is discovered from its local session files). Keep the
             // parent visibly working while a recently observed child is active.
-            if matches!(t.status, Status::Idle | Status::Done)
-                && !t.subagents.is_empty()
-                && t.subagent_seen
-                    .is_some_and(|s| s.elapsed() <= SUBAGENTS_QUIET_AT_MOST)
-            {
+            if matches!(t.status, Status::Idle | Status::Done) && helpers_running(t) {
                 still_working.push(t.id);
                 continue;
             }
@@ -1120,12 +1130,9 @@ impl Daemon {
                 }
                 // The progress indicator went away and no turn-end came: cancelled (Esc).
                 // A progress bar that is off while helpers run is the agent waiting on them.
-                let helpers_running = !t.subagents.is_empty()
-                    && t.subagent_seen
-                        .is_some_and(|s| s.elapsed() <= SUBAGENTS_QUIET_AT_MOST);
                 if t.status == Status::Working
                     && t.done_held.is_none()
-                    && !helpers_running
+                    && !helpers_running(t)
                     && t.progress_off
                         .is_some_and(|p| p.elapsed() > CANCELLED_AFTER)
                 {
@@ -1216,7 +1223,10 @@ impl Daemon {
             {
                 t.subagents.clear();
                 t.subagent_seen = None;
-                t.done_held = None;
+                // A hold that ends here is the end of the work: no wake-up turn will say it.
+                if t.done_held.take().is_some() {
+                    t.awaiting_background = false;
+                }
                 self.dirty = true;
                 let now = term::unix_now();
                 for activity in &mut t.subagent_activity {
@@ -1234,6 +1244,7 @@ impl Daemon {
             if why == "subagents went quiet"
                 && let Some(t) = self.terms.get_mut(&id)
             {
+                t.awaiting_background = false;
                 let now = term::unix_now();
                 for activity in &mut t.subagent_activity {
                     if activity.state.active() {
@@ -1306,15 +1317,20 @@ fn repeat_count(t: &mut term::Term) -> Option<u32> {
     t.call_run.repeats()
 }
 
+/// Whether a helper the agent reported is counted as running and was heard from within
+/// `SUBAGENTS_QUIET_AT_MOST`.
+fn helpers_running(t: &term::Term) -> bool {
+    !t.subagents.is_empty()
+        && t.subagent_seen
+            .is_some_and(|s| s.elapsed() <= SUBAGENTS_QUIET_AT_MOST)
+}
+
 /// When a working agent went silent, if it has been silent past `QUIET_AFTER`. Never while
 /// helpers it reported are running (it is waiting on them) or while it asks for helpers.
 fn quiet_since(t: &term::Term, now: u64) -> Option<u64> {
-    let helpers_running = !t.subagents.is_empty()
-        && t.subagent_seen
-            .is_some_and(|s| s.elapsed() <= SUBAGENTS_QUIET_AT_MOST);
     if t.status != Status::Working
         || t.agent.is_none()
-        || helpers_running
+        || helpers_running(t)
         || !t.helpers.asked.is_empty()
     {
         return None;
