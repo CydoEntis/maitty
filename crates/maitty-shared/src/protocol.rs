@@ -11,7 +11,26 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 87;
+pub const PROTOCOL_VERSION: u32 = 88;
+
+/// The first version whose daemon fetches, pulls and pushes a pane's checkout on request
+/// (`Query::Git`).
+pub const GIT_SYNC_SINCE: u32 = 88;
+/// How long the daemon gives one fetch, pull or push, in seconds.
+pub const GIT_SYNC_LIMIT_SECS: u64 = 60;
+
+/// What a `Query::Git` does to the checkout a pane is in.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GitRequest {
+    /// Bring what is known of the remote up to date, dropping the branches it no longer has.
+    Fetch,
+    /// Fast-forward the branch to its upstream. A branch with commits of its own as well is left
+    /// as it is: nothing is merged or rebased.
+    Pull,
+    /// Send the branch to its upstream, or to `origin` under its own name when it has none yet.
+    /// Never forced.
+    Push,
+}
 
 /// The first version whose daemon lists the repositories its machine's GitHub account can clone
 /// (`Query::GitHubRepos`, `Query::GitHubOwners`).
@@ -865,6 +884,13 @@ pub enum Query {
     GitHubOwners {
         tag: u64,
     },
+    /// Do `request` to the checkout pane `term` is in (human clients only). The answer is
+    /// `Reply::GitDone` with the same `tag`.
+    Git {
+        term: u32,
+        request: GitRequest,
+        tag: u64,
+    },
     List,
     /// Plain-text screen contents of a terminal (the visible screen).
     Read {
@@ -1086,6 +1112,12 @@ pub enum Reply {
     GitHubOwners {
         tag: u64,
         answer: GitHubAnswer<Vec<String>>,
+    },
+    /// How a `Query::Git` ended: one line saying what happened ("Pulled", "Pushed main"), or one
+    /// line saying why nothing did.
+    GitDone {
+        tag: u64,
+        outcome: Result<String, String>,
     },
 }
 
@@ -1899,6 +1931,7 @@ impl ClientMsg {
             ClientMsg::Query(Query::CloneRepo { .. }) => CLONE_SINCE,
             ClientMsg::Query(Query::GitHubAccounts { .. }) => GITHUB_ACCOUNTS_SINCE,
             ClientMsg::Query(Query::GitHubRepos { .. } | Query::GitHubOwners { .. }) => GITHUB_REPOS_SINCE,
+            ClientMsg::Query(Query::Git { .. }) => GIT_SYNC_SINCE,
             _ => COMPATIBLE_SINCE,
         }
     }
@@ -2303,7 +2336,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 87);
+        assert_eq!(PROTOCOL_VERSION, 88);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2575,7 +2608,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 87);
+        assert_eq!(PROTOCOL_VERSION, 88);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -3422,5 +3455,9 @@ mod tests {
             assert_eq!(ClientMsg::Query(query).introduced_in(), GITHUB_REPOS_SINCE);
         }
         const { assert!(GITHUB_REPOS_SINCE > COMPATIBLE_SINCE && GITHUB_REPOS_SINCE <= PROTOCOL_VERSION) };
+        for request in [GitRequest::Fetch, GitRequest::Pull, GitRequest::Push] {
+            assert_eq!(ClientMsg::Query(Query::Git { term: 3, request, tag: 1 }).introduced_in(), GIT_SYNC_SINCE);
+        }
+        const { assert!(GIT_SYNC_SINCE > COMPATIBLE_SINCE && GIT_SYNC_SINCE <= PROTOCOL_VERSION) };
     }
 }

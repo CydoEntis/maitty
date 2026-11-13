@@ -169,6 +169,13 @@ pub fn vet(opts: &MachineOpts, asked: bool, machine: &str, msg: ServerMsg) -> Op
                 Err(why) => Err(sanitize(&cut_bytes(why, NAME_MAX), false)),
             },
         }),
+        ServerMsg::Reply(Reply::GitDone { tag, outcome }) => {
+            let line = |text: String| sanitize(&cut_bytes(text, NAME_MAX), false);
+            ServerMsg::Reply(Reply::GitDone {
+                tag,
+                outcome: outcome.map(line).map_err(line),
+            })
+        }
         ServerMsg::Reply(Reply::GitHubAccounts { tag, report }) => ServerMsg::Reply(Reply::GitHubAccounts {
             tag,
             report: sanitize_github(report),
@@ -347,6 +354,15 @@ mod tests {
 
     #[test]
     fn what_another_machine_says_of_a_clone_is_one_clean_line() {
+        for outcome in [Ok("Pushed ma\u{1b}[31min\nx".to_string()), Err("fatal: no\u{7}\nway".to_string())] {
+            let Some(ServerMsg::Reply(Reply::GitDone { tag: 6, outcome })) =
+                vet(&nothing_on(), true, "box", ServerMsg::Reply(Reply::GitDone { tag: 6, outcome }))
+            else {
+                panic!("how a fetch, pull or push ended is let through");
+            };
+            let line = outcome.unwrap_or_else(|why| why);
+            assert!(!line.contains(['\u{1b}', '\u{7}', '\n']), "{line:?}");
+        }
         let cloned = |outcome| ServerMsg::Reply(Reply::Cloned { tag: 4, outcome });
         let Some(ServerMsg::Reply(Reply::Cloned { tag: 4, outcome: Ok(path) })) =
             vet(&nothing_on(), true, "box", cloned(Ok("/home/dev/wid\u{1b}[31mgets\nx".into())))

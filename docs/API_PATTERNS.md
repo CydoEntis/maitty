@@ -654,6 +654,17 @@ another machine keeps only logins GitHub could have given out and one clean `pro
 host sends it through `github_accounts(machine, tag)` and raises a `github-accounts` event with the tag
 and the report (`apps/gui/src/api/githubAccounts.ts` waits on it for 20 seconds).
 
+Protocol 88 adds `Query::Git { term, request, tag }` with `Reply::GitDone { tag, outcome }`
+(`GIT_SYNC_SINCE`; `COMPATIBLE_SINCE` stays). `request` is a `GitRequest`: `Fetch` (`git fetch --prune`),
+`Pull` (`git pull --ff-only`) or `Push` (`git push`, or `git push -u origin <branch>` for a branch with
+no upstream yet), run in the folder pane `term` is in. `outcome` is one line either way: `Fetched`,
+`Pulled`, `Already up to date` or `Pushed <branch>`, or why nothing happened. A checkout on no branch
+and a pull with no upstream are refused before git runs; a branch that is both ahead of and behind
+its upstream is not pulled and stays as it was. Nothing merges, rebases or forces. Human clients only,
+with the same pane checks as `Query::Repo` (an unknown pane is `ServerMsg::Error`); git runs off the
+event loop with `GIT_TERMINAL_PROMPT=0` and the whole request is stopped after `GIT_SYNC_LIMIT_SECS`
+(60). An answer from another machine is cut and cleaned to one line (`remote_policy::vet`).
+
 Protocol 87 adds `Query::GitHubRepos { owner, search, tag }` with `Reply::GitHubRepos { tag, answer }`,
 and `Query::GitHubOwners { tag }` with `Reply::GitHubOwners { tag, answer }` (`GITHUB_REPOS_SINCE`;
 `COMPATIBLE_SINCE` stays). Each `answer` is a `GitHubAnswer`: `NotInstalled`, `NotSignedIn`,

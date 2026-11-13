@@ -33,6 +33,7 @@ mod scan;
 mod search;
 mod secrets;
 mod status;
+mod sync;
 mod term;
 mod usage;
 mod usage_store;
@@ -239,7 +240,7 @@ pub enum Ev {
         report: crate::protocol::GitHubReport,
     },
     /// A GitHub list `gh` was asked for off the loop, as the reply to send.
-    GitHubListed {
+    Answered {
         client: ClientId,
         reply: Reply,
     },
@@ -2202,7 +2203,7 @@ impl Daemon {
                 tag,
                 report,
             } => self.send(client, ServerMsg::Reply(Reply::GitHubAccounts { tag, report })),
-            Ev::GitHubListed { client, reply } => self.send(client, ServerMsg::Reply(reply)),
+            Ev::Answered { client, reply } => self.send(client, ServerMsg::Reply(reply)),
             Ev::RepoReady {
                 client,
                 tag,
@@ -2797,7 +2798,7 @@ impl Daemon {
                         tokio::task::spawn_blocking(move || {
                             let answer = github::repos(owner.as_deref(), search.as_deref());
                             let reply = Reply::GitHubRepos { tag, answer };
-                            let _ = tx.blocking_send(Ev::GitHubListed { client, reply });
+                            let _ = tx.blocking_send(Ev::Answered { client, reply });
                         });
                         return;
                     }
@@ -2805,7 +2806,7 @@ impl Daemon {
                         let tx = self.tx.clone();
                         tokio::task::spawn_blocking(move || {
                             let reply = Reply::GitHubOwners { tag, answer: github::owners() };
-                            let _ = tx.blocking_send(Ev::GitHubListed { client, reply });
+                            let _ = tx.blocking_send(Ev::Answered { client, reply });
                         });
                         return;
                     }
@@ -2868,6 +2869,38 @@ impl Daemon {
                         tokio::task::spawn_blocking(move || {
                             let hits = search::search(&panes, &query);
                             let _ = tx.blocking_send(Ev::SearchReady { client, hits });
+                        });
+                        return;
+                    }
+                    Query::Git { .. }
+                        if self.clients.get(&client).is_some_and(|client| {
+                            client.from.is_some() || client.structured.is_some()
+                        }) =>
+                    {
+                        ServerMsg::Error("Only a human client can fetch, pull or push this way".into())
+                    }
+                    Query::Git { term, request, tag } => {
+                        let folder = self
+                            .may_use_terminal(client, term)
+                            .and_then(|()| self.may(client, Grant::Write, Some(term)))
+                            .and_then(|()| {
+                                self.terms
+                                    .get(&term)
+                                    .map(|t| t.cwd.clone())
+                                    .ok_or_else(|| anyhow::anyhow!("no pane {term}"))
+                            });
+                        let folder = match folder {
+                            Ok(folder) => folder,
+                            Err(error) => {
+                                self.send(client, ServerMsg::Error(format!("{error:#}")));
+                                return;
+                            }
+                        };
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let outcome = sync::sync(&folder, &request, sync::SYNC_LIMIT);
+                            let reply = Reply::GitDone { tag, outcome };
+                            let _ = tx.blocking_send(Ev::Answered { client, reply });
                         });
                         return;
                     }
