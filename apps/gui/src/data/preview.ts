@@ -25,6 +25,8 @@ export type TerminalDetails = {
   statusWhy?: string
   /** It hit its plan limit, and the daemon tells it to continue at this time, in unix seconds (`TermInfo.resume_at`); null or absent when it is not held. */
   resumeAt?: number | null
+  /** Snoozed until this time, in unix seconds (`TermInfo.snoozed_until`); null or absent when it is awake. */
+  snoozedUntil?: number | null
   /** The latest turn events, oldest first; `at` is unix seconds. */
   timeline: Array<{ at: number; kind: TurnKind; detail: string }>
   /** The last command ended in failure, as the shell reported it (a non-zero exit code); null when nothing failed. Only the daemon sets it. */

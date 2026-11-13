@@ -1,6 +1,6 @@
 import { isChatSession } from './chatSession'
 import type { MachineHead } from './machines'
-import { folderNameOf, inCreationOrder, limitedWord, SHELL_PROCESS, type SessionStatus, type SessionView } from './session'
+import { folderNameOf, inCreationOrder, limitedWord, SHELL_PROCESS, untilWord, type SessionStatus, type SessionView } from './session'
 
 /**
  * The most urgent first: what needs you, an agent that stopped, one held by its plan limit, what is
@@ -69,6 +69,7 @@ export function rowTitle(session: SessionView): string {
 
 /** The words at the right of a row: only a stopped agent, an exited shell or a session held by its plan limit says anything. */
 export function rowWord(session: SessionView, now: number = Date.now()): string {
+  if (session.snoozedUntil !== null) return untilWord(session.snoozedUntil, now)
   if (session.status === 'limited') return limitedWord(session.resumeAt, now)
   // Its machine or the daemon is out of reach, or the list just missed it: the last status is not known to be true.
   if (session.status === 'unknown') return 'offline'
@@ -150,7 +151,7 @@ export function statusSections(sessions: readonly SessionView[]): StatusSection[
  * back under Put away, where the person left it. Only Bring back clears it.
  */
 function isPutAway(session: SessionView): boolean {
-  return session.archived && (isTerminal(session) || sectionOf(session) !== 'needs')
+  return (session.archived || session.snoozedUntil !== null) && (isTerminal(session) || sectionOf(session) !== 'needs')
 }
 
 /** The sessions the sections list, and the ones put away (as created), which only the Put away section lists. */
@@ -166,7 +167,17 @@ export function splitPutAway(sessions: readonly SessionView[]): { listed: Sessio
  * a chat is closed, which stops its agent.
  */
 export function canPutAway(session: SessionView): boolean {
-  return !session.archived && !session.ended && (session.status === 'done' || session.status === 'idle') && !isChatSession(session.conversation)
+  return !session.archived && session.snoozedUntil === null && !session.ended && (session.status === 'done' || session.status === 'idle') && !isChatSession(session.conversation)
+}
+
+/**
+ * Snoozing (`TermInfo.snoozed_until`) puts a session away until a time. A finished, idle or limited session in a terminal the
+ * daemon owns can be snoozed, once; one that works, asks or failed is not out of the way yet, and a chat cannot (the daemon
+ * refuses it). The daemon wakes it by itself, and also when it comes to need you.
+ */
+export function canSnooze(session: SessionView): boolean {
+  const resting = session.status === 'done' || session.status === 'idle' || session.status === 'limited'
+  return resting && !session.archived && session.snoozedUntil === null && !session.ended && !isChatSession(session.conversation)
 }
 
 export type ProjectChoice = { name: string; color: string; count: number }

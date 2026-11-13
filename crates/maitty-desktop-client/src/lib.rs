@@ -40,6 +40,8 @@ pub enum PaneCommand {
     DropQueued { index: u32, text: String },
     Pin(bool),
     Archive(bool),
+    /// Out of the way until a time (unix seconds), or awake again (`None`).
+    Snooze(Option<u64>),
     Seen,
     /// Restart an agent in place so it loads hooks it missed.
     Reload,
@@ -87,6 +89,7 @@ impl PaneCommand {
             PaneCommand::Archive(archived) => {
                 ClientMsg::Command(Command::ArchivePane { term, archived })
             }
+            PaneCommand::Snooze(until) => ClientMsg::Command(Command::SnoozePane { term, until }),
             PaneCommand::Seen => ClientMsg::Command(Command::MarkSeen { term }),
             PaneCommand::Reload => ClientMsg::Command(Command::ReloadAgent { term }),
             PaneCommand::Close => ClientMsg::Command(Command::ClosePane { term }),
@@ -1287,6 +1290,19 @@ pub async fn archive_terminal_session(
     match reply {
         Reply::Ok => Ok(Value::Null),
         _ => bail!("daemon returned an unexpected archive reply"),
+    }
+}
+
+/// Snooze a pane until a time (unix seconds), or wake it with `None`. The daemon refuses a pane that needs you.
+pub async fn snooze_terminal_session(
+    term: u32,
+    until: Option<u64>,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let reply = request(PaneCommand::Snooze(until).message(term), daemon_executable).await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected snooze reply"),
     }
 }
 
@@ -2810,6 +2826,20 @@ mod pane_command_tests {
                 ClientMsg::Command(Command::ArchivePane {
                     term: 4,
                     archived: false,
+                }),
+            ),
+            (
+                PaneCommand::Snooze(Some(1_000)),
+                ClientMsg::Command(Command::SnoozePane {
+                    term: 4,
+                    until: Some(1_000),
+                }),
+            ),
+            (
+                PaneCommand::Snooze(None),
+                ClientMsg::Command(Command::SnoozePane {
+                    term: 4,
+                    until: None,
                 }),
             ),
             (
