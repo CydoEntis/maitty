@@ -177,6 +177,12 @@ fn main() {
             let mut sink = Vec::new();
             let _ = std::io::stdin().read_to_end(&mut sink);
         }
+        // A daemon one version behind that this build could still talk to.
+        "older" => {
+            print_stdout(&welcome_frame(maitty_shared::protocol::PROTOCOL_VERSION - 1));
+            let mut sink = Vec::new();
+            let _ = std::io::stdin().read_to_end(&mut sink);
+        }
         "capture-hello" => capture_hello(),
         other => {
             eprintln!("fake-ssh: unknown MAITTY_FAKE_SSH_MODE {other}");

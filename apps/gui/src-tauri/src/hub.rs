@@ -40,7 +40,8 @@ const LOCAL_REDIAL: Duration = Duration::from_secs(1);
 
 /// What a connection says about the host in its Hello: it attaches to the panes this app owns
 /// (ADR 0004) and asks for a pane's replay when a view opens on it. A desktop has no pane of
-/// its own, so there is no claim to make.
+/// its own, so there is no claim to make. A machine on an older version is not used as it is:
+/// it shows as needing its update, which the window offers.
 pub(crate) fn dial() -> anyhow::Result<Dial> {
     Ok(Dial {
         attach: true,
@@ -49,6 +50,7 @@ pub(crate) fn dial() -> anyhow::Result<Dial> {
         term: None,
         token: None,
         structured: None,
+        newest_only: true,
     })
 }
 

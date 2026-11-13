@@ -110,6 +110,9 @@ up to its own version. Outside it the connection is refused. Inside it the newer
 the daemon does not send a client a message newer than the client (`ServerMsg::introduced_in`)
 and passes over a request it cannot decode from a newer client; a client checks
 `ClientMsg::introduced_in` before sending an older daemon a request that needs an answer.
+One client is stricter: the desktop window's line to another machine (`Dial::newest_only`)
+refuses a daemon on an older version even inside the window, so the machine shows
+`needs-update` and the window offers its update.
 Bump `PROTOCOL_VERSION` when a message shape changes incompatibly: a field removed, renamed
 or retyped, or a new enum variant (an old decoder rejects it). An added field with
 `#[serde(default)]` is compatible (messages are named msgpack maps and unknown fields

@@ -487,7 +487,8 @@ A machine you add only needs the `maitty` program. There is no desktop app on it
   PATH ssh gives it. Only a copy kept somewhere else needs `remote_cmd` set to its full path.
 - **A version close enough.** This computer, the machine and any desktop app talk when their versions are the
   same or close enough that the newer one still speaks the older one's protocol; releases say when that
-  stops being true. A machine too old to talk to shows `needs update`; run `maitty machine update <name>`. A machine too new for
+  stops being true. A machine too old to talk to shows `needs update`; run `maitty machine update <name>`. The desktop
+  app asks more: a machine on any older version shows `needs update` there, with its **update** button. A machine too new for
   this computer shows `newer than this app` and has no update button: update this computer instead
   (`maitty update`, or the desktop app's own update). A machine is never downgraded from here.
 

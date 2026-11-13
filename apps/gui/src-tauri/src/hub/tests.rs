@@ -212,6 +212,22 @@ fn a_fix_names_the_machine_so_the_command_can_be_run_as_it_stands() {
 }
 
 #[tokio::test]
+async fn a_machine_one_version_behind_needs_its_update_though_it_could_still_talk() {
+    const { assert!(maitty_shared::protocol::COMPATIBLE_SINCE < maitty_shared::protocol::PROTOCOL_VERSION) };
+    let sandbox = Sandbox::new();
+    let mut watch = Watch::new(&[machine("box", &sandbox, "older")], &sandbox, quick(WAIT));
+    watch
+        .until("needs-update", |w| w.is(BOX, "needs-update"))
+        .await;
+    assert_eq!(
+        watch.state_of(BOX),
+        Some(&ConnectionState::NeedsUpdate {
+            why: FIX_UPDATE.into()
+        })
+    );
+}
+
+#[tokio::test]
 async fn a_daemon_of_another_version_needs_an_update_with_the_fix() {
     let sandbox = Sandbox::new();
     let mut watch = Watch::new(
