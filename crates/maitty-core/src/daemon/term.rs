@@ -215,6 +215,9 @@ pub struct Term {
     /// This turn's end has been acted on (its check started or declined); the screen and the
     /// hook can both report one turn ending. A new working turn clears it.
     pub turn_end_handled: bool,
+    /// This turn's folder is still to be kept as it ends. Cleared once kept, and for a
+    /// finish guessed from a title blink; a new turn sets it, as `turn_end_handled` clears.
+    pub after_snapshot_due: bool,
     /// Activity present at turn end must not reopen that turn unless its live footer changes.
     pub ended_activity: Option<String>,
     pub screen_blocked_from: Option<Status>,
@@ -985,6 +988,7 @@ impl Term {
             last_working_hook: None,
             last_turn_end: now,
             turn_end_handled: false,
+            after_snapshot_due: true,
             ended_activity: None,
             screen_blocked_from: None,
             quiet_since: None,

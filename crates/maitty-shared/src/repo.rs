@@ -30,7 +30,7 @@ pub enum RepoRequest {
     Log { limit: usize },
     /// Every worktree of the repository, open in the app or not.
     Worktrees,
-    /// What the daemon saved of the checkout before each agent turn, newest first.
+    /// What the daemon saved of the checkout before and after each agent turn, newest first.
     Snapshots,
     /// The project's reference files (`.maitty/references/`), newest first.
     References,

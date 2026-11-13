@@ -1353,9 +1353,10 @@ impl Daemon {
         Ok(())
     }
 
-    /// A turn is starting: the checkout's files as they are now are what it can be taken back
-    /// to. Called once a message was handed to the provider, which happens once a turn.
-    fn snapshot_before_conversation_turn(&self, id: ConversationId) {
+    /// Keep the checkout's files as they are `when` ("before", "after") a turn. Before: once
+    /// a message was handed to the provider, which happens once a turn. After: once the
+    /// provider said the turn completed, failed or was interrupted.
+    pub(super) fn snapshot_conversation_turn(&self, id: ConversationId, when: &str) {
         if !self.cfg.snapshots.enabled {
             return;
         }
@@ -1365,7 +1366,7 @@ impl Daemon {
         // Named as a terminal agent's snapshots are, so the list reads the same for both.
         let agent = c.binding.provider.agent_name();
         let dir = c.binding.worktree.as_ref().unwrap_or(&c.binding.cwd);
-        self.snapshot_off_loop(agent.into(), dir.clone());
+        self.snapshot_off_loop(format!("{when} {agent}'s turn"), dir.clone());
     }
 
     fn conversation_enqueue(
@@ -1805,7 +1806,7 @@ impl Daemon {
                 state.error = None;
                 let sent = self.conversation_runtimes.request(id, generation, token, Rpc::Send { params: send_params(&thread, &text, &format!("{}-{generation}-{operation}", id.0), &choice) }).map_err(|e| (token, e.to_string()));
                 if sent.is_ok() {
-                    self.snapshot_before_conversation_turn(id);
+                    self.snapshot_conversation_turn(id, "before");
                 }
                 sent
             }

@@ -250,13 +250,17 @@ working, Enter leaves the message with maitty and it's typed in when the turn is
 into a question the agent is asking); Ctrl+Enter sends it at once. What's waiting shows under
 the row, and the row's menu drops it.
 
-Each time an agent's turn begins, maitty keeps the checkout's files as they are (tracked or
-not; never what git ignores). **Snapshots…** in the agent's menu lists the last nine, and
-the Branch view (leader + `g`) lists them all; picking one puts the files back as they were then. What's there now is kept as a snapshot
-first, so a restore can be taken back the same way. It is refused while the agent is working,
-since it would keep writing into the files being put back. Snapshots are commits under the
-worktree's own refs (`refs/worktree/maitty/snapshots`): no branch, nothing in your history,
-your staging untouched, the newest 30 kept. `[snapshots] enabled = false` turns them off.
+Each time an agent's turn begins, and again when it ends, maitty keeps the checkout's files
+as they are (tracked or not; never what git ignores), so one turn's changes are the
+difference between its two snapshots. A turn that changed nothing adds none. A turn ends
+when it finishes, fails or is cancelled; stopping to ask you something is not an end.
+**Snapshots…** in the agent's menu lists the last nine, and the Branch view (leader + `g`)
+lists them all; picking one puts the files back as they were then. What's there now is kept
+as a snapshot first, so a restore can be taken back the same way. It is refused while the
+agent is working, since it would keep writing into the files being put back. Snapshots are
+commits under the worktree's own refs (`refs/worktree/maitty/snapshots`): no branch, nothing
+in your history, your staging untouched, the newest 60 kept (at least thirty turns).
+`[snapshots] enabled = false` turns them off.
 
 ## Checks
 

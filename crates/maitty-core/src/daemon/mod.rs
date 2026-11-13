@@ -465,6 +465,9 @@ struct Daemon {
     /// Tests read transcripts from a scratch "home" instead of the real one.
     #[cfg(test)]
     followed_home: Option<PathBuf>,
+    /// Tests note why each pane snapshot was asked for instead of taking it.
+    #[cfg(test)]
+    pane_snapshots: Vec<String>,
     conversation_cache: Option<conversation::history_storage::Cache>,
     conversation_cache_dirty: std::collections::BTreeSet<crate::conversation::ConversationId>,
     conversation_cache_writes: BTreeMap<crate::conversation::ConversationId, u64>,
@@ -1255,6 +1258,8 @@ impl Daemon {
             followed_high_water: 0,
             #[cfg(test)]
             followed_home: None,
+            #[cfg(test)]
+            pane_snapshots: Vec::new(),
             conversation_cache: None,
             conversation_cache_dirty: Default::default(),
             conversation_cache_writes: Default::default(),

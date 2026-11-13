@@ -113,8 +113,8 @@ impl Default for Detection {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Snapshots {
-    /// Keep a checkout's files as they were each time an agent's turn begins there, so a
-    /// turn can be taken back from the agent's menu.
+    /// Keep a checkout's files as they were each time an agent's turn begins and ends there,
+    /// so a turn can be taken back from the agent's menu.
     pub enabled: bool,
 }
 
