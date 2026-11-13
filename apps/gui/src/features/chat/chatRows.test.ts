@@ -145,8 +145,10 @@ describe('buildRows with Hide successful tool calls', () => {
     expect(kinds([read('r1'), commandEvent('c', { exitCode: 0 }), read('r2')], true)).toEqual(['work'])
   })
 
-  it('keeps a tool of unknown kind that succeeded', () => {
+  it('keeps a tool of unknown kind that succeeded, an MCP tool named like a search among them', () => {
     expect(kinds([read('m', { name: 'mcp__files__write' })], true)).toEqual(['step'])
+    expect(kinds([read('m', { name: 'mcp__fs__search_and_replace' })], true)).toEqual(['step'])
+    expect(kinds([read('m', { name: 'mcp__x__update_list' })], true)).toEqual(['step'])
   })
 
   it('keeps a run with a failed command in it, whole', () => {
