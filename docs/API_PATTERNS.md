@@ -725,6 +725,21 @@ The commit must be one of the checkout's snapshots. The desktop app asks it befo
 (`snapshot_restore_count`, this computer's panes only). The request has its own `introduced_in` arm
 (`RESTORE_COUNT_SINCE`), so an older daemon is not asked and the app says to restart it; `COMPATIBLE_SINCE` stays 78.
 
+Protocol 89 adds `RepoRequest::FindFiles { query, limit }` and `RepoReply::Files { paths, truncated }`: the files
+under the pane's checkout (the repository top, or the pane's folder when it is not a repository, as for `Tree` and
+`File`) whose path holds `query`, case-insensitive. The walk honours `.gitignore` inside a git repository (a folder
+outside one gets no `.gitignore` filtering), skips hidden files and unreadable entries, neither follows nor lists
+links, and stops after 50,000 files or 1.5 seconds; `truncated` says it stopped, so a file past that point was not
+searched. One walk of a folder is reused for 5 seconds (16 folders kept), so the keystrokes of one search re-rank it
+rather than walk again. The query is only matched against walked paths, never joined to a folder; one over 200
+characters (`FIND_FILES_MAX_QUERY_CHARS`) is refused. An empty query matches every file. Ranking: a file name that
+starts with the query, then a file name that holds it, then a folder that holds it; within each, shorter paths
+first, then by path in byte order. At most `limit` paths come back, never more than 80 (`FIND_FILES_MAX_RESULTS`),
+relative with `/`. It runs on a blocking thread like every `Query::Repo`, for human clients only (a pane's agent and
+a structured client are refused), so a client connected to another machine's daemon can ask it of that machine's
+panes. The request has its own `introduced_in` arm (`FIND_FILES_SINCE`); `COMPATIBLE_SINCE` stays 78. No client
+asks it yet.
+
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store
 ([ADR 0009](adr/0009-usage-is-provider-reported-never-estimated.md)): totals, one entry per
