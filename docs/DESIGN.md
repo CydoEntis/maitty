@@ -313,6 +313,10 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   count). A row whose status changes glides to its new place over 420ms, and the headings and rows it passes glide with it, so
   nothing in the list snaps (`useFlip`); a new row slides in from the left. The moved row is tinted with the accent for a moment
   (`useStatusFlash`); Reduce motion turns both off. A **row** (40px, radius 8) is the 20px app tile with its status badge
+  **Put away** (`splitPutAway`) is the last heading of the scrolling list in every grouping, folded until opened, with
+  its count and "still running": the sessions put away from their menu, terminals included, as created. A row there has
+  an arrow (**Bring back**) in place of the hover ×; a put-away session that needs you is listed under Needs you instead.
+  The rail leaves put-away sessions out.
   A pointer resting on a row for 450ms shows a **hover card** beside it (`RowHoverCard`, 290px, level with the row and
   kept inside the window): the name, project and branch, what it is doing in the daemon's own words, its agent,
   changes, what set its status and how long ago (**Set by**: `hook: Stop, 3 s ago`, the daemon's `TermInfo.status_why`; no row

@@ -143,6 +143,32 @@ export function statusSections(sessions: readonly SessionView[]): StatusSection[
     .filter((section) => section.sessions.length > 0)
 }
 
+/**
+ * Put away (`TermInfo.archived`) and listed only under Put away. It keeps running, and while Needs you would list it
+ * (an agent that asks, stopped or is held by its plan limit, or a terminal that asks) it is listed there instead, so
+ * nothing that waits on you is folded out of sight. The daemon's flag stays set: once it no longer needs you it goes
+ * back under Put away, where the person left it. Only Bring back clears it.
+ */
+function isPutAway(session: SessionView): boolean {
+  return session.archived && (isTerminal(session) || sectionOf(session) !== 'needs')
+}
+
+/** The sessions the sections list, and the ones put away (as created), which only the Put away section lists. */
+export function splitPutAway(sessions: readonly SessionView[]): { listed: SessionView[]; putAway: SessionView[] } {
+  return {
+    listed: sessions.filter((session) => !isPutAway(session)),
+    putAway: inCreationOrder(sessions.filter(isPutAway)),
+  }
+}
+
+/**
+ * A finished or idle session in a terminal the daemon owns can be put away. A chat cannot: its daemon archive is how
+ * a chat is closed, which stops its agent.
+ */
+export function canPutAway(session: SessionView): boolean {
+  return !session.archived && !session.ended && (session.status === 'done' || session.status === 'idle') && !isChatSession(session.conversation)
+}
+
 export type ProjectChoice = { name: string; color: string; count: number }
 
 /** Every project that has a session, by name, for the list that narrows the sidebar to one of them. */
