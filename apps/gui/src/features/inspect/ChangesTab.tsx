@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { Icon } from '@/features/workspace/components/glyphs'
-import { repoDiff, repoStatus, type RepoDiff } from './api'
+import { repoDiff, repoDiffRange, repoSnapshots, repoStatus, type RepoDiff } from './api'
 import { changeKind } from './changeKind'
 import { CommitBar, type ChangeActions } from './CommitBar'
 import { PatchView, type PatchComments, type SentComment } from './PatchView'
 import { RepoError } from './RepoError'
-import { useRepoQuery } from './useRepoQuery'
+import { turnRange, type TurnSpan } from './turnRange'
+import { messageOf, useRepoQuery } from './useRepoQuery'
 
 export const CHANGES_REFRESH_MS = 4000
 
@@ -21,6 +22,38 @@ function commentHint(count: number): string {
   return count === 1 ? '1 comment' : `${String(count)} comments`
 }
 
+/** A turn whose changes are asked for instead of the whole working tree; `turn` is null when its times are unknown. */
+export type TurnScope = { turn: TurnSpan | null; onAllChanges: () => void }
+
+/**
+ * The diff to list: the working tree against HEAD, or, for a turn, the diff between the snapshots around it. A turn
+ * whose snapshots cannot be picked falls back to the working tree and says why.
+ */
+function useScopedDiff(term: number, scope: TurnScope | undefined) {
+  const turn = scope?.turn ?? null
+  const snapshots = useRepoQuery(term, ['snapshots'], () => repoSnapshots(term), false, turn !== null)
+  const range = turn !== null && snapshots.data ? turnRange(snapshots.data, turn) : null
+  const query = useRepoQuery(
+    term,
+    range ? ['range', range.from, range.to] : ['diff'],
+    () => (range ? repoDiffRange(term, range.from, range.to) : repoDiff(term)),
+    range ? false : CHANGES_REFRESH_MS,
+  )
+  const waiting = turn !== null && snapshots.isPending
+  if (scope === undefined || waiting || range !== null) return { query, waiting, shown: range === null ? 'tree' as const : 'turn' as const, why: null }
+  const why = turn === null ? 'this turn has no times to find its snapshots by' : snapshots.isError ? `couldn't read the snapshots: ${messageOf(snapshots.error)}` : 'no snapshot from before this turn is kept'
+  return { query, waiting, shown: 'tree' as const, why }
+}
+
+function ScopeLine({ shown, why, onAllChanges }: { shown: 'tree' | 'turn'; why: string | null; onAllChanges: () => void }) {
+  return (
+    <p className="mx-changes-scope" role="status">
+      {shown === 'turn' ? <span>This turn's changes</span> : <span title={why ?? undefined}>Whole working tree · {why}</span>}
+      {shown === 'turn' && <button type="button" className="mx-inspect-action" onClick={onAllChanges}>All changes</button>}
+    </p>
+  )
+}
+
 type Props = {
   term: number
   /** The branch the checkout is on, shown above the files. */
@@ -28,6 +61,8 @@ type Props = {
   comments?: Omit<PatchComments, 'path' | 'sent' | 'onSent'>
   /** Commit and Create PR, for a checkout on this computer; absent elsewhere. */
   actions?: ChangeActions
+  /** A turn's changes row opened the tab: show what that turn changed. */
+  scope?: TurnScope
   onNotice: (text: string) => void
 }
 
@@ -53,8 +88,10 @@ function FileRow({ file, current, ticked, onTick, onPick }: { file: ChangedFile;
 }
 
 /** The session's uncommitted changes: the files down the left with the commit under them, the picked file's diff beside. */
-export function ChangesTab({ term, branch, comments, actions, onNotice }: Props) {
-  const query = useRepoQuery(term, ['diff'], () => repoDiff(term), CHANGES_REFRESH_MS)
+export function ChangesTab({ term, branch, comments, actions: treeActions, scope, onNotice }: Props) {
+  const { query, waiting, shown, why } = useScopedDiff(term, scope)
+  // A commit takes the working tree, so it is not offered beside one turn's changes.
+  const actions = shown === 'turn' ? undefined : treeActions
   // How far the branch is from its upstream, for the remote button; without it (an error, no upstream) the branch reads as level.
   const status = useRepoQuery(term, ['status'], () => repoStatus(term), CHANGES_REFRESH_MS)
   const [picked, setPicked] = useState<string | null>(null)
@@ -62,7 +99,7 @@ export function ChangesTab({ term, branch, comments, actions, onNotice }: Props)
   const [skipped, setSkipped] = useState<ReadonlySet<string>>(() => new Set())
   // Comments sent in this look at the changes, by file: a comment stays pinned on its line while other files are read.
   const [sent, setSent] = useState<ReadonlyMap<string, readonly SentComment[]>>(() => new Map())
-  if (query.isPending) return <p className="mx-inspect-note">Loading…</p>
+  if (waiting || query.isPending) return <p className="mx-inspect-note">Loading…</p>
   if (query.isError) return <RepoError error={query.error} tab="changes" onRetry={() => { void query.refetch() }} retrying={query.isFetching} />
   const { files } = query.data
   const chosen = files.filter((file) => !skipped.has(file.path))
@@ -75,6 +112,7 @@ export function ChangesTab({ term, branch, comments, actions, onNotice }: Props)
     <div className="mx-changes">
       <div className="mx-changes-side">
         {branch !== undefined && branch !== '' && <p className="mx-changes-branch" title={`Branch ${branch}`}><Icon name="branch" size={11} /><span>{branch}</span></p>}
+        {scope && <ScopeLine shown={shown} why={why} onAllChanges={scope.onAllChanges} />}
         <ul className="mx-changes-list" aria-label="Changed files">
           {files.map((file) => (
             <li key={file.path}><FileRow file={file} current={file.path === selected?.path} ticked={actions ? !skipped.has(file.path) : null} onTick={() => { tick(file.path) }} onPick={() => { setPicked(file.path) }} /></li>
@@ -98,7 +136,7 @@ export function ChangesTab({ term, branch, comments, actions, onNotice }: Props)
             {selected.binary ? <p className="mx-inspect-note">Binary file; no diff to show.</p> : <PatchView key={selected.path} patch={selected.patch} {...(comments ? { comments: { ...comments, path: selected.path, sent: sent.get(selected.path) ?? [], onSent: (comment) => { setSent((current) => new Map(current).set(selected.path, [...(current.get(selected.path) ?? []), comment])) } } } : {})} />}
           </>
         ) : (
-          <p className="mx-changes-none">No changes. The working tree matches the last commit.</p>
+          <p className="mx-changes-none">{shown === 'turn' ? 'This turn left the files in the checkout as they were.' : 'No changes. The working tree matches the last commit.'}</p>
         )}
       </div>
     </div>

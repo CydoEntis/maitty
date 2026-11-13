@@ -3,6 +3,7 @@ import { FileText } from 'lucide-react'
 import { Icon } from '@/features/workspace/components/glyphs'
 import { ElapsedSince } from '@/features/workspace/components/times'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
+import type { TurnSpan } from '@/features/inspect/turnRange'
 import { dividerText, paragraphsOf, splitLead, streamingParagraphs, type ChatRow } from '../chatRows'
 import type { ItemStatus } from '../chatEvents'
 import { KnownRowsContext } from '../knownRows'
@@ -39,8 +40,11 @@ export type ChatItemContext = {
   approval: ApprovalActions | null
   /** The session's folder, so file names are shown relative to it. */
   root: string | null
-  /** Opens a file's diff in the Changes panel; `null` where there is none. */
-  openDiff: ((file: string) => void) | null
+  /**
+   * Opens a file's diff in the Changes panel; `null` where there is none. A turn's changes row passes the turn too
+   * (null when its times are unknown), so the panel shows what that turn changed.
+   */
+  openDiff: ((file: string, turn?: TurnSpan | null) => void) | null
   goToStep: ((key: string) => void) | null
   /** The id of the tool step a pending request is about, so that step says it is waiting. */
   waitingStep: string | null
@@ -64,7 +68,7 @@ function sameRow(a: ChatRow, b: ChatRow): boolean {
     case 'agents':
       return b.kind === 'agents' && a.events.length === b.events.length && a.events.every((event, index) => event === b.events[index])
     case 'changes':
-      return b.kind === 'changes' && sameStrings(a.files, b.files) && a.lines?.added === b.lines?.added && a.lines?.removed === b.lines?.removed
+      return b.kind === 'changes' && sameStrings(a.files, b.files) && a.lines?.added === b.lines?.added && a.lines?.removed === b.lines?.removed && a.turn?.startedAtMs === b.turn?.startedAtMs && a.turn?.endedAtMs === b.turn?.endedAtMs
     case 'work':
       return b.kind === 'work' && a.events.length === b.events.length && a.events.every((event, index) => event === b.events[index])
     case 'approval':
@@ -176,7 +180,7 @@ export const ChatItem = memo(function ChatItem({ row, agent, workingSince, appro
       return (
         <Frame>
           {openDiff !== null && first !== undefined
-            ? <button type="button" className="mx-changed" title="Show the changes" onClick={() => { openDiff(first) }}>{body}<span className="mx-spacer" /><span className="mx-changed-review">Review</span><span className="mx-caret-wrap"><Icon name="caret" /></span></button>
+            ? <button type="button" className="mx-changed" title="Show what this turn changed" onClick={() => { openDiff(first, row.turn) }}>{body}<span className="mx-spacer" /><span className="mx-changed-review">Review</span><span className="mx-caret-wrap"><Icon name="caret" /></span></button>
             : <p className="mx-changed is-still">{body}</p>}
         </Frame>
       )

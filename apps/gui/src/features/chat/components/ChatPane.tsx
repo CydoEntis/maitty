@@ -3,6 +3,7 @@ import { MessageSquare } from 'lucide-react'
 import { CHAT_AGENTS, noChatReason, type ChatAgent, type ChatAvailability } from '@/features/workspace/model/chatView'
 import { Button } from '@/components/ui/button'
 import type { OpenFile } from '../openFile'
+import type { ChatItemContext } from './ChatItems'
 import type { PermissionAsk } from '@/data/preview'
 import type { SessionStatus } from '@/features/workspace/model/session'
 import type { PaneQueue } from '../useChatComposer'
@@ -19,8 +20,8 @@ export type ChatPaneProps = {
   availability: ChatAvailability
   /** The session's folder, so file names read relative to it. */
   root?: string | null
-  /** Shows a file's diff in the Changes panel. */
-  onOpenDiff?: ((file: string) => void) | null
+  /** Shows a file's diff, or a turn's, in the Changes panel. */
+  onOpenDiff?: ChatItemContext['openDiff']
   /** Opens a file a reply names, at its line when it gave one. */
   onOpenFile?: OpenFile | null
   /** Types into the terminal the agent runs in, so a chat that follows it can talk to it (ADR 0003). */
