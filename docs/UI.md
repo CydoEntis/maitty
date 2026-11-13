@@ -609,8 +609,8 @@ The sidebar shows or collapses (`App::sidebar`) to a narrow column (`side.rs` `d
   still put away on the daemon, and its row menu has **Bring back** in place of Put away. The sidebar menu's
   **Put away…** and Search commands' **Sessions put away** (`Action::PutAway`, `put-away`, no default key) open a menu
   upward from the sidebar's foot, `Bring back <name> · <project>` per session in creation order; a pick sends
-  `archived: false`. With none, a toast says `Nothing is put away`. A machine that is down is offered neither, and
-  either action there is refused with an error toast. **Close project** counts its put-away sessions
+  `archived: false`. With none, a toast says `Nothing is put away`. On a machine that is down the row menu offers
+  neither, the list keeps the row with `· offline` after it, and either action is refused with an error toast. **Close project** counts its put-away sessions
   (`2 panes, 1 put away`) and leaves them running.
 - **Keys.** ↑ ↓ walk the sessions; → or Enter opens one; `1`–`9` open that row.
 

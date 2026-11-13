@@ -9,6 +9,8 @@ use crate::client::menu::Act;
 
 /// How wide a row of the Put away list may get, as the menu draws it.
 const LIST_LABEL_MAX: usize = 44;
+/// After a Put away row whose machine is down.
+const OFFLINE: &str = " · offline";
 
 /// Put away and left out of the lists. While it needs you (it asks, an agent's command failed, or
 /// its plan limit holds it) it is listed as usual, still put away on the daemon; a plain shell
@@ -105,10 +107,13 @@ impl App {
             .iter()
             .flat_map(|p| p.sessions().map(move |s| (p, s)))
             .filter_map(|(p, s)| {
+                let term = s.native_term?;
+                // Still running on a machine that is down: listed, so it is never lost, and
+                // picking it says the machine is offline.
+                let suffix = if self.machine_down(term.machine) { OFFLINE } else { "" };
                 let label = format!("Bring back {} · {}", s.name, p.name);
-                Some((s.native_term?, truncate(&label, LIST_LABEL_MAX)))
+                Some((term, truncate(&label, LIST_LABEL_MAX - suffix.width()) + suffix))
             })
-            .filter(|(term, _)| !self.machine_down(term.machine))
             .collect();
         rows.sort_by_key(|(term, _)| *term);
         rows

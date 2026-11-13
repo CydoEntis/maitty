@@ -250,9 +250,16 @@ fn a_machine_that_is_down_is_offered_neither_and_nothing_is_claimed() {
     app.service = super::service::Service::Down { next_at: Instant::now() };
     assert!(!app.can_put_away(FOX));
     daemon_sets(&mut app, FOX, true);
-    assert!(app.put_away_rows().is_empty(), "no row to bring back");
+    let rows = app.put_away_rows();
+    assert_eq!(
+        rows.iter().map(|(_, l)| l.as_str()).collect::<Vec<_>>(),
+        ["Bring back quick-fox · orbit · offline"],
+        "still running, so still listed"
+    );
     archived_sent(&mut rx);
-    app.bring_back(FOX);
+    app.put_away_list();
+    frame(&mut app, "the Put away list, machine down");
+    pick(&mut app, "Bring back quick-fox · orbit · offline");
     assert!(archived_sent(&mut rx).is_empty());
     let (_, _, error) = app.notice.clone().expect("a toast");
     assert!(error);
