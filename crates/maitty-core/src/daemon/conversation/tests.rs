@@ -868,7 +868,10 @@ async fn next(rx: &mut mpsc::Receiver<Ev>) -> Event {
 
 async fn stopped(pids: Vec<u32>) {
     tokio::task::spawn_blocking(move || {
-        let until = std::time::Instant::now() + Duration::from_secs(5);
+        // A kill is asked for on another thread and, on Windows, done by `taskkill`: on a busy
+        // machine it was measured landing twelve seconds later. A process that stopped ends the
+        // wait at once, so the long deadline costs a passing test nothing.
+        let until = std::time::Instant::now() + Duration::from_secs(60);
         loop {
             let mut system = sysinfo::System::new();
             system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
@@ -1416,7 +1419,10 @@ fn authenticated_pane(session: &mut TestSession) -> (u32, String) {
             .into_owned(),
     );
     cfg.shell_args = vec!["--descendant".into()];
-    let id = 900001;
+    // An id of its own for each pane: a second pane under the first one's id would replace it in
+    // `terms`, so cleanup would never stop the first, and its process, running the fixture's
+    // executable from inside the fixture folder, keeps Windows from deleting either.
+    let id = 900001 + u32::try_from(session.daemon.terms.len()).unwrap();
     let mut pane = crate::daemon::term::Term::spawn(
         &cfg,
         crate::daemon::term::SpawnSpec {
