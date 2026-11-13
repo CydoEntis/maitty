@@ -566,7 +566,10 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   with a divider ("Finished in 3m 40s · 10:46", red when it failed) and, when it edited files, the changed-files
   card. The working line is the spinner and "claude is working · m:ss". Problems with the history (offline, incomplete, a provider error) and Full access show in one
   slim strip above the list. **A subagent's chat** replaces the list with a bar ("Subagent · name · time", **Back to
-  main session**), then what it was asked, what it is doing while it works and its report once done.
+  main session**), then the helper's own steps drawn as the chat's rows (read from the record its agent keeps,
+  every 1.5 s while it works, "Its earlier steps are not shown." above them when the start was cut). Where there is
+  no record (another machine, an older service, another agent) it shows what it was asked, what it is doing while
+  it works and its report once done.
 - **Message box** (`features/chat/components/Composer.tsx`), in three layers. **1. The question tray**, only while the
   agent asks: a slightly narrower tray rising from behind the box (`mxRise`, 0.28s). A request is tinted amber: "Needs
   you" and "Wants to run a command", the command in a sunken mono box, and **Yes, once** `y` (filled with the accent),
