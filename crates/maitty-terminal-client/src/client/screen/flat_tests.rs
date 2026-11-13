@@ -602,6 +602,51 @@ fn a_session_that_hit_its_plan_limit_says_limited_and_when_it_resets_in_the_need
 }
 
 #[test]
+fn a_limit_that_resets_on_another_day_says_which_day() {
+    let mut app = reference_fixture::world(Stage::None);
+    let resets = reference_fixture::at(16, 30, 0) + 3 * 24 * 3600;
+    app.snap.terms.get_mut(&5).unwrap().resume_at = Some(resets);
+    let rows = text(&mut app, 140, 50);
+    show(&rows, "limited, three days away");
+    let y = row_of(&app, 5);
+    let (day, time) = (crate::clock::local_weekday(resets), crate::clock::local_hm(resets));
+    assert_ne!(day, crate::clock::local_weekday(reference_fixture::now()));
+    assert!(side(&rows, y + 1).contains(&format!("limited {day} {time}")), "{}", side(&rows, y + 1));
+}
+
+#[test]
+fn a_limited_row_puts_the_limit_before_its_pull_request_and_alone_on_a_one_line_row() {
+    let mut app = reference_fixture::world(Stage::None);
+    let info = app.snap.terms.get_mut(&5).unwrap();
+    info.resume_at = Some(reference_fixture::at(16, 30, 0));
+    info.pr = Some(crate::protocol::PrInfo { number: 45, ..Default::default() });
+    let rows = text(&mut app, 140, 50);
+    show(&rows, "limited with a pull request");
+    let y = row_of(&app, 5);
+    let limited = side_x(&rows, y + 1, "limited 16:30").unwrap_or_else(|| panic!("{}", side(&rows, y + 1)));
+    let pr = side_x(&rows, y + 1, "#45").unwrap_or_else(|| panic!("{}", side(&rows, y + 1)));
+    assert!(limited < pr, "{}", side(&rows, y + 1));
+
+    app.screen.saved.group_folders = true;
+    let rows = text(&mut app, 140, 50);
+    let y = row_of(&app, 5);
+    assert!(side(&rows, y).contains("limited 16:30") && !side(&rows, y).contains("#45"), "{}", side(&rows, y));
+}
+
+#[test]
+fn a_limited_session_that_needs_you_keeps_its_needs_you_mark() {
+    let mut app = reference_fixture::world(Stage::None);
+    let info = app.snap.terms.get_mut(&5).unwrap();
+    info.resume_at = Some(reference_fixture::at(16, 30, 0));
+    info.status = Status::Blocked;
+    let buf = cells(&mut app, 140, 50);
+    let rows = text(&mut app, 140, 50);
+    let y = row_of(&app, 5);
+    assert_eq!((buf[(2, y as u16)].symbol(), buf[(2, y as u16)].fg), ("●", app.theme.blocked));
+    assert!(side(&rows, y + 1).contains("limited 16:30"), "{}", side(&rows, y + 1));
+}
+
+#[test]
 fn a_reset_time_that_has_passed_shows_nothing() {
     let mut app = reference_fixture::world(Stage::None);
     app.snap.terms.get_mut(&5).unwrap().resume_at = Some(reference_fixture::now());

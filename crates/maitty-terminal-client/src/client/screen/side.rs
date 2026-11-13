@@ -771,9 +771,16 @@ fn pr_colour(tone: PrTone, t: &Theme) -> Color {
     }
 }
 
-/// `limited 16:30`: the session hit its plan limit, and the local time it goes on.
-fn limited_note(resume_at: u64) -> String {
-    format!("limited {}", crate::clock::local_hm(resume_at))
+/// `limited 16:30`: the session hit its plan limit, and the local time it goes on; with the
+/// weekday (`limited Thu 16:30`) when that is not today, since a weekly limit resets days away.
+fn limited_note(resume_at: u64, now: u64) -> String {
+    use crate::clock::{local_day, local_hm, local_weekday};
+    let time = local_hm(resume_at);
+    if local_day(resume_at) == local_day(now) {
+        format!("limited {time}")
+    } else {
+        format!("limited {} {time}", local_weekday(resume_at))
+    }
 }
 
 /// One session's two lines and its subagents.
@@ -844,7 +851,7 @@ fn draw_session(app: &mut App, buf: &mut Buffer, r: Rect, y: u16, row: &SideRow,
     // The pull request follows the project there, or sits at the right of a one-line row when the
     // name leaves room for it. A plan limit comes before the pull request, and takes its place
     // on a one-line row.
-    let limited = row.limited_until.map(|at| seg(limited_note(at), base.fg(t.blocked)));
+    let limited = row.limited_until.map(|at| seg(limited_note(at, super::now_secs()), base.fg(t.blocked)));
     let pr = row.pr.as_ref().map(|(text, tone)| seg(text.clone(), base.fg(pr_colour(*tone, t))));
     if height > 1 {
         let mut line = vec![seg(row.project.clone(), base.fg(t.muted))];
