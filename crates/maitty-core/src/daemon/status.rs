@@ -537,6 +537,7 @@ impl Daemon {
                 && t.status == Status::Done;
             if wake_up_ended {
                 t.turn_end_handled = false;
+                t.after_snapshot_due = true;
             }
         }
         let why = if event.is_empty() {
@@ -561,14 +562,13 @@ impl Daemon {
         self.dirty = true;
     }
 
-    /// Keep a pane's folder as its turn left it. Called once a turn: where its checks start,
-    /// and when it was cancelled, which starts none.
+    /// Keep a pane's folder as its turn left it, at most once a turn: called where its checks
+    /// start, and when it was cancelled, which starts none (a late turn end may follow).
     pub(super) fn snapshot_after_turn(&mut self, term: TermId) {
-        let Some((agent, dir)) = self
-            .terms
-            .get(&term)
-            .and_then(|t| Some((t.agent.clone()?, t.cwd.clone())))
-        else {
+        let Some((agent, dir)) = self.terms.get_mut(&term).and_then(|t| {
+            let due = std::mem::replace(&mut t.after_snapshot_due, false);
+            Some((t.agent.clone().filter(|_| due)?, t.cwd.clone()))
+        }) else {
             return;
         };
         self.snapshot_pane(format!("after {agent}'s turn"), dir);
@@ -590,7 +590,9 @@ impl Daemon {
     }
 
     /// Keep `dir`'s files as they are, off the loop. Outside git nothing is kept, and a
-    /// snapshot that fails is a notice: neither holds the turn up.
+    /// snapshot that fails is a notice: neither holds the turn up. When the files equal the
+    /// newest snapshot's, that one stands, so a turn's end and the next one's start, taken
+    /// together, may be kept under either label.
     pub(super) fn snapshot_off_loop(&self, why: String, dir: std::path::PathBuf) {
         let tx = self.tx.clone();
         tokio::task::spawn_blocking(move || {
@@ -663,6 +665,11 @@ impl Daemon {
         t.status_since = term::unix_now();
         if new == Status::Working {
             t.turn_end_handled = false;
+            t.after_snapshot_due = true;
+        }
+        // A title blink is not a turn end the history should show.
+        if guessed_blink {
+            t.after_snapshot_due = false;
         }
         self.dirty = true;
         let left_working = turn.is_some() && matches!(new, Status::Done | Status::Idle);

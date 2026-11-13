@@ -13,7 +13,7 @@ use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 /// Where a checkout's snapshots are kept: refs of that worktree alone.
 const REFS: &str = concat!("refs/worktree/", env!("APP_COMMAND"), "/snapshots");
 /// How many a checkout keeps; older ones are dropped as new ones come. Two a turn (before
-/// and after), so thirty turns.
+/// and after), so at least thirty turns.
 pub const KEEP: usize = 60;
 /// Said of the snapshot a restore takes first, so the restore can itself be taken back.
 pub const BEFORE_RESTORE: &str = "before a restore";
@@ -139,13 +139,18 @@ pub fn take(dir: &Path, why: &str) -> Result<Option<Snapshot>, String> {
     };
     let lock = checkout_lock(&top);
     let _taking = lock.lock().unwrap_or_else(PoisonError::into_inner);
-    let tree = tree_of_now(&top)?;
-    let kept = list(&top);
+    take_locked(&top, why).map(Some)
+}
+
+/// `take` for a checkout whose lock the caller holds.
+fn take_locked(top: &Path, why: &str) -> Result<Snapshot, String> {
+    let tree = tree_of_now(top)?;
+    let kept = list(top);
     if let Some(last) = kept.first()
-        && git(&top, &["rev-parse", &format!("{}^{{tree}}", last.commit)]).as_deref()
+        && git(top, &["rev-parse", &format!("{}^{{tree}}", last.commit)]).as_deref()
             == Ok(tree.as_str())
     {
-        return Ok(Some(last.clone()));
+        return Ok(last.clone());
     }
     // Named as the app's: a machine with no git identity set can still take one.
     let mut args = vec![
@@ -158,32 +163,23 @@ pub fn take(dir: &Path, why: &str) -> Result<Option<Snapshot>, String> {
         "-m",
         why,
     ];
-    let head = git(&top, &["rev-parse", "--verify", "--quiet", "HEAD"]).ok();
+    let head = git(top, &["rev-parse", "--verify", "--quiet", "HEAD"]).ok();
     if let Some(head) = &head {
         args.extend(["-p", head]);
     }
-    let commit = git(&top, &args)?;
+    let commit = git(top, &args)?;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
     // Milliseconds, zero-padded: names sort by time, and two in a second don't collide.
-    git(&top, &["update-ref", &format!("{REFS}/{now:015}"), &commit])?;
-    for old in kept.iter().skip(KEEP.saturating_sub(1)) {
-        git(
-            &top,
-            &[
-                "update-ref",
-                "-d",
-                &format!("{REFS}/{:015}", ref_millis(&top, old)?),
-            ],
-        )?;
-    }
-    Ok(Some(Snapshot {
+    git(top, &["update-ref", &format!("{REFS}/{now:015}"), &commit])?;
+    prune(top, kept.iter().skip(KEEP.saturating_sub(1)))?;
+    Ok(Snapshot {
         commit,
         at: now / 1000,
         why: why.to_string(),
-    }))
+    })
 }
 
 /// One take at a time per checkout: two at once would both miss the other's snapshot, keep
@@ -199,8 +195,20 @@ fn checkout_lock(top: &Path) -> Arc<Mutex<()>> {
         .clone()
 }
 
-/// The time in a snapshot's ref name (its `at` has lost the milliseconds).
-fn ref_millis(top: &Path, s: &Snapshot) -> Result<u64, String> {
+/// Drop `old` snapshots. One already gone was dropped by another process, such as the
+/// terminal app's restore, which this process's lock does not cover.
+fn prune<'a>(top: &Path, old: impl Iterator<Item = &'a Snapshot>) -> Result<(), String> {
+    for old in old {
+        if let Some(millis) = ref_millis(top, old)? {
+            git(top, &["update-ref", "-d", &format!("{REFS}/{millis:015}")])?;
+        }
+    }
+    Ok(())
+}
+
+/// The time in a snapshot's ref name (its `at` has lost the milliseconds); `None` when no
+/// ref points at it any more.
+fn ref_millis(top: &Path, s: &Snapshot) -> Result<Option<u64>, String> {
     let out = git(
         top,
         &[
@@ -211,11 +219,14 @@ fn ref_millis(top: &Path, s: &Snapshot) -> Result<u64, String> {
             REFS,
         ],
     )?;
-    out.lines()
+    let Some(name) = out.lines().next() else {
+        return Ok(None);
+    };
+    name.rsplit('/')
         .next()
-        .and_then(|n| n.rsplit('/').next())
         .and_then(|n| n.parse().ok())
-        .ok_or_else(|| format!("no ref for snapshot {}", s.commit))
+        .map(Some)
+        .ok_or_else(|| format!("snapshot ref {name} has no time in its name"))
 }
 
 /// Put the checkout's files back as they were in `commit`. What's there now is kept as a
@@ -223,7 +234,10 @@ fn ref_millis(top: &Path, s: &Snapshot) -> Result<u64, String> {
 /// changed. Ignored files, the index and the branch are left alone.
 pub fn restore(dir: &Path, commit: &str) -> Result<usize, String> {
     let top = top_of(dir).ok_or("not in a git repo")?;
-    let now = take(&top, BEFORE_RESTORE)?.ok_or("not in a git repo")?;
+    // Held to the end: a snapshot taken meanwhile would keep half-restored files.
+    let lock = checkout_lock(&top);
+    let _restoring = lock.lock().unwrap_or_else(PoisonError::into_inner);
+    let now = take_locked(&top, BEFORE_RESTORE)?;
     let differ = git(&top, &["diff", "--name-only", commit, &now.commit])?
         .lines()
         .count();
@@ -439,6 +453,21 @@ mod tests {
         for t in taken {
             assert_eq!(t.unwrap().unwrap().commit, kept[0].commit);
         }
+    }
+
+    /// Another process (the terminal app's restore) can drop the same old snapshot first.
+    #[test]
+    fn pruning_a_snapshot_already_gone_is_not_an_error() {
+        let dir = repo("pruned");
+        take(dir.path(), "old").unwrap();
+        let gone = list(dir.path());
+        for name in git(dir.path(), &["for-each-ref", "--format=%(refname)", REFS])
+            .unwrap()
+            .lines()
+        {
+            git(dir.path(), &["update-ref", "-d", name]).unwrap();
+        }
+        assert_eq!(prune(dir.path(), gone.iter()), Ok(()));
     }
 
     /// git trusts a file that looks unchanged only when the index was written after the

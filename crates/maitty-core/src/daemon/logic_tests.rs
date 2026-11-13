@@ -6142,6 +6142,19 @@ fn a_cancelled_turn_is_kept_as_it_was_left() {
     say(&mut d, HookStatus::Working, "UserPromptSubmit", &[]);
     d.set_status(t, Status::Idle, super::status::CANCELLED_WHY);
     assert_eq!(kept_after(&d), 1);
+    say(&mut d, HookStatus::Done, "Stop", &[]);
+    assert_eq!(kept_after(&d), 1, "a late turn end is the same turn");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_finish_guessed_from_a_title_blink_is_not_kept() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.terms.get_mut(&t).unwrap().agent = Some("claude".into());
+    d.set_status(t, Status::Working, "screen: title says working");
+    d.set_status(t, Status::Done, "screen: idle prompt");
+    assert_eq!(kept_after(&d), 0);
     close(&mut d, &[t]);
 }
 
