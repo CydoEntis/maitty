@@ -250,6 +250,11 @@ choose **Bring back** in its menu, to list it as before. If a put-away session n
 until you have answered it, then goes back under Put away. A chat started in the desktop app has no Put away; close it
 instead.
 
+The TUI does the same from a session's row menu (`.` or right-click): **Put away**, with Undo for 6 seconds (the leader,
+then Ctrl+Z). The row leaves the sidebar while the session keeps running. The sidebar's **Menu** chip → **Put away…** (or
+**Sessions put away** in Search commands) lists them; pick one to bring it back. Putting away in either app puts the
+session away in both.
+
 ## Follow-ups and snapshots
 
 `Enter` in shortcut mode (or **Message** in the row's menu) writes an agent a follow-up without leaving where you are. While the agent is

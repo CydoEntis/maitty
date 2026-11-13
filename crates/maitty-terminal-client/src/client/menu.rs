@@ -49,6 +49,10 @@ pub enum Act {
     ArchiveConversation(crate::conversation::ConversationId),
     /// Drop the follow-ups waiting for this agent's turn to end.
     ClearQueue(ClientTerm),
+    /// Put a finished or idle session away: it keeps running, out of the lists.
+    PutAway(ClientTerm),
+    /// List a put-away session again.
+    BringBack(ClientTerm),
     /// List a checkout's snapshots (its folder, and whose row asked).
     Snapshots(PathBuf, ClientTerm),
     /// Put a checkout's files back as a snapshot has them: (folder, commit, when, whose row).
@@ -356,6 +360,7 @@ impl App {
             ("Filter sessions".to_string(), Act::Tool(Action::FilterSessions)),
             ("Add machine…".to_string(), Act::Tool(Action::Machines)),
             ("Inbox".to_string(), Act::Tool(Action::Jump)),
+            ("Put away…".to_string(), Act::Tool(Action::PutAway)),
             ("Usage and cost".to_string(), Act::Tool(Action::Usage)),
             ("Settings".to_string(), Act::Tool(Action::Settings)),
             ("Keys".to_string(), Act::Tool(Action::Help)),
@@ -534,6 +539,9 @@ impl App {
         }
         if let Some(check) = info.and_then(|t| t.check()) {
             items.extend(super::screen::check_menu_items(term, check));
+        }
+        if self.can_put_away(term) {
+            items.push(("Put away".to_string(), Act::PutAway(term)));
         }
         let close = if s.is_agent { "Stop session" } else { "Close shell" };
         items.push((close.to_string(), Act::End(vec![term])));
@@ -924,6 +932,8 @@ impl App {
                 };
             }
             Act::ArchiveConversation(id) => self.archive_conversation(id),
+            Act::PutAway(t) => self.put_away(t),
+            Act::BringBack(t) => self.bring_back(t),
             Act::Split(t, dir) => {
                 let cwd = self
                     .term_info(t)
