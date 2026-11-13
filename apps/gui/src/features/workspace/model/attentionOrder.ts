@@ -1,7 +1,7 @@
 import type { SessionStatus, SessionView } from './session'
 
 /** What wants your attention is listed with what needs you first, then what finished, then what exited. */
-const PRIORITY: Record<SessionStatus, number> = { needs: 0, done: 1, error: 2, working: 3, idle: 4, unknown: 5 }
+const PRIORITY: Record<SessionStatus, number> = { needs: 0, done: 1, error: 2, limited: 3, working: 4, idle: 5, unknown: 6 }
 
 /** When a session last changed, in ms; 0 when this window has not seen it change. */
 export type Activity = (sessionId: string) => number

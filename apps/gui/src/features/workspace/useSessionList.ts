@@ -10,7 +10,10 @@ import { isListedChatSession } from './model/chatSession'
 import { remoteTerminals } from './model/machines'
 import type { ChatAgent } from './model/chatView'
 import type { Layout } from './model/layout'
-import { keepLabels, type SessionView, toSessionView } from './model/session'
+import { keepLabels, nextResumeAt, type SessionView, toSessionView } from './model/session'
+
+/** The longest wait a browser timer takes (a signed 32-bit count of milliseconds); a longer one fires at once. */
+const MAX_TIMER_MS = 2_147_483_647
 
 /** The sessions the window shows, from this computer and every machine, each keeping the labels and the pane it already had. */
 export function useSessionList({ sessionsQuery, online, machines, home, layout }: {
@@ -23,15 +26,26 @@ export function useSessionList({ sessionsQuery, online, machines, home, layout }
   // Sessions started as a known agent, until the daemon says so itself (see `startAgentSession`).
   const [expectedAgents, setExpectedAgents] = useState<Record<string, ChatAgent>>({})
   const [shownLabels, setShownLabels] = useState<ReadonlyMap<string, SessionView>>(() => new Map())
+  // The time the list is read against. It moves only when a limited session's time comes: a time still ahead of now is
+  // ahead of an older clock too, and the timer below corrects one that passed since.
+  const [clock, setClock] = useState(() => Date.now())
   const liveSessions = useMemo(() => {
     // Terminal sessions, and the chat sessions the daemon owns that are not put away (ADR 0003).
     const terminals = (sessionsQuery.data ?? []).filter((item) => item.kind === 'terminal' || isListedChatSession(item))
     const here = online ? terminals : markConversationsDisconnected(terminals)
     return [...here, ...remoteTerminals(machines)].map((conversation) => {
       const expected = expectedAgents[conversation.id]
-      return toSessionView(expected !== undefined && !conversation.agent ? { ...conversation, agent: expected } : conversation, home)
+      return toSessionView(expected !== undefined && !conversation.agent ? { ...conversation, agent: expected } : conversation, home, clock)
     })
-  }, [sessionsQuery.data, online, home, machines, expectedAgents])
+  }, [sessionsQuery.data, online, home, machines, expectedAgents, clock])
+  // A limited session goes back to the daemon's status at the time the daemon gave, with no new list needed.
+  // The clock is a dependency so a timer that fired a moment early, or was cut to the longest wait, is set again.
+  const resumeAt = nextResumeAt(liveSessions)
+  useEffect(() => {
+    if (resumeAt === null) return undefined
+    const timer = window.setTimeout(() => { setClock(Date.now()) }, Math.min(Math.max(resumeAt - Date.now(), 0), MAX_TIMER_MS))
+    return () => { window.clearTimeout(timer) }
+  }, [resumeAt, clock])
   const everySession = useMemo(() => liveSessions.map((view) => keepLabels(view, shownLabels.get(view.id))), [liveSessions, shownLabels])
   // What each row shows is remembered, so a later refresh keeps it (see `keepLabels`); only a change is stored, which ends the loop.
   const labelsChanged = everySession.length !== shownLabels.size || everySession.some((view) => shownLabels.get(view.id)?.title !== view.title || shownLabels.get(view.id)?.cwd !== view.cwd || shownLabels.get(view.id)?.branch !== view.branch)

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Conversation } from '@/data/preview'
-import { displayName, folderNameOf, inCreationOrder, keepLabels, processName, rowName, statusText, tildePath, toSessionView, truncatePrompt } from './session'
+import { displayName, folderNameOf, inCreationOrder, keepLabels, nextResumeAt, processName, rowName, statusText, tildePath, toSessionView, truncatePrompt } from './session'
 import { formatAgo, formatElapsed, markSeen, trackSessions } from './tracking'
 import { folderExists, resolveStartFolder } from './startFolder'
 
@@ -171,6 +171,45 @@ describe('an exited session', () => {
     expect(toSessionView(conversation(1, `${HOME}/a`, { status: 'working', details }), HOME).status).toBe('working')
     expect(toSessionView(conversation(1, `${HOME}/a`, { status: 'needs-you', details }), HOME).status).toBe('needs')
     expect(toSessionView(conversation(1, `${HOME}/a`, { status: 'idle', details: { ...details, exit: null } }), HOME).status).toBe('idle')
+  })
+})
+
+describe('a session stopped by its plan limit', () => {
+  const NOW = new Date(2026, 0, 5, 9, 30).getTime()
+  const RESUME = new Date(2026, 0, 5, 14, 5).getTime()
+  const held = (status: Conversation['status'], resumeAt: number | null, extra: Partial<Conversation> = {}) =>
+    conversation(1, `${HOME}/a`, { agent: 'claude', status, details: { asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, resumeAt }, ...extra })
+
+  it('reads as limited until the time the daemon says it continues', () => {
+    const view = toSessionView(held('idle', RESUME / 1000), HOME, NOW)
+    expect(view.status).toBe('limited')
+    expect(view.resumeAt).toBe(RESUME)
+    expect(statusText(view)).toBe('limited until 14:05')
+    expect(toSessionView(held('done', RESUME / 1000), HOME, NOW).status).toBe('limited')
+    expect(toSessionView(held('needs-you', RESUME / 1000), HOME, NOW).status).toBe('limited')
+  })
+
+  it('returns to the status the daemon gave once that time has passed', () => {
+    const view = toSessionView(held('done', RESUME / 1000), HOME, RESUME)
+    expect(view.status).toBe('done')
+    expect(view.resumeAt).toBeNull()
+  })
+
+  it('returns to the status the daemon gave when the daemon clears the time', () => {
+    expect(toSessionView(held('idle', null), HOME, NOW).status).toBe('idle')
+    expect(toSessionView(conversation(1, `${HOME}/a`, { agent: 'claude', status: 'done' }), HOME, NOW).status).toBe('done')
+  })
+
+  it('stays working or unknown, which the daemon’s time does not speak for', () => {
+    expect(toSessionView(held('working', RESUME / 1000), HOME, NOW).status).toBe('working')
+    expect(toSessionView(held('unknown', RESUME / 1000, { lastKnownStatus: 'idle' }), HOME, NOW).status).toBe('unknown')
+  })
+
+  it('finds the next time a limited session continues, and none when nothing is limited', () => {
+    const later = toSessionView(held('idle', RESUME / 1000 + 60), HOME, NOW)
+    const sooner = toSessionView(held('idle', RESUME / 1000), HOME, NOW)
+    expect(nextResumeAt([later, sooner, toSessionView(held('idle', null), HOME, NOW)])).toBe(RESUME)
+    expect(nextResumeAt([toSessionView(held('working', RESUME / 1000), HOME, NOW)])).toBeNull()
   })
 })
 

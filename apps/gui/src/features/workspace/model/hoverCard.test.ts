@@ -60,6 +60,10 @@ describe('when the reason is not about the status shown', () => {
     expect(statusWhyLine({ ...set, status: 'error', statusWhy: 'screen: quiet' }, NOW)).toBeNull()
   })
 
+  it('says nothing for a limited session, whose reason explains the status under the limit', () => {
+    expect(statusWhyLine({ ...set, status: 'limited', statusWhy: 'hook: Stop' }, NOW)).toBeNull()
+  })
+
   it('cuts a long screen pattern short and keeps the age', () => {
     const statusWhy = `screen: matched \`${'a|'.repeat(200)}\``
     expect(statusWhyLine({ ...set, statusWhy }, NOW)).toBe(`${statusWhy.slice(0, 139)}…, 3 s ago`)

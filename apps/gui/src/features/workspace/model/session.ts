@@ -6,7 +6,7 @@ import type { PullRequest } from './pullRequest'
 import { listedSubagents, toSubagentView, type SubagentView } from './subagents'
 
 /** The status vocabulary of the desktop app. Each one has its own shape, never colour alone. */
-export type SessionStatus = 'working' | 'needs' | 'done' | 'error' | 'idle' | 'unknown'
+export type SessionStatus = 'working' | 'needs' | 'limited' | 'done' | 'error' | 'idle' | 'unknown'
 
 /** One daemon-owned shell as the window shows it. Every view reads this model, not the wire shape. */
 export type SessionView = {
@@ -57,6 +57,8 @@ export type SessionView = {
   statusSince: number | null
   /** What set the status, in the daemon's own words (`hook: Stop`); empty when it gave no reason. */
   statusWhy: string
+  /** When the daemon tells it to continue after its plan limit, in milliseconds, as the daemon last listed it; null when it was not limited. */
+  resumeAt: number | null
   timeline: TerminalDetails['timeline']
   usage: TerminalDetails['usage']
   /** The plan limits of its agent, as last reported; empty when it reported none. */
@@ -131,23 +133,55 @@ const STATUS_FROM_CONVERSATION: Record<Conversation['status'], SessionStatus> = 
 }
 
 /**
- * The daemon's status for a session, with a failed last command shown as exited. The daemon sets
- * `exit` (a non-zero code from the shell) and clears it when work starts again, so the window only
- * displays it; a session that is working or needs you shows that instead.
+ * When the daemon tells a session stopped by its plan limit to continue, in milliseconds; null when it
+ * is not held. The time is the daemon's (`TermInfo.resume_at`) and the window only shows it: nothing
+ * else makes a session limited. The daemon drops the time once the agent works again, so a working
+ * session is not held whatever a list read a moment earlier says, and a status that is not known
+ * says nothing newer than the list it came from.
  */
-function statusOf(conversation: Conversation): SessionStatus {
+function heldUntil(conversation: Conversation, now: number): number | null {
+  if (conversation.status === 'working' || conversation.status === 'unknown') return null
+  const resumeAt = (conversation.details?.resumeAt ?? 0) * MS_PER_SECOND
+  return resumeAt > now ? resumeAt : null
+}
+
+/**
+ * The daemon's status for a session, with one held by its plan limit shown as limited and a failed
+ * last command shown as exited. The daemon sets `exit` (a non-zero code from the shell) and clears it
+ * when work starts again, so the window only displays it; a session that is working or needs you
+ * shows that instead.
+ */
+function statusOf(conversation: Conversation, held: boolean): SessionStatus {
+  if (held) return 'limited'
   const status = STATUS_FROM_CONVERSATION[conversation.status]
   const failed = conversation.details?.exit != null
   return failed && (status === 'idle' || status === 'done') ? 'error' : status
 }
 
+/** The soonest time a limited session continues, in milliseconds; null when none is limited. */
+export function nextResumeAt(sessions: readonly Pick<SessionView, 'resumeAt'>[]): number | null {
+  const times = sessions.flatMap((session) => (session.resumeAt === null ? [] : [session.resumeAt]))
+  return times.length === 0 ? null : Math.min(...times)
+}
+
 export const STATUS_WORD: Record<SessionStatus, string> = {
   working: 'working',
   needs: 'needs you',
+  limited: 'limited',
   done: 'done',
   error: 'exited',
   idle: 'idle',
   unknown: 'unknown',
+}
+
+const CLOCK_DIGITS = 2
+
+/** What a limited session's row says: `limited until 14:05`, in this computer's time. */
+export function limitedWord(resumeAt: number | null): string {
+  if (resumeAt === null) return STATUS_WORD.limited
+  const at = new Date(resumeAt)
+  const clock = [at.getHours(), at.getMinutes()].map((part) => String(part).padStart(CLOCK_DIGITS, '0')).join(':')
+  return `${STATUS_WORD.limited} until ${clock}`
 }
 
 function trimTrailingSeparator(path: string): string {
@@ -187,7 +221,7 @@ export function keepLabels(view: SessionView, before: SessionView | undefined): 
   return { ...view, repoName: before.repoName, branch: before.branch, title: before.title, promptPath: before.promptPath }
 }
 
-export function toSessionView(conversation: Conversation, home: string): SessionView {
+export function toSessionView(conversation: Conversation, home: string, now: number = Date.now()): SessionView {
   const cwd = trimTrailingSeparator(conversation.cwd ?? conversation.folder)
   const machineName = conversation.machineName ?? null
   // The home folder written as `~` is this computer's; another machine's paths are shown as they are.
@@ -200,7 +234,8 @@ export function toSessionView(conversation: Conversation, home: string): Session
   const branch = repoName !== null && conversation.branch && conversation.branch !== 'working tree' ? conversation.branch : null
   // At a checkout's root the row says its branch; deeper in, the folder is what tells sessions apart.
   const title = repoName === null ? cwdLabel : inside === '' ? branch ?? repoName : inside.split('/').slice(-TITLE_PARTS).join('/')
-  const status = statusOf(conversation)
+  const resumeAt = heldUntil(conversation, now)
+  const status = statusOf(conversation, resumeAt !== null)
   const lastKnown = conversation.lastKnownStatus ? STATUS_FROM_CONVERSATION[conversation.lastKnownStatus] : null
   return {
     id: conversation.id,
@@ -230,6 +265,7 @@ export function toSessionView(conversation: Conversation, home: string): Session
     agentEffort: conversation.details?.agentEffort ?? null,
     statusSince: (conversation.details?.since ?? 0) > 0 ? (conversation.details?.since ?? 0) * MS_PER_SECOND : null,
     statusWhy: conversation.details?.statusWhy ?? '',
+    resumeAt,
     timeline: conversation.details?.timeline ?? [],
     usage: conversation.details?.usage ?? { context: null, cost: null, tokens: null },
     limits: conversation.details?.limits ?? [],
@@ -253,6 +289,8 @@ export function statusText(session: SessionView): string {
       return 'working'
     case 'needs':
       return 'needs you'
+    case 'limited':
+      return limitedWord(session.resumeAt)
     case 'done':
       return 'finished'
     case 'error':
