@@ -10,48 +10,7 @@ const DAY: Duration = Duration::from_secs(24 * 60 * 60);
 /// inactive: a long walk is not worth it, and being unsure must not flag one.
 const NEWEST_CHANGE_FILES: usize = 20_000;
 
-/// Where a worktree stands. Read with git: call it off the UI thread and off the server's
-/// loop.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Standing {
-    /// Changed and new files that aren't committed.
-    pub dirty: usize,
-    /// Its branch (none: a detached HEAD).
-    pub branch: Option<String>,
-    /// Every commit it has is also on another branch or on a remote, or its pull request was
-    /// merged at exactly this commit (a squash merge leaves the commits on no other branch):
-    /// its own branch could go and nothing would be lost.
-    pub merged: bool,
-    /// When it last committed, as git says it ("3 days ago").
-    pub last_commit: String,
-    /// Whole days since its last commit and its newest file change, set when both are at least
-    /// `worktree.inactive_days` old. It is only listed: nothing is removed for it.
-    pub inactive_days: Option<u32>,
-}
-
-impl Standing {
-    /// Nothing here exists only here: it can be removed without asking.
-    pub fn safe(&self) -> bool {
-        self.dirty == 0 && self.merged
-    }
-
-    /// Why it's still around, in a few words.
-    pub fn says(&self) -> String {
-        let ago = if self.last_commit.is_empty() {
-            String::new()
-        } else {
-            format!(" · last commit {}", self.last_commit)
-        };
-        match (self.dirty, self.merged) {
-            (0, true) => format!("merged, nothing uncommitted{ago}"),
-            (0, false) => format!("not merged anywhere{ago}"),
-            (n, _) => format!(
-                "{n} uncommitted change{}{ago}",
-                if n == 1 { "" } else { "s" }
-            ),
-        }
-    }
-}
+pub use crate::protocol::WorktreeStanding as Standing;
 
 /// Whether a pull request from `branch` was merged with `head` as its last commit. Asks `gh`
 /// (blocks); when it isn't installed, isn't logged in or can't be reached, the answer is no,

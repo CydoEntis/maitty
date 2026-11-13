@@ -650,7 +650,8 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   is both ahead and behind the button is disabled and its tooltip says why (`remoteAction.ts`). What git or `gh` said
   is shown when any of them fails (`CommitBar.tsx`, `src-tauri/src/changes.rs`).
   A worktree whose folder was deleted by hand reads "its folder is gone" in the worktree manager with **Recreate**, which
-  makes it again on its branch at the same place. The same list opens with a line when two checkouts changed one file ("orders and rate-limit both changed checkout.ts"; the comparison is `maitty_shared::overlap`, shared with the terminal client). A pane's menu has **Hand off to <agent>** for an agent's pane: a new
+  makes it again on its branch at the same place. Each row's standing comes from the daemon (`worktree_standing`), and one
+  idle past `worktree.inactive_days` leads with "inactive N days". The same list opens with a line when two checkouts changed one file ("orders and rate-limit both changed checkout.ts"; the comparison is `maitty_shared::overlap`, shared with the terminal client). A pane's menu has **Hand off to <agent>** for an agent's pane: a new
   session of the other agent in the same folder starts with the text brief `maitty handoff` writes (`maitty_shared::handoff`; the
   desktop lists only uncommitted files and says so). The one other thing the panel
   changes is a file: **Edit** in the Files tab (this computer only, never in a diff) replaces an existing file whole;

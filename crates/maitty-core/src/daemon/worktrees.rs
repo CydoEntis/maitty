@@ -467,6 +467,25 @@ impl Daemon {
     }
 }
 
+/// Where the linked worktree at `folder` stands, for a client's worktree list; None when git
+/// still lists it but its folder is gone. Anything but a linked worktree is refused, so a client
+/// cannot have git and `gh` run in any folder it names. Blocks: call it off the loop.
+pub(super) fn worktree_standing(
+    folder: &std::path::Path,
+    inactive_after: u32,
+) -> Result<Option<crate::tidy::Standing>, String> {
+    if !folder.is_absolute() {
+        return Err("a worktree's folder is an absolute path".into());
+    }
+    if !folder.exists() {
+        return Ok(None);
+    }
+    match crate::gitfs::head(folder).filter(|h| h.linked) {
+        Some(h) => Ok(Some(crate::tidy::standing(&h.top, inactive_after))),
+        None => Err(format!("{} isn't a worktree", folder.display())),
+    }
+}
+
 /// What became of a worktree after you closed its last pane.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Removal {

@@ -1,5 +1,6 @@
 //! Clean up worktrees: every worktree of a repo, why each is still there, and which to
-//! remove. The ones that hold nothing of their own come ticked; the rest are yours to tick.
+//! remove. The ones that hold nothing of their own come ticked, and so do inactive ones without
+//! uncommitted changes; the rest are yours to tick. Nothing goes before you confirm.
 
 use super::*;
 use crate::client::Bg;
@@ -103,7 +104,7 @@ impl App {
                 .into_iter()
                 .map(|(path, name, branch, sessions)| {
                     let standing = crate::tidy::standing(&path, inactive_after);
-                    let ticked = sessions == 0 && standing.safe();
+                    let ticked = comes_ticked(sessions, &standing);
                     TidyRow {
                         path,
                         name,
@@ -225,12 +226,10 @@ impl App {
             note,
             list: picked
                 .iter()
-                .map(|r| {
-                    if r.standing.dirty > 0 {
-                        format!("{} ({} uncommitted)", r.name, r.standing.dirty)
-                    } else {
-                        r.name.clone()
-                    }
+                .map(|r| match (r.standing.dirty, r.standing.merged) {
+                    (0, true) => r.name.clone(),
+                    (0, false) => format!("{} (not merged)", r.name),
+                    (n, _) => format!("{} ({n} uncommitted)", r.name),
                 })
                 .collect(),
             yes: "Remove".into(),
@@ -239,6 +238,12 @@ impl App {
             act: Act::Tidy(items),
         }));
     }
+}
+
+/// An inactive worktree is offered for removal, but never one whose uncommitted changes would be
+/// lost: removing it takes only its folder, and its unmerged commits stay on its branch.
+fn comes_ticked(sessions: usize, standing: &Standing) -> bool {
+    sessions == 0 && (standing.safe() || (standing.inactive_days.is_some() && standing.dirty == 0))
 }
 
 fn tidy_toggle(v: &mut TidyView, i: usize) {
@@ -393,3 +398,7 @@ pub(in crate::client) fn draw_tidy(
         ],
     );
 }
+
+#[cfg(test)]
+#[path = "tidy_tests.rs"]
+mod tests;

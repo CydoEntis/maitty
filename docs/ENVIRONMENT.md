@@ -244,7 +244,9 @@ through `.profile` or `.zprofile` would otherwise be missing. The client never r
 `worktree.inactive_days` (default `14`; `0` turns it off) flags a worktree inactive in its
 standing (`tidy::Standing::inactive_days`) when its last commit and its newest file change are
 both at least that many days old. Only a clean, merged worktree is ever removed automatically;
-an inactive one is only listed, for the person to remove.
+an inactive one is only listed, for the person to remove. Both worktree lists lead its reason with
+"inactive N days"; the TUI clean-up list also comes with it ticked unless it has uncommitted
+changes, and Remove still asks first, naming one whose commits are not merged.
 
 The newest file change is the latest modified time among the files `git ls-files --cached
 --others --exclude-standard` lists, so `.gitignore`d folders such as `node_modules` and `target`

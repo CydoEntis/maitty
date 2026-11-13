@@ -740,6 +740,18 @@ a structured client are refused), so a client connected to another machine's dae
 panes. The request has its own `introduced_in` arm (`FIND_FILES_SINCE`); `COMPATIBLE_SINCE` stays 78. No client
 asks it yet.
 
+Protocol 90 adds `Query::WorktreeStanding { folder }` and `Reply::WorktreeStanding(Option<WorktreeStanding>)`:
+where a linked worktree on the daemon's computer stands (uncommitted files, branch, whether its work is merged, its
+last commit, and `inactive_days` from `worktree.inactive_days`), read by `tidy::standing` on a blocking thread, `gh`
+check included. `None` means git still lists it but its folder is gone. `folder` must be absolute and a linked
+worktree (not a main checkout, not a folder outside git); anything else answers `ServerMsg::Error`, so a client
+cannot have git and `gh` run in any folder it names. Human clients only. `WorktreeStanding` (with `safe` and
+`says`) lives in `maitty_shared::protocol`; `maitty_core::tidy::Standing` is that type. The query and the reply each
+have their own `introduced_in` arm (`WORKTREE_STANDING_SINCE`); `COMPATIBLE_SINCE` stays 78, since an older daemon
+is simply not asked. The desktop command `worktree_standing { machine, folder }` (this computer only) asks it through
+`maitty_desktop_client::worktree_standing`, which adds `missing` to the JSON, or fails with a line saying to restart
+the service when the daemon running is older than 90.
+
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store
 ([ADR 0009](adr/0009-usage-is-provider-reported-never-estimated.md)): totals, one entry per

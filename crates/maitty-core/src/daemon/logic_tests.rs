@@ -1193,6 +1193,49 @@ fn closing_a_worktrees_last_pane_removes_it_only_when_nothing_lives_only_there()
 }
 
 #[test]
+fn a_person_reads_where_a_linked_worktree_stands_and_nothing_else() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (root, merged, _mine) = repo_with_two_made_worktrees(&mut d, "standing-query");
+    let read = |folder: &std::path::Path| worktree_standing(folder, 14);
+    assert!(
+        matches!(read(&merged), Ok(Some(s)) if s.merged && s.branch.is_some()),
+        "a linked worktree is read"
+    );
+    assert!(read(&root.join("repo")).is_err(), "the main checkout is not one");
+    assert!(read(&root).is_err(), "nor a folder outside git");
+    assert!(read(std::path::Path::new("repo")).is_err(), "a relative path is refused");
+    assert_eq!(read(&root.join("gone")), Ok(None), "a folder that is gone reads as missing");
+
+    let (tx, mut agent) = mpsc::channel(16);
+    d.handle(Ev::Connected(8, tx, false, crate::protocol::Surface::Terminal, true));
+    let asking = d.terms.keys().next().copied().expect("a pane");
+    let token = d.terms[&asking].token.clone();
+    d.handle(Ev::From(8, asking, token));
+    d.message(8, ClientMsg::Query(Query::WorktreeStanding { folder: merged.clone() }));
+    assert!(matches!(agent.try_recv(), Ok(ServerMsg::Error(_))), "a pane cannot ask");
+
+    let (tx, mut person) = mpsc::channel(16);
+    d.handle(Ev::Connected(7, tx, false, crate::protocol::Surface::Terminal, true));
+    d.message(7, ClientMsg::Query(Query::WorktreeStanding { folder: merged }));
+    let until = Instant::now() + Duration::from_secs(60);
+    let answer = loop {
+        match rx.try_recv() {
+            Ok(ev) => d.handle(ev),
+            Err(_) if Instant::now() < until => std::thread::sleep(Duration::from_millis(20)),
+            Err(_) => panic!("no answer"),
+        }
+        if let Ok(msg @ (ServerMsg::Reply(Reply::WorktreeStanding(_)) | ServerMsg::Error(_))) =
+            person.try_recv()
+        {
+            break msg;
+        }
+    };
+    assert!(matches!(answer, ServerMsg::Reply(Reply::WorktreeStanding(Some(_)))), "{answer:?}");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn closing_an_inactive_unmerged_worktrees_last_pane_keeps_it() {
     let (rt, (mut d, mut rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();

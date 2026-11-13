@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { lossOfRemoving, mergeBlock, overlapWords, standingWords } from './worktreeAdvice'
 
-const clean = { dirty: 0, branch: 'task', merged: true, last_commit: '3 days ago', missing: false }
+const clean = { dirty: 0, branch: 'task', merged: true, last_commit: '3 days ago', inactive_days: null, missing: false }
 
 describe('what a worktree can lose', () => {
   it('says its state in words', () => {
@@ -9,6 +9,11 @@ describe('what a worktree can lose', () => {
     expect(standingWords({ ...clean, missing: true })).toBe('its folder is gone')
     expect(standingWords({ ...clean, merged: false })).toBe('not merged anywhere · last commit 3 days ago')
     expect(standingWords({ ...clean, dirty: 1, last_commit: '' })).toBe('1 uncommitted change')
+  })
+
+  it('leads with how long an inactive worktree has sat', () => {
+    expect(standingWords({ ...clean, merged: false, inactive_days: 30 })).toBe('inactive 30 days · not merged anywhere · last commit 3 days ago')
+    expect(standingWords({ ...clean, inactive_days: 1 })).toBe('inactive 1 day · merged, nothing uncommitted · last commit 3 days ago')
   })
 
   it('asks before removing only what would be lost', () => {

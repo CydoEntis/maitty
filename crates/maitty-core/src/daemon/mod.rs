@@ -225,6 +225,10 @@ pub enum Ev {
         client: ClientId,
         result: Result<Vec<WorktreeEntry>, String>,
     },
+    WorktreeStandingReady {
+        client: ClientId,
+        result: Result<Option<crate::tidy::Standing>, String>,
+    },
     SearchReady {
         client: ClientId,
         hits: Vec<crate::protocol::SearchHit>,
@@ -2316,6 +2320,12 @@ impl Daemon {
                 Ok(list) => self.send(client, ServerMsg::Reply(Reply::Worktrees(list))),
                 Err(e) => self.send(client, ServerMsg::Error(e)),
             },
+            Ev::WorktreeStandingReady { client, result } => match result {
+                Ok(standing) => {
+                    self.send(client, ServerMsg::Reply(Reply::WorktreeStanding(standing)))
+                }
+                Err(e) => self.send(client, ServerMsg::Error(e)),
+            },
             Ev::SearchReady { client, hits } => {
                 self.send(client, ServerMsg::Reply(Reply::Search(hits)));
             }
@@ -2843,6 +2853,18 @@ impl Daemon {
                         }) =>
                     {
                         ServerMsg::Error("Only a human client can read usage".into())
+                    }
+                    Query::WorktreeStanding { .. } if self.client_is_agent(client) => {
+                        ServerMsg::Error("Only a human client can read where a worktree stands".into())
+                    }
+                    Query::WorktreeStanding { folder } => {
+                        let inactive_after = self.cfg.worktree.inactive_days;
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let result = worktree_standing(&folder, inactive_after);
+                            let _ = tx.blocking_send(Ev::WorktreeStandingReady { client, result });
+                        });
+                        return;
                     }
                     Query::ClosedSessions if self.client_is_agent(client) => {
                         ServerMsg::Error("Only a human client can read the closed sessions".into())

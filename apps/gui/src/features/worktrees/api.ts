@@ -15,10 +15,12 @@ const StandingSchema = z.object({
   branch: z.string().nullable(),
   merged: z.boolean(),
   last_commit: z.string(),
+  /** Days with no commit and no file change, once past `worktree.inactive_days`; null otherwise. */
+  inactive_days: z.number().int().nonnegative().nullable(),
   missing: z.boolean(),
 })
 
-/** Where a worktree stands: what removing it would lose. */
+/** Where a worktree stands, as the daemon read it: what removing it would lose. */
 export type WorktreeStanding = z.infer<typeof StandingSchema>
 
 /** Where the worktree at `folder` (on `machine`; only this computer's, 0, is answered) stands. */
