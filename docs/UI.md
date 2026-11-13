@@ -868,6 +868,10 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   second place to click, not a second Tab stop. A run with a failed step starts open.
   Under the divider of a turn that edited files is a **changes row**: "3 changed files +111 −0" (each file once; the
   lines only when every diff was kept), which opens the side panel on Changes.
+  Where an agent ran out of room and carried on from its own summary of the conversation, the daemon sends the summary
+  as a `contextSummary` tool step and the chat shows a **summary row** (`ContextSummary`): a divider reading "Earlier
+  conversation summarised to make room" that opens to the summary as formatted text. It is never a user bubble, never
+  folds into a work row, and Find does not look inside it.
 - **Cards** (`features/chat/components/`). Every fact the history carries is shown, and a missing one is said to be
   unavailable (a diff the history did not keep, a checklist without items, a command time or exit code the provider
   does not report, a turn without the daemon's times shows "Turn finished", not an invented duration). Only a step

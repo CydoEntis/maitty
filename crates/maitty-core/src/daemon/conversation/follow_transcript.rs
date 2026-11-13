@@ -7,6 +7,7 @@
 //! Every string that reaches a note is cleaned and bounded here or by that projection, because a
 //! transcript holds whatever the agent was working on.
 
+use super::history_provider::CONTEXT_SUMMARY_ITEM;
 use super::tool_input::{bound_input, clean_text};
 use maitty_provider_claude::bounded_content_text;
 use serde_json::{Value, json};
@@ -158,6 +159,17 @@ impl Transcript {
         notes.push(self.note("item/completed", item_params(&turn, item, at_ms)));
     }
 
+    /// Claude's own summary of the conversation so far, written when it ran out of room. Nobody
+    /// typed it, so it is a step of the turn it happened in and starts no turn of its own.
+    fn context_summary(&mut self, id: &str, text: &str, at_ms: Option<u64>, notes: &mut Vec<Note>) {
+        if text.trim().is_empty() {
+            return;
+        }
+        let turn = self.turn_id(at_ms, notes);
+        let item = json!({ "id": id, "type": CONTEXT_SUMMARY_ITEM, "text": bounded_text(text) });
+        notes.push(self.note("item/completed", item_params(&turn, item, at_ms)));
+    }
+
     fn remember(&mut self, id: &str, tool: PendingTool) {
         if self.tools.len() >= MAX_PENDING_TOOLS {
             self.tools.clear();
@@ -190,6 +202,10 @@ impl Transcript {
                 let Some(content) = line.pointer("/message/content") else {
                     return;
                 };
+                if line.get("isCompactSummary").and_then(Value::as_bool) == Some(true) {
+                    self.context_summary(&uuid, &claude_text(content), at_ms, notes);
+                    return;
+                }
                 match content {
                     Value::String(text) => {
                         if !is_claude_chrome(text) {
@@ -627,6 +643,18 @@ fn item_params(turn: &str, mut item: Value, at_ms: Option<u64>) -> Value {
         params["startedAtMs"] = json!(ms);
     }
     params
+}
+
+/// The text of a Claude message, whether it is written as one string or as text blocks.
+fn claude_text(content: &Value) -> String {
+    match content {
+        Value::String(text) => text.clone(),
+        Value::Array(blocks) => blocks
+            .iter()
+            .filter_map(|block| block.get("text").and_then(Value::as_str))
+            .collect(),
+        _ => String::new(),
+    }
 }
 
 /// What Claude writes into the transcript as a "user" line that no one typed: slash-command
