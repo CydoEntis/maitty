@@ -184,6 +184,7 @@ fn cleaned(session: ClosedSession) -> Option<ClosedSession> {
             .take(max)
             .collect()
     };
+    let (worktree, repo) = worktree_pair(&session);
     let agent = line(&session.agent, AGENT_MAX_CHARS);
     let id = line(&session.session, SESSION_MAX_CHARS);
     if agent.is_empty() || id.is_empty() {
@@ -199,9 +200,22 @@ fn cleaned(session: ClosedSession) -> Option<ClosedSession> {
             .filter(|branch| !branch.is_empty()),
         title: session.title.as_deref().and_then(clean_title),
         at: session.at,
-        worktree: session.worktree,
-        repo: session.repo,
+        worktree,
+        repo,
     })
+}
+
+/// The worktree and repository of an entry, both or neither: both absolute, the folder inside the
+/// worktree. A reopen makes a worktree only from a pair that holds together.
+fn worktree_pair(session: &ClosedSession) -> (Option<PathBuf>, Option<PathBuf>) {
+    match (&session.worktree, &session.repo) {
+        (Some(worktree), Some(repo))
+            if worktree.is_absolute() && repo.is_absolute() && session.cwd.starts_with(worktree) =>
+        {
+            (Some(worktree.clone()), Some(repo.clone()))
+        }
+        _ => (None, None),
+    }
 }
 
 /// The linked worktree `head` is in and its repository's main checkout, or neither.

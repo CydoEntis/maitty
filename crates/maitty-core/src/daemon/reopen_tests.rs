@@ -84,13 +84,32 @@ fn a_closed_session_whose_worktree_is_gone_gets_it_back_on_its_branch_and_resume
 }
 
 #[test]
-fn a_worktree_folder_deleted_by_hand_is_made_again() {
+fn a_worktree_folder_deleted_by_hand_is_made_again_and_other_missing_ones_stay_registered() {
     let (root, repo, top) = repo_with_worktree("reopen-by-hand");
+    let unplugged = root.join("unplugged");
+    git(&repo, &["worktree", "add", "-q", "-b", "keep", &unplugged.to_string_lossy()]);
+    std::fs::remove_dir_all(&unplugged).unwrap();
     std::fs::remove_dir_all(&top).unwrap();
 
     let ready = ready_folder(&record(&repo, &top, &top)).expect("made again");
     assert!(same(&ready.folder, &top));
     assert_eq!(branch_at(&top).as_deref(), Some("feat"));
+    let registered = git::list_worktrees(&repo).unwrap();
+    assert!(
+        registered.iter().any(|w| w.branch == "keep"),
+        "a worktree whose folder is missing for another reason keeps its registration: {registered:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn only_the_parent_folders_made_for_a_worktree_are_removed_again() {
+    let root = scratch("reopen-parents");
+    let made = make_parents(&root.join("a").join("b").join("top")).unwrap();
+    assert!(root.join("a").join("b").is_dir());
+    remove_made(&made);
+    assert!(!root.join("a").exists(), "the folders it made are gone");
+    assert!(root.is_dir(), "the one that was there stays");
     let _ = std::fs::remove_dir_all(&root);
 }
 

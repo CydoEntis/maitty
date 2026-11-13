@@ -113,3 +113,29 @@ fn a_file_that_cannot_be_read_is_kept_aside_and_the_list_starts_empty() {
     assert!(!file.exists());
     assert!(dir.path().join("closed-sessions.json.bak").exists());
 }
+
+#[test]
+fn a_worktree_is_kept_only_when_both_paths_are_absolute_and_the_folder_is_inside_it() {
+    let root = std::env::temp_dir();
+    let top = root.join("repo-worktrees").join("feat");
+    let in_worktree = |cwd: PathBuf, worktree: PathBuf, repo: PathBuf| ClosedSession {
+        cwd,
+        worktree: Some(worktree),
+        repo: Some(repo),
+        ..closed("a", 1)
+    };
+    let mut list = ClosedSessions::in_memory();
+    list.remember(in_worktree(top.join("src"), top.clone(), root.join("repo")));
+    assert_eq!(list.list()[0].worktree.as_deref(), Some(top.as_path()));
+    assert!(list.list()[0].repo.is_some());
+
+    for odd in [
+        in_worktree(root.join("elsewhere"), top.clone(), root.join("repo")),
+        in_worktree(top.clone(), PathBuf::from("repo-worktrees/feat"), root.join("repo")),
+        in_worktree(top.clone(), top.clone(), PathBuf::from("repo")),
+    ] {
+        list.remember(odd);
+        let kept = &list.list()[0];
+        assert_eq!((&kept.worktree, &kept.repo), (&None, &None), "{kept:?}");
+    }
+}

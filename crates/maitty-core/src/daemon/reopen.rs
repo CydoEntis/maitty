@@ -83,24 +83,24 @@ fn is_that_worktree(repo: &Path, top: &Path, branch: &str) -> bool {
     })
 }
 
-/// A folder deleted by hand stays registered with git, holding its branch and path, until pruned.
-/// Pruning drops only registrations whose folder is gone. A branch checked out in a worktree that
-/// is still there is refused.
+/// A folder deleted by hand stays registered with git, holding its branch and path. Only the
+/// registration in the way is removed: one whose folder is missing for another reason (an unplugged
+/// drive) keeps its own. A branch checked out in a worktree that is still there is refused.
 fn clear_stale_registrations(repo: &Path, top: &Path, branch: &str) -> Result<(), String> {
     let registered = git::list_worktrees(repo).map_err(|e| format!("{e:#}"))?;
-    let mut stale = false;
-    for entry in registered.iter().filter(|e| e.branch == branch || same_path(&e.path, top)) {
-        if entry.path.symlink_metadata().is_err() {
-            stale = true;
-        } else if entry.branch == branch {
-            return Err(format!(
-                "the branch {branch} is checked out in {}; nothing was made",
-                entry.path.display()
-            ));
+    let in_the_way = registered.iter().filter(|e| !e.main && (e.branch == branch || same_path(&e.path, top)));
+    for entry in in_the_way {
+        if entry.path.symlink_metadata().is_ok() {
+            if entry.branch == branch {
+                return Err(format!(
+                    "the branch {branch} is checked out in {}; nothing was made",
+                    entry.path.display()
+                ));
+            }
+            continue;
         }
-    }
-    if stale {
-        git::git(repo, &["worktree", "prune"]).map_err(|e| format!("{e:#}"))?;
+        let path = entry.path.to_string_lossy().into_owned();
+        git::git(repo, &["worktree", "remove", "--force", &path]).map_err(|e| format!("{e:#}"))?;
     }
     Ok(())
 }
@@ -108,23 +108,47 @@ fn clear_stale_registrations(repo: &Path, top: &Path, branch: &str) -> Result<()
 /// The folder is made here first, so one that appeared since it was looked at is never written into:
 /// making it fails instead. git fills the empty folder.
 fn add_worktree_in_new_folder(repo: &Path, top: &Path, branch: &str) -> Result<(), String> {
-    if let Some(parent) = top.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("couldn't make {}: {e}", parent.display()))?;
-    }
-    match std::fs::create_dir(top) {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => return Err(left_alone(top)),
-        Err(e) => return Err(format!("couldn't make {}: {e}", top.display())),
-    }
+    let parents = make_parents(top).map_err(|e| format!("couldn't make the folders above {}: {e}", top.display()))?;
+    let made = match std::fs::create_dir(top) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Err(left_alone(top)),
+        Err(e) => Err(format!("couldn't make {}: {e}", top.display())),
+    };
     let path = top.to_string_lossy().into_owned();
-    git::git(repo, &["worktree", "add", &path, branch]).map_err(|e| {
-        // Only the empty folder made above: remove_dir refuses one with anything in it.
-        if let Err(cleanup) = std::fs::remove_dir(top) {
-            tracing::warn!("couldn't remove the empty folder {}: {cleanup}", top.display());
+    let added = made.and_then(|()| {
+        git::git(repo, &["worktree", "add", &path, branch]).map(drop).map_err(|e| {
+            remove_made(&[top.to_path_buf()]);
+            format!("{e:#}")
+        })
+    });
+    if added.is_err() {
+        remove_made(&parents);
+    }
+    added
+}
+
+/// Make the missing folders above `top`; returns them deepest first.
+fn make_parents(top: &Path) -> std::io::Result<Vec<PathBuf>> {
+    let mut missing: Vec<PathBuf> = top
+        .ancestors()
+        .skip(1)
+        .take_while(|dir| dir.symlink_metadata().is_err())
+        .map(Path::to_path_buf)
+        .collect();
+    if let Some(parent) = top.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    missing.retain(|dir| dir.is_dir());
+    Ok(missing)
+}
+
+/// Remove folders this module made, deepest first. `remove_dir` refuses one with anything in it.
+fn remove_made(dirs: &[PathBuf]) {
+    for dir in dirs {
+        if let Err(e) = std::fs::remove_dir(dir) {
+            tracing::warn!("couldn't remove the empty folder {}: {e}", dir.display());
         }
-        format!("{e:#}")
-    })?;
-    Ok(())
+    }
 }
 
 impl Daemon {
