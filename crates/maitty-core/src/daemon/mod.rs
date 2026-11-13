@@ -34,6 +34,7 @@ mod search;
 mod secrets;
 mod status;
 mod term;
+mod terminal_sends;
 mod usage;
 mod usage_store;
 mod warm;
@@ -469,6 +470,8 @@ struct Daemon {
         BTreeMap<crate::conversation::ConversationId, conversation::history::History>,
     /// Agents running in desktop panes, followed read-only through their own transcripts.
     followed: Vec<conversation::follow::Followed>,
+    /// Follow-ups and held messages sent with an operation, so a retry is not typed twice.
+    terminal_sends: terminal_sends::TerminalSends,
     /// Messages sent while a turn ran, per conversation, delivered in order as turns end.
     conversation_queues:
         BTreeMap<crate::conversation::ConversationId, Vec<conversation::commands::QueuedSend>>,
@@ -1270,6 +1273,7 @@ impl Daemon {
             conversation_barriers: BTreeMap::new(),
             conversation_histories: BTreeMap::new(),
             followed: Vec::new(),
+            terminal_sends: terminal_sends::TerminalSends::default(),
             conversation_queues: BTreeMap::new(),
             followed_high_water: 0,
             #[cfg(test)]

@@ -11,7 +11,11 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 90;
+pub const PROTOCOL_VERSION: u32 = 91;
+
+/// The first version whose daemon honours `operation` on `QueueFollowUp` and `SendWhenReady`; an
+/// older one reads the field and ignores it, so a retry there could be typed twice.
+pub const TERMINAL_SEND_OPERATIONS_SINCE: u32 = 91;
 
 /// The first version whose daemon says where a worktree stands (`Query::WorktreeStanding`).
 pub const WORKTREE_STANDING_SINCE: u32 = 90;
@@ -745,6 +749,10 @@ pub enum Command {
         /// it works runs before the messages queued behind it.
         #[serde(default)]
         first: bool,
+        /// Names this send, so a retry of it is acknowledged instead of queued twice; the same
+        /// rule as `SendWhenReady::operation`.
+        #[serde(default)]
+        operation: Option<u64>,
     },
     /// Drop the follow-ups queued for a pane.
     ClearQueue {
@@ -762,6 +770,13 @@ pub enum Command {
     SendWhenReady {
         term: TermId,
         text: String,
+        /// Names this send: a random nonzero 64-bit nonce per send, never a counter, since two
+        /// senders counting from the same start would collide on a pane. The same pane, operation
+        /// and text again within ten minutes (as either command) is acknowledged and not typed,
+        /// held or queued again; the same operation with other text, or zero, is refused. None is
+        /// a send with no retry protection, as before.
+        #[serde(default)]
+        operation: Option<u64>,
     },
     /// Run the pane's checkpoint `name` again (None: all of them). While its agent is working
     /// the run waits for the turn to end.
@@ -1974,6 +1989,10 @@ impl ClientMsg {
             ClientMsg::Query(Query::ClosedSessions) => CLOSED_SESSIONS_SINCE,
             ClientMsg::Query(Query::WorktreeStanding { .. }) => WORKTREE_STANDING_SINCE,
             ClientMsg::Command(Command::ReopenClosedSession { .. }) => REOPEN_CLOSED_SINCE,
+            ClientMsg::Command(
+                Command::QueueFollowUp { operation: Some(_), .. }
+                | Command::SendWhenReady { operation: Some(_), .. },
+            ) => TERMINAL_SEND_OPERATIONS_SINCE,
             ClientMsg::Query(Query::Repo {
                 request: crate::repo::RepoRequest::RestoreCount { .. },
                 ..
@@ -2186,11 +2205,13 @@ mod tests {
                 term: 3,
                 text: "then run the tests".into(),
                 first: false,
+                operation: None,
             }),
             ClientMsg::Command(Command::ClearQueue { term: 3 }),
             ClientMsg::Command(Command::SendWhenReady {
                 term: 3,
                 text: "fix the parser".into(),
+                operation: Some(7),
             }),
             ClientMsg::Command(Command::RerunCheck {
                 term: 3,
@@ -2385,12 +2406,13 @@ mod tests {
         let held = encode(&Command::SendWhenReady {
             term: 3,
             text: "fix the parser".into(),
+            operation: None,
         })
         .unwrap();
         assert!(decode::<OldCommand>(&held).is_err());
         assert!(matches!(
             decode::<Command>(&held),
-            Ok(Command::SendWhenReady { term: 3, text }) if text == "fix the parser"
+            Ok(Command::SendWhenReady { term: 3, text, operation: None }) if text == "fix the parser"
         ));
 
         let id = crate::conversation::ConversationId(3);
@@ -2400,7 +2422,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 90);
+        assert_eq!(PROTOCOL_VERSION, 91);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2504,6 +2526,52 @@ mod tests {
         let drop = ClientMsg::Command(Command::DropQueued { term: 3, index: 0, text: "next".into() });
         assert_eq!(drop.introduced_in(), DROP_QUEUED_SINCE);
         const { assert!(DROP_QUEUED_SINCE > COMPATIBLE_SINCE && DROP_QUEUED_SINCE <= PROTOCOL_VERSION) };
+    }
+
+    /// `operation` was added to `QueueFollowUp` and `SendWhenReady` as a defaulted field: a send
+    /// from before it decodes as one with no operation, and an older daemon reads one that carries
+    /// it but ignores the operation, so `COMPATIBLE_SINCE` stays and a send with one says it needs
+    /// a daemon that honours it.
+    #[test]
+    fn a_terminal_send_from_before_operation_ids_still_decodes_both_ways() {
+        #[derive(Debug, Serialize, Deserialize)]
+        enum OldCommand {
+            QueueFollowUp { term: TermId, text: String, first: bool },
+            SendWhenReady { term: TermId, text: String },
+        }
+        let queued = encode(&OldCommand::QueueFollowUp { term: 3, text: "next".into(), first: true }).unwrap();
+        assert!(matches!(
+            decode::<Command>(&queued).unwrap(),
+            Command::QueueFollowUp { term: 3, first: true, operation: None, .. }
+        ));
+        let held = encode(&OldCommand::SendWhenReady { term: 3, text: "fix it".into() }).unwrap();
+        assert!(matches!(
+            decode::<Command>(&held).unwrap(),
+            Command::SendWhenReady { term: 3, operation: None, .. }
+        ));
+
+        let new = encode(&Command::SendWhenReady { term: 3, text: "fix it".into(), operation: Some(9) }).unwrap();
+        assert!(matches!(
+            decode::<Command>(&new).unwrap(),
+            Command::SendWhenReady { operation: Some(9), .. }
+        ));
+        assert!(matches!(
+            decode::<OldCommand>(&new).unwrap(),
+            OldCommand::SendWhenReady { term: 3, text } if text == "fix it"
+        ));
+        let new = encode(&Command::QueueFollowUp { term: 3, text: "next".into(), first: false, operation: Some(9) }).unwrap();
+        assert!(matches!(decode::<OldCommand>(&new).unwrap(), OldCommand::QueueFollowUp { term: 3, first: false, .. }));
+    }
+
+    #[test]
+    fn only_a_terminal_send_with_an_operation_needs_a_daemon_that_honours_it() {
+        let queue = |operation| ClientMsg::Command(Command::QueueFollowUp { term: 3, text: "next".into(), first: false, operation });
+        let hold = |operation| ClientMsg::Command(Command::SendWhenReady { term: 3, text: "fix it".into(), operation });
+        assert_eq!(queue(Some(9)).introduced_in(), TERMINAL_SEND_OPERATIONS_SINCE);
+        assert_eq!(hold(Some(9)).introduced_in(), TERMINAL_SEND_OPERATIONS_SINCE);
+        assert_eq!(queue(None).introduced_in(), COMPATIBLE_SINCE);
+        assert_eq!(hold(None).introduced_in(), COMPATIBLE_SINCE);
+        const { assert!(TERMINAL_SEND_OPERATIONS_SINCE > COMPATIBLE_SINCE && TERMINAL_SEND_OPERATIONS_SINCE <= PROTOCOL_VERSION) };
     }
 
     /// `choice` was added to `ConversationSend` as a defaulted field: a send from before it still
@@ -2822,7 +2890,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 90);
+        assert_eq!(PROTOCOL_VERSION, 91);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()

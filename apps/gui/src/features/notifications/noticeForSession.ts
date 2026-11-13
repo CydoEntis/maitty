@@ -1,4 +1,5 @@
 import { displayName, truncatePrompt, type SessionView } from '@/features/workspace/model/session'
+import { abilitiesOf } from '@/features/workspace/model/agentAbilities'
 import type { SessionNoticeProps } from './SessionNotice'
 
 /** Finished and failed cards go by themselves, with a thin line showing how long is left; one that needs you waits. */
@@ -20,7 +21,7 @@ export function sessionNoticeFor(session: SessionView, _project: Project, handle
   const name = displayName(session)
   // Claude reports what it asks through its own hooks, so its screen is never read for the card: a question
   // is not a permission prompt, and the screen text of one is the banner and whatever else is drawn around it.
-  const hooked = session.process === 'claude'
+  const hooked = abilitiesOf(session.process).hookedAsks
   const asked = session.ask !== null ? [session.ask.tool, session.ask.detail].filter((part) => part !== '').join(' · ') : hooked ? '' : session.asking
   const body =
     kind === 'needs'

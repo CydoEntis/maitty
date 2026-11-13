@@ -269,6 +269,7 @@ impl App {
                 term: term.term,
                 text: text.to_string(),
                 first: false,
+                operation: None,
             },
         );
     }

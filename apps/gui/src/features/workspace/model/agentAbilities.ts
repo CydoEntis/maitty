@@ -1,6 +1,6 @@
 import { CODEX_START_MODES, PICKABLE_MODES } from '@/features/chat/chatMeta'
 import { ANSWER_KEYS, type AskChoice } from '@/features/chat/permissionAsk'
-import type { ChatAgent } from './chatView'
+import type { ChatAgent, StructuredAgent } from './chatView'
 
 /** Where the composer's slash commands come from, and how Codex's differ. */
 export type SlashCommands = {
@@ -36,6 +36,14 @@ export type AgentAbilities = {
   readonly sidebarAnswerKeys: Readonly<Record<SidebarAnswer, string>>
   /** A chat that follows the agent's terminal changes its model and effort from the chips, by typing the agent's commands. */
   readonly changeAgent: boolean
+  /** The agent's prompt takes a typed `!` line as a command for its own shell, run in its terminal. */
+  readonly bangToTerminal: boolean
+  /** This computer's daemon lists the agent's saved conversations, and one can be resumed from the New chat page. */
+  readonly resumeSaved: boolean
+  /** The host can ask the agent which models it offers; otherwise the fixed list stands. */
+  readonly discoversModels: boolean
+  /** The agent reports what it asks through its own hooks, so its screen is never read for the question. */
+  readonly hookedAsks: boolean
 }
 
 const LETTERS: Readonly<Record<SidebarAnswer, string>> = { y: 'y', a: 'a', n: 'n' }
@@ -48,6 +56,10 @@ const NONE: AgentAbilities = {
   answerKeys: null,
   sidebarAnswerKeys: LETTERS,
   changeAgent: false,
+  bangToTerminal: false,
+  resumeSaved: false,
+  discoversModels: false,
+  hookedAsks: false,
 }
 
 const AGENT_ABILITIES: Readonly<Record<ChatAgent, AgentAbilities>> = {
@@ -59,6 +71,10 @@ const AGENT_ABILITIES: Readonly<Record<ChatAgent, AgentAbilities>> = {
     answerKeys: ANSWER_KEYS,
     sidebarAnswerKeys: { ...LETTERS, y: ANSWER_KEYS.approve },
     changeAgent: true,
+    bangToTerminal: true,
+    resumeSaved: true,
+    discoversModels: true,
+    hookedAsks: true,
   },
   codex: {
     slashCommands: { list: 'window', skillsAfterDollar: true, enterAfterPause: true },
@@ -68,8 +84,12 @@ const AGENT_ABILITIES: Readonly<Record<ChatAgent, AgentAbilities>> = {
     answerKeys: null,
     sidebarAnswerKeys: LETTERS,
     changeAgent: false,
+    bangToTerminal: false,
+    resumeSaved: true,
+    discoversModels: true,
+    hookedAsks: false,
   },
-  gemini: NONE,
+  gemini: { ...NONE, bangToTerminal: true },
 }
 
 /**
@@ -80,4 +100,12 @@ const AGENT_ABILITIES: Readonly<Record<ChatAgent, AgentAbilities>> = {
  */
 export function abilitiesOf(agent: string | null | undefined): AgentAbilities {
   return agent != null && Object.hasOwn(AGENT_ABILITIES, agent) ? AGENT_ABILITIES[agent as ChatAgent] : NONE
+}
+
+/** The abilities only a structured agent has, so the daemon calls behind them take a `StructuredAgent`. */
+export type StructuredAbility = 'structuredChat' | 'resumeSaved' | 'discoversModels'
+
+/** Whether the agent has the ability, narrowing it to a `StructuredAgent` for the daemon call behind it. */
+export function hasAbility(agent: ChatAgent, ability: StructuredAbility): agent is StructuredAgent {
+  return abilitiesOf(agent)[ability]
 }

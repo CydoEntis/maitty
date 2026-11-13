@@ -28,6 +28,7 @@ import { type Layout, openArrangement } from './model/layout'
 import type { SessionView } from './model/session'
 import { resolveStartFolder } from './model/startFolder'
 import { resumeWords } from './model/moveToWorktree'
+import { hasAbility } from './model/agentAbilities'
 import { makeId } from './makeId'
 
 /** How a start runs beside others: `alone` (refused while anything starts, and holds off the rest), `alongside` (a new chat
@@ -252,7 +253,7 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
     }
     if (!online || starting) return
     // Gemini has no structured chat: it starts as a terminal session shown as its chat.
-    if (agent === 'gemini') {
+    if (!hasAbility(agent, 'structuredChat')) {
       void startAgentSession(() => Promise.resolve(from.cwd), agent, 'chat')
       return
     }
@@ -319,7 +320,7 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
   const startNewChat = useCallback(async (request: NewChatRequest, { background = false }: NewChatStartOptions = {}): Promise<void> => {
     if (!online) throw new Error('The daemon is not reachable')
     if (request.machine !== LOCAL_MACHINE) return startRemoteChat(request)
-    const resume = request.resume === null ? [] : request.agent === 'gemini' ? null : resumeWords(request.agent, request.resume)
+    const resume = request.resume === null ? [] : !hasAbility(request.agent, 'resumeSaved') ? null : resumeWords(request.agent, request.resume)
     if (resume === null) throw new Error('This saved conversation cannot be resumed from here')
     // The branch is settled before the agent starts, and a failure stays on the page with its words.
     let folder = request.folder
