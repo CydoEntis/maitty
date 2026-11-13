@@ -1,5 +1,5 @@
 import { movePanes } from './paneTransition'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { TerminalView } from '@/TerminalView'
 import { useWorkspace } from '../workspaceContext'
 import { chatAvailability, type PaneView } from '../model/chatView'
@@ -12,6 +12,7 @@ import { PaneCard } from './PaneCard'
 import { LOCAL_MACHINE } from '@/api/machines'
 import { AgentTerminals } from './AgentTerminals'
 import { startsFolded } from '../model/terminalDrawer'
+import type { TurnSpan } from '@/features/inspect/turnRange'
 import { CODEX_SUBMIT_GAP_MS } from '@/features/chat/useChatComposer'
 import { contextFull, type ChatProblem } from '@/features/chat/problem'
 import { ChatPane } from '@/features/chat/components/ChatPane'
@@ -40,6 +41,8 @@ export function WorkspacePane({ shown, pane, kept }: {
 }) {
   const { paneSessions, chatOf, openSubagent, ownsTerminals, repoPaneOf, outsidePanes, dropId, dragId, paneViews, showChanges, online, setOpenSubagent, togglePanel, preferences, setPreferences, startChatHere, handoffSession, inspectOpen, addAgentTerminal, root, look, modalOpen, mirrorInput, openPath, pasteImage, terminalHandles, setLayout, split, closePaneById, sendTo, copyPathOf, restartPane, setRenameId , heads, retryNamed, newChatWithSummary , moveToWorktree } = useWorkspace()
   const [drawerFolded, setDrawerFolded] = useState(startsFolded)
+  // Bound to this pane, so a row opened from a pane without the focus focuses it and shows its own session's changes.
+  const openDiff = useCallback((file: string, turn?: TurnSpan | null) => { showChanges(pane.id, pane.sessionId, file, turn) }, [showChanges, pane.id, pane.sessionId])
   const session = paneSessions.get(pane.sessionId)
   if (!session) return null
   const focused = pane.id === shown.focus && !kept
@@ -94,7 +97,7 @@ export function WorkspacePane({ shown, pane, kept }: {
           hasTerminal={!chatOnly}
           worktree={chatOnly ? undefined : session.worktree}
           root={session.repoRoot ?? session.cwd}
-          onOpenDiff={showChanges}
+          onOpenDiff={openDiff}
           onOpenFile={(path, line) => { openPath(session, path, line ?? undefined) }}
           typeInto={typeInto}
           paneQueue={paneQueue}

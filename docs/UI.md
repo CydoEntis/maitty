@@ -890,7 +890,16 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   (`workStack.ts`), with "+N more" on the line when it leaves steps out; reads and searches get no card. The stack is a
   second place to click, not a second Tab stop. A run with a failed step starts open.
   Under the divider of a turn that edited files is a **changes row**: "3 changed files +111 −0" (each file once; the
-  lines only when every diff was kept), which opens the side panel on Changes.
+  lines only when every diff was kept), which opens the side panel on Changes with what that turn changed: the diff
+  from the last snapshot taken by the turn's start to the last one taken by its end, a snapshot counting up to 3 s
+  late (`inspect/turnRange.ts`; the snapshot list is read again for each turn). The range covers the checkout, not
+  the agent: hand edits, or another agent in the same checkout, during the turn are in it. "This turn's changes"
+  heads the files with **All changes** to go back to the working tree, and no commit is offered beside it. With no
+  snapshot from before the turn, none newer than that by its end (a row only shows for a turn that edited files, so
+  that one is missing, not "nothing changed"), or a turn without the daemon's times, it shows the working tree as
+  before under "Whole working tree · <why>". The row focuses its own pane and shows that pane's session (a helper agent's chat open there stays open); moving
+  to another session, closing the panel, and the other ways in show the working tree. A session on another machine
+  gets the local-only refusal, as before.
 - **Cards** (`features/chat/components/`). Every fact the history carries is shown, and a missing one is said to be
   unavailable (a diff the history did not keep, a checklist without items, a command time or exit code the provider
   does not report, a turn without the daemon's times shows "Turn finished", not an invented duration). Only a step

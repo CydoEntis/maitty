@@ -30,7 +30,7 @@ import { releaseFirstMessage, releaseStartChoice, startChoiceOf, takeCarriedDraf
 import { writeChoice } from '../agentChoice'
 import { isWorktree, useFolderBranches } from '@/features/workspace/model/newChatHost'
 import { Composer } from './Composer'
-import { ChatItem } from './ChatItems'
+import { ChatItem, type ChatItemContext } from './ChatItems'
 import { KnownRowsContext } from '../knownRows'
 import { ChatSkeleton } from './ChatSkeleton'
 import { ApprovalTray, PromptTray } from './QuestionTray'
@@ -105,8 +105,8 @@ type Props = {
   worktree?: boolean
   /** The session's folder, so file names read relative to it. */
   root?: string | null
-  /** Opens a file's diff in the Changes panel; absent where there is none. */
-  onOpenDiff?: ((file: string) => void) | null
+  /** Opens a file's diff, or a turn's, in the Changes panel; absent where there is none. */
+  onOpenDiff?: ChatItemContext['openDiff']
   /** Opens a file a reply names, at its line when it gave one. */
   onOpenFile?: OpenFile | null
   /** Types into the terminal the agent runs in, for a chat that follows it (ADR 0003). */
