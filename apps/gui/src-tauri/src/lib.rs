@@ -1534,6 +1534,7 @@ pub fn run() {
             terminal_stream::terminal_history,
             terminal_stream::watch_terminal_output,
             terminal_stream::list_folders,
+            terminal_stream::clone_repository,
             terminal_stream::get_shared_settings,
             terminal_stream::set_shared_setting,
             output_socket::open_terminal_socket,

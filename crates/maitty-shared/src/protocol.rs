@@ -16,6 +16,10 @@ pub const PROTOCOL_VERSION: u32 = 85;
 /// The first version whose daemon clones a repository on request (`Query::CloneRepo`).
 pub const CLONE_SINCE: u32 = 85;
 
+/// How long a daemon lets one clone run before it stops it, in seconds. A client waits a little
+/// longer than this for the answer.
+pub const CLONE_LIMIT_SECS: u64 = 600;
+
 /// The first version whose daemon lists and forgets the commands approved "always in this project"
 /// (`Query::AllowedCommands`, `Command::ForgetAllowedCommand`).
 pub const ALLOWED_COMMANDS_SINCE: u32 = 84;

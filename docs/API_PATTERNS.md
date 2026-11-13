@@ -634,6 +634,12 @@ rules of `ListFolders` and must be a folder that is there; a file or folder of t
 there is a refusal. Human clients only. git runs off the event loop, cannot ask a question
 (`GIT_TERMINAL_PROMPT=0`, no input), and is stopped after ten minutes; a clone that fails or is stopped
 leaves no folder. An answer from another machine is cut and cleaned to one line (`remote_policy::vet`).
+The desktop host sends it through `clone_repository(machine, address, parent, tag)` and raises a
+`repository-cloned` event with the tag and either `folder` or `refused` (`apps/gui/src/api/cloneRepository.ts`
+waits on it). The host refuses only what could not be a request (empty, over-long, a control
+character); the daemon is the judge of the address. A reply from another machine normally counts as an
+answer for 30 seconds after a request; a clone's is expected for the daemon's limit plus 30 seconds
+(`routing::answer_window`), and a quick answer to something else never uses up that wait.
 
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store

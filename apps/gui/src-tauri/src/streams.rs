@@ -86,6 +86,12 @@ pub enum Out {
         tag: u64,
         listing: FolderListing,
     },
+    /// How a machine's clone ended, already cleaned: the new folder, or why there is none.
+    Cloned {
+        machine: MachineId,
+        tag: u64,
+        outcome: Result<String, String>,
+    },
 }
 
 #[derive(Default)]
@@ -180,6 +186,9 @@ impl Streams {
             }
             ServerMsg::Reply(Reply::Folders { tag, listing }) => {
                 out.push(Out::Folders { machine, tag, listing });
+            }
+            ServerMsg::Reply(Reply::Cloned { tag, outcome }) => {
+                out.push(Out::Cloned { machine, tag, outcome });
             }
             ServerMsg::State(snapshot) => self.publish(machine, snapshot, &mut out),
             ServerMsg::TermsChanged { changed, removed } => {

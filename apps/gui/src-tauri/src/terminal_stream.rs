@@ -50,6 +50,10 @@ const SESSION_ATTENTION_EVENT: &str = "session-attention";
 const CONVERSATION_CHANGED_EVENT: &str = "conversation-changed";
 const MACHINE_ERROR_EVENT: &str = "machine-error";
 const FOLDER_LISTING_EVENT: &str = "folder-listing";
+/// How a clone a window asked for ended.
+const REPOSITORY_CLONED_EVENT: &str = "repository-cloned";
+/// Longest repository address the daemon accepts.
+const MOST_ADDRESS_BYTES: usize = 2048;
 /// The shared settings, whenever the daemon says them: the answer to a question, or a change.
 const SHARED_SETTINGS_EVENT: &str = "shared-settings";
 
@@ -312,6 +316,28 @@ impl Wire {
         )
     }
 
+    /// Ask a machine's daemon (this computer's when none is named) to clone the repository at
+    /// `address` into a new folder inside `parent`. The daemon decides whether the address is one it
+    /// will clone; only what could not be a request at all is refused here. The answer comes back
+    /// as a `repository-cloned` event carrying `tag`.
+    pub fn clone_repository(&self, machine: Option<u16>, address: &str, parent: &str, tag: u64) -> Result<(), String> {
+        let (address, parent) = (address.trim(), parent.trim());
+        if address.is_empty() || address.len() > MOST_ADDRESS_BYTES || address.chars().any(char::is_control) {
+            return Err("Give the address of the repository to clone".to_string());
+        }
+        if parent.is_empty() || parent.len() > MOST_FOLDER_BYTES || parent.chars().any(char::is_control) {
+            return Err("Choose the folder to clone into".to_string());
+        }
+        self.send(
+            machine_of(machine),
+            ClientMsg::Query(Query::CloneRepo {
+                address: address.to_string(),
+                parent: parent.to_string(),
+                tag,
+            }),
+        )
+    }
+
     /// Ask this computer's daemon for the shared settings. The answer comes back as a
     /// `shared-settings` event, the same one a change anywhere raises.
     pub fn shared_settings(&self) -> Result<(), String> {
@@ -377,6 +403,20 @@ pub fn list_folders(
     tag: u64,
 ) -> Result<(), String> {
     wire.list_folders(machine, &path, tag)
+}
+
+/// Clones the repository at `address` into a new folder inside `parent` on a machine (this
+/// computer when `machine` is left out). Nothing is returned here: how it ended arrives as a
+/// `repository-cloned` event with the same `tag`.
+#[tauri::command]
+pub fn clone_repository(
+    wire: tauri::State<'_, Wire>,
+    machine: Option<u16>,
+    address: String,
+    parent: String,
+    tag: u64,
+) -> Result<(), String> {
+    wire.clone_repository(machine, &address, &parent, tag)
 }
 
 /// Asks the daemon for the shared settings; the answer arrives as a `shared-settings` event.
@@ -581,6 +621,12 @@ pub enum Reaction {
         tag: u64,
         listing: FolderListing,
     },
+    /// How a machine's clone ended, for the window that asked.
+    Cloned {
+        machine: MachineId,
+        tag: u64,
+        outcome: Result<String, String>,
+    },
     /// A machine's whole snapshot, or none when this computer's line ended.
     Sessions {
         machine: MachineId,
@@ -666,6 +712,7 @@ fn reactions(handle: &HubHandle, outs: Vec<Out>) -> Vec<Reaction> {
                 Some(Reaction::ConversationChanged { conversation, generation })
             }
             Out::Folders { machine, tag, listing } => Some(Reaction::Folders { machine, tag, listing }),
+            Out::Cloned { machine, tag, outcome } => Some(Reaction::Cloned { machine, tag, outcome }),
             Out::Sessions { machine, snapshot } => Some(Reaction::Sessions { machine, snapshot }),
             Out::WantReplay { machine, term } => {
                 let _ = handle.send(Outgoing {
@@ -708,6 +755,15 @@ struct FolderAnswer {
     machine: u16,
     tag: u64,
     listing: FolderListing,
+}
+
+/// One of `folder` and `refused` is set: where the clone is, or why there is none.
+#[derive(Clone, Serialize)]
+struct CloneAnswer {
+    machine: u16,
+    tag: u64,
+    folder: Option<String>,
+    refused: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -777,6 +833,21 @@ fn perform(app: &AppHandle, reactions: Vec<Reaction>) {
                         machine: machine.0,
                         tag,
                         listing,
+                    },
+                );
+            }
+            Reaction::Cloned { machine, tag, outcome } => {
+                let (folder, refused) = match outcome {
+                    Ok(folder) => (Some(folder), None),
+                    Err(why) => (None, Some(why)),
+                };
+                let _ = app.emit(
+                    REPOSITORY_CLONED_EVENT,
+                    CloneAnswer {
+                        machine: machine.0,
+                        tag,
+                        folder,
+                        refused,
                     },
                 );
             }

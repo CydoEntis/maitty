@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 /// The longest address worth cloning; a longer one is a mistake or an attack.
 pub(super) const ADDRESS_MAX_BYTES: usize = 2048;
 /// How long one clone may take before it is stopped.
-pub(super) const CLONE_LIMIT: Duration = Duration::from_secs(600);
+pub(super) const CLONE_LIMIT: Duration = Duration::from_secs(crate::protocol::CLONE_LIMIT_SECS);
 const POLL: Duration = Duration::from_millis(50);
 /// The address forms git fetches over a network. Anything else (a local path, `file://`, `ext::`)
 /// would read this machine's own disk or run a program, and is refused.
