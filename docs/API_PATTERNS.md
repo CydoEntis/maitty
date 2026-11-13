@@ -665,6 +665,9 @@ has an `identity` (`name`, `email`, GitHub `login`): its entry points at a file 
 read. A machine without git answers `installed: false`; a config git cannot read answers `problem`.
 The daemon asks git (`git config --global --get`, `--get-regexp`, `--file … --get`) and never reads
 or writes the file itself. Human clients only; git runs off the event loop, five seconds a question.
+The desktop host asks with `git_identities(machine)`, which answers the report as JSON
+(`apps/gui/src/api/gitIdentities.ts`); from another machine only that report is taken, cleaned
+(`remote_policy::vet_identities_reply`).
 
 Protocol 90 adds `GitRequest::PullRequest` to `Query::Git` (`GIT_PULL_REQUEST_SINCE`;
 `COMPATIBLE_SINCE` stays). The daemon pushes the branch as `Push` does, then runs

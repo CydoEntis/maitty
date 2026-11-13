@@ -1021,6 +1021,15 @@ pub async fn repo_query(term: u32, question: maitty_shared::repo::RepoRequest, d
     }
 }
 
+/// Which commit name and email git uses on a daemon's machine, and its folder rules, as a
+/// `GitIdentityReport` in JSON. The daemon reads them and writes nothing.
+pub async fn git_identities(daemon: impl Into<Daemon>) -> Result<Value> {
+    match request(ClientMsg::Query(Query::GitIdentities { tag: 0 }), daemon).await? {
+        Reply::GitIdentities { report, .. } => Ok(serde_json::to_value(report)?),
+        _ => bail!("daemon returned an unexpected answer about who commits"),
+    }
+}
+
 /// How long an answer to `request` is waited for: a little longer than the daemon gives it, so
 /// the daemon's own "stopped after" line is what arrives.
 fn git_request_timeout(request: &maitty_shared::protocol::GitRequest) -> Duration {

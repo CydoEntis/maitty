@@ -586,6 +586,20 @@ async fn pane_terminal_resize(
         .map_err(|error| format!("{error:#}"))
 }
 
+/// Which commit name and email git uses on a machine (this computer when `machine` is left out),
+/// and the folders where a rule gives another. Read by that machine's daemon; nothing is written.
+#[tauri::command]
+async fn git_identities(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+) -> Result<serde_json::Value, String> {
+    let daemon = wire.identities_daemon(machine, || daemon_executable(&app))?;
+    maitty_desktop_client::git_identities(daemon)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
 #[tauri::command]
 async fn repo_query(
     app: tauri::AppHandle,
@@ -1570,6 +1584,7 @@ pub fn run() {
             terminal_stream::terminal_input,
             pane_terminal_resize,
             repo_query,
+            git_identities,
             search_panes,
             usage_report,
             new_worktree_session,

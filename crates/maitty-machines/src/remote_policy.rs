@@ -200,6 +200,15 @@ pub fn vet(opts: &MachineOpts, asked: bool, machine: &str, msg: ServerMsg) -> Op
     })
 }
 
+/// The answer to "who commits on that machine" made safe, or why it is refused: only that report
+/// passes, cleaned as `vet` cleans it.
+pub fn vet_identities_reply(reply: Reply) -> Result<Reply, String> {
+    match reply {
+        Reply::GitIdentities { tag, report } => Ok(Reply::GitIdentities { tag, report: sanitize_identities(report) }),
+        _ => Err("it is not an answer about who commits there".into()),
+    }
+}
+
 /// What another machine says about who commits there: no more rules than a report carries, every
 /// name, email and folder one clean line of a report's length, and a rule's identity kept only
 /// with a login GitHub could have given out.
@@ -407,6 +416,10 @@ mod tests {
             assert_eq!(report.rules[0].folder, "/code/a[31m b");
             assert_eq!(report.rules[0].identity.as_ref().map(|identity| identity.name.as_str()), Some("A"));
             assert_eq!(report.rules[1].identity, None, "a login that is not one takes the identity with it");
+            let asked = Reply::GitIdentities { tag: 2, report: GitIdentityReport { name: Some("A\u{1b}[0m".into()), ..GitIdentityReport::default() } };
+            assert!(matches!(vet_identities_reply(asked), Ok(Reply::GitIdentities { report, .. }) if report.name.as_deref() == Some("A[0m")));
+            assert!(vet_identities_reply(Reply::Ok).is_err());
+            assert!(vet_identities_reply(Reply::Text("the global config".into())).is_err());
         }
         let cloned = |outcome| ServerMsg::Reply(Reply::Cloned { tag: 4, outcome });
         let Some(ServerMsg::Reply(Reply::Cloned { tag: 4, outcome: Ok(path) })) =

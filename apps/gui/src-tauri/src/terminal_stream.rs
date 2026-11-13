@@ -274,6 +274,16 @@ impl Wire {
         self.daemon_vetting(machine, not_here, move |reply| maitty_machines::remote_repo::vet_git_reply(&asked, reply))
     }
 
+    /// Where "who commits on this machine" is asked: this computer's daemon, or another machine's,
+    /// whose answer is that report and nothing else, cleaned.
+    pub fn identities_daemon(
+        &self,
+        machine: Option<u16>,
+        local: impl FnOnce() -> Result<std::path::PathBuf, String>,
+    ) -> Result<maitty_desktop_client::Daemon, String> {
+        self.daemon_vetting(machine, local, maitty_machines::remote_policy::vet_identities_reply)
+    }
+
     /// `daemon`, with `vet` deciding what another machine's daemon may answer.
     fn daemon_vetting(
         &self,
