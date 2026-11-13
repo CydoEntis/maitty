@@ -58,3 +58,28 @@ async fn a_missing_worktree_whose_branch_is_gone_fails_naming_the_branch() {
     assert!(error.contains("`task`") && error.contains("no longer exists"), "{error}");
     assert!(!folder.exists());
 }
+
+#[tokio::test]
+async fn a_chat_folder_missing_from_the_remade_worktree_says_so() {
+    let (mut launch, _main, folder) = chat_in_deleted_worktree("subfolder-gone");
+    let LaunchIdentity::Existing(chat) = &mut launch.identity else { unreachable!() };
+    chat.binding.cwd = folder.join("not-in-the-branch");
+    chat.settings.as_mut().unwrap().cwd = chat.binding.cwd.clone();
+    let error = launch.validate().await.err().expect("the subfolder is not there").to_string();
+    assert!(error.contains("is back") && error.contains("not-in-the-branch"), "{error}");
+}
+
+#[tokio::test]
+async fn two_sends_to_one_deleted_folder_both_succeed() {
+    let (launch, _main, folder) = chat_in_deleted_worktree("two-sends");
+    let LaunchIdentity::Existing(chat) = &launch.identity else { unreachable!() };
+    let twin = Launch {
+        identity: LaunchIdentity::Existing(chat.clone()),
+        environment: Vec::new(),
+        failure_point: None,
+    };
+    let (a, b) = tokio::join!(twin.validate(), launch.validate());
+    a.expect("first send");
+    b.expect("second send");
+    assert!(folder.join("a.txt").is_file());
+}

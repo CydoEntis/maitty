@@ -142,6 +142,13 @@ impl Launch {
                 && c.binding.cwd.starts_with(&origin.folder)
             {
                 crate::daemon::worktrees::recreate_worktree(&origin.main, &origin.folder, &origin.branch)?;
+                if !c.binding.cwd.is_dir() {
+                    bail!(
+                        "The worktree for branch `{}` is back, but the folder {} this chat ran in is not in it",
+                        origin.branch,
+                        c.binding.cwd.display()
+                    );
+                }
             }
             let (config_root, executable, cwd) = self.paths();
             for path in [config_root, cwd] {

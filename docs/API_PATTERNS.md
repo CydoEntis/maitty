@@ -770,11 +770,12 @@ is simply not asked. The desktop command `worktree_standing { machine, repo, fol
 `maitty_desktop_client::worktree_standing`, which adds `missing` to the JSON, or fails with a line saying to restart
 the service when the daemon running is older than 90.
 
-Protocol 93 adds the defaulted `Conversation.worktree_origin` (main checkout, worktree folder, branch), saved with the
-conversation; a test decodes the old shape. The daemon fills it when a chat first opens inside a linked worktree. When a
-send resumes a chat whose folder was deleted, `Launch::validate` (a background task) runs `git worktree prune` and
-`git worktree add -- <folder> <branch>`; a branch that is gone too fails the send with a message naming it.
-`COMPATIBLE_SINCE` stays 78: the field is not in any message.
+`Conversation.worktree_origin` (main checkout, worktree folder, branch) is a defaulted field of the saved conversation, not
+of any message, so `PROTOCOL_VERSION` is unchanged; a test decodes the old shape. The daemon fills it when a chat opens
+inside a linked worktree on a branch (never a detached HEAD), refreshing it from the folder on each reopen. When a send
+resumes a chat whose folder was deleted, `Launch::validate` (a background task, one recreation at a time) runs
+`git worktree prune` and `git worktree add -- <folder> <branch>`; a branch that is gone too fails the send with a message
+naming it.
 
 Protocol 92 adds `Command::SnoozePane { term, until }` and the defaulted `TermInfo.snoozed_until` (unix seconds;
 an older peer decodes it as `None`, and a test decodes the old shape). `until: None`, or a time already past, wakes the

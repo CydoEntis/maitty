@@ -6385,6 +6385,7 @@ fn desktop_and_phone_alerts_name_the_branch_of_a_worktree() {
         branch: "fix/early-alerts".into(),
         linked: true,
         main_root: std::path::PathBuf::from("/code/shop-api"),
+        detached: false,
     });
     assert_eq!(p.alert_place(), "shop-api · fix/early-alerts");
     p.head = None;
@@ -9921,6 +9922,7 @@ fn agent_session(d: &mut Daemon, term: TermId, session: &str) {
         branch: "main".into(),
         linked: false,
         main_root: t.cwd.clone(),
+        detached: false,
     });
 }
 

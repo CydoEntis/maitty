@@ -88,15 +88,29 @@ pub(super) fn create_trusted_worktree(
     Ok(made)
 }
 
+/// One recreation at a time: two sends to the same deleted folder would otherwise both prune
+/// and add, and the second `add` would fail on the folder the first just made.
+static RECREATE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Make the deleted folder of a chat's worktree again from its branch, on the calling
 /// (background) thread. Git still lists the missing folder, so it is pruned first; a branch that
 /// is gone too is named, not guessed at.
+///
+/// `git worktree prune` is repository-wide: it also drops the records of other worktrees whose
+/// folders are missing. That is acceptable because it only forgets bookkeeping for folders that
+/// do not exist (no branch or commit is touched), and git would do the same on its own at the
+/// next `git gc`.
 pub(super) fn recreate_worktree(
     main: &std::path::Path,
     folder: &std::path::Path,
     branch: &str,
 ) -> anyhow::Result<()> {
     use anyhow::Context;
+    let _one_at_a_time = RECREATE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    // Another send may have made it while this one waited for the lock.
+    if folder.is_dir() {
+        return Ok(());
+    }
     if !main.is_dir() {
         anyhow::bail!("The repository at {} is gone, so the worktree for branch `{branch}` cannot be made again", main.display());
     }
