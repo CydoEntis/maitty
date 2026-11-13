@@ -296,6 +296,18 @@ impl Wire {
         )
     }
 
+    /// Ask another machine's daemon for its whole list; it comes back as `machine-sessions-changed`.
+    /// The window asks while it holds a row of that machine that a list left out with no reason,
+    /// so the answer can confirm the row is gone. Refused, naming the machine, when it has no line.
+    pub fn ask_machine_list(&self, machine: u16) -> Result<(), String> {
+        if !routing::is_remote(Some(machine)) {
+            return Err("This computer's list is read with list_sessions".to_string());
+        }
+        let handle = self.handle()?;
+        let id = MachineId(machine);
+        handle.ask_list(id).map_err(|_| refusal(handle, id))
+    }
+
     /// Ask a machine's daemon (this computer's when none is named) for the folders inside `path`.
     /// The answer comes back as a `folder-listing` event carrying `tag`.
     pub fn list_folders(&self, machine: Option<u16>, path: &str, tag: u64) -> Result<(), String> {
@@ -377,6 +389,12 @@ pub fn list_folders(
     tag: u64,
 ) -> Result<(), String> {
     wire.list_folders(machine, &path, tag)
+}
+
+/// Asks another machine for its whole list; it arrives as `machine-sessions-changed`.
+#[tauri::command]
+pub fn ask_machine_list(wire: tauri::State<'_, Wire>, machine: u16) -> Result<(), String> {
+    wire.ask_machine_list(machine)
 }
 
 /// Asks the daemon for the shared settings; the answer arrives as a `shared-settings` event.

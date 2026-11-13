@@ -405,6 +405,15 @@ export async function loadConversations(): Promise<Conversation[]> {
 }
 
 /**
+ * This computer's list read to check on sessions a list missed. It is not the list the window shows, so it leaves
+ * what the window last heard (`localListRevision`, `daemonSaidRemoved`) as it was.
+ */
+export async function checkConversations(): Promise<Conversation[]> {
+  if (!isDesktop()) return previewConversations
+  return conversationsOf(DaemonSnapshotSchema.parse(await invoke<unknown>('list_sessions')))
+}
+
+/**
  * Calls back with the daemon's snapshot each time it changes (the same shape `list_sessions`
  * returns), or with null when the host lost the daemon and the list has to be asked for again.
  */
@@ -422,6 +431,11 @@ export type SnapshotMachine = { id: number; name: string }
  */
 export function conversationsFromSnapshot(raw: unknown, machine?: SnapshotMachine): Conversation[] {
   const snapshot = DaemonSnapshotSchema.parse(raw)
+  noteList(snapshot, machine)
+  return conversationsOf(snapshot, machine)
+}
+
+function conversationsOf(snapshot: DaemonSnapshot, machine?: SnapshotMachine): Conversation[] {
   const from = machine?.id ?? LOCAL_MACHINE
   for (const key of lastGoodTerm.keys()) {
     if (isOfMachine(key, from) && !(String(termOfKey(key)) in snapshot.terms)) lastGoodTerm.delete(key)
@@ -453,7 +467,6 @@ export function conversationsFromSnapshot(raw: unknown, machine?: SnapshotMachin
     .map((term) => toTerminalConversation(term, snapshot.workspaces, machine, chatOf.get(term.id), term.agent === null ? undefined : limitsOf.get(term.agent), secretsOf.get(term.id) ?? []))
   // Another machine's conversations are only the chats of its panes; it has no session list of its own here.
   if (machine !== undefined) return terminals
-  noteLocalList(snapshot.revision, Object.keys(snapshot.terms), Object.keys(snapshot.removed))
   return [
     ...summaries
       .filter((summary) => summary.native_term === null || !shownPanes.has(summary.native_term))
@@ -464,22 +477,26 @@ export function conversationsFromSnapshot(raw: unknown, machine?: SnapshotMachin
 
 type TerminalSession = z.infer<typeof TerminalSessionSchema>
 
-// What this computer's daemon said of its list: the revision of the last one read, and the sessions it said
-// left and has not listed since. Several lists can arrive between two renders, so a reason is kept past its own
-// list; a new daemon numbers its panes from 1 again, so listing a pane forgets its old reason.
+type DaemonSnapshot = z.infer<typeof DaemonSnapshotSchema>
+
+// What the daemons said of their lists: the revision of this computer's last one read, and the sessions each
+// daemon said left and has not listed since, by session id (another machine's carry its name). Several lists can
+// arrive between two renders, so a reason is kept past its own list; a new daemon numbers its panes from 1 again,
+// so listing a pane forgets its old reason.
 let localRevision = 0
 const leftWithReason = new Set<string>()
 
-function noteLocalList(revision: number, listedPanes: readonly string[], removedPanes: readonly string[]): void {
-  localRevision = revision
-  for (const pane of listedPanes) leftWithReason.delete(terminalSessionId(Number(pane)))
-  for (const pane of removedPanes) leftWithReason.add(terminalSessionId(Number(pane)))
+function noteList(snapshot: DaemonSnapshot, machine?: SnapshotMachine): void {
+  if (machine === undefined) localRevision = snapshot.revision
+  const idOf = (pane: string) => terminalSessionId(Number(pane), machine?.name ?? null)
+  for (const pane of Object.keys(snapshot.terms)) leftWithReason.delete(idOf(pane))
+  for (const pane of Object.keys(snapshot.removed)) leftWithReason.add(idOf(pane))
 }
 
 /** The revision of the last list of this computer's sessions read, 0 when the daemon does not number them. */
 export const localListRevision = (): number => localRevision
 
-/** Whether this computer's daemon said the session left its list, for any reason, and has not listed it since. */
+/** Whether the session's daemon (this computer's or another machine's) said it left its list, for any reason, and has not listed it since. */
 export const daemonSaidRemoved = (sessionId: string): boolean => leftWithReason.has(sessionId)
 
 // A session that fails to read for one refresh must not vanish from the sidebar and come back

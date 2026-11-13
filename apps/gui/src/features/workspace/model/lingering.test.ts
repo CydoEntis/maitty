@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { confirmGone, heldView, LINGER_MS, nextCheckAt, trackMissing } from './lingering'
+import { confirmGone, confirmGoneOnMachines, heldView, LINGER_MS, nextCheckAt, trackMissing } from './lingering'
 import type { SessionView } from './session'
 
 const session = (id: string): SessionView => ({ id, status: 'working' }) as SessionView
@@ -47,6 +47,19 @@ describe('confirming a held session is gone', () => {
 
   it('keeps a session missed after the full list was asked for', () => {
     expect(confirmGone(held, new Set(), 50)).toBe(held)
+  })
+
+  it('never takes this computer\'s list as word on another machine\'s session', () => {
+    const remote = trackMissing(new Map(), [session('box/t3')], [], missAt(100), never)
+    expect(confirmGone(remote, new Set(), 150)).toBe(remote)
+  })
+
+  it('drops another machine\'s held session when a list of that machine, a grace after the miss, does not name it', () => {
+    const remote = trackMissing(new Map(), [session('box/t3'), session('box/t4'), session('a')], [], missAt(100), never)
+    const listed = (listedAt: number) => new Map([['box', { listedAt, ids: new Set(['box/t4']) }]])
+    expect(confirmGoneOnMachines(remote, listed(100 + LINGER_MS - 1))).toBe(remote)
+    expect([...confirmGoneOnMachines(remote, listed(100 + LINGER_MS)).keys()]).toEqual(['box/t4', 'a'])
+    expect(confirmGoneOnMachines(remote, new Map())).toBe(remote)
   })
 
   it('checks a grace after the first miss, and again a grace after the last check', () => {

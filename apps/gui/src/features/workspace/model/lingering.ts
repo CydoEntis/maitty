@@ -1,3 +1,4 @@
+import { machineNameOf } from '@/api/machines'
 import type { SessionView } from './session'
 
 /** How long a held session waits before a full list is read to confirm it is gone, and between such reads. */
@@ -38,12 +39,32 @@ export function trackMissing(
 }
 
 /**
- * Drops each held session that a full list, asked for at `askedAt` after the session was missed, does not name.
- * Another machine's session is never in this computer's list, so for it the check only ends the grace.
+ * Drops each held session of this computer that its full list, asked for at `askedAt` after the session was missed,
+ * does not name. Another machine's session is never in this computer's list, so this list says nothing of it.
  */
 export function confirmGone(missing: ReadonlyMap<string, Missing>, listed: ReadonlySet<string>, askedAt: number): ReadonlyMap<string, Missing> {
-  const kept = new Map([...missing].filter(([id, entry]) => listed.has(id) || entry.miss.at > askedAt))
-  return kept.size === missing.size ? missing : kept
+  return keep(missing, (id, entry) => machineNameOf(id) !== null || listed.has(id) || entry.miss.at > askedAt)
+}
+
+/** A machine's last list as the host holds it: when it came, and the sessions it names. */
+export type MachineList = { listedAt: number; ids: ReadonlySet<string> }
+
+/**
+ * Drops each held session of another machine that a list from that machine (`lists`, by machine name), come at
+ * least `LINGER_MS` after the miss, does not name. Every list the host sends of a machine is its whole list, and
+ * the window asks the machine for one while it holds a row of it, so one comes while the machine is up.
+ */
+export function confirmGoneOnMachines(missing: ReadonlyMap<string, Missing>, lists: ReadonlyMap<string, MachineList>): ReadonlyMap<string, Missing> {
+  return keep(missing, (id, entry) => {
+    const name = machineNameOf(id)
+    const list = name === null ? undefined : lists.get(name)
+    return list === undefined || list.ids.has(id) || list.listedAt - entry.miss.at < LINGER_MS
+  })
+}
+
+function keep(missing: ReadonlyMap<string, Missing>, kept: (id: string, entry: Missing) => boolean): ReadonlyMap<string, Missing> {
+  const next = new Map([...missing].filter(([id, entry]) => kept(id, entry)))
+  return next.size === missing.size ? missing : next
 }
 
 /** When to read the full list next: `LINGER_MS` after the first miss, and after the last check (`checkedAt`); null with nothing held. */

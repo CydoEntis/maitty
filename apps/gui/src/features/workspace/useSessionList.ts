@@ -2,9 +2,10 @@ import type { UseQueryResult } from '@tanstack/react-query'
 import type { Conversation } from '@/data/preview'
 import type { RemoteMachine } from './model/machines'
 import { type Dispatch, type SetStateAction, useEffect, useMemo, useRef, useState } from 'react'
-import { daemonSaidRemoved, loadConversations, localListRevision } from '@/api/daemon'
+import { checkConversations, daemonSaidRemoved, localListRevision } from '@/api/daemon'
+import { askMachineList, machineNameOf } from '@/api/machines'
 import { wasClosed } from './closedSessions'
-import { confirmGone, heldView, LINGER_SLACK_MS, nextCheckAt, trackMissing, type Missing } from './model/lingering'
+import { confirmGone, confirmGoneOnMachines, heldView, LINGER_SLACK_MS, nextCheckAt, trackMissing, type MachineList, type Missing } from './model/lingering'
 import { markConversationsDisconnected } from '@/data/connection'
 import { rememberSessions, withEnded } from './model/ended'
 import { isListedChatSession } from './model/chatSession'
@@ -34,27 +35,59 @@ function useLogUnexplainedMisses(missing: ReadonlyMap<string, Missing>): void {
   }, [missing])
 }
 
-/** Reads the full list from the daemon while a session is held, and drops each held session it does not name. */
-function useConfirmGone(missing: ReadonlyMap<string, Missing>, setMissing: Dispatch<SetStateAction<ReadonlyMap<string, Missing>>>): void {
+/** The lists of the machines that are up, by name. A machine that is down lists nothing new, so its held rows wait. */
+function machineLists(machines: ReadonlyMap<number, RemoteMachine>): ReadonlyMap<string, MachineList> {
+  return new Map([...machines.values()]
+    .filter((machine) => machine.state.state === 'connected')
+    .map((machine) => [machine.state.name, { listedAt: machine.listedAt, ids: new Set(machine.conversations.map((item) => item.id)) }]))
+}
+
+/** Asks each machine that is up and has a held session for its whole list, which confirms or clears them when it comes. */
+function askHeldMachines(missing: ReadonlyMap<string, Missing>, machines: ReadonlyMap<number, RemoteMachine>): void {
+  const held = new Set([...missing.keys()].map(machineNameOf))
+  for (const machine of machines.values()) {
+    if (machine.state.state !== 'connected' || !held.has(machine.state.name)) continue
+    askMachineList(machine.state.machine).catch((error: unknown) => { console.warn(`Could not ask ${machine.state.name} for its session list`, error) })
+  }
+}
+
+/**
+ * Confirms held sessions are gone: this computer's with a full read of its list, a grace after the miss and again
+ * after each check; another machine's with a list from that machine (`confirmGoneOnMachines`), asked for at each check.
+ */
+function useConfirmGone(missing: ReadonlyMap<string, Missing>, setMissing: Dispatch<SetStateAction<ReadonlyMap<string, Missing>>>, machines: ReadonlyMap<number, RemoteMachine>): void {
   const [checkedAt, setCheckedAt] = useState(0)
+  // A read that keeps failing is said once, and once more when it works again, not at every check.
+  const failing = useRef(false)
   const checkAt = nextCheckAt(missing, checkedAt)
+  useEffect(() => {
+    setMissing((before) => confirmGoneOnMachines(before, machineLists(machines)))
+  }, [machines, setMissing])
   useEffect(() => {
     if (checkAt === null) return undefined
     const timer = window.setTimeout(() => {
       const askedAt = Date.now()
-      loadConversations().then(
+      askHeldMachines(missing, machines)
+      if (![...missing.keys()].some((id) => machineNameOf(id) === null)) {
+        setCheckedAt(askedAt)
+        return
+      }
+      checkConversations().then(
         (listed) => {
+          if (failing.current) console.info('The session list can be read again')
+          failing.current = false
           setMissing((before) => confirmGone(before, new Set(listed.filter(isInSidebar).map((item) => item.id)), askedAt))
           setCheckedAt(askedAt)
         },
         (error: unknown) => {
-          console.warn('Could not read the session list to confirm the sessions it missed; trying again', error)
+          if (!failing.current) console.warn('Could not read the session list to confirm the sessions it missed; trying again every 10 seconds', error)
+          failing.current = true
           setCheckedAt(askedAt)
         },
       )
     }, Math.max(checkAt - Date.now(), 0) + LINGER_SLACK_MS)
     return () => { window.clearTimeout(timer) }
-  }, [checkAt, setMissing])
+  }, [checkAt, missing, machines, setMissing])
 }
 
 /** The sessions the window shows, from this computer and every machine, each keeping the labels and the pane it already had. */
@@ -97,10 +130,13 @@ export function useSessionList({ sessionsQuery, online, machines, home, layout }
   if (previous.list !== everySession) {
     const revision = localListRevision()
     setPrevious({ list: everySession, revision })
-    setMissing((before) => trackMissing(before, previous.list, everySession, { at: Date.now(), listedIn: previous.revision, missedIn: revision }, leftWithReason))
+    // A machine taken off the list in this window takes its sessions with it: that is their reason.
+    const known = new Set([...machines.values()].map((machine) => machine.state.name))
+    const machineGone = (id: string) => { const name = machineNameOf(id); return name !== null && !known.has(name) }
+    setMissing((before) => trackMissing(before, previous.list, everySession, { at: Date.now(), listedIn: previous.revision, missedIn: revision }, (id) => leftWithReason(id) || machineGone(id)))
   }
   useLogUnexplainedMisses(missing)
-  useConfirmGone(missing, setMissing)
+  useConfirmGone(missing, setMissing, machines)
   const held = useMemo(() => [...missing.values()].map(heldView), [missing])
   const sessions = useMemo(() => (held.length === 0 ? everySession : [...everySession, ...held]), [everySession, held])
   const sessionMap = useMemo(() => new Map(sessions.map((session) => [session.id, session])), [sessions])

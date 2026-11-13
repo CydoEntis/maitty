@@ -4,15 +4,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Conversation } from '@/data/preview'
 import { EMPTY_LAYOUT } from './model/layout'
 import { LINGER_MS, LINGER_SLACK_MS } from './model/lingering'
+import type { RemoteMachine } from './model/machines'
 import { useSessionList } from './useSessionList'
 
-/** What the daemon module last read of this computer's list, and the full list a check reads. */
-const daemon = vi.hoisted(() => ({ revision: 4, removed: new Set<string>(), load: vi.fn<() => Promise<Conversation[]>>() }))
+/** What the daemon module last read of the lists, the full list a check reads, and the asking of a machine for its list. */
+const daemon = vi.hoisted(() => ({ revision: 4, removed: new Set<string>(), load: vi.fn<() => Promise<Conversation[]>>(), askList: vi.fn<(machine: number) => Promise<void>>() }))
 vi.mock('@/api/daemon', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/api/daemon')>(),
-  loadConversations: daemon.load,
+  checkConversations: daemon.load,
   localListRevision: () => daemon.revision,
   daemonSaidRemoved: (id: string) => daemon.removed.has(id),
+}))
+vi.mock('@/api/machines', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/api/machines')>(),
+  askMachineList: daemon.askList,
 }))
 
 const NOW = new Date(2026, 0, 5, 9, 30).getTime()
@@ -89,6 +94,22 @@ describe('a session the next list leaves out', () => {
     warn.mockRestore()
   })
 
+  it('says once that the full list cannot be read, and once that it can again', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    const { rerender } = renderHook((props) => useSessionList(props), { initialProps: listOf('t1', 't2') })
+    rerender(listOf('t1'))
+    warn.mockClear()
+    daemon.load.mockRejectedValueOnce(new Error('no daemon')).mockRejectedValueOnce(new Error('no daemon')).mockResolvedValueOnce([terminal('t1'), terminal('t2')]).mockResolvedValueOnce([terminal('t1'), terminal('t2')])
+
+    for (let check = 0; check < 4; check += 1) await act(async () => { await vi.advanceTimersByTimeAsync(LINGER_MS + LINGER_SLACK_MS) })
+    expect(daemon.load).toHaveBeenCalledTimes(4)
+    expect(warn.mock.calls.map((call) => String(call[0]))).toEqual([expect.stringMatching(/could not read/i)])
+    expect(info.mock.calls.map((call) => String(call[0]))).toEqual([expect.stringMatching(/read again/i)])
+    warn.mockRestore()
+    info.mockRestore()
+  })
+
   it('leaves at once, unlogged, when the daemon said why it left', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const { result, rerender } = renderHook((props) => useSessionList(props), { initialProps: listOf('t1', 't2') })
@@ -96,6 +117,63 @@ describe('a session the next list leaves out', () => {
     rerender(listOf('t1'))
     expect(rows(result.current.sessions)).toEqual(['t1 done'])
     expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+})
+
+describe('a session of another machine the next list leaves out', () => {
+  const machineListing = (...ids: string[]): RemoteMachine => ({
+    state: { machine: 1, name: 'box', state: 'connected', why: null, attempt: null },
+    conversations: ids.map((id) => ({ ...terminal(id), machine: 1 })),
+    heard: true,
+    listedAt: Date.now(),
+  })
+  const withBox = (...ids: string[]) => ({ ...PROPS, sessionsQuery: { data: [] as Conversation[] } as UseQueryResult<Conversation[]>, machines: new Map([[1, machineListing(...ids)]]) })
+  const rows = (sessions: readonly { id: string; status: string }[]) => sessions.map((session) => `${session.id} ${session.status}`)
+
+  beforeEach(() => {
+    vi.useFakeTimers({ now: NOW })
+    daemon.removed.clear()
+    daemon.load.mockReset()
+    daemon.askList.mockReset()
+    daemon.askList.mockResolvedValue(undefined)
+  })
+  afterEach(() => { vi.useRealTimers() })
+
+  it('leaves at once when that machine said why it left', () => {
+    const { result, rerender } = renderHook((props) => useSessionList(props), { initialProps: withBox('box/t3', 'box/t4') })
+    daemon.removed.add('box/t4')
+    rerender(withBox('box/t3'))
+    expect(rows(result.current.sessions)).toEqual(['box/t3 done'])
+  })
+
+  it('leaves at once with its machine when the machine is taken off the list', () => {
+    const { result, rerender } = renderHook((props) => useSessionList(props), { initialProps: withBox('box/t3') })
+    rerender({ ...withBox(), machines: new Map() })
+    expect(rows(result.current.sessions)).toEqual([])
+  })
+
+  it('stays through a read of this computer\'s list, and the machine is asked for its own', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const { result, rerender } = renderHook((props) => useSessionList(props), { initialProps: withBox('box/t3', 'box/t4') })
+    rerender(withBox('box/t3'))
+    daemon.load.mockResolvedValue([])
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(LINGER_MS + LINGER_SLACK_MS) })
+    expect(rows(result.current.sessions)).toEqual(['box/t3 done', 'box/t4 unknown'])
+    expect(daemon.askList).toHaveBeenCalledWith(1)
+    warn.mockRestore()
+  })
+
+  it('goes once a list from that machine, a grace after the miss, does not name it', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const { result, rerender } = renderHook((props) => useSessionList(props), { initialProps: withBox('box/t3', 'box/t4') })
+    rerender(withBox('box/t3'))
+    daemon.load.mockResolvedValue([])
+    await act(async () => { await vi.advanceTimersByTimeAsync(LINGER_MS + LINGER_SLACK_MS) })
+
+    rerender(withBox('box/t3'))
+    expect(rows(result.current.sessions)).toEqual(['box/t3 done'])
     warn.mockRestore()
   })
 })
