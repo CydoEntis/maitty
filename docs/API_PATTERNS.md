@@ -181,8 +181,28 @@ Each of the two carries a `revision` (`Snapshot::revision`, `TermsChanged.revisi
 counts them per surface from 1, one more for every message it sends that surface's attached
 clients, so a gap means a missed update. The snapshot a client gets on attach and in `Reply::List`
 carries the surface's current revision and uses none. The field is `#[serde(default)]`, so it
-needed no new `PROTOCOL_VERSION`; 0 means a daemon built before it, or a surface sent nothing yet. A
-client merges a delta into the snapshot it holds and treats the result as a state update. The desktop
+needed no new `PROTOCOL_VERSION`; 0 means a daemon built before it, or a surface sent nothing yet.
+Each of the two also says why every pane it drops left, as a `RemovalReason` by pane id
+(`TermsChanged.reasons` for the ids in `removed`; `Snapshot::removed` on a whole `State`, for the
+panes that surface's clients were told of in the message before and are not in this one): `Closed`
+(a person closed it; a session inside its undo window is `Closed` too and comes back as changed if
+undone), `Exited` (its program ended, or the daemon closed the pane of an agent that had ended),
+`PutAway` (hidden, still running: a spare), `Moved` (another surface owns it now),
+`DaemonStopping` (it ended after the daemon was told to stop) or `Unknown` (the daemon recorded no
+reason, or a pane is hidden by none of these). `Bye` is the signal that the daemon stopped:
+`KillServer` kills every pane, sends `Bye` and exits without another update, so `DaemonStopping` is
+best-effort, seen only for a pane that ends between the stop request and `Bye`. A pane replaced by a
+new one for the same session (woken, or moved into a worktree) leaves as `Closed`, with the new pane
+among the changed. What a surface was told of is the panes of the last message its attached clients
+got and of the snapshot each got on attach: the first client to attach to a surface starts the list
+from its snapshot, a later one adds to it, so the whole `State` that follows an attach still names
+what left for the clients already there, and a pane that ended while nobody was attached is named
+to nobody. Both fields are `#[serde(default)]` (no new `PROTOCOL_VERSION`): empty from an older
+daemon, on the attach snapshot and in `Reply::List`, so no reason means not said, never a reason.
+`RemovalReason::Unknown` is `#[serde(other)]`: a reason added later reads as `Unknown` to an older
+build and the rest of the message stands, so an older peer can still read a message that carries one. A
+client merges a delta into the snapshot it holds, sets that snapshot's `removed` to the delta's
+`reasons`, and treats the result as a state update. The desktop
 host (`streams.rs`) merges a delta only when its revision is 0 or one more than the revision it holds;
 after a gap, or with no snapshot held, it drops the delta, sends `Query::List` on its stream and takes
 the `Reply::List` as its snapshot. It asks once for a run of such deltas, and again only when the list has

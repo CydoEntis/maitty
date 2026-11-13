@@ -203,6 +203,7 @@ fn a_whole_snapshot_is_given_and_a_delta_is_merged_into_that_machines_own() {
         ServerMsg::TermsChanged {
             changed: vec![pane(9)],
             removed: Vec::new(),
+            reasons: Default::default(),
             revision: 0,
         },
         now,
@@ -223,6 +224,7 @@ fn a_whole_snapshot_is_given_and_a_delta_is_merged_into_that_machines_own() {
         ServerMsg::TermsChanged {
             changed: vec![pane(3)],
             removed: vec![1, 4040],
+            reasons: Default::default(),
             revision: 0,
         },
         now,
@@ -243,6 +245,7 @@ fn a_whole_snapshot_is_given_and_a_delta_is_merged_into_that_machines_own() {
         ServerMsg::TermsChanged {
             changed: Vec::new(),
             removed: vec![1],
+            reasons: Default::default(),
             revision: 0,
         },
         now,
@@ -257,6 +260,36 @@ fn a_whole_snapshot_is_given_and_a_delta_is_merged_into_that_machines_own() {
         panic!("{local:?}");
     };
     assert!(snapshot.terms.is_empty(), "the local list is its own");
+}
+
+#[test]
+fn a_merged_delta_says_why_its_own_panes_left_not_why_an_earlier_states_did() {
+    use maitty_shared::protocol::RemovalReason;
+    let mut streams = Streams::default();
+    let now = Instant::now();
+    let mut held = snapshot_of(&[1, 2]);
+    held.removed = BTreeMap::from([(9, RemovalReason::Closed)]);
+    streams.on_message(LOCAL, ServerMsg::State(held), now);
+    let merged = streams.on_message(
+        LOCAL,
+        ServerMsg::TermsChanged {
+            changed: Vec::new(),
+            removed: vec![1],
+            reasons: BTreeMap::from([(1, RemovalReason::Exited)]),
+            revision: 0,
+        },
+        now,
+    );
+    let [
+        Out::Sessions {
+            snapshot: Some(snapshot),
+            ..
+        },
+    ] = &merged[..]
+    else {
+        panic!("{merged:?}");
+    };
+    assert_eq!(snapshot.removed, BTreeMap::from([(1, RemovalReason::Exited)]));
 }
 
 #[test]
@@ -507,6 +540,7 @@ fn another_machines_pane_deltas_cannot_grow_its_list_past_the_cap() {
             ServerMsg::TermsChanged {
                 changed,
                 removed: Vec::new(),
+                reasons: Default::default(),
                 revision: 0,
             },
             now,
@@ -534,6 +568,7 @@ fn this_computers_pane_deltas_are_not_held_to_another_machines_cap() {
         ServerMsg::TermsChanged {
             changed,
             removed: Vec::new(),
+            reasons: Default::default(),
             revision: 0,
         },
         now,
@@ -593,6 +628,7 @@ fn delta(revision: u64, changed: &[TermId], removed: &[TermId]) -> ServerMsg {
     ServerMsg::TermsChanged {
         changed: changed.iter().map(|id| pane(*id)).collect(),
         removed: removed.to_vec(),
+        reasons: Default::default(),
         revision,
     }
 }

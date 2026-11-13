@@ -592,6 +592,7 @@ async fn a_delta_with_no_list_to_fit_has_each_machines_daemon_asked_for_its_whol
         let delta = ServerMsg::TermsChanged {
             changed: Vec::new(),
             removed: Vec::new(),
+            reasons: Default::default(),
             revision: 999,
         };
         let update = Update::Messages {

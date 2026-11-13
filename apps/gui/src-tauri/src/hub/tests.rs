@@ -648,6 +648,7 @@ mod vetting {
         let delta = ServerMsg::TermsChanged {
             changed: Vec::new(),
             removed: Vec::new(),
+            reasons: Default::default(),
             revision: 999,
         };
         let update = Update::Messages {

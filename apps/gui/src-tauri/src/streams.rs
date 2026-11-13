@@ -215,7 +215,7 @@ impl Streams {
             ServerMsg::State(snapshot) => self.publish(machine, snapshot, &mut out),
             // What the host asked for after a missed update; nothing else asks on this line.
             ServerMsg::Reply(Reply::List(snapshot)) => self.publish(machine, snapshot, &mut out),
-            ServerMsg::TermsChanged { changed, removed, revision } => {
+            ServerMsg::TermsChanged { changed, removed, reasons, revision } => {
                 // A delta fits only the list it was worked out from: with none held, or after a
                 // missed update, merging it would leave the list wrong until the next whole one.
                 let fits = self
@@ -229,6 +229,7 @@ impl Streams {
                     return out;
                 }
                 let merged = self.last.get(&machine).cloned().map(|mut merged| {
+                    merged.removed = reasons;
                     if revision != UNNUMBERED {
                         merged.revision = revision;
                     }

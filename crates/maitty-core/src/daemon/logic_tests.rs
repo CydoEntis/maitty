@@ -1779,7 +1779,7 @@ fn detaching_and_closing_prune_tabs_and_workspaces() {
         "focus moves to what's left"
     );
     // The last pane goes: the tab and the workspace go with it.
-    d.remove_term(second);
+    d.remove_term(second, RemovalReason::Exited);
     assert!(d.workspaces.is_empty(), "an emptied workspace disappears");
     assert!(!d.terms.contains_key(&second));
     close(&mut d, &[first]);
@@ -8237,6 +8237,174 @@ fn each_state_or_delta_a_surface_is_sent_carries_the_next_revision() {
         "the other surface counts its own"
     );
     close(&mut d, &[t]);
+}
+
+/// A terminal client attached as `id`, past its attach snapshot and the first full state.
+fn attached_and_caught_up(d: &mut Daemon, id: ClientId) -> mpsc::Receiver<ServerMsg> {
+    let surface = crate::protocol::Surface::Terminal;
+    let (tx, mut crx) = mpsc::channel(64);
+    d.handle(Ev::Connected(id, tx, true, surface, false));
+    d.publish_state(surface, d.snapshot_for(surface));
+    while crx.try_recv().is_ok() {}
+    crx
+}
+
+/// The panes the next message says left the list, and why.
+fn removals(crx: &mut mpsc::Receiver<ServerMsg>) -> BTreeMap<TermId, RemovalReason> {
+    match crx.try_recv() {
+        Ok(ServerMsg::TermsChanged { removed, reasons, .. }) => {
+            assert_eq!(removed, reasons.keys().copied().collect::<Vec<_>>(), "a reason for each");
+            reasons
+        }
+        Ok(ServerMsg::State(snap)) => snap.removed,
+        other => panic!("a state or a pane delta: {other:?}"),
+    }
+}
+
+#[test]
+fn a_pane_a_person_closed_leaves_the_list_as_closed() {
+    let (mut d, _rx) = daemon();
+    let (kept, t) = (pane(&mut d), pane(&mut d));
+    let surface = crate::protocol::Surface::Terminal;
+    let mut crx = attached_and_caught_up(&mut d, 7);
+
+    d.command(7, Command::ClosePane { term: t }).unwrap();
+    d.publish_state(surface, d.snapshot_for(surface));
+    assert_eq!(removals(&mut crx), BTreeMap::from([(t, RemovalReason::Closed)]));
+    close(&mut d, &[kept]);
+}
+
+#[test]
+fn a_pane_whose_shell_exited_leaves_the_list_as_exited() {
+    let (mut d, _rx) = daemon();
+    let (kept, t) = (pane(&mut d), pane(&mut d));
+    let surface = crate::protocol::Surface::Terminal;
+    let mut crx = attached_and_caught_up(&mut d, 7);
+
+    d.handle(Ev::Exited(t));
+    d.publish_state(surface, d.snapshot_for(surface));
+    assert_eq!(removals(&mut crx), BTreeMap::from([(t, RemovalReason::Exited)]));
+    close(&mut d, &[kept]);
+}
+
+#[test]
+fn a_whole_state_after_a_removal_says_what_left_since_the_last_message() {
+    let (mut d, _rx) = daemon();
+    let (kept, closed, exited) = (pane(&mut d), pane(&mut d), pane(&mut d));
+    let surface = crate::protocol::Surface::Terminal;
+    let mut crx = attached_and_caught_up(&mut d, 7);
+
+    d.command(7, Command::ClosePane { term: closed }).unwrap();
+    d.handle(Ev::Exited(exited));
+    // A second window attaching makes the next update a whole state for both.
+    let (tx, _other) = mpsc::channel(64);
+    d.handle(Ev::Connected(8, tx, true, surface, false));
+    d.publish_state(surface, d.snapshot_for(surface));
+    let Ok(ServerMsg::State(snap)) = crx.try_recv() else {
+        panic!("the first change after an attach is the whole state");
+    };
+    assert_eq!(
+        snap.removed,
+        BTreeMap::from([(closed, RemovalReason::Closed), (exited, RemovalReason::Exited)])
+    );
+
+    d.terms.get_mut(&kept).unwrap().process = "vim".into();
+    d.sent_state.remove(&surface);
+    d.publish_state(surface, d.snapshot_for(surface));
+    let Ok(ServerMsg::State(snap)) = crx.try_recv() else {
+        panic!("a whole state");
+    };
+    assert!(snap.removed.is_empty(), "a removal is told once");
+    assert!(d.snapshot_for(surface).removed.is_empty(), "a list names none");
+    close(&mut d, &[kept]);
+}
+
+#[test]
+fn a_pane_that_left_while_still_running_says_whether_it_was_closed_hidden_or_moved() {
+    let (mut d, _rx) = daemon();
+    let (kept, closing, spare, moved) = (pane(&mut d), pane(&mut d), pane(&mut d), pane(&mut d));
+    let surface = crate::protocol::Surface::Terminal;
+    let mut crx = attached_and_caught_up(&mut d, 7);
+
+    d.command(7, Command::CloseSession { term: closing }).unwrap();
+    d.terms.get_mut(&spare).unwrap().spare = true;
+    d.terms.get_mut(&moved).unwrap().owner = crate::protocol::Surface::Desktop;
+    d.publish_state(surface, d.snapshot_for(surface));
+    assert_eq!(
+        removals(&mut crx),
+        BTreeMap::from([
+            (closing, RemovalReason::Closed),
+            (spare, RemovalReason::PutAway),
+            (moved, RemovalReason::Moved),
+        ])
+    );
+    close(&mut d, &[kept, closing, spare, moved]);
+}
+
+#[test]
+fn a_pane_from_before_the_attach_that_is_closed_before_any_update_leaves_as_closed() {
+    let (mut d, _rx) = daemon();
+    let (kept, t) = (pane(&mut d), pane(&mut d));
+    let surface = crate::protocol::Surface::Terminal;
+    let (tx, mut crx) = mpsc::channel(64);
+    d.handle(Ev::Connected(7, tx, true, surface, false));
+    while crx.try_recv().is_ok() {}
+
+    d.command(7, Command::ClosePane { term: t }).unwrap();
+    d.publish_state(surface, d.snapshot_for(surface));
+    assert_eq!(removals(&mut crx), BTreeMap::from([(t, RemovalReason::Closed)]));
+    close(&mut d, &[kept]);
+}
+
+#[test]
+fn a_pane_that_ended_while_nobody_was_attached_is_not_named_to_the_next_client() {
+    let (mut d, _rx) = daemon();
+    let (kept, t) = (pane(&mut d), pane(&mut d));
+    let surface = crate::protocol::Surface::Terminal;
+    // The first window saw both panes in an update, then went away.
+    let _gone = attached_and_caught_up(&mut d, 7);
+    d.handle(Ev::Disconnected(7));
+    d.handle(Ev::Exited(t));
+
+    let (tx, mut crx) = mpsc::channel(64);
+    d.handle(Ev::Connected(8, tx, true, surface, false));
+    while crx.try_recv().is_ok() {}
+    d.terms.get_mut(&kept).unwrap().process = "vim".into();
+    d.publish_state(surface, d.snapshot_for(surface));
+    assert!(removals(&mut crx).is_empty(), "its attach snapshot never had that pane");
+    close(&mut d, &[kept]);
+}
+
+#[test]
+fn a_pane_gone_for_no_reason_the_daemon_recorded_leaves_as_unknown() {
+    let (mut d, _rx) = daemon();
+    let (kept, t) = (pane(&mut d), pane(&mut d));
+    let surface = crate::protocol::Surface::Terminal;
+    let mut crx = attached_and_caught_up(&mut d, 7);
+
+    // Nothing in the daemon drops a pane without a reason, so it is forced here.
+    let mut gone = d.terms.remove(&t).unwrap();
+    gone.kill_tree();
+    d.publish_state(surface, d.snapshot_for(surface));
+    assert_eq!(removals(&mut crx), BTreeMap::from([(t, RemovalReason::Unknown)]));
+    close(&mut d, &[kept]);
+}
+
+/// `KillServer` kills every pane, sends `Bye` and exits without another update, so this reason
+/// reaches a client only for a pane that ends between the stop request and `Bye`. The stop is
+/// set by hand here because the command ends the process.
+#[test]
+fn a_pane_that_ends_between_the_stop_request_and_bye_leaves_as_daemon_stopping() {
+    let (mut d, _rx) = daemon();
+    let (kept, t) = (pane(&mut d), pane(&mut d));
+    let surface = crate::protocol::Surface::Terminal;
+    let mut crx = attached_and_caught_up(&mut d, 7);
+
+    d.stopping = true;
+    d.handle(Ev::Exited(t));
+    d.publish_state(surface, d.snapshot_for(surface));
+    assert_eq!(removals(&mut crx), BTreeMap::from([(t, RemovalReason::DaemonStopping)]));
+    close(&mut d, &[kept]);
 }
 
 #[test]

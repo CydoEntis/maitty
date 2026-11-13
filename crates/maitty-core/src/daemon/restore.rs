@@ -710,6 +710,7 @@ impl Daemon {
             }
         }
         self.takes_over_helpers(old, new);
+        self.note_ended(old, RemovalReason::Closed);
         // Closing a terminal can block on Windows until its programs let go; never here.
         if let Some(t) = self.terms.remove(&old) {
             std::thread::spawn(move || drop(t));
@@ -778,7 +779,7 @@ impl Daemon {
             }
         }
         self.takes_over_helpers(old, new);
-        self.remove_term(old);
+        self.remove_term(old, RemovalReason::Closed);
         self.poll_git_soon();
         self.dirty = true;
     }
