@@ -3,16 +3,15 @@
 //! git is given no way to ask a question: a clone that needs a password it cannot find fails.
 
 use super::folders;
-use std::io::Read;
 use std::path::Path;
-use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use crate::proc::RunError;
+use std::process::Command;
+use std::time::Duration;
 
 /// The longest address worth cloning; a longer one is a mistake or an attack.
 pub(super) const ADDRESS_MAX_BYTES: usize = 2048;
 /// How long one clone may take before it is stopped.
 pub(super) const CLONE_LIMIT: Duration = Duration::from_secs(crate::protocol::CLONE_LIMIT_SECS);
-const POLL: Duration = Duration::from_millis(50);
 /// The address forms git fetches over a network. Anything else (a local path, `file://`, `ext::`)
 /// would read this machine's own disk or run a program, and is refused.
 const SCHEMES: [&str; 3] = ["https://", "ssh://", "git://"];
@@ -90,11 +89,7 @@ pub(super) fn clone(address: &str, parent: &str, home: Option<&Path>, limit: Dur
         .arg(&target)
         // Its messages are read below: keep them in English whatever the person's locale.
         .env("LC_ALL", "C")
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped());
-    crate::proc::quiet(&mut command);
+        .env("GIT_TERMINAL_PROMPT", "0");
     match run(&mut command, limit) {
         Ok(()) => Ok(shown(&target)),
         Err(why) => {
@@ -116,39 +111,20 @@ fn shown(path: &Path) -> String {
 /// Runs git to its end or to `limit`, whichever is first. On failure, the line of what it said
 /// that names the problem.
 fn run(command: &mut Command, limit: Duration) -> Result<(), String> {
-    let mut child = command.spawn().map_err(|error| format!("couldn't run git: {error}"))?;
-    // Read as it is written, so a long complaint cannot fill the pipe and stall git.
-    let said = child.stderr.take().map(|mut pipe| {
-        std::thread::spawn(move || {
-            let mut text = String::new();
-            // What could not be read is not shown; the exit status still decides the outcome.
-            let _ = pipe.read_to_string(&mut text);
-            text
-        })
-    });
-    let started = Instant::now();
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) if started.elapsed() >= limit => {
-                // Both can fail only when git has just ended by itself, which is what is wanted.
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(format!("The clone was stopped after {} seconds", limit.as_secs()));
-            }
-            Ok(None) => std::thread::sleep(POLL),
-            Err(error) => return Err(format!("couldn't wait for git: {error}")),
-        }
-    };
-    if status.success() {
+    let ran = crate::proc::run_within(command, limit).map_err(|error| match error {
+        RunError::Missing => "git is not installed on this machine".to_owned(),
+        RunError::Start(why) => format!("couldn't run git: {why}"),
+        RunError::TimedOut => format!("The clone was stopped after {} seconds", limit.as_secs()),
+    })?;
+    if ran.success {
         return Ok(());
     }
-    let said = said.and_then(|reader| reader.join().ok()).unwrap_or_default();
     // git says "warning: …" before the "fatal:" line that matters.
-    let line = said
+    let line = ran
+        .stderr
         .lines()
         .find(|line| line.starts_with("fatal") || line.starts_with("error"))
-        .or_else(|| said.lines().find(|line| !line.trim().is_empty()))
+        .or_else(|| ran.stderr.lines().find(|line| !line.trim().is_empty()))
         .map_or("git could not clone it", str::trim);
     Err(line.to_owned())
 }
@@ -202,7 +178,7 @@ mod tests {
     fn clone_local(source: &Path, parent: &Path, limit: Duration) -> Result<(), String> {
         let target = parent.join("widgets");
         let mut command = Command::new("git");
-        command.args(["clone", "--quiet", "--"]).arg(source).arg(&target).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped());
+        command.args(["clone", "--quiet", "--"]).arg(source).arg(&target);
         run(&mut command, limit)
     }
 

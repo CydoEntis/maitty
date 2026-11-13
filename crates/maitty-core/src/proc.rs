@@ -123,6 +123,71 @@ pub fn run(cmd: &mut Command) -> Result<String, String> {
     }
 }
 
+/// What a program that ran to its end left behind.
+#[derive(Debug)]
+pub struct Ran {
+    pub success: bool,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+/// Why a program did not run to its end.
+#[derive(Debug, PartialEq, Eq)]
+pub enum RunError {
+    /// There is no such program on this machine.
+    Missing,
+    Start(String),
+    TimedOut,
+}
+
+/// Run to the end or to `limit`, whichever is first, without a console window and with nothing to
+/// read from. A program stopped at the limit is killed. Blocks.
+pub fn run_within(cmd: &mut Command, limit: std::time::Duration) -> Result<Ran, RunError> {
+    use std::io::Read;
+    use std::process::Stdio;
+    const POLL: std::time::Duration = std::time::Duration::from_millis(50);
+    let mut child = quiet(cmd)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| match error.kind() {
+            std::io::ErrorKind::NotFound => RunError::Missing,
+            _ => RunError::Start(error.to_string()),
+        })?;
+    // Both are read as they are written, so a program that says a lot cannot fill a pipe and stall.
+    fn reader(pipe: Option<impl Read + Send + 'static>) -> std::thread::JoinHandle<String> {
+        std::thread::spawn(move || {
+            let mut text = Vec::new();
+            // What could not be read is not kept; the exit status still decides the outcome.
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut text);
+            }
+            String::from_utf8_lossy(&text).into_owned()
+        })
+    }
+    let (out, err) = (reader(child.stdout.take()), reader(child.stderr.take()));
+    let started = std::time::Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if started.elapsed() >= limit => {
+                // Both can fail only when the program has just ended by itself, which is what is wanted.
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(RunError::TimedOut);
+            }
+            Ok(None) => std::thread::sleep(POLL),
+            Err(error) => return Err(RunError::Start(error.to_string())),
+        }
+    };
+    Ok(Ran {
+        success: status.success(),
+        stdout: out.join().unwrap_or_default(),
+        stderr: err.join().unwrap_or_default(),
+    })
+}
+
 /// `git -C <dir> <args>`. Its messages are kept in English, since callers match some of
 /// them.
 pub fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
