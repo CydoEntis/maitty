@@ -504,12 +504,12 @@ impl Daemon {
         let mut resumable = Vec::new();
         let mut cut = std::collections::BTreeSet::new();
         for record in &mut saved.conversations {
-            let was_running = record.state == crate::conversation::RecoveryState::Running
+            let was_in_turn = record.state == crate::conversation::RecoveryState::Running
                 && saved.turns_in_flight.contains(&record.id);
             match record.recover() {
                 Ok(true) if record.execution == crate::conversation::ExecutionKind::Structured => {
                     resumable.push((record.id, record.generation));
-                    if was_running {
+                    if was_in_turn {
                         cut.insert(record.id);
                     }
                 }
