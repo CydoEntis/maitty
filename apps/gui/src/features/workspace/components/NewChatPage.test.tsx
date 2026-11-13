@@ -368,7 +368,7 @@ describe('starting a chat and going on writing', () => {
 
     expect(await screen.findByText(/Could not start “fix the login”: The worktree could not be made/)).toBeInTheDocument()
     expect(box()).toHaveValue('a new draft')
-    await userEvent.click(screen.getByRole('button', { name: 'Put back' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Put back “fix the login”' }))
     expect(box()).toHaveValue('a new draft\n\nfix the login')
     expect(screen.queryByText(/Could not start/)).not.toBeInTheDocument()
   })

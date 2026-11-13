@@ -445,9 +445,9 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
           {background.failed.map((failed) => (
             <p key={failed.key} role="alert" className="mx-composer-error">
               {`Could not start ${failedStartLabel(failed.name)}: ${failed.reason} `}
-              <button type="button" className="mx-text-button" onClick={() => { putBack(failed.key) }}>Put back</button>
+              <button type="button" className="mx-text-button" aria-label={`Put back ${failedStartLabel(failed.name)}`} onClick={() => { putBack(failed.key) }}>Put back</button>
               {' · '}
-              <button type="button" className="mx-text-button" onClick={() => { background.dismiss(failed.key) }}>Dismiss</button>
+              <button type="button" className="mx-text-button" aria-label={`Dismiss ${failedStartLabel(failed.name)}`} onClick={() => { background.dismiss(failed.key) }}>Dismiss</button>
             </p>
           ))}
           {agentMissing && (

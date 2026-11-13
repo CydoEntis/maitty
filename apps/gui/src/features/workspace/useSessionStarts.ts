@@ -30,6 +30,12 @@ import { resolveStartFolder } from './model/startFolder'
 import { resumeWords } from './model/moveToWorktree'
 import { makeId } from './makeId'
 
+/** How a start runs beside others: `alone` (refused while anything starts, and holds off the rest), `alongside` (a new chat
+ * page start that opens its pane), `background` (one that opens nothing and rejects with the reason it failed). */
+type StartMode = 'alone' | 'alongside' | 'background'
+const ANOTHER_START_RUNNING = 'Another start is running. Try again in a moment.'
+const NOT_LISTED = 'The daemon did not list the new session'
+
 /** How long a new session on another machine is waited for, and how often its list is looked at. */
 const REMOTE_START_WAIT_MS = 8000
 const REMOTE_START_POLL_MS = 250
@@ -132,40 +138,48 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
     setNewChatOpen(false)
   }
 
-  // The starts in flight. Starts from the new chat page (`alongside`) may run together; any other start runs alone, as
-  // it always has: refused while something is starting, and nothing else starts until it ends.
-  const inFlight = useRef({ count: 0, alone: false })
-  const beginStart = useCallback((alongside: boolean): boolean => {
+  // The starts in flight. Starts from the new chat page (`alongside`, `background`) may run together; any other start runs
+  // alone, as it always has: refused while something is starting, and nothing else starts until it ends. Only a start
+  // that opens a pane (`opening`) keeps the sessions it did not know about off the sidebar until its pane is there.
+  const inFlight = useRef({ count: 0, alone: false, opening: 0 })
+  const beginStart = useCallback((mode: StartMode): boolean => {
     const now = inFlight.current
-    if (now.alone || (now.count > 0 && !alongside)) return false
-    inFlight.current = { count: now.count + 1, alone: !alongside }
+    if (now.alone || (now.count > 0 && mode === 'alone')) return false
+    const opens = mode !== 'background'
+    inFlight.current = { count: now.count + 1, alone: mode === 'alone', opening: now.opening + (opens ? 1 : 0) }
     setStarting(true)
-    setStartedFrom((current) => current ?? new Set(sessionMap.keys()))
+    if (opens) setStartedFrom((current) => current ?? new Set(sessionMap.keys()))
     return true
   }, [setStarting, setStartedFrom, sessionMap])
-  const endStart = useCallback(() => {
-    const count = inFlight.current.count - 1
-    inFlight.current = { count, alone: false }
-    if (count > 0) return
-    setStarting(false)
-    setStartedFrom(null)
+  const endStart = useCallback((mode: StartMode) => {
+    const now = inFlight.current
+    inFlight.current = { count: now.count - 1, alone: false, opening: now.opening - (mode === 'background' ? 0 : 1) }
+    if (inFlight.current.count === 0) setStarting(false)
+    if (inFlight.current.opening === 0) setStartedFrom(null)
   }, [setStarting, setStartedFrom])
 
-  // Resolves once the session is placed (true) or the start did not happen or failed (false).
-  const runStart = useCallback((folder: () => Promise<string>, place: (sessionId: string) => void, launch?: (folder: string) => Promise<void>, alongside = false): Promise<boolean> => {
-    if (!online || !beginStart(alongside)) return Promise.resolve(false)
+  // Resolves once the session is placed (true) or the start did not happen or failed (false, said in a toast). A start in
+  // the `background` rejects instead, with the reason, for the page that asked to say.
+  const runStart = useCallback((folder: () => Promise<string>, place: (sessionId: string) => void, launch?: (folder: string) => Promise<void>, mode: StartMode = 'alone'): Promise<boolean> => {
+    const background = mode === 'background'
+    if (!online) return background ? Promise.reject(new Error('The daemon is not reachable')) : Promise.resolve(false)
+    if (!beginStart(mode)) return background ? Promise.reject(new Error(ANOTHER_START_RUNNING)) : Promise.resolve(false)
     return folder()
       .then((path) => startShell(path, launch))
       .then((id) => {
-        if (!id) return false
+        if (!id) {
+          if (background) throw new Error(NOT_LISTED)
+          return false
+        }
         place(id)
         return true
       })
       .catch((error: unknown) => {
+        if (background) throw error
         toast.error(errorMessage(error, 'Could not start a shell'))
         return false
       })
-      .finally(endStart)
+      .finally(() => { endStart(mode) })
   }, [online, beginStart, endStart, startShell])
 
   // A new session is the default agent, running in a terminal the daemon owns, shown as its chat or
@@ -215,7 +229,7 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
       if (view === 'chat') paneViews.choose(id, 'chat')
       // In the same update as the new session opens, so the window never shows the page between the two.
       placed.afterPlace?.(id)
-    }, launchAgent(agent, flags), placed.alongside === true || placed.background === true)
+    }, launchAgent(agent, flags), placed.background ? 'background' : placed.alongside ? 'alongside' : 'alone')
   }, [runStart, launchAgent, setExpectedAgents, yolo, setLayout, setStartedFrom, paneViews])
 
   // Signing an agent's account in is the agent's own interactive command, so it runs in a terminal of its own, in
@@ -242,10 +256,10 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
       void startAgentSession(() => Promise.resolve(from.cwd), agent, 'chat')
       return
     }
-    if (!beginStart(false)) return
+    if (!beginStart('alone')) return
     startChat(from.cwd, agent, fullAccess)
       .catch((error: unknown) => { toast.error(errorMessage(error, `Could not start a ${agent} chat`)) })
-      .finally(endStart)
+      .finally(() => { endStart('alone') })
   }, [online, starting, beginStart, endStart, startChat, startAgentSession])
 
   // "Hand off to …": a new session of another agent in the same folder, starting with a text brief of this one's work.
@@ -314,14 +328,12 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
     const flags = `${resume.map((word) => ` ${word}`).join('')}${launchFlags(request.agent, request.model, request.reasoning, request.mode)}`
     // The page stays, with the message in it, until the chat that replaces it is there: closing it first showed the
     // empty window (or the last chat) for a moment between the two.
-    const started = await startAgentSession(() => Promise.resolve(folder), request.agent, 'chat', request.message, flags, { alongside: true, background, afterPlace: (id) => {
+    await startAgentSession(() => Promise.resolve(folder), request.agent, 'chat', request.message, flags, { alongside: true, background, afterPlace: (id) => {
       // Codex has no file that says its mode, so what it was started in is what its chat shows: Full access under its Yolo setting.
       const codexMode = yolo.codex ? CODEX_FULL_MODE : request.mode === 'default' ? null : request.mode
       holdStartChoice(id, { model: request.model, reasoning: request.reasoning, mode: request.agent === 'claude' ? request.mode : request.agent === 'codex' ? codexMode : null })
       if (!background) setNewChatOpen(false)
     } })
-    // The page that asked keeps going, so a start that did not happen must not look as if it did.
-    if (background && !started) throw new Error('The chat did not start')
   }, [online, setNewChatOpen, startAgentSession, startRemoteChat, yolo.codex])
 
   // New session (the shortcut, the palette, the sidebar's chat button): the new chat page, on the machine asked for or the

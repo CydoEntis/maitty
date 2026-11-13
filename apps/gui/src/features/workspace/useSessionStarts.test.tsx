@@ -16,6 +16,8 @@ const daemon = vi.hoisted(() => ({
   sendWhenAgentReady: vi.fn(() => Promise.resolve()),
 }))
 vi.mock('@/api/daemon', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/api/daemon')>()), ...daemon, loadConversations: () => Promise.resolve([...listed.sessions]) }))
+const toast = vi.hoisted(() => ({ error: vi.fn(), message: vi.fn() }))
+vi.mock('@/lib/toast', () => ({ toast }))
 vi.mock('./model/agentHooks', () => ({ connectAgentOnce: () => Promise.resolve() }))
 
 import { useSessionStarts } from './useSessionStarts'
@@ -23,11 +25,12 @@ import type { NewChatRequest } from './components/NewChatPage'
 
 const ID = '0d0f5c1e-1111-4222-8333-444455556666'
 
-function starts(watch: { setLayout?: () => void; setNewChatOpen?: (open: boolean) => void } = {}) {
+type Watch = { setLayout?: () => void; setNewChatOpen?: (open: boolean) => void; setStartedFrom?: (change: unknown) => void }
+function starts(watch: Watch = {}) {
   const setter = vi.fn()
   const props = {
     queryClient: new QueryClient(), sessions: [], setWorktreeFrom: setter, setLayout: watch.setLayout ?? setter, flash: setter, focusedSession: undefined,
-    setNewChatOpen: watch.setNewChatOpen ?? setter, online: true, starting: false, setStarting: setter, setStartedFrom: setter, sessionMap: new Map(),
+    setNewChatOpen: watch.setNewChatOpen ?? setter, online: true, starting: false, setStarting: setter, setStartedFrom: watch.setStartedFrom ?? setter, sessionMap: new Map([['old', {}]]),
     preferences: { yoloClaude: false, yoloCodex: false, yoloGemini: false }, setExpectedAgents: setter, paneViews: { choose: setter },
     setSettingsSection: setter, setNewChatMachine: setter, setNewChatSeed: setter, home: '/home/me', machinesRef: { current: new Map() },
   } as unknown as Parameters<typeof useSessionStarts>[0]
@@ -41,6 +44,7 @@ const request = (patch: Partial<NewChatRequest>): NewChatRequest => ({
 beforeEach(() => {
   listed.sessions = []
   for (const call of Object.values(daemon)) call.mockClear()
+  toast.error.mockClear()
 })
 
 describe('starting a new chat that resumes a saved conversation', () => {
@@ -123,5 +127,48 @@ describe('starting new chats in the background', () => {
     await expect(start.runStart(() => Promise.resolve('/dev/app'), () => undefined)).resolves.toBe(false)
     finishLaunch()
     await chat
+  })
+})
+
+describe('what a start in the background says, and what it hides', () => {
+  /** Follows the sidebar's "sessions there were when a start began" as the hook sets it, keeping every value it took. */
+  function startedFromState() {
+    let now: ReadonlySet<string> | null = null
+    const seen: (ReadonlySet<string> | null)[] = []
+    const setStartedFrom = (change: unknown) => {
+      now = typeof change === 'function' ? (change as (was: typeof now) => typeof now)(now) : (change as typeof now)
+      seen.push(now)
+    }
+    return { setStartedFrom, seen }
+  }
+
+  it('gives the page the real reason a start failed, with no toast', async () => {
+    daemon.startAgentSession.mockImplementationOnce(() => Promise.reject(new Error('claude was not found')))
+    await expect(starts().startNewChat(request({ message: 'x' }), { background: true })).rejects.toThrow('claude was not found')
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('says another start is running when one that runs alone is under way', async () => {
+    let finishShell: () => void = () => undefined
+    const start = starts()
+    const shell = start.runStart(() => Promise.resolve('/dev/app'), () => undefined, () => new Promise((resolve) => {
+      finishShell = () => { listed.sessions.push({ id: '1', kind: 'terminal', nativePane: 1 }); resolve() }
+    }))
+    await expect(start.startNewChat(request({ message: 'x' }), { background: true })).rejects.toThrow('Another start is running. Try again in a moment.')
+    finishShell()
+    await expect(shell).resolves.toBe(true)
+  })
+
+  it('hides no session from the sidebar while it starts', async () => {
+    const { setStartedFrom, seen } = startedFromState()
+    await starts({ setStartedFrom }).startNewChat(request({ message: 'quietly' }), { background: true })
+    expect(seen.every((value) => value === null)).toBe(true)
+  })
+
+  it('still holds new sessions off the sidebar while a chat that opens its pane starts', async () => {
+    const { setStartedFrom, seen } = startedFromState()
+    await starts({ setStartedFrom }).startNewChat(request({ message: 'open it' }))
+    expect(seen[0]).toEqual(new Set(['old']))
+    expect(seen.at(-1)).toBeNull()
   })
 })

@@ -3,6 +3,7 @@ import type { DraftAttachment } from '@/features/chat/composerStore'
 import { revokePreviews } from '@/features/chat/useAttachmentIntake'
 import { errorMessage } from '@/lib/error-message'
 import { toast } from '@/lib/toast'
+import { useLatest } from '@/lib/useLatest'
 import type { NewChatRequest, NewChatStartOptions } from './components/NewChatPage'
 import { nameFromMessage } from './model/newSession'
 
@@ -25,10 +26,15 @@ export function useBackgroundStarts(onStart: (request: NewChatRequest, options?:
   const [failed, setFailed] = useState<readonly FailedStart[]>([])
   const open = useRef(true)
   const lastKey = useRef(0)
+  const failedNow = useLatest(() => failed)
+  // Files of a failed start that was never put back are not kept once the page is gone.
   useEffect(() => {
     open.current = true
-    return () => { open.current = false }
-  }, [])
+    return () => {
+      open.current = false
+      for (const start of failedNow()) revokePreviews(start.draft.attachments)
+    }
+  }, [failedNow])
 
   const launch = useCallback((request: NewChatRequest, draft: StartDraft) => {
     setPending((count) => count + 1)
@@ -38,6 +44,7 @@ export function useBackgroundStarts(onStart: (request: NewChatRequest, options?:
         const reason = errorMessage(failure, 'Could not start the chat')
         const name = nameFromMessage(draft.text)
         if (!open.current) {
+          revokePreviews(draft.attachments)
           toast.error(`Could not start ${failedStartLabel(name)}: ${reason}`)
           return
         }
