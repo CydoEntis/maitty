@@ -297,11 +297,11 @@ fn committed(cache: &Cache, binding: &NativeBinding) -> History {
 }
 const PLANTED: &str = "planted-entry-text";
 /// Rewrites page 1 so it holds an entry kind this daemon does not know, with a matching hash.
-fn write_unknown_kind(cache: &Cache) {
+fn write_unknown_kind(cache: &Cache, marker: &str) {
     let dir = cache.root.join("1");
     let mut entries: serde_json::Value =
         serde_json::from_slice(&std::fs::read(dir.join("1.json")).unwrap()).unwrap();
-    entries[0]["content"] = serde_json::json!({ "FutureKind": { "text": PLANTED } });
+    entries[0]["content"] = serde_json::json!({ "FutureKind": { "text": marker } });
     let page = serde_json::to_vec(&entries).unwrap();
     std::fs::write(dir.join("1.json"), &page).unwrap();
     let mut manifest: serde_json::Value =
@@ -317,7 +317,7 @@ fn an_unknown_entry_kind_is_set_aside_with_its_files_and_never_quoted() {
     let binding = crate::test_support::conversation().binding;
     let h = committed(&cache, &binding);
     assert_eq!(cache.load_or_rebuild(h.conversation, &binding).unwrap(), Some(h.clone()));
-    write_unknown_kind(&cache);
+    write_unknown_kind(&cache, PLANTED);
     let page = std::fs::read(cache.root.join("1/1.json")).unwrap();
 
     let error = cache.load(h.conversation, &binding).unwrap_err();
@@ -326,14 +326,37 @@ fn an_unknown_entry_kind_is_set_aside_with_its_files_and_never_quoted() {
 
     assert_eq!(cache.load_or_rebuild(h.conversation, &binding).unwrap(), None);
     assert!(!cache.root.join("1").exists());
-    assert_eq!(std::fs::read(cache.root.join("1.bad/1.json")).unwrap(), page);
-    // The next commit starts a fresh cache beside the set-aside one, which a second failure
-    // replaces rather than piles up.
-    let rebuilt = committed(&cache, &binding);
-    assert_eq!(cache.load_or_rebuild(h.conversation, &binding).unwrap(), Some(rebuilt));
-    write_unknown_kind(&cache);
-    assert_eq!(cache.load_or_rebuild(h.conversation, &binding).unwrap(), None);
-    assert!(cache.root.join("1.bad").exists());
+    assert_eq!(std::fs::read(cache.root.join("1.bad-1/1.json")).unwrap(), page);
+    // Each failure keeps its own copy; the first is never replaced, and only the oldest beyond
+    // three are dropped once a newer one is safe.
+    let mut pages = vec![page];
+    for round in 2..=4 {
+        let rebuilt = committed(&cache, &binding);
+        assert_eq!(cache.load_or_rebuild(h.conversation, &binding).unwrap(), Some(rebuilt));
+        write_unknown_kind(&cache, &format!("failure-{round}"));
+        pages.push(std::fs::read(cache.root.join("1/1.json")).unwrap());
+        assert_eq!(cache.load_or_rebuild(h.conversation, &binding).unwrap(), None);
+        assert!(cache.root.join(format!("1.bad-{round}")).exists());
+    }
+    assert_ne!(pages[0], pages[1]);
+    assert!(!cache.root.join("1.bad-1").exists(), "the oldest is dropped past three");
+    for round in 2..=4usize {
+        let kept = std::fs::read(cache.root.join(format!("1.bad-{round}/1.json"))).unwrap();
+        assert_eq!(kept, pages[round - 1], "copy {round} holds its own failure");
+    }
+}
+#[test]
+fn a_failed_move_aside_loses_nothing() {
+    let scratch = scratch_dir();
+    let cache = Cache::open(scratch.path().join("history"), true, true).unwrap();
+    let binding = crate::test_support::conversation().binding;
+    committed(&cache, &binding);
+    let target = cache.root.join("1.bad-1");
+    std::fs::create_dir(&target).unwrap();
+    std::fs::write(target.join("earlier.json"), b"earlier").unwrap();
+    assert!(move_aside(&cache.root.join("1"), &target).is_err());
+    assert!(cache.root.join("1/manifest.json").exists());
+    assert_eq!(std::fs::read(target.join("earlier.json")).unwrap(), b"earlier");
 }
 #[test]
 fn a_corrupt_page_and_a_changed_binding_are_set_aside() {
@@ -343,11 +366,11 @@ fn a_corrupt_page_and_a_changed_binding_are_set_aside() {
     let h = committed(&cache, &binding);
     std::fs::write(cache.root.join("1/1.json"), b"[]").unwrap();
     assert_eq!(cache.load_or_rebuild(h.conversation, &binding).unwrap(), None);
-    assert!(cache.root.join("1.bad/1.json").exists());
+    assert!(cache.root.join("1.bad-1/1.json").exists());
     committed(&cache, &binding);
     binding.account = Some("other".into());
     assert_eq!(cache.load_or_rebuild(h.conversation, &binding).unwrap(), None);
-    assert!(cache.root.join("1.bad").exists() && !cache.root.join("1").exists());
+    assert!(cache.root.join("1.bad-2").exists() && !cache.root.join("1").exists());
 }
 #[test]
 fn an_exhausted_revision_is_set_aside_and_a_new_cache_can_be_written() {
@@ -360,7 +383,7 @@ fn an_exhausted_revision_is_set_aside_and_a_new_cache_can_be_written() {
     manifest.revision = u64::MAX;
     std::fs::write(&path, serde_json::to_vec(&manifest).unwrap()).unwrap();
     assert_eq!(cache.load_or_rebuild(h.conversation, &binding).unwrap(), None);
-    assert!(cache.root.join("1.bad/manifest.json").exists());
+    assert!(cache.root.join("1.bad-1/manifest.json").exists());
     let rebuilt = committed(&cache, &binding);
     assert_eq!(cache.load(h.conversation, &binding).unwrap(), Some(rebuilt));
 }
@@ -380,5 +403,5 @@ fn an_io_error_stays_an_error_and_leaves_the_files_alone() {
         .unwrap_err();
     assert!(error.downcast_ref::<Unreadable>().is_none(), "{error:#}");
     assert!(cache.root.join("1/manifest.json").exists());
-    assert!(!cache.root.join("1.bad").exists());
+    assert!(!cache.root.join("1.bad-1").exists());
 }

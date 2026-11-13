@@ -2924,7 +2924,7 @@ async fn startup_survives_an_unreadable_history_cache_and_keeps_its_files() {
         s.daemon.conversations.push(record.clone());
         s.daemon.initialize_conversation_cache().await.unwrap();
         assert!(!s.daemon.conversation_histories.contains_key(&record.id));
-        let aside = root.join(format!("{}.bad", record.id.0));
+        let aside = root.join(format!("{}.bad-1", record.id.0));
         assert!(aside.join("manifest.json").exists());
     })
     .catch_unwind()

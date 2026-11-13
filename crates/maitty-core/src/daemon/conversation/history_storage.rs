@@ -260,29 +260,31 @@ impl Cache {
     }
     /// Loads a conversation's cached history. A cache this daemon can tell is unusable (an entry
     /// kind it does not know, a corrupt or missing page, a changed binding, an exhausted
-    /// revision) is moved aside to `<id>.bad` (one kept) and reported as absent, so the daemon
-    /// still starts and the history is read again from the agent; the old files stay on disk
-    /// because the agent may no longer hold the history. Any other failure (a sharing violation,
-    /// too many open files, an I/O error) is returned with the files untouched. Only the
-    /// conversation id and a category are logged, never the error text, which can quote an
-    /// entry.
+    /// revision) is moved aside to `<id>.bad-<n>` (the newest `BAD_COPIES_KEPT` kept) and reported
+    /// as absent, so the daemon still starts and the history is read again from the agent; the
+    /// old files stay on disk because the agent may no longer hold the history. Nothing is
+    /// deleted before the move succeeds, and a move that fails is returned as an error with the
+    /// cache intact. Any other failure (a sharing violation, too many open files, an I/O error)
+    /// is returned with the files untouched. Only the conversation id and a category are logged,
+    /// never the error text, which can quote an entry.
     pub(super) fn load_or_rebuild(
         &self,
         conversation: ConversationId,
         binding: &NativeBinding,
     ) -> Result<Option<History>> {
-        match self.load(conversation, binding) {
+        // One lock across the check and the move: a commit or a policy removal between them
+        // could otherwise have a good cache moved aside, or turn a missing one into an error.
+        let _guard = self
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("history cache lock poisoned"))?;
+        match self.load_locked(conversation, binding) {
             Err(error) => match error.downcast_ref::<Unreadable>() {
                 Some(category) => {
-                    let _guard = self
-                        .state
-                        .lock()
-                        .map_err(|_| anyhow::anyhow!("history cache lock poisoned"))?;
                     let dir = self.root.join(conversation.0.to_string());
-                    let aside = self.root.join(format!("{}.bad", conversation.0));
-                    remove(&aside)?;
-                    std::fs::rename(&dir, &aside)
-                        .context("moving an unreadable history cache aside")?;
+                    let number = next_bad_number(&self.root, conversation)?;
+                    move_aside(&dir, &self.root.join(format!("{}.bad-{number}", conversation.0)))?;
+                    prune_bad(&self.root, conversation);
                     tracing::warn!(
                         conversation = conversation.0,
                         category = %category,
@@ -304,6 +306,13 @@ impl Cache {
             .state
             .lock()
             .map_err(|_| anyhow::anyhow!("history cache lock poisoned"))?;
+        self.load_locked(conversation, binding)
+    }
+    fn load_locked(
+        &self,
+        conversation: ConversationId,
+        binding: &NativeBinding,
+    ) -> Result<Option<History>> {
         if self.policy.epoch.load(Ordering::SeqCst) & 1 == 0 {
             return Ok(None);
         }
@@ -352,6 +361,45 @@ impl Cache {
         history.revision = manifest.revision;
         history.completeness = manifest.completeness;
         Ok(Some(history))
+    }
+}
+/// How many set-aside copies of one conversation's cache are kept; older ones are dropped.
+const BAD_COPIES_KEPT: usize = 3;
+/// The numbers of a conversation's set-aside copies (`<id>.bad-<n>`), oldest first.
+fn bad_copies(root: &Path, conversation: ConversationId) -> Result<Vec<u64>> {
+    let prefix = format!("{}.bad-", conversation.0);
+    let mut numbers = Vec::new();
+    for item in std::fs::read_dir(root).context("listing set-aside history caches")? {
+        let name = item?.file_name();
+        if let Some(n) = name
+            .to_str()
+            .and_then(|name| name.strip_prefix(&prefix))
+            .and_then(|n| n.parse::<u64>().ok())
+        {
+            numbers.push(n);
+        }
+    }
+    numbers.sort_unstable();
+    Ok(numbers)
+}
+fn next_bad_number(root: &Path, conversation: ConversationId) -> Result<u64> {
+    Ok(bad_copies(root, conversation)?.last().map_or(1, |n| n + 1))
+}
+/// Moves `dir` to `aside`. Never deletes: if the move fails, `dir` is as it was.
+fn move_aside(dir: &Path, aside: &Path) -> Result<()> {
+    std::fs::rename(dir, aside).context("moving an unreadable history cache aside")
+}
+/// Drops the oldest set-aside copies beyond `BAD_COPIES_KEPT`, only after a new one was made. A
+/// copy that cannot be dropped is left and warned about.
+fn prune_bad(root: &Path, conversation: ConversationId) {
+    let Ok(numbers) = bad_copies(root, conversation) else {
+        return;
+    };
+    let extra = numbers.len().saturating_sub(BAD_COPIES_KEPT);
+    for n in &numbers[..extra] {
+        if let Err(error) = remove(&root.join(format!("{}.bad-{n}", conversation.0))) {
+            tracing::warn!(conversation = conversation.0, %error, "Cannot drop an old set-aside history cache");
+        }
     }
 }
 fn is_not_found(error: &anyhow::Error) -> bool {
