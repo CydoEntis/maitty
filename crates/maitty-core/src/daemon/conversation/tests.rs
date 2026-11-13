@@ -901,23 +901,51 @@ async fn next(rx: &mut mpsc::Receiver<Ev>) -> Event {
     .expect("provider event within deadline")
 }
 
+/// Whether the process a number names has run to its end. Windows goes on listing a process that
+/// has ended for as long as anything still holds it open (a scanner reading a program it has not
+/// seen before does), so being listed does not mean it is running.
+#[cfg(windows)]
+fn has_ended(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
+    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject};
+    // SAFETY: the handle is the one just opened, checked before use and closed once.
+    unsafe {
+        let handle = OpenProcess(PROCESS_SYNCHRONIZE, 0, pid);
+        if handle.is_null() {
+            // Nothing by that number can be opened: it is gone.
+            return true;
+        }
+        let ended = WaitForSingleObject(handle, 0) == WAIT_OBJECT_0;
+        CloseHandle(handle);
+        ended
+    }
+}
+
+#[cfg(not(windows))]
+fn has_ended(_pid: u32) -> bool {
+    false
+}
+
 async fn stopped(pids: Vec<u32>) {
     tokio::task::spawn_blocking(move || {
         let until = std::time::Instant::now() + Duration::from_secs(5);
         loop {
             let mut system = sysinfo::System::new();
             system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
-            let alive = pids.iter().any(|pid| {
-                system
-                    .process(sysinfo::Pid::from_u32(*pid))
-                    .is_some_and(|p| p.status() != sysinfo::ProcessStatus::Zombie)
-            });
-            if !alive {
+            let alive: Vec<String> = pids
+                .iter()
+                .filter_map(|pid| {
+                    let process = system.process(sysinfo::Pid::from_u32(*pid))?;
+                    let running = process.status() != sysinfo::ProcessStatus::Zombie && !has_ended(*pid);
+                    running.then(|| format!("{pid} {:?}", process.name()))
+                })
+                .collect();
+            if alive.is_empty() {
                 return;
             }
             assert!(
                 std::time::Instant::now() < until,
-                "provider process tree survived disposal: {pids:?}"
+                "provider process tree survived disposal: {alive:?}"
             );
             std::thread::yield_now();
         }
