@@ -11,11 +11,11 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 87;
+pub const PROTOCOL_VERSION: u32 = 88;
 
 /// The first version whose daemon counts the files a snapshot restore would change
 /// (`RepoRequest::RestoreCount`).
-pub const RESTORE_COUNT_SINCE: u32 = 87;
+pub const RESTORE_COUNT_SINCE: u32 = 88;
 
 /// The first version whose daemon lists an agent's saved conversations for a folder
 /// (`Query::SavedConversations`).
@@ -55,6 +55,9 @@ pub const CLOSED_SESSIONS_SINCE: u32 = 86;
 /// The most closed sessions the daemon keeps and a list carries; the oldest go first.
 pub const CLOSED_SESSIONS_MAX: usize = 50;
 
+/// The first version whose daemon reopens a closed session (`Command::ReopenClosedSession`).
+pub const REOPEN_CLOSED_SINCE: u32 = 87;
+
 /// An agent session that closed for good or whose agent exited with an error: where it worked, so
 /// it can be found again. It holds no message or terminal content.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,6 +74,12 @@ pub struct ClosedSession {
     pub title: Option<String>,
     /// When it closed (unix seconds).
     pub at: u64,
+    /// The top folder of the linked worktree it worked in, when it was in one.
+    #[serde(default)]
+    pub worktree: Option<PathBuf>,
+    /// The main checkout of that worktree's repository: the only one it is ever made again in.
+    #[serde(default)]
+    pub repo: Option<PathBuf>,
 }
 
 /// The first version whose daemon lists and forgets the commands approved "always in this project"
@@ -815,6 +824,14 @@ pub enum Command {
     },
     /// Stop the agent `Prewarm` started, if no session took it.
     DropPrewarm,
+    /// Start again the closed session the daemon keeps for `agent` and its conversation `session`
+    /// (human clients only), resuming that conversation in a new session. A worktree folder that is
+    /// gone is made again first, at the recorded path, from the recorded branch, in the recorded
+    /// repository; nothing a client sends names a path or a branch.
+    ReopenClosedSession {
+        agent: String,
+        session: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1894,6 +1911,7 @@ impl ClientMsg {
             ClientMsg::Query(Query::AllowedCommands) | ClientMsg::Command(Command::ForgetAllowedCommand { .. }) => ALLOWED_COMMANDS_SINCE,
             ClientMsg::Query(Query::SavedConversations { .. }) => SAVED_CONVERSATIONS_SINCE,
             ClientMsg::Query(Query::ClosedSessions) => CLOSED_SESSIONS_SINCE,
+            ClientMsg::Command(Command::ReopenClosedSession { .. }) => REOPEN_CLOSED_SINCE,
             ClientMsg::Query(Query::Repo {
                 request: crate::repo::RepoRequest::RestoreCount { .. },
                 ..
@@ -2316,7 +2334,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 87);
+        assert_eq!(PROTOCOL_VERSION, 88);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2718,7 +2736,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 87);
+        assert_eq!(PROTOCOL_VERSION, 88);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -3613,9 +3631,55 @@ mod tests {
             branch: Some("main".into()),
             title: Some("fix the parser".into()),
             at: 7,
+            worktree: None,
+            repo: None,
         };
         let reply = encode(&Reply::ClosedSessions(vec![closed.clone()])).unwrap();
         assert!(decode::<OldReply>(&reply).is_err());
         assert!(matches!(decode::<Reply>(&reply), Ok(Reply::ClosedSessions(list)) if list == [closed]));
+    }
+
+    /// Reopening a closed session is a new command: a daemon built before it cannot read it, so a
+    /// client asks only a daemon that says it is new enough, and the window stays open.
+    #[test]
+    fn reopening_a_closed_session_is_asked_only_of_a_daemon_that_knows_it() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldCommand {
+            DropPrewarm,
+        }
+        let reopen = Command::ReopenClosedSession { agent: "claude".into(), session: "abc".into() };
+        assert!(decode::<OldCommand>(&encode(&reopen).unwrap()).is_err());
+        assert!(matches!(
+            decode::<Command>(&encode(&reopen).unwrap()),
+            Ok(Command::ReopenClosedSession { agent, session }) if agent == "claude" && session == "abc"
+        ));
+        assert_eq!(ClientMsg::Command(reopen).introduced_in(), REOPEN_CLOSED_SINCE);
+        const { assert!(REOPEN_CLOSED_SINCE > COMPATIBLE_SINCE && REOPEN_CLOSED_SINCE <= PROTOCOL_VERSION) };
+    }
+
+    /// A closed session from a peer that records no worktree still reads, with neither set.
+    #[test]
+    fn a_closed_session_without_its_worktree_still_reads() {
+        #[derive(Serialize)]
+        struct OldClosedSession {
+            agent: String,
+            session: String,
+            cwd: PathBuf,
+            branch: Option<String>,
+            title: Option<String>,
+            at: u64,
+        }
+        let old = OldClosedSession {
+            agent: "codex".into(),
+            session: "abc".into(),
+            cwd: PathBuf::from("/code/api"),
+            branch: Some("feat".into()),
+            title: None,
+            at: 3,
+        };
+        let read: ClosedSession = decode(&encode(&old).unwrap()).unwrap();
+        assert_eq!((read.worktree, read.repo), (None, None));
+        assert_eq!(read.branch.as_deref(), Some("feat"));
     }
 }

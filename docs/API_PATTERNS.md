@@ -678,13 +678,6 @@ is `saved_conversations { agent, folder }` (`maitty_desktop_client::saved_conver
 own with `tag` 0; it answers `found` as serde writes it (`{"Listed": [...]}` or `"NotSupported"`), or null without
 asking when the daemon running is older than 85, since that daemon would never answer.
 
-Protocol 87 adds `RepoRequest::RestoreCount { commit }` and `RepoReply::RestoreCount(n)`: how many files
-`Command::RestoreSnapshot` of that snapshot would change now, counted the way the restore counts them (the
-snapshot against a tree of the checkout as it is, untracked files included), with nothing kept and no file touched.
-The commit must be one of the checkout's snapshots. The desktop app asks it before it offers a restore
-(`snapshot_restore_count`, this computer's panes only). The request has its own `introduced_in` arm
-(`RESTORE_COUNT_SINCE`), so an older daemon is not asked and the app says to restart it; `COMPATIBLE_SINCE` stays 78.
-
 Protocol 86 adds `Query::ClosedSessions` and `Reply::ClosedSessions`: the agent sessions that closed
 for good or whose agent exited with an error, newest first, at most 50 (what is kept and when is in
 [DATABASE](DATABASE.md#project-specific-closed-sessions)). Only a person's client may ask; a pane or a
@@ -693,6 +686,25 @@ another machine's daemon for its list over that machine's line; the answer is cl
 (SECURITY, "remote daemon"). The query and the reply each have their own `introduced_in` arm
 (`CLOSED_SESSIONS_SINCE`, in `ClientMsg::introduced_in` and `ServerMsg::introduced_in`);
 `COMPATIBLE_SINCE` stays 78, since an older daemon is simply not asked.
+
+Protocol 87 adds `Command::ReopenClosedSession { agent, session }` (`daemon/reopen.rs`): start again the closed
+session the daemon keeps for that agent and conversation id, in a new session running the agent's resume command in
+its folder. Its folder, branch and repository come from the kept entry, never the client. A worktree whose folder is
+gone is made again first (DATABASE "closed sessions" has the rules: never over anything at the path, only from the
+recorded branch, in the recorded repository), trusted like its repo, its setup hook run, and listed with the
+checkouts the app made. The git and file work runs on a blocking task; the answer is `Reply::Ok` once the session is
+started, else `ServerMsg::Error` (an entry not in the list, an id that is not plain, an agent with no resume template, a
+folder that cannot be made again, a branch that is gone or checked out elsewhere, with the branch named). Human
+clients only. `ClosedSession` gains the defaulted `worktree` and `repo`, which an older peer ignores and an older entry
+lacks. The command has its own `introduced_in` arm (`REOPEN_CLOSED_SINCE`); `COMPATIBLE_SINCE` stays 78, since an
+older daemon is simply not asked.
+
+Protocol 88 adds `RepoRequest::RestoreCount { commit }` and `RepoReply::RestoreCount(n)`: how many files
+`Command::RestoreSnapshot` of that snapshot would change now, counted the way the restore counts them (the
+snapshot against a tree of the checkout as it is, untracked files included), with nothing kept and no file touched.
+The commit must be one of the checkout's snapshots. The desktop app asks it before it offers a restore
+(`snapshot_restore_count`, this computer's panes only). The request has its own `introduced_in` arm
+(`RESTORE_COUNT_SINCE`), so an older daemon is not asked and the app says to restart it; `COMPATIBLE_SINCE` stays 78.
 
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store
@@ -1002,7 +1014,7 @@ focus never takes the keys.
 | `NewTab` (`SpawnTab`) | this computer | `target_machine()` with that machine's active workspace |
 | `RenameTab`, `CloseWorkspace` (prompts carrying `WsId` / `TabId`) | this computer | `focus_machine()` (the ids came from its active workspace) |
 | `ConversationRename`, `ConversationArchive` | this computer | `conversation_machine(id)`: the selected session's machine if it lists the chat, else the first machine that does |
-| `NewWorktree` (also with `agent` and `prompt`), `BranchWorktree`, `RemoveWorktree`, `TidyWorktrees`, `CloseWorktree`, `AgentWorktree` | this computer | this computer; refused for another machine's project or pane |
+| `NewWorktree` (also with `agent` and `prompt`), `BranchWorktree`, `RemoveWorktree`, `TidyWorktrees`, `CloseWorktree`, `AgentWorktree`, `ReopenClosedSession` | this computer | this computer; refused for another machine's project or pane |
 | `ForgetCheckApproval`, `ReloadConfig`, `KillServer`, first-state `SelectWorkspace` / `NewWorkspace` | this computer | this computer (no owning machine) |
 
 **Local-only features.** `Feature` (Files, Changes, Find, Branches, References, image paste, agent
