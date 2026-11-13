@@ -1,6 +1,6 @@
 //! How big the two largest things the daemon sends routinely are on the wire: a full page of chat
-//! history and the session list. Each test builds a realistic one, encodes it the way the wire
-//! does (`protocol::encode`, named MessagePack) and fails when it outgrows its budget. A budget is
+//! history and the session list. Each test builds one, encodes the message the daemon sends it in
+//! (`protocol::encode`, named MessagePack) and fails when it outgrows its budget. A budget is
 //! the size measured when it was set, plus 20%; `docs/PERFORMANCE.md` lists both.
 //!
 //! The fixtures use fixed values and ordered maps, so a size changes only when what the daemon
@@ -10,19 +10,20 @@ use super::conversation::history::{
     Completeness, Content, Entry, History, ItemState, MAX_READ_BYTES, MAX_READ_ENTRIES, Role,
     SourceId, Update,
 };
-use crate::conversation::{ConversationId, ExecutionKind, Provider, RecoveryState};
+use crate::conversation::history::Page;
+use crate::conversation::{ConversationId, ExecutionKind, Provider, ReadResult, RecoveryState};
 use crate::layout::Node;
 use crate::protocol::*;
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-/// Measured 2026-11-13 on `dev` at dcb1091d2 with the command in `within_budget`: 106,020 bytes,
-/// plus 20%.
-const PAGE_BUDGET_BYTES: usize = 127_224;
-/// Measured 2026-11-13 on `dev` at dcb1091d2 with the command in `within_budget`: 352,295 bytes,
-/// plus 20%.
-const SNAPSHOT_BUDGET_BYTES: usize = 422_754;
+/// The page as a `ServerMsg::Reply(Reply::ConversationRead(..))` carries it. Measured 2026-11-13 on
+/// `dev` at dcb1091d2 with the command in `within_budget`: 106,173 bytes, plus 20%.
+const PAGE_BUDGET_BYTES: usize = 127_408;
+/// The list as a `ServerMsg::State` carries it. Measured 2026-11-13 on `dev` at dcb1091d2 with the
+/// command in `within_budget`: 352,302 bytes, plus 20%.
+const SNAPSHOT_BUDGET_BYTES: usize = 422_763;
 
 const SESSIONS: u32 = 50;
 const PROJECTS: [&str; 5] = [
@@ -162,9 +163,31 @@ fn a_full_history_page_stays_within_its_wire_budget() {
     // as the same nine bytes.
     within_budget(
         "A history page of 128 entries",
-        encode(&page).unwrap().len(),
+        encode(&ServerMsg::Reply(Reply::ConversationRead(read_result(
+            page,
+        ))))
+        .unwrap()
+        .len(),
         PAGE_BUDGET_BYTES,
     );
+}
+
+/// The reply a chat's read gets, carrying only the page.
+fn read_result(history: Page) -> ReadResult {
+    ReadResult {
+        conversation: ConversationId(7),
+        generation: 1,
+        status: Status::Done,
+        receipt: None,
+        history,
+        error: None,
+        checks: Vec::new(),
+        approvals: Vec::new(),
+        answered_approvals: Vec::new(),
+        cancelling: false,
+        queued: Vec::new(),
+        meta: None,
+    }
 }
 
 fn project_of(i: u32) -> &'static str {
@@ -518,7 +541,7 @@ fn a_fifty_session_list_stays_within_its_wire_budget() {
     assert_eq!(snapshot.terms.len(), SESSIONS as usize);
     within_budget(
         "A Snapshot of 50 sessions",
-        encode(&snapshot).unwrap().len(),
+        encode(&ServerMsg::State(snapshot)).unwrap().len(),
         SNAPSHOT_BUDGET_BYTES,
     );
 }
