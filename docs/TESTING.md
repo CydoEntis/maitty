@@ -121,6 +121,20 @@ A daemon test that finds a pane by its folder names that folder canonically
 (`clean_path(root.canonicalize())`). The pane's shell reports the folder's real name at its first
 prompt, and the temp folder can be spelled another way (an 8.3 name such as `RUNNER~1` on Windows).
 
+The desktop sidebar's list code is replayed against
+`apps/gui/src/features/workspace/listReplay.fixture.json` by `listReplay.test.ts` beside it: over 200
+`sessions-changed` payloads and `list_sessions` answers with a daemon restart (revision back to 1),
+a lost update (a revision gap, then the whole list), a close that is undone, and a pane running ssh.
+It feeds each through `conversationsFromSnapshot` into `useSessionList` on fake timers and fails if a
+row leaves without a removal reason. The fixture is built, not recorded: `node
+scripts/build-list-replay.ts` in `apps/gui` writes it, so change the script, not the JSON. To record
+one from a real daemon instead, run the app from source (`pnpm desktop:dev`), temporarily make
+`applySnapshot` in `useSessionSync.ts` and `loadConversations` in `api/daemon.ts` push
+`{ after, event, payload }` (milliseconds since the last step, `sessions-changed` or `list_sessions`,
+the raw snapshot) onto an array on `window`, copy it out from the devtools console with
+`copy(JSON.stringify({ source: 'recorded …', steps }))`, and drop the edits. Set `source` to say
+where and when it was recorded, and update the pane numbers the test names for its scenario.
+
 ## Project-specific: testing over ssh (fake-ssh)
 
 Anything that reaches another machine is tested through a stand-in for `ssh`, never a real
