@@ -11,6 +11,7 @@ pub use check::first_failing_line;
 mod check_source;
 mod check_stale;
 mod clone;
+mod commit;
 mod commands;
 mod contain;
 mod conversation;
@@ -2877,7 +2878,7 @@ impl Daemon {
                             client.from.is_some() || client.structured.is_some()
                         }) =>
                     {
-                        ServerMsg::Error("Only a human client can fetch, pull or push this way".into())
+                        ServerMsg::Error("Only a human client can fetch, pull, push or commit this way".into())
                     }
                     Query::Git { term, request, tag } => {
                         let folder = self
@@ -2898,7 +2899,7 @@ impl Daemon {
                         };
                         let tx = self.tx.clone();
                         tokio::task::spawn_blocking(move || {
-                            let outcome = sync::sync(&folder, &request, sync::SYNC_LIMIT);
+                            let outcome = sync::answer(&folder, &request);
                             let reply = Reply::GitDone { tag, outcome };
                             let _ = tx.blocking_send(Ev::Answered { client, reply });
                         });

@@ -1,7 +1,8 @@
-//! Fetching, pulling and pushing the checkout a pane is in, when a person's client asks
-//! (`Query::Git`). Nothing here merges, rebases or forces: a pull only fast-forwards. git is given
-//! no way to ask a question, so it fails when it would need a password, and the whole request is
-//! stopped at its deadline. Each function blocks, so it runs off the event loop.
+//! What a person's client may have done to the checkout a pane is in (`Query::Git`): fetch, pull,
+//! push, and commit (`commit.rs`). Nothing here merges, rebases or forces: a pull only
+//! fast-forwards. git is given no way to ask a question, so it fails when it would need a
+//! password, and the whole request is stopped at its deadline. Each function blocks, so it runs
+//! off the event loop.
 
 use crate::proc::RunError;
 use crate::protocol::GitRequest;
@@ -9,13 +10,24 @@ use std::path::Path;
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-/// How long one request may take, all its git runs together.
-pub(super) const SYNC_LIMIT: Duration = Duration::from_secs(crate::protocol::GIT_SYNC_LIMIT_SECS);
+/// How long `request` may take, all its git runs together. A commit can run the repository's own
+/// hooks (formatters, tests), so it gets longer than talking to a remote.
+fn limit_of(request: &GitRequest) -> Duration {
+    Duration::from_secs(match request {
+        GitRequest::Commit { .. } => crate::protocol::GIT_COMMIT_LIMIT_SECS,
+        GitRequest::Fetch | GitRequest::Pull | GitRequest::Push => crate::protocol::GIT_SYNC_LIMIT_SECS,
+    })
+}
+
+/// Does `request` to the checkout at `folder`, within the time that request is given.
+pub(super) fn answer(folder: &Path, request: &GitRequest) -> Result<String, String> {
+    sync(folder, request, limit_of(request))
+}
 
 /// Does `request` to the checkout at `folder` and says what happened in one line, or why nothing
 /// did, also in one line.
-pub(super) fn sync(folder: &Path, request: &GitRequest, limit: Duration) -> Result<String, String> {
-    let git = Git { folder, deadline: Instant::now() + limit, limit };
+fn sync(folder: &Path, request: &GitRequest, limit: Duration) -> Result<String, String> {
+    let git = Git::new(folder, limit);
     match request {
         GitRequest::Fetch => {
             git.run(&["fetch", "--prune"])?;
@@ -23,6 +35,7 @@ pub(super) fn sync(folder: &Path, request: &GitRequest, limit: Duration) -> Resu
         }
         GitRequest::Pull => pull(&git),
         GitRequest::Push => push(&git),
+        GitRequest::Commit { message, paths } => super::commit::commit(&git, message, paths.as_deref()),
     }
 }
 
@@ -58,15 +71,20 @@ fn push(git: &Git) -> Result<String, String> {
 }
 
 /// git in one checkout, until one deadline.
-struct Git<'a> {
+pub(super) struct Git<'a> {
     folder: &'a Path,
     deadline: Instant,
     limit: Duration,
 }
 
-impl Git<'_> {
+impl<'a> Git<'a> {
+    /// git in `folder`, for `limit` from now.
+    pub(super) fn new(folder: &'a Path, limit: Duration) -> Self {
+        Git { folder, deadline: Instant::now() + limit, limit }
+    }
+
     /// What git printed, trimmed, or the line of what it said that names the problem.
-    fn run(&self, args: &[&str]) -> Result<String, String> {
+    pub(super) fn run(&self, args: &[&str]) -> Result<String, String> {
         let mut command = Command::new("git");
         command
             .arg("-C")
@@ -90,6 +108,8 @@ impl Git<'_> {
             .lines()
             .find(|line| line.starts_with("fatal") || line.starts_with("error") || line.contains("[rejected]"))
             .or_else(|| ran.stderr.lines().find(|line| !line.trim().is_empty()))
+            // "nothing to commit" is said where answers go, on the last line.
+            .or_else(|| ran.stdout.lines().rev().find(|line| !line.trim().is_empty()))
             .map_or("git could not do it", str::trim);
         Err(line.to_owned())
     }
@@ -111,7 +131,7 @@ mod tests {
     const LIMIT: Duration = Duration::from_secs(60);
 
     fn git(folder: &Path, args: &[&str]) -> String {
-        Git { folder, deadline: Instant::now() + LIMIT, limit: LIMIT }.run(args).expect("git")
+        Git::new(folder, LIMIT).run(args).expect("git")
     }
 
     /// A repository on `main` with one commit.

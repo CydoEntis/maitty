@@ -654,6 +654,18 @@ another machine keeps only logins GitHub could have given out and one clean `pro
 host sends it through `github_accounts(machine, tag)` and raises a `github-accounts` event with the tag
 and the report (`apps/gui/src/api/githubAccounts.ts` waits on it for 20 seconds).
 
+Protocol 89 adds `GitRequest::Commit { message, paths }` to `Query::Git` (`GIT_COMMIT_SINCE`;
+`COMPATIBLE_SINCE` stays). With `paths` the daemon stages and commits those files only (`git add -A --`
+then `git commit --only --`), and whatever else is staged stays staged and out of the commit; with none
+it commits everything that changed. The answer's line is the new commit's short id, a space and its
+subject. A path is a file's name relative to the checkout: one that is empty, absolute, starts with
+`-`, holds `..`, a `.git` part or a control character is refused, and git is told to read every path
+literally (`--literal-pathspecs`), so a `*` or a `:(…)` is a name, not a pattern. The message is trimmed
+and may be at most `GIT_COMMIT_MESSAGE_MAX_BYTES` (16 KiB) with no control character but a line break
+or a tab; an empty one is refused. The paths together may be at most `GIT_COMMIT_PATHS_MAX_BYTES`
+(24 KiB). The repository's hooks run and signing is as the repository has it; nothing is amended. The
+request is stopped after `GIT_COMMIT_LIMIT_SECS` (120).
+
 Protocol 88 adds `Query::Git { term, request, tag }` with `Reply::GitDone { tag, outcome }`
 (`GIT_SYNC_SINCE`; `COMPATIBLE_SINCE` stays). `request` is a `GitRequest`: `Fetch` (`git fetch --prune`),
 `Pull` (`git pull --ff-only`) or `Push` (`git push`, or `git push -u origin <branch>` for a branch with

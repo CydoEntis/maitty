@@ -2016,6 +2016,11 @@ async fn only_a_person_can_clone_or_ask_about_github_and_an_oversized_clone_is_a
         let push = Query::Git { term: from.0, request: crate::protocol::GitRequest::Push, tag: 9 };
         let refused = exchange(&mut session, 450, crate::protocol::ClientMsg::Query(push), Some(from)).await;
         assert!(matches!(refused, ServerMsg::Error(ref message) if message.contains("Only a human")), "{refused:?}");
+        let from = authenticated_pane(&mut session);
+        let commit = crate::protocol::GitRequest::Commit { message: "m".into(), paths: None };
+        let commit = Query::Git { term: from.0, request: commit, tag: 9 };
+        let refused = exchange(&mut session, 452, crate::protocol::ClientMsg::Query(commit), Some(from)).await;
+        assert!(matches!(refused, ServerMsg::Error(ref message) if message.contains("Only a human")), "{refused:?}");
         let nowhere = Query::Git { term: u32::MAX, request: crate::protocol::GitRequest::Fetch, tag: 9 };
         let refused = exchange(&mut session, 451, crate::protocol::ClientMsg::Query(nowhere), None).await;
         assert!(matches!(refused, ServerMsg::Error(ref message) if message.contains("no pane")), "{refused:?}");

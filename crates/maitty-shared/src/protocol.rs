@@ -11,7 +11,18 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 88;
+pub const PROTOCOL_VERSION: u32 = 89;
+
+/// The first version whose daemon commits files of a pane's checkout on request
+/// (`GitRequest::Commit`).
+pub const GIT_COMMIT_SINCE: u32 = 89;
+/// How long the daemon gives one commit, in seconds: the repository's own hooks run in it.
+pub const GIT_COMMIT_LIMIT_SECS: u64 = 120;
+/// The longest commit message taken, in bytes.
+pub const GIT_COMMIT_MESSAGE_MAX_BYTES: usize = 16 * 1024;
+/// The most that the paths of one commit may add up to, in bytes: they are passed to git as
+/// arguments, and a command line only holds so much.
+pub const GIT_COMMIT_PATHS_MAX_BYTES: usize = 24 * 1024;
 
 /// The first version whose daemon fetches, pulls and pushes a pane's checkout on request
 /// (`Query::Git`).
@@ -30,6 +41,14 @@ pub enum GitRequest {
     /// Send the branch to its upstream, or to `origin` under its own name when it has none yet.
     /// Never forced.
     Push,
+    /// Commit `paths` with `message`, or everything that changed when no paths are named. Each
+    /// path is a file's name relative to the checkout, with `/` between its parts. Whatever else
+    /// is staged stays out of a commit that names paths. The answer's line is the new commit's
+    /// short id, a space and its subject.
+    Commit {
+        message: String,
+        paths: Option<Vec<String>>,
+    },
 }
 
 /// The first version whose daemon lists the repositories its machine's GitHub account can clone
@@ -1931,6 +1950,7 @@ impl ClientMsg {
             ClientMsg::Query(Query::CloneRepo { .. }) => CLONE_SINCE,
             ClientMsg::Query(Query::GitHubAccounts { .. }) => GITHUB_ACCOUNTS_SINCE,
             ClientMsg::Query(Query::GitHubRepos { .. } | Query::GitHubOwners { .. }) => GITHUB_REPOS_SINCE,
+            ClientMsg::Query(Query::Git { request: GitRequest::Commit { .. }, .. }) => GIT_COMMIT_SINCE,
             ClientMsg::Query(Query::Git { .. }) => GIT_SYNC_SINCE,
             _ => COMPATIBLE_SINCE,
         }
@@ -2336,7 +2356,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 88);
+        assert_eq!(PROTOCOL_VERSION, 89);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2608,7 +2628,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 88);
+        assert_eq!(PROTOCOL_VERSION, 89);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -3459,5 +3479,8 @@ mod tests {
             assert_eq!(ClientMsg::Query(Query::Git { term: 3, request, tag: 1 }).introduced_in(), GIT_SYNC_SINCE);
         }
         const { assert!(GIT_SYNC_SINCE > COMPATIBLE_SINCE && GIT_SYNC_SINCE <= PROTOCOL_VERSION) };
+        let commit = GitRequest::Commit { message: "m".into(), paths: None };
+        assert_eq!(ClientMsg::Query(Query::Git { term: 3, request: commit, tag: 1 }).introduced_in(), GIT_COMMIT_SINCE);
+        const { assert!(GIT_COMMIT_SINCE > GIT_SYNC_SINCE && GIT_COMMIT_SINCE <= PROTOCOL_VERSION) };
     }
 }
