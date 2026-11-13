@@ -83,6 +83,8 @@ pub struct SavedPane {
     pub pinned: bool,
     #[serde(default)]
     pub archived: bool,
+    #[serde(default)]
+    pub put_away_for: Option<String>,
     /// Snoozed until this time (unix seconds).
     #[serde(default)]
     pub snoozed_until: Option<u64>,

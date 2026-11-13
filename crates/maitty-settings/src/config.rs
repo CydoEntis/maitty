@@ -270,6 +270,8 @@ pub struct Sessions {
     /// helpers_at_once` fills it in when this is not set (`fold_legacy_helpers`).
     pub helpers_at_once: String,
     pub pr_wake: bool,
+    /// Put away a finished or idle session once the PR watcher reads its pull request merged.
+    pub put_away_merged: bool,
 }
 
 impl Default for Sessions {
@@ -280,6 +282,7 @@ impl Default for Sessions {
             helpers: "ask".into(),
             helpers_at_once: "3".into(),
             pr_wake: true,
+            put_away_merged: false,
         }
     }
 }
