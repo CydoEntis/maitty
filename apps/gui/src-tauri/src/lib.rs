@@ -701,6 +701,24 @@ async fn start_agent_session(
         .map_err(|error| format!("{error:#}"))
 }
 
+/// Start GitHub's own sign-in (`gh auth login`, see `maitty_desktop_client::GITHUB_SIGN_IN_COMMAND`) in a new
+/// terminal session of a machine, this computer when `machine` is left out. The window chooses the machine and
+/// nothing else: no word of the command comes from it.
+#[tauri::command]
+async fn start_github_sign_in(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+) -> Result<serde_json::Value, String> {
+    if let Some(machine) = machine.filter(|machine| routing::is_remote(Some(*machine))) {
+        return wire.github_sign_in(machine).map(|()| serde_json::Value::Null);
+    }
+    let home = app.path().home_dir().map_err(|error| error.to_string())?;
+    maitty_desktop_client::start_github_sign_in(home, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
 /// Start an agent ahead of its first message (see `maitty_desktop_client::prewarm_agent_session`): the same agent
 /// names and flag rules as `start_agent_session`.
 #[tauri::command]
@@ -1553,6 +1571,7 @@ pub fn run() {
             new_worktree_session,
             restore_snapshot,
             start_agent_session,
+            start_github_sign_in,
             prewarm_agent_session,
             drop_prewarmed_agent,
             start_terminal_session,

@@ -295,6 +295,8 @@ async fn a_session_is_not_started_on_this_computer_or_a_machine_that_is_down_or_
         "This computer starts its own sessions"
     );
     assert_eq!(wire.new_session(1, "~").unwrap_err(), "box is not connected");
+    assert_eq!(wire.github_sign_in(0).unwrap_err(), "This computer starts its own sessions");
+    assert_eq!(wire.github_sign_in(1).unwrap_err(), "box is not connected");
     for folder in ["", "   ", "/a\nb", &"x".repeat(5000)] {
         assert!(wire.new_session(1, folder).unwrap_err().starts_with("Type a folder"), "{folder:?}");
     }

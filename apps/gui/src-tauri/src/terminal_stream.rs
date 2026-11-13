@@ -54,6 +54,8 @@ const FOLDER_LISTING_EVENT: &str = "folder-listing";
 const REPOSITORY_CLONED_EVENT: &str = "repository-cloned";
 /// Who a machine says is signed in to GitHub there: `{machine, tag, report}`.
 const GITHUB_ACCOUNTS_EVENT: &str = "github-accounts";
+/// A machine's home folder, as its daemon reads it.
+const REMOTE_HOME: &str = "~";
 /// Longest repository address the daemon accepts.
 const MOST_ADDRESS_BYTES: usize = 2048;
 /// The shared settings, whenever the daemon says them: the answer to a question, or a change.
@@ -273,6 +275,18 @@ impl Wire {
         handle
             .send(Outgoing { machine, msg })
             .map_err(|_| refusal(handle, machine))
+    }
+
+    /// Start GitHub's own sign-in in a terminal session on another machine, in its home folder. The
+    /// machine is the only thing chosen here: the command is `GITHUB_SIGN_IN_COMMAND`.
+    pub fn github_sign_in(&self, machine: u16) -> Result<(), String> {
+        if !routing::is_remote(Some(machine)) {
+            return Err("This computer starts its own sessions".to_string());
+        }
+        self.send(
+            MachineId(machine),
+            maitty_desktop_client::github_sign_in_message(std::path::PathBuf::from(REMOTE_HOME)),
+        )
     }
 
     /// A fleet request for another machine's daemon: the machine's line takes it without waiting.

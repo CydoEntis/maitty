@@ -870,6 +870,28 @@ pub async fn start_agent_session(
     }
 }
 
+/// GitHub's own sign-in, as a terminal session runs it: the person finishes it there and in their browser. The whole
+/// line is this constant; nothing a window sends is part of it.
+pub const GITHUB_SIGN_IN_COMMAND: &str = "gh auth login --web --git-protocol https";
+
+/// The request that starts a terminal session in `cwd` running GitHub's sign-in, for this computer's daemon or
+/// another machine's.
+pub fn github_sign_in_message(cwd: PathBuf) -> ClientMsg {
+    ClientMsg::Command(Command::NewWorkspace {
+        cwd: Some(cwd),
+        name: None,
+        cmd: Some(GITHUB_SIGN_IN_COMMAND.to_owned()),
+    })
+}
+
+/// Start GitHub's sign-in as the first command of a new terminal session on this computer, in `home`.
+pub async fn start_github_sign_in(home: PathBuf, daemon_executable: PathBuf) -> Result<Value> {
+    match request(github_sign_in_message(home), daemon_executable).await? {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected terminal session reply"),
+    }
+}
+
 /// The command that keeps an agent warm in a folder: the same line `start_agent_session` sends, so the session started
 /// next with the same agent, flags and folder is the one already running.
 pub fn prewarm_message(cwd: PathBuf, agent: &str, flags: &[String]) -> Result<ClientMsg> {
@@ -2430,6 +2452,18 @@ mod executable_lookup_tests {
 #[cfg(test)]
 mod agent_command_tests {
     use super::agent_command;
+
+    #[test]
+    fn the_github_sign_in_is_one_fixed_line_whatever_folder_it_starts_in() {
+        use super::{ClientMsg, Command, github_sign_in_message};
+        for folder in ["~", "/home/dev", "; rm -rf ~"] {
+            let ClientMsg::Command(Command::NewWorkspace { cwd, name, cmd }) = github_sign_in_message(folder.into()) else {
+                panic!("a sign-in is a new terminal session");
+            };
+            assert_eq!(cmd.as_deref(), Some("gh auth login --web --git-protocol https"));
+            assert_eq!((cwd, name), (Some(folder.into()), None));
+        }
+    }
 
     fn words(items: &[&str]) -> Vec<String> {
         items.iter().map(|item| (*item).to_string()).collect()

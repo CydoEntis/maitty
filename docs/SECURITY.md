@@ -156,6 +156,13 @@ which is the person's own, shown only in Settings and never logged. Signing in i
 interactive command in an ordinary terminal session (`start_agent_session` with `auth login` or
 `login`, each a plain word that `agent_command` allows).
 
+`start_github_sign_in(machine)` starts GitHub's own sign-in for Settings › GitHub: a terminal session
+in the home folder of this computer or of the machine named, whose first command is the constant
+`GITHUB_SIGN_IN_COMMAND` (`gh auth login --web --git-protocol https`, in `maitty-desktop-client`). The
+webview supplies the machine and nothing else, so it is not a way to run a program of the window's
+choosing. The person finishes the sign-in in that terminal and their browser; the host reads no code,
+password or token from it.
+
 `export_daemon_log` (`daemon_log.rs`) saves a copy of the end of the service's log (4 MiB at most) as
 `maitty-log.txt` in the Downloads folder, for a person to send when something went wrong (Settings ›
 Daemon › Service log). The webview supplies nothing: the log, the folder and the name are the
