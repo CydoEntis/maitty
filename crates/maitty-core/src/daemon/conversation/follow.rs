@@ -121,12 +121,8 @@ fn format_of(provider: Provider) -> Format {
 }
 
 fn provider_of(agent: Option<&str>) -> Option<Provider> {
-    match agent?.trim().to_ascii_lowercase().as_str() {
-        "claude" => Some(Provider::Claude),
-        "codex" => Some(Provider::Codex),
-        "gemini" => Some(Provider::Gemini),
-        _ => None,
-    }
+    let agent = agent?.trim().to_ascii_lowercase();
+    Provider::ALL.into_iter().find(|p| p.agent_name() == agent)
 }
 
 /// What a background read gives back.
