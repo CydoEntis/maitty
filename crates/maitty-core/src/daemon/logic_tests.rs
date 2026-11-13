@@ -8834,3 +8834,19 @@ fn a_spare_alerts_nobody_and_a_pane_cannot_ask_for_one() {
     d.drop_warm();
     close(&mut d, &[starter]);
 }
+
+#[test]
+fn an_agent_that_ended_leaves_no_reason_for_a_status_it_no_longer_has() {
+    let (mut d, _rx) = daemon();
+    let id = pane(&mut d);
+    d.terms.get_mut(&id).unwrap().agent = Some("claude".into());
+    d.hook(id, "claude".into(), HookStatus::Working, "PreToolUse", &[]);
+    assert_eq!(d.terms[&id].status_why, "hook: PreToolUse");
+    d.hook(id, "claude".into(), HookStatus::Gone, "SessionEnd", &[]);
+    assert_eq!(d.terms[&id].status, Status::None);
+    assert_eq!(
+        d.terms[&id].status_why, "",
+        "the reason was for the status it had, not for none"
+    );
+    close(&mut d, &[id]);
+}

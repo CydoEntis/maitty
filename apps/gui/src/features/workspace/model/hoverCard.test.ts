@@ -17,7 +17,7 @@ describe('where the hover card goes', () => {
 
 describe('why a session has its status', () => {
   const NOW = 1_700_000_000_000
-  const set = (statusWhy: string, agoMs: number | null) => ({ status: 'working' as const, statusWhy, statusSince: agoMs === null ? null : NOW - agoMs })
+  const set = (statusWhy: string, agoMs: number | null) => ({ status: 'working' as const, helperAsk: [], statusWhy, statusSince: agoMs === null ? null : NOW - agoMs })
 
   it('names the hook that set it and how long ago', () => {
     expect(statusWhyLine(set('hook: Stop', 3_000), NOW)).toBe('hook: Stop, 3 s ago')
@@ -45,5 +45,23 @@ describe('why a session has its status', () => {
 
   it('says nothing for a session whose status is not known', () => {
     expect(statusWhyLine({ ...set('hook: Stop', 3_000), status: 'unknown' }, NOW)).toBeNull()
+  })
+})
+
+describe('when the reason is not about the status shown', () => {
+  const NOW = 1_700_000_000_000
+  const set = { status: 'needs' as const, helperAsk: [] as string[], statusWhy: 'hook: PreToolUse', statusSince: NOW - 3_000 }
+
+  it('says nothing while the session waits on you to start its helpers', () => {
+    expect(statusWhyLine({ ...set, helperAsk: ['review the diff'] }, NOW)).toBeNull()
+  })
+
+  it('says nothing for a stopped session, whose reason explains idle and not the stop', () => {
+    expect(statusWhyLine({ ...set, status: 'error', statusWhy: 'screen: quiet' }, NOW)).toBeNull()
+  })
+
+  it('cuts a long screen pattern short and keeps the age', () => {
+    const statusWhy = `screen: matched \`${'a|'.repeat(200)}\``
+    expect(statusWhyLine({ ...set, statusWhy }, NOW)).toBe(`${statusWhy.slice(0, 139)}…, 3 s ago`)
   })
 })

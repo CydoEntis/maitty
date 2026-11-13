@@ -56,11 +56,14 @@ export function hoverCardText(session: SessionView, title: string): HoverCardTex
 /**
  * Where the status came from and how long ago (`hook: Stop, 3 s ago`), in the daemon's own words; null
  * when it gave no reason. The daemon writes the reason when the status changes, so its age is the
- * status's. A session whose status is not known has none: the reason it last had is not about now.
+ * status's. There is none where the reason is not about the status shown: a status that is not known
+ * (the reason is from before), a stopped session (the reason explains idle or done, and the stop is the
+ * failed command), and one waiting on you to start its helpers (the reason is for the status under it).
  */
-export function statusWhyLine(session: Pick<SessionView, 'status' | 'statusWhy' | 'statusSince'>, now: number): string | null {
-  if (session.statusWhy === '' || session.status === 'unknown') return null
-  return session.statusSince === null ? session.statusWhy : `${session.statusWhy}, ${formatAge(now - session.statusSince)} ago`
+export function statusWhyLine(session: Pick<SessionView, 'status' | 'statusWhy' | 'statusSince' | 'helperAsk'>, now: number): string | null {
+  const why = clipped(session.statusWhy)
+  if (why === '' || session.status === 'unknown' || session.status === 'error' || session.helperAsk.length > 0) return null
+  return session.statusSince === null ? why : `${why}, ${formatAge(now - session.statusSince)} ago`
 }
 
 export type Box = { left: number; right: number; top: number }
