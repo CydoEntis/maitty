@@ -23,12 +23,17 @@ import { suggestBranchName } from '../model/worktreeName'
 import { Icon } from './glyphs'
 import { ChipMenu, type ChipItem } from './NewChatMenus'
 import { ResumeList } from './ResumeList'
+import { failedStartLabel, useBackgroundStarts } from '../useBackgroundStarts'
+import { isMacPlatform } from '../model/shortcuts'
 
 /** The branch a chat starts on when it is not the folder's current one: switch to it, or work in a new worktree of it. */
 export type BranchChoice = { name: string; create: boolean; worktree: boolean }
 
 /** What the page asks the window to start: a chat with this agent, model and effort, in this folder, and its first message; `resume` names a saved conversation to continue. */
 export type NewChatRequest = { folder: string; agent: ChatAgent; model: string; reasoning: AgentChoice['reasoning']; mode: string; message: string; branch: BranchChoice | null; machine: number; machineName: string; resume: string | null }
+
+/** How a start is asked for: `background` starts the chat without opening it, and the page stays for the next. */
+export type NewChatStartOptions = { background?: boolean }
 
 /** The key the first message's files are kept under: no conversation exists yet, and a real one is never negative. */
 const NEW_CHAT_DRAFT = -1
@@ -49,7 +54,7 @@ type Props = {
   codexYolo?: boolean
   /** The system's folder picker, whose answer is null when it is cancelled; null itself for another machine, whose disk this window cannot browse. */
   browse: (() => Promise<string | null>) | null
-  onStart: (request: NewChatRequest) => Promise<void>
+  onStart: (request: NewChatRequest, options?: NewChatStartOptions) => Promise<void>
   /** Starts the chat's agent while the first message is written (`useWarmAgent`); without it the agent starts on send. */
   onWarm?: WarmAgent
   onOtherMachine: (machine: number) => void
@@ -68,13 +73,16 @@ const SUGGESTED_TASKS = ['Explain how this project is laid out', 'Review my unco
 
 const lastPart = (path: string): string => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
 const isPath = (text: string): boolean => /^(~|\/|[A-Za-z]:[\\/])/.test(text)
+/** The key that starts a chat in the background, as this platform writes it. */
+const BACKGROUND_KEY = isMacPlatform(navigator.userAgent) ? '⌘Enter' : 'Ctrl+Enter'
 
 /**
  * A new agent chat (layout 2f). First a folder is picked from the projects, a pasted path or the
  * system's folder picker; then three buttons say where the chat works (project, branch, a new
  * worktree or this folder) over a few tasks to start from. The message box is under both, with the
  * agent, model and effort on its model button and the permission mode beside it. The chat it starts
- * is the agent in a terminal the daemon owns, shown as its chat (ADR 0003). Enter sends, Esc goes back.
+ * is the agent in a terminal the daemon owns, shown as its chat (ADR 0003). Enter sends, Ctrl+Enter (⌘Enter on macOS)
+ * starts it in the background and keeps the page for the next one, Esc goes back.
  */
 export function NewChatPage({ machines, machine, projects, defaultAgent, bypassAllowed = false, codexYolo = false, browse, onStart, onWarm, onOtherMachine, onAddMachine, onCancel, seed = null }: Props) {
   // On another machine the chat is the agent started in a shell there: this computer's models, branches, files and installed agents say nothing of it.
@@ -92,6 +100,9 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
   const [treeMode, setTreeMode] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const background = useBackgroundStarts(onStart)
+  // Branch names chats started from this page took, which the branch list may not show yet: the next suggestion avoids them.
+  const [takenNames, setTakenNames] = useState<ReadonlySet<string>>(() => new Set())
   const text = useRef<HTMLTextAreaElement>(null)
   const box = useRef<HTMLDivElement>(null)
   const { attachments } = useComposerState(NEW_CHAT_DRAFT)
@@ -127,7 +138,7 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
   const explicit = branchPick?.folder === folder ? branchPick.pick : null
   const { state: sync, busy: pulling, pull } = useSyncState(remote ? '' : folder, true)
   // With Own copy on and no branch chosen, the chat gets a new branch under a suggested name, in a worktree.
-  const suggested = useMemo(() => (treeMode && branches !== null ? suggestBranchName(new Set(branches.branches.map((entry) => entry.name))) : null), [treeMode, branches])
+  const suggested = useMemo(() => (treeMode && branches !== null ? suggestBranchName(new Set([...branches.branches.map((entry) => entry.name), ...takenNames])) : null), [treeMode, branches, takenNames])
   const chosen = useMemo(() => explicit ?? (treeMode && suggested !== null ? { name: suggested, create: true, worktree: true } : null), [explicit, treeMode, suggested])
   const branch = chosen
   const isInstalled = (id: string) => (installed === null ? chatAgentOf(id) !== null : installed.includes(id))
@@ -154,16 +165,46 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
     () => (remote || folder === '' || agentMissing || branch !== null ? null : { folder, agent, model: choice.model, reasoning: choice.reasoning, mode: startMode }),
     [remote, folder, agentMissing, branch, agent, choice.model, choice.reasoning, startMode],
   )
-  useWarmAgent(onWarm, warmSpec, busy)
+  // A start in the background takes the warm agent; asking again while it starts would make a second one.
+  useWarmAgent(onWarm, warmSpec, busy || background.pending > 0)
+  const requestFor = (task: string, resume: string | null): NewChatRequest => {
+    // A saved conversation continues in the folder it was saved in, so a worktree is left out for this start.
+    const startBranch = remote || (resume !== null && branch?.worktree === true) ? null : branch
+    return { folder, agent, model: choice.model, reasoning: choice.reasoning, mode: startMode, message: buildAttachmentMessage(task.trim(), attachments), branch: startBranch, machine, machineName: targetLabel, resume }
+  }
   const start = (task: string = message, resume: string | null = null) => {
     if (busy || folder === '' || agentMissing) return
     setBusy(true)
     setError(null)
-    // A saved conversation continues in the folder it was saved in, so a worktree is left out for this start.
-    const startBranch = remote || (resume !== null && branch?.worktree === true) ? null : branch
-    onStart({ folder, agent, model: choice.model, reasoning: choice.reasoning, mode: startMode, message: buildAttachmentMessage(task.trim(), attachments), branch: startBranch, machine, machineName: targetLabel, resume })
+    onStart(requestFor(task, resume))
       .catch((failure: unknown) => { setError(errorMessage(failure, 'Could not start the chat')) })
       .finally(() => { setBusy(false); reloadBranches() })
+  }
+  // The box is emptied for the next chat and every other choice stays. A new branch's name is taken, so the next start
+  // gets another. Another machine's chat is typed into a shell there and opened to do it, so there it is a plain start.
+  const startInBackground = () => {
+    if (remote) {
+      start()
+      return
+    }
+    if (busy || folder === '' || agentMissing) return
+    const request = requestFor(message, null)
+    const newBranch = request.branch?.create === true ? request.branch.name : null
+    if (newBranch !== null) {
+      setTakenNames((now) => new Set([...now, newBranch]))
+      if (explicit?.create === true) setBranchPick(null)
+    }
+    background.launch(request, { text: message, attachments })
+    setMessage('')
+    updateComposer(NEW_CHAT_DRAFT, (state) => ({ ...state, attachments: [] }))
+  }
+  // A failed start's message comes back after whatever has been typed since, never over it.
+  const putBack = (key: number) => {
+    const draft = background.takeBack(key)
+    if (draft === null) return
+    setMessage((now) => (now.trim() === '' ? draft.text : draft.text.trim() === '' ? now : `${now}\n\n${draft.text}`))
+    updateComposer(NEW_CHAT_DRAFT, (state) => ({ ...state, attachments: [...state.attachments, ...draft.attachments] }))
+    text.current?.focus()
   }
   const openFolder = (path: string) => {
     setExtra({ folder: path, name: lastPart(path), color: 'var(--dim)' })
@@ -181,7 +222,8 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
     if (event.nativeEvent.isComposing) return
     if (event.key === 'Enter' && !event.shiftKey && event.target === text.current) {
       event.preventDefault()
-      start()
+      if (event.ctrlKey || event.metaKey) startInBackground()
+      else start()
     } else if (event.key === 'Escape') {
       event.preventDefault()
       onCancel()
@@ -374,7 +416,7 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
               <div className="mx-box-row">
                 {!remote && <button type="button" className="mx-box-attach" aria-label="Attach files" title="Attach files" onClick={attach.pick}><Icon name="plus" size={16} /></button>}
                 <span className="mx-spacer" />
-                <button type="button" className={`mx-send${busy || folder === '' || agentMissing ? ' is-off' : ''}`} aria-label={empty ? 'Start chat' : 'Send message'} title={folder === '' ? 'Pick a folder first' : empty ? 'Start an empty chat' : 'Send (Enter)'} disabled={busy || folder === '' || agentMissing} onClick={() => { start() }}>
+                <button type="button" className={`mx-send${busy || folder === '' || agentMissing ? ' is-off' : ''}`} aria-label={empty ? 'Start chat' : 'Send message'} title={folder === '' ? 'Pick a folder first' : `${empty ? 'Start an empty chat' : 'Send (Enter)'}${remote ? '' : ` · ${BACKGROUND_KEY} starts it and keeps this page open`}`} disabled={busy || folder === '' || agentMissing} onClick={() => { start() }}>
                   <Icon name="arrowUp" size={15} strokeWidth={2.2} />
                 </button>
               </div>
@@ -400,6 +442,14 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
             </div>
           </div>
           {error !== null && <p role="alert" className="mx-composer-error">{error}</p>}
+          {background.failed.map((failed) => (
+            <p key={failed.key} role="alert" className="mx-composer-error">
+              {`Could not start ${failedStartLabel(failed.name)}: ${failed.reason} `}
+              <button type="button" className="mx-text-button" aria-label={`Put back ${failedStartLabel(failed.name)}`} onClick={() => { putBack(failed.key) }}>Put back</button>
+              {' · '}
+              <button type="button" className="mx-text-button" aria-label={`Dismiss ${failedStartLabel(failed.name)}`} onClick={() => { background.dismiss(failed.key) }}>Dismiss</button>
+            </p>
+          ))}
           {agentMissing && (
             <p role="alert" className="mx-composer-error">
               {`${AGENT_LABEL[agent]} is not installed on this computer. Pick another agent from the model button, or `}
