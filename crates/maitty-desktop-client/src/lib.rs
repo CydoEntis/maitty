@@ -430,6 +430,15 @@ pub async fn read_helper(term: u32, helper: String, daemon: impl Into<Daemon>) -
     }
 }
 
+/// The Claude Code and Codex agent files of a pane's project and its user's home, read-only (ADR
+/// 0010), as JSON for the window.
+pub async fn read_specialists(term: u32, daemon: impl Into<Daemon>) -> Result<Value> {
+    match request(ClientMsg::Query(Query::Specialists { term }), daemon).await? {
+        Reply::Specialists(list) => Ok(serde_json::to_value(list)?),
+        _ => bail!("daemon returned an unexpected specialists reply"),
+    }
+}
+
 pub async fn conversation_diff(
     id: u64,
     generation: u64,

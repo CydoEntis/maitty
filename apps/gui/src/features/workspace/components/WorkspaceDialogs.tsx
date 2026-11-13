@@ -16,6 +16,7 @@ import { updaterSummary } from '@/features/updates/useUpdater'
 import { ServiceBehindNotice } from '@/features/updates/ServiceBehindNotice'
 import { NewWorktreeDialog } from '@/features/worktrees/NewWorktreeDialog'
 import { GetFileDialog } from './GetFileDialog'
+import { SpecialistsDialog } from './SpecialistsDialog'
 import { MachineUpdateDialog } from './MachineUpdateDialog'
 import { ConfirmCloseDialog } from './ConfirmCloseDialog'
 import { RenameDialog, RenameMachineDialog } from './RenameDialog'
@@ -32,7 +33,7 @@ const loadTopFolder = (term: number) => repoTree(term, null)
 
 /** What opens over or beside the panes: Inspect, the palette, Settings and each dialog. */
 export function WorkspaceDialogs() {
-  const { signInAgent, sessionsQuery, mismatch, inspectOpen, focusMode, inspectTerm, ownsTerminals, focusedSession, projectOf, diffStat, inspectView, lookAt, turnDiff, setTurnDiff, setInspectView, setInspectOpen, flash, shortcutsOpen, platform, root, setShortcutsOpen, welcomeOpen, preferences, setPreferences, setWelcomeOpen, newSession, focusedMachineNumber, paletteOpen, paletteItems, setPaletteOpen, focusedId, sessionMap, needsElsewhere, setFocusMode, focusModeChord, worktreeFrom, createWorktree, setWorktreeFrom, heads, sessions, getFileId, setGetFileId, getFile, updateAsk, setUpdateAsk, updateNamed, closeAsk, setCloseAsk, renamingMachine, machineNicknames, setMachineNicknames, setRenamingMachine, renameId, renameInline, saveName, setRenameId, settingsSection, setSettingsSection, systemReducedMotion, systemDark, previewThemeSoon, showTestNotice, updater, restartNow, setPreviewTheme, online, runningVersion, machinesKnown, retryNamed, removeNamed, grantNamed, copyCommand, addNamed, cancelAdding, usageInfo, chooseStartFolder, toastMessage, updatedTo, setUpdatedTo, restarting } = useWorkspace()
+  const { signInAgent, sessionsQuery, mismatch, inspectOpen, focusMode, inspectTerm, ownsTerminals, focusedSession, projectOf, diffStat, inspectView, lookAt, turnDiff, setTurnDiff, setInspectView, setInspectOpen, flash, shortcutsOpen, platform, root, setShortcutsOpen, welcomeOpen, preferences, setPreferences, setWelcomeOpen, newSession, focusedMachineNumber, paletteOpen, paletteItems, setPaletteOpen, focusedId, sessionMap, needsElsewhere, setFocusMode, focusModeChord, worktreeFrom, createWorktree, setWorktreeFrom, heads, sessions, getFileId, setGetFileId, specialistsId, setSpecialistsId, getFile, updateAsk, setUpdateAsk, updateNamed, closeAsk, setCloseAsk, renamingMachine, machineNicknames, setMachineNicknames, setRenamingMachine, renameId, renameInline, saveName, setRenameId, settingsSection, setSettingsSection, systemReducedMotion, systemDark, previewThemeSoon, showTestNotice, updater, restartNow, setPreviewTheme, online, runningVersion, machinesKnown, retryNamed, removeNamed, grantNamed, copyCommand, addNamed, cancelAdding, usageInfo, chooseStartFolder, toastMessage, updatedTo, setUpdatedTo, restarting } = useWorkspace()
   // An agent always has a Terminal tab. Pinned under the chat, its terminals are in the pane, and the tab offers to bring them back.
   const hasTerminals = focusedSession !== undefined && ownsTerminals(focusedSession)
   usePreloadFiles(inspectTerm, loadTopFolder)
@@ -113,6 +114,13 @@ export function WorkspaceDialogs() {
                   if (target?.machineName != null) getFile(target.machineName, path)
                 }}
                 onCancel={() => { setGetFileId(null) }}
+              />
+            )}
+            {specialistsId !== null && sessionMap.get(specialistsId) !== undefined && (
+              <SpecialistsDialog
+                title={(sessionMap.get(specialistsId) as SessionView).cwdLabel}
+                term={(sessionMap.get(specialistsId) as SessionView).pane}
+                onClose={() => { setSpecialistsId(null) }}
               />
             )}
             {updateAsk !== null && (

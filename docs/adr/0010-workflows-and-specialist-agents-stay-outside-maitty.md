@@ -55,7 +55,8 @@ one way of working, and makes every stalled stage Maitty's fault. Status must st
    repository is not tied to a session and holds one tool's format. Maitty knows a workflow only
    through its reports.
 6. **No plugin system or marketplace for now.** The report command is the whole contract a third
-   party needs. Maitty lists a project's specialist files read-only only if a later ticket asks.
+   party needs. Maitty lists a project's specialist files read-only (the desktop app's
+   *Specialist agents…*, `Query::Specialists`); it never makes, edits or runs one.
 
 ## Alternatives considered
 

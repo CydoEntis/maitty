@@ -61,6 +61,9 @@ pub const WORKFLOW_REPORT_SINCE: u32 = 88;
 /// The first version whose daemon reads a helper's own record (`Query::HelperRead`).
 pub const HELPER_READ_SINCE: u32 = 88;
 
+/// The first version whose daemon lists a pane's specialist agent files (`Query::Specialists`).
+pub const SPECIALISTS_SINCE: u32 = 88;
+
 /// What a helper did, read from the provider's own file for it (ADR 0010). Display only.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HelperRecord {
@@ -935,6 +938,11 @@ pub enum Query {
         term: TermId,
         helper: String,
     },
+    /// The Claude Code and Codex agent files of a pane's project and of its user's home, read-only
+    /// (human clients only; ADR 0010).
+    Specialists {
+        term: TermId,
+    },
     /// Plain-text screen contents of a terminal (the visible screen).
     Read {
         term: TermId,
@@ -1153,6 +1161,7 @@ pub enum Reply {
     },
     ClosedSessions(Vec<ClosedSession>),
     HelperRead(HelperRecord),
+    Specialists(crate::specialists::SpecialistList),
 }
 
 /// The most folders one listing carries; a folder with more says so in `truncated`.
@@ -1925,6 +1934,7 @@ impl ServerMsg {
             ServerMsg::Reply(Reply::SavedConversations { .. }) => SAVED_CONVERSATIONS_SINCE,
             ServerMsg::Reply(Reply::ClosedSessions(_)) => CLOSED_SESSIONS_SINCE,
             ServerMsg::Reply(Reply::HelperRead(_)) => HELPER_READ_SINCE,
+            ServerMsg::Reply(Reply::Specialists(_)) => SPECIALISTS_SINCE,
             _ => COMPATIBLE_SINCE,
         }
     }
@@ -1947,6 +1957,7 @@ impl ClientMsg {
             ClientMsg::Command(Command::ReopenClosedSession { .. }) => REOPEN_CLOSED_SINCE,
             ClientMsg::WorkflowReport { .. } => WORKFLOW_REPORT_SINCE,
             ClientMsg::Query(Query::HelperRead { .. }) => HELPER_READ_SINCE,
+            ClientMsg::Query(Query::Specialists { .. }) => SPECIALISTS_SINCE,
             _ => COMPATIBLE_SINCE,
         }
     }
@@ -3162,6 +3173,24 @@ mod tests {
         }));
         assert_eq!(answer.introduced_in(), HELPER_READ_SINCE);
         round_trips(&answer);
+        let ask = ClientMsg::Query(Query::Specialists { term: 1 });
+        assert_eq!(ask.introduced_in(), SPECIALISTS_SINCE);
+        let listed = ServerMsg::Reply(Reply::Specialists(crate::specialists::SpecialistList {
+            term: 1,
+            project: "/p".into(),
+            files: vec![crate::specialists::SpecialistFile {
+                tool: crate::specialists::SpecialistTool::Codex,
+                scope: crate::specialists::SpecialistScope::Home,
+                name: "code-reviewer".into(),
+                description: Some("Reviews a change".into()),
+                path: "/h/.codex/agents/code-reviewer.toml".into(),
+                text: "name = \"code-reviewer\"".into(),
+                text_cut: false,
+            }],
+            truncated: false,
+        }));
+        assert_eq!(listed.introduced_in(), SPECIALISTS_SINCE);
+        round_trips(&listed);
         const { assert!(WORKFLOW_REPORT_SINCE <= PROTOCOL_VERSION) };
     }
 

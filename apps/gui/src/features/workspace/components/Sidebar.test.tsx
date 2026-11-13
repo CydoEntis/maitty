@@ -335,6 +335,14 @@ describe('a session row', () => {
     expect(onEndSession).toHaveBeenCalledWith('t1')
   })
 
+  it("offers this computer's sessions a read-only list of their specialist agents", async () => {
+    const onSpecialists = vi.fn()
+    show([session(1, { agent: 'claude', named: true, title: 'Growth' })], { onSpecialists })
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Growth,/ }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Specialist agents…' }))
+    expect(onSpecialists).toHaveBeenCalledWith('t1')
+  })
+
   it('offers Close shell, not Stop, for a shell', () => {
     show([session(1)])
     fireEvent.contextMenu(screen.getByRole('button', { name: /^app1,/ }))

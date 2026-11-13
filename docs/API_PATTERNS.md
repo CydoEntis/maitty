@@ -176,6 +176,13 @@ out. The read runs off the event loop; a refusal is a `ServerMsg::Error` naming 
 It came in protocol 88 (`HELPER_READ_SINCE`, with arms in both `introduced_in`). Clients ask again
 while the view is open; it is not followed.
 
+`Query::Specialists { term }` answers `Reply::Specialists(SpecialistList)`: the Claude Code and Codex
+agent files (`.claude/agents/*.md`, `.codex/agents/*.toml`) of the pane's repository (the nearest
+folder above its working folder that holds `.git`) and of the user's home (`~/.claude/agents`,
+`$CODEX_HOME/agents`), project first, each with its name, description, path and text. It is
+read-only, for human clients, read off the event loop, and bounded (`specialists::SPECIALISTS_MAX`
+files, `SPECIALIST_TEXT_MAX` bytes of each). It came in protocol 88 (`SPECIALISTS_SINCE`).
+
 A pane's effort (`TermInfo.effort`, an optional field: no `PROTOCOL_VERSION` bump, a test decodes the old shape) is read by the
 daemon from the agent's own files every five seconds off the loop (`usage::poll_effort`): for Claude the level in the newest request
 line of its transcript, present only when a level was set; for Codex the level its thread settings name, else its model's default

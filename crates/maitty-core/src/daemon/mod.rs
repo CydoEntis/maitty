@@ -32,6 +32,7 @@ mod restore;
 mod scan;
 mod search;
 mod secrets;
+mod specialists;
 mod status;
 mod term;
 mod usage;
@@ -245,6 +246,10 @@ pub enum Ev {
     HelperReadReady {
         client: ClientId,
         result: Result<crate::protocol::HelperRecord, String>,
+    },
+    SpecialistsReady {
+        client: ClientId,
+        list: crate::specialists::SpecialistList,
     },
     SavedConversationsReady {
         client: ClientId,
@@ -2333,6 +2338,9 @@ impl Daemon {
                 Ok(record) => self.send(client, ServerMsg::Reply(Reply::HelperRead(record))),
                 Err(e) => self.send(client, ServerMsg::Error(e)),
             },
+            Ev::SpecialistsReady { client, list } => {
+                self.send(client, ServerMsg::Reply(Reply::Specialists(list)));
+            }
             Ev::SavedConversationsReady { client, tag, found } => {
                 self.send(client, ServerMsg::Reply(Reply::SavedConversations { tag, found }));
             }
@@ -2960,6 +2968,38 @@ impl Daemon {
                                 });
                             }
                             Err(e) => self.send(client, ServerMsg::Error(e.into())),
+                        }
+                        return;
+                    }
+                    Query::Specialists { .. } if self.client_is_agent(client) => {
+                        ServerMsg::Error("Only a human client can list specialist agents".into())
+                    }
+                    Query::Specialists { term } => {
+                        let cwd = self
+                            .may_use_terminal(client, term)
+                            .and_then(|()| self.may(client, Grant::Read, Some(term)))
+                            .and_then(|()| {
+                                self.terms
+                                    .get(&term)
+                                    .map(|t| t.cwd.clone())
+                                    .ok_or_else(|| anyhow::anyhow!("no pane {term}"))
+                            });
+                        match cwd {
+                            Ok(cwd) => {
+                                let tx = self.tx.clone();
+                                tokio::task::spawn_blocking(move || {
+                                    let home = conversation::follow::user_home();
+                                    let codex = usage::codex_home();
+                                    let list = specialists::list(
+                                        term,
+                                        &cwd,
+                                        home.as_deref(),
+                                        codex.as_deref(),
+                                    );
+                                    let _ = tx.blocking_send(Ev::SpecialistsReady { client, list });
+                                });
+                            }
+                            Err(error) => self.send(client, ServerMsg::Error(format!("{error:#}"))),
                         }
                         return;
                     }

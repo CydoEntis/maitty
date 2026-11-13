@@ -72,6 +72,8 @@ export type SidebarProps = {
   onMarkDone: (id: string) => void
   /** Asks for a file to pull from the machine of session `id`. */
   onGetFile: (id: string) => void
+  /** Lists the specialist agent files a session of this computer can see. */
+  onSpecialists?: (id: string) => void
   onEndSession: (id: string) => void
   onOpenSettings: () => void
   /** The footer's left slot (the update button). The caller owns the updater. */
@@ -199,6 +201,7 @@ function Expanded(props: SidebarProps) {
       { label: 'Copy folder path', run: () => { props.onCopyPath(session.id) } },
       ...(session.machineName === null ? [] : [{ label: 'Rename machine…', run: () => { props.onRenameMachine(session.machineName ?? '') } }]),
       ...(session.machineName === null ? [] : [{ label: 'Get a file…', disabled: !props.online, run: () => { props.onGetFile(session.id) } }]),
+      ...(session.machineName === null && session.pane > 0 && props.onSpecialists !== undefined ? [{ label: 'Specialist agents…', disabled: !props.online, run: () => { props.onSpecialists?.(session.id) } }] : []),
       // A finished agent waits under Finished until you look; this files it under Idle without opening it.
       ...(session.status === 'done' ? [{ label: 'Mark as done', disabled: !props.online, run: () => { props.onMarkDone(session.id) } }] : []),
       'separator',

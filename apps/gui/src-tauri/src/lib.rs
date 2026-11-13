@@ -152,6 +152,18 @@ async fn read_helper(
         .map_err(|error| format!("{error:#}"))
 }
 
+/// The specialist agent files a pane of this computer can see. Another machine's are not read in v1.
+#[tauri::command]
+async fn read_specialists(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    term: u32,
+) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::read_specialists(term, wire.daemon(None, || daemon_executable(&app))?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
 #[tauri::command]
 async fn read_conversation(
     app: tauri::AppHandle,
@@ -1550,6 +1562,7 @@ pub fn run() {
             image_paste::send_pasted_image,
             read_conversation,
             read_helper,
+            read_specialists,
             conversation_diff,
             conversation_files,
             conversation_file,

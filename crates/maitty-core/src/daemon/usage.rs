@@ -401,7 +401,7 @@ fn descendant_file(sessions: &[CodexSession], ancestor: &str, helper: &str) -> O
 }
 
 /// Codex's own folder (`$CODEX_HOME`, else `~/.codex`).
-fn codex_home() -> Option<PathBuf> {
+pub(super) fn codex_home() -> Option<PathBuf> {
     std::env::var_os("CODEX_HOME")
         .map(PathBuf::from)
         .or_else(|| directories::BaseDirs::new().map(|d| d.home_dir().join(".codex")))

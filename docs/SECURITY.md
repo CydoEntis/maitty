@@ -536,6 +536,10 @@ may not send one. A report is checked at the boundary (`workflow::checked`): eve
 control and hidden characters, names and notes have length limits, a run has at most 32 steps, and a
 ticket link must be `http` or `https`. A report never changes status, so a process in the pane can
 only mislabel its own pane's workflow view.
+Listing specialist agents (`Query::Specialists`, ADR 0010) reads only the fixed agent folders of the
+pane's repository and the user's home, never a path a client names; it is for human clients with read
+access to the pane, writes nothing, and bounds the count and size of what it returns. Names,
+descriptions and file text lose control and hidden characters before they leave the daemon.
 Remote work goes over the user's own `ssh`, so SSH's authentication applies.
 The one-shot commands (`--on build ...`, `--pane build/4`) treat the machine they reach the same way.
 What it answers is untrusted: a list (`ls`, `wait`) is cleaned like a window's snapshot

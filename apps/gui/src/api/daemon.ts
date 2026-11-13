@@ -693,6 +693,34 @@ export async function readHelper(term: number, helper: string): Promise<HelperRe
   return record
 }
 
+// A pane's specialist agent files (ADR 0010), read-only.
+const SpecialistFileSchema = z.object({
+  tool: z.enum(['claude', 'codex', 'unknown']),
+  scope: z.enum(['project', 'home', 'unknown']),
+  name: z.string(),
+  description: z.string().nullable(),
+  path: z.string(),
+  text: z.string(),
+  text_cut: z.boolean(),
+})
+const SpecialistListSchema = z.object({
+  term: z.number().int().nonnegative(),
+  project: z.string(),
+  files: z.array(SpecialistFileSchema),
+  truncated: z.boolean(),
+})
+export type SpecialistFile = z.infer<typeof SpecialistFileSchema>
+export type SpecialistList = z.infer<typeof SpecialistListSchema>
+
+/** The Claude Code and Codex agent files one of this computer's panes can see, project first. */
+export async function readSpecialists(term: number): Promise<SpecialistList> {
+  if (!isDesktop()) throw new Error('Specialist agents need the desktop app')
+  if (!Number.isSafeInteger(term) || term < 0) throw new Error('Pane id is invalid')
+  const list = await invokeParsed('read_specialists', SpecialistListSchema, { term })
+  if (list.term !== term) throw new Error('Daemon returned a different pane')
+  return list
+}
+
 export async function loadConversationDiff(conversation: Conversation): Promise<ConversationDiff> {
   if (terminalOf(conversation.id) !== null) throw new Error('Changes are shown for chat sessions')
   if (!isDesktop() || conversation.generation === undefined) {
