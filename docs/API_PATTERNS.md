@@ -654,6 +654,16 @@ another machine keeps only logins GitHub could have given out and one clean `pro
 host sends it through `github_accounts(machine, tag)` and raises a `github-accounts` event with the tag
 and the report (`apps/gui/src/api/githubAccounts.ts` waits on it for 20 seconds).
 
+Protocol 90 adds `GitRequest::PullRequest` to `Query::Git` (`GIT_PULL_REQUEST_SINCE`;
+`COMPATIBLE_SINCE` stays). The daemon pushes the branch as `Push` does, then runs
+`gh pr create --fill --head <branch>` in the checkout. The answer's line is the pull request's
+address, kept only when it is `https://github.com/<owner>/<repo>/pull/<number>` (`pr::pull_request_url`,
+which also drops anything after the number); a pull request that is already open for the branch is
+answered with its address. Without `gh` the line says the branch was pushed and to get it from
+cli.github.com; any other failure is the first line `gh` said, cleaned and cut to 300 characters
+(nobody signed in reads "To get started with GitHub CLI, please run:  gh auth login"). No token is
+read. git and `gh` together are stopped after `GIT_SYNC_LIMIT_SECS` (60).
+
 Protocol 89 adds `GitRequest::Commit { message, paths }` to `Query::Git` (`GIT_COMMIT_SINCE`;
 `COMPATIBLE_SINCE` stays). With `paths` the daemon stages and commits those files only (`git add -A --`
 then `git commit --only --`), and whatever else is staged stays staged and out of the commit; with none

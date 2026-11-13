@@ -1,5 +1,5 @@
 //! What a person's client may have done to the checkout a pane is in (`Query::Git`): fetch, pull,
-//! push, and commit (`commit.rs`). Nothing here merges, rebases or forces: a pull only
+//! push, commit (`commit.rs`) and open a pull request (`pull_request.rs`). Nothing here merges, rebases or forces: a pull only
 //! fast-forwards. git is given no way to ask a question, so it fails when it would need a
 //! password, and the whole request is stopped at its deadline. Each function blocks, so it runs
 //! off the event loop.
@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 fn limit_of(request: &GitRequest) -> Duration {
     Duration::from_secs(match request {
         GitRequest::Commit { .. } => crate::protocol::GIT_COMMIT_LIMIT_SECS,
-        GitRequest::Fetch | GitRequest::Pull | GitRequest::Push => crate::protocol::GIT_SYNC_LIMIT_SECS,
+        GitRequest::Fetch | GitRequest::Pull | GitRequest::Push | GitRequest::PullRequest => crate::protocol::GIT_SYNC_LIMIT_SECS,
     })
 }
 
@@ -36,6 +36,7 @@ fn sync(folder: &Path, request: &GitRequest, limit: Duration) -> Result<String, 
         GitRequest::Pull => pull(&git),
         GitRequest::Push => push(&git),
         GitRequest::Commit { message, paths } => super::commit::commit(&git, message, paths.as_deref()),
+        GitRequest::PullRequest => super::pull_request::open(&git),
     }
 }
 
@@ -58,7 +59,8 @@ fn pull(git: &Git) -> Result<String, String> {
     Ok(if before == after { "Already up to date" } else { "Pulled" }.into())
 }
 
-fn push(git: &Git) -> Result<String, String> {
+/// Sends the branch to its upstream, or to `origin` under its own name when it has none yet.
+pub(super) fn push(git: &Git) -> Result<String, String> {
     let branch = git.branch().ok_or("this checkout is on no branch, so there is nothing to push")?;
     if git.has_upstream() {
         git.run(&["push"])?;
@@ -83,6 +85,15 @@ impl<'a> Git<'a> {
         Git { folder, deadline: Instant::now() + limit, limit }
     }
 
+    pub(super) fn folder(&self) -> &Path {
+        self.folder
+    }
+
+    /// How long is left before the deadline, for a program that is not git.
+    pub(super) fn time_left(&self) -> Duration {
+        self.deadline.saturating_duration_since(Instant::now())
+    }
+
     /// What git printed, trimmed, or the line of what it said that names the problem.
     pub(super) fn run(&self, args: &[&str]) -> Result<String, String> {
         let mut command = Command::new("git");
@@ -93,8 +104,7 @@ impl<'a> Git<'a> {
             // Its messages are read here and shown: keep them in English whatever the locale.
             .env("LC_ALL", "C")
             .env("GIT_TERMINAL_PROMPT", "0");
-        let left = self.deadline.saturating_duration_since(Instant::now());
-        let ran = crate::proc::run_within(&mut command, left).map_err(|error| match error {
+        let ran = crate::proc::run_within(&mut command, self.time_left()).map_err(|error| match error {
             RunError::Missing => "git is not installed on this machine".to_owned(),
             RunError::Start(why) => format!("couldn't run git: {why}"),
             RunError::TimedOut => format!("git was stopped after {} seconds", self.limit.as_secs()),
@@ -115,7 +125,7 @@ impl<'a> Git<'a> {
     }
 
     /// The branch the checkout is on; none when its head is detached or it is no repository.
-    fn branch(&self) -> Option<String> {
+    pub(super) fn branch(&self) -> Option<String> {
         self.run(&["symbolic-ref", "--quiet", "--short", "HEAD"]).ok().filter(|name| !name.is_empty())
     }
 
@@ -124,18 +134,19 @@ impl<'a> Git<'a> {
     }
 }
 
+/// Repositories for the tests of what is done to a checkout.
 #[cfg(test)]
-mod tests {
+pub(super) mod fixtures {
     use super::*;
 
-    const LIMIT: Duration = Duration::from_secs(60);
+    pub(in crate::daemon) const LIMIT: Duration = Duration::from_secs(60);
 
-    fn git(folder: &Path, args: &[&str]) -> String {
+    pub(in crate::daemon) fn git(folder: &Path, args: &[&str]) -> String {
         Git::new(folder, LIMIT).run(args).expect("git")
     }
 
     /// A repository on `main` with one commit.
-    fn repository(parent: &Path, name: &str) -> std::path::PathBuf {
+    pub(in crate::daemon) fn repository(parent: &Path, name: &str) -> std::path::PathBuf {
         let folder = parent.join(name);
         std::fs::create_dir_all(&folder).expect("a folder");
         git(&folder, &["init", "-q", "-b", "main"]);
@@ -146,14 +157,14 @@ mod tests {
         folder
     }
 
-    fn commit(folder: &Path, file: &str, subject: &str) {
+    pub(in crate::daemon) fn commit(folder: &Path, file: &str, subject: &str) {
         std::fs::write(folder.join(file), format!("{subject}\n")).expect("a file");
         git(folder, &["add", "--", file]);
         git(folder, &["commit", "-q", "-m", subject]);
     }
 
     /// `mine` and `other`, two checkouts of one bare remote that `mine` has pushed `main` to.
-    fn shared(parent: &Path) -> (std::path::PathBuf, std::path::PathBuf) {
+    pub(in crate::daemon) fn shared(parent: &Path) -> (std::path::PathBuf, std::path::PathBuf) {
         let remote = parent.join("remote.git");
         std::fs::create_dir_all(&remote).expect("a folder");
         git(&remote, &["init", "-q", "--bare", "-b", "main"]);
@@ -168,6 +179,12 @@ mod tests {
         git(&other, &["config", "commit.gpgsign", "false"]);
         (mine, other)
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fixtures::{LIMIT, commit, git, repository, shared};
+    use super::*;
 
     #[test]
     fn a_first_push_sets_the_upstream_and_a_pull_brings_in_what_someone_else_pushed() {

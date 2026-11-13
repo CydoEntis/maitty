@@ -27,6 +27,7 @@ mod persist;
 mod pr;
 #[cfg(unix)]
 mod provider_groups;
+mod pull_request;
 mod repeats;
 mod repo;
 mod restore;
@@ -2878,7 +2879,7 @@ impl Daemon {
                             client.from.is_some() || client.structured.is_some()
                         }) =>
                     {
-                        ServerMsg::Error("Only a human client can fetch, pull, push or commit this way".into())
+                        ServerMsg::Error("Only a human client can change a checkout this way".into())
                     }
                     Query::Git { term, request, tag } => {
                         let folder = self

@@ -11,7 +11,11 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 89;
+pub const PROTOCOL_VERSION: u32 = 90;
+
+/// The first version whose daemon opens a pull request for a pane's checkout on request
+/// (`GitRequest::PullRequest`).
+pub const GIT_PULL_REQUEST_SINCE: u32 = 90;
 
 /// The first version whose daemon commits files of a pane's checkout on request
 /// (`GitRequest::Commit`).
@@ -49,6 +53,10 @@ pub enum GitRequest {
         message: String,
         paths: Option<Vec<String>>,
     },
+    /// Push the branch, then open a GitHub pull request for it with the machine's GitHub command
+    /// line, titled and described from its commits. The answer's line is the pull request's
+    /// address, always `https://github.com/<owner>/<repo>/pull/<number>`.
+    PullRequest,
 }
 
 /// The first version whose daemon lists the repositories its machine's GitHub account can clone
@@ -1951,6 +1959,7 @@ impl ClientMsg {
             ClientMsg::Query(Query::GitHubAccounts { .. }) => GITHUB_ACCOUNTS_SINCE,
             ClientMsg::Query(Query::GitHubRepos { .. } | Query::GitHubOwners { .. }) => GITHUB_REPOS_SINCE,
             ClientMsg::Query(Query::Git { request: GitRequest::Commit { .. }, .. }) => GIT_COMMIT_SINCE,
+            ClientMsg::Query(Query::Git { request: GitRequest::PullRequest, .. }) => GIT_PULL_REQUEST_SINCE,
             ClientMsg::Query(Query::Git { .. }) => GIT_SYNC_SINCE,
             _ => COMPATIBLE_SINCE,
         }
@@ -2356,7 +2365,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 89);
+        assert_eq!(PROTOCOL_VERSION, 90);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2628,7 +2637,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 89);
+        assert_eq!(PROTOCOL_VERSION, 90);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -3482,5 +3491,8 @@ mod tests {
         let commit = GitRequest::Commit { message: "m".into(), paths: None };
         assert_eq!(ClientMsg::Query(Query::Git { term: 3, request: commit, tag: 1 }).introduced_in(), GIT_COMMIT_SINCE);
         const { assert!(GIT_COMMIT_SINCE > GIT_SYNC_SINCE && GIT_COMMIT_SINCE <= PROTOCOL_VERSION) };
+        let open = Query::Git { term: 3, request: GitRequest::PullRequest, tag: 1 };
+        assert_eq!(ClientMsg::Query(open).introduced_in(), GIT_PULL_REQUEST_SINCE);
+        const { assert!(GIT_PULL_REQUEST_SINCE > GIT_COMMIT_SINCE && GIT_PULL_REQUEST_SINCE <= PROTOCOL_VERSION) };
     }
 }

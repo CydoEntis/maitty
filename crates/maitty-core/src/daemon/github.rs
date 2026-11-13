@@ -25,7 +25,7 @@ const HOST: &str = "github.com";
 const SEARCH_MAX_CHARS: usize = 100;
 
 /// `gh` (or `program` in its place) set up so it can ask nothing and colours nothing.
-fn gh(program: &OsStr) -> Command {
+pub(super) fn gh(program: &OsStr) -> Command {
     let mut command = Command::new(program);
     // The daemon may have been started without the PATH a login shell has, where `gh` often is.
     if let Some(path) = crate::login_path::resolved() {

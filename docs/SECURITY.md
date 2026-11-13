@@ -549,6 +549,15 @@ is a fixed set of host commands that take a machine's name or number, never a pr
   address and may hold no path separator or other character a folder name cannot. Only a person's
   client may ask; a pane's or an agent's connection is refused. The daemon reads no credential: git uses
   whatever the machine already has, and fails when it would have to ask.
+- **Changing a checkout on request** (`Query::Git`, `daemon/sync.rs`, `commit.rs`, `pull_request.rs`):
+  fetch, fast-forward pull, push, commit and open a pull request for the checkout a pane is in. Only a
+  person's client may ask, with the pane checks of `Query::Repo`. The request is one of five words; the
+  only text taken from the client is a commit message (trimmed, at most 16 KiB, no control character but
+  a line break or tab) and the commit's paths (relative, no `..`, no `.git` part, no leading `-`, no
+  control character, read literally by git). Everything is passed as arguments, never through a shell.
+  git runs with `GIT_TERMINAL_PROMPT=0` and `gh` with its prompts off, so neither can ask for a
+  credential, and each request is stopped at its limit. Nothing merges, rebases, forces or amends. A
+  pull request answers only a `https://github.com/<owner>/<repo>/pull/<number>` address.
 - **Who is signed in to GitHub** (`Query::GitHubAccounts`, `daemon/github.rs`) runs the machine's own
   `gh auth status --json hosts` with fixed arguments and nothing from the client in them. Only the
   logins and which one is active leave the daemon; a token is never asked for (`--show-token` is never
