@@ -1,5 +1,6 @@
 import type { SessionStatus, SessionView } from './session'
 import { projectOf } from './sidebar'
+import { formatAge } from './tracking'
 
 export const HOVER_CARD_DELAY_MS = 450
 export const HOVER_CARD_WIDTH_PX = 290
@@ -50,6 +51,16 @@ export function hoverCardText(session: SessionView, title: string): HoverCardTex
     agent: session.process,
     changes: changed ? `+${String(session.diffAdded)} −${String(session.diffRemoved)}` : 'No changes',
   }
+}
+
+/**
+ * Where the status came from and how long ago (`hook: Stop, 3 s ago`), in the daemon's own words; null
+ * when it gave no reason. The daemon writes the reason when the status changes, so its age is the
+ * status's. A session whose status is not known has none: the reason it last had is not about now.
+ */
+export function statusWhyLine(session: Pick<SessionView, 'status' | 'statusWhy' | 'statusSince'>, now: number): string | null {
+  if (session.statusWhy === '' || session.status === 'unknown') return null
+  return session.statusSince === null ? session.statusWhy : `${session.statusWhy}, ${formatAge(now - session.statusSince)} ago`
 }
 
 export type Box = { left: number; right: number; top: number }

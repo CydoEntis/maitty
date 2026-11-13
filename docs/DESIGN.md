@@ -313,7 +313,8 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   (`useStatusFlash`); Reduce motion turns both off. A **row** (40px, radius 8) is the 20px app tile with its status badge
   A pointer resting on a row for 450ms shows a **hover card** beside it (`RowHoverCard`, 290px, level with the row and
   kept inside the window): the name, project and branch, what it is doing in the daemon's own words, its agent,
-  changes and last activity. It takes no pointer input and goes on leave, click, scroll or a menu.
+  changes, what set its status and how long ago (**Set by**: `hook: Stop, 3 s ago`, the daemon's `TermInfo.status_why`; no row
+  when it gave no reason or the status is not known) and last activity. It takes no pointer input and goes on leave, click, scroll or a menu.
   (spinner, amber `!` square, solid green check, solid red cross, grey square with a sleeping "zz" for idle, dashed square for unknown), the name (13px; 600 and `--fg` for an agent that is
   doing anything), and under it the project's 6px colour square, the project and `·` and the branch in mono
   `--ansi-mag`; a stopped agent says `stopped` and an exited shell `exited` at the right, in `--danger`, instead of a
