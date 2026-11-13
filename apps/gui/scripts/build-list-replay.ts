@@ -68,7 +68,7 @@ open(1, 'claude', 'claude')
 open(2, 'codex', 'codex')
 open(3, null, 'ssh', 'build-box')
 open(4, null, 'bash')
-emit(0, 'list_sessions', snapshot(), 'the window opens and reads the list; pane 3 runs ssh')
+emit(0, 'list_sessions', snapshot(), 'the daemon as the window first reads it; pane 3 runs ssh')
 churn(40)
 
 open(5, 'claude', 'claude')
@@ -85,25 +85,27 @@ revision += 1
 emit(1100, 'sessions-changed', snapshot(), 'the close of pane 5 is undone inside its undo window')
 churn(30)
 
-emit(1500, 'sessions-changed', null, 'the host lost the daemon, which is restarting')
-const restored = [...panes.values()]
-panes.clear()
-revision = 1
-for (const pane of restored.slice(0, 3)) panes.set(pane.id, pane)
-emit(6000, 'list_sessions', snapshot(), 'the restarted daemon answers, numbering from 1 again, with three panes restored so far')
-for (const pane of restored.slice(3)) {
-  panes.set(pane.id, pane)
-  revision += 1
-  emit(1200, 'sessions-changed', snapshot(), `pane ${String(pane.id)} is restored`)
-}
-churn(40)
-
 remove(4, 'Exited', 1300, 'the shell in pane 4 exits')
 churn(20)
 
 open(6, 'codex', 'codex')
 revision += 2
 emit(1600, 'sessions-changed', snapshot(), 'the update that opened pane 6 was lost; the host asked for the whole list and this is it')
+churn(40)
+
+emit(1500, 'sessions-changed', null, 'the host lost the daemon, which is restarting')
+// Restore is one pass that numbers panes from 1 again in layout order, so an old number can come back as
+// another program (pane 1 is now the ssh shell, pane 4 a claude) and the old pane 6 is not listed again.
+const RESTORE_ORDER = [3, 1, 2, 5, 6]
+const restored = RESTORE_ORDER.map((old, index) => {
+  const pane = panes.get(old)
+  if (pane === undefined) throw new Error(`pane ${String(old)} was not open`)
+  return { ...pane, id: index + 1 }
+})
+panes.clear()
+for (const pane of restored) panes.set(pane.id, pane)
+revision = 1
+emit(6000, 'sessions-changed', snapshot(), 'the host attaches to the restarted daemon, whose restore gave every pane a new number from 1')
 churn(60)
 
 writeFileSync(OUTPUT, `{\n"source": "built by apps/gui/scripts/build-list-replay.ts, not recorded from a daemon",\n"steps": [\n${steps.map((step) => JSON.stringify(step)).join(',\n')}\n]\n}\n`)
