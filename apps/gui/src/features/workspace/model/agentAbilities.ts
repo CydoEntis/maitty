@@ -1,6 +1,6 @@
 import { CODEX_START_MODES, PICKABLE_MODES } from '@/features/chat/chatMeta'
 import { ANSWER_KEYS, type AskChoice } from '@/features/chat/permissionAsk'
-import type { ChatAgent } from './chatView'
+import type { ChatAgent, StructuredAgent } from './chatView'
 
 /** Where the composer's slash commands come from, and how Codex's differ. */
 export type SlashCommands = {
@@ -80,4 +80,9 @@ const AGENT_ABILITIES: Readonly<Record<ChatAgent, AgentAbilities>> = {
  */
 export function abilitiesOf(agent: string | null | undefined): AgentAbilities {
   return agent != null && Object.hasOwn(AGENT_ABILITIES, agent) ? AGENT_ABILITIES[agent as ChatAgent] : NONE
+}
+
+/** Whether the daemon can run this agent as a chat with no terminal, narrowing it for `startChatSession`. */
+export function isStructuredAgent(agent: ChatAgent): agent is StructuredAgent {
+  return abilitiesOf(agent).structuredChat
 }

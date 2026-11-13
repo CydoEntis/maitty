@@ -10,12 +10,13 @@ import { DraftAttachments } from '@/features/chat/components/Attachments'
 import { errorMessage } from '@/lib/error-message'
 import { DEFAULT_PICK, modelsFor, START_REASONING, type AgentChoice } from '@/features/chat/agentChoice'
 import { AGENT_LABEL } from '@/features/chat/modelName'
-import { CODEX_FULL_MODE, CODEX_START_MODES, DANGER_MODES, modeLabel, PICKABLE_MODES, START_MODE } from '@/features/chat/chatMeta'
+import { CODEX_FULL_MODE, DANGER_MODES, modeLabel, START_MODE } from '@/features/chat/chatMeta'
 import { AgentPicker } from '@/features/chat/components/AgentPicker'
 import { PermissionMenu } from '@/features/chat/components/PermissionMenu'
 import { openAgentDocs } from '@/api/daemon'
 import { LOCAL_MACHINE } from '@/api/machines'
 import { chatAgentOf, type ChatAgent } from '../model/chatView'
+import { abilitiesOf } from '../model/agentAbilities'
 import { ageOf, nowSeconds, splitRecent, useFolderBranches, useGlances, useInstalledAgents, useSavedConversations, useSyncState } from '../model/newChatHost'
 import { Switch } from '@/components/ui/switch'
 import type { NewSessionProject } from '../model/newSession'
@@ -145,7 +146,7 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
     // A model is the agent's own; the other agent's name means nothing to it.
     if (!modelsFor(next).some((option) => option.id === choice.model)) setChoice((now) => ({ ...now, model: DEFAULT_PICK }))
   }
-  const modes = agent === 'claude' ? PICKABLE_MODES : agent === 'codex' ? CODEX_START_MODES : []
+  const modes = abilitiesOf(agent).permissionModes?.modes ?? []
   // The Yolo setting already starts Codex with full access, and its flag cannot be combined with a mode's.
   const forcedFull = agent === 'codex' && codexYolo
   const startMode = !forcedFull && modes.includes(mode) ? mode : 'default'

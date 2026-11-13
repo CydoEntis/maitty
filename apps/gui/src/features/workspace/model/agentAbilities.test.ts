@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { CODEX_START_MODES, PICKABLE_MODES } from '@/features/chat/chatMeta'
 import { ANSWER_KEYS } from '@/features/chat/permissionAsk'
-import { abilitiesOf } from './agentAbilities'
+import { abilitiesOf, isStructuredAgent } from './agentAbilities'
 import { moveRefusal } from './moveToWorktree'
+import { CHAT_AGENTS } from './chatView'
 import type { SessionView } from './session'
 
 describe('abilitiesOf', () => {
@@ -61,5 +62,9 @@ describe('abilitiesOf', () => {
 
   it('answers Claude\'s menu with the keys the chat types', () => {
     expect(abilitiesOf('claude').answerKeys).toBe(ANSWER_KEYS)
+  })
+
+  it('narrows to a structured agent exactly the agents with a structured chat', () => {
+    expect(CHAT_AGENTS.filter(isStructuredAgent)).toEqual(['claude', 'codex'])
   })
 })

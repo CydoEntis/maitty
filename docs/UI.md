@@ -809,7 +809,8 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   conversation whose native terminal is that pane (`Conversation.chat`); `model/chatView.ts` decides
   availability: `ready`, `no-events`, `remote` (local-only in v1), `unsupported` (another agent) or `shell`.
   `model/agentAbilities.ts` is the one table of what each agent supports (slash commands, permission modes,
-  structured chat, move to worktree, answer keys, changing its model from the chips); an agent it does not name has none of them.
+  structured chat, move to worktree, answer keys, changing its model from the chips); an agent it does not name has none of them. Code that offers or hides one of these asks
+  `abilitiesOf` rather than comparing the agent's name.
   The daemon gives a Claude, Codex or Gemini CLI agent started in a pane a **read-only** conversation that follows the agent's
   own transcript (Gemini's `~/.gemini/tmp/<project>/chats/session-….jsonl`, named by the hook's `transcript_path`; it has no structured runtime, so "New agent chat" starts it in a terminal shown as its chat) ([ADR 0003](adr/0003-status-and-conversation-trust.md)); its link has
   `readOnly: true`, and the conversation is not listed as a session of its own (the pane is the session).

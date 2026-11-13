@@ -18,6 +18,7 @@ import { Composer } from './Composer'
 import { ScreenMenuTray } from './QuestionTray'
 import { parseScreenMenu } from '../screenMenu'
 import { isWorktree, useFolderBranches } from '@/features/workspace/model/newChatHost'
+import { abilitiesOf } from '@/features/workspace/model/agentAbilities'
 
 type StartingChatProps = {
   agent: ChatAgent
@@ -158,8 +159,8 @@ export function StartingChat({ agent, sessionId, onBackToTerminal, folder = '', 
           model: null,
           onOpenFolder: null,
           // The chips the real chat will have are drawn now, with what was picked, so nothing is added or removed when it takes over.
-          ...(agent === 'codex' && typeInto !== undefined ? { modeLocked: `${AGENT_LABEL[agent]} is starting. Change this once it is ready.` } : {}),
-          ...(agent === 'claude' ? { agentChips: { locked: `${AGENT_LABEL[agent]} is starting. Change this once it is ready.`, ...(started === null ? {} : { start: { model: started.model, reasoning: started.reasoning } }) } } : {}),
+          ...(abilitiesOf(agent).permissionModes?.switchBy === 'command' && typeInto !== undefined ? { modeLocked: `${AGENT_LABEL[agent]} is starting. Change this once it is ready.` } : {}),
+          ...(abilitiesOf(agent).changeAgent ? { agentChips: { locked: `${AGENT_LABEL[agent]} is starting. Change this once it is ready.`, ...(started === null ? {} : { start: { model: started.model, reasoning: started.reasoning } }) } } : {}),
         }}
       />
     </div>

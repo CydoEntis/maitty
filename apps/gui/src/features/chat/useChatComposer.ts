@@ -3,6 +3,7 @@ import { cancelTurn, dequeueMessage, submitMessage } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
 import { useLatest } from '@/lib/useLatest'
 import type { ChatAgent, ChatLink } from '@/features/workspace/model/chatView'
+import { abilitiesOf } from '@/features/workspace/model/agentAbilities'
 import { hasPendingApproval, type ChatFeed } from './chatFeed'
 import { buildAttachmentMessage, parseAttachmentMessage } from './attachmentMessage'
 import { announceOutsideSend, onOutsideSend } from './outsideSends'
@@ -46,7 +47,7 @@ export const BANG_MODE_GAP_MS = 150
 const BANG_AGENTS: ReadonlySet<string> = new Set(['claude', 'gemini'])
 
 export async function typeMessage(type: (text: string) => Promise<void>, agent: string | undefined, text: string): Promise<void> {
-  if (agent === 'codex' && isSlashLine(text)) {
+  if (abilitiesOf(agent).slashCommands?.enterAfterPause === true && isSlashLine(text)) {
     await type(text)
     await new Promise<void>((resolve) => { window.setTimeout(resolve, CODEX_SUBMIT_GAP_MS) })
     await type('\r')

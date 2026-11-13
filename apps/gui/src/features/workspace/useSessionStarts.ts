@@ -28,6 +28,7 @@ import { type Layout, openArrangement } from './model/layout'
 import type { SessionView } from './model/session'
 import { resolveStartFolder } from './model/startFolder'
 import { resumeWords } from './model/moveToWorktree'
+import { isStructuredAgent } from './model/agentAbilities'
 import { makeId } from './makeId'
 
 /** How long a new session on another machine is waited for, and how often its list is looked at. */
@@ -208,7 +209,7 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
     }
     if (!online || starting) return
     // Gemini has no structured chat: it starts as a terminal session shown as its chat.
-    if (agent === 'gemini') {
+    if (!isStructuredAgent(agent)) {
       void startAgentSession(() => Promise.resolve(from.cwd), agent, 'chat')
       return
     }

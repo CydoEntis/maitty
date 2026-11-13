@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProp
 import { toast } from '@/lib/toast'
 import { pasteFromHost, pickFromClipboard, unsupportedMessage } from '@/features/terminal/clipboardImage'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
+import { abilitiesOf } from '@/features/workspace/model/agentAbilities'
 import { AppIcon, Icon } from '@/features/workspace/components/glyphs'
 import { registerComposerDrop } from '../composerDrop'
 import { updateComposer, useComposerDraft, useComposerSlice } from '../composerStore'
@@ -144,7 +145,8 @@ export function Composer({ agent, composer, conversation, commandsFrom, question
 
   // The agent's commands, offered while a slash and a name are typed. Esc puts the list away until the text changes.
   // Codex's own box names a skill after a `$`, so that opens the list too, with only its skills.
-  const naming = off || commandsFrom?.agent !== 'codex' ? null : skillQuery(draft)
+  const commands = abilitiesOf(commandsFrom?.agent).slashCommands
+  const naming = off || commands?.skillsAfterDollar !== true ? null : skillQuery(draft)
   const query = off || commandsFrom === undefined ? null : slashQuery(draft) ?? naming
   const [closedFor, setClosedFor] = useState<string | null>(null)
   const picking = query !== null && closedFor !== draft
@@ -153,15 +155,16 @@ export function Composer({ agent, composer, conversation, commandsFrom, question
   // Claude's are its own list plus the ones only its terminal runs; Codex's are the window's list and the skills
   // Codex itself lists. The terminal's commands are offered only to an agent that has a terminal to run them in.
   const skillsOnly = naming !== null
+  const windowList = commands?.list === 'window'
   const offered = useMemo(() => {
-    if (commandsFrom?.agent === 'codex') {
+    if (windowList) {
       const skills = asSkills(slash.commands)
       if (skillsOnly) return skills
       return [...(inTerminal === undefined ? CODEX_COMMANDS.filter((command) => command.terminal !== true) : CODEX_COMMANDS), ...skills]
     }
     const own = withTerminalCommands(slash.commands, CLAUDE_TERMINAL_COMMANDS)
     return inTerminal === undefined ? own.filter((command) => command.terminal !== true) : own
-  }, [slash.commands, inTerminal, commandsFrom?.agent, skillsOnly])
+  }, [slash.commands, inTerminal, windowList, skillsOnly])
   const matches = useMemo(() => (query === null ? [] : matchCommands(offered, query)), [offered, query])
   // The keys start at the closest match each time the typed name changes.
   const [cursor, setCursor] = useState({ query: '', index: 0 })
