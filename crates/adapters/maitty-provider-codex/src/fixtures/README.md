@@ -15,3 +15,8 @@ They contain no real config paths, accounts or transcripts.
 See the [Codex app-server stack doc](../../../../docs/stack/codex-app-server.md)
 for provenance and regeneration. The compatibility examples are not a full
 JSON Schema validator or a replacement for the provider's generated definitions.
+
+- `codex-0.166.0.json` also lists `turn/steer`, which is optional: it is not in
+  the 0.164.0 fixture, and `supports_turn_steer` reports it per connected Codex.
+- `turn-steer-ack.json`: a synthetic `turn/steer` response (`TurnSteerResponse`
+  has one required field, `turnId`).
