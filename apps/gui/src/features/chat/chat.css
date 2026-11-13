@@ -512,3 +512,14 @@ button.mx-queued-text::after { content: ""; position: absolute; inset: 0; border
 .mx-problem-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: 13px; color: var(--fg); }
 .mx-problem-text small { font-size: 12px; color: var(--fg2); }
 .mx-composer-note { margin: 6px 4px 0; font-size: 12px; color: var(--dim); }
+
+/* A workflow run's steps, in place of the chat (ADR 0010). */
+.mx-run-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.mx-run-step-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; font-size: 13px; color: var(--fg2); }
+.mx-run-step-row[aria-current='step'] { background: rgba(var(--hl), calc(.05 * var(--hk))); color: var(--fg); }
+.mx-run-step-row.is-needs_you { color: var(--fg); }
+.mx-run-step-name { font-weight: 600; }
+.mx-run-step-note { min-width: 0; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mx-run-helper { flex: none; max-width: 45%; font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mx-run-helper.is-link { color: var(--accent-text); }
+.mx-run-helper.is-link:hover { text-decoration: underline; }

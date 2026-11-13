@@ -105,6 +105,21 @@ const TerminalSessionSchema = z.object({
     latest_activity: z.string().nullable().default(null),
     result: z.string().nullable().default(null),
   })).default([]),
+  // The workflow runs this pane reported (`TermInfo.workflows`, ADR 0010), newest first. Display only. A shape this
+  // build cannot read is dropped rather than freezing the pane.
+  workflows: z.array(z.object({
+    workflow: z.string(),
+    run: z.string(),
+    ticket: z.object({ key: z.string(), title: z.string().nullable().default(null), link: z.string().nullable().default(null) }).nullable().default(null),
+    steps: z.array(z.object({
+      name: z.string(),
+      // A state added later reads as unknown.
+      state: z.enum(['waiting', 'working', 'passed', 'failed', 'sent_back', 'needs_you', 'skipped', 'unknown']).catch('unknown'),
+      note: z.string().nullable().default(null),
+      helper: z.string().nullable().default(null),
+    })),
+    reported_at: z.number().int().nonnegative().default(0),
+  })).catch([]).default([]),
 })
 const PlanLimitSchema = z.object({ name: z.string(), used: z.number(), resets_at: z.number().default(0) })
 
@@ -1285,6 +1300,7 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
       limits: limits.map((limit) => ({ name: limit.name, used: limit.used, resetsAt: limit.resets_at })),
       helperAsk: term.helper_ask,
       subagents: term.subagent_activity.map((child) => ({ id: child.id, name: child.name, state: child.state, task: child.task, startedAt: child.started_at, updatedAt: child.updated_at, latest: child.latest_activity, result: child.result })),
+      workflows: term.workflows.map((run) => ({ workflow: run.workflow, run: run.run, ticket: run.ticket, steps: run.steps, reportedAt: run.reported_at })),
     },
     ...(chat ? { chat } : {}),
   }

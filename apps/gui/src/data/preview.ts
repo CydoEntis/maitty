@@ -45,6 +45,21 @@ export type TerminalDetails = {
   helperAsk?: string[]
   /** The agent's subagents as its runtime reports them; absent from an older daemon. */
   subagents?: SubagentActivity[]
+  /** The workflow runs the session reported, newest first (ADR 0010); absent from an older daemon. */
+  workflows?: WorkflowRun[]
+}
+
+/** A workflow step's state as the workflow reported it; `unknown` is one added in a later version. */
+export type WorkflowStepState = 'waiting' | 'working' | 'passed' | 'failed' | 'sent_back' | 'needs_you' | 'skipped' | 'unknown'
+
+/** One run of a workflow, as the session reported it. Display only: it never sets the session's status. */
+export type WorkflowRun = {
+  workflow: string
+  run: string
+  ticket: { key: string; title: string | null; link: string | null } | null
+  steps: { name: string; state: WorkflowStepState; note: string | null; helper: string | null }[]
+  /** When the daemon took the report, unix seconds. */
+  reportedAt: number
 }
 
 /** The runtime's states for a subagent (`SubagentState` in the protocol). */

@@ -9,7 +9,7 @@ const noop = () => undefined
 
 /** The sidebar: the docked column or the rail, and the full one in a drawer over a narrow window. */
 export function WorkspaceSidebars() {
-  const { sidebarSessions, sidebarMachineHeads, focusedId, openSubagent, online, canStart, renameInline, renameId, root, preferences, sidebarWidth, setLiveSidebarWidth, setPreferences, setPaletteOpen, newSession, newTerminal, setSettingsSection, setRenamingMachine, setUpdateAsk, showSessionById, showSubagent, setRenameId, saveName, openInSplit, splitSubagent, copyPathOf, copyText, showChangesOf, markDone, setGetFileId, endSession, newChatOpen, serviceFooterText, updateProgress, updater, runningVersion, skippedVersion, restartNow, setSkippedVersion, focusMode, sidebarMode, toggleSidebar, drawerShown, setDrawerOpen } = useWorkspace()
+  const { sidebarSessions, sidebarMachineHeads, focusedId, openSubagent, online, canStart, renameInline, renameId, root, preferences, sidebarWidth, setLiveSidebarWidth, setPreferences, setPaletteOpen, newSession, newTerminal, setSettingsSection, setRenamingMachine, setUpdateAsk, showSessionById, showSubagent, showRun, setRenameId, saveName, openInSplit, splitSubagent, copyPathOf, copyText, showChangesOf, markDone, setGetFileId, endSession, newChatOpen, serviceFooterText, updateProgress, updater, runningVersion, skippedVersion, restartNow, setSkippedVersion, focusMode, sidebarMode, toggleSidebar, drawerShown, setDrawerOpen } = useWorkspace()
   const updateSlot = (variant: 'footer' | 'rail') => (
     <UpdateSlot
       variant={variant}
@@ -56,6 +56,7 @@ export function WorkspaceSidebars() {
       onUpdateMachine={(name, action) => { afterPick(); setUpdateAsk({ name, action }) }}
       onShowSession={(id) => { afterPick(); showSessionById(id) }}
       onShowSubagent={(sessionId, subagentId) => { afterPick(); showSubagent(sessionId, subagentId) }}
+      onShowRun={(sessionId, runKey) => { afterPick(); showRun(sessionId, runKey) }}
       onRenameSession={setRenameId}
       onSetName={saveName}
       onSplitSession={(id, direction) => { afterPick(); openInSplit(id, direction) }}

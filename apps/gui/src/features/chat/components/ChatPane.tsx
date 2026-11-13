@@ -8,6 +8,7 @@ import type { PermissionAsk } from '@/data/preview'
 import type { SessionStatus } from '@/features/workspace/model/session'
 import type { PaneQueue } from '../useChatComposer'
 import type { SubagentView } from '@/features/workspace/model/subagents'
+import type { OpenRun } from './RunView'
 import { FULL_ACCESS_LABEL, FULL_ACCESS_WARNING } from '../fullAccess'
 import { AGENT_LABEL } from '../modelName'
 import { ChatSession } from './ChatSession'
@@ -58,6 +59,8 @@ export type ChatPaneProps = {
   branch?: string | null
   /** A subagent whose own chat shows instead of the session's, and the way back. */
   subagent?: SubagentView | null
+  /** A workflow run whose steps show instead of the session's chat. */
+  run?: OpenRun | null
   onBackToMain?: () => void
   /** Shows the session's files beside the pane. */
   onOpenFiles?: () => void
@@ -94,6 +97,7 @@ export function ChatPane(props: ChatPaneProps) {
             folder={props.folder ?? ''}
             branch={props.branch ?? null}
             subagent={props.subagent ?? null}
+            run={props.run ?? null}
             onOpenFolder={props.onOpenFiles ?? null}
             {...(props.worktree === undefined ? {} : { worktree: props.worktree })}
             {...(props.usage === undefined ? {} : { usage: props.usage })}

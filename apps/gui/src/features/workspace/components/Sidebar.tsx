@@ -16,9 +16,10 @@ import { SessionRow } from './SessionRow'
 import { RowHoverCard } from './RowHoverCard'
 import { HOVER_CARD_DELAY_MS, type Box } from '../model/hoverCard'
 import { SubagentList, SubagentPeek } from './SubagentRows'
+import { WorkflowList } from './WorkflowRows'
 
-/** A subagent whose own chat a pane shows. */
-export type OpenSubagent = { sessionId: string; subagentId: string }
+/** What a pane shows instead of its session's chat: a subagent's own chat, or a workflow run's steps. */
+export type OpenSubagent = { sessionId: string; subagentId: string; runKey?: undefined } | { sessionId: string; runKey: string; subagentId?: undefined }
 
 export type SidebarProps = {
   /** Every session of every machine. Each machine lists its own, in `order`. */
@@ -57,6 +58,8 @@ export type SidebarProps = {
   onUpdateMachine: (name: string, action: UpdateAction) => void
   onShowSession: (id: string) => void
   onShowSubagent: (sessionId: string, subagentId: string) => void
+  /** Opens a workflow run's steps in its session's pane. */
+  onShowRun: (sessionId: string, runKey: string) => void
   onRenameSession: (id: string | null) => void
   onSetName: (id: string, name: string) => void
   /** Shows a session beside the pane that has focus. */
@@ -258,12 +261,21 @@ function Expanded(props: SidebarProps) {
               <SubagentList
                 process={session.process}
                 subagents={subagents}
-                openId={props.openSubagent?.sessionId === session.id ? props.openSubagent.subagentId : null}
+                openId={props.openSubagent?.sessionId === session.id ? props.openSubagent.subagentId ?? null : null}
                 onOpen={(id) => { props.onShowSubagent(session.id, id) }}
                 onContextMenu={(subagent, event) => { openMenu(event, subagent.name, subagentMenu(session, subagent)) }}
               />
             </Collapse>
           </>
+        )}
+        {session.workflows.length > 0 && (
+          <Collapse open={selected}>
+            <WorkflowList
+              runs={session.workflows}
+              openKey={props.openSubagent?.sessionId === session.id ? props.openSubagent.runKey ?? null : null}
+              onOpen={(key) => { props.onShowRun(session.id, key) }}
+            />
+          </Collapse>
         )}
       </div>
     )

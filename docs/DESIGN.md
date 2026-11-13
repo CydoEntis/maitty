@@ -330,6 +330,13 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   is named by the name you gave it, else a shell's folder, else its agent. **Rename**: double-click, F2 or the menu
   turns the name into a field; Enter or leaving saves, Esc cancels, empty clears. Project colours are five tokens
   (`--proj-1` to `--proj-5`: teal, blue, pink, violet, green), chosen from the project's name, never amber or red.
+  **Workflow runs** (the daemon's `workflows`, ADR 0010, `model/workflows.ts`, [brief](features/workflow-view/brief.md)): under
+  the selected session, after its subagents, one row per run still going (its step mark, ticket key, and the step it is on in
+  quiet text), then a quiet "N runs done · show" line that lists the finished ones. A run opens in the session's pane in
+  place of the chat, as a subagent's chat does: the bar ("Run · MAITTY-42 · Add export", Back to main session) and its
+  steps, each with a mark of its own shape (`·` waiting, spinner working, `✓` passed, `✕` failed, `↺` sent back, `●` needs
+  you in amber, `–` skipped), its note, and the helper doing it, a link to that subagent's chat where one of the session's
+  subagents has that name.
   **Subagents** (the daemon's `subagent_activity`, `model/subagents.ts`): under a session that is not selected, an
   elbow line and one 14px tile per subagent with a corner mark (teal spinner working, amber square needs you, green
   check done), no text; under the selected session, a 28px row each on a guide line. Clicking one opens its own chat.

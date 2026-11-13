@@ -86,6 +86,13 @@ export function useSessionActions({ setRenameId, queryClient, setOpenSubagent, s
     setOpenSubagent({ sessionId, subagentId })
   }, [paneViews, setLayout, setOpenSubagent])
 
+  // A workflow run's steps show in its session's pane, in the chat view, as a subagent's chat does.
+  const showRun = useCallback((sessionId: string, runKey: string) => {
+    movePanes(() => { setLayout((current) => showSession(current, sessionId, makeId)) })
+    paneViews.choose(sessionId, 'chat')
+    setOpenSubagent({ sessionId, runKey })
+  }, [paneViews, setLayout, setOpenSubagent])
+
   const splitSubagent = useCallback((sessionId: string, subagentId: string) => {
     openInSplit(sessionId, 'right')
     paneViews.choose(sessionId, 'chat')
@@ -122,5 +129,5 @@ export function useSessionActions({ setRenameId, queryClient, setOpenSubagent, s
       })
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not open that file')) })
   }, [setInspectOpen, setInspectView, setLookAt, showSessionById])
-  return { showSessionById, openPath, copyPathOf, showSubagent, saveName, openInSplit, splitSubagent, copyText, usageInfo }
+  return { showSessionById, openPath, copyPathOf, showSubagent, showRun, saveName, openInSplit, splitSubagent, copyText, usageInfo }
 }

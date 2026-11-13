@@ -19,6 +19,7 @@ import { ChatPane } from '@/features/chat/components/ChatPane'
 import { NoTerminalNote } from '@/features/chat/components/NoTerminalNote'
 import { type Arrangement, focusPane, type PaneSlot, toggleMaximize } from '../model/layout'
 import { folderNameOf } from '../model/session'
+import { toSubagentView } from '../model/subagents'
 import { isShell } from '../model/sidebar'
 import { moveRefusal } from '../model/moveToWorktree'
 
@@ -48,7 +49,12 @@ export function WorkspacePane({ shown, pane, kept }: {
   const focused = pane.id === shown.focus && !kept
   const chat = chatOf(session)
   const chatOnly = isChatSession(session.conversation)
-  const subagent = openSubagent?.sessionId === session.id ? session.subagents.find((child) => child.id === openSubagent.subagentId) : undefined
+  // Every subagent the session reported, not only those the sidebar lists, so a workflow step can open a finished one.
+  const helpers = (session.conversation.details?.subagents ?? []).map(toSubagentView)
+  const opened = openSubagent?.sessionId === session.id ? openSubagent : null
+  const subagent = opened?.subagentId === undefined ? undefined : helpers.find((child) => child.id === opened.subagentId)
+  const runView = opened?.runKey === undefined ? undefined : session.workflows.find((one) => one.key === opened.runKey)
+  const run = runView === undefined ? null : { view: runView, helpers, onOpenHelper: (id: string) => { setOpenSubagent({ sessionId: session.id, subagentId: id }) } }
   const typeInto = chatOnly ? undefined : (text: string) => sendTerminalInput({ id: session.id, generation: session.conversation.generation ?? 0 }, text)
   // A pane's daemon holds what is sent while its agent works; a chat session's own daemon queue is its conversation's.
   const paneQueue = chatOnly ? undefined : {
@@ -114,6 +120,7 @@ export function WorkspacePane({ shown, pane, kept }: {
           folder={folderNameOf(session)}
           branch={session.branch}
           subagent={subagent ?? null}
+          run={run}
           onBackToMain={() => { setOpenSubagent(null) }}
           onOpenFiles={() => { togglePanel(pane.id, session.id, 'files') }}
           onBackToTerminal={showTerminal}

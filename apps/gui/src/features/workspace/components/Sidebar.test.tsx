@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import type { Conversation, SubagentActivity } from '@/data/preview'
+import type { Conversation, SubagentActivity, WorkflowRun } from '@/data/preview'
 import { LOCAL_HEAD, type MachineHead } from '../model/machines'
 import { toSessionView, type SessionView } from '../model/session'
 import { Sidebar, type SidebarProps } from './Sidebar'
@@ -26,7 +26,7 @@ function show(sessions: SessionView[], more: Partial<SidebarProps> = {}) {
   const props: SidebarProps = {
     sessions, machines: [LOCAL_HEAD], order: 'creation', focusedId: null, openSubagent: null, mode: 'docked', online: true, canStart: true, renamingId: null, portalContainer: null,
     onToggleRail: none, side: 'left', width: 264, onResize: none, onResizeEnd: none, grouping: 'machine', onGrouping: none, onSearch: none,
-    onNewAgentChat: none, onNewShell: none, onAddMachine: none, onMachineSettings: none, onRenameMachine: none, onUpdateMachine: none, onShowSession: none, onShowSubagent: none, onRenameSession: none,
+    onNewAgentChat: none, onNewShell: none, onAddMachine: none, onMachineSettings: none, onRenameMachine: none, onUpdateMachine: none, onShowSession: none, onShowSubagent: none, onShowRun: none, onRenameSession: none,
     onSetName: none, onSplitSession: none, onSplitSubagent: none, onCopyPath: none, onCopyText: none, onShowChanges: none, onMarkDone: none, onGetFile: none,
     onEndSession: none, onOpenSettings: none, updateSlot: null, railUpdateSlot: null,
     ...more,
@@ -519,5 +519,30 @@ describe('the top of the sidebar', () => {
     await user.click(screen.getByRole('button', { name: 'Group by: Status' }))
     await user.click(screen.getByRole('menuitem', { name: /^Project/ }))
     expect(onGrouping).toHaveBeenCalledWith('project')
+  })
+})
+
+describe('workflow runs', () => {
+  const run = (id: string, states: WorkflowRun['steps'][number]['state'][], key: string | null = null): WorkflowRun => ({
+    workflow: 'kitchen',
+    run: id,
+    ticket: key === null ? null : { key, title: null, link: null },
+    steps: ['intake', 'build', 'review'].map((name, index) => ({ name, state: states[index] ?? 'waiting', note: null, helper: null })),
+    reportedAt: 1,
+  })
+  const parent = () => session(1, { agent: 'claude', named: true, title: 'Kitchen', status: 'working', details: { asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, workflows: [run('001', ['passed', 'working'], 'MAITTY-42'), run('002', ['needs_you'], 'MAITTY-43'), run('003', ['passed', 'passed', 'passed'])] } })
+
+  it('lists the runs still going with the step each is on, folds the finished ones, and opens one', async () => {
+    const user = userEvent.setup()
+    const onShowRun = vi.fn()
+    show([parent()], { focusedId: 't1', onShowRun })
+    const runs = within(screen.getByRole('group', { name: 'Workflow runs' }))
+    expect(runs.getByRole('button', { name: 'MAITTY-42, build: Working' })).toBeInTheDocument()
+    expect(runs.getByRole('button', { name: 'MAITTY-43, intake: Needs you' })).toBeInTheDocument()
+    expect(runs.queryByRole('button', { name: /kitchen 003/ })).toBeNull()
+    await user.click(runs.getByRole('button', { name: '1 run done · show' }))
+    expect(runs.getByRole('button', { name: /kitchen 003/ })).toBeInTheDocument()
+    await user.click(runs.getByRole('button', { name: 'MAITTY-42, build: Working' }))
+    expect(onShowRun).toHaveBeenCalledWith('t1', 'kitchen:001')
   })
 })
