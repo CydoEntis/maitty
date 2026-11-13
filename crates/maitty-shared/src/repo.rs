@@ -4,6 +4,12 @@
 use crate::conversation::{ConversationDiff, ConversationFileEntry};
 use serde::{Deserialize, Serialize};
 
+/// The longest `FindFiles` query, in characters; a longer one is refused.
+pub const FIND_FILES_MAX_QUERY_CHARS: usize = 200;
+
+/// The most paths one `FindFiles` answer carries, whatever limit was asked for.
+pub const FIND_FILES_MAX_RESULTS: usize = 80;
+
 /// What to read. Paths are relative to the checkout root and may not climb out of it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RepoRequest {
@@ -36,6 +42,9 @@ pub enum RepoRequest {
     RestoreCount { commit: String },
     /// The project's reference files (`.maitty/references/`), newest first.
     References,
+    /// Files whose path holds `query` (case-insensitive), best match first, at most `limit`
+    /// (capped at `FIND_FILES_MAX_RESULTS`). Ignored and hidden files are left out.
+    FindFiles { query: String, limit: usize },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -57,6 +66,9 @@ pub enum RepoReply {
     RestoreCount(usize),
     /// A file was written.
     Written,
+    /// What `FindFiles` matched: paths relative to the checkout root, with `/`. `truncated`: the
+    /// walk stopped at its file or time limit, so a file past that point was not searched.
+    Files { paths: Vec<String>, truncated: bool },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

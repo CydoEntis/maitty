@@ -299,3 +299,45 @@ async fn a_session_is_not_started_on_this_computer_or_a_machine_that_is_down_or_
         assert!(wire.new_session(1, folder).unwrap_err().starts_with("Type a folder"), "{folder:?}");
     }
 }
+
+#[tokio::test]
+async fn the_window_asks_a_machine_for_its_whole_list_but_not_this_computer_or_a_machine_that_is_down() {
+    let sandbox = Sandbox::new();
+    let watch = Watch::new(&[machine("box", &sandbox, "auth-fail")], &sandbox, quick(WAIT));
+    let wire = Wire::reaching(watch.hub.handle());
+    assert_eq!(
+        wire.ask_machine_list(0).unwrap_err(),
+        "This computer's list is read with list_sessions"
+    );
+    assert_eq!(wire.ask_machine_list(1).unwrap_err(), "box is not connected");
+
+    let handle = watch.hub.handle();
+    lock(&handle.shared.up).insert(BOX);
+    wire.ask_machine_list(1).expect("a machine whose line is up takes it");
+    assert!(
+        lock(&handle.shared.list_wanted).contains(&BOX),
+        "its answer is let in as the list the host asked for"
+    );
+}
+
+#[tokio::test]
+async fn the_window_asking_a_machine_for_its_list_again_and_again_sends_at_most_one_ask_a_while() {
+    let sandbox = Sandbox::new();
+    let watch = Watch::new(&[machine("box", &sandbox, "auth-fail")], &sandbox, quick(WAIT));
+    let wire = Wire::reaching(watch.hub.handle());
+    let handle = watch.hub.handle();
+    lock(&handle.shared.up).insert(BOX);
+    let asked = |wire: &Wire, at: Instant| {
+        lock(&handle.shared.list_wanted).remove(&BOX);
+        wire.ask_machine_list_at(1, at).expect("a throttled ask is not an error");
+        lock(&handle.shared.list_wanted).contains(&BOX)
+    };
+    let start = Instant::now();
+
+    assert!(asked(&wire, start), "the first ask goes out");
+    assert!(!asked(&wire, start + Duration::from_secs(1)), "one soon after is dropped");
+    assert!(
+        asked(&wire, start + crate::terminal_stream::WINDOW_LIST_ASK_EVERY),
+        "one after the wait goes out again"
+    );
+}
