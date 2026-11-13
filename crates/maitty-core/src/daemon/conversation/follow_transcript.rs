@@ -672,6 +672,11 @@ impl Transcript {
             .get("output")
             .map_or_else(String::new, |output| match output {
                 Value::String(text) => text.clone(),
+                // Codex 0.166 writes a custom tool's output as a list of text parts.
+                Value::Array(parts) => parts
+                    .iter()
+                    .filter_map(|part| part.get("text").and_then(Value::as_str))
+                    .collect(),
                 other => other
                     .get("content")
                     .and_then(Value::as_str)
@@ -856,6 +861,9 @@ struct CodexResult {
     duration_ms: Option<u64>,
 }
 
+/// The lines Codex puts before `Output:` in a command's text result.
+const RESULT_HEADERS: [&str; 5] = ["Exit code", "Wall time", "Script ", "Chunk ID", "Original token count"];
+
 /// Codex writes a command's result either as JSON (`{"output", "metadata": {"exit_code",
 /// "duration_seconds"}}`) or as text (`Exit code: N`, `Wall time: S seconds`, `Output:`, …).
 fn codex_result(raw: &str) -> CodexResult {
@@ -875,6 +883,29 @@ fn codex_result(raw: &str) -> CodexResult {
                 .and_then(Value::as_f64)
                 .and_then(seconds),
         };
+    }
+    // A custom tool's result: a header of known lines ("Script completed", "Wall time 0.2 seconds"),
+    // then `Output:` and the output.
+    if let Some((head, body)) = raw.split_once("Output:\n")
+        && !head.is_empty()
+        && head.lines().all(|line| RESULT_HEADERS.iter().any(|known| line.starts_with(known)))
+    {
+        let mut result = CodexResult { text: bounded_output(body), exit_code: None, duration_ms: None };
+        for line in head.lines() {
+            if let Some(code) = line.strip_prefix("Exit code:") {
+                result.exit_code = code.trim().parse().ok();
+            } else if let Some(wall) = line.strip_prefix("Wall time") {
+                result.duration_ms = wall
+                    .trim_start_matches(':')
+                    .trim()
+                    .trim_end_matches("seconds")
+                    .trim()
+                    .parse::<f64>()
+                    .ok()
+                    .and_then(seconds);
+            }
+        }
+        return result;
     }
     let mut exit_code = None;
     let mut duration_ms = None;
