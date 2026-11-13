@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Conversation } from '@/data/preview'
-import { displayName, folderNameOf, inCreationOrder, keepLabels, processName, rowName, statusText, tildePath, toSessionView, truncatePrompt } from './session'
+import { displayName, folderNameOf, inCreationOrder, keepLabels, limitedWord, nextResumeAt, processName, rowName, statusText, tildePath, toSessionView, truncatePrompt } from './session'
 import { formatAgo, formatElapsed, markSeen, trackSessions } from './tracking'
 import { folderExists, resolveStartFolder } from './startFolder'
 
@@ -114,6 +114,29 @@ describe('session tracking', () => {
     expect(shown.tracks.get('t1')?.unread).toBe(false)
   })
 
+  it('does not take a limit ending for a session finishing again', () => {
+    const limited = (status: Conversation['status'], now: number) => [toSessionView(conversation(1, HOME, { agent: 'claude', status, details: { asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, resumeAt: 100 } }), HOME, now)]
+    const done = trackSessions(trackSessions(new Map(), view('working'), new Set(), 0).tracks, view('done'), new Set(), 1)
+    const read = markSeen(done.tracks, new Set(['t1']))
+    const held = trackSessions(read, limited('done', 50_000), new Set(), 2)
+    expect(held.tracks.get('t1')).toMatchObject({ status: 'limited', unread: false })
+    const back = trackSessions(held.tracks, limited('done', 100_000), new Set(), 3)
+    expect(back.tracks.get('t1')).toMatchObject({ status: 'done', unread: false, changedAt: 2 })
+    const working = trackSessions(held.tracks, limited('working', 100_000), new Set(), 3)
+    expect(working.tracks.get('t1')).toMatchObject({ status: 'working', workingSince: 3 })
+  })
+
+  it('marks a limited session unread when it starts asking or its command fails', () => {
+    const details = { asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, resumeAt: 100 }
+    const limited = [toSessionView(conversation(1, HOME, { agent: 'claude', status: 'done', details }), HOME, 50_000)]
+    const held = trackSessions(trackSessions(new Map(), view('working'), new Set(), 0).tracks, limited, new Set(), 2)
+    expect(held.tracks.get('t1')).toMatchObject({ status: 'limited', unread: false })
+    const asking = trackSessions(held.tracks, view('needs-you', { agent: 'claude', details }), new Set(), 3)
+    expect(asking.tracks.get('t1')).toMatchObject({ status: 'needs', unread: true, changedAt: 3 })
+    const failed = trackSessions(held.tracks, view('done', { agent: 'claude', details: { ...details, exit: { code: 2, at: 10 } } }), new Set(), 3)
+    expect(failed.tracks.get('t1')).toMatchObject({ status: 'error', unread: true, changedAt: 3 })
+  })
+
   it('notices a shell moving to another repo', () => {
     const first = trackSessions(new Map(), view('idle'), new Set(), 0)
     const moved = trackSessions(first.tracks, [toSessionView(repo(1, `${HOME}/maitty`, `${HOME}/maitty`), HOME)], new Set(), 5)
@@ -171,6 +194,62 @@ describe('an exited session', () => {
     expect(toSessionView(conversation(1, `${HOME}/a`, { status: 'working', details }), HOME).status).toBe('working')
     expect(toSessionView(conversation(1, `${HOME}/a`, { status: 'needs-you', details }), HOME).status).toBe('needs')
     expect(toSessionView(conversation(1, `${HOME}/a`, { status: 'idle', details: { ...details, exit: null } }), HOME).status).toBe('idle')
+  })
+})
+
+describe('a session stopped by its plan limit', () => {
+  const NOW = new Date(2026, 0, 5, 9, 30).getTime()
+  const RESUME = new Date(2026, 0, 5, 14, 5).getTime()
+  const held = (status: Conversation['status'], resumeAt: number | null, extra: Partial<Conversation> = {}) =>
+    conversation(1, `${HOME}/a`, { agent: 'claude', status, details: { asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, resumeAt }, ...extra })
+
+  it('reads as limited until the time the daemon says it continues', () => {
+    const view = toSessionView(held('idle', RESUME / 1000), HOME, NOW)
+    expect(view.status).toBe('limited')
+    expect(view.resumeAt).toBe(RESUME)
+    expect(statusText(view, NOW)).toBe('limited until 14:05')
+    expect(toSessionView(held('done', RESUME / 1000), HOME, NOW).status).toBe('limited')
+  })
+
+  it('names the day when it continues on another day than today', () => {
+    const thursday = new Date(2026, 0, 8, 14, 5).getTime()
+    expect(limitedWord(thursday, NOW)).toBe('limited until Thu 14:05')
+    expect(limitedWord(new Date(2026, 0, 6, 0, 0).getTime(), new Date(2026, 0, 5, 23, 59).getTime())).toBe('limited until Tue 00:00')
+    expect(limitedWord(RESUME, new Date(2026, 0, 5, 0, 0).getTime())).toBe('limited until 14:05')
+  })
+
+  it('keeps needs you, which the daemon decided, so its question can still be answered', () => {
+    const view = toSessionView(held('needs-you', RESUME / 1000), HOME, NOW)
+    expect(view.status).toBe('needs')
+    expect(view.resumeAt).toBeNull()
+  })
+
+  it('keeps exited for a session whose last command failed', () => {
+    const failed = conversation(1, `${HOME}/a`, { agent: 'claude', status: 'idle', details: { asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, exit: { code: 2, at: 10 }, resumeAt: RESUME / 1000 } })
+    expect(toSessionView(failed, HOME, NOW).status).toBe('error')
+  })
+
+  it('returns to the status the daemon gave once that time has passed', () => {
+    const view = toSessionView(held('done', RESUME / 1000), HOME, RESUME)
+    expect(view.status).toBe('done')
+    expect(view.resumeAt).toBeNull()
+  })
+
+  it('returns to the status the daemon gave when the daemon clears the time', () => {
+    expect(toSessionView(held('idle', null), HOME, NOW).status).toBe('idle')
+    expect(toSessionView(conversation(1, `${HOME}/a`, { agent: 'claude', status: 'done' }), HOME, NOW).status).toBe('done')
+  })
+
+  it('stays working or unknown, which the daemon’s time does not speak for', () => {
+    expect(toSessionView(held('working', RESUME / 1000), HOME, NOW).status).toBe('working')
+    expect(toSessionView(held('unknown', RESUME / 1000, { lastKnownStatus: 'idle' }), HOME, NOW).status).toBe('unknown')
+  })
+
+  it('finds the next time a limited session continues, and none when nothing is limited', () => {
+    const later = toSessionView(held('idle', RESUME / 1000 + 60), HOME, NOW)
+    const sooner = toSessionView(held('idle', RESUME / 1000), HOME, NOW)
+    expect(nextResumeAt([later, sooner, toSessionView(held('idle', null), HOME, NOW)])).toBe(RESUME)
+    expect(nextResumeAt([toSessionView(held('working', RESUME / 1000), HOME, NOW)])).toBeNull()
   })
 })
 

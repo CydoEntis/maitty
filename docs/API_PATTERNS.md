@@ -179,8 +179,42 @@ daemon that would never answer. A daemon on another machine that is older is ask
 A state change reaches attached clients as `ServerMsg::State` (the whole `Snapshot`) or, when only
 some panes differ from what that surface's clients last received, as `ServerMsg::TermsChanged`
 (the panes to replace and the ids to drop); the daemon compares encoded bytes and sends nothing
-when nothing visible changed, and a client that has just attached gets the next change in full. A
-client merges a delta into the snapshot it holds and treats the result as a state update. For a pane delta from another machine the snapshot is that machine's own,
+when nothing visible changed, and a client that has just attached gets the next change in full.
+Each of the two carries a `revision` (`Snapshot::revision`, `TermsChanged.revision`): the daemon
+counts them per surface from 1, one more for every message it sends that surface's attached
+clients, so a gap means a missed update. The snapshot a client gets on attach and in `Reply::List`
+carries the surface's current revision and uses none. The field is `#[serde(default)]`, so it
+needed no new `PROTOCOL_VERSION`; 0 means a daemon built before it, or a surface sent nothing yet.
+Each of the two also says why every pane it drops left, as a `RemovalReason` by pane id
+(`TermsChanged.reasons` for the ids in `removed`; `Snapshot::removed` on a whole `State`, for the
+panes that surface's clients were told of in the message before and are not in this one): `Closed`
+(a person closed it; a session inside its undo window is `Closed` too and comes back as changed if
+undone), `Exited` (its program ended, or the daemon closed the pane of an agent that had ended),
+`PutAway` (hidden, still running: a spare), `Moved` (another surface owns it now),
+`DaemonStopping` (it ended after the daemon was told to stop) or `Unknown` (the daemon recorded no
+reason, or a pane is hidden by none of these). `Bye` is the signal that the daemon stopped:
+`KillServer` kills every pane, sends `Bye` and exits without another update, so `DaemonStopping` is
+best-effort, seen only for a pane that ends between the stop request and `Bye`. A pane replaced by a
+new one for the same session (woken, or moved into a worktree) leaves as `Closed`, with the new pane
+among the changed. What a surface was told of is the panes of the last message its attached clients
+got and of the snapshot each got on attach: the first client to attach to a surface starts the list
+from its snapshot, a later one adds to it, so the whole `State` that follows an attach still names
+what left for the clients already there, and a pane that ended while nobody was attached is named
+to nobody. Both fields are `#[serde(default)]` (no new `PROTOCOL_VERSION`): empty from an older
+daemon, on the attach snapshot and in `Reply::List`, so no reason means not said, never a reason.
+`RemovalReason::Unknown` is `#[serde(other)]`: a reason added later reads as `Unknown` to an older
+build and the rest of the message stands, so an older peer can still read a message that carries one. A
+client merges a delta into the snapshot it holds, sets that snapshot's `removed` to the delta's
+`reasons`, and treats the result as a state update. The desktop
+host (`streams.rs`) merges a delta only when its revision is 0 or one more than the revision it holds;
+after a gap, or with no snapshot held, it drops the delta, sends `Query::List` on its stream and takes
+the `Reply::List` as its snapshot. It asks once for a run of such deltas, and again only when the list has
+not come after `LIST_ASKED_AGAIN_AFTER` (5 s) or the machine's line came up anew; a whole `State` settles
+it too. A list alone is no base for a delta (it can hold a change the surface
+was not sent yet), so after `Query::List` from an attached client the daemon sends that surface its next
+change in full, as it does after an attach. That reset is what makes the delta after a resync right: a
+daemon that numbers its updates but was built before the reset works its next delta out from what it
+sent, so a pane can stay stale in the host's list until that daemon's next whole `State`. For a pane delta from another machine the snapshot is that machine's own,
 and the delta is cleaned first (SECURITY, "remote daemon"). Replays follow `Hello.replays`: a terminal client takes every pane's replay on attach, the desktop window
 attaches without and sends `ClientMsg::WantReplay { term }` on its stream when it shows a pane; a
 desktop replay carries the last mebibyte of the ring and then the screen as it is, which is all the
@@ -549,6 +583,11 @@ fail with a "read-only" error; `Rename` and `Archive` fail as for an unknown id 
 closed as a pane). A client the pane does not belong to (ADR 0004) gets "No such conversation". The
 history is the provider's own transcript projected through the same entries a structured runtime
 produces (`conversation/follow_transcript.rs`); nothing read from the file sets any status.
+In a Claude transcript a slash command is a user message holding the command as typed
+(`/plugin marketplace add x`). What a command Claude ran itself printed (`<local-command-stdout>`,
+`<local-command-stderr>`) is a completed `commandExecution` entry labelled with that command, and it
+completes the command's turn; a command that printed nothing gets no such entry. `<system-reminder>`,
+`<local-command-caveat>` and `isMeta` lines are never shown.
 
 `ConversationSend` carries an optional `choice` (`TurnChoice { model, effort }`, `#[serde(default)]`, no
 protocol bump; a send from before it decodes as no choice). The daemon validates it (a plain model name that
@@ -624,7 +663,22 @@ clients only; the reads run off the event loop. A listing from another machine i
 snapshot is (`remote_policy::vet`): control characters out, names that are paths dropped, the count
 cut, and it is passed on only while a request to that machine is waiting.
 
-Protocol 85 adds `Query::CloneRepo { address, parent, tag }` and `Reply::Cloned { tag, outcome }`
+Protocol 85 adds `Query::SavedConversations { agent, folder, tag }` and `Reply::SavedConversations { tag, found }`
+(`daemon/conversation/saved.rs`): the conversations Claude or Codex saved for a folder on the daemon's computer, for a
+client offering to resume one. `found` is `Listed` (at most 20, newest first: the agent's own id, the first thing the
+person typed as one clean line of at most 200 characters, and when the file was last written, in unix seconds; empty
+when the folder has none) or `NotSupported` for any other agent. Claude's come from its transcripts for that folder
+(`$CLAUDE_CONFIG_DIR/projects`, else `~/.claude/projects`; the transcript's own `cwd` must be the folder), Codex's
+from its session files (`$CODEX_HOME/sessions`) whose first line names the folder, subagents' sessions left out. The
+first message skips what the agent wrote itself (Claude's meta lines, slash commands, reminders and tool results;
+Codex's instructions and environment), with the same rules the transcript follower uses. `folder` is checked as
+`ListFolders`' `path` is (absolute or `~`, at most 4,096 bytes; anything else answers `ServerMsg::Error`). Human
+clients only; the files are read on a blocking task, at most 500 looked at, 1 MiB from the start of each, and an
+unreadable one is skipped and logged by path only. Both came with their own `introduced_in` arms
+(`SAVED_CONVERSATIONS_SINCE`); `COMPATIBLE_SINCE` stays 78, since an older daemon is never asked and an older client
+never sent the reply. This computer only: another machine's answer is ignored (`remote_policy`).
+
+Protocol 86 adds `Query::CloneRepo { address, parent, tag }` and `Reply::Cloned { tag, outcome }`
 (`CLONE_SINCE`; `COMPATIBLE_SINCE` stays): `git clone` of `address` into a new folder, named after the
 repository, inside `parent` on the daemon's computer (`crates/maitty-core/src/daemon/clone.rs`).
 `outcome` is the new folder's path with `/` separators, or one line saying why nothing was cloned; a
@@ -641,7 +695,7 @@ character); the daemon is the judge of the address. A reply from another machine
 answer for 30 seconds after a request; a clone's is expected for the daemon's limit plus 30 seconds
 (`routing::answer_window`), and a quick answer to something else never uses up that wait.
 
-Protocol 86 adds `Query::GitHubAccounts { tag }` and `Reply::GitHubAccounts { tag, report }`
+Protocol 87 adds `Query::GitHubAccounts { tag }` and `Reply::GitHubAccounts { tag, report }`
 (`GITHUB_ACCOUNTS_SINCE`; `COMPATIBLE_SINCE` stays): who is signed in to github.com on the daemon's
 computer, as its GitHub command line says (`gh auth status --json hosts`,
 `crates/maitty-core/src/daemon/github.rs`). `report` is `installed` (false when the machine has no
@@ -654,7 +708,7 @@ another machine keeps only logins GitHub could have given out and one clean `pro
 host sends it through `github_accounts(machine, tag)` and raises a `github-accounts` event with the tag
 and the report (`apps/gui/src/api/githubAccounts.ts` waits on it for 20 seconds).
 
-Protocol 92 adds `Query::GitIdentityRule { change, tag }` with `Reply::GitIdentityRuleDone { tag, outcome }`
+Protocol 93 adds `Query::GitIdentityRule { change, tag }` with `Reply::GitIdentityRuleDone { tag, outcome }`
 (`GIT_RULES_SINCE`; `COMPATIBLE_SINCE` stays). `change` is a `GitRuleChange`: `Preview { folder, identity }`
 answers the lines `Apply` would write and writes nothing; `Apply { folder, identity }` writes them;
 `Remove { folder }` takes away the rule Maitty wrote for a folder (named as the report names it). `outcome`
@@ -672,7 +726,7 @@ one entry. Everything is written with `git config --global` and `--file`, never 
 sends it with `git_identity_rule(machine, change)`, and an answer from another machine is cleaned and cut
 to 4 files of 16 lines (`remote_policy::vet_rule_reply`). Human clients only.
 
-Protocol 91 adds `Query::GitIdentities { tag }` with `Reply::GitIdentities { tag, report }`
+Protocol 92 adds `Query::GitIdentities { tag }` with `Reply::GitIdentities { tag, report }`
 (`GIT_IDENTITIES_SINCE`; `COMPATIBLE_SINCE` stays). The report is the machine's global `user.name`
 and `user.email` (each absent when not set) and its folder rules: every
 `includeIf "gitdir:<folder>/"` (or `gitdir/i:`) entry of the global git config, in git's order, the
@@ -687,7 +741,7 @@ The desktop host asks with `git_identities(machine)`, which answers the report a
 (`apps/gui/src/api/gitIdentities.ts`); from another machine only that report is taken, cleaned
 (`remote_policy::vet_identities_reply`).
 
-Protocol 90 adds `GitRequest::PullRequest` to `Query::Git` (`GIT_PULL_REQUEST_SINCE`;
+Protocol 91 adds `GitRequest::PullRequest` to `Query::Git` (`GIT_PULL_REQUEST_SINCE`;
 `COMPATIBLE_SINCE` stays). The daemon pushes the branch as `Push` does, then runs
 `gh pr create --fill --head <branch>` in the checkout. The answer's line is the pull request's
 address, kept only when it is `https://github.com/<owner>/<repo>/pull/<number>` (`pr::pull_request_url`,
@@ -697,7 +751,7 @@ cli.github.com; any other failure is the first line `gh` said, cleaned and cut t
 (nobody signed in reads "To get started with GitHub CLI, please run:  gh auth login"). No token is
 read. git and `gh` together are stopped after `GIT_SYNC_LIMIT_SECS` (60).
 
-Protocol 89 adds `GitRequest::Commit { message, paths }` to `Query::Git` (`GIT_COMMIT_SINCE`;
+Protocol 90 adds `GitRequest::Commit { message, paths }` to `Query::Git` (`GIT_COMMIT_SINCE`;
 `COMPATIBLE_SINCE` stays). With `paths` the daemon stages and commits those files only (`git add -A --`
 then `git commit --only --`), and whatever else is staged stays staged and out of the commit; with none
 it commits everything that changed. The answer's line is the new commit's short id, a space and its
@@ -709,7 +763,7 @@ or a tab; an empty one is refused. The paths together may be at most `GIT_COMMIT
 (24 KiB). The repository's hooks run and signing is as the repository has it; nothing is amended. The
 request is stopped after `GIT_COMMIT_LIMIT_SECS` (120).
 
-Protocol 88 adds `Query::Git { term, request, tag }` with `Reply::GitDone { tag, outcome }`
+Protocol 89 adds `Query::Git { term, request, tag }` with `Reply::GitDone { tag, outcome }`
 (`GIT_SYNC_SINCE`; `COMPATIBLE_SINCE` stays). `request` is a `GitRequest`: `Fetch` (`git fetch --prune`),
 `Pull` (`git pull --ff-only`) or `Push` (`git push`, or `git push -u origin <branch>` for a branch with
 no upstream yet), run in the folder pane `term` is in. `outcome` is one line either way: `Fetched`,
@@ -720,7 +774,7 @@ with the same pane checks as `Query::Repo` (an unknown pane is `ServerMsg::Error
 event loop with `GIT_TERMINAL_PROMPT=0` and the whole request is stopped after `GIT_SYNC_LIMIT_SECS`
 (60). An answer from another machine is cut and cleaned to one line (`remote_policy::vet`).
 
-Protocol 87 adds `Query::GitHubRepos { owner, search, tag }` with `Reply::GitHubRepos { tag, answer }`,
+Protocol 88 adds `Query::GitHubRepos { owner, search, tag }` with `Reply::GitHubRepos { tag, answer }`,
 and `Query::GitHubOwners { tag }` with `Reply::GitHubOwners { tag, answer }` (`GITHUB_REPOS_SINCE`;
 `COMPATIBLE_SINCE` stays). Each `answer` is a `GitHubAnswer`: `NotInstalled`, `NotSignedIn`,
 `Failed(one line)` or `Listed(…)`; having no `gh` and nobody signed in are answers, not

@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
-import { SquareCheck, SquareExclamationPoint, TreePine } from 'lucide-react'
+import { SquareCheck, SquareExclamationPoint, SquarePause, TreePine } from 'lucide-react'
 import { attachSpinner, currentGlyph, isWebSpinner, isWideSpinner, spinnerFrames, useSpinnerStyle } from '@/lib/spinner-clock'
 import { WebSpinner } from '@/components/WebSpinner'
 import { SHELL_PROCESS, type SessionStatus } from '../model/session'
@@ -144,6 +144,8 @@ export function StatusBadge({ status }: { status: SessionStatus }) {
       return <span className="mx-badge is-working"><Spinner className="" /></span>
     case 'needs':
       return <span className="mx-badge is-needs" aria-hidden="true"><SquareExclamationPoint strokeWidth={BADGE_STROKE} /></span>
+    case 'limited':
+      return <span className="mx-badge is-limited" aria-hidden="true"><SquarePause strokeWidth={BADGE_STROKE} /></span>
     case 'done':
       return <span className="mx-badge is-done" aria-hidden="true"><SquareCheck strokeWidth={BADGE_STROKE} /></span>
     case 'error':

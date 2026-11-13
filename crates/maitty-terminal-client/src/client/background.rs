@@ -105,8 +105,10 @@ impl App {
         machine: MachineId,
         changed: Vec<TermInfo>,
         removed: Vec<TermId>,
+        reasons: std::collections::BTreeMap<TermId, RemovalReason>,
     ) -> Snapshot {
         let mut merged = self.snap_of(machine).cloned().unwrap_or_default();
+        merged.removed = reasons;
         for id in removed {
             merged.terms.remove(&id);
         }
@@ -207,12 +209,12 @@ impl App {
                 self.check_view_sync();
                 self.maybe_restart_daemon(last_session_closed);
             }
-            ServerMsg::TermsChanged { changed, removed } => {
+            ServerMsg::TermsChanged { changed, removed, reasons, .. } => {
                 // Re-entering as a whole snapshot runs every rule a state update runs for this
                 // machine: the daemon-id check, the cleaning and caps, and the side effects. A
                 // delta arriving before any state merges into an empty snapshot, which has no
                 // daemon id; that is accepted only while no id is recorded for the name.
-                let merged = self.merged_terms(machine, changed, removed);
+                let merged = self.merged_terms(machine, changed, removed, reasons);
                 self.on_machine_server(machine, ServerMsg::State(merged));
             }
             ServerMsg::Replay {

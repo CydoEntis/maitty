@@ -11,11 +11,42 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 92;
+pub const PROTOCOL_VERSION: u32 = 93;
+
+/// The first version whose daemon lists an agent's saved conversations for a folder
+/// (`Query::SavedConversations`).
+pub const SAVED_CONVERSATIONS_SINCE: u32 = 85;
+
+/// The most conversations one `Reply::SavedConversations` carries.
+pub const SAVED_CONVERSATIONS_MAX: usize = 20;
+
+/// The longest first message a saved conversation is listed with, in characters.
+pub const SAVED_FIRST_MESSAGE_MAX_CHARS: usize = 200;
+
+/// A conversation an agent saved on the daemon's computer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedConversation {
+    /// The agent's own id for it: what its resume option takes.
+    pub id: String,
+    /// The first thing the person typed, as one clean line of at most
+    /// `SAVED_FIRST_MESSAGE_MAX_CHARS` characters.
+    pub first_message: String,
+    /// When its file was last written (unix seconds).
+    pub last_active: u64,
+}
+
+/// What `Query::SavedConversations` found.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SavedConversations {
+    /// Newest first, at most `SAVED_CONVERSATIONS_MAX`; empty when the folder has none.
+    Listed(Vec<SavedConversation>),
+    /// The daemon reads no saved conversations for this agent.
+    NotSupported,
+}
 
 /// The first version whose daemon writes and removes a folder's GitHub account and commit identity
 /// rule on request (`Query::GitIdentityRule`).
-pub const GIT_RULES_SINCE: u32 = 92;
+pub const GIT_RULES_SINCE: u32 = 93;
 /// The most files and lines one answer about a rule carries.
 pub const GIT_RULE_FILES_MAX: usize = 4;
 pub const GIT_RULE_LINES_MAX: usize = 16;
@@ -42,7 +73,7 @@ pub struct GitConfigWrite {
 
 /// The first version whose daemon says which commit identity its machine's git uses, and for
 /// which folders a different one applies (`Query::GitIdentities`).
-pub const GIT_IDENTITIES_SINCE: u32 = 91;
+pub const GIT_IDENTITIES_SINCE: u32 = 92;
 /// The most folder rules one report carries.
 pub const GIT_IDENTITY_RULES_MAX: usize = 100;
 /// The longest name, email or folder a report carries, in characters.
@@ -82,11 +113,11 @@ pub struct GitIdentity {
 
 /// The first version whose daemon opens a pull request for a pane's checkout on request
 /// (`GitRequest::PullRequest`).
-pub const GIT_PULL_REQUEST_SINCE: u32 = 90;
+pub const GIT_PULL_REQUEST_SINCE: u32 = 91;
 
 /// The first version whose daemon commits files of a pane's checkout on request
 /// (`GitRequest::Commit`).
-pub const GIT_COMMIT_SINCE: u32 = 89;
+pub const GIT_COMMIT_SINCE: u32 = 90;
 /// How long the daemon gives one commit, in seconds: the repository's own hooks run in it.
 pub const GIT_COMMIT_LIMIT_SECS: u64 = 120;
 /// The longest commit message taken, in bytes.
@@ -97,7 +128,7 @@ pub const GIT_COMMIT_PATHS_MAX_BYTES: usize = 24 * 1024;
 
 /// The first version whose daemon fetches, pulls and pushes a pane's checkout on request
 /// (`Query::Git`).
-pub const GIT_SYNC_SINCE: u32 = 88;
+pub const GIT_SYNC_SINCE: u32 = 89;
 /// How long the daemon gives one fetch, pull or push, in seconds.
 pub const GIT_SYNC_LIMIT_SECS: u64 = 60;
 
@@ -128,16 +159,16 @@ pub enum GitRequest {
 
 /// The first version whose daemon lists the repositories its machine's GitHub account can clone
 /// (`Query::GitHubRepos`, `Query::GitHubOwners`).
-pub const GITHUB_REPOS_SINCE: u32 = 87;
+pub const GITHUB_REPOS_SINCE: u32 = 88;
 /// How long the daemon gives `gh` to list repositories or organisations.
 pub const GITHUB_LIST_LIMIT_SECS: u64 = 30;
 
 /// The first version whose daemon says who is signed in to GitHub on its machine
 /// (`Query::GitHubAccounts`).
-pub const GITHUB_ACCOUNTS_SINCE: u32 = 86;
+pub const GITHUB_ACCOUNTS_SINCE: u32 = 87;
 
 /// The first version whose daemon clones a repository on request (`Query::CloneRepo`).
-pub const CLONE_SINCE: u32 = 85;
+pub const CLONE_SINCE: u32 = 86;
 
 /// How long a daemon lets one clone run before it stops it, in seconds. A client waits a little
 /// longer than this for the answer.
@@ -997,6 +1028,14 @@ pub enum Query {
         request: GitRequest,
         tag: u64,
     },
+    /// The conversations `agent` (`claude`, `codex`) saved for `folder` on this daemon's computer,
+    /// newest first (human clients only). `folder` is absolute or starts with `~`. The answer
+    /// echoes `tag`.
+    SavedConversations {
+        agent: String,
+        folder: String,
+        tag: u64,
+    },
     List,
     /// Plain-text screen contents of a terminal (the visible screen).
     Read {
@@ -1120,6 +1159,12 @@ pub enum ServerMsg {
     TermsChanged {
         changed: Vec<TermInfo>,
         removed: Vec<TermId>,
+        /// Why each of `removed` left. Empty from a daemon built before it.
+        #[serde(default)]
+        reasons: BTreeMap<TermId, RemovalReason>,
+        /// See `Snapshot::revision`.
+        #[serde(default)]
+        revision: u64,
     },
     /// Sent per terminal on attach (or on `WantReplay`): the recent output ring, to rebuild
     /// scrollback.
@@ -1234,6 +1279,10 @@ pub enum Reply {
     GitIdentityRuleDone {
         tag: u64,
         outcome: Result<Vec<GitConfigWrite>, String>,
+    },
+    SavedConversations {
+        tag: u64,
+        found: SavedConversations,
     },
 }
 
@@ -1413,6 +1462,38 @@ pub struct Snapshot {
     /// What each agent got done over the last day, by agent and folder.
     #[serde(default)]
     pub today: Vec<AgentDay>,
+    /// How many `State` and `TermsChanged` messages the daemon has sent this surface's attached
+    /// clients, counting the one that carries it: each is one more than the last, so a client that
+    /// sees a gap missed an update. A snapshot sent to one client (on attach, `Reply::List`)
+    /// carries the surface's current count. 0 from a daemon built before it, or one that has
+    /// sent the surface nothing yet.
+    #[serde(default)]
+    pub revision: u64,
+    /// The panes that left this surface's list since the message before this one, and why. Set
+    /// only on a `State` sent to the surface's attached clients: it says what that one message
+    /// dropped, so it is empty on attach, in `Reply::List`, and from a daemon built before it.
+    #[serde(default)]
+    pub removed: BTreeMap<TermId, RemovalReason>,
+}
+
+/// Why a pane left the list a surface is shown. A reason added later reads as `Unknown` to a
+/// build from before it, and the rest of the message still decodes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RemovalReason {
+    /// A person closed it. It may still be inside its undo window, and then comes back as changed.
+    Closed,
+    /// Its program ended without anyone closing it.
+    Exited,
+    /// Hidden from every list, still running in the daemon.
+    PutAway,
+    /// It belongs to another surface now.
+    Moved,
+    /// It ended after the daemon was told to stop. Best-effort: a stopping daemon sends `Bye`
+    /// and no further update, so only a pane that ended before `Bye` is ever named this way.
+    DaemonStopping,
+    /// The daemon recorded no reason, or gave one this build does not know.
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -2028,7 +2109,10 @@ impl ServerMsg {
     /// a client older than that. A message added while `COMPATIBLE_SINCE` stays behind gets its
     /// own arm here; everything else is as old as the window.
     pub fn introduced_in(&self) -> u32 {
-        COMPATIBLE_SINCE
+        match self {
+            ServerMsg::Reply(Reply::SavedConversations { .. }) => SAVED_CONVERSATIONS_SINCE,
+            _ => COMPATIBLE_SINCE,
+        }
     }
 }
 
@@ -2052,6 +2136,7 @@ impl ClientMsg {
             ClientMsg::Query(Query::Git { request: GitRequest::Commit { .. }, .. }) => GIT_COMMIT_SINCE,
             ClientMsg::Query(Query::Git { request: GitRequest::PullRequest, .. }) => GIT_PULL_REQUEST_SINCE,
             ClientMsg::Query(Query::Git { .. }) => GIT_SYNC_SINCE,
+            ClientMsg::Query(Query::SavedConversations { .. }) => SAVED_CONVERSATIONS_SINCE,
             _ => COMPATIBLE_SINCE,
         }
     }
@@ -2344,6 +2429,8 @@ mod tests {
             ServerMsg::TermsChanged {
                 changed: Vec::new(),
                 removed: vec![3],
+                reasons: BTreeMap::from([(3, RemovalReason::Exited)]),
+                revision: 4,
             },
             ServerMsg::Replay {
                 term: 3,
@@ -2373,6 +2460,18 @@ mod tests {
                     }],
                     truncated: false,
                 },
+            }),
+            ServerMsg::Reply(Reply::SavedConversations {
+                tag: 8,
+                found: SavedConversations::Listed(vec![SavedConversation {
+                    id: "0195c0de-0000-7000-8000-000000000001".into(),
+                    first_message: "Rename the export button".into(),
+                    last_active: 1_780_000_000,
+                }]),
+            }),
+            ServerMsg::Reply(Reply::SavedConversations {
+                tag: 9,
+                found: SavedConversations::NotSupported,
             }),
             ServerMsg::Reply(Reply::TerminalReplay(vec![27, b'[', b'H'])),
             ServerMsg::Error("nope".into()),
@@ -2456,7 +2555,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 92);
+        assert_eq!(PROTOCOL_VERSION, 93);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2727,8 +2826,119 @@ mod tests {
     }
 
     #[test]
+    fn a_state_and_a_pane_delta_from_before_revisions_read_as_revision_zero() {
+        #[derive(Serialize)]
+        struct OldSnapshot {
+            workspaces: Vec<WorkspaceInfo>,
+            active_ws: Option<WsId>,
+            terms: BTreeMap<TermId, TermInfo>,
+        }
+        #[derive(Serialize)]
+        enum OldServerMsg {
+            TermsChanged { changed: Vec<TermInfo>, removed: Vec<TermId> },
+        }
+        let old = OldSnapshot { workspaces: Vec::new(), active_ws: None, terms: BTreeMap::new() };
+        let snapshot: Snapshot = decode(&encode(&old).unwrap()).unwrap();
+        assert_eq!(snapshot.revision, 0);
+
+        let old = OldServerMsg::TermsChanged { changed: Vec::new(), removed: vec![3] };
+        let Ok(ServerMsg::TermsChanged { removed, revision, .. }) = decode(&encode(&old).unwrap())
+        else {
+            panic!("an old pane delta still decodes");
+        };
+        assert_eq!((removed, revision), (vec![3], 0));
+
+        let new = ServerMsg::TermsChanged {
+            changed: Vec::new(),
+            removed: Vec::new(),
+            reasons: BTreeMap::new(),
+            revision: 9,
+        };
+        assert!(matches!(
+            decode(&encode(&new).unwrap()),
+            Ok(ServerMsg::TermsChanged { revision: 9, .. })
+        ));
+        let numbered = Snapshot { revision: 9, ..Snapshot::default() };
+        assert_eq!(decode::<Snapshot>(&encode(&numbered).unwrap()).unwrap().revision, 9);
+    }
+
+    #[test]
+    fn a_pane_delta_and_a_state_from_before_removal_reasons_read_as_no_reason_given() {
+        #[derive(Serialize)]
+        struct OldSnapshot {
+            workspaces: Vec<WorkspaceInfo>,
+            active_ws: Option<WsId>,
+            terms: BTreeMap<TermId, TermInfo>,
+            revision: u64,
+        }
+        #[derive(Serialize)]
+        enum OldServerMsg {
+            TermsChanged { changed: Vec<TermInfo>, removed: Vec<TermId>, revision: u64 },
+        }
+        let old = OldServerMsg::TermsChanged { changed: Vec::new(), removed: vec![3], revision: 2 };
+        let Ok(ServerMsg::TermsChanged { removed, reasons, .. }) = decode(&encode(&old).unwrap())
+        else {
+            panic!("an old pane delta still decodes");
+        };
+        assert_eq!(removed, vec![3]);
+        assert!(reasons.is_empty(), "an older daemon gives no reason");
+
+        let old =
+            OldSnapshot { workspaces: Vec::new(), active_ws: None, terms: BTreeMap::new(), revision: 2 };
+        assert!(decode::<Snapshot>(&encode(&old).unwrap()).unwrap().removed.is_empty());
+
+        let why = BTreeMap::from([(3, RemovalReason::Closed), (4, RemovalReason::Exited)]);
+        let new = ServerMsg::TermsChanged {
+            changed: Vec::new(),
+            removed: vec![3, 4],
+            reasons: why.clone(),
+            revision: 3,
+        };
+        let Ok(ServerMsg::TermsChanged { reasons, .. }) = decode(&encode(&new).unwrap()) else {
+            panic!("a pane delta with reasons decodes");
+        };
+        assert_eq!(reasons, why);
+        let state = Snapshot { removed: why.clone(), ..Snapshot::default() };
+        assert_eq!(decode::<Snapshot>(&encode(&state).unwrap()).unwrap().removed, why);
+    }
+
+    #[test]
+    fn a_removal_reason_from_a_newer_daemon_reads_as_unknown_and_the_message_survives() {
+        #[derive(Serialize)]
+        enum NewerReason {
+            Exited,
+            Teleported,
+        }
+        #[derive(Serialize)]
+        enum NewerServerMsg {
+            TermsChanged {
+                changed: Vec<TermInfo>,
+                removed: Vec<TermId>,
+                reasons: BTreeMap<TermId, NewerReason>,
+                revision: u64,
+            },
+        }
+        let newer = NewerServerMsg::TermsChanged {
+            changed: Vec::new(),
+            removed: vec![3, 4],
+            reasons: BTreeMap::from([(3, NewerReason::Exited), (4, NewerReason::Teleported)]),
+            revision: 5,
+        };
+        let Ok(ServerMsg::TermsChanged { removed, reasons, revision, .. }) =
+            decode(&encode(&newer).unwrap())
+        else {
+            panic!("a reason this build does not know must not cost the message");
+        };
+        assert_eq!((removed, revision), (vec![3, 4], 5));
+        assert_eq!(
+            reasons,
+            BTreeMap::from([(3, RemovalReason::Exited), (4, RemovalReason::Unknown)])
+        );
+    }
+
+    #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 92);
+        assert_eq!(PROTOCOL_VERSION, 93);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -3590,5 +3800,34 @@ mod tests {
         let remove = Query::GitIdentityRule { change: GitRuleChange::Remove { folder: "/code".into() }, tag: 1 };
         assert_eq!(ClientMsg::Query(remove).introduced_in(), GIT_RULES_SINCE);
         const { assert!(GIT_RULES_SINCE > GIT_IDENTITIES_SINCE && GIT_RULES_SINCE <= PROTOCOL_VERSION) };
+    }
+
+    /// Listing saved conversations is a new query and a new reply: a daemon built before it is never
+    /// asked, a client built before it is never sent the reply, and neither could read the other's.
+    #[test]
+    fn saved_conversations_pass_only_between_peers_that_know_them() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldQuery {
+            ListFolders { path: String, tag: u64 },
+        }
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldReply {
+            Ok,
+        }
+        let ask = Query::SavedConversations { agent: "claude".into(), folder: "~/code/app".into(), tag: 2 };
+        let answer = Reply::SavedConversations { tag: 2, found: SavedConversations::NotSupported };
+        assert!(decode::<OldQuery>(&encode(&ask).unwrap()).is_err());
+        assert!(decode::<OldReply>(&encode(&answer).unwrap()).is_err());
+        assert!(matches!(
+            decode::<Query>(&encode(&ask).unwrap()),
+            Ok(Query::SavedConversations { tag: 2, .. })
+        ));
+        let old_listing = encode(&Query::ListFolders { path: "~".into(), tag: 1 }).unwrap();
+        assert!(matches!(decode::<Query>(&old_listing), Ok(Query::ListFolders { tag: 1, .. })), "an older client's query still reads");
+        assert_eq!(ClientMsg::Query(ask).introduced_in(), SAVED_CONVERSATIONS_SINCE);
+        assert_eq!(ServerMsg::Reply(answer).introduced_in(), SAVED_CONVERSATIONS_SINCE);
+        const { assert!(SAVED_CONVERSATIONS_SINCE > COMPATIBLE_SINCE && SAVED_CONVERSATIONS_SINCE <= PROTOCOL_VERSION) };
     }
 }

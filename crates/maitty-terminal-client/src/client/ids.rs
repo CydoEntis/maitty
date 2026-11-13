@@ -108,7 +108,7 @@ mod tests {
 
     #[test]
     fn machines_do_not_change_what_goes_over_the_wire() {
-        assert_eq!(PROTOCOL_VERSION, 92);
+        assert_eq!(PROTOCOL_VERSION, 93);
         let hello = ClientMsg::Hello {
             version: PROTOCOL_VERSION,
             attach: true,
@@ -129,7 +129,7 @@ mod tests {
         let command = ClientMsg::Command(crate::protocol::Command::FocusPane { term: 3 });
         assert_eq!(
             hex(&hello),
-            "81a548656c6c6f86a776657273696f6e5ca6617474616368c3a466726f6d9203a430306666aa73747275637475726564c0a773757266616365a87465726d696e616ca77265706c617973c3"
+            "81a548656c6c6f86a776657273696f6e5da6617474616368c3a466726f6d9203a430306666aa73747275637475726564c0a773757266616365a87465726d696e616ca77265706c617973c3"
         );
         assert_eq!(
             hex(&input),
@@ -256,6 +256,8 @@ mod tests {
         let delta = crate::protocol::ServerMsg::TermsChanged {
             changed: vec![crate::protocol::TermInfo { id: 70, ..pane }],
             removed: Vec::new(),
+            reasons: Default::default(),
+            revision: 0,
         };
         app.on_machine_server(MachineId(1), delta);
         let held = &app.remotes[&MachineId(1)].snap;
@@ -272,9 +274,27 @@ mod tests {
         app.on_server(crate::protocol::ServerMsg::TermsChanged {
             changed: vec![crate::protocol::TermInfo { id: 70, ..pane }],
             removed: Vec::new(),
+            reasons: Default::default(),
+            revision: 0,
         });
         assert_eq!(app.snap.daemon_id.as_deref(), Some(BOX_A));
         assert!(app.snap.terms.contains_key(&70));
+    }
+
+    #[test]
+    fn a_merged_pane_delta_says_why_its_own_panes_left_not_why_an_earlier_states_did() {
+        use crate::protocol::RemovalReason;
+        let mut app = two_machines();
+        let gone = *app.snap.terms.keys().next().unwrap();
+        app.snap.removed = [(9000, RemovalReason::Closed)].into();
+        app.on_server(crate::protocol::ServerMsg::TermsChanged {
+            changed: Vec::new(),
+            removed: vec![gone],
+            reasons: [(gone, RemovalReason::Exited)].into(),
+            revision: 0,
+        });
+        assert!(!app.snap.terms.contains_key(&gone));
+        assert_eq!(app.snap.removed, [(gone, RemovalReason::Exited)].into());
     }
 
     #[test]
@@ -288,6 +308,8 @@ mod tests {
             crate::protocol::ServerMsg::TermsChanged {
                 changed: vec![pane],
                 removed: Vec::new(),
+                reasons: Default::default(),
+                revision: 0,
             },
         );
         assert!(app.refused.contains_key(&MachineId(1)));
@@ -303,6 +325,8 @@ mod tests {
             crate::protocol::ServerMsg::TermsChanged {
                 changed: vec![pane],
                 removed: Vec::new(),
+                reasons: Default::default(),
+                revision: 0,
             },
         );
         assert!(app.refused.is_empty());

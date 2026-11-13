@@ -527,6 +527,22 @@ describe('terminal sessions shown beside chats', () => {
     ])
   })
 
+  it('reads what set the status of a session, and nothing from a daemon that does not say', async () => {
+    vi.mocked(invoke).mockResolvedValue({ conversations: [], workspaces: [], terms: { '5': term({ id: 5, status_why: 'hook: Stop' }), '6': term({ id: 6 }) } })
+
+    const listed = await loadConversations()
+
+    expect(listed.map((item) => item.details?.statusWhy)).toEqual(['hook: Stop', ''])
+  })
+
+  it('reads when a session stopped by its plan limit continues, and nothing from a daemon that does not say', async () => {
+    vi.mocked(invoke).mockResolvedValue({ conversations: [], workspaces: [], terms: { '5': term({ id: 5, resume_at: 1_800_000_000 }), '6': term({ id: 6, resume_at: null }), '7': term({ id: 7 }) } })
+
+    const listed = await loadConversations()
+
+    expect(listed.map((item) => item.details?.resumeAt)).toEqual([1_800_000_000, null, null])
+  })
+
   it('still lists the sessions, without limits, when the limits cannot be read', async () => {
     vi.mocked(invoke).mockResolvedValue({ conversations: [], workspaces: [], limits: 'soon', terms: { '5': term({ id: 5, agent: 'claude' }) } })
 
@@ -547,7 +563,45 @@ describe('terminal sessions shown beside chats', () => {
     expect(listed.map((item) => item.title)).toEqual(['Fix login'])
   })
 
-  it('lists shells and agents in terminals of their own, and leaves out popups, other machines and a chat terminal', async () => {
+  it('keeps a session of this computer listed while ssh runs in it', async () => {
+    vi.mocked(invoke).mockResolvedValue({
+      conversations: [],
+      workspaces: [],
+      terms: { '8': term({ id: 8, agent: null, status: 'Idle', process: 'ssh', remote: 'build-box' }) },
+    })
+
+    const sessions = await loadConversations()
+
+    expect(sessions.map((session) => session.id)).toEqual(['t8'])
+    expect(sessions[0]).toMatchObject({ kind: 'terminal', nativePane: 8, title: 'Shell 8' })
+  })
+
+  it('lists an agent in a pane that also has ssh open like any other agent terminal', async () => {
+    vi.mocked(invoke).mockResolvedValue({
+      conversations: [],
+      workspaces: [],
+      terms: { '8': term({ id: 8, agent: 'claude', remote: 'build-box' }) },
+    })
+
+    const sessions = await loadConversations()
+
+    expect(sessions).toMatchObject([{ id: 't8', kind: 'terminal', agent: 'claude', provider: 'Claude' }])
+  })
+
+  it('still leaves out a popup and a chat terminal while ssh runs in them', async () => {
+    vi.mocked(invoke).mockResolvedValue({
+      conversations: [],
+      workspaces: [],
+      terms: {
+        '7': term({ id: 7, popup: true, remote: 'build-box' }),
+        '9': term({ id: 9, conversation_id: 3, remote: 'build-box' }),
+      },
+    })
+
+    expect(await loadConversations()).toEqual([])
+  })
+
+  it('lists shells and agents in terminals of their own, and leaves out popups and a chat terminal', async () => {
     vi.mocked(invoke).mockResolvedValue({
       conversations: [],
       workspaces: [],
@@ -555,7 +609,6 @@ describe('terminal sessions shown beside chats', () => {
         '5': term({ label: 'Fix login' }),
         '6': term({ id: 6, agent: null, status: 'Idle' }),
         '7': term({ id: 7, popup: true }),
-        '8': term({ id: 8, remote: 'build-box' }),
         '9': term({ id: 9, conversation_id: 3 }),
         '10': term({ id: 10, agent: 'gemini' }),
         '11': { nonsense: true },
@@ -727,5 +780,26 @@ describe('commands for a pane, on whichever machine it is', () => {
     const listed = conversationsFromSnapshot(snapshot, { id: 3, name: 'build' })
     expect(listed.map((item) => item.id)).toEqual(['build/t7'])
     expect(conversationsFromSnapshot(snapshot).map((item) => item.id)).toEqual(['5', 't7'])
+  })
+
+  it('lists a session on another machine once, beside a session of this computer that has ssh open to it', () => {
+    const shell = (id: number, remote: string | null) => ({ id, agent: null, process: remote === null ? 'bash' : 'ssh', status: 'Idle', cwd: '/srv', summary: '', name: 'n', label: '', pinned: false, archived: false, branch: null, root: null, conversation_id: null, popup: false, remote })
+    const here = conversationsFromSnapshot({ terms: { '8': shell(8, 'build') }, workspaces: [], conversations: [] })
+    const onBuild = conversationsFromSnapshot({ terms: { '7': shell(7, null) }, workspaces: [], conversations: [] }, { id: 3, name: 'build' })
+
+    expect(here.map((item) => item.id)).toEqual(['t8'])
+    expect(onBuild.map((item) => item.id)).toEqual(['build/t7'])
+    const ids = [...here, ...onBuild].map((item) => item.id)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('lists a session of another machine while ssh runs in it there', () => {
+    const snapshot = {
+      terms: { '9': { id: 9, agent: null, process: 'ssh', status: 'Idle', cwd: '/srv', summary: '', name: 'n', label: '', pinned: false, archived: false, branch: null, root: null, conversation_id: null, popup: false, remote: 'far-box' } },
+      workspaces: [],
+      conversations: [],
+    }
+
+    expect(conversationsFromSnapshot(snapshot, { id: 3, name: 'build' }).map((item) => item.id)).toEqual(['build/t9'])
   })
 })

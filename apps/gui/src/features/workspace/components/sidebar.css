@@ -111,6 +111,7 @@
 .mx-hover-status b { font-weight: 600; color: var(--tone); }
 .mx-hover-facts { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; font-size: 12px; color: var(--fg2); }
 .mx-hover-facts > span:nth-child(odd) { color: var(--dim); }
+.mx-hover-facts > span:nth-child(even) { min-width: 0; overflow-wrap: anywhere; }
 .mx-row-wrap { position: relative; display: flex; flex-direction: column; gap: 2px; }
 /* The close button sits at the right of the row's first line and only shows while the row is hovered or has the keys. */
 .mx-row-close { position: absolute; bottom: 5px; right: 6px; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; color: var(--muted); background: var(--main); opacity: 0; pointer-events: none; transition: opacity .12s ease, color .12s ease, background-color .12s ease; }
@@ -204,4 +205,4 @@
 @media (prefers-reduced-motion: reduce) { .mx-collapse-grid, .mx-collapse-inner { transition: none; } }
 .mx-section-key { flex: none; font-family: var(--mono); font-size: 10.5px; font-weight: 500; color: var(--dim); }
 .mx-row.is-offline { opacity: .5; }
-.mx-row.is-offline .mx-row-word { color: var(--muted); }
+.mx-row.is-offline .mx-row-word, .mx-row.is-limited .mx-row-word { color: var(--muted); }

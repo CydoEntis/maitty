@@ -21,6 +21,10 @@ export type TerminalDetails = {
   agentEffort?: string | null
   /** When the status last changed, in unix seconds (the daemon's `TermInfo.since`); absent or 0 when it did not say. */
   since?: number
+  /** What set the status, in the daemon's own words (`TermInfo.status_why`: `hook: Stop`); absent or empty when it gave no reason. */
+  statusWhy?: string
+  /** It hit its plan limit, and the daemon tells it to continue at this time, in unix seconds (`TermInfo.resume_at`); null or absent when it is not held. */
+  resumeAt?: number | null
   /** The latest turn events, oldest first; `at` is unix seconds. */
   timeline: Array<{ at: number; kind: TurnKind; detail: string }>
   /** The last command ended in failure, as the shell reported it (a non-zero exit code); null when nothing failed. Only the daemon sets it. */

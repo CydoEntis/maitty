@@ -310,6 +310,9 @@ pub struct Restore {
     /// Resume chat conversations that were running when the server stopped, on the same
     /// provider session.
     pub conversations: bool,
+    /// Tell a chat conversation resumed that way to continue where it left off. Off unless
+    /// asked for: it sends the agent a message nobody typed.
+    pub continue_turn: bool,
     /// Re-run commands panes were started with (`spawn-right:lazygit`, `<app> split -- x`).
     pub commands: bool,
     /// Keep each pane's recent output on disk so it is there after a restart. It can hold
@@ -388,6 +391,7 @@ impl Default for Restore {
             enabled: true,
             agents: true,
             conversations: true,
+            continue_turn: false,
             commands: true,
             output: true,
         }
@@ -1080,6 +1084,14 @@ mod tests {
         let restore: Restore = toml::from_str("conversations = false").unwrap();
         assert!(!restore.conversations);
         assert!(restore.agents, "the other restore settings keep their defaults");
+    }
+
+    #[test]
+    fn continuing_a_cut_turn_is_off_until_a_config_turns_it_on() {
+        assert!(!Restore::default().continue_turn);
+        let restore: Restore = toml::from_str("continue_turn = true").unwrap();
+        assert!(restore.continue_turn);
+        assert!(restore.conversations, "the other restore settings keep their defaults");
     }
 
     #[test]

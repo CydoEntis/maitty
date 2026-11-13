@@ -200,8 +200,201 @@ fn claude_lines_that_are_not_the_conversation_are_left_out() {
         line(
             json!({ "type": "user", "isSidechain": true, "uuid": "s", "message": { "content": "helper prompt" } }),
         ),
+        claude_user("r", "<system-reminder>\nread the instructions\n</system-reminder>"),
+        claude_user(
+            "cv",
+            "<local-command-caveat>The command below was run directly.</local-command-caveat>",
+        ),
         claude_user("c", "<command-name>/clear</command-name>"),
         claude_user("lc", "<local-command-stdout></local-command-stdout>"),
+        claude_user("u1", "real prompt"),
+    ];
+
+    let history = history_of(Format::Claude, &lines);
+
+    // A command that printed nothing is the command alone: no row for its empty output.
+    let said: Vec<_> = items(&history)
+        .into_iter()
+        .map(|e| message(e).1.to_string())
+        .collect();
+    assert_eq!(said, ["/clear", "real prompt"]);
+}
+
+const SLASH_COMMAND: &str = "<command-name>/plugin</command-name>\n            <command-message>plugin</command-message>\n            <command-args>marketplace add CydoEntis/Kitchen</command-args>";
+const SLASH_OUTPUT: &str =
+    "<local-command-stdout>Added the \u{1b}[1mKitchen\u{1b}[0m marketplace</local-command-stdout>";
+
+fn claude_local_command(uuid: &str, text: &str) -> String {
+    line(json!({
+        "type": "system", "subtype": "local_command", "uuid": uuid, "isMeta": false,
+        "timestamp": "2026-11-04T09:30:00.000Z", "content": text,
+    }))
+}
+
+fn assert_slash_command_and_output(history: &History) {
+    let items = items(history);
+    assert_eq!(items.len(), 2);
+    assert_eq!(
+        message(items[0]),
+        (&Role::User, "/plugin marketplace add CydoEntis/Kitchen")
+    );
+    assert_eq!(
+        items[1].content,
+        Content::Tool {
+            kind: "commandExecution".into(),
+            label: "/plugin marketplace add CydoEntis/Kitchen".into(),
+            output: "Added the Kitchen marketplace".into(),
+            input: None,
+            exit_code: None,
+            duration_ms: None,
+        }
+    );
+    assert_eq!(items[1].state, ItemState::Completed);
+    // Nothing answers a command Claude ran itself, so its turn is over once it has printed.
+    let turns = turns(history);
+    assert_eq!(turns.len(), 1);
+    assert_eq!(turns[0].state, ItemState::Completed);
+}
+
+#[test]
+fn a_claude_slash_command_is_a_sent_message_with_its_output_beneath() {
+    let lines = vec![
+        claude_user("c", SLASH_COMMAND),
+        claude_user("o", SLASH_OUTPUT),
+    ];
+
+    assert_slash_command_and_output(&history_of(Format::Claude, &lines));
+}
+
+#[test]
+fn a_claude_slash_command_written_as_a_system_line_shows_the_same() {
+    let lines = vec![
+        claude_local_command("c", SLASH_COMMAND),
+        claude_local_command("o", SLASH_OUTPUT),
+    ];
+
+    assert_slash_command_and_output(&history_of(Format::Claude, &lines));
+}
+
+#[test]
+fn what_a_claude_slash_command_printed_as_an_error_is_shown_too() {
+    let lines = vec![
+        claude_user("c", SLASH_COMMAND),
+        claude_user(
+            "o",
+            "<local-command-stderr>Marketplace not found</local-command-stderr>",
+        ),
+    ];
+
+    let history = history_of(Format::Claude, &lines);
+
+    let Content::Tool { output, .. } = &items(&history)[1].content else {
+        panic!("not a tool step")
+    };
+    assert_eq!(output, "Marketplace not found");
+}
+
+#[test]
+fn the_same_claude_slash_command_run_twice_shows_twice() {
+    let lines = vec![
+        claude_user("c1", "<command-name>/clear</command-name>"),
+        claude_user("o1", "<local-command-stdout></local-command-stdout>"),
+        claude_user("c2", "<command-name>/clear</command-name>"),
+        claude_user("o2", "<local-command-stdout></local-command-stdout>"),
+    ];
+
+    let history = history_of(Format::Claude, &lines);
+
+    let said: Vec<_> = items(&history)
+        .into_iter()
+        .map(|e| message(e).1.to_string())
+        .collect();
+    assert_eq!(said, ["/clear", "/clear"]);
+}
+
+#[test]
+fn a_claude_command_that_prompts_the_agent_shows_the_command_and_its_answer() {
+    let lines = vec![
+        claude_user(
+            "c",
+            "<command-message>statusline</command-message>\n<command-name>/statusline</command-name>\n<command-args>from my shell</command-args>",
+        ),
+        line(
+            json!({ "type": "user", "isMeta": true, "uuid": "m", "message": { "content": [{ "type": "text", "text": "Create an Agent" }] } }),
+        ),
+        claude_assistant("a1", json!({ "type": "text", "text": "Configured." })),
+    ];
+
+    let history = history_of(Format::Claude, &lines);
+
+    let items = items(&history);
+    assert_eq!(message(items[0]), (&Role::User, "/statusline from my shell"));
+    assert_eq!(message(items[1]), (&Role::Assistant, "Configured."));
+    assert_eq!(turns(&history)[0].state, ItemState::Running);
+}
+
+fn claude_at(kind: &str, uuid: &str, timestamp: &str, content: serde_json::Value) -> String {
+    line(json!({
+        "type": kind, "uuid": uuid, "isSidechain": false, "timestamp": timestamp,
+        "message": { "role": kind, "content": content },
+    }))
+}
+
+#[test]
+fn a_command_run_while_the_agent_works_does_not_end_its_turn_early() {
+    // Claude writes such a command after the turn's last reply, stamped with when it was typed.
+    let lines = vec![
+        claude_at("user", "u1", "2026-11-04T09:30:00.000Z", json!("go")),
+        claude_at(
+            "assistant",
+            "a1",
+            "2026-11-04T09:30:40.000Z",
+            json!([{ "type": "text", "text": "Done." }]),
+        ),
+        claude_at("user", "c", "2026-11-04T09:30:10.000Z", json!(SLASH_COMMAND)),
+        claude_at("user", "o", "2026-11-04T09:30:10.000Z", json!(SLASH_OUTPUT)),
+        line(
+            json!({ "type": "system", "subtype": "turn_duration", "durationMs": 40000, "timestamp": "2026-11-04T09:30:40.000Z" }),
+        ),
+    ];
+
+    let history = history_of(Format::Claude, &lines);
+
+    let turns = turns(&history);
+    assert_eq!(turns.len(), 2);
+    assert_eq!(turns[0].state, ItemState::Completed);
+    assert_eq!(turns[0].started_at_ms, Some(1_793_784_600_000));
+    assert_eq!(turns[0].completed_at_ms, Some(1_793_784_640_000));
+    assert_eq!(turns[1].started_at_ms, Some(1_793_784_610_000));
+    assert_eq!(turns[1].completed_at_ms, Some(1_793_784_610_000));
+}
+
+#[test]
+fn command_output_whose_command_was_not_read_leaves_the_agents_turn_running() {
+    let lines = vec![
+        claude_user("u1", "go"),
+        claude_assistant(
+            "a1",
+            json!({ "type": "tool_use", "id": "t1", "name": "Bash", "input": { "command": "sleep 99" } }),
+        ),
+        claude_user("o", SLASH_OUTPUT),
+    ];
+
+    let history = history_of(Format::Claude, &lines);
+
+    let turns = turns(&history);
+    assert_eq!(turns.len(), 1);
+    assert_eq!(turns[0].state, ItemState::Running);
+    let Content::Tool { output, .. } = &items(&history)[2].content else {
+        panic!("not a tool step")
+    };
+    assert_eq!(output, "Added the Kitchen marketplace");
+}
+
+#[test]
+fn a_claude_system_line_that_is_no_command_is_not_something_said() {
+    let lines = vec![
+        claude_local_command("s", "words Claude wrote, which no one typed"),
         claude_user("u1", "real prompt"),
     ];
 

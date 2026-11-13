@@ -19,7 +19,7 @@ impl Watch {
             }
             match msg {
                 ServerMsg::State(snapshot) => found = snapshot.terms.get(&term).cloned(),
-                ServerMsg::TermsChanged { changed, removed } => {
+                ServerMsg::TermsChanged { changed, removed, .. } => {
                     if let Some(pane) = changed.iter().find(|pane| pane.id == term) {
                         found = Some(pane.clone());
                     }

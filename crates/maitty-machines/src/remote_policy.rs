@@ -83,6 +83,9 @@ pub fn allow(opts: &MachineOpts, msg: &ServerMsg) -> Verdict {
         ServerMsg::Clipboard { .. } => gate(opts.clipboard, "clipboard is off for this machine"),
         ServerMsg::Notice(_) => gate(opts.notices, "notices are off for this machine"),
         ServerMsg::Raise => gate(opts.notices, "notices are off for this machine"),
+        ServerMsg::Reply(Reply::SavedConversations { .. }) => {
+            Verdict::Ignore("saved conversations are listed for this computer's folders only")
+        }
         ServerMsg::Error(_) | ServerMsg::Reply(_) => Verdict::Answer,
         ServerMsg::AskRemoveWorktree { .. } => {
             Verdict::Ignore("a worktree prompt names a folder on this computer")
@@ -122,13 +125,24 @@ pub fn vet(opts: &MachineOpts, asked: bool, machine: &str, msg: ServerMsg) -> Op
                 return None;
             }
         },
-        ServerMsg::TermsChanged { changed, removed } => {
-            if removed.len() > ITEMS_MAX {
-                tracing::debug!("refused a pane delta from another machine: too many removals");
+        ServerMsg::Reply(Reply::List(snap)) => match sanitize_snapshot(snap) {
+            Ok(snap) => ServerMsg::Reply(Reply::List(snap)),
+            Err(why) => {
+                tracing::debug!(why, "refused a list from another machine");
                 return None;
             }
+        },
+        ServerMsg::TermsChanged { changed, removed, mut reasons, revision } => {
+            if removed.len() > ITEMS_MAX || reasons.len() > ITEMS_MAX {
+                tracing::debug!(
+                    "refused a pane delta from another machine: too many removals or reasons"
+                );
+                return None;
+            }
+            let dropped: std::collections::BTreeSet<_> = removed.iter().copied().collect();
+            reasons.retain(|term, _| dropped.contains(term));
             match sanitize_terms(changed) {
-                Ok(changed) => ServerMsg::TermsChanged { changed, removed },
+                Ok(changed) => ServerMsg::TermsChanged { changed, removed, reasons, revision },
                 Err(why) => {
                     tracing::debug!(why, "refused a pane delta from another machine");
                     return None;
@@ -398,7 +412,7 @@ mod tests {
             &nothing_on(),
             false,
             "box",
-            ServerMsg::TermsChanged { changed: vec![pane], removed: Vec::new() },
+            ServerMsg::TermsChanged { changed: vec![pane], removed: Vec::new(), reasons: Default::default(), revision: 0 },
         ) else {
             panic!("a pane delta is applied");
         };
@@ -406,6 +420,33 @@ mod tests {
         assert_eq!(ask.tool, "Bash");
         assert!(!ask.detail.contains(['\u{1b}', '\u{7}', '\n', '\u{202e}']), "{:?}", ask.detail);
         assert!(ask.answerable, "the key is still that machine's daemon's to check");
+    }
+
+    fn removal_delta(removed: Vec<u32>, reasons: Vec<u32>) -> ServerMsg {
+        use maitty_shared::protocol::RemovalReason;
+        ServerMsg::TermsChanged {
+            changed: Vec::new(),
+            removed,
+            reasons: reasons.into_iter().map(|id| (id, RemovalReason::Exited)).collect(),
+            revision: 0,
+        }
+    }
+
+    #[test]
+    fn a_remote_reason_for_a_pane_the_delta_does_not_remove_is_dropped() {
+        let Some(ServerMsg::TermsChanged { removed, reasons, .. }) =
+            vet(&nothing_on(), false, "box", removal_delta(vec![3], vec![3, 4]))
+        else {
+            panic!("a pane delta is applied");
+        };
+        assert_eq!(removed, [3]);
+        assert_eq!(reasons.keys().copied().collect::<Vec<_>>(), [3]);
+    }
+
+    #[test]
+    fn a_remote_pane_delta_with_too_many_reasons_is_refused() {
+        let too_many = (0..=ITEMS_MAX as u32).collect();
+        assert!(vet(&nothing_on(), false, "box", removal_delta(vec![3], too_many)).is_none());
     }
 
     #[test]
@@ -537,6 +578,24 @@ mod tests {
         assert!(vet(&nothing_on(), false, "box", reply).is_none());
     }
 
+    #[test]
+    fn a_whole_list_another_machine_answers_with_is_cleaned_like_its_state() {
+        let list = Snapshot {
+            daemon_version: "1.0\u{1b}[31m\u{202e}".into(),
+            ..Snapshot::default()
+        };
+        let Some(ServerMsg::Reply(Reply::List(cleaned))) =
+            vet(&nothing_on(), true, "box", ServerMsg::Reply(Reply::List(list.clone())))
+        else {
+            panic!("a list that was asked for is kept");
+        };
+        let Some(ServerMsg::State(state)) = vet(&nothing_on(), true, "box", ServerMsg::State(list)) else {
+            panic!("a state is kept");
+        };
+        assert_eq!(cleaned.daemon_version, state.daemon_version);
+        assert!(!cleaned.daemon_version.contains(['\u{1b}', '\u{202e}']), "{cleaned:?}");
+    }
+
     fn nothing_on() -> MachineOpts {
         MachineOpts::default()
     }
@@ -551,6 +610,8 @@ mod tests {
             ServerMsg::TermsChanged {
                 changed: Vec::new(),
                 removed: Vec::new(),
+                reasons: Default::default(),
+                revision: 0,
             },
             ServerMsg::Replay {
                 term: 1,
@@ -570,6 +631,10 @@ mod tests {
             ServerMsg::Reply(Reply::Text("t".into())),
             ServerMsg::Reply(Reply::Worktrees(Vec::new())),
             ServerMsg::Error("e".into()),
+            ServerMsg::Reply(Reply::SavedConversations {
+                tag: 1,
+                found: maitty_shared::protocol::SavedConversations::NotSupported,
+            }),
             ServerMsg::Notice("n".into()),
             ServerMsg::AskRemoveWorktree {
                 path: PathBuf::from("/home/me/repo-wt"),
@@ -610,6 +675,7 @@ mod tests {
             ServerMsg::Replay { .. } => "Replay",
             ServerMsg::Output { .. } => "Output",
             ServerMsg::Attention { .. } => "Attention",
+            ServerMsg::Reply(Reply::SavedConversations { .. }) => "SavedConversations",
             ServerMsg::Reply(_) => "Reply",
             ServerMsg::Error(_) => "Error",
             ServerMsg::Notice(_) => "Notice",
@@ -658,6 +724,7 @@ mod tests {
         assert_eq!(
             ignored,
             [
+                "SavedConversations",
                 "Notice",
                 "AskRemoveWorktree",
                 "Clipboard",

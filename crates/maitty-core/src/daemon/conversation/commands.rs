@@ -1352,6 +1352,21 @@ impl Daemon {
         Ok(())
     }
 
+    /// A turn is starting: the checkout's files as they are now are what it can be taken back
+    /// to. Called once a message was handed to the provider, which happens once a turn.
+    fn snapshot_before_conversation_turn(&self, id: ConversationId) {
+        if !self.cfg.snapshots.enabled {
+            return;
+        }
+        let Some(c) = self.conversations.iter().find(|c| c.id == id) else {
+            return;
+        };
+        // Named as a terminal agent's snapshots are, so the list reads the same for both.
+        let agent = c.binding.provider.agent_name();
+        let dir = c.binding.worktree.as_ref().unwrap_or(&c.binding.cwd);
+        self.snapshot_off_loop(agent.into(), dir.clone());
+    }
+
     fn conversation_enqueue(
         &mut self,
         client: ClientId,
@@ -1787,7 +1802,11 @@ impl Daemon {
                 let state = self.conversation_states.entry(id).or_default();
                 state.status = Status::Working;
                 state.error = None;
-                self.conversation_runtimes.request(id, generation, token, Rpc::Send { params: send_params(&thread, &text, &format!("{}-{generation}-{operation}", id.0), &choice) }).map_err(|e| (token, e.to_string()))
+                let sent = self.conversation_runtimes.request(id, generation, token, Rpc::Send { params: send_params(&thread, &text, &format!("{}-{generation}-{operation}", id.0), &choice) }).map_err(|e| (token, e.to_string()));
+                if sent.is_ok() {
+                    self.snapshot_before_conversation_turn(id);
+                }
+                sent
             }
             Pending::Receipt { client, receipt } => {
                 if self
@@ -2241,6 +2260,7 @@ impl Daemon {
                                         generation,
                                     }),
                                 );
+                                self.continue_cut_turn(client, id, generation);
                             } else {
                                 let message = "Codex history is incomplete; chat takeover is disabled";
                                 self.send(client, ServerMsg::Error(message.into()));
@@ -2377,6 +2397,7 @@ impl Daemon {
                     client,
                     ServerMsg::Reply(Reply::ConversationStarted { id, generation }),
                 );
+                self.continue_cut_turn(client, id, generation);
             } else {
                 self.send(
                     client,

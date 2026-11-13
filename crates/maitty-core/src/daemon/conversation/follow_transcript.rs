@@ -49,6 +49,9 @@ pub(in crate::daemon) struct Transcript {
     thread: String,
     turns: u64,
     open_turn: Option<String>,
+    /// The latest time a line of the open turn carried. A turn never ends before it: Claude writes a
+    /// command run while it worked after the turn's last reply, stamped with when it was typed.
+    turn_seen_ms: Option<u64>,
     /// The turn was announced by the provider (Codex `task_started`), so a user message inside it
     /// does not start another one.
     explicit_turn: bool,
@@ -58,6 +61,8 @@ pub(in crate::daemon) struct Transcript {
     /// The mode and model the file last said (Claude: `permissionMode` on a line, the model of an assistant message).
     meta: crate::conversation::SessionMeta,
     tools: HashMap<String, PendingTool>,
+    /// The command Claude ran itself and has not printed for yet: it names the row its output gets.
+    local_command: Option<String>,
 }
 
 impl Transcript {
@@ -72,10 +77,12 @@ impl Transcript {
             thread: thread.to_owned(),
             turns: 0,
             open_turn: None,
+            turn_seen_ms: None,
             explicit_turn: false,
             last_user_text: None,
             meta: crate::conversation::SessionMeta::default(),
             tools: HashMap::new(),
+            local_command: None,
         }
     }
 
@@ -101,6 +108,7 @@ impl Transcript {
 
     fn begin_turn(&mut self, id: Option<&str>, at_ms: Option<u64>, notes: &mut Vec<Note>) {
         self.close_turn("completed", at_ms, notes);
+        self.turn_seen_ms = at_ms;
         self.last_user_text = None;
         self.turns += 1;
         let id = id.map_or_else(|| format!("turn-{}", self.turns), str::to_owned);
@@ -119,6 +127,7 @@ impl Transcript {
         };
         let mut turn = json!({ "id": id, "status": status });
         if let Some(ms) = at_ms {
+            let ms = self.turn_seen_ms.map_or(ms, |seen| seen.max(ms));
             turn["completedAt"] = json!(ms / 1000);
         }
         notes.push(self.note("turn/completed", json!({ "turn": turn })));
@@ -190,6 +199,7 @@ impl Transcript {
             .get("timestamp")
             .and_then(Value::as_str)
             .and_then(iso_ms);
+        self.turn_seen_ms = self.turn_seen_ms.max(at_ms);
         let uuid = line
             .get("uuid")
             .and_then(Value::as_str)
@@ -207,11 +217,7 @@ impl Transcript {
                     return;
                 }
                 match content {
-                    Value::String(text) => {
-                        if !is_claude_chrome(text) {
-                            self.user_message(&uuid, &without_paste_tags(text), at_ms, notes);
-                        }
-                    }
+                    Value::String(text) => self.claude_user_text(&uuid, text, at_ms, notes),
                     Value::Array(blocks) => self.claude_user_blocks(&uuid, blocks, at_ms, notes),
                     _ => {}
                 }
@@ -225,12 +231,69 @@ impl Transcript {
                     self.claude_assistant_block(&format!("{uuid}:{index}"), block, at_ms, notes);
                 }
             }
-            Some("system")
-                if line.get("subtype").and_then(Value::as_str) == Some("turn_duration") =>
-            {
-                self.close_turn("completed", at_ms, notes);
-            }
+            Some("system") => match line.get("subtype").and_then(Value::as_str) {
+                Some("turn_duration") => self.close_turn("completed", at_ms, notes),
+                // Claude writes a command it ran itself either as a user line or as this one, which
+                // never holds what the person said.
+                Some("local_command") => {
+                    if let Some(text) = line.get("content").and_then(Value::as_str)
+                        && !matches!(claude_line(text), ClaudeLine::Said)
+                    {
+                        self.claude_user_text(&uuid, text, at_ms, notes);
+                    }
+                }
+                _ => {}
+            },
             _ => {}
+        }
+    }
+
+    fn claude_user_text(
+        &mut self,
+        uuid: &str,
+        text: &str,
+        at_ms: Option<u64>,
+        notes: &mut Vec<Note>,
+    ) {
+        match claude_line(text) {
+            ClaudeLine::Said => self.user_message(uuid, &without_paste_tags(text), at_ms, notes),
+            ClaudeLine::Command(command) => {
+                self.user_message(uuid, &command, at_ms, notes);
+                self.local_command = Some(command);
+            }
+            ClaudeLine::CommandOutput(output) => {
+                self.claude_command_output(uuid, &output, at_ms, notes);
+            }
+            ClaudeLine::Hidden => {}
+        }
+    }
+
+    /// What a command Claude ran itself printed, as a finished step under the command. Nothing
+    /// answers such a command, so its turn ends here; one that printed nothing gets no step.
+    fn claude_command_output(
+        &mut self,
+        uuid: &str,
+        output: &str,
+        at_ms: Option<u64>,
+        notes: &mut Vec<Note>,
+    ) {
+        let command = self.local_command.take();
+        if !output.trim().is_empty() {
+            let turn = self.turn_id(at_ms, notes);
+            let item = json!({
+                "id": uuid,
+                "type": "commandExecution",
+                "command": command.as_deref().unwrap_or_default(),
+                "status": "completed",
+                "aggregatedOutput": bounded_output(output.trim()),
+            });
+            notes.push(self.note("item/completed", item_params(&turn, item, at_ms)));
+        }
+        // Output whose command line was not read (the start of a long file is skipped) may sit in
+        // a turn that is still the agent's.
+        if command.is_some() {
+            self.close_turn("completed", at_ms, notes);
+            self.last_user_text = None;
         }
     }
 
@@ -269,8 +332,8 @@ impl Transcript {
                 _ => {}
             }
         }
-        if !text.is_empty() && !is_claude_chrome(&text) {
-            self.user_message(uuid, &without_paste_tags(&text), at_ms, notes);
+        if !text.is_empty() {
+            self.claude_user_text(uuid, &text, at_ms, notes);
         }
     }
 
@@ -657,24 +720,68 @@ fn claude_text(content: &Value) -> String {
     }
 }
 
-/// What Claude writes into the transcript as a "user" line that no one typed: slash-command
-/// echoes and local command output.
-fn is_claude_chrome(text: &str) -> bool {
-    let text = text.trim_start();
-    [
-        "<command-name>",
-        "<local-command-",
-        "<system-reminder>",
-        "<command-message>",
-    ]
-    .iter()
-    .any(|tag| text.starts_with(tag))
+/// What the text of a Claude "user" line is. Claude writes more there than what was typed.
+pub(super) enum ClaudeLine {
+    Said,
+    /// A slash command, as it was typed: `/plugin marketplace add x`.
+    Command(String),
+    /// What a command Claude ran itself printed; empty when it printed nothing.
+    CommandOutput(String),
+    /// Notes for the agent (`<system-reminder>`, `<local-command-caveat>`), not the conversation.
+    Hidden,
+}
+
+const COMMAND_OUTPUT_TAGS: [&str; 2] = ["local-command-stdout", "local-command-stderr"];
+
+pub(super) fn claude_line(text: &str) -> ClaudeLine {
+    let start = text.trim_start();
+    if start.starts_with("<command-name>") || start.starts_with("<command-message>") {
+        return slash_command(start).map_or(ClaudeLine::Hidden, ClaudeLine::Command);
+    }
+    if COMMAND_OUTPUT_TAGS
+        .iter()
+        .any(|tag| start.starts_with(&format!("<{tag}>")))
+    {
+        let printed: Vec<&str> = COMMAND_OUTPUT_TAGS
+            .iter()
+            .filter_map(|tag| tagged(start, tag))
+            .filter(|part| !part.trim().is_empty())
+            .collect();
+        return ClaudeLine::CommandOutput(printed.join("
+"));
+    }
+    if start.starts_with("<local-command-") || start.starts_with("<system-reminder>") {
+        return ClaudeLine::Hidden;
+    }
+    ClaudeLine::Said
+}
+
+/// The command a slash-command line records, with its arguments: Claude writes the two apart, as
+/// `<command-name>/plugin</command-name>` and `<command-args>marketplace add x</command-args>`.
+fn slash_command(text: &str) -> Option<String> {
+    let name = tagged(text, "command-name")?.trim();
+    if name.is_empty() {
+        return None;
+    }
+    let args = tagged(text, "command-args").map_or("", str::trim);
+    Some(if args.is_empty() {
+        name.to_owned()
+    } else {
+        format!("{name} {args}")
+    })
+}
+
+/// The text between `<tag>` and `</tag>`, when the text has both.
+fn tagged<'a>(text: &'a str, tag: &str) -> Option<&'a str> {
+    let (_, after) = text.split_once(&format!("<{tag}>"))?;
+    let (inside, _) = after.split_once(&format!("</{tag}>"))?;
+    Some(inside)
 }
 
 /// A message with the `<pasted_content id="…">` / `</pasted_content id="…">` markers Claude Code puts
 /// around pasted text removed: they say where the paste was, not what the person said, and the
 /// pasted text itself stays as written.
-fn without_paste_tags(text: &str) -> String {
+pub(super) fn without_paste_tags(text: &str) -> String {
     const MARKERS: [&str; 2] = ["<pasted_content", "</pasted_content"];
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
@@ -698,7 +805,7 @@ fn without_paste_tags(text: &str) -> String {
 const CODEX_CONTEXT_PREFIXES: [&str; 3] = ["# AGENTS.md instructions", "<environment_context>", "<user_instructions>"];
 
 /// Whether a user-role response item is context Codex injected, which no chat should show as said.
-fn is_codex_context(payload: &Value) -> bool {
+pub(super) fn is_codex_context(payload: &Value) -> bool {
     payload.get("content").and_then(Value::as_array).is_some_and(|parts| {
         parts.iter().filter_map(|part| part.get("text").and_then(Value::as_str)).any(|text| {
             let text = text.trim_start();
@@ -707,7 +814,7 @@ fn is_codex_context(payload: &Value) -> bool {
     })
 }
 
-fn codex_text(payload: &Value) -> String {
+pub(super) fn codex_text(payload: &Value) -> String {
     payload
         .get("content")
         .and_then(Value::as_array)

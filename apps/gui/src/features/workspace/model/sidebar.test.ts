@@ -12,6 +12,13 @@ function session(pane: number, extra: Partial<Conversation> = {}): SessionView {
 }
 const exited = { asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, exit: { code: 1, at: 1 } }
 
+const NOW = new Date(2026, 0, 5, 9, 30).getTime()
+const RESUME = new Date(2026, 0, 5, 14, 5).getTime()
+/** An agent the daemon says continues at 14:05, seen at 9:30. */
+function limited(pane: number): SessionView {
+  return toSessionView({ ...session(pane, { agent: 'claude', details: { asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, resumeAt: RESUME / 1000 } }).conversation }, '/home/me', NOW)
+}
+
 describe('the sidebar’s order', () => {
   it('puts an agent that stopped above work in progress, and a failed shell command last', () => {
     const order = byUrgency([session(1, { details: exited }), session(2, { agent: 'claude', details: exited }), session(3, { agent: 'claude', status: 'working' }), session(4)])
@@ -35,6 +42,10 @@ describe('a row', () => {
     expect(rowWord(session(1, { agent: 'claude', details: exited }))).toBe('stopped')
     expect(rowWord(session(2, { details: exited }))).toBe('exited')
     expect(rowWord(session(3, { status: 'working' }))).toBe('')
+  })
+
+  it('says until when a session stopped by its plan limit is limited', () => {
+    expect(rowWord(limited(1), NOW)).toBe('limited until 14:05')
   })
 
   it('gives a project the same one of five colours every time', () => {
@@ -71,6 +82,11 @@ describe('status sections', () => {
   it('puts an agent that stopped with what needs you', () => {
     const sections = statusSections([session(2, { agent: 'claude', details: exited })])
     expect(sections.map((section) => [section.key, section.sessions.map((item) => item.id)])).toEqual([['needs', ['t2']]])
+  })
+
+  it('puts a session stopped by its plan limit with what needs you', () => {
+    const sections = statusSections([session(1, { agent: 'claude', status: 'working' }), limited(2)])
+    expect(sections.map((section) => [section.key, section.sessions.map((item) => item.id)])).toEqual([['needs', ['t2']], ['working', ['t1']]])
   })
 })
 

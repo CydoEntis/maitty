@@ -801,11 +801,7 @@ pub async fn start_terminal_session(
     if !cwd.is_dir() {
         bail!("the selected project folder is not a directory");
     }
-    let program = match provider {
-        Provider::Codex => "codex",
-        Provider::Claude => "claude",
-        Provider::Gemini => "gemini",
-    };
+    let program = provider.agent_name();
     let reply = request(
         ClientMsg::Command(Command::NewWorkspace {
             cwd: Some(cwd),

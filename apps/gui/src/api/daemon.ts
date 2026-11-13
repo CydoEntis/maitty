@@ -57,6 +57,10 @@ const TerminalSessionSchema = z.object({
   remote: z.string().nullable().default(null),
   // When the status last changed, in unix seconds; the sidebar row's time.
   since: z.number().nonnegative().default(0),
+  // What set the status, in the daemon's own words (`TermInfo.status_why`); empty when it gave no reason.
+  status_why: z.string().default(''),
+  // When the daemon tells an agent stopped by its plan limit to continue, in unix seconds (`TermInfo.resume_at`); null when it is not held.
+  resume_at: z.number().nonnegative().nullable().default(null),
   asking: z.string().default(''),
   // The pane's checks (`TermInfo.checks`); absent from an older daemon.
   checks: z.array(CheckSchema).default([]),
@@ -495,10 +499,11 @@ function readTerminal(raw: unknown, machine: number): TerminalSession | null {
 export { terminalOf, terminalSessionId }
 
 // A terminal this app can show as a session: a shell (with or without an agent running in it) in
-// a pane of its own, not a chat's terminal, a popup, or another machine's. The daemon
-// already leaves out panes another app owns (ADR 0004).
+// a pane of its own, not a chat's terminal or a popup. A pane with ssh running in it is still a
+// session of the machine whose snapshot this is; another machine's sessions come from its own
+// snapshot. The daemon already leaves out panes another app owns (ADR 0004).
 function isTerminalSession(term: TerminalSession): boolean {
-  return term.conversation_id === null && !term.popup && term.remote === null
+  return term.conversation_id === null && !term.popup
 }
 
 function toolActivityLabel(tool: { kind: string; label?: string | undefined }): string {
@@ -1232,6 +1237,8 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
       agentEffort: term.effort,
       exit: term.exit,
       since: term.since,
+      statusWhy: term.status_why,
+      resumeAt: term.resume_at,
       timeline: term.timeline,
       usage: term.usage,
       queued: term.queued,
