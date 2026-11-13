@@ -10,6 +10,7 @@ mod check;
 pub use check::first_failing_line;
 mod check_source;
 mod check_stale;
+mod clone;
 mod commands;
 mod contain;
 mod conversation;
@@ -225,6 +226,11 @@ pub enum Ev {
     SearchReady {
         client: ClientId,
         hits: Vec<crate::protocol::SearchHit>,
+    },
+    CloneReady {
+        client: ClientId,
+        tag: u64,
+        outcome: Result<String, String>,
     },
     FoldersReady {
         client: ClientId,
@@ -2175,6 +2181,11 @@ impl Daemon {
                 tag,
                 listing,
             } => self.send(client, ServerMsg::Reply(Reply::Folders { tag, listing })),
+            Ev::CloneReady {
+                client,
+                tag,
+                outcome,
+            } => self.send(client, ServerMsg::Reply(Reply::Cloned { tag, outcome })),
             Ev::RepoReady {
                 client,
                 tag,
@@ -2747,6 +2758,34 @@ impl Daemon {
                         tokio::task::spawn_blocking(move || {
                             let listing = folders::list(&path, home.as_deref());
                             let _ = tx.blocking_send(Ev::FoldersReady { client, tag, listing });
+                        });
+                        return;
+                    }
+                    Query::CloneRepo { .. }
+                        if self.clients.get(&client).is_some_and(|client| {
+                            client.from.is_some() || client.structured.is_some()
+                        }) =>
+                    {
+                        ServerMsg::Error("Only a human client can clone a repository".into())
+                    }
+                    Query::CloneRepo { address, parent, tag } => {
+                        // Checked here too, so an address or a path that is far too long never
+                        // reaches a thread.
+                        if address.len() > clone::ADDRESS_MAX_BYTES || parent.len() > folders::PATH_MAX_BYTES {
+                            self.send(
+                                client,
+                                ServerMsg::Reply(Reply::Cloned {
+                                    tag,
+                                    outcome: Err("That address or folder is too long".into()),
+                                }),
+                            );
+                            return;
+                        }
+                        let home = directories::BaseDirs::new().map(|dirs| dirs.home_dir().to_path_buf());
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let outcome = clone::clone(&address, &parent, home.as_deref(), clone::CLONE_LIMIT);
+                            let _ = tx.blocking_send(Ev::CloneReady { client, tag, outcome });
                         });
                         return;
                     }

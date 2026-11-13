@@ -1922,6 +1922,32 @@ async fn approved_commands_are_listed_and_taken_back_by_a_person_only() {
 }
 
 #[tokio::test]
+async fn only_a_person_can_have_a_repository_cloned_and_an_oversized_request_is_answered_at_once() {
+    let mut session = conversation_fixture("conversation-approval").await;
+    let outcome = AssertUnwindSafe(async {
+        let clone = |address: String| {
+            crate::protocol::ClientMsg::Query(crate::protocol::Query::CloneRepo { address, parent: "~".into(), tag: 9 })
+        };
+        let from = authenticated_pane(&mut session);
+        let refused = exchange(&mut session, 440, clone("https://example.invalid/o/r.git".into()), Some(from)).await;
+        assert!(matches!(refused, ServerMsg::Error(ref message) if message.contains("Only a human")), "{refused:?}");
+
+        let long = format!("https://example.invalid/{}", "a".repeat(4096));
+        let answered = exchange(&mut session, 441, clone(long), None).await;
+        assert!(
+            matches!(answered, ServerMsg::Reply(crate::protocol::Reply::Cloned { tag: 9, outcome: Err(ref why) }) if why.contains("too long")),
+            "{answered:?}"
+        );
+    })
+    .catch_unwind()
+    .await;
+    session.cleanup().await;
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[tokio::test]
 async fn a_file_change_request_cannot_be_remembered() {
     let mut session = conversation_fixture("conversation-file-approval").await;
     let outcome = AssertUnwindSafe(async {

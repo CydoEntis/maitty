@@ -161,6 +161,13 @@ pub fn vet(opts: &MachineOpts, asked: bool, machine: &str, msg: ServerMsg) -> Op
                 listing: sanitize_listing(listing),
             })
         }
+        ServerMsg::Reply(Reply::Cloned { tag, outcome }) => ServerMsg::Reply(Reply::Cloned {
+            tag,
+            outcome: match outcome {
+                Ok(path) => Ok(sanitize(&cut_bytes(path, PATH_MAX), false)),
+                Err(why) => Err(sanitize(&cut_bytes(why, NAME_MAX), false)),
+            },
+        }),
         other => other,
     })
 }
@@ -279,6 +286,24 @@ mod tests {
         assert_eq!(ask.tool, "Bash");
         assert!(!ask.detail.contains(['\u{1b}', '\u{7}', '\n', '\u{202e}']), "{:?}", ask.detail);
         assert!(ask.answerable, "the key is still that machine's daemon's to check");
+    }
+
+    #[test]
+    fn what_another_machine_says_of_a_clone_is_one_clean_line() {
+        let cloned = |outcome| ServerMsg::Reply(Reply::Cloned { tag: 4, outcome });
+        let Some(ServerMsg::Reply(Reply::Cloned { tag: 4, outcome: Ok(path) })) =
+            vet(&nothing_on(), true, "box", cloned(Ok("/home/dev/wid\u{1b}[31mgets\nx".into())))
+        else {
+            panic!("an answer that was asked for is kept");
+        };
+        assert!(!path.contains(['\u{1b}', '\n']), "{path:?}");
+        let Some(ServerMsg::Reply(Reply::Cloned { outcome: Err(why), .. })) =
+            vet(&nothing_on(), true, "box", cloned(Err("fatal: no\u{7}\nsecond line".repeat(100))))
+        else {
+            panic!("a refusal that was asked for is kept");
+        };
+        assert!(!why.contains(['\u{7}', '\n']) && why.len() <= NAME_MAX, "{why:?}");
+        assert!(vet(&nothing_on(), false, "box", cloned(Ok("/x".into()))).is_none());
     }
 
     #[test]

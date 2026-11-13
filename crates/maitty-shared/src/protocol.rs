@@ -11,7 +11,10 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 84;
+pub const PROTOCOL_VERSION: u32 = 85;
+
+/// The first version whose daemon clones a repository on request (`Query::CloneRepo`).
+pub const CLONE_SINCE: u32 = 85;
 
 /// The first version whose daemon lists and forgets the commands approved "always in this project"
 /// (`Query::AllowedCommands`, `Command::ForgetAllowedCommand`).
@@ -821,6 +824,15 @@ pub enum Query {
         path: String,
         tag: u64,
     },
+    /// Clone the git repository at `address` into a new folder, named after it, inside `parent`
+    /// on this daemon's computer (human clients only). `address` is an `https://`, `ssh://` or
+    /// `git://` address or the `user@host:path` form; `parent` is absolute or starts with `~`.
+    /// The answer is `Reply::Cloned` with the same `tag`.
+    CloneRepo {
+        address: String,
+        parent: String,
+        tag: u64,
+    },
     List,
     /// Plain-text screen contents of a terminal (the visible screen).
     Read {
@@ -1024,6 +1036,12 @@ pub enum Reply {
     Folders {
         tag: u64,
         listing: FolderListing,
+    },
+    /// How a `Query::CloneRepo` ended: the new folder's path with `/` separators, or one line
+    /// saying why nothing was cloned.
+    Cloned {
+        tag: u64,
+        outcome: Result<String, String>,
     },
 }
 
@@ -1774,6 +1792,7 @@ impl ClientMsg {
             ClientMsg::Command(Command::ConversationClose { .. } | Command::ConversationUndoClose { .. }) => CHAT_CLOSE_SINCE,
             ClientMsg::Command(Command::ConversationAllowAlways { .. }) => ALLOW_ALWAYS_SINCE,
             ClientMsg::Query(Query::AllowedCommands) | ClientMsg::Command(Command::ForgetAllowedCommand { .. }) => ALLOWED_COMMANDS_SINCE,
+            ClientMsg::Query(Query::CloneRepo { .. }) => CLONE_SINCE,
             _ => COMPATIBLE_SINCE,
         }
     }
@@ -2178,7 +2197,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 84);
+        assert_eq!(PROTOCOL_VERSION, 85);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2450,7 +2469,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 84);
+        assert_eq!(PROTOCOL_VERSION, 85);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -3287,5 +3306,8 @@ mod tests {
         let forget = ClientMsg::Command(Command::ForgetAllowedCommand { project: PathBuf::from("/code"), command_sha256: "ab".into() });
         assert_eq!((list.introduced_in(), forget.introduced_in()), (ALLOWED_COMMANDS_SINCE, ALLOWED_COMMANDS_SINCE));
         const { assert!(ALLOWED_COMMANDS_SINCE > COMPATIBLE_SINCE && ALLOWED_COMMANDS_SINCE <= PROTOCOL_VERSION) };
+        let clone = ClientMsg::Query(Query::CloneRepo { address: "https://example.com/o/r.git".into(), parent: "~".into(), tag: 1 });
+        assert_eq!(clone.introduced_in(), CLONE_SINCE);
+        const { assert!(CLONE_SINCE > COMPATIBLE_SINCE && CLONE_SINCE <= PROTOCOL_VERSION) };
     }
 }

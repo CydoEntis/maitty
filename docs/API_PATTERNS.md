@@ -624,6 +624,17 @@ clients only; the reads run off the event loop. A listing from another machine i
 snapshot is (`remote_policy::vet`): control characters out, names that are paths dropped, the count
 cut, and it is passed on only while a request to that machine is waiting.
 
+Protocol 85 adds `Query::CloneRepo { address, parent, tag }` and `Reply::Cloned { tag, outcome }`
+(`CLONE_SINCE`; `COMPATIBLE_SINCE` stays): `git clone` of `address` into a new folder, named after the
+repository, inside `parent` on the daemon's computer (`crates/maitty-core/src/daemon/clone.rs`).
+`outcome` is the new folder's path with `/` separators, or one line saying why nothing was cloned; a
+refusal is an answer, not `ServerMsg::Error`, so the client that asked can match it by `tag`. The
+address rules are in [SECURITY](SECURITY.md#project-specific-auth-and-permissions). `parent` follows the
+rules of `ListFolders` and must be a folder that is there; a file or folder of the new name already
+there is a refusal. Human clients only. git runs off the event loop, cannot ask a question
+(`GIT_TERMINAL_PROMPT=0`, no input), and is stopped after ten minutes; a clone that fails or is stopped
+leaves no folder. An answer from another machine is cut and cleaned to one line (`remote_policy::vet`).
+
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store
 ([ADR 0009](adr/0009-usage-is-provider-reported-never-estimated.md)): totals, one entry per

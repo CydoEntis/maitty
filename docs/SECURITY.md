@@ -522,6 +522,16 @@ is a fixed set of host commands that take a machine's name or number, never a pr
 
 ## Project-specific: auth and permissions
 
+- **Cloning a repository** (`Query::CloneRepo`, `daemon/clone.rs`) takes an address from a client, so the
+  daemon checks it before git sees it: at most 2,048 bytes, no whitespace or control character, not
+  starting with `-` (git would read an option), and only an `https://`, `ssh://` or `git://` address or
+  the `user@host:path` form. A local path, `file://`, `http://` and git's `ext::` transport are refused:
+  they would read this computer's own disk, send credentials in the clear, or run a program. The address
+  is passed after `--` as one argument, never through a shell. The new folder's name comes from the
+  address and may hold no path separator or other character a folder name cannot. Only a person's
+  client may ask; a pane's or an agent's connection is refused. The daemon reads no credential: git uses
+  whatever the machine already has, and fails when it would have to ask.
+
 No user accounts. Access to the daemon is access to its local socket: a named
 pipe on Windows, a Unix socket in the temp directory elsewhere, named per user
 (`maitty-<user>-<label>.sock`). Socket access must stay limited to the user who
