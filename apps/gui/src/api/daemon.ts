@@ -57,6 +57,8 @@ const TerminalSessionSchema = z.object({
   remote: z.string().nullable().default(null),
   // When the status last changed, in unix seconds; the sidebar row's time.
   since: z.number().nonnegative().default(0),
+  // What set the status, in the daemon's own words (`TermInfo.status_why`); empty when it gave no reason.
+  status_why: z.string().default(''),
   asking: z.string().default(''),
   // The pane's checks (`TermInfo.checks`); absent from an older daemon.
   checks: z.array(CheckSchema).default([]),
@@ -1233,6 +1235,7 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
       agentEffort: term.effort,
       exit: term.exit,
       since: term.since,
+      statusWhy: term.status_why,
       timeline: term.timeline,
       usage: term.usage,
       queued: term.queued,

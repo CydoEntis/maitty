@@ -2920,6 +2920,12 @@ impl Daemon {
                     }
                     Query::List => {
                         let surface = self.surface_of(client);
+                        // A client that follows the updates and asks for the list missed one. The
+                        // list can hold a change its surface was not sent yet, so the next change
+                        // goes out in full: a delta would be against what was sent, not the list.
+                        if self.clients.get(&client).is_some_and(|c| c.attach) {
+                            self.sent_state.remove(&surface);
+                        }
                         ServerMsg::Reply(Reply::List(self.snapshot_for(surface)))
                     }
                     Query::Read { term } if self.may(client, Grant::Read, Some(term)).is_err() => {

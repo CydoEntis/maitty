@@ -200,9 +200,18 @@ what left for the clients already there, and a pane that ended while nobody was 
 to nobody. Both fields are `#[serde(default)]` (no new `PROTOCOL_VERSION`): empty from an older
 daemon, on the attach snapshot and in `Reply::List`, so no reason means not said, never a reason.
 `RemovalReason::Unknown` is `#[serde(other)]`: a reason added later reads as `Unknown` to an older
-build and the rest of the message stands, so a new reason needs no version change. A
+build and the rest of the message stands, so an older peer can still read a message that carries one. A
 client merges a delta into the snapshot it holds, sets that snapshot's `removed` to the delta's
-`reasons`, and treats the result as a state update. For a pane delta from another machine the snapshot is that machine's own,
+`reasons`, and treats the result as a state update. The desktop
+host (`streams.rs`) merges a delta only when its revision is 0 or one more than the revision it holds;
+after a gap, or with no snapshot held, it drops the delta, sends `Query::List` on its stream and takes
+the `Reply::List` as its snapshot. It asks once for a run of such deltas, and again only when the list has
+not come after `LIST_ASKED_AGAIN_AFTER` (5 s) or the machine's line came up anew; a whole `State` settles
+it too. A list alone is no base for a delta (it can hold a change the surface
+was not sent yet), so after `Query::List` from an attached client the daemon sends that surface its next
+change in full, as it does after an attach. That reset is what makes the delta after a resync right: a
+daemon that numbers its updates but was built before the reset works its next delta out from what it
+sent, so a pane can stay stale in the host's list until that daemon's next whole `State`. For a pane delta from another machine the snapshot is that machine's own,
 and the delta is cleaned first (SECURITY, "remote daemon"). Replays follow `Hello.replays`: a terminal client takes every pane's replay on attach, the desktop window
 attaches without and sends `ClientMsg::WantReplay { term }` on its stream when it shows a pane; a
 desktop replay carries the last mebibyte of the ring and then the screen as it is, which is all the
@@ -571,6 +580,11 @@ fail with a "read-only" error; `Rename` and `Archive` fail as for an unknown id 
 closed as a pane). A client the pane does not belong to (ADR 0004) gets "No such conversation". The
 history is the provider's own transcript projected through the same entries a structured runtime
 produces (`conversation/follow_transcript.rs`); nothing read from the file sets any status.
+In a Claude transcript a slash command is a user message holding the command as typed
+(`/plugin marketplace add x`). What a command Claude ran itself printed (`<local-command-stdout>`,
+`<local-command-stderr>`) is a completed `commandExecution` entry labelled with that command, and it
+completes the command's turn; a command that printed nothing gets no such entry. `<system-reminder>`,
+`<local-command-caveat>` and `isMeta` lines are never shown.
 
 `ConversationSend` carries an optional `choice` (`TurnChoice { model, effort }`, `#[serde(default)]`, no
 protocol bump; a send from before it decodes as no choice). The daemon validates it (a plain model name that

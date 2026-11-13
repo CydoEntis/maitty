@@ -101,3 +101,11 @@ export function formatAgo(ms: number): string {
   if (ms < DAY_MS) return `${String(Math.floor(ms / HOUR_MS))}h`
   return `${String(Math.floor(ms / DAY_MS))}d`
 }
+
+/** `3 s`, `1 min`, `2 h`, `3 d`: an age to the second, for a sentence that ends in "ago". */
+export function formatAge(ms: number): string {
+  if (ms < MINUTE_MS) return `${String(Math.max(0, Math.floor(ms / SECOND_MS)))} s`
+  if (ms < HOUR_MS) return `${String(Math.floor(ms / MINUTE_MS))} min`
+  if (ms < DAY_MS) return `${String(Math.floor(ms / HOUR_MS))} h`
+  return `${String(Math.floor(ms / DAY_MS))} d`
+}

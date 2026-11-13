@@ -121,6 +121,13 @@ pub fn vet(opts: &MachineOpts, asked: bool, machine: &str, msg: ServerMsg) -> Op
                 return None;
             }
         },
+        ServerMsg::Reply(Reply::List(snap)) => match sanitize_snapshot(snap) {
+            Ok(snap) => ServerMsg::Reply(Reply::List(snap)),
+            Err(why) => {
+                tracing::debug!(why, "refused a list from another machine");
+                return None;
+            }
+        },
         ServerMsg::TermsChanged { changed, removed, mut reasons, revision } => {
             if removed.len() > ITEMS_MAX || reasons.len() > ITEMS_MAX {
                 tracing::debug!(
@@ -320,6 +327,24 @@ mod tests {
             listing: FolderListing::missing("/x"),
         });
         assert!(vet(&nothing_on(), false, "box", reply).is_none());
+    }
+
+    #[test]
+    fn a_whole_list_another_machine_answers_with_is_cleaned_like_its_state() {
+        let list = Snapshot {
+            daemon_version: "1.0\u{1b}[31m\u{202e}".into(),
+            ..Snapshot::default()
+        };
+        let Some(ServerMsg::Reply(Reply::List(cleaned))) =
+            vet(&nothing_on(), true, "box", ServerMsg::Reply(Reply::List(list.clone())))
+        else {
+            panic!("a list that was asked for is kept");
+        };
+        let Some(ServerMsg::State(state)) = vet(&nothing_on(), true, "box", ServerMsg::State(list)) else {
+            panic!("a state is kept");
+        };
+        assert_eq!(cleaned.daemon_version, state.daemon_version);
+        assert!(!cleaned.daemon_version.contains(['\u{1b}', '\u{202e}']), "{cleaned:?}");
     }
 
     fn nothing_on() -> MachineOpts {

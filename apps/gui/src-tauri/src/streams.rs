@@ -35,7 +35,20 @@ pub const SEQ_BYTES: usize = std::mem::size_of::<u64>();
 pub const FRAME_HEADER_BYTES: usize =
     std::mem::size_of::<u16>() + std::mem::size_of::<u32>() + SEQ_BYTES + 1;
 
+/// A whole list asked for is asked for again when it has not come in this long, so one lost
+/// answer cannot leave a machine's deltas dropped for as long as its line stays up.
+pub const LIST_ASKED_AGAIN_AFTER: Duration = Duration::from_secs(5);
+/// The revision of a daemon built before revisions, or of a surface sent nothing yet.
+const UNNUMBERED: u64 = 0;
+
 type PaneKey = (MachineId, TermId);
+
+/// Whether a delta numbered `revision` is the next after the list numbered `held`. An unnumbered
+/// delta cannot be checked and is taken as it comes. Another machine's numbers are whatever it
+/// sends, so the sum is checked.
+fn follows(held: u64, revision: u64) -> bool {
+    revision == UNNUMBERED || held.checked_add(1) == Some(revision)
+}
 
 #[derive(Default)]
 struct Pane {
@@ -76,6 +89,8 @@ pub enum Out {
     Clipboard { machine: MachineId, text: String },
     /// Ask the machine's daemon for the pane's replay.
     WantReplay { machine: MachineId, term: TermId },
+    /// Ask the machine's daemon for its whole list.
+    WantList { machine: MachineId },
     /// The shared settings of this computer's daemon, as asked for or as they just changed.
     Settings(SharedSettings),
     /// A conversation of this computer's daemon changed: its open chat reads it again.
@@ -96,6 +111,8 @@ pub struct Streams {
     pending: BTreeMap<PaneKey, Vec<u8>>,
     /// When the oldest waiting output arrived; None while nothing waits.
     since: Option<Instant>,
+    /// When each machine was last asked for its whole list, while that list has not come.
+    list_asked: HashMap<MachineId, Instant>,
 }
 
 impl Streams {
@@ -119,6 +136,20 @@ impl Streams {
             self.since = None;
         }
         self.last.remove(&machine);
+        self.list_asked.remove(&machine);
+    }
+
+    /// Whether to ask `machine` for its whole list now: not while one asked for lately is still
+    /// to come, so a run of deltas after one missed update asks once.
+    fn list_wanted(&mut self, machine: MachineId, now: Instant) -> bool {
+        let waiting = self
+            .list_asked
+            .get(&machine)
+            .is_some_and(|at| now.saturating_duration_since(*at) < LIST_ASKED_AGAIN_AFTER);
+        if !waiting {
+            self.list_asked.insert(machine, now);
+        }
+        !waiting
     }
 
     /// What `machine` said, already vetted.
@@ -182,9 +213,26 @@ impl Streams {
                 out.push(Out::Folders { machine, tag, listing });
             }
             ServerMsg::State(snapshot) => self.publish(machine, snapshot, &mut out),
-            ServerMsg::TermsChanged { changed, removed, reasons, .. } => {
+            // What the host asked for after a missed update; nothing else asks on this line.
+            ServerMsg::Reply(Reply::List(snapshot)) => self.publish(machine, snapshot, &mut out),
+            ServerMsg::TermsChanged { changed, removed, reasons, revision } => {
+                // A delta fits only the list it was worked out from: with none held, or after a
+                // missed update, merging it would leave the list wrong until the next whole one.
+                let fits = self
+                    .last
+                    .get(&machine)
+                    .is_some_and(|held| follows(held.revision, revision));
+                if !fits {
+                    if self.list_wanted(machine, now) {
+                        out.push(Out::WantList { machine });
+                    }
+                    return out;
+                }
                 let merged = self.last.get(&machine).cloned().map(|mut merged| {
                     merged.removed = reasons;
+                    if revision != UNNUMBERED {
+                        merged.revision = revision;
+                    }
                     for term in removed {
                         merged.terms.remove(&term);
                     }
@@ -193,8 +241,6 @@ impl Streams {
                     }
                     merged
                 });
-                // A delta before any whole snapshot has nothing to apply to; the next whole
-                // one comes with the next reconnect.
                 if let Some(merged) = merged {
                     // Each delta was capped on its own, but merged into the list they would grow
                     // it without end, so the merged list meets the caps of a whole one.
@@ -238,6 +284,7 @@ impl Streams {
             self.since = None;
         }
         self.last.remove(&machine);
+        self.list_asked.remove(&machine);
         self.panes
             .iter_mut()
             .filter(|((m, _), _)| *m == machine)
@@ -401,6 +448,7 @@ impl Streams {
             snapshot: Some(Box::new(snapshot.clone())),
         });
         self.last.insert(machine, snapshot);
+        self.list_asked.remove(&machine);
     }
 
     /// Adds the output to the pane's history and gives its frame for the window.

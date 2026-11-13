@@ -1164,7 +1164,7 @@ pub struct Snapshot {
 }
 
 /// Why a pane left the list a surface is shown. A reason added later reads as `Unknown` to a
-/// build from before it, so adding one needs no new `PROTOCOL_VERSION`.
+/// build from before it, and the rest of the message still decodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RemovalReason {
     /// A person closed it. It may still be inside its undo window, and then comes back as changed.
