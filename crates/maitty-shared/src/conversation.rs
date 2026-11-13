@@ -281,6 +281,19 @@ pub enum Provider {
     Gemini,
 }
 
+impl Provider {
+    pub const ALL: [Provider; 3] = [Provider::Codex, Provider::Claude, Provider::Gemini];
+
+    /// The agent's command, which is also its name in a terminal pane.
+    pub fn agent_name(self) -> &'static str {
+        match self {
+            Provider::Codex => "codex",
+            Provider::Claude => "claude",
+            Provider::Gemini => "gemini",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NativeBinding {
@@ -684,5 +697,16 @@ mod title_tests {
         let loaded: Conversation = serde_json::from_value(value).unwrap();
         assert_eq!(loaded.title, None);
         assert!(!loaded.archived);
+    }
+}
+
+#[cfg(test)]
+mod provider_tests {
+    use super::*;
+
+    #[test]
+    fn each_provider_is_named_as_its_agent_command() {
+        let names: Vec<_> = Provider::ALL.iter().map(|p| p.agent_name()).collect();
+        assert_eq!(names, ["codex", "claude", "gemini"]);
     }
 }
