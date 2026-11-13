@@ -27,8 +27,8 @@ function open(list: ClosedSession[] | null | Error) {
   reopened.sent = []
   const onPick = vi.fn()
   const onReopened = vi.fn()
-  render(<RecentSessionsDialog home="/home/me" onPick={onPick} onReopened={onReopened} onCancel={vi.fn()} />)
-  return { onPick, onReopened }
+  const { unmount } = render(<RecentSessionsDialog home="/home/me" onPick={onPick} onReopened={onReopened} onCancel={vi.fn()} />)
+  return { onPick, onReopened, unmount }
 }
 
 describe('the Recent sessions list', () => {
@@ -67,6 +67,32 @@ describe('the Recent sessions list', () => {
     expect(screen.getByRole('status').textContent).toContain('Making the folder again')
     reply.resolve(true)
     await waitFor(() => { expect(onReopened).toHaveBeenCalledTimes(1) })
+  })
+
+  it('lets no other session be picked while a removed folder is made again', async () => {
+    const reply = deferred()
+    reopened.next = () => reply.promise
+    const { onPick } = open([removedWorktree, parser])
+    fireEvent.click(await screen.findByRole('button', { name: /Tidy the docs/ }))
+    const present = screen.getByRole('button', { name: /Fix the parser/ })
+    expect(present.getAttribute('aria-disabled')).toBe('true')
+    fireEvent.click(present)
+    expect(onPick).not.toHaveBeenCalled()
+    reply.reject(new Error('the branch docs/tidy no longer exists'))
+    await screen.findByRole('alert')
+    expect(present.getAttribute('aria-disabled')).toBe('false')
+  })
+
+  it('does nothing with an answer that arrives after the list closed', async () => {
+    const reply = deferred()
+    reopened.next = () => reply.promise
+    const { onReopened, unmount } = open([removedWorktree])
+    fireEvent.click(await screen.findByRole('button', { name: /Tidy the docs/ }))
+    unmount()
+    reply.resolve(true)
+    await reply.promise
+    await Promise.resolve()
+    expect(onReopened).not.toHaveBeenCalled()
   })
 
   it("shows the service's refusal and keeps the list usable", async () => {

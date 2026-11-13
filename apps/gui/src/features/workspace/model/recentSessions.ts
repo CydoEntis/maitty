@@ -70,6 +70,12 @@ export function useReopenRemoved(onReopened: () => void): { state: RemakeState; 
   const [state, setState] = useState<RemakeState>({ kind: 'idle' })
   // A second pick before the first answers would start the session twice.
   const busy = useRef(false)
+  // The list can close before the service answers; that answer then changes nothing here.
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
   const reopen = useCallback((closed: ClosedSession) => {
     if (busy.current) return
     busy.current = true
@@ -83,6 +89,7 @@ export function useReopenRemoved(onReopened: () => void): { state: RemakeState; 
         outcome = { kind: 'failed', message: errorMessage(error, 'Could not reopen the session.') }
       }
       busy.current = false
+      if (!mounted.current) return
       setState(outcome)
       if (outcome.kind === 'idle') onReopened()
     })()

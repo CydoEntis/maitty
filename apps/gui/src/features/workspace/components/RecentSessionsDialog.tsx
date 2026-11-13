@@ -17,13 +17,14 @@ type Props = {
   onCancel: () => void
 }
 
-function Row({ closed, home, now, onPick }: { closed: ClosedSession; home: string; now: number; onPick: Props['onPick'] }) {
+function Row({ closed, home, now, locked, onPick }: { closed: ClosedSession; home: string; now: number; locked: boolean; onPick: Props['onPick'] }) {
   const refusal = reopenRefusal(closed)
+  const off = refusal !== null || locked
   const agent = agentName(closed.agent)
   const where = [agent, tildePath(closed.cwd, home), closed.branch].filter((part): part is string => part !== null && part !== '').join(' · ')
   return (
     <li>
-      <button type="button" className="mx-recent-row" aria-disabled={refusal !== null} title={closed.cwd} onClick={() => { if (refusal === null) onPick(closed) }}>
+      <button type="button" className="mx-recent-row" aria-disabled={off} title={closed.cwd} onClick={() => { if (!off) onPick(closed) }}>
         <AppIcon process={closed.agent} size={20} />
         <span className="mx-recent-text">
           <span className="mx-recent-title">{closed.title ?? `${agent} session`}</span>
@@ -41,7 +42,7 @@ function RemakeLine({ state }: { state: RemakeState }) {
   return null
 }
 
-function Body({ read, home, onPick, onRetry }: { read: RecentRead; home: string; onPick: Props['onPick']; onRetry: () => void }) {
+function Body({ read, home, locked, onPick, onRetry }: { read: RecentRead; home: string; locked: boolean; onPick: Props['onPick']; onRetry: () => void }) {
   if (read.kind === 'loading') return <p role="status">Looking for closed sessions…</p>
   if (read.kind === 'older') return <p role="status">Restart the Maitty service to see closed sessions.</p>
   if (read.kind === 'failed') {
@@ -56,7 +57,7 @@ function Body({ read, home, onPick, onRetry }: { read: RecentRead; home: string;
   const now = nowSeconds()
   return (
     <ul className="mx-recent-list" aria-label="Closed sessions">
-      {read.list.map((closed) => <Row key={`${closed.agent}:${closed.session}:${String(closed.at)}`} closed={closed} home={home} now={now} onPick={onPick} />)}
+      {read.list.map((closed) => <Row key={`${closed.agent}:${closed.session}:${String(closed.at)}`} closed={closed} home={home} now={now} locked={locked} onPick={onPick} />)}
     </ul>
   )
 }
@@ -86,7 +87,7 @@ export function RecentSessionsDialog({ home, onPick, onReopened, onCancel }: Pro
           <DialogTitle asChild><h2>Recent sessions</h2></DialogTitle>
           <p>Agent sessions closed on this computer, newest first. Picking one starts its agent in that folder with its conversation; a worktree whose folder was removed is made again first.</p>
           <RemakeLine state={remake.state} />
-          <Body read={read} home={home} onPick={pick} onRetry={retry} />
+          <Body read={read} home={home} locked={remake.state.kind === 'working'} onPick={pick} onRetry={retry} />
           <div className="mx-rename-actions">
             <button type="button" className="mx-text-button" onClick={onCancel}>Close</button>
           </div>
