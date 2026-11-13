@@ -154,6 +154,34 @@ async fn closing_a_chat_for_good_removes_its_clean_merged_worktree_but_not_on_un
     }
 }
 
+#[tokio::test]
+async fn closing_a_chat_for_good_keeps_a_worktree_with_unmerged_commits() {
+    let mut session = conversation_fixture("conversation").await;
+    let outcome = AssertUnwindSafe(async {
+        shown_repo(&mut session);
+        let (id, generation, mine) = chat_on(&mut session, 436, "chat/mine").await;
+        std::fs::write(mine.join("b.txt"), "b").unwrap();
+        crate::proc::git(&mine, &["add", "."]).unwrap();
+        crate::proc::git(&mine, &["commit", "-qm", "only here"]).unwrap();
+        close_for_good(&mut session, 437, id, generation).await;
+        let asked = auto_removal(&mut session).await;
+        assert!(
+            matches!(&asked, crate::daemon::Removal::Unmerged(why) if why.contains("not merged anywhere")),
+            "a commit only there is kept, got: {asked:?}"
+        );
+        assert!(mine.is_dir(), "its folder stands");
+        // As after a pane's close: looked at once, it is not tried again automatically.
+        assert!(!still_made(&session, &mine));
+    })
+    .catch_unwind()
+    .await;
+    close_panes(&mut session).await;
+    session.cleanup().await;
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+}
+
 // One chat per fixture: the synthetic provider gives every chat it starts the same session.
 #[tokio::test]
 async fn closing_a_chat_for_good_keeps_a_worktree_with_uncommitted_work() {
