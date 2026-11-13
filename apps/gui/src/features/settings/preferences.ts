@@ -110,6 +110,8 @@ export type SettingsPreferences = {
   newSessionView: PaneView
   /** A new chat starts with the agent's full-access mode (no sandbox, no permission prompts). Off until you turn it on. */
   chatFullAccessDefault: boolean
+  /** The chat leaves out runs of reads and searches that succeeded (`isQuietRun`). Off until you turn it on. */
+  hideSuccessfulTools: boolean
   /** Yolo mode per agent, off by default: Claude may pick Bypass permissions; Codex and Gemini start with approvals and sandbox off. */
   yoloClaude: boolean
   yoloCodex: boolean
@@ -206,6 +208,7 @@ function defaults(): SettingsPreferences {
     defaultAgent: 'claude',
     newSessionView: 'chat',
     chatFullAccessDefault: false,
+    hideSuccessfulTools: false,
     yoloClaude: false,
     yoloCodex: false,
     yoloGemini: false,
@@ -287,6 +290,7 @@ export function readSettingsPreferences(): SettingsPreferences {
       defaultAgent: preferences.defaultAgent === 'claude' || preferences.defaultAgent === 'codex' ? preferences.defaultAgent : fallback.defaultAgent,
       newSessionView: paneView(preferences.newSessionView, fallback.newSessionView),
       chatFullAccessDefault: bool(preferences.chatFullAccessDefault, fallback.chatFullAccessDefault),
+      hideSuccessfulTools: bool(preferences.hideSuccessfulTools, fallback.hideSuccessfulTools),
       yoloClaude: bool(preferences.yoloClaude, fallback.yoloClaude),
       yoloCodex: bool(preferences.yoloCodex, fallback.yoloCodex),
       yoloGemini: bool(preferences.yoloGemini, fallback.yoloGemini),
