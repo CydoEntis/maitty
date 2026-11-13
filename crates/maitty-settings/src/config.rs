@@ -340,7 +340,7 @@ pub struct Worktree {
     /// names, else `main` or `master`) rather than from whatever the main checkout has out.
     pub base_on_default: bool,
     /// A worktree with no commit and no file change for this many days is flagged inactive in
-    /// the clean-up list. Nothing is removed for it. 0: never flagged.
+    /// its standing. Nothing is removed for it. 0: never flagged.
     pub inactive_days: u32,
 }
 

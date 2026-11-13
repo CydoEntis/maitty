@@ -92,7 +92,7 @@ dir = "{repo_parent}/{repo}-worktrees/{branch}"
 command = ""                # e.g. "claude" to start an agent in every new worktree
 prewarm = ""                # e.g. "claude": keep one booted in a spare worktree so + New is instant
 base_on_default = false     # true: a new branch starts from the default branch (origin/HEAD, else main), not the checkout's current branch
-inactive_days = 14          # no commit and no file change for this many days: flagged inactive in the clean-up list (never removed for it); 0 turns it off
+inactive_days = 14          # no commit and no file change for this many days: flagged inactive in its standing (never removed for it); 0 turns it off
 
 [icons]
 working = "⠹"

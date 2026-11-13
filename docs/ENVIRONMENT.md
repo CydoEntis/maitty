@@ -249,8 +249,10 @@ an inactive one is only listed, for the person to remove.
 The newest file change is the latest modified time among the files `git ls-files --cached
 --others --exclude-standard` lists, so `.gitignore`d folders such as `node_modules` and `target`
 are never walked. The files are looked at only when the last commit is already old enough, and
-at most 20,000 of them: a worktree with more, or one git can't list, is not flagged. The
-standing is read off the UI thread and off the daemon's loop.
+at most 20,000 of them: a worktree with more, or one git can't list, is not flagged. A
+checkout, pull or rebase resets file times, so such a worktree reads as active: the check errs
+toward not flagging. The standing is read off the UI thread and off the daemon's loop; the
+daemon's automatic clean-up does not read inactivity at all.
 
 ## Project-specific: variables
 
