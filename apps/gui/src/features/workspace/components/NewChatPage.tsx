@@ -46,7 +46,7 @@ type Props = {
   bypassAllowed?: boolean
   /** Yolo mode is on for Codex, so every Codex chat starts with full access whatever is picked here. */
   codexYolo?: boolean
-  /** The system's folder picker, whose answer is null when it is cancelled; null itself for another machine, whose disk this window cannot browse. */
+  /** A folder picker whose answer is null when it is cancelled: the system's for this computer, the window's own for another machine. Null when there is none. */
   browse: (() => Promise<string | null>) | null
   onStart: (request: NewChatRequest) => Promise<void>
   /** Starts the chat's agent while the first message is written (`useWarmAgent`); without it the agent starts on send. */
