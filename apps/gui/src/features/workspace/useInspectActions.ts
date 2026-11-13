@@ -28,28 +28,20 @@ export function useInspectActions({ focusedSession, setInspectOpen, setInspectVi
     if (inspectRefusal !== null) toast.message(inspectRefusal)
     else setInspectOpen((open) => !open)
   }, [inspectRefusal, setInspectOpen])
-  // An edit block's header: show the repository's changes in the Inspect panel. A turn's changes row passes its turn, to show only what that turn changed.
-  const showChanges = useCallback((_file?: string, turn?: TurnSpan | null) => {
-    if (inspectRefusal !== null) {
-      toast.message(inspectRefusal)
-      return
-    }
-    setTurnDiff(turn === undefined || focusedId === null ? null : { sessionId: focusedId, turn })
-    setInspectView('changes')
-    setInspectOpen(true)
-  }, [inspectRefusal, focusedId, setInspectOpen, setInspectView, setTurnDiff])
-  // A session menu's Show changes: that session in front, its repository's changes beside it.
-  const showChangesOf = useCallback((sessionId: string) => {
+  // A chat's edit block or changes row, or a session menu's Show changes: that session in front, its repository's
+  // changes beside it. A turn's changes row passes its turn, to show only what that turn changed.
+  const showChanges = useCallback((sessionId: string, _file?: string, turn?: TurnSpan | null) => {
     const refusal = guardLocal(sessionMap.get(sessionId), 'inspect')
     if (refusal !== null) {
       toast.message(refusal)
       return
     }
     showSessionById(sessionId)
-    setTurnDiff(null)
+    setTurnDiff(turn === undefined ? null : { sessionId, turn })
     setInspectView('changes')
     setInspectOpen(true)
   }, [sessionMap, setInspectOpen, setInspectView, setTurnDiff, showSessionById])
+  const showChangesOf = useCallback((sessionId: string) => { showChanges(sessionId) }, [showChanges])
   // A pane's side-panel button: the pane takes the focus and the panel opens for it, on `view` when one is asked for; it closes when it already showed that.
   const togglePanel = useCallback((paneId: string, sessionId: string, view?: InspectView) => {
     const refusal = guardLocal(sessionMap.get(sessionId), 'inspect')

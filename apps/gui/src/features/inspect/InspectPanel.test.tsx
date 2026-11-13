@@ -303,14 +303,16 @@ describe('Inspect history', () => {
 
   describe('a turn’s changes', () => {
     const diffOf = (path: string) => ({ files: [{ path, additions: 1, deletions: 0, binary: false, patch: '@@ -0,0 +1 @@\n+new\n' }], additions: 1, deletions: 0, total_files: 1, truncated: false })
-    const turnPanel = (turn: { startedAtMs: number; endedAtMs: number } | null, onAllChanges = vi.fn()) => {
+    type Turn = { startedAtMs: number; endedAtMs: number } | null
+    const turnPanel = (turn: Turn, onAllChanges = vi.fn()) => {
       const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      render(
+      const panel = (shown: Turn) => (
         <QueryClientProvider client={client}>
-          <InspectPanel term={5} terminals={null} changedFiles={2} view="changes" agentWorking={false} timeline={[]} lookAt={null} changeActions={{ folder: '/home/me/app', machine: 0, suggested: 'x' }} turnScope={{ turn, onAllChanges }} onView={vi.fn()} onClose={vi.fn()} onNotice={vi.fn()} />
-        </QueryClientProvider>,
+          <InspectPanel term={5} terminals={null} changedFiles={2} view="changes" agentWorking={false} timeline={[]} lookAt={null} changeActions={{ folder: '/home/me/app', machine: 0, suggested: 'x' }} turnScope={{ turn: shown, onAllChanges }} onView={vi.fn()} onClose={vi.fn()} onNotice={vi.fn()} />
+        </QueryClientProvider>
       )
-      return { onAllChanges }
+      const { rerender } = render(panel(turn))
+      return { onAllChanges, showTurn: (next: Turn) => { rerender(panel(next)) } }
     }
 
     it('shows what the turn changed between its snapshots, with no commit, and goes back to all changes', async () => {
@@ -342,6 +344,24 @@ describe('Inspect history', () => {
       expect(within(await screen.findByRole('list', { name: 'Changed files' })).getByText('everything.ts')).toBeTruthy()
       expect(screen.getByText(/^Whole working tree/)).toBeTruthy()
       expect(vi.mocked(invoke)).not.toHaveBeenCalledWith('repo_query', { term: 5, question: 'Snapshots' })
+    })
+
+    it('shows the whole working tree and says so when no snapshot from after the turn is kept', async () => {
+      daemonAnswers({ Snapshots: [{ commit: 'before', at: NOW, why: 'before claude’s turn' }], Diff: diffOf('everything.ts') })
+      turnPanel({ startedAtMs: NOW * 1000, endedAtMs: (NOW + 59) * 1000 })
+      expect(within(await screen.findByRole('list', { name: 'Changed files' })).getByText('everything.ts')).toBeTruthy()
+      expect(screen.getByText(/^Whole working tree · no snapshot from after this turn is kept/)).toBeTruthy()
+    })
+
+    it('reads the snapshots again for a later turn, so its own end snapshot is found', async () => {
+      const first = [{ commit: 'after1', at: NOW + 60, why: 'after' }, { commit: 'before1', at: NOW, why: 'before' }]
+      daemonAnswers({ Snapshots: first, DiffRange: diffOf('one.ts') })
+      const { showTurn } = turnPanel({ startedAtMs: NOW * 1000, endedAtMs: (NOW + 59) * 1000 })
+      expect(within(await screen.findByRole('list', { name: 'Changed files' })).getByText('one.ts')).toBeTruthy()
+      daemonAnswers({ Snapshots: [{ commit: 'after2', at: NOW + 200, why: 'after' }, ...first], DiffRange: diffOf('two.ts') })
+      showTurn({ startedAtMs: (NOW + 100) * 1000, endedAtMs: (NOW + 199) * 1000 })
+      await waitFor(() => { expect(within(screen.getByRole('list', { name: 'Changed files' })).getByText('two.ts')).toBeTruthy() })
+      await waitFor(() => { expect(vi.mocked(invoke)).toHaveBeenCalledWith('repo_query', { term: 5, question: { DiffRange: { from: 'after1', to: 'after2', path: null } } }) })
     })
   })
 })

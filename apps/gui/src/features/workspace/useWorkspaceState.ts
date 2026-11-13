@@ -146,6 +146,12 @@ export function useWorkspaceState() {
   const { machines, machinesRef, machinesKnown, machineSaid } = useRemoteMachines()
   const { sessions, sessionMap, setExpectedAgents, paneSessions } = useSessionList({ sessionsQuery, online, machines, home, layout })
   const focusedId = focusedSessionId(layout)
+  // A turn's diff belongs to the session it was opened for; moving to another session drops it.
+  const [turnDiffFocus, setTurnDiffFocus] = useState(focusedId)
+  if (turnDiffFocus !== focusedId) {
+    setTurnDiffFocus(focusedId)
+    if (turnDiff !== null && turnDiff.sessionId !== focusedId) setTurnDiff(null)
+  }
   // A click anywhere outside the panes takes the border off the focused pane; a click in a pane, or focus moving to another pane, puts it back.
   const focusedPaneId = activeArrangement(layout)?.focus ?? null
   const [outsidePanes, setOutsidePanes] = useState(false)

@@ -5,7 +5,7 @@ import { changeKind } from './changeKind'
 import { CommitBar, type ChangeActions } from './CommitBar'
 import { PatchView, type PatchComments, type SentComment } from './PatchView'
 import { RepoError } from './RepoError'
-import { turnRange, type TurnSpan } from './turnRange'
+import { turnRange, type MissingSnapshot, type SnapshotRange, type TurnSpan } from './turnRange'
 import { messageOf, useRepoQuery } from './useRepoQuery'
 
 export const CHANGES_REFRESH_MS = 4000
@@ -31,26 +31,35 @@ export type TurnScope = { turn: TurnSpan | null; onAllChanges: () => void }
  */
 function useScopedDiff(term: number, scope: TurnScope | undefined) {
   const turn = scope?.turn ?? null
-  const snapshots = useRepoQuery(term, ['snapshots'], () => repoSnapshots(term), false, turn !== null)
-  const range = turn !== null && snapshots.data ? turnRange(snapshots.data, turn) : null
+  // Keyed by the turn: a list read before a later turn ended would not hold that turn's end snapshot.
+  const snapshots = useRepoQuery(term, ['snapshots', 'turn', turn?.startedAtMs, turn?.endedAtMs], () => repoSnapshots(term), false, turn !== null)
+  const picked = turn !== null && snapshots.data ? turnRange(snapshots.data, turn) : null
+  const range = picked !== null && 'from' in picked ? picked : null
   const query = useRepoQuery(
     term,
     range ? ['range', range.from, range.to] : ['diff'],
     () => (range ? repoDiffRange(term, range.from, range.to) : repoDiff(term)),
     range ? false : CHANGES_REFRESH_MS,
   )
-  const waiting = turn !== null && snapshots.isPending
+  const waiting = turn !== null && (snapshots.isPending || snapshots.isFetching)
   if (scope === undefined || waiting || range !== null) return { query, waiting, shown: range === null ? 'tree' as const : 'turn' as const, why: null }
-  const why = turn === null ? 'this turn has no times to find its snapshots by' : snapshots.isError ? `couldn't read the snapshots: ${messageOf(snapshots.error)}` : 'no snapshot from before this turn is kept'
-  return { query, waiting, shown: 'tree' as const, why }
+  return { query, waiting, shown: 'tree' as const, why: fallbackReason(turn, snapshots.isError ? snapshots.error : null, picked) }
+}
+
+/** Why a turn's changes row shows the whole working tree instead. */
+function fallbackReason(turn: TurnSpan | null, error: unknown, picked: MissingSnapshot | SnapshotRange | null): string {
+  if (turn === null) return 'this turn has no times to find its snapshots by'
+  if (error !== null) return `couldn't read the snapshots: ${messageOf(error)}`
+  return picked !== null && 'missing' in picked && picked.missing === 'after' ? 'no snapshot from after this turn is kept' : 'no snapshot from before this turn is kept'
 }
 
 function ScopeLine({ shown, why, onAllChanges }: { shown: 'tree' | 'turn'; why: string | null; onAllChanges: () => void }) {
+  if (shown === 'tree') return <p className="mx-changes-scope">Whole working tree · {why}</p>
   return (
-    <p className="mx-changes-scope" role="status">
-      {shown === 'turn' ? <span>This turn's changes</span> : <span title={why ?? undefined}>Whole working tree · {why}</span>}
-      {shown === 'turn' && <button type="button" className="mx-inspect-action" onClick={onAllChanges}>All changes</button>}
-    </p>
+    <div className="mx-changes-scope">
+      <h3>This turn's changes</h3>
+      <button type="button" className="mx-inspect-action" onClick={onAllChanges}>All changes</button>
+    </div>
   )
 }
 

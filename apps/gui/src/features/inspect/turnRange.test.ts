@@ -18,7 +18,7 @@ describe('picking the snapshots around a turn', () => {
   it('counts a snapshot taken a moment after the event that prompted it, up to the skew', () => {
     const late = [snap('after', 123), snap('before', 102)]
     expect(turnRange(late, { startedAtMs: 100 * SECOND, endedAtMs: 123 * SECOND - SNAPSHOT_SKEW_MS })).toEqual({ from: 'before', to: 'after' })
-    expect(turnRange(late, { startedAtMs: 100 * SECOND, endedAtMs: 123 * SECOND - SNAPSHOT_SKEW_MS - 1 })).toEqual({ from: 'before', to: 'before' })
+    expect(turnRange(late, { startedAtMs: 100 * SECOND, endedAtMs: 123 * SECOND - SNAPSHOT_SKEW_MS - 1 })).toEqual({ missing: 'after' })
   })
 
   it('reads a snapshot\'s whole seconds as the earliest it could have been taken', () => {
@@ -30,16 +30,17 @@ describe('picking the snapshots around a turn', () => {
     expect(turnRange(kept, turn(150, 160))).toEqual({ from: 'after1', to: 'after2' })
   })
 
-  it('gives one snapshot on both sides for a turn that changed nothing', () => {
-    expect(turnRange([snap('after1', 131), snap('before1', 100)], turn(150, 160))).toEqual({ from: 'after1', to: 'after1' })
+  it('says the end snapshot is missing when none is newer than the start one by the end of the turn', () => {
+    expect(turnRange([snap('after1', 131), snap('before1', 100)], turn(150, 160))).toEqual({ missing: 'after' })
+    expect(turnRange([snap('later', 200), snap('before', 100)], turn(100, 130))).toEqual({ missing: 'after' })
   })
 
   it('never takes a short turn\'s own end snapshot as its start', () => {
     expect(turnRange([snap('after', 102), snap('before', 100)], turn(100, 102))).toEqual({ from: 'before', to: 'after' })
   })
 
-  it('has no range when no snapshot was taken by the turn\'s start', () => {
-    expect(turnRange([snap('later', 200)], turn(100, 130))).toBeNull()
-    expect(turnRange([], turn(100, 130))).toBeNull()
+  it('says the start snapshot is missing when none was taken by the start of the turn', () => {
+    expect(turnRange([snap('later', 200)], turn(100, 130))).toEqual({ missing: 'before' })
+    expect(turnRange([], turn(100, 130))).toEqual({ missing: 'before' })
   })
 })
