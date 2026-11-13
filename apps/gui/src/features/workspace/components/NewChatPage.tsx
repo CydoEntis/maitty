@@ -20,7 +20,7 @@ import { abilitiesOf, hasAbility } from '../model/agentAbilities'
 import { ageOf, nowSeconds, splitRecent, useFolderBranches, useGlances, useInstalledAgents, useSavedConversations, useSyncState } from '../model/newChatHost'
 import { Switch } from '@/components/ui/switch'
 import type { NewSessionProject } from '../model/newSession'
-import { suggestBranchName } from '../model/worktreeName'
+import { branchNameFromMessage, suggestBranchName } from '../model/worktreeName'
 import { Icon } from './glyphs'
 import { ChipMenu, type ChipItem } from './NewChatMenus'
 import { ResumeList } from './ResumeList'
@@ -147,8 +147,11 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
   // A branch chosen for one folder means nothing in another.
   const explicit = branchPick?.folder === folder ? branchPick.pick : null
   const { state: sync, busy: pulling, pull } = useSyncState(remote ? '' : folder, true)
-  // With Own copy on and no branch chosen, the chat gets a new branch under a suggested name, in a worktree.
-  const suggested = useMemo(() => (treeMode && branches !== null ? suggestBranchName(new Set([...branches.branches.map((entry) => entry.name), ...takenNames])) : null), [treeMode, branches, takenNames])
+  const takenBranches = useMemo(() => new Set([...(branches?.branches ?? []).map((entry) => entry.name), ...takenNames]), [branches, takenNames])
+  // Rolled once per list of names in use, so a message with no usable words does not reroll it on every key.
+  const twoWordName = useMemo(() => (treeMode && branches !== null ? suggestBranchName(takenBranches) : null), [treeMode, branches, takenBranches])
+  // With Own copy on and no branch chosen, the chat gets a new branch named after the message, in a worktree.
+  const suggested = useMemo(() => (twoWordName === null ? null : branchNameFromMessage(message, takenBranches) ?? twoWordName), [twoWordName, message, takenBranches])
   const chosen = useMemo(() => explicit ?? (treeMode && suggested !== null ? { name: suggested, create: true, worktree: true } : null), [explicit, treeMode, suggested])
   const branch = chosen
   const isInstalled = (id: string) => (installed === null ? chatAgentOf(id) !== null : installed.includes(id))
@@ -196,9 +199,9 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
   // branch in a worktree of its own. A saved conversation is the main agent's, so resuming one starts no others.
   const alsoRequests = (main: NewChatRequest): NewChatRequest[] => {
     if (main.resume !== null) return []
-    const taken = new Set([...(branches?.branches ?? []).map((entry) => entry.name), ...takenNames, ...(main.branch === null ? [] : [main.branch.name])])
+    const taken = new Set([...takenBranches, ...(main.branch === null ? [] : [main.branch.name])])
     return alsoWith.map((other) => {
-      const name = suggestBranchName(taken)
+      const name = branchNameFromMessage(message, taken) ?? suggestBranchName(taken)
       taken.add(name)
       return { ...main, agent: other, model: DEFAULT_PICK, reasoning: START_REASONING, mode: defaultModeOf(other, codexYolo), branch: { name, create: true, worktree: true } }
     })

@@ -100,7 +100,28 @@ describe('the new chat page', () => {
     await userEvent.type(screen.getByRole('textbox', { name: 'First message' }), 'hello')
     await userEvent.click(screen.getByRole('button', { name: 'Send message' }))
     await waitFor(() => { expect(onStart).toHaveBeenCalled() })
-    expect(onStart.mock.calls[0]?.[0].branch).toEqual({ name: expect.stringMatching(/^[a-z]+-[a-z]+$/) as unknown, create: true, worktree: true })
+    expect(onStart.mock.calls[0]?.[0].branch).toEqual({ name: 'hello', create: true, worktree: true })
+  })
+
+  it('names the new branch after the message as it is typed, and two words while it has none', async () => {
+    page()
+    expect(await screen.findByRole('button', { name: /^Branch: [a-z]+-[a-z]+$/ })).toBeInTheDocument()
+    await userEvent.type(screen.getByRole('textbox', { name: 'First message' }), 'Fix the login bug')
+    expect(screen.getByRole('button', { name: 'Branch: fix-the-login-bug' })).toBeInTheDocument()
+    await userEvent.clear(screen.getByRole('textbox', { name: 'First message' }))
+    expect(screen.getByRole('button', { name: /^Branch: [a-z]+-[a-z]+$/ })).toBeInTheDocument()
+  })
+
+  it('stops following the message once a branch is named', async () => {
+    const onStart = vi.fn<(request: NewChatRequest) => Promise<void>>().mockResolvedValue(undefined)
+    page(onStart)
+    await userEvent.click(await screen.findByRole('button', { name: /^Branch: / }))
+    await userEvent.type(screen.getByRole('textbox', { name: 'Search or create a branch' }), 'my-own')
+    await userEvent.click(screen.getByRole('radio', { name: 'Create branch my-own' }))
+    await userEvent.type(screen.getByRole('textbox', { name: 'First message' }), 'Fix the login bug')
+    expect(screen.getByRole('button', { name: 'Branch: my-own' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Send message' }))
+    await waitFor(() => { expect(onStart.mock.calls[0]?.[0].branch?.name).toBe('my-own') })
   })
 
   it('edits the checkout on its own branch when Own copy is turned off', async () => {
@@ -388,6 +409,18 @@ describe('starting a chat and going on writing', () => {
     expect(extra).toEqual([expect.objectContaining({ agent: 'codex', model: 'default', reasoning: 'medium', mode: 'codexAuto', message: 'fix the login', resume: null }), { background: true }])
     expect(extra?.[0].branch).toMatchObject({ create: true, worktree: true })
     expect(extra?.[0].branch?.name).not.toBe(main?.[0].branch?.name)
+  })
+
+  it('names each ticked agent’s branch after the message too, each with its own number', async () => {
+    const onStart = vi.fn<Start>(() => new Promise(() => undefined))
+    page(onStart)
+    await ready()
+    const also = within(screen.getByRole('group', { name: 'Also start with' }))
+    await userEvent.click(also.getByRole('checkbox', { name: 'Codex' }))
+    await userEvent.click(also.getByRole('checkbox', { name: 'Gemini' }))
+    await userEvent.type(box(), 'fix the login{Enter}')
+
+    expect(onStart.mock.calls.map(([request]) => request.branch?.name)).toEqual(['fix-the-login', 'fix-the-login-2', 'fix-the-login-3'])
   })
 
   it('names a failed main start by its agent when others went with it, and a retry starts only the main agent', async () => {
