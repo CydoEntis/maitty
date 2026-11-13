@@ -162,6 +162,7 @@ const HistoryEntrySchema = z.object({
       }),
     }),
     z.object({ Unsupported: z.object({ kind: z.string() }) }),
+    z.object({ Reasoning: z.object({ text: z.string() }) }),
   ]),
   state: z.enum(['Running', 'Completed', 'Failed', 'Interrupted']),
   started_at_ms: z.number().int().nonnegative().optional(),
@@ -615,6 +616,8 @@ export async function loadMessages(
         time: 'Recent',
       }]
     }
+    // A reasoning summary has no row yet, so it is shown as nothing.
+    if ('Reasoning' in entry.content) return []
     return [{
       id: `${entry.source.turn}:${entry.source.item}`,
       role: 'activity',

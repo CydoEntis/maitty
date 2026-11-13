@@ -9,6 +9,26 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+/// Why a cache cannot be used, as a category only: a decode error's own text can quote an entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Unreadable {
+    Decode,
+    Corrupt,
+    Binding,
+    Exhausted,
+}
+impl std::fmt::Display for Unreadable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Decode => "decode",
+            Self::Corrupt => "corrupt",
+            Self::Binding => "binding",
+            Self::Exhausted => "exhausted",
+        })
+    }
+}
+impl std::error::Error for Unreadable {}
+
 const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -238,6 +258,49 @@ impl Cache {
             .context("syncing history directory")?;
         Ok(true)
     }
+    /// Loads a conversation's cached history. A cache this daemon can tell is unusable (an entry
+    /// kind it does not know, a corrupt or missing page, a changed binding, an exhausted
+    /// revision) is moved aside to `<id>.bad-<n>` (the newest `BAD_COPIES_KEPT` kept) and reported
+    /// as absent, so the daemon still starts and the history is read again from the agent; the
+    /// old files stay on disk because the agent may no longer hold the history. Nothing is
+    /// deleted before the move succeeds, and a move that fails is returned as an error with the
+    /// cache intact. Any other failure (a sharing violation, too many open files, an I/O error)
+    /// is returned with the files untouched. Only the conversation id and a category are logged,
+    /// never the error text, which can quote an entry.
+    pub(super) fn load_or_rebuild(
+        &self,
+        conversation: ConversationId,
+        binding: &NativeBinding,
+    ) -> Result<Option<History>> {
+        // One lock across the check and the move: a commit or a policy removal between them
+        // could otherwise have a good cache moved aside, or turn a missing one into an error.
+        let _guard = self
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("history cache lock poisoned"))?;
+        match self.load_locked(conversation, binding) {
+            Err(error) => match error.downcast_ref::<Unreadable>() {
+                Some(category) => {
+                    let dir = self.root.join(conversation.0.to_string());
+                    let number = next_bad_number(&self.root, conversation)?;
+                    move_aside(&dir, &self.root.join(format!("{}.bad-{number}", conversation.0)))?;
+                    prune_bad(&self.root, conversation);
+                    tracing::warn!(
+                        conversation = conversation.0,
+                        category = %category,
+                        "Cached conversation history is unreadable; kept as .bad and read again from the agent"
+                    );
+                    Ok(None)
+                }
+                None => Err(error),
+            },
+            loaded => loaded,
+        }
+    }
+
+    /// A plain load that fails on anything unreadable. The daemon starts through
+    /// `load_or_rebuild`; this is the strict form the tests compare it with.
+    #[cfg(test)]
     pub(super) fn load(
         &self,
         conversation: ConversationId,
@@ -247,51 +310,54 @@ impl Cache {
             .state
             .lock()
             .map_err(|_| anyhow::anyhow!("history cache lock poisoned"))?;
+        self.load_locked(conversation, binding)
+    }
+    fn load_locked(
+        &self,
+        conversation: ConversationId,
+        binding: &NativeBinding,
+    ) -> Result<Option<History>> {
         if self.policy.epoch.load(Ordering::SeqCst) & 1 == 0 {
             return Ok(None);
         }
         let dir = self.root.join(conversation.0.to_string());
         let bytes = match bounded_read(&dir.join("manifest.json"), MAX_MANIFEST_BYTES) {
-            Err(error)
-                if error
-                    .downcast_ref::<std::io::Error>()
-                    .is_some_and(|e| e.kind() == std::io::ErrorKind::NotFound) =>
-            {
-                return Ok(None);
-            }
+            Err(error) if is_not_found(&error) => return Ok(None),
             result => result?,
         };
         let manifest: Manifest =
-            serde_json::from_slice(&bytes).context("invalid history manifest")?;
+            serde_json::from_slice(&bytes).map_err(|_| Unreadable::Decode)?;
         if manifest.revision == u64::MAX {
-            return Err(IncompleteReason::RevisionExhausted.into());
+            return Err(Unreadable::Exhausted.into());
         }
         if manifest.version != 1
             || manifest.conversation != conversation
             || manifest.binding != fingerprint(binding)?
         {
-            bail!("history binding or format mismatch; native hydration required");
+            return Err(Unreadable::Binding.into());
         }
         let mut history = History::new(conversation);
         for page in manifest.pages {
-            let bytes = bounded_read(
+            let bytes = match bounded_read(
                 &dir.join(format!("{}.json", page.number)),
                 MAX_READ_BYTES as u64,
-            )
-            .context("history incomplete: missing or unreadable page")?;
+            ) {
+                Err(error) if is_not_found(&error) => return Err(Unreadable::Corrupt.into()),
+                result => result.context("reading a history page")?,
+            };
             if bytes.len() != page.bytes || format!("{:x}", Sha256::digest(&bytes)) != page.hash {
-                bail!("history incomplete: corrupt page");
+                return Err(Unreadable::Corrupt.into());
             }
             let entries: Vec<super::history::Entry> =
-                serde_json::from_slice(&bytes).context("history incomplete: invalid page")?;
+                serde_json::from_slice(&bytes).map_err(|_| Unreadable::Decode)?;
             if entries.is_empty() || entries.len() > MAX_READ_ENTRIES {
-                bail!("history incomplete: invalid page count");
+                return Err(Unreadable::Corrupt.into());
             }
             for entry in entries {
                 if entry.source.conversation != conversation
                     || history.entries.iter().any(|e| e.source == entry.source)
                 {
-                    bail!("history incomplete: invalid source identity");
+                    return Err(Unreadable::Corrupt.into());
                 }
                 history.entries.push(entry);
             }
@@ -301,6 +367,50 @@ impl Cache {
         Ok(Some(history))
     }
 }
+/// How many set-aside copies of one conversation's cache are kept; older ones are dropped.
+const BAD_COPIES_KEPT: usize = 3;
+/// The numbers of a conversation's set-aside copies (`<id>.bad-<n>`), oldest first.
+fn bad_copies(root: &Path, conversation: ConversationId) -> Result<Vec<u64>> {
+    let prefix = format!("{}.bad-", conversation.0);
+    let mut numbers = Vec::new();
+    for item in std::fs::read_dir(root).context("listing set-aside history caches")? {
+        let name = item?.file_name();
+        if let Some(n) = name
+            .to_str()
+            .and_then(|name| name.strip_prefix(&prefix))
+            .and_then(|n| n.parse::<u64>().ok())
+        {
+            numbers.push(n);
+        }
+    }
+    numbers.sort_unstable();
+    Ok(numbers)
+}
+fn next_bad_number(root: &Path, conversation: ConversationId) -> Result<u64> {
+    Ok(bad_copies(root, conversation)?.last().map_or(1, |n| n + 1))
+}
+/// Moves `dir` to `aside`. Never deletes: if the move fails, `dir` is as it was.
+fn move_aside(dir: &Path, aside: &Path) -> Result<()> {
+    std::fs::rename(dir, aside).context("moving an unreadable history cache aside")
+}
+/// Drops the oldest set-aside copies beyond `BAD_COPIES_KEPT`, only after a new one was made. A
+/// copy that cannot be dropped is left and warned about.
+fn prune_bad(root: &Path, conversation: ConversationId) {
+    let Ok(numbers) = bad_copies(root, conversation) else {
+        return;
+    };
+    let extra = numbers.len().saturating_sub(BAD_COPIES_KEPT);
+    for n in &numbers[..extra] {
+        if let Err(error) = remove(&root.join(format!("{}.bad-{n}", conversation.0))) {
+            tracing::warn!(conversation = conversation.0, %error, "Cannot drop an old set-aside history cache");
+        }
+    }
+}
+fn is_not_found(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<std::io::Error>()
+        .is_some_and(|e| e.kind() == std::io::ErrorKind::NotFound)
+}
 fn bounded_read(path: &Path, limit: u64) -> Result<Vec<u8>> {
     use std::io::Read;
     let file = std::fs::File::open(path)?;
@@ -309,7 +419,7 @@ fn bounded_read(path: &Path, limit: u64) -> Result<Vec<u8>> {
         .read_to_end(&mut bytes)
         .context("reading history file")?;
     if bytes.len() as u64 > limit {
-        bail!("history file exceeds size limit");
+        return Err(Unreadable::Corrupt.into());
     }
     Ok(bytes)
 }

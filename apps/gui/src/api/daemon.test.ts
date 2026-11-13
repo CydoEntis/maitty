@@ -333,6 +333,19 @@ describe('conversation activity history', () => {
     ])
   })
 
+  it('shows nothing for a reasoning item instead of calling it unsupported', async () => {
+    vi.mocked(invoke).mockReset().mockResolvedValue(readResult({
+      entries: [
+        { ...toolEntry('item-1', 'reasoning', '', 'Completed'), content: { Reasoning: { text: 'Weighing two fixes' } } },
+        toolEntry('item-2', 'cargo test', 'ok', 'Completed'),
+      ],
+    }))
+
+    const history = await loadMessages('42', 'Codex')
+
+    expect(history.messages.map(({ content }) => content)).toEqual(['cargo test'])
+  })
+
   it('uses the conversation provider in approval labels', async () => {
     vi.mocked(invoke).mockReset().mockResolvedValue(readResult({
       approvals: [{

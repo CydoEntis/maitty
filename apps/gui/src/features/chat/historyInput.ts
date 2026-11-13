@@ -26,6 +26,7 @@ export const HistoryEntrySchema = z.object({
     z.object({ Message: z.object({ role: z.enum(['User', 'Assistant']), text: z.string() }) }),
     z.object({ Tool: ToolContentSchema }),
     z.object({ Unsupported: z.object({ kind: z.string() }) }),
+    z.object({ Reasoning: z.object({ text: z.string() }) }),
   ]),
   state: ItemStateSchema,
   // Unix milliseconds; absent for items read back from a provider's saved history.

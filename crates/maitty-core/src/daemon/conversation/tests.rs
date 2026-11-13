@@ -2907,6 +2907,35 @@ async fn structured_local_ipc_create_send_read_reconnect_and_exact_identity() {
 }
 
 #[tokio::test]
+async fn startup_survives_an_unreadable_history_cache_and_keeps_its_files() {
+    let mut s = conversation_fixture("conversation").await;
+    let outcome = AssertUnwindSafe(async {
+        s.daemon.initialize_conversation_cache().await.unwrap();
+        let record = s.fixture.record.clone();
+        let root = s.daemon.session_path.with_extension("history");
+        let dir = root.join(record.id.0.to_string());
+        let written = dir.clone();
+        tokio::task::spawn_blocking(move || {
+            std::fs::create_dir_all(&written).unwrap();
+            std::fs::write(written.join("manifest.json"), b"{ not a manifest").unwrap();
+        })
+        .await
+        .unwrap();
+        s.daemon.conversations.push(record.clone());
+        s.daemon.initialize_conversation_cache().await.unwrap();
+        assert!(!s.daemon.conversation_histories.contains_key(&record.id));
+        let aside = root.join(format!("{}.bad-1", record.id.0));
+        assert!(aside.join("manifest.json").exists());
+    })
+    .catch_unwind()
+    .await;
+    s.cleanup().await;
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[tokio::test]
 async fn structured_local_ipc_missing_exact_thread_never_creates_fallback() {
     let mut s = conversation_fixture("conversation").await;
     let outcome = AssertUnwindSafe(async {

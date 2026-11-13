@@ -559,6 +559,32 @@ paging cursor still goes stale on any change (`StaleCursor`) and the client star
 `epoch`, `delta`, `snapshot`, `resume` and `reset` are all defaulted, so an older client or daemon
 reads the rest as before (a test decodes the old shapes); no `PROTOCOL_VERSION` bump.
 
+A history entry's content is `TurnStatus`, `Message`, `Tool`, `Unsupported { kind }` or
+`Reasoning { text }`. A Codex `reasoning` item becomes `Reasoning` when its `summary` holds plain
+text (the parts joined as paragraphs, escapes stripped, cut at 64 KiB, secrets masked like a
+message); one with no summary text, whose reasoning is only encrypted, is skipped, and
+`item/reasoning/*` deltas are not read. The variant came in protocol 93 (`REASONING_ITEM_SINCE`);
+`COMPATIBLE_SINCE` stays 78 because the daemon leaves these entries out of the pages it sends an
+older client (`daemon::for_client`), which could not decode a page that held one. The desktop app
+reads the item and shows nothing for it yet.
+A history cache the daemon can tell is unusable (an entry kind it does not know, a corrupt or
+missing page, a changed binding, an exhausted revision) never stops it starting:
+`Cache::load_or_rebuild` moves the conversation's cache aside to `<id>.bad-<n>` (a number per
+set-aside; the newest three kept, the oldest dropped only after a newer move succeeded), logs the
+conversation id and a category (`decode`, `corrupt`, `binding`, `exhausted`; never the error
+text, which can quote an entry), and treats the history as absent, so it is read again from the
+agent. The check and the move happen under one lock, so a commit or a policy removal cannot slip
+between them. That read can come back short if the agent no longer holds the conversation (its
+transcript cleaned or compacted); the `.bad-<n>` files are the only copy then and are kept for a
+person to recover. They hold the history as it was cached, unredacted by anything newer, and go
+away with the cache root when the history policy deletes it. Nothing is deleted before a move
+succeeds: if the move fails (a sharing violation on Windows, say) the error is returned and the
+cache stays as it was, so the daemon refuses to start loudly rather than overwrite. Any other
+failure (a sharing violation on a read, too many open files, an I/O error) is returned as before,
+with the files untouched. **Rolling back to a daemon from before protocol 93 after a reasoning
+item was cached still refuses to start:** that daemon cannot decode the page and cannot be
+changed; the fix only protects the next unknown entry kind.
+
 Daemon notifications reach
 attached projections only after current generation/connection acceptance, and
 client disconnect drops that attachment's memory. Production admission pages

@@ -426,7 +426,7 @@ fn command_prints_secret_file(command: &str) -> bool {
 /// function every path into the history goes through.
 pub(super) fn redact_entry(entry: &mut Entry) {
     match &mut entry.content {
-        Content::Message { text, .. } => {
+        Content::Message { text, .. } | Content::Reasoning { text } => {
             redact_in_place(text);
         }
         Content::Tool {

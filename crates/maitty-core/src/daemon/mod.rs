@@ -710,6 +710,7 @@ async fn serve(
             if !client_reads(&msg, theirs) {
                 continue;
             }
+            let msg = for_client(msg, theirs);
             let bye = matches!(msg, ServerMsg::Bye);
             if ipc::send(&mut w, &msg).await.is_err() || bye {
                 break;
@@ -745,6 +746,21 @@ async fn serve(
 /// never sent a message added after it: it could not decode it, and would drop the connection.
 fn client_reads(msg: &ServerMsg, theirs: u32) -> bool {
     theirs >= msg.introduced_in()
+}
+
+/// `msg` as a client at `theirs` can read it. A reasoning item is a kind of history entry added
+/// inside the compatibility window: an older client could not decode a page that held one, so
+/// its pages go without them.
+fn for_client(mut msg: ServerMsg, theirs: u32) -> ServerMsg {
+    use crate::conversation::history::Content;
+    if theirs < REASONING_ITEM_SINCE
+        && let ServerMsg::Reply(Reply::ConversationRead(read)) = &mut msg
+    {
+        read.history
+            .entries
+            .retain(|entry| !matches!(entry.content, Content::Reasoning { .. }));
+    }
+    msg
 }
 
 /// Whether a frame that would not decode is passed over instead of ending the connection: only
@@ -3729,6 +3745,43 @@ mod tests {
             PROTOCOL_VERSION + 1,
             &anyhow::anyhow!("the pipe closed")
         ));
+    }
+
+    #[test]
+    fn a_client_from_before_reasoning_items_is_sent_its_history_without_them() {
+        use super::{REASONING_ITEM_SINCE, Reply, ServerMsg, for_client};
+        use crate::conversation::history::Content;
+        let page: crate::conversation::ReadResult = serde_json::from_value(serde_json::json!({
+            "conversation": 1, "generation": 1, "status": "Done", "receipt": null, "error": null,
+            "checks": [], "approvals": [],
+            "history": { "next": null, "completeness": "Complete", "entries": [
+                { "source": { "conversation": 1, "turn": "t", "item": "thought" }, "state": "Completed",
+                  "content": { "Reasoning": { "text": "Weighing two fixes" } } },
+                { "source": { "conversation": 1, "turn": "t", "item": "said" }, "state": "Completed",
+                  "content": { "Message": { "role": "Assistant", "text": "Done." } } },
+            ] },
+        }))
+        .unwrap();
+        let kinds = |theirs: u32| {
+            let sent = for_client(ServerMsg::Reply(Reply::ConversationRead(page.clone())), theirs);
+            let ServerMsg::Reply(Reply::ConversationRead(read)) = sent else {
+                panic!("a read stays a read");
+            };
+            read.history
+                .entries
+                .iter()
+                .map(|entry| matches!(entry.content, Content::Reasoning { .. }))
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(kinds(REASONING_ITEM_SINCE), [true, false]);
+        assert_eq!(kinds(REASONING_ITEM_SINCE - 1), [false]);
+        const {
+            assert!(
+                REASONING_ITEM_SINCE > crate::protocol::COMPATIBLE_SINCE
+                    && REASONING_ITEM_SINCE <= crate::protocol::PROTOCOL_VERSION
+            )
+        };
     }
 
     #[test]
