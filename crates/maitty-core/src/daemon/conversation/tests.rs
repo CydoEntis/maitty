@@ -3996,6 +3996,7 @@ async fn a_provider_stopped_cleanly_leaves_no_entry_in_the_record() {
 mod queue;
 mod branch_chat;
 mod claude_chat;
+mod turn_snapshot;
 
 #[tokio::test]
 async fn the_daemon_resumes_a_stopped_conversation_on_the_same_id_and_the_next_generation() {

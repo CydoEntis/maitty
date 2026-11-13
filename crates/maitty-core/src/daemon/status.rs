@@ -551,12 +551,18 @@ impl Daemon {
         self.dirty = true;
     }
 
-    /// Keep `dir`'s files as they are, off the loop. Not in tests: they'd write refs into
+    /// Keep a pane's folder as it is before its turn. Not in tests: they'd write refs into
     /// whatever repo they run from.
     fn snapshot_before_turn(&self, agent: String, dir: std::path::PathBuf) {
         if cfg!(test) {
             return;
         }
+        self.snapshot_off_loop(agent, dir);
+    }
+
+    /// Keep `dir`'s files as they are, off the loop. Outside git nothing is kept, and a
+    /// snapshot that fails is a notice: neither holds the turn up.
+    pub(super) fn snapshot_off_loop(&self, agent: String, dir: std::path::PathBuf) {
         let tx = self.tx.clone();
         tokio::task::spawn_blocking(move || {
             if let Err(e) = crate::snapshot::take(&dir, &format!("before {agent}'s turn")) {

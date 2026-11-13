@@ -1352,6 +1352,25 @@ impl Daemon {
         Ok(())
     }
 
+    /// A turn is starting: the checkout's files as they are now are what it can be taken back
+    /// to. Called where a message is handed to the provider, which happens once a turn.
+    fn snapshot_before_conversation_turn(&self, id: ConversationId) {
+        if !self.cfg.snapshots.enabled {
+            return;
+        }
+        let Some(c) = self.conversations.iter().find(|c| c.id == id) else {
+            return;
+        };
+        // The names a terminal agent's snapshots carry, so the list reads the same for both.
+        let agent = match c.binding.provider {
+            Provider::Codex => "codex",
+            Provider::Claude => "claude",
+            Provider::Gemini => "gemini",
+        };
+        let dir = c.binding.worktree.as_ref().unwrap_or(&c.binding.cwd);
+        self.snapshot_off_loop(agent.into(), dir.clone());
+    }
+
     fn conversation_enqueue(
         &mut self,
         client: ClientId,
@@ -1787,6 +1806,7 @@ impl Daemon {
                 let state = self.conversation_states.entry(id).or_default();
                 state.status = Status::Working;
                 state.error = None;
+                self.snapshot_before_conversation_turn(id);
                 self.conversation_runtimes.request(id, generation, token, Rpc::Send { params: send_params(&thread, &text, &format!("{}-{generation}-{operation}", id.0), &choice) }).map_err(|e| (token, e.to_string()))
             }
             Pending::Receipt { client, receipt } => {
