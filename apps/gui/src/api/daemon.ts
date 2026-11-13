@@ -121,6 +121,11 @@ const DaemonSnapshotSchema = z.object({
   workspaces: z.array(WorkspaceSummarySchema),
   // Read one by one: a terminal this app can't read is left out rather than hiding every session.
   terms: z.record(z.string(), z.unknown()).default({}),
+  // The daemon's count of updates to this list (`Snapshot.revision`); 0 from a daemon built before it.
+  revision: z.number().int().nonnegative().default(0).catch(0),
+  // Why each pane this update dropped left (`Snapshot.removed`), by pane number. Every reason, `Unknown` and one
+  // newer than this build included, is the daemon saying the pane left; empty when it did not say.
+  removed: z.record(z.string(), z.string()).default({}).catch({}),
 })
 
 const HistoryCursorSchema = z.object({
@@ -448,6 +453,7 @@ export function conversationsFromSnapshot(raw: unknown, machine?: SnapshotMachin
     .map((term) => toTerminalConversation(term, snapshot.workspaces, machine, chatOf.get(term.id), term.agent === null ? undefined : limitsOf.get(term.agent), secretsOf.get(term.id) ?? []))
   // Another machine's conversations are only the chats of its panes; it has no session list of its own here.
   if (machine !== undefined) return terminals
+  noteLocalList(snapshot.revision, Object.keys(snapshot.terms), Object.keys(snapshot.removed))
   return [
     ...summaries
       .filter((summary) => summary.native_term === null || !shownPanes.has(summary.native_term))
@@ -457,6 +463,24 @@ export function conversationsFromSnapshot(raw: unknown, machine?: SnapshotMachin
 }
 
 type TerminalSession = z.infer<typeof TerminalSessionSchema>
+
+// What this computer's daemon said of its list: the revision of the last one read, and the sessions it said
+// left and has not listed since. Several lists can arrive between two renders, so a reason is kept past its own
+// list; a new daemon numbers its panes from 1 again, so listing a pane forgets its old reason.
+let localRevision = 0
+const leftWithReason = new Set<string>()
+
+function noteLocalList(revision: number, listedPanes: readonly string[], removedPanes: readonly string[]): void {
+  localRevision = revision
+  for (const pane of listedPanes) leftWithReason.delete(terminalSessionId(Number(pane)))
+  for (const pane of removedPanes) leftWithReason.add(terminalSessionId(Number(pane)))
+}
+
+/** The revision of the last list of this computer's sessions read, 0 when the daemon does not number them. */
+export const localListRevision = (): number => localRevision
+
+/** Whether this computer's daemon said the session left its list, for any reason, and has not listed it since. */
+export const daemonSaidRemoved = (sessionId: string): boolean => leftWithReason.has(sessionId)
 
 // A session that fails to read for one refresh must not vanish from the sidebar and come back
 // 1.5 seconds later, so it keeps its last good state, and the reason is logged once.

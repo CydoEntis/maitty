@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { forgetMachines, registerMachine } from './machines'
 import { conversationKey } from './conversationKey'
-import { startTerminalSession, loadTerminalScreen, loadTerminalReplay, sendTerminalInput, resizeTerminal, archiveConversationOnDaemon, renameConversationOnDaemon, classifySubmissionFailure, createConversation, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversationDiff, loadConversationFile, loadConversationFiles, loadConversations, conversationsFromSnapshot, markSeenOnDaemon, readConversationPage, submitMessage, cancelTurn, loadTargetDiff, archiveSessionOnDaemon, reloadAgentOnDaemon, loadDaemonRestartStatus, loadDaemonUpdateStatus, loadMachines, loadMessages, restartMismatchedDaemon, restartStaleDaemon, resumeConversation } from './daemon'
+import { startTerminalSession, loadTerminalScreen, loadTerminalReplay, sendTerminalInput, resizeTerminal, archiveConversationOnDaemon, renameConversationOnDaemon, classifySubmissionFailure, createConversation, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversationDiff, loadConversationFile, loadConversationFiles, loadConversations, conversationsFromSnapshot, daemonSaidRemoved, localListRevision, markSeenOnDaemon, readConversationPage, submitMessage, cancelTurn, loadTargetDiff, archiveSessionOnDaemon, reloadAgentOnDaemon, loadDaemonRestartStatus, loadDaemonUpdateStatus, loadMachines, loadMessages, restartMismatchedDaemon, restartStaleDaemon, resumeConversation } from './daemon'
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
@@ -492,6 +492,23 @@ describe('terminal sessions shown beside chats', () => {
     popup: false,
     remote: null,
     ...overrides,
+  })
+
+  it('remembers the revision and the sessions the daemon said left, until it lists one again', () => {
+    conversationsFromSnapshot({ conversations: [], workspaces: [], terms: { '8': term({ id: 8 }) }, revision: 7, removed: { '3': 'Closed', '4': 'SomethingNewer' } })
+    expect(localListRevision()).toBe(7)
+    expect([daemonSaidRemoved('t3'), daemonSaidRemoved('t4'), daemonSaidRemoved('t8')]).toEqual([true, true, false])
+
+    conversationsFromSnapshot({ conversations: [], workspaces: [], terms: { '3': term({ id: 3 }) } })
+    expect(localListRevision()).toBe(0)
+    expect([daemonSaidRemoved('t3'), daemonSaidRemoved('t4')]).toEqual([false, true])
+  })
+
+  it('takes nothing another machine says left as this computer\'s', () => {
+    conversationsFromSnapshot({ conversations: [], workspaces: [], terms: {}, revision: 7 })
+    conversationsFromSnapshot({ conversations: [], workspaces: [], terms: {}, revision: 9, removed: { '11': 'Exited' } }, { id: 2, name: 'box' })
+    expect(daemonSaidRemoved('t11')).toBe(false)
+    expect(localListRevision()).toBe(7)
   })
 
   it('keeps a session in the list with its last good state when one refresh cannot read it', async () => {
