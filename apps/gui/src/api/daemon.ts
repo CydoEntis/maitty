@@ -495,10 +495,11 @@ function readTerminal(raw: unknown, machine: number): TerminalSession | null {
 export { terminalOf, terminalSessionId }
 
 // A terminal this app can show as a session: a shell (with or without an agent running in it) in
-// a pane of its own, not a chat's terminal, a popup, or another machine's. The daemon
-// already leaves out panes another app owns (ADR 0004).
+// a pane of its own, not a chat's terminal or a popup. A pane with ssh running in it is still a
+// session of the machine whose snapshot this is; another machine's sessions come from its own
+// snapshot. The daemon already leaves out panes another app owns (ADR 0004).
 function isTerminalSession(term: TerminalSession): boolean {
-  return term.conversation_id === null && !term.popup && term.remote === null
+  return term.conversation_id === null && !term.popup
 }
 
 function toolActivityLabel(tool: { kind: string; label?: string | undefined }): string {
