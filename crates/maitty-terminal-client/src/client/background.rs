@@ -38,18 +38,29 @@ impl App {
         if !self.admits(machine, &msg) {
             return;
         }
+        // Another machine's whole list is taken only as the answer to this window's own asking
+        // for it, once: a delta that machine sends can make the window ask, so that asking opens
+        // nothing for an error or any other reply.
+        let listed = matches!(msg, ServerMsg::Reply(Reply::List(_)));
+        if listed && machine != MachineId::LOCAL && self.list_asked.remove(&machine).is_none() {
+            tracing::debug!("ignored a list this window did not ask for");
+            return;
+        }
         // What a refused copy would have said, to tell the person it was refused.
         let copy_size = match &msg {
             ServerMsg::Clipboard { text, .. } => Some(text.chars().count()),
             _ => None,
         };
-        let Some(msg) = self.vetted(machine, msg) else {
+        let Some(msg) = self.vetted(machine, msg, listed) else {
             if let Some(n) = copy_size {
                 self.say_copy_refused(machine, n);
             }
             return;
         };
-        if machine != MachineId::LOCAL && matches!(msg, ServerMsg::Reply(_) | ServerMsg::Error(_)) {
+        if machine != MachineId::LOCAL
+            && !listed
+            && matches!(msg, ServerMsg::Reply(_) | ServerMsg::Error(_))
+        {
             self.route.answered(machine);
         }
         self.apply_server(machine, msg);
@@ -148,18 +159,41 @@ impl App {
             .is_some_and(|at| now.saturating_duration_since(*at) < LIST_ASKED_AGAIN_AFTER);
         if !waiting {
             self.list_asked.insert(machine, now);
-            self.send(machine, ClientMsg::Query(Query::List));
+            // Not through `send`: its routing bookkeeping would let any reply or error in.
+            let _ = self.out.send(Outgoing {
+                machine,
+                msg: ClientMsg::Query(Query::List),
+            });
+        }
+    }
+
+    /// A list asked for that never came (refused, or lost) is asked for again, so a pane kept
+    /// for want of a reason cannot stay while the machine sends nothing more.
+    pub(super) fn ask_lists_again(&mut self) {
+        let now = Instant::now();
+        let due: Vec<MachineId> = self
+            .list_asked
+            .iter()
+            .filter(|(_, at)| now.saturating_duration_since(**at) >= LIST_ASKED_AGAIN_AFTER)
+            .map(|(machine, _)| *machine)
+            .collect();
+        for machine in due {
+            if self.refused.contains_key(&machine) || self.machine_is_forgotten(machine) {
+                self.list_asked.remove(&machine);
+            } else {
+                self.want_list(machine);
+            }
         }
     }
 
     /// What another machine's daemon says, cleaned and held to what its entry allows. This
-    /// computer's own daemon is trusted as it was.
-    fn vetted(&self, machine: MachineId, msg: ServerMsg) -> Option<ServerMsg> {
+    /// computer's own daemon is trusted as it was. `listed`: a whole list this window asked for.
+    fn vetted(&self, machine: MachineId, msg: ServerMsg, listed: bool) -> Option<ServerMsg> {
         if machine == MachineId::LOCAL {
             return Some(msg);
         }
         let name = self.machine_name(machine);
-        let asked = self.route.awaiting(machine);
+        let asked = listed || self.route.awaiting(machine);
         remote_policy::vet(&self.machine_opts(machine), asked, name, msg)
     }
 

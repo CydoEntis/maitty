@@ -668,4 +668,52 @@ mod tests {
         assert!(app.remotes[&MachineId(1)].snap.terms.contains_key(&72));
         assert!(!app.snap.terms.contains_key(&72));
     }
+
+    #[test]
+    fn a_list_another_machine_sends_unasked_is_ignored_and_spends_no_request() {
+        let mut app = two_machines();
+        app.route.asked(MachineId(1));
+        let mut list = app.remotes[&MachineId(1)].snap.clone();
+        let pane = list.terms.values().next().unwrap().clone();
+        list.terms.insert(72, crate::protocol::TermInfo { id: 72, ..pane });
+        app.on_machine_server(MachineId(1), whole_list(list));
+        assert!(!app.remotes[&MachineId(1)].snap.terms.contains_key(&72));
+        assert!(
+            app.route.awaiting(MachineId(1)),
+            "the request that is out still waits for its own answer"
+        );
+    }
+
+    #[test]
+    fn asking_another_machine_for_its_list_opens_no_window_for_an_error() {
+        let mut app = two_machines();
+        let delta = pane_added(&app, 72, 2);
+        app.on_machine_server(MachineId(1), delta);
+        app.on_machine_server(
+            MachineId(1),
+            crate::protocol::ServerMsg::Error("pushed".into()),
+        );
+        assert!(app.notice.is_none());
+    }
+
+    #[test]
+    fn a_list_that_never_comes_is_asked_for_again_on_the_tick() {
+        let mut app = two_machines();
+        let mut rx = listening(&mut app);
+        let gone = *app.snap.terms.keys().next().unwrap();
+        app.on_server(crate::protocol::ServerMsg::TermsChanged {
+            changed: Vec::new(),
+            removed: vec![gone],
+            reasons: Default::default(),
+            revision: 1,
+        });
+        app.ask_lists_again();
+        assert_eq!(lists_asked(&mut rx), [MachineId::LOCAL], "not again too soon");
+        let long_ago = std::time::Instant::now()
+            .checked_sub(crate::client::background::LIST_ASKED_AGAIN_AFTER)
+            .unwrap();
+        app.list_asked.insert(MachineId::LOCAL, long_ago);
+        app.ask_lists_again();
+        assert_eq!(lists_asked(&mut rx), [MachineId::LOCAL]);
+    }
 }

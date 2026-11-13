@@ -210,7 +210,8 @@ not come after `LIST_ASKED_AGAIN_AFTER` (5 s) or the machine's line came up anew
 it too. The TUI (`crates/maitty-terminal-client/src/client/background.rs`) applies the same rule to
 this computer's line and each other machine's, and with no snapshot held starts from revision 0. It
 also keeps a pane a delta drops without a reason (a daemon from before reasons) until a whole list
-confirms it, and asks for that list the same way. A list alone is no base for a delta (it can hold a change the surface
+confirms it, and asks for that list the same way; its tick asks again while an asked-for list has
+not come after 5 s, so a kept pane cannot stall when the machine sends nothing more. A list alone is no base for a delta (it can hold a change the surface
 was not sent yet), so after `Query::List` from an attached client the daemon sends that surface its next
 change in full, as it does after an attach. That reset is what makes the delta after a resync right: a
 daemon that numbers its updates but was built before the reset works its next delta out from what it

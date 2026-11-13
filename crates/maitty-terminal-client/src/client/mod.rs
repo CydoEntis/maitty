@@ -1016,6 +1016,7 @@ impl App {
                     }
                     let frame = self.spinner_frame();
                     self.settle_alerts();
+                    self.ask_lists_again();
                     if frame != last_frame && ((self.motion_on() && (self.any_working() || self.any_checking() || self.any_calling())) || matches!(self.mode, Mode::Spinners(_))) {
                         last_frame = frame;
                         self.dirty = true;
