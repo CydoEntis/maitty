@@ -1195,6 +1195,7 @@ impl Daemon {
                 continue;
             }
             self.conversation_closing.remove(&id);
+            self.remember_closed_chat(id);
             if let Err(error) = self.stop_structured(id) {
                 tracing::warn!("ending a closed chat: {error:#}");
             }

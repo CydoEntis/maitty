@@ -896,8 +896,8 @@ impl Term {
         std::thread::Builder::new()
             .name(format!("pty-wait-{id}"))
             .spawn(move || {
-                let _ = child.wait();
-                let _ = tx.blocking_send(Ev::ProcessExited(id));
+                let failed = child.wait().is_ok_and(|status| !status.success());
+                let _ = tx.blocking_send(Ev::ProcessExited(id, failed));
             })?;
 
         let process_executable = spec
