@@ -6,7 +6,7 @@ import { useRecentSessions } from './useRecentSessions'
 
 vi.mock('@/lib/toast', () => ({ toast: { error: vi.fn(), message: vi.fn() } }))
 
-const parser: ClosedSession = { agent: 'claude', session: 'abc-123', cwd: '/dev/app', branch: null, title: 'Fix the parser', at: 1, folder_present: true }
+const parser: ClosedSession = { agent: 'claude', session: 'abc-123', cwd: '/dev/app', branch: null, title: 'Fix the parser', at: 1, folder_present: true, worktree: null, repo: null }
 
 function listOpen(starting: boolean) {
   const startNewChat = vi.fn(() => Promise.resolve())

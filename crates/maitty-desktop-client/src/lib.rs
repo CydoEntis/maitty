@@ -1587,6 +1587,17 @@ pub async fn closed_sessions() -> Result<Value> {
     .await
 }
 
+/// Have this computer's daemon reopen a closed session it keeps, making its worktree again when the folder is gone.
+/// The daemon starts the agent itself. False when the daemon running is from before this and was not asked.
+pub async fn reopen_closed_session(agent: String, session: String) -> Result<Value> {
+    let asked = ask_if_known(reopen_closed_message(agent, session)).await?;
+    Ok(Value::Bool(asked))
+}
+
+fn reopen_closed_message(agent: String, session: String) -> ClientMsg {
+    ClientMsg::Command(Command::ReopenClosedSession { agent, session })
+}
+
 /// How long the closed sessions' folders are looked for, all of them together.
 const FOLDER_LOOK_LIMIT: Duration = Duration::from_secs(2);
 
@@ -2580,6 +2591,15 @@ mod agent_command_tests {
         let ask = ClientMsg::Query(Query::ClosedSessions);
         assert!(daemon_reads(&ask, PROTOCOL_VERSION));
         assert!(!daemon_reads(&ask, CLOSED_SESSIONS_SINCE - 1));
+    }
+
+    #[test]
+    fn a_daemon_from_before_reopening_closed_sessions_is_not_asked_to() {
+        use super::{daemon_reads, reopen_closed_message};
+        use maitty_shared::protocol::{PROTOCOL_VERSION, REOPEN_CLOSED_SINCE};
+        let reopen = reopen_closed_message("claude".into(), "abc-123".into());
+        assert!(daemon_reads(&reopen, PROTOCOL_VERSION));
+        assert!(!daemon_reads(&reopen, REOPEN_CLOSED_SINCE - 1));
     }
 
     fn closed_in(cwd: std::path::PathBuf) -> maitty_shared::protocol::ClosedSession {
