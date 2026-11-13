@@ -148,13 +148,14 @@ impl App {
             return;
         }
         let attempt = if start {
-            ipc::open_or_spawn_installed(true).await
+            ipc::open_or_spawn_installed_knowing_version(true).await
         } else {
-            ipc::open(true).await
+            ipc::open_knowing_version(true).await
         };
         match attempt {
-            Ok(connection) => {
+            Ok((connection, version)) => {
                 connections.add(MachineId::LOCAL, connection);
+                self.note_local_protocol(version);
                 self.service = Service::Up;
                 self.reattached = Some(Instant::now());
                 self.notify(format!("Reconnected to {}", daemon_name()), false);

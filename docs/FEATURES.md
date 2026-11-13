@@ -38,6 +38,7 @@ conversation continuity are planned in phases 34–37:
 - Inbox (what needs you first, type to go anywhere), command palette (plain-word commands), key map (searchable, second steps), actions list — shipped — `crates/maitty-terminal-client/src/client/screen/inbox.rs` `draw_inbox`, `crates/maitty-terminal-client/src/client/screen/keyoverlay.rs` (key map and search commands), `crates/maitty-terminal-client/src/client/screen/leader.rs`
 - Right-click menus, confirm before closing, toasts — shipped — `crates/maitty-terminal-client/src/client/menu.rs`
 - Splash: Resume / New shell here — shipped — `draw_splash`
+- Resume a conversation here: the Claude and Codex conversations saved for the pane's folder, one picked starts its agent resumed in a new pane there; this computer only — shipped — `crates/maitty-terminal-client/src/client/resume.rs`
 - Settings popup grouped by section, key rebinding, themes with contrast audit — shipped — `crates/maitty-terminal-client/src/client/screen/dialogs.rs` `draw_settings`, `crates/maitty-terminal-client/src/theme.rs`
 - Leader keys (a shell is `n`, only kept features have keys), Alt+arrows without the leader, armed pill in sky — shipped by v0.30.1 — `crates/maitty-terminal-client/src/keys.rs` `DEFAULT_PREFIX_KEYS`
 - Copy on select with toast, copy mode, Ctrl+click paths, paste images — shipped — `crates/maitty-terminal-client/src/client/copy.rs`, `crates/maitty-terminal-client/src/client/pick.rs`

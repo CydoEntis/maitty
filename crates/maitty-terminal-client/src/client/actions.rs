@@ -248,6 +248,7 @@ impl App {
             Action::Restart => self.restart_from_menu(),
             Action::ToggleAppearance => self.toggle_appearance(),
             Action::TidyWorktrees => self.tidy_open_here(),
+            Action::ResumeConversation => self.ask_saved_conversations(),
             Action::None => {}
             // The rest are handled by screen_act above.
             _ => {}
@@ -329,6 +330,7 @@ impl App {
             Action::RemoveWorktree,
             Action::Worktrees,
             Action::NewSession,
+            Action::ResumeConversation,
             Action::CloseSplit,
             Action::StopAgent,
             Action::Message,

@@ -292,6 +292,9 @@ impl App {
             ServerMsg::Error(e) => {
                 // The output a failure waited for may be what failed; a later reply is not its.
                 self.screen.failure_ask = None;
+                if machine == MachineId::LOCAL {
+                    self.resume_failed();
+                }
                 self.notify(e, true);
             }
             ServerMsg::Notice(n) if machine != MachineId::LOCAL => self.notify(n, false),
@@ -336,6 +339,12 @@ impl App {
                 if let Mode::Worktrees { items, .. } = &mut self.mode {
                     *items = Some(list);
                 }
+            }
+            // Saved conversations are listed for this computer's own folders only.
+            ServerMsg::Reply(Reply::SavedConversations { tag, found })
+                if machine == MachineId::LOCAL =>
+            {
+                self.saved_conversations_arrived(tag, found)
             }
             ServerMsg::Reply(Reply::Text(text)) if self.check_asked_of(machine) => {
                 self.check_output_arrived(text)
