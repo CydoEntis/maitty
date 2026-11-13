@@ -887,6 +887,25 @@ async fn archive_terminal_session(
         .map_err(|error| format!("{error:#}"))
 }
 
+/// Snooze a pane until `until` (unix seconds), or wake it (`None`).
+#[tauri::command]
+async fn snooze_terminal_session(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    term: u32,
+    until: Option<u64>,
+) -> Result<serde_json::Value, String> {
+    if routing::is_remote(machine) {
+        return wire
+            .command(machine, term, PaneCommand::Snooze(until))
+            .map(|()| serde_json::Value::Null);
+    }
+    maitty_desktop_client::snooze_terminal_session(term, until, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
 #[tauri::command]
 async fn reload_terminal_session(
     app: tauri::AppHandle,
@@ -1617,6 +1636,7 @@ pub fn run() {
             check_output,
             pin_terminal_session,
             archive_terminal_session,
+            snooze_terminal_session,
             reload_terminal_session,
             close_terminal_session,
             close_session_with_undo,

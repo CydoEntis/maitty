@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { forgetMachines, registerMachine } from './machines'
 import { conversationKey } from './conversationKey'
-import { startTerminalSession, loadTerminalScreen, loadTerminalReplay, sendTerminalInput, resizeTerminal, archiveConversationOnDaemon, renameConversationOnDaemon, classifySubmissionFailure, createConversation, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversationDiff, loadConversationFile, loadConversationFiles, loadConversations, checkConversations, conversationsFromSnapshot, daemonSaidRemoved, localListRevision, markSeenOnDaemon, readConversationPage, submitMessage, cancelTurn, loadTargetDiff, archiveSessionOnDaemon, reloadAgentOnDaemon, loadDaemonRestartStatus, loadDaemonUpdateStatus, loadMachines, loadMessages, restartMismatchedDaemon, restartStaleDaemon, resumeConversation } from './daemon'
+import { startTerminalSession, loadTerminalScreen, loadTerminalReplay, sendTerminalInput, resizeTerminal, archiveConversationOnDaemon, renameConversationOnDaemon, classifySubmissionFailure, createConversation, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversationDiff, loadConversationFile, loadConversationFiles, loadConversations, checkConversations, conversationsFromSnapshot, daemonSaidRemoved, localListRevision, markSeenOnDaemon, readConversationPage, submitMessage, cancelTurn, loadTargetDiff, archiveSessionOnDaemon, snoozeSessionOnDaemon, reloadAgentOnDaemon, loadDaemonRestartStatus, loadDaemonUpdateStatus, loadMachines, loadMessages, restartMismatchedDaemon, restartStaleDaemon, resumeConversation } from './daemon'
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
@@ -584,6 +584,14 @@ describe('terminal sessions shown beside chats', () => {
     expect(listed.map((item) => item.details?.resumeAt)).toEqual([1_800_000_000, null, null])
   })
 
+  it('reads when a snooze ends, and nothing from a daemon that does not say', async () => {
+    vi.mocked(invoke).mockResolvedValue({ conversations: [], workspaces: [], terms: { '5': term({ id: 5, snoozed_until: 1_800_000_000 }), '6': term({ id: 6, snoozed_until: null }), '7': term({ id: 7 }) } })
+
+    const listed = await loadConversations()
+
+    expect(listed.map((item) => item.details?.snoozedUntil)).toEqual([1_800_000_000, null, null])
+  })
+
   it('still lists the sessions, without limits, when the limits cannot be read', async () => {
     vi.mocked(invoke).mockResolvedValue({ conversations: [], workspaces: [], limits: 'soon', terms: { '5': term({ id: 5, agent: 'claude' }) } })
 
@@ -796,6 +804,15 @@ describe('commands for a pane, on whichever machine it is', () => {
       ['mark_terminal_seen', { term: 7, machine: 3 }],
       ['archive_terminal_session', { term: 7, archived: false, machine: 3 }],
       ['reload_terminal_session', { term: 7, machine: 3 }],
+    ])
+  })
+
+  it('snoozes a pane until a time and wakes it, on this computer or another', async () => {
+    await snoozeSessionOnDaemon(pane, 1_800_000_000)
+    await snoozeSessionOnDaemon(there, null)
+    expect(vi.mocked(invoke).mock.calls).toEqual([
+      ['snooze_terminal_session', { term: 7, until: 1_800_000_000 }],
+      ['snooze_terminal_session', { term: 7, until: null, machine: 3 }],
     ])
   })
 

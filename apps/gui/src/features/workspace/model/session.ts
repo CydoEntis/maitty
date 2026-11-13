@@ -61,6 +61,8 @@ export type SessionView = {
   statusWhy: string
   /** When the daemon tells it to continue after its plan limit, in milliseconds, as the daemon last listed it; null when it was not limited. */
   resumeAt: number | null
+  /** When a snooze ends, in milliseconds; null when it is awake or the time has passed (`TermInfo.snoozed_until`). */
+  snoozedUntil: number | null
   timeline: TerminalDetails['timeline']
   usage: TerminalDetails['usage']
   /** The plan limits of its agent, as last reported; empty when it reported none. */
@@ -149,6 +151,12 @@ function heldUntil(conversation: Conversation, now: number): number | null {
   return resumeAt > now ? resumeAt : null
 }
 
+/** When the daemon lets a snoozed session back, in milliseconds; null once the time has passed. The daemon owns the snooze and ends it; the window only reads it. */
+function snoozedUntilOf(conversation: Conversation, now: number): number | null {
+  const until = (conversation.details?.snoozedUntil ?? 0) * MS_PER_SECOND
+  return until > now ? until : null
+}
+
 /**
  * The daemon's status for a session, with one held by its plan limit shown as limited and a failed
  * last command shown as exited. The daemon sets `exit` (a non-zero code from the shell) and clears it
@@ -186,11 +194,15 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
  * `limited until Thu 14:05` when that is not today, as a weekly limit resets days away.
  */
 export function limitedWord(resumeAt: number | null, now: number): string {
-  if (resumeAt === null) return STATUS_WORD.limited
-  const at = new Date(resumeAt)
-  const clock = [at.getHours(), at.getMinutes()].map((part) => String(part).padStart(CLOCK_DIGITS, '0')).join(':')
-  const today = at.toDateString() === new Date(now).toDateString()
-  return `${STATUS_WORD.limited} until ${today ? '' : `${WEEKDAYS[at.getDay()] ?? ''} `}${clock}`
+  return resumeAt === null ? STATUS_WORD.limited : `${STATUS_WORD.limited} ${untilWord(resumeAt, now)}`
+}
+
+/** `until 14:05`, or `until Thu 14:05` when that is not today, in this computer's time. */
+export function untilWord(at: number, now: number): string {
+  const time = new Date(at)
+  const clock = [time.getHours(), time.getMinutes()].map((part) => String(part).padStart(CLOCK_DIGITS, '0')).join(':')
+  const today = time.toDateString() === new Date(now).toDateString()
+  return `until ${today ? '' : `${WEEKDAYS[time.getDay()] ?? ''} `}${clock}`
 }
 
 function trimTrailingSeparator(path: string): string {
@@ -276,6 +288,7 @@ export function toSessionView(conversation: Conversation, home: string, now: num
     statusSince: (conversation.details?.since ?? 0) > 0 ? (conversation.details?.since ?? 0) * MS_PER_SECOND : null,
     statusWhy: conversation.details?.statusWhy ?? '',
     resumeAt,
+    snoozedUntil: snoozedUntilOf(conversation, now),
     timeline: conversation.details?.timeline ?? [],
     usage: conversation.details?.usage ?? { context: null, cost: null, tokens: null },
     limits: conversation.details?.limits ?? [],
