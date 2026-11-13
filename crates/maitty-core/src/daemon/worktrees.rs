@@ -122,7 +122,16 @@ pub(super) fn agent_worktree(
     Ok(sub.unwrap_or(path))
 }
 
+/// Worktrees can be made at once (two chats started together); each trust is a read, change
+/// and swap of the same file, so one at a time in this process, or the later swap drops the
+/// earlier trust.
+static TRUST_WRITE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 pub(super) fn trust_in(file: &std::path::Path, repo: &std::path::Path, worktree: &std::path::Path) {
+    // A panic while holding it left no half-written file (the swap is a rename), so go on.
+    let _one_at_a_time = TRUST_WRITE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     // Claude rewrites this file too: if it changed while we worked, start again from its
     // version rather than replace it.
     for _ in 0..3 {
@@ -194,7 +203,14 @@ pub(super) fn trust_once(
     }
     // Write beside and swap, so a reader never sees half a file; check it's still the
     // version we read right before swapping.
-    let tmp = file.with_extension(concat!("json.", env!("APP_COMMAND"), "-tmp"));
+    // A name of its own per write, so another process's daemon (a test, a second socket)
+    // never swaps in this one's half-written copy.
+    static WRITES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let tmp = file.with_extension(format!(
+        concat!("json.", env!("APP_COMMAND"), "-{}-{}-tmp"),
+        std::process::id(),
+        WRITES.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
     let Ok(s) = serde_json::to_string_pretty(&v) else {
         return Trust::Done;
     };

@@ -221,6 +221,9 @@ Leader `w`, or a click on a remote machine's heading in the sidebar. These keys 
 
 There is no dialog. Leader `n`, leader `t`, `Alt+N`, `Ctrl+T`, the ` n new session ` chip of an empty workspace and a machine's ` + ` chip all start a shell at once where you are (a machine's chip on that machine). Start an agent by typing `claude` (or any other) in the shell.
 
+In the desktop app's New chat page, `Enter` starts the chat and opens it; `Ctrl+Enter` (`⌘Enter` on
+macOS) starts it in the background, empties the message box and keeps the page open for the next one.
+
 ## A session wants to start helpers
 
 Enter on its sidebar row (or a click on the `wants to start N helpers` line) opens the question.
