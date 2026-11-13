@@ -314,6 +314,7 @@ Measured 2026-11-13 on Linux with Claude Code 2.1.323 and Codex 0.166.
   `notify` at the turn's end, so the rollout fallback cannot list helpers while the turn runs.
 - **Linking a workflow's step to its helper.** Both providers carry a name the parent chose: Claude's
   Agent `description` and Codex's task name. A workflow names its helper with that label and gives
-  the same label in its report; the daemon links a helper of the same pane whose label is equal.
+  the same label in its report; a helper of the same pane whose label is equal, ignoring case and
+  punctuation, is linked. Codex task names are snake_case, so `MAITTY-42 builder` names `maitty_42_builder`.
 
 Installing a new executable does not replace an already-running window. **Settings › General › UPDATES** shows the version, and Settings warns at the top when the installed, window and daemon versions differ. Local open sessions keep running; once no panes remain, Maitty restarts the daemon and reconnects the window automatically. Closing a window alone leaves the daemon running. A remote daemon must be updated on its host.

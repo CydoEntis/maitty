@@ -38,6 +38,20 @@ export function toWorkflowView(run: WorkflowRun): WorkflowView {
   }
 }
 
+/**
+ * A label as it is compared: lower case, with every run of other characters one underscore. Codex
+ * task names are snake_case, so "MAITTY-42 builder" and "maitty_42_builder" name the same helper.
+ */
+function foldLabel(label: string): string {
+  return label.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/g, '')
+}
+
+/** Whether a step's helper label names this subagent, by its task or its name (ADR 0010). */
+export function namesHelper(label: string, helper: { task: string | null; name: string }): boolean {
+  const want = foldLabel(label)
+  return want !== '' && [helper.task, helper.name].some((said) => said !== null && foldLabel(said) === want)
+}
+
 /** The words for a step's state, for its mark's label and screen readers. */
 export const STEP_WORDS: Record<WorkflowStepState, string> = {
   waiting: 'Waiting',

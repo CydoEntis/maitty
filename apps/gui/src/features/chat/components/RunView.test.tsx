@@ -31,4 +31,20 @@ describe("a workflow run's steps", () => {
     expect(screen.queryByRole('button', { name: 'MAITTY-42 reviewer' })).toBeNull()
     expect(screen.getByText('MAITTY-42 reviewer')).toBeInTheDocument()
   })
+
+  it("links a step to a Codex helper whose snake_case task name is the step's label", async () => {
+    const user = userEvent.setup()
+    const onOpenHelper = vi.fn()
+    const codex: SubagentView = { ...builder, id: 'c1', name: 'maitty_42_builder', task: 'maitty_42_builder' }
+    const run = toWorkflowView({
+      workflow: 'kitchen',
+      run: '001',
+      ticket: null,
+      steps: [{ name: 'build', state: 'working', note: null, helper: 'MAITTY-42 builder' }],
+      reportedAt: 1,
+    })
+    render(<RunView run={run} helpers={[codex]} onOpenHelper={onOpenHelper} />)
+    await user.click(screen.getByRole('button', { name: 'MAITTY-42 builder' }))
+    expect(onOpenHelper).toHaveBeenCalledWith('c1')
+  })
 })

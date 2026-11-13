@@ -44,7 +44,8 @@ one way of working, and makes every stalled stage Maitty's fault. Status must st
    the ordered steps, and for each step its state (waiting, working, passed, failed, sent back,
    needs you, skipped), an optional short note, and an optional helper label: the name the workflow
    gave the helper doing the step (Claude's Agent description, Codex's task name). The daemon links
-   the step to a helper of the same pane whose label is equal, and to nothing otherwise. The daemon validates and bounds every field,
+   the step to a helper of the same pane whose label is equal, ignoring case and punctuation (Codex
+   task names are snake_case, so `MAITTY-42 builder` names `maitty_42_builder`), and to nothing otherwise. The daemon validates and bounds every field,
    keeps the latest report per run with the pane, and sends it to clients. It is a new message, so
    it gets its own `introduced_in` arm and a `PROTOCOL_VERSION` bump.
 4. **Workflow progress is display only.** It never changes a pane's status and never raises an

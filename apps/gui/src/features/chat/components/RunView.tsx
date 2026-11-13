@@ -1,7 +1,7 @@
 import type { WorkflowView } from '@/features/workspace/model/workflows'
 import type { SubagentView } from '@/features/workspace/model/subagents'
 import { StepMark } from '@/features/workspace/components/WorkflowRows'
-import { STEP_WORDS } from '@/features/workspace/model/workflows'
+import { STEP_WORDS, namesHelper } from '@/features/workspace/model/workflows'
 
 /** A run a pane shows, the session's subagents its steps may name, and how one is opened. */
 export type OpenRun = { view: WorkflowView; helpers: readonly SubagentView[]; onOpenHelper: (id: string) => void }
@@ -29,7 +29,8 @@ export function RunView({ run, helpers, onOpenHelper }: { run: WorkflowView; hel
       <div className="mx-chat-column">
         <ol className="mx-run-steps" aria-label="Steps">
           {run.steps.map((step) => {
-            const helper = step.helper === null ? undefined : helpers.find((child) => child.task === step.helper || child.name === step.helper)
+            const label = step.helper
+            const helper = label === null ? undefined : helpers.find((child) => namesHelper(label, child))
             return (
               <li key={step.name} className={`mx-run-step-row is-${step.state}`} aria-current={step === run.current ? 'step' : undefined}>
                 <StepMark state={step.state} />
