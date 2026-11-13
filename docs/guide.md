@@ -241,7 +241,10 @@ show a separate sleep screen or wake animation.
 
 ## Session visibility
 
-Sessions stay visible in the sidebar until you close them. Idle, completed, and merged-worktree sessions are never hidden automatically.
+Sessions stay visible in the sidebar until you close them. By default, idle, completed, and merged-worktree sessions are
+never hidden automatically. To change that, set `put_away_merged = true` under `[sessions]` in `config.toml`: a finished or
+idle session whose pull request has merged is then put away on its own, within a couple of minutes. It keeps running. If you
+bring it back, that merge never puts it away again.
 
 In the desktop app you can tidy the list yourself: right-click a finished or idle session (an agent in a terminal, or a
 shell) and choose **Put away**. A toast offers **Undo** for 6 seconds. The session keeps running; it leaves the status,
