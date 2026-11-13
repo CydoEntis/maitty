@@ -3,19 +3,18 @@ import { ResultsList, ResultsOption } from '@/components/ui/results-list'
 import { FILES_ASKED, type FoundFiles } from '../useFileMention'
 
 type Props = {
+  /** The answer for what is typed now; null while it is on its way. */
   found: FoundFiles | null
-  /** The answer is for what is typed now. */
-  settled: boolean
   active: number
   onPick: (path: string) => void
   onHover: (index: number) => void
 }
 
 /** What the picker says when it has no rows, or what its rows leave out. */
-function noteOf(found: FoundFiles | null, settled: boolean): string | null {
+function noteOf(found: FoundFiles | null): string | null {
   if (found === null) return 'Looking for files…'
   if (found.error !== null) return `Could not search the files: ${found.error}`
-  if (found.paths.length === 0) return settled ? 'No file matches. Keep typing, or Esc to close.' : 'Looking for files…'
+  if (found.paths.length === 0) return 'No file matches. Keep typing, or Esc to close.'
   return null
 }
 
@@ -23,14 +22,14 @@ function noteOf(found: FoundFiles | null, settled: boolean): string | null {
  * The session's files, over the message box while an `@` and a name are typed: the daemon's best matches, closest
  * first. The keys stay in the box (the composer moves `active`); a click picks one. It shares the command list's look.
  */
-export function FilePicker({ found, settled, active, onPick, onHover }: Props) {
+export function FilePicker({ found, active, onPick, onHover }: Props) {
   const list = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const row = list.current?.children.item(active)
     if (row instanceof HTMLElement && typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' })
   }, [active])
   const paths = found?.paths ?? []
-  const note = noteOf(found, settled)
+  const note = noteOf(found)
   return (
     <div className="mx-slash" role="presentation" onMouseDown={(event) => { event.preventDefault() }}>
       {note !== null && <p className="mx-slash-note" role="status">{note}</p>}

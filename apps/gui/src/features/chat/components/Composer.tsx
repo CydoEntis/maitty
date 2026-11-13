@@ -191,7 +191,10 @@ export function Composer({ agent, composer, conversation, commandsFrom, question
     submit()
     text.current?.focus()
   }
-  const mention = useFileMention(off ? null : files ?? null, draft, setDraft, () => { text.current?.focus() })
+  // The @ picker follows the caret: it is open only while the caret sits, with nothing selected, at the end of the text.
+  const [caretAtEnd, setCaretAtEnd] = useState(true)
+  const followCaret = (area: HTMLTextAreaElement) => { setCaretAtEnd(area.selectionStart === area.selectionEnd && area.selectionEnd === area.value.length) }
+  const mention = useFileMention(off ? null : files ?? null, draft, caretAtEnd, setDraft, () => { text.current?.focus() })
   const pickerKey = (event: KeyboardEvent<HTMLTextAreaElement>): boolean => {
     if (mention.onKey(event)) return true
     if (!picking) return false
@@ -236,7 +239,7 @@ export function Composer({ agent, composer, conversation, commandsFrom, question
             <SlashPicker agent={agent} matches={matches} active={active} loading={slash.loading} error={slash.error} onPick={run} onHover={(index) => { setCursor({ query, index }) }} />
           )}
           {mention.open && (
-            <FilePicker found={mention.found} settled={mention.settled} active={mention.active} onPick={mention.pick} onHover={mention.hover} />
+            <FilePicker found={mention.found} active={mention.active} onPick={mention.pick} onHover={mention.hover} />
           )}
           <DraftAttachments attachments={attachments} onRemove={attach.remove} />
           <textarea
@@ -249,7 +252,8 @@ export function Composer({ agent, composer, conversation, commandsFrom, question
             disabled={off}
             placeholder={placeholder}
             className="mx-box-text"
-            onChange={(event) => { setDraft(event.target.value) }}
+            onChange={(event) => { setDraft(event.target.value); followCaret(event.target) }}
+            onSelect={(event) => { followCaret(event.currentTarget) }}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
           />

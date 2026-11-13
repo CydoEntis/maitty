@@ -141,6 +141,48 @@ describe('picking a file with @ in the message box', () => {
     expect(listed()).toEqual(['src/main.rs'])
   })
 
+  it('takes no Enter or Tab while the answer for the name typed now has not come, sending and inserting nothing', async () => {
+    const { user, box } = await open()
+
+    await user.type(box, 'fix @src')
+    await settle(SEARCH_WAIT_MS)
+    await user.keyboard('{Enter}')
+    expect(box).toHaveValue('fix src/lib.rs ')
+
+    fake.repoFindFiles.mockImplementation(() => new Promise(() => undefined))
+    await user.type(box, '@main{Enter}{Tab}')
+
+    expect(box).toHaveValue('fix src/lib.rs @main')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(screen.getByText('Looking for files…')).toBeInTheDocument()
+    expect(fake.submitMessage).not.toHaveBeenCalled()
+  })
+
+  it('shows no rows of an earlier name while the answer for the name typed now is on its way', async () => {
+    const { user, box } = await open()
+
+    await user.type(box, '@src')
+    await settle(SEARCH_WAIT_MS)
+    fake.repoFindFiles.mockImplementation(() => new Promise(() => undefined))
+    await user.type(box, '/m')
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(screen.getByText('Looking for files…')).toBeInTheDocument()
+  })
+
+  it('closes when the caret leaves the end of the text, and gives the keys back to the box', async () => {
+    const { user, box } = await open()
+
+    await user.type(box, 'see @src')
+    await settle(SEARCH_WAIT_MS)
+    expect(listed()).toEqual(['src/lib.rs', 'src/main.rs'])
+    await user.keyboard('{ArrowLeft}')
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    await user.keyboard('{Enter}')
+    expect(fake.submitMessage).toHaveBeenCalledOnce()
+  })
+
   it('says so in one quiet line when the search fails, as with an older Maitty service', async () => {
     fake.repoFindFiles.mockRejectedValue(new Error('the Maitty service running is older than this app'))
     const { user, box } = await open()

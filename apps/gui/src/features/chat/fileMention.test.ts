@@ -35,6 +35,14 @@ describe('the text a picked file leaves in the box', () => {
     if (mention === null) throw new Error('no mention')
     expect(withPath(draft, mention, 'docs/my notes.md')).toBe('"docs/my notes.md" ')
   })
+
+  it('quotes a path that holds a double quote, and escapes it', () => {
+    const draft = '@say'
+    const mention = fileMention(draft)
+    if (mention === null) throw new Error('no mention')
+    expect(withPath(draft, mention, 'docs/say "hi".md')).toBe('"docs/say \\"hi\\".md" ')
+    expect(withPath(draft, mention, 'docs/a"b.md')).toBe('"docs/a\\"b.md" ')
+  })
 })
 
 describe('a path read from the session folder', () => {
@@ -57,5 +65,13 @@ describe('a path read from the session folder', () => {
 
   it('reads a Windows folder with either separator and drive case', () => {
     expect(pathFromFolder('apps/gui/src/main.tsx', { folder: 'C:\\dev\\app\\apps\\gui', checkout: 'c:/dev/app' })).toBe('src/main.tsx')
+  })
+
+  it('matches the folders of a Windows path without case', () => {
+    expect(pathFromFolder('Apps/GUI/src/main.tsx', { folder: 'C:\\dev\\app\\apps\\gui', checkout: 'C:\\dev\\app' })).toBe('src/main.tsx')
+  })
+
+  it('keeps case for the folders of a path that is not a Windows drive path', () => {
+    expect(pathFromFolder('Apps/x.ts', { folder: '/dev/app/apps', checkout: '/dev/app' })).toBe('../Apps/x.ts')
   })
 })

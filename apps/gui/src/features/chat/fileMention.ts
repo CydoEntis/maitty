@@ -18,16 +18,21 @@ export function fileMention(draft: string): FileMention | null {
   return { start: draft.length - query.length - 1, query }
 }
 
-/** The draft with the mention replaced by the path and a space. A path with whitespace is quoted, so it reads as one. */
+/**
+ * The draft with the mention replaced by the path and a space. A path with whitespace or a double quote is quoted,
+ * with its own quotes escaped, so it reads as one.
+ */
 export function withPath(draft: string, mention: FileMention, path: string): string {
-  const written = /\s/.test(path) ? `"${path}"` : path
+  const written = /[\s"]/.test(path) ? `"${path.replaceAll('"', '\\"')}"` : path
   return `${draft.slice(0, mention.start)}${written} `
 }
 
 const slashes = (path: string): string => path.replaceAll('\\', '/').replace(/\/+$/, '')
 
+const isDrivePath = (path: string): boolean => /^[A-Za-z]:\//.test(path)
+
 /** Windows folders differ only in case, so a drive path is compared without it. */
-const comparable = (path: string): string => (/^[A-Za-z]:\//.test(path) ? path.toLowerCase() : path)
+const comparable = (path: string): string => (isDrivePath(path) ? path.toLowerCase() : path)
 
 /**
  * A path the daemon gave relative to the checkout's top, made relative to the session's folder: `crates/a/x.rs` from
@@ -40,7 +45,13 @@ export function pathFromFolder(path: string, place: Pick<FileSearchPlace, 'folde
   if (!comparable(folder).startsWith(`${comparable(top)}/`)) return path
   const inside = folder.slice(top.length + 1).split('/')
   const target = path.split('/')
+  const caseless = isDrivePath(folder)
+  const same = (index: number) => {
+    const a = inside[index] ?? ''
+    const b = target[index] ?? ''
+    return caseless ? a.toLowerCase() === b.toLowerCase() : a === b
+  }
   let shared = 0
-  while (shared < inside.length && shared < target.length - 1 && inside[shared] === target[shared]) shared += 1
+  while (shared < inside.length && shared < target.length - 1 && same(shared)) shared += 1
   return [...inside.slice(shared).map(() => '..'), ...target.slice(shared)].join('/')
 }

@@ -19,7 +19,7 @@ export type FoundFiles = {
 
 /**
  * The daemon's files for `query`, asked a moment after the typing stops. An answer for a name typed earlier is
- * dropped, never shown over a later one; until the new one comes the last answer stays, so the list does not flicker.
+ * dropped, and the last answer is let go as the name, the pane or the picker changes, so none outlives its name.
  */
 function useFoundFiles(place: FileSearchPlace | null, query: string | null): FoundFiles | null {
   const [found, setFound] = useState<FoundFiles | null>(null)
@@ -44,16 +44,16 @@ function useFoundFiles(place: FileSearchPlace | null, query: string | null): Fou
     return () => {
       current = false
       window.clearTimeout(timer)
+      setFound(null)
     }
   }, [term, folder, checkout, query])
-  return query === null ? null : found
+  return query === null || found?.query !== query ? null : found
 }
 
 export type FileMentionState = {
   readonly open: boolean
+  /** Null while the answer for what is typed now is on its way. */
   readonly found: FoundFiles | null
-  /** The answer is for what is typed now, not an earlier name. */
-  readonly settled: boolean
   readonly active: number
   readonly pick: (path: string) => void
   readonly hover: (index: number) => void
@@ -63,10 +63,11 @@ export type FileMentionState = {
 
 /**
  * The file picker an `@` opens in the message box: the typed name, the daemon's answer for it, the row the keys are
- * on, and what a pick writes. Esc puts it away until the text changes.
+ * on, and what a pick writes. It follows the caret, so it is open only while the caret sits at the end of the text.
+ * Esc puts it away until the text changes.
  */
-export function useFileMention(place: FileSearchPlace | null, draft: string, setDraft: (text: string) => void, focus: () => void): FileMentionState {
-  const mention = place === null ? null : fileMention(draft)
+export function useFileMention(place: FileSearchPlace | null, draft: string, caretAtEnd: boolean, setDraft: (text: string) => void, focus: () => void): FileMentionState {
+  const mention = place === null || !caretAtEnd ? null : fileMention(draft)
   const [closedFor, setClosedFor] = useState<string | null>(null)
   const open = mention !== null && closedFor !== draft
   const found = useFoundFiles(place, open ? mention.query : null)
@@ -85,6 +86,9 @@ export function useFileMention(place: FileSearchPlace | null, draft: string, set
       setClosedFor(draft)
       return true
     }
+    const choosing = event.key === 'ArrowDown' || event.key === 'ArrowUp' || ((event.key === 'Enter' || event.key === 'Tab') && !event.shiftKey)
+    // Until the answer for what is typed now comes there is nothing to choose, and Enter must not send the half-typed name.
+    if (found === null) return choosing
     const chosen = paths[active]
     if (chosen === undefined) return false
     if (event.key === 'ArrowDown') setCursor({ query, index: (active + 1) % paths.length })
@@ -93,5 +97,5 @@ export function useFileMention(place: FileSearchPlace | null, draft: string, set
     else return false
     return true
   }
-  return { open, found, settled: found?.query === query, active, pick, hover: (index) => { setCursor({ query, index }) }, onKey }
+  return { open, found, active, pick, hover: (index) => { setCursor({ query, index }) }, onKey }
 }
