@@ -463,6 +463,7 @@ impl Daemon {
                     t.archived = archived;
                     if merged_url.is_some() {
                         t.put_away_for = merged_url;
+                        self.dirty = true;
                     }
                 }
             }
