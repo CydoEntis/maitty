@@ -98,7 +98,7 @@ export function useShortcutRunner({ newSession, focusedMachineNumber, newTermina
   focusedMachineNumber: number
   newTerminal: (machine?: number) => void
   setSettingsSection: Dispatch<SetStateAction<DesktopSettingsSection | null>>
-  startAgentSession: (folder: () => Promise<string>, agent: ChatAgent, view: PaneView, firstMessage?: string, flags?: string, afterPlace?: (id: string) => void) => Promise<boolean>
+  startAgentSession: (folder: () => Promise<string>, agent: ChatAgent, view: PaneView, firstMessage?: string, flags?: string) => Promise<boolean>
   preferences: SettingsPreferences
   home: string
   split: (paneId: string | null, direction: SplitDirection) => void
