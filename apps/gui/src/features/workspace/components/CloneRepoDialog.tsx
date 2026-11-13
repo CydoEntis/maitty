@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { errorMessage } from '@/lib/error-message'
+import { GitHubRepoPicker, type GitHubRepoSource } from './GitHubRepoPicker'
 
 /** Longest address and path the host accepts. */
 const MOST_ADDRESS_CHARS = 2048
@@ -15,6 +16,8 @@ type Props = {
   chooseFolder: (() => Promise<string | null>) | null
   /** Clones `address` into a new folder inside `parent` and gives that folder; rejects with the machine's reason. */
   clone: (address: string, parent: string) => Promise<string>
+  /** That machine's GitHub repositories to pick from; without it the dialog takes a pasted address only. */
+  github?: GitHubRepoSource | undefined
   onCloned: (folder: string, parent: string) => void
   onCancel: () => void
 }
@@ -22,9 +25,10 @@ type Props = {
 /**
  * Brings a repository onto a machine without leaving the window: its address, and the folder the
  * clone goes inside. The machine's daemon runs git, so the address is judged and the sign-in is
- * found there; what it says when it will not clone is shown as it said it.
+ * found there; what it says when it will not clone is shown as it said it. Picking one of the
+ * machine's GitHub repositories fills in its address.
  */
-export function CloneRepoDialog({ where, startIn, chooseFolder, clone, onCloned, onCancel }: Props) {
+export function CloneRepoDialog({ where, startIn, chooseFolder, clone, github, onCloned, onCancel }: Props) {
   const [address, setAddress] = useState('')
   const [parent, setParent] = useState(startIn)
   const [cloning, setCloning] = useState(false)
@@ -73,6 +77,7 @@ export function CloneRepoDialog({ where, startIn, chooseFolder, clone, onCloned,
             disabled={cloning}
             onChange={(event) => { setAddress(event.target.value) }}
           />
+          {github !== undefined && <GitHubRepoPicker where={where} source={github} disabled={cloning} onPick={(repo) => { setAddress(repo.cloneUrl) }} />}
           <p>It goes in a new folder, named after the repository, inside:</p>
           <div className="mx-clone-into">
             <input aria-label={`Folder on ${where} to clone into`} value={parent} maxLength={MOST_PATH_CHARS} spellCheck={false} disabled={cloning} onChange={(event) => { setParent(event.target.value) }} />

@@ -30,7 +30,7 @@ export function WorkspaceMain() {
   const remotePick = useRemoteFolderPick(newChatMachine, newChatMachineLabel)
   const newChatBrowse = newChatMachine === LOCAL_MACHINE ? chooseProjectFolder : remotePick.browse
   const newChatStartFolder = newChatMachine === LOCAL_MACHINE ? resolveStartFolder(preferences.startFolder, home) : '~'
-  const cloneRepo = useCloneRepo({ machine: newChatMachine, where: newChatMachine === LOCAL_MACHINE ? 'this computer' : newChatMachineLabel, startIn: newChatStartFolder, chooseFolder: newChatBrowse })
+  const cloneRepo = useCloneRepo({ machine: newChatMachine, where: newChatMachine === LOCAL_MACHINE ? 'this computer' : newChatMachineLabel, startIn: newChatStartFolder, chooseFolder: newChatBrowse, onOpenGitHubSettings: () => { setSettingsSection('github') } })
   return (
     <div className="mx-main-wrap">
               {cloneRepo.dialog}

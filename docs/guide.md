@@ -730,7 +730,9 @@ A new session (**New session**, ⌘T) starts where the focused session is. On an
 folder there, starting at `~`, because the folder picker is this computer's; a folder that does not exist
 opens in the machine's home folder. To start on a project that is not on the machine yet, use **Clone a
 repository…** on the new chat page (beside Browse…, or in the project menu): paste the repository's address,
-pick the folder it goes inside, and the chat opens on the new folder. It works for this computer and for
+pick the folder it goes inside, and the chat opens on the new folder. If that machine is signed in to
+GitHub, the dialog also lists your repositories there: search, pick an owner, and click one to fill in its
+address. It works for this computer and for
 another machine, and uses whatever git sign-in that machine already has; a private repository the machine
 cannot sign in to fails with git's own message. **Settings › GitHub** shows who each connected machine is
 signed in to GitHub as, read from that machine's GitHub CLI (`gh`); Maitty never sees the token. A machine

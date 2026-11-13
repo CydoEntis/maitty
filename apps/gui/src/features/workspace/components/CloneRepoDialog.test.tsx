@@ -1,12 +1,18 @@
 import { cleanup, render, renderHook, screen, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { GitHubList, GitHubRepoList } from '@/api/githubRepos'
 import { lastCloneDestination, rememberCloneDestination } from '../model/cloneDestination'
 import { CloneRepoDialog } from './CloneRepoDialog'
 import { useCloneRepo } from './useCloneRepo'
 
 const api = vi.hoisted(() => ({ cloneRepository: vi.fn<(machine: number, address: string, parent: string) => Promise<string>>() }))
 vi.mock('@/api/cloneRepository', () => api)
+const github = vi.hoisted(() => ({
+  loadGitHubOwners: vi.fn<(machine: number) => Promise<GitHubList<string[]>>>(),
+  loadGitHubRepos: vi.fn<(machine: number, owner: string | null, search: string) => Promise<GitHubList<GitHubRepoList>>>(),
+}))
+vi.mock('@/api/githubRepos', () => github)
 
 const ADDRESS = 'https://example.com/o/widgets.git'
 
@@ -14,6 +20,8 @@ afterEach(cleanup)
 beforeEach(() => {
   window.localStorage.clear()
   api.cloneRepository.mockReset()
+  github.loadGitHubOwners.mockReset().mockResolvedValue({ state: 'not-signed-in' })
+  github.loadGitHubRepos.mockReset().mockResolvedValue({ state: 'not-signed-in' })
 })
 
 type Clone = (address: string, parent: string) => Promise<string>
@@ -112,7 +120,7 @@ describe('the folder last cloned into', () => {
     const user = userEvent.setup()
     api.cloneRepository.mockResolvedValue('/srv/projects/widgets')
     rememberCloneDestination('kingdom', '/srv/projects')
-    const hook = renderHook(() => useCloneRepo({ machine: 3, where: 'kingdom', startIn: '~', chooseFolder: null }))
+    const hook = renderHook(() => useCloneRepo({ machine: 3, where: 'kingdom', startIn: '~', chooseFolder: null, onOpenGitHubSettings: vi.fn() }))
     let answered: Promise<string | null> = Promise.resolve(null)
     act(() => { answered = hook.result.current.open() })
     const view = render(<>{hook.result.current.dialog}</>)
