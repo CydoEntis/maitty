@@ -48,6 +48,9 @@ pub(in crate::daemon) struct Transcript {
     thread: String,
     turns: u64,
     open_turn: Option<String>,
+    /// The latest time a line of the open turn carried. A turn never ends before it: Claude writes a
+    /// command run while it worked after the turn's last reply, stamped with when it was typed.
+    turn_seen_ms: Option<u64>,
     /// The turn was announced by the provider (Codex `task_started`), so a user message inside it
     /// does not start another one.
     explicit_turn: bool,
@@ -73,6 +76,7 @@ impl Transcript {
             thread: thread.to_owned(),
             turns: 0,
             open_turn: None,
+            turn_seen_ms: None,
             explicit_turn: false,
             last_user_text: None,
             meta: crate::conversation::SessionMeta::default(),
@@ -103,6 +107,7 @@ impl Transcript {
 
     fn begin_turn(&mut self, id: Option<&str>, at_ms: Option<u64>, notes: &mut Vec<Note>) {
         self.close_turn("completed", at_ms, notes);
+        self.turn_seen_ms = at_ms;
         self.last_user_text = None;
         self.turns += 1;
         let id = id.map_or_else(|| format!("turn-{}", self.turns), str::to_owned);
@@ -121,6 +126,7 @@ impl Transcript {
         };
         let mut turn = json!({ "id": id, "status": status });
         if let Some(ms) = at_ms {
+            let ms = self.turn_seen_ms.map_or(ms, |seen| seen.max(ms));
             turn["completedAt"] = json!(ms / 1000);
         }
         notes.push(self.note("turn/completed", json!({ "turn": turn })));
@@ -181,6 +187,7 @@ impl Transcript {
             .get("timestamp")
             .and_then(Value::as_str)
             .and_then(iso_ms);
+        self.turn_seen_ms = self.turn_seen_ms.max(at_ms);
         let uuid = line
             .get("uuid")
             .and_then(Value::as_str)
@@ -210,9 +217,12 @@ impl Transcript {
             }
             Some("system") => match line.get("subtype").and_then(Value::as_str) {
                 Some("turn_duration") => self.close_turn("completed", at_ms, notes),
-                // Claude writes a command it ran itself either as a user line or as this one.
+                // Claude writes a command it ran itself either as a user line or as this one, which
+                // never holds what the person said.
                 Some("local_command") => {
-                    if let Some(text) = line.get("content").and_then(Value::as_str) {
+                    if let Some(text) = line.get("content").and_then(Value::as_str)
+                        && !matches!(claude_line(text), ClaudeLine::Said)
+                    {
                         self.claude_user_text(&uuid, text, at_ms, notes);
                     }
                 }
