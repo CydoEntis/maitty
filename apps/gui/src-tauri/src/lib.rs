@@ -139,6 +139,19 @@ async fn list_sessions(app: tauri::AppHandle) -> Result<serde_json::Value, Strin
         .map_err(|error| format!("{error:#}"))
 }
 
+/// What a helper of one of this computer's panes did. Another machine's helpers are not read in v1.
+#[tauri::command]
+async fn read_helper(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    term: u32,
+    helper: String,
+) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::read_helper(term, helper, wire.daemon(None, || daemon_executable(&app))?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
 #[tauri::command]
 async fn read_conversation(
     app: tauri::AppHandle,
@@ -1536,6 +1549,7 @@ pub fn run() {
             export::save_export,
             image_paste::send_pasted_image,
             read_conversation,
+            read_helper,
             conversation_diff,
             conversation_files,
             conversation_file,

@@ -655,6 +655,29 @@ export async function readConversationPage(id: number, cursor: HistoryCursor | n
   return page
 }
 
+// A helper's own record (ADR 0010). Entries stay raw: the chat projection validates each one.
+const HelperRecordSchema = z.object({
+  term: z.number().int().nonnegative(),
+  helper: z.string(),
+  entries: z.array(z.unknown()),
+  start_missing: z.boolean(),
+})
+export type HelperRecord = z.infer<typeof HelperRecordSchema>
+
+/** The longest helper id a pane's agent gives; the host and the daemon check it again. */
+const HELPER_ID_MAX = 128
+const HELPER_ID = /^[A-Za-z0-9_-]+$/
+
+/** What one of this computer's panes' helpers did, from its own record. */
+export async function readHelper(term: number, helper: string): Promise<HelperRecord> {
+  if (!isDesktop()) throw new Error("A helper's work needs the desktop app")
+  if (!Number.isSafeInteger(term) || term < 0) throw new Error('Pane id is invalid')
+  if (helper.length > HELPER_ID_MAX || !HELPER_ID.test(helper)) throw new Error('Helper id is invalid')
+  const record = await invokeParsed('read_helper', HelperRecordSchema, { term, helper })
+  if (record.term !== term || record.helper !== helper) throw new Error('Daemon returned a different helper')
+  return record
+}
+
 export async function loadConversationDiff(conversation: Conversation): Promise<ConversationDiff> {
   if (terminalOf(conversation.id) !== null) throw new Error('Changes are shown for chat sessions')
   if (!isDesktop() || conversation.generation === undefined) {

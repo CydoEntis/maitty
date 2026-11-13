@@ -21,6 +21,8 @@ conversation continuity are planned in phases 34–37:
   the v0.34.0 release candidate at the user's direction; legacy config tables are
   ignored, and old saved-run data is tolerated during session restore.
 - Status detection: working / needs you / done (until seen) / idle, from screen patterns, OSC progress and agent hooks — shipped — `crates/maitty-core/src/daemon/scan.rs`, `maitty hook` in `crates/maitty-terminal-client/src/cli.rs`
+- A helper's own steps in the desktop app's subagent chat, read from the record Claude or Codex keeps for it (this computer's panes; another machine's show the reported task and result) — shipped — `crates/maitty-core/src/daemon/conversation/helper_record.rs`, `apps/gui/src/features/chat/useHelperRecord.ts`
+- Workflow progress reports (`maitty workflow report`), kept per pane for display, never status (ADR 0010) — shipped, no view yet — `crates/maitty-shared/src/workflow.rs`, `crates/maitty-core/src/daemon/workflow.rs`
 - Trusted status reports (process tree or `MAITTY_PANE_TOKEN`) — shipped — `crates/maitty-core/src/daemon/term.rs`, `crates/maitty-terminal-client/src/cli.rs`
 - Agent kinds: Claude, Codex, Gemini, OpenCode, Cursor, Copilot, Amp, Qwen, Aider, Goose, Crush, Droid, Pi, Kiro, Grok, custom `[[agents]]` — shipped — `crates/maitty-core/src/config.rs`
 - New agent task box (project, worktree, agent, model, effort), presets and recipes as its choices, prewarm — shipped — `crates/maitty-terminal-client/src/client/screen/dialogs.rs`, `crates/maitty-terminal-client/src/client/recipes.rs`
