@@ -157,7 +157,9 @@ ignored and missing ones default, so a field can be added without a version bump
 `daemon/closed_sessions.rs` keeps the agent sessions that closed for good or whose agent exited
 with an error, in `closed-sessions-<socket>.json` in the data folder: `{"version": 1, "sessions":
 [...]}`, newest first, at most 50 (`CLOSED_SESSIONS_MAX`); the oldest drop off. An entry is the
-agent, its own conversation id, the folder, the branch, the name and the time (unix seconds). It
+agent, its own conversation id, the folder, the branch, the name and the time (unix seconds), and,
+for a session in a linked worktree, that worktree's top folder and its repository's main checkout
+(`worktree`, `repo`; absent from entries written before them). It
 holds no message, prompt or terminal output; the name is the one you or the agent gave it, cleaned
 and cut as a conversation's title is (`clean_title`), and the agent, id and branch are one clean
 line each, cut short. A session with no agent or conversation id leaves no entry, and the same
@@ -180,7 +182,17 @@ is read at start: a file that does not parse, or whose `version` is newer than t
 renamed to `<file>.bak` and the list starts empty with a logged warning. Every stored entry is
 checked as a new one is, unknown fields are ignored and missing ones default.
 
-## Project-specific: structured history cache foundation
+Reopening an entry (`daemon/reopen.rs`, `Command::ReopenClosedSession`) whose folder is gone makes
+its worktree again: only at the recorded `worktree` path, only in the recorded `repo` (which must
+still be a main checkout), only from the recorded branch as it exists there now. It never
+overwrites or deletes: anything at that path (a folder that is not that worktree, a file, a link)
+is refused and left alone, and the folder is made with a create that fails if one appeared since it
+was looked at, so git only fills a new empty folder; a failed `git worktree add` removes only that
+empty folder. A branch that is gone, or checked out in another worktree that is still there, fails
+with a message naming it and makes nothing. Git registrations whose folder is gone are pruned first
+(`git worktree prune`, which removes only git's own records of missing folders). An entry with no
+`worktree` and `repo` (outside a worktree, or written before them) cannot be made again.
+
 
 `daemon/conversation/history_storage.rs` is a private structured display cache,
 not a database or a replacement for provider-native context. `Cache::for_session`

@@ -25,6 +25,7 @@ mod persist;
 mod pr;
 #[cfg(unix)]
 mod provider_groups;
+mod reopen;
 mod repeats;
 mod repo;
 mod restore;
@@ -232,6 +233,13 @@ pub enum Ev {
         client: ClientId,
         tag: u64,
         listing: crate::protocol::FolderListing,
+    },
+    /// A closed session's folder is ready to start it in, its worktree made again if it was gone
+    /// (`Command::ReopenClosedSession`).
+    ClosedSessionReady {
+        client: ClientId,
+        cmd: String,
+        result: Result<reopen::Ready, String>,
     },
     SavedConversationsReady {
         client: ClientId,
@@ -1007,6 +1015,10 @@ impl Daemon {
                 anyhow::bail!("Only an app window can keep an agent warm")
             }
             Command::Prewarm { .. } | Command::DropPrewarm => Ok(()),
+            Command::ReopenClosedSession { .. } if self.client_is_agent(client) => {
+                anyhow::bail!("reopening a closed session is yours to do, not a pane's")
+            }
+            Command::ReopenClosedSession { .. } => self.may(client, Grant::Start, None),
             Command::NewWorkspace { .. }
             | Command::NewTab { .. }
             | Command::NewFleet { .. }
@@ -2216,6 +2228,9 @@ impl Daemon {
                 set_up,
                 result,
             } => self.branch_worktree_made(client, set_up, result),
+            Ev::ClosedSessionReady { client, cmd, result } => {
+                self.closed_session_ready(client, cmd, result)
+            }
             Ev::AgentWorktreeMade { client, result } => {
                 self.pending_ops -= 1;
                 match result {

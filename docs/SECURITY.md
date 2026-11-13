@@ -617,10 +617,21 @@ agent.
 ## Project-specific: closed sessions
 
 The closed-sessions list (`closed-sessions-<socket>.json`, DATABASE "closed sessions") holds each
-agent session's agent name, conversation id, folder, branch, name and time. It holds no prompts,
+agent session's agent name, conversation id, folder (with its worktree and repository when it
+was in one), branch, name and time. It holds no prompts,
 output or secrets, and the name is the one you or the agent gave it, never a prompt. The file is
 private to the user (0600 in a 0700 folder on Unix). `Query::ClosedSessions` is for human clients
 only: an agent pane or a structured runtime cannot read where other work was done.
+
+`Command::ReopenClosedSession { agent, session }` is for human clients only, the same way: a pane,
+a structured runtime or a rejected client is refused. It names an entry the daemon keeps, never a
+path, branch or command: the folder, branch and repository come from that entry, and the command
+typed is the agent's own resume template with the entry's conversation id, which must start with a
+letter or digit and hold only letters, digits, `_` and `-`, at most 128. Making a worktree again
+follows DATABASE "closed sessions": nothing at the path is ever overwritten. Another machine: the
+command is a worktree command, so a window sends it to this computer's daemon only, as it does
+`BranchWorktree` (API_PATTERNS "client routing"; remote worktree management is out of scope, ADR
+0007). Its answer is `Reply::Ok` or `Error`, which `remote_policy` already treats as an answer.
 
 ## Project-specific: followed transcripts
 

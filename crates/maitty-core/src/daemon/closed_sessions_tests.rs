@@ -8,6 +8,8 @@ fn closed(session: &str, at: u64) -> ClosedSession {
         branch: Some("main".into()),
         title: Some("fix the parser".into()),
         at,
+        worktree: None,
+        repo: None,
     }
 }
 

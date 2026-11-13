@@ -87,6 +87,7 @@ src/
     check_source.rs which checks a project has (yours, else the repo's .maitty/checks.toml), where each comes from, whether it may run
     check_stale.rs  a pass gone stale: the worktree's tree when a run starts, compared on the git poll
     closed_sessions.rs the agent sessions that closed for good or crashed, newest 50 (closed-sessions-<socket>.json): what a close or a failed exit records, read at start and written off the loop
+    reopen.rs    reopening a closed session: its worktree made again when the folder is gone (recorded path, branch and repository only), then its conversation resumed in a new session
     conversation/allowed.rs  commands you approved "always in this project" for a chat (chat-allowed-commands.json)
     helpers.rs   sessions starting helpers: the ask / always / never rule, the request a session's row shows, and the projects you said Always for (helper-projects.json)
     identity.rs  the daemon's random id, made on first start and kept in the data folder (daemon-id); sent in every snapshot
