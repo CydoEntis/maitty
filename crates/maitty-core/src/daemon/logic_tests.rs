@@ -6385,6 +6385,7 @@ fn desktop_and_phone_alerts_name_the_branch_of_a_worktree() {
         branch: "fix/early-alerts".into(),
         linked: true,
         main_root: std::path::PathBuf::from("/code/shop-api"),
+        detached: false,
     });
     assert_eq!(p.alert_place(), "shop-api · fix/early-alerts");
     p.head = None;
@@ -10028,6 +10029,7 @@ fn agent_session(d: &mut Daemon, term: TermId, session: &str) {
         branch: "main".into(),
         linked: false,
         main_root: t.cwd.clone(),
+        detached: false,
     });
 }
 
@@ -10210,6 +10212,7 @@ fn a_conversation_terminal_its_hooks_never_named_is_remembered_by_its_conversati
         awaiting_first_user_message: false,
         title: Some("parser fix".into()),
         archived: false,
+        worktree_origin: None,
     });
     d.command(0, Command::CloseSession { term: b }).unwrap();
     let [kept] = d.closed_sessions.list() else {
