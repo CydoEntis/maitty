@@ -11,7 +11,7 @@ const REMOVE_SETTLE_MS = 1500
 type RowProps = { entry: RepoWorktree; /** The main checkout's folder, where a missing worktree is made again from. */ main: string | null; machine: number; onChanged: () => void }
 
 function WorktreeRow({ entry, main, machine, onChanged }: RowProps) {
-  const standing = useQuery({ queryKey: ['worktree-standing', machine, entry.path], queryFn: () => worktreeStanding(entry.path, machine), retry: false })
+  const standing = useQuery({ queryKey: ['worktree-standing', machine, entry.path], queryFn: () => worktreeStanding(main ?? entry.path, entry.path, machine), retry: false })
   const client = useQueryClient()
   const [busy, setBusy] = useState(false)
   const [sure, setSure] = useState(false)

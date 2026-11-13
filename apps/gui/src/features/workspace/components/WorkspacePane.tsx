@@ -114,6 +114,7 @@ export function WorkspacePane({ shown, pane, kept }: {
           problem={problem}
           effort={session.agentEffort ?? null}
           rewind={rewind}
+          {...(rewindTerm === null ? {} : { fileSearch: { term: rewindTerm, folder: session.cwd, checkout: session.checkout } })}
           {...(chatOnly || session.machine !== LOCAL_MACHINE || session.branch === null ? {} : { branchMenu: { folder: session.cwd, onNewWorktree: () => { void moveToWorktree(session) }, ...(moveRefusal(session) === null ? {} : { newWorktreeBlocked: moveRefusal(session) ?? '' }) } })}
           paneStatus={session.status}
           usage={{ context: session.usage.context, limits: session.limits }}
