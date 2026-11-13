@@ -11,7 +11,12 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 84;
+pub const PROTOCOL_VERSION: u32 = 85;
+
+/// The first version whose client reads a reasoning item in a chat's history
+/// (`conversation::history::Content::Reasoning`). The daemon leaves them out of the pages it
+/// sends an older client, which could not decode a page that held one.
+pub const REASONING_ITEM_SINCE: u32 = 85;
 
 /// The first version whose daemon lists and forgets the commands approved "always in this project"
 /// (`Query::AllowedCommands`, `Command::ForgetAllowedCommand`).
@@ -2178,7 +2183,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 84);
+        assert_eq!(PROTOCOL_VERSION, 85);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2450,7 +2455,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 84);
+        assert_eq!(PROTOCOL_VERSION, 85);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()

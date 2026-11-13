@@ -45,6 +45,11 @@ pub enum Content {
     Unsupported {
         kind: String,
     },
+    /// A reasoning summary the provider published as plain text. Reasoning it keeps hidden or
+    /// encrypted is never held. A client older than `protocol::REASONING_ITEM_SINCE` is not sent one.
+    Reasoning {
+        text: String,
+    },
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
@@ -151,6 +156,29 @@ mod tests {
                 duration_ms: None,
             }
         );
+    }
+
+    /// A reasoning item is a new variant: a peer built before it cannot decode one, which is why
+    /// the daemon leaves them out of what it sends such a peer.
+    #[test]
+    fn a_peer_from_before_reasoning_items_cannot_read_one() {
+        #[derive(Debug, serde::Deserialize)]
+        #[allow(dead_code)]
+        enum OldContent {
+            TurnStatus,
+            Message { role: super::Role, text: String },
+            Unsupported { kind: String },
+        }
+        let reasoning = Content::Reasoning {
+            text: "Weighing two fixes".into(),
+        };
+        let sent = serde_json::to_value(&reasoning).unwrap();
+
+        assert_eq!(sent, json!({ "Reasoning": { "text": "Weighing two fixes" } }));
+        assert!(serde_json::from_value::<OldContent>(sent.clone()).is_err());
+        assert_eq!(serde_json::from_value::<Content>(sent).unwrap(), reasoning);
+        let unsupported = json!({ "Unsupported": { "kind": "reasoning" } });
+        assert!(serde_json::from_value::<OldContent>(unsupported).is_ok());
     }
 
     #[test]

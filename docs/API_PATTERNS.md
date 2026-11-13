@@ -501,6 +501,15 @@ paging cursor still goes stale on any change (`StaleCursor`) and the client star
 `epoch`, `delta`, `snapshot`, `resume` and `reset` are all defaulted, so an older client or daemon
 reads the rest as before (a test decodes the old shapes); no `PROTOCOL_VERSION` bump.
 
+A history entry's content is `TurnStatus`, `Message`, `Tool`, `Unsupported { kind }` or
+`Reasoning { text }`. A Codex `reasoning` item becomes `Reasoning` when its `summary` holds plain
+text (the parts joined as paragraphs, escapes stripped, cut at 64 KiB, secrets masked like a
+message); one with no summary text, whose reasoning is only encrypted, is skipped, and
+`item/reasoning/*` deltas are not read. The variant came in protocol 85 (`REASONING_ITEM_SINCE`);
+`COMPATIBLE_SINCE` stays 78 because the daemon leaves these entries out of the pages it sends an
+older client (`daemon::for_client`), which could not decode a page that held one. The desktop app
+reads the item and shows nothing for it yet.
+
 Daemon notifications reach
 attached projections only after current generation/connection acceptance, and
 client disconnect drops that attachment's memory. Production admission pages

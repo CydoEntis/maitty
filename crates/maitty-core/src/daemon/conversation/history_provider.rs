@@ -11,6 +11,8 @@ const TOOL_LABEL_CHARS: usize = 2048;
 const HELPER_TITLE_CHARS: usize = 120;
 /// Largest plan text kept for one plan item.
 const MAX_PLAN_BYTES: usize = 64 * 1024;
+/// Largest summary text kept for one reasoning item.
+const MAX_REASONING_BYTES: usize = 64 * 1024;
 
 fn tool_label(item: &Value) -> String {
     item.get("command")
@@ -102,10 +104,11 @@ pub(super) fn notification(
         item: text(item, "id")?.into(),
     };
     let kind = text(item, "type")?;
-    if kind == "reasoning" {
-        return Ok(None);
-    }
     let content = match kind {
+        "reasoning" => match reasoning_summary(item) {
+            Some(text) => Content::Reasoning { text },
+            None => return Ok(None),
+        },
         "agentMessage" => Content::Message {
             role: Role::Assistant,
             text: item
@@ -202,15 +205,38 @@ fn seconds_as_ms(turn: &Value, field: &str) -> Option<u64> {
 }
 
 fn bounded_plan(text: &str) -> String {
+    bounded(text, MAX_PLAN_BYTES, "plan")
+}
+
+/// `text` with terminal escapes stripped, cut at `max_bytes` with a note naming `what` was cut.
+fn bounded(text: &str, max_bytes: usize, what: &str) -> String {
     let clean = clean_text(text);
-    if clean.len() <= MAX_PLAN_BYTES {
+    if clean.len() <= max_bytes {
         return clean;
     }
-    let mut end = MAX_PLAN_BYTES;
+    let mut end = max_bytes;
     while !clean.is_char_boundary(end) {
         end -= 1;
     }
-    format!("{}\n... plan cut off", &clean[..end])
+    format!("{}\n... {what} cut off", &clean[..end])
+}
+
+/// The summary a Codex reasoning item publishes as plain text, its parts one paragraph each.
+/// `None` when it has none: the reasoning itself stays encrypted and is never read or kept.
+fn reasoning_summary(item: &Value) -> Option<String> {
+    let parts: Vec<&str> = item
+        .get("summary")?
+        .as_array()?
+        .iter()
+        // A plain string from the app server; `{ "text": … }` in the provider's own item shape.
+        .filter_map(|part| part.as_str().or_else(|| part.get("text")?.as_str()))
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .collect();
+    if parts.is_empty() {
+        return None;
+    }
+    Some(bounded(&parts.join("\n\n"), MAX_REASONING_BYTES, "reasoning"))
 }
 
 /// The first line of the task given to a helper agent, or the helper tool's name when the call

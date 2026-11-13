@@ -662,7 +662,8 @@ The structured-history cache reuses private-directory/file helpers:
 Windows. Binding fingerprints and numeric Maitty paths keep native identifiers
 out of filenames; pages remain sensitive conversation content, never diagnostics.
 Only current daemon-owned provider events may project into attached history.
-Unsupported raw provider objects are not retained. Cache disable serializes with
+Unsupported raw provider objects are not retained. Of a Codex reasoning item only the plain-text
+summary is kept, masked like a message and never logged; its encrypted content is not read. Cache disable serializes with
 writes and deletes only Maitty's socket-scoped history root, never native history.
 Without persistence, hydrated content belongs to an attachment and disappears on
 its disconnect. No credentials, real transcripts or model requests enter fixtures.

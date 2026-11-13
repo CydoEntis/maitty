@@ -282,25 +282,43 @@ fn provider_tool_lifecycle_replaces_one_row_and_preserves_failed_status() {
 }
 
 #[test]
-fn private_reasoning_items_do_not_make_user_visible_history_incomplete() {
+fn a_codex_reasoning_summary_is_kept_as_its_own_item_and_hidden_reasoning_is_not() {
     let mut attachments = Attachments::default();
     attachments.attach(1, ConversationId(1));
+    let mut completed = |item: serde_json::Value| {
+        attachments
+            .notification(
+                ConversationId(1),
+                "native",
+                "item/completed",
+                &json!({"threadId": "native", "turnId": "turn", "item": item}),
+            )
+            .unwrap();
+    };
 
-    attachments
-        .notification(
-            ConversationId(1),
-            "native",
-            "item/completed",
-            &json!({
-                "threadId": "native",
-                "turnId": "turn",
-                "item": {"id": "private", "type": "reasoning", "text": "not retained"}
-            }),
-        )
-        .unwrap();
+    completed(json!({
+        "id": "private",
+        "type": "reasoning",
+        "summary": [],
+        "encrypted_content": "gAAAAABhidden",
+    }));
+    completed(json!({
+        "id": "thought",
+        "type": "reasoning",
+        "summary": ["**Weighing two fixes**", {"type": "summary_text", "text": "The parser one is smaller.\u{1b}[31m"}],
+        "encrypted_content": "gAAAAABhidden",
+    }));
 
     let history = attachments.get(1).unwrap();
-    assert!(history.entries.is_empty());
+    assert_eq!(history.entries.len(), 1);
+    assert_eq!(history.entries[0].source.item, "thought");
+    assert_eq!(history.entries[0].state, ItemState::Completed);
+    assert_eq!(
+        history.entries[0].content,
+        Content::Reasoning {
+            text: "**Weighing two fixes**\n\nThe parser one is smaller.".into()
+        }
+    );
     assert_eq!(history.completeness, Completeness::Unknown);
 }
 

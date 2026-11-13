@@ -364,6 +364,21 @@ fn command_output_that_echoes_a_token_is_masked_in_an_entry() {
 }
 
 #[test]
+fn a_token_in_a_reasoning_summary_is_masked_in_an_entry() {
+    let mut entry = tool("", "");
+    entry.content = Content::Reasoning {
+        text: format!("The key is {}", github_token()),
+    };
+    redact_entry(&mut entry);
+    assert_eq!(
+        entry.content,
+        Content::Reasoning {
+            text: "The key is [redacted]".into()
+        }
+    );
+}
+
+#[test]
 fn reading_a_secret_file_with_a_shell_command_omits_the_output_only() {
     for command in ["cat .env", "tail -n 5 ~/.ssh/id_rsa", "grep KEY 'app/.env.local'"] {
         let mut entry = tool(command, "KEY=value\nOTHER=x");
