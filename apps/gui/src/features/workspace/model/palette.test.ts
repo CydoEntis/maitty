@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cellsOf, matchScore, OUTPUT_HIT_LIMIT, outputSnippet, PALETTE_LIMIT, searchPalette, withOutputHits, type PaletteItem } from './palette'
+import { cellsOf, firstHitPerPane, matchScore, OUTPUT_HIT_LIMIT, outputSnippet, PALETTE_LIMIT, searchPalette, withOutputHits, type PaletteItem } from './palette'
 
 const item = (id: string, label: string, extra: Partial<PaletteItem> = {}): PaletteItem => ({ id, label, kind: 'Action', run: () => undefined, ...extra })
 
@@ -42,16 +42,24 @@ describe('output hits in the palette', () => {
     expect(outputSnippet('\u001b[1;31mfailed\u001b[0m\tto\u0007 build\r', 'build')).toBe('failed to build')
   })
 
-  it('cuts a long line by display width, keeping the match in view', () => {
+  it('drops 8-bit escape sequences and bidirectional controls', () => {
+    expect(outputSnippet('\u009b1;31mred‮ ⁦text⁩‎؜', 'red')).toBe('red text')
+  })
+
+  it('cuts a long line to 60 cells, keeping 16 cells before the match', () => {
     const snippet = outputSnippet(`${'x'.repeat(150)} the needle ${'y'.repeat(150)}`, 'needle')
-    expect(snippet).toContain('needle')
-    expect(snippet.startsWith('…')).toBe(true)
-    expect(snippet.endsWith('…')).toBe(true)
-    expect(cellsOf(snippet)).toBeLessThanOrEqual(60)
+    expect(snippet).toBe(`…${'x'.repeat(11)} the needle ${'y'.repeat(35)}…`)
+    expect(cellsOf(snippet)).toBe(60)
   })
 
   it('counts a wide character or an emoji as two cells', () => {
     expect(cellsOf('漢a👍🏽')).toBe(5)
-    expect(outputSnippet('漢'.repeat(100), '漢').length).toBeLessThanOrEqual(30)
+    expect(outputSnippet('漢'.repeat(100), '漢')).toBe(`${'漢'.repeat(29)}…`)
+    expect(outputSnippet(`${'漢'.repeat(20)}needle`, 'needle')).toBe(`…${'漢'.repeat(8)}needle`)
+  })
+
+  it('keeps only the first hit of each pane', () => {
+    const hit = (term: number, line: number) => ({ term, line, text: '', machine: 0 })
+    expect(firstHitPerPane([hit(1, 9), hit(1, 4), hit(2, 3), { ...hit(1, 2), machine: 1 }])).toEqual([hit(1, 9), hit(2, 3), { ...hit(1, 2), machine: 1 }])
   })
 })

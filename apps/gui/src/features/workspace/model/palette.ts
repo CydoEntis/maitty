@@ -1,3 +1,5 @@
+import type { SearchHit } from '@/features/find/api'
+
 export type PaletteKind = 'Action' | 'Session' | 'Project' | 'Theme' | 'Output'
 
 export type PaletteItem = {
@@ -55,6 +57,17 @@ export const OUTPUT_HIT_LIMIT = 10
 /** Shorter queries match too much output to be worth asking the service. */
 export const OUTPUT_MIN_CHARS = 3
 
+/** The first hit of each pane (the service lists a pane's newest line first), so one busy session cannot fill the list. */
+export function firstHitPerPane(hits: readonly SearchHit[]): SearchHit[] {
+  const seen = new Set<string>()
+  return hits.filter((hit) => {
+    const pane = `${String(hit.machine)}/${String(hit.term)}`
+    if (seen.has(pane)) return false
+    seen.add(pane)
+    return true
+  })
+}
+
 /** The palette's results with the session-output hits after every other kind. */
 export function withOutputHits(results: readonly PaletteItem[], hits: readonly PaletteItem[]): PaletteItem[] {
   return [...results, ...hits.slice(0, OUTPUT_HIT_LIMIT)]
@@ -64,8 +77,10 @@ const SNIPPET_CELLS = 60
 const CELLS_BEFORE_MATCH = 16
 const ELLIPSIS = '…'
 // eslint-disable-next-line no-control-regex -- terminal output is made of control characters; these strip them
-const ESCAPE_SEQUENCE = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\x5c)?|.)?/gu
+const ESCAPE_SEQUENCE = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\x5c)?|.)?|\x9b[0-?]*[ -/]*[@-~]/gu
 const CONTROL = /\p{Cc}+/gu
+// A program could reverse the rest of the row with these, so a line would not read as what it printed.
+const BIDI_CONTROL = /[\u{200e}\u{200f}\u{061c}\u{202a}-\u{202e}\u{2066}-\u{2069}]/gu
 const WIDE = /[\u{1100}-\u{115f}\u{2e80}-\u{a4cf}\u{ac00}-\u{d7a3}\u{f900}-\u{faff}\u{fe30}-\u{fe4f}\u{ff00}-\u{ff60}\u{ffe0}-\u{ffe6}\u{1f300}-\u{1faff}\u{20000}-\u{3fffd}]/u
 const PICTOGRAPH = /^\p{Extended_Pictographic}/u
 const WIDE_CELLS = 2
@@ -98,9 +113,10 @@ function fitCells(parts: readonly string[], cells: number): string[] {
 
 /** A line of terminal output as one short line of plain text, cut by display width with the match in view. */
 export function outputSnippet(line: string, query: string): string {
-  const text = line.replace(ESCAPE_SEQUENCE, '').replace(CONTROL, ' ').replace(/\s+/gu, ' ').trim()
+  const text = line.replace(ESCAPE_SEQUENCE, '').replace(BIDI_CONTROL, '').replace(CONTROL, ' ').replace(/\s+/gu, ' ').trim()
   const at = Math.max(0, text.toLowerCase().indexOf(query.trim().toLowerCase()))
-  const start = Math.max(0, graphemes(text.slice(0, at)).length - CELLS_BEFORE_MATCH)
+  const before = graphemes(text.slice(0, at))
+  const start = before.length - fitCells(before.toReversed(), CELLS_BEFORE_MATCH).length
   const lead = start > 0 ? ELLIPSIS : ''
   const rest = graphemes(text).slice(start)
   const whole = fitCells(rest, SNIPPET_CELLS - lead.length)

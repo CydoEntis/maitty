@@ -603,10 +603,12 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   each named as its row is with its agent and project ("Needs you" in amber), then their projects, then the actions. A
   run of the typed text ranks above letters that merely appear in order; ↑ ↓ move, ↵ runs, Esc closes. Three or more
   typed characters also search what this computer's sessions printed recently (`search_panes`, the same search as
-  Find's *All sessions*; a session on another machine is not searched), 250 ms after typing pauses: up to 10 hits
-  follow everything else under an IN SESSIONS heading, each the session's name and the matching line in mono, cleaned of
-  escape codes and cut to 60 cells around the match. Choosing one opens that session (it does not scroll to the line).
-  An answer for an older query is dropped, and a failed search adds nothing.
+  Find's *All sessions*; a session on another machine is not searched), 300 ms after typing pauses, one search at a
+  time (a query typed while one runs waits, and only the newest is sent): up to 10 hits, one per session (its newest
+  matching line), follow everything else in an IN SESSIONS group, each the session's name and the line in mono, cleaned
+  of escape codes, control and bidirectional characters and cut to 60 cells with 16 before the match. Choosing one
+  opens that session (it does not scroll to the line). An answer for an older query is dropped, and a failed search
+  adds nothing.
 - **No Inbox.** What needs you, what stopped and what finished are the first sections of the sidebar's status list, and
   the notification card and the tray menu say the same; the desktop app has no separate Inbox panel.
 - **New chat page on another machine.** The same page as on this computer (layout 2f), titled by the machine's tray fact `On <nickname or name>`: its projects, a pasted path, no Browse…, no branch, worktree or attach controls, and a model button that holds only the agent switch. There is no New session dialog.

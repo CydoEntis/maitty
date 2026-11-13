@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SearchHit } from '@/features/find/api'
@@ -17,6 +17,8 @@ function renderPalette() {
 }
 
 const options = () => screen.getAllByRole('option').map((option) => option.textContent)
+const PAST_DEBOUNCE_MS = 400
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 beforeEach(() => {
   vi.mocked(isTauri).mockReturnValue(true)
@@ -46,7 +48,7 @@ describe('Command palette output search', () => {
   it('never asks for fewer than three characters', async () => {
     const input = renderPalette()
     fireEvent.change(input, { target: { value: 'bu' } })
-    await new Promise((resolve) => setTimeout(resolve, 400))
+    await pause(PAST_DEBOUNCE_MS)
     expect(invoke).not.toHaveBeenCalled()
   })
 
@@ -60,6 +62,42 @@ describe('Command palette output search', () => {
     answerOld([{ term: 1, line: 1, text: 'old line' }])
     await waitFor(() => { expect(invoke).toHaveBeenCalledTimes(2) })
     expect(screen.queryByText('In sessions')).toBeNull()
+  })
+
+  it('runs one search at a time and then only the newest query typed meanwhile', async () => {
+    let answerFirst: (hits: unknown) => void = () => undefined
+    vi.mocked(invoke).mockImplementationOnce(() => new Promise((resolve) => { answerFirst = resolve })).mockResolvedValue([])
+    const input = renderPalette()
+    fireEvent.change(input, { target: { value: 'abc' } })
+    await waitFor(() => { expect(invoke).toHaveBeenCalledTimes(1) })
+    fireEvent.change(input, { target: { value: 'abcd' } })
+    await pause(PAST_DEBOUNCE_MS)
+    fireEvent.change(input, { target: { value: 'abcde' } })
+    await pause(PAST_DEBOUNCE_MS)
+    expect(invoke).toHaveBeenCalledTimes(1)
+    answerFirst([])
+    await waitFor(() => { expect(invoke).toHaveBeenCalledTimes(2) })
+    expect(invoke).toHaveBeenLastCalledWith('search_panes', { query: 'abcde' })
+  })
+
+  it('lists one hit per session so a busy session cannot fill the list', async () => {
+    const busy = Array.from({ length: 14 }, (_, index) => ({ term: 1, line: 20 - index, text: 'build step' }))
+    vi.mocked(invoke).mockResolvedValue([...busy, { term: 2, line: 5, text: 'build done' }])
+    const input = renderPalette()
+    fireEvent.change(input, { target: { value: 'build' } })
+    const group = await screen.findByRole('group', { name: 'In sessions' })
+    expect(within(group).getAllByRole('option').map((option) => option.textContent)).toEqual(['pane 1build step', 'pane 2build done'])
+  })
+
+  it('points the input at the selected option', async () => {
+    vi.mocked(invoke).mockResolvedValue([{ term: 7, line: 3, text: 'build failed' }])
+    const input = renderPalette()
+    fireEvent.change(input, { target: { value: 'build' } })
+    await screen.findByRole('group', { name: 'In sessions' })
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    const selected = screen.getAllByRole('option').find((option) => option.getAttribute('aria-selected') === 'true')
+    expect(selected?.textContent).toBe('pane 7build failed')
+    expect(input.getAttribute('aria-activedescendant')).toBe(selected?.id)
   })
 
   it('adds nothing and shows no error when the search fails', async () => {
