@@ -927,6 +927,14 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   The note goes when the box is emptied or the chat is left; a slash command or `!` line goes out without it and
   leaves it for the next message. The item is greyed, with the reason in the menu, while the agent works (the daemon
   refuses then too, for a terminal agent and for a chat working in the same checkout) or the daemon is offline; a session on another machine gets the local-only refusal.
+  It is also greyed, "Another session is using this folder", while another open session on the same machine runs
+  anything but a plain shell in the same checkout, idle or not, since a restore would undo its files too
+  (`sharedCheckoutRefusal` in `workspace/model/sharedCheckout.ts`). Same checkout means the same top folder (the
+  daemon's `top`, the pane's main checkout or linked worktree), compared without case and with either separator; a
+  session in a subfolder shares it, another linked worktree of the same repository does not. A chat the daemon gives no
+  checkout for counts when its folder is inside this one. The session's own terminals and closed sessions do not
+  count. The check is the window's; the daemon holds no lock. A refusal that arrives while the confirm is open makes
+  the confirm restore nothing and say why.
 - **Cards** (`features/chat/components/`). Every fact the history carries is shown, and a missing one is said to be
   unavailable (a diff the history did not keep, a checklist without items, a command time or exit code the provider
   does not report, a turn without the daemon's times shows "Turn finished", not an invented duration). Only a step

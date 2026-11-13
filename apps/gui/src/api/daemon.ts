@@ -40,6 +40,8 @@ const TerminalSessionSchema = z.object({
   branch: z.string().nullable().default(null),
   // The pane runs in a linked worktree rather than the main checkout (the daemon's `TermInfo.linked`).
   linked: z.boolean().default(false),
+  // The top folder of the checkout (main or a linked worktree) the pane is in (`TermInfo.top`).
+  top: z.string().nullable().default(null),
   label: z.string().default(''),
   pinned: z.boolean().default(false),
   // Whether the agent's hooks have reported in; an agent started before they were installed never does.
@@ -1253,6 +1255,7 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
     nativePane: term.id,
     ...(machine ? { machine: machine.id, machineName: machine.name } : {}),
     linked: term.linked,
+    checkout: term.top,
     hasDiff: term.diff_added + term.diff_removed > 0,
     diffAdded: term.diff_added,
     diffRemoved: term.diff_removed,
@@ -1326,6 +1329,7 @@ function toConversation(summary: ConversationSummary, workspaces: WorkspaceSumma
     ...(chatSession
       ? {
           cwd,
+          checkout: summary.worktree,
           repo: root === null ? null : (root.split(/[\\/]/).filter(Boolean).at(-1) ?? null),
           agent: summary.provider.toLowerCase(),
           process: summary.provider.toLowerCase(),
