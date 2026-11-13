@@ -11,7 +11,38 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 84;
+pub const PROTOCOL_VERSION: u32 = 85;
+
+/// The first version whose daemon lists an agent's saved conversations for a folder
+/// (`Query::SavedConversations`).
+pub const SAVED_CONVERSATIONS_SINCE: u32 = 85;
+
+/// The most conversations one `Reply::SavedConversations` carries.
+pub const SAVED_CONVERSATIONS_MAX: usize = 20;
+
+/// The longest first message a saved conversation is listed with, in characters.
+pub const SAVED_FIRST_MESSAGE_MAX_CHARS: usize = 200;
+
+/// A conversation an agent saved on the daemon's computer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedConversation {
+    /// The agent's own id for it: what its resume option takes.
+    pub id: String,
+    /// The first thing the person typed, as one clean line of at most
+    /// `SAVED_FIRST_MESSAGE_MAX_CHARS` characters.
+    pub first_message: String,
+    /// When its file was last written (unix seconds).
+    pub last_active: u64,
+}
+
+/// What `Query::SavedConversations` found.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SavedConversations {
+    /// Newest first, at most `SAVED_CONVERSATIONS_MAX`; empty when the folder has none.
+    Listed(Vec<SavedConversation>),
+    /// The daemon reads no saved conversations for this agent.
+    NotSupported,
+}
 
 /// The first version whose daemon lists and forgets the commands approved "always in this project"
 /// (`Query::AllowedCommands`, `Command::ForgetAllowedCommand`).
@@ -821,6 +852,14 @@ pub enum Query {
         path: String,
         tag: u64,
     },
+    /// The conversations `agent` (`claude`, `codex`) saved for `folder` on this daemon's computer,
+    /// newest first (human clients only). `folder` is absolute or starts with `~`. The answer
+    /// echoes `tag`.
+    SavedConversations {
+        agent: String,
+        folder: String,
+        tag: u64,
+    },
     List,
     /// Plain-text screen contents of a terminal (the visible screen).
     Read {
@@ -1030,6 +1069,10 @@ pub enum Reply {
     Folders {
         tag: u64,
         listing: FolderListing,
+    },
+    SavedConversations {
+        tag: u64,
+        found: SavedConversations,
     },
 }
 
@@ -1796,7 +1839,10 @@ impl ServerMsg {
     /// a client older than that. A message added while `COMPATIBLE_SINCE` stays behind gets its
     /// own arm here; everything else is as old as the window.
     pub fn introduced_in(&self) -> u32 {
-        COMPATIBLE_SINCE
+        match self {
+            ServerMsg::Reply(Reply::SavedConversations { .. }) => SAVED_CONVERSATIONS_SINCE,
+            _ => COMPATIBLE_SINCE,
+        }
     }
 }
 
@@ -1812,6 +1858,7 @@ impl ClientMsg {
             ClientMsg::Command(Command::ConversationClose { .. } | Command::ConversationUndoClose { .. }) => CHAT_CLOSE_SINCE,
             ClientMsg::Command(Command::ConversationAllowAlways { .. }) => ALLOW_ALWAYS_SINCE,
             ClientMsg::Query(Query::AllowedCommands) | ClientMsg::Command(Command::ForgetAllowedCommand { .. }) => ALLOWED_COMMANDS_SINCE,
+            ClientMsg::Query(Query::SavedConversations { .. }) => SAVED_CONVERSATIONS_SINCE,
             _ => COMPATIBLE_SINCE,
         }
     }
@@ -2136,6 +2183,18 @@ mod tests {
                     truncated: false,
                 },
             }),
+            ServerMsg::Reply(Reply::SavedConversations {
+                tag: 8,
+                found: SavedConversations::Listed(vec![SavedConversation {
+                    id: "0195c0de-0000-7000-8000-000000000001".into(),
+                    first_message: "Rename the export button".into(),
+                    last_active: 1_780_000_000,
+                }]),
+            }),
+            ServerMsg::Reply(Reply::SavedConversations {
+                tag: 9,
+                found: SavedConversations::NotSupported,
+            }),
             ServerMsg::Reply(Reply::TerminalReplay(vec![27, b'[', b'H'])),
             ServerMsg::Error("nope".into()),
             ServerMsg::Notice("saved".into()),
@@ -2218,7 +2277,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 84);
+        assert_eq!(PROTOCOL_VERSION, 85);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2601,7 +2660,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 84);
+        assert_eq!(PROTOCOL_VERSION, 85);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -3438,5 +3497,34 @@ mod tests {
         let forget = ClientMsg::Command(Command::ForgetAllowedCommand { project: PathBuf::from("/code"), command_sha256: "ab".into() });
         assert_eq!((list.introduced_in(), forget.introduced_in()), (ALLOWED_COMMANDS_SINCE, ALLOWED_COMMANDS_SINCE));
         const { assert!(ALLOWED_COMMANDS_SINCE > COMPATIBLE_SINCE && ALLOWED_COMMANDS_SINCE <= PROTOCOL_VERSION) };
+    }
+
+    /// Listing saved conversations is a new query and a new reply: a daemon built before it is never
+    /// asked, a client built before it is never sent the reply, and neither could read the other's.
+    #[test]
+    fn saved_conversations_pass_only_between_peers_that_know_them() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldQuery {
+            ListFolders { path: String, tag: u64 },
+        }
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldReply {
+            Ok,
+        }
+        let ask = Query::SavedConversations { agent: "claude".into(), folder: "~/code/app".into(), tag: 2 };
+        let answer = Reply::SavedConversations { tag: 2, found: SavedConversations::NotSupported };
+        assert!(decode::<OldQuery>(&encode(&ask).unwrap()).is_err());
+        assert!(decode::<OldReply>(&encode(&answer).unwrap()).is_err());
+        assert!(matches!(
+            decode::<Query>(&encode(&ask).unwrap()),
+            Ok(Query::SavedConversations { tag: 2, .. })
+        ));
+        let old_listing = encode(&Query::ListFolders { path: "~".into(), tag: 1 }).unwrap();
+        assert!(matches!(decode::<Query>(&old_listing), Ok(Query::ListFolders { tag: 1, .. })), "an older client's query still reads");
+        assert_eq!(ClientMsg::Query(ask).introduced_in(), SAVED_CONVERSATIONS_SINCE);
+        assert_eq!(ServerMsg::Reply(answer).introduced_in(), SAVED_CONVERSATIONS_SINCE);
+        const { assert!(SAVED_CONVERSATIONS_SINCE > COMPATIBLE_SINCE && SAVED_CONVERSATIONS_SINCE <= PROTOCOL_VERSION) };
     }
 }
