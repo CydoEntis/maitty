@@ -9,6 +9,26 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+/// Why a cache cannot be used, as a category only: a decode error's own text can quote an entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Unreadable {
+    Decode,
+    Corrupt,
+    Binding,
+    Exhausted,
+}
+impl std::fmt::Display for Unreadable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Decode => "decode",
+            Self::Corrupt => "corrupt",
+            Self::Binding => "binding",
+            Self::Exhausted => "exhausted",
+        })
+    }
+}
+impl std::error::Error for Unreadable {}
+
 const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -238,6 +258,43 @@ impl Cache {
             .context("syncing history directory")?;
         Ok(true)
     }
+    /// Loads a conversation's cached history. A cache this daemon can tell is unusable (an entry
+    /// kind it does not know, a corrupt or missing page, a changed binding, an exhausted
+    /// revision) is moved aside to `<id>.bad` (one kept) and reported as absent, so the daemon
+    /// still starts and the history is read again from the agent; the old files stay on disk
+    /// because the agent may no longer hold the history. Any other failure (a sharing violation,
+    /// too many open files, an I/O error) is returned with the files untouched. Only the
+    /// conversation id and a category are logged, never the error text, which can quote an
+    /// entry.
+    pub(super) fn load_or_rebuild(
+        &self,
+        conversation: ConversationId,
+        binding: &NativeBinding,
+    ) -> Result<Option<History>> {
+        match self.load(conversation, binding) {
+            Err(error) => match error.downcast_ref::<Unreadable>() {
+                Some(category) => {
+                    let _guard = self
+                        .state
+                        .lock()
+                        .map_err(|_| anyhow::anyhow!("history cache lock poisoned"))?;
+                    let dir = self.root.join(conversation.0.to_string());
+                    let aside = self.root.join(format!("{}.bad", conversation.0));
+                    remove(&aside)?;
+                    std::fs::rename(&dir, &aside)
+                        .context("moving an unreadable history cache aside")?;
+                    tracing::warn!(
+                        conversation = conversation.0,
+                        category = %category,
+                        "Cached conversation history is unreadable; kept as .bad and read again from the agent"
+                    );
+                    Ok(None)
+                }
+                None => Err(error),
+            },
+            loaded => loaded,
+        }
+    }
     pub(super) fn load(
         &self,
         conversation: ConversationId,
@@ -252,46 +309,42 @@ impl Cache {
         }
         let dir = self.root.join(conversation.0.to_string());
         let bytes = match bounded_read(&dir.join("manifest.json"), MAX_MANIFEST_BYTES) {
-            Err(error)
-                if error
-                    .downcast_ref::<std::io::Error>()
-                    .is_some_and(|e| e.kind() == std::io::ErrorKind::NotFound) =>
-            {
-                return Ok(None);
-            }
+            Err(error) if is_not_found(&error) => return Ok(None),
             result => result?,
         };
         let manifest: Manifest =
-            serde_json::from_slice(&bytes).context("invalid history manifest")?;
+            serde_json::from_slice(&bytes).map_err(|_| Unreadable::Decode)?;
         if manifest.revision == u64::MAX {
-            return Err(IncompleteReason::RevisionExhausted.into());
+            return Err(Unreadable::Exhausted.into());
         }
         if manifest.version != 1
             || manifest.conversation != conversation
             || manifest.binding != fingerprint(binding)?
         {
-            bail!("history binding or format mismatch; native hydration required");
+            return Err(Unreadable::Binding.into());
         }
         let mut history = History::new(conversation);
         for page in manifest.pages {
-            let bytes = bounded_read(
+            let bytes = match bounded_read(
                 &dir.join(format!("{}.json", page.number)),
                 MAX_READ_BYTES as u64,
-            )
-            .context("history incomplete: missing or unreadable page")?;
+            ) {
+                Err(error) if is_not_found(&error) => return Err(Unreadable::Corrupt.into()),
+                result => result.context("reading a history page")?,
+            };
             if bytes.len() != page.bytes || format!("{:x}", Sha256::digest(&bytes)) != page.hash {
-                bail!("history incomplete: corrupt page");
+                return Err(Unreadable::Corrupt.into());
             }
             let entries: Vec<super::history::Entry> =
-                serde_json::from_slice(&bytes).context("history incomplete: invalid page")?;
+                serde_json::from_slice(&bytes).map_err(|_| Unreadable::Decode)?;
             if entries.is_empty() || entries.len() > MAX_READ_ENTRIES {
-                bail!("history incomplete: invalid page count");
+                return Err(Unreadable::Corrupt.into());
             }
             for entry in entries {
                 if entry.source.conversation != conversation
                     || history.entries.iter().any(|e| e.source == entry.source)
                 {
-                    bail!("history incomplete: invalid source identity");
+                    return Err(Unreadable::Corrupt.into());
                 }
                 history.entries.push(entry);
             }
@@ -301,29 +354,10 @@ impl Cache {
         Ok(Some(history))
     }
 }
-impl Cache {
-    /// Loads a conversation's cached history, or `None` when it cannot be used. A cache this
-    /// daemon cannot read (an entry kind a newer daemon wrote, a corrupt page, a changed binding)
-    /// must not stop the daemon from starting: the history is read again from the agent, and the
-    /// next commit replaces the old files. Only the conversation id and the error are logged,
-    /// never an entry's text.
-    pub(super) fn load_or_rebuild(
-        &self,
-        conversation: ConversationId,
-        binding: &NativeBinding,
-    ) -> Option<History> {
-        match self.load(conversation, binding) {
-            Ok(history) => history,
-            Err(error) => {
-                tracing::warn!(
-                    conversation = conversation.0,
-                    error = %format!("{error:#}"),
-                    "Cached conversation history is unreadable; rebuilding it from the agent"
-                );
-                None
-            }
-        }
-    }
+fn is_not_found(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<std::io::Error>()
+        .is_some_and(|e| e.kind() == std::io::ErrorKind::NotFound)
 }
 fn bounded_read(path: &Path, limit: u64) -> Result<Vec<u8>> {
     use std::io::Read;
@@ -333,7 +367,7 @@ fn bounded_read(path: &Path, limit: u64) -> Result<Vec<u8>> {
         .read_to_end(&mut bytes)
         .context("reading history file")?;
     if bytes.len() as u64 > limit {
-        bail!("history file exceeds size limit");
+        return Err(Unreadable::Corrupt.into());
     }
     Ok(bytes)
 }

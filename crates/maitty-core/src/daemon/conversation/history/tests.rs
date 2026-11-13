@@ -282,6 +282,30 @@ fn provider_tool_lifecycle_replaces_one_row_and_preserves_failed_status() {
 }
 
 #[test]
+fn a_token_that_straddles_the_reasoning_cut_is_masked_before_it() {
+    let token = format!("ghp_{}", "aB3d".repeat(9));
+    // The token starts a few bytes before the 64 KiB cut, so cutting first would leave a prefix
+    // no pattern matches.
+    let text = format!("{} {token}", "x".repeat(64 * 1024 - 10));
+    let mut attachments = Attachments::default();
+    attachments.attach(1, ConversationId(1));
+    attachments
+        .notification(
+            ConversationId(1),
+            "native",
+            "item/completed",
+            &json!({"threadId": "native", "turnId": "turn", "item": {
+                "id": "thought", "type": "reasoning", "summary": [text], "content": []
+            }}),
+        )
+        .unwrap();
+    let Content::Reasoning { text } = &attachments.get(1).unwrap().entries[0].content else {
+        panic!("not a reasoning item");
+    };
+    assert!(!text.contains("ghp_"), "{}", &text[text.len().saturating_sub(60)..]);
+}
+
+#[test]
 fn a_codex_reasoning_summary_is_kept_as_its_own_item_and_hidden_reasoning_is_not() {
     let mut attachments = Attachments::default();
     attachments.attach(1, ConversationId(1));

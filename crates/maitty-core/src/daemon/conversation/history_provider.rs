@@ -235,7 +235,10 @@ fn reasoning_summary(item: &Value) -> Option<String> {
     if parts.is_empty() {
         return None;
     }
-    Some(bounded(&parts.join("\n\n"), MAX_REASONING_BYTES, "reasoning"))
+    // Masked before the cut: a secret split by the cut would no longer match a pattern.
+    let joined = parts.join("\n\n");
+    let masked = super::redact::redact_text(&joined);
+    Some(bounded(&masked, MAX_REASONING_BYTES, "reasoning"))
 }
 
 /// The first line of the task given to a helper agent, or the helper tool's name when the call

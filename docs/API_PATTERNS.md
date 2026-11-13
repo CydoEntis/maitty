@@ -567,10 +567,17 @@ message); one with no summary text, whose reasoning is only encrypted, is skippe
 `COMPATIBLE_SINCE` stays 78 because the daemon leaves these entries out of the pages it sends an
 older client (`daemon::for_client`), which could not decode a page that held one. The desktop app
 reads the item and shows nothing for it yet.
-A history cache the daemon cannot read (an entry kind a newer daemon wrote, a corrupt page, a changed
-binding) never stops it starting: `Cache::load_or_rebuild` logs the conversation id and the error
-(never entry text), treats the history as absent, and the next native read and commit replace it.
-Daemons shipped before this change still fail on an unknown kind; it protects the next one.
+A history cache the daemon can tell is unusable (an entry kind it does not know, a corrupt or
+missing page, a changed binding, an exhausted revision) never stops it starting:
+`Cache::load_or_rebuild` moves the conversation's cache aside to `<id>.bad` (one kept, replaced by
+the next), logs the conversation id and a category (`decode`, `corrupt`, `binding`, `exhausted`;
+never the error text, which can quote an entry), and treats the history as absent, so it is read
+again from the agent. That read can come back short if the agent no longer holds the
+conversation (its transcript cleaned or compacted); the `.bad` files are the only copy then and
+are kept for a person to recover. Any other failure (a sharing violation, too many open files,
+an I/O error) is returned as before, with the files untouched. **Rolling back to a daemon from
+before protocol 93 after a reasoning item was cached still refuses to start:** that daemon cannot
+decode the page and cannot be changed; the fix only protects the next unknown entry kind.
 
 Daemon notifications reach
 attached projections only after current generation/connection acceptance, and
