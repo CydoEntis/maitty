@@ -13,6 +13,7 @@ type Props = {
 /** What the picker says when it has no rows, or what its rows leave out. */
 function noteOf(found: FoundFiles | null): string | null {
   if (found === null) return 'Looking for files…'
+  if (found.offline) return 'Machine offline'
   if (found.error !== null) return `Could not search the files: ${found.error}`
   if (found.paths.length === 0) return 'No file matches. Keep typing, or Esc to close.'
   return null

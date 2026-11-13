@@ -1042,8 +1042,13 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   `../other/y.rs`), and one with whitespace or a `"` is written in double quotes, its own quotes escaped as `\"`. Folders are matched
   without case on a Windows drive path. The message stays plain text. A list of 50 says
   only the best 50 are listed; a daemon that stopped its walk early says some files may be missing. A failed search,
-  a daemon older than protocol 89 among them, is one quiet line in the list. It is not offered for a session on another
-  machine or one with no pane to ask.
+  a daemon older than protocol 89 among them, is one quiet line in the list. For a session on another machine the
+  picker reads that machine's folder index instead (`index_remote_files`, the host's ssh index the Get a file dialog
+  uses; no daemon question, so no protocol floor): the session's folder is indexed once as the list opens, again at the
+  next `@`, and the box ranks the index itself (`fuzzyFind`, the dialog's ranking); the paths are already relative to
+  the folder. Until the index comes the list says "Looking for files…" with the keys held as above; a failed index is
+  the same quiet line; a machine shown as down says "Machine offline" and asks nothing. It is not offered in the
+  browser build or for a session of this computer with no pane to ask.
 - **Attachments** (ticket 20). A paperclip left of the text box (tooltip and `aria-label` "Attach files",
   or "Attach files: <reason>" while the composer is off; `aria-disabled`, not `disabled`, so the reason can be read),
   a drop on the composer, or a bare image pasted into the box adds files to the draft; a paste that holds any text
