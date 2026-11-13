@@ -10,6 +10,8 @@ const closed = (over: Partial<ClosedSession> = {}): ClosedSession => ({
   title: 'Fix the parser',
   at: 1_700_000_000,
   folder_present: true,
+  worktree: null,
+  repo: null,
   ...over,
 })
 
@@ -19,9 +21,17 @@ describe('reopening a closed session', () => {
     expect(reopenRequest(closed({ agent: 'codex' }))?.agent).toBe('codex')
   })
 
-  it('refuses a session whose folder is gone', () => {
-    expect(reopenRefusal(closed({ folder_present: false }))).toBe('folder removed')
+  it('refuses a session whose folder is gone and cannot be made again', () => {
+    expect(reopenRefusal(closed({ folder_present: false }))).toBe('folder removed; cannot be made again')
     expect(reopenRequest(closed({ folder_present: false }))).toBeNull()
+    const noBranch = closed({ folder_present: false, worktree: '/dev/app', repo: '/dev/main', branch: null })
+    expect(reopenRefusal(noBranch)).toBe('folder removed; cannot be made again')
+  })
+
+  it('lets a session whose worktree is gone be picked, leaving the start to the service', () => {
+    const remade = closed({ folder_present: false, worktree: '/dev/app', repo: '/dev/main' })
+    expect(reopenRefusal(remade)).toBeNull()
+    expect(reopenRequest(remade)).toBeNull()
   })
 
   it('refuses an id the shared rule would not type', () => {

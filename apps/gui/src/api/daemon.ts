@@ -1115,6 +1115,9 @@ const ClosedSessionSchema = z.object({
   title: z.string().nullable(),
   at: z.number().int().nonnegative(),
   folder_present: z.boolean(),
+  /** The linked worktree it worked in and that worktree's repository, when it was in one; what a removed folder is made again from. */
+  worktree: z.string().nullable(),
+  repo: z.string().nullable(),
 })
 export type ClosedSession = z.infer<typeof ClosedSessionSchema>
 
@@ -1124,6 +1127,14 @@ export type ClosedSession = z.infer<typeof ClosedSessionSchema>
  */
 export async function closedSessions(): Promise<ClosedSession[] | null> {
   return invokeParsed('closed_sessions', z.array(ClosedSessionSchema).nullable())
+}
+
+/**
+ * Has this computer's service reopen a closed session it keeps: its worktree made again when the folder is gone, then
+ * its agent started there with its conversation. False when the service running is older than this and was not asked.
+ */
+export async function reopenClosedSession(agent: string, session: string): Promise<boolean> {
+  return invokeParsed('reopen_closed_session', z.boolean(), { agent, session })
 }
 
 /**

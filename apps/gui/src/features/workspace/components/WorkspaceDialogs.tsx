@@ -141,7 +141,7 @@ export function WorkspaceDialogs() {
                 onCancel={() => { setRenamingMachine(null) }}
               />
             )}
-            {recentOpen && <RecentSessionsDialog home={home} onPick={reopenSession} onCancel={() => { setRecentOpen(false) }} />}
+            {recentOpen && <RecentSessionsDialog home={home} onPick={reopenSession} onReopened={() => { setRecentOpen(false) }} onCancel={() => { setRecentOpen(false) }} />}
             {renameId !== null && !renameInline && sessionMap.get(renameId) && (
               <RenameDialog session={sessionMap.get(renameId) as SessionView} onSave={(name) => { saveName(renameId, name) }} onCancel={() => { setRenameId(null) }} />
             )}
