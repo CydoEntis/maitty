@@ -154,6 +154,10 @@ impl Daemon {
             }
             Command::Prewarm { cwd, cmd } => self.prewarm_agent(cwd, cmd)?,
             Command::DropPrewarm => self.drop_warm(),
+            Command::ReopenClosedSession { agent, session } => {
+                self.reopen_closed_session(client, &agent, &session)?;
+                return Ok(false);
+            }
             Command::CloseWorkspace { ws } => {
                 let terms = self.workspace_panes(ws);
                 let tops = self.worktrees_of(&terms);
