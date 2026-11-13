@@ -1061,6 +1061,35 @@ pub async fn tidy_worktrees(items: Vec<(PathBuf, bool)>, daemon_executable: Path
     }
 }
 
+/// Where the worktree at `folder` of the repository at `repo` stands, as this computer's daemon
+/// reads it (`gh` and `worktree.inactive_days` included), with `missing` set when git still lists
+/// it but its folder is gone. A daemon built before the question is told so in words, since it would never answer.
+pub async fn worktree_standing(repo: PathBuf, folder: PathBuf) -> Result<Value> {
+    let message = ClientMsg::Query(Query::WorktreeStanding { repo, folder });
+    answered_within(REQUEST_TIMEOUT, async {
+        let (mut connection, version) = ipc::open_for_user_knowing_version()
+            .await
+            .context("connecting to the local daemon")?;
+        if !daemon_reads(&message, version) {
+            bail!(
+                "the Maitty service running is older than this app and cannot say where a worktree stands: restart it (Settings › Daemon)"
+            );
+        }
+        match ask(&mut connection, &message).await? {
+            Reply::WorktreeStanding(standing) => standing_shown(standing),
+            _ => bail!("daemon returned an unexpected worktree standing reply"),
+        }
+    })
+    .await
+}
+
+fn standing_shown(standing: Option<maitty_shared::protocol::WorktreeStanding>) -> Result<Value> {
+    let missing = standing.is_none();
+    let mut shown = serde_json::to_value(standing.unwrap_or_default())?;
+    shown["missing"] = Value::Bool(missing);
+    Ok(shown)
+}
+
 /// How long a worktree for a branch may take, connecting included. The repo's setup hook runs
 /// before the daemon answers (it may take ten minutes), so the usual request limit is too short.
 const BRANCH_WORKTREE_TIMEOUT: Duration = Duration::from_secs(11 * 60);
@@ -2627,6 +2656,28 @@ mod agent_command_tests {
         });
         assert!(daemon_reads(&ask, PROTOCOL_VERSION));
         assert!(!daemon_reads(&ask, SAVED_CONVERSATIONS_SINCE - 1));
+    }
+
+    #[test]
+    fn a_worktree_standing_reaches_the_app_with_missing_said_and_an_old_daemon_is_not_asked() {
+        use super::{ClientMsg, Query, daemon_reads, standing_shown};
+        use maitty_shared::protocol::{PROTOCOL_VERSION, WORKTREE_STANDING_SINCE, WorktreeStanding};
+        let ask = ClientMsg::Query(Query::WorktreeStanding { repo: "/code/app".into(), folder: "/code/task".into() });
+        assert!(daemon_reads(&ask, PROTOCOL_VERSION));
+        assert!(!daemon_reads(&ask, WORKTREE_STANDING_SINCE - 1));
+        let stale = WorktreeStanding {
+            dirty: 0,
+            branch: Some("task".into()),
+            merged: false,
+            last_commit: "5 weeks ago".into(),
+            inactive_days: Some(30),
+        };
+        assert_eq!(
+            standing_shown(Some(stale)).unwrap(),
+            serde_json::json!({ "dirty": 0, "branch": "task", "merged": false, "last_commit": "5 weeks ago", "inactive_days": 30, "missing": false })
+        );
+        let gone = standing_shown(None).unwrap();
+        assert_eq!((gone["missing"].as_bool(), gone["inactive_days"].is_null()), (Some(true), true));
     }
 
     #[test]
