@@ -40,6 +40,28 @@ export function reserveOperation(conversation: number, seen: Seen): number {
   return operation
 }
 
+/** 2^21: the high word's share of a JavaScript number's 53 exact integer bits. */
+const HIGH_WORD_RANGE = 0x200000
+const LOW_WORD_RANGE = 0x100000000
+
+const WORDS = 2
+
+const randomWords = (): readonly number[] => Array.from(crypto.getRandomValues(new Uint32Array(WORDS)))
+
+/**
+ * The operation a message sent into a terminal agent carries: a random nonce, never a count. The daemon keys
+ * these by pane, so counters from two windows, or from one window after a reload, would collide and a second
+ * message would be acknowledged and never typed. It stays within 53 bits so it reaches the daemon's u64 exactly,
+ * and is never zero, which the daemon refuses.
+ */
+export function terminalSendOperation(random: () => readonly number[] = randomWords): number {
+  for (;;) {
+    const [high = 0, low = 0] = random()
+    const operation = (high % HIGH_WORD_RANGE) * LOW_WORD_RANGE + low
+    if (operation !== 0) return operation
+  }
+}
+
 /** For tests: the numbers belong to the window's lifetime. */
 export function forgetOperations(): void {
   lastUsed.clear()

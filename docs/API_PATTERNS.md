@@ -152,6 +152,14 @@ Only an accepted send is remembered, so a retry of a refused one is tried afresh
 memory (`daemon/terminal_sends.rs`, at most 1024 sends, oldest forgotten first): after a daemon restart
 a retry of an earlier send is a new send. A send without an operation behaves as before.
 
+The desktop app draws that nonce in `terminalSendOperation` (`features/chat/sendOperation.ts`): random, nonzero and
+below 2^53, so it passes through a JavaScript number into the `u64` exactly. `send_when_agent_ready` and
+`queue_follow_up` take it as `operation`. The desktop client asks the running daemon its version first and sends the
+operation only to one at `TERMINAL_SEND_OPERATIONS_SINCE` or later (`named_send`); an older daemon, or one the send has
+to start, gets the message without it. A send to another machine's pane carries none, since its line does not say which
+daemon version it reaches. The composer retries a queued message that failed (a timeout included) under the same
+operation when it is sent again with the same text; a first message is handed over once and never retried.
+
 `Command::Prewarm { cwd, cmd }` starts an agent ahead of its first message (`daemon/warm.rs`). It runs hidden, as a spare
 (no client is shown it, it alerts nobody and it is not saved), and the next `NewWorkspace` with the same command in the
 same folder is that agent, already running, instead of a new one. One is kept at a time: asking for another stops the

@@ -270,6 +270,34 @@ describe('a message written while a terminal agent works', () => {
     expect(screen.getByLabelText('Sending')).toHaveTextContent('and then add tests')
   })
 
+  it('is queued again under the same operation after a timeout, and a new message gets a new one', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const daemon = new FakeDaemonHistory()
+    daemon.status = 'Working'
+    fake.current = daemon
+    const add = vi.fn<(text: string, first: boolean, operation: number) => Promise<void>>()
+      .mockRejectedValueOnce(new Error('the local daemon did not answer within 5 seconds'))
+      .mockResolvedValue(undefined)
+    const paneQueue = { queued: [], add, drop: () => Promise.resolve() }
+    render(<ChatSession link={LINK} agent="claude" online typeInto={vi.fn()} paneQueue={paneQueue} sessionId="s1" />)
+    await settle()
+    const box = screen.getByRole('textbox', { name: 'Message claude' })
+
+    await user.type(box, 'and then add tests{Enter}')
+    await settle(1)
+    expect(box).toHaveValue('and then add tests')
+    await user.type(box, '{Enter}')
+    await settle(1)
+    await user.type(box, 'and the docs{Enter}')
+    await settle(1)
+
+    const operations = add.mock.calls.map(([, , operation]) => operation)
+    expect(add.mock.calls.map(([text]) => text)).toEqual(['and then add tests', 'and then add tests', 'and the docs'])
+    expect(operations.every((operation) => Number.isSafeInteger(operation) && operation > 0)).toBe(true)
+    expect(operations[1]).toBe(operations[0])
+    expect(operations[2]).not.toBe(operations[0])
+  })
+
   it('takes one back from the daemon to edit it, without drawing it as sent', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     open('Working')

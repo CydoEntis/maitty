@@ -932,8 +932,13 @@ pub fn held_message(text: String) -> Result<PaneCommand> {
     Ok(PaneCommand::SendWhenReady(text))
 }
 
-pub async fn send_when_ready(term: u32, text: String, daemon_executable: PathBuf) -> Result<Value> {
-    let reply = request(held_message(text)?.message(term), daemon_executable).await?;
+pub async fn send_when_ready(
+    term: u32,
+    text: String,
+    operation: Option<u64>,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let reply = send_named(held_message(text)?.message(term), operation, daemon_executable).await?;
     match reply {
         Reply::Ok => Ok(Value::Null),
         _ => bail!("daemon returned an unexpected reply to a held message"),
@@ -955,12 +960,57 @@ pub async fn queue_follow_up(
     term: u32,
     text: String,
     first: bool,
+    operation: Option<u64>,
     daemon_executable: PathBuf,
 ) -> Result<Value> {
-    let reply = request(queued_message(text, first)?.message(term), daemon_executable).await?;
+    let reply =
+        send_named(queued_message(text, first)?.message(term), operation, daemon_executable).await?;
     match reply {
         Reply::Ok => Ok(Value::Null),
         _ => bail!("daemon returned an unexpected reply to a queued message"),
+    }
+}
+
+/// Sends a held or queued message to this computer's daemon, named by `operation` when that daemon
+/// honours it, so a retry is acknowledged instead of typed twice.
+async fn send_named(
+    message: ClientMsg,
+    operation: Option<u64>,
+    daemon_executable: PathBuf,
+) -> Result<Reply> {
+    let Some(operation) = operation else {
+        return request(message, daemon_executable).await;
+    };
+    answered_within(REQUEST_TIMEOUT, async {
+        match ipc::open_for_user_knowing_version().await {
+            Ok((mut connection, version)) => {
+                ask(&mut connection, &named_send(message, operation, version)).await
+            }
+            // No daemon is running: the one `request` starts has no earlier send to match a retry against.
+            Err(error) if ipc::other_version(&error).is_none() => {
+                request(message, daemon_executable).await
+            }
+            Err(error) => Err(error),
+        }
+    })
+    .await
+}
+
+/// `message` carrying `operation` when a daemon at `daemon_version` honours it. An older daemon reads
+/// the field and ignores it, so a retry there would be typed twice: it is sent the message unnamed.
+fn named_send(message: ClientMsg, operation: u64, daemon_version: u32) -> ClientMsg {
+    let mut named = message.clone();
+    if let ClientMsg::Command(
+        Command::SendWhenReady { operation: slot, .. }
+        | Command::QueueFollowUp { operation: slot, .. },
+    ) = &mut named
+    {
+        *slot = Some(operation);
+    }
+    if daemon_reads(&named, daemon_version) {
+        named
+    } else {
+        message
     }
 }
 
@@ -2628,6 +2678,33 @@ mod agent_command_tests {
         ));
         assert!(daemon_reads(&drop, PROTOCOL_VERSION));
         assert!(!daemon_reads(&drop, DROP_QUEUED_SINCE - 1));
+    }
+
+    #[test]
+    fn a_terminal_send_carries_its_operation_only_to_a_daemon_that_honours_it() {
+        use super::{ClientMsg, Command, held_message, named_send, queued_message};
+        use maitty_shared::protocol::TERMINAL_SEND_OPERATIONS_SINCE;
+        // The window draws operations within a JavaScript number's exact integers; the largest arrives whole.
+        const LARGEST: u64 = (1 << 53) - 1;
+        assert_eq!(serde_json::from_str::<u64>("9007199254740991").unwrap(), LARGEST);
+        let held = held_message("fix it".into()).unwrap().message(3);
+        let queued = queued_message("next".into(), false).unwrap().message(3);
+        assert!(matches!(
+            named_send(held.clone(), LARGEST, TERMINAL_SEND_OPERATIONS_SINCE),
+            ClientMsg::Command(Command::SendWhenReady { term: 3, operation: Some(LARGEST), .. })
+        ));
+        assert!(matches!(
+            named_send(queued.clone(), 9, TERMINAL_SEND_OPERATIONS_SINCE),
+            ClientMsg::Command(Command::QueueFollowUp { term: 3, operation: Some(9), .. })
+        ));
+        assert!(matches!(
+            named_send(held, 9, TERMINAL_SEND_OPERATIONS_SINCE - 1),
+            ClientMsg::Command(Command::SendWhenReady { operation: None, .. })
+        ));
+        assert!(matches!(
+            named_send(queued, 9, TERMINAL_SEND_OPERATIONS_SINCE - 1),
+            ClientMsg::Command(Command::QueueFollowUp { operation: None, .. })
+        ));
     }
 
     #[test]
