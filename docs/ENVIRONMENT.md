@@ -313,6 +313,10 @@ of provider-reported usage per session per day ([DATABASE](DATABASE.md#project-s
 [ADR 0009](adr/0009-usage-is-provider-reported-never-estimated.md)). It adds no setting or variable.
 Deleting the file starts the history over; nothing else depends on it.
 
+The daemon also keeps `closed-sessions-<socket>.json` there: the last 50 agent sessions that closed
+or crashed ([DATABASE](DATABASE.md#project-specific-closed-sessions)). It adds no setting or variable;
+deleting the file empties the list.
+
 ## Project-specific: continuing a chat turn after a restart
 
 `restore.continue_turn` (default `false`; Settings › Sessions › *Continue chat turns*) lets the

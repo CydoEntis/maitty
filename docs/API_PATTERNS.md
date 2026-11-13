@@ -675,6 +675,15 @@ unreadable one is skipped and logged by path only. Both came with their own `int
 (`SAVED_CONVERSATIONS_SINCE`); `COMPATIBLE_SINCE` stays 78, since an older daemon is never asked and an older client
 never sent the reply. This computer only: another machine's answer is ignored (`remote_policy`).
 
+Protocol 86 adds `Query::ClosedSessions` and `Reply::ClosedSessions`: the agent sessions that closed
+for good or whose agent exited with an error, newest first, at most 50 (what is kept and when is in
+[DATABASE](DATABASE.md#project-specific-closed-sessions)). Only a person's client may ask; a pane or a
+structured runtime is refused, since the list names the folders of other work. A window may ask
+another machine's daemon for its list over that machine's line; the answer is cleaned
+(SECURITY, "remote daemon"). The query and the reply each have their own `introduced_in` arm
+(`CLOSED_SESSIONS_SINCE`, in `ClientMsg::introduced_in` and `ServerMsg::introduced_in`);
+`COMPATIBLE_SINCE` stays 78, since an older daemon is simply not asked.
+
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store
 ([ADR 0009](adr/0009-usage-is-provider-reported-never-estimated.md)): totals, one entry per

@@ -2029,6 +2029,7 @@ async fn a_closed_chat_is_hidden_at_once_comes_back_with_undo_and_ends_when_the_
         assert!(matches!(back, ServerMsg::Reply(crate::protocol::Reply::Ok)), "{back:?}");
         assert!(!archived(&session), "brought back");
         assert!(session.daemon.conversation_closing.is_empty());
+        assert!(session.daemon.closed_sessions.list().is_empty(), "an undo leaves no record");
         let late = exchange(&mut session, 423, undo.clone(), None).await;
         assert!(matches!(late, ServerMsg::Error(ref message) if message.contains("window has passed")), "{late:?}");
 
@@ -2036,10 +2037,16 @@ async fn a_closed_chat_is_hidden_at_once_comes_back_with_undo_and_ends_when_the_
         assert!(matches!(exchange(&mut session, 424, close, None).await, ServerMsg::Reply(crate::protocol::Reply::Ok)));
         session.daemon.finish_chat_closes();
         assert!(session.daemon.conversation_runtimes.owns(id), "not before the window passes");
+        assert!(session.daemon.closed_sessions.list().is_empty(), "no record before the window passes");
         *session.daemon.conversation_closing.get_mut(&id).unwrap() = std::time::Instant::now() - crate::daemon::UNDO_WINDOW;
         session.daemon.finish_chat_closes();
         assert!(session.daemon.conversation_closing.is_empty());
         assert!(archived(&session));
+        let binding = session.daemon.conversations.iter().find(|c| c.id == id).unwrap().binding.clone();
+        let [kept] = session.daemon.closed_sessions.list() else {
+            panic!("one record once the window passed: {:?}", session.daemon.closed_sessions.list());
+        };
+        assert_eq!((kept.session.as_str(), &kept.cwd), (binding.session_id.as_str(), binding.worktree.as_ref().unwrap_or(&binding.cwd)));
         let late = exchange(&mut session, 425, undo, None).await;
         assert!(matches!(late, ServerMsg::Error(ref message) if message.contains("window has passed")), "{late:?}");
     })

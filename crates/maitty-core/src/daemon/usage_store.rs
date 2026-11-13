@@ -437,7 +437,7 @@ fn added_cost(last: Option<f64>, total: f64) -> f64 {
 }
 
 /// Keep a file that can't be used as `<name>.bak`, so a bad file is never silently lost.
-fn set_aside(path: &Path) {
+pub(super) fn set_aside(path: &Path) {
     let mut name = path.as_os_str().to_owned();
     name.push(".bak");
     if let Err(error) = std::fs::rename(path, &name) {
@@ -447,7 +447,7 @@ fn set_aside(path: &Path) {
 
 /// Write `bytes` whole and synced to a private temporary file, then rename it over `path`, so
 /// a crash leaves the old file or the new one. Blocks: call it off the loop.
-fn write_file(path: &Path, bytes: &[u8]) -> Result<()> {
+pub(super) fn write_file(path: &Path, bytes: &[u8]) -> Result<()> {
     use std::io::Write;
     if let Some(dir) = path.parent() {
         private_dir(dir).with_context(|| format!("making {}", dir.display()))?;

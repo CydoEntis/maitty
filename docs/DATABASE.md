@@ -152,6 +152,34 @@ does not parse, or whose `version` is newer than the build reads, is renamed to 
 the store starts empty with a logged warning; it never stops the daemon. Unknown fields are
 ignored and missing ones default, so a field can be added without a version bump.
 
+## Project-specific: closed sessions
+
+`daemon/closed_sessions.rs` keeps the agent sessions that closed for good or whose agent exited
+with an error, in `closed-sessions-<socket>.json` in the data folder: `{"version": 1, "sessions":
+[...]}`, newest first, at most 50 (`CLOSED_SESSIONS_MAX`); the oldest drop off. An entry is the
+agent, its own conversation id, the folder, the branch, the name and the time (unix seconds). It
+holds no message, prompt or terminal output; the name is the one you or the agent gave it, cleaned
+and cut as a conversation's title is (`clean_title`), and the agent, id and branch are one clean
+line each, cut short. A session with no agent or conversation id leaves no entry, and the same
+conversation closing again replaces its older entry.
+
+A pane is recorded when a person closes it for good (`close_term`: a closed session once its undo
+window has passed, a closed pane, tab or workspace), never while Undo can bring it back, and when
+its own process exits with a failure status (`portable-pty`'s exit status, not screen text) while
+the daemon did not stop it on purpose (`kill_tree`, an asleep agent, or the daemon stopping). A
+hidden spare is never recorded. A conversation's terminal closes at once, with no undo window, and
+is recorded then like any pane; what its hooks never reported (agent, conversation id, name) comes
+from its conversation's binding and title. A chat is recorded when its undo
+window passes (`finish_chat_closes`). An agent running inside a pane's shell is not the pane's
+process, so its own exit code is not seen; that pane is recorded when it is closed while the agent
+still runs. A structured chat whose provider fails is not recorded yet.
+
+The file is written private, synced and renamed over the old one, off the loop each time the list
+changes, and once more when the daemon exits; a failed write is tried again with the next one. It
+is read at start: a file that does not parse, or whose `version` is newer than the build reads, is
+renamed to `<file>.bak` and the list starts empty with a logged warning. Every stored entry is
+checked as a new one is, unknown fields are ignored and missing ones default.
+
 ## Project-specific: structured history cache foundation
 
 `daemon/conversation/history_storage.rs` is a private structured display cache,

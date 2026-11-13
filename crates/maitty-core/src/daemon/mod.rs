@@ -10,6 +10,7 @@ mod check;
 pub use check::first_failing_line;
 mod check_source;
 mod check_stale;
+mod closed_sessions;
 mod commands;
 mod contain;
 mod conversation;
@@ -150,7 +151,8 @@ pub enum Ev {
     },
     Output(TermId, Vec<u8>),
     Exited(TermId),
-    ProcessExited(TermId),
+    /// A pane's own process exited; true when it reported a failure.
+    ProcessExited(TermId, bool),
     Scan(Vec<scan::Found>),
     Git(Vec<(WsId, Option<GitInfo>)>),
     /// Lines added and removed per checkout, read beside the git poll.
@@ -481,6 +483,10 @@ struct Daemon {
     turns: Vec<(u64, String, String, u64)>,
     /// Provider-reported usage per session per day, kept on disk (ADR 0009).
     usage_store: usage_store::UsageStore,
+    /// Agent sessions that closed for good or crashed, kept on disk.
+    closed_sessions: closed_sessions::ClosedSessions,
+    /// What a pane whose output ended would record if its process turns out to have failed.
+    unreaped: HashMap<TermId, ClosedSession>,
     codex_busy: bool,
     last_codex: Instant,
     effort_busy: bool,
@@ -1272,6 +1278,14 @@ impl Daemon {
                     term::unix_now(),
                 )
             },
+            closed_sessions: if cfg!(test) {
+                closed_sessions::ClosedSessions::in_memory()
+            } else {
+                closed_sessions::ClosedSessions::open(
+                    closed_sessions::ClosedSessions::default_path(),
+                )
+            },
+            unreaped: HashMap::new(),
             codex_busy: false,
             last_codex: Instant::now() - Duration::from_secs(3600),
             effort_busy: false,
@@ -1353,6 +1367,7 @@ impl Daemon {
                 // The user closed everything, so start fresh next time.
                 persist::forget();
                 self.usage_store.save_now(term::unix_now());
+                self.closed_sessions.save_now();
                 self.broadcast(|_| true, ServerMsg::Bye);
                 tokio::time::sleep(Duration::from_millis(100)).await;
                 let _ = std::fs::remove_file(ipc::pid_file());
@@ -1917,10 +1932,12 @@ impl Daemon {
                 }
                 if self.terms.contains_key(&tid) {
                     self.last_loss = Some(Instant::now());
+                    self.await_pane_exit(tid);
                     self.remove_term(tid, RemovalReason::Exited);
                 }
             }
-            Ev::ProcessExited(tid) => {
+            Ev::ProcessExited(tid, failed) => {
+                self.pane_process_exited(tid, failed);
                 if self.terms.contains_key(&tid) {
                     self.last_loss = Some(Instant::now());
                     self.remove_term(tid, RemovalReason::Exited);
@@ -2807,6 +2824,12 @@ impl Daemon {
                     {
                         ServerMsg::Error("Only a human client can read usage".into())
                     }
+                    Query::ClosedSessions if self.client_is_agent(client) => {
+                        ServerMsg::Error("Only a human client can read the closed sessions".into())
+                    }
+                    Query::ClosedSessions => {
+                        ServerMsg::Reply(Reply::ClosedSessions(self.closed_sessions.list().to_vec()))
+                    }
                     Query::AllowedCommands if self.client_is_agent(client) => {
                         ServerMsg::Error("Only a human client can read the approved commands".into())
                     }
@@ -3540,6 +3563,7 @@ impl Daemon {
 
     /// End a pane on purpose. To a list that showed it, a person closed it.
     fn close_term(&mut self, term: TermId) {
+        self.remember_closed_pane(term);
         self.end_term(term, RemovalReason::Closed);
     }
 

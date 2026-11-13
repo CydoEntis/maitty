@@ -487,6 +487,7 @@ that is not this one (`remote_policy.rs`, `remote_snapshot.rs` in `maitty-machin
 | `Notice` | gated by `notices` | a toast, cleaned and led by `[machine]`; it does not touch this computer's undo hint |
 | `Raise` | gated by `notices` | brings the window to the front, the same "may get my attention" grant as a toast (there is no separate `raise` setting) |
 | `Error`, `Reply` | answer, cleaned | applied only while this window has a command or query out to that machine that nothing has answered yet (client-side bookkeeping, see API_PATTERNS "client routing"; the wire is unchanged); otherwise ignored. An error's toast leads with `[machine]`; reply text is cleaned and cut to 256 KiB. A `List` reply is apart from that bookkeeping in the desktop host: a pane delta the machine itself sends can make the host ask for its list, so that asking opens nothing for an error or any other reply, and one `List` is taken only while the host's asking for it is unanswered, then cleaned, capped and id-checked like a `State` (a different daemon's list turns the machine away). A `Worktrees` reply never fills this computer's picker, and a check's output is taken only when the open sheet or the failure waiting for it is on that machine |
+| `Reply::ClosedSessions` | answer, cleaned | the closed sessions a window asked that machine for: at most 50, every field one clean line, cut short; the folder is a label for that machine and never touches this computer's disk |
 | `AskRemoveWorktree` | ignore | names a folder on this computer's disk to delete; remote worktree management is out of scope (ADR 0007) |
 | `Reply::SavedConversations` | ignore | saved conversations are listed for this computer's folders only; another machine's are out of scope |
 | `AutoWorkspace` | ignore | announces a workspace and arms this computer's undo |
@@ -612,6 +613,14 @@ A hook report never carries what a tool was asked to do. A tool-start report car
 fingerprint (the first 8 bytes of SHA-256 over the tool's name and input, as 16 hex characters),
 which cannot be turned back into the input and is never logged. The name and input stay in the
 agent.
+
+## Project-specific: closed sessions
+
+The closed-sessions list (`closed-sessions-<socket>.json`, DATABASE "closed sessions") holds each
+agent session's agent name, conversation id, folder, branch, name and time. It holds no prompts,
+output or secrets, and the name is the one you or the agent gave it, never a prompt. The file is
+private to the user (0600 in a 0700 folder on Unix). `Query::ClosedSessions` is for human clients
+only: an agent pane or a structured runtime cannot read where other work was done.
 
 ## Project-specific: followed transcripts
 

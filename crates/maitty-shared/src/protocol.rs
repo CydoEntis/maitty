@@ -11,7 +11,7 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 85;
+pub const PROTOCOL_VERSION: u32 = 86;
 
 /// The first version whose daemon lists an agent's saved conversations for a folder
 /// (`Query::SavedConversations`).
@@ -42,6 +42,31 @@ pub enum SavedConversations {
     Listed(Vec<SavedConversation>),
     /// The daemon reads no saved conversations for this agent.
     NotSupported,
+}
+
+/// The first version whose daemon lists the agent sessions that closed or crashed
+/// (`Query::ClosedSessions`).
+pub const CLOSED_SESSIONS_SINCE: u32 = 86;
+
+/// The most closed sessions the daemon keeps and a list carries; the oldest go first.
+pub const CLOSED_SESSIONS_MAX: usize = 50;
+
+/// An agent session that closed for good or whose agent exited with an error: where it worked, so
+/// it can be found again. It holds no message or terminal content.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClosedSession {
+    /// The agent's name (`claude`, `codex`, ...).
+    pub agent: String,
+    /// The agent's own conversation id, the one it resumes by.
+    pub session: String,
+    /// The folder it worked in.
+    pub cwd: PathBuf,
+    /// The branch checked out there, when it was in git.
+    pub branch: Option<String>,
+    /// The name it was given, cleaned (`conversation::clean_title`).
+    pub title: Option<String>,
+    /// When it closed (unix seconds).
+    pub at: u64,
 }
 
 /// The first version whose daemon lists and forgets the commands approved "always in this project"
@@ -875,6 +900,9 @@ pub enum Query {
         term: TermId,
         name: Option<String>,
     },
+    /// The agent sessions that closed or crashed, newest first; answered with
+    /// `Reply::ClosedSessions`.
+    ClosedSessions,
 }
 
 /// What you chose when a session asked to start helpers.
@@ -1074,6 +1102,7 @@ pub enum Reply {
         tag: u64,
         found: SavedConversations,
     },
+    ClosedSessions(Vec<ClosedSession>),
 }
 
 /// The most folders one listing carries; a folder with more says so in `truncated`.
@@ -1841,6 +1870,7 @@ impl ServerMsg {
     pub fn introduced_in(&self) -> u32 {
         match self {
             ServerMsg::Reply(Reply::SavedConversations { .. }) => SAVED_CONVERSATIONS_SINCE,
+            ServerMsg::Reply(Reply::ClosedSessions(_)) => CLOSED_SESSIONS_SINCE,
             _ => COMPATIBLE_SINCE,
         }
     }
@@ -1859,6 +1889,7 @@ impl ClientMsg {
             ClientMsg::Command(Command::ConversationAllowAlways { .. }) => ALLOW_ALWAYS_SINCE,
             ClientMsg::Query(Query::AllowedCommands) | ClientMsg::Command(Command::ForgetAllowedCommand { .. }) => ALLOWED_COMMANDS_SINCE,
             ClientMsg::Query(Query::SavedConversations { .. }) => SAVED_CONVERSATIONS_SINCE,
+            ClientMsg::Query(Query::ClosedSessions) => CLOSED_SESSIONS_SINCE,
             _ => COMPATIBLE_SINCE,
         }
     }
@@ -2277,7 +2308,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 85);
+        assert_eq!(PROTOCOL_VERSION, 86);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2660,7 +2691,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 85);
+        assert_eq!(PROTOCOL_VERSION, 86);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -3526,5 +3557,38 @@ mod tests {
         assert_eq!(ClientMsg::Query(ask).introduced_in(), SAVED_CONVERSATIONS_SINCE);
         assert_eq!(ServerMsg::Reply(answer).introduced_in(), SAVED_CONVERSATIONS_SINCE);
         const { assert!(SAVED_CONVERSATIONS_SINCE > COMPATIBLE_SINCE && SAVED_CONVERSATIONS_SINCE <= PROTOCOL_VERSION) };
+    }
+
+    /// Listing closed sessions is a new query and a new reply: a peer built before them cannot read
+    /// either, so a client asks only a daemon that says it is new enough, and the window stays open.
+    #[test]
+    fn closed_sessions_are_asked_only_of_a_daemon_that_knows_them() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldQuery {
+            List,
+        }
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldReply {
+            Ok,
+        }
+        let ask = ClientMsg::Query(Query::ClosedSessions);
+        assert_eq!(ask.introduced_in(), CLOSED_SESSIONS_SINCE);
+        assert_eq!(ServerMsg::Reply(Reply::ClosedSessions(Vec::new())).introduced_in(), CLOSED_SESSIONS_SINCE);
+        const { assert!(CLOSED_SESSIONS_SINCE > COMPATIBLE_SINCE && CLOSED_SESSIONS_SINCE <= PROTOCOL_VERSION) };
+        assert!(decode::<OldQuery>(&encode(&Query::ClosedSessions).unwrap()).is_err());
+
+        let closed = ClosedSession {
+            agent: "claude".into(),
+            session: "abc".into(),
+            cwd: PathBuf::from("/code/api"),
+            branch: Some("main".into()),
+            title: Some("fix the parser".into()),
+            at: 7,
+        };
+        let reply = encode(&Reply::ClosedSessions(vec![closed.clone()])).unwrap();
+        assert!(decode::<OldReply>(&reply).is_err());
+        assert!(matches!(decode::<Reply>(&reply), Ok(Reply::ClosedSessions(list)) if list == [closed]));
     }
 }

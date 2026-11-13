@@ -9440,3 +9440,208 @@ fn an_agent_that_ended_leaves_no_reason_for_a_status_it_no_longer_has() {
     );
     close(&mut d, &[id]);
 }
+
+/// Give `term` an agent conversation, as its hooks would, on branch `main`.
+fn agent_session(d: &mut Daemon, term: TermId, session: &str) {
+    let t = d.terms.get_mut(&term).unwrap();
+    t.agent = Some("claude".into());
+    t.session = Some(session.into());
+    t.label = "api work".into();
+    t.head = Some(crate::gitfs::Head {
+        top: t.cwd.clone(),
+        branch: "main".into(),
+        linked: false,
+        main_root: t.cwd.clone(),
+    });
+}
+
+fn closed_ids(d: &Daemon) -> Vec<String> {
+    d.closed_sessions.list().iter().map(|s| s.session.clone()).collect()
+}
+
+#[test]
+fn a_closed_agent_session_is_remembered_once_its_undo_window_passes() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (a, b) = two_panes(&mut d);
+    agent_session(&mut d, b, "abc");
+    let cwd = d.terms[&b].cwd.clone();
+
+    d.command(0, Command::CloseSession { term: b }).unwrap();
+    d.finish_closes();
+    assert!(closed_ids(&d).is_empty(), "not while it can still be undone");
+
+    closed_ago(&mut d, b, UNDO_WINDOW);
+    d.finish_closes();
+    let [kept] = d.closed_sessions.list() else {
+        panic!("one record: {:?}", d.closed_sessions.list());
+    };
+    assert_eq!(
+        (kept.agent.as_str(), kept.session.as_str(), &kept.cwd, kept.branch.as_deref(), kept.title.as_deref()),
+        ("claude", "abc", &cwd, Some("main"), Some("api work"))
+    );
+    assert!(kept.at > 0);
+    close(&mut d, &[a]);
+}
+
+#[test]
+fn an_undone_close_leaves_no_record() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (a, b) = two_panes(&mut d);
+    agent_session(&mut d, b, "abc");
+    d.command(0, Command::CloseSession { term: b }).unwrap();
+    closed_ago(&mut d, b, UNDO_WINDOW - Duration::from_secs(1));
+    d.command(0, Command::UndoClose { term: b }).unwrap();
+    d.finish_closes();
+    assert!(closed_ids(&d).is_empty());
+    d.terms.get_mut(&b).unwrap().session = None;
+    close(&mut d, &[a, b]);
+}
+
+#[test]
+fn a_closed_pane_with_no_conversation_id_leaves_no_record() {
+    let (mut d, _rx) = daemon();
+    let shell = pane(&mut d);
+    let agent = pane(&mut d);
+    d.terms.get_mut(&agent).unwrap().agent = Some("claude".into());
+    d.command(0, Command::ClosePane { term: shell }).unwrap();
+    d.command(0, Command::ClosePane { term: agent }).unwrap();
+    assert!(closed_ids(&d).is_empty());
+}
+
+#[test]
+fn an_agent_whose_process_failed_is_remembered_and_one_that_succeeded_is_not() {
+    let (mut d, _rx) = daemon();
+    let (failed, fine) = (pane(&mut d), pane(&mut d));
+    agent_session(&mut d, failed, "failed");
+    agent_session(&mut d, fine, "fine");
+    d.handle(Ev::ProcessExited(fine, false));
+    d.handle(Ev::ProcessExited(failed, true));
+    assert_eq!(closed_ids(&d), ["failed"]);
+}
+
+#[test]
+fn a_failure_reported_after_the_panes_output_ended_is_still_remembered() {
+    let (mut d, _rx) = daemon();
+    let (failed, fine) = (pane(&mut d), pane(&mut d));
+    agent_session(&mut d, failed, "failed");
+    agent_session(&mut d, fine, "fine");
+    d.handle(Ev::Exited(failed));
+    d.handle(Ev::Exited(fine));
+    assert!(closed_ids(&d).is_empty(), "how it exited is not known yet");
+    d.handle(Ev::ProcessExited(fine, false));
+    d.handle(Ev::ProcessExited(failed, true));
+    assert_eq!(closed_ids(&d), ["failed"]);
+    assert!(d.unreaped.is_empty());
+}
+
+#[test]
+fn a_person_reads_the_closed_sessions_newest_first_and_a_pane_cannot() {
+    let (mut d, _rx) = daemon();
+    let (older, newer, asking) = (pane(&mut d), pane(&mut d), pane(&mut d));
+    agent_session(&mut d, older, "older");
+    agent_session(&mut d, newer, "newer");
+    d.command(0, Command::ClosePane { term: older }).unwrap();
+    d.command(0, Command::ClosePane { term: newer }).unwrap();
+
+    let (tx, mut person) = mpsc::channel(16);
+    d.handle(Ev::Connected(7, tx, false, crate::protocol::Surface::Terminal, true));
+    d.message(7, ClientMsg::Query(Query::ClosedSessions));
+    let Ok(ServerMsg::Reply(Reply::ClosedSessions(list))) = person.try_recv() else {
+        panic!("a person is answered with the list");
+    };
+    assert_eq!(list.iter().map(|s| s.session.as_str()).collect::<Vec<_>>(), ["newer", "older"]);
+
+    let (tx, mut agent) = mpsc::channel(16);
+    d.handle(Ev::Connected(8, tx, false, crate::protocol::Surface::Terminal, true));
+    let token = d.terms[&asking].token.clone();
+    d.handle(Ev::From(8, asking, token));
+    d.message(8, ClientMsg::Query(Query::ClosedSessions));
+    assert!(matches!(agent.try_recv(), Ok(ServerMsg::Error(_))), "folders of other work are not a pane's to read");
+    close(&mut d, &[asking]);
+}
+
+#[test]
+fn a_closed_pane_whose_killed_process_then_fails_is_remembered_once() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    agent_session(&mut d, t, "abc");
+    d.command(0, Command::ClosePane { term: t }).unwrap();
+    d.handle(Ev::ProcessExited(t, true));
+    assert_eq!(closed_ids(&d), ["abc"]);
+}
+
+#[test]
+fn a_process_failing_while_the_daemon_stops_is_not_remembered() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    agent_session(&mut d, t, "abc");
+    d.stopping = true;
+    d.handle(Ev::ProcessExited(t, true));
+    assert!(closed_ids(&d).is_empty());
+}
+
+#[test]
+fn an_agent_the_daemon_stopped_to_reload_is_not_remembered_when_its_restart_fails() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    agent_session(&mut d, t, "abc");
+    d.cfg.shell = Some(concat!("/no/such/shell-for-", env!("APP_COMMAND")).into());
+    assert!(d.reload_agent(t).is_none(), "the new pane cannot start");
+    d.handle(Ev::ProcessExited(t, true));
+    assert!(closed_ids(&d).is_empty());
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_closed_conversation_terminal_is_remembered_once() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (a, b) = two_panes(&mut d);
+    agent_session(&mut d, b, "abc");
+    d.terms.get_mut(&b).unwrap().conversation_id = Some(crate::conversation::ConversationId(9));
+    d.command(0, Command::CloseSession { term: b }).unwrap();
+    assert!(!d.terms.contains_key(&b), "a conversation's terminal closes at once");
+    assert_eq!(closed_ids(&d), ["abc"]);
+    close(&mut d, &[a]);
+}
+
+#[test]
+fn a_conversation_terminal_its_hooks_never_named_is_remembered_by_its_conversation() {
+    use crate::conversation::{Conversation, ConversationId, ExecutionKind, NativeBinding, Provider, RecoveryState};
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (a, b) = two_panes(&mut d);
+    let cwd = d.terms[&b].cwd.clone();
+    d.terms.get_mut(&b).unwrap().conversation_id = Some(ConversationId(9));
+    d.conversations.push(Conversation {
+        id: ConversationId(9),
+        binding: NativeBinding {
+            provider: Provider::Codex,
+            session_id: "native-1".into(),
+            account: None,
+            profile: None,
+            config_root: cwd.clone(),
+            executable: PathBuf::from("codex"),
+            cwd: cwd.clone(),
+            worktree: None,
+        },
+        execution: ExecutionKind::Native,
+        generation: 1,
+        state: RecoveryState::Running,
+        settings: None,
+        awaiting_first_user_message: false,
+        title: Some("parser fix".into()),
+        archived: false,
+    });
+    d.command(0, Command::CloseSession { term: b }).unwrap();
+    let [kept] = d.closed_sessions.list() else {
+        panic!("one record: {:?}", d.closed_sessions.list());
+    };
+    assert_eq!(
+        (kept.agent.as_str(), kept.session.as_str(), kept.title.as_deref(), &kept.cwd),
+        ("codex", "native-1", Some("parser fix"), &cwd)
+    );
+    close(&mut d, &[a]);
+}

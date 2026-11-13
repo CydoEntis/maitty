@@ -115,6 +115,8 @@ pub struct Term {
     killer: Box<dyn ChildKiller + Send + Sync>,
     pub pid: Option<u32>,
     pub process_exited: bool,
+    /// The daemon stopped its process on purpose (`kill_tree`), so a failed exit is no crash.
+    pub killed: bool,
     /// The daemon's own view of the screen, for status patterns and `<app> read`.
     pub parser: vt100::Parser<Callbacks>,
     ring: VecDeque<u8>,
@@ -896,8 +898,8 @@ impl Term {
         std::thread::Builder::new()
             .name(format!("pty-wait-{id}"))
             .spawn(move || {
-                let _ = child.wait();
-                let _ = tx.blocking_send(Ev::ProcessExited(id));
+                let failed = child.wait().is_ok_and(|status| !status.success());
+                let _ = tx.blocking_send(Ev::ProcessExited(id, failed));
             })?;
 
         let process_executable = spec
@@ -917,6 +919,7 @@ impl Term {
             killer,
             pid,
             process_exited: false,
+            killed: false,
             parser: vt100::Parser::new_with_callbacks(
                 size.rows,
                 size.cols,
@@ -1289,6 +1292,7 @@ impl Term {
     /// child of the shell, and on Windows it would otherwise keep the terminal open). Runs
     /// on its own thread so nothing waits on it.
     pub fn kill_tree(&mut self) {
+        self.killed = true;
         let mut killer = self.killer.clone_killer();
         let pid = self.pid;
         std::thread::spawn(move || {
