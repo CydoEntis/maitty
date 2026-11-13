@@ -429,9 +429,9 @@
 .mx-rename.mx-recent { max-width: 560px; }
 .mx-recent-list { list-style: none; margin: 0; display: flex; flex-direction: column; max-height: 360px; overflow-y: auto; border: 1px solid var(--pane-line); border-radius: 10px; background: var(--m-well); padding: 4px; }
 .mx-recent-row { width: 100%; display: flex; align-items: center; gap: 10px; padding: 6px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--fg); text-align: left; cursor: pointer; }
-.mx-recent-row:hover:not(:disabled), .mx-recent-row:focus-visible { background: var(--m-hover); outline: none; }
+.mx-recent-row:hover:not([aria-disabled="true"]), .mx-recent-row:focus-visible { background: var(--m-hover); outline: none; }
 .mx-recent-row:focus-visible { box-shadow: inset 2px 0 0 var(--accent); }
-.mx-recent-row:disabled { cursor: not-allowed; color: var(--muted); }
+.mx-recent-row[aria-disabled="true"] { cursor: not-allowed; color: var(--muted); }
 .mx-recent-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .mx-recent-title, .mx-recent-where { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mx-recent-title { font-size: 13.5px; }

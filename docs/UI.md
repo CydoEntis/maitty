@@ -154,8 +154,9 @@ sidebar's foot and the rail's, and **Recent sessions…** in the palette) lists 
 computer, newest first (`closed_sessions`, API_PATTERNS; read when the list opens, off the UI thread): each its title
 (else "Claude session"), the agent's mark and name, the folder, the branch and "closed 3h ago". Picking one closes the
 list and starts that agent in that folder with its conversation, through the new chat's resume start (`startNewChat`
-with `resume`; the id held to `resumeWords`' rule, model, effort and mode left to the agent). A row cannot be picked,
-and says why in place of the time, when its folder is gone ("folder removed"; recreating it is not offered), when its
+with `resume`; the id held to `resumeWords`' rule, model, effort and mode left to the agent); while another start is
+under way the list stays open and a toast says "A session is already starting". A row cannot be picked
+(`aria-disabled`, not `disabled`, so it can still be reached and read), and says why in place of the time, when its folder is gone ("folder removed"; recreating it is not offered), when its
 agent is not Claude or Codex ("cannot be reopened here"), or when its id fails the rule ("no conversation to resume").
 It says "Looking for closed sessions…" while it reads, "No closed sessions yet. A chat you close shows here once its
 Undo has passed." when there are none, "Could not read the closed sessions." with **Try again** when the read fails,

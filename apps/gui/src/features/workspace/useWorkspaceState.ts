@@ -212,9 +212,9 @@ export function useWorkspaceState() {
   useEffect(() => { writeLayout(layout) }, [layout])
   const { refetchSessions, retryAt, tracks } = useSessionSync({ sessionsQuery, retryDelay, queryClient, setFailures, sessions, setLayout, machinesRef, visibleKey, flash })
   const { signInAgent, runStart, newSession, newTerminal, startAgentSession, startChatHere, handoffSession, newChatWithSummary, startNewChat, warmNewChat, createWorktree } = useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLayout, flash, focusedSession, setNewChatOpen, online, starting, setStarting, setStartedFrom, sessionMap, preferences, setExpectedAgents, paneViews, setSettingsSection, setNewChatMachine, setNewChatSeed, home, machinesRef })
-  const { recentOpen, setRecentOpen, reopenSession } = useRecentSessions(startNewChat)
+  const { recentOpen, setRecentOpen, reopenSession } = useRecentSessions(startNewChat, starting)
 
-  const split =useCallback((paneId: string | null, direction: SplitDirection) => {
+  const split = useCallback((paneId: string | null, direction: SplitDirection) => {
     const tab = activeArrangement(layout)
     if (!tab) return
     if (tab.panes.length >= MAX_PANES) {

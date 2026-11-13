@@ -688,8 +688,10 @@ another machine's daemon for its list over that machine's line; the answer is cl
 `COMPATIBLE_SINCE` stays 78, since an older daemon is simply not asked. The desktop command is
 `closed_sessions` (`maitty_desktop_client::closed_sessions`), asked of this computer's daemon only on a
 connection of its own: it answers the list with each record's `folder_present` added (whether `cwd` is a
-folder on this disk, looked at on a blocking task, never on the UI thread), or null without asking when the
-daemon running is older than 86.
+folder on this disk, looked at on blocking threads side by side, never on the UI thread), or null without asking
+when the daemon running is older than 86. The folders get two seconds together: one that has not answered by then
+(a network share that is gone) reads as not present, and the whole call, daemon included, is cut off at the
+request timeout, which the list shows as a failed read.
 
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store

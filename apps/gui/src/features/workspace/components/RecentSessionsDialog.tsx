@@ -20,7 +20,7 @@ function Row({ closed, home, now, onPick }: { closed: ClosedSession; home: strin
   const where = [agent, tildePath(closed.cwd, home), closed.branch].filter((part): part is string => part !== null && part !== '').join(' · ')
   return (
     <li>
-      <button type="button" className="mx-recent-row" disabled={refusal !== null} title={closed.cwd} onClick={() => { onPick(closed) }}>
+      <button type="button" className="mx-recent-row" aria-disabled={refusal !== null} title={closed.cwd} onClick={() => { if (refusal === null) onPick(closed) }}>
         <AppIcon process={closed.agent} size={20} />
         <span className="mx-recent-text">
           <span className="mx-recent-title">{closed.title ?? `${agent} session`}</span>
