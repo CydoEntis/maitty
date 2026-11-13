@@ -7,6 +7,7 @@ pub(super) mod continue_turn;
 mod daemon;
 pub(super) mod follow;
 mod follow_transcript;
+pub(super) mod helper_record;
 pub(super) mod history;
 mod history_provider;
 pub(super) mod news;

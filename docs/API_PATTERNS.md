@@ -169,6 +169,13 @@ changes status. It came in protocol 88 (`WORKFLOW_REPORT_SINCE`, with its arm in
 version and tells the person to restart an older one instead of sending. `TermInfo.workflows` is a
 defaulted field, empty from an older daemon.
 
+`Query::HelperRead { term, helper }` answers `Reply::HelperRead(HelperRecord)`: what one of the pane's
+helpers did, as history entries read from its own record (Claude's side-chain file, a Codex helper's
+rollout from where its own task begins), oldest first, with `start_missing` when the start is left
+out. The read runs off the event loop; a refusal is a `ServerMsg::Error` naming why, never content.
+It came in protocol 88 (`HELPER_READ_SINCE`, with arms in both `introduced_in`). Clients ask again
+while the view is open; it is not followed.
+
 A pane's effort (`TermInfo.effort`, an optional field: no `PROTOCOL_VERSION` bump, a test decodes the old shape) is read by the
 daemon from the agent's own files every five seconds off the loop (`usage::poll_effort`): for Claude the level in the newest request
 line of its transcript, present only when a level was set; for Codex the level its thread settings name, else its model's default

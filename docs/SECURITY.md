@@ -653,6 +653,14 @@ The path comes from a hook report, so it is input, not trust:
   held in daemon memory for the conversation's life, never cached, logged or put in a fixture.
 - A followed conversation is read-only, and reading never changes a status.
 
+A helper's own record (`Query::HelperRead`, ADR 0010) is read the same way, once per ask, for human
+clients only and only for a pane the client is shown. The helper must be one the pane's verified
+reports listed, its id is letters, digits, `-` and `_` (at most 128), and its file is found from the
+pane's reports, never from the request: Claude's must be exactly `<session>/subagents/agent-<id>.jsonl`
+beside the transcript that passed the checks above (no link out of that folder), and Codex's must be a
+rollout named for the helper whose parent chain reaches the pane's thread. The last 4 MiB is read and
+the reply holds the newest entries within 256 KiB.
+
 ## Project-specific: chat sessions started from the desktop
 
 A chat session is a Claude or Codex run the daemon starts itself ([ADR 0003](adr/0003-status-and-conversation-trust.md)).

@@ -378,6 +378,28 @@ pub(super) fn codex_file_for(session: &str) -> Option<PathBuf> {
     codex_root(&codex_recent_sessions(), Some(session)).map(|s| s.file.clone())
 }
 
+/// A Codex helper's rollout file, only when the helper descends from `parent` (its own thread, a
+/// child's, …): a pane may read only its own thread's helpers.
+pub(super) fn codex_helper_file(parent: &str, helper: &str) -> Option<PathBuf> {
+    descendant_file(&codex_recent_sessions(), parent, helper)
+}
+
+/// How deep helpers of helpers are followed before giving up.
+const HELPER_DEPTH_MAX: usize = 16;
+
+fn descendant_file(sessions: &[CodexSession], ancestor: &str, helper: &str) -> Option<PathBuf> {
+    let found = sessions.iter().find(|s| s.id == helper)?;
+    let mut up = found.parent.as_deref();
+    for _ in 0..HELPER_DEPTH_MAX {
+        let id = up?;
+        if id == ancestor {
+            return Some(found.file.clone());
+        }
+        up = sessions.iter().find(|s| s.id == id)?.parent.as_deref();
+    }
+    None
+}
+
 /// Codex's own folder (`$CODEX_HOME`, else `~/.codex`).
 fn codex_home() -> Option<PathBuf> {
     std::env::var_os("CODEX_HOME")
@@ -709,6 +731,32 @@ mod tests {
             ("gemini", 0, 0),
             "cost without a turn still counts"
         );
+    }
+
+    #[test]
+    fn a_helpers_file_is_found_only_under_the_thread_it_descends_from() {
+        let session = |id: &str, parent: Option<&str>| CodexSession {
+            file: PathBuf::from(format!("rollout-{id}.jsonl")),
+            cwd: None,
+            id: id.into(),
+            parent: parent.map(str::to_string),
+            name: "subagent".into(),
+            modified: std::time::SystemTime::UNIX_EPOCH,
+        };
+        let all = [
+            session("root", None),
+            session("child", Some("root")),
+            session("grandchild", Some("child")),
+            session("stranger", Some("other")),
+        ];
+        assert_eq!(descendant_file(&all, "root", "child"), Some(PathBuf::from("rollout-child.jsonl")));
+        assert_eq!(
+            descendant_file(&all, "root", "grandchild"),
+            Some(PathBuf::from("rollout-grandchild.jsonl"))
+        );
+        assert_eq!(descendant_file(&all, "root", "stranger"), None);
+        assert_eq!(descendant_file(&all, "root", "root"), None, "a thread is not its own helper");
+        assert_eq!(descendant_file(&all, "child", "child"), None);
     }
 
     #[test]

@@ -58,6 +58,21 @@ pub const REOPEN_CLOSED_SINCE: u32 = 87;
 /// The first version whose daemon takes a workflow's progress (`ClientMsg::WorkflowReport`).
 pub const WORKFLOW_REPORT_SINCE: u32 = 88;
 
+/// The first version whose daemon reads a helper's own record (`Query::HelperRead`).
+pub const HELPER_READ_SINCE: u32 = 88;
+
+/// What a helper did, read from the provider's own file for it (ADR 0010). Display only.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HelperRecord {
+    pub term: TermId,
+    /// The helper's id, as `SubagentActivity::id` names it.
+    pub helper: String,
+    /// Oldest first.
+    pub entries: Vec<crate::conversation::history::Entry>,
+    /// The file held more than this: its start is left out.
+    pub start_missing: bool,
+}
+
 /// An agent session that closed for good or whose agent exited with an error: where it worked, so
 /// it can be found again. It holds no message or terminal content.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -914,6 +929,12 @@ pub enum Query {
         tag: u64,
     },
     List,
+    /// What one of a pane's helpers did, from its own record (human clients only; ADR 0010). The
+    /// helper must be one the pane's verified reports named.
+    HelperRead {
+        term: TermId,
+        helper: String,
+    },
     /// Plain-text screen contents of a terminal (the visible screen).
     Read {
         term: TermId,
@@ -1131,6 +1152,7 @@ pub enum Reply {
         found: SavedConversations,
     },
     ClosedSessions(Vec<ClosedSession>),
+    HelperRead(HelperRecord),
 }
 
 /// The most folders one listing carries; a folder with more says so in `truncated`.
@@ -1902,6 +1924,7 @@ impl ServerMsg {
         match self {
             ServerMsg::Reply(Reply::SavedConversations { .. }) => SAVED_CONVERSATIONS_SINCE,
             ServerMsg::Reply(Reply::ClosedSessions(_)) => CLOSED_SESSIONS_SINCE,
+            ServerMsg::Reply(Reply::HelperRead(_)) => HELPER_READ_SINCE,
             _ => COMPATIBLE_SINCE,
         }
     }
@@ -1923,6 +1946,7 @@ impl ClientMsg {
             ClientMsg::Query(Query::ClosedSessions) => CLOSED_SESSIONS_SINCE,
             ClientMsg::Command(Command::ReopenClosedSession { .. }) => REOPEN_CLOSED_SINCE,
             ClientMsg::WorkflowReport { .. } => WORKFLOW_REPORT_SINCE,
+            ClientMsg::Query(Query::HelperRead { .. }) => HELPER_READ_SINCE,
             _ => COMPATIBLE_SINCE,
         }
     }
@@ -3128,6 +3152,16 @@ mod tests {
             },
         };
         assert_eq!(report.introduced_in(), WORKFLOW_REPORT_SINCE);
+        let ask = ClientMsg::Query(Query::HelperRead { term: 1, helper: "a1".into() });
+        assert_eq!(ask.introduced_in(), HELPER_READ_SINCE);
+        let answer = ServerMsg::Reply(Reply::HelperRead(HelperRecord {
+            term: 1,
+            helper: "a1".into(),
+            entries: Vec::new(),
+            start_missing: true,
+        }));
+        assert_eq!(answer.introduced_in(), HELPER_READ_SINCE);
+        round_trips(&answer);
         const { assert!(WORKFLOW_REPORT_SINCE <= PROTOCOL_VERSION) };
     }
 

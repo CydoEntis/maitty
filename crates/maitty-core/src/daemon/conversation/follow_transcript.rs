@@ -62,6 +62,19 @@ pub(in crate::daemon) struct Transcript {
     tools: HashMap<String, PendingTool>,
     /// The command Claude ran itself and has not printed for yet: it names the row its output gets.
     local_command: Option<String>,
+    /// The file is a helper's own record, not a session's (ADR 0010).
+    helper: Helper,
+}
+
+/// How much of a helper's own file is the helper's.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Helper {
+    /// A session's file: a helper's lines in it are not this conversation.
+    No,
+    /// A helper's file whose own part has begun: Claude's are all side-chain lines.
+    Own,
+    /// A Codex helper's file before its own task: a copy of its parent's history.
+    ParentCopy,
 }
 
 impl Transcript {
@@ -82,6 +95,20 @@ impl Transcript {
             meta: crate::conversation::SessionMeta::default(),
             tools: HashMap::new(),
             local_command: None,
+            helper: Helper::No,
+        }
+    }
+
+    /// A reader for a helper's own record: Claude's side-chain file, or a Codex helper's rollout,
+    /// read from where its own task begins.
+    pub fn helper(format: Format, thread: &str) -> Self {
+        let helper = match format {
+            Format::Codex => Helper::ParentCopy,
+            Format::Claude | Format::Gemini => Helper::Own,
+        };
+        Self {
+            helper,
+            ..Self::new(format, thread)
         }
     }
 
@@ -179,7 +206,7 @@ impl Transcript {
     fn claude(&mut self, offset: u64, line: &Value, notes: &mut Vec<Note>) {
         // A helper agent's own conversation is a separate file in current Claude, and an older
         // one wrote it into this file marked as a side chain; it is not this conversation.
-        if line.get("isSidechain").and_then(Value::as_bool) == Some(true) {
+        if self.helper == Helper::No && line.get("isSidechain").and_then(Value::as_bool) == Some(true) {
             return;
         }
         self.note_claude_setup(line);
@@ -481,6 +508,14 @@ impl Transcript {
     // ---- Codex: response items and event messages ----
 
     fn codex(&mut self, offset: u64, line: &Value, notes: &mut Vec<Note>) {
+        // A helper's rollout opens with a copy of its parent's history; its own task starts at the
+        // line that hands it over.
+        if self.helper == Helper::ParentCopy {
+            if line.get("type").and_then(Value::as_str) == Some("inter_agent_communication_metadata") {
+                self.helper = Helper::Own;
+            }
+            return;
+        }
         let at_ms = line
             .get("timestamp")
             .and_then(Value::as_str)

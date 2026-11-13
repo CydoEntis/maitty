@@ -9763,3 +9763,48 @@ fn a_pane_saved_before_workflow_reports_restores_with_none() {
             .unwrap();
     assert!(old.workflows.is_empty());
 }
+
+#[test]
+fn a_helpers_record_is_read_only_for_a_helper_the_panes_agent_reported_and_only_by_a_person() {
+    let (mut d, _rx) = daemon();
+    let (t, asking) = (pane(&mut d), pane(&mut d));
+    {
+        let p = d.terms.get_mut(&t).unwrap();
+        (p.agent, p.session) = (Some("claude".into()), Some("S1".into()));
+    }
+    let ask = |d: &mut Daemon, client: ClientId, helper: &str| {
+        d.message(client, ClientMsg::Query(Query::HelperRead { term: t, helper: helper.into() }));
+    };
+    let (tx, mut person) = mpsc::channel(16);
+    d.handle(Ev::Connected(7, tx, false, crate::protocol::Surface::Terminal, true));
+    ask(&mut d, 7, "a1b2");
+    assert!(
+        matches!(person.try_recv(), Ok(ServerMsg::Error(e)) if e.contains("no such helper")),
+        "a helper the agent never reported is no file to read"
+    );
+    d.terms.get_mut(&t).unwrap().subagent_activity.push(SubagentActivity {
+        id: "a1b2".into(),
+        name: "general-purpose".into(),
+        parent: None,
+        state: SubagentState::Completed,
+        task: None,
+        model: None,
+        effort: None,
+        started_at: None,
+        updated_at: 0,
+        latest_activity: None,
+        result: None,
+    });
+    ask(&mut d, 7, "a1b2");
+    assert!(
+        matches!(person.try_recv(), Ok(ServerMsg::Error(e)) if e.contains("transcript")),
+        "a Claude helper is found only beside the transcript the pane's hooks named"
+    );
+    let (tx, mut agent) = mpsc::channel(16);
+    d.handle(Ev::Connected(8, tx, false, crate::protocol::Surface::Terminal, true));
+    let token = d.terms[&asking].token.clone();
+    d.handle(Ev::From(8, asking, token));
+    ask(&mut d, 8, "a1b2");
+    assert!(matches!(agent.try_recv(), Ok(ServerMsg::Error(_))), "another pane's agent may not read it");
+    close(&mut d, &[t, asking]);
+}
