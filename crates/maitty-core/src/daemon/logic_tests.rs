@@ -2910,6 +2910,161 @@ fn a_helper_recorded_as_stopped_no_longer_holds_its_session_working() {
     close(&mut d, &terms);
 }
 
+/// A report from `agent`'s hooks; with `helper_starts`, it is news of its helper `a1`.
+fn report_with_helper(
+    t: TermId,
+    agent: &str,
+    status: HookStatus,
+    event: &str,
+    helper_starts: Option<bool>,
+) -> ClientMsg {
+    let mut msg = report(t, "", 0, status, event);
+    if let ClientMsg::Hook { agent: a, subagent, .. } = &mut msg {
+        *a = agent.into();
+        *subagent = helper_starts.map(|start| Subagent {
+            id: "a1".into(),
+            kind: "general-purpose".into(),
+            start,
+            reported_at: 0,
+            task: None,
+            model: None,
+            effort: None,
+            activity: None,
+        });
+    }
+    msg
+}
+
+/// The turn-end report; Claude's lists the background agents still running, Codex's lists nothing.
+fn turn_end_report(t: TermId, agent: &str, running: Option<&[&str]>) -> ClientMsg {
+    let mut msg = report_with_helper(t, agent, HookStatus::Done, "Stop", None);
+    if let (
+        ClientMsg::Hook {
+            background,
+            background_agents,
+            background_reported,
+            ..
+        },
+        Some(running),
+    ) = (&mut msg, running)
+    {
+        *background = running.iter().map(|id| id.to_string()).collect();
+        *background_agents = background.clone();
+        *background_reported = true;
+    }
+    msg
+}
+
+/// The agent's screen has shown its idle prompt (`title`) and nothing else for ten seconds.
+fn rests_at_its_idle_prompt(d: &mut Daemon, t: TermId, title: &str) {
+    let p = d.terms.get_mut(&t).expect("pane");
+    p.parser.process(format!("\x1b]0;{title}\x07").as_bytes());
+    p.last_output = Instant::now() - Duration::from_secs(10);
+    d.update_statuses();
+}
+
+fn times_told_done(seen: &mut mpsc::Receiver<ServerMsg>) -> usize {
+    heard(seen)
+        .iter()
+        .filter(|m| matches!(m, ServerMsg::Attention { status: Status::Done, .. }))
+        .count()
+}
+
+/// A turn that starts a background helper and ends while it runs, as `agent`'s hooks report it.
+fn a_turn_that_ends_while_its_helper_runs_stays_working(agent: &str, idle_title: &str) {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let mut seen = viewer(&mut d);
+    let lists_background = agent == "claude";
+    let say = |d: &mut Daemon, msg| d.apply_hook(msg, Some(true), Vec::new());
+    say(&mut d, report_with_helper(t, agent, HookStatus::Working, "UserPromptSubmit", None));
+    say(&mut d, report_with_helper(t, agent, HookStatus::Working, "SubagentStart", Some(true)));
+    say(&mut d, turn_end_report(t, agent, lists_background.then_some(&["a1"])));
+    rests_at_its_idle_prompt(&mut d, t, idle_title);
+    assert_eq!(
+        d.terms[&t].status,
+        Status::Working,
+        "{agent}: its turn ended, its helper did not"
+    );
+    // The helper is minutes into one command, then uses another tool.
+    say(&mut d, report_with_helper(t, agent, HookStatus::Same, "PostToolUse", Some(true)));
+    rests_at_its_idle_prompt(&mut d, t, idle_title);
+    assert_eq!(d.terms[&t].status, Status::Working, "{agent}: still working");
+    assert_eq!(d.terms[&t].subagents.len(), 1, "{agent}: the helper is still listed");
+    assert_eq!(times_told_done(&mut seen), 0, "{agent}: nothing finished yet");
+
+    say(&mut d, report_with_helper(t, agent, HookStatus::Same, "SubagentStop", Some(false)));
+    assert_eq!(d.terms[&t].status, Status::Done, "{agent}: its last helper stopped");
+    // Claude wakes to read what its helper found and stops again, with nothing left running.
+    if lists_background {
+        say(&mut d, turn_end_report(t, agent, Some(&[])));
+    }
+    rests_at_its_idle_prompt(&mut d, t, idle_title);
+    assert_eq!(d.terms[&t].status, Status::Done, "{agent}: and it stays done");
+    assert_eq!(times_told_done(&mut seen), 1, "{agent}: one finish, said once");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_claude_turn_that_ends_while_its_background_agent_runs_stays_working() {
+    a_turn_that_ends_while_its_helper_runs_stays_working("claude", "✳ project");
+}
+
+#[test]
+fn a_codex_turn_that_ends_while_its_child_agent_runs_stays_working() {
+    a_turn_that_ends_while_its_helper_runs_stays_working("codex", "project");
+}
+
+#[test]
+fn a_helper_started_after_the_turn_ended_keeps_its_session_working() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let say = |d: &mut Daemon, msg| d.apply_hook(msg, Some(true), Vec::new());
+    say(&mut d, report_with_helper(t, "claude", HookStatus::Working, "UserPromptSubmit", None));
+    say(&mut d, turn_end_report(t, "claude", Some(&[])));
+    assert_eq!(d.terms[&t].status, Status::Done);
+    say(&mut d, report_with_helper(t, "claude", HookStatus::Working, "SubagentStart", Some(true)));
+    rests_at_its_idle_prompt(&mut d, t, "✳ project");
+    assert_eq!(
+        d.terms[&t].status,
+        Status::Working,
+        "an idle prompt is what Claude shows while a background agent runs"
+    );
+    // No turn end follows a helper that began outside a turn: the idle prompt is the end.
+    say(&mut d, report_with_helper(t, "claude", HookStatus::Same, "SubagentStop", Some(false)));
+    rests_at_its_idle_prompt(&mut d, t, "✳ project");
+    assert_eq!(d.terms[&t].status, Status::Done);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_helper_that_dies_without_reporting_frees_its_session_after_the_hour() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let say = |d: &mut Daemon, msg| d.apply_hook(msg, Some(true), Vec::new());
+    say(&mut d, report_with_helper(t, "claude", HookStatus::Working, "UserPromptSubmit", None));
+    say(&mut d, report_with_helper(t, "claude", HookStatus::Working, "SubagentStart", Some(true)));
+    say(&mut d, turn_end_report(t, "claude", Some(&["a1"])));
+    let within = Instant::now() - super::status::SUBAGENTS_QUIET_AT_MOST + Duration::from_secs(60);
+    let p = d.terms.get_mut(&t).expect("pane");
+    (p.done_held, p.subagent_seen) = (Some(within), Some(within));
+    rests_at_its_idle_prompt(&mut d, t, "✳ project");
+    assert_eq!(d.terms[&t].status, Status::Working, "held for the whole hour");
+
+    let past = Instant::now() - super::status::SUBAGENTS_QUIET_AT_MOST - Duration::from_secs(60);
+    let p = d.terms.get_mut(&t).expect("pane");
+    (p.done_held, p.subagent_seen) = (Some(past), Some(past));
+    rests_at_its_idle_prompt(&mut d, t, "✳ project");
+    assert_eq!(d.terms[&t].status, Status::Done, "not held forever");
+    assert!(d.terms[&t].subagents.is_empty());
+    assert_eq!(
+        d.terms[&t].subagent_activity[0].state,
+        SubagentState::ConnectionLost,
+        "kept as unconfirmed, not as completed"
+    );
+    close(&mut d, &[t]);
+}
+
 #[test]
 fn a_progress_bar_that_goes_off_while_helpers_run_is_not_a_cancel() {
     let (mut d, _rx) = daemon();

@@ -1024,10 +1024,13 @@ impl Daemon {
             // Claude's input box shows all turn long, and its title says idle while its
             // turn-end hooks still run and between a turn's steps: the screen must also have
             // gone still, or this would finish (and ring) ahead of the hook, or over and over
-            // through the turn of an agent with no hooks.
+            // through the turn of an agent with no hooks. An agent whose turn ended while a
+            // helper it reported still runs shows the same idle prompt, so the prompt proves
+            // nothing until that helper stops or goes quiet for good.
             if signal.status == Some(Status::Idle)
                 && signal.visible_idle
                 && (t.status == Status::Working || has_active_children)
+                && !helpers_running(t)
                 && t.last_output.elapsed() >= SCREEN_DONE_QUIET
             {
                 let status = if t.status == Status::Working {
@@ -1041,11 +1044,7 @@ impl Daemon {
             // Any trusted adapter may report child agents without using lifecycle
             // hooks (Codex is discovered from its local session files). Keep the
             // parent visibly working while a recently observed child is active.
-            if matches!(t.status, Status::Idle | Status::Done)
-                && !t.subagents.is_empty()
-                && t.subagent_seen
-                    .is_some_and(|s| s.elapsed() <= SUBAGENTS_QUIET_AT_MOST)
-            {
+            if matches!(t.status, Status::Idle | Status::Done) && helpers_running(t) {
                 still_working.push(t.id);
                 continue;
             }
@@ -1120,12 +1119,9 @@ impl Daemon {
                 }
                 // The progress indicator went away and no turn-end came: cancelled (Esc).
                 // A progress bar that is off while helpers run is the agent waiting on them.
-                let helpers_running = !t.subagents.is_empty()
-                    && t.subagent_seen
-                        .is_some_and(|s| s.elapsed() <= SUBAGENTS_QUIET_AT_MOST);
                 if t.status == Status::Working
                     && t.done_held.is_none()
-                    && !helpers_running
+                    && !helpers_running(t)
                     && t.progress_off
                         .is_some_and(|p| p.elapsed() > CANCELLED_AFTER)
                 {
@@ -1306,15 +1302,20 @@ fn repeat_count(t: &mut term::Term) -> Option<u32> {
     t.call_run.repeats()
 }
 
+/// Whether a helper the agent reported is counted as running and was heard from within
+/// `SUBAGENTS_QUIET_AT_MOST`.
+fn helpers_running(t: &term::Term) -> bool {
+    !t.subagents.is_empty()
+        && t.subagent_seen
+            .is_some_and(|s| s.elapsed() <= SUBAGENTS_QUIET_AT_MOST)
+}
+
 /// When a working agent went silent, if it has been silent past `QUIET_AFTER`. Never while
 /// helpers it reported are running (it is waiting on them) or while it asks for helpers.
 fn quiet_since(t: &term::Term, now: u64) -> Option<u64> {
-    let helpers_running = !t.subagents.is_empty()
-        && t.subagent_seen
-            .is_some_and(|s| s.elapsed() <= SUBAGENTS_QUIET_AT_MOST);
     if t.status != Status::Working
         || t.agent.is_none()
-        || helpers_running
+        || helpers_running(t)
         || !t.helpers.asked.is_empty()
     {
         return None;
