@@ -42,7 +42,12 @@ describe('buildRows', () => {
     const diff = (added: number, removed: number) => ({ status: 'available' as const, hunks: [], added, removed, truncated: false })
     const rows = buildRows([editEvent('e1', { file: 'a.ts', diff: diff(3, 1) }), editEvent('e2', { file: 'a.ts', diff: diff(2, 0) }), editEvent('e3', { file: 'b.ts', diff: diff(1, 1) }), turn('completed', true)], false)
 
-    expect(rows.at(-1)).toEqual({ kind: 'changes', key: 'changes:t1', files: ['a.ts', 'b.ts'], lines: { added: 6, removed: 2 } })
+    expect(rows.at(-1)).toEqual({ kind: 'changes', key: 'changes:t1', files: ['a.ts', 'b.ts'], lines: { added: 6, removed: 2 }, turn: { startedAtMs: 1_000, endedAtMs: 8_000 } })
+  })
+
+  it('gives a changes row no turn times when the daemon did not time it', () => {
+    const rows = buildRows([editEvent('e1', { file: 'a.ts' }), turn('completed', false)], false)
+    expect(rows.at(-1)).toMatchObject({ kind: 'changes', turn: null })
   })
 
   it('gives no line counts when a diff was not kept, and no card for a turn that changed nothing', () => {

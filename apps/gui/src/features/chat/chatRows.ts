@@ -5,6 +5,7 @@ import { describeStep } from './stepInfo'
 import { describeWork } from './workPhase'
 import { documentOf } from './writtenDocument'
 import type { WorkStep } from './workSummary'
+import type { TurnSpan } from '@/features/inspect/turnRange'
 
 function isDocument(event: ChatEvent): boolean {
   return event.kind === 'edit' && documentOf(event) !== null
@@ -22,8 +23,11 @@ export type ChatRow =
   | { readonly kind: 'agents'; readonly key: string; readonly events: readonly SubagentEvent[] }
   | { readonly kind: 'approval'; readonly key: string; readonly event: ApprovalEvent; readonly step: StepRef | null }
   | { readonly kind: 'divider'; readonly key: string; readonly event: TurnEvent }
-  /** Under a turn that edited files: how many, and the lines added and removed where every diff was kept. */
-  | { readonly kind: 'changes'; readonly key: string; readonly files: readonly string[]; readonly lines: { readonly added: number; readonly removed: number } | null }
+  /**
+   * Under a turn that edited files: how many, and the lines added and removed where every diff was kept. `turn` is when
+   * it ran, null when the times are not the daemon's, so its snapshots cannot be picked by them.
+   */
+  | { readonly kind: 'changes'; readonly key: string; readonly files: readonly string[]; readonly lines: { readonly added: number; readonly removed: number } | null; readonly turn: TurnSpan | null }
   /** What the person just sent, shown before the history has it; `echoText` of `buildRows`. */
   | { readonly kind: 'echo'; readonly key: string; readonly text: string }
   /** A helper agent reporting back (the harness's `<task-notification>`), as one quiet line. */
@@ -102,7 +106,7 @@ export function buildRows(events: readonly ChatEvent[], working: boolean, root: 
       case 'turn': {
         rows.push({ kind: 'divider', key: event.id, event })
         const changed = changesOf(edits.get(event.turnId) ?? [])
-        if (changed !== null) rows.push({ kind: 'changes', key: `changes:${event.turnId}`, ...changed })
+        if (changed !== null) rows.push({ kind: 'changes', key: `changes:${event.turnId}`, ...changed, turn: event.timed ? { startedAtMs: event.startedAtMs, endedAtMs: event.endedAtMs } : null })
         break
       }
       case 'subagent': {
