@@ -301,6 +301,30 @@ impl Cache {
         Ok(Some(history))
     }
 }
+impl Cache {
+    /// Loads a conversation's cached history, or `None` when it cannot be used. A cache this
+    /// daemon cannot read (an entry kind a newer daemon wrote, a corrupt page, a changed binding)
+    /// must not stop the daemon from starting: the history is read again from the agent, and the
+    /// next commit replaces the old files. Only the conversation id and the error are logged,
+    /// never an entry's text.
+    pub(super) fn load_or_rebuild(
+        &self,
+        conversation: ConversationId,
+        binding: &NativeBinding,
+    ) -> Option<History> {
+        match self.load(conversation, binding) {
+            Ok(history) => history,
+            Err(error) => {
+                tracing::warn!(
+                    conversation = conversation.0,
+                    error = %format!("{error:#}"),
+                    "Cached conversation history is unreadable; rebuilding it from the agent"
+                );
+                None
+            }
+        }
+    }
+}
 fn bounded_read(path: &Path, limit: u64) -> Result<Vec<u8>> {
     use std::io::Read;
     let file = std::fs::File::open(path)?;

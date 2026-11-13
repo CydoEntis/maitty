@@ -157,7 +157,7 @@ impl Daemon {
             let cache = super::history_storage::Cache::for_session(&path, enabled, output)?;
             let mut histories = std::collections::BTreeMap::new();
             for c in records {
-                if let Some(mut history) = cache.load(c.id, &c.binding)? {
+                if let Some(mut history) = cache.load_or_rebuild(c.id, &c.binding) {
                     // A cache written before redaction existed may still hold secrets.
                     history.redact_stored();
                     history.reconnect()?;

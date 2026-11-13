@@ -567,6 +567,10 @@ message); one with no summary text, whose reasoning is only encrypted, is skippe
 `COMPATIBLE_SINCE` stays 78 because the daemon leaves these entries out of the pages it sends an
 older client (`daemon::for_client`), which could not decode a page that held one. The desktop app
 reads the item and shows nothing for it yet.
+A history cache the daemon cannot read (an entry kind a newer daemon wrote, a corrupt page, a changed
+binding) never stops it starting: `Cache::load_or_rebuild` logs the conversation id and the error
+(never entry text), treats the history as absent, and the next native read and commit replace it.
+Daemons shipped before this change still fail on an unknown kind; it protects the next one.
 
 Daemon notifications reach
 attached projections only after current generation/connection acceptance, and

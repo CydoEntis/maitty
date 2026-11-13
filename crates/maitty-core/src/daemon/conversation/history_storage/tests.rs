@@ -288,3 +288,31 @@ fn exhausted_projection_cannot_be_prepared_as_an_unloadable_cache_revision() {
         Some(&IncompleteReason::RevisionExhausted)
     );
 }
+#[test]
+fn an_entry_kind_this_daemon_cannot_read_skips_the_cache_instead_of_failing() {
+    let scratch = scratch_dir();
+    let cache = Cache::open(scratch.path().join("history"), true, true).unwrap();
+    let binding = crate::test_support::conversation().binding;
+    let mut h = History::new(ConversationId(1));
+    h.apply(Update::UpsertItem(entry(0))).unwrap();
+    cache.commit(cache.prepare(&binding, &h).unwrap()).unwrap();
+    assert_eq!(cache.load_or_rebuild(h.conversation, &binding), Some(h.clone()));
+
+    // A newer daemon wrote an entry kind this one does not know. Page and manifest still agree on
+    // size and hash, so only decoding the entries fails.
+    let dir = cache.root.join("1");
+    let mut entries: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(dir.join("1.json")).unwrap()).unwrap();
+    entries[0]["content"] = serde_json::json!({ "FutureKind": { "text": "x" } });
+    let page = serde_json::to_vec(&entries).unwrap();
+    std::fs::write(dir.join("1.json"), &page).unwrap();
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(dir.join("manifest.json")).unwrap()).unwrap();
+    manifest["pages"][0]["bytes"] = page.len().into();
+    manifest["pages"][0]["hash"] = format!("{:x}", Sha256::digest(&page)).into();
+    std::fs::write(dir.join("manifest.json"), serde_json::to_vec(&manifest).unwrap()).unwrap();
+
+    let error = cache.load(h.conversation, &binding).unwrap_err();
+    assert!(format!("{error:#}").contains("invalid page"), "{error:#}");
+    assert_eq!(cache.load_or_rebuild(h.conversation, &binding), None);
+}
